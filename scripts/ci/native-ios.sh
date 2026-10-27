@@ -7,6 +7,10 @@ OUT="$ROOT/.run/native/ios"
 mkdir -p "$OUT"
 cd "$ROOT/app/apps/mobile"
 export APP_VARIANT=production EXPO_NO_TELEMETRY=1 EXPO_NO_GIT_STATUS=1 NODE_ENV=production
+CONFIG_OUT="$ROOT/.run/native-config/ios"
+mkdir -p "$CONFIG_OUT"
+# Run the native Constants phase before CocoaPods or Xcode compilation.
+node node_modules/expo-constants/scripts/getAppConfig.js "$PWD" "$CONFIG_OUT" ios false production
 pnpm exec expo prebuild --clean --platform ios --no-install
 (cd ios && pod install)
 # Select a simulator from the pinned SDK, rather than relying on the host's default.

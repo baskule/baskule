@@ -7,6 +7,10 @@ OUT="$ROOT/.run/native/android"
 mkdir -p "$OUT"
 cd "$ROOT/app/apps/mobile"
 export APP_VARIANT=production EXPO_NO_TELEMETRY=1 EXPO_NO_GIT_STATUS=1 NODE_ENV=production
+CONFIG_OUT="$ROOT/.run/native-config/android"
+mkdir -p "$CONFIG_OUT"
+# Run the native Constants phase before Gradle compiles any modules.
+node node_modules/expo-constants/scripts/getAppConfig.js "$PWD" "$CONFIG_OUT" android false production
 export ANDROID_SDK_ROOT="${ANDROID_HOME:?Android SDK required}"
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT/.run/gradle}"
 if [[ "${NATIVE_SIGN:-false}" == true ]]; then
