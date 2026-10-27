@@ -1,7 +1,7 @@
 // Per-worktree real app stacks. Profiles describe processes; this file owns their lifecycle.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
-import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -286,12 +286,13 @@ async function build(s) {
   try {
     if (!existsSync(join(cached, "index.html"))) {
       notice(`Building hosted web client (${key.slice(0, 12)}); log: ${RUN}/build.log`);
-      const fd = openSync(join(RUN, "build.log"), "a");
-      try { run("nice", ["-n", "10", join(ROOT, "app/node_modules/.bin/vp"), "build"], { cwd: join(ROOT, "app/apps/web"), env: webEnv, stdio: ["ignore", fd, fd] }); }
-      finally { closeSync(fd); }
       const temp = `${cached}.${process.pid}`;
-      try { cpSync(join(ROOT, "app/apps/web/dist"), temp, { recursive: true }); renameSync(temp, cached); }
-      finally { rmSync(temp, { recursive: true, force: true }); }
+      const fd = openSync(join(RUN, "build.log"), "a");
+      try {
+        // The mock web check serves dist while this stack builds in another check lane.
+        run("nice", ["-n", "10", join(ROOT, "app/node_modules/.bin/vp"), "build", "--outDir", temp], { cwd: join(ROOT, "app/apps/web"), env: webEnv, stdio: ["ignore", fd, fd] });
+        renameSync(temp, cached);
+      } finally { closeSync(fd); rmSync(temp, { recursive: true, force: true }); }
     } else notice(`Reusing hosted web client ${key.slice(0, 12)}`);
     run("node", ["scripts/build.mjs"], { cwd: join(ROOT, "platform"), env: { ...env, BASKULE_OUT: join(RUN, "app"), BASKULE_WEB_DIR: cached }, stdio: ["ignore", 2, 2] });
     const w = load(join(ROOT, "platform/wrangler.json"));

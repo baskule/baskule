@@ -331,6 +331,11 @@ packageExtensions:
   "expo-quick-actions@6.0.2":
     dependencies:
       "@expo/config-plugins": 58.0.9
+  # Native widget bundling imports these packages, but upstream lists them as dev-only.
+  "expo-widgets@58.0.20":
+    dependencies:
+      "@expo/spawn-async": 1.8.0
+      resolve-workspace-root: 2.0.1
   # Our patch makes @effect/vitest import vite-plus/test. A catalog: spec here
   # resolves through the vite-plus override above.
   "@effect/vitest@*":

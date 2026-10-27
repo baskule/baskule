@@ -1271,6 +1271,13 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         WHERE thread_id = ${threadId}
       `;
         assert.equal(checkpointRows[0]?.count, 0);
+        const recovery = makeThread(ThreadId.make("thread:after-projection-failure"), now);
+        const written = yield* eventSink.write({
+          events: [
+            threadCreatedEvent({ id: "event:after-projection-failure", thread: recovery, now }),
+          ],
+        });
+        assert.lengthOf(written, 1);
       }),
   );
 
@@ -3473,21 +3480,117 @@ it.live("keeps claiming new work after repeated idle periods", () =>
   }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("publishes live events in commit order across concurrent writers", () =>
+it.live(
+  "publishes live events in commit order when publication reads SQL across concurrent writers",
+  () =>
+    Effect.gen(function* () {
+      const firstCommitted = yield* Deferred.make<void>();
+      const releaseFirst = yield* Deferred.make<void>();
+      const layerPausingOutbox = Layer.effect(
+        EffectOutbox.EffectOutboxV2,
+        Effect.gen(function* () {
+          const delegate = yield* EffectOutbox.EffectOutboxV2;
+          const sql = yield* SqlClient.SqlClient;
+          return EffectOutbox.EffectOutboxV2.of({
+            ...delegate,
+            notifyAvailable: (count) =>
+              Deferred.succeed(firstCommitted, undefined).pipe(
+                Effect.andThen(Deferred.await(releaseFirst)),
+                Effect.andThen(sql`SELECT 1`.pipe(Effect.orDie)),
+                Effect.andThen(delegate.notifyAvailable(count)),
+              ),
+          });
+        }),
+      ).pipe(Layer.provide(Layer.merge(layerEffectOutboxProvided, layerDatabase)));
+      const layerEventSink = EventSink.layerFromStores.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            layerStoresProvided,
+            layerPausingOutbox,
+            layerCommandReceiptStoreProvided,
+            ProjectStore.layer.pipe(Layer.provide(layerDatabase)),
+            TurnItemPositionStore.layer.pipe(Layer.provide(layerDatabase)),
+          ),
+        ),
+      );
+
+      yield* Effect.gen(function* () {
+        const eventSink = yield* EventSink.EventSinkV2;
+        const now = yield* DateTime.now;
+        const first = makeThread(ThreadId.make("thread:foundation-publish-order:first"), now);
+        const second = makeThread(ThreadId.make("thread:foundation-publish-order:second"), now);
+        const published = yield* eventSink
+          .stream({ afterSequence: yield* eventSink.latestSequence() })
+          .pipe(Stream.take(2), Stream.runCollect, Effect.forkScoped({ startImmediately: true }));
+
+        const firstWrite = yield* eventSink
+          .writeWithEffects({
+            events: [
+              threadCreatedEvent({
+                id: "event:foundation-publish-order:first",
+                thread: first,
+                now,
+              }),
+            ],
+            effects: [
+              {
+                id: "effect:foundation-publish-order:first",
+                commandId: CommandId.make("command:foundation-publish-order:first"),
+                threadId: first.id,
+                request: { type: "terminal.cleanup" },
+              },
+            ],
+          })
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        yield* Deferred.await(firstCommitted);
+        const sql = yield* SqlClient.SqlClient;
+        const committed =
+          yield* sql`SELECT thread_id FROM orchestration_v2_projection_threads WHERE thread_id = ${first.id}`;
+        assert.lengthOf(committed, 1, "the first write committed before publication");
+        const secondWrite = yield* eventSink
+          .write({
+            events: [
+              threadCreatedEvent({
+                id: "event:foundation-publish-order:second",
+                thread: second,
+                now,
+              }),
+            ],
+          })
+          .pipe(
+            Effect.provideService(Scheduler.MaxOpsBeforeYield, Number.POSITIVE_INFINITY),
+            Effect.forkScoped({ startImmediately: true }),
+          );
+        yield* Effect.yieldNow;
+        yield* Effect.gen(function* () {
+          yield* Deferred.succeed(releaseFirst, undefined);
+          yield* Fiber.join(firstWrite);
+          yield* Fiber.join(secondWrite);
+
+          const sequences = Array.from(yield* Fiber.join(published), (stored) => stored.sequence);
+          assert.deepEqual(
+            sequences,
+            [...sequences].sort((left, right) => left - right),
+          );
+        }).pipe(
+          Effect.timeout("2 seconds"),
+          // Release the first publisher before scoped cleanup interrupts the contending writer.
+          Effect.ensuring(Fiber.interrupt(firstWrite)),
+        );
+      }).pipe(Effect.provide(layerEventSink));
+    }).pipe(Effect.provide(layerDatabase)),
+  5_000,
+);
+
+it.live("releases the publication lane after a publication failure", () =>
   Effect.gen(function* () {
-    const firstCommitted = yield* Deferred.make<void>();
-    const releaseFirst = yield* Deferred.make<void>();
-    const layerPausingOutbox = Layer.effect(
+    const layerFailingOutbox = Layer.effect(
       EffectOutbox.EffectOutboxV2,
       Effect.gen(function* () {
         const delegate = yield* EffectOutbox.EffectOutboxV2;
         return EffectOutbox.EffectOutboxV2.of({
           ...delegate,
-          notifyAvailable: (count) =>
-            Deferred.succeed(firstCommitted, undefined).pipe(
-              Effect.andThen(Deferred.await(releaseFirst)),
-              Effect.andThen(delegate.notifyAvailable(count)),
-            ),
+          notifyAvailable: () => Effect.die("publication failed"),
         });
       }),
     ).pipe(Layer.provide(layerEffectOutboxProvided));
@@ -3495,63 +3598,45 @@ it.effect("publishes live events in commit order across concurrent writers", () 
       Layer.provide(
         Layer.mergeAll(
           layerStoresProvided,
-          layerPausingOutbox,
+          layerFailingOutbox,
           layerCommandReceiptStoreProvided,
           ProjectStore.layer.pipe(Layer.provide(layerDatabase)),
           TurnItemPositionStore.layer.pipe(Layer.provide(layerDatabase)),
         ),
       ),
     );
-
     yield* Effect.gen(function* () {
       const eventSink = yield* EventSink.EventSinkV2;
+      const sql = yield* SqlClient.SqlClient;
       const now = yield* DateTime.now;
-      const first = makeThread(ThreadId.make("thread:foundation-publish-order:first"), now);
-      const second = makeThread(ThreadId.make("thread:foundation-publish-order:second"), now);
-      const published = yield* eventSink
-        .stream({ afterSequence: yield* eventSink.latestSequence() })
-        .pipe(Stream.take(2), Stream.runCollect, Effect.forkScoped({ startImmediately: true }));
-
-      const firstWrite = yield* eventSink
-        .writeWithEffects({
-          events: [
-            threadCreatedEvent({ id: "event:foundation-publish-order:first", thread: first, now }),
-          ],
+      const first = makeThread(ThreadId.make("thread:publication-failure"), now);
+      const exit = yield* Effect.exit(
+        eventSink.writeWithEffects({
+          events: [threadCreatedEvent({ id: "event:publication-failure", thread: first, now })],
           effects: [
             {
-              id: "effect:foundation-publish-order:first",
-              commandId: CommandId.make("command:foundation-publish-order:first"),
+              id: "effect:publication-failure",
+              commandId: CommandId.make("command:publication-failure"),
               threadId: first.id,
               request: { type: "terminal.cleanup" },
             },
           ],
-        })
-        .pipe(Effect.forkScoped);
-      yield* Deferred.await(firstCommitted);
-      const secondWrite = yield* eventSink
+        }),
+      );
+      assert.equal(exit._tag, "Failure");
+      assert.lengthOf(
+        yield* sql`SELECT thread_id FROM orchestration_v2_projection_threads WHERE thread_id = ${first.id}`,
+        1,
+      );
+      const second = makeThread(ThreadId.make("thread:after-publication-failure"), now);
+      const written = yield* eventSink
         .write({
           events: [
-            threadCreatedEvent({
-              id: "event:foundation-publish-order:second",
-              thread: second,
-              now,
-            }),
+            threadCreatedEvent({ id: "event:after-publication-failure", thread: second, now }),
           ],
         })
-        .pipe(
-          Effect.provideService(Scheduler.MaxOpsBeforeYield, Number.POSITIVE_INFINITY),
-          Effect.forkScoped,
-        );
-      yield* Effect.yieldNow;
-      yield* Deferred.succeed(releaseFirst, undefined);
-      yield* Fiber.join(firstWrite);
-      yield* Fiber.join(secondWrite);
-
-      const sequences = Array.from(yield* Fiber.join(published), (stored) => stored.sequence);
-      assert.deepEqual(
-        sequences,
-        [...sequences].sort((left, right) => left - right),
-      );
+        .pipe(Effect.timeout("2 seconds"));
+      assert.lengthOf(written, 1);
     }).pipe(Effect.provide(layerEventSink));
   }).pipe(Effect.provide(layerDatabase)),
 );

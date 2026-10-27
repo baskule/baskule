@@ -52,6 +52,15 @@ async function newPage(browser, device) {
   page.on("pageerror", (error) =>
     console.log(`  [pageerror:${device}] ${error.message.slice(0, 300)}`),
   );
+  let failedModules = 0;
+  page.on("response", (response) => {
+    if (response.request().resourceType() !== "script" || failedModules >= 5) return;
+    const contentType = response.headers()["content-type"] ?? "";
+    if (response.ok() && /(?:java|ecma)script|wasm/i.test(contentType)) return;
+    failedModules++;
+    const url = new URL(response.url());
+    console.log(`  [module:${device}] ${url.origin}${url.pathname.slice(0, 300)} status=${response.status()} content-type=${contentType.slice(0, 100)}`);
+  });
   return { context, page };
 }
 

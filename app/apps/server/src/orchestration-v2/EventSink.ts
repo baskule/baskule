@@ -270,34 +270,13 @@ const layerBase: Layer.Layer<
         ),
       );
 
-    // Transactions commit one at a time, but each writer publishes after its
-    // commit. If a writer is descheduled in between, a later commit reaches
-    // subscribers first, and clients drop any event at or below the newest
-    // sequence they have applied.
+    // Keep commits and publication ordered. Publication reads SQL and can make same-cell
+    // requests, so a waiting writer must not hold the transaction gate.
     const publishLane = yield* Semaphore.make(1);
     const commitThenPublish = <A, E, R, PE>(
       transaction: Effect.Effect<A, E, R>,
       publish: (committed: A) => Effect.Effect<void, PE>,
-    ) =>
-      Effect.suspend(() => {
-        let holdsLane = false;
-        const takeLane = publishLane.take(1).pipe(
-          Effect.andThen(
-            Effect.sync(() => {
-              holdsLane = true;
-            }),
-          ),
-          Effect.uninterruptible,
-        );
-        return sql
-          .withTransaction(Effect.tap(transaction, () => takeLane))
-          .pipe(
-            Effect.tap(publish),
-            Effect.ensuring(
-              Effect.suspend(() => (holdsLane ? publishLane.release(1) : Effect.void)),
-            ),
-          );
-      });
+    ) => publishLane.withPermits(1)(sql.withTransaction(transaction).pipe(Effect.tap(publish)));
 
     // A user can answer after terminal normalization reads the pending request.
     // Recheck inside the write transaction so stale cleanup cannot erase answers.
