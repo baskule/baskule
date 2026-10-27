@@ -86,12 +86,13 @@ jobs:
       - name: Reclaim unused hosted-runner toolchains for the native build
         run: sudo rm -rf /usr/share/dotnet /usr/local/.ghcup
       - name: Install pinned Android SDK packages
-        shell: bash
-        run: |
-          set -euo pipefail
-          sdkmanager --sdk_root="$ANDROID_HOME" \
-            'platform-tools' 'platforms;android-37.0' 'platforms;android-36' \
-            'build-tools;37.0.0' 'build-tools;36.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '16111833'
+          log-accepted-android-sdk-licenses: false
+          packages: >-
+            platform-tools platforms;android-37.0 platforms;android-36
+            build-tools;37.0.0 build-tools;36.0.0 ndk;27.1.12297006 cmake;3.22.1
       - name: Install frozen mobile dependencies
         working-directory: app
         run: pnpm install --frozen-lockfile --filter @t3tools/monorepo --filter @t3tools/mobile...
