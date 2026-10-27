@@ -7,6 +7,11 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      target:
+        description: Run all checks or only rehearse installation without caches.
+        type: choice
+        options: [all, cold-setup]
+        default: all
       upstream:
         description: Also run the full upstream server and web unit suites.
         type: boolean
@@ -28,6 +33,7 @@ env:
 jobs:
   check:
     name: ${{ matrix.suite }} (${{ matrix.shard }})
+    if: github.event_name != 'workflow_dispatch' || inputs.target != 'cold-setup'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
@@ -80,7 +86,7 @@ jobs:
 
   required:
     name: CI required
-    if: always()
+    if: always() && (github.event_name != 'workflow_dispatch' || inputs.target != 'cold-setup')
     needs: check
     runs-on: ubuntu-24.04
     steps:
@@ -89,9 +95,27 @@ jobs:
           CHECK_RESULT: ${{ needs.check.result }}
         run: test "$CHECK_RESULT" = success
 
+  cold-setup:
+    name: Cold setup
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'cold-setup'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+      - name: Confirm installed tools
+        run: |
+          node --version
+          pnpm --version
+          celld --version
+
   upstream:
     name: Upstream ${{ matrix.suite }} (${{ matrix.shard }})
-    if: github.event_name == 'workflow_dispatch' && inputs.upstream
+    if: github.event_name == 'workflow_dispatch' && inputs.target != 'cold-setup' && inputs.upstream
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
