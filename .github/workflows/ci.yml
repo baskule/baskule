@@ -46,7 +46,6 @@ jobs:
           - { suite: server, shard: '1/2' }
           - { suite: server, shard: '2/2' }
           - { suite: web-unit, shard: '1/1' }
-          - { suite: web-browser, shard: '1/1', browser: true }
           - { suite: mobile, shard: '1/2' }
           - { suite: mobile, shard: '2/2' }
           - { suite: shared, shard: '1/2' }
@@ -56,7 +55,6 @@ jobs:
           - { suite: type-web, shard: '1/1' }
           - { suite: type-mobile, shard: '1/1' }
           - { suite: type-shared, shard: '1/1' }
-          - { suite: web-build, shard: '1/1' }
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -64,10 +62,6 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           runtime: ${{ matrix.runtime || false }}
-      - name: Install browser used by Vite+ tests
-        if: matrix.browser
-        working-directory: app/apps/web
-        run: pnpm exec playwright install --with-deps chromium
       - name: Run selected checks
         shell: bash
         env:
@@ -76,8 +70,8 @@ jobs:
         run: |
           mkdir -p .run/evidence/ci
           scripts/ci/check.sh "$SUITE" --shard "$SHARD" 2>&1 | tee .run/evidence/ci/check.log
-      - name: Preserve check log
-        if: always()
+      - name: Preserve failed check log
+        if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ci-${{ matrix.suite }}-${{ strategy.job-index }}

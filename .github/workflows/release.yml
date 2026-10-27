@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'SemVer without v; blank uses 0.0.0-ci.<run> for verification'
+        description: 'SemVer without v; blank uses VERSION'
         type: string
         required: false
       verify_only:
@@ -14,7 +14,7 @@ on:
         type: boolean
         default: true
       include_native:
-        description: 'Also build and verify Windows and macOS packages'
+        description: 'Also build Android, iOS simulator, macOS and Windows packages'
         type: boolean
         default: true
 
@@ -31,22 +31,21 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - id: version
         name: Derive and validate source version
         env:
           INPUT_VERSION: ${{ inputs.version }}
-          VERIFY_ONLY: ${{ inputs.verify_only }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ $GITHUB_REF_TYPE == tag ]]; then
             version=${GITHUB_REF_NAME#v}
+            [[ "$version" == "$(<VERSION)" ]] || { echo 'Tag version must match VERSION.' >&2; exit 1; }
           else
-            version=${INPUT_VERSION:-0.0.0-ci.$GITHUB_RUN_NUMBER}
-            if [[ $VERIFY_ONLY == false && -z $INPUT_VERSION ]]; then
-              echo 'Publishing requires an explicit version.' >&2
-              exit 1
-            fi
+            version=${INPUT_VERSION:-$(<VERSION)}
           fi
           VERSION="$version" python3 - <<'PY'
           import os

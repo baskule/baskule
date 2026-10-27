@@ -4,9 +4,11 @@ The public repository uses standard GitHub-hosted runners. No self-hosted runner
 
 ## Pull requests and main
 
-`CI` runs on pull requests to `main`, pushes to `main`, and manual dispatch. Its required matrix covers the check harness, platform and Baskule server tests, hosted-web unit/browser checks, mobile unit/React tests, shared client packages, desktop checks, scoped typechecks and the hosted-web build. `CI required` succeeds only when every required matrix lane succeeds.
+`CI` runs on pull requests to `main`, pushes to `main`, and manual dispatch. Its required matrix covers the check harness, platform and Baskule server tests, hosted-web unit checks, mobile unit/React tests, shared client packages, desktop checks, and scoped typechecks. `CI required` succeeds only when every required matrix lane succeeds.
 
-Mobile component tests use the existing mocked native test environment. They do not establish device acceptance. The manual `upstream` input also runs the upstream server/web unit suites. CI disables remote evidence lookup and recording; it never pushes evidence refs or reads deployment configuration.
+Routine CI produces no distributable packages and uploads check/setup diagnostics only on failure. The small SpaceCell bundle is still built where unit tests or root typechecks import it. Hosted-web builds and browser journeys run in the full factory, alongside image and native packaging.
+
+Mobile component tests use the existing mocked native test environment. They do not establish device acceptance. Manual CI can retain setup diagnostics; its `upstream` input also runs the upstream server/web unit suites. CI disables remote evidence lookup and recording; it never pushes evidence refs or reads deployment configuration.
 
 ```sh
 gh workflow run ci.yml --repo baskule/baskule --ref main -f upstream=true
@@ -29,9 +31,9 @@ Each artifact includes checksums and verification/signing status. Android's defa
 
 ## Tags and releases
 
-A `v*` tag starts the release factory with a version derived from the tag. The draft GitHub release waits for backend, Linux apps and native builds to succeed. This path does not deploy an installation or submit apps to stores. A manual verification run creates no release. Publishing a manual draft requires an explicit version and `verify_only=false`.
+`VERSION` is the source version (currently `0.5.0`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.0` starts the full release factory; its version must match `VERSION`. The draft GitHub release waits for backend, Linux apps and native builds to succeed. This path does not deploy an installation or submit apps to stores. A manual verification run creates no release. Publishing a manual draft requires `verify_only=false`. A manual version override can be supplied for a candidate; otherwise the factory reads `VERSION`.
 
-Versions and source revisions are recorded with the outputs. Use a versioned tag for an intended release. Local desktop builds default to development version `0.0.0`; `BASKULE_VERSION` overrides it.
+Versions and source revisions are recorded with the outputs. Use a versioned tag for an intended release. Local desktop and mobile builds also default to `VERSION`; `BASKULE_VERSION` and `T3CODE_MOBILE_VERSION` respectively override it. Standalone native workflow dispatches default to `VERSION`.
 
 ## Production signing
 
