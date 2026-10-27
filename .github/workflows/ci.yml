@@ -69,6 +69,7 @@ jobs:
         working-directory: app/apps/web
         run: pnpm exec playwright install --with-deps chromium
       - name: Run selected checks
+        shell: bash
         env:
           SUITE: ${{ matrix.suite }}
           SHARD: ${{ matrix.shard }}
