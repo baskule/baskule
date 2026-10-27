@@ -1,0 +1,25 @@
+{
+  "plugins": [
+    "eslint",
+    "typescript",
+    "oxc"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**"
+  ],
+  "jsPlugins": [
+    "./scripts/no-fixed-sleep.mjs"
+  ],
+  "rules": {
+    "baskule/no-fixed-sleep": "error",
+    // Control characters are intentionally rejected in paths and redirect destinations.
+    "eslint/no-control-regex": "off",
+    // The alarm storage proxy deliberately captures its owning multiplexer, not the proxy receiver.
+    "typescript/no-this-alias": "off"
+  }
+}

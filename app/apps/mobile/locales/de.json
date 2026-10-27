@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSLocalNetworkUsageDescription": "Erlauben Sie Baskule, sich über Ihr lokales Netzwerk oder Tailnet mit Baskule-Servern zu verbinden.",
+    "NSPhotoLibraryAddUsageDescription": "Erlauben Sie Baskule, Bilder in Ihrer Fotomediathek zu speichern.",
+    "NSMicrophoneUsageDescription": "Erlauben Sie Baskule, Ihr Mikrofon für Spracheingaben zu verwenden.",
+    "NSCameraUsageDescription": "Erlauben Sie Baskule den Zugriff auf Ihre Kamera, damit Sie QR-Codes zur Verbindung scannen können."
+  }
+}

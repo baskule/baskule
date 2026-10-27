@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "mode": "authenticated",
+  "publicOrigin": { "env": "AUTH_PUBLIC_ORIGIN" },
+  "password": true,
+  "providers": [{
+    "id": "google",
+    "name": "Google",
+    "type": "social",
+    "options": {
+      "clientId": { "env": "GOOGLE_CLIENT_ID" },
+      "clientSecret": { "env": "GOOGLE_CLIENT_SECRET" }
+    }
+  }],
+  "trustedProviders": []
+}

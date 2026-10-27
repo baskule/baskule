@@ -1,0 +1,11 @@
+{
+  "3rdparty": {
+    "extensions": {
+      "mamfjjgojphajfcmiiolemkamdejahjb": {
+        "defaultFiltering": "optimal",
+        "disableFirstRunPage": true,
+        "showBlockedCount": false
+      }
+    }
+  }
+}

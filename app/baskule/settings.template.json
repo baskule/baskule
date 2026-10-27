@@ -1,0 +1,20 @@
+{
+  "providerInstances": {
+    "opencode": {
+      "driver": "opencode",
+      "enabled": true,
+      "config": {
+        "serverUrl": "${BASKULE_OPENCODE_URL}",
+        "serverPassword": "${BASKULE_OPENCODE_PASSWORD}"
+      }
+    }
+  },
+  "defaultModelSelection": {
+    "instanceId": "opencode",
+    "model": "${BASKULE_LLM_PROVIDER_ID}/${BASKULE_LLM_MODEL}"
+  },
+  "textGenerationModelSelection": {
+    "instanceId": "opencode",
+    "model": "${BASKULE_LLM_PROVIDER_ID}/${BASKULE_LLM_MODEL}"
+  }
+}

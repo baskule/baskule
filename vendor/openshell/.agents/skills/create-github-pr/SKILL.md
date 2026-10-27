@@ -1,0 +1,275 @@
+---
+name: create-github-pr
+description: Create GitHub pull requests using the gh CLI. Use when the user wants to create a new PR, submit code for review, or open a pull request. Trigger keywords - create PR, pull request, new PR, submit for review, code review.
+metadata:
+  internal: true
+---
+
+# Create GitHub Pull Request
+
+Create pull requests on GitHub using the `gh` CLI.
+
+## Prerequisites
+
+- The `gh` CLI must be authenticated (`gh auth status`)
+- You must have commits on a branch that's pushed to the remote
+- Every PR must close an existing issue, except automated dependency updates as described in `CONTRIBUTING.md`. Follow Branch Names in `CONTRIBUTING.md` for contributor branch names.
+
+## Before Creating a PR
+
+### Verify Contributor Access and Issue Acceptance
+
+Before pushing or creating a PR (including a draft), verify the author's access
+to the target repository, not their fork. For the authenticated `gh` user:
+
+```bash
+gh repo view OWNER/REPO --json nameWithOwner,viewerPermission
+gh issue view ISSUE_NUMBER --repo OWNER/REPO --json number,url,labels
+```
+
+Authors with verified `WRITE`, `MAINTAIN`, or `ADMIN` access may proceed without
+`state:accepted`; keep the issue link and note the missing label. Everyone else
+must link at least one target-repository issue and have `state:accepted` on each.
+Otherwise, preserve local work and report which issue needs acceptance. A direct
+request, roadmap placement, other labels, or vouch status does not bypass this gate.
+
+When acting for another author, verify their permissions. Resolve failed lookups
+before proceeding; retry sandbox network failures outside the sandbox before
+reporting an authentication problem. Vouch requirements still apply separately.
+
+### Check Config Documentation
+
+If the branch changes gateway TOML parsing, `[openshell.gateway]` fields,
+`[openshell.drivers.<name>]` fields, driver config defaults, or Helm rendering
+of `gateway.toml`, verify that `docs/how-it-works/gateways/configuration.mdx` is updated
+in the same branch. If the change affects user-facing compute-driver setup,
+also update `docs/how-it-works/sandboxes/runtimes.mdx` or the relevant
+deployment docs.
+
+### Check Agent Infrastructure
+
+Use the `sync-agent-infra` skill's maintenance map to identify related skill updates when the branch changes behavior, commands, or development workflows. Run its full consistency check when the branch adds, removes, or renames skills or crates; changes workflow relationships or skill coverage; modifies issue or PR templates; or changes agent cross-references. Resolve any drift before creating the PR.
+
+### Verify the Affected Areas
+
+Use the verification guidance in `CONTRIBUTING.md` to select checks for the changed files and behavior. Guidance, skills, and template changes need applicable Markdown, YAML, link, and consistency checks. Run Rust or SDK suites when those components or their dependencies can be affected. Shared APIs, schemas, dependencies, and build changes may require broader checks even when component source files are unchanged.
+
+`mise run ci` and `mise run pre-commit` are broad convenience tasks, not blanket PR prerequisites. Broaden validation only for a concrete remaining risk or failed check, and report what actually ran.
+
+### Verify Branch State
+
+Before creating a PR, verify:
+
+1. **You're not on main** - Never create PRs directly from main:
+
+   ```bash
+   # Should NOT be "main"
+   git branch --show-current
+   ```
+
+2. **Branch follows naming convention** - Follow Branch Names in `CONTRIBUTING.md`, including the exceptions for generated branches and private security work.
+
+   ```bash
+   # Example: feat/1234-add-pagination/octocat
+   git branch --show-current
+   ```
+
+### Push Your Branch
+
+Ensure your branch is pushed to the remote:
+
+```bash
+git push -u origin HEAD
+```
+
+## Creating a PR
+
+Basic PR creation (opens editor for description):
+
+```bash
+gh pr create
+```
+
+With title and body:
+
+```bash
+gh pr create --title "PR title" --body "PR description"
+```
+
+## PR Title Format
+
+**PR titles must follow the conventional commit format:**
+
+```
+<type>(<scope>): <description>
+```
+
+**Types:**
+
+- `feat` - New feature
+- `fix` - Bug fix
+- `docs` - Documentation only
+- `refactor` - Code change that neither fixes a bug nor adds a feature
+- `test` - Adding or updating tests
+- `chore` - Maintenance tasks (CI, build, dependencies)
+- `perf` - Performance improvement
+
+**Scope** is typically the component name (e.g., `evaluator`, `cli`, `sdk`, `jobs`).
+
+**Examples:**
+
+- `feat(evaluator): add support for custom rubrics`
+- `fix(jobs): handle timeout errors gracefully`
+- `docs(sdk): update authentication examples`
+- `refactor(models): simplify deployment logic`
+- `chore(ci): update Python version in pipeline`
+
+### Link to an Issue
+
+Every PR except an automated dependency update must close its own issue. Verify that the issue exists, remains open, and covers the PR scope. Automated dependency updates follow the exception in `CONTRIBUTING.md`. Use `Closes #<issue-number>` in the body so merge closes it:
+
+```bash
+gh pr create \
+  --title "fix(cli): validate empty requests" \
+  --body "## Summary
+
+Validate empty request bodies.
+
+## Related Issue
+
+Closes #123
+
+## Changes
+
+- Return 400 instead of 500"
+```
+
+If the work needs multiple PRs, create a separate closable issue for each PR. A higher-level tracking issue may link the component issues, but no PR should close that tracking issue until all its work is complete. Follow `SECURITY.md` for vulnerability disclosure. First-time external contributors must be vouched before their PRs are accepted; the vouch check may close unvouched PRs. Check the current vouch process before opening a PR for an external contributor.
+
+### Create as Draft
+
+For work-in-progress that's not ready for review:
+
+```bash
+gh pr create --draft --title "WIP: New feature"
+```
+
+### Target a Different Branch
+
+Default target is `main`. To target a different branch:
+
+```bash
+gh pr create --base "release-1.0"
+```
+
+## PR Description Format
+
+PR descriptions must follow the project's [PR template](.github/PULL_REQUEST_TEMPLATE.md) structure:
+
+```markdown
+## Summary
+<!-- 1-3 sentences: what this PR does and why -->
+
+## Related Issue
+<!-- Closes #NNN; this issue covers the scope of this PR -->
+
+## Changes
+<!-- Bullet list of key changes -->
+
+## Release Notes
+<!-- Optional: a few short, easy-to-read sentences about the user-facing change -->
+
+## Testing
+<!-- What testing was done? -->
+- [ ] Checks appropriate to the affected code and behavior pass
+- [ ] Unit tests added/updated (if applicable)
+- [ ] E2E tests added/updated (if applicable)
+
+## Checklist
+- [ ] Follows Conventional Commits
+- [ ] Commits are signed off (DCO)
+```
+
+Populate the testing checklist based on what was actually run. Check boxes for steps that were completed.
+Keep the Release Notes section concise, with only a few easy-to-read sentences.
+Leave it empty when the summary already captures the user-facing change.
+
+## Example PR (Complete)
+
+```bash
+gh pr create \
+  --title "feat(cli): add pagination to sandbox list" \
+  --body "$(cat <<'EOF'
+## Summary
+
+Add `--page-size` and `--page-token` flags to `openshell sandbox list` for continuation-token pagination.
+
+## Related Issue
+
+Closes #456
+
+## Changes
+
+- Added `page_size` and `page_token` fields to the sandbox list API call
+- Default page size is 100, max is 1,000
+- Structured responses include `next_page_token`
+
+## Release Notes
+
+Sandbox list results can now be paged through with `--page-size` and `--page-token`.
+
+## Testing
+
+- [x] Relevant CLI format, lint, and unit checks pass
+- [x] Unit tests added/updated
+- [ ] E2E tests added/updated (if applicable)
+
+## Checklist
+
+- [x] Follows Conventional Commits
+- [x] Commits are signed off (DCO)
+EOF
+)"
+```
+
+## Useful Options
+
+| Option              | Description                                |
+| ------------------- | ------------------------------------------ |
+| `--title, -t`       | PR title (use conventional commit format)  |
+| `--body, -b`        | PR description                             |
+| `--reviewer, -r`    | Request review from user                   |
+| `--draft`           | Create as draft (WIP)                      |
+| `--label, -l`       | Add label (can use multiple times)         |
+| `--base, -B`        | Target branch (default: main)              |
+| `--head, -H`        | Source branch (default: current)           |
+| `--web`             | Open in browser after creation             |
+
+## After Creating
+
+The command outputs the PR URL and number.
+
+Rerun `PR Issue Acceptance` after linked issue labels change; it does not refresh
+automatically on issue-label events.
+
+**Display the URL using markdown link syntax** so it's easily clickable:
+
+```
+Created PR [#123](https://github.com/OWNER/REPO/pull/123)
+```
+
+### Monitor Workflow Run (Optional)
+
+If the user asks to wait for a green CI before posting the RFR, use this snippet to monitor the workflow run:
+
+```bash
+# Watch the latest workflow run for the current branch
+gh run watch
+```
+
+Or poll manually:
+
+```bash
+RUN_ID=$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$RUN_ID"
+```

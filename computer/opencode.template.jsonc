@@ -1,0 +1,86 @@
+// OpenCode 2 global config template for baskule-computer.
+// gen-config.mjs renders it at every container start into $XDG_CONFIG_HOME/opencode/opencode.jsonc.
+// Placeholders:
+//   "{{env:NAME}}"  -> the env var's value, inside the string (required vars are checked by entrypoint.sh)
+//   "{{json:NAME}}" -> a JSON value computed by gen-config.mjs; the key is dropped when the value is null
+// The API key is never written here: the provider reads it from env BASKULE_LLM_API_KEY at runtime.
+//
+// Mistral example (.env):
+//   BASKULE_LLM_BASE_URL=https://api.mistral.ai/v1
+//   BASKULE_LLM_API_KEY=<mistral key>
+//   BASKULE_LLM_MODEL=mistral-medium-latest
+//   BASKULE_LLM_MODEL_SETTINGS={}
+//   BASKULE_LLM_COST_INPUT=0.4  BASKULE_LLM_COST_OUTPUT=2
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "llm/{{env:BASKULE_LLM_MODEL}}",
+  "default_agent": "assistant",
+  "update": "disable",
+  "share": "disabled",
+
+  "providers": {
+    "llm": {
+      "name": "{{env:BASKULE_LLM_PROVIDER_NAME}}",
+      "env": ["BASKULE_LLM_API_KEY"],
+      // Chat Completions only (/v1/chat/completions), any OpenAI-compatible endpoint.
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": { "baseURL": "{{env:BASKULE_LLM_BASE_URL}}" },
+      "models": {
+        "{{env:BASKULE_LLM_MODEL}}": {
+          "name": "{{env:BASKULE_LLM_MODEL}}",
+          // BASKULE_LLM_MODEL_SETTINGS, e.g. {"reasoningEffort":"none"} (required for gpt-6-luna with tools)
+          "settings": "{{json:MODEL_SETTINGS}}",
+          // USD per million tokens, from BASKULE_LLM_COST_{INPUT,OUTPUT,CACHE_READ,CACHE_WRITE}
+          "cost": "{{json:MODEL_COST}}",
+          // BASKULE_LLM_CONTEXT_LIMIT / BASKULE_LLM_OUTPUT_LIMIT
+          "limit": "{{json:MODEL_LIMIT}}"
+        }
+      }
+    }
+  },
+
+  // D9: only the .env provider is usable. Deny every provider (models.dev catalog, OpenCode Zen, any
+  // provider whose credential env var happens to be set), then allow ours. Last match wins.
+  "policies": [
+    { "action": "provider.use", "resource": "*", "effect": "deny" },
+    { "action": "provider.use", "resource": "llm", "effect": "allow" }
+  ],
+
+  // Remove OpenCode's built-in `browser` tools (Code Mode namespace `tools.browser.*`): they drive the OpenCode
+  // *desktop app's* browser, which never exists here ("no desktop browser is connected"), and models pick them over
+  // the Playwright MCP tools. A permission deny would not work: T3's full-access session rules (allow *) come last.
+  "plugins": ["-opencode.browser"],
+
+  // Alpha: the agent may do anything on its own computer (the container is the sandbox boundary).
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "allow" }
+  ],
+
+  "agents": {
+    "assistant": {
+      "mode": "primary",
+      "description": "General knowledge-work assistant with its own Linux computer and web browser",
+      // Text of assistant-prompt.md. A non-empty system prompt replaces OpenCode's coding prompt.
+      "system": "{{json:ASSISTANT_PROMPT}}"
+    },
+    // T3 assumes the built-in agents: its plan toggle selects "plan", and every later turn selects "build"
+    // (adapter.ts switchAgent). Give both the Baskule prompt so a chat never falls back to OpenCode's coding
+    // prompt. Plan mode keeps its read-only permissions and its Plan-mode reminders (core/src/plugin/plan.ts).
+    "build": { "system": "{{json:ASSISTANT_PROMPT}}" },
+    "plan": { "system": "{{json:ASSISTANT_PROMPT}}" }
+  },
+
+  "mcp": {
+    "servers": {
+      // Pre-installed in the image (no npx download). Image Chromium, headless, fresh in-memory profile per use.
+      "playwright": {
+        "type": "local",
+        "command": [
+          "node", "/opt/playwright-mcp/node_modules/@playwright/mcp/cli.js",
+          "--browser", "chromium", "--executable-path", "/usr/bin/chromium",
+          "--headless", "--isolated", "--no-sandbox"
+        ]
+      }
+    }
+  }
+}

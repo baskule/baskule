@@ -1,0 +1,8 @@
+{
+  "de": "./locales/de.json",
+  "en": "./locales/en.json",
+  "es": "./locales/es.json",
+  "fr": "./locales/fr.json",
+  "it": "./locales/it.json",
+  "nl": "./locales/nl.json"
+}

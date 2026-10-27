@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSLocalNetworkUsageDescription": "Permite que Baskule se conecte a los servidores de Baskule en tu red local o tailnet.",
+    "NSPhotoLibraryAddUsageDescription": "Permite que Baskule guarde imágenes en tu fototeca.",
+    "NSMicrophoneUsageDescription": "Permite que Baskule use tu micrófono para introducir texto con la voz.",
+    "NSCameraUsageDescription": "Permitir que Baskule acceda a la cámara para escanear códigos QR de conexión."
+  }
+}

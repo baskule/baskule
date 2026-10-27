@@ -1,0 +1,151 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release Helm OCI
+description: >
+  Patch chart version/appVersion, refuse duplicate OCI versions on public
+  releases, package the gateway and workspace charts, and push them to GHCR OCI.
+
+inputs:
+  chart-version:
+    description: >
+      Chart.yaml version and OCI tag — SemVer without leading v
+      (e.g. 0.6.0 for tag releases, 0.0.0-dev for dev).
+    required: true
+  app-version:
+    description: >
+      Chart.yaml appVersion and default image tag
+      (e.g. 0.6.0 for tag releases, dev for dev).
+    required: true
+  release-kind:
+    description: "dev or public — controls the duplicate-version guard."
+    required: true
+  pin-sha:
+    description: >
+      Full commit SHA. When set on dev releases, a second chart is also pushed
+      as 0.0.0-dev.<sha> with appVersion set to the same SHA, enabling exact
+      version pinning alongside the floating 0.0.0-dev tag. Both chart version
+      and appVersion use the full SHA so the chart tag matches the image tag
+      pushed by build-images.yml.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Log in to GHCR
+      uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Install Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+    - name: Stage chart and patch version
+      id: prep
+      env:
+        CHART_VERSION: ${{ inputs.chart-version }}
+        APP_VERSION: ${{ inputs.app-version }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        GATEWAY_CHART_DIR="${RUNNER_TEMP}/gateway-chart-build"
+        WORKSPACE_CHART_DIR="${RUNNER_TEMP}/workspace-chart-build"
+        cp -a deploy/helm/openshell/. "${GATEWAY_CHART_DIR}"
+        cp -a deploy/helm/openshell-workspace/. "${WORKSPACE_CHART_DIR}"
+        for chart_dir in "${GATEWAY_CHART_DIR}" "${WORKSPACE_CHART_DIR}"; do
+          sed -i "s/^version:.*/version: ${CHART_VERSION}/" "${chart_dir}/Chart.yaml"
+          sed -i "s/^appVersion:.*/appVersion: \"${APP_VERSION}\"/" "${chart_dir}/Chart.yaml"
+        done
+        echo "gateway_chart_dir=${GATEWAY_CHART_DIR}" >> "$GITHUB_OUTPUT"
+        echo "workspace_chart_dir=${WORKSPACE_CHART_DIR}" >> "$GITHUB_OUTPUT"
+        echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+
+    - name: Refuse duplicate chart version
+      if: inputs.release-kind == 'public'
+      env:
+        CHART_VERSION: ${{ steps.prep.outputs.chart_version }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        for chart in helm-chart openshell-workspace; do
+          OCI_CHART="oci://ghcr.io/nvidia/openshell/${chart}"
+          if helm show chart "${OCI_CHART}" --version "${CHART_VERSION}" >/dev/null 2>&1; then
+            echo "::error::Chart ${chart}:${CHART_VERSION} is already published. Use a new tag or delete the existing package first."
+            exit 1
+          fi
+        done
+
+    - name: Package Helm chart
+      env:
+        GATEWAY_CHART_DIR: ${{ steps.prep.outputs.gateway_chart_dir }}
+        WORKSPACE_CHART_DIR: ${{ steps.prep.outputs.workspace_chart_dir }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p /tmp/helm-charts
+        helm package "${GATEWAY_CHART_DIR}" --destination /tmp/helm-charts
+        helm package "${WORKSPACE_CHART_DIR}" --destination /tmp/helm-charts
+        ls /tmp/helm-charts/*.tgz
+
+    - name: Push Helm chart to GHCR OCI
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Helm pushes the manifest by digest, then fetches it back to tag it.
+        # GHCR can briefly return 404 for a manifest it just accepted, so
+        # retry. Re-pushing the same archive is idempotent.
+        push_chart() {
+          local attempt
+          for attempt in 1 2 3 4; do
+            if helm push "$1" oci://ghcr.io/nvidia/openshell; then
+              return 0
+            fi
+            if [ "${attempt}" -lt 4 ]; then
+              echo "::warning::helm push of $(basename "$1") failed (attempt ${attempt}); retrying in $((attempt * 10))s."
+              sleep $((attempt * 10))
+            fi
+          done
+          return 1
+        }
+        for archive in /tmp/helm-charts/*.tgz; do
+          push_chart "${archive}"
+        done
+
+    - name: Push SHA-pinned chart
+      if: inputs.pin-sha != ''
+      env:
+        PIN_SHA: ${{ inputs.pin-sha }}
+        GATEWAY_CHART_DIR: ${{ steps.prep.outputs.gateway_chart_dir }}
+        WORKSPACE_CHART_DIR: ${{ steps.prep.outputs.workspace_chart_dir }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # See "Push Helm chart to GHCR OCI" for why pushes retry.
+        push_chart() {
+          local attempt
+          for attempt in 1 2 3 4; do
+            if helm push "$1" oci://ghcr.io/nvidia/openshell; then
+              return 0
+            fi
+            if [ "${attempt}" -lt 4 ]; then
+              echo "::warning::helm push of $(basename "$1") failed (attempt ${attempt}); retrying in $((attempt * 10))s."
+              sleep $((attempt * 10))
+            fi
+          done
+          return 1
+        }
+        mkdir -p /tmp/sha-pin
+        for source_dir in "${GATEWAY_CHART_DIR}" "${WORKSPACE_CHART_DIR}"; do
+          chart_name="$(basename "${source_dir}")"
+          sha_chart_dir="${RUNNER_TEMP}/${chart_name}-sha"
+          cp -a "${source_dir}/." "${sha_chart_dir}"
+          sed -i "s/^version:.*/version: 0.0.0-dev.${PIN_SHA}/" "${sha_chart_dir}/Chart.yaml"
+          sed -i "s/^appVersion:.*/appVersion: \"${PIN_SHA}\"/" "${sha_chart_dir}/Chart.yaml"
+          helm package "${sha_chart_dir}" --destination /tmp/sha-pin
+        done
+        for archive in /tmp/sha-pin/*.tgz; do
+          push_chart "${archive}"
+        done

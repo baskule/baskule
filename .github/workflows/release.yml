@@ -1,0 +1,245 @@
+name: Release factory
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SemVer without v; blank uses 0.0.0-ci.<run> for verification'
+        type: string
+        required: false
+      verify_only:
+        description: 'Build and verify artifacts without creating a GitHub release'
+        type: boolean
+        default: true
+      include_native:
+        description: 'Also build and verify Windows and macOS packages'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        name: Derive and validate source version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          VERIFY_ONLY: ${{ inputs.verify_only }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ $GITHUB_REF_TYPE == tag ]]; then
+            version=${GITHUB_REF_NAME#v}
+          else
+            version=${INPUT_VERSION:-0.0.0-ci.$GITHUB_RUN_NUMBER}
+            if [[ $VERIFY_ONLY == false && -z $INPUT_VERSION ]]; then
+              echo 'Publishing requires an explicit version.' >&2
+              exit 1
+            fi
+          fi
+          VERSION="$version" python3 - <<'PY'
+          import os
+          import re
+          version = os.environ['VERSION']
+          identifier = r'[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*'
+          match = re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)' +
+                               rf'(?:-(?P<pre>{identifier}))?(?:\+{identifier})?', version)
+          if not match or any(part.isdigit() and len(part) > 1 and part.startswith('0')
+                              for part in (match.group('pre') or '').split('.')):
+              raise SystemExit('Expected a SemVer source version.')
+          PY
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  backend:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      BASKULE_VERSION: ${{ needs.version.outputs.version }}
+      BASKULE_STACK_PROXY: '0'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Make room for the native and musl builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ $RUNNER_ENVIRONMENT == github-hosted ]]
+          df -h .
+          # These are unrelated preinstalled SDKs on this disposable VM.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          docker system prune --all --force
+          df -h .
+          available=$(df --output=avail -B1 . | tail -1)
+          (( available >= 35000000000 )) || { echo 'Need 35 GB free for the cold backend build.' >&2; exit 1; }
+      - uses: ./.github/actions/setup
+      - name: Build backend and run fake-model release checks
+        run: scripts/ci/backend.sh
+      - name: Upload backend artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-${{ needs.version.outputs.version }}
+          path: .run/release/backend/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve backend evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-evidence-${{ needs.version.outputs.version }}
+          path: |
+            .run/evidence/release/
+            .run/check/
+            .run/wp-e/artifacts/
+            e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  linux-apps:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      BASKULE_VERSION: ${{ needs.version.outputs.version }}
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Install native Linux packaging and headless tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwayland-dev libxkbcommon-dev imagemagick \
+            libgtk-3-0t64 libnss3 libasound2t64 libgbm1 xvfb xauth dbus-x11 locales
+          sudo locale-gen en_US.UTF-8
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup override set 1.95.0
+      - name: Build and verify hosted web
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/env.sh
+          mkdir -p .run/evidence/release .run/release/linux-apps
+          (cd e2e && pnpm exec playwright install --with-deps chromium)
+          (cd app/apps/web && pnpm exec playwright install chromium)
+          scripts/check web --fresh 2>&1 | tee .run/evidence/release/web.log
+          tar -czf .run/release/linux-apps/hosted-web.tar.gz -C app/apps/web/dist .
+      - name: Build and verify packaged Linux desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/env.sh
+          desktop/check.sh 2>&1 | tee .run/evidence/release/desktop-check.log
+          desktop/build.sh 2>&1 | tee .run/evidence/release/desktop-build.log
+          dbus-run-session -- xvfb-run -a node desktop/verify.mjs 2>&1 | tee .run/evidence/release/desktop-package.log
+          cp desktop/release/*.AppImage .run/release/linux-apps/
+          scripts/ci/artifacts.sh .run/release/linux-apps linux-apps
+      - name: Upload Linux app artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-apps-${{ needs.version.outputs.version }}
+          path: .run/release/linux-apps/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve Linux app evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-apps-evidence-${{ needs.version.outputs.version }}
+          path: |
+            .run/evidence/release/
+            .run/desktop-verification/
+            .run/wp-e/artifacts/
+            .run/wp-e-build.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  native:
+    needs: version
+    if: github.ref_type == 'tag' || inputs.include_native == true
+    uses: ./.github/workflows/native.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      platform: all
+      sign: false
+    secrets: inherit
+
+  draft-release:
+    needs: [version, backend, linux-apps, native]
+    if: >-
+      always() && needs.version.result == 'success' && needs.backend.result == 'success' &&
+      needs.linux-apps.result == 'success' &&
+      (needs.native.result == 'success' || (github.ref_type != 'tag' && inputs.include_native == false && needs.native.result == 'skipped')) &&
+      (github.ref_type == 'tag' || inputs.verify_only == false)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-${{ needs.version.outputs.version }}
+          path: artifacts/backend
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-apps-${{ needs.version.outputs.version }}
+          path: artifacts/linux-apps
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: needs.native.result == 'success'
+        with:
+          pattern: native-*-${{ needs.version.outputs.version }}
+          path: artifacts/native
+      - name: Verify transferred assets and assemble release
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          for kind in backend linux-apps; do
+            directory="artifacts/$kind"
+            (cd "$directory" && sha256sum -c SHA256SUMS)
+            tar -czf "release/$kind-$VERSION-metadata.tar.gz" --exclude='*.tar.gz' --exclude='*.AppImage' -C "$directory" .
+          done
+          cp artifacts/backend/*.tar.gz artifacts/linux-apps/*.tar.gz artifacts/linux-apps/*.AppImage release/
+          if [[ -d artifacts/native ]]; then
+            for directory in artifacts/native/*; do
+              (cd "$directory" && sha256sum -c SHA256SUMS)
+              tar -czf "release/$(basename "$directory")-metadata.tar.gz" \
+                --exclude='*.apk' --exclude='*.dmg' --exclude='*.exe' --exclude='*.zip' -C "$directory" .
+              while IFS= read -r -d '' package; do
+                destination="release/$(basename "$package")"
+                [[ ! -e $destination ]] || { echo "Duplicate release asset: $destination" >&2; exit 1; }
+                cp "$package" "$destination"
+              done < <(find "$directory" -type f \( -name '*.apk' -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' \) -print0)
+            done
+          fi
+          (cd release && sha256sum *.tar.gz > SHA256SUMS)
+          find release -type f -size +2147483647c -print -quit | while read -r oversized; do
+            echo "Release asset exceeds GitHub's 2 GiB limit: $oversized" >&2
+            exit 1
+          done
+      - name: Create draft after every verification job passes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          gh release create "v$VERSION" release/* --draft --target "$SOURCE_COMMIT" \
+            --title "Baskule $VERSION" \
+            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes Worker, SpaceCell, four backend images, hosted web and a Linux x64 AppImage. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'

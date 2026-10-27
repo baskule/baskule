@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSLocalNetworkUsageDescription": "Geef Baskule toestemming om verbinding te maken met Baskule-servers op uw lokale netwerk of tailnet.",
+    "NSPhotoLibraryAddUsageDescription": "Geef Baskule toestemming om afbeeldingen in uw fotobibliotheek op te slaan.",
+    "NSMicrophoneUsageDescription": "Geef Baskule toestemming om uw microfoon te gebruiken voor spraakinvoer.",
+    "NSCameraUsageDescription": "Geef Baskule toegang tot uw camera om QR-codes voor verbindingen te scannen."
+  }
+}

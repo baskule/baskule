@@ -1,0 +1,118 @@
+# Baskule Alpha 0.1 — single-node deployment (architecture D11). See README.md.
+#   cd baskule/deploy && cp .env.example .env && $EDITOR .env
+#   docker compose build && docker compose up -d
+#
+# BASKULE_INSTANCE prefixes container, volume and network names (default "baskule"). The e2e smoke test sets
+# it to "baskule-smoke" so it can never touch the real deployment. Service names (baskule-server,
+# baskule-computerd, baskule-computer-default) are the DNS names on the network in every instance.
+name: baskule
+
+x-llm-env: &llm-env
+  BASKULE_LLM_BASE_URL: ${BASKULE_LLM_BASE_URL:?set BASKULE_LLM_BASE_URL in .env}
+  BASKULE_LLM_API_KEY: ${BASKULE_LLM_API_KEY:-}
+  BASKULE_LLM_MODEL: ${BASKULE_LLM_MODEL:?set BASKULE_LLM_MODEL in .env}
+  BASKULE_OPENCODE_PASSWORD: ${BASKULE_OPENCODE_PASSWORD:?set BASKULE_OPENCODE_PASSWORD in .env}
+
+services:
+  baskule-server:
+    build:
+      # The fork's working tree by default; e2e/smoke.sh passes a clean `git archive` export instead.
+      context: ${BASKULE_APP_CONTEXT:-../app}
+      # Relative to the build context, so an absolute path is needed when the context is elsewhere.
+      dockerfile: ${BASKULE_SERVER_DOCKERFILE:-../deploy/server.Dockerfile}
+      additional_contexts:
+        deploy: .
+    image: baskule-server:${BASKULE_TAG:-0.1}
+    container_name: ${BASKULE_INSTANCE:-baskule}-server
+    init: false # the image runs tini
+    restart: unless-stopped
+    environment:
+      <<: *llm-env
+      BASKULE_OPENCODE_URL: http://baskule-computerd:4096
+      BASKULE_AUTH_MODE: ${BASKULE_AUTH_MODE:-none}
+      T3CODE_TELEMETRY_ENABLED: "false"
+    ports:
+      - "${BASKULE_BIND:-127.0.0.1}:${BASKULE_PORT:-47080}:3773"
+    volumes:
+      - baskule-server-data:/baskule
+      - baskule-chats:/baskule/scratch
+      - baskule-attachments:/baskule/userdata/attachments
+    networks: [baskule-net]
+    depends_on:
+      baskule-computerd:
+        condition: service_healthy
+    cpus: 1.5
+    mem_limit: 2g
+
+  baskule-computerd:
+    build:
+      context: ../computerd
+    image: baskule-computerd:${BASKULE_TAG:-0.1}
+    container_name: ${BASKULE_INSTANCE:-baskule}-computerd
+    init: true
+    restart: unless-stopped
+    environment:
+      COMPUTER_CONTAINER: ${BASKULE_INSTANCE:-baskule}-computer-default
+      COMPUTER_UPSTREAM: http://baskule-computer-default:4096
+      BASKULE_OPENCODE_PASSWORD: ${BASKULE_OPENCODE_PASSWORD}
+      OPENCODE_PASSWORD: ${BASKULE_OPENCODE_PASSWORD} # legacy name (computerd before the review fixes)
+      IDLE_MINUTES: ${BASKULE_IDLE_MINUTES:-10}
+    volumes:
+      # Socket access = root on the host. computerd is trusted code; its port is never published.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [baskule-net]
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:4096/_computerd/status'); process.exit(r.ok ? 0 : 1)"]
+      interval: 15s
+      timeout: 3s
+      start_period: 20s
+      start_interval: 1s
+      retries: 3
+    # Compose creates and initially starts the computer; computerd adopts it (awake) and puts it to sleep
+    # (docker stop) after BASKULE_IDLE_MINUTES. Later wakes are computerd's `docker start`.
+    depends_on:
+      baskule-computer-default:
+        condition: service_started
+    cpus: 0.5
+    mem_limit: 256m
+
+  baskule-computer-default:
+    build:
+      context: ../computer
+    image: baskule-computer:${BASKULE_TAG:-0.1}
+    container_name: ${BASKULE_INSTANCE:-baskule}-computer-default
+    restart: "no" # computerd owns start/stop
+    environment:
+      <<: *llm-env
+      BASKULE_LLM_MODEL_SETTINGS: ${BASKULE_LLM_MODEL_SETTINGS:-}
+      BASKULE_LLM_COST_INPUT: ${BASKULE_LLM_COST_INPUT:-}
+      BASKULE_LLM_COST_OUTPUT: ${BASKULE_LLM_COST_OUTPUT:-}
+      BASKULE_LLM_COST_CACHE_READ: ${BASKULE_LLM_COST_CACHE_READ:-}
+      BASKULE_LLM_COST_CACHE_WRITE: ${BASKULE_LLM_COST_CACHE_WRITE:-}
+      BASKULE_LLM_CONTEXT_LIMIT: ${BASKULE_LLM_CONTEXT_LIMIT:-}
+      BASKULE_LLM_OUTPUT_LIMIT: ${BASKULE_LLM_OUTPUT_LIMIT:-}
+    volumes:
+      - baskule-computer-data:/data
+      - baskule-chats:/baskule/scratch
+      # Chat uploads. For a remote OpenCode, T3 only puts the upload's server path in the prompt (no file
+      # parts), so the agent needs the same path. Read-only: uploads belong to the server.
+      - baskule-attachments:/baskule/userdata/attachments:ro
+    networks: [baskule-net]
+    shm_size: 1gb # Chromium
+    cpus: 2
+    mem_limit: 4g
+    pids_limit: 4096
+
+networks:
+  baskule-net:
+    name: ${BASKULE_INSTANCE:-baskule}-net
+
+volumes:
+  baskule-server-data:
+    name: ${BASKULE_INSTANCE:-baskule}-server-data
+  baskule-chats:
+    name: ${BASKULE_INSTANCE:-baskule}-chats
+  baskule-computer-data:
+    name: ${BASKULE_INSTANCE:-baskule}-computer-data
+  baskule-attachments:
+    name: ${BASKULE_INSTANCE:-baskule}-attachments

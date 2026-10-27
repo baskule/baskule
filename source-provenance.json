@@ -1,0 +1,39 @@
+{
+  "createdAt": "2026-10-23T16:02:32.348947+00:00",
+  "method": "Tracked source snapshots consolidated into one repository. Nested source histories were not imported. Later changes are recorded in this repository.",
+  "sources": [
+    {
+      "path": ".",
+      "commit": "fa498164dc62789c2deb170a850ecf2d98804eeb",
+      "origin": "First-party umbrella source snapshot",
+      "excluded": [
+        "spikes/"
+      ],
+      "license": "LICENSE"
+    },
+    {
+      "path": "app",
+      "commit": "e2a6f3eb6eac73d5ea96d4a160af16518b51db46",
+      "commitKind": "Fork snapshot; not asserted to be an upstream commit",
+      "upstream": "https://github.com/pingdotgg/t3code",
+      "license": "app/LICENSE",
+      "excluded": [
+        ".repos/"
+      ]
+    },
+    {
+      "path": "vendor/openshell",
+      "commit": "e83c6a3a10ef2f2a075ae8161c5e4c3cceaed8e0",
+      "commitKind": "Fork snapshot; not asserted to be an upstream commit",
+      "upstream": "https://github.com/NVIDIA/OpenShell",
+      "license": "vendor/openshell/LICENSE",
+      "notices": "vendor/openshell/THIRD-PARTY-NOTICES",
+      "excluded": []
+    }
+  ],
+  "notes": [
+    "Recorded commits identify imported source snapshots, not the current contents after subsequent changes.",
+    "Source snapshots include fork modifications. Upstream licences and third-party notices are retained in their source directories.",
+    "Development caches, generated output, private configuration, and historical reports are excluded from the public source set."
+  ]
+}

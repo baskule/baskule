@@ -1,0 +1,47 @@
+{
+  "name": "@t3tools/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./baskule-plugins": {
+      "types": "./src/baskule-plugins.ts",
+      "import": "./src/baskule-plugins.ts"
+    },
+    "./baskule": {
+      "types": "./src/baskule.ts",
+      "import": "./src/baskule.ts"
+    },
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./settings": {
+      "types": "./src/settings.ts",
+      "import": "./src/settings.ts"
+    },
+    "./relay": {
+      "types": "./src/relay.ts",
+      "import": "./src/relay.ts"
+    },
+    "./baskule-usage": {
+      "types": "./src/baskule-usage.ts",
+      "import": "./src/baskule-usage.ts"
+    },
+    "./baskulePush": "./src/baskulePush.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc-rs --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

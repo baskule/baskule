@@ -1,0 +1,22 @@
+[Unit]
+Description=Rootless Docker for Baskule CI
+Documentation=https://docs.docker.com/engine/security/rootless/
+Requires=dbus.socket
+After=dbus.socket
+
+[Service]
+Type=notify
+NotifyAccess=all
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Keep the virtual transport and test bridges outside the denied production address ranges.
+Environment=DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
+Environment=DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--cidr=198.18.1.0/24
+ExecStart=/usr/bin/dockerd-rootless.sh
+Restart=always
+RestartSec=2
+TimeoutStartSec=0
+Delegate=yes
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      upstream:
+        description: Also run the full upstream server and web unit suites.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: '1'
+  T3CODE_TELEMETRY_ENABLED: 'false'
+  BASKULE_CHECK_RECORD: '0'
+  NODE_OPTIONS: --max-old-space-size=6144
+
+jobs:
+  check:
+    name: ${{ matrix.suite }} (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suite: harness, shard: '1/1' }
+          - { suite: platform, shard: '1/2', runtime: true }
+          - { suite: platform, shard: '2/2', runtime: true }
+          - { suite: server, shard: '1/2' }
+          - { suite: server, shard: '2/2' }
+          - { suite: web-unit, shard: '1/1' }
+          - { suite: web-browser, shard: '1/1', browser: true }
+          - { suite: mobile, shard: '1/2' }
+          - { suite: mobile, shard: '2/2' }
+          - { suite: shared, shard: '1/2' }
+          - { suite: shared, shard: '2/2' }
+          - { suite: desktop, shard: '1/1' }
+          - { suite: type-root, shard: '1/1', runtime: true }
+          - { suite: type-web, shard: '1/1' }
+          - { suite: type-mobile, shard: '1/1' }
+          - { suite: type-shared, shard: '1/1' }
+          - { suite: web-build, shard: '1/1' }
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          runtime: ${{ matrix.runtime || false }}
+      - name: Install browser used by Vite+ tests
+        if: matrix.browser
+        working-directory: app/apps/web
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run selected checks
+        env:
+          SUITE: ${{ matrix.suite }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          mkdir -p .run/evidence/ci
+          scripts/ci/check.sh "$SUITE" --shard "$SHARD" 2>&1 | tee .run/evidence/ci/check.log
+      - name: Preserve check log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-${{ matrix.suite }}-${{ strategy.job-index }}
+          path: .run/evidence/ci/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  required:
+    name: CI required
+    if: always()
+    needs: check
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every CI matrix lane to pass
+        env:
+          CHECK_RESULT: ${{ needs.check.result }}
+        run: test "$CHECK_RESULT" = success
+
+  upstream:
+    name: Upstream ${{ matrix.suite }} (${{ matrix.shard }})
+    if: github.event_name == 'workflow_dispatch' && inputs.upstream
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suite: upstream-server, shard: '1/4' }
+          - { suite: upstream-server, shard: '2/4' }
+          - { suite: upstream-server, shard: '3/4' }
+          - { suite: upstream-server, shard: '4/4' }
+          - { suite: upstream-web, shard: '1/2' }
+          - { suite: upstream-web, shard: '2/2' }
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Run upstream unit suite
+        env:
+          SUITE: ${{ matrix.suite }}
+          SHARD: ${{ matrix.shard }}
+        run: scripts/ci/check.sh "$SUITE" --shard "$SHARD"

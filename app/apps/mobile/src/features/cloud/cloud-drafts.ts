@@ -1,0 +1,50 @@
+import { t } from "../../i18n";
+import { EnvironmentRegistry, removedWithRelay } from "@t3tools/client-runtime/connection";
+import { createRuntimeCommand } from "@t3tools/client-runtime/state/runtime";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+
+import { connectionAtomRuntime } from "../../connection/runtime";
+import { archiveCloudComposerDrafts } from "../../state/use-composer-drafts";
+
+export class CloudDraftArchiveError extends Schema.TaggedError<CloudDraftArchiveError>()(
+  "CloudDraftArchiveError",
+  {
+    environmentCount: Schema.Number,
+    hasAccountId: Schema.Boolean,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return t(
+      "Could not preserve local drafts for {{environmentCount}} cloud environments before sign-out.",
+      { environmentCount: this.environmentCount },
+    );
+  }
+}
+
+export const removeCloudEnvironments = createRuntimeCommand(connectionAtomRuntime, {
+  get label() {
+    return t("cloud:preserve-drafts-and-remove-environments");
+  },
+  execute: Effect.fn("removeCloudEnvironments")(function* (accountId: string | null) {
+    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+    const entries = yield* SubscriptionRef.get(registry.entries);
+    const environmentIds = new Set(
+      [...entries.values()].filter(removedWithRelay).map((entry) => entry.target.environmentId),
+    );
+    // Credentials are already revoked. A failed backup must leave the local
+    // owners intact so a later sign-in can retry without losing their files.
+    yield* Effect.tryPromise({
+      try: () => archiveCloudComposerDrafts(accountId, environmentIds),
+      catch: (cause) =>
+        new CloudDraftArchiveError({
+          environmentCount: environmentIds.size,
+          hasAccountId: accountId !== null,
+          cause,
+        }),
+    });
+    yield* registry.removeRelayEnvironments();
+  }),
+});

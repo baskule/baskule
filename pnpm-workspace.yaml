@@ -1,0 +1,20 @@
+packages:
+  - platform
+  - computerd/v2
+  - e2e
+
+injectWorkspacePackages: true
+enableGlobalVirtualStore: true
+
+packageExtensions:
+  '@opencode/core@2.1.3':
+    dependencies:
+      # Published runtime imports this, but upstream lists it as a dev dependency.
+      '@effect/platform-node': 4.0.1
+
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  protobufjs: true
+  tree-sitter-bash: true
+  tree-sitter-powershell: true

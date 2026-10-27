@@ -1,0 +1,37 @@
+{
+  "name": "baskule-agent-test",
+  "main": "entry.ts",
+  "compatibility_date": "2026-08-30",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SPACE",
+        "class_name": "SpaceCell"
+      },
+      {
+        "name": "CONTROL",
+        "class_name": "TestControlCell"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "SpaceCell",
+        "TestControlCell"
+      ]
+    }
+  ],
+  "vars": {
+    "COMPUTERD_URL": "http://127.0.0.1:47652",
+    "COMPUTERD_TOKEN": "",
+    "BASKULE_AGENT_DEBUG": "1",
+    "BASKULE_AGENT_IDLE_S": "25",
+    "BASKULE_LOG_LEVEL": "Warn",
+    "TEST_PRODUCT_SETTINGS": "{\"organizationName\": \"Component test\", \"idleMinutes\": 10, \"apiKey\": \"fake-llm-key\", \"ai\": {\"providerId\": \"custom\", \"baseUrl\": \"http://127.0.0.1:47651/v1\", \"model\": {\"id\": \"fake-model\", \"name\": \"Fake model\", \"image\": true, \"pdf\": true, \"settings\": {}, \"limit\": {\"context\": 200000, \"output\": 16000}}}}"
+  }
+}

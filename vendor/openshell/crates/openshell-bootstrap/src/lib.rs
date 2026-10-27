@@ -1,0 +1,23 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+pub mod edge_token;
+pub mod jwt;
+pub mod oidc_token;
+
+mod metadata;
+pub mod mtls;
+mod paths;
+pub mod pki;
+
+pub use crate::metadata::{
+    GatewayMetadata, GatewayMetadataSource, ListedGateway, clear_active_gateway,
+    clear_last_sandbox_if_matches, extract_host_from_ssh_destination, gateway_metadata_source,
+    get_gateway_metadata, list_gateways, list_gateways_with_source, load_active_gateway,
+    load_gateway_metadata, load_last_sandbox, load_user_active_gateway, remove_gateway_metadata,
+    resolve_ssh_hostname, save_active_gateway, save_last_sandbox, store_gateway_metadata,
+};
+
+#[cfg(test)]
+#[path = "../../../tests/support/environment.rs"]
+mod test_environment;

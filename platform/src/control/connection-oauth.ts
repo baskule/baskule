@@ -1,0 +1,109 @@
+import { z } from "zod";
+import { HttpError } from "../shared/http";
+import { readBounded, type Fetcher } from "./registries/http";
+
+/** Private-network MCPs are supported; plaintext HTTP is limited to loopback development. No redirects with secrets. */
+export function oauthUrl(value: string): string {
+  let u: URL;
+  try { u = new URL(value); } catch { throw new HttpError(400, "invalid_oauth_url"); }
+  if ((u.protocol !== "https:" && !(u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))) || u.username || u.password || u.hash)
+    throw new HttpError(400, "invalid_oauth_url");
+  return u.href;
+}
+export function canonicalResource(value: string): string {
+  const u = new URL(oauthUrl(value));
+  if (u.search) throw new HttpError(400, "invalid_oauth_resource");
+  return u.pathname === "/" ? u.origin : u.href;
+}
+const url = z.string().max(2048).refine(v => { try { oauthUrl(v); return true; } catch { return false; } });
+const scopes = z.array(z.string().min(1).max(2048)).max(100);
+const resourceSchema = z.object({ resource: z.string(), authorization_servers: z.array(url).min(1).max(10), scopes_supported: scopes.optional() });
+const asSchema = z.object({
+  issuer: z.string(), authorization_endpoint: url, token_endpoint: url, registration_endpoint: url.optional(),
+  code_challenge_methods_supported: z.array(z.string()).refine(v => v.includes("S256")),
+  response_types_supported: z.array(z.string()).refine(v => v.includes("code")),
+  token_endpoint_auth_methods_supported: z.array(z.string()).optional(),
+  scopes_supported: scopes.optional(), authorization_response_iss_parameter_supported: z.boolean().optional(),
+});
+export type AuthorizationServer = z.infer<typeof asSchema>;
+export interface Discovery { resource: string; scopes: string[]; as: AuthorizationServer }
+
+export async function oauthJson(fetcher: Fetcher, target: string, init?: RequestInit): Promise<{ status: number; value: unknown }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const r = await fetcher(oauthUrl(target), { ...init, redirect: "error", signal: controller.signal });
+    const data = await readBounded(r.body, 128 * 1024);
+    let value: unknown;
+    try { value = JSON.parse(new TextDecoder().decode(data)); } catch { value = null; }
+    return { status: r.status, value };
+  } catch { throw new HttpError(502, "oauth_unavailable"); }
+  finally { clearTimeout(timer); }
+}
+export async function discoverOAuth(server: string, fetcher: Fetcher = fetch): Promise<Discovery> {
+  const resource = canonicalResource(server);
+  const u = new URL(resource);
+  // Inspect the resource's challenge without a credential, including its scoped metadata URL.
+  let metadata: string | undefined;
+  let challengeScopes: string[] | undefined;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const r = await fetcher(u.href, { method: "GET", redirect: "error", signal: controller.signal, headers: { accept: "application/json, text/event-stream" } });
+    const challenge = r.headers.get("www-authenticate") ?? "";
+    metadata = /\bresource_metadata="([^"\\]+)"/i.exec(challenge)?.[1];
+    const scope = /\bscope="([^"\\]*)"/i.exec(challenge)?.[1];
+    if (scope !== undefined) challengeScopes = scope.split(/\s+/).filter(Boolean);
+    await r.body?.cancel();
+  } catch { throw new HttpError(502, "oauth_unavailable"); }
+  finally { clearTimeout(timer); }
+  const candidates = metadata ? [oauthUrl(metadata)] : [...new Set([`${u.origin}/.well-known/oauth-protected-resource${u.pathname === "/" ? "" : u.pathname}`, `${u.origin}/.well-known/oauth-protected-resource`])];
+  let protectedResource: z.infer<typeof resourceSchema> | undefined;
+  for (const candidate of candidates) {
+    const r = await oauthJson(fetcher, candidate);
+    if (r.status === 404) continue;
+    const parsed = resourceSchema.safeParse(r.value);
+    if (r.status !== 200 || !parsed.success) throw new HttpError(502, "invalid_resource_metadata");
+    protectedResource = parsed.data; break;
+  }
+  if (!protectedResource || canonicalResource(protectedResource.resource) !== resource) throw new HttpError(502, "oauth_resource_mismatch");
+  // The resource selects its issuer. Validate metadata's issuer exactly before trusting its endpoints.
+  const issuer = protectedResource.authorization_servers[0];
+  const authority = new URL(issuer);
+  if (authority.search) throw new HttpError(502, "invalid_authorization_metadata");
+  const suffix = authority.pathname === "/" ? "" : authority.pathname;
+  const urls = [...new Set([`${authority.origin}/.well-known/oauth-authorization-server${suffix}`, `${authority.origin}/.well-known/openid-configuration${suffix}`, `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`])];
+  for (const endpoint of urls) {
+    const r = await oauthJson(fetcher, endpoint);
+    if (r.status === 404) continue;
+    const parsed = asSchema.safeParse(r.value);
+    if (r.status !== 200 || !parsed.success || parsed.data.issuer !== protectedResource.authorization_servers[0]) throw new HttpError(502, "invalid_authorization_metadata");
+    return { resource, scopes: challengeScopes ?? protectedResource.scopes_supported ?? [], as: parsed.data };
+  }
+  throw new HttpError(502, "invalid_authorization_metadata");
+}
+export interface OAuthClient { clientId: string; clientSecret?: string; tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic" }
+export async function registerClient(discovery: Discovery, redirectUri: string, fetcher: Fetcher): Promise<OAuthClient> {
+  if (!discovery.as.registration_endpoint) throw new HttpError(409, "oauth_client_configuration_required");
+  const r = await oauthJson(fetcher, discovery.as.registration_endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+    client_name: "Baskule", redirect_uris: [redirectUri], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none",
+  }) });
+  const parsed = z.object({ client_id: z.string().min(1).max(4096), token_endpoint_auth_method: z.literal("none").optional() }).safeParse(r.value);
+  if ((r.status !== 200 && r.status !== 201) || !parsed.success) throw new HttpError(502, "oauth_registration_failed");
+  return { clientId: parsed.data.client_id, tokenEndpointAuthMethod: "none" };
+}
+export interface OAuthTokens { accessToken: string; refreshToken?: string; expiresAt: number | null; scopes: string[] }
+export async function exchangeToken(discovery: Discovery, client: OAuthClient, params: Record<string, string>, previousScopes: string[], fetcher: Fetcher): Promise<OAuthTokens> {
+  const form = new URLSearchParams({ ...params, resource: discovery.resource, client_id: client.clientId });
+  const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
+  if (client.tokenEndpointAuthMethod === "client_secret_post") form.set("client_secret", client.clientSecret!);
+  if (client.tokenEndpointAuthMethod === "client_secret_basic") headers.authorization = `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret!)}`)}`;
+  const r = await oauthJson(fetcher, discovery.as.token_endpoint, { method: "POST", headers, body: form.toString() });
+  if (r.status === 400 && (r.value as { error?: string } | null)?.error === "invalid_grant") throw new HttpError(401, "oauth_grant_expired");
+  const token = z.object({ access_token: z.string().min(1).max(32768).regex(/^[A-Za-z0-9\-._~+/]+=*$/), token_type: z.string().regex(/^Bearer$/i),
+    refresh_token: z.string().min(1).max(32768).optional(), expires_in: z.number().positive().max(365 * 86400).optional(), scope: z.string().max(16384).optional(), resource: z.string().optional(),
+  }).safeParse(r.value);
+  if (r.status !== 200 || !token.success || (token.data.resource && canonicalResource(token.data.resource) !== discovery.resource)) throw new HttpError(502, "invalid_oauth_token");
+  return { accessToken: token.data.access_token, refreshToken: token.data.refresh_token,
+    expiresAt: token.data.expires_in === undefined ? null : Date.now() + token.data.expires_in * 1000, scopes: token.data.scope === undefined ? previousScopes : token.data.scope.split(/\s+/).filter(Boolean) };
+}

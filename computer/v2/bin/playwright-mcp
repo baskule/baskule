@@ -1,0 +1,12 @@
+#!/bin/bash
+# Playwright MCP (stdio) for the agent. Default: attach to the computer's shared browser (baskule-browser), so
+# members can watch/take over the same pages through the CDP tunnel. BASKULE_BROWSER=isolated launches a private
+# headless Chromium instead. Extra arguments are passed to @playwright/mcp.
+set -e
+CLI=/opt/playwright-mcp/node_modules/@playwright/mcp/cli.js
+if [ "${BASKULE_BROWSER:-shared}" = isolated ]; then
+  exec node "$CLI" --browser chromium --executable-path /usr/local/bin/chromium-baskule --headless --isolated \
+    --no-sandbox "$@"
+fi
+baskule-browser ensure >/dev/null
+exec node "$CLI" --cdp-endpoint "http://127.0.0.1:${BASKULE_CDP_PORT:-9222}" "$@"

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Baskule feedback loops, one entry point: `scripts/check help`. Details: docs/development-workflow.md.
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+exec "$ROOT/.tools/node-v24.22.1-linux-x64/bin/node" "$ROOT/scripts/check.mjs" "$@"

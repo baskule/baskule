@@ -1,0 +1,296 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Standalone crate — the empty [workspace] table prevents Cargo from
+# treating this as part of the root workspace, avoiding Dockerfile
+# and Cargo.lock coupling.
+[workspace]
+
+[package]
+name = "openshell-e2e"
+description = "End-to-end tests for the OpenShell CLI"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "Apache-2.0"
+publish = false
+
+[features]
+# Selects the common E2E suite.
+e2e = []
+# Selects tests that rely on `host.openshell.internal` (the sandbox's stable
+# alias to the host running test fixtures). docker, podman, and vm wire the
+# alias unconditionally; the kube driver only does so when
+# `gatewayConfig.openshell.drivers.kubernetes.host_gateway_ip` is set, so
+# `e2e-kubernetes` does NOT imply this and the Helm wrapper opts in explicitly
+# when it has resolved an IP.
+e2e-host-gateway = ["e2e"]
+e2e-local-container-driver = ["e2e"]
+e2e-docker = ["e2e", "e2e-host-gateway", "e2e-local-container-driver"]
+# Selects tests that need a Docker gateway with config_delivery_mode = "push".
+e2e-config-push = ["e2e-docker"]
+e2e-gpu = ["e2e"]
+e2e-docker-gpu = ["e2e-docker", "e2e-gpu"]
+e2e-kubernetes = ["e2e"]
+e2e-kubernetes-ha = ["e2e-kubernetes"]
+e2e-kubernetes-credential-drivers = ["e2e-kubernetes"]
+e2e-kubernetes-workspace-managed = ["e2e-kubernetes"]
+e2e-kubernetes-workspace-operator = ["e2e-kubernetes"]
+e2e-podman = ["e2e", "e2e-host-gateway", "e2e-local-container-driver"]
+e2e-podman-gpu = ["e2e-podman", "e2e-gpu"]
+e2e-oidc-pkce = []
+e2e-vm = ["e2e", "e2e-host-gateway"]
+
+[[test]]
+name = "config_push"
+path = "tests/config_push.rs"
+required-features = ["e2e-config-push"]
+
+[[test]]
+name = "policy_activation"
+path = "tests/policy_activation.rs"
+required-features = ["e2e-docker"]
+
+[[test]]
+name = "provider_files"
+path = "tests/provider_files.rs"
+required-features = ["e2e-docker"]
+
+[[test]]
+name = "oidc_pkce"
+path = "tests/oidc_pkce.rs"
+required-features = ["e2e-oidc-pkce"]
+
+[[test]]
+name = "vm_overlay"
+path = "tests/vm_overlay.rs"
+required-features = ["e2e-vm"]
+
+[[test]]
+name = "service_bearer_passthrough"
+path = "tests/service_bearer_passthrough.rs"
+required-features = ["e2e-docker"]
+
+[[test]]
+name = "rootfs_tar"
+path = "tests/rootfs_tar.rs"
+required-features = ["e2e-vm"]
+
+[[test]]
+name = "vm_bind_mount"
+path = "tests/vm_bind_mount.rs"
+required-features = ["e2e-vm"]
+
+[[test]]
+name = "docker_preflight"
+path = "tests/docker_preflight.rs"
+required-features = ["e2e-docker"]
+
+[[test]]
+name = "docker_corporate_proxy"
+path = "tests/docker_corporate_proxy.rs"
+required-features = ["e2e-docker"]
+
+[[test]]
+name = "driver_config_volume"
+path = "tests/driver_config_volume.rs"
+required-features = ["e2e-local-container-driver"]
+
+[[test]]
+name = "gateway_start"
+path = "tests/gateway_start.rs"
+required-features = ["e2e-docker"]
+
+[[test]]
+name = "local_driver_token_restart"
+path = "tests/local_driver_token_restart.rs"
+required-features = ["e2e"]
+
+[[test]]
+name = "ephemeral_cleanup"
+path = "tests/ephemeral_cleanup.rs"
+required-features = ["e2e"]
+
+[[test]]
+name = "podman_gateway_start"
+path = "tests/podman_gateway_start.rs"
+required-features = ["e2e-podman"]
+
+[[test]]
+name = "podman_host_gateway"
+path = "tests/podman_host_gateway.rs"
+required-features = ["e2e-podman"]
+
+[[test]]
+name = "podman_corporate_proxy"
+path = "tests/podman_corporate_proxy.rs"
+required-features = ["e2e-podman"]
+
+[[test]]
+name = "podman_oci_identity"
+path = "tests/podman_oci_identity.rs"
+required-features = ["e2e-podman"]
+
+[[test]]
+name = "podman_resource_limits"
+path = "tests/podman_resource_limits.rs"
+required-features = ["e2e-podman"]
+
+[[test]]
+name = "provider_refresh_handles"
+path = "tests/provider_refresh_handles.rs"
+required-features = ["e2e-podman"]
+
+[[test]]
+name = "provider_readiness"
+path = "tests/provider_readiness.rs"
+required-features = ["e2e-docker"]
+
+[[test]]
+name = "vm_gateway_start"
+path = "tests/vm_gateway_start.rs"
+required-features = ["e2e-vm"]
+
+[[test]]
+name = "vm_corporate_proxy"
+path = "tests/vm_corporate_proxy.rs"
+required-features = ["e2e-vm"]
+
+[[test]]
+name = "provider_token_exchange"
+path = "tests/provider_token_exchange.rs"
+required-features = ["e2e-podman"]
+
+[[test]]
+name = "kubernetes_ha_rebalancing"
+path = "tests/kubernetes_ha_rebalancing.rs"
+required-features = ["e2e-kubernetes-ha"]
+
+[[test]]
+name = "kubernetes_corporate_proxy"
+path = "tests/kubernetes_corporate_proxy.rs"
+required-features = ["e2e-kubernetes"]
+
+[[test]]
+name = "kubernetes_runtime_reconcile"
+path = "tests/kubernetes_runtime_reconcile.rs"
+required-features = ["e2e-kubernetes"]
+
+[[test]]
+name = "credential_drivers"
+path = "tests/credential_drivers.rs"
+required-features = ["e2e-kubernetes-credential-drivers"]
+
+[[test]]
+name = "websocket_conformance"
+path = "tests/websocket_conformance.rs"
+required-features = ["e2e-host-gateway"]
+
+[[test]]
+name = "credential_gating"
+path = "tests/credential_gating.rs"
+required-features = ["e2e-host-gateway"]
+
+[[test]]
+name = "user_namespaces"
+path = "tests/user_namespaces.rs"
+required-features = ["e2e-kubernetes"]
+
+[[test]]
+name = "host_gateway_alias"
+path = "tests/host_gateway_alias.rs"
+required-features = ["e2e-host-gateway"]
+
+[[test]]
+name = "forward_proxy_l7_bypass"
+path = "tests/forward_proxy_l7_bypass.rs"
+required-features = ["e2e-host-gateway"]
+
+[[test]]
+name = "forward_proxy_graphql_l7"
+path = "tests/forward_proxy_graphql_l7.rs"
+required-features = ["e2e-host-gateway"]
+
+[[test]]
+name = "forward_proxy_jsonrpc_l7"
+path = "tests/forward_proxy_jsonrpc_l7.rs"
+required-features = ["e2e-host-gateway"]
+
+[[test]]
+name = "workspace_lifecycle"
+path = "tests/workspace_lifecycle.rs"
+required-features = ["e2e"]
+
+[[test]]
+name = "sandbox_templates"
+path = "tests/sandbox_templates.rs"
+required-features = ["e2e"]
+
+[[test]]
+name = "proxy_egress_pipeline"
+path = "tests/proxy_egress_pipeline.rs"
+required-features = ["e2e-host-gateway"]
+
+[[test]]
+name = "workspace_namespace_managed"
+path = "tests/workspace_namespace_managed.rs"
+required-features = ["e2e-kubernetes-workspace-managed"]
+
+[[test]]
+name = "workspace_namespace_operator"
+path = "tests/workspace_namespace_operator.rs"
+required-features = ["e2e-kubernetes-workspace-operator"]
+
+[[test]]
+name = "gpu"
+path = "tests/gpu.rs"
+required-features = ["e2e-gpu"]
+
+[dependencies]
+openshell-crypto = { path = "../../crates/openshell-crypto" }
+base64 = "0.22"
+bollard = "0.20"
+bytes = "1"
+futures-util = "0.3"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+jsonwebtoken = "10"
+prost = "0.14"
+tokio = { version = "1.43", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tempfile = "3"
+sha1 = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.9"
+rustls = { version = "0.23", default-features = false, features = ["std", "logging", "tls12"] }
+rustls-pemfile = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yml = { package = "noyalib", version = "0.0.53", default-features = false, features = ["std", "compat-serde-yaml"] }
+tonic = { version = "0.14", features = ["transport"] }
+tonic-prost = "0.14"
+tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "tls12"] }
+tower = "0.5"
+url = "2"
+nix = { version = "0.29", features = ["process", "signal", "term", "user"] }
+
+[dev-dependencies]
+serial_test = "3"
+
+[lints.rust]
+unsafe_code = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+[[test]]
+name = "live_internet_traffic_perf"
+path = "tests/live_internet_traffic_perf.rs"
+required-features = ["e2e-host-gateway"]

@@ -1,0 +1,350 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+//! Z3 constraint model encoding policy, credentials, and binary capabilities.
+
+use std::collections::{HashMap, HashSet};
+
+use z3::ast::Bool;
+use z3::{Context, SatResult, Solver};
+
+use crate::credentials::CredentialSet;
+use crate::policy::{PolicyModel, WRITE_METHODS};
+use crate::registry::BinaryRegistry;
+
+/// Unique identifier for a network endpoint in the model.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct EndpointId {
+    pub policy_name: String,
+    /// Position within the policy rule's endpoint list.
+    pub endpoint_index: usize,
+    pub host: String,
+    pub port: u16,
+}
+
+impl EndpointId {
+    /// Stable string key used for Z3 variable naming.
+    pub fn key(&self) -> String {
+        // Length-prefix the authored name so delimiters cannot alias another rule.
+        format!(
+            "{}:{}:{}:{}",
+            self.policy_name.len(),
+            self.policy_name,
+            self.endpoint_index,
+            self.port
+        )
+    }
+}
+
+/// Z3-backed reachability model for an `OpenShell` sandbox policy.
+pub struct ReachabilityModel {
+    pub policy: PolicyModel,
+    pub credentials: CredentialSet,
+    pub binary_registry: BinaryRegistry,
+
+    // Indexed facts
+    pub endpoints: Vec<EndpointId>,
+    pub binary_paths: Vec<String>,
+
+    // Z3 solver
+    solver: Solver,
+
+    // Boolean variable maps
+    policy_allows: HashMap<String, Bool>,
+    l7_enforced: HashMap<String, Bool>,
+    l7_allows_write: HashMap<String, Bool>,
+    binary_bypasses_l7: HashMap<String, Bool>,
+    binary_can_exfil: HashMap<String, Bool>,
+    binary_can_construct_http: HashMap<String, Bool>,
+}
+
+impl ReachabilityModel {
+    /// Build a new reachability model from the given inputs.
+    pub fn new(
+        policy: PolicyModel,
+        credentials: CredentialSet,
+        binary_registry: BinaryRegistry,
+    ) -> Self {
+        let solver = Solver::new();
+        let mut model = Self {
+            policy,
+            credentials,
+            binary_registry,
+            endpoints: Vec::new(),
+            binary_paths: Vec::new(),
+            solver,
+            policy_allows: HashMap::new(),
+            l7_enforced: HashMap::new(),
+            l7_allows_write: HashMap::new(),
+            binary_bypasses_l7: HashMap::new(),
+            binary_can_exfil: HashMap::new(),
+            binary_can_construct_http: HashMap::new(),
+        };
+        model.build();
+        model
+    }
+
+    fn build(&mut self) {
+        self.index_endpoints();
+        self.index_binaries();
+        self.encode_policy_allows();
+        self.encode_l7_enforcement();
+        self.encode_binary_capabilities();
+    }
+
+    fn index_endpoints(&mut self) {
+        for (policy_name, rule) in &self.policy.network_policies {
+            for (endpoint_index, ep) in rule.endpoints.iter().enumerate() {
+                for port in ep.effective_ports() {
+                    self.endpoints.push(EndpointId {
+                        policy_name: policy_name.clone(),
+                        endpoint_index,
+                        host: ep.host.clone(),
+                        port,
+                    });
+                }
+            }
+        }
+    }
+
+    fn index_binaries(&mut self) {
+        let mut seen = HashSet::new();
+        for rule in self.policy.network_policies.values() {
+            for b in &rule.binaries {
+                if seen.insert(b.path.clone()) {
+                    self.binary_paths.push(b.path.clone());
+                }
+            }
+        }
+    }
+
+    fn encode_policy_allows(&mut self) {
+        for (policy_name, rule) in &self.policy.network_policies {
+            for (endpoint_index, ep) in rule.endpoints.iter().enumerate() {
+                for port in ep.effective_ports() {
+                    let eid = EndpointId {
+                        policy_name: policy_name.clone(),
+                        endpoint_index,
+                        host: ep.host.clone(),
+                        port,
+                    };
+                    for b in &rule.binaries {
+                        let key = format!("{}:{}:{}", b.path.len(), b.path, eid.key());
+                        let var = Bool::new_const(format!("policy_allows_{key}"));
+                        self.solver.assert(&var);
+                        self.policy_allows.insert(key, var);
+                    }
+                }
+            }
+        }
+    }
+
+    fn encode_l7_enforcement(&mut self) {
+        for (policy_name, rule) in &self.policy.network_policies {
+            for (endpoint_index, ep) in rule.endpoints.iter().enumerate() {
+                for port in ep.effective_ports() {
+                    let eid = EndpointId {
+                        policy_name: policy_name.clone(),
+                        endpoint_index,
+                        host: ep.host.clone(),
+                        port,
+                    };
+                    let ek = eid.key();
+
+                    // L7 enforced?
+                    let l7_var = Bool::new_const(format!("l7_enforced_{ek}"));
+                    if ep.is_l7_enforced() {
+                        self.solver.assert(&l7_var);
+                    } else {
+                        self.solver.assert(&!l7_var.clone());
+                    }
+                    self.l7_enforced.insert(ek.clone(), l7_var);
+
+                    // L7 allows write?
+                    let allowed = ep.allowed_methods();
+                    let write_set: HashSet<&str> = WRITE_METHODS.iter().copied().collect();
+                    let has_write = if allowed.is_empty() {
+                        true // L4-only: all methods pass
+                    } else {
+                        allowed.iter().any(|m| write_set.contains(m.as_str()))
+                    };
+
+                    let l7_write_var = Bool::new_const(format!("l7_allows_write_{ek}"));
+                    if ep.is_l7_enforced() {
+                        if has_write {
+                            self.solver.assert(&l7_write_var);
+                        } else {
+                            self.solver.assert(&!l7_write_var.clone());
+                        }
+                    } else {
+                        // L4-only: all methods pass through
+                        self.solver.assert(&l7_write_var);
+                    }
+                    self.l7_allows_write.insert(ek, l7_write_var);
+                }
+            }
+        }
+    }
+
+    fn encode_binary_capabilities(&mut self) {
+        for bpath in &self.binary_paths.clone() {
+            let cap = self.binary_registry.get_or_unknown(bpath);
+
+            let bypass_var = Bool::new_const(format!("binary_bypasses_l7_{bpath}"));
+            if cap.bypasses_l7() {
+                self.solver.assert(&bypass_var);
+            } else {
+                self.solver.assert(&!bypass_var.clone());
+            }
+            self.binary_bypasses_l7.insert(bpath.clone(), bypass_var);
+
+            let exfil_var = Bool::new_const(format!("binary_can_exfil_{bpath}"));
+            if cap.can_exfiltrate {
+                self.solver.assert(&exfil_var);
+            } else {
+                self.solver.assert(&!exfil_var.clone());
+            }
+            self.binary_can_exfil.insert(bpath.clone(), exfil_var);
+
+            let http_var = Bool::new_const(format!("binary_can_construct_http_{bpath}"));
+            if cap.can_construct_http {
+                self.solver.assert(&http_var);
+            } else {
+                self.solver.assert(&!http_var.clone());
+            }
+            self.binary_can_construct_http
+                .insert(bpath.clone(), http_var);
+        }
+    }
+
+    // --- Query helpers ---
+
+    fn false_val() -> Bool {
+        Bool::from_bool(false)
+    }
+
+    /// Build a Z3 expression for whether data can be exfiltrated via this path.
+    pub fn can_exfil_via_endpoint(&self, bpath: &str, eid: &EndpointId) -> Bool {
+        let ek = eid.key();
+        let access_key = format!("{}:{bpath}:{ek}", bpath.len());
+
+        let has_access = match self.policy_allows.get(&access_key) {
+            Some(v) => v.clone(),
+            None => return Self::false_val(),
+        };
+
+        let exfil = self
+            .binary_can_exfil
+            .get(bpath)
+            .cloned()
+            .unwrap_or_else(Self::false_val);
+        let bypass = self
+            .binary_bypasses_l7
+            .get(bpath)
+            .cloned()
+            .unwrap_or_else(Self::false_val);
+        let l7_enforced = self
+            .l7_enforced
+            .get(&ek)
+            .cloned()
+            .unwrap_or_else(Self::false_val);
+        let l7_write = self
+            .l7_allows_write
+            .get(&ek)
+            .cloned()
+            .unwrap_or_else(Self::false_val);
+        let http = self
+            .binary_can_construct_http
+            .get(bpath)
+            .cloned()
+            .unwrap_or_else(Self::false_val);
+
+        Bool::and(&[
+            has_access,
+            exfil,
+            Bool::or(&[
+                Bool::and(&[!l7_enforced, http.clone()]),
+                Bool::and(&[l7_write, http]),
+                bypass,
+            ]),
+        ])
+    }
+
+    /// Reject inconsistent or inconclusive base constraints before querying them.
+    pub fn validate(&self) -> miette::Result<()> {
+        match self.solver.check() {
+            SatResult::Sat => Ok(()),
+            SatResult::Unsat => miette::bail!("inconsistent reachability model"),
+            SatResult::Unknown => miette::bail!("reachability model validation inconclusive"),
+        }
+    }
+
+    /// Check satisfiability of an expression against the base constraints.
+    pub fn check_sat(&self, expr: &Bool) -> SatResult {
+        self.solver.push();
+        self.solver.assert(expr);
+        let result = self.solver.check();
+        self.solver.pop(1);
+        result
+    }
+}
+
+/// Build a reachability model from the given inputs.
+pub fn build_model(
+    policy: PolicyModel,
+    credentials: CredentialSet,
+    binary_registry: BinaryRegistry,
+) -> ReachabilityModel {
+    // Ensure the thread-local Z3 context is initialized
+    let _ctx = Context::thread_local();
+    ReachabilityModel::new(policy, credentials, binary_registry)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::queries::{check_credential_safety, run_all_queries};
+
+    #[test]
+    fn inconsistent_base_model_is_an_error_even_without_query_paths() {
+        let model = build_model(
+            PolicyModel::default(),
+            CredentialSet::default(),
+            crate::registry::load_embedded_binary_registry().unwrap(),
+        );
+        model.solver.assert(Bool::from_bool(false));
+        assert!(check_credential_safety(&model).is_err());
+        assert!(run_all_queries(&model).is_err());
+    }
+
+    #[test]
+    fn inconclusive_base_model_is_an_error() {
+        let model = build_model(
+            PolicyModel::default(),
+            CredentialSet::default(),
+            crate::registry::load_embedded_binary_registry().unwrap(),
+        );
+        model.solver.assert(Bool::new_const("resource_limited"));
+        let mut params = z3::Params::new();
+        params.set_u32("rlimit", 1);
+        model.solver.set_params(&params);
+        assert_eq!(model.solver.check(), SatResult::Unknown);
+        assert!(run_all_queries(&model).is_err());
+    }
+
+    #[test]
+    fn endpoint_keys_distinguish_rule_names_with_delimiters() {
+        let left = EndpointId {
+            policy_name: "rule:2001".to_string(),
+            endpoint_index: 0,
+            host: "db8::1".to_string(),
+            port: 443,
+        };
+        let right = EndpointId {
+            policy_name: "rule".to_string(),
+            host: "2001:db8::1".to_string(),
+            ..left
+        };
+        assert_ne!(left.key(), right.key());
+    }
+}

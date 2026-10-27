@@ -1,0 +1,11 @@
+[Unit]
+Description=Baskule CI workers and rootless Docker
+
+[Slice]
+# Bounds apply to the runners, the user manager, rootless Docker and all test containers.
+CPUQuota=800%
+MemoryMax=24G
+TasksMax=32768
+IPAddressDeny=0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16
+IPAddressDeny=fc00::/7 fe80::/10
+# Loopback serves fake backends and published CI ports. Staging binds only its tailnet IP.

@@ -1,0 +1,282 @@
+---
+authors:
+  - "@TaylorMutch"
+state: implemented
+---
+
+# RFC 0003 - Gateway Configuration File
+
+## Summary
+
+Introduce a TOML-based configuration file for the OpenShell gateway that unifies gateway settings — core server options, TLS, OIDC, observability listeners, and per-driver parameters — under a single structured file. CLI flags and supported `OPENSHELL_*` environment variables retain higher precedence. Schema version 2 intentionally rejects legacy file fields and locations.
+
+## Motivation
+
+Before this RFC, the gateway was configured exclusively through CLI flags and `OPENSHELL_*` environment variables. This worked for simple single-node deployments but broke down as deployments grew:
+
+- **Too many flags** — the gateway exposed roughly 40 configurable parameters (TLS, OIDC, four compute drivers, three listeners). Long `docker run` commands and `args:` arrays in Kubernetes manifests were hard to read, diff, and audit.
+- **Driver coupling** — Docker, Podman, Kubernetes, and VM drivers shared one flat CLI namespace with no structural separation. Most flags applied to only one driver, but CLI syntax did not express that ownership.
+- **Helm friction** — The chart's `statefulset.yaml` carried a long `env:` block of `OPENSHELL_*` variables that each mapped to a `values.yaml` key. A mounted configuration file reduces the chart's templating surface.
+- **Secrets management** — Environment-only configuration did not compose naturally with Kubernetes `ConfigMap` and projected `Secret` volumes.
+
+## Non-goals
+
+- Sandbox workload policy (OPA rules, network rules) — sandboxes receive policy from the gateway over the control-plane API; this RFC does not change that.
+- Hot-reload of configuration without restarting the gateway process.
+- Support for config formats other than TOML. JSON or YAML variants are not planned.
+- A new configuration schema for the CLI client (`openshell` binary) — this RFC covers the server process (`openshell-gateway`) only.
+- Auto-detection logic for compute drivers. The gateway already auto-detects an active driver when none is configured (Kubernetes → Podman → Docker); the file simply provides another way to specify drivers explicitly.
+
+## Proposal
+
+### Configuration sources and precedence
+
+Three sources are merged at startup, in descending priority:
+
+```
+CLI flags  >  OPENSHELL_* environment variables  >  TOML config file  >  built-in defaults
+```
+
+The TOML file is optional. If neither `--config` nor `OPENSHELL_GATEWAY_CONFIG` is set, the gateway behaves exactly as before. Any field present in the file is overridden by a CLI flag or matching environment variable.
+
+### Loading the file
+
+The file path is provided via:
+
+```
+--config /path/to/gateway.toml
+OPENSHELL_GATEWAY_CONFIG=/path/to/gateway.toml
+```
+
+The file must have a `.toml` extension. A missing path is a hard error. A configured file must declare the exact supported schema version; an empty existing file is rejected.
+
+### TOML schema
+
+The file is rooted at an `[openshell]` table. This namespacing reserves room for future components (CLI, sandbox, router) to share a single config file without key collisions.
+
+`[openshell.gateway]` carries gateway-wide settings only. Fields that only matter to a specific compute driver live under `[openshell.drivers.<name>]` and are owned by that driver.
+
+```toml
+[openshell]
+version = 2                      # required schema version
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Gateway-wide settings
+# ──────────────────────────────────────────────────────────────────────────────
+[openshell.gateway]
+# Listener
+bind_address          = "127.0.0.1:17670"  # default: 127.0.0.1:17670 (loopback)
+health_bind_address   = "0.0.0.0:8081"     # optional; omit to disable
+metrics_bind_address  = "0.0.0.0:9090"     # optional; omit to disable
+
+# Logging
+log_level             = "info"
+
+# Compute driver — exactly one driver may be active. When omitted, the gateway
+# auto-detects a driver (kubernetes → podman → docker). VM is never auto-detected.
+compute_driver        = "kubernetes"
+
+# Note: database_url is a secret and must be supplied via OPENSHELL_DB_URL
+# (or --db-url) — it is NOT permitted in the file.
+ssh_session_ttl_secs    = 86400
+
+# Service routing — wildcard DNS SANs in `server_sans` also enable sandbox
+# service URLs under that domain. `enable_loopback_service_http` toggles
+# plaintext HTTP routing for loopback service URLs.
+server_sans                  = ["openshell", "*.dev.openshell.localhost"]
+enable_loopback_service_http = true
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TLS / mTLS — package-managed local TLS may supply listener defaults.
+# ──────────────────────────────────────────────────────────────────────────────
+# Mirrors --disable-tls / OPENSHELL_DISABLE_TLS. Set true explicitly for a
+# plaintext listener; guest TLS fields must then be omitted.
+disable_tls           = false
+
+# Gateway-owned CA injected into the selected local driver for supervisor TLS.
+guest_tls_ca          = "/etc/openshell/certs/ca.pem"
+
+[openshell.gateway.tls]
+cert_path             = "/etc/openshell/certs/gateway.pem"
+key_path              = "/etc/openshell/certs/gateway-key.pem"
+client_ca_path        = "/etc/openshell/certs/client-ca.pem"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OIDC — when omitted, JWT bearer auth is disabled
+# ──────────────────────────────────────────────────────────────────────────────
+[openshell.gateway.oidc]
+issuer        = "https://idp.example.com/realms/openshell"
+audience      = "openshell-cli"
+jwks_ttl_secs = 3600
+roles_claim   = "realm_access.roles"   # Keycloak default; "roles" for Entra, "groups" for Okta
+admin_role    = "openshell-admin"
+user_role     = "openshell-user"
+scopes_claim  = ""                     # empty disables scope enforcement
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Compute drivers — each table is owned and parsed by its driver crate.
+# Only the selected or auto-detected driver's table is activated.
+# ──────────────────────────────────────────────────────────────────────────────
+
+[openshell.drivers.kubernetes]
+namespace                    = "openshell"
+default_image                = "nvcr.io/nvidia/base/ubuntu:24.04"
+image_pull_policy            = "if_not_present"
+supervisor_image             = "ghcr.io/nvidia/openshell/supervisor:latest"
+supervisor_image_pull_policy = "if_not_present"
+grpc_endpoint                = "https://host.openshell.internal:8080"
+client_tls_secret_name       = "openshell-sandbox-tls"
+host_gateway_ip              = "10.0.0.1"
+ssh_socket_path              = "/run/openshell/ssh.sock"
+
+[openshell.drivers.docker]
+default_image     = "nvcr.io/nvidia/base/ubuntu:24.04"
+image_pull_policy = "if_not_present"
+sandbox_label     = "docker-dev"
+grpc_endpoint     = "https://host.openshell.internal:8080"
+network_name      = "openshell"
+supervisor_bin    = "/usr/local/libexec/openshell/openshell-sandbox"  # optional override
+supervisor_image  = "ghcr.io/nvidia/openshell/supervisor:latest"      # used to extract bin
+
+[openshell.drivers.podman]
+socket_path       = "/run/podman/podman.sock"
+default_image     = "nvcr.io/nvidia/base/ubuntu:24.04"
+image_pull_policy = "if_not_present" # always | if_not_present | never | newer
+supervisor_image  = "ghcr.io/nvidia/openshell/supervisor:latest"
+network_name      = "openshell"
+stop_timeout_secs = 10
+
+[openshell.drivers.vm]
+state_dir       = "/var/lib/openshell/vm"
+driver_dir      = "/usr/local/libexec/openshell"
+grpc_endpoint   = "https://host.containers.internal:8080"
+vcpus           = 2
+mem_mib         = 2048
+krun_log_level  = 1
+```
+
+### Driver configuration
+
+Each `[openshell.drivers.<name>]` table is extracted from the parsed file and handed to the driver's initialization function as a raw TOML value. The driver is then responsible for:
+
+1. **Parsing** — deserializing the table into its own typed config struct (e.g. `KubernetesComputeConfig`, `DockerComputeConfig`, `PodmanComputeConfig`, `VmComputeConfig`).
+2. **Validation** — applying cross-field checks specific to that driver. The gateway-owned CA path is validated and injected only into the selected local driver before this step; supervisor identity uses sandbox bearer tokens.
+3. **Consumption** — using the resulting struct to initialize internal state.
+
+Driver authors define and own their config schema. Adding a new driver does not require changes to the gateway's core `Config` struct or to this RFC.
+
+`[openshell.drivers.<name>]` tables for drivers other than the selected or auto-detected driver are parsed for syntax but not activated.
+
+### Merge semantics
+
+Field-level merge rules:
+
+1. **`[openshell.gateway]`** populates `openshell_core::Config` (including the nested `[openshell.gateway.tls]` and `[openshell.gateway.oidc]` tables, which map to `TlsConfig` and `OidcConfig` respectively).
+2. **`[openshell.drivers.<name>]`** is propagated to the driver crate, which deserializes it into its own struct. Driver schemas evolve independently of the gateway's core `Config`.
+3. **CLI / env** override any value set by steps 1–2, field by field. The override check uses clap's `ValueSource` — a value is applied from the file only when the corresponding flag was not supplied via the command line or environment.
+
+`bind_address`, `health_bind_address`, and `metrics_bind_address` are stored as `SocketAddr` (IP + port). The CLI exposes them as a single `--bind-address` IP plus `--port`, `--health-port`, and `--metrics-port`; CLI overrides apply to the matching part of the parsed `SocketAddr`.
+
+`health_bind_address` and `metrics_bind_address` may be omitted to disable those listeners (matching the current behavior of `--health-port 0` / `--metrics-port 0`).
+
+### Secrets
+
+One field is deliberately excluded from the TOML schema and must be supplied via environment variable or CLI flag:
+
+| Field | Source |
+|---|---|
+| `database_url` | `OPENSHELL_DB_URL` / `--db-url` |
+
+Database URLs typically embed credentials, and a leaked plaintext file is materially worse than a leaked env var. Forcing the URL out of the file removes the easiest accidental-commit path.
+
+If the field appears under `[openshell.gateway]`, the parser fails with a clear error pointing operators at the env/CLI form.
+
+OIDC settings (including `oidc.audience`, `oidc.admin_role`, etc.) **are** allowed in the file. None of them are credentials by themselves. However, operators should still prefer env-var injection for any field they would otherwise store in a Kubernetes `Secret` — TLS material paths, OIDC issuer URLs in restricted environments, and so on. The general guidance: if it would live in a `Secret` resource, source it from an env var; if it would live in a `ConfigMap`, the file is fine.
+
+### Validation
+
+Deserialization uses `#[serde(deny_unknown_fields)]` at every table level. An unrecognised key is a hard parse error. This catches typos early rather than silently ignoring misconfigured fields.
+
+The following cross-field validations are applied after merging file + env + CLI:
+
+- `bind_address`, `health_bind_address`, and `metrics_bind_address` must all use distinct ports when set.
+- Gateway listener TLS requires `cert_path` and `key_path`; `client_ca_path` is required only for listener client-certificate verification. TLS-enabled Docker, Podman, and VM drivers also require a complete gateway-owned guest CA, certificate, and key bundle. Kubernetes projects guest TLS through a Secret instead.
+- `database_url` must be non-empty after merging env + CLI — every supported driver requires it. The field is not accepted from the file (see Secrets above).
+- `compute_driver` selects exactly one driver. When omitted, the gateway falls back to auto-detection. A custom driver requires a named table with `socket_path`, unless startup supplies an explicit socket override. The legacy `compute_drivers` list is rejected.
+
+### Schema compatibility
+
+Schema version 2 requires `version = 2`, a singular `compute_driver` when a driver is selected, and driver-owned fields under `[openshell.drivers.<name>]`. Legacy schema versions and `compute_drivers` lists are rejected. `OPENSHELL_DB_URL` remains a required process input and is not accepted from the file.
+
+### Example: minimal Kubernetes deployment
+
+```toml
+[openshell]
+version = 2
+
+[openshell.gateway]
+bind_address  = "0.0.0.0:8080"
+compute_driver = "kubernetes"
+# database_url comes from env (e.g. valueFrom.secretKeyRef).
+# The gateway runs plaintext behind Envoy / ingress.
+disable_tls = true
+
+[openshell.drivers.kubernetes]
+namespace        = "agents"
+default_image    = "nvcr.io/nvidia/base/ubuntu:24.04"
+supervisor_image = "ghcr.io/nvidia/openshell/supervisor:0.9.0"
+grpc_endpoint    = "https://openshell-gateway.agents.svc:8080"
+```
+
+### Helm integration
+
+The Helm chart renders schema-v2 gateway TOML into a `ConfigMap`, mounts it at `/etc/openshell/gateway.toml`, and starts the gateway with that file. Secret process inputs such as `OPENSHELL_DB_URL` remain `Secret`-backed environment entries and retain higher precedence. Kubernetes projects sandbox guest TLS through its configured Secret rather than placing host guest-certificate paths in the gateway TOML.
+
+```yaml
+# values.yaml excerpt
+gateway:
+  config:
+    bind_address: "0.0.0.0:8080"
+    health_bind_address: "0.0.0.0:8081"
+    metrics_bind_address: "0.0.0.0:9090"
+    compute_driver: "kubernetes"
+    drivers:
+      kubernetes:
+        namespace: agents
+        default_image: nvcr.io/nvidia/base/ubuntu:24.04
+        supervisor_image: ghcr.io/nvidia/openshell/supervisor:0.9.0
+```
+
+The chart owners can migrate one section at a time: `OPENSHELL_*` env vars and the `ConfigMap` coexist during the transition, with env continuing to override the file.
+
+## Implementation
+
+The implemented gateway loader parses TOML with `serde`, merges file values below environment and CLI sources, and rejects unknown fields. Each compute driver deserializes only its named table. Helm renders schema-v2 TOML into a ConfigMap, while secret process inputs remain environment-backed. Package templates, examples, tests, and the gateway architecture documentation use the same canonical schema.
+
+## Risks
+
+- **Serde `deny_unknown_fields` is strict** — any field name change in `openshell_core::Config` or in a driver's config struct becomes a breaking change for anyone using the file. Treat field renames as versioned schema changes and surface migration errors clearly.
+- **Secrets in the file** — `database_url` is excluded from the schema entirely (env / CLI only). OIDC settings remain allowed in the file because none of them are credentials in isolation. Operators should still prefer env-var injection for any field that would live in a `Secret` rather than a `ConfigMap` (TLS material paths, restricted-environment OIDC issuers, etc.). Documentation must call this out prominently.
+- **Partial TLS configuration** — listener and guest TLS are separate complete-bundle contracts. Startup rejects partial bundles and identifies the missing configuration before constructing a driver.
+- **Driver schema drift** — once each driver owns its own TOML table, driver releases can change field names independently of the gateway. The gateway's `version` field does not protect against driver-side breakage; document driver-config stability separately.
+
+## Alternatives
+
+**Flat environment variables only** — the status quo. Avoids a new file format and parsing layer, but doesn't address the driver namespacing problem and makes the Helm chart verbose. Rejected: the long-term Kubernetes story requires a file-based approach.
+
+**YAML instead of TOML** — YAML is already the dominant format in the Kubernetes ecosystem, and Helm values are YAML. Using YAML for the gateway config would align with that ecosystem. The downside is YAML's well-known footguns (Norway problem, implicit typing, indentation sensitivity). TOML is unambiguous and maps cleanly to Rust structs via `serde`. For a config file primarily edited by humans, TOML's clarity wins. The Helm chart can still generate a TOML file from YAML values via `tpl`.
+
+**Separate config crate** — centralising config parsing in a dedicated `openshell-config` crate rather than inside `openshell-server`. Worthwhile if other binaries need the same config format; deferred until there is a concrete need.
+
+## Prior art
+
+- [Gitea](https://docs.gitea.com/administration/config-cheat-sheet) and [InfluxDB](https://docs.influxdata.com/influxdb/v2/reference/config-options/) both use TOML for their primary server configuration with environment variable and CLI flag overrides following the same precedence order proposed here.
+- The `[tool.*]` namespace convention in `pyproject.toml` inspired the `[openshell.*]` root table — a single file can host configuration for multiple tools without key collisions.
+- Rust's own `config.toml` (`~/.cargo/config.toml`) follows similar principles: file provides defaults, environment overrides, explicit flags override environment.
+
+## Open questions
+
+1. **Directory-based config (`conf.d` pattern)** — a `--config-dir` flag that globs all `*.toml` files in a directory, sorts them alphabetically, and deep-merges them in order (later files win per key). CLI/env overrides still sit above everything. This maps cleanly to Kubernetes: a base `ConfigMap` as `10-base.toml`, driver config as `20-kubernetes.toml`, and credentials from a projected `Secret` as `90-credentials.toml` — all mounted into the same directory without a monolithic file. This is the approach taken by cri-o and kubelet, inspired by systemd's `conf.d` convention.
+
+   Deferred to a follow-on: the single `--config` file is sufficient for the current schema, and the directory loader can be added without changing the file schema. Before implementing, three design decisions must be settled: (a) whether `--config` and `--config-dir` are mutually exclusive or composable (and if so which takes lower precedence); (b) whether a later file's array value (for example `credential_drivers`) replaces or appends — replace is simpler and less surprising; (c) `deny_unknown_fields` validation must apply to the final merged result rather than each individual file, since partial drop-in files won't contain all sections.
+2. **OIDC secret hygiene (revisit)** — `database_url` is excluded from the file schema (resolved). Schema version 2 allows the listed OIDC fields because they are identifiers, not credentials. If we add OIDC fields that *are* credentials in the future (e.g. a client secret for confidential-client flows), they should join the env-only list at that point. Re-evaluate once the OIDC surface stabilises.

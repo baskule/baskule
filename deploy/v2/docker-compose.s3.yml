@@ -1,0 +1,7 @@
+# External fleet bucket (contabo.md): lib.sh adds this file when .env sets S3_ENDPOINT (with S3_REGION,
+# S3_ACCESS_KEY, S3_SECRET_KEY and CELLD_BUCKET_NAME). RustFS is not started; the bucket must exist.
+services:
+  baskule-rustfs:
+    profiles: [rustfs]
+  baskule-bootstrap:
+    depends_on: !reset {}

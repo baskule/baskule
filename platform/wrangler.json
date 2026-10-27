@@ -1,0 +1,30 @@
+{
+  "name": "baskule",
+  "main": "dist/worker.js",
+  "compatibility_date": "2026-08-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "dist/web",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/auth/*", "/api/*", "/s/*", "/hooks/*", "/downloads", "/downloads/*"]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "CONTROL", "class_name": "ControlCell" },
+      { "name": "SPACE", "class_name": "SpaceCell" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ControlCell", "SpaceCell"] }],
+  "vars": {
+    "PUBLIC_ORIGINS": "",
+    "ADMIN_EMAIL": "",
+    "ADMIN_PASSWORD": "",
+    "ADMIN_NAME": "Admin",
+    "AUTH_SECRET": "",
+    "AUTH_RATE_LIMIT": "1",
+    "COMPUTERD_URL": "http://127.0.0.1:47091",
+    "COMPUTERD_TOKEN": "",
+    "AUTH_CONFIG": "{}"
+  }
+}

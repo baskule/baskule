@@ -1,0 +1,49 @@
+diff --git a/ReactAndroid/src/main/java/com/facebook/react/modules/websocket/WebSocketModule.kt b/ReactAndroid/src/main/java/com/facebook/react/modules/websocket/WebSocketModule.kt
+--- a/ReactAndroid/src/main/java/com/facebook/react/modules/websocket/WebSocketModule.kt
++++ b/ReactAndroid/src/main/java/com/facebook/react/modules/websocket/WebSocketModule.kt
+@@ -137,6 +137,9 @@
+           if (key.equals("origin", ignoreCase = true)) {
+             hasOriginHeader = true
+           }
++          if (key.equals("cookie", ignoreCase = true)) {
++            builder.removeHeader("Cookie")
++          }
+           builder.addHeader(
+               key,
+               checkNotNull(headers.getString(key)) { "value for name $key == null" },
+diff --git a/React/CoreModules/RCTWebSocketModule.mm b/React/CoreModules/RCTWebSocketModule.mm
+--- a/React/CoreModules/RCTWebSocketModule.mm
++++ b/React/CoreModules/RCTWebSocketModule.mm
+@@ -143,2 +143,7 @@
+-      [request addValue:headerValue == nil ? @"" : headerValue forHTTPHeaderField:headerKey];
++      if ([headerKey caseInsensitiveCompare:@"Cookie"] == NSOrderedSame) {
++        request.HTTPShouldHandleCookies = NO;
++        [request setValue:headerValue == nil ? @"" : headerValue forHTTPHeaderField:headerKey];
++      } else {
++        [request addValue:headerValue == nil ? @"" : headerValue forHTTPHeaderField:headerKey];
++      }
+     }];
+diff --git a/ReactAndroid/src/main/java/com/facebook/react/modules/fresco/ReactNetworkImageRequest.kt b/ReactAndroid/src/main/java/com/facebook/react/modules/fresco/ReactNetworkImageRequest.kt
+--- a/ReactAndroid/src/main/java/com/facebook/react/modules/fresco/ReactNetworkImageRequest.kt
++++ b/ReactAndroid/src/main/java/com/facebook/react/modules/fresco/ReactNetworkImageRequest.kt
+@@ -10,1 +10,2 @@
++import com.facebook.common.util.UriUtil
+ import com.facebook.imagepipeline.request.ImageRequest
+@@ -30,2 +31,9 @@
+     ): ReactNetworkImageRequest {
++      if (
++          UriUtil.isLocalFileUri(builder.sourceUri) &&
++              headers?.getString("Cache-Control") == "no-store"
++      ) {
++        builder.disableMemoryCache()
++        builder.disableDiskCache()
++      }
+       return ReactNetworkImageRequest(builder, headers, cacheControl)
+diff --git a/Libraries/Image/RCTImageLoader.mm b/Libraries/Image/RCTImageLoader.mm
+--- a/Libraries/Image/RCTImageLoader.mm
++++ b/Libraries/Image/RCTImageLoader.mm
+@@ -540,2 +540,3 @@
+-  if (request.cachePolicy == NSURLRequestReloadIgnoringLocalCacheData) {
++  if (request.cachePolicy == NSURLRequestReloadIgnoringLocalCacheData ||
++      (request.URL.isFileURL && [[request valueForHTTPHeaderField:@"Cache-Control"] isEqualToString:@"no-store"])) {
+     cacheResult = NO;

@@ -1,0 +1,27 @@
+#!/bin/bash
+# Chromium inside an OpenShell sandbox: its own sandbox cannot start (no user namespaces, seccomp filters denied:
+# NVIDIA/OpenShell#4097, #4098), and the GPU process cannot fork; OpenShell is the isolation boundary.
+# QUIC/UDP is not mediated by OpenShell, so force TCP.
+#
+# Chromium ignores --load-extension unless the DisableLoadExtensionCommandLineSwitch feature is off. A second
+# --disable-features switch would replace the caller's list (the last one wins, and Playwright passes its own), so
+# the feature is appended to the caller's list instead.
+args=()
+extensions=0
+features=0
+for arg in "$@"; do
+  case "$arg" in
+    --load-extension=?*) extensions=1 ;;
+  esac
+done
+for arg in "$@"; do
+  if [ "$extensions" = 1 ] && [[ "$arg" == --disable-features=* ]]; then
+    arg="$arg,DisableLoadExtensionCommandLineSwitch"
+    features=1
+  fi
+  args+=("$arg")
+done
+[ "$extensions" = 1 ] && [ "$features" = 0 ] && args+=("--disable-features=DisableLoadExtensionCommandLineSwitch")
+exec /usr/bin/chromium --no-sandbox --no-zygote --in-process-gpu --disable-dev-shm-usage --disable-quic \
+  --no-first-run --no-default-browser-check --disable-background-networking --disable-component-update \
+  --disable-breakpad --password-store=basic "${args[@]}"

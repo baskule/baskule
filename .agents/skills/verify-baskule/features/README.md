@@ -1,0 +1,22 @@
+# Feature map
+
+Front matter is JSON-valued YAML: `paths`, `journeys`, `profile`, optional `checks` and `ownerRun`. The map drives `scripts/check feature:<name>` and `scripts/check plan`. `journeys` defaults to `@feature:<name>` when no custom checks are declared. Check-only features can omit it or set it to null. Keep paths and commands current when changing a feature.
+- [Sign in and sessions](sign-in-sessions.md)
+- [Invitations and people](invitations-people.md)
+- [Groups](groups.md)
+- [Personal chat](personal-chat.md)
+- [Team chat and live queue](team-chat.md)
+- [Conversation controls](conversation-controls.md)
+- [Files and attachments](files-attachments.md)
+- [Computer and tools](computer-tools.md)
+- [Shared browser](shared-browser.md)
+- [Schedules and webhooks](schedules-webhooks.md)
+- [Delegation](delegation.md)
+- [Plugins: catalog, install, runtime and connections](plugins.md)
+- [Usage and limits](usage-limits.md)
+- [Administration](admin.md)
+- [Phone layout](phone-layout.md)
+- [Desktop client](desktop-client.md)
+- [Deployed edge, fleet and failover](deployed-seams.md)
+- [Spaces and membership](spaces.md)
+- [Personal settings](personal-settings.md)

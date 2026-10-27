@@ -1,0 +1,5 @@
+# This standard GitHub-hosted preview label predates actionlint's runner list.
+# This only extends lint validation; workflows do not use self-hosted runners.
+self-hosted-runner:
+  labels:
+    - xcode-27

@@ -1,0 +1,32 @@
+# Source lives in app/ and vendor/; local build caches stay ignored.
+.vendor/
+.tools/
+.scratch/
+.run/
+spikes/**/node_modules
+node_modules/
+e2e/artifacts/
+**/.env
+desktop/dist/
+desktop/release/
+e2e/test-results/
+
+# Local cache symlinks are ignored as well as directories.
+/.tools
+/vendor/openshell/target
+
+# Machine state, credentials and signing material stay local.
+.env.*
+!.env.example
+*.key
+*.pem
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.mobileprovision
+*.sqlite
+*.sqlite-*
+*.sqlite3
+.claude/settings.local.json
+.codex/

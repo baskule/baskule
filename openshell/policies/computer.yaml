@@ -1,0 +1,24 @@
+# The Baskule computer policy (architecture E5): general public internet, private networks unreachable,
+# TLS passed through (Chromium uses NSS and would reject OpenShell's MITM CA).
+# `public_internet` exists only in our vendored fork (vendor/openshell); an unpatched gateway rejects
+# this policy (fails closed).
+# computerd v2 sends the same policy with every CreateSandbox (computerd/v2/src/policy.ts); keep them in sync
+# (computerd's unit test compares the two).
+version: 1
+filesystem_policy:
+  include_workdir: true            # /sandbox (WORKDIR), which contains the per-space volume /sandbox/space
+  read_only: [/bin, /sbin, /usr, /lib, /lib64, /etc, /opt, /proc, /sys, /dev/urandom, /var/log, /var/lib]
+  read_write: [/tmp, /var/tmp, /dev/null, /dev/shm]
+landlock:
+  compatibility: best_effort
+process:
+  run_as_user: "1000"
+  run_as_group: "1000"
+network_policies:
+  internet:
+    endpoints:
+      - public_internet: true
+        ports: [80, 443, 22]
+        tls: skip
+    binaries:
+      - path: "/**"

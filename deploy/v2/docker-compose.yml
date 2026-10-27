@@ -1,0 +1,249 @@
+# Baskule Alpha 0.2: single-machine deployment (architecture E11). See README.md.
+#   cd deploy/v2 && cp .env.example .env && $EDITOR .env && ./up.sh
+# Project `baskule02`. Containers are `baskule02-*` (the 0.1 stack already owns `baskule-computerd`); the service
+# names (`baskule-*`) are the DNS names on the networks. Volumes are `baskule02-*`. Only the edge is published.
+#
+# Networks:
+#   baskule02-net        edge, celld nodes, RustFS, computerd
+#   baskule02-computers  computerd <-> baskule-openshell (gateway + private dockerd + the computers)
+# The computers' supervisors live in baskule-openshell's network namespace, so they never share a network with
+# celld/RustFS/edge; the fork's egress policy additionally refuses every private destination.
+name: baskule02
+
+# The fleet bucket: RustFS by default; an external S3 bucket when .env sets S3_ENDPOINT (docker-compose.s3.yml).
+x-s3: &s3
+  AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-${RUSTFS_ACCESS_KEY:-}}
+  AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-${RUSTFS_SECRET_KEY:-}}
+  AWS_REGION: ${S3_REGION:-us-east-1}
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://baskule-rustfs:47093}
+  CELLD_BUCKET_NAME: ${CELLD_BUCKET_NAME:-baskule02}
+  CELLD_BUCKET: s3://${CELLD_BUCKET_NAME:-baskule02}
+
+x-celld-env: &celld-env
+  <<: *s3
+  CELLD_V8_HEAP_LIMIT_MB: ${CELLD_V8_HEAP_LIMIT_MB:-1024}
+  # Outbound fetches include LLM streams and computerd exec streams: allow long ones.
+  CELLD_FETCH_TIMEOUT_S: ${CELLD_FETCH_TIMEOUT_S:-3600}
+  # The desktop AppImage is served as a static asset under /downloads (WP-C/WP-G): >= 200 MiB.
+  CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
+  # Traces of every request, cell turn and storage operation go to baskule-traces ("0": off).
+  CELLD_OTEL: ${BASKULE_CELLD_OTEL-http://baskule-traces:4318}
+  DO_NOT_TRACK: "1"
+  RUST_LOG: ${CELLD_RUST_LOG:-info}
+
+x-celld-node: &celld-node
+  build: ./celld
+  image: baskule-celld:${BASKULE_TAG:-0.2}
+  restart: unless-stopped
+  networks: [baskule02-net]
+  depends_on:
+    baskule-bootstrap:
+      condition: service_completed_successfully
+  healthcheck:
+    test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://127.0.0.1:47091/.well-known/celld/health"]
+    interval: 5s
+    timeout: 3s
+    start_period: 60s
+    start_interval: 1s
+    retries: 3
+  # SIGTERM = graceful handoff of the node's cells (up to 40 s).
+  stop_grace_period: 50s
+  cpus: ${CELLD_CPUS:-2}
+  mem_limit: ${CELLD_MEMORY:-3g}
+
+services:
+  baskule-rustfs:
+    image: rustfs/rustfs@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b
+    container_name: baskule02-rustfs
+    restart: unless-stopped
+    command: ["rustfs", "/data"]
+    environment:
+      RUSTFS_ADDRESS: 0.0.0.0:47093
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-}
+    volumes:
+      - baskule02-rustfs:/data
+    networks: [baskule02-net]
+    healthcheck:
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://127.0.0.1:47093/"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      start_interval: 1s
+      retries: 3
+    cpus: 1
+    mem_limit: 1g
+
+  # One-shot: create the fleet bucket (idempotent).
+  baskule-bootstrap:
+    build: ./celld
+    image: baskule-celld:${BASKULE_TAG:-0.2}
+    container_name: baskule02-bootstrap
+    entrypoint: ["baskule-celld-job", "bootstrap"]
+    restart: "no"
+    environment: *s3
+    networks: [baskule02-net]
+    depends_on:
+      baskule-rustfs:
+        condition: service_healthy
+
+  baskule-celld-a:
+    <<: *celld-node
+    container_name: baskule02-celld-a
+    hostname: baskule-celld-a
+    command: ["--listen", "0.0.0.0:47091", "--internal-listen", "0.0.0.0:47092", "--advertise", "baskule-celld-a:47092"]
+    environment:
+      <<: *celld-env
+      CELLD_NODE: baskule02-a
+    volumes:
+      - baskule02-celld-a:/var/lib/celld
+
+  baskule-celld-b:
+    <<: *celld-node
+    container_name: baskule02-celld-b
+    hostname: baskule-celld-b
+    command: ["--listen", "0.0.0.0:47091", "--internal-listen", "0.0.0.0:47092", "--advertise", "baskule-celld-b:47092"]
+    environment:
+      <<: *celld-env
+      CELLD_NODE: baskule02-b
+    volumes:
+      - baskule02-celld-b:/var/lib/celld
+
+  # One-shot: `celld deploy` of platform/ (built by `cd platform && pnpm run build`), or of hello/ when the platform
+  # bundle is missing (DEPLOY_APP=auto) or when DEPLOY_APP=hello. Re-run with `./deploy.sh`.
+  baskule-deploy:
+    build: ./celld
+    image: baskule-celld:${BASKULE_TAG:-0.2}
+    container_name: baskule02-deploy
+    entrypoint: ["baskule-celld-job", "deploy"]
+    restart: "no"
+    environment:
+      <<: *s3
+      # `celld deploy` checks asset sizes too (desktop artifacts under /downloads).
+      CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
+      DEPLOY_APP: ${DEPLOY_APP:-auto}
+      CELLD_NODES_INTERNAL: baskule-celld-a:47092 baskule-celld-b:47092
+      PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-http://127.0.0.1:47090}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      COMPUTERD_URL: http://baskule-computerd:47094
+      COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:?set COMPUTERD_TOKEN in .env}
+      # T3's spans inside each SpaceCell (orchestration, provider turns, browser operations).
+      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
+    env_file: .env
+    volumes:
+      - ${AUTH_CONFIG_FILE:-./auth.json}:/src/auth.json:ro
+      - ${BASKULE_PLATFORM_DIR:-../../platform}:/src/platform:ro
+      - ./hello:/src/hello:ro
+    networks: [baskule02-net]
+    # Only the bucket is needed: a fresh node answers nothing (not even its health route) until a deployment exists.
+    depends_on:
+      baskule-bootstrap:
+        condition: service_completed_successfully
+      baskule-celld-a:
+        condition: service_started
+      baskule-celld-b:
+        condition: service_started
+
+  baskule-edge:
+    image: caddy:2@sha256:25cdc846626b62d05f6b633b9b40c2c9f6ef89b515dc76133cefd920f7dbe562
+    container_name: baskule02-edge
+    restart: unless-stopped
+    ports:
+      - "${BASKULE02_BIND:-127.0.0.1}:${BASKULE02_PORT:-47090}:47090"
+    volumes:
+      - ./edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      - baskule02-edge-data:/data
+    networks: [baskule02-net]
+    depends_on:
+      baskule-celld-a:
+        condition: service_started
+      baskule-celld-b:
+        condition: service_started
+    cpus: 1
+    mem_limit: 256m
+
+  baskule-computerd:
+    build:
+      context: ../..
+      dockerfile: computerd/v2/Dockerfile
+    image: baskule-computerd:${BASKULE_TAG:-0.2}
+    container_name: baskule02-computerd
+    restart: unless-stopped
+    environment:
+      COMPUTERD_TOKEN: ${COMPUTERD_TOKEN}
+      COMPUTERD_PORT: "47094"
+      OPENSHELL_GATEWAY: baskule-openshell:47095
+      OPENSHELL_VOLUMES_URL: http://baskule-openshell:47096
+      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN:?set OPENSHELL_VOLUMES_TOKEN in .env}
+      COMPUTER_IMAGE: baskule-computer:${BASKULE_TAG:-0.2}
+      COMPUTER_CPUS: ${COMPUTER_CPUS:-2}
+      COMPUTER_MEMORY: ${COMPUTER_MEMORY:-3Gi}
+      PRODUCT_SETTINGS_URL: http://baskule-edge:47090/api/baskule/runtime-settings
+      LOG_LEVEL: ${COMPUTERD_LOG_LEVEL:-info}
+      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
+    networks: [baskule02-net, baskule02-computers]
+    depends_on:
+      baskule-openshell:
+        condition: service_healthy
+    cpus: 1
+    mem_limit: 512m
+
+  baskule-openshell:
+    image: baskule-openshell-gateway:${BASKULE_TAG:-0.2}
+    container_name: baskule02-openshell
+    restart: unless-stopped
+    # Privileged: it runs its own dockerd (unix socket only, no bridge, no iptables). The computers run inside it.
+    privileged: true
+    environment:
+      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN}
+      OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP-http://baskule-traces:4317}
+      BASKULE_TAG: ${BASKULE_TAG:-0.2}
+    volumes:
+      - baskule02-openshell-docker:/var/lib/docker
+      - baskule02-openshell-state:/var/lib/openshell
+    networks: [baskule02-computers]
+    stop_grace_period: 60s
+    cpus: ${OPENSHELL_CPUS:-3}
+    mem_limit: ${OPENSHELL_MEMORY:-8g}
+    pids_limit: 16384
+
+  # Traces of the whole stack (celld, the T3 server in each cell, the OpenShell gateway): Jaeger, in memory. The UI
+  # listens on the tailnet address only, like the edge.
+  baskule-traces:
+    image: jaegertracing/jaeger:2.22.0@sha256:836b967b5abcf1f7758066aa6b348619267a2f1459f72d472840570f9bd88a17
+    container_name: baskule02-traces
+    restart: unless-stopped
+    command: ["--config", "/etc/jaeger/config.yaml"]
+    environment:
+      JAEGER_MAX_TRACES: ${BASKULE_TRACES_MAX:-20000}
+    volumes:
+      - ./traces/jaeger.yaml:/etc/jaeger/config.yaml:ro
+    ports:
+      - "${BASKULE02_BIND:-127.0.0.1}:${BASKULE02_TRACES_PORT:-47098}:16686"
+    networks: [baskule02-net, baskule02-computers]
+    cpus: 1
+    mem_limit: ${BASKULE_TRACES_MEMORY:-1g}
+
+networks:
+  baskule02-net:
+    name: baskule02-net
+  baskule02-computers:
+    name: baskule02-computers
+
+volumes:
+  baskule02-rustfs:
+    name: baskule02-rustfs
+  baskule02-celld-a:
+    name: baskule02-celld-a
+  baskule02-celld-b:
+    name: baskule02-celld-b
+  baskule02-edge-data:
+    name: baskule02-edge-data
+  baskule02-openshell-docker:
+    name: baskule02-openshell-docker
+  baskule02-openshell-state:
+    name: baskule02-openshell-state

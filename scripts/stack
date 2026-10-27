@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Use the same pinned toolchain as scripts/check.
+set -euo pipefail
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+source "$ROOT/scripts/env.sh"
+case ${1:-help} in
+  up|reload)
+    if [[ ! -s $ROOT/platform/src/space/t3/space-cell.js ]]; then
+      echo 'SpaceCell is not prepared. Run scripts/worktree runtime, then retry this command.' >&2
+      exit 1
+    fi
+    ;;
+esac
+exec node "$ROOT/scripts/stack.mjs" "$@"

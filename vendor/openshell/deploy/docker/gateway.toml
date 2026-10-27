@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenShell gateway TOML configuration — Docker compute driver.
+#
+# This file is the primary configuration source for docker-compose.yml in this
+# directory.  It is mounted read-only at /etc/openshell/gateway.toml inside the
+# gateway container and loaded via OPENSHELL_GATEWAY_CONFIG.
+#
+# Why docker-compose.yml sets command: []:
+#   The gateway image's default CMD passes --bind-address 0.0.0.0 --port 8080
+#   as explicit CLI flags.  CLI flags beat the TOML file in the merge order, so
+#   bind_address = "127.0.0.1:8080" below would be silently ignored without
+#   clearing the CMD first.
+#
+# grpc_endpoint note:
+#   Omitted on purpose.  The supervisor uses host networking and reaches the
+#   published port at http://127.0.0.1:8080 (keep OPENSHELL_PORT at 8080).
+
+[openshell]
+version = 2
+
+[openshell.gateway]
+# Bind to loopback only.  The Docker driver adds an extra listener on the
+# bridge interface automatically so sandbox containers can reach the gateway.
+bind_address        = "127.0.0.1:8080"
+health_bind_address = "127.0.0.1:8081"
+log_level           = "info"
+compute_driver      = "docker"
+disable_tls         = true
+
+# No TLS and loopback only: user calls are unauthenticated.
+# Supervisors still authenticate with the JWT keys below.
+[openshell.gateway.auth]
+allow_unauthenticated_users = true
+
+# Written by the compose init service.
+[openshell.gateway.gateway_jwt]
+signing_key_path = "/var/lib/openshell/tls/jwt/signing.pem"
+public_key_path  = "/var/lib/openshell/tls/jwt/public.pem"
+kid_path         = "/var/lib/openshell/tls/jwt/kid"
+gateway_id       = "openshell-docker"
+
+[openshell.drivers.docker]
+# Default image pulled for `openshell sandbox create` without --from.
+default_image     = "nvcr.io/nvidia/base/ubuntu:24.04"
+# Sandbox runtime image from which the openshell-sandbox binary is extracted.
+sandbox_runtime_image = "ghcr.io/nvidia/openshell/sandbox:latest"
+# Image containing the external supervisor process.
+supervisor_image  = "ghcr.io/nvidia/openshell/supervisor:latest"
+# Only pull images that are not already cached locally.
+image_pull_policy = "if_not_present"
+# Value assigned to the openshell.sandbox_namespace label on sandbox containers.
+sandbox_label     = "openshell"
+# Explicit supervisor-compatible Docker default. Set RuntimeDefault or
+# Localhost/<profile> only when the daemon host has AppArmor available.
+app_armor_profile = "Unconfined"

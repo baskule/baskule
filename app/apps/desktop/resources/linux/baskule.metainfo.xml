@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.baskule.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Baskule</name>
+  <summary>Desktop client for the Baskule assistant</summary>
+  <developer id="baskule">
+    <name>Baskule</name>
+  </developer>
+  <description>
+    <p>
+      Baskule is an open-source assistant built on T3 Code. Connect to your
+      Baskule installation to chat with the assistant and work with files.
+    </p>
+    <p>
+      Connect from desktop, web, or mobile to continue working remotely.
+    </p>
+  </description>
+  <launchable type="desktop-id">baskule.desktop</launchable>
+  <icon type="stock">baskule</icon>
+  <provides>
+    <binary>baskule</binary>
+  </provides>
+  <categories>
+    <category>Development</category>
+  </categories>
+  <url type="homepage">https://github.com/baskule/baskule</url>
+  <url type="bugtracker">https://github.com/baskule/baskule/issues</url>
+  <url type="vcs-browser">https://github.com/baskule/baskule</url>
+</component>

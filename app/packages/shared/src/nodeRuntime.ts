@@ -1,0 +1,61 @@
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+
+import * as HostProcess from "./HostProcess.ts";
+import { CommandResolutionCache, resolveCommandPath } from "./shell.ts";
+
+const NodeRuntimeFeature = Schema.Literals(["Local device support", "Device automation"]);
+
+export const nodeRuntimeUnavailableMessage = (feature: typeof NodeRuntimeFeature.Type): string =>
+  `${feature} requires Node.js. Install Node.js and make sure node is on PATH, then retry.`;
+
+export class NodeRuntimeUnavailableError extends Schema.TaggedError<NodeRuntimeUnavailableError>()(
+  "NodeRuntimeUnavailableError",
+  { feature: NodeRuntimeFeature, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message(): string {
+    return nodeRuntimeUnavailableMessage(this.feature);
+  }
+}
+
+export const resolveNodeExecutable = Effect.fn("nodeRuntime.resolveNodeExecutable")(function* (
+  feature: typeof NodeRuntimeFeature.Type,
+  environment?: NodeJS.ProcessEnv,
+) {
+  const executablePath = yield* HostProcess.ExecutablePath;
+  if (!(yield* HostProcess.IsExecutable)) return executablePath;
+
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const platform = yield* HostProcess.Platform;
+  const env = environment ?? (yield* HostProcess.Environment);
+  const resolvedNodePath = yield* resolveCommandPath(platform === "win32" ? "node.exe" : "node", {
+    env: platform === "win32" ? { ...env, PATHEXT: ".EXE" } : env,
+  }).pipe(Effect.provideService(CommandResolutionCache, new Map()));
+  if (resolvedNodePath === null) return yield* new NodeRuntimeUnavailableError({ feature });
+  const nodePath = path.resolve(resolvedNodePath);
+  const resolvedPath = yield* fs
+    .realPath(nodePath)
+    .pipe(Effect.mapError((cause) => new NodeRuntimeUnavailableError({ feature, cause })));
+  if (resolvedPath === executablePath) return yield* new NodeRuntimeUnavailableError({ feature });
+  const [hostInfo, nodeInfo] = yield* Effect.all([
+    fs.stat(executablePath).pipe(Effect.option),
+    fs.stat(nodePath).pipe(Effect.option),
+  ]);
+  if (
+    Option.isSome(hostInfo) &&
+    Option.isSome(nodeInfo) &&
+    hostInfo.value.dev === nodeInfo.value.dev &&
+    Option.isSome(hostInfo.value.ino) &&
+    Option.isSome(nodeInfo.value.ino) &&
+    hostInfo.value.ino.value > 0n &&
+    hostInfo.value.ino.value === nodeInfo.value.ino.value
+  ) {
+    return yield* new NodeRuntimeUnavailableError({ feature });
+  }
+  // Launchers such as Vite+ dispatch by argv[0]; keep the node name intact.
+  return nodePath;
+});

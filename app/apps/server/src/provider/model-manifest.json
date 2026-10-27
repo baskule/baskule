@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-24T00:00:00Z",
+  "compatibility": [
+    {
+      "driver": "opencode",
+      "t3CodeRange": ">=0.0.0",
+      "recommendedVersion": "2.1.2",
+      "recommendedRange": ">=2.0.18 <3.0.0",
+      "ranges": [
+        {
+          "range": ">=2.0.18 <3.0.0",
+          "status": "supported"
+        },
+        {
+          "range": "<2.0.18",
+          "status": "broken"
+        }
+      ]
+    }
+  ],
+  "currentModels": {},
+  "providers": {}
+}

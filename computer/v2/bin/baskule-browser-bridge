@@ -1,0 +1,24 @@
+#!/bin/bash
+# One bridge per computer; the per-space volume keeps Chromium profiles across sleep/restart.
+set -euo pipefail
+PORT=${BASKULE_BROWSER_PORT:-9223}
+RUN=/tmp/baskule-browser-bridge
+mkdir -p "$RUN"
+exec 9>"$RUN/lock"
+flock 9
+up() { curl -sf -m 2 "http://127.0.0.1:$PORT/healthz" >/dev/null; }
+up && exit 0
+mkdir -p "$HOME/.baskule-browser"
+# uBlock Origin Lite for every page (its settings: /etc/chromium/policies/managed/baskule-ublock-lite.json, keyed
+# by the extension id, which Chromium derives from this path). Chromium writes the indexed filter rules into an
+# unpacked extension's own directory, and /opt is read-only here: load a copy from /tmp (the container layer, kept
+# across stop/start), refreshed when the image ships another version.
+EXT=/tmp/baskule-browser/ublock-lite
+if ! cmp -s /opt/baskule-browser/ublock-lite/manifest.json "$EXT/manifest.json"; then
+  rm -rf "$EXT" && mkdir -p "${EXT%/*}" && cp -r /opt/baskule-browser/ublock-lite "$EXT"
+fi
+export BASKULE_BROWSER_EXTENSIONS=$EXT
+setsid sh -c 'echo $$ > "$0"; exec node /opt/baskule-browser/bridge.mjs' "$RUN/pid" 9>&- </dev/null >>"$RUN/bridge.log" 2>&1 &
+for _ in $(seq 150); do up && exit 0; sleep 0.2; done
+tail -20 "$RUN/bridge.log" >&2
+exit 1

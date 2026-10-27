@@ -1,0 +1,29 @@
+#!/bin/bash
+# The computer's shared browser: one headless Chromium with a DevTools endpoint on 127.0.0.1:${BASKULE_CDP_PORT:-9222}
+# and a persistent profile in $HOME/.baskule/chromium. Playwright MCP attaches to it (playwright-mcp), and
+# computerd's CDP tunnel exposes it to the cells (shared browser sessions, T3 browser preview).
+#   baskule-browser ensure   start it if needed, wait until the endpoint answers, print /json/version
+#   baskule-browser status   exit 0 if the endpoint answers
+#   baskule-browser stop
+set -u
+PORT=${BASKULE_CDP_PORT:-9222}
+PROFILE=${BASKULE_BROWSER_PROFILE:-$HOME/.baskule/chromium}
+RUN=${TMPDIR:-/tmp}/baskule-browser
+up() { curl -sf -m 2 "http://127.0.0.1:$PORT/json/version"; }
+case "${1:-ensure}" in
+  status) up >/dev/null ;;
+  stop)
+    [ -f "$RUN/pid" ] && kill -TERM -- "-$(cat "$RUN/pid")" 2>/dev/null
+    rm -f "$RUN/pid"; exit 0 ;;
+  ensure)
+    up && exit 0
+    mkdir -p "$RUN" "$PROFILE"
+    # A previous instance that crashed leaves a profile lock behind.
+    rm -f "$PROFILE/SingletonLock" "$PROFILE/SingletonSocket" "$PROFILE/SingletonCookie"
+    setsid sh -c 'echo $$ > "$0"; exec chromium-baskule --headless --remote-debugging-address=127.0.0.1 \
+      --remote-debugging-port="$1" --user-data-dir="$2" --window-size=1280,800 about:blank' \
+      "$RUN/pid" "$PORT" "$PROFILE" </dev/null >>"$RUN/chromium.log" 2>&1 &
+    for _ in $(seq 150); do up && exit 0; sleep 0.2; done
+    echo "baskule-browser: Chromium did not start; last log lines:" >&2; tail -20 "$RUN/chromium.log" >&2; exit 1 ;;
+  *) echo "usage: baskule-browser ensure|status|stop" >&2; exit 2 ;;
+esac
