@@ -28,7 +28,7 @@ import {
   bindTransferLifetime,
   isTransferOriginCurrent,
   type TransferOrigin,
-} from "../lib/nativeTransfer";
+} from "../connection/native-transfer";
 import {
   downloadAttachmentForPreview,
   type AttachmentPreviewFile,

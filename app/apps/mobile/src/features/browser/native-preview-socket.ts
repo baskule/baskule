@@ -1,19 +1,4 @@
-import { transferHeaders, type ProtectedTransfer } from "../../lib/nativeTransfer";
-import type { PreparedConnection } from "@t3tools/client-runtime/connection";
-import type { DeviceHubAccess } from "@t3tools/client-runtime/device/hub-access";
-
-export function baskulePreviewStreamAccess(
-  connection: PreparedConnection,
-): DeviceHubAccess | null {
-  if (
-    !connection.socketHeaders &&
-    !/^\/s\/[^/]+\/?$/.test(new URL(connection.httpBaseUrl).pathname)
-  )
-    return null;
-  const httpBase = connection.httpBaseUrl.replace(/\/$/, "") + "/api/preview-stream";
-  return { httpBase, wsBase: httpBase.replace(/^http/, "ws"), query: {}, credentials: false };
-}
-
+import { transferHeaders, type ProtectedTransfer } from "../../connection/native-transfer";
 export function createNativePreviewSocket(
   input: ProtectedTransfer & { readonly url: string },
 ): WebSocket {

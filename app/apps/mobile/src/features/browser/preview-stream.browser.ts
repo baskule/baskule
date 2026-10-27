@@ -11,7 +11,7 @@ import {
 
 import type { PreviewStreamConfiguration } from "./preview-stream-document";
 import type { NativeViewerMessage, ViewerBridgeMessage } from "./preview-native-bridge";
-import { samePreviewBinding } from "./preview-stream-document";
+import { samePreviewBinding } from "./preview-native-bridge";
 
 declare global {
   interface Window {

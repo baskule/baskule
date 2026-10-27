@@ -47,11 +47,9 @@ import {
   captureTransferOrigin,
   fetchNativeFile,
   transferHeaders,
-} from "./nativeTransfer";
-import {
-  createNativePreviewSocket,
-  baskulePreviewStreamAccess,
-} from "../features/browser/native-preview-socket";
+} from "../connection/native-transfer";
+import { createNativePreviewSocket } from "../features/browser/native-preview-socket";
+import { baskulePreviewStreamAccess } from "./connection";
 
 const environmentId = EnvironmentId.make("space-environment");
 function connect(serverUrl = "https://front.test", token = "front-token") {

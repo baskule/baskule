@@ -6,7 +6,7 @@ import {
   isLanguagePreference,
   resolveLocale,
   t,
-} from "./localization";
+} from "./localization.ts";
 
 describe("language selection", () => {
   it("uses the first supported browser or OS language, including regional variants", () => {

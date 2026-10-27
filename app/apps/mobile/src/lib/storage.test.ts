@@ -38,8 +38,12 @@ const mocks = vi.hoisted(() => {
       closeAsync: vi.fn(() => Promise.resolve()),
       execAsync: vi.fn(() => Promise.resolve()),
       withExclusiveTransactionAsync: vi.fn(
-        (run: (transaction: { execAsync: () => Promise<void> }) => Promise<void>) =>
-          run({ execAsync: () => Promise.resolve() }),
+        (
+          run: (transaction: {
+            execAsync: () => Promise<void>;
+            runAsync: () => Promise<void>;
+          }) => Promise<void>,
+        ) => run({ execAsync: async () => {}, runAsync: async () => {} }),
       ),
       getFirstAsync: vi.fn((sql: string) => {
         if (sql.includes("PRAGMA user_version")) {

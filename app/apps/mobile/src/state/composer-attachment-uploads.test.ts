@@ -1,10 +1,7 @@
 import { CommandId, EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
-type UploadOptions = {
-  signal: AbortSignal;
-  onProgress?: (progress: { bytesSent: number; totalBytes: number }) => void;
-};
+type UploadOptions = Pick<RequestInit, "body" | "signal">;
 type DraftFault = "decode" | "read" | "write" | null;
 
 const native = vi.hoisted(() => ({
@@ -17,8 +14,7 @@ const native = vi.hoisted(() => ({
   nextUuid: 0,
   mint: Symbol("mint"),
   remove: Symbol("remove"),
-  transfer:
-    vi.fn<(uri: string, url: string, options: UploadOptions) => Promise<{ status: number }>>(),
+  transfer: vi.fn<(url: string, options: UploadOptions) => Promise<{ status: number }>>(),
   effects: [] as Array<() => void | (() => void)>,
   queueRef: {
     current: null as ReturnType<
@@ -28,6 +24,15 @@ const native = vi.hoisted(() => ({
 }));
 
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: { getItem: async () => null, setItem: async () => {} },
+}));
+vi.mock("expo-secure-store", () => ({
+  getItemAsync: async () => null,
+  setItemAsync: async () => {},
+  deleteItemAsync: async () => {},
+}));
+vi.mock("expo/fetch", () => ({ fetch: native.transfer }));
 vi.mock("react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react")>()),
   useEffect: (effect: () => void | (() => void)) => native.effects.push(effect),
@@ -88,8 +93,8 @@ vi.mock("expo-file-system", () => {
     delete() {
       native.files.delete(this.uri);
     }
-    upload(url: string, options: UploadOptions) {
-      return native.transfer(this.uri, url, options);
+    async bytes() {
+      return native.files.get(this.uri)!;
     }
   }
   return {
@@ -121,13 +126,20 @@ vi.mock("./use-atom-command", () => ({ useAtomCommand: () => async () => undefin
 vi.mock("./session", async () => {
   const { Atom } = await import("effect/reactivity");
   const Option = await import("effect/Option");
+  const connection = {
+    environmentId: "environment-1",
+    httpBaseUrl: "https://environment.example/",
+    httpAuthorization: null,
+  };
   return {
+    readPreparedConnection: () => connection,
     readEnvironmentScope: () => native.canOperate,
     useEnvironmentsWithScope: () => new Set(["environment-1"]),
     environmentSession: {
       preparedConnectionValueAtom: Atom.family(() =>
-        Atom.make(Option.some({ httpBaseUrl: "https://environment.example/" })),
+        Atom.make(Option.some(connection)),
       ),
+      sessionStateAtom: Atom.family(() => Atom.make(null)),
     },
   };
 });
@@ -268,9 +280,9 @@ beforeEach(async () => {
   await drafts.flushComposerDrafts();
   await threadOutboxManager.load();
   native.transfer.mockReset();
-  native.transfer.mockImplementation(async (uri, url, options) => {
-    const bytes = native.files.get(uri)!;
-    options.onProgress?.({ bytesSent: bytes.length, totalBytes: bytes.length });
+  native.transfer.mockImplementation(async (url, options) => {
+    const bytes = options.body;
+    if (!(bytes instanceof Uint8Array)) throw new Error("Expected uploaded file bytes");
     native.server.set(url.split("/").at(-1)!, bytes);
     return { status: 204 };
   });

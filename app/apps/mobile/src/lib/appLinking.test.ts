@@ -18,8 +18,8 @@ describe("Baskule app links", () => {
       expect(shouldHandleAppLink(`${scheme}://`)).toBe(false);
     },
   );
-  it.each(["baskule", "baskule-dev", "baskule-preview", "baskule-unknown"])(
-    "rejects the retired or uninstalled %s scheme",
+  it.each(["other-app", "other-app-dev", "other-app-preview", "baskule-unknown"])(
+    "rejects the unsupported or uninstalled %s scheme",
     (scheme) => {
       const link = `${scheme}://connect?server=https%3A%2F%2Fbaskule.example&code=x`;
       expect(isConnectAppLink(link)).toBe(false);

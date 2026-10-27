@@ -68,7 +68,7 @@ describe("receiving a connection", () => {
     "",
     "javascript:alert(1)",
     "file:///tmp/link",
-    "baskule://connect?server=https://baskule.example",
+    "other-app://connect?server=https://baskule.example",
     "baskule://app",
     "baskule://connect?server=baskule://connect",
     "http://public.example",

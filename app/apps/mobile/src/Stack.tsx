@@ -14,6 +14,8 @@ import {
   getPathFromState,
   NavigationState,
   StackActions,
+  type ParamListBase,
+  type ScreenLayoutArgs,
   useNavigation,
 } from "@react-navigation/native";
 import {
@@ -153,6 +155,13 @@ import { nativeHeaderScrollEdgeEffects } from "./native/StackHeader";
 import { FORM_SHEET_PRESENTATION_OPTIONS } from "./native/sheet-surface";
 import { useThreadOutboxDrain } from "./state/use-thread-outbox-drain";
 import { useComposerAttachmentUploadWorker } from "./state/composer-attachment-uploads";
+
+type NativeScreenLayoutProps = ScreenLayoutArgs<
+  ParamListBase,
+  string,
+  NativeStackNavigationOptions,
+  unknown
+>;
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -521,7 +530,7 @@ const SettingsSheetStack = createV5SheetStackNavigator({
       screen: SettingsContentStack,
       options: NESTED_NAVIGATOR_OPTIONS,
       linking: "",
-      layout: ({ children }) => (
+      layout: ({ children }: NativeScreenLayoutProps) => (
         <SettingsEnvironmentFilterProvider>
           <ScheduledTaskEditorProvider>{children}</ScheduledTaskEditorProvider>
         </SettingsEnvironmentFilterProvider>
@@ -1048,7 +1057,9 @@ const RootStackConfig = createWorkspaceStackNavigator({
     }),
     SettingsSheet: createNativeStackScreen({
       screen: SettingsSheetStack,
-      layout: ({ children }) => <AndroidWorkspaceSettings>{children}</AndroidWorkspaceSettings>,
+      layout: ({ children }: NativeScreenLayoutProps) => (
+        <AndroidWorkspaceSettings>{children}</AndroidWorkspaceSettings>
+      ),
       linking: "settings",
       options: {
         ...NESTED_NAVIGATOR_OPTIONS,
@@ -1119,7 +1130,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       screen: NewTaskSheetStack,
       linking: "new",
       // A screen's layout replaces the navigator's screenLayout.
-      layout: ({ children, route }) => (
+      layout: ({ children, route }: NativeScreenLayoutProps) => (
         <GuardedScreenLayout route={route}>
           <NewTaskFlowProvider>
             <View className="flex-1 bg-sheet-solid">{children}</View>
