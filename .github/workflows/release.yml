@@ -28,6 +28,9 @@ concurrency:
 jobs:
   version:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      statuses: write
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -59,6 +62,15 @@ jobs:
               raise SystemExit('Expected a SemVer source version.')
           PY
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Report manual factory start on the source commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=pending -f context='Release factory' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f description='Full artifact verification is running.' --silent
 
   backend:
     needs: version
@@ -177,6 +189,33 @@ jobs:
       platform: all
       sign: false
     secrets: inherit
+
+  factory-status:
+    needs: [version, backend, linux-apps, native]
+    if: always() && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      statuses: write
+    steps:
+      - name: Report the complete manual factory result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_RESULT: ${{ needs.version.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          LINUX_RESULT: ${{ needs.linux-apps.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+          INCLUDE_NATIVE: ${{ inputs.include_native }}
+        shell: bash
+        run: |
+          state=failure
+          if [[ $VERSION_RESULT == success && $BACKEND_RESULT == success && $LINUX_RESULT == success &&
+                ($NATIVE_RESULT == success || ($INCLUDE_NATIVE == false && $NATIVE_RESULT == skipped)) ]]; then
+            state=success
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f "state=$state" -f context='Release factory' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f description="Full artifact verification: $state." --silent
 
   draft-release:
     needs: [version, backend, linux-apps, native]

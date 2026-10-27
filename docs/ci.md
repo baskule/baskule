@@ -23,6 +23,8 @@ gh workflow run release.yml --repo baskule/baskule --ref main \
   -f verify_only=true -f include_native=true
 ```
 
+Manual factory runs also post a `Release factory` commit status, linking the candidate to the full run. [GitHub excludes workflow-dispatch job checks from PR checks](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks). This status is separate from the routine `CI required` gate.
+
 The backend job builds the Worker, SpaceCell and four runtime images, then exercises the disposable fake-model release stack. Backend image IDs remain in that job; other jobs receive explicit artifacts. The Linux app job builds hosted web and a real AppImage and runs the packaged application under Xvfb. Cold OpenShell compilation can be lengthy; disk and build evidence are retained in the run.
 
 The native workflow compiles Android arm64, an iOS simulator app, macOS arm64/x64 and Windows x64. Windows packaging executes the existing native-load and server-archive probes. iOS includes a simulator install/launch smoke. Android does not add an emulator lane. Optional upstream Windows package diagnostics remain manual.

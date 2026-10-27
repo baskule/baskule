@@ -795,7 +795,7 @@ const scenarios = {
     await page.goto("/apps");
     await page.getByText("Baskule for Linux").first().waitFor();
     await shot(page, `${device}-apps`);
-    await page.getByRole("button", { name: "Show a connection link" }).click();
+    await page.getByRole("button", { name: "Show QR for another device", exact: true }).click();
     const link = await page
       .getByRole("textbox", { name: "Connection link", exact: true })
       .inputValue();
@@ -803,15 +803,28 @@ const scenarios = {
       /\/link#code=[\w-]{20,}$/.test(link),
       `${device}: Connect a device shows a one-time link`,
     );
-    await page.locator("svg title", { hasText: "Connection link" }).waitFor({ state: "attached" });
+    await page
+      .locator("svg title", { hasText: "Sign-in link for another device" })
+      .waitFor({ state: "attached" });
     await shot(page, `${device}-apps-connect`);
     const other = await newPage(browser, device);
     await other.page.goto(link);
+    await other.page.getByRole("button", { name: "Confirm connection", exact: true }).waitFor();
+    await other.page.waitForFunction(() => window.location.hash === "");
+    check(
+      (await other.page.request.get("/api/baskule/me")).status() === 401,
+      `${device}: opening a connection link waits for confirmation before signing in`,
+    );
+    await other.page.getByRole("button", { name: "Confirm connection", exact: true }).click();
     await other.page.waitForURL((url) => url.pathname === "/");
     const me = await other.page.evaluate(async () => (await fetch("/api/baskule/me")).json());
     check(me.user?.email === ACCOUNTS.bob[0], `${device}: the link signs another browser in`);
     await other.page.goto(link);
-    await other.page.getByText("Could not connect").waitFor();
+    await other.page.getByRole("button", { name: "Confirm connection", exact: true }).click();
+    await other.page
+      .getByRole("alert")
+      .filter({ hasText: "This connection link is not valid, has expired or was already used." })
+      .waitFor();
     check(true, `${device}: a used link is refused`);
     await other.context.close();
     await openSidebarOnPhone(page, device);

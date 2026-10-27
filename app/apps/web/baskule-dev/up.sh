@@ -3,7 +3,7 @@
 # MOCK_WEB=dev) and the mock Baskule front (47700). State and logs in baskule/.run/wp-e.
 #   MOCK_WEB=dist ./up.sh   serve apps/web/dist (build it first with VITE_BASKULE_HOSTED=1)
 #   MOCK_WEB=dev  ./up.sh   Vite dev server with HMR behind the mock
-#   MOCK_BACKENDS=none      no T3 servers (login/admin/apps only)
+#   MOCK_BACKENDS=none      front-only manual checks; scripted sign-in journeys require t3
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 WEB=$(cd "$HERE/.." && pwd)
