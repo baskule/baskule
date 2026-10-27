@@ -43,4 +43,4 @@ iOS device archives, provisioning, TestFlight and App Store submission require t
 
 ## Inspect evidence
 
-Use a run's job logs and artifacts to inspect failures, checksums, package status and source provenance. Classify a failure before rerunning only the affected jobs. Keep package/browser/unit evidence distinct from physical-device acceptance. Artifact retention is limited to the workflow's configured days; a verified GitHub release is the durable distribution record.
+Use a run's job logs and artifacts to inspect failures, checksums, package status and source provenance. Classify a failure before rerunning only the affected jobs. Keep package/browser/unit evidence distinct from physical-device acceptance. Verification artifacts are retained for one day; a verified GitHub release is the durable distribution record.

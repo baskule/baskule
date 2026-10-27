@@ -76,7 +76,7 @@ jobs:
           name: ci-${{ matrix.suite }}-${{ strategy.job-index }}
           path: .run/evidence/ci/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
 
   required:
     name: CI required

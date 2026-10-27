@@ -94,7 +94,7 @@ jobs:
           path: .run/release/backend/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
       - name: Preserve backend evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -106,7 +106,7 @@ jobs:
             .run/wp-e/artifacts/
             e2e/test-results/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
 
   linux-apps:
     needs: version
@@ -155,7 +155,7 @@ jobs:
           path: .run/release/linux-apps/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
       - name: Preserve Linux app evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -167,7 +167,7 @@ jobs:
             .run/wp-e/artifacts/
             .run/wp-e-build.log
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
 
   native:
     needs: version

@@ -107,7 +107,7 @@ jobs:
           name: native-android-arm64-${{ inputs.version }}
           path: .run/native/android/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
   ios:
     if: inputs.platform == 'all' || inputs.platform == 'ios'
@@ -147,7 +147,7 @@ jobs:
             .run/native/ios/launch.txt
             .run/native/ios/launch.png
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: native-ios-simulator-${{ inputs.version }}
@@ -156,7 +156,7 @@ jobs:
             .run/native/ios/STATUS.txt
             .run/native/ios/SHA256SUMS
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
   desktop:
     if: inputs.platform == 'all' || inputs.platform == 'desktop'
@@ -261,7 +261,7 @@ jobs:
             .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/STATUS.txt
             .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
   windows-tests:
     name: Optional upstream Windows diagnostic
