@@ -44,7 +44,7 @@ vi.mock("@t3tools/client-runtime/state/runtime", () => ({
   executeAtomQuery: mocks.execute,
   squashAtomCommandFailure: () => new Error("offline"),
 }));
-vi.mock("./nativeTransfer", () => ({
+vi.mock("../connection/native-transfer", () => ({
   captureTransferOrigin: () => ({ connection: { httpBaseUrl: "https://source.example" } }),
 }));
 vi.mock("./attachmentDownload", () => ({ downloadAttachmentForPreview: mocks.download }));

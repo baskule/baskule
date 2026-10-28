@@ -37,7 +37,7 @@ function useWorkspaceFileDownload(target: WorkspaceFileDownloadTarget) {
   });
   const download = async () => {
     setPending(true);
-    try {
+    return (async () => {
       const connection = readPreparedConnection(target.environmentId);
       if (!connection) throw new Error("Reconnect and try again.");
       const resource = {
@@ -59,15 +59,17 @@ function useWorkspaceFileDownload(target: WorkspaceFileDownloadTarget) {
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
-    } catch (error) {
-      toastManager.add({
-        type: "error",
-        title: t("Could not download the file"),
-        description: error instanceof Error ? error.message : "An error occurred.",
+    })()
+      .catch((error: unknown) => {
+        toastManager.add({
+          type: "error",
+          title: t("Could not download the file"),
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      })
+      .finally(() => {
+        setPending(false);
       });
-    } finally {
-      setPending(false);
-    }
   };
   return { download, pending };
 }

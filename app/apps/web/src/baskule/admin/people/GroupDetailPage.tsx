@@ -60,18 +60,20 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
 
   const save = async (key: string, patch: Partial<GroupInput>, failure: string) => {
     setBusy(key);
-    try {
+    return (async () => {
       await pluginsApi.updateGroup(group.id, patch);
       await data.reload();
       // The signed-in admin may have just gained or lost a permission.
       if (patch.permissions) void refreshBaskuleMe().catch(() => undefined);
       return true;
-    } catch (cause) {
-      notifyPluginError(failure, cause);
-      return false;
-    } finally {
-      setBusy(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyPluginError(failure, cause);
+        return false;
+      })
+      .finally(() => {
+        setBusy(null);
+      });
   };
 
   const members = people.filter((person) => group.members.includes(person.id));

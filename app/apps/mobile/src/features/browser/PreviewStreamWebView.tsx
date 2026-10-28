@@ -51,7 +51,7 @@ import {
   fetchNativeFile,
   isTransferOriginCurrent,
   type TransferOrigin,
-} from "../../lib/nativeTransfer";
+} from "../../connection/native-transfer";
 import { uuidv4 } from "../../lib/uuid";
 import {
   createNativePreviewBridge,

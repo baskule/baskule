@@ -51,8 +51,14 @@ describe("receiving a connection", () => {
       "https://baskule.example",
       "one_time",
     ],
+    ["baskule://connect?server=http%3A%2F%2F100.64.0.42%3A47090", "http://100.64.0.42:47090", null],
     [
-      "baskule://connect?server=http%3A%2F%2F100.64.0.42%3A47090",
+      "baskule://connect/?server=https%3A%2F%2Fbaskule.example&code=one%20time",
+      "https://baskule.example",
+      "one time",
+    ],
+    [
+      "baskule://connect/?server=http%3A%2F%2F100.64.0.42%3A47090",
       "http://100.64.0.42:47090",
       null,
     ],
@@ -68,7 +74,7 @@ describe("receiving a connection", () => {
     "",
     "javascript:alert(1)",
     "file:///tmp/link",
-    "baskule://connect?server=https://baskule.example",
+    "other-app://connect?server=https://baskule.example",
     "baskule://app",
     "baskule://connect?server=baskule://connect",
     "http://public.example",
@@ -83,6 +89,15 @@ describe("receiving a connection", () => {
     "baskule://connect?server=https://baskule.example&token=bearer",
     "baskule://connect?server=https://baskule.example/path&code=a",
     "baskule://connect?server=https://baskule.example&server=https://other.example",
+    "baskule://connect/other?server=https://baskule.example",
+    "baskule://connect/other?server=https://baskule.example&code=a",
+    "baskule://connect//?server=https://baskule.example",
+    "baskule://user:password@connect/?server=https://baskule.example",
+    "baskule://connect:8443/?server=https://baskule.example",
+    "baskule://connect/?server=https://baskule.example&token=bearer",
+    "baskule://connect/?server=https://baskule.example&server=https://other.example",
+    "baskule://connect/?server=https://baskule.example&code=a&code=b",
+    "baskule://connect/?server=https://baskule.example#code=a",
   ])("rejects unsupported or credential-bearing QR content %s", (input) => {
     expect(() => parseConnectionTarget(input)).toThrow();
   });

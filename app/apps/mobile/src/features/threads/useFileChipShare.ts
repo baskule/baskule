@@ -4,7 +4,7 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
-import { captureTransferOrigin } from "../../lib/nativeTransfer";
+import { captureTransferOrigin } from "../../connection/native-transfer";
 import { assetExportResource } from "../../lib/mediaActionsSource";
 import { downloadAndShareAttachment } from "../../lib/attachmentDownload";
 import { assetEnvironment } from "../../state/assets";

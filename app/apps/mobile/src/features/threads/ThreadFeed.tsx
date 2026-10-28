@@ -111,7 +111,7 @@ import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { FONT_FAMILIES } from "../../lib/fontFamilies";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
-import { captureTransferOrigin } from "../../lib/nativeTransfer";
+import { captureTransferOrigin } from "../../connection/native-transfer";
 import { downloadAndShareAttachment } from "../../lib/attachmentDownload";
 import { hasWideMarkdownBlock } from "../../lib/wideMarkdownBlocks";
 import {

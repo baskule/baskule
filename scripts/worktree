@@ -135,15 +135,9 @@ case $1 in
     step tools link_tools
     source "$ROOT/scripts/env.sh"
     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-    STEP=dependencies
-    step app install_app &
-    app_pid=$!
-    step workspace install_workspace &
-    workspace_pid=$!
-    status=0
-    wait "$app_pid" || status=$?
-    wait "$workspace_pid" || status=$?
-    ((status == 0)) || exit "$status"
+    # Both workspaces write to pnpm's shared global virtual store.
+    step workspace install_workspace
+    step app install_app
     if [[ $1 = runtime ]]; then
       step SpaceCell sync_bundle
     else

@@ -42,8 +42,8 @@ vi.mock("../state/atom-registry", () => ({
     },
   },
 }));
-vi.mock("./nativeTransfer", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./nativeTransfer")>()),
+vi.mock("../connection/native-transfer", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../connection/native-transfer")>()),
   fetchNativeFile: async (input: { url: string; signal: AbortSignal }) => ({
     ok: true,
     status: 200,

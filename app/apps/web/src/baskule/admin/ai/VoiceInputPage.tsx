@@ -61,7 +61,7 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
     if (busy) return;
     setBusy(true);
     setError(null);
-    try {
+    return (async () => {
       const next = await saveSettingsPart({
         transcription: draft,
         ...(clearKey ? { transcriptionApiKey: "" } : apiKey ? { transcriptionApiKey: apiKey } : {}),
@@ -78,16 +78,18 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
             "Settings are saved, but some spaces could not reload. Stop them from Admin → General → Overview to apply the AI changes.",
           ),
         );
-    } catch (cause) {
-      setError(errorText(cause, t("Could not save settings.")));
-      // Chat moved onto this connection after the page loaded: show its key as shared from now on.
-      if (cause instanceof BaskuleApiError && cause.code === "shared_api_key") {
-        setClearKey(false);
-        void baskuleApi.adminSettings().then(setSaved, () => undefined);
-      }
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(errorText(cause, t("Could not save settings.")));
+        // Chat moved onto this connection after the page loaded: show its key as shared from now on.
+        if (cause instanceof BaskuleApiError && cause.code === "shared_api_key") {
+          setClearKey(false);
+          void baskuleApi.adminSettings().then(setSaved, () => undefined);
+        }
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
 
   return (
@@ -121,34 +123,38 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
             aria-label={t("Speech-to-text provider")}
             className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-4"
           >
-            {(
-              Object.keys(BASKULE_TRANSCRIPTION_PROVIDERS) as BaskuleTranscriptionProviderId[]
-            ).map((id) => {
-              const selected = draft.providerId === id;
-              return (
-                <label
-                  key={id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm transition-colors has-focus-visible:ring-2 has-focus-visible:ring-inset has-focus-visible:ring-ring ${
-                    selected ? "border-primary bg-primary/5" : "border-border/60 hover:bg-accent/40"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="transcriptionProvider"
-                    value={id}
-                    checked={selected}
-                    onChange={() => selectProvider(id)}
-                    className="accent-primary"
-                  />
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="font-medium">{BASKULE_TRANSCRIPTION_PROVIDERS[id].name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {selected ? t("Selected") : t("Off")}
+            {(Object.keys(BASKULE_TRANSCRIPTION_PROVIDERS) as BaskuleTranscriptionProviderId[]).map(
+              (id) => {
+                const selected = draft.providerId === id;
+                return (
+                  <label
+                    key={id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm transition-colors has-focus-visible:ring-2 has-focus-visible:ring-inset has-focus-visible:ring-ring ${
+                      selected
+                        ? "border-primary bg-primary/5"
+                        : "border-border/60 hover:bg-accent/40"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="transcriptionProvider"
+                      value={id}
+                      checked={selected}
+                      onChange={() => selectProvider(id)}
+                      className="accent-primary"
+                    />
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="font-medium">
+                        {BASKULE_TRANSCRIPTION_PROVIDERS[id].name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {selected ? t("Selected") : t("Off")}
+                      </span>
                     </span>
-                  </span>
-                </label>
-              );
-            })}
+                  </label>
+                );
+              },
+            )}
           </div>
           <div className="p-4">
             <div className="grid max-w-xl gap-5">

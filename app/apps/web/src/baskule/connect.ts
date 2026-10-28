@@ -53,7 +53,7 @@ export function parseConnectionTarget(value: string): ConnectionTarget {
   if (url.protocol === "baskule:") {
     if (
       url.hostname !== "connect" ||
-      url.pathname ||
+      (url.pathname !== "" && url.pathname !== "/") ||
       url.hash ||
       url.username ||
       url.password ||

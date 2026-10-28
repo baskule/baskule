@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Source before any native build. Mobile bundle versions cannot contain SemVer suffixes.
-export NATIVE_VERSION="${NATIVE_VERSION:-0.0.0}"
+export NATIVE_VERSION="${NATIVE_VERSION:-$(<"$ROOT/VERSION")}"
 T3CODE_MOBILE_VERSION=$(node --input-type=module <<'JS'
 const version = process.env.NATIVE_VERSION;
 const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(version);

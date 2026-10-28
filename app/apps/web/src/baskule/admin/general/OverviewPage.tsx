@@ -153,14 +153,16 @@ export function OverviewPage() {
                       ).then(async (confirmed) => {
                         if (!confirmed) return;
                         setStopping(row.id);
-                        try {
+                        return (async () => {
                           await baskuleApi.stopSpace(row.id);
                           await health.reload();
-                        } catch (cause) {
-                          notifyError(t("Could not stop the space"), cause);
-                        } finally {
-                          setStopping(null);
-                        }
+                        })()
+                          .catch((cause: unknown) => {
+                            notifyError(t("Could not stop the space"), cause);
+                          })
+                          .finally(() => {
+                            setStopping(null);
+                          });
                       })
                     }
                   >

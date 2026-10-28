@@ -20,7 +20,7 @@ import * as Option from "effect/Option";
 import { appAtomRegistry } from "../state/atom-registry";
 import { assetEnvironment } from "../state/assets";
 import { environmentSession } from "../state/session";
-import { captureTransferOrigin } from "./nativeTransfer";
+import { captureTransferOrigin } from "../connection/native-transfer";
 import { downloadAttachmentForPreview } from "./attachmentDownload";
 import {
   persistComposerAttachmentFile,

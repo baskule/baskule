@@ -18,9 +18,9 @@ import { useMemo } from "react";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { useEnvironmentQuery } from "./query";
 import { environmentSession, usePreparedConnection } from "./session";
-import { isTransferOriginCurrent } from "../lib/nativeTransfer";
+import { isTransferOriginCurrent } from "../connection/native-transfer";
 import { useBaskuleSession } from "../baskule/session";
-import { baskulePreviewStreamAccess } from "../features/browser/native-preview-socket";
+import { baskulePreviewStreamAccess } from "../lib/connection";
 
 export const previewEnvironment = createPreviewEnvironmentAtoms(connectionAtomRuntime);
 

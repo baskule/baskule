@@ -6,7 +6,11 @@ import { requireNativeModule } from "expo";
 
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
-import { bindTransferLifetime, fetchNativeFile, type ProtectedTransfer } from "./nativeTransfer";
+import {
+  bindTransferLifetime,
+  fetchNativeFile,
+  type ProtectedTransfer,
+} from "../connection/native-transfer";
 
 const ATTACHMENT_DOWNLOAD_DIRECTORY = "t3-attachment-downloads";
 const DOWNLOAD_RETENTION_MS = 24 * 60 * 60_000;

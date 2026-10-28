@@ -9,9 +9,9 @@ on:
         options: [all, android, ios, desktop, windows-tests]
         default: all
       version:
-        description: Package version
+        description: Package version (blank uses VERSION)
         type: string
-        default: '0.0.0'
+        default: ''
       sign:
         description: Sign Android/desktop with owner credentials (default branch and protected native-release environment only)
         type: boolean
@@ -31,7 +31,7 @@ on:
         default: all
       version:
         type: string
-        default: '0.0.0'
+        default: ''
       sign:
         type: boolean
         default: false
@@ -82,16 +82,17 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
-          java-version: 21.0.9+10
+          java-version: 21.0.13+9.0.LTS
       - name: Reclaim unused hosted-runner toolchains for the native build
         run: sudo rm -rf /usr/share/dotnet /usr/local/.ghcup
       - name: Install pinned Android SDK packages
-        shell: bash
-        run: |
-          set -euo pipefail
-          sdkmanager --sdk_root="$ANDROID_HOME" \
-            'platform-tools' 'platforms;android-37.0' 'platforms;android-36' \
-            'build-tools;37.0.0' 'build-tools;36.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '16111833'
+          log-accepted-android-sdk-licenses: false
+          packages: >-
+            platform-tools platforms;android-37.0 platforms;android-36
+            build-tools;37.0.0 build-tools;36.0.0 ndk;27.1.12297006 cmake;3.22.1
       - name: Install frozen mobile dependencies
         working-directory: app
         run: pnpm install --frozen-lockfile --filter @t3tools/monorepo --filter @t3tools/mobile...
@@ -107,7 +108,7 @@ jobs:
           name: native-android-arm64-${{ inputs.version }}
           path: .run/native/android/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
   ios:
     if: inputs.platform == 'all' || inputs.platform == 'ios'
@@ -147,7 +148,7 @@ jobs:
             .run/native/ios/launch.txt
             .run/native/ios/launch.png
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: native-ios-simulator-${{ inputs.version }}
@@ -156,7 +157,7 @@ jobs:
             .run/native/ios/STATUS.txt
             .run/native/ios/SHA256SUMS
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
   desktop:
     if: inputs.platform == 'all' || inputs.platform == 'desktop'
@@ -261,7 +262,7 @@ jobs:
             .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/STATUS.txt
             .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
   windows-tests:
     name: Optional upstream Windows diagnostic

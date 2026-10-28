@@ -7,7 +7,7 @@ import { toastManager } from "../components/ui/toast";
 import { Input, type InputProps } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { cn } from "../lib/utils";
-import { BaskuleWordmark } from "../components/BaskuleBrand";
+import { BaskuleWordmark as BaskuleBrandWordmark } from "../components/BaskuleBrand";
 
 export function FormField({
   label,
@@ -46,8 +46,8 @@ export function FormField({
 }
 
 /** The product name, as on the sidebar brand. */
-export function BaskuleWordmark({ className }: { readonly className?: string }) {
-  return <BaskuleWordmark className={className} />;
+export function BaskuleWordmark({ className = "" }: { readonly className?: string }) {
+  return <BaskuleBrandWordmark className={className} />;
 }
 
 export function initialsOf(name: string): string {

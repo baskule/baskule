@@ -2,6 +2,11 @@
   "extends": "expo/tsconfig.base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
+    // Expo excludes explicit .d.ts targets from Metro's runtime aliases.
+    "paths": {
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/*": ["./node_modules/@types/react/*.d.ts"]
+    },
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true

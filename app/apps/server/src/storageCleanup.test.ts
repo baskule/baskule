@@ -1692,6 +1692,37 @@ describe("storage cleanup reports and local file policies", () => {
       }),
     ),
   );
+  it.live("keeps a worktree when Git reports a broken gitfile", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const git = yield* GitVcsDriver.GitVcsDriver;
+        const { service, fs, worktree } = yield* cleanupFixture().pipe(
+          Effect.provideService(GitVcsDriver.GitVcsDriver, {
+            ...git,
+            execute: (input) =>
+              git.execute(input).pipe(
+                Effect.map((result) =>
+                  input.operation === "StorageCleanup.branchChanged"
+                    ? {
+                        ...result,
+                        stderr: `fatal: gitfile does not point to a valid repository: ${input.cwd}/.git\n`,
+                      }
+                    : result,
+                ),
+              ),
+          }),
+        );
+        const gitFile = "gitdir: /missing-git-directory\n";
+        yield* fs.writeFileString(`${worktree}/.git`, gitFile);
+        expect((yield* service.runNow).entries[0]).toMatchObject({
+          outcome: "kept",
+          reason: "Repository or branch changed",
+        });
+        expect(yield* fs.readFileString(`${worktree}/.git`)).toBe(gitFile);
+        expect(yield* fs.readFileString(`${worktree}/tracked.txt`)).toBe("original\n");
+      }),
+    ),
+  );
   it("decodes reports from servers without size or project fields", () => {
     const report = decodeCleanupReport({
       trigger: "manual",
