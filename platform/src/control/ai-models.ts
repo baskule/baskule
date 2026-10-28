@@ -106,14 +106,15 @@ export class AIModels {
   }
 }
 
-// Provider messages may quote the key: redact it before any truncation can split it.
+// Provider messages may quote the key: redact the decoded message before truncation can split it.
 async function providerMessage(response: Response, key: string): Promise<string | undefined> {
-  const body = await response.text().catch(() => "");
-  const text = (key ? body.replaceAll(key, "•••") : body).slice(0, 4_096);
+  const text = await response.text().catch(() => "");
   let message: unknown = text;
   try {
     const parsed = JSON.parse(text) as { error?: { message?: unknown } | string; message?: unknown; detail?: unknown };
     message = typeof parsed.error === "object" ? parsed.error?.message : parsed.error ?? parsed.message ?? parsed.detail;
   } catch { /* plain-text error body */ }
-  return typeof message === "string" && message.trim() ? message.trim().slice(0, 300) : undefined;
+  if (typeof message !== "string") return undefined;
+  const redacted = (key ? message.replaceAll(key, "•••") : message).trim();
+  return redacted ? redacted.slice(0, 300) : undefined;
 }
