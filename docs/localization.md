@@ -15,7 +15,7 @@ t("{{count}} chat selected", { count, defaultValue_other: "{{count}} chats selec
 
 The generator extracts singular and plural forms. React renders interpolation as text. Do not translate enum values, CSS, URLs, commands, filenames, user content, AI responses, or embedded documents.
 
-JSON catalogs are the editable input. Generated TypeScript modules provide the shared runtime input because Metro does not accept dynamic JSON imports with attributes. The web client loads additional catalogs on demand; native clients bundle them.
+JSON catalogs are the editable input and the shared runtime input. The web client loads additional catalogs on demand; native clients bundle them.
 
 ## Generate translations
 
@@ -35,7 +35,7 @@ node app/scripts/localization.ts translate --locale fr
 
 `TRANSLATION_BASE_URL` and `TRANSLATION_MODEL` select the provider and model. Their defaults are in `app/scripts/localization.ts`. The request includes source messages, source locations, and the [product context and glossary](../app/scripts/localization-context.md). Runtime interpolation values and chat histories are not translation inputs.
 
-Review generated changes before committing them. Valid entries are preserved. To retranslate changed terminology, remove the target entry and generate it again. Commit the JSON catalogs and generated runtime and native metadata files together.
+Review generated changes before committing them. Valid entries are preserved. To retranslate changed terminology, remove the target entry and generate it again. Commit the JSON catalogs and generated native metadata files together.
 
 The release workflow generates missing translations only for `v*` tags, using `TRANSLATION_API_KEY` from the `release` environment. The GitHub variables `TRANSLATION_MODEL` and `TRANSLATION_BASE_URL` optionally select the model and provider. Release builds share the generated catalogs and native metadata through the `translations` artifact. When catalogs change, the run pushes `translations/v<version>` and adds a compare/PR-create link to its summary. Merge that branch into `main` to keep catalogs committed and update the hosted site, which builds `main`. Pull request CI does not generate translations; manual factory runs use the committed catalogs without the key.
 

@@ -51,11 +51,11 @@ export function t(
 }
 
 const catalogs = {
-  fr: () => import("./locales/fr.ts"),
-  es: () => import("./locales/es.ts"),
-  de: () => import("./locales/de.ts"),
-  nl: () => import("./locales/nl.ts"),
-  it: () => import("./locales/it.ts"),
+  fr: () => import("./locales/fr.json"),
+  es: () => import("./locales/es.json"),
+  de: () => import("./locales/de.json"),
+  nl: () => import("./locales/nl.json"),
+  it: () => import("./locales/it.json"),
 };
 let activation = 0;
 
