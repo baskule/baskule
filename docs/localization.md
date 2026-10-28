@@ -37,6 +37,8 @@ node app/scripts/localization.ts translate --locale fr
 
 Review generated changes before committing them. Valid entries are preserved. To retranslate changed terminology, remove the target entry and generate it again. Commit the JSON catalogs and generated runtime and native metadata files together.
 
+The release workflow generates missing translations only for `v*` tags, using `TRANSLATION_API_KEY` from the `release` environment. The GitHub variables `TRANSLATION_MODEL` and `TRANSLATION_BASE_URL` optionally select the model and provider. Release builds share the generated catalogs and native metadata through the `translations` artifact. When catalogs change, the run pushes `translations/v<version>` and adds a compare/PR-create link to its summary. Merge that branch into `main` to keep catalogs committed and update the hosted site, which builds `main`. Pull request CI does not generate translations; manual factory runs on branches use the committed catalogs.
+
 ## Build clients
 
 Client builds consume checked-in catalogs and require no translation model key at runtime. Provider diagnostics, remote tool results, and user content retain their original text.
