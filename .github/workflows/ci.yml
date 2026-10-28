@@ -33,27 +33,28 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - id: setup
+        uses: ./.github/actions/setup
         with:
           runtime: 'true'
           save-cache: 'true'
       - name: harness
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh harness 2>&1 | tee .run/evidence/ci-harness.log
       - name: type-root
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh type-root 2>&1 | tee .run/evidence/ci-type-root.log
       - name: type-web
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh type-web 2>&1 | tee .run/evidence/ci-type-web.log
       - name: type-mobile
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh type-mobile 2>&1 | tee .run/evidence/ci-type-mobile.log
       - name: type-shared
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh type-shared 2>&1 | tee .run/evidence/ci-type-shared.log
       - name: desktop
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh desktop 2>&1 | tee .run/evidence/ci-desktop.log
       - name: Preserve failed check logs
         if: failure()
@@ -72,23 +73,24 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - id: setup
+        uses: ./.github/actions/setup
         with:
           runtime: 'true'
       - name: platform
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh platform 2>&1 | tee .run/evidence/ci-platform.log
       - name: server
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh server 2>&1 | tee .run/evidence/ci-server.log
       - name: web-unit
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh web-unit 2>&1 | tee .run/evidence/ci-web-unit.log
       - name: mobile
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh mobile 2>&1 | tee .run/evidence/ci-mobile.log
       - name: shared
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh shared 2>&1 | tee .run/evidence/ci-shared.log
       - name: Preserve failed check logs
         if: failure()

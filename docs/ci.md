@@ -9,7 +9,7 @@ The public repository uses standard GitHub-hosted runners. No self-hosted runner
 - `Checks` runs the harness, root/web/mobile/shared typechecks, and desktop checks.
 - `Tests` runs platform, Baskule server, hosted-web unit, mobile unit/React, and shared client package tests.
 
-Each suite has its own step. Later suites still run after an earlier failure unless the run is cancelled. `CI required` succeeds only when both jobs succeed. The platform, server, web, mobile, and shared Vitest commands use at most two workers to limit memory use.
+Each suite has its own step. Once setup succeeds, later suites still run after an earlier failure unless the run is cancelled. `CI required` succeeds only when both jobs succeed. The platform, server, web, mobile, and shared Vitest commands use up to four workers, one per hosted-runner vCPU.
 
 Both jobs restore pinned tools and package stores using the same key. Only `Checks` saves a missing key, after installation. PR runs can reuse the default branch's cache. Dependency installation still uses frozen lockfiles.
 

@@ -20,7 +20,7 @@ run() {
 }
 vp="$ROOT/app/node_modules/.bin/vp"
 tc="$ROOT/app/node_modules/.bin/tsc-rs"
-test_args=(test run --maxWorkers 2)
+test_args=(test run --maxWorkers 4)
 case "$suite" in
   harness)
     run node scripts/lint.mjs
@@ -29,17 +29,15 @@ case "$suite" in
     ;;
   platform)
     cd platform
-    run pnpm exec vitest run --maxWorkers 2
+    run pnpm exec vitest run --maxWorkers 4
     ;;
   server)
     cd app/apps/server
     run "$vp" "${test_args[@]}" src/baskule Baskule src/mcp/McpHttpServer.baskule.test.ts
     ;;
-  web-unit|web-browser)
+  web-unit)
     cd app/apps/web
-    project=${suite#web-}
-    [[ "$project" == browser ]] || project=unit
-    run "$vp" "${test_args[@]}" --project "$project" src/baskule src/branding.test.ts
+    run "$vp" "${test_args[@]}" --project unit src/baskule src/branding.test.ts
     ;;
   mobile)
     cd app/apps/mobile
@@ -71,10 +69,6 @@ case "$suite" in
       cd "$ROOT/app/packages/$package"
       run "$tc" --noEmit
     done
-    ;;
-  web-build)
-    cd app/apps/web
-    run env VITE_BASKULE_HOSTED=1 VITE_BASKULE_UI=1 "$vp" build
     ;;
   *) echo "Unknown suite: $suite" >&2; exit 2 ;;
 esac
