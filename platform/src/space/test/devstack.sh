@@ -3,7 +3,7 @@
 # computerd :47552, celld dev on the harness :47550. `./devstack.sh start [--clean]` / `./devstack.sh stop`.
 set -euo pipefail
 D=$(cd "$(dirname "$0")" && pwd); ROOT=$(cd "$D/../../../.." && pwd); RUN=$D/.run; mkdir -p "$RUN"
-export PATH="$ROOT/.tools/node-v24.22.1-linux-x64/bin:$PATH"
+source "$ROOT/scripts/env.sh"
 build_harness() {
   BASKULE_ENTRY=src/space/test/harness/entry.ts BASKULE_OUT="$RUN/app" node "$ROOT/platform/scripts/build.mjs"
   node -e 'const fs = require("node:fs"); const w = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); w.main = "worker.js"; delete w.assets; fs.writeFileSync(process.argv[2], JSON.stringify(w));' "$D/harness/wrangler.json" "$RUN/app/wrangler.json"

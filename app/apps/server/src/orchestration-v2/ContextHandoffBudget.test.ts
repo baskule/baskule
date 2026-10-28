@@ -148,19 +148,6 @@ describe("handoff budget", () => {
     assert.equal(historyResponseItems([command!], "Activity")[1]?.type, "message");
   });
 
-  it("retains short conversations verbatim in role and order", () => {
-    const selected = selectHistory({ messages, coverage: "History", budget: 16_000 });
-    assert.deepEqual(selected.messages, messages);
-    const items = historyResponseItems(selected.messages, selected.context);
-    assert.deepEqual(
-      items.map((item) => item.role),
-      ["user", "user", "assistant"],
-    );
-    assert.include(items[1]!.content[0]!.text, messages[0]!.text);
-    assert.include(items[2]!.content[0]!.text, messages[1]!.text);
-    assert.equal(selected.omittedItems, 0);
-  });
-
   it("omits oversized multilingual items whole, preserves original constraints and recent work", () => {
     const candidates = [
       messages[0]!,

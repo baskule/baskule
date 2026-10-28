@@ -278,7 +278,7 @@ it.effect("waits for committed background work to finish before enqueuing comple
       lastRunOrdinal: 1,
       handoffIds: [],
       forkedFrom: null,
-      pendingBackgroundTasks: [{ taskId: "monitor", kind: "monitor" }],
+      pendingBackgroundTasks: [{ taskId: "monitor", kind: "monitor", awaited: true }],
       contextUsage: null,
       nativeMetadata: null,
       goal: null,

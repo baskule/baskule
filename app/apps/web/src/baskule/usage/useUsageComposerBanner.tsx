@@ -49,7 +49,6 @@ export function usageLimitBanner(input: {
     return {
       id: `baskule-usage-blocked:${nearest.window}:${nearest.resetsAt}`,
       variant: "warning",
-      priority: "urgent",
       icon: <GaugeIcon />,
       title: copy.reached,
       description: resetSentence(nearest, input.now, input.locale),
@@ -63,7 +62,6 @@ export function usageLimitBanner(input: {
   return {
     id: `baskule-usage-near:${key}`,
     variant: "info",
-    priority: "notice",
     icon: <GaugeIcon />,
     title: copy.name,
     description: `${translate("{{share}} used", { share: formatShare(share) })} · ${resetSentence(nearest, input.now, input.locale)}`,
@@ -102,6 +100,7 @@ export function useUsageComposerBanner(input: {
   const [resetTick, setResetTick] = useState(0);
   const after = `${input.refreshKey ?? ""}:${resetTick}`;
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Fetch server usage after a turn settles or a limit resets.
   useEffect(() => {
     if (!baskule.hosted) return;
     let cancelled = false;
@@ -122,6 +121,7 @@ export function useUsageComposerBanner(input: {
     const time = Date.parse(status.resetsAt);
     return Number.isNaN(time) ? soonest : soonest === null ? time : Math.min(soonest, time);
   }, null);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Schedule a refresh against the server-provided reset timestamp.
   useEffect(() => {
     if (nextReset === null || nextReset === undefined) return;
     const timer = window.setTimeout(

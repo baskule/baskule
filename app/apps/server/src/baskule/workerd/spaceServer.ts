@@ -1,3 +1,5 @@
+// @effect-diagnostics globalFetch:off globalDate:off -- workerd lifecycle callbacks use native platform I/O and timestamps.
+import * as DocumentText from "../../provider/DocumentText.ts";
 import { BaskulePushHost, currentPushNotification } from "../push.ts";
 import { ProjectionStoreV2 } from "../../orchestration-v2/ProjectionStore.ts";
 import { OrchestrationEffectWorkerV2 } from "../../orchestration-v2/EffectWorker.ts";
@@ -414,6 +416,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
   const activation = Effect.runSync(Deferred.make<void>());
   const routesReady = Effect.runSync(Deferred.make<void>());
   const deps = layerRuntimeDependencies.pipe(
+    Layer.provideMerge(DocumentText.layer),
     Layer.provideMerge(VcsProcess.layer),
     Layer.provideMerge(AgentScopeLive.layer),
     Layer.provideMerge(ProcessRunner.layer),

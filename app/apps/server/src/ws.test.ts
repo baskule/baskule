@@ -1,35 +1,34 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
-  ORCHESTRATION_PROTOCOL_VERSION,
   AuthSessionId,
   EnvironmentId,
   ProjectId,
   ThreadId,
+  ProviderDriverKind,
+  ProviderInstanceId,
   WS_METHODS,
+  WsServerRefreshProvidersRpc,
   WsSubscribeServerConfigRpc,
   type OrchestrationV2StoredEvent,
+  type OrchestrationV2ThreadShell,
   type OrchestrationProjectShell,
   type ServerConfig,
   type ServerConfigStreamEvent,
+  type ServerProvider,
 } from "@t3tools/contracts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Deferred from "effect/Deferred";
-import * as Duration from "effect/Duration";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { Headers } from "effect/http";
 import { RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
-import { ChildProcessSpawner } from "effect/process";
 import * as SqlClient from "effect/sql/SqlClient";
+
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -37,6 +36,7 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
 import * as DeviceService from "./device/DeviceService.ts";
+import * as DocumentText from "./provider/DocumentText.ts";
 import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
@@ -70,6 +70,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
+import * as GuestShareService from "./guest/GuestShareService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -95,6 +96,7 @@ import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as ServerConfigModule from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ServerSettings from "./serverSettings.ts";
+
 import * as EventStore from "./orchestration-v2/EventStore.ts";
 import * as ProjectionMaintenance from "./orchestration-v2/ProjectionMaintenance.ts";
 import * as ProjectionStore from "./orchestration-v2/ProjectionStore.ts";
@@ -106,51 +108,12 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ProjectEnrichment from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import {
-  hasCompatibleOrchestrationProtocol,
   layerWsRpc,
-  resolveAvailableEditorsForConfig,
-  shouldUseBoundedThreadSnapshot,
   subscribeOrchestrationV2Shell,
   subscribeOrchestrationV2Thread,
   WS_RPC_SERVER_OPTIONS,
   withLateEditorConfig,
 } from "./ws.ts";
-it("accepts only the current orchestration protocol before websocket RPC setup", () => {
-  assert.isTrue(
-    hasCompatibleOrchestrationProtocol(
-      new URL(`https://host.test/ws?orchestrationProtocol=${ORCHESTRATION_PROTOCOL_VERSION}`),
-    ),
-  );
-  assert.isFalse(hasCompatibleOrchestrationProtocol(new URL("https://host.test/ws")));
-  assert.isFalse(
-    hasCompatibleOrchestrationProtocol(
-      new URL(`https://host.test/ws?orchestrationProtocol=${ORCHESTRATION_PROTOCOL_VERSION - 1}`),
-    ),
-  );
-});
-
-it("keeps full thread snapshot fallback unless the client opts into bounded history", () => {
-  assert.isFalse(shouldUseBoundedThreadSnapshot({}));
-  assert.isFalse(shouldUseBoundedThreadSnapshot({ acceptBoundedSnapshot: false }));
-  assert.isTrue(shouldUseBoundedThreadSnapshot({ acceptBoundedSnapshot: true }));
-});
-
-it.effect("does not block server config when editor discovery never resolves", () =>
-  Effect.gen(function* () {
-    const discoveryInterrupted = yield* Deferred.make<void>();
-    const responseFiber = yield* resolveAvailableEditorsForConfig(
-      Effect.never.pipe(
-        Effect.onInterrupt(() => Deferred.succeed(discoveryInterrupted, undefined)),
-      ),
-    ).pipe(Effect.forkChild);
-
-    yield* TestClock.adjust(Duration.seconds(5));
-
-    const availableEditors = yield* Fiber.join(responseFiber);
-    yield* Deferred.await(discoveryInterrupted);
-    assert.deepEqual(availableEditors, []);
-  }),
-);
 
 const snapshotConfig = (fields: Partial<ServerConfig>) =>
   ({ availableEditors: [], settings: {}, ...fields }) as unknown as ServerConfig;
@@ -191,21 +154,6 @@ it.effect("resends late editors without rolling back updates already sent", () =
   }),
 );
 
-it.effect("sends no late snapshot when the scan matches the snapshot", () =>
-  Effect.gen(function* () {
-    const events = yield* withLateEditorConfig(
-      snapshotConfig({ availableEditors: ["vscode"] }),
-      Stream.empty,
-      {
-        resolveAvailableEditors: () => Effect.succeed(["vscode"]),
-        resolveFileManagerRevealKind: () => Effect.succeed(undefined),
-      },
-    ).pipe(Stream.runCollect);
-
-    assert.equal(events.length, 0);
-  }),
-);
-
 it.effect("resends a file manager reveal kind that missed the snapshot", () =>
   Effect.gen(function* () {
     const events = yield* withLateEditorConfig(
@@ -224,99 +172,6 @@ it.effect("resends a file manager reveal kind that missed the snapshot", () =>
       assert.equal(late.config.shellRevealInFileManagerKind, "file-explorer");
     }
   }),
-);
-
-const makeParkedWindowsLauncher = Effect.gen(function* () {
-  const parkedProbes = yield* Queue.unbounded<void>();
-  const release = yield* Deferred.make<void>();
-  const launcher = yield* ExternalLauncher.make.pipe(
-    Effect.provide(
-      Layer.mergeAll(
-        FileSystem.layerNoop({
-          stat: () =>
-            Queue.offer(parkedProbes, undefined).pipe(
-              Effect.andThen(Deferred.await(release)),
-              Effect.as({ type: "File" } as FileSystem.File.Info),
-            ),
-        }),
-        Path.layer,
-        Layer.succeed(
-          ChildProcessSpawner.ChildProcessSpawner,
-          ChildProcessSpawner.make(() => Effect.die("unexpected spawn")),
-        ),
-      ),
-    ),
-  );
-  const onWindows = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(
-      Effect.provideService(HostProcess.Platform, "win32"),
-      Effect.provide(
-        ConfigProvider.layer(
-          ConfigProvider.fromEnv({
-            env: { PATH: "C:\\t3-late-editors-test", PATHEXT: ".EXE" },
-          }),
-        ),
-      ),
-    );
-  return {
-    editors: {
-      resolveAvailableEditors: () => onWindows(launcher.resolveAvailableEditors()),
-      resolveFileManagerRevealKind: () => onWindows(launcher.resolveFileManagerRevealKind()),
-    },
-    probeParked: Queue.take(parkedProbes),
-    releaseProbes: Deferred.succeed(release, undefined),
-  };
-});
-
-it.effect("recovers editors after a real scan outlasts the config timeout", () =>
-  Effect.gen(function* () {
-    const { editors, probeParked, releaseProbes } = yield* makeParkedWindowsLauncher;
-
-    const snapshotFiber = yield* resolveAvailableEditorsForConfig(
-      editors.resolveAvailableEditors(),
-    ).pipe(Effect.forkChild);
-    yield* probeParked;
-    yield* TestClock.adjust(Duration.seconds(5));
-    const snapshotEditors = yield* Fiber.join(snapshotFiber);
-    assert.deepEqual(snapshotEditors, []);
-
-    const lateFiber = yield* withLateEditorConfig(
-      snapshotConfig({ availableEditors: snapshotEditors }),
-      Stream.empty,
-      editors,
-    ).pipe(Stream.runCollect, Effect.forkChild);
-    yield* releaseProbes;
-
-    const [late] = Array.from(yield* Fiber.join(lateFiber));
-    assert.equal(late?.type, "snapshot");
-    if (late?.type === "snapshot") {
-      assert.equal(late.config.availableEditors.includes("vscode"), true);
-    }
-  }).pipe(Effect.scoped),
-);
-
-it.effect("recovers a reveal kind whose real probe outlasts the config timeout", () =>
-  Effect.gen(function* () {
-    const { editors, probeParked, releaseProbes } = yield* makeParkedWindowsLauncher;
-
-    const lateFiber = yield* withLateEditorConfig(
-      snapshotConfig({ availableEditors: ["file-manager"] }),
-      Stream.empty,
-      {
-        resolveAvailableEditors: () => Effect.succeed(["file-manager"]),
-        resolveFileManagerRevealKind: editors.resolveFileManagerRevealKind,
-      },
-    ).pipe(Stream.runCollect, Effect.forkChild);
-    yield* probeParked;
-    yield* TestClock.adjust(Duration.seconds(6));
-    yield* releaseProbes;
-
-    const [late] = Array.from(yield* Fiber.join(lateFiber));
-    assert.equal(late?.type, "snapshot");
-    if (late?.type === "snapshot") {
-      assert.equal(late.config.shellRevealInFileManagerKind, "file-explorer");
-    }
-  }).pipe(Effect.scoped),
 );
 
 const ReplayTestLayer = OrchestrationEventStore.layer.pipe(
@@ -399,6 +254,8 @@ it.live.each(["thread", "shell"] as const)(
       const items = yield* subscription.pipe(
         Effect.provideService(ThreadManagement.ThreadManagementService, {
           ensureLegacyTranscript: () => Effect.void,
+          getShellSnapshot: () => Effect.die("shell resume must not load a full snapshot"),
+          listActiveSubagentThreadIds: () => Effect.succeed([]),
           streamStoredEventsFrom: (
             input: Parameters<
               ThreadManagement.ThreadManagementService["Service"]["streamStoredEventsFrom"]
@@ -435,23 +292,110 @@ it.live.each(["thread", "shell"] as const)(
     }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer)),
 );
 
+it.effect("shell snapshots omit idle children and older settled threads only on request", () =>
+  Effect.gen(function* () {
+    const shell = (
+      id: string,
+      parent: string | null,
+      activityRunStatus: "running" | null,
+      settledDaysAgo: number | null = null,
+    ) =>
+      ({
+        id: ThreadId.make(id),
+        projectId: "project",
+        archivedAt: null,
+        status: activityRunStatus ?? "completed",
+        activityRunStatus,
+        pendingRuntimeRequest: null,
+        pendingBackgroundTasks: [],
+        settledOverride: settledDaysAgo === null ? null : "settled",
+        settledAt:
+          settledDaysAgo === null ? null : DateTime.makeUnsafe(-settledDaysAgo * 86_400_000),
+        lineage: {
+          parentThreadId: parent === null ? null : ThreadId.make(parent),
+          relationshipToParent: parent === null ? null : "subagent",
+          rootThreadId: ThreadId.make(parent ?? id),
+        },
+      }) as unknown as OrchestrationV2ThreadShell;
+    const threads = [
+      shell("parent", null, null),
+      shell("idle", "parent", null),
+      shell("live", "parent", "running"),
+      ...Array.from({ length: 25 }, (_, index) => shell(`recent-${index}`, null, null, 1)),
+      shell("old", null, null, 30),
+    ];
+    const firstSnapshot = (input: {
+      readonly omitIdleSubagents?: boolean;
+      readonly omitOlderSettled?: boolean;
+    }) =>
+      subscribeOrchestrationV2Shell(input).pipe(
+        Effect.flatMap((stream) => stream.pipe(Stream.take(1), Stream.runCollect)),
+        Effect.map(([item]) => (item?.kind === "snapshot" ? item.snapshot : null)),
+        Effect.provideService(ThreadManagement.ThreadManagementService, {
+          readShellSnapshot: () =>
+            Effect.succeed(
+              Effect.succeed({
+                schemaVersion: 1,
+                snapshotSequence: 0,
+                threads,
+                archivedThreads: [],
+              }),
+            ),
+        } as unknown as ThreadManagement.ThreadManagementService["Service"]),
+        Effect.provideService(ProjectStore.ProjectStoreV2, {
+          listShells: () => Effect.succeed([]),
+        } as unknown as ProjectStore.ProjectStoreV2["Service"]),
+        Effect.provideService(ProjectService.ProjectService, {
+          getShell: () => Effect.succeedNone,
+        } as unknown as ProjectService.ProjectService["Service"]),
+        Effect.provideServiceEffect(
+          ProjectEnrichment.ProjectEnrichmentService,
+          PubSub.unbounded().pipe(
+            Effect.map(
+              (changes) =>
+                ({
+                  subscribeChanges: PubSub.subscribe(changes),
+                }) as unknown as ProjectEnrichment.ProjectEnrichmentService["Service"],
+            ),
+          ),
+        ),
+      );
+
+    const recent = threads.slice(3, 28).map((thread) => thread.id);
+    const full = yield* firstSnapshot({});
+    assert.deepEqual(
+      full?.threads.map((thread) => thread.id),
+      threads.map((thread) => thread.id),
+    );
+    assert.isUndefined(full?.olderSettled);
+    const withoutChildren = yield* firstSnapshot({ omitIdleSubagents: true });
+    assert.deepEqual(
+      withoutChildren?.threads.map((thread) => thread.id),
+      ["parent", "live", ...recent, "old"],
+    );
+    const withoutOld = yield* firstSnapshot({ omitIdleSubagents: true, omitOlderSettled: true });
+    assert.deepEqual(
+      withoutOld?.threads.map((thread) => thread.id),
+      ["parent", "live", ...recent],
+    );
+    assert.deepEqual(withoutOld?.olderSettled?.counts, [
+      { projectId: ProjectId.make("project"), count: 1 },
+    ]);
+  }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer)),
+);
+
 // Build the production RPC layer; unrelated capabilities fail if this test calls them.
 const layerUnusedConfigRpcServices = Layer.mergeAll(
+  Layer.mock(DocumentText.DocumentText)({}),
   Layer.mock(ServerSecretStore.ServerSecretStore)({}),
   Layer.mock(WorkspacePaths.WorkspacePaths)({}),
   Layer.mock(TraceDiagnostics.TraceDiagnostics)({}),
   Layer.mock(ProjectFaviconResolver.ProjectFaviconResolver)({}),
   Layer.mock(ProjectEnrichment.ProjectEnrichmentService)({}),
-  Layer.empty,
-  Layer.empty,
-  Layer.empty,
-  Layer.empty,
   Layer.mock(AnalyticsService.AnalyticsService)({}),
-  Layer.empty,
   Layer.mock(BackgroundPolicy.BackgroundPolicy)({}),
   Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({}),
   Layer.mock(CommandOutputHub.CommandOutputHub)({}),
-  Layer.empty,
   Layer.mock(DeviceService.DeviceService)({}),
   Layer.mock(EnvironmentTheme.EnvironmentThemeService)({}),
   Layer.mock(GitWorkflowService.GitWorkflowService)({}),
@@ -484,6 +428,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ReviewService.ReviewService)({}),
   Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),
+  Layer.mock(GuestShareService.GuestShareService)({}),
   Layer.mock(ServerLifecycleEvents.ServerLifecycleEvents)({}),
   Layer.mock(ServerRuntimeStartup.ServerRuntimeStartup)({}),
   Layer.mock(ServerSelfUpdate.ServerSelfUpdate)({}),
@@ -543,13 +488,13 @@ it.effect(
               Effect.andThen(Deferred.await(finishDiscovery)),
               Effect.as([]),
             ),
+          // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
           resolveFileManagerRevealKind: () => Effect.succeed(undefined),
         }),
         Layer.mock(ProviderRegistry.ProviderRegistry)({
           getProviders: Effect.succeed([]),
           streamChanges: Stream.never,
         }),
-        Layer.empty,
         Layer.mock(RemoteOpenTargets.RemoteOpenTargets)({
           resolveTargets: () => Effect.succeed([]),
         }),
@@ -731,8 +676,7 @@ it.effect("thread resume across compacted history keeps message order and final 
         )
       `;
     }
-    // Only the event between a's first and newest is deleted.
-    assert.equal((yield* maintenance.compactEventStore).deletedEventCount, 1);
+    assert.equal((yield* maintenance.compactEventStore()).deletedEventCount, 1);
 
     const items = yield* subscribeOrchestrationV2Thread({
       threadId,

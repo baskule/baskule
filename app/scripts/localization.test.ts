@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vite-plus/test";
-import { placeholders, translateBatch, validateTranslation } from "./localization";
+import { placeholders, translateBatch, validateTranslation } from "./localization.ts";
 
 it("accepts reordered placeholders but rejects missing, duplicated, or broken placeholders", () => {
   expect(placeholders("{{name}} has {{count}} files")).toEqual(["count", "name"]);

@@ -11,7 +11,7 @@ import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
-  normalizeModelSlug,
+  resolveSelectableModel,
 } from "@t3tools/shared/model";
 import type { ReactNode } from "react";
 import type { DraftId } from "../../composerDraftStore";
@@ -36,9 +36,6 @@ export type ComposerProviderState = {
   provider: ProviderDriverKind;
   promptEffort: string | null;
   modelOptionsForDispatch: ReadonlyArray<ProviderOptionSelection> | undefined;
-  composerFrameClassName?: string;
-  composerSurfaceClassName?: string;
-  modelPickerIconClassName?: string;
 };
 
 type TraitsRenderInput = {
@@ -50,8 +47,6 @@ type TraitsRenderInput = {
   models: ReadonlyArray<ServerProviderModel>;
   modelOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
   reportedModelSelection?: ModelSelection | null | undefined;
-  prompt: string;
-  onPromptChange: (prompt: string) => void;
   planModeEnabled: boolean;
   size?: ComposerControlSize;
   hidden?: boolean;
@@ -59,10 +54,7 @@ type TraitsRenderInput = {
   isComposerOwned?: boolean;
 };
 
-/**
- * Cursor ACP can report `fastMode: true` as the provider default. T3 only
- * treats Fast as selected when the user chose it (draft/sticky/settings).
- */
+/** Fast mode is enabled only by an explicit user selection. */
 export function withImplicitFastModeDefault(
   caps: ModelCapabilities,
   modelOptions: ReadonlyArray<ProviderOptionSelection> | null | undefined,
@@ -104,8 +96,7 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
     planModeEnabled,
   } = input;
   if (provider === "opencode") {
-    const normalizedModel = normalizeModelSlug(model, provider);
-    const modelIsInCatalog = models.some((candidate) => candidate.slug === normalizedModel);
+    const modelIsInCatalog = resolveSelectableModel(provider, model, models) !== null;
     if (!modelIsInCatalog) {
       const preservedOptions = modelOptions?.filter(
         (option) => planModeEnabled || option.id !== "agent" || option.value !== "plan",
@@ -140,14 +131,9 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
       descriptors,
       selections,
     ),
-    ...{},
   };
 }
 
-/**
- * `cursor` is an expanded caret in `prompt`; the result's `cursor` keeps it on
- * the same character when the Ultrathink prefix is added or removed.
- */
 export function getComposerReasoningStep(input: {
   provider: ProviderDriverKind;
   instanceId: ProviderInstanceId;
@@ -179,7 +165,6 @@ export function getComposerReasoningStep(input: {
     models: input.models,
     modelOptions: selections,
     reportedModelSelection: input.reportedModelSelection,
-    prompt,
     planModeEnabled: input.planModeEnabled,
     direction: input.direction,
   });
@@ -200,8 +185,6 @@ function renderTraitsControl(
     models,
     modelOptions,
     reportedModelSelection,
-    prompt,
-    onPromptChange,
     planModeEnabled,
     size,
     hidden,
@@ -223,7 +206,6 @@ function renderTraitsControl(
       models,
       model,
       modelOptions: resolvedModelOptions,
-      prompt,
       planModeEnabled,
     })
   ) {
@@ -239,8 +221,6 @@ function renderTraitsControl(
       model={model}
       modelOptions={resolvedModelOptions}
       reportedModelSelection={reportedModelSelection}
-      prompt={prompt}
-      onPromptChange={onPromptChange}
       planModeEnabled={planModeEnabled}
       {...(size !== undefined ? { size } : {})}
       {...(hidden !== undefined ? { hidden } : {})}

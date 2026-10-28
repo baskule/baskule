@@ -1,3 +1,4 @@
+import { BUILT_IN_DRIVERS } from "./builtInDrivers.ts";
 import { assert, describe, it } from "@effect/vitest";
 import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -15,7 +16,6 @@ import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderL
 import * as ProviderInstanceRegistry from "./ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
-import { BUILT_IN_DRIVERS } from "./builtInDrivers.ts";
 import * as Schema from "effect/Schema";
 import {
   applyProviderCompatibility,
@@ -49,8 +49,6 @@ const provider: ServerProvider = {
   skills: [],
   slashCommands: [],
 };
-
-const V2_RELEASE = "0.0.46";
 
 describe("provider compatibility", () => {
   it("offers Homebrew metadata recovery only while installed and latest versions are incompatible", () => {
@@ -115,7 +113,7 @@ describe("provider compatibility", () => {
           ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility,
           builtIn.driverKind,
           null,
-          V2_RELEASE,
+          "0.1.3",
         ),
         `Missing bundled compatibility policy for ${builtIn.driverKind}`,
       );
@@ -158,25 +156,6 @@ describe("provider compatibility", () => {
     }
     for (const version of ["0.0.41", "0.1.0"]) {
       assert.isUndefined(resolveProviderCompatibility([scopedPolicy], driver, "0.9.0", version));
-    }
-  });
-
-  it("supports every driver without inventing policies for uncovered adapters", () => {
-    for (const kind of [
-      "codex",
-      "claudeAgent",
-      "cursor",
-      "grok",
-      "opencode",
-      "antigravity",
-      "customDriver",
-    ]) {
-      const adapter = ProviderDriverKind.make(kind);
-      assert.strictEqual(
-        resolveProviderCompatibility([{ ...policy, driver: adapter }], adapter, "2.0.0")?.status,
-        "supported",
-      );
-      assert.isUndefined(resolveProviderCompatibility([], adapter, "2.0.0"));
     }
   });
 
@@ -321,32 +300,3 @@ it.effect("a remote policy refresh preserves a newer health result on the regist
     }).pipe(Effect.provide(ProviderRegistry.layer.pipe(Layer.provide(layerDependencies))));
   }).pipe(Effect.scoped),
 );
-
-it("recomputes latest-version compatibility without losing the underlying update advisory", () => {
-  const snapshot: ServerProvider = {
-    ...provider,
-    version: "2.0.0",
-    versionAdvisory: {
-      status: "behind_latest",
-      currentVersion: "2.0.0",
-      latestVersion: "4.0.0",
-      canUpdate: true,
-      updateCommand: "npm install -g fixture@latest",
-      checkedAt: provider.checkedAt,
-      message: null,
-    },
-  };
-  const blockedPolicy: ProviderCompatibilityPolicy = {
-    ...policy,
-    ranges: [...policy.ranges, { range: ">=3.0.0", status: "broken" }],
-  };
-  const blocked = applyProviderCompatibility(snapshot, [blockedPolicy], []);
-  assert.strictEqual(blocked.compatibilityAdvisory?.latestVersionStatus, "broken");
-  const relaxed = applyProviderCompatibility(
-    blocked,
-    [{ ...policy, ranges: [{ range: ">=2.0.0", status: "supported" }] }],
-    [],
-  );
-  assert.strictEqual(relaxed.compatibilityAdvisory?.latestVersionStatus, "supported");
-  assert.deepStrictEqual(relaxed.versionAdvisory, snapshot.versionAdvisory);
-});

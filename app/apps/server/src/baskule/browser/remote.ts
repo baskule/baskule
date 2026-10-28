@@ -1,11 +1,10 @@
-// @effect-diagnostics globalFetch:off preferSchemaOverJson:off - This boundary uses workerd native fetch and a JSON bridge.
+// @effect-diagnostics globalFetch:off preferSchemaOverJson:off abortControllerInEffect:off - This boundary uses workerd native fetch and a JSON bridge.
 // Fetch-only edge of the computer-side browser. Merely subscribing or listing never wakes a computer.
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
-import * as Option from "effect/Option";
 import {
   PreviewSessionLookupError,
   PreviewClearProfileError,
@@ -252,7 +251,7 @@ export const makeBrowser = Effect.gen(function* () {
   return {
     attachViewer: () => Effect.die("Viewer transport is forwarded directly to the computer"),
     answerFileChooser: () => Effect.succeed(false),
-    openDownload: () => Effect.succeed(Option.none()),
+    openDownload: () => Effect.succeedNone,
     clearProfile: (profileId) =>
       Effect.tryPromise({
         try: () => state.call("clearProfile", { profileId }).then(() => {}),

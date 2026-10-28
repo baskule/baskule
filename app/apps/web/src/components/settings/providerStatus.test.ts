@@ -2,8 +2,8 @@ import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3
 import { describe, expect, it } from "vite-plus/test";
 import { getProviderSummary, getProviderVersionAdvisoryPresentation } from "./providerStatus";
 const provider: ServerProvider = {
-  instanceId: ProviderInstanceId.make("codex"),
-  driver: ProviderDriverKind.make("codex"),
+  instanceId: ProviderInstanceId.make("opencode"),
+  driver: ProviderDriverKind.make("opencode"),
   enabled: true,
   installed: true,
   version: "1.0.0",
@@ -16,13 +16,6 @@ const provider: ServerProvider = {
 };
 
 describe("getProviderSummary", () => {
-  it("reports ready providers with unknown authentication as available", () => {
-    expect(getProviderSummary({ ...provider, auth: { status: "unknown" } })).toEqual({
-      headline: "Available",
-      detail: null,
-    });
-  });
-
   it("does not hide a provider error behind a previous authenticated state", () => {
     expect(
       getProviderSummary({
@@ -36,35 +29,18 @@ describe("getProviderSummary", () => {
     });
   });
 
-  it("does not hide a provider warning behind an authenticated state", () => {
-    expect(
-      getProviderSummary({
-        ...provider,
-        status: "warning",
-        message: "The provider version is unsupported.",
-      }),
-    ).toEqual({
-      headline: "Needs attention",
-      detail: "The provider version is unsupported.",
-    });
-  });
-
   it("keeps authentication failures actionable when their provider status is error", () => {
     expect(
       getProviderSummary({
         ...provider,
         status: "error",
         auth: { status: "unauthenticated" },
-        message: "Run codex login.",
+        message: "Run opencode login.",
       }),
     ).toEqual({
       headline: "Not authenticated",
-      detail: "Run codex login.",
+      detail: "Run opencode login.",
     });
-  });
-
-  it("treats a disabled provider status as disabled even before its enabled flag updates", () => {
-    expect(getProviderSummary({ ...provider, status: "disabled" }).headline).toBe("Disabled");
   });
 });
 

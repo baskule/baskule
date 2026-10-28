@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- standalone asset/code generation uses native filesystem and CLI output.
 import ts from "typescript-legacy";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";

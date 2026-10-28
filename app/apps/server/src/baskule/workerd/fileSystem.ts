@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off globalDateInEffect:off globalRandom:off -- native workerd adapter implementing the platform boundary.
 // baskule: the Effect `FileSystem` of a space cell (architecture v3, E8).
 //
 // Mounts, by path prefix:
@@ -698,119 +699,117 @@ export const makeSpaceFileSystem = (config: SpaceFileSystemConfig): SpaceFileSys
    * A file handle buffers writes and flushes them on `sync` and when its scope closes; reads go
    * to the backend by range, so streaming a large computer file does not load it whole.
    */
-  const open = (raw: string, flag: string) =>
-    Effect.gen(function* () {
-      const path = normalizePath(raw);
-      const backend = yield* lift("open", path, () => backendForData(path, flag !== "r"));
-      const existing = yield* lift("open", path, () => backend.stat(path)).pipe(Effect.option);
-      if (Option.isSome(existing) && existing.value.type === "Directory") {
-        return yield* lift("open", path, () => Promise.reject(isDir(path)));
+  const open = Effect.fn("SpaceFileSystem.open")(function* (raw: string, flag: string) {
+    const path = normalizePath(raw);
+    const backend = yield* lift("open", path, () => backendForData(path, flag !== "r"));
+    const existing = yield* lift("open", path, () => backend.stat(path)).pipe(Effect.option);
+    if (Option.isSome(existing) && existing.value.type === "Directory") {
+      return yield* lift("open", path, () => Promise.reject(isDir(path)));
+    }
+    if (Option.isNone(existing) && (flag === "r" || flag === "r+")) {
+      return yield* lift("open", path, () => Promise.reject(notFound(path)));
+    }
+    if (Option.isSome(existing) && flag.includes("x")) {
+      return yield* lift("open", path, () => Promise.reject(exists(path)));
+    }
+    const writable = flag !== "r";
+    const truncateOnOpen = flag.startsWith("w");
+    const append = flag.startsWith("a");
+    // Writable handles hold the content in memory; read-only ones read by range.
+    let buffer: Uint8Array | undefined = writable
+      ? truncateOnOpen || Option.isNone(existing)
+        ? new Uint8Array()
+        : yield* lift("open", path, () => backend.readAll(path))
+      : undefined;
+    let dirty = writable && (truncateOnOpen || Option.isNone(existing));
+    let position = append && buffer ? buffer.length : 0;
+    const size = () => (buffer ? buffer.length : Option.isSome(existing) ? existing.value.size : 0);
+    const flush = lift("sync", path, async () => {
+      if (buffer && dirty) {
+        await backend.writeAll(path, buffer);
+        dirty = false;
       }
-      if (Option.isNone(existing) && (flag === "r" || flag === "r+")) {
-        return yield* lift("open", path, () => Promise.reject(notFound(path)));
-      }
-      if (Option.isSome(existing) && flag.includes("x")) {
-        return yield* lift("open", path, () => Promise.reject(exists(path)));
-      }
-      const writable = flag !== "r";
-      const truncateOnOpen = flag.startsWith("w");
-      const append = flag.startsWith("a");
-      // Writable handles hold the content in memory; read-only ones read by range.
-      let buffer: Uint8Array | undefined = writable
-        ? truncateOnOpen || Option.isNone(existing)
-          ? new Uint8Array()
-          : yield* lift("open", path, () => backend.readAll(path))
-        : undefined;
-      let dirty = writable && (truncateOnOpen || Option.isNone(existing));
-      let position = append && buffer ? buffer.length : 0;
-      const size = () =>
-        buffer ? buffer.length : Option.isSome(existing) ? existing.value.size : 0;
-      const flush = lift("sync", path, async () => {
-        if (buffer && dirty) {
-          await backend.writeAll(path, buffer);
-          dirty = false;
-        }
-      });
-      yield* Effect.addFinalizer(() => Effect.ignore(flush));
-      const readAt = (pos: number, length: number) =>
-        buffer
-          ? Effect.succeed(buffer.slice(pos, pos + length))
-          : lift("read", path, () => backend.readAt(path, pos, length));
-      const writeBytes = (bytes: Uint8Array) =>
-        Effect.sync(() => {
-          const at = append ? buffer!.length : position;
-          const end = at + bytes.length;
-          if (end > buffer!.length) {
-            const grown = new Uint8Array(end);
-            grown.set(buffer!);
-            buffer = grown;
-          }
-          buffer!.set(bytes, at);
-          position = end;
-          dirty = true;
-          return bytes.length;
-        });
-      const file: FileSystem.File = {
-        [FileSystem.FileTypeId]: FileSystem.FileTypeId,
-        stat: Effect.sync(() => toInfo({ type: "File", size: size(), mtimeMs: Date.now() })),
-        seek: (offset, from) =>
-          Effect.sync(() => {
-            position = from === "start" ? Number(offset) : position + Number(offset);
-            return BigInt(position);
-          }),
-        sync: flush,
-        // Suspended: callers such as `FileSystem.stream` build the effect once and rerun it.
-        read: (target, options) =>
-          Effect.suspend(() =>
-            Effect.map(
-              readAt(
-                options?.position === undefined ? position : Number(options.position),
-                target.length,
-              ),
-              (bytes) => {
-                target.set(bytes);
-                if (options?.position === undefined) position += bytes.length;
-                return bytes.length;
-              },
-            ),
-          ) as Effect.Effect<number, PlatformError.PlatformError>,
-        readAlloc: (length, options) =>
-          Effect.suspend(() =>
-            Effect.map(
-              readAt(
-                options?.position === undefined ? position : Number(options.position),
-                Number(length),
-              ),
-              (bytes) => {
-                if (options?.position === undefined) position += bytes.length;
-                return bytes.length === 0 ? Option.none() : Option.some(bytes);
-              },
-            ),
-          ) as never,
-        truncate: (length) =>
-          writable
-            ? Effect.sync(() => {
-                buffer = buffer!.slice(0, Number(length ?? 0));
-                dirty = true;
-              })
-            : lift("truncate", path, () =>
-                Promise.reject(new FsError("PermissionDenied", path, "read-only handle")),
-              ),
-        write: (bytes) =>
-          writable
-            ? (writeBytes(bytes) as never)
-            : lift("write", path, () =>
-                Promise.reject(new FsError("PermissionDenied", path, "read-only handle")),
-              ),
-        writeAll: (bytes) =>
-          writable
-            ? Effect.asVoid(writeBytes(bytes))
-            : lift("write", path, () =>
-                Promise.reject(new FsError("PermissionDenied", path, "read-only handle")),
-              ),
-      } as FileSystem.File;
-      return file;
     });
+    yield* Effect.addFinalizer(() => Effect.ignore(flush));
+    const readAt = (pos: number, length: number) =>
+      buffer
+        ? Effect.succeed(buffer.slice(pos, pos + length))
+        : lift("read", path, () => backend.readAt(path, pos, length));
+    const writeBytes = (bytes: Uint8Array) =>
+      Effect.sync(() => {
+        const at = append ? buffer!.length : position;
+        const end = at + bytes.length;
+        if (end > buffer!.length) {
+          const grown = new Uint8Array(end);
+          grown.set(buffer!);
+          buffer = grown;
+        }
+        buffer!.set(bytes, at);
+        position = end;
+        dirty = true;
+        return bytes.length;
+      });
+    const file: FileSystem.File = {
+      [FileSystem.FileTypeId]: FileSystem.FileTypeId,
+      stat: Effect.sync(() => toInfo({ type: "File", size: size(), mtimeMs: Date.now() })),
+      seek: (offset, from) =>
+        Effect.sync(() => {
+          position = from === "start" ? Number(offset) : position + Number(offset);
+          return BigInt(position);
+        }),
+      sync: flush,
+      // Suspended: callers such as `FileSystem.stream` build the effect once and rerun it.
+      read: (target, options) =>
+        Effect.suspend(() =>
+          Effect.map(
+            readAt(
+              options?.position === undefined ? position : Number(options.position),
+              target.length,
+            ),
+            (bytes) => {
+              target.set(bytes);
+              if (options?.position === undefined) position += bytes.length;
+              return bytes.length;
+            },
+          ),
+        ) as Effect.Effect<number, PlatformError.PlatformError>,
+      readAlloc: (length, options) =>
+        Effect.suspend(() =>
+          Effect.map(
+            readAt(
+              options?.position === undefined ? position : Number(options.position),
+              Number(length),
+            ),
+            (bytes) => {
+              if (options?.position === undefined) position += bytes.length;
+              return bytes.length === 0 ? Option.none() : Option.some(bytes);
+            },
+          ),
+        ) as never,
+      truncate: (length) =>
+        writable
+          ? Effect.sync(() => {
+              buffer = buffer!.slice(0, Number(length ?? 0));
+              dirty = true;
+            })
+          : lift("truncate", path, () =>
+              Promise.reject(new FsError("PermissionDenied", path, "read-only handle")),
+            ),
+      write: (bytes) =>
+        writable
+          ? (writeBytes(bytes) as never)
+          : lift("write", path, () =>
+              Promise.reject(new FsError("PermissionDenied", path, "read-only handle")),
+            ),
+      writeAll: (bytes) =>
+        writable
+          ? Effect.asVoid(writeBytes(bytes))
+          : lift("write", path, () =>
+              Promise.reject(new FsError("PermissionDenied", path, "read-only handle")),
+            ),
+    } as FileSystem.File;
+    return file;
+  });
 
   let tempCounter = 0;
   const tempName = (prefix = "tmp") =>

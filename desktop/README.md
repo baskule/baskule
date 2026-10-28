@@ -39,7 +39,7 @@ For a source-only check, build the hosted web and desktop bundles with `VITE_BAS
 `node app/apps/desktop/scripts/ensure-electron-runtime.mjs`, then run the same verifier with `--source`. The verifier
 defaults to the packaged application. Both modes create disposable profiles and an ephemeral local server.
 
-Native packaging needs Node 24.22.1, pnpm 11.10.0, Rust 1.95.0, a C/C++ compiler, pkg-config, libsecret and Wayland
+Native packaging needs Node 26.12.1, pnpm 12.14.0, Rust 1.95.0, a C/C++ compiler, pkg-config, libsecret and Wayland
 headers, and ImageMagick. The headless packaged-app check also needs GTK, NSS, Xvfb and D-Bus. [`Dockerfile`](Dockerfile)
 provides these tools on Ubuntu 24.04. Keep Docker sockets and deployment configuration outside the build container.
 

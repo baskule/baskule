@@ -43,16 +43,16 @@ export function selectOnboardingProvidersByDriver(
 }
 
 export function resolveOnboardingProviderInstallCommand(
-  driver: "opencode",
-  platform: ExecutionEnvironmentPlatformOs,
+  _driver: "opencode",
+  _platform: ExecutionEnvironmentPlatformOs,
 ): string {
   return "npm install -g @opencode/cli@2.1.2";
 }
 
 export function resolveOnboardingProviderLoginCommand(
-  provider: ServerProvider,
-  settings: ServerSettings,
-  platform: ExecutionEnvironmentPlatformOs,
+  _provider: ServerProvider,
+  _settings: ServerSettings,
+  _platform: ExecutionEnvironmentPlatformOs,
 ): string {
   return "opencode auth login";
 }

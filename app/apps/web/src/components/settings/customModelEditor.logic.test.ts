@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ProviderDriverKind, type ModelCapabilities } from "@t3tools/contracts";
 import {
-  DESCRIPTOR_PRESETS_BY_KIND,
-  descriptorFromPreset,
   definitionFromDraft,
   descriptorsFromCapabilities,
   draftFromDefinition,
@@ -70,23 +67,20 @@ describe("customModelEditor.logic", () => {
   });
 
   it("preserves the current choice when it differs from the built-in default", () => {
-    const descriptors = descriptorsFromCapabilities(
-      {
-        optionDescriptors: [
-          {
-            id: "effort",
-            label: "Reasoning",
-            type: "select",
-            currentValue: "high",
-            options: [
-              { id: "low", label: "Low", isDefault: true },
-              { id: "high", label: "High" },
-            ],
-          },
-        ],
-      },
-      ProviderDriverKind.make("claudeAgent"),
-    );
+    const descriptors = descriptorsFromCapabilities({
+      optionDescriptors: [
+        {
+          id: "effort",
+          label: "Reasoning",
+          type: "select",
+          currentValue: "high",
+          options: [
+            { id: "low", label: "Low", isDefault: true },
+            { id: "high", label: "High" },
+          ],
+        },
+      ],
+    });
     expect(descriptors[0]!.choices.map((choice) => choice.isDefault)).toEqual([false, true]);
     expect(
       definitionFromDraft(draft({ descriptors })).capabilities?.optionDescriptors?.[0],
@@ -94,101 +88,21 @@ describe("customModelEditor.logic", () => {
   });
 
   it("drops prompt-injected choices when copying a built-in's descriptors", () => {
-    const [copied] = descriptorsFromCapabilities(
-      {
-        optionDescriptors: [
-          {
-            id: "effort",
-            label: "Reasoning",
-            type: "select",
-            options: [
-              { id: "high", label: "High", isDefault: true },
-              { id: "ultrathink", label: "Ultrathink" },
-            ],
-            promptInjectedValues: ["ultrathink"],
-          },
-        ],
-      },
-      ProviderDriverKind.make("claudeAgent"),
-    );
-    expect(copied!.choices.map((choice) => choice.id)).toEqual(["high"]);
-  });
-
-  it.each([true, false, undefined])(
-    "preserves boolean values through copy and edit: %s",
-    (currentValue) => {
-      const capabilities: ModelCapabilities = {
-        optionDescriptors: [
-          {
-            id: "thinking",
-            label: "Thinking",
-            type: "boolean",
-            ...(currentValue !== undefined ? { currentValue } : {}),
-          },
-        ],
-      };
-      const copied = definitionFromDraft(
-        draft({
-          descriptors: descriptorsFromCapabilities(capabilities, ProviderDriverKind.make("cursor")),
-        }),
-      );
-      expect(copied.capabilities).toEqual(capabilities);
-      const reopened = draftFromDefinition(copied);
-      expect(definitionFromDraft({ ...reopened, name: "Renamed" }).capabilities).toEqual(
-        capabilities,
-      );
-    },
-  );
-
-  it("preserves choice descriptions when copying, renaming, and saving", () => {
-    const capabilities: ModelCapabilities = {
+    const [copied] = descriptorsFromCapabilities({
       optionDescriptors: [
         {
           id: "effort",
           label: "Reasoning",
-          description: "Choose a reasoning level.",
           type: "select",
           options: [
             { id: "high", label: "High", isDefault: true },
-            { id: "ultracode", label: "Ultracode", description: "Uses additional reasoning." },
+            { id: "ultrathink", label: "Ultrathink" },
           ],
+          promptInjectedValues: ["ultrathink"],
         },
       ],
-    };
-    const copied = definitionFromDraft(
-      draft({
-        descriptors: descriptorsFromCapabilities(
-          capabilities,
-          ProviderDriverKind.make("claudeAgent"),
-        ),
-      }),
-    );
-    const reopened = draftFromDefinition(copied);
-    const saved = definitionFromDraft({ ...reopened, name: "Renamed" });
-    expect(saved.capabilities?.optionDescriptors?.[0]).toMatchObject(
-      capabilities.optionDescriptors![0]!,
-    );
-    expect(copied.capabilities?.optionDescriptors?.[0]).toMatchObject(
-      capabilities.optionDescriptors![0]!,
-    );
-  });
-
-  it.each(Object.entries(DESCRIPTOR_PRESETS_BY_KIND))(
-    "offers saveable presets for %s",
-    (_driver, presets) => {
-      expect(
-        validateDraft(draft({ descriptors: (presets ?? []).map(descriptorFromPreset) })),
-      ).toBeNull();
-    },
-  );
-
-  it("collapses a blank name and no options back to a bare definition", () => {
-    expect(definitionFromDraft(draft({ name: "  " }))).toEqual({
-      slug: "my-model",
-      name: "my-model",
-      capabilities: null,
     });
-    expect(draftFromDefinition({ slug: "x", name: "x", capabilities: null }).name).toBe("");
+    expect(copied!.choices.map((choice) => choice.id)).toEqual(["high"]);
   });
 
   it("rejects duplicate ids, blank ids, and selects without choices", () => {

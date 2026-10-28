@@ -23,7 +23,8 @@ APP=${T3_APP_DIR:-$ROOT/app}
 PLATFORM=$ROOT/platform
 STAMPS=$ROOT/.run/build
 mkdir -p "$STAMPS"
-export PATH="$ROOT/.tools/bin:$ROOT/.tools/node-v24.22.1-linux-x64/bin:$PATH" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 T3CODE_TELEMETRY_ENABLED=false
+source "$ROOT/scripts/env.sh"
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 [ -f "$APP/apps/web/package.json" ] || { log "no T3 fork checkout at $APP (set T3_APP_DIR)"; exit 1; }
 t_all=$(date +%s)
 step() { log "[$(($(date +%s) - t_all))s] $*"; }

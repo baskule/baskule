@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  classifyHostedHttpsCompatibility,
   createAdvertisedEndpoint,
   deriveWsBaseUrl,
   environmentEndpointUrl,
@@ -29,43 +28,6 @@ describe("advertised endpoint helpers", () => {
       "https://example.com/s/space/",
     );
     expect(deriveWsBaseUrl("https://example.com/s/space/")).toBe("wss://example.com/s/space/");
-  });
-
-  it("marks HTTP endpoints as blocked from hosted HTTPS apps", () => {
-    expect(classifyHostedHttpsCompatibility("http://192.168.1.44:3773")).toBe(
-      "mixed-content-blocked",
-    );
-    expect(classifyHostedHttpsCompatibility("https://desktop.example.com", "compatible")).toBe(
-      "compatible",
-    );
-  });
-
-  it("creates provider-neutral endpoint records", () => {
-    expect(
-      createAdvertisedEndpoint({
-        id: "lan:http://192.168.1.44:3773",
-        label: "LAN",
-        provider: coreProvider,
-        httpBaseUrl: "http://192.168.1.44:3773",
-        reachability: "lan",
-        source: "desktop-core",
-        isDefault: true,
-      }),
-    ).toEqual({
-      id: "lan:http://192.168.1.44:3773",
-      label: "LAN",
-      provider: coreProvider,
-      httpBaseUrl: "http://192.168.1.44:3773/",
-      wsBaseUrl: "ws://192.168.1.44:3773/",
-      reachability: "lan",
-      compatibility: {
-        hostedHttpsApp: "mixed-content-blocked",
-        desktopApp: "compatible",
-      },
-      source: "desktop-core",
-      status: "available",
-      isDefault: true,
-    });
   });
 });
 

@@ -23,6 +23,7 @@ import {
   DialogFooter,
 } from "../ui/dialog";
 import { toastManager } from "../ui/toast";
+import type { ChangeRequestTerminology } from "~/sourceControlPresentation";
 import { PullRequestStackLayers } from "./PullRequestStackLayers";
 import { PullRequestStackHeader } from "./PullRequestStackHeader";
 import { PullRequestStackLayerContent } from "./PullRequestStackLayerContent";
@@ -30,6 +31,7 @@ import { PullRequestGlyph } from "./pullRequestIcons";
 
 export function PullRequestStackMenu({
   hostLabel,
+  terminology,
   stack,
   reference,
   environmentId,
@@ -42,6 +44,7 @@ export function PullRequestStackMenu({
   onRetry,
 }: {
   hostLabel: string;
+  terminology: ChangeRequestTerminology;
   notice?: string | null;
   onRetry?: (() => void) | undefined;
   stack: PullRequestStack;
@@ -223,9 +226,12 @@ export function PullRequestStackMenu({
             }
           />
           <TooltipPopup>
-            {t("Merge stack through #")}
-            {reference.number} {t("into")} {stack.base} ({mergeLayers.length}{" "}
-            {mergeLayers.length === 1 ? t("pull request") : t("pull requests")})
+            {t("Merge stack through #{{number}} into {{base}} ({{length}} {{term}})", {
+              number: reference.number,
+              base: stack.base,
+              length: mergeLayers.length,
+              term: mergeLayers.length === 1 ? terminology.singular : terminology.plural,
+            })}
           </TooltipPopup>
         </Tooltip>
       ) : null}
@@ -239,8 +245,14 @@ export function PullRequestStackMenu({
           <DialogHeader>
             <DialogTitle>
               {confirmation === "merge"
-                ? t("Merge {{length}} pull requests?", { length: mergeLayers.length })
-                : t("Rebase {{length}} pull requests?", { length: unmerged.length })}
+                ? t("Merge {{length}} {{term}}?", {
+                    length: mergeLayers.length,
+                    term: mergeLayers.length === 1 ? terminology.singular : terminology.plural,
+                  })
+                : t("Rebase {{length}} {{term}}?", {
+                    length: unmerged.length,
+                    term: unmerged.length === 1 ? terminology.singular : terminology.plural,
+                  })}
             </DialogTitle>
             <DialogDescription>
               {confirmation === "merge"

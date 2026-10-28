@@ -90,10 +90,7 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
   usageLimits: provider.usageLimits,
 });
 
-/**
- * Pass every enabled login, read or not, so an unreadable workspace still
- * counts as one.
- */
+// Include every enabled login, even unreadable workspaces.
 function accountKeyResolver(reports: Iterable<AccountReport>) {
   const workspaces = new Map<string, Set<string>>();
   for (const report of reports) {
@@ -316,9 +313,7 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
     const first = members[0]!.window;
     const id = first.id;
     const usedPercent = members.reduce((sum, m) => sum + m.window.usedPercent, 0) / members.length;
-    // Pace compares spend against the clock, so it is judged only over the
-    // members that have a clock; a window with no reset would otherwise
-    // count as spend with no time elapsed and skew the verdict.
+    // Judge pace only for windows with reset clocks; others add spend without elapsed time.
     const timed = members.flatMap((m) => {
       const share = elapsedShare(m.window, now);
       return share === null ? [] : [{ used: m.window.usedPercent, elapsed: share }];

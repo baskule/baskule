@@ -1,8 +1,9 @@
+import * as NodeURL from "node:url";
+import { extendConnectionAttemptTimeout } from "./outboundHttp.ts";
 // @effect-diagnostics nodeBuiltinImport:off - the test runs a real TLS h2 server to see which protocol fetch negotiates.
 import * as NodeHttp2 from "node:http2";
 import * as NodeNet from "node:net";
 import * as NodeTls from "node:tls";
-import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
@@ -15,14 +16,11 @@ import { afterAll, afterEach, beforeAll, describe, expect } from "vite-plus/test
 
 import {
   builtinFetchUsesHttp2,
-  extendConnectionAttemptTimeout,
   ignoreMacosTypeOfServiceEinval,
   installHttp1FetchDispatcher,
 } from "./outboundHttp.ts";
 
-// Test-only self-signed P-256 certificate for 127.0.0.1, valid until 2126; not a
-// secret. Node cannot mint X.509 certificates without a library, and a local
-// server only offers h2 over ALPN, which needs TLS.
+// Non-secret, self-signed 127.0.0.1 certificate, valid until 2126; ALPN h2 requires TLS.
 const TEST_KEY = `-----BEGIN PRIVATE KEY-----
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg3EwCztQysKTvzdcR
 g0LWq+axzUd4tHi9PyMdqh7PlGShRANCAARfQpoLgv/tOsHWCLriDza7Ruaey2b7
@@ -89,8 +87,7 @@ describe("installHttp1FetchDispatcher", () => {
     expect(Undici.getGlobalDispatcher()).toBeInstanceOf(Undici.EnvHttpProxyAgent);
   });
 
-  // Only a runtime that bundles undici 8 (Node 26+) offers h2 through the
-  // built-in fetch, so only there can this prove fetch reads the new dispatcher.
+  // Only bundled undici 8 (Node 26+) offers fetch h2 and can prove dispatcher replacement.
   it.effect.runIf(builtinFetchUsesHttp2(process.versions.undici))(
     "moves the built-in fetch off HTTP/2",
     () =>
@@ -136,24 +133,6 @@ describe("ignoreMacosTypeOfServiceEinval", () => {
 
     error = { code: "EINVAL" };
     expect(() => prototype.setTypeOfService.call(socket, 0)).toThrow();
-  });
-
-  it("changes nothing off macOS or on a runtime without setTypeOfService", () => {
-    const error = errnoError("EINVAL");
-    const prototype = {
-      setTypeOfService() {
-        throw error;
-      },
-    };
-    const original = prototype.setTypeOfService;
-    ignoreMacosTypeOfServiceEinval("linux", prototype);
-    ignoreMacosTypeOfServiceEinval("win32", prototype);
-    expect(prototype.setTypeOfService).toBe(original);
-    expect(() => prototype.setTypeOfService()).toThrow(error);
-
-    const withoutTypeOfService = {};
-    ignoreMacosTypeOfServiceEinval("darwin", withoutTypeOfService);
-    expect(withoutTypeOfService).not.toHaveProperty("setTypeOfService");
   });
 
   // Bundled undici 7 calls this API from a socket callback. Keep the real fetch

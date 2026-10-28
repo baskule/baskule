@@ -89,8 +89,7 @@ export function loadBaskuleSession(): Promise<void> {
     let saved: SavedConnection = { kind: "disconnected", serverUrl: null };
     try {
       if (raw) saved = decodeSavedConnection(raw);
-    } catch {
-    }
+    } catch {}
     const token =
       saved.kind === "authenticated"
         ? await SecureStore.getItemAsync(TOKEN_KEY).catch(() => null)

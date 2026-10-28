@@ -38,7 +38,7 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
   }
   if (!provider.enabled || provider.status === "disabled") {
     return {
-      headline: "Disabled",
+      headline: t("Disabled"),
       detail:
         provider.message ?? "This provider is installed but disabled for new sessions in T3 Code.",
     };
@@ -52,7 +52,7 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
   if (provider.auth.status === "unauthenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
-      headline: authLabel ? `Not authenticated · ${authLabel}` : "Not authenticated",
+      headline: authLabel ? `Not authenticated · ${authLabel}` : t("Not authenticated"),
       detail: provider.message ?? null,
     };
   }
@@ -65,19 +65,19 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
   }
   if (provider.status === "error") {
     return {
-      headline: "Unavailable",
+      headline: t("Unavailable"),
       detail: provider.message ?? "The provider failed its startup checks.",
     };
   }
   if (provider.auth.status === "authenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
-      headline: authLabel ? `Authenticated · ${authLabel}` : "Authenticated",
+      headline: authLabel ? `Authenticated · ${authLabel}` : t("Authenticated"),
       detail: provider.message ?? null,
     };
   }
   return {
-    headline: "Available",
+    headline: t("Available"),
     detail: provider.message ?? null,
   };
 }
@@ -122,8 +122,7 @@ export function getProviderVersionAdvisoryPresentation(
   ) {
     const targetVersion = compatibility.recommendedVersion;
     const recommendation = getProviderVersionLabel(targetVersion) ?? compatibility.recommendedRange;
-    // An installed version that is already the package's latest cannot be fixed by
-    // updating it, e.g. when the recommendation needs a different package.
+    // Latest package versions cannot be updated into recommendations requiring another package.
     const isAlreadyLatest = advisory?.status === "current";
     return {
       title: COMPATIBILITY_TITLES[compatibility.status],
@@ -147,7 +146,7 @@ export function getProviderVersionAdvisoryPresentation(
     return null;
   }
 
-  const label = "Update available";
+  const label = t("Update available");
   const version = advisory.latestVersion;
   const versionLabel = getProviderVersionLabel(version);
 

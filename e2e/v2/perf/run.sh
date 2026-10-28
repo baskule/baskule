@@ -9,7 +9,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
 . "${STACK_ROOT:-$ROOT}/deploy/v2/lib.sh"
 export STACK_LOCK_OWNER=${STACK_LOCK_OWNER:-perf} STACK_LOCK_WAIT=${STACK_LOCK_WAIT:-600}
-export PATH="$ROOT/.tools/node-v24.22.1-linux-x64/bin:$PATH"
+source "$ROOT/scripts/env.sh"
 export PERF_WORLD=${PERF_WORLD:-${STACK_ROOT:-$ROOT}/e2e/v2/artifacts/world.json}
 stack_lock_acquire $$ "e2e/v2/perf/run.sh $*" || exit 1
 trap stack_lock_release EXIT

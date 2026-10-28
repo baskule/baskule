@@ -1,11 +1,13 @@
+import { ExpandableText } from "../settings/ExpandableText";
 import { useTranslation } from "../../i18n";
 import type { OrchestrationV2ProviderFailureClass } from "@t3tools/contracts";
 import { memo } from "react";
+
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
+
 import { CircleAlertIcon, XIcon } from "lucide-react";
-import { OpenAI } from "../Icons";
-import { ExpandableText } from "../settings/ExpandableText";
+
 export function getThreadErrorBannerMessage(error: string): string {
   let payload: unknown;
   try {
@@ -53,12 +55,10 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,
   onDismiss,
   errorClass,
-  chatGptUsageLimit = false,
 }: {
   error: string | null;
   errorClass?: OrchestrationV2ProviderFailureClass | null;
   onDismiss?: () => void;
-  chatGptUsageLimit?: boolean;
 }) {
   const t = useTranslation();
   if (!error) return null;
@@ -66,24 +66,12 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   return (
     <div className="pointer-events-auto mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
       <Alert variant={variant} surface="glass" controlAlignment="first-line" data-variant={variant}>
-        {chatGptUsageLimit ? (
-          <OpenAI className="size-4 text-foreground!" aria-hidden="true" />
-        ) : (
-          <CircleAlertIcon />
-        )}
+        <CircleAlertIcon />
         <AlertDescription>
-          {chatGptUsageLimit ? (
-            <div className="space-y-1">
-              <p className="font-medium">{t("ChatGPT usage limit reached")}</p>
-              <p>{t("Review your usage settings in ChatGPT to continue.")}</p>
-            </div>
-          ) : (
-            <ExpandableText text={error} collapsedText={getThreadErrorBannerMessage(error)} />
-          )}
+          <ExpandableText text={error} collapsedText={getThreadErrorBannerMessage(error)} />
         </AlertDescription>
-        {(chatGptUsageLimit || onDismiss) && (
+        {onDismiss && (
           <AlertAction>
-            {chatGptUsageLimit ? null : null}
             {onDismiss ? (
               <Button
                 variant="ghost"

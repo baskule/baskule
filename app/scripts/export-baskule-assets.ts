@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- standalone asset/code generation uses native filesystem and CLI output.
 // The approved SVGs are the source for every shipped Baskule icon.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
@@ -60,8 +61,14 @@ const canvas = (size: number, fraction: number, monochrome = false) => {
 };
 // Android masks the outer third; the whole K must stay inside the safe zone.
 await write(NodePath.join(output, "android-foreground.png"), await png(canvas(432, 0.56), 432));
-await write(NodePath.join(output, "android-monochrome.png"), await png(canvas(432, 0.56, true), 432));
-await write(NodePath.join(output, "android-notification.png"), await png(canvas(96, 0.8, true), 96));
+await write(
+  NodePath.join(output, "android-monochrome.png"),
+  await png(canvas(432, 0.56, true), 432),
+);
+await write(
+  NodePath.join(output, "android-notification.png"),
+  await png(canvas(96, 0.8, true), 96),
+);
 await write(NodePath.join(output, "android-splash.png"), await png(canvas(1152, 0.3), 1152));
 const publicDir = NodePath.join(root, "app/apps/web/public");
 for (const [file, target] of Object.entries({

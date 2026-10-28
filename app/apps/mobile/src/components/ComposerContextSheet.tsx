@@ -12,6 +12,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { videoMimeType } from "@t3tools/shared/video";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -113,7 +114,7 @@ export function ComposerContextSheet(props: {
       : undefined;
   if (record && !("payload" in record) && (record.kind === "image" || record.kind === "file")) {
     const mimeType = videoMimeType(record) ?? record.mimeType;
-    const previewKind = filePreviewKind(record);
+    const previewKind = filePreviewKind(record, { richDocuments: false });
     const resource = {
       _tag: "attachment" as const,
       attachmentId: record.attachmentId,
@@ -185,6 +186,10 @@ export function ComposerContextSheet(props: {
     record?.kind === "review-comment" && "pullRequest" in record
       ? record.pullRequest?.url
       : undefined;
+  const changeRequestTerm = (
+    (pullRequestUrl ? sourceControlClients.findByChangeRequestUrl(pullRequestUrl) : undefined) ??
+    sourceControlClients.get(undefined)
+  ).changeRequest.singular;
   const terminal = record?.kind === "terminal" && !("payload" in record) ? record : null;
   return (
     <Sheet title={terminal?.terminalLabel ?? props.label} onClose={props.onClose}>
@@ -271,18 +276,23 @@ export function ComposerContextSheet(props: {
                   label={t("Requested changes")}
                   value={record.styleChanges.join("\n")}
                 />
-                {record.elements?.map((element, index) => (
-                  <View key={`${element.selector ?? element.tagName}:${index}`} className="gap-3">
-                    <ContextField
-                      label={t("Element")}
-                      value={element.componentName ?? element.tagName}
-                    />
-                    <ContextField label={t("Selector")} value={element.selector} code />
-                    <ContextSource source={element.source} />
-                    <ContextField label={t("HTML")} value={element.htmlPreview} code />
-                    <ContextField label={t("Styles")} value={element.styles} code />
-                  </View>
-                ))}
+                {record.elements?.map(
+                  (element, index) => (
+                    /* oxlint-disable react/no-array-index-key -- Captured DOM elements are a fixed snapshot without persistent element IDs. */ <View
+                      key={`${element.selector ?? element.tagName}:${index}`}
+                      className="gap-3"
+                    >
+                      <ContextField
+                        label={t("Element")}
+                        value={element.componentName ?? element.tagName}
+                      />
+                      <ContextField label={t("Selector")} value={element.selector} code />
+                      <ContextSource source={element.source} />
+                      <ContextField label={t("HTML")} value={element.htmlPreview} code />
+                      <ContextField label={t("Styles")} value={element.styles} code />
+                    </View>
+                  ) /* oxlint-enable react/no-array-index-key */,
+                )}
               </>
             ) : null}
             {record.kind === "element" ? (
@@ -362,12 +372,14 @@ export function ComposerContextSheet(props: {
             onPress={() => {
               props.onClose();
               void openPullRequest(pullRequestUrl).catch(() =>
-                Dialog.alert("Could not open pull request", "Try again when connected."),
+                Dialog.alert(`Could not open ${changeRequestTerm}`, "Try again when connected."),
               );
             }}
             className="rounded-xl bg-subtle p-4"
           >
-            <Text className="text-foreground">{t("Open pull request")}</Text>
+            <Text className="text-foreground">
+              {t("Open {{changeRequest}}", { changeRequest: changeRequestTerm })}
+            </Text>
           </Pressable>
         ) : null}
         {props.onOpenAttachment ? (
@@ -380,7 +392,7 @@ export function ComposerContextSheet(props: {
         ) : null}
         {props.onOpenPullRequest && !pullRequestUrl ? (
           <Button
-            label={t("Open pull request")}
+            label={t("Open {{changeRequest}}", { changeRequest: changeRequestTerm })}
             tone="secondary"
             onPress={props.onOpenPullRequest}
             fullWidth

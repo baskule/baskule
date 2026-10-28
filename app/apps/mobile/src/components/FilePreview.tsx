@@ -53,11 +53,13 @@ function DocumentPreview(props: {
   const onRequestClose = useEffectEvent(props.onRequestClose);
   const onOpenError = useEffectEvent((error: unknown) => {
     if (props.onOpenError) props.onOpenError(error);
-    else
+    else {
       Dialog.alert(
         "Could not open document",
         "A compatible viewer must be installed. Check your connection and try again.",
       );
+      onRequestClose();
+    }
   });
   useEffect(() => {
     const controller = new AbortController();
@@ -73,13 +75,14 @@ function DocumentPreview(props: {
       signal: controller.signal,
     };
     const opened = openAttachmentInViewer(input);
-    void opened
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) onOpenError(error);
-      })
-      .finally(() => {
+    void opened.then(
+      () => {
         if (!controller.signal.aborted) onRequestClose();
-      });
+      },
+      (error: unknown) => {
+        if (!controller.signal.aborted) onOpenError(error);
+      },
+    );
     return () => controller.abort();
   }, [uri, name, props.source.mimeType, props.source.kind]);
   return (

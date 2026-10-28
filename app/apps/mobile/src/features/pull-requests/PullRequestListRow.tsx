@@ -1,4 +1,8 @@
 import { useTranslation } from "../../i18n";
+import {
+  capitalizeTerm,
+  sourceControlClients,
+} from "@t3tools/client-runtime/source-control-clients";
 import { memo } from "react";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -73,8 +77,11 @@ export const PullRequestListRow = memo(
             accessibilityRole="button"
             accessibilityState={{ selected: props.selected, busy: props.busy }}
             accessibilityLabel={t(
-              "Pull request {{number}}, {{title}}, {{label}}{{value4}}, by {{value5}}{{value6}}{{value7}}{{value8}}{{value9}}, {{additions}} additions, {{deletions}} deletions",
+              "{{changeRequest}} {{number}}, {{title}}, {{label}}{{value4}}, by {{value5}}{{value6}}{{value7}}{{value8}}{{value9}}, {{additions}} additions, {{deletions}} deletions",
               {
+                changeRequest: capitalizeTerm(
+                  sourceControlClients.get(item.provider).changeRequest.singular,
+                ),
                 number: item.number,
                 title: item.title,
                 label: status.label,

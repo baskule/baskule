@@ -85,15 +85,21 @@ it.layer(NodeServices.layer)("Baskule front auth mode", (it) => {
     Effect.gen(function* () {
       const auth = yield* EnvironmentAuth.EnvironmentAuth;
       const session = yield* auth.authenticateHttpRequest(as(alice));
-      const { ticket } = yield* auth.issueWebSocketTicket(session);
+      const { ticket } = yield* auth.issueWebSocketTicket(session, { use: "rpc" });
       const wsUrl = `/ws?wsTicket=${encodeURIComponent(ticket)}`;
-      const upgraded = yield* auth.authenticateWebSocketUpgrade(as(alice, wsUrl));
+      const upgraded = yield* auth.authenticateWebSocketUpgrade(as(alice, wsUrl), "rpc");
       expect(upgraded.sessionId).toBe(session.sessionId);
+      const wrongAudience = yield* Effect.flip(
+        auth.authenticateWebSocketUpgrade(as(alice, wsUrl), "media"),
+      );
+      expect(wrongAudience._tag).toBe("ServerAuthInvalidCredentialError");
 
       const bob = { ...alice, userId: "u-bob", sessionId: "ba-session-2" };
-      const stolen = yield* Effect.flip(auth.authenticateWebSocketUpgrade(as(bob, wsUrl)));
+      const stolen = yield* Effect.flip(auth.authenticateWebSocketUpgrade(as(bob, wsUrl), "rpc"));
       expect(stolen._tag).toBe("ServerAuthInvalidCredentialError");
-      const anonymous = yield* Effect.flip(auth.authenticateWebSocketUpgrade(request({}, wsUrl)));
+      const anonymous = yield* Effect.flip(
+        auth.authenticateWebSocketUpgrade(request({}, wsUrl), "rpc"),
+      );
       expect(anonymous._tag).toBe("ServerAuthMissingCredentialError");
     }).pipe(Effect.provide(layerAuth)),
   );

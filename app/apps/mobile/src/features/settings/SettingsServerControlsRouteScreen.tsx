@@ -40,18 +40,20 @@ import {
   type ScopedMobileSettingsTarget,
 } from "./settings-scoped-server";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import { AutoSettleSettingsRows } from "./ThreadSettingsSections";
+import { supportsSharedSettingsSync } from "@t3tools/client-runtime/state/shared-settings";
 
-type SettingsPage = "new-threads" | "source-control" | "agent-behavior" | "maintenance";
+type SettingsPage = "threads" | "source-control" | "worktrees" | "maintenance";
 
 const PAGE_TITLES: Record<SettingsPage, string> = {
-  get "new-threads"() {
-    return t("New threads");
+  get threads() {
+    return t("Threads");
   },
   get "source-control"() {
     return t("Source control");
   },
-  get "agent-behavior"() {
-    return t("Agent behavior");
+  get worktrees() {
+    return t("Worktrees");
   },
   get maintenance() {
     return t("Maintenance");
@@ -59,16 +61,22 @@ const PAGE_TITLES: Record<SettingsPage, string> = {
 };
 
 const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettingKey[]> = {
-  "new-threads": ["defaultThreadEnvMode", "worktreeSubmodules", "defaultRuntimeMode"],
-  "source-control": [
-    "defaultAutoPull",
-    "removeAgentCreditsOnMerge",
+  threads: [
+    "defaultThreadEnvMode",
+    "defaultRuntimeMode",
+    "responseStreamingMode",
+    "enableAgentBrowserAccess",
+    "sidebarAutoSettleOnMerge",
+    "sidebarAutoSettleAfterDays",
+  ],
+  "source-control": ["defaultAutoPull", "removeAgentCreditsOnMerge"],
+  worktrees: [
     "newWorktreesStartFromOrigin",
+    "worktreeSubmodules",
     "branchNamingMode",
     "branchNamePrefix",
     "branchNameInstructions",
   ],
-  "agent-behavior": ["responseStreamingMode", "enableAgentBrowserAccess"],
   maintenance: ["continueThreadsAfterServerUpdate"],
 };
 
@@ -174,16 +182,42 @@ const STREAMING_CHOICES: ReadonlyArray<{
   },
 ];
 
-export function SettingsEnvironmentNewThreadsRouteScreen() {
-  return <ServerSettingsDetail page="new-threads" />;
+// Only servers with thread auto-settlement store these, so other targets get the rest of a patch.
+const AUTO_SETTLE_SETTING_KEYS: ReadonlySet<string> = new Set([
+  "sidebarAutoSettleOnMerge",
+  "sidebarAutoSettleAfterDays",
+  "autoResumeLimitedThreads",
+  "snoozeLimitedThreads",
+]);
+
+function planServerSettingsWrites(
+  targets: readonly ScopedMobileSettingsTarget[],
+  projectSelected: boolean,
+  patch: ServerSettingsPatch,
+) {
+  const capable = targets.filter((target) => supportsSharedSettingsSync(target.environment));
+  const others = targets.filter((target) => !supportsSharedSettingsSync(target.environment));
+  const othersPatch = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => !AUTO_SETTLE_SETTING_KEYS.has(key)),
+  ) as ServerSettingsPatch;
+  return [
+    ...planMobileScopedSettingsPatch(capable, projectSelected, patch),
+    ...(Object.keys(othersPatch).length > 0
+      ? planMobileScopedSettingsPatch(others, projectSelected, othersPatch)
+      : []),
+  ];
+}
+
+export function SettingsThreadsRouteScreen() {
+  return <ServerSettingsDetail page="threads" />;
 }
 
 export function SettingsEnvironmentSourceControlRouteScreen() {
   return <ServerSettingsDetail page="source-control" />;
 }
 
-export function SettingsEnvironmentAgentBehaviorRouteScreen() {
-  return <ServerSettingsDetail page="agent-behavior" />;
+export function SettingsWorktreesRouteScreen() {
+  return <ServerSettingsDetail page="worktrees" />;
 }
 
 export function SettingsEnvironmentMaintenanceRouteScreen() {
@@ -204,8 +238,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
   );
   const [pendingWrites, setPendingWrites] = useState(0);
   const writeInFlight = useRef(false);
-  // A closing view can still save its drafts while a write is pending, after
-  // the controls disabled. Those patches run once the current write settles.
+  // Closing views can save after controls disable; queue those patches behind the pending write.
   const queuedPatch = useRef<{ key: string; patch: ServerSettingsPatch } | null>(null);
   const targetsKey = targets
     .map((target) => `${target.environment.environmentId}:${target.projectId}`)
@@ -242,7 +275,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
       )
     )
       return;
-    const writes = planMobileScopedSettingsPatch(targets, projectSelected, patch);
+    const writes = planServerSettingsWrites(targets, projectSelected, patch);
     if (writes.length === 0) return;
     writeInFlight.current = true;
     setPendingTargets(targets);
@@ -333,7 +366,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                   onClear={clearProjectOverrides}
                 />
               ) : null}
-              {props.page === "new-threads" ? (
+              {props.page === "threads" ? (
                 <>
                   <SettingsSection
                     title={t("Default workspace")}
@@ -361,31 +394,6 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                     ))}
                   </SettingsSection>
                   <SettingsSection
-                    title={t("Worktree submodules")}
-                    trailing={
-                      pendingWrites === 0 && isMixed("worktreeSubmodules") ? (
-                        <MixedValuesLabel projectSelected={projectSelected} />
-                      ) : null
-                    }
-                  >
-                    {SUBMODULE_CHOICES.filter(
-                      (choice) => choice.mode !== null || !projectSelected,
-                    ).map((choice, index) => (
-                      <SettingsChoiceRow
-                        key={choice.mode ?? "inherit"}
-                        label={choice.label}
-                        description={choice.description}
-                        selected={
-                          !isMixed("worktreeSubmodules") &&
-                          uniform("worktreeSubmodules") === choice.mode
-                        }
-                        separated={index > 0}
-                        disabled={disabledFor("worktreeSubmodules")}
-                        onPress={() => write({ worktreeSubmodules: choice.mode })}
-                      />
-                    ))}
-                  </SettingsSection>
-                  <SettingsSection
                     title={t("Default permissions")}
                     trailing={
                       pendingWrites === 0 && uniform("defaultRuntimeMode") === null ? (
@@ -405,60 +413,6 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                       />
                     ))}
                   </SettingsSection>
-                </>
-              ) : null}
-
-              {props.page === "source-control" ? (
-                <>
-                  <BranchNamingSettings
-                    key={targetsKey}
-                    mode={uniform("branchNamingMode")}
-                    prefix={uniform("branchNamePrefix")}
-                    instructions={uniform("branchNameInstructions")}
-                    disabled={disabledFor("branchNamingMode")}
-                    onChange={write}
-                  />
-                  <SettingsSection title={t("Pull requests")}>
-                    <SettingsSwitchRow
-                      icon={PullRequestGlyph.merged}
-                      label={t("Remove agent credits when merging")}
-                      subtitle={t(
-                        "Remove recognized agent credits from GitHub merge and squash messages, keeping human co-authors. Includes auto-merge. Excludes merge queues, stack merges, and existing commits.",
-                      )}
-                      value={uniform("removeAgentCreditsOnMerge")}
-                      disabled={disabledFor("removeAgentCreditsOnMerge")}
-                      onValueChange={(value) => write({ removeAgentCreditsOnMerge: value })}
-                    />
-                  </SettingsSection>
-                  <SettingsSection title={t("Default branch")}>
-                    <SettingsSwitchRow
-                      icon="arrow.down.circle"
-                      label={t("Automatically pull")}
-                      subtitle={t(
-                        "Keep the default branch current when there are no local changes.",
-                      )}
-                      value={uniform("defaultAutoPull")}
-                      disabled={disabledFor("defaultAutoPull")}
-                      onValueChange={(value) => write({ defaultAutoPull: value })}
-                    />
-                  </SettingsSection>
-                  <SettingsSection title={t("Worktrees")}>
-                    <SettingsSwitchRow
-                      icon="arrow.triangle.branch"
-                      label={t("Start from remote")}
-                      subtitle={t(
-                        "Uses the latest commit of the base branch’s tracked remote branch, even if its name differs. Otherwise uses the same-named branch on origin. Uses your local branch if that remote branch is missing.",
-                      )}
-                      value={uniform("newWorktreesStartFromOrigin")}
-                      disabled={disabledFor("newWorktreesStartFromOrigin")}
-                      onValueChange={(value) => write({ newWorktreesStartFromOrigin: value })}
-                    />
-                  </SettingsSection>
-                </>
-              ) : null}
-
-              {props.page === "agent-behavior" ? (
-                <>
                   <SettingsSection
                     title={t("Response streaming")}
                     trailing={
@@ -489,20 +443,99 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                       onValueChange={(value) => write({ enableAgentBrowserAccess: value })}
                     />
                   </SettingsSection>
+                  <AutoSettleSettingsRows write={write} pending={pendingWrites > 0} />
+                </>
+              ) : null}
+
+              {props.page === "source-control" ? (
+                <>
+                  <SettingsSection title={t("Pull requests")}>
+                    <SettingsSwitchRow
+                      icon={PullRequestGlyph.merged}
+                      label={t("Remove agent credits when merging")}
+                      subtitle={t(
+                        "Remove recognized agent credits from merge and squash messages on hosts that support it, keeping human co-authors. Includes auto-merge. Excludes merge queues, stack merges, and existing commits.",
+                      )}
+                      value={uniform("removeAgentCreditsOnMerge")}
+                      disabled={disabledFor("removeAgentCreditsOnMerge")}
+                      onValueChange={(value) => write({ removeAgentCreditsOnMerge: value })}
+                    />
+                  </SettingsSection>
+                  <SettingsSection title={t("Default branch")}>
+                    <SettingsSwitchRow
+                      icon="arrow.down.circle"
+                      label={t("Automatically pull")}
+                      subtitle={t(
+                        "Keep the default branch current when there are no local changes.",
+                      )}
+                      value={uniform("defaultAutoPull")}
+                      disabled={disabledFor("defaultAutoPull")}
+                      onValueChange={(value) => write({ defaultAutoPull: value })}
+                    />
+                  </SettingsSection>
+                </>
+              ) : null}
+
+              {props.page === "worktrees" ? (
+                <>
+                  <SettingsSection title={t("New worktrees")}>
+                    <SettingsSwitchRow
+                      icon="arrow.triangle.branch"
+                      label={t("Start from remote")}
+                      subtitle={t(
+                        "Uses the latest commit of the base branch’s tracked remote branch, even if its name differs. Otherwise uses the same-named branch on origin. Uses your local branch if that remote branch is missing.",
+                      )}
+                      value={uniform("newWorktreesStartFromOrigin")}
+                      disabled={disabledFor("newWorktreesStartFromOrigin")}
+                      onValueChange={(value) => write({ newWorktreesStartFromOrigin: value })}
+                    />
+                  </SettingsSection>
+                  <SettingsSection
+                    title={t("Worktree submodules")}
+                    trailing={
+                      pendingWrites === 0 && isMixed("worktreeSubmodules") ? (
+                        <MixedValuesLabel projectSelected={projectSelected} />
+                      ) : null
+                    }
+                  >
+                    {SUBMODULE_CHOICES.filter(
+                      (choice) => choice.mode !== null || !projectSelected,
+                    ).map((choice, index) => (
+                      <SettingsChoiceRow
+                        key={choice.mode ?? "inherit"}
+                        label={choice.label}
+                        description={choice.description}
+                        selected={
+                          !isMixed("worktreeSubmodules") &&
+                          uniform("worktreeSubmodules") === choice.mode
+                        }
+                        separated={index > 0}
+                        disabled={disabledFor("worktreeSubmodules")}
+                        onPress={() => write({ worktreeSubmodules: choice.mode })}
+                      />
+                    ))}
+                  </SettingsSection>
+                  <BranchNamingSettings
+                    key={targetsKey}
+                    mode={uniform("branchNamingMode")}
+                    prefix={uniform("branchNamePrefix")}
+                    instructions={uniform("branchNameInstructions")}
+                    disabled={disabledFor("branchNamingMode")}
+                    onChange={write}
+                  />
                 </>
               ) : null}
 
               {props.page === "maintenance" ? (
                 <>
-                  {!projectSelected &&
-                    selectedTargets
-                      .filter(
+                  {!projectSelected ? (
+                    <DatabaseStorageNotice
+                      targets={selectedTargets.filter(
                         (target) =>
                           target.serverConfig.environment.capabilities.databaseStorage === true,
-                      )
-                      .map((target) => (
-                        <DatabaseStorageNotice key={target.environmentId} target={target} />
-                      ))}
+                      )}
+                    />
+                  ) : null}
                   {!projectSelected ? (
                     <SettingsSection title={t("Manage environments")}>
                       {selectedTargets.map((target) => (
@@ -510,14 +543,10 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                           key={target.environmentId}
                           icon="server.rack"
                           label={target.label}
-                          value="Server and provider updates"
+                          value={t("Server and provider updates")}
                           onPress={() =>
-                            navigation.navigate("SettingsSheet", {
-                              screen: "SettingsContent",
-                              params: {
-                                screen: "SettingsEnvironmentDetail",
-                                params: { environmentId: target.environmentId },
-                              },
+                            navigation.navigate("SettingsEnvironmentDetail", {
+                              environmentId: target.environmentId,
                             })
                           }
                         />

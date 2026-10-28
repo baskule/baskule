@@ -1,24 +1,47 @@
 import { useTranslation } from "../../i18n";
-import { Toolbar } from "../../components/ui/Toolbar";
-import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
+import {
+  navigationCustomizationAvailable,
+  overflowNavigationTabs,
+} from "../workspace/navigation-tab-order";
+import {
+  NAVIGATION_TAB_ICONS,
+  WORKSPACE_TAB_LABELS,
+  useNavigationTabOrder,
+  useHiddenNavigationTabs,
+} from "../workspace/navigation-tabs";
+import { currentWorkspaceSelections } from "../workspace/workspace-selection-store";
+import { rememberedSettingsPage } from "../workspace/workspace-tab-navigation";
+import { useSelectWorkspaceTab } from "../workspace/useSelectWorkspaceTab";
+import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
+import {
+  ScreenScrollView as ScrollView,
+  ScreenScrollViewBottomInset,
+} from "../../components/ui/ScreenScrollView";
+import { EmptyState } from "../../components/ui/EmptyState";
 import { useAuth, useUser } from "@clerk/expo";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useNavigationState } from "@react-navigation/native";
+import { use, useMemo, type ComponentProps } from "react";
 import { Platform, View } from "react-native";
+import { useWorkspaceSurface } from "../workspace/useWorkspaceSurface";
+import { useDeviceType } from "../../native/native-layout-metrics";
+import { useCompactWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
 import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
-import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsRow } from "./components/SettingsRow";
-import { SettingsSection } from "./components/SettingsSection";
+import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
+import type { SettingsPageTarget } from "./components/settings-page-targets";
 import {
   AndroidSettingsEnvironmentFilter,
   SettingsEnvironmentFilterHeader,
 } from "./components/SettingsEnvironmentFilterHeader";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
+import { filterSettingsSections } from "./settings-search";
+import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 // baskule: settings are reduced to the server connection plus a few app pages (scope: no settings).
 import { BASKULE_FLAGS } from "../../baskule/flags";
 import { signOutOfBaskule, useBaskuleSession } from "../../baskule/session";
@@ -29,8 +52,22 @@ import { openBaskuleManagement } from "../../baskule/management";
 
 export function SettingsRouteScreen() {
   const t = useTranslation();
-  const navigation = useNavigation();
+  const surface = useWorkspaceSurface();
+  const deviceType = useDeviceType();
+  const compactTabs = useCompactWorkspaceTabs();
+  const workspace = useWorkspaceTabs();
   const { layout } = useAdaptiveWorkspaceLayout();
+  const inSidebar = use(NativePrimaryColumnContext) !== null && layout.usesSplitView;
+  // The page open beside the list: the route right above the Settings tab's route. While
+  // another tab is open this list stays mounted, hidden, and must keep showing the page Settings
+  // reopens on; otherwise returning shows it unselected for a frame before the page arrives.
+  const selected = useNavigationState((state) => {
+    const list = state.routes.findIndex((route) => route.name === "Settings");
+    return list < 0
+      ? rememberedSettingsPage(currentWorkspaceSelections())
+      : (state.routes[list + 1]?.name ?? null);
+  });
+  const sidebar = useMemo(() => (inSidebar ? { selected } : null), [inSidebar, selected]);
   const content = hasCloudPublicConfig() ? (
     <ConfiguredSettingsRouteScreen />
   ) : (
@@ -38,36 +75,45 @@ export function SettingsRouteScreen() {
   );
 
   return (
-    <>
-      {Platform.OS === "ios" ? (
-        <NativeStackScreenOptions options={{ headerBackVisible: !layout.usesSplitView }} />
-      ) : null}
-      {Platform.OS === "ios" && layout.usesSplitView ? (
-        <>
-          <Toolbar placement="left">
-            <Toolbar.Button
-              accessibilityLabel={t("Go back")}
-              icon="chevron.left"
-              onPress={() => navigation.goBack()}
-            />
-          </Toolbar>
-        </>
-      ) : null}
-      <SettingsEnvironmentFilterHeader closeSettings />
-      {Platform.OS === "android" ? (
-        <SettingsScreen title={t("Settings")} trailing={<AndroidSettingsEnvironmentFilter />}>
-          {content}
-        </SettingsScreen>
-      ) : (
-        content
-      )}
-    </>
+    <SettingsSidebarContext value={sidebar}>
+      <View className={`flex-1 ${inSidebar ? surface.className : "bg-screen"}`}>
+        <SettingsEnvironmentFilterHeader />
+        <ScreenScrollViewBottomInset value={deviceType === "pad" || compactTabs ? 80 : 0}>
+          {Platform.OS === "android" ? (
+            <SettingsScreen
+              title={t("Settings")}
+              trailing={<AndroidSettingsEnvironmentFilter />}
+              search={
+                workspace
+                  ? {
+                      value: workspace.state.tabs.settings.query,
+                      onChangeText: (query) =>
+                        workspace.dispatch({ type: "query", tab: "settings", query }),
+                      placeholder: t("Search settings"),
+                    }
+                  : undefined
+              }
+            >
+              {content}
+            </SettingsScreen>
+          ) : (
+            content
+          )}
+        </ScreenScrollViewBottomInset>
+      </View>
+    </SettingsSidebarContext>
   );
+}
+
+type SettingsListRow = ComponentProps<typeof SettingsRow> & { readonly id: string };
+
+interface SettingsListSection {
+  readonly title?: string;
+  readonly rows: readonly SettingsListRow[];
 }
 
 function ConfiguredSettingsRouteScreen() {
   const t = useTranslation();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
   const { user } = useUser();
@@ -79,127 +125,146 @@ function ConfiguredSettingsRouteScreen() {
       : (user?.primaryEmailAddress?.emailAddress ?? "Signed in");
 
   return (
-    <View collapsable={false} className="flex-1 bg-sheet">
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        showsVerticalScrollIndicator={false}
-        className="flex-1"
-        contentContainerClassName="gap-4 px-5 pt-4"
-        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
-      >
-        <SettingsSection title={t("Connections")}>
-          <SettingsRow
-            icon="person.crop.circle"
-            label={t("T3 Account")}
-            value={accountLabel}
-            disabled={!isLoaded}
-            onPress={() => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" })}
-          />
-          <SettingsRow
-            icon="desktopcomputer"
-            label={t("Environments")}
-            value={`${Object.keys(savedConnectionsById).length}`}
-            valuePosition="trailing"
-            target="SettingsEnvironments"
-          />
-          <SettingsRow
-            icon="bell.badge"
-            label={t("Notifications")}
-            target="SettingsNotifications"
-          />
-        </SettingsSection>
-
-        <SettingsIndexSections />
-      </ScrollView>
-    </View>
+    <SettingsList
+      connections={{
+        title: t("Connections"),
+        rows: [
+          {
+            id: "account",
+            icon: "person.crop.circle",
+            label: t("T3 Account"),
+            value: accountLabel,
+            disabled: !isLoaded,
+            onPress: () => navigation.navigate("SettingsAuth"),
+          },
+          environmentsRow(t("Environments"), Object.keys(savedConnectionsById).length),
+          {
+            id: "SettingsNotifications",
+            icon: "bell.badge",
+            label: t("Notifications"),
+            target: "SettingsNotifications",
+          },
+        ],
+      }}
+    />
   );
 }
 
 function LocalSettingsRouteScreen() {
-  const insets = useSafeAreaInsets();
+  const t = useTranslation();
   const { savedConnectionsById } = useSavedRemoteConnections();
-  const environmentCount = Object.keys(savedConnectionsById).length;
-
-  return (
-    <View collapsable={false} className="flex-1 bg-sheet">
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        showsVerticalScrollIndicator={false}
-        className="flex-1"
-        contentContainerClassName="gap-4 px-5 pt-4"
-        contentContainerStyle={{
-          paddingBottom: Math.max(insets.bottom, 18) + 18,
-        }}
-      >
-        <BaskuleAccountSection spaceCount={environmentCount} />
-
-        <SettingsIndexSections />
-      </ScrollView>
-    </View>
-  );
+  const accountRows = useBaskuleAccountRows(Object.keys(savedConnectionsById).length);
+  return <SettingsList connections={{ title: t("Account"), rows: accountRows }} />;
 }
 
-function SettingsIndexSections() {
-  return BASKULE_FLAGS.extendedSettings ? (
-    <UpstreamSettingsIndexSections />
-  ) : (
-    <BaskuleSettingsIndexSections />
+function environmentsRow(label: string, count: number): SettingsListRow {
+  return {
+    id: "SettingsEnvironments",
+    icon: "desktopcomputer",
+    label,
+    value: `${count}`,
+    valuePosition: "trailing",
+    target: "SettingsEnvironments",
+  };
+}
+
+function SettingsList(props: { readonly connections: SettingsListSection }) {
+  const t = useTranslation();
+  // UIKit's scroll-edge material takes the scroll view's own color; like the chat list, match
+  // the sidebar's surface so the bar doesn't darken over content at rest.
+  // Grouped cards only lift off the screen surface; the drawer is as dark as they are.
+  const listSurface = use(SettingsSidebarContext) ? "bg-drawer" : "bg-screen";
+  const insets = useSafeAreaInsets();
+  const workspace = useWorkspaceTabs();
+  const query = workspace?.state.tabs.settings.query ?? "";
+  const overflowRows = useOverflowRows();
+  const indexSections = useSettingsIndexSections();
+  const sections = filterSettingsSections(
+    [{ rows: overflowRows }, props.connections, ...indexSections],
+    query,
+  );
+
+  return (
+    <View collapsable={false} className="flex-1">
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        className={`flex-1 ${listSurface}`}
+        contentContainerClassName="gap-4 px-5 pt-4"
+        contentContainerStyle={{
+          // The workspace's clearance keeps the last row above its search field and keyboard.
+          paddingBottom: Math.max(
+            Math.max(insets.bottom, 18) + 18,
+            workspace?.bottomClearance ?? 0,
+          ),
+        }}
+      >
+        {sections.length ? (
+          sections.map((section, index) => (
+            <SettingsSection key={section.title ?? `untitled-${index}`} title={section.title}>
+              {section.rows.map(({ id, ...row }) => (
+                <SettingsRow key={id} {...row} />
+              ))}
+            </SettingsSection>
+          ))
+        ) : (
+          <EmptyState
+            variant="plain"
+            title={t("No results")}
+            detail={t("No settings match “{{query}}”.", { query: query.trim() })}
+          />
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 // baskule: the account (server, person, spaces) and sign-out. The server address is chosen on the
 // sign-in screen: a session belongs to one server, so changing it means signing out first.
-function BaskuleAccountSection(props: { readonly spaceCount: number }) {
+function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
   const t = useTranslation();
   const session = useBaskuleSession();
-  if (session.status !== "signed-in") return null;
+  if (session.status !== "signed-in") return [];
   const me = session.me;
   const anonymous = me?.authentication.mode === "anonymous";
-  return (
-    <SettingsSection title={t("Account")}>
-      <SettingsRow
-        icon="person.crop.circle"
-        label={me?.user.name ?? t("Signed in")}
-        value={
-          anonymous
-            ? t("Shared test workspace")
-            : me
-              ? `${me.user.email}${me.user.role === "admin" ? ` · ${t("admin")}` : ""}`
-              : undefined
-        }
-      />
-      <SettingsRow
-        icon="server.rack"
-        label={me?.organization.name ?? t("Server")}
-        value={session.serverUrl}
-      />
-      <SettingsRow
-        icon="desktopcomputer"
-        label={t("Spaces")}
-        value={`${props.spaceCount}`}
-        valuePosition="trailing"
-        target="SettingsEnvironments"
-      />
-      <SettingsRow
-        icon="arrow.right"
-        label={anonymous ? t("Disconnect") : t("Sign out")}
-        onPress={() =>
-          Dialog.confirm({
-            title: anonymous ? t("Disconnect?") : t("Sign out?"),
-            message: anonymous
-              ? t("Return to server selection. The shared workspace stays on the server.")
-              : t("This phone forgets your session. Your chats stay on the server."),
-            confirmText: anonymous ? t("Disconnect") : t("Sign out"),
-            destructive: true,
-            onConfirm: () => void signOutOfBaskule(),
-          })
-        }
-      />
-    </SettingsSection>
-  );
+  return [
+    {
+      id: "account",
+      icon: "person.crop.circle",
+      label: me?.user.name ?? t("Signed in"),
+      value: anonymous
+        ? t("Shared test workspace")
+        : me
+          ? `${me.user.email}${me.user.role === "admin" ? ` · ${t("admin")}` : ""}`
+          : undefined,
+    },
+    {
+      id: "server",
+      icon: "server.rack",
+      label: me?.organization.name ?? t("Server"),
+      value: session.serverUrl,
+    },
+    environmentsRow(t("Spaces"), spaceCount),
+    {
+      id: "sign-out",
+      icon: "arrow.right",
+      label: anonymous ? t("Disconnect") : t("Sign out"),
+      onPress: () =>
+        Dialog.confirm({
+          title: anonymous ? t("Disconnect?") : t("Sign out?"),
+          message: anonymous
+            ? t("Return to server selection. The shared workspace stays on the server.")
+            : t("This phone forgets your session. Your chats stay on the server."),
+          confirmText: anonymous ? t("Disconnect") : t("Sign out"),
+          destructive: true,
+          onConfirm: () => void signOutOfBaskule(),
+        }),
+    },
+  ];
 }
 
-function BaskuleSettingsIndexSections() {
+function useSettingsIndexSections(): SettingsListSection[] {
   const t = useTranslation();
   const session = useBaskuleSession();
   const [opening, setOpening] = useState(false);
@@ -222,57 +287,6 @@ function BaskuleSettingsIndexSections() {
           .finally(() => setOpening(false));
       },
     });
-  return (
-    <>
-      <SettingsSection title={t("Manage in browser")}>
-        <SettingsRow
-          icon="person.crop.circle"
-          label={t("Account and password")}
-          disabled={opening}
-          onPress={() => open("/settings/account")}
-        />
-        <SettingsRow
-          icon="desktopcomputer"
-          label={t("Manage spaces")}
-          disabled={opening}
-          onPress={() => open("/settings/spaces")}
-        />
-        <SettingsRow
-          icon="link"
-          label={t("Plugins and connected accounts")}
-          disabled={opening}
-          onPress={() => open("/settings/plugins")}
-        />
-        <SettingsRow
-          icon="chart.bar.xaxis"
-          label={t("Usage and limits")}
-          disabled={opening}
-          onPress={() => open("/settings/usage")}
-        />
-        {session.status === "signed-in" && session.me?.user.role === "admin" ? (
-          <SettingsRow
-            icon="gearshape"
-            label={t("Administration")}
-            disabled={opening}
-            onPress={() => open("/admin")}
-          />
-        ) : null}
-      </SettingsSection>
-      <SettingsSection title={t("Chats")}>
-        <SettingsRow icon="archivebox" label={t("Archived chats")} target="SettingsArchive" />
-        <SettingsRow icon="clock" label={t("Scheduled tasks")} target="SettingsScheduledTasks" />
-        <SettingsRow icon="bell.badge" label={t("Notifications")} target="SettingsNotifications" />
-      </SettingsSection>
-      <SettingsSection title={t("App")}>
-        <SettingsRow icon="gearshape" label={t("General")} target="SettingsAppearance" />
-        <SettingsRow icon="info.circle" label={t("About")} target="SettingsAbout" />
-      </SettingsSection>
-    </>
-  );
-}
-
-function UpstreamSettingsIndexSections() {
-  const t = useTranslation();
   const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();
   const noServerTargets = selectedTargets.length === 0;
   const selectedProject = projectGroups.find((group) => group.key === selectedProjectKey);
@@ -289,74 +303,143 @@ function UpstreamSettingsIndexSections() {
           members: scopedProjectMembers,
         })
       : (selectedProject?.label ?? "Unavailable project");
-  return (
-    <>
-      <SettingsSection title={t("Interface")}>
-        <SettingsRow icon="paintbrush" label={t("Appearance")} target="SettingsAppearance" />
-        {Platform.OS === "ios" ? (
-          <>
-            <SettingsRow icon="keyboard" label={t("Keyboard")} target="SettingsKeyboard" />
-            <SettingsRow icon="mic" label={t("Microphone")} target="SettingsMicrophone" />
-          </>
-        ) : null}
-      </SettingsSection>
+  const page = (
+    target: SettingsPageTarget,
+    icon: SettingsListRow["icon"],
+    label: string,
+    extra?: Pick<SettingsListRow, "disabled" | "value">,
+  ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
+  const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
+    page(target, icon, label, { disabled: noServerTargets });
+  // baskule: the rest is read-only app info.
+  if (!BASKULE_FLAGS.extendedSettings) {
+    return [
+      {
+        title: t("Manage in browser"),
+        rows: [
+          {
+            id: "manage-account",
+            icon: "person.crop.circle",
+            label: t("Account and password"),
+            disabled: opening,
+            onPress: () => open("/settings/account"),
+          },
+          {
+            id: "manage-spaces",
+            icon: "desktopcomputer",
+            label: t("Manage spaces"),
+            disabled: opening,
+            onPress: () => open("/settings/spaces"),
+          },
+          {
+            id: "manage-plugins",
+            icon: "link",
+            label: t("Plugins and connected accounts"),
+            disabled: opening,
+            onPress: () => open("/settings/plugins"),
+          },
+          {
+            id: "manage-usage",
+            icon: "chart.bar.xaxis",
+            label: t("Usage and limits"),
+            disabled: opening,
+            onPress: () => open("/settings/usage"),
+          },
+          ...(session.status === "signed-in" && session.me.user.role === "admin"
+            ? [
+                {
+                  id: "manage-admin",
+                  icon: "gearshape" as const,
+                  label: t("Administration"),
+                  disabled: opening,
+                  onPress: () => open("/admin"),
+                },
+              ]
+            : []),
+        ],
+      },
+      {
+        title: t("Chats"),
+        rows: [
+          page("SettingsArchive", "archivebox", t("Archived chats")),
+          page("SettingsScheduledTasks", "clock", t("Scheduled tasks")),
+          page("SettingsNotifications", "bell.badge", t("Notifications")),
+        ],
+      },
+      {
+        title: t("App"),
+        rows: [
+          page("SettingsAppearance", "gearshape", t("General")),
+          page("SettingsAbout", "info.circle", t("About")),
+        ],
+      },
+    ];
+  }
+  // The same pages and groups as Settings on web, minus what mobile has no setting for.
+  return [
+    {
+      rows: [
+        page("SettingsOrganization", "gearshape", t("General")),
+        page("SettingsAppearance", "paintbrush", t("Appearance")),
+        page("SettingsFollowUp", "bubble.left.and.bubble.right", t("Chat")),
+        ...(navigationCustomizationAvailable()
+          ? [page("SettingsNavigation", "line.3.horizontal", t("Navigation tabs"))]
+          : []),
+        ...(Platform.OS === "ios"
+          ? [
+              page("SettingsKeyboard", "keyboard", t("Keyboard")),
+              page("SettingsMicrophone", "mic", t("Microphone")),
+            ]
+          : []),
+      ],
+    },
+    {
+      title: t("Agents"),
+      rows: [
+        serverPage("SettingsProviderAccounts", "person.crop.circle", t("Providers")),
+        serverPage("SettingsThreads", "text.bubble", t("Threads")),
+        page("SettingsScheduledTasks", "clock", t("Scheduled tasks")),
+      ],
+    },
+    {
+      title: t("Code"),
+      rows: [
+        page(
+          "SettingsProjectOverview",
+          "folder",
+          t("Projects"),
+          selectedProjectKey !== null ? { value: projectLabel } : undefined,
+        ),
+        serverPage(
+          "SettingsEnvironmentSourceControl",
+          "arrow.triangle.branch",
+          t("Source control"),
+        ),
+        serverPage("SettingsWorktrees", "square.on.square", t("Worktrees")),
+      ],
+    },
+    {
+      rows: [
+        serverPage("SettingsEnvironmentMaintenance", "arrow.clockwise", t("Maintenance")),
+        page("SettingsLabs", "sparkles", t("Labs")),
+        page("SettingsAbout", "info.circle", t("About")),
+        page("SettingsArchive", "archivebox", t("Archive")),
+      ],
+    },
+  ];
+}
 
-      <SettingsSection title={t("Automations")}>
-        <SettingsRow icon="clock" label={t("Scheduled tasks")} target="SettingsScheduledTasks" />
-      </SettingsSection>
-
-      <SettingsSection title={t("Projects & threads")}>
-        {selectedProjectKey !== null ? (
-          <SettingsRow
-            icon="folder"
-            label={t("Overview")}
-            value={projectLabel}
-            target="SettingsProjectOverview"
-          />
-        ) : null}
-        <SettingsRow icon="folder" label={t("Organization")} target="SettingsOrganization" />
-        <SettingsRow icon="text.bubble" label={t("Thread behavior")} target="SettingsThreads" />
-        <SettingsRow icon="arrow.turn.left.up" label={t("Follow-ups")} target="SettingsFollowUp" />
-        <SettingsRow icon="archivebox" label={t("Archived Threads")} target="SettingsArchive" />
-      </SettingsSection>
-
-      <SettingsSection title={t("Server settings")}>
-        <SettingsRow
-          icon="person.crop.circle"
-          label={t("Provider accounts")}
-          target="SettingsProviderAccounts"
-          disabled={noServerTargets}
-        />
-        <SettingsRow
-          icon="text.bubble"
-          label={t("New threads")}
-          target="SettingsEnvironmentNewThreads"
-          disabled={noServerTargets}
-        />
-        <SettingsRow
-          icon="arrow.triangle.branch"
-          label={t("Source control")}
-          target="SettingsEnvironmentSourceControl"
-          disabled={noServerTargets}
-        />
-        <SettingsRow
-          icon="text.alignleft"
-          label={t("Agent behavior")}
-          target="SettingsEnvironmentAgentBehavior"
-          disabled={noServerTargets}
-        />
-        <SettingsRow
-          icon="arrow.clockwise"
-          label={t("Maintenance")}
-          target="SettingsEnvironmentMaintenance"
-          disabled={noServerTargets}
-        />
-      </SettingsSection>
-
-      <SettingsSection title={t("App")}>
-        <SettingsRow icon="chart.bar.xaxis" label={t("Usage")} target="SettingsUsage" />
-        <SettingsRow icon="info.circle" label={t("About Baskule")} target="SettingsAbout" />
-      </SettingsSection>
-    </>
-  );
+function useOverflowRows(): SettingsListRow[] {
+  const order = useNavigationTabOrder();
+  const hidden = useHiddenNavigationTabs();
+  const { layout } = useAdaptiveWorkspaceLayout();
+  const tabs =
+    Platform.OS === "android" && layout.usesSplitView ? [] : overflowNavigationTabs(order, hidden);
+  const selectTab = useSelectWorkspaceTab();
+  return tabs.map((tab) => ({
+    id: tab,
+    icon: NAVIGATION_TAB_ICONS[tab],
+    label: WORKSPACE_TAB_LABELS[tab],
+    onPress: () => selectTab(tab),
+  }));
 }

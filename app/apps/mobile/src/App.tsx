@@ -1,6 +1,8 @@
 import { languageReady, refreshLanguage } from "./languagePreferences";
 import { useLocale } from "./i18n";
-import { PermissionUpdateNotice } from "./features/connection/PermissionUpdateNotice";
+import { installPermissionUpdateNotice } from "./features/connection/permissionUpdateNotice";
+import { installComposerAttachmentUploads } from "./state/composer-attachment-uploads";
+import { installThreadOutboxDelivery } from "./state/threadOutboxDelivery";
 import * as Linking from "expo-linking";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
@@ -8,8 +10,15 @@ import { AppState, Modal, StatusBar } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { createStaticNavigation } from "@react-navigation/native";
+import {
+  createStaticNavigation,
+  getActionFromState,
+  getStateFromPath,
+  type NavigationState,
+} from "@react-navigation/native";
+
 import { RegistryContext } from "@effect/atom-react";
+import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
 import * as Dialog from "./components/ui/Dialog";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
@@ -25,12 +34,27 @@ import { subscribeComposerDraftModelReconciliation } from "./state/use-composer-
 import { environmentThreadShells } from "./state/threads";
 import { environmentShell } from "./state/shell";
 import { OverlayPortalHost } from "./components/ui/OverlayPortal";
-import { isConnectAppLink, shouldHandleAppLink } from "./lib/appLinking";
+import { isConnectAppLink, shouldHandleAppLink, restoreDraftLinkState } from "./lib/appLinking";
+import { hasCloudPublicConfig } from "./features/cloud/publicConfig";
+import { takeScheduledTaskNewLink } from "./features/settings/scheduled-task-editor-state";
+import {
+  disposeOnFoundationReplace,
+  type FoundationHotModule,
+} from "./lib/foundation-fast-refresh";
 import { useMobileNavigationTheme } from "./lib/useMobileNavigationTheme";
-import { useUiRuntimeMemoryWarningGc } from "./lib/useUiRuntimeMemoryWarningGc";
-import { VoiceInputProvider } from "./features/voice-input/VoiceInputProvider";
+import { installUiRuntimeMemoryWarningGc } from "./lib/useUiRuntimeMemoryWarningGc";
 import { GlobalVoiceInputControl } from "./features/voice-input/GlobalVoiceInputControl";
+import { restoreSettingsLinkState } from "./features/settings/settings-navigation";
+import {
+  hydrateWorkspaceSelections,
+  launchWorkspaceURL,
+  recordWorkspaceSelections,
+  settingsLinkPage,
+} from "./features/workspace/workspace-selection-store";
+import { workspaceDetailLinkAction } from "./features/workspace/workspace-detail-selection";
 import { NativeLayoutMetricsProvider } from "./native/native-layout-metrics";
+import { attachRootNavigation, rootNavigationRef } from "./lib/rootNavigation";
+import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
 import { BaskuleLoginScreen } from "./baskule/BaskuleLoginScreen";
 import {
   loadBaskuleSession,
@@ -50,6 +74,8 @@ if (process.env.EXPO_PUBLIC_SHOWCASE === "1") {
 }
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
+void hydrateWorkspaceSelections();
+void loadBaskuleSession();
 
 const appLinking = {
   prefixes: [
@@ -62,44 +88,73 @@ const appLinking = {
     "t3code-preview://",
   ],
   config: { initialRouteName: "Home" },
-  filter: shouldHandleAppLink,
+  filter: (url: string) => shouldHandleAppLink(url, hasCloudPublicConfig()),
+  getInitialURL: async () => (await Linking.getInitialURL()) ?? (await launchWorkspaceURL()),
+  getActionFromState: (
+    state: Parameters<typeof getActionFromState>[0],
+    options: Parameters<typeof getActionFromState>[1],
+  ): ReturnType<typeof getActionFromState> =>
+    // Our router handles the selection; React Navigation's type only lists its own actions.
+    (workspaceDetailLinkAction(state) as ReturnType<typeof getActionFromState>) ??
+    getActionFromState(state, options),
+  getStateFromPath: (path: string, options: Parameters<typeof getStateFromPath>[1]) =>
+    takeScheduledTaskNewLink(
+      restoreSettingsLinkState(
+        restoreDraftLinkState(getStateFromPath(path, options), path),
+        settingsLinkPage(),
+      ),
+    ),
 };
 
 const Navigation = createStaticNavigation(RootStack);
 
+function handleNavigationStateChange(state: NavigationState | undefined): void {
+  recordWorkspaceSelections(state);
+  if (state) pruneNewTaskBranchCheckouts(state);
+}
+
+function handleNavigationReady(): void {
+  handleNavigationStateChange(rootNavigationRef.getRootState());
+}
+
+declare const module: { readonly hot?: FoundationHotModule } | undefined;
+
+function installLanguageRefresh(): () => void {
+  const subscription = AppState.addEventListener("change", (state) => {
+    if (state === "active") void refreshLanguage();
+  });
+  return () => subscription.remove();
+}
+
+const appServiceDisposers = [
+  installUiRuntimeMemoryWarningGc(),
+  subscribeComposerDraftModelReconciliation({
+    registry: appAtomRegistry,
+    threadShellAtom: environmentThreadShells.threadShellAtom,
+    threadRefsAtom: environmentThreadShells.threadRefsAtom,
+    shellStateAtom: environmentShell.stateAtom,
+  }),
+  installLanguageRefresh(),
+  installPermissionUpdateNotice(),
+  installThreadOutboxDelivery(),
+  installComposerAttachmentUploads(),
+];
+disposeOnFoundationReplace(typeof module === "undefined" ? undefined : module.hot, () => {
+  for (const dispose of appServiceDisposers) dispose();
+});
+
 function SplashScreenCoordinator() {
-  const [languageLoaded, setLanguageLoaded] = useState(false);
-  useEffect(() => {
-    void languageReady.then(() => setLanguageLoaded(true));
-  }, []);
   const { isReady } = useAppearancePreferences();
 
   useEffect(() => {
-    if (isReady && languageLoaded) void SplashScreen.hide();
-  }, [isReady, languageLoaded]);
+    if (isReady) void languageReady.then(() => SplashScreen.hide());
+  }, [isReady]);
 
   return null;
 }
 
 export default function App() {
   useLocale();
-  useUiRuntimeMemoryWarningGc();
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void refreshLanguage();
-    });
-    return () => subscription.remove();
-  }, []);
-  useEffect(
-    () =>
-      subscribeComposerDraftModelReconciliation({
-        registry: appAtomRegistry,
-        threadShellAtom: environmentThreadShells.threadShellAtom,
-        threadRefsAtom: environmentThreadShells.threadRefsAtom,
-        shellStateAtom: environmentShell.stateAtom,
-      }),
-    [],
-  );
 
   return (
     <RegistryContext.Provider value={appAtomRegistry}>
@@ -135,6 +190,7 @@ function AppContent() {
   const [connectionRequest, setConnectionRequest] = useState<{ url: string; id: number } | null>(
     null,
   );
+  // oxlint-disable-next-line t3code/react-effect-budget -- Connection URLs arrive from the native Linking subscription.
   useEffect(() => {
     let active = true;
     let received = false;
@@ -157,9 +213,6 @@ function AppContent() {
       subscription.remove();
     };
   }, []);
-  useEffect(() => {
-    void loadBaskuleSession();
-  }, []);
   const navigationTheme = useMobileNavigationTheme();
 
   const connectionScreen =
@@ -178,44 +231,38 @@ function AppContent() {
   return (
     <>
       <SplashScreenCoordinator />
-
-      <PermissionUpdateNotice />
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>
           <SafeAreaProvider>
-            <VoiceInputProvider>
-              <StatusBar barStyle={themeAppearance === "dark" ? "light-content" : "dark-content"} />
-              {/* The navigation theme drives the NATIVE header appearance: native-stack
-                forwards `dark` as the nav bar's overrideUserInterfaceStyle. Without
-                this, React Navigation defaults to its light theme and every native
-                header (glass buttons, title, materials) is forced light even when
-                the system is in dark mode. */}
-              <GlobalVoiceInputControl>
-                <NativeLayoutMetricsProvider>
-                  {session.status === "signed-in" ? (
-                    <IncomingShareProvider>
-                      <Navigation
-                        key={`${session.serverUrl} ${session.me.user.id}`}
-                        linking={appLinking}
-                        theme={navigationTheme}
-                      />
-                    </IncomingShareProvider>
-                  ) : (
-                    !connectionRequest && connectionScreen
-                  )}
-                  {session.status !== "loading" && connectionRequest ? (
-                    <Modal visible onRequestClose={() => setConnectionRequest(null)}>
-                      {connectionScreen}
-                    </Modal>
-                  ) : null}
-                  <Dialog.Host />
-                  <ThreadArrangementHost />
-                </NativeLayoutMetricsProvider>
-              </GlobalVoiceInputControl>
-              {/* Anchored-menu overlays render here — in-window, so the
-                keyboard stays up while a dropdown is open. */}
-              <OverlayPortalHost />
-            </VoiceInputProvider>
+            <StatusBar barStyle={themeAppearance === "dark" ? "light-content" : "dark-content"} />
+            {/* native-stack needs the theme's dark flag to select dark native headers. */}
+            <GlobalVoiceInputControl>
+              <NativeLayoutMetricsProvider>
+                {session.status === "signed-in" ? (
+                  <IncomingShareProvider>
+                    <Navigation
+                      key={`${session.serverUrl} ${session.me.user.id}`}
+                      ref={attachRootNavigation}
+                      linking={appLinking}
+                      onReady={handleNavigationReady}
+                      theme={navigationTheme}
+                      onStateChange={handleNavigationStateChange}
+                    />
+                  </IncomingShareProvider>
+                ) : (
+                  !connectionRequest && connectionScreen
+                )}
+                {session.status !== "loading" && connectionRequest ? (
+                  <Modal visible onRequestClose={() => setConnectionRequest(null)}>
+                    {connectionScreen}
+                  </Modal>
+                ) : null}
+                <Dialog.Host />
+                <ThreadArrangementHost />
+                <ProjectChipIconRasterizer />
+              </NativeLayoutMetricsProvider>
+            </GlobalVoiceInputControl>
+            <OverlayPortalHost />
           </SafeAreaProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>

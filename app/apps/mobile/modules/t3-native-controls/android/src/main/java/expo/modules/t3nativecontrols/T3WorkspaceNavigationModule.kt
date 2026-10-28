@@ -63,9 +63,6 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 
-// baskule: no Pull Requests tab in Baskule (upstream: "threads", "pullRequests", "settings").
-private val TABS = listOf("threads", "settings")
-
 class T3WorkspaceNavigationModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("T3WorkspaceNavigation")
@@ -73,6 +70,7 @@ class T3WorkspaceNavigationModule : Module() {
       Prop("labels") { view: T3WorkspaceNavigationView, value: Map<String, String> ->
         view.labels = value
       }
+      Prop("tabs") { view: T3WorkspaceNavigationView, value: List<String> -> view.tabs = value }
       Prop("selectedTab") { view: T3WorkspaceNavigationView, value: String ->
         view.selectedTab = value
       }
@@ -127,9 +125,12 @@ class T3WorkspaceNavigationView(
   private val onOverlayChange by EventDispatcher()
   var labels by mutableStateOf(mapOf(
     "threads" to "Chats", "settings" to "Settings", "pullRequests" to "Pull requests",
+    "usage" to "Usage",
     "newChat" to "New chat", "closeRail" to "Close navigation rail",
     "collapseRail" to "Collapse navigation rail", "expandRail" to "Expand navigation rail"
   ))
+  // baskule: no Pull Requests or Usage tab in Baskule (upstream: "threads", "pullRequests", "usage", "settings").
+  var tabs by mutableStateOf(listOf("threads", "settings"))
   var selectedTab by mutableStateOf("threads")
   var rail by mutableStateOf(false)
   var dark by mutableStateOf(false)
@@ -184,7 +185,7 @@ class T3WorkspaceNavigationView(
                 tonalElevation = androidx.compose.ui.unit.Dp(0f),
                 windowInsets = WindowInsets(0),
               ) {
-                TABS.forEach { tab ->
+                tabs.forEach { tab ->
                   NavigationBarItem(
                     selected = selectedTab == tab,
                     onClick = { onTabSelected(mapOf("tab" to tab)) },
@@ -276,12 +277,14 @@ class T3WorkspaceNavigationView(
             )
           }
         }
-        newThreadButton(fraction) {
-          expanded = false
-          onNewThread(emptyMap<String, Any>())
+        if (selectedTab == "threads") {
+          newThreadButton(fraction) {
+            expanded = false
+            onNewThread(emptyMap<String, Any>())
+          }
         }
         Spacer(Modifier.weight(1f))
-        TABS.forEach { tab ->
+        tabs.forEach { tab ->
           railItem(tab, fraction) {
             expanded = false
             onTabSelected(mapOf("tab" to tab))
@@ -372,6 +375,7 @@ class T3WorkspaceNavigationView(
     when (tab) {
       "threads" -> R.drawable.t3_chats
       "pullRequests" -> R.drawable.t3_pull_requests
+      "usage" -> R.drawable.t3_usage
       else -> R.drawable.t3_settings
     }
   )

@@ -214,7 +214,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   // baskule: the footer only links to archived chats (+ upstream credit); no settings/PRs/usage.
   if (baskule.hideSettings) {
     return (
-      <SidebarMenu className="gap-1">
+      <SidebarMenu>
         <SidebarMenuItem>
           {isOnUtilityPage ? (
             <SidebarMenuButton onClick={handleBackClick}>
@@ -285,7 +285,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<PullRequestGlyph.pullRequest />}
-              label={t("Pull Requests")}
+              label="Pull requests"
               onClick={handlePullRequestsClick}
             />
           ) : null}
@@ -301,10 +301,14 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   );
 });
 
-export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+export const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  showUndoNotice = false,
+}: {
+  showUndoNotice?: boolean;
+}) {
   return (
     <SidebarFooter>
-      <SidebarThreadUndoNotice />
+      {showUndoNotice ? <SidebarThreadUndoNotice /> : null}
       {baskule.hideSettings ? null : <SidebarProviderUpdatePill />}
       {baskule.hideSettings ? null : <SidebarUpdateArchitectureWarning />}
       <SidebarUtilityMenu />

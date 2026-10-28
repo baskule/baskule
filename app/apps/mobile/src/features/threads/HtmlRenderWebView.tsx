@@ -102,6 +102,7 @@ export function HtmlRenderWebView(props: {
     [html.document, initialTheme],
   );
   const onDocumentError = useEffectEvent(() => props.onLoadError?.());
+  // oxlint-disable-next-line t3code/react-effect-budget -- Report failures from the asynchronously prepared protected document.
   useEffect(() => {
     if (html.failed) onDocumentError();
   }, [html.failed]);

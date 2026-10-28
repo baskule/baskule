@@ -1,6 +1,6 @@
 import { t } from "../../i18n";
 /** Diff failures currently include transport wrappers, so recognize the reason inside them. */
-export function describePullRequestDiffError(error: string, providerName: string) {
+export function describePullRequestDiffError(error: string, providerName: string, term: string) {
   if (/\brate limit\b|\brate[-_]limited\b|\btoo many requests\b/i.test(error)) {
     return {
       title: t("{{providerName}} rate limit reached", { providerName: providerName }),
@@ -14,8 +14,8 @@ export function describePullRequestDiffError(error: string, providerName: string
   return {
     title: t("Couldn't load the changes"),
     description: t(
-      "The environment couldn't load this pull request's diff. Try again, or view the changes on {{providerName}}.",
-      { providerName: providerName },
+      "The environment couldn't load this {{term}}'s diff. Try again, or view the changes on {{providerName}}.",
+      { term, providerName },
     ),
   };
 }

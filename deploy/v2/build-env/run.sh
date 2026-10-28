@@ -3,7 +3,7 @@
 set -euo pipefail
 SRC=/opt/baskule/src
 CACHE=/opt/baskule/cache
-export HOME=$CACHE/home CARGO_HOME=$CACHE/cargo COREPACK_HOME=$CACHE/corepack
+export HOME=$CACHE/home CARGO_HOME=$CACHE/cargo
 toolchain=$(sha256sum "$SRC/deploy/v2/build-env/Dockerfile" | cut -c1-16)
 export CARGO_TARGET_DIR=$CACHE/openshell-target-ubuntu24-$toolchain OPENSHELL_CARGO_JOBS=8
 mkdir -p "$HOME" "$CARGO_HOME"

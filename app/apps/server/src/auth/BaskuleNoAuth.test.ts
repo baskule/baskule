@@ -62,15 +62,19 @@ it.layer(NodeServices.layer)("Baskule no-auth mode", (it) => {
       const auth = yield* EnvironmentAuth.EnvironmentAuth;
       const session = yield* auth.authenticateHttpRequest(request());
       const { ticket } = yield* auth.issueWebSocketTicket(session);
-      const upgraded = yield* auth.authenticateWebSocketUpgrade({
-        url: `/ws?wsTicket=${encodeURIComponent(ticket)}`,
-        cookies: {},
-        headers: { host: HOST },
-      } as never);
+      const upgraded = yield* auth.authenticateWebSocketUpgrade(
+        {
+          url: `/ws?wsTicket=${encodeURIComponent(ticket)}`,
+          cookies: {},
+          headers: { host: HOST },
+        } as never,
+        "rpc",
+      );
       expect(upgraded.sessionId).toBe(BASKULE_NO_AUTH_SESSION_ID);
 
       const plainUpgrade = yield* auth.authenticateWebSocketUpgrade(
         request({ origin: `http://${HOST}` }),
+        "rpc",
       );
       expect(plainUpgrade.sessionId).toBe(BASKULE_NO_AUTH_SESSION_ID);
     }).pipe(Effect.provide(layerAuth(NO_AUTH))),

@@ -11,13 +11,18 @@ import {
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
-  getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
-  normalizeModelSlug,
+  resolveSelectableModel,
 } from "@t3tools/shared/model";
-import { REASONING_EFFORT_OPTION_IDS } from "@t3tools/client-runtime/state/thread-execution";
+import {
+  replaceDescriptorCurrentValue,
+  getDescriptorStringValue,
+  getTraitSelectChange,
+  buildTraitsTriggerDisplay,
+  REASONING_SELECT_DESCRIPTOR_IDS,
+} from "@t3tools/client-runtime/model-traits";
 import { memo } from "react";
-import { BrainIcon } from "lucide-react";
+import { BrainIcon, GaugeIcon } from "lucide-react";
 import {
   Menu,
   MenuGroup,
@@ -96,11 +101,6 @@ type TraitsPersistence =
       onModelOptionsChange: (nextOptions: ProviderOptions | undefined) => void;
     };
 
-const REASONING_SELECT_DESCRIPTOR_IDS: ReadonlySet<string> = new Set([
-  ...REASONING_EFFORT_OPTION_IDS,
-  "thinking",
-]);
-
 function DefaultBadge() {
   const t = useTranslation();
   return (
@@ -110,51 +110,16 @@ function DefaultBadge() {
   );
 }
 
-function replaceDescriptorCurrentValue(
-  descriptors: ReadonlyArray<ProviderOptionDescriptor>,
-  descriptorId: string,
-  currentValue: string | boolean | undefined,
-): ReadonlyArray<ProviderOptionDescriptor> {
-  return descriptors.map((descriptor) =>
-    descriptor.id !== descriptorId
-      ? descriptor
-      : descriptor.type === "boolean"
-        ? {
-            ...descriptor,
-            ...(typeof currentValue === "boolean" ? { currentValue } : {}),
-          }
-        : {
-            ...descriptor,
-            ...(typeof currentValue === "string" ? { currentValue } : {}),
-          },
-  );
-}
-
-function getDescriptorStringValue(
-  descriptor: Extract<ProviderOptionDescriptor, { type: "select" }> | null,
-  selection?: ModelSelection | null,
-  reportedSelection?: ModelSelection | null,
-): string | null {
-  if (!descriptor) {
-    return null;
-  }
-  const value = getProviderOptionCurrentValue(descriptor, selection, reportedSelection);
-  return typeof value === "string" ? value : null;
-}
-
 function getSelectedTraits(
   provider: ProviderDriverKind,
   models: ReadonlyArray<ServerProviderModel>,
   model: string | null | undefined,
-  prompt: string,
   modelOptions: ProviderOptions | null | undefined,
-  allowPromptInjectedEffort: boolean,
   planModeEnabled: boolean,
 ) {
   const caps = getProviderModelCapabilities(models, model, provider, planModeEnabled);
   const modelIsUnavailable =
-    provider === "opencode" &&
-    !models.some((candidate) => candidate.slug === normalizeModelSlug(model, provider));
+    provider === "opencode" && resolveSelectableModel(provider, model, models) === null;
   const descriptors = modelIsUnavailable
     ? buildUnavailableModelOptionDescriptors(
         planModeEnabled
@@ -215,18 +180,14 @@ function getTraitsSectionVisibility(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
-  prompt: string;
   modelOptions: ProviderOptions | null | undefined;
-  allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
 }) {
   const selected = getSelectedTraits(
     input.provider,
     input.models,
     input.model,
-    input.prompt,
     input.modelOptions,
-    input.allowPromptInjectedEffort ?? true,
     input.planModeEnabled,
   );
 
@@ -253,23 +214,6 @@ function getTraitsSectionVisibility(input: {
   };
 }
 
-function getTraitSelectChange(
-  selected: ReturnType<typeof getSelectedTraits>,
-  descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
-  prompt: string,
-  value: string,
-) {
-  if (!value) return null;
-  const isPrimary = descriptor.id === selected.primarySelectDescriptor?.id;
-
-  return {
-    prompt: prompt,
-    modelOptions: buildProviderOptionSelectionsFromDescriptors(
-      replaceDescriptorCurrentValue(selected.descriptors, descriptor.id, value),
-    ),
-  };
-}
-
 /**
  * `modelOptions` must already carry the composer's implicit defaults (see
  * `withImplicitFastModeDefault`) so the persisted selection matches what the
@@ -282,7 +226,6 @@ export function getReasoningTraitStep(input: {
   models: ReadonlyArray<ServerProviderModel>;
   modelOptions: ProviderOptions | undefined;
   reportedModelSelection: ModelSelection | null | undefined;
-  prompt: string;
   planModeEnabled: boolean;
   direction: 1 | -1;
 }) {
@@ -290,9 +233,7 @@ export function getReasoningTraitStep(input: {
     input.provider,
     input.models,
     input.model,
-    input.prompt,
     input.modelOptions,
-    true,
     input.planModeEnabled,
   );
   if (selected.modelIsUnavailable) return null;
@@ -300,7 +241,6 @@ export function getReasoningTraitStep(input: {
     REASONING_SELECT_DESCRIPTOR_IDS.has(entry.id),
   );
   if (!descriptor || descriptor.options.length < 2) return null;
-  const isPrimary = descriptor.id === selected.primarySelectDescriptor?.id;
   const current = getDescriptorStringValue(
     descriptor,
     { instanceId: input.instanceId, model: input.model, options: input.modelOptions ?? [] },
@@ -317,12 +257,10 @@ export function getReasoningTraitStep(input: {
     ...ordered.slice(position + 1),
     ...ordered.slice(0, Math.max(position, 0)),
   ]) {
-    const change = getTraitSelectChange(selected, descriptor, input.prompt, option.id);
+    const change = getTraitSelectChange(selected, descriptor, option.id);
     if (!change) return null;
     if ("modelOptions" in change) {
-      return change.modelOptions
-        ? { prompt: change.prompt, modelOptions: change.modelOptions }
-        : null;
+      return change.modelOptions ? { modelOptions: change.modelOptions } : null;
     }
   }
   return null;
@@ -332,9 +270,7 @@ export function shouldRenderTraitsControls(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
-  prompt: string;
   modelOptions: ProviderOptions | null | undefined;
-  allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
 }): boolean {
   return getTraitsSectionVisibility(input).hasAnyControls;
@@ -345,11 +281,8 @@ export interface TraitsMenuContentProps {
   instanceId?: ProviderInstanceId;
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
-  prompt: string;
-  onPromptChange: (prompt: string) => void;
   modelOptions?: ProviderOptions | null | undefined;
   reportedModelSelection?: ModelSelection | null | undefined;
-  allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
   triggerClassName?: string;
   isComposerOwned?: boolean;
@@ -360,11 +293,8 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   instanceId,
   models,
   model,
-  prompt,
-  onPromptChange,
   modelOptions,
   reportedModelSelection,
-  allowPromptInjectedEffort = true,
   planModeEnabled,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
@@ -391,16 +321,13 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     provider,
     models,
     model,
-    prompt,
     modelOptions,
-    allowPromptInjectedEffort,
     planModeEnabled,
   });
   const {
     descriptors,
     selectDescriptors,
     booleanDescriptors,
-    primarySelectDescriptor,
 
     hasAnyControls,
     modelIsUnavailable,
@@ -413,9 +340,8 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
     value: string,
   ) => {
-    const change = getTraitSelectChange(selected, descriptor, prompt, value);
+    const change = getTraitSelectChange(selected, descriptor, value);
     if (!change) return;
-    if (change.prompt !== prompt) onPromptChange(change.prompt);
     if ("modelOptions" in change) updateModelOptions(change.modelOptions);
   };
 
@@ -462,7 +388,6 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
               <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
                 {descriptor.label}
               </div>
-              {null}
               <MenuRadioGroup
                 value={selectedValue}
                 onValueChange={(value) => handleSelectChange(descriptor, value)}
@@ -529,67 +454,13 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   );
 });
 
-export function buildTraitsTriggerDisplay(input: {
-  provider: ProviderDriverKind;
-  descriptors: ReadonlyArray<ProviderOptionDescriptor>;
-  primarySelectDescriptorId: string | null;
-  modelSelection?: ModelSelection | null;
-  reportedModelSelection?: ModelSelection | null | undefined;
-}): { label: string } {
-  let fastModeFallbackLabel: string | null = null;
-  let speedLabel: string | null = null;
-  let reasoningLabelIndex = -1;
-  const labels: Array<string> = [];
-  for (const descriptor of input.descriptors) {
-    if (descriptor.id === "fastMode" && descriptor.type === "boolean") {
-      speedLabel = descriptor.currentValue === true ? "Fast" : null;
-      fastModeFallbackLabel = speedLabel ?? "Normal";
-      continue;
-    }
-
-    const label =
-      descriptor.type === "boolean"
-        ? `${descriptor.label} ${descriptor.currentValue === true ? t("On") : t("Off")}`
-        : getProviderOptionCurrentLabel(
-            descriptor,
-            input.modelSelection,
-            input.reportedModelSelection,
-          );
-    if (typeof label === "string" && label.length > 0) {
-      if (
-        reasoningLabelIndex === -1 &&
-        descriptor.type === "select" &&
-        REASONING_SELECT_DESCRIPTOR_IDS.has(descriptor.id)
-      ) {
-        reasoningLabelIndex = labels.length;
-      }
-      labels.push(label);
-    }
-  }
-
-  if (labels.length === 0 && fastModeFallbackLabel !== null) {
-    return { label: fastModeFallbackLabel };
-  }
-  if (speedLabel) {
-    if (reasoningLabelIndex >= 0) {
-      labels[reasoningLabelIndex] = `${labels[reasoningLabelIndex]} ${speedLabel}`;
-    } else {
-      labels.push(speedLabel);
-    }
-  }
-  return { label: labels.join(" · ") };
-}
-
 export const TraitsPicker = memo(function TraitsPicker({
   provider,
   instanceId,
   models,
   model,
-  prompt,
-  onPromptChange,
   modelOptions,
   reportedModelSelection,
-  allowPromptInjectedEffort = true,
   planModeEnabled,
   triggerClassName,
   isComposerOwned,
@@ -605,13 +476,11 @@ export const TraitsPicker = memo(function TraitsPicker({
   }) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(hidden || disabled);
-  const { descriptors, primarySelectDescriptor } = getTraitsSectionVisibility({
+  const { descriptors } = getTraitsSectionVisibility({
     provider,
     models,
     model,
-    prompt,
     modelOptions,
-    allowPromptInjectedEffort,
     planModeEnabled,
   });
   if (
@@ -619,9 +488,7 @@ export const TraitsPicker = memo(function TraitsPicker({
       provider,
       models,
       model,
-      prompt,
       modelOptions,
-      allowPromptInjectedEffort,
       planModeEnabled,
     })
   ) {
@@ -631,7 +498,6 @@ export const TraitsPicker = memo(function TraitsPicker({
   const { label: triggerLabel } = buildTraitsTriggerDisplay({
     provider,
     descriptors,
-    primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
 
     modelSelection: instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null,
     reportedModelSelection,
@@ -662,7 +528,8 @@ export const TraitsPicker = memo(function TraitsPicker({
         >
           {
             <>
-              <ComposerControlIcon icon={BrainIcon} size={size} />
+              <ComposerControlIcon icon={BrainIcon} size={size} className="redesign:hidden" />
+              <ComposerControlIcon icon={GaugeIcon} size={size} className="hidden redesign:block" />
               <span data-composer-control-label>{triggerLabel}</span>
               <ComposerControlChevron size={size} />
             </>
@@ -676,11 +543,8 @@ export const TraitsPicker = memo(function TraitsPicker({
           {...(instanceId ? { instanceId } : {})}
           models={models}
           model={model}
-          prompt={prompt}
-          onPromptChange={onPromptChange}
           modelOptions={modelOptions}
           reportedModelSelection={reportedModelSelection}
-          allowPromptInjectedEffort={allowPromptInjectedEffort}
           planModeEnabled={planModeEnabled}
           {...persistence}
         />

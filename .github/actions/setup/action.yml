@@ -53,7 +53,7 @@ runs:
         fi
         /usr/bin/time -v -o .run/evidence/setup/time.txt scripts/worktree "$mode" 2>&1 | tee .run/evidence/setup/install.log
         source scripts/env.sh
-        printf '%s\n' "$BASKULE_ROOT/.tools/bin" "$BASKULE_ROOT/.tools/node-v24.22.1-linux-x64/bin" >> "$GITHUB_PATH"
+        printf '%s\n' "$BASKULE_ROOT/.tools/$BASKULE_NODE/bin" "$BASKULE_ROOT/.tools/bin" "$BASKULE_ROOT/.tools/$BASKULE_PNPM/node_modules/.bin" >> "$GITHUB_PATH"
         printf 'BASKULE_SHARED=%s\npnpm_config_store_dir=%s\nnpm_config_cache=%s\nT3CODE_TELEMETRY_ENABLED=false\nBASKULE_CHECK_RECORD=0\n' "$BASKULE_SHARED" "$pnpm_config_store_dir" "$npm_config_cache" >> "$GITHUB_ENV"
     - name: Save pinned tools and package stores
       if: inputs.save-cache == 'true' && steps.cache.outputs.cache-hit != 'true'

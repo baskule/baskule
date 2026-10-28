@@ -123,14 +123,15 @@ export function withBaskuleNoAuthGrants(
     ...store,
     consume: (credential, input) =>
       store.consume(credential, input).pipe(
-        Effect.catch(() =>
-          Effect.succeed({
-            method: "one-time-token",
-            scopes: BASKULE_NO_AUTH_SCOPES,
-            subject: BASKULE_NO_AUTH_SUBJECT,
-            label: "Baskule client",
-            expiresAt: BASKULE_NO_AUTH_EXPIRES_AT,
-          } satisfies PairingGrantStore.BootstrapGrant),
+        Effect.orElseSucceed(
+          () =>
+            ({
+              method: "one-time-token",
+              scopes: BASKULE_NO_AUTH_SCOPES,
+              subject: BASKULE_NO_AUTH_SUBJECT,
+              label: "Baskule client",
+              expiresAt: BASKULE_NO_AUTH_EXPIRES_AT,
+            }) satisfies PairingGrantStore.BootstrapGrant,
         ),
       ),
   };

@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import { WizardSteps } from "../ui/wizard";
 import {
   ADD_PROVIDER_WIZARD_STEPS,
@@ -29,9 +30,10 @@ export function AddProviderInstanceWizardSteps({
   onNavigation,
   disabled = false,
 }: AddProviderInstanceWizardStepsProps) {
+  const t = useTranslation();
   return (
     <WizardSteps
-      steps={steps}
+      steps={steps.map((label) => t(label))}
       currentStep={currentStep}
       summaries={summaries}
       isStepDisabled={() => disabled}

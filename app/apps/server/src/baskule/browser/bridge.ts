@@ -24,6 +24,7 @@ import {
 import * as Config from "../../config.ts";
 import * as Environment from "../../environment/ServerEnvironment.ts";
 import * as Broker from "../../mcp/PreviewAutomationBroker.ts";
+import * as PreviewAgentActivity from "../../preview/PreviewAgentActivity.ts";
 import * as Manager from "../../preview/Manager.ts";
 import * as Browser from "../../preview/ServerBrowser.ts";
 import * as Executable from "../../preview/PreviewBrowser.ts";
@@ -35,6 +36,7 @@ const environmentId = EnvironmentId.make("baskule-computer-browser");
 const config = Config.layerTest(root, root).pipe(Layer.provide(NodeServices.layer));
 const dependencies = Layer.mergeAll(
   Manager.layer,
+  PreviewAgentActivity.layer,
   Broker.layer,
   Layer.succeed(Environment.ServerEnvironment, {
     getEnvironmentId: Effect.succeed(environmentId),
@@ -42,9 +44,7 @@ const dependencies = Layer.mergeAll(
   }),
   Layer.succeed(Executable.PreviewBrowser, {
     executable: Effect.succeed(process.env.CHROME_PATH ?? "/usr/local/bin/chromium-baskule"),
-    installed: Effect.succeed(
-      Option.some(process.env.CHROME_PATH ?? "/usr/local/bin/chromium-baskule"),
-    ),
+    installed: Effect.succeedSome(process.env.CHROME_PATH ?? "/usr/local/bin/chromium-baskule"),
   }),
   Desktop.layer.pipe(Layer.provide(config)),
 ).pipe(Layer.provideMerge(config), Layer.provideMerge(NodeServices.layer));

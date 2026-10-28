@@ -1,6 +1,4 @@
-"use client";
 import { useTranslation } from "../../i18n";
-
 import {
   AuthPreviewOperateScope,
   type PreviewAnnotationPayload,

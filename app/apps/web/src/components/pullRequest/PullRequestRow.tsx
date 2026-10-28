@@ -79,7 +79,6 @@ function PullRequestRowImpl({
   statsKey,
   statsRef,
   onSelect,
-  speedMode,
   hostActions,
   onActed,
   closing = false,
@@ -92,11 +91,10 @@ function PullRequestRowImpl({
   showProvider: boolean;
   environmentLabel?: string;
   matchedElsewhere?: boolean;
-  /** Used by the list's shared visibility observer to defer optional line-count reads. */
+  /** Visibility key for deferred line-count reads. */
   statsKey?: string;
   statsRef?: RefCallback<HTMLDivElement>;
   onSelect: (entry: PullRequestRowTarget) => void;
-  speedMode: boolean;
   hostActions: ReadonlySet<PullRequestAction>;
   onActed: (result: PullRequestSpeedActionResult) => void;
   closing?: boolean;
@@ -104,7 +102,7 @@ function PullRequestRowImpl({
   onCloseSweepStart?: (entry: EnvironmentPullRequestEntry, event: PointerEvent) => void;
 }) {
   const t = useTranslation();
-  const { Icon, providerName } = getSourceControlPresentationForKind(entry.provider);
+  const { Icon, providerName, terminology } = getSourceControlPresentationForKind(entry.provider);
   return (
     <div
       ref={statsRef}
@@ -245,7 +243,7 @@ function PullRequestRowImpl({
         <PullRequestSpeedActions
           entry={entry}
           hostActions={hostActions}
-          visible={speedMode}
+          terminology={terminology}
           onActed={onActed}
           closing={closing}
           sweeping={sweeping}

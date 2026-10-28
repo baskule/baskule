@@ -15,7 +15,12 @@ SHARED=${BASKULE_SHARED:-$DEFAULT_SHARED}
 TOOLS=$SHARED/tools
 PNPM_STORE=${BASKULE_PNPM_STORE:-$SHARED/cache/pnpm-store}
 export npm_config_cache=${npm_config_cache:-$SHARED/cache/npm}
-NODE=node-v24.22.1-linux-x64
+# Node and pnpm versions live in scripts/env.sh; each version gets its own directory so
+# checkouts on an older pin keep working while the shared tools are upgraded.
+eval "$(grep -E '^BASKULE_(NODE|PNPM)=' "$ROOT/scripts/env.sh")"
+NODE=$BASKULE_NODE
+NODE_VERSION=${NODE#node-}; NODE_VERSION=${NODE_VERSION%-linux-x64}
+PNPM_VERSION=${BASKULE_PNPM#pnpm-}
 START=$EPOCHREALTIME
 STEP=arguments
 TEMP=
@@ -32,7 +37,7 @@ step() {
 help() {
   cat <<'HELP'
 Usage: scripts/worktree <setup|runtime|host-init|--help>
-  host-init  Install checksum-verified Node 24.22.1, celld 0.6.3 and pinned pnpm;
+  host-init  Install checksum-verified Node, celld 0.6.3 and pnpm (pins in env.sh);
              create shared caches. Safe to repeat or run concurrently.
   setup      Ensure host tools, link .tools and attach shared dependencies.
   runtime    Also build SpaceCell for local app/Worker/SpaceCell/agent checks.
@@ -52,16 +57,16 @@ host_init() {
     if [[ ! -x $TOOLS/$NODE/bin/node ]]; then
       TEMP=$(mktemp -d "$TOOLS/.node-install.XXXXXX")
       trap 'rm -rf "$TEMP"' EXIT
-      curl -fsSL --retry 3 "https://nodejs.org/dist/v24.22.1/$NODE.tar.xz" -o "$TEMP/$NODE.tar.xz"
-      curl -fsSL --retry 3 https://nodejs.org/dist/v24.22.1/SHASUMS256.txt -o "$TEMP/SHASUMS256.txt"
+      curl -fsSL --retry 3 "https://nodejs.org/dist/$NODE_VERSION/$NODE.tar.xz" -o "$TEMP/$NODE.tar.xz"
+      curl -fsSL --retry 3 https://nodejs.org/dist/$NODE_VERSION/SHASUMS256.txt -o "$TEMP/SHASUMS256.txt"
       (cd "$TEMP"; awk -v file="$NODE.tar.xz" '$2 == file' SHASUMS256.txt > checksum; test -s checksum; sha256sum -c checksum)
       tar --no-same-owner -xJf "$TEMP/$NODE.tar.xz" -C "$TEMP"
-      [[ $("$TEMP/$NODE/bin/node" --version) = v24.22.1 ]]
+      [[ $("$TEMP/$NODE/bin/node" --version) = "$NODE_VERSION" ]]
       mv "$TEMP/$NODE" "$TOOLS/$NODE"
       rm -rf "$TEMP"
       TEMP=
     fi
-    export PATH="$TOOLS/bin:$TOOLS/$NODE/bin:$PATH"
+    export PATH="$TOOLS/$NODE/bin:$PATH"
     # Extract and validate the digest-pinned official celld image layer without Docker.
     local image=ghcr.io/denoland/celld:0.6.3@sha256:22bca1b40a9e4c434cc149d8913d7eaafa9792961a8c05f9fecf921d416216dc
     local layer=68df9b662f9fc236b0d3a77b66301b9f27fd1967642894dbff9ef284d1c0a564
@@ -80,12 +85,9 @@ host_init() {
       rm -rf "$TEMP"
       TEMP=
     fi
-    local pnpm_version
-    pnpm_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["packageManager"].split("@")[1])' "$ROOT/package.json")
-    if [[ ! -x $TOOLS/pnpm/node_modules/.bin/pnpm || $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$TOOLS/pnpm/node_modules/pnpm/package.json") != "$pnpm_version" ]]; then
-      npm install --prefix "$TOOLS/pnpm" --prefer-offline --no-audit --no-fund "pnpm@$pnpm_version"
+    if [[ ! -x $TOOLS/$BASKULE_PNPM/node_modules/.bin/pnpm ]]; then
+      npm install --prefix "$TOOLS/$BASKULE_PNPM" --prefer-offline --no-audit --no-fund "pnpm@$PNPM_VERSION"
     fi
-    ln -sfn ../pnpm/node_modules/.bin/pnpm "$TOOLS/bin/pnpm"
   ) 9>"$TOOLS/.host-init.lock"
 }
 link_tools() {

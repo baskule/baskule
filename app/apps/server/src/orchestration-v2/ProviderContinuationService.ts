@@ -213,12 +213,7 @@ export const layer = Layer.effectDiscard(
           // continuation text follows the server message path.
           creationSource: request.delivery === "message_text" ? "server" : "provider",
         });
-        // This catch sits outside dispatchIfCurrent so an adapter that clears
-        // its own sticky offer flag on dispatch failure (inside
-        // dispatchIfCurrent) observes the raw failure first. Not every adapter
-        // self-clears that way, so the explicit callback is called here too;
-        // clearIfCurrent implementations are idempotent, so a source that
-        // already cleared is unaffected.
+        // Catch after dispatchIfCurrent so adapters see raw failures first; clearIfCurrent is idempotent and covers others.
         const logInstanceDisabled = (
           error: ThreadManagementService.ThreadManagementProviderInstanceDisabledError,
         ) =>

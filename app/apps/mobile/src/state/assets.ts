@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomMount, useAtomSubscribe, useAtomValue } from "@effect/atom-react";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import {
   assetUrlStateFromResult,
@@ -7,6 +7,9 @@ import {
   createProjectFaviconUrlAtomFamily,
   EMPTY_ASSET_URL_ATOM,
 } from "@t3tools/client-runtime/state/assets";
+import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
+import * as Effect from "effect/Effect";
+import { Atom, AsyncResult } from "effect/reactivity";
 import {
   AuthOrchestrationReadScope,
   type AuthEnvironmentScope,
@@ -15,15 +18,17 @@ import {
 } from "@t3tools/contracts";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
+import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { assetExportResource, assetReadScope } from "../lib/mediaActionsSource";
 import { type AssetUrlState, deriveAssetUrlState } from "./asset-url-state";
+import { appAtomRegistry } from "./atom-registry";
 import { environmentProjectCloneListAtom } from "./projectClones";
 import { environmentSession, usePreparedConnection } from "./session";
 import { useEnvironmentPresentation } from "./presentation";
 import { useEnvironmentQuery } from "./query";
 import { useAtomQueryRunner } from "./use-atom-query-runner";
-import { useBaskuleSession } from "../baskule/session";
+import { readBaskuleSession, useBaskuleSession } from "../baskule/session";
 import {
   bindTransferLifetime,
   isTransferOriginCurrent,
@@ -66,6 +71,7 @@ export function useAssetConnectionLifetime(
 ) {
   const origin = useTransferOrigin(environmentId);
   const invalidate = useEffectEvent(onInvalidated);
+  // oxlint-disable-next-line t3code/react-effect-budget -- The viewer subscribes to account and authorization revocation for its mounted lifetime.
   useEffect(() => {
     if (environmentId === null || origin === null) return;
     const controller = new AbortController();
@@ -96,6 +102,7 @@ export function useManagedAssetUri(input: {
   );
   const [failed, setFailed] = useState<{ url: string; origin: TransferOrigin } | null>(null);
   const { environmentId, url, name, scope } = input;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Downloaded native previews retain a revocable file lease until the viewer unmounts.
   useEffect(() => {
     if (!origin || environmentId === null || url === null) return;
     const controller = new AbortController();
@@ -199,6 +206,7 @@ export function useRefreshAssetUrl(
   if (JSON.stringify(stableResource) !== JSON.stringify(resource)) setStableResource(resource);
   const files = useRef(new Set<AttachmentPreviewFile>());
   const controller = useRef(new AbortController());
+  // oxlint-disable-next-line t3code/react-effect-budget -- Native export leases are disposed with the owning mounted viewer.
   useEffect(() => {
     controller.current = new AbortController();
     const currentFiles = files.current;
@@ -234,4 +242,124 @@ export function useRefreshAssetUrl(
     files.current.add(file);
     return file.uri;
   }, [createUrl, environmentId, httpBaseUrl, stableResource, disposition, origin]);
+}
+
+/** {@link useRefreshAssetUrl} for async tasks that resolve several resources at once. */
+export async function refreshAssetUrl(
+  environmentId: EnvironmentId,
+  resource: AssetResource,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const connectionAtom = environmentSession.preparedConnectionValueAtom(environmentId);
+  const initialConnection = appAtomRegistry.get(connectionAtom);
+  if (initialConnection._tag === "None") return null;
+  const session = readBaskuleSession();
+  const origin = {
+    connection: initialConnection.value,
+    serverUrl: session.status === "signed-in" ? session.serverUrl : null,
+    token: session.status === "signed-in" ? session.token : null,
+  };
+  if (!isTransferOriginCurrent(origin)) return null;
+  const atom = assetEnvironment.createUrl({ environmentId, input: { resource } });
+  const result = await executeAtomQuery(appAtomRegistry, atom, {
+    label: atom.label?.[0] ?? "asset url",
+    refresh: true,
+    reportFailure: false,
+    signal,
+  });
+  // A route can change while the query runs; resolve against the connection now current.
+  const connection = appAtomRegistry.get(connectionAtom);
+  if (connection._tag === "None") return null;
+  const state = assetUrlStateFromResult(result, connection.value.httpBaseUrl);
+  if (state._tag !== "Success" || !isTransferOriginCurrent(origin)) return null;
+  const file = await downloadAttachmentForPreview({
+    url: state.url,
+    transfer: { environmentId, origin, scope: assetReadScope(resource) },
+    signal,
+    attachment: { name: assetFileName(resource), mimeType: "application/octet-stream" },
+  });
+  if (!file) return null;
+  if (signal.aborted) {
+    file.dispose();
+    return null;
+  }
+  signal.addEventListener("abort", file.dispose, { once: true });
+  return file.uri;
+}
+
+export interface AuthorizedAssetUrl {
+  readonly url: string;
+  readonly authorizedAt: number;
+}
+
+interface FreshAssetUrlKey {
+  readonly environmentId: EnvironmentId | null;
+  readonly resource: AssetResource;
+  /** A reconnect changes the base URL, and any URL minted against the old one is unusable. */
+  readonly httpBaseUrl: string | null;
+  /** Bumped by Retry so a file replaced on disk is reauthorized. */
+  readonly revision: number;
+}
+
+// Plain-object keys compare structurally (Effect `Equal`/`Hash`).
+const freshAssetUrlFamily = Atom.family((key: FreshAssetUrlKey) =>
+  Atom.make(
+    Effect.acquireRelease(
+      Effect.sync(() => new AbortController()),
+      (controller) => Effect.sync(() => controller.abort()),
+    ).pipe(
+      Effect.flatMap((controller) =>
+        Effect.tryPromise({
+          try: async (signal): Promise<AuthorizedAssetUrl> => {
+            const url =
+              key.environmentId === null
+                ? null
+                : await refreshAssetUrl(
+                    key.environmentId,
+                    key.resource,
+                    AbortSignal.any([signal, controller.signal]),
+                  );
+            if (!url) throw new Error("Reconnect to this environment and try again.");
+            return { url, authorizedAt: Date.now() };
+          },
+          catch: (cause) =>
+            cause instanceof Error ? cause : new Error("The attachment is unavailable."),
+        }),
+      ),
+    ),
+  ).pipe(Atom.withLabel("fresh-asset-url")),
+);
+
+const noFreshAssetUrl = Atom.make(AsyncResult.initial<AuthorizedAssetUrl, Error>()).pipe(
+  Atom.withLabel("fresh-asset-url:none"),
+);
+const noSessionGeneration = Atom.make(0);
+
+/**
+ * A signed URL minted when the reader mounts, not a cached one: cached links can
+ * expire while the client is suspended.
+ */
+export function useFreshAssetUrl(
+  environmentId: EnvironmentId | null,
+  resource: AssetResource | null,
+  revision: number,
+): AsyncResult.AsyncResult<AuthorizedAssetUrl, Error> {
+  const connection = usePreparedConnection(environmentId);
+  const httpBaseUrl = connection._tag === "Some" ? connection.value.httpBaseUrl : null;
+  const atom =
+    resource === null
+      ? noFreshAssetUrl
+      : freshAssetUrlFamily({ environmentId, resource, httpBaseUrl, revision });
+  // Minting fails at once while the environment is unreachable; mint again once a new session is
+  // up instead of keeping the error until Retry.
+  const sessionGeneration =
+    environmentId === null
+      ? noSessionGeneration
+      : environmentCatalog.sessionGenerationAtom(environmentId);
+  // A listener alone does not compute the atom, so nothing would follow the connection.
+  useAtomMount(sessionGeneration);
+  useAtomSubscribe(sessionGeneration, () => {
+    if (AsyncResult.isFailure(appAtomRegistry.get(atom))) appAtomRegistry.refresh(atom);
+  });
+  return useAtomValue(atom);
 }

@@ -101,11 +101,12 @@ export const withBaskuleFrontAuth = Effect.fn("BaskuleFrontAuth.make")(function*
   );
 
   /** Creates the session row, or re-activates it: the Worker has just vouched for this identity. */
-  const ensureSession = (identity: BaskuleIdentity) =>
-    Effect.gen(function* () {
-      const sessionId = yield* frontSessionIdFor(identity.sessionId);
-      const now = DateTime.formatIso(yield* DateTime.now);
-      yield* sql`
+  const ensureSession = Effect.fn("BaskuleFrontAuth.ensureSession")(function* (
+    identity: BaskuleIdentity,
+  ) {
+    const sessionId = yield* frontSessionIdFor(identity.sessionId);
+    const now = DateTime.formatIso(yield* DateTime.now);
+    yield* sql`
         INSERT INTO auth_sessions (
           session_id, subject, method, scopes, client_label, client_device_type,
           issued_at, expires_at, revoked_at
@@ -124,14 +125,14 @@ export const withBaskuleFrontAuth = Effect.fn("BaskuleFrontAuth.make")(function*
           OR auth_sessions.scopes IS NOT excluded.scopes
           OR auth_sessions.client_label IS NOT excluded.client_label
       `;
-      return {
-        sessionId,
-        subject: identity.userId,
-        method: "browser-session-cookie" as const,
-        scopes: BASKULE_FRONT_SCOPES,
-        expiresAt: FRONT_EXPIRES_AT,
-      } satisfies EnvironmentAuth.AuthenticatedSession;
-    }).pipe(Effect.mapError(errors.internal));
+    return {
+      sessionId,
+      subject: identity.userId,
+      method: "browser-session-cookie" as const,
+      scopes: BASKULE_FRONT_SCOPES,
+      expiresAt: FRONT_EXPIRES_AT,
+    } satisfies EnvironmentAuth.AuthenticatedSession;
+  }, Effect.mapError(errors.internal));
 
   const authenticate = (
     request: HttpServerRequest.HttpServerRequest,
@@ -156,23 +157,27 @@ export const withBaskuleFrontAuth = Effect.fn("BaskuleFrontAuth.make")(function*
     );
 
   const authenticateWebSocketUpgrade: EnvironmentAuth.EnvironmentAuth["Service"]["authenticateWebSocketUpgrade"] =
-    (request) =>
-      Effect.gen(function* () {
-        const session = yield* authenticate(request);
-        const url = HttpServerRequest.toURL(request);
-        const ticket = Option.isSome(url)
-          ? url.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM)
-          : null;
-        if (ticket && ticket.trim().length > 0) {
-          const ticketSession = yield* sessions
-            .verifyWebSocketToken(ticket)
-            .pipe(Effect.mapError(() => errors.invalid("Invalid WebSocket ticket.")));
-          if (ticketSession.sessionId !== session.sessionId) {
-            return yield* errors.invalid("The WebSocket ticket belongs to another session.");
-          }
+    Effect.fn("BaskuleFrontAuth.authenticateWebSocketUpgrade")(function* (request, use) {
+      const session = yield* authenticate(request);
+      const url = HttpServerRequest.toURL(request);
+      const ticket = Option.isSome(url)
+        ? url.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM)
+        : null;
+      if (ticket && ticket.trim().length > 0) {
+        const ticketSession = yield* sessions
+          .verifyWebSocketToken(ticket)
+          .pipe(Effect.mapError(() => errors.invalid("Invalid WebSocket ticket.")));
+        if (ticketSession.audience !== undefined && ticketSession.audience !== use) {
+          return yield* errors.invalid(
+            `WebSocket ticket was issued for the ${ticketSession.audience} route.`,
+          );
         }
-        return session;
-      });
+        if (ticketSession.sessionId !== session.sessionId) {
+          return yield* errors.invalid("The WebSocket ticket belongs to another session.");
+        }
+      }
+      return session;
+    });
 
   return {
     ...service,

@@ -4,6 +4,8 @@ Open **Usage** from the sidebar or the command palette, or press `mod+u` on web 
 desktop when the terminal is not focused. Customize `usage.open` in
 **Settings → Keybindings**.
 
+On mobile, choose **Usage** in the workspace navigation.
+
 ## Understand your usage
 
 **Usage** combines OpenCode 2 history from your connected environments. It shows token use,

@@ -1,5 +1,8 @@
 import { t } from "../../i18n";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import {
+  sourceControlClients,
+  type ChangeRequestTerminology,
+} from "@t3tools/client-runtime/source-control-clients";
 import type {
   PullRequestAction,
   PullRequestDetail,
@@ -51,41 +54,36 @@ export const MERGE_METHODS = {
   },
 } as const satisfies Record<PullRequestMergeMethod, { title: string; description: string }>;
 
-export const PR_ACTION_LABELS = {
-  get merge() {
-    return t("Merge pull request");
-  },
-  get ready() {
-    return t("Mark ready for review");
-  },
-  get draft() {
-    return t("Convert to draft");
-  },
-  get close() {
-    return t("Close pull request");
-  },
-  get reopen() {
-    return t("Reopen pull request");
-  },
-  get "update-branch"() {
-    return t("Update branch");
-  },
-  get "enable-auto-merge"() {
-    return t("Enable auto-merge");
-  },
-  get "disable-auto-merge"() {
-    return t("Disable auto-merge");
-  },
-  get revert() {
-    return t("Create revert pull request");
-  },
-  get "delete-branch"() {
-    return t("Delete branch");
-  },
-  get "approve-workflows"() {
-    return t("Approve workflows");
-  },
-} as const satisfies Record<PullRequestAction, string>;
+export function pullRequestActionLabel(
+  action: PullRequestAction,
+  terminology: ChangeRequestTerminology,
+): string {
+  const { singular } = terminology;
+  switch (action) {
+    case "merge":
+      return t("Merge {{singular}}", { singular });
+    case "ready":
+      return t("Mark ready for review");
+    case "draft":
+      return t("Convert to draft");
+    case "close":
+      return t("Close {{singular}}", { singular });
+    case "reopen":
+      return t("Reopen {{singular}}", { singular });
+    case "update-branch":
+      return t("Update branch");
+    case "enable-auto-merge":
+      return t("Enable auto-merge");
+    case "disable-auto-merge":
+      return t("Disable auto-merge");
+    case "revert":
+      return t("Create revert {{singular}}", { singular });
+    case "delete-branch":
+      return t("Delete branch");
+    case "approve-workflows":
+      return t("Approve workflows");
+  }
+}
 
 export const PR_ACTION_ICONS = {
   merge: PullRequestGlyph.merged,
@@ -155,14 +153,19 @@ export function canPerformPullRequestAction(pr: ActionDetail, action: PullReques
 
 export const MERGE_CONFLICT_REASON = "Resolve the branch conflicts before merging.";
 
-export function mergeUnavailableReason(pr: ActionDetail, connectionAllowsWrites: boolean) {
-  if (pr.state === "merged") return t("This pull request has been merged.");
-  if (pr.state === "closed") return t("Reopen this pull request before merging.");
+export function mergeUnavailableReason(
+  pr: ActionDetail,
+  connectionAllowsWrites: boolean,
+  terminology: ChangeRequestTerminology,
+) {
+  const { singular } = terminology;
+  if (pr.state === "merged") return t("This {{singular}} has been merged.", { singular });
+  if (pr.state === "closed") return t("Reopen this {{singular}} before merging.", { singular });
   if (!connectionAllowsWrites) return t("This environment connection is read-only.");
   if (!pr.capabilities.actions.includes("merge"))
     return t("This provider does not support merging here.");
   if (!pr.viewerPermissions.actions.includes("merge"))
-    return t("Your account cannot merge this pull request.");
+    return t("Your account cannot merge this {{singular}}.", { singular });
   if (pr.isDraft) return t("Mark this draft ready for review before merging.");
   if (pr.mergeability === "conflicting") return MERGE_CONFLICT_REASON;
   if (!allowedMergeMethods(pr).length) return t("This repository has no available merge methods.");
@@ -172,6 +175,7 @@ export function mergeUnavailableReason(pr: ActionDetail, connectionAllowsWrites:
 export function mergeSummary(
   pr: ActionDetail & Pick<PullRequestDetail, "autoMergeMethod">,
   connectionAllowsWrites: boolean,
+  terminology: ChangeRequestTerminology,
 ) {
   if (pr.state === "merged") return t("Merged");
   if (pr.state === "closed") return t("Closed");
@@ -182,7 +186,7 @@ export function mergeSummary(
   const method = pr.autoMergeMethod ?? (allowed.includes("squash") ? "squash" : allowed[0]);
   const methodLabel = method ? `${method[0]?.toUpperCase()}${method.slice(1)}` : "Merge";
   if (pr.autoMergeEnabled) return `${methodLabel} · auto-merge on`;
-  if (mergeUnavailableReason(pr, connectionAllowsWrites)) return t("Unavailable");
+  if (mergeUnavailableReason(pr, connectionAllowsWrites, terminology)) return t("Unavailable");
   return `${methodLabel}${pr.autoMergeEnabled === false ? " · auto-merge off" : ""}`;
 }
 

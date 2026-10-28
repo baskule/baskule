@@ -6,7 +6,7 @@ These instructions target Linux x86-64. The deployment and native build toolchai
 
 Install Git, Bash, Python 3, curl, tar, xz, checksum tools, and `flock`. Docker with Compose is required for image builds and computer-backed development stacks. The current user must be able to use Docker.
 
-`scripts/worktree` installs checksum-verified Node 24.22.1, the pnpm version pinned in `package.json`, and stock celld 0.6.3. By default, setup uses `baskule` under `XDG_CACHE_HOME` or your home directory's `.cache`. An existing `.tools` link preserves its shared cache location. Set `BASKULE_SHARED` to select another writable directory. Run setup:
+`scripts/worktree` installs checksum-verified Node 26.12.1, the pnpm version pinned in `package.json`, and stock celld 0.6.3. By default, setup uses `baskule` under `XDG_CACHE_HOME` or your home directory's `.cache`. An existing `.tools` link preserves its shared cache location. Set `BASKULE_SHARED` to select another writable directory. Run setup:
 
 ```sh
 scripts/worktree setup

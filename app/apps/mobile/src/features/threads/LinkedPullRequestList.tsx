@@ -1,11 +1,15 @@
 import { useTranslation } from "../../i18n";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
+  capitalizeTerm,
+  sourceControlClients,
+} from "@t3tools/client-runtime/source-control-clients";
+import {
   pullRequestListLines,
   resolveThreadPullRequestChains,
   threadPullRequestKeyOf,
   type PullRequestListLine,
-} from "@t3tools/shared/threadPullRequests";
+} from "@t3tools/client-runtime/thread-pull-requests";
 import { memo, useMemo } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 
@@ -78,13 +82,17 @@ export const LinkedPullRequestRow = memo(function LinkedPullRequestRow(props: {
   const watching = open && link.watch !== undefined;
   const additions = snapshot?.additions ?? 0;
   const deletions = snapshot?.deletions ?? 0;
+  const { shortLabel, singular } = (
+    sourceControlClients.findByChangeRequestUrl(link.url) ?? sourceControlClients.get(undefined)
+  ).changeRequest;
   const metaLineHeight = useScaledTextRole("label").lineHeight * useWindowDimensions().fontScale;
   const row = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={t(
-        "Pull request {{number}}, {{value2}}{{value3}}{{value4}}, {{repository}}{{value6}}{{value7}}{{value8}}{{value9}}",
+        "{{changeRequest}} {{number}}, {{value2}}{{value3}}{{value4}}, {{repository}}{{value6}}{{value7}}{{value8}}{{value9}}",
         {
+          changeRequest: capitalizeTerm(singular),
           number: link.number,
           value2: snapshot?.title ?? "waiting for host state",
           value3: status ? `, ${status.label}` : "",
@@ -99,10 +107,10 @@ export const LinkedPullRequestRow = memo(function LinkedPullRequestRow(props: {
       accessibilityHint={props.actions ? t("Touch and hold for actions.") : undefined}
       onPress={() => {
         void props.openPullRequest(link.url).then((opened) => {
-          if (!opened) Dialog.alert("Unable to open PR", "The pull request could not be opened.");
+          if (!opened)
+            Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
         });
       }}
-      // Steps in per layer like the web list, capped so deep stacks keep their width.
       style={{ paddingLeft: 16 + Math.min(depth, 3) * 16 }}
       className="flex-row gap-3 rounded-xl pr-4 active:bg-row-hover"
     >

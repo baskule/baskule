@@ -68,8 +68,7 @@ function parseOpenCodeMessage(
     model,
     sessionId: fallback.sessionId || text(message.sessionID),
     totals,
-    // OpenCode writes zero for models without a known rate, including paid
-    // subscription models. Let the shared price table estimate those records.
+    // OpenCode uses zero for unknown rates, including paid subscriptions; let shared pricing estimate.
     reportedCostUsd: typeof cost === "number" && Number.isFinite(cost) && cost > 0 ? cost : null,
     speed: "standard",
     dedupeKey: id ? `opencode:${id}` : null,
@@ -148,8 +147,7 @@ export const readOpenCodeUsage = Effect.fn("readOpenCodeUsage")(function* (
     files.push(file);
     yield* Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // A busy live provider should fail this source promptly rather than
-      // stalling the server while SQLite waits for its writer.
+      // Fail promptly on live-writer locks instead of stalling the server.
       yield* sql.unsafe("PRAGMA busy_timeout = 100");
       const tables = new Set(
         (yield* sql.unsafe<{ readonly name: unknown }>(
@@ -177,10 +175,8 @@ export const readOpenCodeUsage = Effect.fn("readOpenCodeUsage")(function* (
         const firstRowId = range?.first_row_id;
         const lastRowId = range?.last_row_id;
         if (typeof firstRowId !== "number" || typeof lastRowId !== "number") continue;
-        // SqlClient materializes each result with StatementSync.all(), and the
-        // window can exclude most rows. Each statement covers MESSAGE_PAGE_SIZE
-        // rowids, however few match, and rows appended mid-scan are left out.
-        // Untraced, as a large history runs thousands of them.
+        // StatementSync.all materializes results; page by rowid and exclude mid-scan appends.
+        // Omit tracing because large histories require thousands of statements.
         for (let after = firstRowId - 1; after < lastRowId; after += MESSAGE_PAGE_SIZE) {
           const rows = yield* sql
             .unsafe<{

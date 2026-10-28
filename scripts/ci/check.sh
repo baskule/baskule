@@ -19,7 +19,7 @@ run() {
   if [[ "$dry" == false ]]; then "$@"; fi
 }
 vp="$ROOT/app/node_modules/.bin/vp"
-tc="$ROOT/app/node_modules/.bin/tsc-rs"
+tc="$ROOT/app/node_modules/.bin/tsc"
 test_args=(test run --maxWorkers 4)
 case "$suite" in
   harness)
@@ -49,7 +49,8 @@ case "$suite" in
     cd ../contracts
     run "$vp" "${test_args[@]}" --config ../../vite.config.ts --dir .
     cd ../shared
-    run "$vp" "${test_args[@]}" --config ../../vite.config.ts --dir .
+    # Match @effect/vitest's package-local Vite+ peer instead of the root installation.
+    run pnpm exec vp "${test_args[@]}" --config ../../vite.config.ts --dir .
     ;;
   desktop)
     run bash desktop/check.sh

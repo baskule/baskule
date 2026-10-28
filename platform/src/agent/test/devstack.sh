@@ -20,7 +20,7 @@ P=$(cd "$T/../../.." && pwd)          # platform/
 ROOT=$(cd "$P/.." && pwd)
 RUN=$T/.run
 mkdir -p "$RUN"
-export PATH="$ROOT/.tools/node-v24.22.1-linux-x64/bin:$PATH"
+source "$ROOT/scripts/env.sh"
 CELLD_BIN=${CELLD_BIN:-$ROOT/scripts/celld.sh}
 CD_TOKEN=wpd-computerd-token-0123456789
 VOL_TOKEN=${OPENSHELL_VOLUMES_TOKEN:-dev-volumes-token}

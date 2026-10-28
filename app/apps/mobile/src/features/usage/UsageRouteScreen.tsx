@@ -2,7 +2,7 @@ import { t, useTranslation } from "../../i18n";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { EnvironmentId, USAGE_CONTRACT_VERSION, type UsageProviderKind } from "@t3tools/contracts";
-import { type RouteProp, useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
+import { type RouteProp, useIsFocused, useRoute } from "@react-navigation/native";
 import {
   updatingProvidersLabel,
   usageEnvironmentProgress,
@@ -26,18 +26,12 @@ import {
   formatUsd,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, RefreshControl, View } from "react-native";
-import Animated, {
-  FadeIn,
-  ReduceMotion,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { useReduceMotionEnabled } from "../../lib/appState";
 import { AppText as Text } from "../../components/ui/AppText";
 import { cn } from "../../lib/cn";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
@@ -49,8 +43,10 @@ import { useRefreshLimits } from "./UsageLimitsSection";
 import { UsageLimitsSection } from "./UsageLimitsPooled";
 import { Menu } from "../../components/ui/Menu";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { NativeStackScreenOptions } from "../../native/StackHeader";
+import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import type { UsageChartMetric } from "./usageChartData";
-import { PROVIDER_LABEL, useProviderColors, useUsageMixColors } from "./usageProviders";
+import { PROVIDER_LABEL, PROVIDER_COLORS, useUsageMixColors } from "./usageProviders";
 type UsageTab = "usage" | "limits";
 const TAB_OPTIONS = [
   {
@@ -116,23 +112,28 @@ const METRIC_OPTIONS = [
 const CHART_HEIGHT = 180;
 const providerLabel = (provider: UsageProviderKind) => PROVIDER_LABEL[provider];
 
-export function UsageRouteScreen() {
-  const t = useTranslation();
+export function UsageRouteScreen(props: { readonly workspace?: boolean }) {
   const route = useRoute<RouteProp<{ Usage: { tab?: string } | undefined }, "Usage">>();
-  const navigation = useNavigation();
+  return <UsageScreen workspace={props.workspace} tabParam={route.params?.tab} />;
+}
+
+function UsageScreen(props: {
+  readonly workspace?: boolean;
+  readonly tabParam: string | undefined;
+}) {
   const insets = useSafeAreaInsets();
   const [selection, setSelection] = useState(() => ({
-    params: route.params,
-    tab: (route.params?.tab === "usage" ? "usage" : "limits") as UsageTab,
+    params: props.tabParam,
+    tab: (props.tabParam === "usage" ? "usage" : "limits") as UsageTab,
   }));
-  if (selection.params !== route.params) {
+  if (selection.params !== props.tabParam) {
     setSelection({
-      params: route.params,
-      tab: route.params?.tab === "usage" ? "usage" : "limits",
+      params: props.tabParam,
+      tab: props.tabParam === "usage" ? "usage" : "limits",
     });
   }
   const { tab } = selection;
-  const setTab = (tab: UsageTab) => setSelection({ params: route.params, tab });
+  const setTab = (tab: UsageTab) => setSelection({ params: props.tabParam, tab });
   const [windowSelection, setWindowSelection] = useState(() => ({
     days: 30,
     window: makeWindow(30),
@@ -149,10 +150,6 @@ export function UsageRouteScreen() {
   const isFocused = useIsFocused();
   const limits = useRefreshLimits(selectedEnvironmentIds, isFocused && tab === "limits");
 
-  const refreshAfterCursorEnable = () => {
-    void refresh();
-    void limits.refreshAfterEnable();
-  };
   const sourceMessages = [
     ...new Set(
       selectedEnvironments.flatMap(
@@ -267,14 +264,37 @@ export function UsageRouteScreen() {
     </Menu>
   ) : null;
 
-  useLayoutEffect(() => {
-    if (Platform.OS === "ios") {
-      navigation.setOptions({ headerRight: () => environmentFilter });
-    }
-  }, [navigation, environmentFilter]);
-
   return (
-    <SettingsScreen title={t("Usage")} trailing={environmentFilter}>
+    <SettingsScreen title={t("Usage")} trailing={environmentFilter} workspaceRoot={props.workspace}>
+      {Platform.OS === "ios" ? (
+        <NativeStackScreenOptions
+          optionsVersion={JSON.stringify({ showEnvironmentFilter, filterIcon, environmentActions })}
+          options={{
+            // A native menu item, unlike a custom view, moves into the Duo's vertical bar.
+            unstable_headerRightItems: () =>
+              showEnvironmentFilter
+                ? [
+                    withNativeGlassHeaderItem({
+                      accessibilityLabel: t("Filter usage environments"),
+                      icon: { name: filterIcon, type: "sfSymbol" },
+                      label: "",
+                      type: "menu",
+                      menu: {
+                        title: t("Environments"),
+                        items: environmentActions.map((action) => ({
+                          type: "action" as const,
+                          label: action.title,
+                          description: action.subtitle,
+                          state: action.state === "on" ? ("on" as const) : undefined,
+                          onPress: () => selectEnvironment(action.id),
+                        })),
+                      },
+                    }),
+                  ]
+                : [],
+          }}
+        />
+      ) : null}
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -391,15 +411,14 @@ function UsageUpdating({
   readonly label: string | null;
   readonly children: ReactNode;
 }) {
-  const opacity = useSharedValue(1);
-  useLayoutEffect(() => {
-    opacity.set(
-      dimmed
-        ? withDelay(150, withTiming(0.5, { duration: 150, reduceMotion: ReduceMotion.System }))
-        : withTiming(1, { duration: 150, reduceMotion: ReduceMotion.System }),
-    );
-  }, [opacity, dimmed]);
-  const dimStyle = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  const reduceMotion = useReduceMotionEnabled();
+  // The delay keeps a quick refresh from flashing the content.
+  const dimStyle = {
+    opacity: dimmed ? 0.5 : 1,
+    transitionProperty: "opacity",
+    transitionDuration: reduceMotion ? 0 : 150,
+    transitionDelay: dimmed ? 150 : 0,
+  } as const;
 
   return (
     <View>
@@ -435,7 +454,7 @@ function ChartCard(props: {
 }) {
   const t = useTranslation();
   const { merged, metric } = props;
-  const colors = useProviderColors();
+  const colors = PROVIDER_COLORS;
   const hasActivity = props.daily.some((period) => period.totalTokens > 0);
 
   return (
@@ -506,10 +525,10 @@ function ProviderSection(props: {
 }) {
   const t = useTranslation();
   const { merged, metric } = props;
-  const colors = useProviderColors();
+  const colors = PROVIDER_COLORS;
   if (merged.providers.length === 0) return null;
 
-  // .sort() on a copy, not .toSorted(): Hermes doesn't ship the ES2023 method.
+  // Hermes lacks toSorted.
   const ordered = [...merged.providers].sort((a, b) =>
     metric === "cost" ? b.costUsd - a.costUsd : b.totalTokens - a.totalTokens,
   );
@@ -716,10 +735,10 @@ function MetricCell(props: {
 function ModelsSection(props: { readonly merged: MergedUsage; readonly metric: UsageChartMetric }) {
   const t = useTranslation();
   const { merged, metric } = props;
-  const colors = useProviderColors();
+  const colors = PROVIDER_COLORS;
   if (merged.models.length === 0) return null;
 
-  // .sort() on a copy, not .toSorted(): Hermes doesn't ship the ES2023 method.
+  // Hermes lacks toSorted.
   const ordered = [...merged.models].sort((a, b) =>
     metric === "cost"
       ? b.costUsd - a.costUsd || b.totalTokens - a.totalTokens

@@ -27,7 +27,7 @@ export function snapShotSetupSummary(state: DesktopSnapShotState, enabled: boole
       ? t("Check capture access in setup")
       : t("Install the capture helper to continue");
   if (captureSetupBackend(state) === "picker")
-    return t("Manual capture only — you'll choose a window each time");
+    return t("Manual capture only. You'll choose a window each time");
   if (!enabled) return t("Enable capture to continue");
   if (state.shortcutPending)
     return state.linuxBackend === "hyprland"
