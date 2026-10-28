@@ -3,10 +3,12 @@
 The installer owns authentication and infrastructure. An organization administrator owns product settings in
 the admin area: **Admin → General → Organization** (organization name, computer idle timeout) and **Admin → AI →
 Models** (the AI provider: Mistral, OpenAI, Anthropic, OpenCode (free), or a custom OpenAI-compatible endpoint;
-its endpoint and key; the model for chats). The installation offers exactly one provider and model.
-OpenCode (free) uses DeepSeek V4.1 Flash Free without an API key. Prompts go to OpenCode's servers under its terms.
-Advanced model settings include image/PDF inputs, the context window and maximum output in tokens. Set these to
-the model's actual limits: OpenCode uses them to decide when to compact context automatically.
+its endpoint and key; the model for chats, chosen from the models the key can use). The installation offers exactly
+one provider and model. A change saves only after the provider accepts the key and the model; the ControlCell
+checks again before storing it. OpenCode (free) uses DeepSeek V4.1 Flash Free without an API key. Prompts go to
+OpenCode's servers under its terms. The model's image/PDF inputs, context window and maximum output in tokens are
+prefilled when the provider or models.dev knows them. Set them to the model's actual limits: OpenCode uses them to
+decide when to compact context automatically.
 People, invitations, roles and space membership are under **Admin → People** and **Admin → Spaces**.
 Groups (**Admin → People → Groups**; every person is in the built-in **Everyone**) grant plugins and permissions
 such as creating team spaces. Plugins are under **Admin → Plugins**: nothing is installed or turned on by default.
@@ -14,9 +16,9 @@ An admin adds a plugin from the catalog or from its own address, git commit or f
 it on and chooses the groups that may use it. Each person then turns it on in **Settings → Plugins**. In a team
 space, plugins that act with a member's own account stay off until a space owner allows them in the space settings.
 
-The model's prices (USD per million tokens, on the Models page) turn token counts into estimated costs; **Use
-suggested prices** fills them from models.dev, or from the built-in snapshot when it is unreachable. A model without
-prices records tokens at zero cost. **Admin → AI → Usage & limits** shows usage per person, model and space (each
+The model's prices (USD per million tokens) turn token counts into estimated costs. Built-in providers' prices are
+read-only and come from Baskule's presets, then models.dev, or the built-in snapshot when it is unreachable; a custom
+endpoint's prices are entered on the Models page. A model without prices records tokens at zero cost. **Admin → AI → Usage & limits** shows usage per person, model and space (each
 table exports to CSV) and sets per-person limits: daily, weekly and monthly windows in UTC, each with a token limit,
 a cost limit or both, all off by default. Usage counts for the person who sent the message, in any space. Everyone
 sees their own usage and limits under **Settings → Usage**; a refused message names the limit and when it resets.

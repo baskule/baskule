@@ -47,11 +47,6 @@ export interface AdminUsage {
   bySpace: (UsageCounts & { spaceId: string; name: string | null })[];
   daily: UsageDaily[];
 }
-export interface ModelPriceSuggestion {
-  provider: string; model: string; prices: UsagePrices;
-  source: "models.dev" | "snapshot";
-  fetchedAt: string;
-}
 export interface UsageLimitError {
   error: "usage_limit_reached";
   code: "usage_limit_reached";

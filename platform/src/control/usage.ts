@@ -3,7 +3,6 @@ import type { AdminUsage, MyUsage, UsageAmount, UsageDaily, UsageLimitSettings, 
 import type { SpaceCaller, StorageLike } from "./service";
 import { HttpError, json, notFound, readJson } from "../shared/http";
 import { DAY, dateKey, limitStatuses, rawUsageCutoff, totalTokens, usageCost, usageWindow } from "./usage-windows";
-import { ModelPrices } from "./model-prices";
 
 const nonnegative = z.number().finite().min(0);
 const id = z.string().min(1).max(500);
@@ -27,7 +26,6 @@ const parse = <T>(schema: z.ZodType<T>, input: unknown): T => {
 const sums = "coalesce(sum(tokens),0) as tokens, coalesce(sum(cost_usd),0) as costUsd";
 
 export class UsageService {
-  private prices = new ModelPrices();
   private prunedAt = 0;
   constructor(private storage: StorageLike, private callSpace: SpaceCaller) {}
   private all(q: string, ...p: unknown[]) { return this.storage.sql.exec(q, ...p).toArray(); }
@@ -117,7 +115,6 @@ export class UsageService {
   }
   async adminRoute(req: Request, path: string, url: URL): Promise<Response> {
     if (path === "/usage" && req.method === "GET") return json(this.admin(url));
-    if (path === "/models/prices" && req.method === "GET") return json(await this.prices.suggest(url.searchParams.get("provider") ?? "", url.searchParams.get("model") ?? ""));
     if (path !== "/usage/limits") return notFound();
     if (req.method === "GET") return json(this.settings());
     if (req.method !== "PUT") return notFound();

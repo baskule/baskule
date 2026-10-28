@@ -28,6 +28,8 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe("transcription settings", () => {
   it("keeps OpenAI voice configured while chat uses keyless OpenCode", async () => {
     const { h, admin } = await configured();
+    // OpenCode's free model answers the connection check.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ choices: [] }));
     const provider = BASKULE_AI_PROVIDERS.opencode;
     const body = { ...settings, ai: { providerId: "opencode", baseUrl: provider.baseUrl, model: provider.models[0] } };
     const saved = await call(h, "PATCH", settingsPath, { creds: admin.creds, body: { ...body, apiKey: "ignored-key" } });
@@ -62,6 +64,8 @@ describe("transcription settings", () => {
   });
 
   it("shares an OpenAI chat key, rejects conflicting writes and reloads only when that key changes", async () => {
+    // OpenAI accepts every key here; the chat connection is checked whenever its shared key changes.
+    using openai = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => Response.json({ id: String(input).split("/").at(-1) }));
     const h = await makeService();
     const admin = await asAdmin(h);
     const shared = { ...defaultSettings, ai: { providerId: "openai", baseUrl: DEFAULT_BASKULE_TRANSCRIPTION.baseUrl, model: BASKULE_AI_PROVIDERS.openai.models[0] } };
@@ -92,10 +96,11 @@ describe("transcription settings", () => {
     const unchanged = await call(h, "GET", settingsPath, { creds: admin.creds });
     expect(unchanged.body.organizationName).toBe(shared.organizationName);
     expect(h.storage.sql.exec("select value from kv where key=?", `llm_api_key:${JSON.stringify([shared.ai.providerId, shared.ai.baseUrl])}`).toArray()[0].value).toBe("replacement-key");
-    const cleared = await save({ apiKey: "" });
-    expect(cleared.body).toMatchObject({ apiKeyConfigured: false, transcriptionApiKeyConfigured: false });
-    expect(h.calls.map(c => c.path)).toEqual(["/_baskule/reconfigure"]);
-    expect((await call(h, "GET", "/api/baskule/me", { creds: admin.creds })).body.voiceInput).toBe(false);
+    expect(openai.mock.calls.map(([url]) => String(url))).toEqual(Array(2).fill(`${shared.ai.baseUrl}/models/${shared.ai.model.id}`));
+    // OpenAI chat cannot run without its key, so the shared key stays.
+    expect((await save({ apiKey: "" })).body.error).toBe("ai_key_missing");
+    expect(h.calls).toEqual([]);
+    expect((await call(h, "GET", "/api/baskule/me", { creds: admin.creds })).body.voiceInput).toBe(true);
   });
 
   it("saves and clears a separate transcription key without reloading spaces", async () => {

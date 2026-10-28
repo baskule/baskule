@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Regenerate only the price suggestions we offer; prices are USD per million tokens.
+// Regenerate the built-in providers' prices, the model catalog's offline fallback; USD per million tokens.
 import { writeFile } from "node:fs/promises";
 const response = await fetch("https://models.dev/api.json");
 if (!response.ok) throw new Error(`models.dev: HTTP ${response.status}`);

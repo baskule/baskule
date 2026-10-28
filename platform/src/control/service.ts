@@ -9,7 +9,8 @@ import { createAuth, type Auth } from "./auth";
 import { hashPassword } from "./password";
 import { parseAuthConfig, publicAuthConfig } from "./auth-config";
 import { UsageService } from "./usage";
-import { defaultSettings, parseSettings, type ProductSettings } from "./settings";
+import { defaultSettings, parseConnectionCheck, parseSettings, type ProductSettings } from "./settings";
+import { AIModels, type AIConnection } from "./ai-models";
 import { BASKULE_AI_PROVIDERS } from "../../../app/packages/contracts/src/baskule";
 import { Push } from "./push";
 import { Groups } from "./groups";
@@ -96,6 +97,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 export class ControlService {
   readonly db;
   readonly usage: UsageService;
+  readonly aiModels = new AIModels();
   auth!: Auth;
   orgId = "";
   readonly installation;
@@ -183,6 +185,18 @@ export class ControlService {
     return `llm_api_key:${JSON.stringify([providerId, baseUrl])}`;
   }
 
+  private savedApiKey(providerId: string, baseUrl: string): string {
+    const value = this.one("select value from kv where key=?", this.apiKeySlot(providerId, baseUrl))?.value;
+    return typeof value === "string" ? value : "";
+  }
+
+  /** The connection an admin is checking: the key they typed, else the one saved for the provider and endpoint. */
+  private async connectionCheck(req: Request): Promise<{ connection: AIConnection; modelId?: string }> {
+    const { providerId, baseUrl, apiKey, modelId } = parseConnectionCheck(await readJson(req));
+    const key = BASKULE_AI_PROVIDERS[providerId].keyless ? "public" : apiKey ?? this.savedApiKey(providerId, baseUrl);
+    return { connection: { providerId, baseUrl, key }, ...(modelId === undefined ? {} : { modelId }) };
+  }
+
   private transcriptionConnection(settings = this.productSettings().transcription) {
     const value = this.one("select value from kv where key=?", this.apiKeySlot(settings.providerId, settings.baseUrl))?.value;
     const key = typeof value === "string" ? value : "";
@@ -212,8 +226,20 @@ export class ControlService {
       if (keys.has(slot) && keys.get(slot) !== key) throw new HttpError(400, "conflicting_api_keys");
       keys.set(slot, key);
     }
-    const chatKey = this.one("select value from kv where key=?", chatSlot)?.value ?? "";
-    const reload = JSON.stringify(settings.ai) !== JSON.stringify(previous) || (keys.has(chatSlot) && keys.get(chatSlot) !== chatKey);
+    const chatKey = this.savedApiKey(settings.ai.providerId, settings.ai.baseUrl);
+    const nextChatKey = keys.get(chatSlot) ?? chatKey;
+    const withoutCost = (ai: ProductSettings["ai"]) => JSON.stringify({ ...ai, model: { ...ai.model, cost: undefined } });
+    const aiChanged = withoutCost(settings.ai) !== withoutCost(previous) || nextChatKey !== chatKey;
+    // Every chat configuration change is proven to work before it is stored, whatever the client checked.
+    if (aiChanged) await this.aiModels.verify({ providerId: settings.ai.providerId, baseUrl: settings.ai.baseUrl,
+      key: BASKULE_AI_PROVIDERS[settings.ai.providerId].keyless ? "public" : nextChatKey }, settings.ai.model.id);
+    // Only custom endpoints take the admin's prices; built-in models keep the catalog's.
+    if (settings.ai.providerId !== "custom") {
+      const { cost: _client, ...model } = settings.ai.model;
+      const cost = aiChanged ? await this.aiModels.price(settings.ai.providerId, model.id) : previous.model.cost;
+      settings.ai = { ...settings.ai, model: cost ? { ...model, cost } : model };
+    }
+    const reload = aiChanged || JSON.stringify(settings.ai.model.cost) !== JSON.stringify(previous.model.cost);
     this.storage.transactionSync(() => {
       this.run("insert into kv(key, value) values ('product_settings', ?) on conflict(key) do update set value=excluded.value", JSON.stringify(settings));
       this.run("update organization set name=? where id=?", settings.organizationName, this.orgId);
@@ -933,7 +959,14 @@ export class ControlService {
     const s = await this.requireAdmin(req);
     const m = req.method;
     let r: RegExpMatchArray | null;
-    if (p === "/usage" || p.startsWith("/usage/") || p === "/models/prices") return this.usage.adminRoute(req, p, url);
+    if (p === "/usage" || p.startsWith("/usage/")) return this.usage.adminRoute(req, p, url);
+    if (p === "/ai/models" && m === "POST") return json({ models: await this.aiModels.available((await this.connectionCheck(req)).connection) });
+    if (p === "/ai/verify" && m === "POST") {
+      const { connection, modelId } = await this.connectionCheck(req);
+      if (modelId === undefined) throw new HttpError(400, "invalid_connection", "modelId is required");
+      await this.aiModels.verify(connection, modelId);
+      return json({ ok: true });
+    }
     if (p === "/settings" && m === "GET") return json(this.settingsView());
     if ((r = p.match(/^\/plugins\/([^/]+)\/oauth$/))) return this.connections.admin(req, r[1]);
     if (p === "/plugins" || p.startsWith("/plugins/")) return this.pluginChange(req, this.plugins.admin(req, `/admin${p}`));

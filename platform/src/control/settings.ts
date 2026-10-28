@@ -23,11 +23,18 @@ const modelSchema = z.object({
   }).strict().optional(),
   settings: z.record(z.string(), z.json()),
 }).strict().refine(m => m.limit.output < m.limit.context, "Output limit must be smaller than the context window");
+const providerId = z.enum(["openai", "anthropic", "mistral", "opencode", "custom"]);
+const connectionCheckSchema = z.object({
+  providerId,
+  baseUrl: endpoint,
+  apiKey: z.string().max(8192).optional(),
+  modelId: z.string().trim().min(1).max(200).optional(),
+}).strict();
 export const settingsSchema = z.object({
   organizationName: z.string().trim().min(1).max(100),
   googleSignupDomains: z.array(z.string().trim().toLowerCase().max(253).regex(/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/, "Use an email domain such as company.com")).max(30).default([]),
   ai: z.object({
-    providerId: z.enum(["openai", "anthropic", "mistral", "opencode", "custom"]),
+    providerId,
     baseUrl: endpoint,
     model: modelSchema,
   }).strict(),
@@ -53,5 +60,11 @@ export const defaultSettings: ProductSettings = {
 export function parseSettings(input: unknown): ProductSettings {
   const result = settingsSchema.safeParse(input);
   if (!result.success) throw new HttpError(400, "invalid_settings", result.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
+  return result.data;
+}
+
+export function parseConnectionCheck(input: unknown): z.infer<typeof connectionCheckSchema> {
+  const result = connectionCheckSchema.safeParse(input);
+  if (!result.success) throw new HttpError(400, "invalid_connection", result.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
   return result.data;
 }

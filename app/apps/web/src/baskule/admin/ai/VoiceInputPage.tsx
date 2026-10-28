@@ -188,7 +188,7 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
                         "The chat model on AI → Models uses this connection too, so they share one key. A key saved here also replaces the chat key.",
                       )
                     : keyConfigured
-                      ? t("A key is saved for this connection. Saved keys are never displayed.")
+                      ? undefined
                       : t(
                           "Each provider and endpoint has its own key. Leave blank to use a key previously saved for this connection.",
                         )

@@ -138,11 +138,28 @@ export function blankBaskuleModel(): BaskuleAIModel {
   return {
     id: "",
     name: "",
-    image: false,
-    pdf: false,
+    image: true,
+    pdf: true,
     limit: { context: 200_000, output: 16_000 },
     settings: {},
   };
+}
+
+/** A model the provider lists for a connection, with the limits and prices Baskule knows for it. */
+export interface BaskuleAvailableModel {
+  id: string;
+  name: string;
+  limit?: BaskuleAIModel["limit"];
+  cost?: BaskuleAIModel["cost"];
+}
+/** `POST /api/baskule/admin/ai/models` lists a connection's models; `POST /api/baskule/admin/ai/verify`
+ * with `modelId` proves the key and model work. Without `apiKey`, the key saved for the provider and
+ * endpoint is used. */
+export interface BaskuleAIConnectionCheck {
+  providerId: BaskuleAIProviderId;
+  baseUrl: string;
+  apiKey?: string;
+  modelId?: string;
 }
 
 /** Voice input: the composer records audio and an OpenAI-compatible `/audio/transcriptions` endpoint
