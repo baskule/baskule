@@ -46,10 +46,16 @@ test("a new chat generates its title after starting exactly one session", { tag:
     expect(shell.threads.get(id).title).not.toBe(initial);
     const run = [...state.runs.values()][0];
     expect(run.workStartedAt).toBe(run.requestedAt);
-    const log = readFileSync(stack.logs.celld, "utf8");
-    const sessions = [...log.matchAll(/^(\S+)\s.*\[agent [^\]]+\] session ses_\w+ at (\S+)/gm)].filter((m) => m[2].includes(marker));
-    // The log has microseconds; the run timestamp and Date.parse have milliseconds.
-    expect(sessions.filter((m) => Date.parse(m[1]) <= Date.parse(run.startedAt))).toHaveLength(1);
+    const projection = await c.ok("orchestration.getThreadProjection", { threadId: id });
+    const chatSession = projection.providerThreads.find((p) => p.id === run.providerThreadId)?.nativeThreadRef?.nativeId;
+    expect(chatSession).toMatch(/^ses_\w+$/);
+    // The chat and temporary title session share a directory. Compare their creation
+    // order and persisted identity, rather than clocks from V8 and the log collector.
+    const sessions = () => [...readFileSync(stack.logs.celld, "utf8").matchAll(/\[agent [^\]]+\] session (ses_\w+) at (\S+)/g)]
+      .filter((m) => m[2].includes(marker)).map((m) => m[1]);
+    await expect.poll(sessions, { message: "chat and title sessions are recorded" }).toHaveLength(2);
+    expect(sessions()[0]).toBe(chatSession);
+    expect(sessions()[1]).not.toBe(chatSession);
     state.stop(); shell.stop();
   } finally { c.close(); await c.closed; }
 });
