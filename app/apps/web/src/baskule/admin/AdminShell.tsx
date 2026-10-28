@@ -1,86 +1,105 @@
-// baskule: frame of the admin area: the admin-only guard, the page heading, the phone section
-// list (the sidebar holds the same list on wider screens) and the placeholder of pages in progress.
-import { Link, Navigate, Outlet } from "@tanstack/react-router";
-import { ChevronRightIcon } from "lucide-react";
+// baskule: frame of the admin area, a modal over the chat that opened it like Settings: the admin-only
+// guard, the section nav, the breadcrumb and close button, and the placeholder of pages in progress.
+import { Link, Navigate, Outlet, useParams } from "@tanstack/react-router";
 import { Suspense, type ReactNode } from "react";
 
 import { useTranslation } from "../../i18n";
+import { AppRouteModal, AppRouteModalClose } from "../../components/AppRouteModal";
 import { Alert, AlertDescription } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
 import { Spinner } from "../../components/ui/spinner";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
-  WorkspaceBreadcrumbText,
 } from "../../components/WorkspaceBreadcrumb";
-import { useIsMobile } from "../../hooks/useMediaQuery";
+import { WorkspacePageContainer } from "../../components/WorkspacePageContainer";
 import { useBaskuleMe } from "../session";
 import { RowIcon } from "../ui";
-import { BaskulePage, PageMessage, PageSection } from "../views/BaskulePage";
-import { adminSections, findAdminPage, type AdminPage, type AdminSection } from "./navigation";
+import { PageMessage } from "../views/BaskulePage";
+import { AdminSidebarNav } from "./AdminSidebarNav";
+import { adminSections, findAdminPage, type AdminPage } from "./navigation";
 
 export function AdminLayout() {
   const t = useTranslation();
   const me = useBaskuleMe();
-  if (me !== null && me.user.role !== "admin") {
-    return (
-      <BaskulePage title={t("Admin")}>
-        <Alert variant="error">
-          <AlertDescription>{t("Only administrators can open the admin panel.")}</AlertDescription>
-        </Alert>
-      </BaskulePage>
-    );
-  }
-  return <Outlet />;
+  // Until the session is known, show the frame rather than a refusal.
+  const allowed = me === null || me.user.role === "admin";
+  return (
+    <AppRouteModal label={t("Admin")}>
+      <div className="relative flex min-h-0 flex-1">
+        {allowed ? <AdminSidebarNav /> : null}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2">
+            <AdminBreadcrumb />
+            <div className="ms-auto flex shrink-0 items-center gap-1">
+              <AppRouteModalClose />
+            </div>
+          </header>
+          <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
+            <WorkspacePageContainer width="wide" className="gap-8">
+              {allowed ? (
+                <Outlet />
+              ) : (
+                <Alert variant="error">
+                  <AlertDescription>
+                    {t("Only administrators can open the admin panel.")}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </WorkspacePageContainer>
+          </div>
+        </div>
+      </div>
+    </AppRouteModal>
+  );
 }
 
-/** `/admin`: the first page on wide screens, the list of every page on a phone. */
-export function AdminHome() {
+function AdminBreadcrumb() {
   const t = useTranslation();
   const me = useBaskuleMe();
-  const isMobile = useIsMobile();
-  const sections = adminSections(me);
-  const [first] = sections;
-  if (!isMobile && first?.pages[0]) {
-    return (
-      <Navigate
-        to="/admin/$section/$page"
-        params={{ section: first.id, page: first.pages[0].id }}
-        replace
-      />
-    );
-  }
+  const { section, page, item } = useParams({ strict: false });
+  const found =
+    section === undefined || page === undefined ? null : findAdminPage(me, section, page);
   return (
-    <BaskulePage title={t("Admin")}>
-      {sections.map((section) => (
-        <PageSection key={section.id} title={t(section.label)}>
-          {section.pages.map((page) => (
-            <Link
-              key={page.id}
-              to="/admin/$section/$page"
-              params={{ section: section.id, page: page.id }}
-              className="flex min-h-14 items-center gap-3 px-3 py-2.5 outline-hidden hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4"
-            >
-              <RowIcon>
-                <page.icon />
-              </RowIcon>
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-sm text-foreground">{t(page.label)}</span>
-                <span className="text-xs text-muted-foreground">{t(page.description)}</span>
-              </span>
-              {page.component ? null : (
-                <Badge variant="secondary" size="sm">
-                  {t("Soon")}
-                </Badge>
-              )}
-              <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            </Link>
-          ))}
-        </PageSection>
-      ))}
-    </BaskulePage>
+    <WorkspaceBreadcrumb ariaLabel={t("Admin breadcrumb")}>
+      {found ? (
+        <>
+          <WorkspaceBreadcrumbItem>{t("Admin")}</WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbSeparator />
+          {item !== undefined && found.page.detail ? (
+            <WorkspaceBreadcrumbItem className="truncate">
+              <Link
+                to="/admin/$section/$page"
+                params={{ section: found.section.id, page: found.page.id }}
+                className={BREADCRUMB_LINK}
+              >
+                {t(found.section.label)} · {t(found.page.label)}
+              </Link>
+            </WorkspaceBreadcrumbItem>
+          ) : (
+            <WorkspaceBreadcrumbItem current className="truncate">
+              {t(found.section.label)}
+            </WorkspaceBreadcrumbItem>
+          )}
+        </>
+      ) : (
+        <WorkspaceBreadcrumbItem current>{t("Admin")}</WorkspaceBreadcrumbItem>
+      )}
+    </WorkspaceBreadcrumb>
   );
+}
+
+/** `/admin`: the first page; the nav lists the others. */
+export function AdminHome() {
+  const me = useBaskuleMe();
+  const first = adminSections(me)[0];
+  return first?.pages[0] ? (
+    <Navigate
+      to="/admin/$section/$page"
+      params={{ section: first.id, page: first.pages[0].id }}
+      replace
+    />
+  ) : null;
 }
 
 /** `/admin/$section`: the section's first page. */
@@ -103,90 +122,46 @@ export function AdminPageView({
   readonly pageId: string;
   readonly itemId?: string;
 }) {
+  const t = useTranslation();
   const me = useBaskuleMe();
   // Until the session is known, anonymous-only filtering cannot run: wait rather than bounce.
-  if (me === null) return <AdminFrame />;
+  if (me === null) return <Loading />;
   const found = findAdminPage(me, sectionId, pageId);
   if (!found) return <Navigate to="/admin" replace />;
-  if (itemId !== undefined && !found.page.detail) {
+  const { page } = found;
+  if (itemId !== undefined) {
+    if (!page.detail) {
+      return (
+        <Navigate
+          to="/admin/$section/$page"
+          params={{ section: sectionId, page: pageId }}
+          replace
+        />
+      );
+    }
+    // A detail page names its item itself: only it knows the item's name.
     return (
-      <Navigate to="/admin/$section/$page" params={{ section: sectionId, page: pageId }} replace />
+      <Suspense fallback={<Loading />}>
+        <page.detail key={itemId} id={itemId} />
+      </Suspense>
     );
   }
-  return <AdminFrame found={found} {...(itemId === undefined ? {} : { itemId })} />;
-}
-
-function AdminFrame({
-  found,
-  itemId,
-}: {
-  readonly found?: { readonly section: AdminSection; readonly page: AdminPage };
-  readonly itemId?: string;
-}) {
-  const t = useTranslation();
-  const Page = found?.page.component;
-  const Detail = itemId === undefined ? undefined : found?.page.detail;
   return (
-    <BaskulePage
-      breadcrumb={
-        <WorkspaceBreadcrumb ariaLabel={t("Admin breadcrumb")}>
-          <WorkspaceBreadcrumbItem>
-            <Link to="/admin" className={BREADCRUMB_LINK}>
-              <WorkspaceBreadcrumbText>{t("Admin")}</WorkspaceBreadcrumbText>
-            </Link>
-          </WorkspaceBreadcrumbItem>
-          {found ? (
-            <>
-              <WorkspaceBreadcrumbSeparator>
-                <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
-              </WorkspaceBreadcrumbSeparator>
-              {Detail ? (
-                <WorkspaceBreadcrumbItem className="truncate">
-                  <Link
-                    to="/admin/$section/$page"
-                    params={{ section: found.section.id, page: found.page.id }}
-                    className={BREADCRUMB_LINK}
-                  >
-                    <WorkspaceBreadcrumbText>
-                      {t(found.section.label)} · {t(found.page.label)}
-                    </WorkspaceBreadcrumbText>
-                  </Link>
-                </WorkspaceBreadcrumbItem>
-              ) : (
-                <WorkspaceBreadcrumbItem className="truncate text-foreground">
-                  <WorkspaceBreadcrumbText>{t(found.section.label)}</WorkspaceBreadcrumbText>
-                </WorkspaceBreadcrumbItem>
-              )}
-            </>
-          ) : null}
-        </WorkspaceBreadcrumb>
-      }
-    >
-      {found && Detail && itemId !== undefined ? (
-        // A detail page names its item itself: only it knows the item's name.
+    <>
+      <AdminPageHeading title={t(page.label)} description={t(page.description)} />
+      {page.component ? (
         <Suspense fallback={<Loading />}>
-          <Detail key={itemId} id={itemId} />
+          <page.component />
         </Suspense>
-      ) : found ? (
-        <>
-          <AdminPageHeading title={t(found.page.label)} description={t(found.page.description)} />
-          {Page ? (
-            <Suspense fallback={<Loading />}>
-              <Page />
-            </Suspense>
-          ) : (
-            <AdminPlaceholder page={found.page} />
-          )}
-        </>
       ) : (
-        <Loading />
+        <AdminPlaceholder page={page} />
       )}
-    </BaskulePage>
+    </>
   );
 }
 
 const BREADCRUMB_LINK =
-  "rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  "rounded-sm transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 /** The page title block; detail pages pass their item's tile and controls. */
 export function AdminPageHeading({

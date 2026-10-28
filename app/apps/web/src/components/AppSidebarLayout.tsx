@@ -1,7 +1,5 @@
 import { useTranslation } from "../i18n";
 import { baskule } from "../baskule/flags";
-import { AdminSidebarNav } from "../baskule/admin/AdminSidebarNav";
-import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
@@ -391,7 +389,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
-  const isOnAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // A clamped drag may not change width, so viewport changes need a separate subscription.
@@ -436,7 +433,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           collapsible="offcanvas"
           data-app-sidebar=""
           role="navigation"
-          aria-label={isOnAdmin ? t("Admin") : t("Threads")}
+          aria-label={t("Threads")}
           resizable={{
             maxWidth: sidebarMaximumWidth,
             minWidth: sidebarMinimumWidth,
@@ -448,12 +445,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           }}
           style={windowControlsInsetStyle}
         >
-          {isOnAdmin ? (
-            <>
-              <SidebarChromeHeader isElectron={isElectron} />
-              <AdminSidebarNav />
-            </>
-          ) : legacySidebarEnabled && !baskule.flatChatSidebar ? (
+          {legacySidebarEnabled && !baskule.flatChatSidebar ? (
             <LegacyThreadSidebar routeReveal={sidebarRouteReveal} />
           ) : (
             <ThreadSidebar routeReveal={sidebarRouteReveal} />

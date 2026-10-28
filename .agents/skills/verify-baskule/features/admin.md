@@ -1,5 +1,5 @@
 ---
-paths: ["platform/src/control/**", "app/apps/web/src/baskule/admin/**", "app/apps/web/src/routes/admin*"]
+paths: ["platform/src/control/**", "app/apps/web/src/baskule/admin/**", "app/apps/web/src/routes/_chat.admin*"]
 journeys: null
 profile: "full"
 checks: ["scripts/check worker web"]
@@ -12,7 +12,7 @@ Settings, authentication, models and health.
 
 ## How to get to it (user POV)
 
-Open user menu → Admin.
+Open user menu → Admin. It opens as a pop-up over the chat, like Settings.
 
 ## Driving it with T3 preview or Playwright
 

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { AdminSectionHome } from "../baskule/admin/AdminShell";
 
-export const Route = createFileRoute("/admin/$section/")({
+export const Route = createFileRoute("/_chat/admin/$section/")({
   component: AdminSectionRoute,
 });
 

@@ -4,7 +4,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AdminLayout } from "../baskule/admin/AdminShell";
 import { baskule } from "../baskule/flags";
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/_chat/admin")({
   beforeLoad: () => {
     if (!baskule.hosted) throw redirect({ to: "/", replace: true });
   },

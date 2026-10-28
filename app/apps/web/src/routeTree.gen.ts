@@ -19,17 +19,15 @@ import { Route as GuestRouteImport } from './routes/guest'
 import { Route as ConnectAgentRouteImport } from './routes/connect-agent'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as AppsRouteImport } from './routes/apps'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ChatRouteImport } from './routes/_chat'
-import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
-import { Route as AdminSectionIndexRouteImport } from './routes/admin.$section.index'
-import { Route as AdminSectionPageRouteImport } from './routes/admin.$section.$page'
+import { Route as ChatAdminRouteImport } from './routes/_chat.admin'
+import { Route as ChatAdminIndexRouteImport } from './routes/_chat.admin.index'
 import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
 import { Route as ChatSettingsUsageRouteImport } from './routes/_chat.settings.usage'
 import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
@@ -61,7 +59,9 @@ import { Route as ChatSettingsAccessRouteImport } from './routes/_chat.settings.
 import { Route as ChatSettingsAboutRouteImport } from './routes/_chat.settings.about'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
-import { Route as AdminSectionPageItemRouteImport } from './routes/admin.$section.$page_.$item'
+import { Route as ChatAdminSectionIndexRouteImport } from './routes/_chat.admin.$section.index'
+import { Route as ChatAdminSectionPageRouteImport } from './routes/_chat.admin.$section.$page'
+import { Route as ChatAdminSectionPageItemRouteImport } from './routes/_chat.admin.$section.$page_.$item'
 
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
@@ -113,19 +113,9 @@ const AppsRoute = AppsRouteImport.update({
   path: '/apps',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
   getParentRoute: () => rootRouteImport,
-} as any)
-const AdminIndexRoute = AdminIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AdminRoute,
 } as any)
 const ChatIndexRoute = ChatIndexRouteImport.update({
   id: '/',
@@ -157,15 +147,15 @@ const ChatNewRoute = ChatNewRouteImport.update({
   path: '/new',
   getParentRoute: () => ChatRoute,
 } as any)
-const AdminSectionIndexRoute = AdminSectionIndexRouteImport.update({
-  id: '/$section/',
-  path: '/$section/',
-  getParentRoute: () => AdminRoute,
+const ChatAdminRoute = ChatAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => ChatRoute,
 } as any)
-const AdminSectionPageRoute = AdminSectionPageRouteImport.update({
-  id: '/$section/$page',
-  path: '/$section/$page',
-  getParentRoute: () => AdminRoute,
+const ChatAdminIndexRoute = ChatAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ChatAdminRoute,
 } as any)
 const ChatSettingsWorktreesRoute = ChatSettingsWorktreesRouteImport.update({
   id: '/worktrees',
@@ -327,15 +317,25 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
-const AdminSectionPageItemRoute = AdminSectionPageItemRouteImport.update({
-  id: '/$section/$page_/$item',
-  path: '/$section/$page/$item',
-  getParentRoute: () => AdminRoute,
+const ChatAdminSectionIndexRoute = ChatAdminSectionIndexRouteImport.update({
+  id: '/$section/',
+  path: '/$section/',
+  getParentRoute: () => ChatAdminRoute,
 } as any)
+const ChatAdminSectionPageRoute = ChatAdminSectionPageRouteImport.update({
+  id: '/$section/$page',
+  path: '/$section/$page',
+  getParentRoute: () => ChatAdminRoute,
+} as any)
+const ChatAdminSectionPageItemRoute =
+  ChatAdminSectionPageItemRouteImport.update({
+    id: '/$section/$page_/$item',
+    path: '/$section/$page/$item',
+    getParentRoute: () => ChatAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
-  '/admin': typeof AdminRouteWithChildren
   '/apps': typeof AppsRoute
   '/connect': typeof ConnectRoute
   '/connect-agent': typeof ConnectAgentRoute
@@ -346,12 +346,12 @@ export interface FileRoutesByFullPath {
   '/pair': typeof PairRoute
   '/reset-password': typeof ResetPasswordRoute
   '/welcome': typeof WelcomeRoute
+  '/admin': typeof ChatAdminRouteWithChildren
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
   '/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
-  '/admin/': typeof AdminIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/settings/about': typeof ChatSettingsAboutRoute
@@ -383,9 +383,10 @@ export interface FileRoutesByFullPath {
   '/settings/threads': typeof ChatSettingsThreadsRoute
   '/settings/usage': typeof ChatSettingsUsageRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
-  '/admin/$section/$page': typeof AdminSectionPageRoute
-  '/admin/$section/': typeof AdminSectionIndexRoute
-  '/admin/$section/$page/$item': typeof AdminSectionPageItemRoute
+  '/admin/': typeof ChatAdminIndexRoute
+  '/admin/$section/$page': typeof ChatAdminSectionPageRoute
+  '/admin/$section/': typeof ChatAdminSectionIndexRoute
+  '/admin/$section/$page/$item': typeof ChatAdminSectionPageItemRoute
 }
 export interface FileRoutesByTo {
   '/apps': typeof AppsRoute
@@ -404,7 +405,6 @@ export interface FileRoutesByTo {
   '/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/': typeof ChatIndexRoute
-  '/admin': typeof AdminIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/settings/about': typeof ChatSettingsAboutRoute
@@ -436,14 +436,14 @@ export interface FileRoutesByTo {
   '/settings/threads': typeof ChatSettingsThreadsRoute
   '/settings/usage': typeof ChatSettingsUsageRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
-  '/admin/$section/$page': typeof AdminSectionPageRoute
-  '/admin/$section': typeof AdminSectionIndexRoute
-  '/admin/$section/$page/$item': typeof AdminSectionPageItemRoute
+  '/admin': typeof ChatAdminIndexRoute
+  '/admin/$section/$page': typeof ChatAdminSectionPageRoute
+  '/admin/$section': typeof ChatAdminSectionIndexRoute
+  '/admin/$section/$page/$item': typeof ChatAdminSectionPageItemRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
-  '/admin': typeof AdminRouteWithChildren
   '/apps': typeof AppsRoute
   '/connect': typeof ConnectRoute
   '/connect-agent': typeof ConnectAgentRoute
@@ -454,13 +454,13 @@ export interface FileRoutesById {
   '/pair': typeof PairRoute
   '/reset-password': typeof ResetPasswordRoute
   '/welcome': typeof WelcomeRoute
+  '/_chat/admin': typeof ChatAdminRouteWithChildren
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/settings': typeof ChatSettingsRouteWithChildren
   '/_chat/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/_chat/': typeof ChatIndexRoute
-  '/admin/': typeof AdminIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/_chat/settings/about': typeof ChatSettingsAboutRoute
@@ -492,15 +492,15 @@ export interface FileRoutesById {
   '/_chat/settings/threads': typeof ChatSettingsThreadsRoute
   '/_chat/settings/usage': typeof ChatSettingsUsageRoute
   '/_chat/settings/worktrees': typeof ChatSettingsWorktreesRoute
-  '/admin/$section/$page': typeof AdminSectionPageRoute
-  '/admin/$section/': typeof AdminSectionIndexRoute
-  '/admin/$section/$page_/$item': typeof AdminSectionPageItemRoute
+  '/_chat/admin/': typeof ChatAdminIndexRoute
+  '/_chat/admin/$section/$page': typeof ChatAdminSectionPageRoute
+  '/_chat/admin/$section/': typeof ChatAdminSectionIndexRoute
+  '/_chat/admin/$section/$page_/$item': typeof ChatAdminSectionPageItemRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/admin'
     | '/apps'
     | '/connect'
     | '/connect-agent'
@@ -511,12 +511,12 @@ export interface FileRouteTypes {
     | '/pair'
     | '/reset-password'
     | '/welcome'
+    | '/admin'
     | '/new'
     | '/pull-requests'
     | '/settings'
     | '/usage'
     | '/projects/$projectKey'
-    | '/admin/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/settings/about'
@@ -548,6 +548,7 @@ export interface FileRouteTypes {
     | '/settings/threads'
     | '/settings/usage'
     | '/settings/worktrees'
+    | '/admin/'
     | '/admin/$section/$page'
     | '/admin/$section/'
     | '/admin/$section/$page/$item'
@@ -569,7 +570,6 @@ export interface FileRouteTypes {
     | '/usage'
     | '/projects/$projectKey'
     | '/'
-    | '/admin'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/settings/about'
@@ -601,13 +601,13 @@ export interface FileRouteTypes {
     | '/settings/threads'
     | '/settings/usage'
     | '/settings/worktrees'
+    | '/admin'
     | '/admin/$section/$page'
     | '/admin/$section'
     | '/admin/$section/$page/$item'
   id:
     | '__root__'
     | '/_chat'
-    | '/admin'
     | '/apps'
     | '/connect'
     | '/connect-agent'
@@ -618,13 +618,13 @@ export interface FileRouteTypes {
     | '/pair'
     | '/reset-password'
     | '/welcome'
+    | '/_chat/admin'
     | '/_chat/new'
     | '/_chat/pull-requests'
     | '/_chat/settings'
     | '/_chat/usage'
     | '/projects/$projectKey'
     | '/_chat/'
-    | '/admin/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
     | '/_chat/settings/about'
@@ -656,14 +656,14 @@ export interface FileRouteTypes {
     | '/_chat/settings/threads'
     | '/_chat/settings/usage'
     | '/_chat/settings/worktrees'
-    | '/admin/$section/$page'
-    | '/admin/$section/'
-    | '/admin/$section/$page_/$item'
+    | '/_chat/admin/'
+    | '/_chat/admin/$section/$page'
+    | '/_chat/admin/$section/'
+    | '/_chat/admin/$section/$page_/$item'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
-  AdminRoute: typeof AdminRouteWithChildren
   AppsRoute: typeof AppsRoute
   ConnectRoute: typeof ConnectRoute
   ConnectAgentRoute: typeof ConnectAgentRoute
@@ -749,26 +749,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_chat': {
       id: '/_chat'
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/admin/': {
-      id: '/admin/'
-      path: '/'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AdminIndexRouteImport
-      parentRoute: typeof AdminRoute
     }
     '/_chat/': {
       id: '/_chat/'
@@ -812,19 +798,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatNewRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/admin/$section/': {
-      id: '/admin/$section/'
-      path: '/$section'
-      fullPath: '/admin/$section/'
-      preLoaderRoute: typeof AdminSectionIndexRouteImport
-      parentRoute: typeof AdminRoute
+    '/_chat/admin': {
+      id: '/_chat/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof ChatAdminRouteImport
+      parentRoute: typeof ChatRoute
     }
-    '/admin/$section/$page': {
-      id: '/admin/$section/$page'
-      path: '/$section/$page'
-      fullPath: '/admin/$section/$page'
-      preLoaderRoute: typeof AdminSectionPageRouteImport
-      parentRoute: typeof AdminRoute
+    '/_chat/admin/': {
+      id: '/_chat/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof ChatAdminIndexRouteImport
+      parentRoute: typeof ChatAdminRoute
     }
     '/_chat/settings/worktrees': {
       id: '/_chat/settings/worktrees'
@@ -1043,15 +1029,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/admin/$section/$page_/$item': {
-      id: '/admin/$section/$page_/$item'
+    '/_chat/admin/$section/': {
+      id: '/_chat/admin/$section/'
+      path: '/$section'
+      fullPath: '/admin/$section/'
+      preLoaderRoute: typeof ChatAdminSectionIndexRouteImport
+      parentRoute: typeof ChatAdminRoute
+    }
+    '/_chat/admin/$section/$page': {
+      id: '/_chat/admin/$section/$page'
+      path: '/$section/$page'
+      fullPath: '/admin/$section/$page'
+      preLoaderRoute: typeof ChatAdminSectionPageRouteImport
+      parentRoute: typeof ChatAdminRoute
+    }
+    '/_chat/admin/$section/$page_/$item': {
+      id: '/_chat/admin/$section/$page_/$item'
       path: '/$section/$page/$item'
       fullPath: '/admin/$section/$page/$item'
-      preLoaderRoute: typeof AdminSectionPageItemRouteImport
-      parentRoute: typeof AdminRoute
+      preLoaderRoute: typeof ChatAdminSectionPageItemRouteImport
+      parentRoute: typeof ChatAdminRoute
     }
   }
 }
+
+interface ChatAdminRouteChildren {
+  ChatAdminIndexRoute: typeof ChatAdminIndexRoute
+  ChatAdminSectionPageRoute: typeof ChatAdminSectionPageRoute
+  ChatAdminSectionIndexRoute: typeof ChatAdminSectionIndexRoute
+  ChatAdminSectionPageItemRoute: typeof ChatAdminSectionPageItemRoute
+}
+
+const ChatAdminRouteChildren: ChatAdminRouteChildren = {
+  ChatAdminIndexRoute: ChatAdminIndexRoute,
+  ChatAdminSectionPageRoute: ChatAdminSectionPageRoute,
+  ChatAdminSectionIndexRoute: ChatAdminSectionIndexRoute,
+  ChatAdminSectionPageItemRoute: ChatAdminSectionPageItemRoute,
+}
+
+const ChatAdminRouteWithChildren = ChatAdminRoute._addFileChildren(
+  ChatAdminRouteChildren,
+)
 
 interface ChatSettingsRouteChildren {
   ChatSettingsAboutRoute: typeof ChatSettingsAboutRoute
@@ -1122,6 +1140,7 @@ const ChatSettingsRouteWithChildren = ChatSettingsRoute._addFileChildren(
 )
 
 interface ChatRouteChildren {
+  ChatAdminRoute: typeof ChatAdminRouteWithChildren
   ChatNewRoute: typeof ChatNewRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatSettingsRoute: typeof ChatSettingsRouteWithChildren
@@ -1132,6 +1151,7 @@ interface ChatRouteChildren {
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatAdminRoute: ChatAdminRouteWithChildren,
   ChatNewRoute: ChatNewRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatSettingsRoute: ChatSettingsRouteWithChildren,
@@ -1143,25 +1163,8 @@ const ChatRouteChildren: ChatRouteChildren = {
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
-interface AdminRouteChildren {
-  AdminIndexRoute: typeof AdminIndexRoute
-  AdminSectionPageRoute: typeof AdminSectionPageRoute
-  AdminSectionIndexRoute: typeof AdminSectionIndexRoute
-  AdminSectionPageItemRoute: typeof AdminSectionPageItemRoute
-}
-
-const AdminRouteChildren: AdminRouteChildren = {
-  AdminIndexRoute: AdminIndexRoute,
-  AdminSectionPageRoute: AdminSectionPageRoute,
-  AdminSectionIndexRoute: AdminSectionIndexRoute,
-  AdminSectionPageItemRoute: AdminSectionPageItemRoute,
-}
-
-const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
-  AdminRoute: AdminRouteWithChildren,
   AppsRoute: AppsRoute,
   ConnectRoute: ConnectRoute,
   ConnectAgentRoute: ConnectAgentRoute,

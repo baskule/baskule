@@ -2,18 +2,19 @@ import { useNavigate, type AnyRouter } from "@tanstack/react-router";
 
 import { GUEST_PAGE_PATH } from "../../guestPage";
 
-/** Settings and Usage open as modals over the last main-app view. */
+/** Settings, Usage and (baskule) Admin open as modals over the last main-app view. */
 export function isAppModalPage(pathname: string) {
-  return pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/usage";
-}
-
-export function isSidebarUtilityPage(pathname: string) {
   return (
-    pathname.startsWith("/projects/") ||
-    pathname === "/pull-requests" ||
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/") ||
+    pathname === "/usage" ||
     pathname === "/admin" ||
     pathname.startsWith("/admin/")
   );
+}
+
+export function isSidebarUtilityPage(pathname: string) {
+  return pathname.startsWith("/projects/") || pathname === "/pull-requests";
 }
 
 // Pages the root route always renders without the app shell, so they are never
