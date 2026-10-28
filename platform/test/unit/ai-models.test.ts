@@ -73,6 +73,7 @@ describe("AI connection checks", () => {
       "GET https://api.mistral.ai/v1/models/missing": () => Response.json({ message: "Model not found" }, { status: 404 }),
       "POST https://llm.example.test/v1/chat/completions": () => new Response("<html>proxy</html>", { status: 200 }),
       "POST https://quote.example.test/v1/chat/completions": () => Response.json({ error: { message: "Rejected key: custom-secret" } }, { status: 400 }),
+      "POST https://long.example.test/v1/chat/completions": () => Response.json({ error: { message: `${"x".repeat(290)} custom-secret` } }, { status: 400 }),
     });
     const models = new AIModels();
     const failure = (promise: Promise<unknown>) => promise.then(() => null, (error) => ({ status: error.status, code: error.code, message: error.message }));
@@ -86,6 +87,8 @@ describe("AI connection checks", () => {
       .toMatchObject({ status: 502, code: "ai_provider_error" });
     expect(await failure(models.verify({ providerId: "custom", baseUrl: "https://quote.example.test/v1", key: "custom-secret" }, "m")))
       .toEqual({ status: 502, code: "ai_provider_error", message: "The provider answered HTTP 400: Rejected key: •••" });
+    expect((await failure(models.verify({ providerId: "custom", baseUrl: "https://long.example.test/v1", key: "custom-secret" }, "m")))?.message)
+      .not.toContain("custom-s");
     expect(await failure(models.available({ providerId: "openai", baseUrl: "https://down.example.test/v1", key: "k" })))
       .toEqual({ status: 502, code: "ai_provider_unreachable", message: "Could not reach down.example.test" });
   });

@@ -99,16 +99,17 @@ export class AIModels {
       await response.body?.cancel();
       throw new HttpError(400, "ai_key_rejected", "The provider rejected the API key");
     }
-    // Provider messages may quote the key; never echo it to the browser.
-    const detail = key ? (await providerMessage(response))?.replaceAll(key, "•••") : await providerMessage(response);
+    const detail = await providerMessage(response, key);
     if (response.status === 404 && modelId !== undefined)
       throw new HttpError(400, "ai_model_not_found", detail ?? `The provider has no model ${modelId}`);
     throw new HttpError(502, "ai_provider_error", `The provider answered HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
   }
 }
 
-async function providerMessage(response: Response): Promise<string | undefined> {
-  const text = (await response.text().catch(() => "")).slice(0, 4_096);
+// Provider messages may quote the key: redact it before any truncation can split it.
+async function providerMessage(response: Response, key: string): Promise<string | undefined> {
+  const body = await response.text().catch(() => "");
+  const text = (key ? body.replaceAll(key, "•••") : body).slice(0, 4_096);
   let message: unknown = text;
   try {
     const parsed = JSON.parse(text) as { error?: { message?: unknown } | string; message?: unknown; detail?: unknown };
