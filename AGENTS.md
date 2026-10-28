@@ -2,6 +2,10 @@
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md), [build instructions](docs/building.md), and the [development workflow](docs/development-workflow.md). `app/` and `vendor/openshell/` have additional `AGENTS.md` instructions for their source.
 
+## One repository
+
+`github.com/baskule/baskule` (`origin`) is the only source of truth. Base every branch on `origin/main`, push only to `origin`, and open pull requests only there. Its history begins at the 2026-10-27 public initial commit. The earlier private OpenSoft repository is archived and must not be fetched, compared against, ported from, or pushed to. If a change you were told exists is missing from `origin/main`, stop and ask the owner instead of looking for it elsewhere.
+
 ## Alpha constraints
 
 - No backward compatibility. When a design or data layout changes, remove the retired code and data layout. Do not add migrations, compatibility shims, dead flags, or test substitutes for retired layouts.
