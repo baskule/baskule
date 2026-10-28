@@ -40,7 +40,7 @@ trap 'xcrun simctl shutdown "$UDID"' EXIT
 xcrun simctl bootstatus "$UDID" -b
 xcrun simctl install "$UDID" "$APP"
 xcrun simctl launch "$UDID" dev.baskule.app | tee "$OUT/launch.txt"
-xcrun simctl io "$UDID" screenshot "$OUT/launch.png"
+xcrun simctl io "$UDID" screenshot --display=1 "$OUT/launch.png"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/Baskule-ios-simulator-unsigned.zip"
 printf '%s\n' 'iOS: unsigned arm64 Release simulator build and install/launch smoke. No IPA, physical-device acceptance, TestFlight, or App Store submission.' | tee "$OUT/STATUS.txt" >> "$GITHUB_STEP_SUMMARY"
 
