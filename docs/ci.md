@@ -4,14 +4,21 @@ The public repository uses standard GitHub-hosted runners. No self-hosted runner
 
 ## Pull requests and main
 
-`CI` runs on pull requests to `main`, pushes to `main`, and manual dispatch. Its required matrix covers the check harness, platform and Baskule server tests, hosted-web unit checks, mobile unit/React tests, shared client packages, desktop checks, and scoped typechecks. `CI required` succeeds only when every required matrix lane succeeds.
+`CI` runs on pull requests to `main`, pushes to `main`, and manual dispatch without inputs. It has two jobs:
 
-Routine CI produces no distributable packages and uploads check/setup diagnostics only on failure. The small SpaceCell bundle is still built where unit tests or root typechecks import it. Hosted-web builds and browser journeys run in the full factory, alongside image and native packaging.
+- `Checks` runs the harness, root/web/mobile/shared typechecks, and desktop checks.
+- `Tests` runs platform, Baskule server, hosted-web unit, mobile unit/React, and shared client package tests.
 
-Mobile component tests use the existing mocked native test environment. They do not establish device acceptance. Manual CI can retain setup diagnostics; its `upstream` input also runs the upstream server/web unit suites. CI disables remote evidence lookup and recording; it never pushes evidence refs or reads deployment configuration.
+Each suite has its own step. Later suites still run after an earlier failure unless the run is cancelled. `CI required` succeeds only when both jobs succeed. Test processes use at most two workers to limit memory use.
+
+Both jobs restore pinned tools and package stores using the same key. Only `Checks` saves a missing key, after installation. PR runs can reuse the default branch's cache. Dependency installation still uses frozen lockfiles.
+
+Routine CI produces no distributable packages and uploads failed suite logs and setup diagnostics. Both jobs build the small SpaceCell bundle because platform tests and root typechecks import it. Hosted-web builds and browser journeys run in the full factory, alongside image and native packaging.
+
+Mobile component tests use the existing mocked native test environment. They do not establish device acceptance. Manual CI also retains setup diagnostics. CI disables remote evidence lookup and recording; it never pushes evidence refs or reads deployment configuration.
 
 ```sh
-gh workflow run ci.yml --repo baskule/baskule --ref main -f upstream=true
+gh workflow run ci.yml --repo baskule/baskule --ref main
 ```
 
 ## Verify the complete factory
@@ -25,7 +32,7 @@ gh workflow run release.yml --repo baskule/baskule --ref main \
 
 Manual factory runs also post a `Release factory` commit status, linking the candidate to the full run. [GitHub excludes workflow-dispatch job checks from PR checks](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks). This status is separate from the routine `CI required` gate.
 
-The backend job builds the Worker, SpaceCell and four runtime images, then exercises the disposable fake-model release stack. Backend image IDs remain in that job; other jobs receive explicit artifacts. The Linux app job builds hosted web and a real AppImage and runs the packaged application under Xvfb. Cold OpenShell compilation can be lengthy; disk and build evidence are retained in the run.
+The backend job builds the Worker, SpaceCell and four runtime images, then exercises the disposable fake-model release stack. It runs `scripts/check release upstream --fresh`, including every upstream server and web unit test. Backend image IDs remain in that job; other jobs receive explicit artifacts. The Linux app job builds hosted web and a real AppImage and runs the packaged application under Xvfb. Cold OpenShell compilation can be lengthy; disk and build evidence are retained in the run.
 
 The native workflow compiles Android arm64, an iOS simulator app, macOS arm64/x64 and Windows x64. Windows packaging executes the existing native-load and server-archive probes. iOS includes a simulator install/launch smoke. Android does not add an emulator lane. Optional upstream Windows package diagnostics remain manual.
 
