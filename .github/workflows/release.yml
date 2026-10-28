@@ -75,23 +75,24 @@ jobs:
   translate:
     needs: version
     runs-on: ubuntu-24.04
-    environment: release
+    # Only tag runs use the key; manual runs package the committed catalogs.
+    environment: ${{ github.ref_type == 'tag' && 'release' || '' }}
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.sha }}
-          persist-credentials: true
+          persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Translate missing release messages
-        if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        if: github.ref_type == 'tag'
         env:
           TRANSLATION_API_KEY: ${{ secrets.TRANSLATION_API_KEY }}
           TRANSLATION_MODEL: ${{ vars.TRANSLATION_MODEL }}
           TRANSLATION_BASE_URL: ${{ vars.TRANSLATION_BASE_URL }}
         run: node app/scripts/localization.ts translate
       - name: Check release catalogs
+        if: github.ref_type == 'tag'
         run: node app/scripts/localization.ts check
       - name: Upload release translations
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -103,8 +104,9 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Push translations for review
-        if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        if: github.ref_type == 'tag'
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}
         shell: bash
         run: |
@@ -117,7 +119,9 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m "chore(i18n): translate v$VERSION"
-          git push origin "HEAD:refs/heads/$branch"
+          gh auth setup-git
+          # The bot owns this branch; a rerun replaces it with the catalogs this run shipped.
+          git push --force origin "HEAD:refs/heads/$branch"
           echo "[Review translations and create a PR]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$branch?expand=1)" >> "$GITHUB_STEP_SUMMARY"
 
   backend:
@@ -252,7 +256,7 @@ jobs:
     secrets: inherit
 
   factory-status:
-    needs: [version, translate, backend, linux-apps, native]
+    needs: [version, backend, linux-apps, native]
     if: always() && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
@@ -262,7 +266,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION_RESULT: ${{ needs.version.result }}
-          TRANSLATE_RESULT: ${{ needs.translate.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           LINUX_RESULT: ${{ needs.linux-apps.result }}
           NATIVE_RESULT: ${{ needs.native.result }}
@@ -270,7 +273,7 @@ jobs:
         shell: bash
         run: |
           state=failure
-          if [[ $VERSION_RESULT == success && $TRANSLATE_RESULT == success && $BACKEND_RESULT == success && $LINUX_RESULT == success &&
+          if [[ $VERSION_RESULT == success && $BACKEND_RESULT == success && $LINUX_RESULT == success &&
                 ($NATIVE_RESULT == success || ($INCLUDE_NATIVE == false && $NATIVE_RESULT == skipped)) ]]; then
             state=success
           fi
@@ -280,9 +283,9 @@ jobs:
             -f description="Full artifact verification: $state." --silent
 
   draft-release:
-    needs: [version, translate, backend, linux-apps, native]
+    needs: [version, backend, linux-apps, native]
     if: >-
-      always() && needs.version.result == 'success' && needs.translate.result == 'success' && needs.backend.result == 'success' &&
+      always() && needs.version.result == 'success' && needs.backend.result == 'success' &&
       needs.linux-apps.result == 'success' &&
       (needs.native.result == 'success' || (github.ref_type != 'tag' && inputs.include_native == false && needs.native.result == 'skipped')) &&
       (github.ref_type == 'tag' || inputs.verify_only == false)
