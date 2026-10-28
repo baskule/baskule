@@ -17,9 +17,7 @@ import { shortcutKeyFromEvent } from "../../keybindings";
 import { isMacPlatform } from "../../lib/utils";
 import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 
-// Every usage.* command needs a rank. An unranked one falls back to the
-// alphabetical compare, which makes the comparator inconsistent and the order
-// depend on the input order.
+// Rank every usage command; mixing rank and alphabetical comparisons makes order input-dependent.
 const usageCommandOrder = new Map<KeybindingCommand, number>(
   [
     "usage.open" as const,
@@ -329,8 +327,6 @@ export function buildKeybindingRows(
   return rowsWithConflicts;
 }
 
-// Filtering keeps the row objects so rows that stay visible while the query
-// changes receive the same props and skip rendering.
 export function filterKeybindingRows(
   rows: ReadonlyArray<KeybindingRow>,
   query: string,
@@ -408,8 +404,7 @@ export function commandLabel(command: KeybindingCommand): string {
   if (command === "composer.sendAlternate") return t("Composer: Opposite Queue or Steer Action");
   if (command === "composer.sendBackground") return t("Composer: Start in Background");
   if (command === "composer.sendAndNewThread") return t("Composer: Send and Start New Thread");
-  if (command === "thread.steerQueuedMessage")
-    return t("Queue: Send First Queued Message as Steer");
+  if (command === "thread.steerQueuedMessage") return t("Queue: Send First Queued Message");
   if (command === "thread.editQueuedMessage") return t("Queue: Edit Last Queued Message");
   if (command === "thread.copyReference") return t("Pull Request: Copy Link or Thread ID");
   const usageMetric = METRIC_OPTIONS.find((option) => option.command === command);

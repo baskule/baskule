@@ -5,16 +5,16 @@
 #   docker build -f deploy/server.Dockerfile --build-context deploy=deploy -t baskule-server:0.1 app/
 # docker-compose.yml passes both (build.context + build.additional_contexts).
 #
-# v0.1.1 toolchain: Node ^24.13.1, pnpm 11.10.0 (corepack, from package.json "packageManager").
+# v0.1.3 toolchain: Node 26.12.1 and pnpm 12.14.0.
 
-ARG NODE_VERSION=24.22.1
+ARG NODE_VERSION=26.12.1
 
 # ---------------------------------------------------------------------------------------------------------
 # build: full Debian Node image (ships python3/make/g++ for node-pty's native build).
 FROM node:${NODE_VERSION}-trixie AS build
-ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=1 T3CODE_TELEMETRY_ENABLED=false \
+ENV CI=1 T3CODE_TELEMETRY_ENABLED=false \
     PNPM_HOME=/pnpm npm_config_update_notifier=false
-RUN corepack enable
+RUN npm install --global --ignore-scripts pnpm@12.14.0
 WORKDIR /src
 COPY . .
 # Install only what the server, web and build scripts need (skips mobile/desktop/marketing: no Expo, no Electron).

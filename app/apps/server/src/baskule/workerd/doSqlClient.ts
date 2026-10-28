@@ -337,176 +337,179 @@ export interface DoSqlClient {
   readonly stats: DoSqlStats;
 }
 
-export const make = (storage: DoSqlStorage) =>
-  Effect.gen(function* () {
-    const stats: DoSqlStats = {
-      statements: 0,
-      transactions: 0,
-      rollbacks: 0,
-      inlinedParameterStatements: 0,
-      compoundRewrites: 0,
-      pragmaNoops: 0,
-    };
+export const make = Effect.fn("DoSqlClient.make")(function* (storage: DoSqlStorage) {
+  const stats: DoSqlStats = {
+    statements: 0,
+    transactions: 0,
+    rollbacks: 0,
+    inlinedParameterStatements: 0,
+    compoundRewrites: 0,
+    pragmaNoops: 0,
+  };
 
-    const execRaw = (sql: string, params: ReadonlyArray<unknown>) => {
-      stats.statements++;
-      let bound = params.map(normalizeParam);
-      let text = sql;
-      if (bound.length > MAX_BOUND_PARAMETERS) {
-        stats.inlinedParameterStatements++;
-        text = inlineParameters(text, bound);
-        bound = [];
-      }
-      try {
-        return storage.sql.exec(text, ...bound);
-      } catch (cause) {
-        if (!/too many terms in compound SELECT/i.test(String(cause))) throw cause;
-        const rewritten = regroupCompoundSelects(text);
-        if (rewritten === text) throw cause;
-        stats.compoundRewrites++;
-        return storage.sql.exec(rewritten, ...bound);
-      }
-    };
+  const execRaw = (sql: string, params: ReadonlyArray<unknown>) => {
+    stats.statements++;
+    let bound = params.map(normalizeParam);
+    let text = sql;
+    if (bound.length > MAX_BOUND_PARAMETERS) {
+      stats.inlinedParameterStatements++;
+      text = inlineParameters(text, bound);
+      bound = [];
+    }
+    try {
+      return storage.sql.exec(text, ...bound);
+    } catch (cause) {
+      if (!/too many terms in compound SELECT/i.test(String(cause))) throw cause;
+      const rewritten = regroupCompoundSelects(text);
+      if (rewritten === text) throw cause;
+      stats.compoundRewrites++;
+      return storage.sql.exec(rewritten, ...bound);
+    }
+  };
 
-    const runRows = (
+  const runRows = (sql: string, params: ReadonlyArray<unknown>): Array<Record<string, unknown>> => {
+    const policy = classifyStatement(sql);
+    switch (policy._tag) {
+      case "noop":
+        stats.pragmaNoops++;
+        return [];
+      case "rows":
+        return policy.rows(storage);
+      case "refuse":
+        throw new Error(policy.reason);
+      case "run": {
+        const cursor = execRaw(sql, params);
+        const columns = cursor.columnNames;
+        const rows: Array<Record<string, unknown>> = [];
+        for (const raw of cursor.raw()) {
+          const row: Record<string, unknown> = {};
+          for (let i = 0; i < columns.length; i++) row[columns[i]!] = normalizeValue(raw[i]);
+          rows.push(row);
+        }
+        return rows;
+      }
+    }
+  };
+
+  const run = (sql: string, params: ReadonlyArray<unknown>) =>
+    Effect.try({
+      try: () => runRows(sql, params),
+      catch: (cause) => toError(cause, sql, "execute"),
+    });
+
+  const runValues = (sql: string, params: ReadonlyArray<unknown>) =>
+    Effect.map(run(sql, params), (rows) => rows.map((row) => Object.values(row)));
+
+  const withTransform = <A>(
+    effect: Effect.Effect<ReadonlyArray<A>, SqlError>,
+    transform: ((rows: ReadonlyArray<A>) => ReadonlyArray<A>) | undefined,
+  ) => (transform ? Effect.map(effect, transform) : effect);
+
+  const connection = {
+    execute: (
       sql: string,
       params: ReadonlyArray<unknown>,
-    ): Array<Record<string, unknown>> => {
-      const policy = classifyStatement(sql);
-      switch (policy._tag) {
-        case "noop":
-          stats.pragmaNoops++;
-          return [];
-        case "rows":
-          return policy.rows(storage);
-        case "refuse":
-          throw new Error(policy.reason);
-        case "run": {
-          const cursor = execRaw(sql, params);
-          const columns = cursor.columnNames;
-          const rows: Array<Record<string, unknown>> = [];
-          for (const raw of cursor.raw()) {
-            const row: Record<string, unknown> = {};
-            for (let i = 0; i < columns.length; i++) row[columns[i]!] = normalizeValue(raw[i]);
-            rows.push(row);
+      transform?: (rows: ReadonlyArray<any>) => ReadonlyArray<any>,
+    ) => withTransform(run(sql, params), transform),
+    executeRaw: (sql: string, params: ReadonlyArray<unknown>) => run(sql, params),
+    executeStream: (
+      sql: string,
+      params: ReadonlyArray<unknown>,
+      transform?: (rows: ReadonlyArray<any>) => ReadonlyArray<any>,
+    ) => Stream.fromIterableEffect(withTransform(run(sql, params), transform)),
+    executeValues: runValues,
+    executeUnprepared: (
+      sql: string,
+      params: ReadonlyArray<unknown>,
+      transform?: (rows: ReadonlyArray<any>) => ReadonlyArray<any>,
+    ) => withTransform(run(sql, params), transform),
+  } as unknown as SqlConnection.Connection;
+
+  // One permit: a statement outside a transaction waits while a transaction is open, so no
+  // other fiber's write lands inside it (DO SQLite is a single connection).
+  const semaphore = yield* Semaphore.make(1);
+  const acquirer = semaphore.withPermits(1)(Effect.succeed(connection));
+  const transactionAcquirer = Effect.uninterruptibleMask((restore) => {
+    const fiber = Fiber.getCurrent()!;
+    const scope = Context.getUnsafe(fiber.context, Scope.Scope);
+    return Effect.as(
+      Effect.tap(restore(semaphore.take(1)), () => Scope.addFinalizer(scope, semaphore.release(1))),
+      connection,
+    );
+  });
+
+  const runInStorageTransaction = <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E | SqlError, R> =>
+    Effect.gen(function* () {
+      const context = yield* Effect.context<R>();
+      return yield* Effect.callback<A, E | SqlError>((resume) => {
+        const controller = new AbortController();
+        let started = false;
+        let rollback: Exit.Failure<A, E> | undefined;
+        stats.transactions++;
+        // The transaction body owns the native gate. Resume the caller only after the native promise commits,
+        // so its later callbacks retain the caller's event rather than the short-lived transaction event.
+        const committed = storage.transaction(async () => {
+          started = true;
+          const exit = controller.signal.aborted
+            ? Exit.interrupt()
+            : await Effect.runPromiseExitWith(context)(effect, { signal: controller.signal });
+          if (Exit.isFailure(exit)) {
+            stats.rollbacks++;
+            rollback = exit;
+            throw ROLLBACK;
           }
-          return rows;
-        }
-      }
-    };
-
-    const run = (sql: string, params: ReadonlyArray<unknown>) =>
-      Effect.try({
-        try: () => runRows(sql, params),
-        catch: (cause) => toError(cause, sql, "execute"),
-      });
-
-    const runValues = (sql: string, params: ReadonlyArray<unknown>) =>
-      Effect.map(run(sql, params), (rows) => rows.map((row) => Object.values(row)));
-
-    const withTransform = <A>(
-      effect: Effect.Effect<ReadonlyArray<A>, SqlError>,
-      transform: ((rows: ReadonlyArray<A>) => ReadonlyArray<A>) | undefined,
-    ) => (transform ? Effect.map(effect, transform) : effect);
-
-    const connection = {
-      execute: (
-        sql: string,
-        params: ReadonlyArray<unknown>,
-        transform?: (rows: ReadonlyArray<any>) => ReadonlyArray<any>,
-      ) => withTransform(run(sql, params), transform),
-      executeRaw: (sql: string, params: ReadonlyArray<unknown>) => run(sql, params),
-      executeStream: (
-        sql: string,
-        params: ReadonlyArray<unknown>,
-        transform?: (rows: ReadonlyArray<any>) => ReadonlyArray<any>,
-      ) => Stream.fromIterableEffect(withTransform(run(sql, params), transform)),
-      executeValues: runValues,
-      executeUnprepared: (
-        sql: string,
-        params: ReadonlyArray<unknown>,
-        transform?: (rows: ReadonlyArray<any>) => ReadonlyArray<any>,
-      ) => withTransform(run(sql, params), transform),
-    } as unknown as SqlConnection.Connection;
-
-    // One permit: a statement outside a transaction waits while a transaction is open, so no
-    // other fiber's write lands inside it (DO SQLite is a single connection).
-    const semaphore = yield* Semaphore.make(1);
-    const acquirer = semaphore.withPermits(1)(Effect.succeed(connection));
-    const transactionAcquirer = Effect.uninterruptibleMask((restore) => {
-      const fiber = Fiber.getCurrent()!;
-      const scope = Context.getUnsafe(fiber.context, Scope.Scope);
-      return Effect.as(
-        Effect.tap(restore(semaphore.take(1)), () =>
-          Scope.addFinalizer(scope, semaphore.release(1)),
-        ),
-        connection,
-      );
-    });
-
-    const runInStorageTransaction = <A, E, R>(
-      effect: Effect.Effect<A, E, R>,
-    ): Effect.Effect<A, E | SqlError, R> =>
-      Effect.gen(function* () {
-        const context = yield* Effect.context<R>();
-        return yield* Effect.callback<A, E | SqlError>((resume) => {
-          const controller = new AbortController();
-          let started = false;
-          let rollback: Exit.Failure<A, E> | undefined;
-          stats.transactions++;
-          // The transaction body owns the native gate. Resume the caller only after the native promise commits,
-          // so its later callbacks retain the caller's event rather than the short-lived transaction event.
-          const committed = storage.transaction(async () => {
-            started = true;
-            const exit = controller.signal.aborted ? Exit.interrupt()
-              : await Effect.runPromiseExitWith(context)(effect, { signal: controller.signal });
-            if (Exit.isFailure(exit)) {
-              stats.rollbacks++;
-              rollback = exit;
-              throw ROLLBACK;
-            }
-            return exit;
-          });
-          committed.then(exit => resume(exit), cause => {
+          return exit;
+        });
+        committed.then(
+          (exit) => resume(exit),
+          (cause) => {
             if (cause === ROLLBACK && rollback) resume(rollback);
-            else resume(Effect.fail(toError(cause, started ? "COMMIT" : "BEGIN", started ? "commit" : "transaction")));
-          });
-          return Effect.promise(async () => {
-            controller.abort();
-            await committed.catch(() => undefined);
-          });
+            else
+              resume(
+                Effect.fail(
+                  toError(cause, started ? "COMMIT" : "BEGIN", started ? "commit" : "transaction"),
+                ),
+              );
+          },
+        );
+        return Effect.promise(async () => {
+          controller.abort();
+          await committed.catch(() => undefined);
         });
       });
-
-    const withTransaction = <A, E, R>(
-      effect: Effect.Effect<A, E, R>,
-    ): Effect.Effect<A, E | SqlError, R> =>
-      Effect.withFiber((fiber) => {
-        const current = Context.getOption(fiber.context, DoSqlTransaction);
-        const depth = current._tag === "Some" ? current.value[1] + 1 : 0;
-        const inner = Effect.provideContext(
-          effect,
-          Context.add(fiber.context, DoSqlTransaction, [connection, depth] as const),
-        );
-        const transaction = runInStorageTransaction(inner);
-        // Nested transactions already hold the permit through their outermost transaction.
-        return depth === 0 ? semaphore.withPermits(1)(transaction) : transaction;
-      });
-
-    const base = yield* SqlClient.make({
-      acquirer,
-      transactionAcquirer,
-      transactionService: DoSqlTransaction,
-      compiler: Statement.makeCompilerSqlite(),
-      spanAttributes: [["db.system.name", "sqlite"]],
     });
-    const client = Object.assign(base, {
-      withTransaction,
-      transactionStatements: false,
-    }) as SqlClient.SqlClient;
-    (client as { safe: unknown }).safe = client;
-    return { client, stats } satisfies DoSqlClient;
-  }).pipe(Effect.provide(Reactivity.layer));
+
+  const withTransaction = <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E | SqlError, R> =>
+    Effect.withFiber((fiber) => {
+      const current = Context.getOption(fiber.context, DoSqlTransaction);
+      const depth = current._tag === "Some" ? current.value[1] + 1 : 0;
+      const inner = Effect.provideContext(
+        effect,
+        Context.add(fiber.context, DoSqlTransaction, [connection, depth] as const),
+      );
+      const transaction = runInStorageTransaction(inner);
+      // Nested transactions already hold the permit through their outermost transaction.
+      return depth === 0 ? semaphore.withPermits(1)(transaction) : transaction;
+    });
+
+  const base = yield* SqlClient.make({
+    acquirer,
+    transactionAcquirer,
+    transactionService: DoSqlTransaction,
+    compiler: Statement.makeCompilerSqlite(),
+    spanAttributes: [["db.system.name", "sqlite"]],
+  });
+  const client = Object.assign(base, {
+    withTransaction,
+    transactionStatements: false,
+  }) as SqlClient.SqlClient;
+  (client as { safe: unknown }).safe = client;
+  return { client, stats } satisfies DoSqlClient;
+}, Effect.provide(Reactivity.layer));
 
 /** `SqlClient` layer over the given storage; `stats` is filled as statements run. */
 export const layer = (storage: DoSqlStorage) =>

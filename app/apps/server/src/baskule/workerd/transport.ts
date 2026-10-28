@@ -1,3 +1,4 @@
+// @effect-diagnostics anyUnknownInErrorContext:off unsafeEffectTypeAssertion:off globalTimers:off -- native workerd adapter implementing the platform boundary.
 // baskule: HTTP and WebSocket transport for T3 inside a Durable Object.
 //
 // T3 serves an Effect HTTP app through the `HttpServer` service. In a DO nothing listens: this

@@ -19,11 +19,6 @@ import { BASKULE_HOSTED } from "../baskule/flags";
 import { orderEnvironmentsBySpace, useSpaceEnvironments } from "../baskule/spaces";
 import { useClientSettings } from "./useSettings";
 
-/**
- * The environments a project (or a scratch draft) can move between. It reads only the
- * environment, project and grouping inputs, so the list keeps its identity while the thread
- * streams and the chat chrome it feeds can skip those renders.
- */
 export function useLogicalProjectEnvironments(
   activeProject: EnvironmentProject | null,
   scratchDraft: boolean,

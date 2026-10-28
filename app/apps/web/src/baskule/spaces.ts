@@ -1,8 +1,5 @@
-// baskule: every space of the signed-in person is one T3 environment at `<origin>/s/<id>/`
-// (architecture E9). They are registered as platform environments, directly (no pairing): the
-// space is same-origin and authenticated by the session cookie, exactly like T3's own primary
-// environment, so each registration is a `PrimaryConnectionRegistration` with a base path. The
-// first registered space (Personal) is the primary environment of the app.
+// baskule: spaces use same-origin PrimaryConnectionRegistration entries under /s/<id>/.
+// The session cookie authenticates them without pairing. Personal is registered first.
 import { PlatformConnectionSource } from "@t3tools/client-runtime/platform";
 import {
   type PlatformConnectionRegistration,
@@ -132,7 +129,7 @@ const environmentIdBySpace = new Map<string, EnvironmentId>();
 
 const resolveEnvironmentId = (origin: string, space: BaskuleSpace) => {
   const cached = environmentIdBySpace.get(space.id);
-  if (cached !== undefined) return Effect.succeed(Option.some(cached));
+  if (cached !== undefined) return Effect.succeedSome(cached);
   return fetchRemoteEnvironmentDescriptor({ httpBaseUrl: spaceBaseUrl(origin, space.base) }).pipe(
     Effect.map((descriptor) => {
       environmentIdBySpace.set(space.id, descriptor.environmentId);
@@ -167,11 +164,9 @@ const buildRegistrations = Effect.gen(function* () {
   }
   if (activeSpaceWasRemoved(spaceEnvironments, me.spaces, window.location.pathname)) {
     // A full navigation clears the mounted conversation and its actionable composer immediately.
-    try {
-      window.sessionStorage.setItem("baskule:space-access-removed", "1");
-    } catch {
-      /* Navigation still clears revoked content when browser storage is unavailable. */
-    }
+    yield* Effect.try(() =>
+      window.sessionStorage.setItem("baskule:space-access-removed", "1"),
+    ).pipe(Effect.ignore);
     window.location.replace("/");
     return [] as ReadonlyArray<PlatformConnectionRegistration>;
   }

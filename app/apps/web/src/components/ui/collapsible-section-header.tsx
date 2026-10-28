@@ -3,30 +3,9 @@ import { ChevronDownIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 const tones = {
-  muted: {
-    get label() {
-      return "text-sidebar-muted-foreground/60";
-    },
-    line: "bg-sidebar-border/60",
-  },
-  info: {
-    get label() {
-      return "text-blue-600 dark:text-blue-400";
-    },
-    line: "bg-blue-500/20 dark:bg-blue-400/15",
-  },
-  emphasized: {
-    get label() {
-      return "text-sidebar-foreground/80";
-    },
-    line: "bg-sidebar-foreground/25",
-  },
-  accent: {
-    get label() {
-      return "text-primary";
-    },
-    line: "bg-primary/50",
-  },
+  muted: { label: "text-sidebar-muted-foreground", line: "bg-sidebar-border/50" },
+  emphasized: { label: "text-sidebar-foreground/80", line: "bg-sidebar-foreground/25" },
+  accent: { label: "text-primary", line: "bg-primary/50" },
 } as const;
 
 export function CollapsibleSectionHeader({
@@ -54,11 +33,23 @@ export function CollapsibleSectionHeader({
       )}
     >
       <span className="shrink-0">{children}</span>
-      <span aria-hidden className={cn("h-px min-w-2 flex-1", tones[tone].line)} />
+      <span
+        aria-hidden
+        // A header with a trailing count drops its rule so it doesn't read as a leader. The New
+        // design drops it in both states so a shelf header looks the same open or closed.
+        className={cn(
+          "h-px min-w-2 flex-1",
+          tones[tone].line,
+          accessory && (expanded ? "redesign:invisible" : "invisible"),
+        )}
+      />
       {accessory}
       <ChevronDownIcon
         aria-hidden
-        className={cn("size-3 shrink-0 transition-transform", !expanded && "rotate-180")}
+        className={cn(
+          "size-3 shrink-0 transition-transform",
+          !expanded && "rotate-180 redesign:-rotate-90",
+        )}
       />
     </button>
   );

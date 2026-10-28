@@ -11,9 +11,6 @@ import {
   makeDevelopmentEnvironmentScript,
   makeDevelopmentLauncherScript,
   resolveElectronBinaryPath,
-  resolveMacBundleInfoPlistStrings,
-  resolveMacCodeSignArguments,
-  resolveMacLauncherIconPaths,
   resolveMacLauncherPaths,
   writeDevelopmentLauncherScript,
 } from "./electron-launcher.mjs";
@@ -104,30 +101,6 @@ describe("electron development launcher", () => {
       "exec '/repo/apps/desktop/.electron-runtime/Baskule (Dev).app/Contents/MacOS/Electron'",
     );
     assert.notInclude(script, "node_modules/electron");
-  });
-
-  it("declares why the macOS app needs protected access", () => {
-    const values = resolveMacBundleInfoPlistStrings("Baskule (Dev) Launcher");
-
-    assert.equal(
-      values.NSScreenCaptureUsageDescription,
-      "Baskule captures the active window when you use the snapshot shortcut.",
-    );
-    assert.equal(
-      values.NSDocumentsFolderUsageDescription,
-      "Baskule reads project files you open in the desktop app.",
-    );
-  });
-
-  it("ad-hoc signs the complete development app bundle", () => {
-    assert.deepEqual(resolveMacCodeSignArguments("/runtime/Baskule (Dev).app"), [
-      "--force",
-      "--deep",
-      "--sign",
-      "-",
-      "--timestamp=none",
-      "/runtime/Baskule (Dev).app",
-    ]);
   });
 
   it("restores execute permissions on an unchanged launcher", () => {

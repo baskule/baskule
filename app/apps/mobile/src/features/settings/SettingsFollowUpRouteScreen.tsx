@@ -55,7 +55,7 @@ export function SettingsFollowUpRouteScreen() {
       {Platform.OS === "android" ? (
         <>
           <NativeStackScreenOptions options={{ headerShown: false }} />
-          <AndroidScreenHeader title={t("Follow-ups")} onBack={() => navigation.goBack()} />
+          <AndroidScreenHeader title={t("Chat")} onBack={() => navigation.goBack()} />
         </>
       ) : null}
       <ScrollView

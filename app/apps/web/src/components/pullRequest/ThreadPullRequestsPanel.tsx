@@ -9,7 +9,7 @@ import {
   pullRequestListLines,
   resolveThreadPullRequestChains,
   visibleThreadPullRequests,
-} from "@t3tools/shared/threadPullRequests";
+} from "@t3tools/client-runtime/thread-pull-requests";
 import {
   ArrowUpRightIcon,
   EyeIcon,
@@ -26,7 +26,8 @@ import {
   encodePullRequestDragPayload,
 } from "~/components/chat/composerMentionDrag";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
-import { findProjectForChangeRequest, useOpenPrLink } from "~/lib/openPullRequestLink";
+import { findProjectForChangeRequest } from "@t3tools/client-runtime/change-request-links";
+import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { cn } from "~/lib/utils";
 import { useShortcutModifierState } from "~/shortcutModifierState";
 import { useProjects, useServerConfigs, useThreadShell } from "~/state/entities";
@@ -55,7 +56,7 @@ import {
 } from "./pullRequestPresentation";
 import { PullRequestGlyph } from "./pullRequestIcons";
 import { pullRequestQuickActions } from "./pullRequestList.logic";
-import { PullRequestSpeedActions } from "./PullRequestSpeedActions";
+import { PullRequestSpeedActions, PullRequestSpeedModeContext } from "./PullRequestSpeedActions";
 
 const SOURCE_LABELS: Record<ThreadPullRequestLink["source"], string> = {
   get manual() {
@@ -121,9 +122,9 @@ function LinkRowImpl({
   const snapshot = link.snapshot;
   const open = snapshot === null || snapshot.state === "open";
   const watching = link.watch !== undefined;
-  const linkHostActions = (
-    sourceControlClients.findByChangeRequestUrl(link.url) ?? UNKNOWN_SOURCE_CONTROL_CLIENT
-  ).changeRequestActions;
+  const linkHost =
+    sourceControlClients.findByChangeRequestUrl(link.url) ?? UNKNOWN_SOURCE_CONTROL_CLIENT;
+  const linkHostActions = linkHost.changeRequestActions;
   const actionEntry =
     projectId !== null && snapshot !== null && snapshot.state !== "merged"
       ? {
@@ -167,8 +168,7 @@ function LinkRowImpl({
       <a
         href={link.url}
         onClick={(event) => openPrLink(event, link.url, threadRef)}
-        // The link's own URL still rides along for drops outside the app; the composer takes
-        // this payload instead and adds the pull request as a context chip.
+        // Outside drops use the URL; the composer uses this context-chip payload.
         onDragStart={
           snapshot === null
             ? undefined
@@ -265,7 +265,10 @@ function LinkRowImpl({
                             size: stack.size,
                           },
                         )
-                      : t("{{size}} pull requests chained by base branch.", { size: stack.size })}
+                      : t("{{size}} {{term}} chained by base branch.", {
+                          size: stack.size,
+                          term: linkHost.changeRequest.plural,
+                        })}
                   </TooltipPopup>
                 </Tooltip>
               ) : null}
@@ -300,15 +303,14 @@ function LinkRowImpl({
         <PullRequestSpeedActions
           entry={actionEntry}
           hostActions={linkHostActions}
-          visible={speedMode}
+          terminology={linkHost.changeRequest}
         />
       ) : null}
       <span
         className={cn(
           "absolute right-0 bottom-0.5 flex items-center rounded-r-md bg-background pr-1 pl-5",
           "[mask-image:linear-gradient(to_right,transparent,black_1rem)]",
-          // Hidden means untouchable too: on a touch screen there is no hover, and an invisible
-          // layer over the right of the row would otherwise swallow the tap meant for the link.
+          // Hidden controls would intercept link taps on touch screens.
           "pointer-events-none opacity-0 group-hover/pr-row:pointer-events-auto group-hover/pr-row:opacity-100",
           "has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100",
           "has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100",
@@ -367,7 +369,6 @@ function LinkRowImpl({
   );
 }
 
-/** Memoized so a modifier key or a sync of one link re-renders only the rows that changed. */
 const LinkRow = memo(LinkRowImpl);
 
 function latestSyncedAt(links: ReadonlyArray<ThreadPullRequestLink>): string | null {
@@ -405,9 +406,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
     .toSorted((left, right) =>
       left.id === thread?.projectId ? -1 : right.id === thread?.projectId ? 1 : 0,
     );
-  // LegendList re-renders its rows when `data` changes identity. `links` and values derived
-  // from it go through plain functions only here, before the next hook, so the compiler keeps
-  // `lines` in its own cache scope.
+  // Derive lines before later hooks to preserve compiler caching and avoid LegendList renders.
   const links = visibleThreadPullRequests(thread?.pullRequests ?? []);
   const lines = pullRequestListLines(resolveThreadPullRequestChains(links));
   const openCount = links.filter(
@@ -447,8 +446,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
     });
   };
 
-  // Legend re-renders visible rows only when data or extraData changes, so everything the rows
-  // read from outside their line goes in here.
+  // Legend rows update only for data/extraData changes; include all external inputs.
   const rowInputs = { speedMode, environmentProjects, capabilities, supportsWatch, thread };
 
   if (linkCount === 0) {
@@ -470,48 +468,50 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Threads that run a stack or a sweep link hundreds of pull requests; only the rows in
+    <PullRequestSpeedModeContext value={speedMode}>
+      <div className="flex h-full min-h-0 flex-col">
+        {/* Threads that run a stack or a sweep link hundreds of pull requests; only the rows in
           view are mounted. */}
-      <LegendList<PullRequestListLine>
-        data={lines}
-        keyExtractor={lineKey}
-        extraData={rowInputs}
-        renderItem={({ item: line }) => (
-          <LinkRow
-            line={line}
-            threadRef={threadRef}
-            projectId={
-              capabilities?.pullRequests === true
-                ? (findProjectForChangeRequest(environmentProjects, line.link)?.id ??
-                  thread?.projectId ??
-                  null)
-                : null
-            }
-            speedMode={speedMode}
-            onUnlink={handleUnlink}
-            onSetWatching={supportsWatch ? handleSetWatching : null}
-          />
-        )}
-        estimatedItemSize={44}
-        drawDistance={440}
-        className="min-h-0 flex-1 overscroll-contain p-1.5"
-      />
-      <footer className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 text-2xs text-muted-foreground">
-        <span>
-          {openCount} {t("open ·")} {linkCount} {t("linked")}
-          {lastSynced ? (
-            <>
-              {t(" · synced ")}
-              <RelativeTime timestamp={lastSynced} />
-            </>
-          ) : null}
-        </span>
-        <Button size="xs" variant="ghost" onClick={openLinkDialog}>
-          <PlusIcon className="size-3.5" />
-          {t("Link")}
-        </Button>
-      </footer>
-    </div>
+        <LegendList<PullRequestListLine>
+          data={lines}
+          keyExtractor={lineKey}
+          extraData={rowInputs}
+          renderItem={({ item: line }) => (
+            <LinkRow
+              line={line}
+              threadRef={threadRef}
+              projectId={
+                capabilities?.pullRequests === true
+                  ? (findProjectForChangeRequest(environmentProjects, line.link)?.id ??
+                    thread?.projectId ??
+                    null)
+                  : null
+              }
+              speedMode={speedMode}
+              onUnlink={handleUnlink}
+              onSetWatching={supportsWatch ? handleSetWatching : null}
+            />
+          )}
+          estimatedItemSize={44}
+          drawDistance={440}
+          className="min-h-0 flex-1 overscroll-contain p-1.5"
+        />
+        <footer className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 text-2xs text-muted-foreground">
+          <span>
+            {openCount} {t("open ·")} {linkCount} {t("linked")}
+            {lastSynced ? (
+              <>
+                {t(" · synced ")}
+                <RelativeTime timestamp={lastSynced} />
+              </>
+            ) : null}
+          </span>
+          <Button size="xs" variant="ghost" onClick={openLinkDialog}>
+            <PlusIcon className="size-3.5" />
+            {t("Link")}
+          </Button>
+        </footer>
+      </div>
+    </PullRequestSpeedModeContext>
   );
 }

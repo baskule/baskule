@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ProviderDriverKind } from "@t3tools/contracts";
+import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -13,57 +14,85 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as ModelManifest from "./ModelManifest.ts";
 
 describe("resolveProviderCatalog", () => {
-  it("resolves generic model presentation through a reusable profile", () => {
+  it.each([
+    { releasedAt: "2026-01-01", now: "2026-01-01T00:00:00Z", badge: "new" },
+    { releasedAt: "2026-01-01", now: "2026-01-07T23:59:59.999Z", badge: "new" },
+    { releasedAt: "2026-01-01", now: "2026-01-08T00:00:00Z", badge: undefined },
+    { releasedAt: "2026-01-01", now: "2026-02-01T00:00:00Z", badge: undefined },
+    { releasedAt: "2026-01-02T00:00:00Z", now: "2026-01-01T00:00:00Z", badge: undefined },
+    { releasedAt: undefined, now: "2026-01-01T00:00:00Z", badge: undefined },
+    { releasedAt: "invalid", now: "2026-01-01T00:00:00Z", badge: undefined },
+  ])("derives the new badge from releasedAt=$releasedAt at $now", ({ releasedAt, now, badge }) => {
     const manifest: ModelManifest.ModelManifestData = {
       version: 1,
       currentModels: {},
       providers: {
         synthetic: {
-          defaults: { chat: "model-next" },
-          profiles: {
-            standard: {
-              capabilities: {
-                optionDescriptors: [
-                  {
-                    id: "mode",
-                    label: "Mode",
-                    type: "select",
-                    options: [{ id: "fast", label: "Fast", isDefault: true }],
-                  },
-                ],
-              },
-              adapter: { opaque: true },
-            },
-          },
+          profiles: {},
           models: [
             {
               slug: "model-next",
               name: "Model Next",
-              aliases: ["next"],
               status: "current",
-              badge: "new",
-              profile: "standard",
+              ...(releasedAt === undefined ? {} : { releasedAt }),
+            },
+            {
+              slug: "model-legacy",
+              name: "Model Legacy",
+              status: "legacy",
+              releasedAt: now,
             },
           ],
         },
       },
     };
-
     const catalog = ModelManifest.resolveProviderCatalog(
       manifest,
       ProviderDriverKind.make("synthetic"),
+      Date.parse(now),
     );
-    assert.deepStrictEqual(catalog?.models[0], {
-      slug: "model-next",
-      name: "Model Next",
-      aliases: ["next"],
-      badge: "new",
-      status: "current",
-      capabilities: manifest.providers!.synthetic!.profiles.standard!.capabilities!,
-      adapter: undefined,
-      profileAdapter: { opaque: true },
-    });
-    assert.strictEqual(catalog?.defaultChatModel, "model-next");
+    assert.strictEqual(catalog?.models[0]?.badge, badge);
+    assert.strictEqual(catalog?.models[1]?.badge, undefined);
+  });
+
+  it.effect("expires badges when rereading a cached manifest without a refresh", () => {
+    const manifest: ModelManifest.ModelManifestData = {
+      version: 1,
+      currentModels: {},
+      providers: {
+        synthetic: {
+          profiles: {},
+          models: [
+            {
+              slug: "model-next",
+              name: "Model Next",
+              status: "current",
+              releasedAt: "1970-01-01T00:00:00Z",
+            },
+          ],
+        },
+      },
+    };
+    return Effect.gen(function* () {
+      const service = yield* ModelCatalog.ModelCatalog;
+      const readCatalog = service.current(ProviderDriverKind.make("synthetic"));
+      assert.strictEqual((yield* readCatalog)?.models[0]?.badge, "new");
+      yield* TestClock.adjust("7 days");
+      assert.strictEqual((yield* readCatalog)?.models[0]?.badge, undefined);
+    }).pipe(
+      Effect.provide(
+        ModelManifest.layerModelCatalog.pipe(
+          Layer.provide(
+            Layer.succeed(ModelManifest.ModelManifest, {
+              current: Effect.succeed(manifest),
+              refresh: Effect.die("Catalog reads must not refresh the manifest"),
+              forceRefresh: Effect.die("Catalog reads must not refresh the manifest"),
+              refreshInBackground: Effect.die("Catalog reads must not refresh the manifest"),
+            }),
+          ),
+        ),
+      ),
+    );
   });
 
   it("rejects invalid catalog references", () => {
@@ -322,21 +351,6 @@ describe("ModelManifest service", () => {
       ),
     );
   });
-
-  it.live("keeps the bundled manifest when the remote payload is malformed", () =>
-    Effect.gen(function* () {
-      const service = yield* ModelManifest.make;
-      assert.deepStrictEqual(yield* service.refresh, ModelManifest.BUNDLED_MODEL_MANIFEST);
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(
-        layerService({
-          prefix: "model-manifest-malformed-test",
-          response: () => Response.json({ version: 999, nonsense: true }),
-        }),
-      ),
-    ),
-  );
 
   it.effect("preserves the last-good remote cache when later payloads are invalid", () => {
     let responseIndex = 0;

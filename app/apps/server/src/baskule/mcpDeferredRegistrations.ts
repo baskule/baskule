@@ -23,7 +23,9 @@ export const layer = Layer.effect(
     const pending: Array<Effect.Effect<void>> = [];
     const lock = yield* Semaphore.make(1);
     return McpDeferredRegistrations.of({
-      defer: (registration) => Effect.sync(() => void pending.push(registration)),
+      defer: Effect.fn("McpDeferredRegistrations.defer")((registration) =>
+        Effect.sync(() => void pending.push(registration)),
+      ),
       ensure: Effect.suspend(() =>
         pending.length === 0
           ? Effect.void

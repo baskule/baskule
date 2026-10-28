@@ -5,28 +5,38 @@ import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/uti
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
-import { commandLabel } from "./KeybindingsSettings.logic";
 import {
-  validateSettingsScopeSearch,
-  type ResolvedSettingsScope,
-  type SettingsScopeSearch,
-} from "./settingsScope";
+  sourceControlClients,
+  type SourceControlDefinition,
+} from "@t3tools/client-runtime/source-control-clients";
+import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import * as Schema from "effect/Schema";
+import { TYPOGRAPHY_ADVANCED_STORAGE_KEY } from "../../appearanceFonts";
+import { writeLocalStorageValue } from "../../hooks/useLocalStorage";
+import { commandLabel } from "./KeybindingsSettings.logic";
+import type { ResolvedSettingsScope } from "./settingsScope";
 
 export type SettingsPath =
   | "/settings/projects"
   | "/settings/general"
   | "/settings/diagnostics"
   | "/settings/appearance"
+  | "/settings/chat"
+  | "/settings/diffs"
   | "/settings/keybindings"
   | "/settings/snap-shot"
   | "/settings/providers"
-  | "/settings/integrations"
+  | "/settings/threads"
+  | "/settings/browser"
+  | "/settings/devices"
   | "/settings/scheduled-tasks"
   | "/settings/source-control"
-  | "/settings/storage"
+  | "/settings/worktrees"
   | "/settings/connections"
+  | "/settings/access"
+  | "/settings/maintenance"
+  | "/settings/labs"
+  | "/settings/about"
   | "/settings/archived";
 
 export type SettingsSearchScope =
@@ -77,13 +87,19 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
     return t("Diagnostics");
   },
   get "/settings/projects"() {
-    return t("Project");
+    return t("Projects");
   },
   get "/settings/general"() {
     return t("General");
   },
   get "/settings/appearance"() {
     return t("Appearance");
+  },
+  get "/settings/chat"() {
+    return t("Chat");
+  },
+  get "/settings/diffs"() {
+    return t("Diffs & pull requests");
   },
   get "/settings/keybindings"() {
     return t("Keybindings");
@@ -94,25 +110,89 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   get "/settings/providers"() {
     return t("Providers");
   },
-  get "/settings/integrations"() {
-    return t("Integrations");
+  get "/settings/threads"() {
+    return t("Threads");
+  },
+  get "/settings/browser"() {
+    return t("Browser");
+  },
+  get "/settings/devices"() {
+    return t("Devices");
   },
   get "/settings/scheduled-tasks"() {
-    return t("Scheduled Tasks");
+    return t("Scheduled tasks");
   },
   get "/settings/source-control"() {
-    return t("Source Control");
+    return t("Source control");
   },
-  get "/settings/storage"() {
-    return t("Storage");
+  get "/settings/worktrees"() {
+    return t("Worktrees");
   },
   get "/settings/connections"() {
-    return t("Connections");
+    return t("Environments");
+  },
+  get "/settings/access"() {
+    return t("Sharing & access");
+  },
+  get "/settings/maintenance"() {
+    return t("Maintenance");
+  },
+  get "/settings/labs"() {
+    return t("Labs");
+  },
+  get "/settings/about"() {
+    return t("About");
   },
   get "/settings/archived"() {
     return t("Archive");
   },
 };
+
+/** Sidebar order. A group without a heading is set apart by space alone. */
+export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+  readonly heading: string | null;
+  readonly paths: ReadonlyArray<SettingsPath>;
+}> = [
+  {
+    heading: null,
+    paths: [
+      "/settings/general",
+      "/settings/appearance",
+      "/settings/chat",
+      "/settings/diffs",
+      "/settings/keybindings",
+      "/settings/snap-shot",
+    ],
+  },
+  {
+    get heading() {
+      return t("Agents");
+    },
+    paths: [
+      "/settings/providers",
+      "/settings/threads",
+      "/settings/browser",
+      "/settings/devices",
+      "/settings/scheduled-tasks",
+    ],
+  },
+  {
+    get heading() {
+      return t("Code");
+    },
+    paths: ["/settings/projects", "/settings/source-control", "/settings/worktrees"],
+  },
+  {
+    get heading() {
+      return t("Connections");
+    },
+    paths: ["/settings/connections", "/settings/access"],
+  },
+  {
+    heading: null,
+    paths: ["/settings/maintenance", "/settings/labs", "/settings/about", "/settings/archived"],
+  },
+];
 
 export function keybindingSearchAnchorId<Command extends KeybindingCommand>(command: Command) {
   return `keybinding-${command}` as const;
@@ -126,7 +206,9 @@ const KEYBINDING_SEARCH_ITEMS = STATIC_KEYBINDING_COMMANDS.toSorted((left, right
   );
   return {
     id: keybindingSearchAnchorId(command),
-    title: commandLabel(command),
+    get title() {
+      return commandLabel(command);
+    },
     to: "/settings/keybindings" as const,
     searchTerms: [command, ...defaultKeys],
     secondary: true,
@@ -138,22 +220,42 @@ export function sourceControlHostSettingsSearchId(kind: string) {
   return `source-control-host-${kind}` as const;
 }
 
-const SOURCE_CONTROL_HOST_SEARCH_ITEMS = sourceControlClients.definitions.flatMap((definition) =>
-  definition.settings && definition.kind !== "github"
-    ? [
-        {
-          id: sourceControlHostSettingsSearchId(definition.kind),
-          title: t("{{label}} credentials", { label: definition.label }),
-          to: "/settings/source-control" as const,
-          searchTerms: [
-            `${definition.label} ${Object.keys(definition.settings.fields).join(" ")} token credentials sign in`,
-          ],
-          environmentOnly: true,
-          scope: "environment-defaults" as const,
-        },
-      ]
-    : [],
-);
+/** Each host's own settings: its accounts and token, or the fields of its settings form. */
+export function sourceControlHostSearchItems(
+  definitions: ReadonlyArray<SourceControlDefinition>,
+): ReadonlyArray<
+  SettingsSearchItem & { readonly id: ReturnType<typeof sourceControlHostSettingsSearchId> }
+> {
+  return definitions.flatMap((definition) => {
+    if (!definition.settings) return [];
+    const names = [definition.label, ...(definition.searchKeywords ?? [])].join(" ");
+    const { credentials } = definition;
+    return [
+      {
+        id: sourceControlHostSettingsSearchId(definition.kind),
+        title: credentials
+          ? t("{{label}} accounts and token", { label: definition.label })
+          : t("{{label}} credentials", { label: definition.label }),
+        to: "/settings/source-control" as const,
+        searchTerms: [
+          credentials
+            ? `${names} ${credentials.cliName} account login user host switch multiple accounts disable sign in token personal access token pat api key credential`
+            : `${names} ${Object.keys(definition.settings.fields).join(" ")} token credentials sign in`,
+        ],
+        environmentOnly: true,
+        scope: "environment-defaults" as const,
+      },
+    ];
+  });
+}
+
+/** For settings that apply to every host. */
+const SOURCE_CONTROL_HOST_LABELS = sourceControlClients.definitions
+  .map((definition) => definition.label)
+  .join(" ");
+const SOURCE_CONTROL_HOST_TERMS = sourceControlClients.definitions
+  .flatMap((definition) => [definition.label, ...(definition.searchKeywords ?? [])])
+  .join(" ");
 
 export const SETTINGS_SEARCH_ITEMS = [
   {
@@ -162,7 +264,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Keep worktrees with local changes");
     },
-    to: "/settings/storage",
+    to: "/settings/worktrees",
     scope: "project-defaults",
     searchTerms: [
       "any local files uncommitted changes edited tracked files ignored env build output cleanup",
@@ -173,7 +275,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Delete now");
     },
-    to: "/settings/storage",
+    to: "/settings/maintenance",
     scope: "environment-defaults",
     searchTerms: ["storage cleanup run now results report removed kept failed"],
   },
@@ -182,7 +284,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Worktree cleanup");
     },
-    to: "/settings/storage",
+    to: "/settings/worktrees",
     scope: "project-defaults",
     searchTerms: [
       "disk storage delete deleted archived threads old inactive merged unchanged worktrees retention days project inherit off custom",
@@ -193,7 +295,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Worktree location");
     },
-    to: "/settings/storage",
+    to: "/settings/worktrees",
     scope: "environment-defaults",
     searchTerms: ["worktree location folder directory path drive external disk"],
   },
@@ -202,7 +304,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Artifacts and logs");
     },
-    to: "/settings/storage",
+    to: "/settings/maintenance",
     scope: "environment-defaults",
     searchTerms: ["disk storage browser screenshots captures rotated logs cleanup retention"],
   },
@@ -211,7 +313,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Project defaults and overrides");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     scope: "project-defaults",
     searchTerms: ["model workspace environments projects inheritance checkout"],
   },
@@ -228,7 +330,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Default model");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     scope: "project-defaults",
     searchTerms: ["new thread project provider reasoning effort"],
   },
@@ -237,7 +339,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Permissions");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     scope: "project-defaults",
     searchTerms: [
       "new thread default runtime mode supervised approvals auto accept edits full access",
@@ -284,7 +386,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Diff colors");
     },
-    to: "/settings/appearance",
+    to: "/settings/diffs",
     searchTerms: ["red green blue orange additions deletions changes counts palette colorblind"],
   },
   {
@@ -352,6 +454,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["typography family size monospace output"],
   },
   {
+    id: "separate-fonts",
+    get title() {
+      return t("Separate fonts");
+    },
+    to: "/settings/appearance",
+    searchTerms: ["typography advanced prompt code terminal font family size individually"],
+  },
+  {
     id: "font-smoothing",
     get title() {
       return t("Font smoothing");
@@ -394,33 +504,50 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "snooze-limited-threads",
     get title() {
-      return t("Snooze limited threads");
+      return t("Snooze until limits reset");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     searchTerms: ["usage quota rate limit reset wake recover continue"],
   },
   {
     id: "auto-resume-limited-threads",
     get title() {
-      return t("Auto-resume limited threads");
+      return t("Resume after usage limits");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     searchTerms: ["usage quota rate limit reset recover continue"],
+  },
+  {
+    id: "new-design",
+    get title() {
+      return t("New design");
+    },
+    to: "/settings/appearance",
+    searchTerms: ["redesign look style sidebar composer black quieter classic"],
   },
   {
     id: "working-shelf",
     get title() {
-      return t("Working section (beta)");
+      return t("Working section");
     },
     to: "/settings/general",
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
+  },
+  {
+    id: "guest-links",
+    get title() {
+      return t("Guest links");
+    },
+    to: "/settings/labs",
+    scope: "environment",
+    searchTerms: ["beta share guest invite link teammate watch t3 connect tunnel"],
   },
   {
     id: "auto-settle-inactive-threads",
     get title() {
       return t("Auto-settle inactive threads");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     searchTerms: ["sidebar inactivity days no activity automatically"],
     requiresThreadAutoSettlement: true,
     scope: "project-defaults",
@@ -430,8 +557,19 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Auto-settle merged threads");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     searchTerms: ["pull request merge closed automatically sidebar"],
+    requiresThreadAutoSettlement: true,
+    scope: "project-defaults",
+  },
+  {
+    id: "keep-threads-with-pull-requests",
+    get title() {
+      return t("Keep threads with a PR");
+    },
+    to: "/settings/threads",
+    targetId: "auto-settle-inactive-threads",
+    searchTerms: ["pull request inactivity auto-settle merge close sidebar"],
     requiresThreadAutoSettlement: true,
     scope: "project-defaults",
   },
@@ -440,7 +578,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Days of inactivity before auto-settle");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     targetId: "auto-settle-inactive-threads",
     searchTerms: ["thread timeout activity sidebar"],
     requiresThreadAutoSettlement: true,
@@ -475,7 +613,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Response streaming");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     scope: "project-defaults",
     searchTerms: ["output token paragraph buffered wait turn legacy"],
   },
@@ -484,7 +622,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Hide whitespace changes");
     },
-    to: "/settings/general",
+    to: "/settings/diffs",
     searchTerms: ["diff ignore spaces edits default"],
   },
   {
@@ -492,7 +630,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Default diff file state");
     },
-    to: "/settings/general",
+    to: "/settings/diffs",
     searchTerms: ["collapsed expanded collapse expand files pull request pr code tab"],
   },
   {
@@ -500,7 +638,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Diff layout");
     },
-    to: "/settings/general",
+    to: "/settings/diffs",
     searchTerms: ["stacked split side by side unified inline view"],
   },
   {
@@ -508,7 +646,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Proactive panels");
     },
-    to: "/settings/general",
+    to: "/settings/diffs",
     searchTerms: ["automatically open diff pull request pr right panel agent completion"],
   },
   {
@@ -516,7 +654,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Show skills in slash menu");
     },
-    to: "/settings/general",
+    to: "/settings/chat",
     searchTerms: ["command menu dollar $ slash /"],
   },
   {
@@ -524,7 +662,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Rich text composer");
     },
-    to: "/settings/general",
+    to: "/settings/chat",
     searchTerms: ["composer rich text tiptap bold italic markdown styled wysiwyg"],
   },
   {
@@ -532,7 +670,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Collapse composer on scroll");
     },
-    to: "/settings/general",
+    to: "/settings/chat",
     searchTerms: ["composer rest resting scroll wheel conversation timeline shrink minimize"],
   },
   {
@@ -540,7 +678,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Send shortcut");
     },
-    to: "/settings/general",
+    to: "/settings/chat",
     searchTerms: ["enter return command ctrl multiline prompt new line composer"],
   },
   {
@@ -548,7 +686,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Follow-up behavior");
     },
-    to: "/settings/general",
+    to: "/settings/chat",
     searchTerms: ["queue steer running turn send default behavior composer"],
   },
   {
@@ -556,7 +694,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Provider update checks");
     },
-    to: "/settings/general",
+    to: "/settings/maintenance",
     searchTerms: ["installed cli versions newer available opencode"],
     scope: "environment-defaults",
   },
@@ -565,7 +703,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Continue threads after restarts");
     },
-    to: "/settings/general",
+    to: "/settings/maintenance",
     scope: "project-defaults",
     searchTerms: [
       "resume running active interrupted work restart reboot machine crash desktop update automatically",
@@ -576,7 +714,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Background activity");
     },
-    to: "/settings/general",
+    to: "/settings/maintenance",
     scope: "environment-defaults",
     searchTerms: [
       "balanced performance battery saver advanced git fetch provider health refresh host power monitor idle policy",
@@ -587,7 +725,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("New threads");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     scope: "project-defaults",
     searchTerms: ["default workspace mode draft local worktree"],
   },
@@ -596,7 +734,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Submodules");
     },
-    to: "/settings/general",
+    to: "/settings/worktrees",
     scope: "project-defaults",
     searchTerms: ["git submodule init recursive top-level none worktree t3.json"],
   },
@@ -605,7 +743,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Start from remote");
     },
-    to: "/settings/general",
+    to: "/settings/worktrees",
     scope: "project-defaults",
     searchTerms: ["new worktrees start remote origin latest fetched branch local"],
   },
@@ -614,7 +752,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Add project starts in");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     scope: "environment-defaults",
     searchTerms: ["base directory folder browser path home"],
   },
@@ -656,16 +794,25 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Text generation model");
     },
-    to: "/settings/general",
+    to: "/settings/threads",
     scope: "project-defaults",
     searchTerms: ["generated thread titles source control content default provider"],
+  },
+  {
+    id: "thread-title-instructions",
+    get title() {
+      return t("Thread title instructions");
+    },
+    to: "/settings/threads",
+    scope: "project-defaults",
+    searchTerms: ["generated thread titles prompt custom style naming rename regenerate"],
   },
   {
     id: "app-version",
     get title() {
       return t("Version");
     },
-    to: "/settings/general",
+    to: "/settings/about",
     searchTerms: ["about check for updates download install upgrade release"],
   },
   {
@@ -673,7 +820,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Update track");
     },
-    to: "/settings/general",
+    to: "/settings/about",
     searchTerms: ["release channel stable latest nightly prerelease"],
     releaseChannelOnly: true,
   },
@@ -682,7 +829,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("t3 command");
     },
-    to: "/settings/general",
+    to: "/settings/about",
     searchTerms: ["cli terminal shell path install command line"],
     desktopOnly: true,
   },
@@ -691,7 +838,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Mobile app");
     },
-    to: "/settings/general",
+    to: "/settings/about",
     searchTerms: ["phone tablet iPhone iPad iOS Android App Store Google Play QR"],
   },
   {
@@ -699,7 +846,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Privacy policy");
     },
-    to: "/settings/general",
+    to: "/settings/about",
     searchTerms: ["telemetry analytics usage data tracking legal opt out"],
   },
   {
@@ -717,7 +864,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Diagnostics");
     },
-    to: "/settings/general",
+    to: "/settings/maintenance",
     searchTerms: ["logs traces processes resource history failures spans cpu memory"],
   },
   {
@@ -725,14 +872,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Open source licenses");
     },
-    to: "/settings/general",
+    to: "/settings/about",
   },
   {
     id: "legacy-plan-mode",
     get title() {
       return t("Plan mode (legacy)");
     },
-    to: "/settings/general",
+    to: "/settings/labs",
     searchTerms: ["build plan composer old"],
   },
   {
@@ -740,7 +887,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Context window indicator (legacy)");
     },
-    to: "/settings/general",
+    to: "/settings/labs",
     searchTerms: ["composer meter usage tokens circle old"],
   },
   {
@@ -748,7 +895,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Sidebar (legacy)");
     },
-    to: "/settings/general",
+    to: "/settings/labs",
     searchTerms: ["project thread tree old flat list"],
   },
   {
@@ -835,7 +982,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Agent browser access");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     scope: "project-defaults",
     searchTerms: ["allow disable enable open drive preview tools sessions project override"],
   },
@@ -844,7 +991,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Device hosts");
     },
-    to: "/settings/integrations",
+    to: "/settings/devices",
     searchTerms: ["ssh remote simulator emulator ios android mac mini identity key connection"],
   },
   {
@@ -852,7 +999,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Agent device access");
     },
-    to: "/settings/integrations",
+    to: "/settings/devices",
     targetId: "devices",
     searchTerms: ["allow simulator emulator ios android drive tools sessions"],
   },
@@ -861,7 +1008,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Device hub");
     },
-    to: "/settings/integrations",
+    to: "/settings/devices",
     targetId: "devices",
     searchTerms: ["simulator emulator ios android install start"],
   },
@@ -870,7 +1017,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Simulator support");
     },
-    to: "/settings/integrations",
+    to: "/settings/devices",
     targetId: "devices",
     searchTerms: ["xcode android studio sdk avd runtime"],
   },
@@ -879,7 +1026,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Browser profiles");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     targetId: "browser",
   },
   {
@@ -887,7 +1034,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Default browser profile");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     targetId: "browser-profiles",
   },
   {
@@ -895,7 +1042,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Default browser viewport");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     searchTerms: ["preview size width height device desktop mobile rotate"],
   },
   {
@@ -903,7 +1050,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Default browser zoom");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     searchTerms: ["preview page scale tabs percent"],
   },
   {
@@ -911,7 +1058,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Default browser appearance");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     searchTerms: ["preview color scheme light dark system os"],
   },
   {
@@ -919,14 +1066,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Browser recording frame rate");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
   },
   {
     id: "browser-recording-key-presses",
     get title() {
       return t("Show key presses in recordings");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     searchTerms: ["browser preview keyboard shortcuts keystrokes overlay capture"],
   },
   {
@@ -934,7 +1081,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Show mouse presses in recordings");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     searchTerms: ["browser preview clicks buttons drag overlay capture"],
   },
   {
@@ -942,7 +1089,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Open links in");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     searchTerms: ["links default browser in-app browser external open"],
   },
   {
@@ -950,7 +1097,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Search engine");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     searchTerms: ["address bar duckduckgo google bing brave kagi ecosia custom"],
   },
   {
@@ -958,15 +1105,17 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Open pull requests in T3 Code");
     },
-    to: "/settings/integrations",
-    searchTerms: ["pr links github browser external click default pull request view panel"],
+    to: "/settings/diffs",
+    searchTerms: [
+      `pr links ${SOURCE_CONTROL_HOST_LABELS} browser external click default pull request view panel`,
+    ],
   },
   {
     id: "browser-auto-show-floating-preview",
     get title() {
       return t("Auto-show floating preview");
     },
-    to: "/settings/integrations",
+    to: "/settings/browser",
     searchTerms: ["agent opens browser device simulator pop into view hide"],
   },
   {
@@ -985,7 +1134,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     },
     to: "/settings/source-control",
     scope: "project-defaults",
-    searchTerms: ["pull request github squash co-authored-by attribution generated"],
+    searchTerms: [
+      `pull request ${SOURCE_CONTROL_HOST_LABELS} squash co-authored-by attribution generated`,
+    ],
   },
   {
     id: "pull-request-merge-method",
@@ -1004,7 +1155,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/source-control",
     scope: "environment-defaults",
     searchTerms: [
-      "version control git github gitlab forgejo gitea tea codeberg bitbucket azure devops hosting integrations credentials scan server environment",
+      `version control git ${SOURCE_CONTROL_HOST_TERMS} hosting integrations credentials scan server environment`,
     ],
   },
   {
@@ -1012,7 +1163,8 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Git fetch interval");
     },
-    to: "/settings/source-control",
+    to: "/settings/maintenance",
+    targetId: "background-activity",
     searchTerms: [
       "automatic remote branch refresh background credentials security keys seconds off",
     ],
@@ -1024,24 +1176,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Worktree branch naming");
     },
-    to: "/settings/source-control",
+    to: "/settings/worktrees",
     searchTerms: ["static semantic prefix custom prompt instructions feat fix refactor chore"],
     environmentOnly: true,
     scope: "project-defaults",
   },
-  {
-    id: "github-accounts",
-    get title() {
-      return t("GitHub accounts and token");
-    },
-    to: "/settings/source-control",
-    searchTerms: [
-      "github gh account login user host enterprise ghes switch multiple accounts disable sign in token personal access token pat api key credential",
-    ],
-    environmentOnly: true,
-    scope: "environment-defaults",
-  },
-  ...SOURCE_CONTROL_HOST_SEARCH_ITEMS,
+  ...sourceControlHostSearchItems(sourceControlClients.definitions),
   {
     id: "source-control-writing-style",
     get title() {
@@ -1119,7 +1259,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Environment icon");
     },
-    to: "/settings/connections",
+    to: "/settings/access",
     targetId: "connections-environment",
     searchTerms: ["machine glyph sidebar mac mini studio laptop desktop server cloud vm"],
   },
@@ -1129,7 +1269,6 @@ export const SETTINGS_SEARCH_ITEMS = [
       return t("Local environment");
     },
     to: "/settings/connections",
-    targetId: "connections-environment",
     searchTerms: ["turn off on disable enable local server agents remote only restart"],
     desktopOnly: true,
   },
@@ -1138,7 +1277,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Network access");
     },
-    to: "/settings/connections",
+    to: "/settings/access",
     targetId: "connections-environment",
     searchTerms: ["expose backend remote pairing local machine interfaces host restart"],
     localBackendManagementOnly: true,
@@ -1148,7 +1287,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Tailscale HTTPS");
     },
-    to: "/settings/connections",
+    to: "/settings/access",
     targetId: "connections-environment",
     searchTerms: ["serve magicdns endpoint remote secure network"],
     desktopOnly: true,
@@ -1159,7 +1298,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("WSL backend");
     },
-    to: "/settings/connections",
+    to: "/settings/access",
     searchTerms: [
       "windows subsystem linux distro second server projects stop windows backend restart",
     ],
@@ -1174,7 +1313,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("T3 Connect");
     },
-    to: "/settings/connections",
+    to: "/settings/access",
     targetId: "connections-environment",
     searchTerms: ["managed tunnel cloud other devices remote"],
     desktopOnly: true,
@@ -1186,7 +1325,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Hold webhooks while offline");
     },
-    to: "/settings/connections",
+    to: "/settings/access",
     targetId: "connections-environment",
     searchTerms: ["webhook automations offline queue mailbox t3 connect"],
     cloudOnly: true,
@@ -1198,7 +1337,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("Publish agent activity");
     },
-    to: "/settings/connections",
+    to: "/settings/access",
     targetId: "connections-environment",
     searchTerms: ["mobile push notifications live activities cloud tunnel"],
     cloudOnly: true,
@@ -1208,7 +1347,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     get title() {
       return t("This machine");
     },
-    to: "/settings/connections",
+    to: "/settings/access",
     searchTerms: [
       "connections server backend local remote access administrative permissions scope pairing links qr code authorized clients sessions revoke endpoint",
     ],
@@ -1232,12 +1371,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
-    id: "github-routing",
+    id: "pull-request-routing",
     get title() {
-      return t("GitHub sharing");
+      return t("Pull request sharing");
     },
     to: "/settings/connections",
-    searchTerms: ["pull request trusted environments shared credentials permissions read actions"],
+    searchTerms: [
+      `pull request routing trusted environments shared credentials permissions read actions source control ${SOURCE_CONTROL_HOST_LABELS}`,
+    ],
   },
   {
     id: "archive",
@@ -1258,16 +1399,56 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/projects": "project",
   "/settings/general": null,
   "/settings/appearance": null,
+  "/settings/chat": null,
+  "/settings/diffs": null,
   "/settings/snap-shot": null,
   "/settings/keybindings": null,
   "/settings/providers": null,
-  "/settings/integrations": null,
+  "/settings/threads": null,
+  "/settings/browser": null,
+  "/settings/devices": null,
   "/settings/source-control": "environment-defaults",
-  "/settings/storage": "project-defaults",
+  "/settings/worktrees": "project-defaults",
   "/settings/connections": "connections",
+  "/settings/access": "connections",
   "/settings/scheduled-tasks": null,
+  "/settings/maintenance": null,
+  "/settings/labs": null,
+  "/settings/about": null,
   "/settings/archived": "project-defaults",
 };
+
+const RENAMED_SETTINGS_PATHS: Readonly<Record<string, SettingsPath>> = {
+  "/settings/integrations": "/settings/browser",
+  "/settings/storage": "/settings/maintenance",
+  "/settings/beta": "/settings/labs",
+};
+const SPLIT_SETTINGS_PATHS: ReadonlySet<string> = new Set([
+  "/settings/general",
+  "/settings/appearance",
+  "/settings/source-control",
+  "/settings/connections",
+  ...Object.keys(RENAMED_SETTINGS_PATHS),
+]);
+// Section anchors that moved but are not search results themselves.
+const MOVED_SECTION_ANCHORS: Readonly<Record<string, SettingsPath>> = {
+  "authorized-clients": "/settings/access",
+  "legacy-features": "/settings/labs",
+  "text-generation": "/settings/threads",
+  about: "/settings/about",
+};
+
+/** Where an old settings link now lives. Its anchor finds the page its row moved to. */
+export function movedSettingsPath(pathname: string, hash: string): SettingsPath | null {
+  if (!SPLIT_SETTINGS_PATHS.has(pathname)) return null;
+  const items: readonly SettingsSearchItem[] = SETTINGS_SEARCH_ITEMS;
+  const anchored = hash
+    ? (items.find((item) => item.id === hash) ?? items.find((item) => item.targetId === hash))
+    : undefined;
+  const to =
+    anchored?.to ?? MOVED_SECTION_ANCHORS[hash] ?? RENAMED_SETTINGS_PATHS[pathname] ?? null;
+  return to === pathname ? null : to;
+}
 
 export function getSettingsSearchTargetScope(targetId: string) {
   const items: readonly SettingsSearchItem[] = SETTINGS_SEARCH_ITEMS;
@@ -1345,18 +1526,6 @@ export function isSettingsSearchScopeAvailable(
   }
 }
 
-function settingsScopeKindFromSearch(search: SettingsScopeSearch): ResolvedSettingsScope["kind"] {
-  const target = validateSettingsScopeSearch({ ...search });
-  if (target.checkout && !target.project) return "unavailable";
-  if (target.project) return target.checkout ? "checkout" : "project";
-  return target.machine ? "environment" : "all";
-}
-
-export function isSettingsOverviewVisible(search: SettingsScopeSearch): boolean {
-  const kind = settingsScopeKindFromSearch(search);
-  return kind === "project" || kind === "checkout";
-}
-
 export function searchableSetting(id: SettingsSearchItemId): {
   readonly id: string;
   readonly title: string;
@@ -1383,6 +1552,20 @@ export function filterAvailableSettingsSearchItems(
   );
 }
 
+/** The settings that exist on this platform and app channel. */
+export function settingsForThisPlatform(
+  items: ReadonlyArray<SettingsSearchItem>,
+): ReadonlyArray<SettingsSearchItem> {
+  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
+  return items.filter(
+    (item) =>
+      (isElectron || item.desktopOnly !== true) &&
+      (!item.releaseChannelOnly || isElectron || HOSTED_APP_CHANNEL !== null) &&
+      (!item.macOnly || isMacPlatform(platform)) &&
+      (!item.windowsOnly || isWindowsPlatform(platform)),
+  );
+}
+
 export function searchSettings(
   query: string,
   items: ReadonlyArray<SettingsSearchItem> = SETTINGS_SEARCH_ITEMS,
@@ -1390,15 +1573,9 @@ export function searchSettings(
   const normalizedQuery = normalizeSearchText(query);
   if (normalizedQuery.length === 0) return [];
   const queryTokens = normalizedQuery.split(" ");
-  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
 
-  return items
+  return settingsForThisPlatform(items)
     .flatMap((item, index) => {
-      if (!isElectron && item.desktopOnly === true) return [];
-      if (item.releaseChannelOnly && !isElectron && HOSTED_APP_CHANNEL === null) return [];
-      if (item.macOnly && !isMacPlatform(platform)) return [];
-      if (item.windowsOnly && !isWindowsPlatform(platform)) return [];
-
       const title = normalizeSearchText(item.title);
       const fields = [
         title,
@@ -1429,4 +1606,25 @@ export function searchSettings(
         left.index - right.index,
     )
     .map(({ item }) => item);
+}
+
+// These rows only exist with separate fonts on, so a search jump to one turns them on.
+const ADVANCED_TYPOGRAPHY_TARGET_IDS: ReadonlySet<string> = new Set([
+  "prompt-font",
+  "terminal-font",
+]);
+
+export function isAdvancedTypographyTarget(targetId: string): boolean {
+  return ADVANCED_TYPOGRAPHY_TARGET_IDS.has(targetId);
+}
+
+/**
+ * Opens the persisted section a search result lives in before jumping to it, so
+ * its row is mounted to scroll to. The terminal reads the same flag, so it must
+ * stay on after the jump.
+ */
+export function revealSettingsSearchTarget(targetId: string): void {
+  if (isAdvancedTypographyTarget(targetId)) {
+    writeLocalStorageValue(TYPOGRAPHY_ADVANCED_STORAGE_KEY, true, false, Schema.Boolean);
+  }
 }

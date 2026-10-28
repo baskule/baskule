@@ -4,9 +4,9 @@ This repo is the Baskule Alpha 0.1 product fork of [pingdotgg/t3code](https://gi
 Copyright (c) 2026 T3 Tools Inc.; keep `LICENSE`). Baskule is a ChatGPT-like assistant UI driving OpenCode 2 inside a
 sleepable "computer" container. See the [project README](../README.md) for the current repository layout.
 
-- **Upstream base:** tag `v0.1.1` = `fe27e8e3dc12dcbb108e9a28fd9b8cb65f34ae92`.
-- **Branch:** `baskule/main` = `v0.1.1` + our patches as commits. Remote `upstream` only (no `origin` yet).
-- Strategy: configuration first, small patches, no deletions (keep merges cheap).
+- **Upstream base:** tag `v0.1.3` = `d2c440312e5f39d59827ed466838a623516454d6`.
+- `app/` is tracked in the Baskule umbrella repository. The original fork history and snapshot source are recorded in `../source-provenance.json`.
+- Keep generic upstream changes and reapply Baskule's product changes. Retired harnesses stay deleted.
 
 ## Agent runtime
 
@@ -20,17 +20,14 @@ driver. Remove those instances and reset their conversations before using this b
 not converted to OpenCode. Managed SpaceCell settings are rewritten at boot with OpenCode only,
 so an already OpenCode-only deployment needs no data wipe.
 
-## Toolchain (v0.1.1 pins, NOT main's)
+## Toolchain
 
-`v0.1.1` requires **Node `^24.13.1`** (`engines`) and **pnpm `11.10.0`** (`packageManager`). Upstream `main` has since moved
-to Node 26.12.1 + pnpm 12; re-check `package.json` at every upstream merge and update `../scripts/env.sh`.
-
-User-local: Node 24.22.1 in `baskule/.tools/node-v24.22.1-linux-x64`, pnpm via that Node's corepack shim in `baskule/.tools/bin`.
+`v0.1.3` pins **Node `26.12.1`** and **pnpm `12.14.0`**. The umbrella uses the same pins in
+`../scripts/env.sh`. Run `scripts/worktree setup` from the umbrella root to attach the versioned shared tools
+and dependencies. Use `scripts/worktree runtime` when verification needs the SpaceCell bundle.
 
 ```sh
-source baskule/scripts/env.sh
-# = export PATH="$BASKULE_ROOT/.tools/bin:$BASKULE_ROOT/.tools/node-v24.22.1-linux-x64/bin:$PATH"
-#   export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 T3CODE_TELEMETRY_ENABLED=false
+source ../scripts/env.sh
 ```
 
 ## Build / run / test (from `baskule/app`)
@@ -60,10 +57,11 @@ cd ../.run/baseline-cwd && T3CODE_TELEMETRY_ENABLED=false node ../../app/apps/se
 Smoke: built server with `--base-dir baskule/.run/baseline` on 127.0.0.1:47080 -> `GET /` 200 (`<title>T3 Code (Beta)</title>`)
 4 s after start, then stopped.
 
-## Patches on `baskule/main`
+## Original fork patches
 
-Every upstream-file edit carries an `// baskule:` comment; new files are preferred. `git log v0.1.1..baskule/main` is the
-authoritative list.
+The original fork marked upstream-file edits with `// baskule:` comments and preferred new files. Its
+pre-consolidation history is retained at the source path recorded in `../source-provenance.json`. Current changes
+are tracked in the umbrella history under `app/`.
 
 | Patch                                                                                        | Files                                                                                                                                                                                                                                                                                                                                                                                           |
 | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

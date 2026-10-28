@@ -36,34 +36,8 @@ vi.mock(import("../ui/toast"), async (original) => {
   const actual = await original();
   return { ...actual, toastManager: { ...actual.toastManager, add: actions.toast } };
 });
-// The registry search and the sign-in step talk to the environment over RPC; these
-// stand-ins expose the choices a user makes there.
-
-vi.mock(import("./ProviderWizardAuthenticationStep"), async (original) => ({
-  ...(await original()),
-  ProviderWizardAuthenticationStep: (props: {
-    environmentId: string;
-    instanceId: string;
-    onFinish: () => void;
-  }) => (
-    <section aria-label="Sign-in step">
-      {props.environmentId}/{props.instanceId}
-      <button type="button" onClick={props.onFinish}>
-        Finish sign-in
-      </button>
-    </section>
-  ),
-}));
 
 const remoteEnvironmentId = EnvironmentId.make("remote-device");
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
 
 const dialog = () => (
   <AddProviderInstanceDialog
@@ -90,12 +64,11 @@ async function type(selector: string, value: string) {
   await userEvent.fill(input(selector), value);
   await act(async () => input(selector).blur());
 }
-const signInStep = () => document.querySelector('[aria-label="Sign-in step"]');
 
 async function prepareOpenCodeInstance() {
   await using stack = new AsyncDisposableStack();
   const screen = stack.use(await render(dialog()));
-  await click("Configure manually");
+  await click("Next");
   await type("#add-provider-label", "Work");
   await click("Next");
   stack.move();
@@ -112,40 +85,22 @@ function setup() {
 }
 
 describe("AddProviderInstanceDialog environment routing", () => {
-  it("creates a provider with its default identity without typing", async () => {
-    setup();
-    await using _screen = await render(dialog());
-    const grok = [...document.querySelectorAll('[role="radio"]')].find((radio) =>
-      radio.textContent?.includes("Grok"),
-    ) as HTMLElement;
-    await act(async () => grok.click());
-    await click("Next");
-    await click("Next");
-    await click("Add instance");
-    expect(settingsHooks.mutate).toHaveBeenCalledWith({
-      operation: "create",
-      instanceId: "grok",
-      instance: { driver: "grok", enabled: true, displayName: "Grok" },
-    });
-  });
-
   it("chooses an unused identity for another account without replacing configured instances", async () => {
     setup();
     settingsHooks.read.mockReturnValue({
-      providerInstances: { codex_2: { driver: "opencode", enabled: false } },
+      providerInstances: { opencode: { driver: "opencode", enabled: false } },
     });
     await using _screen = await render(dialog());
-    await click("Configure manually");
+    await click("Next");
     await click("Next");
     await click("Add instance");
     expect(settingsHooks.mutate).toHaveBeenCalledWith({
       operation: "create",
-      instanceId: "codex_3",
+      instanceId: "opencode_2",
       instance: {
         driver: "opencode",
         enabled: true,
         displayName: "OpenCode",
-        config: { setupMode: "existing" },
       },
     });
   });
@@ -158,47 +113,12 @@ describe("AddProviderInstanceDialog environment routing", () => {
     expect(settingsHooks.useMutation).toHaveBeenCalledWith(remoteEnvironmentId);
   });
 
-  it("keeps the dialog open when the atomic upsert fails", async () => {
-    setup();
-    settingsHooks.mutate.mockResolvedValueOnce({ _tag: "Failure", cause: new Error("Conflict") });
-    await using _screen = await render(dialog());
-    await click("Use Kilo Code");
-    await click("Continue to sign-in");
-
-    expect(actions.onOpenChange).not.toHaveBeenCalled();
-    expect(actions.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "error", title: "Could not add provider instance" }),
-    );
-    expect(button("Continue to sign-in").disabled).toBe(false);
-  });
-
-  it("adds an instance with the selected environment's provider grant alone", async () => {
-    setup();
-    await using _screen = await prepareOpenCodeInstance();
-    await click("Add instance");
-
-    expect(settingsHooks.mutate).toHaveBeenCalledWith({
-      operation: "create",
-      instanceId: "codex_work",
-      instance: {
-        driver: "opencode",
-        enabled: true,
-        displayName: "Work",
-        config: { setupMode: "existing" },
-      },
-    });
-    expect(actions.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "success", title: "Provider instance added" }),
-    );
-    expect(actions.onOpenChange).toHaveBeenCalledWith(false);
-  });
-
   it("rejects a queued save after the provider grant is revoked", async () => {
     setup();
     await using screen = await prepareOpenCodeInstance();
     const save = button("Add instance");
     actions.canManageProviders = false;
-    // The rendered button is still enabled; the click must recheck the live grant.
+    // Click before React renders the revoked grant.
     await act(async () => save.click());
 
     expect(settingsHooks.mutate).not.toHaveBeenCalled();
@@ -206,20 +126,5 @@ describe("AddProviderInstanceDialog environment routing", () => {
     expect(actions.onOpenChange).not.toHaveBeenCalled();
     await screen.rerender(dialog());
     expect(button("Add instance").disabled).toBe(true);
-  });
-
-  it("keeps a denied draft available when the provider grant arrives", async () => {
-    setup();
-    actions.canManageProviders = false;
-    await using screen = await prepareOpenCodeInstance();
-    expect(button("Add instance").disabled).toBe(true);
-    expect(settingsHooks.mutate).not.toHaveBeenCalled();
-
-    actions.canManageProviders = true;
-    await screen.rerender(dialog());
-    expect(button("Add instance").disabled).toBe(false);
-    await click("Add instance");
-    expect(settingsHooks.mutate).toHaveBeenCalledOnce();
-    expect(actions.onOpenChange).toHaveBeenCalledWith(false);
   });
 });

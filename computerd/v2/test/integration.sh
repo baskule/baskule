@@ -9,7 +9,7 @@
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-NODE_BIN=${NODE_BIN:-$ROOT/.tools/node-v24.22.1-linux-x64/bin}
+NODE_BIN=${NODE_BIN:-$(source "$ROOT/scripts/env.sh"; dirname "$(command -v node)")}
 export PATH="$ROOT/.tools/bin:$NODE_BIN:$PATH"
 node --version | grep -q '^v2[4-9]' || { echo "Node >= 24 required (set NODE_BIN)" >&2; exit 1; }
 [ -d "$HERE/node_modules" ] || (cd "$HERE" && pnpm install --frozen-lockfile --prefer-offline)

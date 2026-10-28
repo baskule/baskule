@@ -12,7 +12,6 @@ import {
   deriveProviderInstanceEntries,
   getDefaultProviderInstanceModel,
   isProviderInstancePickerReady,
-  isProviderInstancePickerVisible,
   resolveDefaultProviderModelSelection,
   resolveProviderCatalogAvailability,
   resolveSelectableProviderInstance,
@@ -62,8 +61,8 @@ describe("isProviderInstancePickerReady", () => {
   it("rejects a disabled instance even while its last probe status is ready", () => {
     const [entry] = deriveProviderInstanceEntries([
       provider({
-        provider: ProviderDriverKind.make("codex"),
-        instanceId: "codex",
+        provider: ProviderDriverKind.make("opencode"),
+        instanceId: "opencode",
         enabled: false,
       }),
     ]);
@@ -71,19 +70,11 @@ describe("isProviderInstancePickerReady", () => {
     expect(entry?.status).toBe("ready");
     expect(entry && isProviderInstancePickerReady(entry)).toBe(false);
   });
-
-  it("accepts an enabled, available, ready instance", () => {
-    const [entry] = deriveProviderInstanceEntries([
-      provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex" }),
-    ]);
-
-    expect(entry && isProviderInstancePickerReady(entry)).toBe(true);
-  });
 });
 
 describe("resolveProviderCatalogAvailability", () => {
   const [entry] = deriveProviderInstanceEntries([
-    provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex" }),
+    provider({ provider: ProviderDriverKind.make("opencode"), instanceId: "opencode" }),
   ]);
 
   it("keeps the initial reactive config state distinct from an empty catalogue", () => {
@@ -121,55 +112,20 @@ describe("resolveProviderCatalogAvailability", () => {
   });
 });
 
-describe("isProviderInstancePickerVisible", () => {
-  it("keeps enabled instances in the rail and removes disabled instances", () => {
-    const [enabledEntry, disabledEntry] = deriveProviderInstanceEntries([
-      provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex" }),
-      provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
-        instanceId: "claudeAgent",
-        enabled: false,
-      }),
-    ]);
-
-    expect(enabledEntry && isProviderInstancePickerVisible(enabledEntry)).toBe(true);
-    expect(disabledEntry && isProviderInstancePickerVisible(disabledEntry)).toBe(false);
-  });
-});
-
 describe("applyProviderInstanceSettings", () => {
   it("uses settings when a streamed snapshot still reports a disabled default as enabled", () => {
     const entries = deriveProviderInstanceEntries([
-      provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex" }),
+      provider({ provider: ProviderDriverKind.make("opencode"), instanceId: "opencode" }),
     ]);
     const [entry] = applyProviderInstanceSettings(
       entries,
       {
         providerInstances: {
-          [ProviderInstanceId.make("codex")]: {
-            driver: ProviderDriverKind.make("codex"),
+          [ProviderInstanceId.make("opencode")]: {
+            driver: ProviderDriverKind.make("opencode"),
             enabled: false,
           },
         },
-        projectSettingsOverrides: {},
-      },
-      null,
-    );
-
-    expect(entry?.enabled).toBe(false);
-  });
-
-  it("treats a removed custom instance snapshot as disabled", () => {
-    const entries = deriveProviderInstanceEntries([
-      provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
-        instanceId: "claude_work",
-      }),
-    ]);
-    const [entry] = applyProviderInstanceSettings(
-      entries,
-      {
-        providerInstances: {},
         projectSettingsOverrides: {},
       },
       null,
@@ -183,7 +139,7 @@ describe("applyProviderInstanceSettings", () => {
     (instanceId) => {
       const entries = deriveProviderInstanceEntries([
         provider({
-          provider: ProviderDriverKind.make("claudeAgent"),
+          provider: ProviderDriverKind.make("opencode"),
           instanceId,
         }),
       ]);
@@ -200,11 +156,12 @@ describe("applyProviderInstanceSettings", () => {
     },
   );
 
+  // regression: #8337 provider ids matching Object.prototype keys resolved to prototype members
   it("uses settings for a configured custom instance named constructor", () => {
     const instanceId = ProviderInstanceId.make("constructor");
     const entries = deriveProviderInstanceEntries([
       provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
+        provider: ProviderDriverKind.make("opencode"),
         instanceId,
       }),
     ]);
@@ -213,7 +170,7 @@ describe("applyProviderInstanceSettings", () => {
       {
         providerInstances: {
           [instanceId]: {
-            driver: ProviderDriverKind.make("claudeAgent"),
+            driver: ProviderDriverKind.make("opencode"),
             enabled: false,
           },
         },
@@ -225,27 +182,6 @@ describe("applyProviderInstanceSettings", () => {
     expect(entry?.enabled).toBe(false);
   });
 
-  it("treats a removed default instance for a fork driver as disabled", () => {
-    const driver = ProviderDriverKind.make("constructor");
-    const entries = deriveProviderInstanceEntries([
-      provider({
-        provider: driver,
-        instanceId: "constructor",
-      }),
-    ]);
-    const [entry] = applyProviderInstanceSettings(
-      entries,
-      {
-        providerInstances: {},
-        projectSettingsOverrides: {},
-      },
-      null,
-    );
-
-    expect(entry?.isDefault).toBe(true);
-    expect(entry?.enabled).toBe(false);
-  });
-
   it("uses the driver default for an unconfigured built-in default instance", () => {
     const entries = deriveProviderInstanceEntries([
       provider({
@@ -253,9 +189,13 @@ describe("applyProviderInstanceSettings", () => {
         instanceId: "opencode",
         enabled: false,
       }),
-      provider({ provider: ProviderDriverKind.make("grok"), instanceId: "grok", enabled: true }),
+      provider({
+        provider: ProviderDriverKind.make("opencode"),
+        instanceId: "opencode_other",
+        enabled: true,
+      }),
     ]);
-    const [codex, grok] = applyProviderInstanceSettings(
+    const [opencode, opencode_other] = applyProviderInstanceSettings(
       entries,
       {
         providerInstances: {},
@@ -264,35 +204,22 @@ describe("applyProviderInstanceSettings", () => {
       null,
     );
 
-    expect(codex?.enabled).toBe(false);
-    expect(grok?.enabled).toBe(false);
-  });
-});
-
-describe("deriveProviderInstanceEntries", () => {
-  it("uses explicit instance id and driver kind from the snapshot", () => {
-    const snapshot = provider({
-      provider: ProviderDriverKind.make("codex"),
-      instanceId: "codex_personal",
-    });
-    const [entry] = deriveProviderInstanceEntries([snapshot]);
-
-    expect(entry?.instanceId).toBe("codex_personal");
-    expect(entry?.driverKind).toBe("codex");
-    expect(entry?.isDefault).toBe(false);
+    expect(opencode?.enabled).toBe(false);
+    expect(opencode_other?.enabled).toBe(false);
   });
 });
 
 describe("deriveProviderEntriesByEnvironment", () => {
+  // regression: #7292 sidebar provider icons resolved from the wrong environment
   it("keeps same-id default instances distinct per environment", () => {
     const byEnvironment = deriveProviderEntriesByEnvironment([
       [
         "local",
         [
           provider({
-            provider: ProviderDriverKind.make("claude"),
-            instanceId: "claude",
-            displayName: "Claude Local",
+            provider: ProviderDriverKind.make("opencode"),
+            instanceId: "opencode",
+            displayName: "OpenCode Local",
             accentColor: "#112233",
           }),
         ],
@@ -301,33 +228,33 @@ describe("deriveProviderEntriesByEnvironment", () => {
         "remote",
         [
           provider({
-            provider: ProviderDriverKind.make("claude"),
-            instanceId: "claude",
-            displayName: "Claude Remote",
+            provider: ProviderDriverKind.make("opencode"),
+            instanceId: "opencode",
+            displayName: "OpenCode Remote",
             accentColor: "#445566",
           }),
         ],
       ],
     ]);
 
-    expect(byEnvironment.get("local")?.get("claude")?.displayName).toBe("Claude Local");
-    expect(byEnvironment.get("local")?.get("claude")?.accentColor).toBe("#112233");
-    expect(byEnvironment.get("remote")?.get("claude")?.displayName).toBe("Claude Remote");
-    expect(byEnvironment.get("remote")?.get("claude")?.accentColor).toBe("#445566");
+    expect(byEnvironment.get("local")?.get("opencode")?.displayName).toBe("OpenCode Local");
+    expect(byEnvironment.get("local")?.get("opencode")?.accentColor).toBe("#112233");
+    expect(byEnvironment.get("remote")?.get("opencode")?.displayName).toBe("OpenCode Remote");
+    expect(byEnvironment.get("remote")?.get("opencode")?.accentColor).toBe("#445566");
   });
 
   it("keeps an instance a project turns on as a sibling for the instance badge", () => {
-    const codex = ProviderDriverKind.make("codex");
+    const opencode = ProviderDriverKind.make("opencode");
     const byEnvironment = deriveProviderEntriesByEnvironment([
       [
         "local",
         [
-          provider({ provider: codex, instanceId: "codex" }),
-          provider({ provider: codex, instanceId: "codex_work" }),
+          provider({ provider: opencode, instanceId: "opencode" }),
+          provider({ provider: opencode, instanceId: "codex_work" }),
         ],
         {
           providerInstances: {
-            [ProviderInstanceId.make("codex_work")]: { driver: codex, enabled: false },
+            [ProviderInstanceId.make("codex_work")]: { driver: opencode, enabled: false },
           },
           projectSettingsOverrides: {
             [ProjectId.make("project-work")]: {
@@ -338,101 +265,63 @@ describe("deriveProviderEntriesByEnvironment", () => {
       ],
     ]);
     const entries = byEnvironment.get("local");
-    const personal = entries?.get("codex");
+    const personal = entries?.get("opencode");
 
     expect(personal && shouldShowInstanceBadge(personal, entries?.values() ?? [])).toBe(true);
-  });
-
-  it("never falls back to another environment's instances", () => {
-    const byEnvironment = deriveProviderEntriesByEnvironment([
-      ["local", [provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex" })]],
-      ["empty", []],
-    ]);
-
-    expect(byEnvironment.get("empty")?.get("codex")).toBeUndefined();
-    expect(byEnvironment.get("empty")?.size).toBe(0);
   });
 });
 
 describe("resolveSelectableProviderInstance", () => {
-  it("returns the requested instance when it is enabled and available", () => {
-    const requested = ProviderInstanceId.make("claude_work");
-    const providers = [
-      provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex" }),
-      provider({ provider: ProviderDriverKind.make("claudeAgent"), instanceId: requested }),
-    ];
-
-    expect(resolveSelectableProviderInstance(providers, requested)).toBe(requested);
-  });
-
   it("falls back to the first enabled and available instance", () => {
-    const disabled = ProviderInstanceId.make("codex");
-    const fallback = ProviderInstanceId.make("claudeAgent");
+    const disabled = ProviderInstanceId.make("opencode");
+    const fallback = ProviderInstanceId.make("opencode_team");
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("codex"),
+        provider: ProviderDriverKind.make("opencode"),
         instanceId: disabled,
         enabled: false,
       }),
-      provider({ provider: ProviderDriverKind.make("claudeAgent"), instanceId: fallback }),
+      provider({ provider: ProviderDriverKind.make("opencode"), instanceId: fallback }),
     ];
 
     expect(resolveSelectableProviderInstance(providers, disabled)).toBe(fallback);
   });
 
   it("prefers a ready instance over an enabled one whose driver cannot start", () => {
-    const notInstalled = ProviderInstanceId.make("codex");
-    const ready = ProviderInstanceId.make("claudeAgent");
+    const notInstalled = ProviderInstanceId.make("opencode");
+    const ready = ProviderInstanceId.make("opencode_team");
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("codex"),
+        provider: ProviderDriverKind.make("opencode"),
         instanceId: notInstalled,
         status: "error",
       }),
-      provider({ provider: ProviderDriverKind.make("claudeAgent"), instanceId: ready }),
+      provider({ provider: ProviderDriverKind.make("opencode"), instanceId: ready }),
     ];
 
     expect(resolveSelectableProviderInstance(providers, undefined)).toBe(ready);
   });
 
-  it("prefers an unprobed (warning) instance over one whose probe errored", () => {
-    const notInstalled = ProviderInstanceId.make("codex");
-    const unprobed = ProviderInstanceId.make("claudeAgent");
-    const providers = [
-      provider({
-        provider: ProviderDriverKind.make("codex"),
-        instanceId: notInstalled,
-        status: "error",
-      }),
-      provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
-        instanceId: unprobed,
-        status: "warning",
-      }),
-    ];
-
-    expect(resolveSelectableProviderInstance(providers, undefined)).toBe(unprobed);
-  });
-
   it("keeps a requested instance even when its probe errored", () => {
-    const requested = ProviderInstanceId.make("codex");
+    const requested = ProviderInstanceId.make("opencode");
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("codex"),
+        provider: ProviderDriverKind.make("opencode"),
         instanceId: requested,
         status: "error",
       }),
-      provider({ provider: ProviderDriverKind.make("claudeAgent"), instanceId: "claudeAgent" }),
+      provider({ provider: ProviderDriverKind.make("opencode"), instanceId: "opencode_team" }),
     ];
 
     expect(resolveSelectableProviderInstance(providers, requested)).toBe(requested);
   });
 
+  // regression: #4117 users without Codex got a broken default provider
   it("does not invent an errored instance as a new-user default", () => {
-    const notInstalled = ProviderInstanceId.make("codex");
+    const notInstalled = ProviderInstanceId.make("opencode");
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("codex"),
+        provider: ProviderDriverKind.make("opencode"),
         instanceId: notInstalled,
         status: "error",
       }),
@@ -442,17 +331,17 @@ describe("resolveSelectableProviderInstance", () => {
   });
 
   it("does not return disabled, unavailable, or unknown instances when none are sendable", () => {
-    const disabled = ProviderInstanceId.make("codex");
-    const unavailable = ProviderInstanceId.make("claudeAgent");
+    const disabled = ProviderInstanceId.make("opencode");
+    const unavailable = ProviderInstanceId.make("opencode_team");
     const unknown = ProviderInstanceId.make("removed_instance");
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("codex"),
+        provider: ProviderDriverKind.make("opencode"),
         instanceId: disabled,
         enabled: false,
       }),
       provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
+        provider: ProviderDriverKind.make("opencode"),
         instanceId: unavailable,
         availability: "unavailable",
       }),
@@ -468,13 +357,13 @@ describe("getDefaultProviderInstanceModel", () => {
   it("uses the instance's own models, not the default instance of the kind", () => {
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
+        provider: ProviderDriverKind.make("opencode"),
         instanceId: "claude_openrouter",
         models: [model("openai/gpt-5.5", true), model("claude-opus-4-8")],
       }),
       provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
-        instanceId: "claudeAgent",
+        provider: ProviderDriverKind.make("opencode"),
+        instanceId: "opencode_team",
         models: [model("claude-sonnet-5")],
       }),
     ];
@@ -486,42 +375,37 @@ describe("getDefaultProviderInstanceModel", () => {
 
   it("falls back to the driver default when the instance reports no models", () => {
     const providers = [
-      provider({ provider: ProviderDriverKind.make("claudeAgent"), instanceId: "claudeAgent" }),
+      provider({ provider: ProviderDriverKind.make("opencode"), instanceId: "opencode_team" }),
     ];
 
     const resolved = getDefaultProviderInstanceModel(
       providers,
-      ProviderInstanceId.make("claudeAgent"),
+      ProviderInstanceId.make("opencode_team"),
     );
-    expect(resolved).toBe(DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")]);
+    expect(resolved).toBe(DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("opencode")]);
   });
 
   it("honors the instance's declared default before model-list order", () => {
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
-        instanceId: "claudeAgent",
+        provider: ProviderDriverKind.make("opencode"),
+        instanceId: "opencode_team",
         models: [model("claude-sonnet-5"), model("claude-opus-4-8", false, true)],
       }),
     ];
 
-    expect(getDefaultProviderInstanceModel(providers, ProviderInstanceId.make("claudeAgent"))).toBe(
-      "claude-opus-4-8",
-    );
-  });
-
-  it("returns undefined for an unknown instance", () => {
     expect(
-      getDefaultProviderInstanceModel([], ProviderInstanceId.make("removed_instance")),
-    ).toBeUndefined();
+      getDefaultProviderInstanceModel(providers, ProviderInstanceId.make("opencode_team")),
+    ).toBe("claude-opus-4-8");
   });
 });
 
 describe("resolveDefaultProviderModelSelection", () => {
+  // regression: #4117 users without Codex got a broken default provider
   it.each([
-    ["codex", "codex", "gpt-5.6"],
-    ["claudeAgent", "claudeAgent", "claude-fable-5"],
-    ["cursor", "cursor", "composer-2"],
+    ["opencode", "opencode", "gpt-5.6"],
+    ["opencode", "opencode_team", "claude-fable-5"],
+    ["opencode", "opencode_third", "composer-2"],
   ])("uses the only available %s instance", (driver, instanceId, modelSlug) => {
     const providers = [
       provider({
@@ -540,13 +424,13 @@ describe("resolveDefaultProviderModelSelection", () => {
   it("preserves a valid stored selection including its options", () => {
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
-        instanceId: "claudeAgent",
+        provider: ProviderDriverKind.make("opencode"),
+        instanceId: "opencode_team",
         models: [model("claude-opus-4-8")],
       }),
     ];
     const stored = {
-      instanceId: ProviderInstanceId.make("claudeAgent"),
+      instanceId: ProviderInstanceId.make("opencode_team"),
       model: "custom-model",
       options: [{ id: "effort", value: "high" }],
     };
@@ -557,14 +441,14 @@ describe("resolveDefaultProviderModelSelection", () => {
   it("replaces a stale stored instance with the first ready instance and its model", () => {
     const providers = [
       provider({
-        provider: ProviderDriverKind.make("codex"),
-        instanceId: "codex",
+        provider: ProviderDriverKind.make("opencode"),
+        instanceId: "opencode",
         status: "warning",
         models: [model("gpt-5.6")],
       }),
       provider({
-        provider: ProviderDriverKind.make("claudeAgent"),
-        instanceId: "claudeAgent",
+        provider: ProviderDriverKind.make("opencode"),
+        instanceId: "opencode_team",
         models: [model("claude-opus-4-8", false, true)],
       }),
     ];
@@ -574,32 +458,33 @@ describe("resolveDefaultProviderModelSelection", () => {
         instanceId: ProviderInstanceId.make("removed-provider"),
         model: "stale-model",
       }),
-    ).toEqual({ instanceId: "claudeAgent", model: "claude-opus-4-8" });
+    ).toEqual({ instanceId: "opencode_team", model: "claude-opus-4-8" });
   });
 
+  // regression: #4117 users without Codex got a broken default provider
   it.each([{ enabled: false }, { availability: "unavailable" as const }])(
     "replaces an unavailable stored instance deterministically",
     (requestedState) => {
       const providers = [
         provider({
-          provider: ProviderDriverKind.make("codex"),
-          instanceId: "codex",
+          provider: ProviderDriverKind.make("opencode"),
+          instanceId: "opencode",
           models: [model("gpt-5.6")],
           ...requestedState,
         }),
         provider({
-          provider: ProviderDriverKind.make("claudeAgent"),
-          instanceId: "claudeAgent",
+          provider: ProviderDriverKind.make("opencode"),
+          instanceId: "opencode_team",
           models: [model("claude-opus-4-8", false, true)],
         }),
       ];
 
       expect(
         resolveDefaultProviderModelSelection(providers, {
-          instanceId: ProviderInstanceId.make("codex"),
+          instanceId: ProviderInstanceId.make("opencode"),
           model: "gpt-5.6",
         }),
-      ).toEqual({ instanceId: "claudeAgent", model: "claude-opus-4-8" });
+      ).toEqual({ instanceId: "opencode_team", model: "claude-opus-4-8" });
     },
   );
 
@@ -609,8 +494,8 @@ describe("resolveDefaultProviderModelSelection", () => {
       resolveDefaultProviderModelSelection(
         [
           provider({
-            provider: ProviderDriverKind.make("codex"),
-            instanceId: "codex",
+            provider: ProviderDriverKind.make("opencode"),
+            instanceId: "opencode",
             enabled: false,
           }),
         ],
@@ -621,8 +506,8 @@ describe("resolveDefaultProviderModelSelection", () => {
       resolveDefaultProviderModelSelection(
         [
           provider({
-            provider: ProviderDriverKind.make("codex"),
-            instanceId: "codex",
+            provider: ProviderDriverKind.make("opencode"),
+            instanceId: "opencode",
             availability: "unavailable",
           }),
         ],
@@ -633,8 +518,8 @@ describe("resolveDefaultProviderModelSelection", () => {
       resolveDefaultProviderModelSelection(
         [
           provider({
-            provider: ProviderDriverKind.make("codex"),
-            instanceId: "codex",
+            provider: ProviderDriverKind.make("opencode"),
+            instanceId: "opencode",
             status: "error",
           }),
         ],

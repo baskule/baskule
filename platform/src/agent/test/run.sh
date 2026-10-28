@@ -8,7 +8,7 @@
 set -euo pipefail
 T=$(cd "$(dirname "$0")" && pwd)
 P=$(cd "$T/../../.." && pwd)
-export PATH="$(cd "$P/.." && pwd)/.tools/node-v24.22.1-linux-x64/bin:$PATH"
+source "$(cd "$P/.." && pwd)/scripts/env.sh"
 KEEP=0 REAL=0 EXTRA=()
 while [ $# -gt 0 ]; do
   case "$1" in --keep) KEEP=1 ;; --real-llm) REAL=1 ;; --) shift; EXTRA=("$@"); break ;; *) echo "unknown option $1"; exit 2 ;; esac

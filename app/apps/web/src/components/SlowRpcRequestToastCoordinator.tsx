@@ -1,7 +1,5 @@
-import { useTranslation } from "../i18n";
-import { useEffect, useRef } from "react";
-
-import { type SlowRpcAckRequest, useSlowRpcAckRequests } from "../rpc/requestLatencyState";
+import { t, useTranslation } from "../i18n";
+import { type SlowRpcAckRequest, subscribeSlowRpcAckRequests } from "../rpc/requestLatencyState";
 import { toastManager } from "./ui/toast";
 
 function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): string {
@@ -10,7 +8,11 @@ function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): strin
     Math.min(...requests.map((request) => request.thresholdMs)) / 1000,
   );
 
-  return `${count} request${count === 1 ? "" : "s"} waiting longer than ${thresholdSeconds}s.`;
+  return t("{{count}} request waiting longer than {{thresholdSeconds}}s.", {
+    count,
+    thresholdSeconds,
+    defaultValue_other: "{{count}} requests waiting longer than {{thresholdSeconds}}s.",
+  });
 }
 
 function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRequest> }) {
@@ -32,16 +34,15 @@ function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRe
   );
 }
 
-export function SlowRpcRequestToastCoordinator() {
-  const t = useTranslation();
-  const slowRequests = useSlowRpcAckRequests();
-  const toastIdRef = useRef<ReturnType<typeof toastManager.add> | null>(null);
+/** One warning toast that tracks the set of slow requests while any are outstanding. */
+export function startSlowRpcRequestToasts(): () => void {
+  let toastId: ReturnType<typeof toastManager.add> | null = null;
 
-  useEffect(() => {
+  const unsubscribe = subscribeSlowRpcAckRequests((slowRequests) => {
     if (slowRequests.length === 0) {
-      if (toastIdRef.current !== null) {
-        toastManager.close(toastIdRef.current);
-        toastIdRef.current = null;
+      if (toastId !== null) {
+        toastManager.close(toastId);
+        toastId = null;
       }
       return;
     }
@@ -50,7 +51,7 @@ export function SlowRpcRequestToastCoordinator() {
       data: {
         expandableContent: <SlowRequestDetails requests={slowRequests} />,
         expandableDescriptionTrigger: true,
-        expandableLabels: { collapse: "Hide requests", expand: "Show requests" },
+        expandableLabels: { collapse: t("Hide requests"), expand: t("Show requests") },
       },
       description: describeSlowRequests(slowRequests),
       timeout: 0,
@@ -58,21 +59,15 @@ export function SlowRpcRequestToastCoordinator() {
       type: "warning" as const,
     };
 
-    if (toastIdRef.current === null) {
-      toastIdRef.current = toastManager.add(nextToast);
+    if (toastId === null) {
+      toastId = toastManager.add(nextToast);
     } else {
-      toastManager.update(toastIdRef.current, nextToast);
+      toastManager.update(toastId, nextToast);
     }
-  }, [slowRequests, t]);
+  });
 
-  useEffect(
-    () => () => {
-      if (toastIdRef.current !== null) {
-        toastManager.close(toastIdRef.current);
-      }
-    },
-    [],
-  );
-
-  return null;
+  return () => {
+    unsubscribe();
+    if (toastId !== null) toastManager.close(toastId);
+  };
 }

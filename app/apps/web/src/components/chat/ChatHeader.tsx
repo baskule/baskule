@@ -26,6 +26,8 @@ import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
+import { canShareWithGuestAtom } from "./guestShareAvailability";
+import { useAtomValue } from "@effect/atom-react";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { ProjectFavicon } from "../ProjectFavicon";
@@ -37,7 +39,9 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
+import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
+import { GuestShareIndicator } from "./GuestShareControls";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -52,7 +56,7 @@ interface ChatHeaderProps {
   onOpenProjectSettings?: (() => void) | undefined;
 }
 
-export function resolveRenameCommit(input: {
+function resolveRenameCommit(input: {
   readonly title: string;
   readonly originalTitle: string;
 }): { action: "commit"; title: string } | { action: "reject-empty" } | { action: "noop" } {
@@ -62,10 +66,7 @@ export function resolveRenameCommit(input: {
   return { action: "commit", title: trimmed };
 }
 
-// How long a click on the thread title waits before opening the action menu, so
-// a double-click-to-rename can cancel it first. Only the native desktop menu
-// needs this: it swallows input while open, so the wait must cover the OS
-// double-click interval.
+// Delay the input-swallowing native menu through the double-click rename interval.
 const TITLE_MENU_OPEN_DELAY_MS = 500;
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
@@ -80,7 +81,7 @@ export const ChatHeader = memo(function ChatHeader({
   onOpenProjectSettings,
 }: ChatHeaderProps) {
   const t = useTranslation();
-  const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
+  const activeProjectName = activeProject?.isScratch ? t("No project") : activeProject?.title;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
   const breadcrumbContainerRef = useRef<HTMLDivElement>(null);
@@ -90,6 +91,7 @@ export const ChatHeader = memo(function ChatHeader({
     activeThreadEnvironmentId,
     AuthOrchestrationOperateScope,
   );
+  const canShareWithGuest = useAtomValue(canShareWithGuestAtom(activeThreadEnvironmentId));
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -184,7 +186,7 @@ export const ChatHeader = memo(function ChatHeader({
         toastManager.add({
           type: "error",
           title: t("Failed to rename thread"),
-          description: error instanceof Error ? error.message : "An error occurred.",
+          description: error instanceof Error ? error.message : t("An error occurred."),
         });
       }
     });
@@ -193,6 +195,7 @@ export const ChatHeader = memo(function ChatHeader({
     threadRef: isServerThread ? activeThreadRef : null,
     projectCwd: activeProjectCwd,
     onStartRename: startRename,
+    canShareWithGuest,
   });
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);
   const titleMenuTimerRef = useRef<number | null>(null);
@@ -352,6 +355,7 @@ export const ChatHeader = memo(function ChatHeader({
           {renamingTitle !== null ? (
             <input
               autoFocus
+              dir="auto"
               aria-label={t("Thread title")}
               className="min-w-0 flex-1 rounded-sm bg-transparent text-sm font-medium text-foreground outline-none ring-1 ring-inset ring-ring/50 focus:ring-ring"
               defaultValue={renamingTitle}
@@ -387,7 +391,7 @@ export const ChatHeader = memo(function ChatHeader({
                   />
                 }
               >
-                <h2 className="min-w-0">
+                <h2 className="min-w-0" dir={textDirection(activeThreadTitle)}>
                   <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
                 </h2>
                 <ChevronDownIcon
@@ -401,7 +405,13 @@ export const ChatHeader = memo(function ChatHeader({
           ) : (
             <Tooltip>
               <TooltipTrigger
-                render={<h2 aria-label={activeThreadTitle} className="min-w-0 flex-1" />}
+                render={
+                  <h2
+                    aria-label={activeThreadTitle}
+                    className="min-w-0 flex-1"
+                    dir={textDirection(activeThreadTitle)}
+                  />
+                }
               >
                 <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
               </TooltipTrigger>
@@ -410,6 +420,7 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
     </div>
   );
 });

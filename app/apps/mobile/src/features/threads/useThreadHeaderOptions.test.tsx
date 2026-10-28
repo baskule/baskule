@@ -12,7 +12,12 @@ const harness = vi.hoisted(() => ({
   navigatedRoutes: [] as string[],
 }));
 
-vi.mock("@react-navigation/native", () => {
+vi.mock("expo-glass-effect", () => ({
+  GlassContainer: ({ children }: { children?: import("react").ReactNode }) => <>{children}</>,
+}));
+vi.mock("../workspace/WorkspaceTabsContext", () => ({ useWorkspaceTabs: () => null }));
+vi.mock("@react-navigation/native", async () => {
+  const { createContext } = await import("react");
   const navigation = {
     canGoBack: () => true,
     dispatch: () => {},
@@ -27,6 +32,7 @@ vi.mock("@react-navigation/native", () => {
     },
   };
   return {
+    NavigationRouteContext: createContext(undefined),
     StackActions: { replace: () => ({}) },
     useNavigation: () => navigation,
   };

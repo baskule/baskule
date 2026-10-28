@@ -1,21 +1,13 @@
 import { useTranslation } from "../../i18n";
 import type { VoiceInputPhase, VoiceInputState } from "@t3tools/client-runtime/voice-input";
-import { memo, useCallback, useLayoutEffect, useState, type ReactNode } from "react";
-import {
-  Linking,
-  Platform,
-  Pressable,
-  Text as SystemText,
-  View,
-  type LayoutChangeEvent,
-} from "react-native";
+import { memo, useCallback, useState, type ReactNode } from "react";
+import { Linking, Pressable, Text as SystemText, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   Easing,
-  LinearTransition,
   ReduceMotion,
   useAnimatedStyle,
+  useDerivedValue,
   useReducedMotion,
-  useSharedValue,
   withTiming,
   type EntryExitAnimationFunction,
   type SharedValue,
@@ -33,10 +25,6 @@ const DICTATION_TIMING = {
   easing: Easing.out(Easing.cubic),
   reduceMotion: ReduceMotion.System,
 } as const;
-const DICTATION_LAYOUT =
-  Platform.OS === "android"
-    ? undefined
-    : LinearTransition.duration(DICTATION_TIMING.duration).reduceMotion(ReduceMotion.System);
 const TOOLBAR_FLIP_TIMING = {
   duration: 260,
   easing: Easing.inOut(Easing.cubic),
@@ -101,10 +89,8 @@ export function ComposerDictationDraftContent(props: {
   readonly compact: boolean;
   readonly hidden: boolean;
 }) {
-  const rotation = useSharedValue(props.hidden ? 1 : 0);
-  useLayoutEffect(() => {
-    rotation.value = withTiming(props.hidden ? 1 : 0, TOOLBAR_FLIP_TIMING);
-  }, [props.hidden, rotation]);
+  const hidden = props.hidden;
+  const rotation = useDerivedValue(() => withTiming(hidden ? 1 : 0, TOOLBAR_FLIP_TIMING));
   const compact = props.compact;
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: compact ? 1 - rotation.value : 1,
@@ -123,7 +109,6 @@ export function ComposerDictationDraftContent(props: {
       importantForAccessibility={props.hidden ? "no-hide-descendants" : "auto"}
       collapsable={false}
       className={props.className}
-      layout={DICTATION_LAYOUT}
       pointerEvents={props.hidden ? "none" : "auto"}
       style={[animatedStyle, { backfaceVisibility: "hidden" }]}
     >
@@ -160,7 +145,7 @@ export function ComposerDictationToolbar(props: {
 }
 
 const WaveformBar = memo(function WaveformBar(props: {
-  readonly audioLevels: SharedValue<number[]>;
+  readonly audioLevels: SharedValue<ReadonlyArray<number>>;
   readonly sampleIndex: number;
   readonly height?: number;
 }) {
@@ -193,7 +178,7 @@ const COMPACT_WAVEFORM_BAR_COUNT = 8;
 const COMPACT_WAVEFORM_BAR_HEIGHT = 14;
 
 export const CompactVoiceWaveform = memo(function CompactVoiceWaveform(props: {
-  readonly audioLevels: SharedValue<number[]>;
+  readonly audioLevels: SharedValue<ReadonlyArray<number>>;
 }) {
   return (
     <View
@@ -215,7 +200,7 @@ export const CompactVoiceWaveform = memo(function CompactVoiceWaveform(props: {
 });
 
 const VoiceWaveform = memo(function VoiceWaveform(props: {
-  readonly audioLevels: SharedValue<number[]>;
+  readonly audioLevels: SharedValue<ReadonlyArray<number>>;
 }) {
   const [barCount, setBarCount] = useState(0);
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
@@ -249,10 +234,7 @@ const VoiceWaveform = memo(function VoiceWaveform(props: {
   );
 });
 
-/**
- * Renders the recording time in the system font: DM Sans has no tabular
- * figures, so `tabular-nums` alone would still let the width jitter.
- */
+/** Use system tabular figures; DM Sans lacks them and would jitter. */
 export function DictationElapsedTime(props: {
   readonly seconds: number;
   readonly className?: string;
@@ -269,6 +251,7 @@ export function DictationElapsedTime(props: {
 }
 
 function VoiceActionButton(props: {
+  readonly size?: "regular" | "large";
   readonly accessibilityLabel: string;
   readonly disabled?: boolean;
   readonly icon: AppSymbolName;
@@ -277,11 +260,10 @@ function VoiceActionButton(props: {
   readonly variant?: "plain" | "primary";
 }) {
   const variant = props.variant ?? "plain";
-  const loadingVisibility = useSharedValue(props.loading ? 1 : 0);
-  useLayoutEffect(() => {
-    loadingVisibility.value = withTiming(props.loading ? 1 : 0, DICTATION_TIMING);
-  }, [loadingVisibility, props.loading]);
-  const primaryStyle = useAnimatedStyle(() => ({ opacity: 1 - loadingVisibility.value }));
+  const loading = props.loading === true;
+  const primaryStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(loading ? 0 : 1, DICTATION_TIMING),
+  }));
 
   return (
     <Pressable
@@ -296,7 +278,11 @@ function VoiceActionButton(props: {
       <View
         className={cn(
           "items-center justify-center",
-          variant === "primary" ? "size-[30px] rounded-full bg-subtle" : "size-[44px]",
+          variant === "primary"
+            ? props.size === "large"
+              ? "size-[44px] rounded-full bg-subtle"
+              : "size-[30px] rounded-full bg-subtle"
+            : "size-[44px]",
         )}
       >
         {variant === "primary" ? (
@@ -311,7 +297,7 @@ function VoiceActionButton(props: {
           ) : (
             <SymbolView
               name={props.icon}
-              size={variant === "primary" ? 16 : 20}
+              size={props.size === "large" ? 24 : variant === "primary" ? 16 : 20}
               weight={variant === "primary" ? "semibold" : "regular"}
               tintColorClassName={
                 variant === "primary" ? "accent-primary-foreground" : "accent-icon"
@@ -326,22 +312,19 @@ function VoiceActionButton(props: {
 }
 
 export function ComposerDictationStatus(props: {
-  readonly audioLevels: SharedValue<number[]>;
+  readonly audioLevels: SharedValue<ReadonlyArray<number>>;
   readonly elapsedSeconds: number;
   readonly phase: VoiceInputPhase;
   readonly presentation: VoiceComposerPresentation;
   readonly onDismissError: () => void;
 }) {
   const t = useTranslation();
-  const recordingVisibility = useSharedValue(props.phase === "recording" ? 1 : 0);
-  useLayoutEffect(() => {
-    recordingVisibility.value = withTiming(props.phase === "recording" ? 1 : 0, DICTATION_TIMING);
-  }, [props.phase, recordingVisibility]);
+  const recording = props.phase === "recording";
   const waveformStyle = useAnimatedStyle(() => ({
-    opacity: recordingVisibility.value,
+    opacity: withTiming(recording ? 1 : 0, DICTATION_TIMING),
   }));
   const labelStyle = useAnimatedStyle(() => ({
-    opacity: 1 - recordingVisibility.value,
+    opacity: withTiming(recording ? 0 : 1, DICTATION_TIMING),
   }));
 
   if (!props.presentation.statusLabel) return null;
@@ -397,6 +380,7 @@ export function ComposerDictationStatus(props: {
 }
 
 export function ComposerDictationCancelAction(props: {
+  readonly size?: "regular" | "large";
   readonly presentation: VoiceComposerPresentation;
   readonly onCancel: () => void;
 }) {
@@ -404,6 +388,7 @@ export function ComposerDictationCancelAction(props: {
   if (props.presentation.leadingAction !== "cancel") return null;
   return (
     <VoiceActionButton
+      size={props.size}
       accessibilityLabel={t("Cancel dictation")}
       icon="xmark"
       onPress={props.onCancel}
@@ -412,6 +397,7 @@ export function ComposerDictationCancelAction(props: {
 }
 
 export function ComposerDictationPrimaryAction(props: {
+  readonly size?: "regular" | "large";
   readonly state: VoiceInputState;
   readonly presentation: VoiceComposerPresentation;
   readonly isAvailable: boolean;
@@ -424,6 +410,7 @@ export function ComposerDictationPrimaryAction(props: {
   if (props.presentation.trailingAction === "confirm") {
     return (
       <VoiceActionButton
+        size={props.size}
         accessibilityLabel={
           props.presentation.confirmationEnabled
             ? t("Finish dictation")
@@ -442,6 +429,7 @@ export function ComposerDictationPrimaryAction(props: {
 }
 
 export function ComposerDictationStartAction(props: {
+  readonly size?: "regular" | "large";
   readonly state: VoiceInputState;
   readonly isAvailable: boolean;
   readonly disabled?: boolean;
@@ -453,6 +441,7 @@ export function ComposerDictationStartAction(props: {
   const openSettings = props.state.phase === "error" && props.state.errorAction === "settings";
   return (
     <VoiceActionButton
+      size={props.size}
       accessibilityLabel={openSettings ? t("Open microphone settings") : t("Start dictation")}
       disabled={props.disabled}
       icon="mic"

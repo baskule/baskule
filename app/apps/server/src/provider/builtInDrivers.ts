@@ -12,10 +12,7 @@ export const BUILT_IN_DRIVERS: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv
 
 export type BuiltInUsageReadersEnv = ProviderUsageReaderEnv<typeof OpenCodeDriver>;
 
-/**
- * Aggregation keeps the first copy of a duplicate record, so the order is part
- * of the result.
- */
+/** Order matters: aggregation keeps the first duplicate record. */
 export const BUILT_IN_USAGE_DRIVERS: ReadonlyArray<
   AnyProviderDriver<BuiltInDriversEnv, BuiltInUsageReadersEnv>
 > = [OpenCodeDriver];

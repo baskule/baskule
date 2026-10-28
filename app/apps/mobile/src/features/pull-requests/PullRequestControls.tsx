@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import Animated from "react-native-reanimated";
 import { PR_ROW_LAYOUT } from "./pullRequestAnimations";
 import { useNavigation } from "@react-navigation/native";
@@ -124,7 +125,10 @@ export function PullRequestActionToolbar(props: {
   const pendingReview = canReview && draft.comments.length > 0;
   const showAgentControls = agent.canAsk || !permissions.connected;
   const canOpenThread = agent.threads.length > 0 || showAgentControls;
-  const threadLabel = agent.threads.length ? "Continue thread" : "Work on PR";
+  const { shortLabel } = sourceControlClients.get(
+    (props.pr ?? props.params.initialSummary)?.provider,
+  ).changeRequest;
+  const threadLabel = agent.threads.length ? "Continue thread" : `Work on ${shortLabel}`;
   const primaryLabel = pendingReview ? `Submit review · ${draft.comments.length}` : threadLabel;
   const chooseThread = agent.threads.length > 1;
   const agentActions = agent.actions.filter((action) => action.task !== "ask");
@@ -164,7 +168,7 @@ export function PullRequestActionToolbar(props: {
                 <View pointerEvents="none">
                   <IconButton
                     icon="sparkles"
-                    accessibilityLabel={t("PR agent actions")}
+                    accessibilityLabel={t("{{shortLabel}} agent actions", { shortLabel })}
                     disabled={agent.disabled}
                   />
                 </View>
@@ -251,7 +255,7 @@ export function PullRequestActionToolbar(props: {
       identifier="pull-request-agent"
       icon="sparkles"
       title={t("AI helpers")}
-      accessibilityLabel={t("PR agent actions")}
+      accessibilityLabel={t("{{shortLabel}} agent actions", { shortLabel })}
       disabled={agent.disabled}
       separateBackground
     >

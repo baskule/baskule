@@ -1,6 +1,4 @@
-"use client";
 import { useTranslation } from "../../i18n";
-
 import { PlusIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import type { ProviderDriverKind, ServerProviderModel } from "@t3tools/contracts";
@@ -120,7 +118,7 @@ export function CustomModelEditor({
     setError(null);
     setDraft((current) => ({
       ...current,
-      descriptors: descriptorsFromCapabilities(model.capabilities, driverKind),
+      descriptors: descriptorsFromCapabilities(model.capabilities),
     }));
   };
 

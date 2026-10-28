@@ -2,7 +2,6 @@ import type { UsageProviderKind } from "@t3tools/contracts";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 export const PROVIDER_ORDER: readonly UsageProviderKind[] = ["opencode"];
 
-/** The usage series a provider driver reports under, or null for drivers without one. */
 export function usageProviderKind(driver: string): UsageProviderKind | null {
   return PROVIDER_ORDER.find((kind) => kind === driver) ?? null;
 }
@@ -11,12 +10,9 @@ export const PROVIDER_LABEL: Record<UsageProviderKind, string> = {
   opencode: "OpenCode",
 };
 
-export function useProviderColors(): Record<UsageProviderKind, string> {
-  const { themeAppearance: scheme } = useAppearancePreferences();
-  return {
-    opencode: "#5b9bbd",
-  };
-}
+export const PROVIDER_COLORS: Record<UsageProviderKind, string> = {
+  opencode: "#5b9bbd",
+};
 
 export function useUsageMixColors() {
   const { themeAppearance: scheme } = useAppearancePreferences();

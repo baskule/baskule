@@ -1,5 +1,5 @@
 import { useTranslation } from "../../i18n";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
@@ -9,7 +9,7 @@ import {
   type ProviderSettingsFormOption,
   type ProviderSettingsFormSchemaAnnotation,
 } from "@t3tools/contracts";
-import { PlusIcon, XIcon } from "lucide-react";
+import { XIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
@@ -20,7 +20,6 @@ import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import type { ProviderClientDefinition } from "@t3tools/provider-core/client";
 import { SettingsRow } from "./settingsLayout";
-("use client");
 
 export type SettingsFormDefinition = Pick<ProviderClientDefinition, "settingsSchema"> & {
   readonly driverKind?: ProviderClientDefinition["driverKind"];
@@ -85,7 +84,6 @@ function readFieldBooleanDefault(
 
 export function deriveProviderSettingsFields(
   definition: SettingsFormDefinition,
-  value?: unknown,
 ): ReadonlyArray<ProviderSettingsFieldModel> {
   const schemaAnnotation = readProviderSettingsFormSchemaAnnotation(definition);
   const orderedKeys = new Map(
@@ -130,113 +128,34 @@ export function deriveProviderSettingsFields(
     });
 }
 
-let commandArgumentDraftId = 0;
-const makeCommandArgumentDraftRow = (value: string) => ({
-  id: `provider-argument-${commandArgumentDraftId++}`,
-  value,
-});
-
-function commandArgumentsEqual(left: ReadonlyArray<string>, right: ReadonlyArray<string>) {
-  return left.length === right.length && left.every((argument, index) => argument === right[index]);
+/**
+ * Editable rows seeded from a configured value. `seen` is the value the rows
+ * were last reconciled against; `lastPublished` is what the rows last sent to
+ * the owner, so its echo does not reseed rows (and drop their ids) mid-edit.
+ */
+export interface RowsDraft<V, R> {
+  readonly rows: ReadonlyArray<R>;
+  readonly seen: V;
+  readonly lastPublished: V | undefined;
 }
 
-function configuredCommandArgs(value: ProviderSettingsFormProps["value"]) {
-  const configured =
-    value !== null && typeof value === "object"
-      ? (value as Record<string, unknown>).commandArgs
-      : undefined;
-  return Array.isArray(configured)
-    ? configured.filter((argument): argument is string => typeof argument === "string")
-    : [];
+export function seedRowsDraft<V, R>(
+  value: V,
+  toRows: (value: V) => ReadonlyArray<R>,
+): RowsDraft<V, R> {
+  return { rows: toRows(value), seen: value, lastPublished: undefined };
 }
 
-function ProviderCommandArguments({
-  value,
-  onChange,
-}: Pick<ProviderSettingsFormProps, "value" | "onChange">) {
-  const t = useTranslation();
-  const args = configuredCommandArgs(value);
-  const [rows, setRows] = useState(() => args.map(makeCommandArgumentDraftRow));
-  const rowsRef = useRef(rows);
-  const previousArgsRef = useRef(args);
-  const lastPublishedArgsRef = useRef<ReadonlyArray<string> | undefined>(undefined);
-
-  useEffect(() => {
-    const previousArgs = previousArgsRef.current;
-    const lastPublishedArgs = lastPublishedArgsRef.current;
-    previousArgsRef.current = args;
-    lastPublishedArgsRef.current = undefined;
-    if (
-      commandArgumentsEqual(previousArgs, args) ||
-      (lastPublishedArgs !== undefined && commandArgumentsEqual(lastPublishedArgs, args))
-    )
-      return;
-    const nextRows = args.map(makeCommandArgumentDraftRow);
-    rowsRef.current = nextRows;
-    setRows(nextRows);
-  }, [args]);
-
-  const updateArguments = (nextRows: typeof rows) => {
-    rowsRef.current = nextRows;
-    setRows(nextRows);
-    const next = nextRows.map((row) => row.value);
-    lastPublishedArgsRef.current = next;
-    const config =
-      value !== null && typeof value === "object" ? { ...(value as Record<string, unknown>) } : {};
-    onChange({ ...config, commandArgs: next });
-  };
-
-  return (
-    <SettingsRow
-      title={t("Arguments")}
-      description={t("One literal argument per row, in launch order.")}
-      control={
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => updateArguments([...rowsRef.current, makeCommandArgumentDraftRow("")])}
-        >
-          <PlusIcon />
-          {t("Add argument")}
-        </Button>
-      }
-    >
-      {rows.length > 0 ? (
-        <div className="mt-3 min-w-0 space-y-2 pb-2">
-          {rows.map((argument, index) => (
-            <div key={argument.id} className="flex min-w-0 items-center gap-1.5">
-              <DraftInput
-                size="sm"
-                font="mono"
-                value={argument.value}
-                onCommit={(next) =>
-                  updateArguments(
-                    rowsRef.current.map((current) =>
-                      current.id === argument.id ? { ...current, value: next } : current,
-                    ),
-                  )
-                }
-                aria-label={t("Argument {{value1}}", { value1: index + 1 })}
-                spellCheck={false}
-              />
-              <Button
-                type="button"
-                size="icon-micro"
-                variant="ghost-destructive"
-                onClick={() =>
-                  updateArguments(rowsRef.current.filter((current) => current.id !== argument.id))
-                }
-                aria-label={t("Remove argument {{value1}}", { value1: index + 1 })}
-              >
-                <XIcon />
-              </Button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </SettingsRow>
-  );
+/** Reseeds the rows when the configured value changes from outside this editor. */
+export function reconcileRowsDraft<V, R>(
+  draft: RowsDraft<V, R>,
+  incoming: V,
+  equal: (left: V, right: V) => boolean,
+  toRows: (value: V) => ReadonlyArray<R>,
+): RowsDraft<V, R> {
+  if (draft.seen === incoming || equal(draft.seen, incoming)) return draft;
+  const echo = draft.lastPublished !== undefined && equal(draft.lastPublished, incoming);
+  return { rows: echo ? draft.rows : toRows(incoming), seen: incoming, lastPublished: undefined };
 }
 
 function readProviderConfigString(config: unknown, key: string): string {
@@ -556,7 +475,7 @@ export function ProviderSettingsForm({
   variant,
   onChange,
 }: ProviderSettingsFormProps) {
-  const fields = deriveProviderSettingsFields(definition, value);
+  const fields = deriveProviderSettingsFields(definition);
 
   if (fields.length === 0) {
     return null;

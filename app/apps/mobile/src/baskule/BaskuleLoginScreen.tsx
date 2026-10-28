@@ -1,7 +1,7 @@
 import type { BaskuleAuthConfig } from "@t3tools/contracts/baskule";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Linking from "expo-linking";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -57,6 +57,7 @@ export function BaskuleLoginScreen(props: {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanHandled = useRef(false);
   const requestRevision = useRef(0);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Unmount cancels the in-flight native sign-in operation.
   useEffect(
     () => () => {
       requestRevision.current++;
@@ -108,10 +109,15 @@ export function BaskuleLoginScreen(props: {
     }, t("Cannot reach this server."));
   };
 
+  const receiveOpenedLink = useEffectEvent(handleLink);
+  // oxlint-disable-next-line t3code/react-effect-budget -- The parent forwards native connection links after the screen mounts.
   useEffect(() => {
-    if (props.openedUrl) handleLink(props.openedUrl);
+    // oxlint-disable-next-line react/set-state-in-effect -- A native link starts a new server lookup and confirmation on this already-mounted screen.
+    if (props.openedUrl) receiveOpenedLink(props.openedUrl);
   }, [props.openedUrl]);
 
+  const connected = useEffectEvent(() => props.onConnected?.());
+  // oxlint-disable-next-line t3code/react-effect-budget -- Browser sign-in completes asynchronously through the server polling endpoint.
   useEffect(() => {
     if (!pending) return;
     let cancelled = false;
@@ -124,7 +130,7 @@ export function BaskuleLoginScreen(props: {
           if (cancelled || !token) return;
           clearInterval(timer);
           await completeBaskuleSignIn(pending.serverUrl, token);
-          if (!cancelled) props.onConnected?.();
+          if (!cancelled) connected();
           if (!cancelled) setPending(null);
         })
         .catch((cause: unknown) => {
@@ -140,7 +146,7 @@ export function BaskuleLoginScreen(props: {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [pending]);
+  }, [pending, t]);
 
   const startScan = async () => {
     setError(null);

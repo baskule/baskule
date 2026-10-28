@@ -83,6 +83,8 @@ export class TestControlCell extends DurableObject<{ TEST_PRODUCT_SETTINGS: stri
     }
     if (url.pathname === "/_test/usage") return Response.json(this.usage.me(url.searchParams.get("userId") ?? "u-alice"));
     if (url.pathname === "/_test/usage/limits") return this.usage.adminRoute(req, "/usage/limits", url);
+    // This harness registers no push devices; delivery succeeds without a provider call.
+    if (url.pathname === "/_baskule/push/deliver" && req.method === "POST") return Response.json({ ok: true });
     if (url.pathname === "/_test/plugins" && req.method === "POST") {
       const { spaceId, plugins } = await req.json() as { spaceId: string; plugins: SpacePlugins };
       this.ctx.storage.sql.exec("insert into kv(key,value) values(?,?) on conflict(key) do update set value=excluded.value", `plugins:${spaceId}`, JSON.stringify(plugins));

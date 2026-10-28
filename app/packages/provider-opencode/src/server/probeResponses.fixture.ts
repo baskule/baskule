@@ -60,7 +60,7 @@ export function replayOpenCodeServer(
   requestedPaths: Array<string> = [],
 ) {
   const answers: Record<string, RecordedResponse | undefined> = responses;
-  // Both versions decode Basic credentials as UTF-8 (checked live with `pässwörd` and `pass€word`).
+  // Both versions decode Basic credentials as UTF-8.
   const expected = password
     ? `Basic ${Buffer.from(`opencode:${password}`, "utf8").toString("base64")}`
     : undefined;

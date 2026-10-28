@@ -1,6 +1,4 @@
-"use client";
-import { t, useTranslation } from "../../i18n";
-
+import { useTranslation } from "../../i18n";
 import { Spinner } from "~/components/ui/spinner";
 
 import { Toast } from "@base-ui/react/toast";
@@ -66,9 +64,41 @@ export type ThreadToastData = {
     | "secondary";
 };
 
-const toastManager = Toast.createToastManager<ThreadToastData>();
+type BaseToastManager = ReturnType<typeof Toast.createToastManager<ThreadToastData>>;
+type ToastManagerListener = Parameters<BaseToastManager[" subscribe"]>[0];
+type ToastManagerEvent = Parameters<ToastManagerListener>[0];
+
+/**
+ * base-ui's manager drops events while no provider is subscribed. App services raise toasts
+ * from before the first render (and while the root error view replaces the providers), so hold
+ * those until a provider listens.
+ */
+function createBufferedToastManager(): BaseToastManager {
+  const manager = Toast.createToastManager<ThreadToastData>();
+  const listeners = new Set<ToastManagerListener>();
+  const pending: ToastManagerEvent[] = [];
+  manager[" subscribe"]((event) => {
+    if (listeners.size === 0) {
+      pending.push(event);
+      return;
+    }
+    for (const listener of listeners) listener(event);
+  });
+  return {
+    ...manager,
+    " subscribe"(listener) {
+      listeners.add(listener);
+      for (const event of pending.splice(0)) listener(event);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
+const toastManager = createBufferedToastManager();
 rewriteToastCopy(toastManager); // baskule: "chat" copy
-const anchoredToastManager = Toast.createToastManager<ThreadToastData>();
+const anchoredToastManager = createBufferedToastManager();
 type ToastId = ReturnType<typeof toastManager.add>;
 const threadToastVisibleTimeoutRemainingMs = new Map<ToastId, number>();
 
@@ -88,7 +118,7 @@ function errorDescriptionClampClass(type: unknown, description: unknown): string
   if (description.length < ERROR_DESCRIPTION_CLAMP_MIN_CHARS) {
     return undefined;
   }
-  return t("line-clamp-4");
+  return "line-clamp-4";
 }
 
 const toastCornerDismissClass = "absolute z-20 -top-1.5 -right-1.5";
@@ -144,9 +174,10 @@ function ToastExpandableSection({
   children: ReactNode;
   labels: { expand?: string; collapse?: string };
 }) {
+  const t = useTranslation();
   const [open, setOpen] = useState(false);
   const expandLabel = labels.expand ?? "Show details";
-  const collapseLabel = labels.collapse ?? "Hide details";
+  const collapseLabel = labels.collapse ?? t("Hide details");
 
   return (
     <div className="min-w-0">
@@ -177,6 +208,7 @@ function ToastDescriptionAndExpandable({
   toastDescription: unknown;
   toastType: unknown;
 }) {
+  const t = useTranslation();
   const expandableContent = toastData?.expandableContent;
   const labels = toastData?.expandableLabels ?? {};
   const descriptionTrigger = toastData?.expandableDescriptionTrigger ?? false;
@@ -200,7 +232,7 @@ function ToastDescriptionAndExpandable({
   }
 
   const expandLabel = labels.expand ?? "Show details";
-  const collapseLabel = labels.collapse ?? "Hide details";
+  const collapseLabel = labels.collapse ?? t("Hide details");
 
   const toggle = () => setOpen((v) => !v);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -290,7 +322,7 @@ function deriveToastBodyDescriptor(toast: {
     hasVisibleToastAction(toast.actionProps) ||
     hasAdditionalActions ||
     hasSecondaryAction;
-  const inlineContentEndPad = hasTrailingControls ? "pr-6" : "pr-10";
+  const inlineContentEndPad = hasTrailingControls ? "pr-6" : "pr-3.5";
   return {
     Icon,
     stackedActionLayout,
@@ -335,7 +367,12 @@ function ToastBodyContent({
           stackedActionLayout ? "pr-5" : "flex-1",
         )}
       >
-        <div className="flex min-w-0 gap-2">
+        <div
+          className={cn(
+            "flex min-w-0 gap-2",
+            !stackedActionLayout && !hasTrailingControls && "pr-6",
+          )}
+        >
           {leadingIcon ? (
             <div
               className="flex h-lh w-4 shrink-0 items-center justify-center"
@@ -579,9 +616,7 @@ function Toasts({ position }: { position: ToastPosition }) {
                   ? "not-data-expanded:[--toast-calc-height:var(--toast-frontmost-height)] data-expanded:[--toast-calc-height:max(var(--toast-frontmost-height,var(--toast-height)),var(--toast-height))]"
                   : "[--toast-calc-height:max(var(--toast-frontmost-height,var(--toast-height)),var(--toast-height))]",
                 "[--toast-gap:--spacing(3)] [--toast-peek:--spacing(3)] [--toast-scale:calc(max(0,1-(var(--toast-index)*.1)))] [--toast-shrink:calc(1-var(--toast-scale))]",
-                // Root height: never `min-h-(--toast-height)` — Base UI measures height by briefly forcing
-                // `height: auto` on this node; an old `min-height` from `--toast-height` blocks shrinking,
-                // so `recalculateHeight` keeps the inflated value after an expandable closes.
+                // Base UI measures with height:auto; --toast-height as min-height would prevent shrinking.
                 visibleIndex > 0
                   ? "not-data-expanded:h-(--toast-calc-height) data-expanded:h-auto"
                   : "h-auto",
@@ -642,8 +677,8 @@ function Toasts({ position }: { position: ToastPosition }) {
               </div>
               <Toast.Content
                 className={cn(
-                  // `overflow-x: clip` avoids the CSS quirk where pairing `hidden` + `y: visible`
-                  // forces `y` to `auto`. Expandable detail panels can extend below without being cut off.
+                  // overflow-x:clip preserves visible vertical overflow; hidden would force overflow-y:auto
+                  // and clip detail panels.
                   "pointer-events-auto min-h-0 overflow-y-visible pl-3.5 text-sm transition-opacity duration-250 [overflow-x:clip] data-expanded:opacity-100",
                   stackedActionLayout
                     ? "flex flex-col gap-2 py-2.5 pr-3.5"
@@ -767,7 +802,7 @@ function AnchoredToasts() {
   );
 }
 
-export { hiddenToastActionProps, stackedThreadToast } from "./toastHelpers";
+export { stackedThreadToast } from "./toastHelpers";
 export type { StackedThreadToastOptions } from "./toastHelpers";
 
 export {

@@ -7,7 +7,7 @@ import {
   type ProjectCloneSnapshot,
   WS_METHODS,
 } from "@t3tools/contracts";
-import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
+import { mediaMimeTypeFromExtension } from "@t3tools/shared/mediaPreview";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 import {
   getProjectFaviconResourceKey,
@@ -47,7 +47,7 @@ const decodeAssetCollectionKey = Schema.decodeUnknownSync(
   Schema.Tuple([EnvironmentId, Schema.Array(AssetResource)]),
 );
 
-export function parseAssetCollectionKey(
+function parseAssetCollectionKey(
   key: string,
 ): readonly [EnvironmentId, ReadonlyArray<AssetResource>] {
   try {
@@ -81,6 +81,7 @@ export type AssetUrlState =
       readonly expiresAt: number;
       readonly sourcePath?: string;
       readonly imageDimensions?: AssetImageDimensions;
+      readonly fileRevision?: string;
     };
 
 export const MISSING_FILE_ACCESS_MESSAGE =
@@ -125,6 +126,7 @@ export function assetUrlStateFromResult(
     ...(result.value.imageDimensions !== undefined
       ? { imageDimensions: result.value.imageDimensions }
       : {}),
+    ...(result.value.fileRevision !== undefined ? { fileRevision: result.value.fileRevision } : {}),
   };
 }
 

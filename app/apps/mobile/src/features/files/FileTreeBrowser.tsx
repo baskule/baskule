@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 import { Button } from "../../components/ui/Button";
 import { LegendList } from "@legendapp/list/react-native";
 import type { ProjectEntry } from "@t3tools/contracts";
@@ -158,6 +159,7 @@ export function FileTreeBrowser(props: {
     if (!controlledSelectedPath) {
       return;
     }
+    // oxlint-disable-next-line react/set-state-in-effect -- An externally selected file expands its ancestor folders; the user can collapse them afterwards.
     setExpandedPaths((current) => {
       const ancestors = ancestorPaths(controlledSelectedPath);
       if (ancestors.every((ancestor) => current.has(ancestor))) {
@@ -224,10 +226,10 @@ export function FileTreeBrowser(props: {
 
   const extraData = { expandedPaths, loadingDirectories, selectedPath };
 
-  // UIKit owns the header inset on every supported iOS version. Keep the
-  // list as direct screen content so automatic inset adjustment can find it.
+  // Keep the list as direct screen content so UIKit can apply header insets.
   return (
     <LegendList
+      renderScrollComponent={Platform.OS === "ios" ? NativeScrollView : undefined}
       contentInsetStartAdjustment={headerInset}
       alwaysBounceVertical
       className="flex-1"

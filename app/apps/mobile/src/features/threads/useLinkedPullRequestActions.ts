@@ -13,6 +13,10 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { planThreadPullRequestMutation } from "@t3tools/client-runtime/thread-pull-request-compatibility";
+import {
+  capitalizeTerm,
+  sourceControlClients,
+} from "@t3tools/client-runtime/source-control-clients";
 import { AuthOrchestrationOperateScope, type ThreadPullRequestLink } from "@t3tools/contracts";
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useMemo } from "react";
@@ -34,6 +38,7 @@ export function useLinkedPullRequestActions(input: {
 }) {
   const t = useTranslation();
   const { thread, project, runtime } = input;
+  const terminology = sourceControlClients.get(project?.repositoryIdentity?.provider).changeRequest;
   const capabilities = runtime?.serverConfig?.environment.capabilities;
   const canOperate = useEnvironmentScope(
     thread?.environmentId ?? null,
@@ -78,20 +83,25 @@ export function useLinkedPullRequestActions(input: {
       if (mutation === null || mutation.type === "thread.meta.update") return;
       const environmentId = thread.environmentId;
       void run(
-        linked ? "Couldn't link this pull request" : "Couldn't unlink this pull request",
+        linked
+          ? `Couldn't link this ${terminology.singular}`
+          : `Couldn't unlink this ${terminology.singular}`,
         mutation.type === "thread.pull-request.link"
           ? link({ environmentId, input: mutation.input })
           : unlink({ environmentId, input: mutation.input }),
       );
     },
-    [capabilities, link, run, thread, unlink],
+    [capabilities, link, run, terminology, thread, unlink],
   );
 
   const promptLink = useCallback(() => {
+    const { singular } = terminology;
     Dialog.prompt({
-      title: t("Link pull request"),
-      message: t("Paste a pull request URL, or enter 123 / #123 for this thread's repository."),
-      placeholder: t("Pull request URL or #42"),
+      title: t("Link {{singular}}", { singular }),
+      message: t("Paste a {{singular}} URL, or enter 123 / #123 for this thread's repository.", {
+        singular,
+      }),
+      placeholder: t("{{term}} URL or #42", { term: capitalizeTerm(singular) }),
       initialValue: "",
       confirmText: "Link",
       onConfirm: (reference) => {
@@ -101,17 +111,17 @@ export function useLinkedPullRequestActions(input: {
           hasProject: () => true,
         });
         if (resolved === null) {
-          Dialog.alert("Couldn't link this pull request", "Use a pull request URL, 123, or #123.");
+          Dialog.alert(`Couldn't link this ${singular}`, `Use a ${singular} URL, 123, or #123.`);
           return;
         }
         if ("error" in resolved) {
-          Dialog.alert("Couldn't link this pull request", resolved.error);
+          Dialog.alert(`Couldn't link this ${singular}`, resolved.error);
           return;
         }
         setLinked(resolved.link, true);
       },
     });
-  }, [t, project, setLinked]);
+  }, [t, project, setLinked, terminology]);
 
   const menuActions = useCallback(
     (link: ThreadPullRequestLink): MenuAction[] => {
@@ -149,7 +159,13 @@ export function useLinkedPullRequestActions(input: {
       if (action === "copy") void Clipboard.setStringAsync(link.url);
       else if (action === "browser")
         void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
-          if (!opened) Dialog.alert("Unable to open PR", "The pull request could not be opened.");
+          if (!opened) {
+            const { shortLabel, singular } = (
+              sourceControlClients.findByChangeRequestUrl(link.url) ??
+              sourceControlClients.get(undefined)
+            ).changeRequest;
+            Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
+          }
         });
       else if (action === "watch" && thread !== null)
         void run(
@@ -171,8 +187,8 @@ export function useLinkedPullRequestActions(input: {
   );
 
   return useMemo(
-    () => ({ canLink: canEdit, promptLink, menuActions, onMenuAction }),
-    [canEdit, promptLink, menuActions, onMenuAction],
+    () => ({ canLink: canEdit, terminology, promptLink, menuActions, onMenuAction }),
+    [canEdit, terminology, promptLink, menuActions, onMenuAction],
   );
 }
 

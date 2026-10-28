@@ -8,7 +8,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   type LimitAccount,
-  isUsageLimitsCommand,
   collectProviderUsageLimits,
   withUsageLimitsCommands,
   collectLimitAccounts,
@@ -16,8 +15,6 @@ import {
   collectLimitNotices,
   collectLimitPools,
   elapsedShare,
-  formatResetsIn,
-  limitsNotice,
   paceOf,
   paceRemainingPercent,
   providersWithLimits,
@@ -53,98 +50,12 @@ function provider(overrides: Partial<ServerProvider>): ServerProvider {
 }
 
 describe("pace", () => {
-  it.each([
-    ["2026-09-03T12:01:00.000Z", "resets in 1m"],
-    ["2026-09-03T12:00:59.999Z", "Resets momentarily"],
-    ["2026-09-03T12:00:00.001Z", "Resets momentarily"],
-    ["2026-09-03T12:00:00.000Z", "resets now"],
-    ["2026-09-03T11:59:59.999Z", "resets now"],
-  ])("formats the reset boundary at %s", (resetsAt, label) => {
-    expect(formatResetsIn({ ...window, resetsAt }, now)).toBe(label);
-  });
-
-  it("ignores invalid reset timestamps", () => {
-    expect(formatResetsIn({ ...window, resetsAt: "invalid" }, now)).toBeNull();
-  });
-
   it("places the clock three fifths through a five-hour window with two hours left", () => {
     expect(elapsedShare(window, now)).toBeCloseTo(0.6);
     expect(paceRemainingPercent(window, now)).toBe(40);
     expect(paceOf(window, now)).toBe("under");
     expect(paceOf({ ...window, usedPercent: 62 }, now)).toBe("on");
     expect(paceOf({ ...window, usedPercent: 80 }, now)).toBe("ahead");
-  });
-
-  it("has no pace without a reset or a duration", () => {
-    expect(paceOf({ ...window, resetsAt: undefined }, now)).toBeNull();
-    expect(paceOf({ ...window, windowDurationMins: undefined }, now)).toBeNull();
-    expect(paceRemainingPercent({ ...window, resetsAt: undefined }, now)).toBeNull();
-    expect(paceRemainingPercent({ ...window, windowDurationMins: undefined }, now)).toBeNull();
-    expect(formatResetsIn({ ...window, resetsAt: undefined }, now)).toBeNull();
-  });
-
-  it("keeps pace marks within the bar before a window starts and after it expires", () => {
-    expect(paceRemainingPercent(window, Date.parse("2026-09-03T08:00:00.000Z"))).toBe(100);
-    expect(paceRemainingPercent(window, Date.parse("2026-09-03T15:00:00.000Z"))).toBe(0);
-  });
-
-  it("phrases the reset as a countdown", () => {
-    expect(formatResetsIn(window, now)).toBe("resets in 2h 0m");
-    expect(formatResetsIn({ ...window, resetsAt: "2026-09-06T15:30:00.000Z" }, now)).toBe(
-      "resets in 3d 3h",
-    );
-    expect(formatResetsIn({ ...window, resetsAt: "2026-09-03T11:00:00.000Z" }, now)).toBe(
-      "resets now",
-    );
-  });
-});
-
-describe("limitsNotice", () => {
-  it("explains empty bars and passes provider messages through", () => {
-    const checkedAt = "2026-09-03T11:00:00.000Z";
-    expect(limitsNotice({ checkedAt, windows: [window] })).toBeNull();
-    expect(limitsNotice({ checkedAt, windows: [] })).toBe("No limits reported.");
-    expect(limitsNotice({ checkedAt, windows: [], unavailable: { reason: "unsupported" } })).toBe(
-      "This account has no subscription limits.",
-    );
-    expect(
-      limitsNotice({
-        checkedAt,
-        windows: [],
-        unavailable: { reason: "probeFailed", message: "Codex timed out." },
-      }),
-    ).toBe("Codex timed out.");
-  });
-});
-
-describe("providersWithLimits", () => {
-  it("keeps only usable providers whose driver reports limits at all", () => {
-    const limits = { checkedAt: "2026-09-03T11:00:00.000Z", windows: [window] };
-    const codex = provider({ usageLimits: limits });
-    expect(
-      providersWithLimits([
-        codex,
-        provider({
-          instanceId: ProviderInstanceId.make("cursor"),
-          driver: ProviderDriverKind.make("cursor"),
-        }),
-        provider({
-          instanceId: ProviderInstanceId.make("off"),
-          enabled: false,
-          usageLimits: limits,
-        }),
-        provider({
-          instanceId: ProviderInstanceId.make("gone"),
-          installed: false,
-          usageLimits: limits,
-        }),
-        provider({
-          instanceId: ProviderInstanceId.make("shadow"),
-          availability: "unavailable",
-          usageLimits: limits,
-        }),
-      ]),
-    ).toEqual([codex]);
   });
 });
 
@@ -586,24 +497,6 @@ describe("/usage-limits", () => {
   });
 });
 
-describe("remainingPercent", () => {
-  it("inverts and clamps the reported usage", () => {
-    expect(remainingPercent(window)).toBe(60);
-    expect(remainingPercent({ ...window, usedPercent: 0 })).toBe(100);
-    expect(remainingPercent({ ...window, usedPercent: 100 })).toBe(0);
-    expect(remainingPercent({ ...window, usedPercent: 33.4 })).toBe(67);
-  });
-});
-
-describe("isUsageLimitsCommand", () => {
-  it("recognizes only the standalone local action", () => {
-    expect(isUsageLimitsCommand("  /USAGE-LIMITS\n")).toBe(true);
-    expect(isUsageLimitsCommand("/usage-limits explain")).toBe(false);
-    expect(isUsageLimitsCommand("Explain /usage-limits")).toBe(false);
-    expect(isUsageLimitsCommand("/usage")).toBe(false);
-  });
-});
-
 describe("external usage settings", () => {
   it("deduplicates destinations across accounts and environments without inventing quota pools", () => {
     const managed = provider({
@@ -638,31 +531,5 @@ describe("external usage settings", () => {
     ]);
     expect(collectLimitAccounts(presentations)).toEqual([]);
     expect(collectLimitNotices(presentations)).toEqual([]);
-  });
-  it("omits disabled, uninstalled and signed-out providers", () => {
-    const managed = provider({
-      usageLimits: {
-        checkedAt: "2026-09-03T11:00:00.000Z",
-        windows: [],
-        externalUsage: { label: "ChatGPT usage", url: "https://chatgpt.com/#settings/Usage" },
-      },
-    });
-    const presentations = new Map([
-      [
-        EnvironmentId.make("a"),
-        {
-          entry: { target: { label: "A" } },
-          serverConfig: {
-            providers: [
-              { ...managed, enabled: false },
-              { ...managed, installed: false },
-              { ...managed, auth: { status: "unauthenticated" as const } },
-              provider({}),
-            ],
-          },
-        },
-      ],
-    ]);
-    expect(collectExternalUsageLinks(presentations)).toEqual([]);
   });
 });

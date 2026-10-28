@@ -1,7 +1,6 @@
 import * as NodePath from "@effect/platform-node/NodePath";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { assert, describe, it } from "@effect/vitest";
-import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { beforeEach, vi } from "vite-plus/test";
@@ -47,6 +46,7 @@ const layerDesktopClerk = (
   platform: NodeJS.Platform = "darwin",
   fileSystemLayer: Layer.Layer<FileSystem.FileSystem> = FileSystem.layerNoop({
     exists: () => Effect.succeed(false),
+    makeDirectory: () => Effect.void,
   }),
   shell: ElectronShell.ElectronShell["Service"] = {
     openExternal: () => Effect.succeed(true),
@@ -107,64 +107,30 @@ describe("DesktopClerk", () => {
     storageMock.mockReset();
   });
 
-  it.effect("acquires and releases the SDK bridge with the layer", () => {
-    const cleanup = vi.fn();
-    const events: string[] = [];
-    storageMock.mockReturnValue(storageAdapter);
-    createClerkBridgeMock.mockImplementation(() => {
-      events.push("createClerkBridge");
-      return { cleanup, isPrimaryInstance: true };
-    });
-
-    return Effect.gen(function* () {
-      yield* Effect.scoped(Layer.build(layerDesktopClerk(true, events)));
-
-      assert.deepEqual(createClerkBridgeMock.mock.calls, [
-        [
-          {
-            storage: storageAdapter,
-            manageSingleInstanceLock: false,
-            passkeys: true,
-            renderer: { scheme: "t3code-dev", host: "app" },
-          },
-        ],
-      ]);
-      assert.equal(cleanup.mock.calls.length, 1);
-      assert.deepEqual(events, [
-        "setPath:userData:/tmp/app-data/t3code-dev",
-        "requestSingleInstanceLock",
-        "on:second-instance",
-        "createClerkBridge",
-      ]);
-      storageMock.mockClear();
-      createClerkBridgeMock.mockClear();
-    });
-  });
-
   it.each([
     {
       name: "packaged macOS",
       isDevelopment: false,
       platform: "darwin" as const,
-      userData: "/tmp/app-data/t3code-v2",
+      userData: "/tmp/app-data/baskule-desktop",
     },
     {
       name: "packaged Linux",
       isDevelopment: false,
       platform: "linux" as const,
-      userData: "/tmp/app-data/t3code-v2",
+      userData: "/tmp/app-data/baskule-desktop",
     },
     {
       name: "packaged Windows",
       isDevelopment: false,
       platform: "win32" as const,
-      userData: "/tmp/app-data/t3code-v2",
+      userData: "/tmp/app-data/baskule-desktop",
     },
     {
       name: "development",
       isDevelopment: true,
       platform: "win32" as const,
-      userData: "/tmp/app-data/t3code-dev",
+      userData: "/tmp/app-data/baskule-dev",
     },
   ])(
     "creates the bridge before startup can yield to the event loop ($name)",
@@ -192,54 +158,6 @@ describe("DesktopClerk", () => {
       ]);
     },
   );
-
-  it.effect("preserves bridge initialization failures", () => {
-    const cause = new Error("bridge initialization failed");
-    storageMock.mockReturnValue(storageAdapter);
-    createClerkBridgeMock.mockImplementationOnce(() => {
-      throw cause;
-    });
-
-    return Effect.gen(function* () {
-      const error = yield* Effect.scoped(Layer.build(layerDesktopClerk())).pipe(Effect.flip);
-
-      assert.instanceOf(error, DesktopClerk.DesktopClerkBridgeInitializationError);
-      assert.equal(error.stateDir, "/tmp/t3-state");
-      assert.equal(error.isDevelopment, true);
-      assert.strictEqual(error.cause, cause);
-      assert.equal(
-        error.message,
-        'Failed to initialize the desktop Clerk bridge for state directory "/tmp/t3-state" (development: true).',
-      );
-    });
-  });
-
-  it.effect("preserves bridge cleanup failures", () => {
-    const cause = new Error("bridge cleanup failed");
-    storageMock.mockReturnValue(storageAdapter);
-    createClerkBridgeMock.mockReturnValue({
-      cleanup: () => {
-        throw cause;
-      },
-    });
-
-    return Effect.gen(function* () {
-      const exit = yield* Effect.exit(Effect.scoped(Layer.build(layerDesktopClerk(false))));
-
-      assert.equal(exit._tag, "Failure");
-      if (exit._tag === "Failure") {
-        const error = Cause.squash(exit.cause);
-        assert.instanceOf(error, DesktopClerk.DesktopClerkBridgeCleanupError);
-        assert.equal(error.stateDir, "/tmp/t3-state");
-        assert.equal(error.isDevelopment, false);
-        assert.strictEqual(error.cause, cause);
-        assert.equal(
-          error.message,
-          'Failed to clean up the desktop Clerk bridge for state directory "/tmp/t3-state" (development: false).',
-        );
-      }
-    });
-  });
 
   it.effect.each(["before configure", "after configure"] as const)(
     "reveals the running window when a second instance launches %s",
@@ -285,9 +203,9 @@ describe("DesktopClerk", () => {
     createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
     const listeners = new Map<string, (...args: unknown[]) => void>();
     const received: string[] = [];
-    const first = "t3code://new?prompt=first";
-    const second = "t3code://threads/env-1/thread-1";
-    const later = "t3code://new?prompt=later";
+    const first = "baskule://new?prompt=first";
+    const second = "baskule://threads/env-1/thread-1";
+    const later = "baskule://new?prompt=later";
     const delivered = Promise.withResolvers<void>();
     const electronApp = {
       on: (name: string, listener: (...args: unknown[]) => void) =>
@@ -349,7 +267,7 @@ describe("DesktopClerk", () => {
 
         assert.isTrue(Exit.hasInterrupts(exit));
         assert.deepEqual(events, [
-          "setPath:userData:/tmp/app-data/t3code-v2",
+          "setPath:userData:/tmp/app-data/baskule-desktop",
           "requestSingleInstanceLock",
           "quit",
         ]);
@@ -382,16 +300,16 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
       };
       assert.strictEqual(open("https://example.com/page"), 1);
       assert.strictEqual(open("http://localhost:3000/"), 1);
-      assert.strictEqual(open("t3code://new?prompt=hi"), 1);
-      assert.strictEqual(open("t3code://threads/env-1/thread-1"), 1);
+      assert.strictEqual(open("baskule://new?prompt=hi"), 1);
+      assert.strictEqual(open("baskule://threads/env-1/thread-1"), 1);
       assert.strictEqual(open("mailto:hello@example.com"), 0);
-      assert.strictEqual(open("t3code://somewhere-else"), 0);
+      assert.strictEqual(open("baskule://somewhere-else"), 0);
       yield* Effect.yieldNow;
       assert.deepStrictEqual(received, [
         "https://example.com/page",
         "http://localhost:3000/",
-        "t3code://new?prompt=hi",
-        "t3code://threads/env-1/thread-1",
+        "baskule://new?prompt=hi",
+        "baskule://threads/env-1/thread-1",
       ]);
     }).pipe(
       Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),

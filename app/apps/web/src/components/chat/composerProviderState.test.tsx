@@ -15,7 +15,7 @@ import {
   renderProviderTraitsPicker,
   withImplicitFastModeDefault,
 } from "./composerProviderState";
-const PROVIDER: ProviderDriverKind = ProviderDriverKind.make("codex");
+const PROVIDER: ProviderDriverKind = ProviderDriverKind.make("opencode");
 const MODEL = "test-model";
 
 function selectDescriptor(
@@ -251,21 +251,6 @@ describe("getComposerProviderState", () => {
     );
   });
 
-  it.each(["codex", "claudeAgent", "cursor", "grok"])(
-    "does not preserve unknown options for a missing %s model",
-    (provider) => {
-      const state = getComposerProviderState({
-        provider: ProviderDriverKind.make(provider),
-        model: "missing-model",
-        models: modelWith([]),
-        modelOptions: selections(["unknown", "value"]),
-        planModeEnabled: true,
-      });
-
-      expect(state.modelOptionsForDispatch).toBeUndefined();
-    },
-  );
-
   it("preserves explicit options while the catalog is empty", () => {
     const state = getComposerProviderState({
       provider: ProviderDriverKind.make("opencode"),
@@ -280,9 +265,9 @@ describe("getComposerProviderState", () => {
     );
   });
 
-  it("validates options for a known model selected through a legacy alias", () => {
+  it("validates options for a known model selected through a catalog alias", () => {
     const state = getComposerProviderState({
-      provider: ProviderDriverKind.make("claudeAgent"),
+      provider: ProviderDriverKind.make("opencode"),
       model: "legacy-test-model",
       models: [
         {
@@ -321,7 +306,7 @@ describe("getComposerProviderState", () => {
 
   it("defaults fastMode to false when the provider reports true but the user has not selected it", () => {
     const state = getComposerProviderState({
-      provider: ProviderDriverKind.make("cursor"),
+      provider: ProviderDriverKind.make("opencode"),
       model: MODEL,
       models: modelWith([booleanDescriptor("fastMode", true)]),
       modelOptions: undefined,
@@ -333,7 +318,7 @@ describe("getComposerProviderState", () => {
 
   it("keeps explicit fastMode true when the user selected Fast", () => {
     const state = getComposerProviderState({
-      provider: ProviderDriverKind.make("cursor"),
+      provider: ProviderDriverKind.make("opencode"),
       model: MODEL,
       models: modelWith([booleanDescriptor("fastMode", true)]),
       modelOptions: selections(["fastMode", true]),
@@ -345,7 +330,7 @@ describe("getComposerProviderState", () => {
 
   it("keeps explicit fastMode false when the user selected Normal", () => {
     const state = getComposerProviderState({
-      provider: ProviderDriverKind.make("cursor"),
+      provider: ProviderDriverKind.make("opencode"),
       model: MODEL,
       models: modelWith([booleanDescriptor("fastMode", true)]),
       modelOptions: selections(["fastMode", false]),
@@ -359,7 +344,7 @@ describe("getComposerProviderState", () => {
 describe("trait controls fastMode display", () => {
   it("resolves traits fastMode to Normal when the provider defaults to true without a user selection", () => {
     const models = modelWith([booleanDescriptor("fastMode", true)]);
-    const provider = ProviderDriverKind.make("cursor");
+    const provider = ProviderDriverKind.make("opencode");
     const caps = getProviderModelCapabilities(models, MODEL, provider);
     const resolved = withImplicitFastModeDefault(caps, undefined);
     const descriptors = getProviderOptionDescriptors({ caps, selections: resolved });
@@ -382,8 +367,6 @@ describe("provider traits render guards", () => {
       model: MODEL,
       models,
       modelOptions: undefined,
-      prompt: "",
-      onPromptChange: () => {},
       planModeEnabled: true,
     };
 
@@ -398,7 +381,7 @@ describe("getComposerReasoningStep", () => {
     { id: "medium", label: "Medium", isDefault: true },
     { id: "high", label: "High" },
   ];
-  const INSTANCE = ProviderInstanceId.make("codex");
+  const INSTANCE = ProviderInstanceId.make("opencode");
 
   function step(input: Partial<Parameters<typeof getComposerReasoningStep>[0]>) {
     return getComposerReasoningStep({
@@ -446,8 +429,8 @@ describe("getComposerReasoningStep", () => {
 
   it("keeps a provider-default Fast mode off unless the user chose it", () => {
     const cursor = {
-      provider: ProviderDriverKind.make("cursor"),
-      instanceId: ProviderInstanceId.make("cursor"),
+      provider: ProviderDriverKind.make("opencode"),
+      instanceId: ProviderInstanceId.make("opencode"),
       models: modelWith([
         selectDescriptor("reasoning_effort", LEVELS),
         booleanDescriptor("fastMode", true),
@@ -473,7 +456,10 @@ describe("getComposerReasoningStep", () => {
       {
         label: "other instance",
         modelOptions: undefined,
-        reportedModelSelection: { ...reported, instanceId: ProviderInstanceId.make("codex-work") },
+        reportedModelSelection: {
+          ...reported,
+          instanceId: ProviderInstanceId.make("opencode-work"),
+        },
         to: "high",
       },
       {

@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off -- native workerd adapter implementing the platform boundary.
 // baskule: the HostFileSystem (`node:fs/promises` subset) of a space cell, for T3's workspace
 // and media modules: file tree, file reads and writes, downloads and attachment bytes.
 // Members reach these through RPCs and signed asset URLs, so only the computer (`/sandbox`) and

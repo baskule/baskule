@@ -1,5 +1,5 @@
 # Build environment for the staging runner. Context: this directory; sources and caches are mounted at runtime.
-FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS node
+FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS node
 FROM docker:29-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb AS docker
 # Match the Ubuntu 24.04 staging host and OpenShell runtime.
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
@@ -20,8 +20,9 @@ COPY --from=node /usr/local /usr/local
 COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 # Rust as pinned by vendor/openshell/rust-toolchain.toml; the registry and build caches live on the host (run.sh).
-ENV RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+ENV RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH
 RUN curl -fsSL https://sh.rustup.rs | CARGO_HOME=/usr/local/cargo sh -s -- -y -q --profile minimal \
-      --default-toolchain 1.95.0 -c rustfmt,rust-src,rust-analyzer && corepack enable pnpm
+      --default-toolchain 1.95.0 -c rustfmt,rust-src,rust-analyzer
+RUN npm install --global --ignore-scripts pnpm@12.14.0
 COPY run.sh /usr/local/bin/baskule-build
 CMD ["baskule-build"]

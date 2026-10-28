@@ -185,3 +185,16 @@ Run `desktop/build.sh` from the umbrella checkout before publishing downloads. T
 Electron app with a bundled renderer and native IPC; [desktop/README.md](../../desktop/README.md) describes the local
 checks and native toolchain. The former standalone Electron shell has been removed. New desktop installs start
 with a fresh profile and require reconnecting; this change needs no server-data wipe.
+
+## T3 Code v0.1.3 toolchain
+
+Build this revision with Node 26.12.1 and pnpm 12.14.0. Rebuild the build-environment image from
+`deploy/v2/build-env/Dockerfile`; it installs pnpm directly with npm because Node 26 does not
+include Corepack. On a source-build host, run `scripts/worktree setup`, source `scripts/env.sh`,
+and rebuild SpaceCell with `scripts/worktree runtime` before building the app. Both workspaces
+require their checked-in frozen lockfiles.
+
+Deploy the web client and embedded server bundle together through the installation's normal
+reviewed deployment procedure. This upgrade adds no Baskule data-wipe requirement for an
+already OpenCode-only installation. Existing alpha wipe requirements above still apply.
+Native clients need fresh platform builds; a hosted deployment does not replace installed clients.

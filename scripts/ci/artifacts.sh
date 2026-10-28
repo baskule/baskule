@@ -28,7 +28,7 @@ provenance = {
     "repository": os.environ.get("GITHUB_REPOSITORY"),
     "run": f'{os.environ.get("GITHUB_SERVER_URL", "https://github.com")}/{os.environ.get("GITHUB_REPOSITORY", "")}/actions/runs/{os.environ.get("GITHUB_RUN_ID", "")}',
     "runner": {"os": os.environ.get("RUNNER_OS"), "architecture": os.environ.get("RUNNER_ARCH")},
-    "toolchains": {"node": "24.22.1", "rust": "1.95.0"},
+    "toolchains": {"node": "26.12.1", "rust": "1.95.0"},
     "signing": "unsigned",
 }
 if sys.argv[2] == "backend":

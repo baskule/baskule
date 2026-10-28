@@ -1,10 +1,12 @@
 import { assert, it } from "@effect/vitest";
 import {
   CheckpointScopeId,
+  ContextTransferId,
   NodeId,
   EventId,
   MessageId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   RunId,
   ThreadId,

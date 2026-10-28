@@ -37,9 +37,9 @@ const toolNames = Effect.map(Effect.service(McpServer.McpServer), (server) =>
 it.effect("registers only the tools the space policy allows", () =>
   Effect.gen(function* () {
     const names = yield* toolNames;
-    expect(names).toEqual(["preview_click", "preview_status"]);
+    expect(names).toEqual(["preview_act", "preview_status"]);
   }).pipe(
-    Effect.provide(layerFor(new Set(["preview_status", "preview_click", "t3_thread_launch"]))),
+    Effect.provide(layerFor(new Set(["preview_status", "preview_act", "t3_thread_launch"]))),
   ),
 );
 
@@ -62,12 +62,12 @@ it.effect("defers registration to the first request when the cell asks for it", 
     expect(yield* toolNames).toEqual([]);
     const deferred = yield* Effect.service(McpDeferredRegistrations.McpDeferredRegistrations);
     yield* Effect.all([deferred.ensure, deferred.ensure], { concurrency: "unbounded" });
-    expect(yield* toolNames).toEqual(["preview_click", "preview_status"]);
+    expect(yield* toolNames).toEqual(["preview_act", "preview_status"]);
     yield* deferred.ensure;
-    expect(yield* toolNames).toEqual(["preview_click", "preview_status"]);
+    expect(yield* toolNames).toEqual(["preview_act", "preview_status"]);
   }).pipe(
     Effect.provide(
-      layerFor(new Set(["preview_status", "preview_click"])).pipe(
+      layerFor(new Set(["preview_status", "preview_act"])).pipe(
         Layer.provideMerge(McpDeferredRegistrations.layer),
       ),
     ),

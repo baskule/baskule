@@ -74,7 +74,6 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
-import { delegatedTaskRun, hasPendingChildRuns } from "./OrchestratorMcpService.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import {
   FULL_TEST_PROVIDER_CAPABILITIES,
@@ -1855,42 +1854,6 @@ describe("orchestrator MCP toolkit", () => {
               latestTerminalRunId: childFollowup.runId,
               latestTerminalStatus: "completed",
             });
-            const activeChildProjection = yield* orchestrator.getThreadProjection(
-              delegated.childThreadId,
-            );
-            const legacyChildProjection = {
-              ...activeChildProjection,
-              contextTransfers: activeChildProjection.contextTransfers.filter(
-                (transfer) => transfer.type !== "subagent_spawn",
-              ),
-            };
-            const legacyDelegatedRun = delegatedTaskRun(legacyChildProjection, completedTask!);
-            expect(legacyDelegatedRun?.id).toBe(delegated.childRunId);
-            expect(hasPendingChildRuns(legacyChildProjection, legacyDelegatedRun)).toBe(true);
-            expect(
-              hasPendingChildRuns(
-                {
-                  ...legacyChildProjection,
-                  runs: legacyChildProjection.runs.map((run) =>
-                    run.id === activeChildFollowup.runId ? { ...run, status: "queued" } : run,
-                  ),
-                },
-                legacyDelegatedRun,
-              ),
-            ).toBe(true);
-            expect(
-              hasPendingChildRuns(
-                {
-                  ...legacyChildProjection,
-                  runs: legacyChildProjection.runs.map((run) =>
-                    run.id === activeChildFollowup.runId
-                      ? { ...run, status: "queued", queueHeld: true }
-                      : run,
-                  ),
-                },
-                legacyDelegatedRun,
-              ),
-            ).toBe(false);
             const heldFollowupCall = yield* invoke("t3_thread_send", {
               threadId: delegated.childThreadId,
               message: "This queued follow-up must remain stopped until resumed.",

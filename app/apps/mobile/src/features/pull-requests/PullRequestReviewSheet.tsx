@@ -83,7 +83,7 @@ export function PullRequestReviewSheet({
   const target = pullRequestTarget(params);
   const result = useEnvironmentQuery(composerPullRequests.detail(target));
   const { refresh: refreshDetail } = result;
-  useFocusEffect(() => refreshDetail());
+  useFocusEffect(refreshDetail);
   const permissions = usePullRequestPermissions(params, result.data);
   const submission = useActionSubmission(params);
   const review = useAtomCommand(composerPullRequests.submitReview, { reportFailure: false });
@@ -259,7 +259,8 @@ export function PullRequestReviewSheet({
       {reviewing && !canSubmitComments ? (
         <Text className="text-sm text-danger-foreground">
           {t(
-            "You can no longer submit line comments on this pull request. Your drafts are kept here.",
+            "You can no longer submit line comments on this {{singular}}. Your drafts are kept here.",
+            { singular: sourceControlClients.get(result.data?.provider).changeRequest.singular },
           )}
         </Text>
       ) : null}

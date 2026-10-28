@@ -46,7 +46,7 @@ const noComputer: Service = {
       new ServerBrowserLaunchError({ cause: "This space has no computer for a shared browser." }),
     ) as unknown as ReturnType<Service["attachViewer"]>,
   answerFileChooser: () => Effect.succeed(false),
-  openDownload: () => Effect.succeed(Option.none()),
+  openDownload: () => Effect.succeedNone,
   clearProfile: (profileId) =>
     Effect.fail(new PreviewClearProfileError({ profileId, cause: "no computer" })),
   reportProfiles: () => Effect.void,

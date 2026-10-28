@@ -23,7 +23,7 @@ export function readPreparedConnection(environmentId: EnvironmentId) {
 
 const EMPTY_SESSION_STATE_ATOM = Atom.make(AsyncResult.initial<AuthSessionState>());
 
-function sessionHasScope(
+export function sessionHasScope(
   result: AsyncResult.AsyncResult<AuthSessionState, unknown>,
   scope: AuthEnvironmentScope,
 ): boolean {

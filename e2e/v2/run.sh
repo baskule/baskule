@@ -27,7 +27,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 . "$ROOT/deploy/v2/lib.sh"
 export STACK_LOCK_OWNER=${STACK_LOCK_OWNER:-wp-h-e2e}
 export STACK_LOCK_WAIT=${STACK_LOCK_WAIT:-600}
-export PATH="$ROOT/.tools/bin:$ROOT/.tools/node-v24.22.1-linux-x64/bin:$PATH"
+source "$ROOT/scripts/env.sh"
 say() { printf '\033[1m[e2e/v2 %s]\033[0m %s\n' "$(date +%T)" "$*"; }
 
 stack_lock_acquire $$ "e2e/v2/run.sh $*" || exit 1

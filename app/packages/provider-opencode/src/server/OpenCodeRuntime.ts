@@ -86,8 +86,7 @@ export class OpenCodeRuntimeError extends Data.TaggedError(OPENCODE_RUNTIME_ERRO
 
 export type OpenCodeStartupFailureReason = "databaseLocked";
 
-// OpenCode reports a held opencode.db lock on stderr. Classify it once where the
-// exit is captured so callers branch on the category, not on diagnostic text.
+// Classify stderr database locks at exit so callers need not parse diagnostics.
 function classifyStartupExit(stderr: string): OpenCodeStartupFailureReason | undefined {
   return /SQLITE_BUSY|database is locked/i.test(stderr) ? "databaseLocked" : undefined;
 }
@@ -102,8 +101,7 @@ function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
 
 export function openCodeRuntimeErrorDetail(cause: unknown): string {
   if (isOpenCodeRuntimeError(cause)) return cause.detail;
-  // Effect's TimeoutError can be constructed without a message, so `message`
-  // is not guaranteed to be a string on every Error that reaches here.
+  // Effect TimeoutError can have a non-string message.
   if (cause instanceof Error) {
     const message = cause.message;
     if (typeof message === "string") {
@@ -112,7 +110,7 @@ export function openCodeRuntimeErrorDetail(cause: unknown): string {
     }
   }
   if (cause && typeof cause === "object") {
-    // SDK v2 throws { response, request, error? } shapes — extract what's useful
+    // SDK v2 throws response/request/error envelopes.
     const anyCause = cause as Record<string, unknown>;
     const status = (anyCause.response as { status?: number } | undefined)?.status;
     const body = anyCause.error ?? anyCause.data ?? anyCause.body;
@@ -138,10 +136,7 @@ export interface ParsedOpenCodeModelSlug {
 export class OpenCodeRuntime extends Context.Service<
   OpenCodeRuntime,
   {
-    /**
-     * Its lifetime is bound to the caller's `Scope.Scope` — the child is killed automatically
-     * when that scope closes.
-     */
+    /** Closing the caller's scope kills the child. */
     readonly startOpenCodeServerProcess: (input: {
       readonly binaryPath: string;
       readonly directory: string;
@@ -205,9 +200,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
   const hostPlatform = yield* HostProcess.Platform;
   const serverLedger = yield* OpenCodeServerLedger.OpenCodeServerLedger;
   const agentScope = yield* AgentScope;
-  // npm installs OpenCode as `opencode.CMD`, which `cmd.exe` runs. The
-  // `opencode.exe` it starts escapes libuv's kill-on-close job and outlives a
-  // server that is killed, so the shim's executable runs directly instead.
+  // npm's Windows shim lets the child escape libuv kill-on-close; run its executable directly.
   const resolveCommand = (command: string, args: ReadonlyArray<string>, env?: NodeJS.ProcessEnv) =>
     resolveSpawnCommand(command, args, { ...(env ? { env } : {}), bypassNpmShim: true });
 
@@ -484,8 +477,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           ),
         );
       });
-      // OpenCode instances share opencode.db. Migration/WAL locks are transient;
-      // configuration and executable errors are not helped by launching again.
+      // Shared opencode.db locks are transient; retry those, not configuration/executable errors.
       return yield* attempt.pipe(
         Effect.retry({
           times: 3,

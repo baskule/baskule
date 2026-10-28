@@ -1,11 +1,10 @@
-import { ENABLED_WORKSPACE_TABS } from "./workspace-tabs-state";
 import { useTranslation } from "../../i18n";
 import { Keyboard, Pressable, View } from "react-native";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
-import { WORKSPACE_DOCK } from "./workspace-tabs-state";
+import { ENABLED_WORKSPACE_TABS, WORKSPACE_DOCK } from "./workspace-tabs-state";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
 export function WorkspaceDock(props: { readonly onNewTask: () => void }) {

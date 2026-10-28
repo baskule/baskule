@@ -1086,288 +1086,96 @@ it.layer(
       }),
     );
 
-    it.effect("deduplicates cwd probes and clears snapshots when an instance rebuilds", () =>
-      Effect.gen(function* () {
-        const driver = ProviderDriverKind.make("example");
-        const instanceId = ProviderInstanceId.make("example");
-        const machineProvider = {
-          instanceId,
-          driver,
-          status: "ready",
-          enabled: true,
-          installed: true,
-          auth: { status: "authenticated" },
-          checkedAt: "2026-06-10T00:00:00.000Z",
-          version: "1.0.0",
-          models: [],
-          slashCommands: [{ name: "global" }],
-          skills: [{ name: "global", path: "/global/SKILL.md", enabled: true }],
-        } as const satisfies ServerProvider;
-        const scopedProvider = {
-          ...machineProvider,
-          checkedAt: "2026-06-10T00:01:00.000Z",
-          slashCommands: [{ name: "project" }],
-          skills: [{ name: "project", path: "/workspace/SKILL.md", enabled: true }],
-        } as const satisfies ServerProvider;
-        const snapshotCalls = yield* Ref.make(0);
-        const scopedResult = yield* Ref.make<ProviderWorkspaceSnapshot>({
-          ...scopedProvider,
-          status: "error",
-          slashCommands: [COMPACT_SLASH_COMMAND],
-          slashCommandsPending: true,
-        });
-        const cacheInvalidations = yield* Ref.make(0);
-        const scanGate = yield* Ref.make<{
-          readonly started: Deferred.Deferred<void>;
-          readonly release: Deferred.Deferred<void>;
-        } | null>(null);
-        const failScan = yield* Ref.make(true);
-        const probeStarted = yield* Deferred.make<void>();
-        const releaseProbe = yield* Deferred.make<void>();
-        const makeInstance = (
-          provider: ServerProvider,
-          snapshotForCwd: NonNullable<ProviderInstance["snapshotForCwd"]>,
-        ): ProviderInstance => ({
-          instanceId,
-          driverKind: driver,
-          continuationIdentity: {
+    it.effect(
+      "a second request for a cwd being scanned gets its result, even if the first leaves",
+      () =>
+        Effect.gen(function* () {
+          const driver = ProviderDriverKind.make("codex");
+          const instanceId = ProviderInstanceId.make("codex");
+          const provider = {
+            instanceId,
+            driver,
+            status: "ready",
+            enabled: true,
+            installed: true,
+            auth: { status: "authenticated" },
+            checkedAt: "2026-06-10T00:00:00.000Z",
+            version: "1.0.0",
+            models: [],
+            slashCommands: [],
+            skills: [],
+          } as const satisfies ServerProvider;
+          const scanStarted = yield* Deferred.make<void>();
+          const releaseScan = yield* Deferred.make<void>();
+          const scans = yield* Ref.make(0);
+          const instance: ProviderInstance = {
+            instanceId,
             driverKind: driver,
-            continuationKey: "example:instance:example",
-          },
-          displayName: undefined,
-          enabled: true,
-          snapshot: {
-            resolveMaintenance: () =>
-              Effect.succeed(
-                makeManualOnlyProviderMaintenanceCapabilities({
-                  provider: driver,
-                  packageName: null,
+            continuationIdentity: { driverKind: driver, continuationKey: "codex:instance:codex" },
+            displayName: undefined,
+            enabled: true,
+            snapshot: {
+              resolveMaintenance: () =>
+                Effect.succeed(
+                  makeManualOnlyProviderMaintenanceCapabilities({
+                    provider: driver,
+                    packageName: null,
+                  }),
+                ),
+              getSnapshot: Effect.succeed(provider),
+              refresh: Effect.succeed(provider),
+              streamChanges: Stream.empty,
+              applyUsageLimits: () => Effect.void,
+            },
+            snapshotForCwd: () =>
+              Ref.update(scans, (count) => count + 1).pipe(
+                Effect.andThen(Deferred.succeed(scanStarted, undefined)),
+                Effect.andThen(Deferred.await(releaseScan)),
+                Effect.as(provider),
+              ),
+            orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+            textGeneration: {} as ProviderInstance["textGeneration"],
+          };
+          const layerInstanceRegistry = Layer.succeed(
+            ProviderInstanceRegistry.ProviderInstanceRegistry,
+            {
+              getInstance: (requestedId) =>
+                Effect.succeed(requestedId === instanceId ? instance : undefined),
+              listInstances: Effect.succeed([instance]),
+              listUnavailable: Effect.succeed([]),
+              streamChanges: Stream.empty,
+              subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), PubSub.subscribe),
+            },
+          );
+          const scope = yield* Scope.make();
+          yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+          const runtimeServices = yield* Layer.build(
+            ProviderRegistry.layer.pipe(
+              Layer.provideMerge(layerInstanceRegistry),
+              Layer.provideMerge(
+                ServerConfig.layerTest(process.cwd(), {
+                  prefix: "t3-provider-registry-shared-workspace-scan-",
                 }),
               ),
-            getSnapshot: Effect.succeed(provider),
-            refresh: Effect.succeed(provider),
-            streamChanges: Stream.empty,
-            applyUsageLimits: () => Effect.void,
-          },
-          snapshotForCwd,
-          invalidateCaches: Ref.update(cacheInvalidations, (count) => count + 1),
-          orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
-          textGeneration: {} as ProviderInstance["textGeneration"],
-        });
-        const firstInstance = makeInstance(machineProvider, () =>
-          Effect.gen(function* () {
-            yield* Ref.update(snapshotCalls, (count) => count + 1);
-            if (yield* Ref.get(failScan)) {
-              return yield* new ProviderDriverError({
-                driver,
-                instanceId,
-                detail: "The workspace scan failed.",
-              });
-            }
-            yield* Deferred.succeed(probeStarted, undefined);
-            yield* Deferred.await(releaseProbe);
-            const result = yield* Ref.get(scopedResult);
-            const gate = yield* Ref.getAndSet(scanGate, null);
-            if (gate) {
-              yield* Deferred.succeed(gate.started, undefined);
-              yield* Deferred.await(gate.release);
-            }
-            return result;
-          }),
-        );
-        const rebuiltProvider = {
-          ...machineProvider,
-          checkedAt: "2026-06-10T00:02:00.000Z",
-          status: "warning",
-          installed: false,
-          auth: { status: "unknown" },
-        } satisfies ServerProvider;
-        const rebuiltInstance = makeInstance(rebuiltProvider, () =>
-          Ref.update(snapshotCalls, (count) => count + 1).pipe(Effect.as(scopedProvider)),
-        );
-        const registryChanges = yield* PubSub.unbounded<void>();
-        const instancesRef = yield* Ref.make<ReadonlyArray<ProviderInstance>>([firstInstance]);
-        const layerInstanceRegistry = Layer.succeed(
-          ProviderInstanceRegistry.ProviderInstanceRegistry,
-          {
-            getInstance: (requestedId) =>
-              Ref.get(instancesRef).pipe(
-                Effect.map((instances) =>
-                  instances.find((instance) => instance.instanceId === requestedId),
-                ),
-              ),
-            listInstances: Ref.get(instancesRef),
-            listUnavailable: Effect.succeed([]),
-            streamChanges: Stream.fromPubSub(registryChanges),
-            subscribeChanges: PubSub.subscribe(registryChanges),
-          },
-        );
-        const scope = yield* Scope.make();
-        yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
-        const runtimeServices = yield* Layer.build(
-          ProviderRegistry.layer.pipe(
-            Layer.provideMerge(layerInstanceRegistry),
-            Layer.provideMerge(
-              ServerConfig.layerTest(process.cwd(), {
-                prefix: "t3-provider-registry-workspace-snapshot-",
-              }),
+              Layer.provideMerge(NodeServices.layer),
             ),
-            Layer.provideMerge(NodeServices.layer),
-          ),
-        ).pipe(Scope.provide(scope));
+          ).pipe(Scope.provide(scope));
 
-        yield* Effect.gen(function* () {
-          const registry = yield* ProviderRegistry.ProviderRegistry;
-          yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
-          assert.strictEqual((yield* registry.getProviders)[0]?.workspaceSnapshots, undefined);
-          yield* Ref.set(failScan, false);
-          const workspaceUpdate = yield* registry.streamChanges.pipe(
-            Stream.runHead,
-            Effect.forkChild,
-          );
-          yield* Effect.yieldNow;
-          const firstRefresh = yield* registry
-            .refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" })
-            .pipe(Effect.forkChild);
-          yield* Deferred.await(probeStarted);
-          const duplicateRefresh = yield* registry
-            .refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" })
-            .pipe(Effect.forkChild);
-          yield* Effect.yieldNow;
-          assert.strictEqual(yield* Ref.get(snapshotCalls), 2);
-          yield* Deferred.succeed(releaseProbe, undefined);
-          yield* Fiber.join(firstRefresh);
-          yield* Fiber.join(duplicateRefresh);
-          const published = yield* Fiber.join(workspaceUpdate);
-          assert.strictEqual(published._tag, "Some");
-          const providers = yield* registry.getProviders;
-          assert.deepStrictEqual(providers[0]?.skills, machineProvider.skills);
-          assert.deepStrictEqual(
-            providers[0]?.workspaceSnapshots?.[0]?.skills,
-            scopedProvider.skills,
-          );
-          assert.deepStrictEqual(providers[0]?.workspaceSnapshots?.[0]?.slashCommands, [
-            COMPACT_SLASH_COMMAND,
-          ]);
-          assert.strictEqual(providers[0]?.workspaceSnapshots?.[0]?.slashCommandsPending, true);
-          yield* Ref.set(scopedResult, {
-            ...scopedProvider,
-            status: "error",
-            slashCommandsPending: false,
-          });
-          yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
-          assert.strictEqual(yield* Ref.get(snapshotCalls), 3);
-          assert.deepStrictEqual(
-            (yield* registry.getProviders)[0]?.workspaceSnapshots?.[0]?.slashCommands,
-            scopedProvider.slashCommands,
-          );
-          assert.strictEqual(
-            (yield* registry.getProviders)[0]?.workspaceSnapshots?.[0]?.slashCommandsPending,
-            undefined,
-          );
-          yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
-          assert.strictEqual(yield* Ref.get(snapshotCalls), 3);
-          yield* TestClock.adjust(PROVIDER_WORKSPACE_SNAPSHOT_TTL_MS - 1);
-          yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
-          assert.strictEqual(yield* Ref.get(snapshotCalls), 3);
-          yield* TestClock.adjust(1);
-          yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
-          assert.strictEqual(yield* Ref.get(snapshotCalls), 4);
-          const newSkills = [
-            ...scopedProvider.skills,
-            { name: "added", path: "/workspace/added/SKILL.md", enabled: true },
-          ];
-          yield* Ref.set(scopedResult, { ...scopedProvider, skills: newSkills });
-          yield* registry.refreshWorkspaceSnapshot({
-            instanceId,
-            cwd: "/workspace",
-            fresh: true,
-          });
-          assert.strictEqual(yield* Ref.get(snapshotCalls), 5);
-          assert.strictEqual(yield* Ref.get(cacheInvalidations), 1);
-          assert.deepStrictEqual(
-            (yield* registry.getProviders)[0]?.workspaceSnapshots?.map((s) => s.skills),
-            [newSkills],
-          );
-
-          const slowStarted = yield* Deferred.make<void>();
-          const releaseSlow = yield* Deferred.make<void>();
-          yield* Ref.set(scanGate, { started: slowStarted, release: releaseSlow });
-          yield* Ref.set(scopedResult, scopedProvider);
-          const slowScan = yield* registry
-            .refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace", fresh: true })
-            .pipe(Effect.forkChild);
-          yield* Deferred.await(slowStarted);
-          const latestSkills = [
-            ...newSkills,
-            { name: "latest", path: "/workspace/latest/SKILL.md", enabled: true },
-          ];
-          yield* Ref.set(scopedResult, { ...scopedProvider, skills: latestSkills });
-          yield* registry.refreshWorkspaceSnapshot({
-            instanceId,
-            cwd: "/workspace",
-            fresh: true,
-          });
-          yield* Deferred.succeed(releaseSlow, undefined);
-          yield* Fiber.join(slowScan);
-          assert.deepStrictEqual(
-            (yield* registry.getProviders)[0]?.workspaceSnapshots?.map((s) => s.skills),
-            [latestSkills],
-          );
-
-          // With no cached snapshot, an older scan must leave publication and
-          // request deduplication to the forced scan even when it finishes first.
-          const olderStarted = yield* Deferred.make<void>();
-          const releaseOlder = yield* Deferred.make<void>();
-          yield* Ref.set(scanGate, { started: olderStarted, release: releaseOlder });
-          yield* Ref.set(scopedResult, scopedProvider);
-          const olderScan = yield* registry
-            .refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace2" })
-            .pipe(Effect.forkChild);
-          yield* Deferred.await(olderStarted);
-          const newerStarted = yield* Deferred.make<void>();
-          const releaseNewer = yield* Deferred.make<void>();
-          yield* Ref.set(scanGate, { started: newerStarted, release: releaseNewer });
-          yield* Ref.set(scopedResult, { ...scopedProvider, skills: latestSkills });
-          const newerScan = yield* registry
-            .refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace2", fresh: true })
-            .pipe(Effect.forkChild);
-          yield* Deferred.await(newerStarted);
-          yield* Deferred.succeed(releaseOlder, undefined);
-          yield* Fiber.join(olderScan);
-          assert.strictEqual(
-            (yield* registry.getProviders)[0]?.workspaceSnapshots?.find(
-              (snapshot) => snapshot.cwd === "/workspace2",
-            ),
-            undefined,
-          );
-          const callsWhileForced = yield* Ref.get(snapshotCalls);
-          yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace2" });
-          assert.strictEqual(yield* Ref.get(snapshotCalls), callsWhileForced);
-          yield* Deferred.succeed(releaseNewer, undefined);
-          yield* Fiber.join(newerScan);
-          assert.deepStrictEqual(
-            (yield* registry.getProviders)[0]?.workspaceSnapshots?.find(
-              (snapshot) => snapshot.cwd === "/workspace2",
-            )?.skills,
-            latestSkills,
-          );
-
-          yield* Ref.set(instancesRef, [rebuiltInstance]);
-          yield* PubSub.publish(registryChanges, undefined);
-          let rebuilt = yield* registry.getProviders;
-          for (
-            let attempt = 0;
-            attempt < 50 && rebuilt[0]?.checkedAt !== rebuiltProvider.checkedAt;
-            attempt += 1
-          ) {
-            yield* Effect.yieldNow;
-            rebuilt = yield* registry.getProviders;
-          }
-          assert.strictEqual(rebuilt[0]?.checkedAt, rebuiltProvider.checkedAt);
-          assert.strictEqual(rebuilt[0]?.workspaceSnapshots, undefined);
-        }).pipe(Effect.provide(runtimeServices));
-      }),
+          yield* Effect.gen(function* () {
+            const registry = yield* ProviderRegistry.ProviderRegistry;
+            const refresh = registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
+            const first = yield* Effect.forkChild(refresh);
+            yield* Deferred.await(scanStarted);
+            const second = yield* Effect.forkChild(refresh, { startImmediately: true });
+            yield* Fiber.interrupt(first);
+            yield* Deferred.succeed(releaseScan, undefined);
+            assert.deepStrictEqual(
+              (yield* Fiber.join(second))[0]?.workspaceSnapshots?.map((snapshot) => snapshot.cwd),
+              ["/workspace"],
+            );
+            assert.strictEqual(yield* Ref.get(scans), 1);
+          }).pipe(Effect.provide(runtimeServices));
+        }),
     );
 
     it.effect("publishes workspace skills while machine health is in error", () =>
@@ -1683,72 +1491,6 @@ it.layer(
         assert.strictEqual(yield* Ref.get(openCodeRefreshCalls), 2);
       }),
     );
-
-    it("persists merged provider snapshots for the providers that were refreshed", () => {
-      const previousProviders = [
-        {
-          instanceId: ProviderInstanceId.make("secondary"),
-          driver: ProviderDriverKind.make("secondary"),
-          status: "ready",
-          enabled: true,
-          installed: true,
-          auth: { status: "authenticated" },
-          checkedAt: "2026-04-14T00:00:00.000Z",
-          version: "2026.04.09-f2b0fcd",
-          models: [
-            {
-              slug: "claude-opus-4-6",
-              name: "Opus 4.6",
-              isCustom: false,
-              capabilities: createModelCapabilities({
-                optionDescriptors: [
-                  selectDescriptor("reasoning", "Reasoning", [
-                    { id: "high", label: "High", isDefault: true },
-                  ]),
-                  booleanDescriptor("fastMode", "Fast Mode"),
-                  booleanDescriptor("thinking", "Thinking"),
-                ],
-              }),
-            },
-          ],
-          slashCommands: [],
-          skills: [],
-        },
-        {
-          instanceId: ProviderInstanceId.make("example"),
-          driver: ProviderDriverKind.make("example"),
-          status: "ready",
-          enabled: true,
-          installed: true,
-          auth: { status: "authenticated" },
-          checkedAt: "2026-04-14T00:00:00.000Z",
-          version: "1.0.0",
-          models: [],
-          slashCommands: [],
-          skills: [],
-        },
-      ] as const satisfies ReadonlyArray<ServerProvider>;
-      const refreshedsecondary = {
-        ...previousProviders[0],
-        checkedAt: "2026-04-14T00:01:00.000Z",
-        models: [],
-      } satisfies ServerProvider;
-
-      const mergedProviders = ProviderRegistry.mergeProviderSnapshots(previousProviders, [
-        refreshedsecondary,
-      ]);
-      const persistedProviders = ProviderRegistry.selectProvidersByKind(
-        mergedProviders,
-        new Set([ProviderDriverKind.make("secondary")]),
-      );
-
-      assert.deepStrictEqual(persistedProviders, [
-        {
-          ...refreshedsecondary,
-          models: [...previousProviders[0].models],
-        },
-      ]);
-    });
 
     it.effect("shares one in-flight pass between concurrent untargeted refreshes", () =>
       Effect.gen(function* () {

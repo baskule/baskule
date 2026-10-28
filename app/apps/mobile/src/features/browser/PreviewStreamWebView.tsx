@@ -18,7 +18,6 @@ import {
   type PreviewStreamHostSetup,
 } from "@t3tools/contracts";
 import {
-  useEffect,
   useEffectEvent,
   useImperativeHandle,
   useLayoutEffect,
@@ -84,11 +83,13 @@ export interface PreviewPictureInPictureState {
 type NativeStreamBridge = {
   readonly ref?: Ref<PreviewStreamRef>;
   readonly onUnauthorized: () => void;
+  /** Asks for fresh access after a refusal, once `delayMs` has passed. */
+  readonly onRefused: (delayMs: number) => void;
   readonly onGone?: () => void;
   readonly onViewport?: (viewport: { readonly width: number; readonly height: number }) => void;
   readonly onControl?: (control: PreviewStreamControl | null) => void;
   readonly onPictureInPicture?: (state: PreviewPictureInPictureState, detail?: string) => void;
-  /** True while frames show, so commands reach the page. Pass a stable function. */
+  /** True while frames show, so commands reach the page. */
   readonly onStreamingChange?: (streaming: boolean) => void;
   readonly compact?: boolean;
   readonly pdfUri?: string | null;
@@ -160,13 +161,15 @@ const MAX_REFUSALS = 3;
 
 export function PreviewStreamWebView(
   props: Omit<NativePreviewConfiguration, "access" | "origin"> &
-    Omit<NativeStreamBridge, "onUnauthorized"> & {
+    Omit<NativeStreamBridge, "onUnauthorized" | "onRefused"> & {
       readonly environmentId: EnvironmentId;
       readonly paused?: boolean;
     },
 ) {
   const t = useTranslation();
-  const { access, origin, error, refresh } = usePreviewStreamAccess(props.environmentId);
+  const { access, origin, error, refresh, retryAfter } = usePreviewStreamAccess(
+    props.environmentId,
+  );
   if (access && origin && !props.paused) {
     return (
       <AuthorizedPreviewStream
@@ -174,6 +177,7 @@ export function PreviewStreamWebView(
         access={access}
         origin={origin}
         onUnauthorized={refresh}
+        onRefused={retryAfter}
       />
     );
   }
@@ -220,13 +224,6 @@ function AuthorizedPreviewStream({
   }
   const processRetried = useRef(false);
   const unauthorized = useRef(0);
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (refreshTimer.current !== null) clearTimeout(refreshTimer.current);
-    },
-    [],
-  );
   const binding = useMemo(
     () => ({
       environmentId: String(props.environmentId),
@@ -252,14 +249,7 @@ function AuthorizedPreviewStream({
       onUnauthorized={() => {
         const refusals = ++unauthorized.current;
         if (refusals >= MAX_REFUSALS) return false;
-        if (refreshTimer.current !== null) clearTimeout(refreshTimer.current);
-        refreshTimer.current = setTimeout(
-          () => {
-            refreshTimer.current = null;
-            props.onUnauthorized();
-          },
-          refusals === 1 ? 0 : 1_000 * 2 ** (refusals - 1),
-        );
+        props.onRefused(refusals === 1 ? 0 : 1_000 * 2 ** (refusals - 1));
         return true;
       }}
       onRetry={() => {
@@ -325,11 +315,11 @@ function PreviewStreamDocumentView({
   const transferController = useRef(new AbortController());
   const transfer = { environmentId, origin };
   const failed = useRef(false);
+  const bootstrapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<"connecting" | "streaming" | "error">("connecting");
   const [error, setError] = useState<string | null>(null);
   const [gone, setGone] = useState(false);
   const [hostSetup, setHostSetup] = useState<PreviewStreamHostSetup | null>(null);
-  const [started, setStarted] = useState(false);
   const [control, setControl] = useState<PreviewStreamControl | null>(null);
   const dialogRef = useRef<PreviewStreamControl["dialog"]>(null);
   const [promptText, setPromptText] = useState("");
@@ -346,7 +336,6 @@ function PreviewStreamDocumentView({
         ),
     );
   };
-  const controlChanged = useEffectEvent((next: PreviewStreamControl | null) => onControl?.(next));
   const command = (input: PreviewStreamInput) => {
     nativeBridge.current?.command(input);
   };
@@ -359,9 +348,15 @@ function PreviewStreamDocumentView({
       },
       () => Dialog.alert("Could not read the clipboard"),
     );
+  const clearBootstrapTimer = () => {
+    if (bootstrapTimer.current === null) return;
+    clearTimeout(bootstrapTimer.current);
+    bootstrapTimer.current = null;
+  };
   const fail = (message: string) => {
     if (!active.current || failed.current) return;
     failed.current = true;
+    clearBootstrapTimer();
     nativeBridge.current?.stop();
     transferController.current.abort();
     webView.current?.injectJavaScript("window.T3PreviewStream?.stop(); true;");
@@ -413,7 +408,7 @@ function PreviewStreamDocumentView({
         onPictureInPicture?.(message, message.detail);
         return;
       case "status":
-        setStarted(true);
+        clearBootstrapTimer();
         if (message.status === "error") {
           fail(message.detail ?? "Browser stream failed.");
           return;
@@ -481,11 +476,23 @@ function PreviewStreamDocumentView({
   const bootstrapTimedOut = useEffectEvent(() =>
     fail("Browser viewer could not start. Reconnect to try again."),
   );
-  useEffect(() => {
-    if (started) return;
-    const timer = setTimeout(bootstrapTimedOut, 15_000);
-    return () => clearTimeout(timer);
-  }, [started]);
+  const streamEnded = useEffectEvent(() => {
+    onStreamingChange?.(false);
+    onControl?.(null);
+  });
+  // The stream lives exactly as long as this view.
+  useLayoutEffect(() => {
+    active.current = true;
+    const view = webView.current;
+    bootstrapTimer.current = setTimeout(bootstrapTimedOut, 15_000);
+    return () => {
+      if (bootstrapTimer.current !== null) clearTimeout(bootstrapTimer.current);
+      bootstrapTimer.current = null;
+      active.current = false;
+      view?.injectJavaScript("window.T3PreviewStream?.stop(); true;");
+      streamEnded();
+    };
+  }, []);
   const source = useMemo(
     () => ({
       html: previewStreamDocument(configuration, previewStreamScript),
@@ -499,16 +506,6 @@ function PreviewStreamDocumentView({
     togglePictureInPicture: () =>
       webView.current?.injectJavaScript("window.T3PreviewStream?.pictureInPicture(); true;"),
   }));
-  useLayoutEffect(() => {
-    active.current = true;
-    const view = webView.current;
-    return () => {
-      active.current = false;
-      view?.injectJavaScript("window.T3PreviewStream?.stop(); true;");
-    };
-  }, []);
-  useEffect(() => () => onStreamingChange?.(false), [onStreamingChange]);
-  useEffect(() => () => controlChanged(null), []);
   const processTerminated = () => {
     if (!active.current || failed.current) return;
     if (!onRecoverProcess()) fail("Browser viewer stopped. Reconnect to try again.");

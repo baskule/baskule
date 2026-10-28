@@ -1,6 +1,4 @@
-"use client";
 import { t, useTranslation } from "../../i18n";
-
 import type { DesktopPreviewColorScheme } from "@t3tools/contracts";
 import { Minus, MoreVertical, Plus as PlusIcon, RotateCcw } from "lucide-react";
 
@@ -186,10 +184,6 @@ export function PreviewMoreMenu({
           </span>
         </MenuItem>
         <MenuSeparator />
-        {/*
-         * Grouped so the heading has a `MenuGroup` ancestor — `MenuGroupLabel`
-          reads its context and throws without one.
-         */}
         <MenuGroup>
           {profileName ? (
             <MenuGroupLabel className="max-w-64">

@@ -12,12 +12,11 @@ import { features, touchedFeatures } from "./feature-map.mjs";
 import { acquireHostLock } from "./check-lock.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const NODE_BIN = join(ROOT, ".tools/node-v24.22.1-linux-x64/bin");
 // Test workers have their own IPC channel; inherited launcher metadata describes the parent app.
 const checkEnv = { ...process.env };
 delete checkEnv.T3_SERVICE_LAUNCHER_CONTEXT;
 delete checkEnv.T3_BOOT_SERVICE_UNIT;
-const env = { ...checkEnv, PATH: `${join(ROOT, ".tools/bin")}:${NODE_BIN}:${process.env.PATH}`, COREPACK_ENABLE_DOWNLOAD_PROMPT: "0", T3CODE_TELEMETRY_ENABLED: "false", CI: "1" };
+const env = { ...checkEnv, COREPACK_ENABLE_DOWNLOAD_PROMPT: "0", T3CODE_TELEMETRY_ENABLED: "false", CI: "1" };
 
 const HELP = `scripts/check [target ...] [options]
 
@@ -183,8 +182,8 @@ function plan(files, base) {
     // tests, ~30 min on nas). Upstream suites run in `scripts/check upstream`, before a public release.
     const short = pkg.split("/").pop();
     if (pj.scripts?.test && BASKULE_TESTS[pkg]) add(`${pkg}: Baskule unit tests related to the change`, join(ROOT, "app/node_modules/.bin/vp"), ["test", "run", "--changed", base, "--passWithNoTests", ...BASKULE_TESTS[pkg]], pkg, { evidence: ev(["app"], [`${short}-baskule`]) });
-    if (pkg === "app/apps/web") add("app/apps/web: typecheck", join(ROOT, "app/node_modules/.bin/tsc-rs"), ["--noEmit"], pkg, { evidence: ev(["app"], ["web-tsc"], "web-tsc") });
-    if (pkg === "app/apps/mobile" || pkg === "app/packages/client-runtime") add(`${pkg}: typecheck`, join(ROOT, "app/node_modules/.bin/tsc-rs"), ["--noEmit"], pkg, { evidence: ev(["app"], [`${short}-tsc`], `${short}-tsc`) });
+    if (pkg === "app/apps/web") add("app/apps/web: typecheck", join(ROOT, "app/node_modules/.bin/tsc"), ["--noEmit"], pkg, { evidence: ev(["app"], ["web-tsc"], "web-tsc") });
+    if (pkg === "app/apps/mobile" || pkg === "app/packages/client-runtime") add(`${pkg}: typecheck`, join(ROOT, "app/node_modules/.bin/tsc"), ["--noEmit"], pkg, { evidence: ev(["app"], [`${short}-tsc`], `${short}-tsc`) });
     if (pkg === "app/apps/server") steps.push({ label: "app/apps/server: typecheck (diagnostics in changed files)", fn: () => serverTypecheck(pick(/^app\/apps\/server\/src\//)) });
   }
   steps.unshift({ label: "feature map: coverage", cmd: "node", args: ["scripts/feature-map.mjs"], cwd: "." });
@@ -220,7 +219,7 @@ function nextHint(p) {
 }
 
 function serverTypecheck(files) {
-  const r = spawnSync(join(ROOT, "app/node_modules/.bin/tsc-rs"), ["--noEmit"], { cwd: join(ROOT, "app/apps/server"), env, encoding: "utf8", maxBuffer: 256 << 20 });
+  const r = spawnSync(join(ROOT, "app/node_modules/.bin/tsc"), ["--noEmit"], { cwd: join(ROOT, "app/apps/server"), env, encoding: "utf8", maxBuffer: 256 << 20 });
   const rel = new Set(files.map((f) => f.replace(/^app\/apps\/server\//, "")));
   const lines = (r.stdout + r.stderr).split("\n").filter((l) => /error TS\d+/.test(l) && rel.has(l.split("(")[0]));
   const hard = lines.filter((l) => !/error TS377\d{3}/.test(l));
@@ -436,12 +435,12 @@ function unitSteps() {
       .map((s) => (s.label.startsWith("platform: unit") ? { ...s, label: "platform: all unit tests", args: ["exec", "vitest", "run"], evidence: ev(PLATFORM_IN, ["platform-unit"], "platform-unit") } : s)),
     { label: "app/apps/server: Baskule unit tests", cmd: vp, args: ["test", "run", ...BASKULE_TESTS["app/apps/server"]], cwd: "app/apps/server", evidence: ev(["app"], ["server-baskule"], "server-baskule") },
     { label: "app/apps/web: Baskule unit tests", cmd: vp, args: ["test", "run", ...BASKULE_TESTS["app/apps/web"]], cwd: "app/apps/web", evidence: ev(["app"], ["web-baskule"], "web-baskule") },
-    { label: "app/apps/web: typecheck", cmd: join(ROOT, "app/node_modules/.bin/tsc-rs"), args: ["--noEmit"], cwd: "app/apps/web", evidence: ev(["app"], ["web-tsc"], "web-tsc") },
+    { label: "app/apps/web: typecheck", cmd: join(ROOT, "app/node_modules/.bin/tsc"), args: ["--noEmit"], cwd: "app/apps/web", evidence: ev(["app"], ["web-tsc"], "web-tsc") },
     ...["app/apps/mobile", "app/packages/client-runtime"].flatMap((pkg) => {
       const short = pkg.split("/").pop();
       return [
         { label: `${pkg}: unit tests`, cmd: vp, args: ["test", "run", ...BASKULE_TESTS[pkg]], cwd: pkg, evidence: ev(["app"], [`${short}-baskule`], `${short}-baskule`) },
-        { label: `${pkg}: typecheck`, cmd: join(ROOT, "app/node_modules/.bin/tsc-rs"), args: ["--noEmit"], cwd: pkg, evidence: ev(["app"], [`${short}-tsc`], `${short}-tsc`) },
+        { label: `${pkg}: typecheck`, cmd: join(ROOT, "app/node_modules/.bin/tsc"), args: ["--noEmit"], cwd: pkg, evidence: ev(["app"], [`${short}-tsc`], `${short}-tsc`) },
       ];
     }),
   ];
