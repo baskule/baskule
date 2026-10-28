@@ -241,6 +241,9 @@ export class ControlService {
     }
     const reload = aiChanged || JSON.stringify(settings.ai.model.cost) !== JSON.stringify(previous.model.cost);
     this.storage.transactionSync(() => {
+      // The check above awaited the provider: refuse if another save replaced the key it proved.
+      if (this.savedApiKey(settings.ai.providerId, settings.ai.baseUrl) !== chatKey)
+        throw new HttpError(409, "ai_settings_changed", "The AI settings changed meanwhile; check the connection again");
       this.run("insert into kv(key, value) values ('product_settings', ?) on conflict(key) do update set value=excluded.value", JSON.stringify(settings));
       this.run("update organization set name=? where id=?", settings.organizationName, this.orgId);
       for (const [slot, key] of keys)

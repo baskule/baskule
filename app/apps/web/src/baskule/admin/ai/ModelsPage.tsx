@@ -76,6 +76,8 @@ const connectionAndModel = (ai: BaskuleAdminSettings["ai"]) =>
 function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
   const t = useTranslation();
   const [saved, setSaved] = useState(initial);
+  // A saved-key listing has no key in its identity: a new key must drop it.
+  const [keyRevision, setKeyRevision] = useState(0);
   const [ai, setAI] = useState(initial.ai);
   /** Null until the admin types: requests then use the key saved for the connection. */
   const [key, setKey] = useState<string | null>(null);
@@ -165,6 +167,10 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
       setSaved(next);
       setAI(next.ai);
       setPrices(priceDraftOf(next.ai.model.cost));
+      if (key !== null) {
+        listings.clear();
+        setKeyRevision((revision) => revision + 1);
+      }
       setKey(null);
       notifySuccess(t("AI settings saved"));
       if (next.reloadPending)
@@ -305,6 +311,7 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
                 />
               ) : (
                 <ModelPicker
+                  key={keyRevision}
                   id={id}
                   connection={connectionOf(ai.providerId, ai.baseUrl, key)}
                   keyless={provider.keyless === true}
