@@ -195,6 +195,7 @@ function plan(files, base) {
   if (shells.length) add("shell scripts: syntax", "bash", ["-c", shells.map((f) => `bash -n '${f}'`).join(" && ")], ".");
   const mjs = pick(/\.mjs$/).filter((f) => existsSync(join(ROOT, f)) && !f.startsWith("vendor/") && !f.startsWith("app/") && !f.startsWith("platform/"));
   if (mjs.length) add("scripts: syntax", "bash", ["-c", mjs.map((f) => `node --check '${f}'`).join(" && ")], ".");
+  if (has(/^scripts\/worktree(?:[.-]|$)/)) add("worktree: setup regression tests", "node", ["--test", "scripts/worktree.test.mjs"], ".");
   if (has(/^scripts\/(?:check(?:[.-]|$)|stack(?:[.-]|$)|celld(?:[.-]|$)|lint(?:[.-]|$)|feature-map(?:[.-]|$)|run-feature\.mjs$|no-fixed-sleep\.mjs$)|^platform\/dev\/fake-llm\/|^\.oxlintrc\.json$/)) add("scripts/check: harness tests", "node", ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], ".");
   if (has(/^openshell\/dev-down\.sh$/)) add("stack: shared gateway teardown", "node", ["--test", "scripts/stack.test.mjs"], ".");
   if (has(/^deploy\/v2\/docker-compose\.yml$/)) add("deploy/v2: compose config", "docker", ["compose", "-f", "deploy/v2/docker-compose.yml", "--project-directory", "deploy/v2", "config", "-q"], ".");
@@ -430,7 +431,7 @@ function warnStaleDeploy() {
 function unitSteps() {
   const vp = join(ROOT, "app/node_modules/.bin/vp");
   return [
-    { label: "scripts/check: harness tests", cmd: "node", args: ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], cwd: "." },
+    { label: "scripts/check: harness tests", cmd: "node", args: ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/worktree.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], cwd: "." },
     ...plan(["platform/src/x.ts", "computerd/v2/src/x.ts", "desktop/x", "e2e/v2/x.ts", "deploy/v2/runner/x.py"], "HEAD").steps
       .map((s) => (s.label.startsWith("platform: unit") ? { ...s, label: "platform: all unit tests", args: ["exec", "vitest", "run"], evidence: ev(PLATFORM_IN, ["platform-unit"], "platform-unit") } : s)),
     { label: "app/apps/server: Baskule unit tests", cmd: vp, args: ["test", "run", ...BASKULE_TESTS["app/apps/server"]], cwd: "app/apps/server", evidence: ev(["app"], ["server-baskule"], "server-baskule") },

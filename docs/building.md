@@ -13,7 +13,9 @@ scripts/worktree setup
 source scripts/env.sh
 ```
 
-Setup links `.tools` and installs dependencies for the root workspace and the separate `app/` workspace. It does not build SpaceCell. `scripts/worktree host-init` installs only tools and shared caches.
+New linked worktrees inherit the primary checkout's `.tools` location unless `BASKULE_SHARED` selects another root. An existing worktree keeps its own `.tools` location.
+
+Setup links `.tools` and installs dependencies for the root workspace and the separate `app/` workspace. Installations sharing a pnpm store run one at a time because package imports and build hooks modify shared files. Setup replaces generated dependency directories without a terminal prompt and appends plain install output. It does not build SpaceCell. `scripts/worktree host-init` installs only tools and shared caches.
 
 The root workspace contains `platform`, `computerd/v2`, and `e2e`. It has its own lockfile; `app/` keeps a separate workspace and lockfile. After setup, install with `pnpm install --frozen-lockfile` in the appropriate workspace. Use `pnpm --filter <package-name> <script>` from that workspace root.
 
