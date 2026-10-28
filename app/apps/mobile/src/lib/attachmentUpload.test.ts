@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   readBase64: vi.fn(),
 }));
 
-vi.mock("./nativeTransfer", () => ({
+vi.mock("../connection/native-transfer", () => ({
   captureTransferOrigin: () => ({ connection: Option.getOrThrow(mocks.readAtom()) }),
   isTransferOriginCurrent: () => true,
   bindTransferLifetime: (input: { signal: AbortSignal }) => ({

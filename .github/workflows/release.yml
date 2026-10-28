@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'SemVer without v; blank uses 0.0.0-ci.<run> for verification'
+        description: 'SemVer without v; blank uses VERSION'
         type: string
         required: false
       verify_only:
@@ -14,7 +14,7 @@ on:
         type: boolean
         default: true
       include_native:
-        description: 'Also build and verify Windows and macOS packages'
+        description: 'Also build Android, iOS simulator, macOS and Windows packages'
         type: boolean
         default: true
 
@@ -28,25 +28,27 @@ concurrency:
 jobs:
   version:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      statuses: write
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - id: version
         name: Derive and validate source version
         env:
           INPUT_VERSION: ${{ inputs.version }}
-          VERIFY_ONLY: ${{ inputs.verify_only }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ $GITHUB_REF_TYPE == tag ]]; then
             version=${GITHUB_REF_NAME#v}
+            [[ "$version" == "$(<VERSION)" ]] || { echo 'Tag version must match VERSION.' >&2; exit 1; }
           else
-            version=${INPUT_VERSION:-0.0.0-ci.$GITHUB_RUN_NUMBER}
-            if [[ $VERIFY_ONLY == false && -z $INPUT_VERSION ]]; then
-              echo 'Publishing requires an explicit version.' >&2
-              exit 1
-            fi
+            version=${INPUT_VERSION:-$(<VERSION)}
           fi
           VERSION="$version" python3 - <<'PY'
           import os
@@ -60,6 +62,15 @@ jobs:
               raise SystemExit('Expected a SemVer source version.')
           PY
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Report manual factory start on the source commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=pending -f context='Release factory' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f description='Full artifact verification is running.' --silent
 
   backend:
     needs: version
@@ -94,7 +105,7 @@ jobs:
           path: .run/release/backend/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
       - name: Preserve backend evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -105,8 +116,10 @@ jobs:
             .run/check/
             .run/wp-e/artifacts/
             e2e/test-results/
+            .run/journeys/results/**/test-failed-*.png
+            .run/journeys/results/**/error-context.md
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
 
   linux-apps:
     needs: version
@@ -155,7 +168,7 @@ jobs:
           path: .run/release/linux-apps/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
       - name: Preserve Linux app evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -167,7 +180,7 @@ jobs:
             .run/wp-e/artifacts/
             .run/wp-e-build.log
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
 
   native:
     needs: version
@@ -178,6 +191,33 @@ jobs:
       platform: all
       sign: false
     secrets: inherit
+
+  factory-status:
+    needs: [version, backend, linux-apps, native]
+    if: always() && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      statuses: write
+    steps:
+      - name: Report the complete manual factory result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_RESULT: ${{ needs.version.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          LINUX_RESULT: ${{ needs.linux-apps.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+          INCLUDE_NATIVE: ${{ inputs.include_native }}
+        shell: bash
+        run: |
+          state=failure
+          if [[ $VERSION_RESULT == success && $BACKEND_RESULT == success && $LINUX_RESULT == success &&
+                ($NATIVE_RESULT == success || ($INCLUDE_NATIVE == false && $NATIVE_RESULT == skipped)) ]]; then
+            state=success
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f "state=$state" -f context='Release factory' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f description="Full artifact verification: $state." --silent
 
   draft-release:
     needs: [version, backend, linux-apps, native]

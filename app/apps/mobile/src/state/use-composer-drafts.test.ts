@@ -130,6 +130,16 @@ const incomingShareStorageMocks = vi.hoisted(() => ({
   ),
 }));
 
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: { getItem: async () => null, setItem: async () => {} },
+}));
+vi.mock("react-native", () => ({}));
+vi.mock("expo-secure-store", () => ({
+  getItemAsync: async () => null,
+  setItemAsync: async () => {},
+  deleteItemAsync: async () => {},
+}));
+
 vi.mock("expo-file-system", () => ({
   Directory: composerDraftFileMocks.Directory,
   File: composerDraftFileMocks.File,

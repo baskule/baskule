@@ -79,7 +79,7 @@ export function ModelPrices({
   const suggest = async () => {
     setBusy(true);
     setNote(null);
-    try {
+    return (async () => {
       const suggestion = await usageApi.prices(providerId, modelId.trim());
       onChange({
         input: text(suggestion.prices.input),
@@ -97,17 +97,19 @@ export function ModelPrices({
               date,
             }),
       );
-    } catch (cause) {
-      setNote(
-        cause instanceof BaskuleApiError && cause.code === "model_price_not_found"
-          ? t(
-              "No suggested price for this model. Enter the prices from your provider's price list.",
-            )
-          : errorText(cause, t("Could not get suggested prices.")),
-      );
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setNote(
+          cause instanceof BaskuleApiError && cause.code === "model_price_not_found"
+            ? t(
+                "No suggested price for this model. Enter the prices from your provider's price list.",
+              )
+            : errorText(cause, t("Could not get suggested prices.")),
+        );
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
 
   return (

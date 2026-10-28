@@ -40,7 +40,7 @@ import {
   fetchNativeFile,
   isTransferOriginCurrent,
   type TransferOrigin,
-} from "./nativeTransfer";
+} from "../connection/native-transfer";
 
 export type UploadedMobileAttachment =
   | UploadChatImageAttachment

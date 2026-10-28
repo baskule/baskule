@@ -5,7 +5,6 @@ import {
   CheckpointScopeId,
   NodeId,
   PlanId,
-  ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
   RunAttemptId,
@@ -1127,65 +1126,6 @@ describe("V2 session presentation", () => {
     expect(next.entries.at(-1)?.attempt?.status).toBe("superseded");
     expect(previous.entries.at(-1)?.attempt?.status).toBe("running");
   });
-});
-
-describe("composer tasks drawer", () => {
-  const projection = makeThreadProjectionFixture();
-  const now = projection.updatedAt;
-
-  function providerThread(id: string, driver: string) {
-    return {
-      id: ProviderThreadId.make(id),
-      driver: ProviderDriverKind.make(driver),
-      providerInstanceId: ProviderInstanceId.make(driver),
-      providerSessionId: null,
-      appThreadId: projection.thread.id,
-      ownerNodeId: null,
-      nativeThreadRef: null,
-      nativeConversationHeadRef: null,
-      status: "idle" as const,
-      firstRunOrdinal: null,
-      lastRunOrdinal: null,
-      handoffIds: [],
-      forkedFrom: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-  }
-
-  function run(id: string, ordinal: number, providerThreadId: string | null) {
-    return {
-      id: RunId.make(id),
-      threadId: projection.thread.id,
-      ordinal,
-      providerInstanceId: projection.thread.providerInstanceId,
-      modelSelection: projection.thread.modelSelection,
-      providerThreadId: providerThreadId === null ? null : ProviderThreadId.make(providerThreadId),
-      userMessageId: MessageId.make(`message-${id}`),
-      rootNodeId: null,
-      activeAttemptId: null,
-      status: "completed" as const,
-      requestedAt: now,
-      startedAt: now,
-      completedAt: now,
-      checkpointId: null,
-      contextHandoffId: null,
-    };
-  }
-
-  const openList = {
-    createdAt: "2026-06-20T00:00:00.000Z",
-    runId: RunId.make("run-1"),
-    steps: [
-      { step: "Inspect", status: "completed" as const },
-      { step: "Implement", status: "inProgress" as const },
-      { step: "Verify", status: "pending" as const },
-    ],
-  };
-  const completedList = {
-    ...openList,
-    steps: openList.steps.map((step) => ({ ...step, status: "completed" as const })),
-  };
 });
 
 describe("native provider presentation in the v2 timeline", () => {

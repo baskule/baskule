@@ -43,11 +43,9 @@ export function ReceiveConnectionDialog() {
           <ReceiveConnectionPanel
             onConnect={async (target) => {
               connecting.current = true;
-              try {
-                await openConnectionTarget(target);
-              } finally {
+              await openConnectionTarget(target).finally(() => {
                 connecting.current = false;
-              }
+              });
             }}
           />
         ) : null}
@@ -96,20 +94,20 @@ export function ReceiveConnectionPanel({
     const request = ++operation.current;
     setState({ kind: "reading" });
     setError(null);
-    try {
+    return (async () => {
       const value = await decodeQrImage(file);
       if (request !== operation.current) return;
       if (!value)
         throw new Error(t("No QR code found in this image. Try another image or paste a link."));
       review(value);
-    } catch {
+    })().catch(() => {
       if (request === operation.current) {
         setState({ kind: "entry" });
         setError(
           t("Could not read a connection QR from this image. Try another image or paste a link."),
         );
       }
-    }
+    });
   };
   const confirm = async (target: ConnectionTarget) => {
     if (submitting.current) return;
@@ -117,20 +115,22 @@ export function ReceiveConnectionPanel({
     const request = ++operation.current;
     setState({ kind: "connecting", target });
     setError(null);
-    try {
+    return (async () => {
       await onConnect(target);
-    } catch (cause) {
-      if (request === operation.current) {
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : t("Could not connect. Try again or paste a new link."),
-        );
-        setState({ kind: "review", target });
-      }
-    } finally {
-      submitting.current = false;
-    }
+    })()
+      .catch((cause: unknown) => {
+        if (request === operation.current) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : t("Could not connect. Try again or paste a new link."),
+          );
+          setState({ kind: "review", target });
+        }
+      })
+      .finally(() => {
+        submitting.current = false;
+      });
   };
   const reviewState = state.kind === "review" || state.kind === "connecting" ? state : null;
   return (

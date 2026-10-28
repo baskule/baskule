@@ -118,7 +118,7 @@ export function AddPersonDialog({
     if (!canSubmit || submitting) return;
     setSubmitting(true);
     setError(null);
-    try {
+    return (async () => {
       if (mode === "password") {
         const person = await baskuleApi.createPerson({
           name: name.trim(),
@@ -132,11 +132,13 @@ export function AddPersonDialog({
         setCreated({ mode, email: email.trim(), url: absoluteInvitationUrl(invitation.url) });
       }
       onAdded();
-    } catch (cause) {
-      setError(errorText(cause, "The person could not be added."));
-    } finally {
-      setSubmitting(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(errorText(cause, "The person could not be added."));
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   return (
@@ -210,7 +212,9 @@ export function AddPersonDialog({
                 </ToggleGroup>
                 <p className="text-xs text-muted-foreground">
                   {mode === "invitation"
-                    ? t("They open the link, choose their name and sign-in method, and join the organization.")
+                    ? t(
+                        "They open the link, choose their name and sign-in method, and join the organization.",
+                      )
                     : t("You create the account now and give them the password.")}
                 </p>
               </div>

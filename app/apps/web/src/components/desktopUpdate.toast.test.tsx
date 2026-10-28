@@ -18,7 +18,6 @@ vi.mock(import("../i18n"), async (importOriginal) => {
   return { ...actual, useTranslation: () => actual.t };
 });
 
-
 type ClickableElement = ReactElement<{ readonly onClick?: () => void }>;
 
 function findReleaseNotesLink(node: ReactNode): ClickableElement | null {
@@ -69,6 +68,7 @@ function downloadedState(overrides: Partial<DesktopUpdateState> = {}): DesktopUp
 describe("showDesktopUpdateDownloadedToast", () => {
   beforeEach(() => {
     testState.addToast.mockReset();
+    vi.stubEnv("T3CODE_DESKTOP_UPDATE_REPOSITORY", "baskule/baskule");
   });
 
   afterEach(() => {
@@ -97,7 +97,7 @@ describe("showDesktopUpdateDownloadedToast", () => {
     link?.props.onClick?.();
     await vi.waitFor(() => {
       expect(openExternal).toHaveBeenCalledWith(
-        "https://github.com/pingdotgg/t3code/releases/tag/v0.0.30",
+        "https://github.com/baskule/baskule/releases/tag/v0.0.30",
       );
     });
     expect(testState.addToast).toHaveBeenCalledTimes(1);
@@ -115,7 +115,7 @@ describe("showDesktopUpdateDownloadedToast", () => {
 
     await vi.waitFor(() => {
       expect(openExternal).toHaveBeenCalledWith(
-        "https://github.com/pingdotgg/t3code/releases/tag/v0.0.30",
+        "https://github.com/baskule/baskule/releases/tag/v0.0.30",
       );
     });
   });

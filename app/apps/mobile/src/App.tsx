@@ -141,7 +141,10 @@ function AppContent() {
     let id = 0;
     const receive = (url: string) => {
       received = true;
-      if (isConnectAppLink(url)) setConnectionRequest({ url, id: ++id });
+      if (isConnectAppLink(url)) {
+        id = id + 1;
+        setConnectionRequest({ url, id });
+      }
     };
     const subscription = Linking.addEventListener("url", ({ url }) => receive(url));
     void Linking.getInitialURL()

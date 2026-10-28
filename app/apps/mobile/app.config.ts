@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import nativeLocales from "./locales/config.json";
 import type { ExpoConfig } from "expo/config";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
@@ -187,7 +189,9 @@ const config: ExpoConfig = {
   slug: "baskule", // baskule: was "t3-code"
   platforms: ["ios", "android"],
   scheme: variant.scheme,
-  version: repoEnv.T3CODE_MOBILE_VERSION ?? "0.0.0",
+  version:
+    repoEnv.T3CODE_MOBILE_VERSION ??
+    readFileSync(resolve(__dirname, "../../../VERSION"), "utf8").trim(),
   runtimeVersion: {
     // Development manifests resolve on every launch, so avoid fingerprint's
     // expensive native-project calculation there. Preview and production stay

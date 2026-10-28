@@ -65,7 +65,11 @@ try {
   let page = await launch();
   await page.getByRole("textbox", { name: "Server address or connection link" }).fill(origin);
   await page.screenshot({ path: join(evidence, "connect.png") });
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await page.getByRole("button", { name: "Review connection", exact: true }).click();
+  await page.getByText(origin, { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.desktopBridge.getBaskuleServer()), null);
+  await page.screenshot({ path: join(evidence, "connection-review.png") });
+  await page.getByRole("button", { name: "Confirm connection", exact: true }).click();
   await page.getByRole("textbox", { name: "Email", exact: true }).fill("desktop@example.test");
   await page.screenshot({ path: join(evidence, "login.png") });
   await page.getByLabel("Password", { exact: true }).fill("test-password");
@@ -90,9 +94,11 @@ try {
     app.emit("second-instance", {}, ["baskule", link]);
   }, `baskule://connect?server=${encodeURIComponent(origin)}`);
   const connectionDialog = page.getByRole("dialog");
-  await connectionDialog.getByRole("button", { name: "Connect", exact: true }).waitFor();
+  await connectionDialog.getByRole("button", { name: "Review connection", exact: true }).click();
+  await connectionDialog.getByText(origin, { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.desktopBridge.getBaskuleServer()), origin);
   await page.screenshot({ path: join(evidence, "connection-link.png") });
-  await connectionDialog.getByRole("button", { name: "Connect", exact: true }).click();
+  await connectionDialog.getByRole("button", { name: "Confirm connection", exact: true }).click();
   await connectionDialog.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => window.desktopBridge.getBaskuleServer()), origin);
   console.log(`${sourceMode ? "Source" : "Packaged"} desktop: bundled renderer, native IPC, server discovery, sign-in, space WebSocket cookies, and restart persistence passed.`);

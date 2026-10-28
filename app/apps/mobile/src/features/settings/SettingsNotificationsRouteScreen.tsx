@@ -19,6 +19,14 @@ import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
 
+async function savePushPreferences(
+  update: (previous: PushPreferences) => PushPreferences,
+  requestPermission: boolean,
+) {
+  if (requestPermission) await Notifications.requestPermissionsAsync();
+  await updateBaskulePushPreferences(update);
+}
+
 export function SettingsNotificationsRouteScreen() {
   const t = useTranslation();
   const session = useBaskuleSession();
@@ -35,14 +43,11 @@ export function SettingsNotificationsRouteScreen() {
     requestPermission = false,
   ) => {
     setBusy(true);
-    try {
-      if (requestPermission) await Notifications.requestPermissionsAsync();
-      await updateBaskulePushPreferences(update);
-    } catch {
-      Dialog.alert(t("Notifications unavailable"), t("Could not update notification settings."));
-    } finally {
-      setBusy(false);
-    }
+    await savePushPreferences(update, requestPermission)
+      .catch(() => {
+        Dialog.alert(t("Notifications unavailable"), t("Could not update notification settings."));
+      })
+      .finally(() => setBusy(false));
   };
   const enable = () => save((previous) => ({ ...previous, notificationsEnabled: true }), true);
   return (

@@ -63,15 +63,17 @@ export function UsersPage() {
     success?: string,
   ) => {
     setBusyId(id);
-    try {
+    return (async () => {
       await action();
       if (success) notifySuccess(success);
       await data.reload();
-    } catch (cause) {
-      notifyError(failure, cause);
-    } finally {
-      setBusyId(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyError(failure, cause);
+      })
+      .finally(() => {
+        setBusyId(null);
+      });
   };
   const confirmThen = (message: string, variant: "default" | "destructive", run: () => void) =>
     void confirmAction(message, variant).then((confirmed) => {

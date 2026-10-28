@@ -22,15 +22,17 @@ export function InvitationsPage() {
 
   const revoke = async (id: string) => {
     setBusyId(id);
-    try {
+    return (async () => {
       await baskuleApi.revokeInvitation(id);
       notifySuccess(t("Invitation revoked"));
       await data.reload();
-    } catch (cause) {
-      notifyError(t("Could not revoke the invitation"), cause);
-    } finally {
-      setBusyId(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyError(t("Could not revoke the invitation"), cause);
+      })
+      .finally(() => {
+        setBusyId(null);
+      });
   };
 
   return (

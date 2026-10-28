@@ -211,18 +211,20 @@ function ManageSpaceContent({
 
   const run = async (action: () => Promise<SpaceDetails | unknown>, failure: string) => {
     setBusy(true);
-    try {
+    return (async () => {
       const result = await action();
       if (result && typeof result === "object" && "members" in result) {
         setSpace(result as SpaceDetails);
       }
       return true;
-    } catch (cause) {
-      notifyError(failure, cause);
-      return false;
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyError(failure, cause);
+        return false;
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
 
   if (loadError) {

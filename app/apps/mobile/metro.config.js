@@ -8,6 +8,11 @@ const extraThemes = require("./generated-uniwind-theme-names.json");
 /** @type {import("expo/metro-config").MetroConfig} */
 const config = getDefaultConfig(__dirname);
 const workspaceRoot = path.resolve(__dirname, "../..");
+// pnpm 11 writes JSON here; Metro must also see symlink targets outside the workspace.
+const { virtualStoreDir } = JSON.parse(
+  fs.readFileSync(path.join(workspaceRoot, "node_modules", ".modules.yaml"), "utf8"),
+);
+const virtualStoreRoot = path.resolve(workspaceRoot, "node_modules", virtualStoreDir);
 const generatedLicenseModuleRoot = path.join(__dirname, ".generated", "third-party-licenses");
 const licenseGeneratorSource = path.join(
   workspaceRoot,
@@ -34,7 +39,9 @@ const resolveShikiDependencyRoot = (packageName) => {
   return currentDir;
 };
 
-config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
+config.watchFolders = [
+  ...new Set([...(config.watchFolders ?? []), workspaceRoot, virtualStoreRoot]),
+];
 config.resolver = {
   ...config.resolver,
   blockList: [

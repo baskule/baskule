@@ -42,19 +42,21 @@ export function InstalledPage() {
 
   const setEnabled = async (plugin: Plugin, enabled: boolean) => {
     setBusyId(plugin.id);
-    try {
+    return (async () => {
       await pluginsApi.update(plugin.id, { enabled });
       await data.reload();
-    } catch (cause) {
-      notifyPluginError(
-        enabled
-          ? t("Could not turn on {{name}}", { name: plugin.name })
-          : t("Could not turn off {{name}}", { name: plugin.name }),
-        cause,
-      );
-    } finally {
-      setBusyId(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyPluginError(
+          enabled
+            ? t("Could not turn on {{name}}", { name: plugin.name })
+            : t("Could not turn off {{name}}", { name: plugin.name }),
+          cause,
+        );
+      })
+      .finally(() => {
+        setBusyId(null);
+      });
   };
 
   const catalogLink = (

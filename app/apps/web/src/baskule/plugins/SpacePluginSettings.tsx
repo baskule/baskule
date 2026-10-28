@@ -37,14 +37,16 @@ export function SpacePluginSettings({
 
   const save = async (key: string, next: Settings) => {
     setSaving(key);
-    try {
+    return (async () => {
       await pluginsApi.saveSpace(spaceId, next);
       await data.reload();
-    } catch (cause) {
-      notifyPluginError(t("Could not change the plugins of this space"), cause);
-    } finally {
-      setSaving(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyPluginError(t("Could not change the plugins of this space"), cause);
+      })
+      .finally(() => {
+        setSaving(null);
+      });
   };
 
   if (!data.data) {

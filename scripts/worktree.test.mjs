@@ -84,11 +84,11 @@ for (const override of ["environment", "existing tools"]) test(`${override} take
   assert.equal(existsSync(join(f.shared, "cache")), false);
 });
 
-test("failed app installation stops setup without stamping success or installing the workspace", async (t) => {
+test("failed app installation reports its error without stamping success", async (t) => {
   const f = fixture(t);
   const r = await f.setup(f.linked, { FIXTURE_FAIL: "1" });
   assert.equal(r.status, 7, r.output);
   assert.match(r.output, /dependencies failed \(exit 7\)/);
-  assert.equal(readFileSync(f.calls, "utf8"), join(f.linked, "app") + "\n");
+  assert.equal(readFileSync(f.calls, "utf8"), f.linked + "\n" + join(f.linked, "app") + "\n");
   assert.equal(existsSync(join(f.linked, "app/node_modules/.baskule-inputs")), false);
 });

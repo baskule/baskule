@@ -29,14 +29,16 @@ export function ResetPasswordView({ token }: { readonly token: string | null }) 
     if (!token || submitting || problem !== null || password !== confirmation) return;
     setSubmitting(true);
     setError(null);
-    try {
+    return (async () => {
       await baskuleApi.resetPassword({ token, newPassword: password });
       setDone(true);
-    } catch (cause) {
-      setError(errorText(cause, "The password could not be changed. The link may have expired."));
-    } finally {
-      setSubmitting(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(errorText(cause, "The password could not be changed. The link may have expired."));
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   return (

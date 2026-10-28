@@ -35,7 +35,7 @@ function OrganizationForm({ initial }: { readonly initial: BaskuleAdminSettings 
     if (busy) return;
     setBusy(true);
     setError(null);
-    try {
+    return (async () => {
       const saved = await saveSettingsPart({
         organizationName: name,
         idleMinutes: Number(idleMinutes),
@@ -44,11 +44,13 @@ function OrganizationForm({ initial }: { readonly initial: BaskuleAdminSettings 
       setIdleMinutes(String(saved.idleMinutes));
       await refreshBaskuleMe();
       notifySuccess(t("Organization settings saved"));
-    } catch (cause) {
-      setError(errorText(cause, t("Could not save settings.")));
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(errorText(cause, t("Could not save settings.")));
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
 
   return (

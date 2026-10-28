@@ -110,18 +110,20 @@ function LimitsForm({ initial }: { readonly initial: UsageLimitSettings }) {
     }
     setBusy(true);
     setError(null);
-    try {
+    return (async () => {
       const next = draftOf(await usageApi.setLimits(result.settings));
       setSaved(next);
       setDraft(next);
       notifySuccess(
         result.settings.enabled ? t("Limits saved and applied") : t("Limits saved, not applied"),
       );
-    } catch (cause) {
-      setError(errorText(cause, t("Could not save the limits.")));
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(errorText(cause, t("Could not save the limits.")));
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
 
   return (

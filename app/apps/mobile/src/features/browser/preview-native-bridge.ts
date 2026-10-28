@@ -9,7 +9,6 @@ import {
   type PreviewStreamTarget,
   type PreviewStreamViewport,
 } from "@t3tools/client-runtime/preview/server-browser-stream";
-import { samePreviewBinding } from "./preview-stream-document";
 import { PreviewViewportSetting } from "@t3tools/contracts";
 import * as Base64 from "effect/encoding/Base64";
 import * as Schema from "effect/Schema";
@@ -22,6 +21,17 @@ const Binding = Schema.Struct({
   transportGeneration: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 export type PreviewBridgeBinding = typeof Binding.Type;
+
+export function samePreviewBinding(a: PreviewBridgeBinding, b: PreviewBridgeBinding): boolean {
+  return (
+    a.environmentId === b.environmentId &&
+    a.connectionId === b.connectionId &&
+    a.threadId === b.threadId &&
+    a.tabId === b.tabId &&
+    a.transportGeneration === b.transportGeneration
+  );
+}
+
 const number = Schema.Number.check(Schema.isFinite());
 const dimensions = { width: number, height: number };
 const point = { x: number, y: number };

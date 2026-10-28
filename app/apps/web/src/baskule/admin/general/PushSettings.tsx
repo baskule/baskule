@@ -26,7 +26,7 @@ export function PushSettings() {
     if (busy) return;
     setBusy(true);
     setError(null);
-    try {
+    return (async () => {
       let value: unknown = null;
       if (!clear && provider === "apns")
         value = {
@@ -57,11 +57,13 @@ export function PushSettings() {
       setSecret("");
       status.reload();
       notifySuccess(t("Push configuration saved"));
-    } catch (cause) {
-      setError(errorText(cause, t("Could not save push configuration.")));
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(errorText(cause, t("Could not save push configuration.")));
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
   return (
     <PageSection

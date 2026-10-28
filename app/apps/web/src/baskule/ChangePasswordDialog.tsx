@@ -49,19 +49,21 @@ export function ChangePasswordDialog({
     if (submitting || !current || problem !== null || next !== confirmation) return;
     setSubmitting(true);
     setError(null);
-    try {
+    return (async () => {
       await baskuleApi.changePassword({ currentPassword: current, newPassword: next });
       notifySuccess(t("Password changed"), t("Your other devices were signed out."));
       close();
-    } catch (cause) {
-      setError(
-        cause instanceof BaskuleApiError && (cause.status === 400 || cause.status === 401)
-          ? t("The current password is not right.")
-          : errorText(cause),
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(
+          cause instanceof BaskuleApiError && (cause.status === 400 || cause.status === 401)
+            ? t("The current password is not right.")
+            : errorText(cause),
+        );
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   return (

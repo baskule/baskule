@@ -145,8 +145,8 @@ case $1 in
     (
       echo '==> waiting for shared dependency store'
       flock -w 600 9
-      step app install_app
       step workspace install_workspace
+      step app install_app
     ) 9>"$PNPM_STORE/.worktree-install.lock"
     if [[ $1 = runtime ]]; then
       step SpaceCell sync_bundle

@@ -17,13 +17,9 @@ export function LanguageSetting({ compact = false }: { readonly compact?: boolea
   const select = async (value: LanguagePreference) => {
     setSaving(true);
     setError(false);
-    try {
-      await setLanguagePreference(value);
-    } catch {
-      setError(true);
-    } finally {
-      setSaving(false);
-    }
+    await setLanguagePreference(value)
+      .catch(() => setError(true))
+      .finally(() => setSaving(false));
   };
   if (compact) {
     return (

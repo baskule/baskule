@@ -31,16 +31,6 @@ export type PreviewStreamMessage =
       readonly detail?: string;
     };
 
-export function samePreviewBinding(a: PreviewBridgeBinding, b: PreviewBridgeBinding): boolean {
-  return (
-    a.environmentId === b.environmentId &&
-    a.connectionId === b.connectionId &&
-    a.threadId === b.threadId &&
-    a.tabId === b.tabId &&
-    a.transportGeneration === b.transportGeneration
-  );
-}
-
 export function previewStreamDocument(configuration: string, script: string) {
   const safeConfiguration = configuration.replace(/</g, "\\u003c");
   const safeScript = script.replace(/<\/script/gi, "<\\/script");

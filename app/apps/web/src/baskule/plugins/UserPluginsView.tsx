@@ -139,14 +139,16 @@ export function UserPluginRow({
     );
     if (!confirmed) return;
     setBusy(`disconnect:${server}`);
-    try {
+    return (async () => {
       await pluginsApi.disconnect(plugin.id, server);
       onChanged();
-    } catch (cause) {
-      notifyPluginError(t("Could not disconnect your account"), cause);
-    } finally {
-      setBusy(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyPluginError(t("Could not disconnect your account"), cause);
+      })
+      .finally(() => {
+        setBusy(null);
+      });
   };
 
   const connectionLines = plugin.connections.flatMap((connection) => {

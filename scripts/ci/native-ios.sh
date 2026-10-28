@@ -7,6 +7,10 @@ OUT="$ROOT/.run/native/ios"
 mkdir -p "$OUT"
 cd "$ROOT/app/apps/mobile"
 export APP_VARIANT=production EXPO_NO_TELEMETRY=1 EXPO_NO_GIT_STATUS=1 NODE_ENV=production
+CONFIG_OUT="$ROOT/.run/native-config/ios"
+mkdir -p "$CONFIG_OUT"
+# Run the native Constants phase before CocoaPods or Xcode compilation.
+node node_modules/expo-constants/scripts/getAppConfig.js "$PWD" "$CONFIG_OUT" ios false production
 pnpm exec expo prebuild --clean --platform ios --no-install
 (cd ios && pod install)
 # Select a simulator from the pinned SDK, rather than relying on the host's default.
@@ -22,10 +26,12 @@ for runtime, devices in json.load(open(sys.argv[1]))['devices'].items():
 sys.exit('No available iOS 27.1 iPhone simulator on this runner')
 PY
 )
+# GhosttyKit's checked-in simulator slice is arm64, matching the xcode-27 runner.
+# Release defaults otherwise request arm64+x86_64 and CocoaPods rejects that slice.
 xcodebuild -workspace ios/Baskule.xcworkspace -scheme Baskule -configuration Release \
   -sdk iphonesimulator -destination "platform=iOS Simulator,id=$UDID" \
   -derivedDataPath "$ROOT/.run/ios-derived" -resultBundlePath "$OUT/build.xcresult" \
-  -jobs 2 CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$OUT/xcodebuild.log"
+  -jobs 2 ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$OUT/xcodebuild.log"
 APP="$ROOT/.run/ios-derived/Build/Products/Release-iphonesimulator/Baskule.app"
 [[ -d "$APP" ]]
 # Simulator launch is smoke evidence, not physical-device or account-flow acceptance.
@@ -34,9 +40,9 @@ trap 'xcrun simctl shutdown "$UDID"' EXIT
 xcrun simctl bootstatus "$UDID" -b
 xcrun simctl install "$UDID" "$APP"
 xcrun simctl launch "$UDID" dev.baskule.app | tee "$OUT/launch.txt"
-xcrun simctl io "$UDID" screenshot "$OUT/launch.png"
+xcrun simctl io "$UDID" screenshot --display=1 "$OUT/launch.png"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/Baskule-ios-simulator-unsigned.zip"
-printf '%s\n' 'iOS: unsigned Release simulator build and install/launch smoke. No IPA, physical-device acceptance, TestFlight, or App Store submission.' | tee "$OUT/STATUS.txt" >> "$GITHUB_STEP_SUMMARY"
+printf '%s\n' 'iOS: unsigned arm64 Release simulator build and install/launch smoke. No IPA, physical-device acceptance, TestFlight, or App Store submission.' | tee "$OUT/STATUS.txt" >> "$GITHUB_STEP_SUMMARY"
 
 (cd "$OUT" && shasum -a 256 ./*.zip > SHA256SUMS)
 
