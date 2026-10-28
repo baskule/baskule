@@ -4,16 +4,17 @@ The public repository uses standard GitHub-hosted runners. No self-hosted runner
 
 ## Pull requests and main
 
-`CI` runs on pull requests to `main`, pushes to `main`, and manual dispatch without inputs. It has two jobs:
+`CI` runs on pull requests to `main`, pushes to `main`, and manual dispatch without inputs. It has three jobs, which run in parallel:
 
 - `Checks` runs the harness, root/web/mobile/shared typechecks, and desktop checks.
-- `Tests` runs platform, Baskule server, hosted-web unit, mobile unit/React, and shared client package tests.
+- `Tests` runs platform, Baskule server, hosted-web unit, and shared client package tests.
+- `Mobile tests` runs the mobile unit/React tests, the longest suite, on its own runner.
 
-Each suite has its own step. Once setup succeeds, later suites still run after an earlier failure unless the run is cancelled. `CI required` succeeds only when both jobs succeed. The platform, server, web, mobile, and shared Vitest commands use up to four workers, one per hosted-runner vCPU.
+Each suite has its own step. Once setup succeeds, later suites still run after an earlier failure unless the run is cancelled. `CI required` succeeds only when all three jobs succeed. The platform, server, web, mobile, and shared Vitest commands use up to four workers, one per hosted-runner vCPU.
 
-Both jobs restore pinned tools and package stores using the same key. Only `Checks` saves a missing key, after installation. PR runs can reuse the default branch's cache. Dependency installation still uses frozen lockfiles.
+All jobs restore pinned tools and package stores using the same key. Only `Checks` saves a missing key, after installation. PR runs can reuse the default branch's cache. Dependency installation still uses frozen lockfiles.
 
-Routine CI produces no distributable packages and uploads failed suite logs and setup diagnostics. Both jobs build the small SpaceCell bundle because platform tests and root typechecks import it. Hosted-web builds and browser journeys run in the full factory, alongside image and native packaging.
+Routine CI produces no distributable packages and uploads failed suite logs and setup diagnostics. `Checks` and `Tests` build the small SpaceCell bundle because root typechecks and platform tests import it. Hosted-web builds and browser journeys run in the full factory, alongside image and native packaging.
 
 Mobile component tests use the existing mocked native test environment. They do not establish device acceptance. Manual CI also retains setup diagnostics. CI disables remote evidence lookup and recording; it never pushes evidence refs or reads deployment configuration.
 

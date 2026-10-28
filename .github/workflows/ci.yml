@@ -86,9 +86,6 @@ jobs:
       - name: web-unit
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh web-unit 2>&1 | tee .run/evidence/ci-web-unit.log
-      - name: mobile
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: scripts/ci/check.sh mobile 2>&1 | tee .run/evidence/ci-mobile.log
       - name: shared
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh shared 2>&1 | tee .run/evidence/ci-shared.log
@@ -101,14 +98,37 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  mobile:
+    name: Mobile tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - id: setup
+        uses: ./.github/actions/setup
+      - name: mobile
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh mobile 2>&1 | tee .run/evidence/ci-mobile.log
+      - name: Preserve failed check logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-mobile
+          path: .run/evidence/ci-*.log
+          if-no-files-found: ignore
+          retention-days: 1
+
   required:
     name: CI required
     if: always()
-    needs: [checks, tests]
+    needs: [checks, tests, mobile]
     runs-on: ubuntu-24.04
     steps:
-      - name: Require checks and tests to pass
+      - name: Require every job to pass
         env:
           CHECKS_RESULT: ${{ needs.checks.result }}
           TESTS_RESULT: ${{ needs.tests.result }}
-        run: test "$CHECKS_RESULT" = success && test "$TESTS_RESULT" = success
+          MOBILE_RESULT: ${{ needs.mobile.result }}
+        run: test "$CHECKS_RESULT" = success && test "$TESTS_RESULT" = success && test "$MOBILE_RESULT" = success
