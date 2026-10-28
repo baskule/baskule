@@ -98,7 +98,7 @@ Alpha 0.1 is retired; its stack smoke test (`e2e/smoke.sh`) was removed on 2026-
 | File | |
 |---|---|
 | `docker-compose.yml` | the stack (project `baskule`; `BASKULE_INSTANCE` prefixes container/volume/network names) |
-| `server.Dockerfile` (+ `.dockerignore`) | multi-stage: Node 24 + pnpm 11 build (node-pty native) → `node:24-trixie-slim`, UID 1000 |
+| `server.Dockerfile` (+ `.dockerignore`) | multi-stage: Node 26.12.1 + pnpm 12.14.0 (installed with npm) build (node-pty native) → `node:26.12.1-trixie-slim`, UID 1000 |
 | `server-entrypoint.sh` | refuses a base dir inside a git work tree, renders settings, runs `t3 serve --host 0.0.0.0 --port 3773 --base-dir /baskule` from `/baskule/scratch` |
 | `render-settings.mjs` | settings renderer (see Model swap) |
 | `.env.example` | documented config |

@@ -37,7 +37,7 @@ case "$suite" in
     ;;
   web-unit)
     cd app/apps/web
-    run "$vp" "${test_args[@]}" --project unit src/baskule src/branding.test.ts
+    run "$vp" "${test_args[@]}" --project unit src/baskule
     ;;
   mobile)
     cd app/apps/mobile
