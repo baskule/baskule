@@ -55,16 +55,18 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
 
   const run = async (key: string, action: () => Promise<unknown>, failure: string) => {
     setBusy(key);
-    try {
+    return (async () => {
       await action();
       await data.reload();
       return true;
-    } catch (cause) {
-      notifyPluginError(failure, cause);
-      return false;
-    } finally {
-      setBusy(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyPluginError(failure, cause);
+        return false;
+      })
+      .finally(() => {
+        setBusy(null);
+      });
   };
 
   if (!data.data) {
@@ -381,15 +383,17 @@ function OrganizationKeyForm({
   const save = async (headers: Record<string, string> | null) => {
     setSaving(headers ? "save" : "clear");
     setError(null);
-    try {
+    return (async () => {
       await pluginsApi.secret(plugin.id, { server: server.name, headers });
       setValue("");
       notifySuccess(headers ? t("Key saved") : t("Key removed"));
-    } catch (cause) {
-      setError(pluginErrorText(cause, t("The key could not be saved.")));
-    } finally {
-      setSaving(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(pluginErrorText(cause, t("The key could not be saved.")));
+      })
+      .finally(() => {
+        setSaving(null);
+      });
   };
 
   return (

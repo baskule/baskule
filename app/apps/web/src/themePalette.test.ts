@@ -177,10 +177,10 @@ describe("theme files", () => {
     });
   });
 
-  it("keeps the stock sidebar and chat on distinct surfaces in both appearances", () => {
+  it("keeps the warm light sidebar and dark sidebar distinct from chat", () => {
     expectThemeColors(getStandardThemeColors("light"), {
       canvas: "#fcfcfc",
-      sidebar: "#fafafa",
+      sidebar: "#f5f1ea",
       sidebarRowActive: "#ffffff",
       messageSurface: "#f4f4f5",
     });

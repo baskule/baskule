@@ -39,26 +39,30 @@ export function ConnectDeviceSection() {
 
   const showLink = async () => {
     setBusy(true);
-    try {
+    return (async () => {
       const { code, expiresAt } = await baskuleApi.createConnectCode();
       setLink({ kind: "active", url: connectLink(origin, code), expiresAt });
-    } catch (cause) {
-      notifyError(t("Could not create a connection link"), cause);
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyError(t("Could not create a connection link"), cause);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
 
   const openDesktop = async () => {
     setBusy(true);
-    try {
+    return (async () => {
       const { code } = await baskuleApi.createConnectCode();
       window.location.href = desktopConnectLink(origin, code);
-    } catch (cause) {
-      notifyError(t("Could not open the desktop app"), cause);
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyError(t("Could not open the desktop app"), cause);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
 
   const expires =

@@ -10,9 +10,6 @@ const forbiddenImport =
 const legacyTable =
   /\bprojection_(?:threads|thread_messages|thread_activities|thread_proposed_plans|thread_pull_requests|thread_sessions|turns|pending_approvals|state)\b/;
 const legacyReaders = ["orchestration-v2/legacy/", "persistence/Migrations/"] as const;
-const legacyReaderFiles: Record<string, string> = {
-  "serverSettings.ts": "one-time provider history for settings migration",
-};
 const retiredPaths = [
   "orchestration",
   "orchestration/Layers/ProviderCommandReactor.ts",
@@ -52,16 +49,8 @@ it("reads the V1 tables only from the legacy importer", () => {
   const readers = relativeSources
     .filter(({ source }) => legacyTable.test(source))
     .map(({ path }) => path)
-    .filter(
-      (path) =>
-        !legacyReaders.some((directory) => path.startsWith(directory)) &&
-        legacyReaderFiles[path] === undefined,
-    );
+    .filter((path) => !legacyReaders.some((directory) => path.startsWith(directory)));
   assert.deepEqual(readers, []);
-  for (const path of Object.keys(legacyReaderFiles)) {
-    const file = relativeSources.find((candidate) => candidate.path === path);
-    assert.isTrue(file !== undefined && legacyTable.test(file.source), path);
-  }
 });
 
 it("keeps the legacy importer out of reach of new code", () => {

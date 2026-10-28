@@ -32,8 +32,12 @@ test("changing providers reconnects the open browser and new chats work before a
   const person = await api.person("ProviderSwitch", crypto.randomUUID());
   const space = api.personalSpace(person);
   const sockets = [];
+  const receiving = new Set();
   page.on("websocket", (socket) => {
-    if (socket.url().includes(`/s/${space}/ws`)) sockets.push(socket);
+    if (socket.url().includes(`/s/${space}/ws`)) {
+      sockets.push(socket);
+      socket.on("framereceived", () => receiving.add(socket));
+    }
   });
   const saved = await api.admin.json("GET", "/api/baskule/admin/settings");
   const { organizationName, idleMinutes, ai, transcription } = saved;
@@ -50,6 +54,9 @@ test("changing providers reconnects the open browser and new chats work before a
       ...settings, ai: { ...ai, providerId: "mistral" }, apiKey: "fake-llm-key",
     });
     await expect.poll(() => previous.isClosed(), { message: "old runtime closes its RPC socket" }).toBe(true);
+    await expect.poll(() => sockets.some((socket) => socket !== previous && !socket.isClosed() && receiving.has(socket)), {
+      message: "replacement runtime receives RPC data",
+    }).toBe(true);
     await sidebar(page);
     await page.getByTestId("baskule-new-chat").click();
     await expect(page).toHaveURL(/\/draft\//);

@@ -48,7 +48,8 @@ test("a new chat generates its title after starting exactly one session", { tag:
     expect(run.workStartedAt).toBe(run.requestedAt);
     const log = readFileSync(stack.logs.celld, "utf8");
     const sessions = [...log.matchAll(/^(\S+)\s.*\[agent [^\]]+\] session ses_\w+ at (\S+)/gm)].filter((m) => m[2].includes(marker));
-    expect(sessions.filter((m) => Date.parse(m[1]) < Date.parse(run.startedAt))).toHaveLength(1);
+    // The log has microseconds; the run timestamp and Date.parse have milliseconds.
+    expect(sessions.filter((m) => Date.parse(m[1]) <= Date.parse(run.startedAt))).toHaveLength(1);
     state.stop(); shell.stop();
   } finally { c.close(); await c.closed; }
 });

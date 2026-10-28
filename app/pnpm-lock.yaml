@@ -156,7 +156,7 @@ overrides:
   vite-plus: 1.0.0
   yaml: ^2.9.0
 
-packageExtensionsChecksum: sha256-t6qnqtdFNugrwGbxeZ0e67j74AQsMzvq2fCpXQ6EzbQ=
+packageExtensionsChecksum: sha256-dikk75Eajx0F506NLW7zpXVI/k/wywPqiqtfymZ5UEQ=
 
 patchedDependencies:
   '@clerk/expo-native-components@0.2.0': 7a808b92da8460750b85818552e13be3fb73d111691c7db76965970351e124e4
@@ -22043,6 +22043,7 @@ snapshots:
       '@react-native-async-storage/async-storage': 3.1.1(react-native@0.88.0(patch_hash=e304d70ed8f6406b07253211651c298022db8e065b61587c5dd73e9ef2194efa)(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(utf-8-validate@6.0.6))(react@19.3.0)
       crypto-js: 4.2.0
       deprecated-react-native-prop-types: 2.3.0
+      prop-types: 15.8.1
       react: 19.3.0
       react-native: 0.88.0(patch_hash=e304d70ed8f6406b07253211651c298022db8e065b61587c5dd73e9ef2194efa)(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(utf-8-validate@6.0.6)
       react-native-blob-util: 0.25.1(react-native@0.88.0(patch_hash=e304d70ed8f6406b07253211651c298022db8e065b61587c5dd73e9ef2194efa)(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(utf-8-validate@6.0.6))(react@19.3.0)

@@ -84,7 +84,7 @@ export function AddOwnPluginDialog({
   const submit = async () => {
     setSubmitting(true);
     setError(null);
-    try {
+    return (async () => {
       const input: PluginInstallInput =
         method === "address"
           ? { source: { type: "url", url: address.trim() } }
@@ -104,11 +104,13 @@ export function AddOwnPluginDialog({
       });
       reset();
       onAdded(plugin);
-    } catch (cause) {
-      setError(pluginErrorText(cause, t("The plugin could not be added.")));
-    } finally {
-      setSubmitting(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(pluginErrorText(cause, t("The plugin could not be added.")));
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   return (

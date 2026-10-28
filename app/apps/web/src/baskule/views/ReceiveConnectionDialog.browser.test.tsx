@@ -46,6 +46,9 @@ it("requires destination confirmation for paste and keeps paste usable after con
     origin: "https://baskule.example",
     code: "once",
   });
+  await userEvent.click(screen.getByRole("button", { name: "Confirm connection" }));
+  await expect.poll(() => connect.mock.calls.length).toBe(2);
+  await expect.element(screen.getByRole("button", { name: "Confirm connection" })).toBeEnabled();
   await userEvent.click(screen.getByRole("button", { name: "Use another connection" }));
   await expect.element(screen.getByRole("textbox")).toBeVisible();
 });

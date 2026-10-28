@@ -116,6 +116,8 @@ jobs:
             .run/check/
             .run/wp-e/artifacts/
             e2e/test-results/
+            .run/journeys/results/**/test-failed-*.png
+            .run/journeys/results/**/error-context.md
           if-no-files-found: warn
           retention-days: 1
 

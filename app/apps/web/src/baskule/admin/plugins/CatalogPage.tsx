@@ -81,15 +81,17 @@ export function CatalogPage() {
 
   const add = async (result: PluginSearchResult) => {
     setAdding(resultKey(result));
-    try {
+    return (async () => {
       const plugin = await pluginsApi.install({ source: result.source });
       setReview(plugin);
       void installed.reload();
-    } catch (cause) {
-      notifyPluginError(t("Could not add {{name}}", { name: result.name }), cause);
-    } finally {
-      setAdding(null);
-    }
+    })()
+      .catch((cause: unknown) => {
+        notifyPluginError(t("Could not add {{name}}", { name: result.name }), cause);
+      })
+      .finally(() => {
+        setAdding(null);
+      });
   };
 
   const results = search.data?.results ?? [];

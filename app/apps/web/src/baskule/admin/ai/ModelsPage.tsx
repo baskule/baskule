@@ -67,7 +67,7 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
     }
     setBusy(true);
     setError(null);
-    try {
+    return (async () => {
       const { cost: _previous, ...model } = ai.model;
       const saved = await saveSettingsPart({
         ai: {
@@ -93,17 +93,19 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
             "Settings are saved, but some spaces could not reload. Stop them from Admin → General → Overview to apply the AI changes.",
           ),
         );
-    } catch (cause) {
-      setError(
-        cause instanceof SyntaxError
-          ? t("Advanced model settings must be valid JSON objects.")
-          : cause instanceof Error
-            ? cause.message
-            : t("Could not save settings."),
-      );
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(
+          cause instanceof SyntaxError
+            ? t("Advanced model settings must be valid JSON objects.")
+            : cause instanceof Error
+              ? cause.message
+              : t("Could not save settings."),
+        );
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
 
   return (

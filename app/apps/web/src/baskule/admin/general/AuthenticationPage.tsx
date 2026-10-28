@@ -131,17 +131,19 @@ function GoogleSignupForm({ initial }: { readonly initial: BaskuleAdminSettings 
     if (busy) return;
     setBusy(true);
     setError(null);
-    try {
+    return (async () => {
       const saved = await saveSettingsPart({
         googleSignupDomains: domains.split(/[,\s]+/).filter(Boolean),
       });
       setDomains(saved.googleSignupDomains.join(", "));
       notifySuccess(t("Google signup settings saved"));
-    } catch (cause) {
-      setError(errorText(cause, t("Could not save settings.")));
-    } finally {
-      setBusy(false);
-    }
+    })()
+      .catch((cause: unknown) => {
+        setError(errorText(cause, t("Could not save settings.")));
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   };
   return (
     <form onSubmit={(event) => void submit(event)}>

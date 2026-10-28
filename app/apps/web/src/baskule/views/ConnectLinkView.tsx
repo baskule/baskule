@@ -41,17 +41,19 @@ export function ConnectLinkView({
     submitting.current = true;
     setBusy(true);
     setError(null);
-    try {
+    return (async () => {
       await baskuleApi.redeemConnectCode(code);
       if (mounted.current) window.location.replace(destination);
-    } catch (cause) {
-      if (mounted.current) {
-        setError(errorText(cause, t("This device could not be connected.")));
-        setBusy(false);
-      }
-    } finally {
-      submitting.current = false;
-    }
+    })()
+      .catch((cause: unknown) => {
+        if (mounted.current) {
+          setError(errorText(cause, t("This device could not be connected.")));
+          setBusy(false);
+        }
+      })
+      .finally(() => {
+        submitting.current = false;
+      });
   };
 
   return (
