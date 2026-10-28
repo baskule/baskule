@@ -72,8 +72,60 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             -f description='Full artifact verification is running.' --silent
 
-  backend:
+  translate:
     needs: version
+    runs-on: ubuntu-24.04
+    # Only tag runs use the key; manual runs package the committed catalogs.
+    environment: ${{ github.ref_type == 'tag' && 'release' || '' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Translate missing release messages
+        if: github.ref_type == 'tag'
+        env:
+          TRANSLATION_API_KEY: ${{ secrets.TRANSLATION_API_KEY }}
+          TRANSLATION_MODEL: ${{ vars.TRANSLATION_MODEL }}
+          TRANSLATION_BASE_URL: ${{ vars.TRANSLATION_BASE_URL }}
+        run: node app/scripts/localization.ts translate
+      - name: Check release catalogs
+        if: github.ref_type == 'tag'
+        run: node app/scripts/localization.ts check
+      - name: Upload release translations
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: translations
+          path: |
+            app/packages/shared/src/locales/
+            app/apps/mobile/locales/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Push translations for review
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add app/packages/shared/src/locales/ app/apps/mobile/locales/
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          branch="translations/v$VERSION"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "chore(i18n): translate v$VERSION"
+          gh auth setup-git
+          # The bot owns this branch; a rerun replaces it with the catalogs this run shipped.
+          git push --force origin "HEAD:refs/heads/$branch"
+          echo "[Review translations and create a PR]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$branch?expand=1)" >> "$GITHUB_STEP_SUMMARY"
+
+  backend:
+    needs: [version, translate]
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
@@ -83,6 +135,11 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+      - name: Download release translations
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: translations
+          path: app
       - name: Make room for the native and musl builds
         shell: bash
         run: |
@@ -122,7 +179,7 @@ jobs:
           retention-days: 1
 
   linux-apps:
-    needs: version
+    needs: [version, translate]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -132,6 +189,11 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+      - name: Download release translations
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: translations
+          path: app
       - uses: ./.github/actions/setup
       - name: Install native Linux packaging and headless tools
         run: |
@@ -183,13 +245,14 @@ jobs:
           retention-days: 1
 
   native:
-    needs: version
+    needs: [version, translate]
     if: github.ref_type == 'tag' || inputs.include_native == true
     uses: ./.github/workflows/native.yml
     with:
       version: ${{ needs.version.outputs.version }}
       platform: all
       sign: false
+      translations: true
     secrets: inherit
 
   factory-status:
