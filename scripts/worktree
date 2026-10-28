@@ -2,8 +2,12 @@
 # Shared host tools and per-worktree dependencies. Run from any directory in the checkout.
 set -Eeuo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# New linked worktrees inherit the primary checkout's prepared host tools.
+PRIMARY=$(dirname "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)")
 if [[ -L $ROOT/.tools ]]; then
   DEFAULT_SHARED=$(dirname "$(readlink -f "$ROOT/.tools")")
+elif [[ -L $PRIMARY/.tools ]]; then
+  DEFAULT_SHARED=$(dirname "$(readlink -f "$PRIMARY/.tools")")
 else
   DEFAULT_SHARED=${XDG_CACHE_HOME:-$HOME/.cache}/baskule
 fi
@@ -106,11 +110,11 @@ install_app() {
     return
   fi
   rm -f "$marker"
-  (cd "$ROOT/app"; pnpm install --frozen-lockfile --prefer-offline --store-dir "$PNPM_STORE")
+  (cd "$ROOT/app"; pnpm install --frozen-lockfile --prefer-offline --config.confirmModulesPurge=false --reporter=append-only --store-dir "$PNPM_STORE")
   printf '%s\n' "$hash" > "$marker"
 }
 install_workspace() {
-  (cd "$ROOT"; pnpm install --frozen-lockfile --prefer-offline --store-dir "$PNPM_STORE")
+  (cd "$ROOT"; pnpm install --frozen-lockfile --prefer-offline --config.confirmModulesPurge=false --reporter=append-only --store-dir "$PNPM_STORE")
 }
 sync_bundle() {
   local hash marker=$ROOT/platform/src/space/t3/.worktree-inputs
@@ -136,14 +140,14 @@ case $1 in
     source "$ROOT/scripts/env.sh"
     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
     STEP=dependencies
-    step app install_app &
-    app_pid=$!
-    step workspace install_workspace &
-    workspace_pid=$!
-    status=0
-    wait "$app_pid" || status=$?
-    wait "$workspace_pid" || status=$?
-    ((status == 0)) || exit "$status"
+    # pnpm imports and build hooks mutate the same global-store package files.
+    # Serialize both workspaces and other worktrees through their shared store.
+    (
+      echo '==> waiting for shared dependency store'
+      flock -w 600 9
+      step app install_app
+      step workspace install_workspace
+    ) 9>"$PNPM_STORE/.worktree-install.lock"
     if [[ $1 = runtime ]]; then
       step SpaceCell sync_bundle
     else
