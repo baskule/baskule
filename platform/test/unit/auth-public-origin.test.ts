@@ -84,6 +84,21 @@ describe("installation public origin", () => {
     expect(new URL(otherBody.url).searchParams.get("redirect_uri")).toBe("http://other-local.test/auth/callback/google");
   });
 
+  it.each([undefined, PUBLIC])("handles a peer-proxied Google callback with publicOrigin=%s", async publicOrigin => {
+    const h = await makeService({ AUTH_CONFIG: JSON.stringify({ publicOrigin, providers: [google] }) });
+    const req = new Request(ORIGIN + "/auth/callback/google?code=test-code&state=invalid-state", { redirect: "manual" });
+    // celld peer forwarding supplies an empty GET body; Node's Request constructor forbids one.
+    Object.defineProperty(req, "body", { value: new ReadableStream({ start(controller) { controller.close(); } }) });
+    expect(req.body).not.toBeNull();
+    expect(req.headers.has("content-type")).toBe(false);
+
+    const res = await h.svc.handle(req);
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!, publicOrigin ?? ORIGIN);
+    expect(location.pathname).toBe("/auth/error");
+    expect(location.searchParams.get("error")).toBe("state_mismatch");
+  });
+
   it("generates public native, invitation and password reset URLs from HTTP requests", async () => {
     const h = await configured();
     const creds = await adminSession(h);

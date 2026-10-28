@@ -337,6 +337,12 @@ export class ControlService {
   async handle(req: Request): Promise<Response> {
     let res: Response;
     try {
+      // celld peer forwarding can attach an empty body to GET/HEAD requests.
+      if (req.method === "GET" || req.method === "HEAD") {
+        req = new Request(req.url, {
+          method: req.method, headers: req.headers, redirect: req.redirect, body: null,
+        });
+      }
       if (this.installation.publicOrigin) {
         const url = new URL(this.installation.publicOrigin);
         const incoming = new URL(req.url);
