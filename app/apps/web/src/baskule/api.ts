@@ -4,14 +4,18 @@ import { t } from "../i18n";
 // Wire shapes: platform/README.md ("/api/baskule") and platform/src/control/service.ts (WP-C).
 // The views use the small view models below; mapping from the wire happens here only.
 import type {
+  BaskuleAIConnectionCheck,
   BaskuleAuthConfig,
   BaskuleAdminSettings,
+  BaskuleAvailableModel,
   BaskuleProductSettings,
   BaskuleTranscriptionResult,
 } from "@t3tools/contracts/baskule";
 export type {
+  BaskuleAIConnectionCheck,
   BaskuleAuthConfig,
   BaskuleAdminSettings,
+  BaskuleAvailableModel,
   BaskuleProductSettings,
 } from "@t3tools/contracts/baskule";
 
@@ -201,6 +205,18 @@ const CODE_MESSAGES: Record<string, string> = {
   },
   get shared_api_key() {
     return t("This key is shared with chat. Change it on AI → Models.");
+  },
+  get ai_key_missing() {
+    return t("Enter this provider's API key.");
+  },
+  get ai_key_rejected() {
+    return t("The provider rejected this API key.");
+  },
+  get ai_model_not_found() {
+    return t("This key has no access to this model. Choose another model.");
+  },
+  get ai_provider_unreachable() {
+    return t("Could not reach the provider. Check the API endpoint.");
   },
   get usage_limit_reached() {
     return t("Usage limit reached");
@@ -451,6 +467,17 @@ export const baskuleApi = {
   saveSettings: (
     settings: BaskuleProductSettings & { apiKey?: string; transcriptionApiKey?: string },
   ) => request<BaskuleAdminSettings>("PATCH", "/api/baskule/admin/settings", settings),
+  aiModels: async (connection: BaskuleAIConnectionCheck) =>
+    (
+      await request<{ readonly models: BaskuleAvailableModel[] }>(
+        "POST",
+        "/api/baskule/admin/ai/models",
+        connection,
+      )
+    ).models,
+  /** Resolves when the provider accepts the key and model; rejects with the reason otherwise. */
+  verifyAI: (check: BaskuleAIConnectionCheck & { readonly modelId: string }) =>
+    request<{ readonly ok: true }>("POST", "/api/baskule/admin/ai/verify", check),
   providerSignIn: (provider: BaskuleAuthConfig["providers"][number], next = "/") =>
     request<{ url: string }>("POST", "/auth/sign-in/social", {
       provider: provider.id,

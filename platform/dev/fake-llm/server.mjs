@@ -3,7 +3,7 @@
 //
 //   node dev/fake-llm/server.mjs [--port 47601] [--host 127.0.0.1]     (env: FAKE_LLM_PORT, FAKE_LLM_HOST, FAKE_LLM_KEY)
 //
-// Endpoints: POST /v1/chat/completions (stream or not), GET /v1/models, GET /_fake/requests (last 50 request bodies),
+// Endpoints: POST /v1/chat/completions (stream or not), GET /v1/models[/<id>], GET /_fake/requests (last 50 request bodies),
 // POST /_fake/reset, GET /health. The `/v1` prefix is optional.
 //
 // T3 title-generation prompts receive valid title/needsRefinement JSON independently of nested chat markers.
@@ -217,6 +217,13 @@ export function createServer() {
       if (req.method === "GET" && path === "/models") {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify({ object: "list", data: MODELS.map((id) => ({ id, object: "model", created: CREATED, owned_by: "baskule-fake" })) }));
+      }
+      if (req.method === "GET" && path.startsWith("/models/")) {
+        const id = decodeURIComponent(path.slice("/models/".length));
+        const known = MODELS.includes(id);
+        res.writeHead(known ? 200 : 404, { "content-type": "application/json" });
+        return res.end(JSON.stringify(known ? { id, object: "model", created: CREATED, owned_by: "baskule-fake" }
+          : { error: { message: `The model ${id} does not exist`, type: "invalid_request_error" } }));
       }
       if (req.method === "GET" && path === "/_fake/requests") {
         res.writeHead(200, { "content-type": "application/json" });

@@ -115,13 +115,14 @@ const scenarios = {
       await page.goto("/admin/ai/models");
       await page.getByLabel("API key", { exact: true }).waitFor();
       await shot(page, `${device}-admin-models`);
-      await page.getByRole("radio", { name: "Custom" }).check();
+      await page.getByLabel("Provider", { exact: true }).click();
+      await page.getByRole("option", { name: "Custom", exact: true }).click();
       await page.getByLabel("API endpoint", { exact: true }).fill("https://custom.example.test/v1");
       await page.getByLabel("API key", { exact: true }).fill("mock-settings-key");
-      await page.getByLabel("Model ID", { exact: true }).last().fill(`model-${device}`);
-      await page.getByText("Advanced model settings", { exact: true }).click();
-      await page.getByLabel("Display name", { exact: true }).last().fill("Custom model");
-      await page.getByLabel("PDFs", { exact: true }).last().check();
+      await page.getByLabel("Model", { exact: true }).fill(`model-${device}`);
+      await page.getByLabel("Display name", { exact: true }).fill("Custom model");
+      // Saving waits for the connection check of the endpoint, key and model.
+      await page.getByText("Connection works", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Save settings", exact: true }).click();
       await page.getByText("AI settings saved", { exact: true }).waitFor();
       const saved = await (await page.request.get("/api/baskule/admin/settings")).json();
@@ -390,23 +391,14 @@ const scenarios = {
     const { context, page } = await newPage(browser, device);
     await signIn(page, "admin");
     await page.goto("/admin");
-    if (device === "phone") {
-      // A phone lists every admin page; each page links back to the list.
-      await page.getByRole("link", { name: /^Users/ }).waitFor();
-      check(
-        (await page.getByRole("link", { name: /^Catalog/ }).count()) > 0,
-        `${device}: /admin lists the sections and their pages`,
-      );
-      await shot(page, `${device}-admin-home`);
-      await page.getByRole("link", { name: /^Users/ }).click();
-    } else {
-      await page.waitForURL(/\/admin\/general\/overview$/);
-      check(true, `${device}: /admin opens General → Overview`);
-      await page
-        .getByRole("navigation", { name: "Admin", exact: true })
-        .getByRole("link", { name: "Users" })
-        .click();
-    }
+    // The admin pop-up opens on its first page; its nav (an icon rail on phones) lists the others.
+    await page.waitForURL(/\/admin\/general\/overview$/);
+    check(true, `${device}: /admin opens General → Overview`);
+    await shot(page, `${device}-admin-home`);
+    await page
+      .getByRole("navigation", { name: "Admin", exact: true })
+      .getByRole("link", { name: "Users" })
+      .click();
     await page.waitForURL(/\/admin\/people\/users$/);
     await page.getByRole("button", { name: "Options for Carol Petit" }).waitFor();
     check(
@@ -439,15 +431,10 @@ const scenarios = {
       `${device}: admin lists pending invitations on their own page`,
     );
     await shot(page, `${device}-admin-invitations`);
-    if (device === "phone") {
-      await page.getByRole("link", { name: "Admin", exact: true }).click();
-      await page.getByRole("link", { name: /^Team spaces/ }).click();
-    } else {
-      await page
-        .getByRole("navigation", { name: "Admin", exact: true })
-        .getByRole("link", { name: "Team spaces" })
-        .click();
-    }
+    await page
+      .getByRole("navigation", { name: "Admin", exact: true })
+      .getByRole("link", { name: "Team spaces" })
+      .click();
     await page.waitForURL(/\/admin\/spaces\/team$/);
     await page.getByRole("button", { name: "New team space" }).waitFor();
     await shot(page, `${device}-admin-team-spaces`);
@@ -529,15 +516,15 @@ const scenarios = {
       await page.getByText("Usage this month", { exact: true }).waitFor();
       await shot(page, `${device}-admin-overview`);
       await page.goto("/admin/ai/models");
-      // The settings scenario may leave a custom endpoint, which has no suggestions. Not saved.
-      await page.getByRole("radio", { name: "Mistral" }).check();
-      await page.getByRole("button", { name: "Use suggested prices" }).click();
-      await page.getByText(/^Prices from the built-in list/).waitFor();
+      // The settings scenario may leave a custom endpoint, whose prices are entered. Not saved.
+      await page.getByLabel("Provider", { exact: true }).click();
+      await page.getByRole("option", { name: "Mistral", exact: true }).click();
+      await page.getByText("$0.68", { exact: true }).waitFor();
       check(
-        (await page.getByLabel("Input", { exact: true }).inputValue()) === "0.5",
-        `${device}: suggested prices fill the model's prices`,
+        (await page.getByRole("spinbutton", { name: "Input" }).count()) === 0,
+        `${device}: a built-in model shows its catalog prices, read-only`,
       );
-      await page.getByText("Prices", { exact: true }).scrollIntoViewIfNeeded();
+      await page.getByText("Price", { exact: true }).scrollIntoViewIfNeeded();
       await shot(page, `${device}-admin-model-prices`);
 
       const alice = await newPage(browser, device);

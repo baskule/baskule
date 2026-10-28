@@ -1,14 +1,9 @@
 // baskule: the model's prices, which turn tokens into the costs people see and cost limits count.
-// "Use suggested prices" asks the ControlCell (models.dev, or its built-in snapshot).
-import type { BaskuleAIModel, BaskuleAIProviderId } from "@t3tools/contracts/baskule";
-import { useState } from "react";
+// Built-in providers' prices come from Baskule's catalog and are read-only; custom endpoints enter theirs.
+import type { BaskuleAIModel } from "@t3tools/contracts/baskule";
 
-import { useLocale, useTranslation } from "../../../i18n";
-import { Button } from "../../../components/ui/button";
-import { Spinner } from "../../../components/ui/spinner";
-import { BaskuleApiError } from "../../api";
-import { errorText, FormField } from "../../ui";
-import { usageApi } from "../../usage/api";
+import { msg, useLocale, useTranslation } from "../../../i18n";
+import { Input } from "../../../components/ui/input";
 
 export interface PriceDraft {
   readonly input: string;
@@ -49,113 +44,67 @@ export function costOf(draft: PriceDraft): BaskuleAIModel["cost"] | null {
   };
 }
 
-export function ModelPrices({
-  providerId,
-  modelId,
+const PRICE_FIELDS = [
+  { key: "input", label: msg("Input") },
+  { key: "output", label: msg("Output") },
+  { key: "cacheRead", label: msg("Cache read") },
+  { key: "cacheWrite", label: msg("Cache write") },
+] as const;
+
+/** Read-only prices of a built-in model. */
+export function PriceSummary({ cost }: { readonly cost: BaskuleAIModel["cost"] }) {
+  const t = useTranslation();
+  const locale = useLocale();
+  if (!cost) return <p className="text-sm text-muted-foreground">{t("Unknown")}</p>;
+  const values = [cost.input, cost.output, cost.cache_read, cost.cache_write];
+  if (values.every((value) => !value))
+    return <p className="text-sm text-foreground">{t("Free")}</p>;
+  const usd = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+  return (
+    <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 text-sm">
+      {PRICE_FIELDS.map(({ label }, index) =>
+        values[index] === undefined ? null : (
+          <div key={label} className="contents">
+            <dt className="text-muted-foreground">{t(label)}</dt>
+            <dd className="text-end text-foreground tabular-nums">{usd.format(values[index])}</dd>
+          </div>
+        ),
+      )}
+    </dl>
+  );
+}
+
+/** Every price a custom endpoint's model can have, in USD per million tokens. */
+export function CustomPriceFields({
   value,
   onChange,
 }: {
-  readonly providerId: BaskuleAIProviderId;
-  readonly modelId: string;
   readonly value: PriceDraft;
   readonly onChange: (value: PriceDraft) => void;
 }) {
   const t = useTranslation();
-  const locale = useLocale();
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const field = (key: keyof PriceDraft) => ({
-    type: "number",
-    min: 0,
-    step: "any",
-    inputMode: "decimal" as const,
-    value: value[key],
-    onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-      setNote(null);
-      onChange({ ...value, [key]: event.currentTarget.value });
-    },
-  });
-
-  const suggest = async () => {
-    setBusy(true);
-    setNote(null);
-    return (async () => {
-      const suggestion = await usageApi.prices(providerId, modelId.trim());
-      onChange({
-        input: text(suggestion.prices.input),
-        output: text(suggestion.prices.output),
-        cacheRead: text(suggestion.prices.cacheRead),
-        cacheWrite: text(suggestion.prices.cacheWrite),
-      });
-      const date = new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(
-        Date.parse(suggestion.fetchedAt),
-      );
-      setNote(
-        suggestion.source === "models.dev"
-          ? t("Prices from models.dev, {{date}}. Check them against your contract.", { date })
-          : t("Prices from the built-in list of {{date}}: models.dev could not be reached.", {
-              date,
-            }),
-      );
-    })()
-      .catch((cause: unknown) => {
-        setNote(
-          cause instanceof BaskuleApiError && cause.code === "model_price_not_found"
-            ? t(
-                "No suggested price for this model. Enter the prices from your provider's price list.",
-              )
-            : errorText(cause, t("Could not get suggested prices.")),
-        );
-      })
-      .finally(() => {
-        setBusy(false);
-      });
-  };
-
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <h3 className="text-sm font-medium">{t("Prices")}</h3>
-          <p className="text-xs text-muted-foreground">
-            {t(
-              "USD per million tokens. They estimate costs and cost limits; without them, usage counts tokens only.",
-            )}
-          </p>
-        </div>
-        {/* Custom has no catalog; OpenCode's free preset already costs nothing. */}
-        {providerId === "custom" || providerId === "opencode" ? null : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={busy || modelId.trim() === ""}
-            onClick={() => void suggest()}
-          >
-            {busy ? <Spinner size="sm" /> : null}
-            {t("Use suggested prices")}
-          </Button>
-        )}
-      </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <FormField label={t("Input")} {...field("input")} />
-        <FormField label={t("Output")} {...field("output")} />
-        <FormField
-          label={t("Cache read")}
-          placeholder={t("Same as input")}
-          {...field("cacheRead")}
-        />
-        <FormField
-          label={t("Cache write")}
-          placeholder={t("Same as input")}
-          {...field("cacheWrite")}
-        />
-      </div>
-      {note ? (
-        <p role="status" className="text-xs text-muted-foreground">
-          {note}
-        </p>
-      ) : null}
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {PRICE_FIELDS.map(({ key, label }) => (
+        <label key={key} className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
+          {t(label)}
+          <Input
+            nativeInput
+            type="number"
+            min={0}
+            step="any"
+            inputMode="decimal"
+            value={value[key]}
+            placeholder={key === "cacheRead" || key === "cacheWrite" ? t("Same as input") : "0.00"}
+            onChange={(event) => onChange({ ...value, [key]: event.currentTarget.value })}
+          />
+        </label>
+      ))}
     </div>
   );
 }

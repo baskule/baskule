@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { asAdmin, call, makeService, createUser, signIn } from "../support/harness";
 import { ControlService } from "../../src/control/service";
 import { parseAuthConfig } from "../../src/control/auth-config";
@@ -56,8 +56,25 @@ describe("installation authentication", () => {
   });
 });
 
+/** A provider that accepts every key and model (or answers `status`); models.dev stays offline. */
+function providers(status = 200) {
+  const calls: { method: string; url: string; authorization: string | null }[] = [];
+  const stub = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url === "https://models.dev/api.json") throw new Error("offline");
+    const method = init?.method ?? "GET";
+    calls.push({ method, url, authorization: new Headers(init?.headers).get("authorization") });
+    if (status !== 200) return Response.json({ error: { message: "rejected" } }, { status });
+    if (method === "POST") return Response.json({ choices: [{ message: { content: "Hi" } }] });
+    if (url.endsWith("/models")) return Response.json({ data: [{ id: "listed-model" }] });
+    return Response.json({ id: url.split("/").at(-1) });
+  });
+  return { calls, [Symbol.dispose]: () => stub.mockRestore() };
+}
+
 describe("organization settings", () => {
   it("restricts updates to admins, validates them, persists them and keeps keys private", async () => {
+    using _providers = providers();
     const h = await makeService({ COMPUTERD_TOKEN: "internal-computerd-secret" });
     const admin = await asAdmin(h);
     await createUser(h, admin.creds, "member@example.test", "Member");
@@ -83,6 +100,7 @@ describe("organization settings", () => {
   });
 
   it("scopes keys to the provider and endpoint while preserving them across model changes", async () => {
+    using _providers = providers();
     const h = await makeService();
     const admin = await asAdmin(h);
     const save = (ai: typeof defaultSettings.ai, apiKey?: string) => call(h, "PATCH", "/api/baskule/admin/settings", {
@@ -105,13 +123,15 @@ describe("organization settings", () => {
     expect(await key()).toBe("proxy-secret");
     expect((await save(original)).body.apiKeyConfigured).toBe(true);
     expect(await key()).toBe("mistral-secret");
-    expect((await save(original, "")).body.apiKeyConfigured).toBe(false);
-    expect(await key()).toBe("");
+    // A built-in provider cannot work without its key.
+    expect((await save(original, "")).body.error).toBe("ai_key_missing");
+    expect(await key()).toBe("mistral-secret");
     await save(proxy);
     expect(await key()).toBe("proxy-secret");
   });
 
   it("saves a keyless provider without a stored key and supplies public auth privately", async () => {
+    using api = providers();
     const h = await makeService();
     const admin = await asAdmin(h);
     const provider = BASKULE_AI_PROVIDERS.opencode;
@@ -129,8 +149,59 @@ describe("organization settings", () => {
     }
     await h.svc.init();
     expect((await call(h, "GET", "/api/baskule/admin/settings", { creds: admin.creds })).body.apiKeyConfigured).toBe(true);
+    expect(api.calls).toEqual([{ method: "POST", url: `${provider.baseUrl}/chat/completions`, authorization: "Bearer public" }]);
     const switched = await call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: defaultSettings });
-    expect(switched.body.apiKeyConfigured).toBe(false);
+    expect(switched.body.error).toBe("ai_key_missing");
+  });
+
+  it("stores only chat configurations the provider accepts, and checks only changed ones", async () => {
+    using api = providers(401);
+    const h = await makeService();
+    const admin = await asAdmin(h);
+    const save = (body: Record<string, unknown>) => call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body });
+    const rejected = await save({ ...defaultSettings, apiKey: "wrong-key" });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error).toBe("ai_key_rejected");
+    expect(JSON.stringify(rejected.body)).not.toContain("wrong-key");
+    expect((await call(h, "GET", "/api/baskule/admin/settings", { creds: admin.creds })).body.apiKeyConfigured).toBe(false);
+    const unrelated = await save({ ...defaultSettings, organizationName: "Renamed" });
+    expect(unrelated.status).toBe(200);
+    expect(api.calls).toHaveLength(1);
+  });
+
+  it("derives built-in prices on the server and keeps the admin's custom prices", async () => {
+    using _providers = providers();
+    const h = await makeService();
+    const admin = await asAdmin(h);
+    const save = (ai: unknown) => call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: { ...defaultSettings, ai, apiKey: "key" } });
+    const small = BASKULE_AI_PROVIDERS.mistral.models[1]!;
+    const forged = await save({ ...defaultSettings.ai, model: { ...small, cost: { input: 99, output: 99 } } });
+    expect(forged.body.ai.model.cost).toEqual(small.cost);
+    const unpriced = await save({ ...defaultSettings.ai, model: { ...small, id: "unlisted-model", cost: { input: 1, output: 1 } } });
+    expect(unpriced.body.ai.model).not.toHaveProperty("cost");
+    const cost = { input: 1, output: 2, cache_read: 0.5, cache_write: 3 };
+    const custom = await save({ providerId: "custom", baseUrl: "https://llm.example.test/v1", model: { ...small, id: "local", cost } });
+    expect(custom.body.ai.model.cost).toEqual(cost);
+  });
+
+  it("lists models and checks a connection with the typed key or the saved one, for admins only", async () => {
+    using api = providers();
+    const h = await makeService();
+    const admin = await asAdmin(h);
+    await createUser(h, admin.creds, "member@example.test", "Member");
+    const member = await signIn(h, "member@example.test", "user-password-1");
+    const connection = { providerId: "mistral", baseUrl: BASKULE_AI_PROVIDERS.mistral.baseUrl };
+    expect((await call(h, "POST", "/api/baskule/admin/ai/models", { creds: member.creds, body: connection })).status).toBe(403);
+    await call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: { ...defaultSettings, apiKey: "saved-key" } });
+    const listed = await call(h, "POST", "/api/baskule/admin/ai/models", { creds: admin.creds, body: connection });
+    expect(listed.body.models).toEqual([{ id: "listed-model", name: "listed-model" }]);
+    const checked = await call(h, "POST", "/api/baskule/admin/ai/verify", { creds: admin.creds, body: { ...connection, modelId: "mistral-small-2603", apiKey: "typed-key" } });
+    expect(checked.body).toEqual({ ok: true });
+    expect(api.calls.slice(1).map(({ url, authorization }) => [url, authorization])).toEqual([
+      [`${connection.baseUrl}/models`, "Bearer saved-key"],
+      [`${connection.baseUrl}/models/mistral-small-2603`, "Bearer typed-key"],
+    ]);
+    expect((await call(h, "POST", "/api/baskule/admin/ai/verify", { creds: admin.creds, body: connection })).status).toBe(400);
   });
 
   it("hands a signed session to the initiating native client once, after browser approval", async () => {

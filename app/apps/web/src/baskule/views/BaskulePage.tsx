@@ -1,4 +1,4 @@
-// baskule: frame of the Baskule in-app pages (admin, downloads), matching the settings pages.
+// baskule: frame of the Baskule in-app pages (downloads), matching the settings pages.
 import type { ReactNode } from "react";
 
 import { SidebarInset } from "../../components/ui/sidebar";

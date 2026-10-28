@@ -37,6 +37,7 @@ let productSettings = {
       image: true,
       pdf: true,
       limit: { context: 524288, output: 262144 },
+      cost: { input: 0.68, output: 2.09, cache_read: 0.07 },
       settings: {},
     },
   },
@@ -47,6 +48,94 @@ let productSettings = {
     model: "gpt-transcribe",
   },
 };
+/** What each built-in provider lists for any accepted key (shape of platform/src/control/ai-models.ts). */
+const MOCK_PROVIDER_MODELS = {
+  mistral: [
+    {
+      id: "mistral-large-4",
+      name: "Mistral Large 4",
+      limit: { context: 524288, output: 262144 },
+      cost: { input: 0.68, output: 2.09, cache_read: 0.07 },
+    },
+    {
+      id: "mistral-small-2603",
+      name: "Mistral Small 4",
+      limit: { context: 262144, output: 256000 },
+      cost: { input: 0.15, output: 0.6, cache_read: 0.015 },
+    },
+    {
+      id: "codestral-2508",
+      name: "Codestral",
+      limit: { context: 256000, output: 4096 },
+      cost: { input: 0.3, output: 0.9, cache_read: 0.03 },
+    },
+    {
+      id: "magistral-medium-latest",
+      name: "Magistral Medium",
+      limit: { context: 128000, output: 16384 },
+      cost: { input: 2, output: 5 },
+    },
+    { id: "ministral-8b-latest", name: "ministral-8b-latest" },
+  ],
+  openai: [
+    {
+      id: "gpt-6.1-sol",
+      name: "GPT-6.1 Sol",
+      limit: { context: 1050000, output: 128000 },
+      cost: { input: 2, output: 10, cache_read: 0.1 },
+    },
+    {
+      id: "gpt-6-astra",
+      name: "GPT-6 Astra",
+      limit: { context: 1050000, output: 128000 },
+      cost: { input: 10, output: 50, cache_read: 1 },
+    },
+    {
+      id: "gpt-5-mini",
+      name: "GPT-5 mini",
+      limit: { context: 400000, output: 128000 },
+      cost: { input: 0.25, output: 2, cache_read: 0.025 },
+    },
+  ],
+  anthropic: [
+    {
+      id: "claude-sonnet-5-5",
+      name: "Claude Sonnet 5.5",
+      limit: { context: 1000000, output: 128000 },
+      cost: { input: 2, output: 10, cache_read: 0.1, cache_write: 2.5 },
+    },
+    {
+      id: "claude-opus-5-5",
+      name: "Claude Opus 5.5",
+      limit: { context: 1000000, output: 128000 },
+      cost: { input: 4, output: 20, cache_read: 0.2, cache_write: 5 },
+    },
+    { id: "claude-haiku-5", name: "Claude Haiku 5" },
+  ],
+};
+/** Mock provider rules: keys starting with "bad" are rejected, "missing-model" does not exist. */
+async function checkMockConnection({ providerId, baseUrl, apiKey, modelId }) {
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  if (providerId === "opencode" || providerId === "custom") {
+    if (modelId === "missing-model")
+      return { status: 400, code: "ai_model_not_found", message: "The model does not exist" };
+    return null;
+  }
+  const key = apiKey ?? (configuredKeys.has(keySlot({ providerId, baseUrl })) ? "saved" : "");
+  if (!key) return { status: 400, code: "ai_key_missing", message: "Enter the provider's API key" };
+  if (key.startsWith("bad"))
+    return { status: 400, code: "ai_key_rejected", message: "The provider rejected the API key" };
+  if (
+    modelId !== undefined &&
+    !MOCK_PROVIDER_MODELS[providerId]?.some((model) => model.id === modelId)
+  )
+    return {
+      status: 400,
+      code: "ai_model_not_found",
+      message: `The provider has no model ${modelId}`,
+    };
+  return null;
+}
 /** Keys live in one slot per provider and endpoint, shared by chat and transcription. */
 const configuredKeys = new Set();
 const keySlot = (connection) => JSON.stringify([connection.providerId, connection.baseUrl]);
@@ -614,22 +703,38 @@ async function handleApi(req, res, url) {
     if (method === "PUT") usageLimits = await readBody(req);
     return send(res, 200, usageLimits);
   }
-  if (api === "/admin/models/prices" && method === "GET") {
+  if ((api === "/admin/ai/models" || api === "/admin/ai/verify") && method === "POST") {
     if (!isAdmin) return fail(res, 403, "forbidden");
-    if (url.searchParams.get("model") !== "mistral-large-4")
-      return fail(res, 404, "model_price_not_found");
-    return send(res, 200, {
-      provider: "mistral",
-      model: "mistral-large-4",
-      prices: { input: 0.5, output: 1.5, cacheRead: 0.05 },
-      source: "snapshot",
-      fetchedAt: "2026-10-24T00:00:00.000Z",
-    });
+    const check = await readBody(req);
+    if (api === "/admin/ai/verify" && !check.modelId) return fail(res, 400, "invalid_connection");
+    const problem = await checkMockConnection(check);
+    if (problem) return fail(res, problem.status, problem.code, problem.message);
+    if (api === "/admin/ai/verify") return send(res, 200, { ok: true });
+    return send(res, 200, { models: MOCK_PROVIDER_MODELS[check.providerId] ?? [] });
   }
   if (api === "/admin/settings") {
     if (!isAdmin) return fail(res, 403, "forbidden");
     if (method === "PATCH") {
       const { apiKey, transcriptionApiKey, ...settings } = await readBody(req);
+      const { cost: _cost, ...model } = settings.ai.model;
+      const sameAI =
+        JSON.stringify({ ...settings.ai, model }) ===
+        JSON.stringify({
+          ...productSettings.ai,
+          model: { ...productSettings.ai.model, cost: undefined },
+        });
+      if (!sameAI || apiKey !== undefined) {
+        const problem = await checkMockConnection({ ...settings.ai, apiKey, modelId: model.id });
+        if (problem) return fail(res, problem.status, problem.code, problem.message);
+      }
+      // Built-in prices are the ControlCell's: the listed model's, or none.
+      if (settings.ai.providerId !== "custom") {
+        const cost = sameAI
+          ? productSettings.ai.model.cost
+          : MOCK_PROVIDER_MODELS[settings.ai.providerId]?.find((entry) => entry.id === model.id)
+              ?.cost;
+        settings.ai = { ...settings.ai, model: cost ? { ...model, cost } : model };
+      }
       productSettings = settings;
       for (const [connection, key] of [
         [settings.ai, apiKey],

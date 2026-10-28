@@ -108,6 +108,12 @@ and accepts write-only `transcriptionApiKey` (empty clears a separate slot). Key
 `transcriptionApiKeyConfigured` reports whether that slot has a key. Conflicting keys for one slot return 400.
 Clearing a shared slot through `transcriptionApiKey` returns 400 `shared_api_key`; change that key on AI → Models.
 Transcription-only changes do not reload spaces unless the shared chat key changes.
+A PATCH that changes the AI configuration or its key is refused (`ai_key_missing`, `ai_key_rejected`,
+`ai_model_not_found`, `ai_provider_unreachable`, `ai_provider_error`) unless the provider accepts the key and model:
+a model lookup for Mistral, OpenAI and Anthropic, one short chat completion for other endpoints. Built-in models take
+their price from the presets or models.dev, never from the request. `POST /admin/ai/models` and `POST /admin/ai/verify`
+(`{providerId, baseUrl, apiKey?, modelId}`) list a connection's models and run the same check for the admin page; without
+`apiKey` they use the key saved for that provider and endpoint.
 Transcription accepts WebM, MP4, MP3, Ogg, WAV, M4A, FLAC and AAC audio MIME types. Requests are limited to
 one per user and eight globally in flight, and users blocked by usage limits receive 429 before audio is read.
 
