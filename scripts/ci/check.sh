@@ -5,25 +5,22 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 source "$ROOT/scripts/env.sh"
 cd "$ROOT"
 
-suite=${1:?Usage: scripts/ci/check.sh <suite> [--shard N/M] [--dry-run]}
+suite=${1:?Usage: scripts/ci/check.sh <suite> [--dry-run]}
 shift
-shard=1/1
 dry=false
 while (($#)); do
   case "$1" in
-    --shard) shard=${2:?Missing shard}; shift 2 ;;
     --dry-run) dry=true; shift ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
-[[ "$shard" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && (( BASH_REMATCH[1] <= BASH_REMATCH[2] )) || { echo "Invalid shard: $shard" >&2; exit 2; }
 run() {
   printf '+ '; printf '%q ' "$@"; printf '\n'
   if [[ "$dry" == false ]]; then "$@"; fi
 }
 vp="$ROOT/app/node_modules/.bin/vp"
 tc="$ROOT/app/node_modules/.bin/tsc-rs"
-test_args=(test run --maxWorkers 2 --shard "$shard")
+test_args=(test run --maxWorkers 4)
 case "$suite" in
   harness)
     run node scripts/lint.mjs
@@ -32,17 +29,15 @@ case "$suite" in
     ;;
   platform)
     cd platform
-    run pnpm exec vitest run --maxWorkers 2 --shard "$shard"
+    run pnpm exec vitest run --maxWorkers 4
     ;;
   server)
     cd app/apps/server
     run "$vp" "${test_args[@]}" src/baskule Baskule src/mcp/McpHttpServer.baskule.test.ts
     ;;
-  web-unit|web-browser)
+  web-unit)
     cd app/apps/web
-    project=${suite#web-}
-    [[ "$project" == browser ]] || project=unit
-    run "$vp" "${test_args[@]}" --project "$project" src/baskule src/branding.test.ts
+    run "$vp" "${test_args[@]}" --project unit src/baskule src/branding.test.ts
     ;;
   mobile)
     cd app/apps/mobile
@@ -74,18 +69,6 @@ case "$suite" in
       cd "$ROOT/app/packages/$package"
       run "$tc" --noEmit
     done
-    ;;
-  web-build)
-    cd app/apps/web
-    run env VITE_BASKULE_HOSTED=1 VITE_BASKULE_UI=1 "$vp" build
-    ;;
-  upstream-server)
-    cd app/apps/server
-    run "$vp" "${test_args[@]}"
-    ;;
-  upstream-web)
-    cd app/apps/web
-    run "$vp" "${test_args[@]}" --project unit
     ;;
   *) echo "Unknown suite: $suite" >&2; exit 2 ;;
 esac

@@ -6,16 +6,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      target:
-        description: Run all checks or only rehearse installation without caches.
-        type: choice
-        options: [all, cold-setup]
-        default: all
-      upstream:
-        description: Also run the full upstream server and web unit suites.
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -30,106 +20,115 @@ env:
   BASKULE_CHECK_RECORD: '0'
   NODE_OPTIONS: --max-old-space-size=6144
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  check:
-    name: ${{ matrix.suite }} (${{ matrix.shard }})
-    if: github.event_name != 'workflow_dispatch' || inputs.target != 'cold-setup'
+  checks:
+    name: Checks
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { suite: harness, shard: '1/1' }
-          - { suite: platform, shard: '1/2', runtime: true }
-          - { suite: platform, shard: '2/2', runtime: true }
-          - { suite: server, shard: '1/2' }
-          - { suite: server, shard: '2/2' }
-          - { suite: web-unit, shard: '1/1' }
-          - { suite: mobile, shard: '1/2' }
-          - { suite: mobile, shard: '2/2' }
-          - { suite: shared, shard: '1/2' }
-          - { suite: shared, shard: '2/2' }
-          - { suite: desktop, shard: '1/1' }
-          - { suite: type-root, shard: '1/1', runtime: true }
-          - { suite: type-web, shard: '1/1' }
-          - { suite: type-mobile, shard: '1/1' }
-          - { suite: type-shared, shard: '1/1' }
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - id: setup
+        uses: ./.github/actions/setup
         with:
-          runtime: ${{ matrix.runtime || false }}
-      - name: Run selected checks
-        shell: bash
-        env:
-          SUITE: ${{ matrix.suite }}
-          SHARD: ${{ matrix.shard }}
-        run: |
-          mkdir -p .run/evidence/ci
-          scripts/ci/check.sh "$SUITE" --shard "$SHARD" 2>&1 | tee .run/evidence/ci/check.log
-      - name: Preserve failed check log
+          runtime: 'true'
+          save-cache: 'true'
+      - name: harness
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh harness 2>&1 | tee .run/evidence/ci-harness.log
+      - name: type-root
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh type-root 2>&1 | tee .run/evidence/ci-type-root.log
+      - name: type-web
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh type-web 2>&1 | tee .run/evidence/ci-type-web.log
+      - name: type-mobile
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh type-mobile 2>&1 | tee .run/evidence/ci-type-mobile.log
+      - name: type-shared
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh type-shared 2>&1 | tee .run/evidence/ci-type-shared.log
+      - name: desktop
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh desktop 2>&1 | tee .run/evidence/ci-desktop.log
+      - name: Preserve failed check logs
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ci-${{ matrix.suite }}-${{ strategy.job-index }}
-          path: .run/evidence/ci/
+          name: ci-checks
+          path: .run/evidence/ci-*.log
+          if-no-files-found: ignore
+          retention-days: 1
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - id: setup
+        uses: ./.github/actions/setup
+        with:
+          runtime: 'true'
+      - name: platform
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh platform 2>&1 | tee .run/evidence/ci-platform.log
+      - name: server
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh server 2>&1 | tee .run/evidence/ci-server.log
+      - name: web-unit
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh web-unit 2>&1 | tee .run/evidence/ci-web-unit.log
+      - name: shared
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh shared 2>&1 | tee .run/evidence/ci-shared.log
+      - name: Preserve failed check logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-tests
+          path: .run/evidence/ci-*.log
+          if-no-files-found: ignore
+          retention-days: 1
+
+  mobile:
+    name: Mobile tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - id: setup
+        uses: ./.github/actions/setup
+      - name: mobile
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: scripts/ci/check.sh mobile 2>&1 | tee .run/evidence/ci-mobile.log
+      - name: Preserve failed check logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-mobile
+          path: .run/evidence/ci-*.log
           if-no-files-found: ignore
           retention-days: 1
 
   required:
     name: CI required
-    if: always() && (github.event_name != 'workflow_dispatch' || inputs.target != 'cold-setup')
-    needs: check
+    if: always()
+    needs: [checks, tests, mobile]
     runs-on: ubuntu-24.04
     steps:
-      - name: Require every CI matrix lane to pass
+      - name: Require every job to pass
         env:
-          CHECK_RESULT: ${{ needs.check.result }}
-        run: test "$CHECK_RESULT" = success
-
-  cold-setup:
-    name: Cold setup
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'cold-setup'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-        with:
-          cache: 'false'
-      - name: Confirm installed tools
-        run: |
-          node --version
-          pnpm --version
-          celld --version
-
-  upstream:
-    name: Upstream ${{ matrix.suite }} (${{ matrix.shard }})
-    if: github.event_name == 'workflow_dispatch' && inputs.target != 'cold-setup' && inputs.upstream
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { suite: upstream-server, shard: '1/4' }
-          - { suite: upstream-server, shard: '2/4' }
-          - { suite: upstream-server, shard: '3/4' }
-          - { suite: upstream-server, shard: '4/4' }
-          - { suite: upstream-web, shard: '1/2' }
-          - { suite: upstream-web, shard: '2/2' }
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - name: Run upstream unit suite
-        env:
-          SUITE: ${{ matrix.suite }}
-          SHARD: ${{ matrix.shard }}
-        run: scripts/ci/check.sh "$SUITE" --shard "$SHARD"
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          TESTS_RESULT: ${{ needs.tests.result }}
+          MOBILE_RESULT: ${{ needs.mobile.result }}
+        run: test "$CHECKS_RESULT" = success && test "$TESTS_RESULT" = success && test "$MOBILE_RESULT" = success
