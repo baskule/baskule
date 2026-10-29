@@ -81,20 +81,20 @@ colour, not the action colour.
 | `--primary-foreground` | `var(--color-white)` | `#111111` |
 | `--message-action`, `--message-action-foreground` | `var(--primary)`, `var(--primary-foreground)` | same |
 | `--ring` | `var(--brand-accent-strong)` | `var(--brand-accent)` |
-| `--update`, `--update-foreground` | `var(--info)`, `var(--info-foreground)` | inherited (blue 400 foreground) |
-| `--sidebar` (`:root` and `[data-app-sidebar]`) | `var(--color-neutral-50)` | unchanged (`var(--card)`) |
-| Light greys (`:root`, `[data-app-sidebar]`) | `--color-neutral-*` at the same step as before | unchanged |
+| `--update`, `--update-foreground` | `var(--info)`, `var(--info-foreground)` | same; the dark info foreground is blue 400 |
+| `--sidebar` (`:root` and `[data-app-sidebar]`) | `var(--color-neutral-50)` | `var(--card)` |
+| Light greys (`:root`, `[data-app-sidebar]`) | `--color-neutral-*` | `--color-neutral-*` |
 | `[data-app-sidebar]` dark foreground / accent foreground / accent | — | `#f5f5f5` / `#fafafa` / `#1a1a1a` |
 | Near-white step | `--color-neutral-25: oklch(99.2% 0 0)` | — |
 
-There is no `--baskule-red` and no `--color-zinc-25`. The brand marks reference `--brand-accent`.
+The brand marks use `--brand-accent`; the focus ring is the only other use of the gold tokens.
 
 ### Default palettes (`app/packages/shared/src/themePalettes.ts`)
 
 `T3_CODE_LIGHT_THEME_COLORS` and `T3_CODE_DARK_THEME_COLORS` feed custom-theme completion on web, the server's HTML
-renderer and every mobile token. In the light palette, each zinc value becomes the neutral value at the same step:
-`#27272a` becomes `#262626`, `#71717b` becomes `#737373`, `#e4e4e7` becomes `#e5e5e5`, `#d4d4d8` becomes
-`#d4d4d4`, `#f4f4f5` becomes `#f5f5f5` and `#18181b` becomes `#171717`. The role values below override that rule.
+renderer and every mobile token. The light palette's greys are Tailwind neutral values: `#262626` text, `#737373`
+muted text, `#e5e5e5` borders, `#d4d4d4` inputs, `#f5f5f5` surfaces and `#171717` strong text. These roles carry
+the brand:
 
 | Role | Light | Dark |
 | --- | --- | --- |
@@ -106,15 +106,15 @@ renderer and every mobile token. In the light palette, each zinc value becomes t
 | `update` | `#2b7fff` | `#2b7fff` |
 | `updateForeground` | `#1447e6` | `#51a2ff` |
 | `updateSurface` | `#e6f0ff` | `#101f36` |
-| `sidebar` | `#fafafa` | `#000000` (unchanged) |
+| `sidebar` | `#fafafa` | `#000000` |
 | `sidebarForeground` | `#262626` | `#f5f5f5` |
 
-Terminal colours and the named built-in themes (T3 Chat, Grove and the others) are unchanged.
+Terminal colours and the named built-in themes (T3 Chat, Grove and the others) keep their upstream values.
 
 ### Mobile (`app/apps/mobile`)
 
-Mobile tokens come from the palettes through `src/lib/mobileTheme.ts`, and `pnpm --filter @t3tools/mobile run generate` (from `app/`) rewrites
-`generated-uniwind-*` and `clerk-theme.json`. The generated files must have no hand edits. `--color-md-link` uses the
+Mobile tokens come from the palettes through `src/lib/mobileTheme.ts`. From `app/`,
+`pnpm --filter @t3tools/mobile run generate` rewrites `generated-uniwind-*` and `clerk-theme.json`. The generated files must have no hand edits. `--color-md-link` uses the
 web's info blue for each appearance (`#1447e6` light, `#51a2ff` dark), adjusted for contrast against the canvas
 like the other text tokens. It does not use the action colour.
 
@@ -154,20 +154,21 @@ point is 0.716 × its width from its centre.
 
 ## Where the brand is applied
 
-Each entry gives the file path and the state it must be in. A surface that is not listed shows no brand
+Each entry gives the file path and its brand state. A surface that is not listed shows no brand
 artwork or brand colour.
 
 **Shared and web**
 
-- `app/apps/web/src/index.css`: tokens as in [Web default theme](#web-default-theme-appappswebsrcindexcss). Rename
-  `--color-zinc-25` to `--color-neutral-25`, including the `bg-zinc-25` use in
-  `src/components/GitActionsControl.tsx`, and update the sidebar comment to say "neutral".
+- `app/apps/web/src/index.css`: tokens as in [Web default theme](#web-default-theme-appappswebsrcindexcss). The
+  near-white step is `--color-neutral-25`, also used as `bg-neutral-25` in `src/components/GitActionsControl.tsx`.
 - `app/packages/shared/src/themePalettes.ts`: palettes as in
   [Default palettes](#default-palettes-apppackagessharedsrcthemepalettests). `src/themePalette.test.ts` and
-  `src/vscodeThemeImport.test.ts` expect the new sidebar and focus values.
+  `src/vscodeThemeImport.test.ts` pin the sidebar and focus values.
 - `app/apps/web/src/components/BaskuleBrand.tsx`: `BaskuleWordmark` keeps its light and dark `<img>` pair.
   `BaskuleMark` draws `brand/mark.svg`'s two paths in its viewBox: the e in `currentColor` and the l in
-  `var(--brand-accent)`. The K paths are gone.
+  `var(--brand-accent)`.
+- `app/apps/web/src/baskule/admin/general/PushSettings.tsx` and `admin/ai/VoiceInputPage.tsx`: native checkboxes
+  and radios use `accent-primary`, so they are ink like the other checked controls.
 - `app/apps/web/index.html`: the boot screen shows `/baskule-wordmark.svg` and `/baskule-wordmark-inverse.svg`. The
   favicons are `/baskule-icon.svg` and `/favicon.ico`, and the touch icon is `/apple-touch-icon.png`.
 - `app/apps/web/public/manifest.webmanifest`: `background_color` and `theme_color` are `#FFFFFF`. The manifest lists
@@ -188,12 +189,10 @@ artwork or brand colour.
 **Mobile**
 
 - `app/apps/mobile/app.config.ts`, all three variants:
-  - `appIcon` is `icon-1024.png`, `iosIcon` is `icon-square-1024.png` and `splashIcon` is `splash.png`.
-  - The splash's `dark.image` is `splash-inverse.png`. Android uses `splash.png` with `dark.image`
-    `splash-inverse.png`.
-  - Both platforms use `imageWidth` 288.
+  - `appIcon` is `icon-1024.png` and `iosIcon` is `icon-square-1024.png`.
+  - `splashIcon` is `splash.png` and `splashIconInverse` is `splash-inverse.png`. expo-splash-screen uses them
+    as `image` and `dark.image` on iOS and Android, both at `imageWidth` 288.
   - `androidAdaptiveBackgroundColor` is `#111111` and `androidNotificationColor` is `#B8902A`.
-  - The comment about Android splash masking is still accurate.
 - `app/apps/mobile/src/components/BaskuleBrand.tsx`: the wordmark's width is `height × 7048.5 / 1511`.
   `BaskuleMark` draws `brand/mark.svg`'s paths: the e themed through `ThemedPath` and the l in `#B8902A`.
 - `app/apps/mobile/src/components/BrandMark.tsx`: the `icon-1024.png` image has no extra `borderRadius`, because the
@@ -201,7 +200,7 @@ artwork or brand colour.
 - `app/apps/mobile/plugins/withWidgetLogoAsset.cjs`: copies `assets/baskule/mark.svg` into the `BaskuleMark`
   template image set.
 - `app/apps/mobile/src/lib/mobileTheme.ts`: `--color-md-link` as in [Mobile](#mobile-appappsmobile). The generated
-  files are regenerated.
+  theme files come only from the generator.
 
 **Documentation**
 
@@ -213,7 +212,7 @@ artwork or brand colour.
 - Assets: `vp run icons:check` in `app/`, which runs `node scripts/export-baskule-assets.ts --check`.
   Render `icon-square-1024.png` and confirm two things: the bounding box of
   non-tile pixels is centred at (512, 512), and it spans 58 % of the width.
-- Leftovers: `git grep -n -i -E 'd90429|baskule-red|f5f1ea|17181a|bd0424|fce7eb|ff646f|craie|symbol(-inverse)?\.svg'
+- Leftovers: `git grep -n -i -E 'd90429|baskule-red|f5f1ea|17181a|bd0424|fce7eb|ff646f|craie|(baskule|brand)/symbol'
   -- ':!docs/branding.md'` and `git grep -n basKule -- ':!docs/branding.md'` find nothing.
 - Tokens: the focused unit tests for `themePalette`, `vscodeThemeImport`, `mobileTheme` and
   `build-desktop-artifact`, plus `scripts/check` for the diff. Run `pnpm --filter @t3tools/mobile run generate`, then confirm
