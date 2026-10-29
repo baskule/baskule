@@ -1,7 +1,7 @@
 // baskule: frame of the admin area, a modal over the chat that opened it like Settings: the admin-only
 // guard, the section nav, the breadcrumb and close button, and the placeholder of pages in progress.
 import { Link, Navigate, Outlet, useParams } from "@tanstack/react-router";
-import { Suspense, type ReactNode } from "react";
+import { Suspense } from "react";
 
 import { useTranslation } from "../../i18n";
 import { AppRouteModal, AppRouteModalClose } from "../../components/AppRouteModal";
@@ -15,7 +15,7 @@ import {
 import { WorkspacePageContainer } from "../../components/WorkspacePageContainer";
 import { useBaskuleMe } from "../session";
 import { RowIcon } from "../ui";
-import { PageMessage } from "../views/BaskulePage";
+import { PageHeading, PageMessage } from "../views/BaskulePage";
 import { AdminSidebarNav } from "./AdminSidebarNav";
 import { adminSections, findAdminPage, type AdminPage } from "./navigation";
 
@@ -148,7 +148,7 @@ export function AdminPageView({
   }
   return (
     <>
-      <AdminPageHeading title={t(page.label)} description={t(page.description)} />
+      <PageHeading title={t(page.label)} description={t(page.description)} />
       {page.component ? (
         <Suspense fallback={<Loading />}>
           <page.component />
@@ -162,34 +162,6 @@ export function AdminPageView({
 
 const BREADCRUMB_LINK =
   "rounded-sm transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
-
-/** The page title block; detail pages pass their item's tile and controls. */
-export function AdminPageHeading({
-  title,
-  description,
-  leading,
-  trailing,
-  children,
-}: {
-  readonly title: ReactNode;
-  readonly description?: ReactNode;
-  readonly leading?: ReactNode;
-  readonly trailing?: ReactNode;
-  /** More text under the description, in the same column as the title. */
-  readonly children?: ReactNode;
-}) {
-  return (
-    <div className="flex items-start gap-3 px-3 sm:px-4">
-      {leading}
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <h1 className="text-lg font-medium text-foreground [overflow-wrap:anywhere]">{title}</h1>
-        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
-        {children}
-      </div>
-      {trailing ? <div className="flex shrink-0 items-center gap-2 pt-0.5">{trailing}</div> : null}
-    </div>
-  );
-}
 
 function Loading() {
   return (

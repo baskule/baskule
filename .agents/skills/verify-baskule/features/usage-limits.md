@@ -12,7 +12,7 @@ Usage attribution and enforced limits.
 
 ## How to get to it (user POV)
 
-Open user menu → Usage; admin configures limits.
+Open the account menu → Settings → Usage; admin configures limits.
 
 ## Driving it with T3 preview or Playwright
 

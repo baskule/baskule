@@ -36,7 +36,7 @@ import {
 } from "../../plugins/presentation";
 import { confirmAction, FormField, notifySuccess, RowIcon, useApiResource } from "../../ui";
 import { PageRow, PageSection } from "../../views/BaskulePage";
-import { AdminPageHeading } from "../AdminShell";
+import { PageHeading } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
 
 export function PluginDetailPage({ id }: { readonly id: string }) {
@@ -111,7 +111,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
 
   return (
     <>
-      <AdminPageHeading
+      <PageHeading
         leading={
           <PluginIcon kind={plugin.kind} icon={plugin.icon} className="size-10 [&_svg]:size-5" />
         }
@@ -141,7 +141,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         {plugin.description ? (
           <p className="pt-1 text-sm text-foreground/80">{plugin.description}</p>
         ) : null}
-      </AdminPageHeading>
+      </PageHeading>
       {plugin.enabled && granted.length === 0 ? (
         <Alert variant="warning">
           <AlertDescription>

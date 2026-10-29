@@ -19,4 +19,4 @@ Run `scripts/check feature:conversation-controls`. `e2e/journeys/conversation-co
 
 ## Gotchas
 
-Phone menu choices can close the sidebar drawer. Reopen it to edit the `Thread title` textbox or reach Archived chats. Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Do not assume existing users, spaces or computers. Legacy checks may own fixed ports; do not kill another run to free them.
+Phone menu choices can close the sidebar drawer. Reopen it to edit the `Thread title` textbox or open the account menu → Settings → Archived chats. Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Do not assume existing users, spaces or computers. Legacy checks may own fixed ports; do not kill another run to free them.

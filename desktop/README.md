@@ -5,9 +5,10 @@ renderer, preload, IPC, native menus, window lifecycle, browser implementation, 
 Local-server startup defaults to disabled for the hosted alpha. The backend, SSH and WSL implementation remain
 available for future local capabilities. Automatic updates are disabled until Baskule owns an update feed.
 
-On first launch, enter a server address or paste a connection link from the installation's **Apps → Connect a
-device** page. `baskule://connect` links use T3's queued OS-link handoff and show the connection form before switching
-installations. **Account → Connect to a server** opens server selection later, including on anonymous installations.
+On first launch, enter a server address or paste a connection link from the installation's **Settings → Desktop
+app → Connect a device** section. `baskule://connect` links use T3's queued OS-link handoff and show the connection
+form before switching installations. **Settings → Desktop app → Connect to a server** opens server selection later,
+including on anonymous installations.
 
 The renderer loads packaged assets at `baskule://app`; it does not load the server's website. The existing Electron
 protocol handler forwards account and space API requests to the selected installation using the native session's

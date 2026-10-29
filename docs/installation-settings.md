@@ -235,7 +235,7 @@ does not enable self-registration or automatic enterprise provisioning.
 
 Web browsers use cookies. Desktop and mobile can use the system browser for external providers: sign in and
 explicitly approve **Connect app**, then return to the app. The initiating app alone holds the polling secret;
-approval issues a connect code (as in **Apps → Connect a device**) that the app's next poll redeems for its own new
+approval issues a connect code (as in **Settings → Desktop app → Connect a device**) that the app's next poll redeems for its own new
 session, once, within 10 minutes. No session token is placed in a URL. Password
 login remains available directly in the clients when enabled. The mobile app exposes server selection before
 showing the installation's available login methods.

@@ -11,7 +11,7 @@ export function SpacesSettingsView() {
   return (
     <SettingsPageContainer>
       <PageSection
-        title={t("Spaces")}
+        title={t("Your spaces")}
         action={
           me?.canCreateSpaces ? (
             <Button size="sm" onClick={() => openCreateSpace()}>

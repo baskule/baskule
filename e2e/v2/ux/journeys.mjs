@@ -169,7 +169,7 @@ const journeys = {
     await step(page, "first-answer", () => page.getByText("Here is a short checklist").last().waitFor({ timeout: 90_000 }));
     await step(page, "user-menu", () => page.getByTestId("baskule-user-menu").click());
     await page.keyboard.press("Escape");
-    await step(page, "apps-page", () => page.goto("/apps"));
+    await step(page, "desktop-app-settings", () => page.goto("/settings/desktop"));
     await ctx.close();
     // Carol: first sign-in with the temporary password.
     const c = await device();
@@ -236,7 +236,10 @@ const journeys = {
     const step = journey("schedule-setup");
     const { ctx, page } = await device();
     await signIn(page, { email: P.dan.email, password: P.dan.password });
-    await step(page, "scheduled-tasks-page", () => page.getByTestId("baskule-scheduled-link").click());
+    await step(page, "scheduled-tasks-page", async () => {
+      await page.getByTestId("baskule-user-menu").click();
+      await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+    });
     await step(page, "new-schedule", async () => {
       const b = page.getByRole("button", { name: /new|add|create/i }).first();
       await b.click();

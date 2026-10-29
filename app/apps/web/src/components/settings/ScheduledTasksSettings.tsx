@@ -421,7 +421,8 @@ export function ScheduledTasksSettings(target: {
   return (
     <SettingsPageContainer>
       <SettingsSection
-        title={t("Scheduled tasks")}
+        // baskule: the Settings page heading already names the section.
+        title={baskule.hideSettings ? t("Your tasks") : t("Scheduled tasks")}
         variant="plain"
         headerAction={
           <Button

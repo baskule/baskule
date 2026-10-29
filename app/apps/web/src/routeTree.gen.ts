@@ -18,7 +18,6 @@ import { Route as InviteRouteImport } from './routes/invite'
 import { Route as GuestRouteImport } from './routes/guest'
 import { Route as ConnectAgentRouteImport } from './routes/connect-agent'
 import { Route as ConnectRouteImport } from './routes/connect'
-import { Route as AppsRouteImport } from './routes/apps'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
@@ -39,6 +38,7 @@ import { Route as ChatSettingsScheduledTasksRouteImport } from './routes/_chat.s
 import { Route as ChatSettingsProvidersRouteImport } from './routes/_chat.settings.providers'
 import { Route as ChatSettingsProjectsRouteImport } from './routes/_chat.settings.projects'
 import { Route as ChatSettingsPluginsRouteImport } from './routes/_chat.settings.plugins'
+import { Route as ChatSettingsPasswordRouteImport } from './routes/_chat.settings.password'
 import { Route as ChatSettingsOpenSourceLicensesRouteImport } from './routes/_chat.settings.open-source-licenses'
 import { Route as ChatSettingsMaintenanceRouteImport } from './routes/_chat.settings.maintenance'
 import { Route as ChatSettingsLabsRouteImport } from './routes/_chat.settings.labs'
@@ -48,13 +48,13 @@ import { Route as ChatSettingsGeneralRouteImport } from './routes/_chat.settings
 import { Route as ChatSettingsDiffsRouteImport } from './routes/_chat.settings.diffs'
 import { Route as ChatSettingsDiagnosticsRouteImport } from './routes/_chat.settings.diagnostics'
 import { Route as ChatSettingsDevicesRouteImport } from './routes/_chat.settings.devices'
+import { Route as ChatSettingsDesktopRouteImport } from './routes/_chat.settings.desktop'
 import { Route as ChatSettingsConnectionsRouteImport } from './routes/_chat.settings.connections'
 import { Route as ChatSettingsChatRouteImport } from './routes/_chat.settings.chat'
 import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings.browser'
 import { Route as ChatSettingsBetaRouteImport } from './routes/_chat.settings.beta'
 import { Route as ChatSettingsArchivedRouteImport } from './routes/_chat.settings.archived'
 import { Route as ChatSettingsAppearanceRouteImport } from './routes/_chat.settings.appearance'
-import { Route as ChatSettingsAccountRouteImport } from './routes/_chat.settings.account'
 import { Route as ChatSettingsAccessRouteImport } from './routes/_chat.settings.access'
 import { Route as ChatSettingsAboutRouteImport } from './routes/_chat.settings.about'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
@@ -106,11 +106,6 @@ const ConnectAgentRoute = ConnectAgentRouteImport.update({
 const ConnectRoute = ConnectRouteImport.update({
   id: '/connect',
   path: '/connect',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppsRoute = AppsRouteImport.update({
-  id: '/apps',
-  path: '/apps',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -214,6 +209,11 @@ const ChatSettingsPluginsRoute = ChatSettingsPluginsRouteImport.update({
   path: '/plugins',
   getParentRoute: () => ChatSettingsRoute,
 } as any)
+const ChatSettingsPasswordRoute = ChatSettingsPasswordRouteImport.update({
+  id: '/password',
+  path: '/password',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
 const ChatSettingsOpenSourceLicensesRoute =
   ChatSettingsOpenSourceLicensesRouteImport.update({
     id: '/open-source-licenses',
@@ -261,6 +261,11 @@ const ChatSettingsDevicesRoute = ChatSettingsDevicesRouteImport.update({
   path: '/devices',
   getParentRoute: () => ChatSettingsRoute,
 } as any)
+const ChatSettingsDesktopRoute = ChatSettingsDesktopRouteImport.update({
+  id: '/desktop',
+  path: '/desktop',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
 const ChatSettingsConnectionsRoute = ChatSettingsConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
@@ -289,11 +294,6 @@ const ChatSettingsArchivedRoute = ChatSettingsArchivedRouteImport.update({
 const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
   id: '/appearance',
   path: '/appearance',
-  getParentRoute: () => ChatSettingsRoute,
-} as any)
-const ChatSettingsAccountRoute = ChatSettingsAccountRouteImport.update({
-  id: '/account',
-  path: '/account',
   getParentRoute: () => ChatSettingsRoute,
 } as any)
 const ChatSettingsAccessRoute = ChatSettingsAccessRouteImport.update({
@@ -336,7 +336,6 @@ const ChatAdminSectionPageItemRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
-  '/apps': typeof AppsRoute
   '/connect': typeof ConnectRoute
   '/connect-agent': typeof ConnectAgentRoute
   '/guest': typeof GuestRoute
@@ -356,13 +355,13 @@ export interface FileRoutesByFullPath {
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/settings/about': typeof ChatSettingsAboutRoute
   '/settings/access': typeof ChatSettingsAccessRoute
-  '/settings/account': typeof ChatSettingsAccountRoute
   '/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/settings/archived': typeof ChatSettingsArchivedRoute
   '/settings/beta': typeof ChatSettingsBetaRoute
   '/settings/browser': typeof ChatSettingsBrowserRoute
   '/settings/chat': typeof ChatSettingsChatRoute
   '/settings/connections': typeof ChatSettingsConnectionsRoute
+  '/settings/desktop': typeof ChatSettingsDesktopRoute
   '/settings/devices': typeof ChatSettingsDevicesRoute
   '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
   '/settings/diffs': typeof ChatSettingsDiffsRoute
@@ -372,6 +371,7 @@ export interface FileRoutesByFullPath {
   '/settings/labs': typeof ChatSettingsLabsRoute
   '/settings/maintenance': typeof ChatSettingsMaintenanceRoute
   '/settings/open-source-licenses': typeof ChatSettingsOpenSourceLicensesRoute
+  '/settings/password': typeof ChatSettingsPasswordRoute
   '/settings/plugins': typeof ChatSettingsPluginsRoute
   '/settings/projects': typeof ChatSettingsProjectsRoute
   '/settings/providers': typeof ChatSettingsProvidersRoute
@@ -389,7 +389,6 @@ export interface FileRoutesByFullPath {
   '/admin/$section/$page/$item': typeof ChatAdminSectionPageItemRoute
 }
 export interface FileRoutesByTo {
-  '/apps': typeof AppsRoute
   '/connect': typeof ConnectRoute
   '/connect-agent': typeof ConnectAgentRoute
   '/guest': typeof GuestRoute
@@ -409,13 +408,13 @@ export interface FileRoutesByTo {
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/settings/about': typeof ChatSettingsAboutRoute
   '/settings/access': typeof ChatSettingsAccessRoute
-  '/settings/account': typeof ChatSettingsAccountRoute
   '/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/settings/archived': typeof ChatSettingsArchivedRoute
   '/settings/beta': typeof ChatSettingsBetaRoute
   '/settings/browser': typeof ChatSettingsBrowserRoute
   '/settings/chat': typeof ChatSettingsChatRoute
   '/settings/connections': typeof ChatSettingsConnectionsRoute
+  '/settings/desktop': typeof ChatSettingsDesktopRoute
   '/settings/devices': typeof ChatSettingsDevicesRoute
   '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
   '/settings/diffs': typeof ChatSettingsDiffsRoute
@@ -425,6 +424,7 @@ export interface FileRoutesByTo {
   '/settings/labs': typeof ChatSettingsLabsRoute
   '/settings/maintenance': typeof ChatSettingsMaintenanceRoute
   '/settings/open-source-licenses': typeof ChatSettingsOpenSourceLicensesRoute
+  '/settings/password': typeof ChatSettingsPasswordRoute
   '/settings/plugins': typeof ChatSettingsPluginsRoute
   '/settings/projects': typeof ChatSettingsProjectsRoute
   '/settings/providers': typeof ChatSettingsProvidersRoute
@@ -444,7 +444,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
-  '/apps': typeof AppsRoute
   '/connect': typeof ConnectRoute
   '/connect-agent': typeof ConnectAgentRoute
   '/guest': typeof GuestRoute
@@ -465,13 +464,13 @@ export interface FileRoutesById {
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/_chat/settings/about': typeof ChatSettingsAboutRoute
   '/_chat/settings/access': typeof ChatSettingsAccessRoute
-  '/_chat/settings/account': typeof ChatSettingsAccountRoute
   '/_chat/settings/appearance': typeof ChatSettingsAppearanceRoute
   '/_chat/settings/archived': typeof ChatSettingsArchivedRoute
   '/_chat/settings/beta': typeof ChatSettingsBetaRoute
   '/_chat/settings/browser': typeof ChatSettingsBrowserRoute
   '/_chat/settings/chat': typeof ChatSettingsChatRoute
   '/_chat/settings/connections': typeof ChatSettingsConnectionsRoute
+  '/_chat/settings/desktop': typeof ChatSettingsDesktopRoute
   '/_chat/settings/devices': typeof ChatSettingsDevicesRoute
   '/_chat/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
   '/_chat/settings/diffs': typeof ChatSettingsDiffsRoute
@@ -481,6 +480,7 @@ export interface FileRoutesById {
   '/_chat/settings/labs': typeof ChatSettingsLabsRoute
   '/_chat/settings/maintenance': typeof ChatSettingsMaintenanceRoute
   '/_chat/settings/open-source-licenses': typeof ChatSettingsOpenSourceLicensesRoute
+  '/_chat/settings/password': typeof ChatSettingsPasswordRoute
   '/_chat/settings/plugins': typeof ChatSettingsPluginsRoute
   '/_chat/settings/projects': typeof ChatSettingsProjectsRoute
   '/_chat/settings/providers': typeof ChatSettingsProvidersRoute
@@ -501,7 +501,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/apps'
     | '/connect'
     | '/connect-agent'
     | '/guest'
@@ -521,13 +520,13 @@ export interface FileRouteTypes {
     | '/draft/$draftId'
     | '/settings/about'
     | '/settings/access'
-    | '/settings/account'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/beta'
     | '/settings/browser'
     | '/settings/chat'
     | '/settings/connections'
+    | '/settings/desktop'
     | '/settings/devices'
     | '/settings/diagnostics'
     | '/settings/diffs'
@@ -537,6 +536,7 @@ export interface FileRouteTypes {
     | '/settings/labs'
     | '/settings/maintenance'
     | '/settings/open-source-licenses'
+    | '/settings/password'
     | '/settings/plugins'
     | '/settings/projects'
     | '/settings/providers'
@@ -554,7 +554,6 @@ export interface FileRouteTypes {
     | '/admin/$section/$page/$item'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/apps'
     | '/connect'
     | '/connect-agent'
     | '/guest'
@@ -574,13 +573,13 @@ export interface FileRouteTypes {
     | '/draft/$draftId'
     | '/settings/about'
     | '/settings/access'
-    | '/settings/account'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/beta'
     | '/settings/browser'
     | '/settings/chat'
     | '/settings/connections'
+    | '/settings/desktop'
     | '/settings/devices'
     | '/settings/diagnostics'
     | '/settings/diffs'
@@ -590,6 +589,7 @@ export interface FileRouteTypes {
     | '/settings/labs'
     | '/settings/maintenance'
     | '/settings/open-source-licenses'
+    | '/settings/password'
     | '/settings/plugins'
     | '/settings/projects'
     | '/settings/providers'
@@ -608,7 +608,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
-    | '/apps'
     | '/connect'
     | '/connect-agent'
     | '/guest'
@@ -629,13 +628,13 @@ export interface FileRouteTypes {
     | '/_chat/draft/$draftId'
     | '/_chat/settings/about'
     | '/_chat/settings/access'
-    | '/_chat/settings/account'
     | '/_chat/settings/appearance'
     | '/_chat/settings/archived'
     | '/_chat/settings/beta'
     | '/_chat/settings/browser'
     | '/_chat/settings/chat'
     | '/_chat/settings/connections'
+    | '/_chat/settings/desktop'
     | '/_chat/settings/devices'
     | '/_chat/settings/diagnostics'
     | '/_chat/settings/diffs'
@@ -645,6 +644,7 @@ export interface FileRouteTypes {
     | '/_chat/settings/labs'
     | '/_chat/settings/maintenance'
     | '/_chat/settings/open-source-licenses'
+    | '/_chat/settings/password'
     | '/_chat/settings/plugins'
     | '/_chat/settings/projects'
     | '/_chat/settings/providers'
@@ -664,7 +664,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
-  AppsRoute: typeof AppsRoute
   ConnectRoute: typeof ConnectRoute
   ConnectAgentRoute: typeof ConnectAgentRoute
   GuestRoute: typeof GuestRoute
@@ -740,13 +739,6 @@ declare module '@tanstack/react-router' {
       path: '/connect'
       fullPath: '/connect'
       preLoaderRoute: typeof ConnectRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/apps': {
-      id: '/apps'
-      path: '/apps'
-      fullPath: '/apps'
-      preLoaderRoute: typeof AppsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat': {
@@ -889,6 +881,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSettingsPluginsRouteImport
       parentRoute: typeof ChatSettingsRoute
     }
+    '/_chat/settings/password': {
+      id: '/_chat/settings/password'
+      path: '/password'
+      fullPath: '/settings/password'
+      preLoaderRoute: typeof ChatSettingsPasswordRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
     '/_chat/settings/open-source-licenses': {
       id: '/_chat/settings/open-source-licenses'
       path: '/open-source-licenses'
@@ -952,6 +951,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSettingsDevicesRouteImport
       parentRoute: typeof ChatSettingsRoute
     }
+    '/_chat/settings/desktop': {
+      id: '/_chat/settings/desktop'
+      path: '/desktop'
+      fullPath: '/settings/desktop'
+      preLoaderRoute: typeof ChatSettingsDesktopRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
     '/_chat/settings/connections': {
       id: '/_chat/settings/connections'
       path: '/connections'
@@ -992,13 +998,6 @@ declare module '@tanstack/react-router' {
       path: '/appearance'
       fullPath: '/settings/appearance'
       preLoaderRoute: typeof ChatSettingsAppearanceRouteImport
-      parentRoute: typeof ChatSettingsRoute
-    }
-    '/_chat/settings/account': {
-      id: '/_chat/settings/account'
-      path: '/account'
-      fullPath: '/settings/account'
-      preLoaderRoute: typeof ChatSettingsAccountRouteImport
       parentRoute: typeof ChatSettingsRoute
     }
     '/_chat/settings/access': {
@@ -1074,13 +1073,13 @@ const ChatAdminRouteWithChildren = ChatAdminRoute._addFileChildren(
 interface ChatSettingsRouteChildren {
   ChatSettingsAboutRoute: typeof ChatSettingsAboutRoute
   ChatSettingsAccessRoute: typeof ChatSettingsAccessRoute
-  ChatSettingsAccountRoute: typeof ChatSettingsAccountRoute
   ChatSettingsAppearanceRoute: typeof ChatSettingsAppearanceRoute
   ChatSettingsArchivedRoute: typeof ChatSettingsArchivedRoute
   ChatSettingsBetaRoute: typeof ChatSettingsBetaRoute
   ChatSettingsBrowserRoute: typeof ChatSettingsBrowserRoute
   ChatSettingsChatRoute: typeof ChatSettingsChatRoute
   ChatSettingsConnectionsRoute: typeof ChatSettingsConnectionsRoute
+  ChatSettingsDesktopRoute: typeof ChatSettingsDesktopRoute
   ChatSettingsDevicesRoute: typeof ChatSettingsDevicesRoute
   ChatSettingsDiagnosticsRoute: typeof ChatSettingsDiagnosticsRoute
   ChatSettingsDiffsRoute: typeof ChatSettingsDiffsRoute
@@ -1090,6 +1089,7 @@ interface ChatSettingsRouteChildren {
   ChatSettingsLabsRoute: typeof ChatSettingsLabsRoute
   ChatSettingsMaintenanceRoute: typeof ChatSettingsMaintenanceRoute
   ChatSettingsOpenSourceLicensesRoute: typeof ChatSettingsOpenSourceLicensesRoute
+  ChatSettingsPasswordRoute: typeof ChatSettingsPasswordRoute
   ChatSettingsPluginsRoute: typeof ChatSettingsPluginsRoute
   ChatSettingsProjectsRoute: typeof ChatSettingsProjectsRoute
   ChatSettingsProvidersRoute: typeof ChatSettingsProvidersRoute
@@ -1106,13 +1106,13 @@ interface ChatSettingsRouteChildren {
 const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
   ChatSettingsAboutRoute: ChatSettingsAboutRoute,
   ChatSettingsAccessRoute: ChatSettingsAccessRoute,
-  ChatSettingsAccountRoute: ChatSettingsAccountRoute,
   ChatSettingsAppearanceRoute: ChatSettingsAppearanceRoute,
   ChatSettingsArchivedRoute: ChatSettingsArchivedRoute,
   ChatSettingsBetaRoute: ChatSettingsBetaRoute,
   ChatSettingsBrowserRoute: ChatSettingsBrowserRoute,
   ChatSettingsChatRoute: ChatSettingsChatRoute,
   ChatSettingsConnectionsRoute: ChatSettingsConnectionsRoute,
+  ChatSettingsDesktopRoute: ChatSettingsDesktopRoute,
   ChatSettingsDevicesRoute: ChatSettingsDevicesRoute,
   ChatSettingsDiagnosticsRoute: ChatSettingsDiagnosticsRoute,
   ChatSettingsDiffsRoute: ChatSettingsDiffsRoute,
@@ -1122,6 +1122,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
   ChatSettingsLabsRoute: ChatSettingsLabsRoute,
   ChatSettingsMaintenanceRoute: ChatSettingsMaintenanceRoute,
   ChatSettingsOpenSourceLicensesRoute: ChatSettingsOpenSourceLicensesRoute,
+  ChatSettingsPasswordRoute: ChatSettingsPasswordRoute,
   ChatSettingsPluginsRoute: ChatSettingsPluginsRoute,
   ChatSettingsProjectsRoute: ChatSettingsProjectsRoute,
   ChatSettingsProvidersRoute: ChatSettingsProvidersRoute,
@@ -1165,7 +1166,6 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
-  AppsRoute: AppsRoute,
   ConnectRoute: ConnectRoute,
   ConnectAgentRoute: ConnectAgentRoute,
   GuestRoute: GuestRoute,

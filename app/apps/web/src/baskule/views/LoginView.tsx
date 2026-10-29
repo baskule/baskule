@@ -1,5 +1,4 @@
 import { t, useTranslation } from "../../i18n";
-import { LanguageSetting } from "../../components/LanguageSetting";
 // baskule: sign-in methods come from the installation's Better Auth configuration.
 import { useState, type FormEvent } from "react";
 
@@ -68,7 +67,6 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
             {t("Sign in with your organization account.")}
           </p>
         </div>
-        <LanguageSetting />
         <ReceiveConnectionDialog />
         {server ? <DesktopServerForm currentServer={server} /> : null}
         {config.error ? (
@@ -141,9 +139,6 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
             </Button>
           </form>
         ) : null}
-        <p className="text-xs text-muted-foreground">
-          {t("New here? Continue with Google if your organization allows signup, or ask your administrator for an invitation.")}
-        </p>
       </div>
     </StandalonePage>
   );

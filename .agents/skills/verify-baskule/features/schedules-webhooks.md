@@ -1,5 +1,5 @@
 ---
-paths: ["platform/src/space/**", "app/apps/web/src/routes/settings.scheduled-tasks.tsx", "app/apps/web/src/components/**/Scheduled*"]
+paths: ["platform/src/space/**", "app/apps/web/src/routes/_chat.settings.scheduled-tasks.tsx", "app/apps/web/src/components/**/Scheduled*"]
 journeys: null
 profile: "full"
 checks: ["scripts/check space:schedules features:3-schedules"]
@@ -12,7 +12,7 @@ Timers, alarms, webhook triggers.
 
 ## How to get to it (user POV)
 
-Open scheduled tasks or create one through the chat tools.
+Open the account menu → Settings → Scheduled tasks, or create one through the chat tools.
 
 ## Driving it with T3 preview or Playwright
 

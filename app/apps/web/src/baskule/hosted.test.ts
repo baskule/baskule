@@ -1,6 +1,8 @@
 // baskule: switches of the hosted multi-user build (flags on).
 import { afterEach, expect, it, vi } from "vite-plus/test";
 
+import type { BaskuleMe } from "./api";
+
 afterEach(() => {
   vi.unstubAllEnvs();
 });
@@ -40,14 +42,45 @@ it("offers pin, snooze and unread in the chat menu", async () => {
   ]);
 });
 
-it("keeps archived chats and scheduled tasks among the settings pages", async () => {
+const member: BaskuleMe = {
+  authentication: { mode: "authenticated", password: true, providers: [] },
+  user: { id: "u1", name: "Ada", email: "ada@example.test", role: "member" },
+  organizationName: null,
+  spaces: [{ id: "s1", name: "Personal", kind: "personal", role: "owner", base: "/s/s1" }],
+  canCreateSpaces: false,
+  voiceInput: false,
+};
+
+it("lists the person's settings sections, scheduled tasks first", async () => {
   const { settingsPages } = await loadHosted();
-  expect(settingsPages.isBaskuleSettingsPage("/settings/scheduled-tasks")).toBe(true);
-  expect(settingsPages.isBaskuleSettingsPage("/settings/archived")).toBe(true);
+  const paths = (me: BaskuleMe | null) =>
+    settingsPages.baskuleSettingsSections(me).map((section) => section.path);
+  expect(paths(member)).toEqual([
+    "/settings/scheduled-tasks",
+    "/settings/usage",
+    "/settings/plugins",
+    "/settings/desktop",
+    "/settings/password",
+    "/settings/general",
+    "/settings/archived",
+  ]);
+  const owner: BaskuleMe = {
+    ...member,
+    authentication: { mode: "authenticated", password: false, providers: [] },
+    spaces: [
+      ...member.spaces,
+      { id: "s2", name: "Acme", kind: "team", role: "owner", base: "/s/s2" },
+    ],
+  };
+  expect(paths(owner)).toContain("/settings/spaces");
+  expect(paths(owner)).not.toContain("/settings/password");
+  expect(settingsPages.firstBaskuleSettingsPath()).toBe("/settings/scheduled-tasks");
+  expect(settingsPages.isBaskuleSettingsPage("/settings/password")).toBe(true);
+  expect(settingsPages.isBaskuleSettingsPage("/settings/account")).toBe(false);
   expect(settingsPages.isBaskuleSettingsPage("/settings/appearance")).toBe(false);
-  expect(settingsPages.isBaskuleSettingsPage("/settings/general")).toBe(true);
-  expect(settingsPages.baskuleSettingsTitle("/settings/general")).toBe("Settings");
-  expect(settingsPages.baskuleSettingsTitle("/settings/scheduled-tasks")).toBe("Scheduled tasks");
+  expect(settingsPages.baskuleSettingsSection("/settings/general")?.label).toBe(
+    "Language & appearance",
+  );
 });
 
 it("shows the shared browser next to files", async () => {

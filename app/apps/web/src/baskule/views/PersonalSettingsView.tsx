@@ -16,7 +16,7 @@ export function PersonalSettingsView() {
 
   return (
     <SettingsPageContainer>
-      <SettingsSection title={t("General")}>
+      <SettingsSection title={t("Language & appearance")} hideTitle>
         <SettingsRow
           title={t("Appearance")}
           control={
@@ -35,9 +35,7 @@ export function PersonalSettingsView() {
             </ToggleGroup>
           }
         />
-        <div className="px-3 py-3 sm:px-4">
-          <LanguageSetting />
-        </div>
+        <LanguageSetting />
       </SettingsSection>
       {error ? (
         <p role="alert" className="text-sm text-destructive-foreground">
