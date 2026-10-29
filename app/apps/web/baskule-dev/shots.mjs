@@ -348,7 +348,8 @@ const scenarios = {
       await shot(page, `${device}-composer-transcribed`);
 
       await start.click();
-      await page.getByRole("button", { name: "Cancel recording" }).click();
+      await page.getByRole("timer").waitFor();
+      await page.keyboard.press("Escape");
       await start.waitFor();
       check(
         (await uploads()).length === before + 1 &&
@@ -722,7 +723,10 @@ const scenarios = {
     await signIn(alice.page, "alice");
     await openSidebarOnPhone(alice.page, device);
     await alice.page.getByTestId("baskule-user-menu").click();
-    await alice.page.getByRole("menuitem", { name: "Acme" }).click();
+    await alice.page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+    await alice.page.getByRole("link", { name: "Spaces", exact: true }).click();
+    // Acme is Alice's only team space; it follows her personal space.
+    await alice.page.getByRole("button", { name: "Manage", exact: true }).last().click();
     const personal = alice.page.getByRole("switch", { name: "Allow personal-account plugins" });
     await personal.waitFor();
     check(
@@ -758,15 +762,12 @@ const scenarios = {
     const { url } = await response.json();
     await openSidebarOnPhone(page, device);
     await page.getByTestId("baskule-user-menu").click();
-    await page.getByText("Change password", { exact: true }).click();
-    await page.getByRole("dialog", { name: "Change password" }).waitFor();
+    await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+    await page.getByRole("link", { name: "Change password", exact: true }).click();
     await page.getByLabel("Current password").fill("wrong-one");
     await page.getByLabel("New password", { exact: true }).fill("new-password-1");
     await page.getByLabel("Confirm new password").fill("new-password-1");
-    await page
-      .getByRole("dialog", { name: "Change password" })
-      .getByRole("button", { name: "Change password" })
-      .click();
+    await page.getByRole("button", { name: "Change password", exact: true }).click();
     await page.getByRole("alert").waitFor();
     check(
       (await page.getByRole("alert").textContent())?.includes("not right"),
@@ -788,7 +789,7 @@ const scenarios = {
   async apps(browser, device) {
     const { context, page } = await newPage(browser, device);
     await signIn(page, "bob");
-    await page.goto("/apps");
+    await page.goto("/settings/desktop");
     await page.getByText("Baskule for Linux").first().waitFor();
     await shot(page, `${device}-apps`);
     await page.getByRole("button", { name: "Show QR for another device", exact: true }).click();

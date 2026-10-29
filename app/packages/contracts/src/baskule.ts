@@ -200,7 +200,7 @@ export interface BaskuleTranscriptionResult {
 }
 
 export const BASKULE_MANAGEMENT_DESTINATIONS = [
-  "/settings/account",
+  "/settings/password",
   "/settings/spaces",
   "/settings/plugins",
   "/settings/usage",

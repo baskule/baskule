@@ -320,9 +320,9 @@ function useSettingsIndexSections(): SettingsListSection[] {
           {
             id: "manage-account",
             icon: "person.crop.circle",
-            label: t("Account and password"),
+            label: t("Change password"),
             disabled: opening,
-            onPress: () => open("/settings/account"),
+            onPress: () => open("/settings/password"),
           },
           {
             id: "manage-spaces",
