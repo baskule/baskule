@@ -824,6 +824,8 @@ const scenarios = {
       .waitFor();
     check(true, `${device}: a used link is refused`);
     await other.context.close();
+    // Settings is a modal over the chat; sign out from the sidebar behind it.
+    await page.goto("/");
     await openSidebarOnPhone(page, device);
     await page.getByTestId("baskule-user-menu").click();
     await page.getByRole("menuitem", { name: "Sign out" }).click();
