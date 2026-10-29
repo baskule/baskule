@@ -5,11 +5,11 @@
   </picture>
 </p>
 
-<h3 align="center">The open-source agent platform your company owns.</h3>
+<h3 align="center">Self-hosted AI agents for your whole team.</h3>
 
 <p align="center">
-  Your teams hand real work to AI agents that read your documents, use your tools and have a computer of their own.<br>
-  You choose the models, the servers and the rules. Nothing is rented, and nothing is locked in.
+  Baskule is an open-source agent platform you run on your own servers. Your team chats with agents that work on a
+  sandboxed Linux computer with your files, your tools and the model you choose, from the web, the desktop or a phone.
 </p>
 
 <p align="center">
@@ -31,32 +31,26 @@
 > Baskule is under active development. New features and releases land often; the
 > [status table](#what-is-available-today) shows what is ready and what is coming.
 
-## From answers to work done
+## What Baskule is
 
-Most teams already use AI to get answers. They still do the work around it themselves: finding the right file,
-copying text between tools, turning a reply into a document, chasing the next step.
+Baskule is one installation that gives everyone in your organization three things:
 
-Baskule gives each person and each team an agent that does that work. It opens the folder, reads the quotes,
-compares them, writes the email and saves the spreadsheet. People describe the goal, check the result and decide.
+- **A chat app** on the web, the desktop and the phone, with one account and the same conversations everywhere.
+- **An agent in every conversation.** It is built on OpenCode: it plans, calls tools and keeps going until the task
+  is done. It reads and writes files, searches the web and uses your plugins.
+- **A computer for every space.** Each personal or team space has its own sandboxed Linux machine with a shell,
+  Python, Node, a real browser and office tools. The agent works there, so it can actually produce the spreadsheet,
+  the document or the script instead of describing it.
 
-## Own the whole car
+Most AI chats can only answer. A Baskule agent can also act on your files and tools, and it does so on
+infrastructure you control:
 
-Think of the AI model as fuel and the agent as the engine. What people actually use is the car around them: the
-apps, the shared spaces, the permissions, the connections to your company's systems. Most AI suites lease you that
-car. They choose the fuel, keep the car in their garage and change the terms when they like.
-
-Baskule gives you the keys.
-
-| | A typical hosted AI suite | Baskule |
-| --- | --- | --- |
-| **Models** | The vendor's own | Any provider: Mistral, OpenAI, Anthropic, a free model, or your own GPUs. Switch at any time. |
-| **Where it runs** | The vendor's cloud | One computer in your office, your data center, or a cloud in the country you choose |
-| **Your data** | In the vendor's account | In your own storage bucket |
-| **The software** | Closed, rented per seat | Open source under the MIT licence. Read it, change it, extend it. |
-| **Leaving** | Start over | Take your data and reinstall it anywhere, with or without us |
-
-The goal is simple: you build your own agentic system to run and improve your company, and you stay in charge of
-every part of it.
+- **Any model.** Mistral, OpenAI, Anthropic, a free model, or any OpenAI-compatible endpoint, including one running on
+  your own GPUs. An admin switches it at any time.
+- **Your servers.** One computer in your office, your data center, or a cloud in the country you choose.
+- **Your data.** Conversations, spaces and settings live in your own S3-compatible bucket, so you can back them up or
+  move them.
+- **Open source.** MIT licensed, in one repository. Change it, extend it, run your own build.
 
 ## What your team gets
 
