@@ -49,7 +49,7 @@ answers finish. Chats using a model no longer offered then run on the new defaul
 
 Authentication configuration changes require a redeploy. The server rejects invalid files instead of silently
 falling back to password or anonymous access. Keep stable provider IDs: accounts are bound to those IDs.
-Switching between authenticated and anonymous modes requires an alpha data wipe.
+Switching between authenticated and anonymous modes requires a data wipe.
 
 ## Authentication file
 
@@ -222,7 +222,7 @@ Better Auth's `account.encryptOAuthTokens: true` encrypts access and refresh tok
 login ID tokens are discarded after validation. Plugin tokens, refresh data, pending PKCE verifiers and admin OAuth
 client secrets use AES-256-GCM with a domain-separated HKDF key derived from the same secret and authenticated row
 identity. Backups containing both the database and its generated secret remain sensitive. Keep `AUTH_SECRET` stable;
-changing it invalidates sessions and encrypted credentials. Deploying this configuration layout requires the alpha data wipe below;
+changing it invalidates sessions and encrypted credentials. Deploying this configuration layout requires the data wipe below;
 there is no conversion of plaintext tokens or a plaintext read path in plugin connection storage.
 
 ## Invitations and native clients
@@ -258,9 +258,9 @@ CPU/memory limits, celld heap/timeouts, and bootstrap admin details stay in `.en
 current idle policy through its authenticated runtime-settings endpoint. If that read fails, that idle check
 does not stop computers using a guessed policy.
 
-## Upgrading the alpha
+## Upgrading an earlier installation
 
-This change replaces the product configuration layout. Wipe alpha data when deploying it:
+This change replaces the product configuration layout. Wipe the installation's data when deploying it:
 back up if wanted, stop and purge with `deploy/v2/down.sh --purge`, prepare `.env` and `auth.json`, then build and
 run `deploy/v2/up.sh` and configure the product in the admin area. Rebuild clients for their new login paths.
 There is no import or fallback from the retired organization/AI environment settings.
