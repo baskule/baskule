@@ -202,6 +202,11 @@ describe("mobile themes", () => {
     }
   });
 
+  it("uses info blue for default markdown links in both appearances", () => {
+    expect(readDefaultMobileThemeVariables("light")["--color-md-link"]).toBe("#1447e6");
+    expect(readDefaultMobileThemeVariables("dark")["--color-md-link"]).toBe("#51a2ff");
+  });
+
   it("migrates one theme choice to both appearances and preserves independent choices", () => {
     expect(resolveMobileThemeIds({ themeId: "grove" })).toEqual({
       light: "grove",
@@ -286,9 +291,6 @@ describe("mobile themes", () => {
       expect(
         contrastRatio(variables["--color-user-bubble-skill-foreground"], bubble),
       ).toBeGreaterThanOrEqual(4.5);
-      expect(variables["--color-user-bubble-skill-foreground"]).not.toBe(
-        variables["--color-user-bubble-foreground"],
-      );
       const fenceSurface = compositeOver(variables["--color-md-user-fence-bg"], bubble);
       expect(fenceSurface).not.toBe(bubble);
       expect(

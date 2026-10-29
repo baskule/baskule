@@ -198,6 +198,7 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
+                    className="accent-primary"
                     checked={clearKey}
                     onChange={(e) => {
                       setClearKey(e.currentTarget.checked);

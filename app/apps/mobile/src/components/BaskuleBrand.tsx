@@ -1,6 +1,6 @@
 import type { ColorValue } from "react-native";
 import { Image } from "expo-image";
-import Svg, { G, Path } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { withUniwind } from "uniwind";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 
@@ -18,7 +18,7 @@ export function BaskuleWordmark({ height = 24 }: { readonly height?: number }) {
       accessibilityLabel="Baskule"
       accessibilityIgnoresInvertColors
       contentFit="contain"
-      style={{ height, width: (height * 7315.76) / 1519.8 }}
+      style={{ height, width: (height * 7048.5) / 1511 }}
     />
   );
 }
@@ -33,20 +33,18 @@ export function BaskuleMark(props: {
       accessibilityLabel="Baskule"
       height={props.height}
       width={props.height}
-      viewBox="0 0 100 100"
+      viewBox="0 0 1432.7 1511"
     >
-      <G transform="translate(11.065 0)">
-        <ThemedPath
-          color={props.color}
-          colorClassName={props.colorClassName}
-          fill="currentColor"
-          d="M23.87 0H0V64.51L23.87 26ZM0 100H23.87V58.22L0 80.9Z"
-        />
-        <Path
-          fill="#D90429"
-          d="M0 74L45.87 0H77.87ZM41.55 41.41L28.87 53.47V72.57L45.87 100H77.87Z"
-        />
-      </G>
+      <ThemedPath
+        color={props.color}
+        colorClassName={props.colorClassName}
+        fill="currentColor"
+        d="M903.7 1511Q727.7 1511 600.7 1441.5 473.7 1372 406.2 1243 338.7 1114 338.7 935 338.7 762 406.7 632.5 474.7 503 598.7 430.5 722.7 358 890.7 358 1009.7 358 1109.2 395.5 1208.7 433 1281.2 505.5 1353.7 578 1393.2 684 1432.7 790 1432.7 929L1432.7 1017 461.7 1017 461.7 812 1263.7 812 1097.7 860Q1097.7 783 1074.7 728.5 1051.7 674 1006.7 644 961.7 614 894.7 614 827.7 614 781.7 644 735.7 674 711.7 727.5 687.7 781 687.7 854L687.7 1001Q687.7 1079 715.2 1136 742.7 1193 793.2 1223.5 843.7 1254 909.7 1254 955.7 1254 993.7 1241 1031.7 1228 1058.7 1202.5 1085.7 1177 1099.7 1141L1425.7 1150Q1405.7 1260 1337.7 1341 1269.7 1422 1159.7 1466.5 1049.7 1511 903.7 1511Z"
+      />
+      <Path
+        fill="#B8902A"
+        d="M607.3 345.1L593.1 352L574.1 362L562.1 368.9L544.9 379.4L533.4 386.8L517.6 397.7L506 406.2L490.9 417.9L480 427L465.6 439.6L455.2 449.3L441.1 463.4L431.8 473.1L418.6 488L409.9 498.2L398 513.3L389.5 524.6L378.4 540.5L370.5 552.4L360.1 569L350 586.7L343.4 598.8L336.8 611.8L328.2 629.9L322.2 643.4L314.6 662.1L307.4 681.7L302.6 695.8L298.6 708.5L292.7 729L287.5 749.7L284.3 763.8L281.3 778.7L277.4 800.2L274.3 821.9L271.6 844.1L269.6 865.8L268.1 889.2L267.3 911.4L267.1 927.5L267.1 951.2L267.8 974.9L269 997.7L270.2 1013.6L272.4 1036.5L275.3 1059L278.5 1080.4L281.1 1095L285.6 1117.3L288.9 1131.5L294.1 1151.6L298.3 1166.2L302.2 1179L309 1199.1L316.8 1219.6L322.1 1232.6L330.6 1251.7L336.6 1264.3L345.7 1282L352.7 1294.6L362.7 1311.5L370.5 1323.8L381.4 1339.9L392.6 1355.3L363.9 1490L0 1490L316.7 0L680.7 0Z"
+      />
     </Svg>
   );
 }

@@ -151,12 +151,12 @@ describe("theme files", () => {
     });
   });
 
-  it("keeps the warm light sidebar and dark sidebar distinct from chat", () => {
+  it("keeps the neutral light sidebar and dark sidebar distinct from chat", () => {
     expectThemeColors(getStandardThemeColors("light"), {
       canvas: "#fcfcfc",
-      sidebar: "#f5f1ea",
+      sidebar: "#fafafa",
       sidebarRowActive: "#ffffff",
-      messageSurface: "#f4f4f5",
+      messageSurface: "#f5f5f5",
     });
     expectThemeColors(getStandardThemeColors("dark"), {
       canvas: "#0a0a0a",

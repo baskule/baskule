@@ -1,4 +1,4 @@
-import { t } from "../i18n";
+import { t } from "@t3tools/shared/localization";
 import {
   BUILT_IN_THEMES,
   T3_CHAT_THEME,
@@ -422,7 +422,10 @@ export function createMobileThemeVariables(
     "--color-status-bar": c.canvas,
     "--color-md-body": c.text,
     "--color-md-strong": c.text,
-    "--color-md-link": themeColorWithContrast(c.messageAction, c.canvas),
+    "--color-md-link": themeColorWithContrast(
+      appearance === "dark" ? "#51a2ff" : "#1447e6",
+      c.canvas,
+    ),
     "--color-md-blockquote-border": c.border,
     "--color-md-blockquote-bg": c.muted,
     "--color-md-code-bg": c.codeBackground,

@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 import nativeLocales from "./locales/config.json";
 import type { ExpoConfig } from "expo/config";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
@@ -15,7 +15,9 @@ if (
   !Number.isSafeInteger(androidVersionCode) ||
   androidVersionCode > 2_100_000_000
 ) {
-  throw new Error("BASKULE_MOBILE_BUILD_NUMBER must be a positive integer no greater than 2100000000.");
+  throw new Error(
+    "BASKULE_MOBILE_BUILD_NUMBER must be a positive integer no greater than 2100000000.",
+  );
 }
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
@@ -42,41 +44,41 @@ if (
 
 const DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
-  iosIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
-  splashIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
+  iosIcon: fromRepoRoot("assets/baskule/icon-square-1024.png"),
+  splashIcon: fromRepoRoot("assets/baskule/splash.png"),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#17181A",
+  androidAdaptiveBackgroundColor: "#111111",
   androidAdaptiveBackgroundImage: undefined,
-  androidSplashIcon: fromRepoRoot("assets/baskule/android-splash.png"),
+  splashIconInverse: fromRepoRoot("assets/baskule/splash-inverse.png"),
   androidMonochromeIcon: fromRepoRoot("assets/baskule/android-monochrome.png"),
   androidNotificationIcon: fromRepoRoot("assets/baskule/android-notification.png"),
-  androidNotificationColor: "#D90429",
+  androidNotificationColor: "#B8902A",
 } as const;
 
 const PREVIEW_ASSETS = {
   appIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
-  iosIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
-  splashIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
+  iosIcon: fromRepoRoot("assets/baskule/icon-square-1024.png"),
+  splashIcon: fromRepoRoot("assets/baskule/splash.png"),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#17181A",
+  androidAdaptiveBackgroundColor: "#111111",
   androidAdaptiveBackgroundImage: undefined,
-  androidSplashIcon: fromRepoRoot("assets/baskule/android-splash.png"),
+  splashIconInverse: fromRepoRoot("assets/baskule/splash-inverse.png"),
   androidMonochromeIcon: fromRepoRoot("assets/baskule/android-monochrome.png"),
   androidNotificationIcon: fromRepoRoot("assets/baskule/android-notification.png"),
-  androidNotificationColor: "#D90429",
+  androidNotificationColor: "#B8902A",
 } as const;
 
 const RELEASE_ASSETS = {
   appIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
-  iosIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
-  splashIcon: fromRepoRoot("assets/baskule/icon-1024.png"),
+  iosIcon: fromRepoRoot("assets/baskule/icon-square-1024.png"),
+  splashIcon: fromRepoRoot("assets/baskule/splash.png"),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#17181A",
+  androidAdaptiveBackgroundColor: "#111111",
   androidAdaptiveBackgroundImage: undefined,
-  androidSplashIcon: fromRepoRoot("assets/baskule/android-splash.png"),
+  splashIconInverse: fromRepoRoot("assets/baskule/splash-inverse.png"),
   androidMonochromeIcon: fromRepoRoot("assets/baskule/android-monochrome.png"),
   androidNotificationIcon: fromRepoRoot("assets/baskule/android-notification.png"),
-  androidNotificationColor: "#D90429",
+  androidNotificationColor: "#B8902A",
 } as const;
 
 // baskule: rebranded identifiers (Android-first). No Clerk relying party (no T3 cloud sign-in), so
@@ -186,7 +188,7 @@ const config: ExpoConfig = {
   scheme: variant.scheme,
   version:
     repoEnv.T3CODE_MOBILE_VERSION ??
-    readFileSync(resolve(__dirname, "../../../VERSION"), "utf8").trim(),
+    NodeFS.readFileSync(NodePath.resolve(__dirname, "../../../VERSION"), "utf8").trim(),
   runtimeVersion: {
     // Skip costly fingerprinting on dev launches; preview and production OTAs require matching native projects.
     policy: runtimeVersionPolicy,
@@ -352,16 +354,16 @@ const config: ExpoConfig = {
         image: variant.assets.splashIcon,
         resizeMode: "contain",
         backgroundColor: "#ffffff",
-        imageWidth: 220,
+        imageWidth: 288,
         dark: {
-          image: variant.assets.splashIcon,
+          image: variant.assets.splashIconInverse,
           backgroundColor: "#0a0a0a",
         },
         android: {
-          // Android 12+ masks the central two thirds of the 288dp canvas; adaptive layers avoid clipped corners.
-          image: variant.assets.androidSplashIcon,
+          // Android 12+ masks the central two thirds of the 288dp canvas; the transparent mark stays inside it.
+          image: variant.assets.splashIcon,
           imageWidth: 288,
-          dark: { image: variant.assets.androidSplashIcon },
+          dark: { image: variant.assets.splashIconInverse },
         },
       },
     ],

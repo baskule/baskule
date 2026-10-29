@@ -11,7 +11,7 @@ export const BRAND_ASSET_PATHS = {
   productionWebFaviconIco: "assets/baskule/icon.ico",
   productionWebFavicon16Png: "assets/baskule/icon-16.png",
   productionWebFavicon32Png: "assets/baskule/icon-32.png",
-  productionWebAppleTouchIconPng: "assets/baskule/icon-180.png",
+  productionWebAppleTouchIconPng: "assets/baskule/icon-square-180.png",
 
   nightlyIconComposerProject: "assets/nightly/app-icon.icon",
   nightlyIosIconPng: "assets/nightly/nightly-ios-1024.png",
@@ -21,14 +21,14 @@ export const BRAND_ASSET_PATHS = {
   nightlyWebFaviconIco: "assets/baskule/icon.ico",
   nightlyWebFavicon16Png: "assets/baskule/icon-16.png",
   nightlyWebFavicon32Png: "assets/baskule/icon-32.png",
-  nightlyWebAppleTouchIconPng: "assets/baskule/icon-180.png",
+  nightlyWebAppleTouchIconPng: "assets/baskule/icon-square-180.png",
 
   developmentDesktopIconPng: "assets/dev/blueprint-macos-1024.png",
   developmentWindowsIconIco: "assets/dev/blueprint-windows.ico",
   developmentWebFaviconIco: "assets/baskule/icon.ico",
   developmentWebFavicon16Png: "assets/baskule/icon-16.png",
   developmentWebFavicon32Png: "assets/baskule/icon-32.png",
-  developmentWebAppleTouchIconPng: "assets/baskule/icon-180.png",
+  developmentWebAppleTouchIconPng: "assets/baskule/icon-square-180.png",
 } as const;
 
 export type WebAssetBrand = "development" | "nightly" | "production";
