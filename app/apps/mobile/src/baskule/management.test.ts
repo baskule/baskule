@@ -61,7 +61,7 @@ it("does not open a late link after account replacement", async () => {
 it("does not open expired handoffs", async () => {
   setup();
   mocks.fetch.mockResolvedValue(Response.json({ code: "expired", expiresAt: Date.now() - 1 }));
-  await expect(openBaskuleManagement("/settings/account")).rejects.toThrow(/expired/);
+  await expect(openBaskuleManagement("/settings/password")).rejects.toThrow(/expired/);
   expect(mocks.open).not.toHaveBeenCalled();
 });
 

@@ -20,7 +20,7 @@ as a careful product designer would, on the **real stack**. You do not fix code:
   6. `phone-layout` — the same key screens at 390×844.
 - Product scope: `README.md` (current product scope), `docs/development-workflow.md` (verification).
 - Users are non-technical knowledge workers. The product must not leak developer concepts (git, worktree, branch,
-  ref, thread, provider, OpenCode, T3 Code, environment, checkout) except the "Based on T3 Code (MIT)" credit.
+  ref, thread, provider, OpenCode, T3 Code, environment, checkout).
 
 ## What to look at
 

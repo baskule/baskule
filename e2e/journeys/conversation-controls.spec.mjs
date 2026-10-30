@@ -33,7 +33,9 @@ test("rename, archive and delete propagate to another device", { tag: ["@feature
     await expect(row(phone, y)).toHaveCount(0);
     await expect(row(page, y)).toHaveCount(0);
     await sidebar(page);
-    await page.getByTestId("baskule-archived-link").click();
+    await page.getByTestId("baskule-user-menu").click();
+    await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+    await page.getByRole("link", { name: "Archived chats", exact: true }).click();
     await expect(page.getByText("Renamed by journeys").first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("archived.png") });
   } finally { await context.close(); }

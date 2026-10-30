@@ -180,6 +180,7 @@ export function ArchivedThreadsPanel() {
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}
           title={searchableSetting("archive").title}
+          hideTitle={baskule.hideSettings} // baskule: the Settings page heading names it
         >
           <SettingsRow
             title={
@@ -213,6 +214,7 @@ export function ArchivedThreadsPanel() {
             id={index === 0 ? searchableSetting("archive").id : undefined}
             // baskule: chats have no visible project.
             title={baskule.hideSettings ? t("Archived chats") : title}
+            hideTitle={baskule.hideSettings}
             icon={baskule.hideSettings ? undefined : <ProjectFavicon project={project} />}
           >
             {projectThreads.map((thread) => (

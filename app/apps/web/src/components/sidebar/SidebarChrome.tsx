@@ -1,11 +1,5 @@
 import { useTranslation } from "../../i18n";
-import {
-  AlarmClockIcon, // baskule:
-  ArchiveIcon,
-  ArrowLeftIcon,
-  ChartNoAxesColumnIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -38,7 +32,7 @@ import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
-import { BASKULE_UPSTREAM_CREDIT, BASKULE_UPSTREAM_URL, baskule } from "~/baskule/flags"; // baskule:
+import { baskule } from "~/baskule/flags"; // baskule:
 import { BaskuleUserMenu } from "~/baskule/BaskuleUserMenu"; // baskule:
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
@@ -211,58 +205,28 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigateToMainApp();
   };
 
-  // baskule: the footer only links to archived chats (+ upstream credit); no settings/PRs/usage.
+  // baskule: the footer is the signed-in person's menu (hosted build); without accounts, Settings.
   if (baskule.hideSettings) {
     return (
       <SidebarMenu>
-        <SidebarMenuItem>
-          {isOnUtilityPage ? (
+        {isOnUtilityPage ? (
+          <SidebarMenuItem>
             <SidebarMenuButton onClick={handleBackClick}>
               <ArrowLeftIcon />
               <span>{t("Back to chats")}</span>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : null}
+        <SidebarMenuItem>
+          {baskule.hosted ? (
+            <BaskuleUserMenu />
           ) : (
-            <SidebarMenuButton
-              data-testid="baskule-archived-link"
-              onClick={() => {
-                closeMobileSidebar();
-                void navigate({ to: "/settings/archived" });
-              }}
-            >
-              <ArchiveIcon />
-              <span>{t("Archived chats")}</span>
+            <SidebarMenuButton onClick={handleSettingsClick}>
+              <SettingsIcon />
+              <span>{t("Settings")}</span>
             </SidebarMenuButton>
           )}
         </SidebarMenuItem>
-        {/* baskule: scheduled and webhook-triggered work (hosted 0.2 build). */}
-        {baskule.hosted && !isOnUtilityPage ? (
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              data-testid="baskule-scheduled-link"
-              onClick={() => {
-                closeMobileSidebar();
-                void navigate({ to: "/settings/scheduled-tasks" });
-              }}
-            >
-              <AlarmClockIcon />
-              <span>{t("Scheduled tasks")}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ) : null}
-        {/* baskule: the signed-in person (hosted multi-user build). */}
-        {baskule.hosted ? (
-          <SidebarMenuItem>
-            <BaskuleUserMenu />
-          </SidebarMenuItem>
-        ) : null}
-        <a
-          href={BASKULE_UPSTREAM_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="px-2 text-2xs text-muted-foreground/70 hover:text-muted-foreground"
-        >
-          {BASKULE_UPSTREAM_CREDIT}
-        </a>
       </SidebarMenu>
     );
   }

@@ -1674,7 +1674,7 @@ it.effect.skipIf(!symlinksSupported)("rebases packaged links into the isolated t
 it("keeps Baskule packaging assets and the patched terminal version", () => {
   assert.equal(resolveDesktopProductName("0.1.3"), "Baskule");
   assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.1.3"), {
-    macIconPng: "assets/baskule/icon-1024.png",
+    macIconPng: "assets/baskule/icon-macos-1024.png",
     linuxIconPng: "assets/baskule/icon-1024.png",
     windowsIconIco: "assets/baskule/icon.ico",
   });

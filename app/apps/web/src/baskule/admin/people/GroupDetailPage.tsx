@@ -23,7 +23,7 @@ import { PluginIcon, PluginTitle } from "../../plugins/PluginParts";
 import { groupName } from "../../plugins/presentation";
 import { Avatar, confirmAction, FormField, notifySuccess, useApiResource } from "../../ui";
 import { PageMessage, PageRow, PageSection } from "../../views/BaskulePage";
-import { AdminPageHeading } from "../AdminShell";
+import { PageHeading } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
 import { groupSummary } from "./GroupsPage";
 
@@ -84,7 +84,7 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
 
   return (
     <>
-      <AdminPageHeading
+      <PageHeading
         title={shownName}
         description={groupSummary(group, t)}
         trailing={

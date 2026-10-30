@@ -110,14 +110,17 @@ it("moves every meter bar for speech and returns to rest in silence", async () =
   expect(resting).toHaveLength(4);
 
   media.volume.value = 0.08;
-  await expect.poll(() => heights().every((height, index) => height > resting[index]! * 2)).toBe(true);
+  await expect
+    .poll(() => heights().every((height, index) => height > resting[index]! * 2))
+    .toBe(true);
   const speaking = heights();
   expect(speaking[0]).toBeCloseTo(speaking[3]!, 0);
   expect(speaking[1]).toBeCloseTo(speaking[2]!, 0);
 
   media.volume.value = 0;
   await expect.poll(() => heights().every((height) => height < 3)).toBe(true);
-  await userEvent.click(screen.getByRole("button", { name: "Cancel recording" }));
+  await userEvent.keyboard("{Escape}");
+  await expect.element(screen.getByRole("button", { name: "Start voice input" })).toBeVisible();
 });
 
 function Composer({
@@ -199,7 +202,9 @@ it("sends once the transcript is in when Send is pressed while recording", async
   await userEvent.click(screen.getByRole("button", { name: "Start voice input" }));
   await expect.element(screen.getByRole("button", { name: "Stop and insert" })).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "Send" }));
-  await expect.element(screen.getByRole("button", { name: "Transcribing…" })).toBeVisible();
+  // Only Send shows the wait: the microphone stays put, disabled, without a spinner.
+  await expect.element(screen.getByRole("button", { name: "Start voice input" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Transcribing…" }).query()).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Send" }));
   expect(onSubmit).not.toHaveBeenCalled();
 
@@ -210,17 +215,13 @@ it("sends once the transcript is in when Send is pressed while recording", async
   expect(voice.uploads).toHaveLength(1);
 });
 
-it("discards the recording on cancel, Escape with nothing focused, or a chat switch", async () => {
+it("discards the recording on Escape with nothing focused, or a chat switch", async () => {
   setup();
   const onInsert = vi.fn();
   const onSubmit = vi.fn();
   await using screen = await render(<Composer onInsert={onInsert} onSubmit={onSubmit} />);
   using media = microphone();
   const start = screen.getByRole("button", { name: "Start voice input" });
-
-  await userEvent.click(start);
-  await userEvent.click(screen.getByRole("button", { name: "Cancel recording" }));
-  await expect.element(start).toBeVisible();
 
   await userEvent.click(start);
   await expect.element(screen.getByRole("button", { name: "Stop and insert" })).toBeVisible();
@@ -232,7 +233,7 @@ it("discards the recording on cancel, Escape with nothing focused, or a chat swi
   await userEvent.click(screen.getByRole("button", { name: "Switch chat" }));
   await expect.element(start).toBeVisible();
 
-  expect(media.getUserMedia).toHaveBeenCalledTimes(3);
+  expect(media.getUserMedia).toHaveBeenCalledTimes(2);
   expect(media.released()).toBe(true);
   expect(voice.uploads).toEqual([]);
   expect(onInsert).not.toHaveBeenCalled();

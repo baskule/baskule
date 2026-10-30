@@ -1,43 +1,31 @@
-// baskule: frame of the Baskule in-app pages (downloads), matching the settings pages.
+// baskule: building blocks of the Baskule pages in the admin and settings modals.
 import type { ReactNode } from "react";
 
-import { SidebarInset } from "../../components/ui/sidebar";
-import { WorkspacePageContainer } from "../../components/WorkspacePageContainer";
-import { WorkspacePageHeader } from "../../components/WorkspacePageHeader";
-import { isElectron } from "../../env";
-
-export function BaskulePage({
+/** A page's title block under its frame's header; detail pages pass their item's tile and controls. */
+export function PageHeading({
   title,
-  breadcrumb,
-  actions,
+  description,
+  leading,
+  trailing,
   children,
-}: (
-  | { readonly title: string; readonly breadcrumb?: never }
-  | { readonly breadcrumb: ReactNode; readonly title?: never }
-) & {
-  readonly actions?: ReactNode;
-  readonly children: ReactNode;
+}: {
+  readonly title: ReactNode;
+  readonly description?: ReactNode;
+  readonly leading?: ReactNode;
+  readonly trailing?: ReactNode;
+  /** More text under the description, in the same column as the title. */
+  readonly children?: ReactNode;
 }) {
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        <WorkspacePageHeader electron={isElectron}>
-          <div className="flex w-full min-w-0 items-center gap-3">
-            {breadcrumb ?? (
-              <h1 className="truncate text-sm font-medium text-foreground">{title}</h1>
-            )}
-            {actions ? (
-              <div className="ms-auto flex shrink-0 items-center gap-2">{actions}</div>
-            ) : null}
-          </div>
-        </WorkspacePageHeader>
-        <div className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto">
-          <WorkspacePageContainer width="wide" className="gap-8">
-            {children}
-          </WorkspacePageContainer>
-        </div>
+    <div className="flex items-start gap-3 px-3 sm:px-4">
+      {leading}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <h1 className="text-lg font-medium text-foreground [overflow-wrap:anywhere]">{title}</h1>
+        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+        {children}
       </div>
-    </SidebarInset>
+      {trailing ? <div className="flex shrink-0 items-center gap-2 pt-0.5">{trailing}</div> : null}
+    </div>
   );
 }
 

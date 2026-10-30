@@ -1,5 +1,5 @@
 ---
-paths: ["app/apps/web/src/routes/settings*", "app/apps/web/src/baskule/views/PersonalSettingsView.tsx", "app/apps/web/src/baskule/BaskuleUserMenu.tsx", "app/apps/web/src/baskule/ChangePasswordDialog.tsx"]
+paths: ["app/apps/web/src/routes/_chat.settings*", "app/apps/web/src/baskule/settingsPages.ts", "app/apps/web/src/baskule/BaskuleSettingsNav.tsx", "app/apps/web/src/baskule/views/PersonalSettingsView.tsx", "app/apps/web/src/baskule/views/DownloadsView.tsx", "app/apps/web/src/baskule/BaskuleUserMenu.tsx", "app/apps/web/src/baskule/ChangePasswordView.tsx"]
 journeys: null
 profile: "full"
 checks: ["scripts/check worker web"]
@@ -12,7 +12,7 @@ Personal preferences, language, appearance, password changes and device connecti
 
 ## How to get to it (user POV)
 
-Open the account menu → Settings. Password changes and device connections are in the personal account controls.
+Open the account menu → Settings. It opens as a pop-up over the chat, like Admin, with one nav row per section: Scheduled tasks, Usage, Plugins, Spaces (owners and space creators), Desktop app (downloads, device connections, and the server in the desktop app), Change password (password sign-in), Language & appearance, and Archived chats.
 
 ## Driving it with T3 preview or Playwright
 

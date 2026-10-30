@@ -25,7 +25,6 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
         style={{
           width: iconSize,
           height: iconSize,
-          borderRadius: compact ? 10 : 14,
         }}
       />
       <View className="gap-1">

@@ -1,13 +1,15 @@
 import { t, useTranslation } from "../../i18n";
-// baskule: desktop (and mobile) apps published with the installation (E10).
+// baskule: Settings → Desktop app: the apps published with the installation (E10), connecting a
+// device, and in the desktop app the server it uses.
 import { DownloadIcon } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
+import { SettingsPageContainer } from "../../components/settings/settingsLayout";
 import { Spinner } from "../../components/ui/spinner";
 import { type Download, baskuleApi } from "../api";
 import { formatBytes, useApiResource } from "../ui";
 import { ConnectDeviceSection } from "./ConnectDeviceSection";
-import { BaskulePage, PageMessage, PageRow, PageSection } from "./BaskulePage";
+import { PageMessage, PageRow, PageSection } from "./BaskulePage";
 
 const PLATFORM_LABELS: Record<Download["platform"], string> = {
   get linux() {
@@ -60,8 +62,8 @@ export function DownloadsView() {
   const downloads = orderDownloads(info.data ?? [], platform);
   const version = downloads.find((download) => download.version !== null)?.version ?? null;
   return (
-    <BaskulePage title={t("Apps")}>
-      <ConnectDeviceSection />
+    <SettingsPageContainer>
+      <DesktopServerSection />
       <PageSection
         title={version ? t("Apps · version {{version}}", { version: version }) : t("Apps")}
         description={t("The desktop app keeps you signed in and opens Baskule in its own window.")}
@@ -110,6 +112,33 @@ export function DownloadsView() {
           );
         })}
       </PageSection>
-    </BaskulePage>
+      <ConnectDeviceSection />
+    </SettingsPageContainer>
+  );
+}
+
+/** Only in the desktop app: the installation it signs in to, and how to switch. */
+function DesktopServerSection() {
+  const t = useTranslation();
+  const desktop = window.desktopBridge;
+  if (!desktop?.connectBaskuleServer) return null;
+  return (
+    <PageSection title={t("Server")}>
+      <PageRow
+        trailing={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => window.location.assign("/login?server=1")}
+          >
+            {t("Connect to a server")}
+          </Button>
+        }
+      >
+        <span className="truncate text-sm text-foreground">
+          {desktop.getBaskuleServer?.() ?? window.location.origin}
+        </span>
+      </PageRow>
+    </PageSection>
   );
 }

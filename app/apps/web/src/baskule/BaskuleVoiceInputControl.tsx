@@ -1,6 +1,6 @@
-// baskule: the composer's microphone, left of the send button. While recording it becomes
-// cancel, a live level and the elapsed time, and a stop control that inserts the transcript.
-import { MicIcon, SquareIcon, XIcon } from "lucide-react";
+// baskule: the composer's microphone, left of the send button. While recording it becomes a live
+// level, the elapsed time and a stop control that inserts the transcript; Esc discards it.
+import { MicIcon, SquareIcon } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { Button } from "../components/ui/button";
@@ -31,23 +31,6 @@ export function BaskuleVoiceInputControl({
   if (state.phase === "recording") {
     return (
       <div className="flex items-center gap-1" role="group" aria-label={t("Voice recording")}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onPointerDown={keepEditorFocus}
-                onClick={voice.cancel}
-                aria-label={t("Cancel recording")}
-              />
-            }
-          >
-            <XIcon />
-          </TooltipTrigger>
-          <TooltipPopup>{t("Cancel recording (Esc)")}</TooltipPopup>
-        </Tooltip>
         <span className="flex items-center gap-1.5 px-0.5 text-xs text-muted-foreground tabular-nums">
           <LevelMeter analyser={voice.analyser} />
           <RecordingTime startedAt={state.startedAt} />
@@ -72,7 +55,11 @@ export function BaskuleVoiceInputControl({
       </div>
     );
   }
-  if (state.phase === "requesting" || state.phase === "transcribing") {
+  // A send while recording shows its progress on the send button only.
+  if (
+    state.phase === "requesting" ||
+    (state.phase === "transcribing" && state.after === "insert")
+  ) {
     return (
       <Button
         type="button"
@@ -96,7 +83,7 @@ export function BaskuleVoiceInputControl({
             type="button"
             variant="ghost"
             size="icon-sm"
-            disabled={disabled}
+            disabled={disabled || state.phase === "transcribing"}
             onPointerDown={keepEditorFocus}
             onClick={voice.start}
             aria-label={t("Start voice input")}

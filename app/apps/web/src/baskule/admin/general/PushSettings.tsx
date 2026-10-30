@@ -83,6 +83,7 @@ export function PushSettings() {
             <label>
               <input
                 type="radio"
+                className="accent-primary"
                 name="push-provider"
                 checked={provider === "fcm"}
                 onChange={() => {
@@ -95,6 +96,7 @@ export function PushSettings() {
             <label>
               <input
                 type="radio"
+                className="accent-primary"
                 name="push-provider"
                 checked={provider === "apns"}
                 onChange={() => {
@@ -129,6 +131,7 @@ export function PushSettings() {
               <label>
                 <input
                   type="checkbox"
+                  className="accent-primary"
                   checked={sandbox}
                   onChange={(e) => setSandbox(e.currentTarget.checked)}
                 />{" "}

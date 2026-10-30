@@ -180,7 +180,7 @@ export function WorkingSectionSettings() {
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const preferences = useAtomValue(mobilePreferencesAtom);
   const workingShelfEnabled =
-    AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled !== false;
+    AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled === true; // baskule: off by default
 
   return (
     <View className="gap-3">

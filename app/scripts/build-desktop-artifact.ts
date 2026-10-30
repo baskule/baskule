@@ -30,10 +30,7 @@ import {
   updateReleasePackageVersions,
 } from "./update-release-package-versions.ts";
 import { applyWebBrandAssets } from "./apply-web-brand-assets.ts";
-import {
-  resolveWebAssetBrandForChannel,
-  type WebAssetBrand,
-} from "./lib/brand-assets.ts";
+import { resolveWebAssetBrandForChannel, type WebAssetBrand } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
 import {
   findInlinedExternalPackages,
@@ -2718,7 +2715,7 @@ export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
 
 export function resolveDesktopBuildIconAssets(): DesktopBuildIconAssets {
   return {
-    macIconPng: "assets/baskule/icon-1024.png",
+    macIconPng: "assets/baskule/icon-macos-1024.png",
     linuxIconPng: "assets/baskule/icon-1024.png",
     windowsIconIco: "assets/baskule/icon.ico",
   };
@@ -2792,7 +2789,6 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const updateChannel = resolveDesktopUpdateChannel(version);
   // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
   buildConfig.publish = null;
-
 
   if (platform === "mac") {
     const path = yield* Path.Path;
@@ -3803,8 +3799,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     ...(macWebAuthn ? { t3codeWebAuthn: macWebAuthn } : {}),
     private: true,
     packageManager: rootPackageJson.packageManager,
-    description:
-      "Baskule desktop: the T3 Code native client for a Baskule installation.",
+    description: "Baskule desktop: the T3 Code native client for a Baskule installation.",
     license: "MIT",
     homepage: "https://github.com/baskule/baskule",
     author: "Baskule",

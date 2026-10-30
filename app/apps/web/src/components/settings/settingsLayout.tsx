@@ -9,6 +9,7 @@ import * as Equal from "effect/Equal";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { createContext, type ComponentPropsWithoutRef, type ReactNode, useContext } from "react";
 import { baskule } from "../../baskule/flags"; // baskule:
+import { BaskuleSettingsHeading } from "../../baskule/BaskuleSettingsNav"; // baskule:
 
 import {
   PRIMARY_SETTINGS_UNAVAILABLE_MESSAGE,
@@ -557,7 +558,7 @@ export function SettingResetButton({
 export function SettingsPageContainer({
   children,
   className,
-  width = "readable",
+  width = baskule.hideSettings ? "wide" : "readable", // baskule: as wide as the admin pages
 }: {
   children: ReactNode;
   className?: string;
@@ -590,8 +591,8 @@ export function SettingsPageContainer({
         data-settings-page-scroll
       >
         <WorkspacePageContainer width={width} className={cn("gap-8", className)}>
-          {/* baskule: no settings scope picker (only the archived-chats page is reachable). */}
-          {baskule.hideSettings ? null : <SettingsScopeSentence />}
+          {/* baskule: the section's heading instead of T3's settings scope picker. */}
+          {baskule.hideSettings ? <BaskuleSettingsHeading /> : <SettingsScopeSentence />}
           {children}
         </WorkspacePageContainer>
       </div>

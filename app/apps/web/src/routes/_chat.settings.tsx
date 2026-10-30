@@ -2,10 +2,11 @@ import { useTranslation } from "../i18n";
 import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 import { baskule } from "../baskule/flags"; // baskule:
 import {
+  firstBaskuleSettingsPath,
   isBaskuleOwnSettingsPage,
   isBaskuleSettingsPage,
-  baskuleSettingsTitle,
 } from "../baskule/settingsPages"; // baskule:
+import { BaskuleSettingsNav, BaskuleSettingsTabs } from "../baskule/BaskuleSettingsNav"; // baskule:
 import { useState, type ReactNode } from "react";
 import { RotateCcwIcon } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -136,14 +137,16 @@ function SettingsContentLayout() {
   return (
     <AppRouteModal label={t("Settings")}>
       <div className="relative flex min-h-0 flex-1">
-        {/* baskule: the reachable settings pages carry a plain title and no T3 settings nav. */}
-        {baskule.hideSettings ? null : <SettingsSidebarNav pathname={location.pathname} />}
+        {/* baskule: the person's own sections replace T3's settings nav. */}
+        {baskule.hideSettings ? (
+          <BaskuleSettingsNav />
+        ) : (
+          <SettingsSidebarNav pathname={location.pathname} />
+        )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2">
             {baskule.hideSettings ? (
-              <h1 className="text-sm font-medium text-foreground">
-                {baskuleSettingsTitle(location.pathname)}
-              </h1>
+              <span className="text-sm font-medium text-foreground">{t("Settings")}</span>
             ) : (
               <SettingsBreadcrumb pathname={location.pathname} />
             )}
@@ -156,6 +159,7 @@ function SettingsContentLayout() {
               <AppRouteModalClose />
             </div>
           </header>
+          {baskule.hideSettings ? <BaskuleSettingsTabs /> : null}
           <div key={`${contentScopeKey}:${restoreSignal}`} className="min-h-0 flex flex-1 flex-col">
             <SettingsScopeBoundary pathname={location.pathname}>
               <Outlet />
@@ -199,7 +203,10 @@ export const Route = createFileRoute("/_chat/settings")({
   search: { middlewares: [retainSettingsScope] },
   beforeLoad: async ({ location }) => {
     if (location.pathname === "/settings") {
-      throw redirect({ to: "/settings/general", replace: true });
+      throw redirect({
+        to: baskule.hideSettings ? firstBaskuleSettingsPath() : "/settings/general",
+        replace: true,
+      });
     }
     // baskule: only Baskule's settings pages are reachable; T3's moved-page links do not apply.
     if (baskule.hideSettings) {
