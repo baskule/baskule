@@ -105,7 +105,7 @@ And more, out of the box:
   only sees what that person is allowed to see.
 - **Scheduled tasks.** Ask for a Monday-morning pipeline summary once, and it arrives every Monday.
 - **Usage and limits.** See usage by person, model and space, export it to CSV, and set daily, weekly or monthly
-  limits per person.
+  limits for each person.
 - **Voice input.** Dictate a message instead of typing it.
 - **Every device.** The same account, chats and files on the web, on the desktop and on the phone.
 
@@ -137,13 +137,13 @@ network or the platform's internal services.
 | Part | Item | Status |
 | --- | --- | --- |
 | Clients | Web app | 🟢 Available |
-| | Linux desktop app (AppImage, tar.gz) | 🟢 Available |
+| | Linux desktop app (AppImage) | 🟢 Available |
 | | Android app (APK) | 🟢 Available, outside the Play Store for now |
 | | macOS desktop app | 🟡 Preview: builds today, signed releases coming |
 | | Windows desktop app | 🟡 Preview: builds today, signed releases coming |
 | | iOS app | ⚪ Not available yet |
 | Platform | Single-machine installation | 🟢 Available |
-| | Several platform nodes with automatic failover | 🟢 Available |
+| | Several platform nodes with automatic failover (on one machine today) | 🟢 Available |
 | | External S3-compatible storage | 🟢 Available |
 | | Mistral, OpenAI, Anthropic, OpenCode (free) and custom endpoints | 🟢 Available |
 | | Several models offered at once in one installation | ⚪ Not available yet: one model for the organization, switchable at any time |
@@ -159,8 +159,10 @@ The native apps are built from this repository today. Ready-made downloads arriv
 
 ## From one computer to a fleet
 
-Install Baskule on a single machine and it works for a team of a few people. When the whole company joins, add
-machines: the same software spreads over a fleet of servers for hundreds of people and agents running in parallel.
+Install Baskule on a single machine and it works for a team of a few people. The platform is built so the same
+software can spread over a fleet of servers for hundreds of people and agents running in parallel. Today it runs
+several platform nodes with automatic failover on one machine; spreading over several machines is in progress (see
+the [status table](#what-is-available-today)).
 
 <p align="center">
   <picture>
@@ -196,7 +198,7 @@ one. Computers only reach the public internet, never private addresses.
 encrypted with a key derived from the installation's secret. Sessions are checked on every request and revoked at
 once when someone is removed.
 
-**Everything is observable.** Every service sends OpenTelemetry traces to a bundled Jaeger.
+**Everything is observable.** Every platform service sends OpenTelemetry traces to a bundled Jaeger.
 
 ## Install it
 

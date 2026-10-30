@@ -11,7 +11,8 @@ Prebuilt images and a one-command installer are coming.
 - One machine running **Ubuntu 24.04 on x86-64**. A physical server, a spare desktop or a cloud VM all work.
 - **Docker** with the Compose plugin, and `git`.
 - **4 CPU cores, 16 GB of memory and 80 GB of free disk** for a first try. Each agent computer uses up to 2 CPU
-  cores and 3 GB of memory while it runs, so add capacity for the number of people working at the same time.
+  cores and 3 GB of memory while it runs. All computers share one limit, `OPENSHELL_CPUS` and `OPENSHELL_MEMORY` in
+  `.env` (3 cores and 8 GB by default); raise it, and the machine, for more people working at the same time.
 - An **AI provider key** (Mistral, OpenAI, Anthropic or any OpenAI-compatible endpoint), or none at all if you start
   with the free OpenCode model.
 - Root access (`sudo`). The installation lives in `/opt/baskule`.
@@ -62,7 +63,7 @@ starts everything and deploys the app. It ends by printing the address, by defau
 Check that it is up:
 
 ```sh
-curl -s http://127.0.0.1:47090/version.json
+curl -s http://<BASKULE02_BIND>:47090/version.json
 ```
 
 ## 4. Finish the setup in the app
@@ -74,8 +75,8 @@ curl -s http://127.0.0.1:47090/version.json
    running.
 4. Invite people from **Admin → People → Invitations**, create team spaces in **Admin → Spaces**, and add plugins in
    **Admin → Plugins**.
-5. Remove `ADMIN_PASSWORD` from `.env`, then run the build container again (step 3). Nothing is rebuilt; the app is
-   redeployed without the bootstrap password.
+5. Remove `ADMIN_PASSWORD` from `.env`, then run the build container again (step 3). It reuses its caches and
+   redeploys the app without the bootstrap password.
 
 ## Connect the desktop and mobile apps
 
@@ -89,13 +90,14 @@ QR code. Native apps are built from this repository today (see [the desktop guid
 - **On a private network**, set `BASKULE02_BIND` to the machine's private address and `PUBLIC_ORIGINS` to the URL
   people use, then run the build container again.
 - **Over the internet**, put an HTTPS reverse proxy in front of port 47090 and set `publicOrigin` in `auth.json` to
-  your HTTPS address (for example `https://baskule.example.com`). Never publish port 47090 itself on a public
-  interface. Browsers only allow voice input over HTTPS or on `localhost`.
+  your HTTPS address (for example `https://baskule.example.com`). Set `PUBLIC_ORIGINS` to that address too, then run
+  the build container again. Never publish port 47090 itself on a public interface. Browsers only allow voice input over HTTPS or on `localhost`.
 
 ## Sign in with Google, Microsoft or your company account
 
-Add login providers to `deploy/v2/auth.json`: Google, Microsoft, GitHub or any OIDC provider. Admins then control
-who can join in **Admin → General → Authentication**. The [installation settings](installation-settings.md) give
+Add login providers to `deploy/v2/auth.json`: Google, Microsoft, GitHub or any OIDC provider, then run the build
+container again. Only invited people can join, except Google Workspace domains that admins allow in
+**Admin → General → Authentication**. The [installation settings](installation-settings.md) give
 complete examples, including Google Workspace domains and plugin accounts that reuse a person's login.
 
 ## Use external storage
@@ -111,12 +113,13 @@ Run these from `/opt/baskule/src`.
 
 | Task | Command |
 | --- | --- |
-| Back up everything (bucket, sandbox state, every computer's disk) | `sudo deploy/v2/backup.sh` |
-| Update to the latest version | `sudo git -C /opt/baskule/src pull`, then run the build container again (step 3) |
+| Back up the local bucket, the sandbox state and every computer's disk | `sudo deploy/v2/down.sh`, then `sudo deploy/v2/backup.sh` |
+| Update to the latest version | Read the [upgrade notes](../deploy/v2/README.md#upgrade) first: some updates require a backup and a wipe. Then `sudo git -C /opt/baskule/src pull` and run the build container again (step 3) |
 | Stop, keeping all data | `sudo deploy/v2/down.sh` |
 | Start again | run the build container again (step 3) |
 
-`deploy/v2/down.sh --purge` deletes **all** data. Back up first. Restoring, rolling upgrades and the other
+Stop Baskule before a backup so the copy is consistent. An external bucket is not included: back it up with your
+storage provider. `deploy/v2/down.sh --purge` deletes **all** data. Back up first. Restoring, rolling upgrades and the other
 operations are in the [deployment guide](../deploy/v2/README.md).
 
 ## If something goes wrong
