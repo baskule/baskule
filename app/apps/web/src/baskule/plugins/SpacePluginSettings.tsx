@@ -1,9 +1,9 @@
+import { useTranslation } from "../../i18n";
 // baskule: a team space's plugin settings, for its owners and admins: whether plugins that act
 // with a member's own account may run here (off by default), and plugins turned off in this space.
 import type { Plugin, SpacePluginSettings as Settings } from "@t3tools/contracts/baskule-plugins";
 import { useState } from "react";
 
-import { useTranslation } from "../../i18n";
 import { Label } from "../../components/ui/label";
 import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";

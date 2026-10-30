@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 // baskule: "/" opens a fresh chat draft (composer first, like ChatGPT) instead of the
 // most recent project's draft or the "Add project" hero.
 import { useRouter } from "@tanstack/react-router";
@@ -17,6 +18,7 @@ export function BaskuleIndexLanding() {
   const t = useTranslation();
   const { available, startNewChat } = useBaskuleNewChat();
   const router = useRouter();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Consume the one-shot session-storage notification after space access is revoked.
   useEffect(() => {
     try {
       if (window.sessionStorage.getItem("baskule:space-access-removed") !== "1") return;
@@ -49,6 +51,7 @@ export function BaskuleIndexLanding() {
         if (!ok && isStillOnIndex()) setFailures((count) => count + 1);
       });
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the retry timer for opening the personal chat route while this landing view is mounted.
   useEffect(() => {
     if (!available) return;
     if (failures === 0) {

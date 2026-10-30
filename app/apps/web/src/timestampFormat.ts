@@ -1,5 +1,6 @@
-import { getLocale } from "@t3tools/shared/localization";
 import { t } from "./i18n";
+import { getLocale } from "@t3tools/shared/localization";
+
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 
 function getTimestampFormatOptions(
@@ -37,7 +38,7 @@ function resolveTimestampLocale(systemLocale: string | null | undefined): string
 
 function readHostSystemLocale(): string | null {
   if (typeof window === "undefined") return null;
-  return window.desktopBridge?.getSystemLocale?.() ?? null;
+  return window.desktopBridge?.getSystemLocale() ?? null;
 }
 
 const timestampLocale = resolveTimestampLocale(readHostSystemLocale());

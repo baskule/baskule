@@ -1,4 +1,5 @@
 import { t } from "./i18n";
+
 import type {
   EnvironmentId,
   ServerConfig,
@@ -94,12 +95,6 @@ export function supportsDesktopAppUpdate(
   serverConfig: Pick<ServerConfig, "environment"> | null | undefined,
 ): boolean {
   return serverConfig?.environment.capabilities.desktopAppUpdate === true;
-}
-
-export function supportsServerUpdateThreadContinuation(
-  serverConfig: Pick<ServerConfig, "environment"> | null | undefined,
-): boolean {
-  return serverConfig?.environment.capabilities.serverUpdateThreadContinuation === true;
 }
 
 export function manualServerUpdateCommand(

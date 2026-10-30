@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { ThreadContextRecord } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
@@ -32,7 +33,7 @@ export function ThreadContextChip(props: {
             className="no-underline"
           >
             {project ? (
-              <ProjectFavicon project={project} className="size-[1.17em] self-center" />
+              <ProjectFavicon project={project} className="size-[1em] self-center" />
             ) : (
               <MessagesSquareIcon />
             )}

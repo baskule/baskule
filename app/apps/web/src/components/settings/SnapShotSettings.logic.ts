@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type { ClientSettingsPatch, DesktopSnapShotState, SnapShotSound } from "@t3tools/contracts";
 import {
   captureSetupBackend,

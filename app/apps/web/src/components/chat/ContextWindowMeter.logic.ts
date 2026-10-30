@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import {
   type ProviderInstanceEntry,
   resolveSelectableProviderInstanceEntry,
@@ -8,7 +9,7 @@ import {
   type ProviderDriverKind,
   type ProviderInstanceId,
 } from "@t3tools/contracts";
-import { getTriggerDisplayModelName, type ModelEsque } from "./providerIconUtils";
+import { getDisplayModelName, type ModelEsque } from "./providerIconUtils";
 
 export function providerSupportsManualCompaction(
   provider: ProviderInstanceEntry | null | undefined,
@@ -52,7 +53,7 @@ export function resolveContextWindowModelDisplayName(
     .get(selection.instanceId)
     ?.find((model) => model.slug === selection.model);
 
-  return selectedModel ? getTriggerDisplayModelName(selectedModel) : selection.model;
+  return selectedModel ? getDisplayModelName(selectedModel) : selection.model;
 }
 
 export function formatContextWindowCompactionMessage(

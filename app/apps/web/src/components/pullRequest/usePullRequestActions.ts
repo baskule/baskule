@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { useAtomCommand } from "~/state/use-atom-command";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -25,14 +26,14 @@ import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
   selectProjectGroupingSettings,
-} from "~/logicalProject";
+} from "@t3tools/client-runtime/state/project-grouping";
 import { buildPhysicalToLogicalProjectKeyMap } from "~/sidebarProjectGrouping";
 import { useProjects } from "~/state/entities";
 import { usePrimaryEnvironmentId } from "~/state/environments";
 
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
-import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
+import { usePreparePullRequestThreadAction } from "~/state/sourceControlActions";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 
@@ -219,8 +220,14 @@ export function usePullRequestCloseBatch(onClosed: (entry: EnvironmentPullReques
       type: failures.length > 0 ? "error" : "success",
       title:
         failures.length > 0
-          ? `Closed ${closed} of ${batch.length} pull requests`
-          : `Closed ${closed} pull request${closed === 1 ? "" : "s"}`,
+          ? t("Closed {{value1}} of {{value2}} pull requests", {
+              value1: closed,
+              value2: batch.length,
+            })
+          : t("Closed {{value1}} pull request{{value2}}", {
+              value1: closed,
+              value2: closed === 1 ? "" : "s",
+            }),
       ...(failures.length > 0 ? { description: failures.slice(0, 3).join("\n") } : {}),
     });
   };
@@ -313,8 +320,10 @@ export function usePullRequestHandoffs({
       title: t("Asked in a thread"),
       description:
         task.prompt.length > 0
-          ? "The question is in the composer. Read it over, then send."
-          : `The ${terminology.singular} is in the composer. Type your question, then send.`,
+          ? t("The question is in the composer. Read it over, then send.")
+          : t("The {{value1}} is in the composer. Type your question, then send.", {
+              value1: terminology.singular,
+            }),
     });
   };
 
@@ -388,11 +397,15 @@ export function usePullRequestHandoffs({
         prepared.value.isOnPullRequestHead
           ? {
               type: "success",
-              title: mode === "local" ? "Checked out here" : "Checked out",
+              title: mode === "local" ? t("Checked out here") : t("Checked out"),
               description:
                 mode === "local"
-                  ? `This repository is on the ${terminology.singular}'s branch, with a thread open on it.`
-                  : `The ${terminology.singular} is in its own worktree, with a thread open on it.`,
+                  ? t("This repository is on the {{value1}}'s branch, with a thread open on it.", {
+                      value1: terminology.singular,
+                    })
+                  : t("The {{value1}} is in its own worktree, with a thread open on it.", {
+                      value1: terminology.singular,
+                    }),
             }
           : offHeadPullRequestCheckoutToast(terminology),
       );

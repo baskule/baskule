@@ -1,8 +1,8 @@
+import { useTranslation } from "../../i18n";
 // baskule: the admin modal's nav, like the settings nav: one group per section, one row per page,
 // an icon rail below md.
 import { Link, useParams } from "@tanstack/react-router";
 
-import { useTranslation } from "../../i18n";
 import { Badge } from "../../components/ui/badge";
 import {
   SidebarContent,

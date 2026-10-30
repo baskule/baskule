@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 // baskule: ChatGPT-like sidebar header: a full-width "New chat" row above the search field. A copy
 // of upstream's search field (SidebarThreadHeader) so the upstream file only gains a wrapper.
 import { SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
@@ -29,7 +30,7 @@ export function BaskuleSidebarHeader({
       <SidebarMenuButton
         type="button"
         data-testid="baskule-new-chat"
-        className="h-8 gap-2 px-2 font-medium text-sidebar-foreground"
+        className="h-8 "
         disabled={newThreadDisabled}
         onClick={onNewThread}
       >

@@ -1,9 +1,9 @@
+import { languageNames, locales, useTranslation } from "../i18n";
 import { setLanguagePreference, useLanguagePreference } from "../languagePreferences";
 import { useState } from "react";
 import { isLanguagePreference } from "@t3tools/shared/localization";
 import { SettingsRow } from "./settings/settingsLayout";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
-import { languageNames, locales, useTranslation } from "../i18n";
 
 export function LanguageSetting() {
   const t = useTranslation();

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 // baskule: how plugins are named to people. Everything is a "plugin"; its kind, source and
 // credential mode are shown in plain words (the people reading them are not developers).
 import type {
@@ -7,8 +8,6 @@ import type {
   PluginSource,
 } from "@t3tools/contracts/baskule-plugins";
 import { BookOpenTextIcon, PackageIcon, PlugIcon, type LucideIcon } from "lucide-react";
-
-import { t } from "../../i18n";
 
 export const PLUGIN_KINDS: ReadonlyArray<PluginKind> = ["mcp", "skill", "bundle"];
 

@@ -1,3 +1,5 @@
+import { useTranslation } from "../../../i18n";
+
 import { observeResize } from "~/lib/observeResize";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -45,11 +47,12 @@ export default function Spreadsheet(props: {
   onDetails: (text: string) => void;
   onError: (cause: unknown) => void;
 }) {
+  const t = useTranslation();
   const { onError, bytes: source, onDetails } = props;
   const [opened, setOpened] = useState<Opened>();
   const [error, setError] = useState("");
   const picking = useRef<AbortController | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Open the workbook worker and cancel workbook and sheet requests when the source changes or unmounts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Open the workbook worker and cancel workbook and sheet requests when the source changes or unmounts.
   useEffect(() => {
     const controller = new AbortController();
     const worker = new Worker(new URL("./spreadsheet.worker.ts", import.meta.url), {
@@ -108,7 +111,7 @@ export default function Spreadsheet(props: {
       />
       <div
         role="tablist"
-        aria-label="Sheets"
+        aria-label={t("Sheets")}
         className="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-t border-border px-2"
         onKeyDown={(event) => {
           const current = opened.tabs.findIndex(
@@ -163,11 +166,11 @@ function SpreadsheetGrid(props: {
   const [reader, setReader] = useState<{ row: number; col: number; text: string }[]>([]);
   const [active, setActive] = useState({ row: 0, col: 0 });
   const navigate = useRef(onNavigate);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Keep the installed native pointer listener calling the latest navigation handler without restarting the canvas engine.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the installed native pointer listener calling the latest navigation handler without restarting the canvas engine.
   useEffect(() => {
     navigate.current = onNavigate;
   }, [onNavigate]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Own canvas painting, worker requests, resize observation, and native scroll, keyboard, and pointer listeners for this sheet.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own canvas painting, worker requests, resize observation, and native scroll, keyboard, and pointer listeners for this sheet.
   useEffect(() => {
     const root = scroller.current;
     const target = canvas.current;

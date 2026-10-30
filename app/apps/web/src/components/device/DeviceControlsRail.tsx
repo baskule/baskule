@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { DevicePlatform } from "@t3tools/contracts";
 import {
   Camera,

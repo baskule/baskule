@@ -1,8 +1,6 @@
-// baskule: page checks + screenshots of the Baskule views against the mock front (up.sh).
-// Desktop 1440x900 and phone 390x844. Writes PNGs to .run/wp-e/artifacts/ (or SHOTS_DIR),
-// fails on a broken check, and prints console errors from the page.
-//   node apps/web/baskule-dev/shots.mjs            all scenarios
-//   node apps/web/baskule-dev/shots.mjs login admin  some of them
+// baskule: page checks + screenshots of the Baskule views against the mock front (up.sh). Desktop 1440x900 and phone 390x844. Writes
+// PNGs to .run/wp-e/artifacts/ (or SHOTS_DIR), fails on a broken check, and prints console errors from the page.   node
+// apps/web/baskule-dev/shots.mjs            all scenarios   node apps/web/baskule-dev/shots.mjs login admin  some of them
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
@@ -59,7 +57,9 @@ async function newPage(browser, device) {
     if (response.ok() && /(?:java|ecma)script|wasm/i.test(contentType)) return;
     failedModules++;
     const url = new URL(response.url());
-    console.log(`  [module:${device}] ${url.origin}${url.pathname.slice(0, 300)} status=${response.status()} content-type=${contentType.slice(0, 100)}`);
+    console.log(
+      `  [module:${device}] ${url.origin}${url.pathname.slice(0, 300)} status=${response.status()} content-type=${contentType.slice(0, 100)}`,
+    );
   });
   return { context, page };
 }
@@ -221,9 +221,7 @@ const scenarios = {
     await invited.page.waitForURL((url) => url.pathname !== "/invite", { timeout: 20_000 });
     await invited.page.getByTestId("baskule-user-menu").waitFor({ timeout: 30_000 });
     check(
-      (await invited.page.getByTestId("baskule-user-menu").textContent())?.includes(
-        `Bob ${stamp}`,
-      ),
+      (await invited.page.getByTestId("baskule-user-menu").textContent())?.includes(`Bob ${stamp}`),
       "platform: invitation accepted and signed in",
     );
     await invited.context.close();
@@ -632,9 +630,9 @@ const scenarios = {
     await page.getByRole("button", { name: "Save key" }).click();
     await page.getByText("Key saved").first().waitFor();
     check(
-      !JSON.stringify(
-        await (await page.request.get("/api/baskule/admin/plugins")).json(),
-      ).includes("mock-secret"),
+      !JSON.stringify(await (await page.request.get("/api/baskule/admin/plugins")).json()).includes(
+        "mock-secret",
+      ),
       `${device}: an organization key is write-only`,
     );
     await shot(page, `${device}-plugins-key`);

@@ -1,11 +1,10 @@
-/* oxlint-disable react/no-array-index-key -- Spreadsheet rows and columns retain their source positions. */
+import { useTranslation } from "../../i18n";
+
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import type { OfficePreviewKind } from "@t3tools/shared/filePreview";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-
 import VirtualTablePreview from "./VirtualTablePreview";
-
 import {
   Select,
   SelectItem,
@@ -13,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
-
 import { FileSurfaceAction, FileSurfaceLoading, FileSurfaceNotice } from "./fileSurfaceChrome";
 import { OFFICE_PREVIEW_MAX_BYTES, type OfficeWorkerResult } from "./officePreviewProtocol";
 
@@ -68,6 +66,7 @@ function ExtendedOfficeViewer(props: {
   readonly kind: OfficePreviewKind;
   readonly sizeBytes?: number;
 }) {
+  const t = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [sheetPages, setSheetPages] = useState(new Map<string, string[][]>());
   const pendingPages = useRef(new Set<string>());
@@ -85,7 +84,7 @@ function ExtendedOfficeViewer(props: {
   const [page, setPage] = useState(0);
   const workerRef = useRef<Worker | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Own the Office fetch, preparation worker, and timeout for this source and release them on cleanup.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the Office fetch, preparation worker, and timeout for this source and release them on cleanup.
   useEffect(() => {
     const controller = new AbortController();
     if ((props.sizeBytes ?? 0) > OFFICE_PREVIEW_MAX_BYTES) {
@@ -160,9 +159,9 @@ function ExtendedOfficeViewer(props: {
         role="alert"
         className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center"
       >
-        <p className="text-sm font-medium">No preview for this file</p>
+        <p className="text-sm font-medium">{t("No preview for this file")}</p>
         <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-          {error} Save it or open it in another app.
+          {error} {t("Save it or open it in another app.")}
         </p>
       </div>
     );
@@ -185,7 +184,7 @@ function ExtendedOfficeViewer(props: {
       {count > 0 ? (
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3 text-xs">
           <FileSurfaceAction
-            label={`Previous ${navigation}`}
+            label={t("Previous {{value1}}", { value1: navigation })}
             disabled={page === 0}
             onPress={() => selectPage(page - 1)}
           >
@@ -199,11 +198,12 @@ function ExtendedOfficeViewer(props: {
                   if (value !== null) selectPage(value);
                 }}
               >
-                <SelectTrigger aria-label="Sheet" size="xs">
+                <SelectTrigger aria-label={t("Sheet")} size="xs">
                   <SelectValue>{sheet?.name}</SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   {workbook.sheets.map((item, index) => (
+                    // oxlint-disable-next-line react/no-array-index-key -- Immutable document coordinates identify this row or cell for the mounted file.
                     <SelectItem key={index} value={index}>
                       {item.name}
                     </SelectItem>
@@ -219,11 +219,12 @@ function ExtendedOfficeViewer(props: {
                   if (value !== null) selectPage(value);
                 }}
               >
-                <SelectTrigger aria-label="Chapter" size="xs">
+                <SelectTrigger aria-label={t("Chapter")} size="xs">
                   <SelectValue>{documentPage?.title}</SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   {previewDocument.pages.map((item, index) => (
+                    // oxlint-disable-next-line react/no-array-index-key -- Immutable document coordinates identify this row or cell for the mounted file.
                     <SelectItem key={index} value={index}>
                       {item.title}
                     </SelectItem>
@@ -233,11 +234,11 @@ function ExtendedOfficeViewer(props: {
             </div>
           ) : (
             <span className="flex-1 text-center tabular-nums" aria-live="polite">
-              {navigation === "slide" ? "Slide" : "Page"} {page + 1} of {count}
+              {navigation === "slide" ? t("Slide") : t("Page")} {page + 1} of {count}
             </span>
           )}
           <FileSurfaceAction
-            label={`Next ${navigation}`}
+            label={t("Next {{value1}}", { value1: navigation })}
             disabled={page + 1 === count}
             onPress={() => selectPage(page + 1)}
           >
@@ -250,7 +251,8 @@ function ExtendedOfficeViewer(props: {
           className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-1 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground tabular-nums"
           role="status"
         >
-          Sheet {page + 1} of {count} · {sheet.rowCount.toLocaleString()} rows ·{" "}
+          {t("Sheet")}
+          {page + 1} of {count} · {sheet.rowCount.toLocaleString()} rows ·{" "}
           {sheet.columns.toLocaleString()} columns
           {fileSize !== undefined
             ? ` · ${fileSize === 0 ? "0 bytes" : formatAttachmentSize(fileSize)}`
@@ -261,7 +263,7 @@ function ExtendedOfficeViewer(props: {
         <>
           {props.kind !== "epub" ? (
             <FileSurfaceNotice>
-              Text and images. Layout and embedded objects may differ from the original.
+              {t("Text and images. Layout and embedded objects may differ from the original.")}
             </FileSurfaceNotice>
           ) : null}
           <Suspense fallback={<FileSurfaceLoading />}>
@@ -275,15 +277,15 @@ function ExtendedOfficeViewer(props: {
       ) : sheet ? (
         <>
           <FileSurfaceNotice>
-            Cell values only. Charts, images, and formatting are not shown.
+            {t("Cell values only. Charts, images, and formatting are not shown.")}
             {sheet.truncated
               ? props.kind === "ods"
-                ? " Limited to 500 rows and 50 columns."
-                : " Preview limited to 250,000 rows, 1,024 columns, and bounded cell text."
+                ? t(" Limited to 500 rows and 50 columns.")
+                : t(" Preview limited to 250,000 rows, 1,024 columns, and bounded cell text.")
               : ""}
           </FileSurfaceNotice>
           {sheet.rowCount === 0 ? (
-            <p className="p-6 text-xs text-muted-foreground">This sheet is empty.</p>
+            <p className="p-6 text-xs text-muted-foreground">{t("This sheet is empty.")}</p>
           ) : (
             <VirtualTablePreview
               key={page}

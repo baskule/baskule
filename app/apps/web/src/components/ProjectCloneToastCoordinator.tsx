@@ -1,4 +1,5 @@
-import { t } from "../i18n";
+import { t, useTranslation } from "../i18n";
+
 import { useParams } from "@tanstack/react-router";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -60,13 +61,14 @@ async function runCloneAction(
       stackedThreadToast({
         type: "error",
         title,
-        description: error instanceof Error ? error.message : "An error occurred.",
+        description: error instanceof Error ? error.message : t("An error occurred."),
       }),
     );
   }
 }
 
 function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentId }) {
+  const t = useTranslation();
   const clones = useEnvironmentProjectClones(environmentId);
   const handleNewThread = useNewThreadHandler();
   const { draftId: routeDraftId } = useParams({ strict: false });
@@ -89,6 +91,7 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
     void handleNewThread(scopeProjectRef(environmentId, projectId));
   };
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens, updates and closes imperative toastManager toasts to match the current project clones
   useEffect(() => {
     const seen = new Set<ProjectId>();
     for (const clone of clones) {
@@ -171,7 +174,9 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
       const cancelled = clone.phase === "cancelled";
       const options = stackedThreadToast({
         type: cancelled ? "info" : "error",
-        title: cancelled ? `Cancelled cloning ${name}` : `Failed to clone ${name}`,
+        title: cancelled
+          ? t("Cancelled cloning {{value1}}", { value1: name })
+          : t("Failed to clone {{value1}}", { value1: name }),
         description: cancelled ? clone.destinationPath : (clone.error ?? "The clone failed."),
         timeout: 0,
         actionProps: {
@@ -207,6 +212,7 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
       toasts.current.delete(projectId);
     }
   }, [
+    t,
     cancelClone,
     clones,
     environmentId,
@@ -216,6 +222,7 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
     retryClone,
   ]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes every tracked clone toast in toastManager when the coordinator unmounts
   useEffect(
     () => () => {
       for (const tracked of toasts.current.values()) toastManager.close(tracked.toastId);

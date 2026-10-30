@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { ProviderDriverKind, ProviderOptionDescriptor } from "@t3tools/contracts";
 import { ZapIcon } from "lucide-react";
 import { UltrafastIcon } from "../Icons";
@@ -18,7 +19,6 @@ export function getTraitsSpeedDisplay(
 }
 
 export function TraitsSpeedIcon({
-  provider,
   speedIcon,
   size = "sm",
 }: {

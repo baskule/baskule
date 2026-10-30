@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { t } from "../../i18n";
+
 import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
@@ -50,7 +51,6 @@ interface PlanSendBase {
   readonly activeProposedPlan: LatestProposedPlanState | null;
   readonly isServerThread: boolean;
   readonly isSendBusy: boolean;
-  readonly isConnecting: boolean;
   readonly composerRef: ComposerHandleRef;
   readonly beginLocalDispatch: LocalDispatchState["beginLocalDispatch"];
   readonly resetLocalDispatch: LocalDispatchState["resetLocalDispatch"];
@@ -83,7 +83,6 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
     activeProposedPlan,
     isServerThread,
     isSendBusy,
-    isConnecting,
     composerRef,
     beginLocalDispatch,
     resetLocalDispatch,
@@ -116,7 +115,6 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
       !activeThread ||
       !isServerThread ||
       isSendBusy ||
-      isConnecting ||
       sendInFlightRef.current
     ) {
       return false;
@@ -238,7 +236,6 @@ interface ImplementPlanInNewThreadInput extends PlanSendBase {
  * thread is deleted again if it cannot be started or opened.
  */
 export function useImplementPlanInNewThread(input: ImplementPlanInNewThreadInput) {
-  const t = useTranslation();
   const {
     environmentId,
     routeThreadKey,
@@ -247,7 +244,6 @@ export function useImplementPlanInNewThread(input: ImplementPlanInNewThreadInput
     activeProposedPlan,
     isServerThread,
     isSendBusy,
-    isConnecting,
     composerRef,
     beginLocalDispatch,
     resetLocalDispatch,
@@ -271,7 +267,6 @@ export function useImplementPlanInNewThread(input: ImplementPlanInNewThreadInput
       !activeProposedPlan ||
       !isServerThread ||
       isSendBusy ||
-      isConnecting ||
       activeEnvironmentUnavailable ||
       sendInFlightRef.current
     ) {
@@ -377,7 +372,7 @@ export function useImplementPlanInNewThread(input: ImplementPlanInNewThreadInput
             description:
               error instanceof Error
                 ? error.message
-                : "An error occurred while creating the new thread.",
+                : t("An error occurred while creating the new thread."),
           }),
         );
       }

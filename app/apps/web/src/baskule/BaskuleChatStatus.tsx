@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 // baskule: compact run-status glyph for the flat chat list (replaces pin/PR/terminal/provider badges).
 import { CircleAlertIcon, LoaderCircleIcon, MessageCircleQuestionIcon } from "lucide-react";
 

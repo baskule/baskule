@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 // baskule: accepting an invitation link: the invited person sets their name and password.
 import { useEffect, useState, type FormEvent } from "react";
 
@@ -57,6 +58,7 @@ export function InvitationView({ token }: { readonly token: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [showProblems, setShowProblems] = useState(false);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel publication of the invitation HTTP response after navigation or token change.
   useEffect(() => {
     let cancelled = false;
     if (token === null) return;
@@ -95,7 +97,7 @@ export function InvitationView({ token }: { readonly token: string | null }) {
   };
 
   return (
-    <StandalonePage tone="brand">
+    <StandalonePage>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <BaskuleWordmark className="text-base" />

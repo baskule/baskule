@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { PreviewViewportSetting, ScopedThreadRef } from "@t3tools/contracts";
 
@@ -13,7 +15,7 @@ export interface BrowserViewportTarget {
   readonly runtimeTabId: string;
 }
 
-export const BROWSER_VIEWPORT_COMMIT_TIMEOUT_MS = 15_000;
+const BROWSER_VIEWPORT_COMMIT_TIMEOUT_MS = 15_000;
 
 class BrowserViewportCommitTimeoutError extends Error {
   override readonly name = "BrowserViewportCommitTimeoutError";
@@ -25,6 +27,7 @@ class BrowserViewportCommitTimeoutError extends Error {
 
 const commitTails = new Map<string, Promise<void>>();
 
+/** Serializes UI and automation mutations per tab so rollback cannot overtake a newer resize. */
 const queueBrowserViewportMutation = <A>(
   tabId: string,
   start: () => Promise<A>,
@@ -47,14 +50,6 @@ const queueBrowserViewportMutation = <A>(
   void tail.then(clear, clear);
   return { started, execution };
 };
-
-/** Serializes UI and automation mutations per tab so rollback cannot overtake a newer resize. */
-export function runBrowserViewportMutation<A>(
-  tabId: string,
-  mutation: () => Promise<A>,
-): Promise<A> {
-  return queueBrowserViewportMutation(tabId, mutation).execution;
-}
 
 const runHandlerWithTimeout = (tabId: string, operation: Promise<void>): Promise<void> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -80,14 +75,14 @@ async function resizeBrowserViewport(
       environmentId: target.threadRef.environmentId,
       input: { threadId: target.threadRef.threadId, tabId: target.tabId, viewport },
     },
-    { label: "preview viewport resize" },
+    { label: t("preview viewport resize") },
   );
   if (result._tag === "Failure") {
     const error = squashAtomCommandFailure(result);
     toastManager.add({
       type: "error",
-      title: "Unable to resize browser viewport",
-      description: error instanceof Error ? error.message : "An error occurred.",
+      title: t("Unable to resize browser viewport"),
+      description: error instanceof Error ? error.message : t("An error occurred."),
     });
     throw error;
   }

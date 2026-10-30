@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import type {
   Group,
   GroupInput,
@@ -11,7 +12,7 @@ import type {
   UserPlugin,
 } from "@t3tools/contracts/baskule-plugins";
 import { toastManager } from "../../components/ui/toast";
-import { t } from "../../i18n";
+
 import { BaskuleApiError, request } from "../api";
 import { errorText } from "../ui";
 

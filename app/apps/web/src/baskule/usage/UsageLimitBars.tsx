@@ -1,8 +1,8 @@
+import { useLocale, useTranslation } from "../../i18n";
 // baskule: one bar per limit window, used vs limit. The bar shows whichever limit (tokens or cost)
 // runs out first; the text gives both, and the reset in local time.
 import { Fragment } from "react";
 
-import { useLocale, useTranslation } from "../../i18n";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/utils";
 import type { UsageWindowStatus } from "./api";

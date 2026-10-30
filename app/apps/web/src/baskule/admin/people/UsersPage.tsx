@@ -1,10 +1,10 @@
+import { t, useTranslation } from "../../../i18n";
 // baskule: People → Users: everyone who can sign in, their role and their access. What a person
 // may do beyond their role (create team spaces, use plugins) comes from their groups.
 import { Link } from "@tanstack/react-router";
 import { EllipsisIcon, UserPlusIcon } from "lucide-react";
 import { useState } from "react";
 
-import { t, useTranslation } from "../../../i18n";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../../components/ui/menu";

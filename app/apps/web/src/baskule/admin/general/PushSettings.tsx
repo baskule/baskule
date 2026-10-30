@@ -1,6 +1,7 @@
+import { useTranslation } from "../../../i18n";
 import { useState, type FormEvent } from "react";
 import { decodePushAvailability } from "@t3tools/contracts/baskulePush";
-import { useTranslation } from "../../../i18n";
+
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Textarea } from "../../../components/ui/textarea";

@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { DeviceHostUpdates } from "./DeviceHostUpdates";
 import type { DevicePlatform, DeviceServiceState, EnvironmentId } from "@t3tools/contracts";
 import { Check } from "lucide-react";

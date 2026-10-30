@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import { Spinner } from "~/components/ui/spinner";
 import { ArchiveIcon, ArchiveX } from "lucide-react";

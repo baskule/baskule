@@ -1,10 +1,10 @@
+import { useTranslation } from "../../i18n";
 // baskule: Settings → Plugins, for every person: the plugins their groups allow, turned on or off
 // for themselves, and the accounts they connect. People never add plugins; the admin does.
 import type { UserPlugin } from "@t3tools/contracts/baskule-plugins";
 import { CircleAlertIcon, CircleCheckIcon, CircleMinusIcon, LinkIcon } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { useTranslation } from "../../i18n";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
 import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
@@ -22,6 +22,7 @@ const loadMine = () => pluginsApi.mine();
 /** The connect endpoint sends the person back here with the outcome in the query. */
 function useConnectionOutcome() {
   const t = useTranslation();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Consume the OAuth redirect URL and publish its result to the toast service.
   useEffect(() => {
     const url = new URL(window.location.href);
     const outcome = url.searchParams.get("pluginConnection");

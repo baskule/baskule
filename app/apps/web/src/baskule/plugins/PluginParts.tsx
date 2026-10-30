@@ -1,9 +1,9 @@
+import { useTranslation } from "../../i18n";
 // baskule: pieces every plugin screen shares: its tile, its title lines and what it contains.
 import type { Plugin, PluginKind } from "@t3tools/contracts/baskule-plugins";
 import { BanIcon, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { useTranslation } from "../../i18n";
 import { cn } from "../../lib/utils";
 import { credentialLabel, KIND_ICONS, kindLabel, serverHost } from "./presentation";
 

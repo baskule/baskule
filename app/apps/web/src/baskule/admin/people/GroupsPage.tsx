@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n";
 // baskule: People → Groups: the built-in "Everyone" and the admin's own groups. A group gives
 // its people plugins and permissions; a person gets the sum of their groups.
 import type { Group } from "@t3tools/contracts/baskule-plugins";
@@ -5,7 +6,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, PlusIcon, UsersRoundIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";

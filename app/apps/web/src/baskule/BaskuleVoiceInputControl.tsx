@@ -1,3 +1,4 @@
+import { useTranslation } from "../i18n";
 // baskule: the composer's microphone, left of the send button. While recording it becomes a live
 // level, the elapsed time and a stop control that inserts the transcript; Esc discards it.
 import { MicIcon, SquareIcon } from "lucide-react";
@@ -6,7 +7,7 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
-import { useTranslation } from "../i18n";
+
 import {
   formatRecordingTime,
   MAX_RECORDING_MINUTES,
@@ -103,6 +104,7 @@ export function BaskuleVoiceInputControl({
 
 function RecordingTime({ startedAt }: { readonly startedAt: number }) {
   const [now, setNow] = useState(() => Date.now());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the elapsed-recording timer while the recording indicator is mounted.
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -113,6 +115,7 @@ function RecordingTime({ startedAt }: { readonly startedAt: number }) {
 /** All bars follow speech volume, with a balanced silhouette and no idle animation. */
 function LevelMeter({ analyser }: { readonly analyser: () => AnalyserNode | null }) {
   const barsRef = useRef<HTMLSpanElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Sample the native audio analyser and update its meter until the recorder view unmounts.
   useEffect(() => {
     const node = analyser();
     const bars = barsRef.current?.children;

@@ -7,9 +7,9 @@ import { sourceLabel } from "./presentation";
 
 describe("plugin wording", () => {
   it("explains backend refusals in plain words and keeps other messages", () => {
-    expect(
-      pluginErrorText(new BaskuleApiError(400, "invalid commit", "invalid_commit"), "x"),
-    ).toBe("Enter the full commit ID: 40 letters and digits.");
+    expect(pluginErrorText(new BaskuleApiError(400, "invalid commit", "invalid_commit"), "x")).toBe(
+      "Enter the full commit ID: 40 letters and digits.",
+    );
     expect(pluginErrorText(new BaskuleApiError(500, "Boom", "other"), "x")).toBe("Boom");
   });
 

@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 // baskule: "Files out" (scope 2026-10-22, review M7). Any file the agent wrote downloads through
 // the signed `/api/assets` route with `disposition: "attachment"`: the server streams it (Range
 // supported), so type and size do not matter and nothing is buffered in the page.

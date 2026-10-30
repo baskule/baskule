@@ -1,7 +1,7 @@
+import { t, useTranslation } from "../../../i18n";
 // baskule: Spaces → Team spaces: shared spaces, their members, creating and managing them.
 import { PlusIcon, UsersIcon } from "lucide-react";
 
-import { t, useTranslation } from "../../../i18n";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { type AdminSpace, baskuleApi } from "../../api";

@@ -498,7 +498,8 @@ export function createPluginMock({ users, spaces }) {
       const server = url.searchParams.get("server");
       if (r[2] === "connection" && method === "DELETE") {
         for (const s of plugin.servers)
-          if (server === null || s.name === server) connected.delete(connectionKey(me.id, plugin.id, s.name));
+          if (server === null || s.name === server)
+            connected.delete(connectionKey(me.id, plugin.id, s.name));
         return (send(res, 200, { ok: true }), true);
       }
       if (r[2] === "connect" && method === "GET") {

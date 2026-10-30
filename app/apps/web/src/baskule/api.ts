@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 // baskule: typed client for the Baskule front (Worker + ControlCell, architecture E6/E7).
 // Same origin, cookie session (Better Auth at `/auth/*`); our API at `/api/baskule/*`.
 // Wire shapes: platform/README.md ("/api/baskule") and platform/src/control/service.ts (WP-C).
@@ -201,7 +202,9 @@ const CODE_MESSAGES: Record<string, string> = {
     return t("The recording could not be transcribed. Try again.");
   },
   get transcription_key_rejected() {
-    return t("The transcription provider rejected the API key. Ask an admin to check AI → Voice input.");
+    return t(
+      "The transcription provider rejected the API key. Ask an admin to check AI → Voice input.",
+    );
   },
   get shared_api_key() {
     return t("This key is shared with chat. Change it on AI → Models.");
