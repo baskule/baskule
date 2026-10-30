@@ -140,8 +140,6 @@ for (const file of code) {
     if (entry.startsWith(prefix) && TEST.test(entry)) tests.add(NodePath.join(dir, entry));
   }
 }
-// It reads files other than the ones beside it, so no changed file selects it.
-if (affected.includes("t3")) tests.add("apps/server/src/provider/AgentContextBudget.test.ts");
 
 // React Compiler coverage compiles every client source file, so run only the
 // changed files' cases, in one extra step: a -t filter in the main test step
