@@ -152,7 +152,6 @@ export class OpenCodeRuntime extends Context.Service<
       readonly args: ReadonlyArray<string>;
       readonly environment?: NodeJS.ProcessEnv;
       readonly cwd?: string;
-      readonly maxOutputBytes?: number;
     }) => Effect.Effect<OpenCodeCommandResult, OpenCodeRuntimeError>;
   }
 >()("@t3tools/provider-opencode/server/OpenCodeRuntime") {}
@@ -226,14 +225,8 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
               } catch {}
             });
       yield* Effect.addFinalizer(() => terminateCommandGroup.pipe(Effect.ignore));
-      const collectOptions =
-        input.maxOutputBytes === undefined ? undefined : { maxBytes: input.maxOutputBytes };
       const [stdout, stderr, code] = yield* Effect.all(
-        [
-          collectStreamAsString(child.stdout, collectOptions),
-          collectStreamAsString(child.stderr, collectOptions),
-          child.exitCode,
-        ],
+        [collectStreamAsString(child.stdout), collectStreamAsString(child.stderr), child.exitCode],
         { concurrency: "unbounded" },
       );
       const exitCode = Number(code);

@@ -1,28 +1,28 @@
 // Real Chromium feedback loop; runs the bridge on private test ports and never touches the live stack.
-import assert from "node:assert/strict";
-import http from "node:http";
-import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeHttp from "node:http";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import { WebSocket } from "ws";
 const port = Number(process.env.BASKULE_BROWSER_TEST_PORT ?? 47812);
-const fixture = http.createServer((_req, res) =>
+const fixture = NodeHttp.createServer((_req, res) =>
   res.end(
     '<title>Shared browser fixture</title><h1>Shared browser</h1><input id="name" autofocus>',
   ),
 );
 await new Promise((r) => fixture.listen(port + 1, "127.0.0.1", r));
-const root = await mkdtemp(join(tmpdir(), "baskule-browser-"));
+const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "baskule-browser-"));
 const binary =
   process.env.BASKULE_BROWSER_BINARY ??
-  resolve(import.meta.dirname, "../../../dist-browser/bridge.mjs");
+  NodePath.resolve(import.meta.dirname, "../../../dist-browser/bridge.mjs");
 let child;
 let viewer;
 let log = "";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function start(profile) {
-  child = spawn(process.execPath, [binary], {
+  child = NodeChildProcess.spawn(process.execPath, [binary], {
     env: {
       ...process.env,
       BASKULE_BROWSER_HOME: profile,
@@ -70,12 +70,12 @@ const automate = (operation, input = {}, tabId) =>
     timeoutMs: 60000,
   });
 try {
-  await start(join(root, "space-a"));
+  await start(NodePath.join(root, "space-a"));
   const tab = await automate("open", { url: `http://127.0.0.1:${port + 1}` });
-  assert.ok(tab.tabId);
-  assert.equal(tab.title, "Shared browser fixture");
+  NodeAssert.ok(tab.tabId);
+  NodeAssert.equal(tab.title, "Shared browser fixture");
   const listed = await call("list", { threadId: "smoke" });
-  assert.equal(listed.sessions[0].tabId, tab.tabId);
+  NodeAssert.equal(listed.sessions[0].tabId, tab.tabId);
   const messages = [];
   let frames = 0;
   viewer = new WebSocket(
@@ -101,11 +101,11 @@ try {
   await waitFor(() => frames > 0);
   viewer.send(JSON.stringify({ type: "takeControl" }));
   await waitFor(() => messages.some((m) => m.type === "control" && m.controller === "you"));
-  await assert.rejects(
+  await NodeAssert.rejects(
     automate("evaluate", { expression: "document.title" }, tab.tabId),
     /human|control/i,
   );
-  await assert.rejects(
+  await NodeAssert.rejects(
     automate("navigate", { url: `http://127.0.0.1:${port + 1}/blocked` }, tab.tabId),
     /human|control/i,
   );
@@ -119,7 +119,7 @@ try {
     { expression: "document.querySelector('input').value" },
     tab.tabId,
   );
-  assert.match(JSON.stringify(field), /Human input/);
+  NodeAssert.match(JSON.stringify(field), /Human input/);
   await automate(
     "evaluate",
     {
@@ -131,18 +131,18 @@ try {
   viewer.close();
   viewer = null;
   await stop();
-  await start(join(root, "space-a"));
+  await start(NodePath.join(root, "space-a"));
   const reopened = await automate("open", { url: `http://127.0.0.1:${port + 1}` });
   const saved = await automate(
     "evaluate",
     { expression: "({login:localStorage.getItem('login'),cookie:document.cookie})" },
     reopened.tabId,
   );
-  assert.match(JSON.stringify(saved), /saved/);
-  assert.match(JSON.stringify(saved), /session=preserved/);
+  NodeAssert.match(JSON.stringify(saved), /saved/);
+  NodeAssert.match(JSON.stringify(saved), /session=preserved/);
   await stop();
-  await start(join(root, "space-b"));
-  await assert.rejects(
+  await start(NodePath.join(root, "space-b"));
+  await NodeAssert.rejects(
     automate("evaluate", { expression: "document.cookie" }, reopened.tabId),
     /not found|does not exist|no.*tab/i,
   );
@@ -152,7 +152,7 @@ try {
     { expression: "({login:localStorage.getItem('login'),cookie:document.cookie})" },
     isolated.tabId,
   );
-  assert.doesNotMatch(JSON.stringify(clean), /saved|session=preserved/);
+  NodeAssert.doesNotMatch(JSON.stringify(clean), /saved|session=preserved/);
   console.log(
     JSON.stringify({
       ok: true,
@@ -174,6 +174,6 @@ try {
   viewer?.close();
   await stop();
   fixture.close();
-  if (!process.env.KEEP_PROFILE) await rm(root, { recursive: true, force: true });
+  if (!process.env.KEEP_PROFILE) await NodeFSP.rm(root, { recursive: true, force: true });
   else console.log(root);
 }

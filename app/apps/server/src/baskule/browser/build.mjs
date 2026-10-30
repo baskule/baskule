@@ -1,10 +1,10 @@
 import { build } from "esbuild";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-const here = dirname(fileURLToPath(import.meta.url));
+import * as NodeURL from "node:url";
+import * as NodePath from "node:path";
+const here = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 await build({
-  entryPoints: [resolve(here, "bridge.ts")],
-  outfile: process.argv[2] ?? resolve(here, "../../../dist-browser/bridge.mjs"),
+  entryPoints: [NodePath.resolve(here, "bridge.ts")],
+  outfile: process.argv[2] ?? NodePath.resolve(here, "../../../dist-browser/bridge.mjs"),
   bundle: true,
   platform: "node",
   format: "esm",

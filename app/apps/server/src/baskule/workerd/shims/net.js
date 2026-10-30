@@ -81,15 +81,11 @@ class RefusedSocket {
 }
 export const connect = (options) => new RefusedSocket(options);
 export const createConnection = connect;
-export class Socket {
-  constructor() {
-    throw new Error("node:net.Socket is unavailable in a space cell");
-  }
+export function Socket() {
+  throw new Error("node:net.Socket is unavailable in a space cell");
 }
-export class Server {
-  constructor() {
-    throw new Error("node:net.Server is unavailable in a space cell");
-  }
+export function Server() {
+  throw new Error("node:net.Server is unavailable in a space cell");
 }
 export default {
   BlockList,

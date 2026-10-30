@@ -19,12 +19,11 @@ import {
 } from "./rpcPolicy.ts";
 import { classifyRoute } from "./workerd/routes.ts";
 
-const registered = new Set([...WsRpcGroup.requests.keys()]);
+const registered = new Set(WsRpcGroup.requests.keys());
 
 describe("Baskule RPC policy", () => {
   it("only names registered methods", () => {
-    for (const method of BASKULE_ALLOWED_METHODS)
-      expect(registered.has(method), method).toBe(true);
+    for (const method of BASKULE_ALLOWED_METHODS) expect(registered.has(method), method).toBe(true);
   });
 
   it("only names declared MCP tools", () => {

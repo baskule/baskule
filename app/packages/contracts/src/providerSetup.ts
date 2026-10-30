@@ -135,8 +135,6 @@ export const ProviderAuthCancelInput = Schema.Struct({
 });
 export type ProviderAuthCancelInput = typeof ProviderAuthCancelInput.Type;
 
-const ByteCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
-
 /** Safe setup failure text. Never include OAuth codes, URLs, or native token data. */
 export class ProviderSetupError extends Schema.TaggedError<ProviderSetupError>()(
   "ProviderSetupError",

@@ -1,7 +1,17 @@
 export type UsageWindow = "daily" | "weekly" | "monthly";
-export interface UsageAmount { tokens: number; costUsd: number }
-export interface UsageLimitRule { window: UsageWindow; tokens?: number; costUsd?: number }
-export interface UsageLimitSettings { enabled: boolean; rules: UsageLimitRule[] }
+export interface UsageAmount {
+  tokens: number;
+  costUsd: number;
+}
+export interface UsageLimitRule {
+  window: UsageWindow;
+  tokens?: number;
+  costUsd?: number;
+}
+export interface UsageLimitSettings {
+  enabled: boolean;
+  rules: UsageLimitRule[];
+}
 export interface UsageWindowStatus {
   window: UsageWindow;
   used: UsageAmount;
@@ -10,10 +20,19 @@ export interface UsageWindowStatus {
   blocked: boolean;
 }
 export interface UsageTokens {
-  input: number; output: number; reasoning: number; cacheRead: number; cacheWrite: number;
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
 }
 /** USD per million tokens. Reasoning uses the output rate; absent cache rates use input. */
-export interface UsagePrices { input: number; output: number; cacheRead?: number; cacheWrite?: number }
+export interface UsagePrices {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
 export interface UsageRecord {
   messageId: string;
   turnId: string;
@@ -28,8 +47,14 @@ export interface UsageRecord {
   prices: UsagePrices;
   costUsd: number;
 }
-export interface UsageDaily extends UsageAmount { date: string; turns: number }
-export interface UsageModel extends UsageAmount { provider: string; model: string }
+export interface UsageDaily extends UsageAmount {
+  date: string;
+  turns: number;
+}
+export interface UsageModel extends UsageAmount {
+  provider: string;
+  model: string;
+}
 export interface MyUsage {
   limits: UsageWindowStatus[];
   totals: { today: UsageAmount; week: UsageAmount; month: UsageAmount };
@@ -37,10 +62,14 @@ export interface MyUsage {
   /** Same 90 calendar days as daily, including today. */
   byModel: UsageModel[];
 }
-export interface UsageCounts extends UsageAmount { chats: number; turns: number }
+export interface UsageCounts extends UsageAmount {
+  chats: number;
+  turns: number;
+}
 export interface AdminUsage {
   /** UTC dates, inclusive. Defaults to the last 90 calendar days including today. */
-  from: string; to: string;
+  from: string;
+  to: string;
   totals: UsageCounts & { activeUsers: number };
   byUser: (UsageCounts & { userId: string; name: string | null; email: string | null })[];
   byModel: (UsageModel & { turns: number })[];
@@ -59,7 +88,10 @@ import * as Schema from "effect/Schema";
 export const UsageWindowStatusSchema = Schema.Struct({
   window: Schema.Literals(["daily", "weekly", "monthly"]),
   used: Schema.Struct({ tokens: Schema.Number, costUsd: Schema.Number }),
-  limit: Schema.Struct({ tokens: Schema.optional(Schema.Number), costUsd: Schema.optional(Schema.Number) }),
+  limit: Schema.Struct({
+    tokens: Schema.optional(Schema.Number),
+    costUsd: Schema.optional(Schema.Number),
+  }),
   resetsAt: Schema.String,
   blocked: Schema.Boolean,
 });

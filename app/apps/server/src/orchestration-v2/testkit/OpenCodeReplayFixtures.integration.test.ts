@@ -2,10 +2,7 @@ import { describe, it } from "@effect/vitest";
 import type { ProviderReplayEntry } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import {
-  OPENCODE2_HTTP_PROTOCOL,
-  OpenCode2OrchestratorReplayHarness,
-} from "../Adapters/OpenCode2AdapterV2.testkit.ts";
+import { OpenCode2OrchestratorReplayHarness } from "../Adapters/OpenCode2AdapterV2.testkit.ts";
 import {
   findReplayFixture,
   itRunsReplayFixtures,
@@ -17,7 +14,7 @@ import {
 // OpenCode fixtures are recorded against either the v1 or the v2 HTTP protocol.
 function runOpenCodeReplayFixture(input: ReplayFixtureCase) {
   return readReplayFixtureTranscript(input.driver.transcriptFile).pipe(
-    Effect.flatMap((transcript) =>
+    Effect.flatMap((_transcript) =>
       runReplayFixture({ ...input, harness: OpenCode2OrchestratorReplayHarness }),
     ),
   );

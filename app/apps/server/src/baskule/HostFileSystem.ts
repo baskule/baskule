@@ -32,22 +32,19 @@ export type HostFileSystemApi = Pick<
 export type HostFileHandle = NodeFSP.FileHandle;
 export type HostBigIntStats = NodeFS.BigIntStats;
 
-export class HostFileSystem extends Context.Reference<HostFileSystemApi>(
-  "baskule/HostFileSystem",
-  {
-    defaultValue: () => ({
-      realpath: NodeFSP.realpath,
-      lstat: NodeFSP.lstat,
-      readdir: NodeFSP.readdir,
-      open: NodeFSP.open,
-      writeFile: NodeFSP.writeFile,
-      realpathLikeFileSystem: (path) =>
-        new Promise<string>((resolve, reject) => {
-          NodeFS.realpath(path, (error, resolved) => (error ? reject(error) : resolve(resolved)));
-        }),
-    }),
-  },
-) {}
+export class HostFileSystem extends Context.Reference<HostFileSystemApi>("baskule/HostFileSystem", {
+  defaultValue: () => ({
+    realpath: NodeFSP.realpath,
+    lstat: NodeFSP.lstat,
+    readdir: NodeFSP.readdir,
+    open: NodeFSP.open,
+    writeFile: NodeFSP.writeFile,
+    realpathLikeFileSystem: (path) =>
+      new Promise<string>((resolve, reject) => {
+        NodeFS.realpath(path, (error, resolved) => (error ? reject(error) : resolve(resolved)));
+      }),
+  }),
+}) {}
 
 // Linux values where a runtime's `node:fs` has no constants (workerd).
 export const hostFsConstants = {

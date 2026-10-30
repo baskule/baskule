@@ -1,9 +1,7 @@
-// baskule: finer assistant streaming (E2E UX review). Upstream delivers streamed assistant text
-// only at paragraph boundaries (its per-token mode was retired), so a one-paragraph answer shows
-// "Thinking" and then lands at once. OpenCode emits token deltas; in Baskule deployments the
-// filter also delivers up to the last complete word, still throttled to one update per 400 ms.
-// Inside an unterminated code fence it keeps upstream's boundary so a code block lands whole.
-// `BASKULE_STREAMING=paragraph` restores upstream behavior.
+// baskule: finer assistant streaming (E2E UX review). Upstream delivers streamed assistant text only at paragraph boundaries (its per-token mode was retired), so a one-
+// paragraph answer shows "Thinking" and then lands at once. OpenCode emits token deltas; in Baskule deployments the filter also delivers up to the last complete word, still
+// throttled to one update per 400 ms. Inside an unterminated code fence it keeps upstream's boundary so a code block lands whole. `BASKULE_STREAMING=paragraph` restores
+// upstream behavior.
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";

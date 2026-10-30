@@ -1,7 +1,7 @@
 // baskule: an in-process stand-in for computerd's files and exec endpoints (E4), backed by a
 // host directory that plays the role of the computer's `/sandbox`.
 // @effect-diagnostics nodeBuiltinImport:off
-import { spawnSync } from "node:child_process";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -82,7 +82,7 @@ export const makeFakeComputerd = (hostRoot: string, sandboxRoot = "/sandbox"): F
       const spec = (await request.json()) as { argv: Array<string>; cwd?: string; stdin?: string };
       // Scripts see host paths; translate computer paths in argv and back in the output.
       const argv = spec.argv.map((a) => (a.startsWith(sandboxRoot) ? hostPath(a) : a));
-      const result = spawnSync(argv[0]!, argv.slice(1), {
+      const result = NodeChildProcess.spawnSync(argv[0]!, argv.slice(1), {
         cwd: spec.cwd ? hostPath(spec.cwd) : hostRoot,
         input: spec.stdin ? Buffer.from(spec.stdin, "base64") : undefined,
       });

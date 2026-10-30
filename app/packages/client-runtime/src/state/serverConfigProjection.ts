@@ -65,13 +65,10 @@ export function applyServerConfigProjection(
   switch (event.type) {
     case "snapshot": {
       // Wire snapshots never contain published themes. Keep the previous set
-      // until a capable server sends its authoritative theme event. A legacy
-      // server cannot send a later removal, so a downgrade must clear the set.
-      const capabilities = event.config.environment.capabilities;
-      const carriedThemes =
-        capabilities.environmentThemes === true && Option.isSome(current)
-          ? current.value.config.environmentThemes
-          : undefined;
+      // until the server sends its authoritative theme event.
+      const carriedThemes = Option.isSome(current)
+        ? current.value.config.environmentThemes
+        : undefined;
       const config: ServerConfig = {
         ...event.config,
         ...(carriedThemes === undefined ? {} : { environmentThemes: carriedThemes }),

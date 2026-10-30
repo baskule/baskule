@@ -1,15 +1,11 @@
-// baskule: boot benchmark of the space bundle in Node (no celld): what a cold space boot costs, bundle against
-// bundle, without the live stack. Usage, from apps/server (Node 24: it loads the TS fake storage directly):
-//   node src/baskule/workerd/perf/bootBench.mjs [--runs 5] [--profile <dir>] <bundle.js>...
-// Each run is a fresh process per bundle (cold code, like a new isolate) on a space database prepared once per
-// bundle (migrations applied, like an existing space): it reports the bundle import, the cold `createSpaceServer`
-// and a second boot in the same process (warm code). --profile writes a CPU profile of the cold boot per bundle.
-// Medians are printed per bundle. Celld/workerd numbers differ (the platform isolate also parses the rest of the
-// Worker), but the ratios hold; e2e/v2/perf in the umbrella measures the live stack.
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+// baskule: boot benchmark of the space bundle in Node (no celld): what a cold space boot costs, bundle against bundle, without the live stack. Usage, from apps/server (Node 24: it loads the TS fake storage directly):   node src/baskule/workerd/perf/bootBench.mjs [--runs 5]
+// [--profile <dir>] <bundle.js>... Each run is a fresh process per bundle (cold code, like a new isolate) on a space database prepared once per bundle (migrations applied, like an existing space): it reports the bundle import, the cold `createSpaceServer` and a second boot in
+// the same process (warm code). --profile writes a CPU profile of the cold boot per bundle. Medians are printed per bundle. Celld/workerd numbers differ (the platform isolate also parses the rest of the Worker), but the ratios hold; e2e/v2/perf in the umbrella measures the live
+// stack.
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -20,7 +16,7 @@ const flag = (name, fallback) => {
 };
 const runs = Number(flag("--runs", "5"));
 const profileDir = flag("--profile", undefined);
-const bundles = args.map((b) => resolve(b));
+const bundles = args.map((b) => NodePath.resolve(b));
 if (process.env.BASKULE_BOOT_CHILD) {
   // Child: one cold boot of BASKULE_BOOT_CHILD on the database BASKULE_BOOT_DB.
   const { createRequire } = await import("node:module");
@@ -48,7 +44,7 @@ if (process.env.BASKULE_BOOT_CHILD) {
   const bootCpuMs = cpu() - c1;
   if (session) {
     const { profile } = await session.post("Profiler.stop");
-    writeFileSync(process.env.BASKULE_BOOT_PROFILE, JSON.stringify(profile));
+    NodeFS.writeFileSync(process.env.BASKULE_BOOT_PROFILE, JSON.stringify(profile));
   }
   await server.dispose();
   const t2 = performance.now();
@@ -58,9 +54,9 @@ if (process.env.BASKULE_BOOT_CHILD) {
   process.exit(0);
 }
 
-const work = mkdtempSync(join(tmpdir(), "baskule-bootbench-"));
+const work = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baskule-bootbench-"));
 const child = (bundle, db, extra = {}) => {
-  const r = spawnSync(process.execPath, [import.meta.filename], {
+  const r = NodeChildProcess.spawnSync(process.execPath, [import.meta.filename], {
     env: { ...process.env, BASKULE_BOOT_CHILD: bundle, BASKULE_BOOT_DB: db, ...extra },
     encoding: "utf8",
   });
@@ -70,7 +66,7 @@ const child = (bundle, db, extra = {}) => {
   return JSON.parse(line);
 };
 const dbs = bundles.map((bundle, i) => {
-  const db = join(work, `space-${i}.db`);
+  const db = NodePath.join(work, `space-${i}.db`);
   child(bundle, db); // first boot: migrations, managed settings
   return db;
 });
@@ -80,9 +76,11 @@ for (let run = 0; run < runs; run++) {
   bundles.forEach((bundle, i) => results[i].push(child(bundle, dbs[i])));
 }
 if (profileDir) {
-  mkdirSync(profileDir, { recursive: true });
+  NodeFS.mkdirSync(profileDir, { recursive: true });
   bundles.forEach((bundle, i) =>
-    child(bundle, dbs[i], { BASKULE_BOOT_PROFILE: join(profileDir, `boot-${i}.cpuprofile`) }),
+    child(bundle, dbs[i], {
+      BASKULE_BOOT_PROFILE: NodePath.join(profileDir, `boot-${i}.cpuprofile`),
+    }),
   );
 }
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) / 2)];

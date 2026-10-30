@@ -67,10 +67,9 @@ const json = (res: NodeHttp.ServerResponse, status: number, body: unknown) => {
 };
 const methods = new Set([
   "open",
-  "navigate",
+  "markHeadless",
   "resize",
   "adjust",
-  "refresh",
   "close",
   "list",
   "reportStatus",

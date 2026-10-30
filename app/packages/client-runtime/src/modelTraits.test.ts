@@ -39,24 +39,25 @@ const CONTEXT_WINDOW = selectDescriptor(
 const OPENCODE = ProviderDriverKind.make("opencode");
 
 function display(descriptors: ReadonlyArray<ProviderOptionDescriptor>) {
-  return buildTraitsTriggerDisplay({
+  const { label } = buildTraitsTriggerDisplay({
     provider: OPENCODE,
     descriptors,
   });
+  return { label };
 }
 
 describe("buildTraitsTriggerDisplay", () => {
   it("omits fast mode from the label entirely when it is off", () => {
-    expect(display([EFFORT, fastModeDescriptor(false), CONTEXT_WINDOW])).toEqual({
+    expect(display([EFFORT, fastModeDescriptor(false), CONTEXT_WINDOW])).toMatchObject({
       label: "High · 1M",
     });
   });
 
   it("pairs fast mode with reasoning before the context window", () => {
-    expect(display([EFFORT, fastModeDescriptor(true), CONTEXT_WINDOW])).toEqual({
+    expect(display([EFFORT, fastModeDescriptor(true), CONTEXT_WINDOW])).toMatchObject({
       label: "High Fast · 1M",
     });
-    expect(display([EFFORT, CONTEXT_WINDOW, fastModeDescriptor(true)])).toEqual({
+    expect(display([EFFORT, CONTEXT_WINDOW, fastModeDescriptor(true)])).toMatchObject({
       label: "High Fast · 1M",
     });
   });
@@ -75,7 +76,7 @@ describe("buildTraitsTriggerDisplay", () => {
               speed,
             ],
           }),
-        ).toEqual({ label: "Balanced · 1M · High Fast" });
+        ).toMatchObject({ label: "Balanced · 1M · High Fast" });
       }
     },
   );
@@ -88,15 +89,21 @@ describe("buildTraitsTriggerDisplay", () => {
       currentValue,
     };
     const label = `Thinking ${currentValue ? "On" : "Off"}`;
-    expect(display([thinking, fastModeDescriptor(true)])).toEqual({ label: `${label} · Fast` });
-    expect(display([thinking, { ...EFFORT, id: "reasoning" }, fastModeDescriptor(true)])).toEqual({
+    expect(display([thinking, fastModeDescriptor(true)])).toMatchObject({
+      label: `${label} · Fast`,
+    });
+    expect(
+      display([thinking, { ...EFFORT, id: "reasoning" }, fastModeDescriptor(true)]),
+    ).toMatchObject({
       label: `${label} · High Fast`,
     });
-    expect(display([thinking, fastModeDescriptor(false)])).toEqual({ label });
+    expect(display([thinking, fastModeDescriptor(false)])).toMatchObject({ label });
   });
 
   it("keeps speed separate when there is no reasoning descriptor", () => {
-    expect(display([CONTEXT_WINDOW, fastModeDescriptor(true)])).toEqual({ label: "1M · Fast" });
+    expect(display([CONTEXT_WINDOW, fastModeDescriptor(true)])).toMatchObject({
+      label: "1M · Fast",
+    });
   });
 
   it.each(["Low", "Medium", "High", "Extra High", "Max", "Ultra"])(
@@ -111,7 +118,7 @@ describe("buildTraitsTriggerDisplay", () => {
               fastModeDescriptor(true),
             ],
           }),
-        ).toEqual({ label: `${label} Fast` });
+        ).toMatchObject({ label: `${label} Fast` });
       }
     },
   );
@@ -123,16 +130,16 @@ describe("buildTraitsTriggerDisplay", () => {
       type: "boolean",
       currentValue: true,
     };
-    expect(display([EFFORT, thinking])).toEqual({ label: "High · Thinking On" });
+    expect(display([EFFORT, thinking])).toMatchObject({ label: "High · Thinking On" });
   });
 
   it("falls back to a text label when fast mode is the only trait", () => {
-    expect(display([fastModeDescriptor(true)])).toEqual({ label: "Fast" });
-    expect(display([fastModeDescriptor(false)])).toEqual({ label: "Normal" });
+    expect(display([fastModeDescriptor(true)])).toMatchObject({ label: "Fast" });
+    expect(display([fastModeDescriptor(false)])).toMatchObject({ label: "Normal" });
   });
 
   it("does not add Fast to a model without a speed option", () => {
-    expect(display([EFFORT, CONTEXT_WINDOW])).toEqual({ label: "High · 1M" });
+    expect(display([EFFORT, CONTEXT_WINDOW])).toMatchObject({ label: "High · 1M" });
   });
 
   it("stays blank when descriptors resolve to no label and there is no fast mode", () => {
@@ -145,7 +152,7 @@ describe("buildTraitsTriggerDisplay", () => {
         { id: "high", label: "High" },
       ],
     };
-    expect(display([unresolved])).toEqual({ label: "" });
+    expect(display([unresolved])).toMatchObject({ label: "" });
   });
 });
 

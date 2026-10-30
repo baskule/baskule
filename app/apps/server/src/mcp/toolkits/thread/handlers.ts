@@ -1,3 +1,4 @@
+import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import {
   type CommandId,
   type RuntimeRequestId,
@@ -9,7 +10,6 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { modelSelectionCommandType } from "@t3tools/shared/model";
-import { formatThreadLink } from "@t3tools/shared/threadLinks";
 
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { BaskuleRpcPolicy } from "../../../baskule/rpcPolicy.ts"; // baskule:

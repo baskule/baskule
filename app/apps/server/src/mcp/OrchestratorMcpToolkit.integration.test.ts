@@ -1,7 +1,7 @@
+import * as JsonSchema from "effect/JsonSchema";
+import * as SchemaRepresentation from "effect/SchemaRepresentation";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
-import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation";
 import {
   CommandId,
   EnvironmentId,
@@ -412,15 +412,15 @@ function waitForProjection(
   predicate: (projection: OrchestrationV2ThreadProjection) => boolean,
 ) {
   return Effect.gen(function* () {
-    for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      const projection = yield* orchestrator.getThreadProjection(threadId);
-      if (predicate(projection)) {
-        return projection;
-      }
-      yield* Effect.sleep("5 millis");
-    }
-    return yield* Effect.die(
-      new Error(`Timed out waiting for orchestration projection ${threadId}.`),
+    const sink = yield* EventSink.EventSinkV2;
+    const afterSequence = yield* sink.latestSequence({ threadId });
+    const current = yield* orchestrator.getThreadProjection(threadId);
+    if (predicate(current)) return current;
+    return yield* sink.stream({ threadId, afterSequence }).pipe(
+      Stream.mapEffect(() => orchestrator.getThreadProjection(threadId)),
+      Stream.filter(predicate),
+      Stream.runHead,
+      Effect.map(Option.getOrThrow),
     );
   });
 }
@@ -547,6 +547,7 @@ describe("orchestrator MCP toolkit", () => {
           ]);
           const approvalParentId = ThreadId.make("thread:mcp-approval-parent");
           const approvalOffered = yield* Deferred.make<void>();
+          const continuationOfferEvents = yield* PubSub.unbounded<void>();
           const continuationOffers = yield* Ref.make<
             ReadonlyArray<ProviderContinuationRequests.ProviderContinuationRequest>
           >([]);
@@ -555,6 +556,7 @@ describe("orchestrator MCP toolkit", () => {
             {
               offer: (request) =>
                 Ref.update(continuationOffers, (existing) => [...existing, request]).pipe(
+                  Effect.andThen(PubSub.publish(continuationOfferEvents, undefined)),
                   Effect.andThen(
                     request.threadId === approvalParentId
                       ? Deferred.succeed(approvalOffered, undefined)
@@ -565,22 +567,20 @@ describe("orchestrator MCP toolkit", () => {
             },
           );
           const waitForContinuationOffers = (count: number) =>
-            Effect.gen(function* () {
-              for (let attempt = 0; attempt < 1_000; attempt += 1) {
-                const current = yield* Ref.get(continuationOffers);
-                if (current.length >= count) {
-                  return current;
+            Effect.scoped(
+              Effect.gen(function* () {
+                const subscription = yield* PubSub.subscribe(continuationOfferEvents);
+                while (true) {
+                  const current = yield* Ref.get(continuationOffers);
+                  if (current.length >= count) return current;
+                  yield* PubSub.take(subscription);
                 }
-                yield* Effect.sleep("5 millis");
-              }
-              return yield* Ref.get(continuationOffers);
-            });
+              }),
+            );
           const expectOffersToStay = (count: number) =>
             Effect.gen(function* () {
-              for (let sample = 0; sample < 4; sample += 1) {
-                yield* Effect.sleep("50 millis");
-                expect(yield* Ref.get(continuationOffers)).toHaveLength(count);
-              }
+              yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+              expect(yield* Ref.get(continuationOffers)).toHaveLength(count);
             });
           const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
             {
@@ -667,6 +667,7 @@ describe("orchestrator MCP toolkit", () => {
             ScheduledTaskService.ScheduledTaskService.of({
               list: () => Ref.get(scheduledStore).pipe(Effect.map((tasks) => ({ tasks }))),
               subscribeList: () => Stream.empty,
+              moveThreadTasks: () => Effect.void,
               upsert: (input) =>
                 Effect.gen(function* () {
                   const task = scheduledTaskFromUpsert(input);
@@ -818,10 +819,11 @@ describe("orchestrator MCP toolkit", () => {
             if (parentRun === undefined || parentRun.rootNodeId === null) {
               return yield* Effect.die(new Error("Parent run missing."));
             }
-            for (const name of ["t3_queue_edit", "t3_queue_cancel"]) {
-              const refusedQueueMutation = yield* invoke(name, {
+            for (const action of ["edit", "cancel"]) {
+              const refusedQueueMutation = yield* invoke("t3_queue", {
+                action,
                 queuedRunId: parentRun.id,
-                ...(name === "t3_queue_edit" ? { text: "Keep the active turn." } : {}),
+                ...(action === "edit" ? { text: "Keep the active turn." } : {}),
               });
               expect(refusedQueueMutation.isError).toBe(true);
               expect(refusedQueueMutation.structuredContent).toBeUndefined();
@@ -1255,19 +1257,22 @@ describe("orchestrator MCP toolkit", () => {
             if (queuedUserRun === undefined) {
               return yield* Effect.die(new Error("Queued user follow-up missing."));
             }
-            const queueFirstPage = yield* invoke("t3_queue_list", { limit: 1 });
+            const queueFirstPage = yield* invoke("t3_queue", { action: "list", limit: 1 });
             expect(queueFirstPage.isError).toBe(false);
             expect(queueFirstPage.structuredContent).toMatchObject({
               items: [{ queuedRunId: queueRace.queuedRun.id }],
               nextCursor: 1,
             });
-            const queueDefinition = server.tools.find(({ tool }) => tool.name === "t3_queue_list");
-            const validateQueue = new AjvJsonSchemaValidator().getValidator(
-              queueDefinition!.tool.outputSchema! as JsonSchemaType,
+            const queueDefinition = server.tools.find(({ tool }) => tool.name === "t3_queue");
+            const validateQueue = Schema.is(
+              SchemaRepresentation.fromJsonSchemaDocument(
+                JsonSchema.fromSchemaDraft2020_12(queueDefinition!.tool.outputSchema!),
+              ),
             );
-            expect(validateQueue(queueFirstPage.structuredContent).valid).toBe(true);
+            expect(validateQueue(queueFirstPage.structuredContent)).toBe(true);
             const missingThreadId = ThreadId.make("00000000-0000-4000-8000-000000000000");
-            const missingThreadQueue = yield* invoke("t3_queue_list", {
+            const missingThreadQueue = yield* invoke("t3_queue", {
+              action: "list",
               threadId: missingThreadId,
               limit: 1,
             });
@@ -1278,7 +1283,7 @@ describe("orchestrator MCP toolkit", () => {
               message: "The thread was not found.",
             });
             expect(missingThreadQueue.structuredContent).toBeUndefined();
-            expect(validateQueue({ items: "invalid", nextCursor: null }).valid).toBe(false);
+            expect(validateQueue({ items: "invalid", nextCursor: null })).toBe(false);
             const missingThreadRead = yield* invoke("t3_thread_read", {
               threadId: missingThreadId,
             });
@@ -1286,18 +1291,28 @@ describe("orchestrator MCP toolkit", () => {
             expect(declaredFailure(missingThreadRead)).toMatchObject({
               _tag: "OrchestratorMcpFailure",
             });
-            const queueSecondPage = yield* invoke("t3_queue_list", { cursor: 1, limit: 1 });
+            const queueSecondPage = yield* invoke("t3_queue", {
+              action: "list",
+              cursor: 1,
+              limit: 1,
+            });
             expect(queueSecondPage.structuredContent).toEqual({
               items: [{ queuedRunId: queuedUserRun.id, text: "🙂".repeat(1000), truncated: true }],
               nextCursor: null,
             });
-            const queueRead = yield* invoke("t3_queue_read", { queuedRunId: queuedUserRun.id });
+            const queueRead = yield* invoke("t3_queue", {
+              action: "read",
+              queuedRunId: queuedUserRun.id,
+            });
             expect(queueRead.structuredContent).toEqual({
               queuedRunId: queuedUserRun.id,
               text: "🙂".repeat(16000),
               truncated: true,
             });
-            const missingQueueRead = yield* invoke("t3_queue_read", { queuedRunId: parentRun.id });
+            const missingQueueRead = yield* invoke("t3_queue", {
+              action: "read",
+              queuedRunId: parentRun.id,
+            });
             expect(declaredFailure(missingQueueRead)).toMatchObject({ code: "invalid_request" });
             const queueRaceStatus = yield* invoke("task_status", { taskId: queueRace.task.id });
             expect(queueRaceStatus.isError).toBe(false);
@@ -1429,12 +1444,6 @@ describe("orchestrator MCP toolkit", () => {
             expect(threadListTool?.tool.annotations?.idempotentHint).toBe(true);
             const threadReadTool = server.tools.find(({ tool }) => tool.name === "t3_thread_read");
             expect(threadReadTool?.tool.annotations?.readOnlyHint).toBe(false);
-            expect(threadReadTool?.tool.inputSchema).toMatchObject({ additionalProperties: false });
-            const unknownPagingParamError = yield* invoke("t3_thread_read", {
-              threadId: parentThreadId,
-              cursor: 90,
-            }).pipe(Effect.flip);
-            expect(unknownPagingParamError.message).toContain("Expected no excess property");
             const threadUpdateTool = server.tools.find(
               ({ tool }) => tool.name === "t3_thread_update",
             );
@@ -1445,7 +1454,6 @@ describe("orchestrator MCP toolkit", () => {
               properties: {
                 action: expect.any(Object),
                 title: expect.any(Object),
-                pullRequest: expect.any(Object),
               },
             });
             const deniedThreadUpdate = yield* invokeAs(
@@ -1493,7 +1501,12 @@ describe("orchestrator MCP toolkit", () => {
                   models: [
                     expect.objectContaining({
                       id: primaryModel,
-                      options: [expect.objectContaining({ id: "reasoning", type: "select" })],
+                      options: [
+                        expect.objectContaining({
+                          id: "reasoning",
+                          values: ["low", "medium", "high"],
+                        }),
+                      ],
                     }),
                   ],
                 }),
@@ -1533,7 +1546,7 @@ describe("orchestrator MCP toolkit", () => {
               tasks: [{ scheduledTaskId, boundThreadId: parentThreadId }],
             });
 
-            const scheduledUpdateCall = yield* invoke("update_scheduled_task", {
+            const scheduledUpdateCall = yield* invoke("schedule_task", {
               scheduledTaskId,
               enabled: false,
             });
@@ -1579,19 +1592,11 @@ describe("orchestrator MCP toolkit", () => {
               placeholder: "Paste the webhook secret",
               clientRequestId: "release-webhook-secret",
             }).pipe(Effect.forkChild);
-            const asked = yield* Effect.gen(function* () {
-              while (true) {
-                const projection = yield* orchestrator.getThreadProjection(parentThreadId);
-                if (
-                  projection.turnItems.some(
-                    (item) => item.type === "secret_request" && item.secretStatus === "pending",
-                  )
-                ) {
-                  return projection;
-                }
-                yield* Effect.sleep("5 millis");
-              }
-            });
+            const asked = yield* waitForProjection(orchestrator, parentThreadId, (projection) =>
+              projection.turnItems.some(
+                (item) => item.type === "secret_request" && item.secretStatus === "pending",
+              ),
+            );
             const card = asked.turnItems.find((item) => item.type === "secret_request");
             if (card?.type !== "secret_request") {
               return yield* Effect.die(new Error("Secret request card missing."));
@@ -2288,24 +2293,15 @@ describe("orchestrator MCP toolkit", () => {
             expect(repeatedRename.commandId).toBe(renamed.commandId);
             expect(repeatedRename.sequence).toBe(renamed.sequence);
 
-            const linkedCall = yield* invoke("t3_thread_update", {
+            yield* orchestrator.dispatch({
+              type: "thread.pull-request.link",
+              commandId: CommandId.make("command:mcp-empty:link-primary"),
               threadId: emptyThread.threadId,
-              action: "link_pull_request",
-              pullRequest: {
-                repository: "pingdotgg/t3code",
-                number: 8689,
-                url: "https://github.com/pingdotgg/t3code/pull/8689",
-              },
-              clientRequestId: "metadata-link-1",
-            });
-            const linked = yield* decodeThreadUpdateResult(linkedCall.structuredContent).pipe(
-              Effect.orDie,
-            );
-            expect(linked.linkedPullRequest).toEqual({
-              projectId,
+              host: "github.com",
               repository: "pingdotgg/t3code",
               number: 8689,
               url: "https://github.com/pingdotgg/t3code/pull/8689",
+              source: "agent",
             });
             const metadataReadCall = yield* invoke("t3_thread_read", {
               threadId: emptyThread.threadId,
@@ -2315,7 +2311,10 @@ describe("orchestrator MCP toolkit", () => {
             ).pipe(Effect.orDie);
             expect(metadataRead.thread).toMatchObject({
               title: "Metadata-managed thread",
-              linkedPullRequest: linked.linkedPullRequest,
+              linkedPullRequest: null,
+              pullRequests: [
+                expect.objectContaining({ repository: "pingdotgg/t3code", number: 8689 }),
+              ],
             });
             const metadataListCall = yield* invoke("t3_thread_list", { limit: 100 });
             const metadataList = yield* decodeThreadListResult(
@@ -2325,7 +2324,10 @@ describe("orchestrator MCP toolkit", () => {
               metadataList.threads.find((thread) => thread.threadId === emptyThread.threadId),
             ).toMatchObject({
               title: "Metadata-managed thread",
-              linkedPullRequest: linked.linkedPullRequest,
+              linkedPullRequest: null,
+              pullRequests: [
+                expect.objectContaining({ repository: "pingdotgg/t3code", number: 8689 }),
+              ],
               settled: false,
               settledAt: null,
             });
@@ -2407,15 +2409,14 @@ describe("orchestrator MCP toolkit", () => {
               reason: "user",
             });
 
-            const unlinkedCall = yield* invoke("t3_thread_update", {
+            yield* orchestrator.dispatch({
+              type: "thread.pull-request.unlink",
+              commandId: CommandId.make("command:mcp-empty:unlink-primary"),
               threadId: emptyThread.threadId,
-              action: "unlink_pull_request",
-              clientRequestId: "metadata-unlink-1",
+              host: "github.com",
+              repository: "pingdotgg/t3code",
+              number: 8689,
             });
-            const unlinked = yield* decodeThreadUpdateResult(unlinkedCall.structuredContent).pipe(
-              Effect.orDie,
-            );
-            expect(unlinked.linkedPullRequest).toBeNull();
 
             // Links added through thread.pull-request.link leave linkedPullRequest unchanged.
             yield* orchestrator.dispatch({

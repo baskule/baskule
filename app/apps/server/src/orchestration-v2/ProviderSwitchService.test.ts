@@ -242,7 +242,7 @@ it.effect.each(["stopped", "error"] as const)(
       assert.deepEqual(result.releaseProviderSessionIds, []);
     }).pipe(
       Effect.provide(
-        layerTest({ [currentInstanceId]: { continuationKey: "codex:account:primary" } }, (input) =>
+        layerTest({ [currentInstanceId]: { continuationKey: "codex:account:primary" } }, (_input) =>
           Effect.succeed({ type: "apply_on_next_turn" as const }),
         ),
       ),
@@ -261,7 +261,7 @@ it.effect("rejects a model change the dead record never negotiated support for",
     assert.instanceOf(result, ProviderSwitch.ProviderSwitchPlanError);
   }).pipe(
     Effect.provide(
-      layerTest({ [currentInstanceId]: { continuationKey: "codex:account:primary" } }, (input) =>
+      layerTest({ [currentInstanceId]: { continuationKey: "codex:account:primary" } }, (_input) =>
         Effect.succeed({ type: "reject" as const, reason: "Model switching unsupported" }),
       ),
     ),

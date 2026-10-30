@@ -26,14 +26,12 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom } from "effect/reactivity";
-
 import {
   createAtomCommandScheduler,
   createEnvironmentRpcCommand,
   createEnvironmentQueryAtomFamily,
   createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
-  createEnvironmentSubscriptionAtomFamily,
   createRuntimeCommand,
   scheduleAtomCommandEffect,
 } from "./runtime.ts";
@@ -257,8 +255,8 @@ export const waitForDesktopUpdateTarget = Effect.fn("waitForDesktopUpdateTarget"
   targetVersion: string,
   nextReady: Effect.Effect<ServerLifecycleStreamReadyEvent, EReady>,
   retryCommit: Effect.Effect<void, ECommit>,
-  maxCommitAttempts = 3,
 ): Effect.fn.Return<ServerLifecycleStreamReadyEvent, EReady | ECommit | ServerUpdateTerminalError> {
+  const maxCommitAttempts = 3;
   for (let attempt = 1; attempt <= maxCommitAttempts; attempt += 1) {
     const ready = yield* nextReady;
     if (ready.payload.environment.serverVersion === targetVersion) return ready;
@@ -783,8 +781,9 @@ export function createServerEnvironmentAtoms<R, E>(
     }
     let previousProviders: ServerConfig["providers"] | undefined;
     return Atom.make((get): ServerConfig | null => {
-      const projection = Option.getOrNull(
-        AsyncResult.value(get(configProjection({ environmentId, input: {} }))),
+      const projection = AsyncResult.getOrElse(
+        get(configProjection({ environmentId, input: {} })),
+        () => null,
       );
       const config = resolveServerConfigValue(
         projection,

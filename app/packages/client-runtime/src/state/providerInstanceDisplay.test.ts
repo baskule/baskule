@@ -9,7 +9,6 @@ import {
 } from "./providerInstanceDisplay.ts";
 
 const codex = ProviderDriverKind.make("codex");
-const claude = ProviderDriverKind.make("claudeAgent");
 
 describe("providerInstanceInitials", () => {
   it("treats punctuation as a word break but keeps apostrophes between letters", () => {

@@ -4,7 +4,7 @@
 // Members reach these through RPCs and signed asset URLs, so only the computer (`/sandbox`) and
 // attachments and saved browser captures are visible; T3's settings and secrets are not.
 // @effect-diagnostics nodeBuiltinImport:off
-import { Readable } from "node:stream";
+import * as NodeStream from "node:stream";
 
 import type { HostFileSystemApi } from "../HostFileSystem.ts";
 import { FsError, normalizePath, type NodeInfo, type SpaceFileSystem } from "./fileSystem.ts";
@@ -148,7 +148,7 @@ export const makeHostFileSystem = (
             yield bytes;
           }
         }
-        return Readable.from(chunks(), { objectMode: false });
+        return NodeStream.Readable.from(chunks(), { objectMode: false });
       },
     };
   };

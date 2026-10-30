@@ -128,10 +128,8 @@ export const handleUpgrade = (
   });
 };
 
-/**
- * #258 bypass on stock celld: an interval started in the event that creates long-lived
- * continuations keeps that event's driver alive, so their I/O settles. Returns the canceller.
- */
+//  the runtime bypass on stock celld: an interval started in the event that creates long-lived continuations keeps that event's
+// driver alive, so their I/O settles. Returns the canceller. /
 export const keepAlive = (intervalMs = 5_000): (() => void) => {
   const timer = setInterval(() => {}, intervalMs);
   return () => clearInterval(timer);

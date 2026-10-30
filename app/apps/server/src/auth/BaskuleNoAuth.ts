@@ -1,11 +1,7 @@
-// baskule: `BASKULE_AUTH_MODE=none` (Baskule Alpha decision D7).
-//
-// Baskule runs on a private network (Tailscale) with no user accounts. In
-// this mode every request without a usable credential is authenticated as one
-// real, persisted owner session with a fixed id, so WebSocket tickets (which
-// are minted against a stored session id) keep working. Pairing exchanges
-// accept any credential, so desktop and mobile clients can register the
-// environment with a dummy token. Modeled on ReusableDevAuth.
+// baskule: `BASKULE_AUTH_MODE=none` (Baskule Alpha decision D7).  Baskule runs on a private network (Tailscale) with no user accounts. In this mode every request
+// without a usable credential is authenticated as one real, persisted owner session with a fixed id, so WebSocket tickets (which are minted against a stored session
+// id) keep working. Pairing exchanges accept any credential, so desktop and mobile clients can register the environment with a dummy token. Modeled on
+// ReusableDevAuth.
 import {
   AuthAccessWriteScope,
   AuthEnvironmentMaintainScope,

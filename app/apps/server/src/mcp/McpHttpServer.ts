@@ -15,9 +15,12 @@ import { BASKULE_MCP_ICON } from "./baskuleIcon.ts";
 import { AiError, McpProtocol, McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import {
+  DeviceToolError,
   OrchestratorMcpFailure,
   PreviewAutomationError,
+  ProviderInteractionMode,
   type RunId,
+  RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
 
@@ -153,6 +156,35 @@ const normalizeMcpHttpResponse = (
 // Session tokens are `<payload>.<signature>`; registry tokens are a bare base64url secret.
 const looksLikeProviderToken = (token: string) => token.length > 0 && !token.includes(".");
 
+const decodeModeLimit = Schema.decodeUnknownOption(
+  Schema.Struct({ runtimeMode: RuntimeMode, interactionMode: ProviderInteractionMode }),
+);
+const parseModeLimit = (value: string) => {
+  const [runtimeMode, interactionMode, ...rest] = value.trim().split("/");
+  return rest.length === 0 ? decodeModeLimit({ runtimeMode, interactionMode }) : Option.none();
+};
+
+const invalidModeLimit = HttpServerResponse.jsonUnsafe(
+  {
+    error: "invalid_mode_limit",
+    message: "T3-Mode-Limit must be <runtimeMode>/<interactionMode>, e.g. auto/default.",
+  },
+  { status: 400, headers: { "cache-control": "no-store" } },
+);
+
+/** Applies a client's requested mode limit; undefined when the header is malformed. */
+const withModeLimit = (
+  invocation: McpInvocationContext.McpInvocationScope,
+  request: HttpServerRequest.HttpServerRequest,
+): McpInvocationContext.McpInvocationScope | undefined => {
+  const header = request.headers[McpInvocationContext.MODE_LIMIT_HEADER];
+  if (header === undefined || invocation.client === undefined) return invocation;
+  const limit = parseModeLimit(header);
+  return Option.isNone(limit)
+    ? undefined
+    : { ...invocation, client: { ...invocation.client, narrowedTo: limit.value } };
+};
+
 const makeMcpAuthMiddleware = Effect.gen(function* () {
   const registry = yield* McpSessionRegistry.McpSessionRegistry;
   const clients = yield* Effect.serviceOption(McpClientAuthenticator);
@@ -181,8 +213,10 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
       });
     }
     if (Option.isSome(deferredRegistrations)) yield* deferredRegistrations.value.ensure;
+    const limited = withModeLimit(invocation, request);
+    if (limited === undefined) return invalidModeLimit;
     return yield* httpEffect.pipe(
-      Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+      Effect.provideService(McpInvocationContext.McpInvocationContext, limited),
       Effect.map(normalizeMcpHttpResponse),
     );
   }) satisfies McpAuthMiddleware;
@@ -718,11 +752,15 @@ const registerDeviceScreenshot = Effect.fn("McpHttpServer.registerDeviceScreensh
         Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
       ),
     "screenshot",
-    "Device screenshot failed.",
+    (error) =>
+      isDeviceToolError(error) || isOrchestratorMcpFailure(error)
+        ? error.message
+        : "Device screenshot failed.",
   );
 });
 
 const isOrchestratorMcpFailure = Schema.is(OrchestratorMcpFailure);
+const isDeviceToolError = Schema.is(DeviceToolError);
 
 const registerHtmlPreview = Effect.fn("McpHttpServer.registerHtmlPreview")(function* () {
   const htmlRender = yield* HtmlRender.HtmlRender;
@@ -810,14 +848,6 @@ const handoffTargetIds = (
   return typeof threadId === "string" ? [threadId] : [];
 };
 
-/**
- * Runs a tool registration against a server that records one anonymous
- * `mcp.tool.invoked` event per call: the tool, the calling agent's provider,
- * the outcome with its failure code, and the duration. A handoff tool also
- * reports the caller's model, origin, and delegation depth, the settings the
- * agent chose, and the provider, model, and modes of each thread that received
- * the work. Ids, prompts, and free text are never recorded.
- */
 /**
  * baskule: a space registers only the MCP tools its policy allows (`BASKULE_POLICY.mcpTools`);
  * the other tools are absent from `tools/list` and cannot be called.
@@ -980,6 +1010,35 @@ const withToolAnalytics =
     return yield* registration.pipe(Effect.provideService(McpServer.McpServer, recordingServer));
   });
 
+/** `McpServer.registerToolkit` advertises the full codec schema; agents get the compact one. */
+const withAdvertisedSchemas = Effect.fn("McpHttpServer.withAdvertisedSchemas")(function* <
+  Tools extends Record<string, Tool.Any>,
+  A,
+  E,
+  R,
+>(toolkit: Toolkit.Toolkit<Tools>, registration: Effect.Effect<A, E, R>) {
+  const server = yield* McpServer.McpServer;
+  const tools: Record<string, Tool.Any> = toolkit.tools;
+  const advertisingServer = McpServer.McpServer.of({
+    ...server,
+    addTool: Effect.fn("McpServer.addTool")(function (options) {
+      const tool = tools[options.tool.name];
+      return server.addTool(
+        tool === undefined
+          ? options
+          : {
+              ...options,
+              tool: new McpSchema.Tool({
+                ...options.tool,
+                inputSchema: advertisedJsonSchema(tool),
+              }),
+            },
+      );
+    }),
+  });
+  return yield* registration.pipe(Effect.provideService(McpServer.McpServer, advertisingServer));
+});
+
 /**
  * baskule: runs a tool registration now, or, in a space cell (`McpDeferredRegistrations` provided), keeps it with
  * the layer's context for the first `/mcp` request. A failing deferred registration fails that request.
@@ -1028,7 +1087,10 @@ export const toolkitRegistration = <Tools extends Record<string, Tool.Any>, EX, 
           Effect.flatMap(allowedToolkit(toolkit), (allowed) =>
             allowed === undefined
               ? Effect.void
-              : McpServer.registerToolkit(decodeAsAdvertised(allowed)),
+              : withAdvertisedSchemas(
+                  allowed,
+                  McpServer.registerToolkit(decodeAsAdvertised(allowed)),
+                ),
           ),
         ),
       ),
@@ -1129,7 +1191,8 @@ export const layerMcpTransport = McpServer.layerHttp({
   allowSessionTermination: true,
 }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
-export const layer = Layer.mergeAll(
+/** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
+export const layerTools = Layer.mergeAll(
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,
@@ -1141,4 +1204,6 @@ export const layer = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
-).pipe(Layer.provideMerge(layerMcpTransport));
+);
+
+export const layer = layerTools.pipe(Layer.provideMerge(layerMcpTransport));

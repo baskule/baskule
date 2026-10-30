@@ -7,20 +7,9 @@ import type { PushNotification } from "@t3tools/contracts/baskulePush";
 type BrowserSocket = WebSocket & { accept(): void };
 declare const WebSocketPair: { new (): { 0: BrowserSocket; 1: BrowserSocket } };
 import { endpoint as browserEndpoint, stateLayer as browserStateLayer } from "../browser/remote.ts";
-// baskule: T3's server for one Baskule space, inside a Durable Object (architecture v3, E2/E8).
-//
-// `createSpaceServer` builds T3's runtime with workerd edges in place of host ones:
-// - SQL: DO SQLite (doSqlClient.ts), injected through `InjectedSqlClient`;
-// - files: DO SQLite for T3's home, chat folder records, the computer through computerd
-//   (fileSystem.ts, computerFs.ts);
-// - HTTP/WebSocket: a capturing `HttpServer` and `WebSocketPair` upgrades (transport.ts);
-// - processes: none (every spawn is NotFound, so git/terminal/CLI features degrade);
-// - auth: `BASKULE_AUTH_MODE=front` (auth/BaskuleFrontAuth.ts), RPC allowlist
-//   (baskule/rpcPolicy.ts), route allowlist (routes.ts);
-// - OpenCode: an installation-managed provider instance at `http://agent/oc`, whose requests go
-//   to the host's `agentFetch` (the space's AgentCell stub).
-// The host (platform/src/space, `SpaceCell`) owns the cell lifecycle: when to boot, keepalive,
-// alarms, control endpoints. Every value here is per space: nothing is kept in module state.
+// baskule: T3's server for one Baskule space, inside a Durable Object (architecture v3, E2/E8).  `createSpaceServer` builds T3's runtime with workerd edges in place of host ones: - SQL: DO SQLite (doSqlClient.ts), injected through `InjectedSqlClient`; - files: DO SQLite for T3's home, chat folder records, the computer through computerd
+// (fileSystem.ts, computerFs.ts); - HTTP/WebSocket: a capturing `HttpServer` and `WebSocketPair` upgrades (transport.ts); - processes: none (every spawn is NotFound, so git/terminal/CLI features degrade); - auth: `BASKULE_AUTH_MODE=front` (auth/BaskuleFrontAuth.ts), RPC allowlist   (baskule/rpcPolicy.ts), route allowlist (routes.ts); -
+// OpenCode: an installation-managed provider instance at `http://agent/oc`, whose requests go   to the host's `agentFetch` (the space's AgentCell stub). The host (platform/src/space, `SpaceCell`) owns the cell lifecycle: when to boot, keepalive, alarms, control endpoints. Every value here is per space: nothing is kept in module state.
 import "./runtimeGlobals.ts";
 import { makeRuntimeScheduler } from "./runtimeScheduler.ts";
 
@@ -594,7 +583,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
         },
       });
     },
-    sockets: () => [...sockets],
+    sockets: () => Array.from(sockets),
     revoke: async (target) => {
       const revoked = await run(
         Effect.flatMap(Effect.service(SessionStore.SessionStore), (sessions) =>
@@ -602,7 +591,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
         ),
       );
       let closed = 0;
-      for (const socket of [...sockets]) {
+      for (const socket of sockets) {
         if (
           (target.userId && socket.userId === target.userId) ||
           (target.sessionId && socket.sessionId === target.sessionId)
@@ -688,7 +677,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     },
     dispose: async () => {
       // celld's WebSocket.close accepts 1000 or application codes, not the reserved 1001.
-      for (const socket of [...sockets]) socket.close(4000, "space restarting");
+      for (const socket of sockets) socket.close(4000, "space restarting");
       await Effect.runPromise(Scope.close(scope, Exit.void));
       unregisterAttachments();
       if (agentRoutes.get(config.spaceId) === config.agentFetch) agentRoutes.delete(config.spaceId);
