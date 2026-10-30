@@ -64,7 +64,9 @@ it("generates distinct one-time QR links, keeps paste available, and retires the
   });
   await using screen = await render(<ConnectDeviceSection />);
   using _clock = fakeTimers();
-  const expiresAt = new Date("2026-10-30T00:00:00Z").getTime() + 600_000;
+  const now = new Date("2026-10-30T00:00:00Z");
+  vi.setSystemTime(now);
+  const expiresAt = now.getTime() + 600_000;
   using create = vi
     .spyOn(baskuleApi, "createConnectCode")
     .mockResolvedValueOnce({ code: "first", expiresAt })
