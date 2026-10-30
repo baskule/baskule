@@ -1,7 +1,7 @@
-// baskule: mock Baskule front for web UI development (WP-E). Plays the Worker + ControlCell:   /auth/*            Better Auth-shaped sign-in / sign-out (cookie session, in memory)   /api/baskule/*    me, spaces, members, people (admin), invitations, health, downloads,                      plugins and groups (mock-plugins.mjs), transcriptions (a fixed
-// transcript)   /s/<spaceId>/*     membership check, then proxied (HTTP + WebSocket) to a real T3 server per                      space, started lazily like a waking cell (BASKULE_AUTH_MODE=none behind us)   /downloads/*       fake app files   everything else    the web app: `apps/web/dist` (MOCK_WEB=dist) or a Vite dev server (MOCK_WEB=dev) No LLM spend:
-// the T3 servers talk to one OpenCode 2 CLI backed by a mock OpenAI-compatible model.  Env: MOCK_PORT (47700), MOCK_WEB (dist|dev), MOCK_VITE_PORT (47701), MOCK_T3_PORT_BASE (47710),      MOCK_OPENCODE_URL (http://127.0.0.1:47703), MOCK_STATE_DIR, MOCK_BACKENDS (t3|none),      MOCK_INJECT_AUTHOR (1: stamp `author` on user messages, standing in for WP-B's
-// server).
+// baskule: mock front with in-memory Better Auth-shaped /auth and /api/baskule routes.
+// /s/:space proxies real T3 servers; /downloads serves fake apps; other routes serve Vite or dist.
+// T3 uses one OpenCode CLI backed by the fake LLM. MOCK_PORT/WEB/VITE_PORT/T3_PORT_BASE/OPENCODE_URL
+// choose listeners; MOCK_STATE_DIR holds state; MOCK_BACKENDS disables T3; MOCK_INJECT_AUTHOR stamps messages.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";

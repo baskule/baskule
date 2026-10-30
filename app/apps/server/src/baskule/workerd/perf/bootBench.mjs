@@ -1,7 +1,7 @@
-// baskule: boot benchmark of the space bundle in Node (no celld): what a cold space boot costs, bundle against bundle, without the live stack. Usage, from apps/server (Node 24: it loads the TS fake storage directly):   node src/baskule/workerd/perf/bootBench.mjs [--runs 5]
-// [--profile <dir>] <bundle.js>... Each run is a fresh process per bundle (cold code, like a new isolate) on a space database prepared once per bundle (migrations applied, like an existing space): it reports the bundle import, the cold `createSpaceServer` and a second boot in
-// the same process (warm code). --profile writes a CPU profile of the cold boot per bundle. Medians are printed per bundle. Celld/workerd numbers differ (the platform isolate also parses the rest of the Worker), but the ratios hold; e2e/v2/perf in the umbrella measures the live
-// stack.
+// baskule: compare cold bundle boots in fresh Node processes, without celld or a live stack.
+// node src/baskule/workerd/perf/bootBench.mjs [--runs 5] [--profile <dir>] <bundle.js>...
+// Each bundle gets a prepared database; reports import, cold/warm createSpaceServer and medians.
+// --profile writes CPU profiles; use the umbrella e2e/v2/perf harness for actual celld costs.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

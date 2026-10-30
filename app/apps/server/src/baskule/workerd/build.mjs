@@ -1,7 +1,7 @@
-// baskule: builds T3's server for workerd as one ESM file, `apps/server/dist-workerd/space-cell.js`, which the Baskule platform's SpaceCell imports (platform/src/space). Usage, from apps/server:   node src/baskule/workerd/build.mjs [--minify] [--out <file>] --minify (production,
-// deploy/v2/build.sh): minified, function and class names kept for readable stack traces.  Every substitution the workerd build needs is listed here, in one place: - node built-ins celld lacks or stubs are aliased to ./shims (module, os, process, net,   perf_hooks, sea, url) and proper-
-// lockfile to a no-op lock; - host-bound modules a space never uses are replaced by stubs in ./trim (`TRIM` below): terminals, devices,   the local preview browser, source-control drivers (each stub's header says why it is safe); - other node built-ins stay external (`node:*`), served by
-// celld's nodejs_compat.
+// baskule: build one workerd ESM bundle; run from apps/server:
+// node src/baskule/workerd/build.mjs [--minify] [--out <file>]
+// Missing celld built-ins and proper-lockfile use shims; host-only modules use TRIM stubs below.
+// Other node:* modules stay external for nodejs_compat. Minification preserves stack-trace names.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";

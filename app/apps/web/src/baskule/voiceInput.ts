@@ -151,9 +151,11 @@ export interface BaskuleVoiceInput {
   readonly analyser: () => AnalyserNode | null;
 }
 
-//  The recording belongs to one composer target: switching chats, unmounting or `enabled` turning false (a question or approval takes the
-// composer over) discards it. `insert` appends the transcript to the prompt and reports whether the composer accepted it. Escape cancels
-// while focus is inside `root` or on nothing, once every other handler has declined it; the composer's editor handles its own Escape. /
+/**
+ * A recording belongs to one composer: target changes, unmount or disabled input discard it.
+ * `insert` appends the transcript and reports acceptance. Escape cancels inside `root` or
+ * without focus, after other handlers decline; the editor handles its own Escape.
+ */
 export function useBaskuleVoiceInput(options: {
   readonly targetKey: string;
   readonly enabled: boolean;

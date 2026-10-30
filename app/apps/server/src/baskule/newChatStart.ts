@@ -1,7 +1,6 @@
-// baskule: a new chat's first turn starts before its title is generated. In a space, both run in one single-threaded cell and go through the same
-// embedded OpenCode: generating the title while the turn started delayed the turn by ~1 s. The message's dispatch records the title request without
-// queueing it; ProviderTurnStartService queues it once the run leaves "starting" (running, failed to start, or stopped meanwhile), with upstream's
-// effect id.
+// baskule: title generation and the first turn share embedded OpenCode in one cell.
+// Dispatch records the title request without queueing it; ProviderTurnStartService queues it
+// once the run leaves "starting" (running, failed or stopped), using upstream's effect id.
 import { Effect } from "effect";
 import type { CommandId, MessageId, ThreadId } from "@t3tools/contracts";
 

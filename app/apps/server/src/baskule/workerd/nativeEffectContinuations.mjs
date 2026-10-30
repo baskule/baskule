@@ -1,9 +1,9 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-// AsyncResource restores ALS but not celld's native event token. An Effect callback invoked by another request otherwise moves the
-// fiber to that request; a later native Promise can retain its already-retired event (the runtime). Apply only to workerd artifacts,
-// leaving the Node runtimes and shared installed dependencies untouched.
+// AsyncResource restores ALS but not celld's native event token. An Effect callback invoked by another request
+// otherwise moves the fiber to that request; a later native Promise can retain its already-retired event (`celld #258`).
+// Apply only to workerd artifacts, leaving the Node runtimes and shared installed dependencies untouched.
 export const nativeEffectContinuations = {
   name: "celld-effect-continuations",
   setup(build) {

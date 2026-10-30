@@ -1,6 +1,6 @@
-// baskule: page checks + screenshots of the Baskule views against the mock front (up.sh). Desktop 1440x900 and phone 390x844. Writes
-// PNGs to .run/wp-e/artifacts/ (or SHOTS_DIR), fails on a broken check, and prints console errors from the page.   node
-// apps/web/baskule-dev/shots.mjs            all scenarios   node apps/web/baskule-dev/shots.mjs login admin  some of them
+// baskule: mock-front page checks at desktop 1440x900 and phone 390x844; no model spend.
+// node apps/web/baskule-dev/shots.mjs [scenario ...]
+// PNGs go to SHOTS_DIR or .run/wp-e/artifacts; broken checks and browser errors are reported.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";

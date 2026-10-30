@@ -1,7 +1,7 @@
-// baskule: an Effect `SqlClient` over Durable Object SQLite (`ctx.storage.sql`) for the workerd build of the T3 server (architecture v3, E2/E8).  What DO SQLite refuses or limits, and how this client handles it on celld 0.6.3: - `BEGIN`/`SAVEPOINT`/`COMMIT`/`ROLLBACK`/`RELEASE` are "not authorized". Transactions go   through `storage.transaction(closure)`
-// instead, which commits when the closure's promise   resolves and rolls back when it rejects. A nested `withTransaction` opens a nested   `storage.transaction`, which behaves like a savepoint: its failure discards only its rows. - At most 100 bound parameters per statement: beyond that, parameters are inlined as literals. - At most 5 terms per compound
-// SELECT: on that error the query is regrouped into nested   sub-selects of at most 5 terms and retried. - Tuning and maintenance PRAGMAs and VACUUM are "not authorized": tuning PRAGMAs become no-ops,   size PRAGMAs are answered from `sql.databaseSize`, VACUUM is a no-op. - A multi-statement string cannot carry parameters (the bindings count is checked per
-// string).
+// baskule: one shared Effect SqlClient over Durable Object SQLite, with these celld limits:
+// - Transactions use storage.transaction; nested closures act as savepoints, not SQL BEGIN/SAVEPOINT.
+// - Above 100 bindings, inline literals; compound SELECTs regroup into at most five terms per level.
+// - Tuning PRAGMAs/VACUUM are no-ops; size uses databaseSize; multi-statement bindings are forbidden.
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -46,6 +46,8 @@ const DoSqlTransaction = Context.Service<
   SqlClient.TransactionConnection,
   SqlClient.TransactionConnection.Service
 >("@baskule/workerd/DoSqlTransaction");
+
+// SQL text helpers (quote- and comment-aware scanning)
 
 /** Calls `visit(index, depth)` for every character outside quotes and comments. */
 const scan = (sql: string, visit: (index: number, depth: number) => boolean | void): void => {
@@ -241,6 +243,8 @@ export const regroupCompoundSelects = (
   return regroupLevel(out, maxTerms, recursiveName);
 };
 
+// Statement policy
+
 type Policy =
   | { readonly _tag: "run" }
   | { readonly _tag: "noop" }
@@ -295,6 +299,8 @@ export const classifyStatement = (sql: string): Policy => {
   }
   return { _tag: "run" };
 };
+
+// Client
 
 const toError = (cause: unknown, sql: string, operation: string) =>
   new SqlError({

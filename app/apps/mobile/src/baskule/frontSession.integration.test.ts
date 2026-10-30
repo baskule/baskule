@@ -18,10 +18,9 @@ import * as RpcSession from "../../../../packages/client-runtime/src/rpc/session
 import { fetchMe, signIn } from "./api";
 import { normalizeServerUrl } from "./config";
 import { fetchSpaceEnvironmentId, spaceRegistration } from "./registrations";
-// baskule: the phone's connection path against a real Baskule 0.2 server (platform/dev.sh), in Node: Better Auth sign-in → /api/baskule/me → one front-
-// session registration per space → the shared client-runtime resolver (descriptor with the bearer, no ticket) → its RPC session over a WebSocket whose
-// upgrade carries `Authorization` → the space's server config snapshot. Skipped unless BASKULE_TEST_SERVER_URL, BASKULE_TEST_EMAIL and BASKULE_TEST_PASSWORD
-// are set.
+// baskule: front sign-in → space registrations → resolver bearer → WebSocket → config.
+// Runs only with BASKULE_TEST_SERVER_URL, BASKULE_TEST_EMAIL and BASKULE_TEST_PASSWORD.
+// The front-session descriptor needs no ticket; its socket upgrade carries Authorization.
 
 const serverUrl = normalizeServerUrl(process.env.BASKULE_TEST_SERVER_URL ?? "");
 const email = process.env.BASKULE_TEST_EMAIL ?? "";

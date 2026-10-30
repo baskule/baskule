@@ -1,6 +1,7 @@
-// baskule: `BASKULE_AUTH_MODE=front` (Baskule Alpha 0.2, architecture v3 E7/E8).  A space's T3 server runs in a SpaceCell that only the Baskule Worker can reach. The Worker authenticates the member (Better Auth), checks Origin and membership, strips any inbound
-// identity header and forwards `x-baskule-identity`. In this mode that header is the only credential: - each (user, Worker session) pair maps to one persisted T3 session row, so WebSocket tickets,   `awaitInvalidation` and revocation keep working; - a WebSocket
-// ticket only authenticates an upgrade that carries the identity it was minted for; - T3's own pairing, bearer exchange and browser-session cookies are refused. MCP client sessions (minted by the server for its provider, never by a client) keep T3's behaviour.
+// baskule: front mode trusts only the Worker's membership-checked `x-baskule-identity`.
+// Each (user, Worker session) owns a persisted T3 session for tickets and revocation.
+// Upgrade tickets must match that identity; pairing, bearer exchange and browser cookies are refused.
+// Server-minted provider MCP sessions keep upstream authentication.
 import {
   AuthFilesystemReadScope,
   AuthFilesystemWriteScope,

@@ -86,6 +86,8 @@ const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const isUnder = (path: string, root: string) =>
   root === "/" || path === root || path.startsWith(`${root}/`);
 
+// Backends
+
 interface Backend {
   stat(path: string): Promise<NodeInfo>;
   list(path: string): Promise<ReadonlyArray<Dirent>>;
@@ -376,10 +378,10 @@ const makeChatFolders = (
     await computer.mkdir(folder, true);
     storage.sql.exec("UPDATE baskule_chat_folders SET materialized = 1 WHERE path = ?", folder);
   };
-  // baskule(wp-h): the agent creates a chat's folder on the computer itself (its spawner runs `mkdir -p` in the session cwd, in the AgentCell), so a folder can exist there while its
-  // record still says "not materialized". Before answering "empty"/"not found" for one, look on the computer (status call first, which never starts it): only if it is running, or, for
-  // explicit user actions (`wake`: file panel listing, reads/downloads), if a computer exists at all. A space that never ran a tool keeps answering from DO SQLite without any computerd
-  // file call.
+  // The agent can create a chat folder before its DO record says "materialized".
+  // Before returning empty/missing, check computerd status (which never starts a computer).
+  // Probe files only on running computers, or existing computers for explicit `wake` actions.
+  // Tool-free chats keep answering from DO SQLite without computerd file calls.
   const known = async (folder: string, wake: boolean): Promise<boolean> => {
     const r = row(folder);
     if (!r) return false;
@@ -427,6 +429,8 @@ const makeChatFolders = (
     },
   };
 };
+
+// The router
 
 export interface SpaceFileSystem {
   readonly fileSystem: FileSystem.FileSystem;
