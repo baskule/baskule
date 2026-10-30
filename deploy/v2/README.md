@@ -1,6 +1,6 @@
-# deploy/v2 — Baskule Alpha 0.2.1, single-machine development stack
+# deploy/v2 — the Baskule Docker Compose deployment
 
-Compose project **`baskule02`**. This is the private alpha test deployment, not a production support commitment. The 0.1 deployment is retired; its source remains in `deploy/`. See [building from source](../../docs/building.md) for prerequisites.
+Compose project **`baskule02`**. It runs a complete installation on one machine; the [installation guide](../../docs/install.md) is the short path. The 0.1 deployment is retired; its source remains in `deploy/`. See [building from source](../../docs/building.md) for prerequisites.
 
 ```
  clients ──► 127.0.0.1:47090  baskule-edge (Caddy: round-robin + health checks, X-Forwarded-For)
@@ -143,7 +143,7 @@ Switching authenticated ↔ anonymous mode also requires a wipe. No compatibilit
 
 
 - **App** (platform): build it, `./deploy.sh`. Nodes adopt the new deployment in place (resident cells move when
-  idle, forced after 60 s: sockets close with 1012, clients reconnect). The alpha has no data migrations: when a
+  idle, forced after 60 s: sockets close with 1012, clients reconnect). Baskule has no data migrations: when a
   change says it needs a data wipe, back up if wanted, `./down.sh --purge`, `./up.sh`, then deploy; the first boot
   recreates the admin from `.env` (`ADMIN_*`).
 - **celld**: change the digest in `celld/Dockerfile` and rebuild (`./images.sh --all`), then roll the nodes one
@@ -196,5 +196,5 @@ require their checked-in frozen lockfiles.
 
 Deploy the web client and embedded server bundle together through the installation's normal
 reviewed deployment procedure. This upgrade adds no Baskule data-wipe requirement for an
-already OpenCode-only installation. Existing alpha wipe requirements above still apply.
+already OpenCode-only installation. Existing wipe requirements above still apply.
 Native clients need fresh platform builds; a hosted deployment does not replace installed clients.
