@@ -216,7 +216,7 @@ export const LONG_TURN_WORK_ROWS = 900;
 /**
  * Three short user turns, then one agent turn far longer than a cold-open
  * window, with the item kinds a long agent run produces. One batch per turn.
- * Run, node, provider and item IDs follow the composite shapes the Claude
+ * Run, node, provider and item IDs follow the composite shapes the OpenCode
  * adapter stores, and every assistant message has its record, as real threads do.
  */
 export function longTurnThreadBatches(
@@ -226,7 +226,7 @@ export function longTurnThreadBatches(
   const providerInstanceId = ProviderInstanceId.make(provider);
   const modelSelection = {
     instanceId: providerInstanceId,
-    model: provider === "codex" ? "gpt-5.4" : "claude-sonnet-4-6",
+    model: "openai/gpt-5.4",
   };
   let ordinal = 0;
   const text = (turn: number, row: number, targetBytes: number) =>
