@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   ORCHESTRATION_PROTOCOL_VERSION,
+  WS_METHODS as W,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
@@ -205,8 +206,8 @@ export const make = Effect.gen(function* () {
     serverSelfUpdate === "desktop-managed" && serverConfig.desktopTelemetryControlFd !== undefined;
   // baskule: a space refuses the settle commands, so it advertises no settlement and every client
   // hides the Done inbox (settle actions, Settled shelf, auto-settle controls).
-  const settlement =
-    (yield* Effect.service(BaskuleRpcPolicy))?.commands.has("thread.settle") ?? true;
+  const policy = yield* Effect.service(BaskuleRpcPolicy);
+  const settlement = policy?.commands.has("thread.settle") ?? true;
 
   const descriptor: ExecutionEnvironmentDescriptor = {
     environmentId,
@@ -250,7 +251,7 @@ export const make = Effect.gen(function* () {
       threadPinReorder: true,
       threadActiveReorder: true,
       threadAutoSettleOptOut: settlement,
-      threadProjectFromScratch: true,
+      threadProjectFromScratch: policy?.methods.has(W.projectsCreateFromThread) ?? true,
       threadTitleRegeneration: true,
       commandOutputStreaming: true,
       threadVisitedTracking: true,

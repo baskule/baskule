@@ -17,6 +17,7 @@ import {
   RELAY_ENVIRONMENT_CREDENTIAL_SECRET,
   RELAY_URL_SECRET,
 } from "../cloud/config.ts";
+import { BASKULE_POLICY, BaskuleRpcPolicy } from "../baskule/rpcPolicy.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "./ServerEnvironment.ts";
 
@@ -219,7 +220,17 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       expect(second.capabilities.requiredWorktreeBootstrap).toBe(true);
       expect(second.capabilities.usagePriceOverrides).toBe(true);
       expect(second.capabilities.threadActiveReorder).toBe(true);
+      expect(second.capabilities.threadProjectFromScratch).toBe(true);
       expect(second.capabilities.threadTitleRegeneration).toBe(true);
+      const hosted = yield* Effect.gen(function* () {
+        const environment = yield* ServerEnvironment.ServerEnvironment;
+        return yield* environment.getDescriptor;
+      }).pipe(
+        Effect.provide(layerServerEnvironment(baseDir)),
+        Effect.provideService(BaskuleRpcPolicy, BASKULE_POLICY),
+      );
+      expect(hosted.capabilities.threadProjectFromScratch).toBe(false);
+      expect(hosted.capabilities.threadSettlement).toBe(false);
       expect(second.capabilities.threadPullRequests).toBe(true);
       expect(second.capabilities.threadPullRequestLinking).toBe(true);
       expect(second.capabilities.serverResolvedCommandContext).toBe(true);
