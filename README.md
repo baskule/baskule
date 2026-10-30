@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/readme/wordmark-inverse.svg">
-    <img alt="Baskule" src="docs/readme/wordmark.svg" width="340">
+    <source media="(prefers-color-scheme: dark)" srcset="brand/wordmark-inverse.svg">
+    <img alt="Baskule" src="brand/wordmark.svg" width="340">
   </picture>
 </p>
 

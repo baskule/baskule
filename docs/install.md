@@ -80,8 +80,8 @@ curl -s http://127.0.0.1:47090/version.json
 ## Connect the desktop and mobile apps
 
 The web app works in any modern browser at the installation's address. The desktop and mobile apps connect to an
-installation by its address: in the web app, open **Apps → Connect a device** to get a link or a QR code. Native
-apps are built from this repository today (see [the desktop guide](../desktop/README.md) and
+installation by its address: in the web app, open **Settings → Desktop app → Connect a device** to get a link or a
+QR code. Native apps are built from this repository today (see [the desktop guide](../desktop/README.md) and
 [the mobile guide](../app/apps/mobile/README.md)); ready-made downloads arrive with the first public release.
 
 ## Make it reachable by your team
