@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
   capitalizeTerm,
@@ -39,7 +40,7 @@ export function useLinkedPullRequestLines(
   thread: EnvironmentThreadShell | null,
   runtime: EnvironmentRuntimeState | null,
 ) {
-  const supported = runtime?.serverConfig?.environment.capabilities.threadPullRequests === true;
+  const supported = (runtime?.serverConfig ?? null) !== null;
   const pullRequests = thread?.pullRequests;
   return useMemo(() => {
     const chains = resolveThreadPullRequestChains(supported ? (pullRequests ?? []) : []);

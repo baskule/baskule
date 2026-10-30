@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../../../i18n";
+
 import { memo, useId } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";

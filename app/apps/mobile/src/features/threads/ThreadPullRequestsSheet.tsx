@@ -1,10 +1,10 @@
 import { useTranslation } from "../../i18n";
+
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { LegendList } from "@legendapp/list/react-native";
 import { useMemo } from "react";
 import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { AndroidSheetHeader } from "../../components/ui/AndroidScreenHeader";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ScreenContent } from "../../components/ui/ScreenContent";
@@ -46,7 +46,7 @@ export function ThreadPullRequestsSheet(
     project: selectedThreadProject,
     runtime: selectedEnvironmentRuntime,
   });
-  const rowInputs = useMemo(() => ({ lines, actions }), [lines, actions]);
+  const rowInputs = { lines, actions };
   const { singular } = actions.terminology;
   const title = `Linked ${actions.terminology.plural}`;
 
@@ -100,7 +100,7 @@ export function ThreadPullRequestsSheet(
           <Toolbar placement="right">
             <Toolbar.Button
               icon="plus"
-              accessibilityLabel={`Link ${singular}`}
+              accessibilityLabel={t("Link {{value1}}", { value1: singular })}
               onPress={actions.promptLink}
             />
           </Toolbar>
@@ -121,7 +121,7 @@ export function ThreadPullRequestsSheet(
           actions.canLink
             ? [
                 {
-                  accessibilityLabel: `Link ${singular}`,
+                  accessibilityLabel: t("Link {{value1}}", { value1: singular }),
                   icon: "plus",
                   onPress: actions.promptLink,
                 },

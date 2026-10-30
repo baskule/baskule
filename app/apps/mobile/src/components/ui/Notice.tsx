@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { useEffect } from "react";
 import { AccessibilityInfo, Platform, Pressable, View } from "react-native";
 
@@ -18,6 +19,7 @@ export function Notice(props: {
 }) {
   const t = useTranslation();
   const danger = props.tone === "danger";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- announces the message to VoiceOver through AccessibilityInfo
   useEffect(() => {
     // Live regions reach TalkBack; VoiceOver needs an explicit announcement.
     if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(props.message);

@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../i18n";
+
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { Toolbar } from "../../../components/ui/Toolbar";
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
@@ -116,6 +117,7 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
   );
   const missing = wanted.some((path) => !loadedPaths.has(path));
   const { error: diffError, loadMore } = diff;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- requests the next page of the paged diff query until the stop's files have loaded
   useEffect(() => {
     if (state.enabled && missing && !diffError) loadMore();
   }, [state.enabled, missing, diffError, loadMore]);
@@ -130,7 +132,7 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions
         options={{
-          title: `Stop ${route.params.position + 1}`,
+          title: t("Stop {{value1}}", { value1: route.params.position + 1 }),
           headerTitle: `Stop ${route.params.position + 1} of ${guide?.stops.length ?? "…"}`,
         }}
       />
@@ -143,7 +145,7 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
               actions={[
                 {
                   id: "word-wrap",
-                  title: "Word wrap",
+                  title: t("Word wrap"),
                   image: "text.alignleft",
                   state: appearance.codeWordBreak ? "on" : "off",
                 },

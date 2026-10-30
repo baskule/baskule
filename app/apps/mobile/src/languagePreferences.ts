@@ -3,7 +3,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getLocales } from "expo-localization";
 import {
   activateLocale,
-  getLocale,
   isLanguagePreference,
   resolveLocale,
   subscribeLocale,

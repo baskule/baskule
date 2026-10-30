@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useTranslation, t } from "../../i18n";
+
 import {
   navigationCustomizationAvailable,
   overflowNavigationTabs,
@@ -13,23 +14,18 @@ import { currentWorkspaceSelections } from "../workspace/workspace-selection-sto
 import { rememberedSettingsPage } from "../workspace/workspace-tab-navigation";
 import { useSelectWorkspaceTab } from "../workspace/useSelectWorkspaceTab";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
-import {
-  ScreenScrollView as ScrollView,
-  ScreenScrollViewBottomInset,
-} from "../../components/ui/ScreenScrollView";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { useAuth, useUser } from "@clerk/expo";
 import { useNavigation, useNavigationState } from "@react-navigation/native";
-import { use, useMemo, type ComponentProps } from "react";
+import { use, type ComponentProps } from "react";
 import { Platform, View } from "react-native";
 import { useWorkspaceSurface } from "../workspace/useWorkspaceSurface";
-import { useDeviceType } from "../../native/native-layout-metrics";
-import { useCompactWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
+import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
-import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
@@ -42,7 +38,6 @@ import {
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 import { filterSettingsSections } from "./settings-search";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
-// baskule: settings are reduced to the server connection plus a few app pages (scope: no settings).
 import { BASKULE_FLAGS } from "../../baskule/flags";
 import { signOutOfBaskule, useBaskuleSession } from "../../baskule/session";
 import * as Dialog from "../../components/ui/Dialog";
@@ -51,11 +46,6 @@ import type { BaskuleManagementDestination } from "@t3tools/contracts/baskule";
 import { openBaskuleManagement } from "../../baskule/management";
 
 export function SettingsRouteScreen() {
-  const t = useTranslation();
-  const surface = useWorkspaceSurface();
-  const deviceType = useDeviceType();
-  const compactTabs = useCompactWorkspaceTabs();
-  const workspace = useWorkspaceTabs();
   const { layout } = useAdaptiveWorkspaceLayout();
   const inSidebar = use(NativePrimaryColumnContext) !== null && layout.usesSplitView;
   // The page open beside the list: the route right above the Settings tab's route. While
@@ -67,7 +57,19 @@ export function SettingsRouteScreen() {
       ? rememberedSettingsPage(currentWorkspaceSelections())
       : (state.routes[list + 1]?.name ?? null);
   });
-  const sidebar = useMemo(() => (inSidebar ? { selected } : null), [inSidebar, selected]);
+  return <SettingsListScreen sidebar={inSidebar} selected={selected} />;
+}
+
+export function SettingsListScreen(props: {
+  readonly sidebar: boolean;
+  readonly selected: string | null;
+}) {
+  const t = useTranslation();
+  const surface = useWorkspaceSurface();
+  const workspace = useWorkspaceTabs();
+  const inSidebar = props.sidebar;
+  const selected = props.selected;
+  const sidebar = inSidebar ? { selected } : null;
   const content = hasCloudPublicConfig() ? (
     <ConfiguredSettingsRouteScreen />
   ) : (
@@ -78,28 +80,27 @@ export function SettingsRouteScreen() {
     <SettingsSidebarContext value={sidebar}>
       <View className={`flex-1 ${inSidebar ? surface.className : "bg-screen"}`}>
         <SettingsEnvironmentFilterHeader />
-        <ScreenScrollViewBottomInset value={deviceType === "pad" || compactTabs ? 80 : 0}>
-          {Platform.OS === "android" ? (
-            <SettingsScreen
-              title={t("Settings")}
-              trailing={<AndroidSettingsEnvironmentFilter />}
-              search={
-                workspace
-                  ? {
-                      value: workspace.state.tabs.settings.query,
-                      onChangeText: (query) =>
-                        workspace.dispatch({ type: "query", tab: "settings", query }),
-                      placeholder: t("Search settings"),
-                    }
-                  : undefined
-              }
-            >
-              {content}
-            </SettingsScreen>
-          ) : (
-            content
-          )}
-        </ScreenScrollViewBottomInset>
+        {Platform.OS === "android" ? (
+          <SettingsScreen
+            title={t("Settings")}
+            workspaceRoot={inSidebar}
+            trailing={<AndroidSettingsEnvironmentFilter />}
+            search={
+              workspace
+                ? {
+                    value: workspace.state.tabs.settings.query,
+                    onChangeText: (query) =>
+                      workspace.dispatch({ type: "query", tab: "settings", query }),
+                    placeholder: t("Search settings"),
+                  }
+                : undefined
+            }
+          >
+            {content}
+          </SettingsScreen>
+        ) : (
+          content
+        )}
       </View>
     </SettingsSidebarContext>
   );
@@ -175,6 +176,8 @@ function SettingsList(props: { readonly connections: SettingsListSection }) {
   // Grouped cards only lift off the screen surface; the drawer is as dark as they are.
   const listSurface = use(SettingsSidebarContext) ? "bg-drawer" : "bg-screen";
   const insets = useSafeAreaInsets();
+  // UIKit insets the scroll view by its column's safe area, which this context can report as 0.
+  const bottomSafeArea = useNativeColumnLayoutMetrics()?.safeArea.bottom ?? insets.bottom;
   const workspace = useWorkspaceTabs();
   const query = workspace?.state.tabs.settings.query ?? "";
   const overflowRows = useOverflowRows();
@@ -194,10 +197,11 @@ function SettingsList(props: { readonly connections: SettingsListSection }) {
         contentContainerClassName="gap-4 px-5 pt-4"
         contentContainerStyle={{
           // The workspace's clearance keeps the last row above its search field and keyboard.
-          paddingBottom: Math.max(
-            Math.max(insets.bottom, 18) + 18,
-            workspace?.bottomClearance ?? 0,
-          ),
+          paddingBottom:
+            Platform.OS === "ios"
+              ? Math.max(Math.max(bottomSafeArea, 18) + 18, workspace?.bottomClearance ?? 0) -
+                bottomSafeArea
+              : Math.max(Math.max(insets.bottom, 18) + 18, workspace?.bottomClearance ?? 0),
         }}
       >
         {sections.length ? (
@@ -223,7 +227,6 @@ function SettingsList(props: { readonly connections: SettingsListSection }) {
 // baskule: the account (server, person, spaces) and sign-out. The server address is chosen on the
 // sign-in screen: a session belongs to one server, so changing it means signing out first.
 function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
-  const t = useTranslation();
   const session = useBaskuleSession();
   if (session.status !== "signed-in") return [];
   const me = session.me;
@@ -265,7 +268,6 @@ function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
 }
 
 function useSettingsIndexSections(): SettingsListSection[] {
-  const t = useTranslation();
   const session = useBaskuleSession();
   const [opening, setOpening] = useState(false);
   const open = (destination: BaskuleManagementDestination) =>

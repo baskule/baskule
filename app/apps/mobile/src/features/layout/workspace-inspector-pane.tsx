@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Animated, {
   cubicBezier,
@@ -42,6 +43,7 @@ export function WorkspaceInspectorPane(props: {
   const reduceMotion = useReducedMotion();
 
   const onClosed = props.onClosed;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- animates the Reanimated inspector progress and width shared values when visibility or width changes
   useEffect(() => {
     inspectorProgress.set(
       withTiming(inspectorVisible ? 1 : 0, WORKSPACE_PANE_TIMING, (finished) => {

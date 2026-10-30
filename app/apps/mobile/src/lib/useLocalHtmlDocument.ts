@@ -5,7 +5,7 @@ import { localHtmlDocument } from "./localHtmlDocument";
 
 export function useLocalHtmlDocument(uri: string | null) {
   const [loaded, setLoaded] = useState<{ uri: string; document: string | null } | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Revoke document bytes when the native file owner or mounted viewer ends.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Revoke document bytes when the native file owner or mounted viewer ends.
   useEffect(() => {
     if (uri === null) return;
     const controller = new AbortController();

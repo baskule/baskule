@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { t } from "../../i18n";
+
 import {
   pullRequestLinkProject,
   resolveLinkPullRequestInput,
@@ -19,8 +20,6 @@ import {
 } from "@t3tools/client-runtime/source-control-clients";
 import { AuthOrchestrationOperateScope, type ThreadPullRequestLink } from "@t3tools/contracts";
 import * as Clipboard from "expo-clipboard";
-import { useCallback, useMemo } from "react";
-
 import * as Dialog from "../../components/ui/Dialog";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import type { MenuProps } from "../../components/ui/Menu.types";
@@ -36,7 +35,6 @@ export function useLinkedPullRequestActions(input: {
   readonly project: EnvironmentProject | null;
   readonly runtime: EnvironmentRuntimeState | null;
 }) {
-  const t = useTranslation();
   const { thread, project, runtime } = input;
   const terminology = sourceControlClients.get(project?.repositoryIdentity?.provider).changeRequest;
   const capabilities = runtime?.serverConfig?.environment.capabilities;
@@ -44,7 +42,7 @@ export function useLinkedPullRequestActions(input: {
     thread?.environmentId ?? null,
     AuthOrchestrationOperateScope,
   );
-  const canEdit = canOperate && capabilities?.threadPullRequests === true;
+  const canEdit = canOperate && capabilities !== undefined;
   const canWatch = canOperate && capabilities?.threadPullRequestWatch === true;
   const canStartWatch =
     canWatch &&
@@ -57,44 +55,40 @@ export function useLinkedPullRequestActions(input: {
   const unlink = useAtomCommand(threadEnvironment.unlinkPullRequest, { reportFailure: false });
   const watch = useAtomCommand(threadEnvironment.watchPullRequest, { reportFailure: false });
 
-  const run = useCallback(
-    async (failureTitle: string, pending: Promise<AtomCommandResult<unknown, unknown>>) => {
-      const result = await pending;
-      if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-      const cause = squashAtomCommandFailure(result);
-      Dialog.alert(failureTitle, cause instanceof Error ? cause.message : "Try again.");
-    },
-    [],
-  );
+  const run = async (
+    failureTitle: string,
+    pending: Promise<AtomCommandResult<unknown, unknown>>,
+  ) => {
+    const result = await pending;
+    if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+    const cause = squashAtomCommandFailure(result);
+    Dialog.alert(failureTitle, cause instanceof Error ? cause.message : "Try again.");
+  };
 
-  const setLinked = useCallback(
-    (
-      reference: { host: string; repository: string; number: number; url: string },
-      linked: boolean,
-    ) => {
-      if (thread === null) return;
-      const mutation = planThreadPullRequestMutation({
-        capabilities,
-        threadId: thread.id,
-        reference,
-        legacyProjectId: null,
-        linked,
-      });
-      if (mutation === null || mutation.type === "thread.meta.update") return;
-      const environmentId = thread.environmentId;
-      void run(
-        linked
-          ? `Couldn't link this ${terminology.singular}`
-          : `Couldn't unlink this ${terminology.singular}`,
-        mutation.type === "thread.pull-request.link"
-          ? link({ environmentId, input: mutation.input })
-          : unlink({ environmentId, input: mutation.input }),
-      );
-    },
-    [capabilities, link, run, terminology, thread, unlink],
-  );
+  const setLinked = (
+    reference: { host: string; repository: string; number: number; url: string },
+    linked: boolean,
+  ) => {
+    if (thread === null) return;
+    const mutation = planThreadPullRequestMutation({
+      capabilities,
+      threadId: thread.id,
+      reference,
+      linked,
+    });
+    if (mutation === null) return;
+    const environmentId = thread.environmentId;
+    void run(
+      linked
+        ? `Couldn't link this ${terminology.singular}`
+        : `Couldn't unlink this ${terminology.singular}`,
+      mutation.type === "thread.pull-request.link"
+        ? link({ environmentId, input: mutation.input })
+        : unlink({ environmentId, input: mutation.input }),
+    );
+  };
 
-  const promptLink = useCallback(() => {
+  const promptLink = () => {
     const { singular } = terminology;
     Dialog.prompt({
       title: t("Link {{singular}}", { singular }),
@@ -121,75 +115,66 @@ export function useLinkedPullRequestActions(input: {
         setLinked(resolved.link, true);
       },
     });
-  }, [t, project, setLinked, terminology]);
+  };
 
-  const menuActions = useCallback(
-    (link: ThreadPullRequestLink): MenuAction[] => {
-      const open = link.snapshot === null || link.snapshot.state === "open";
-      const watching = link.watch !== undefined;
-      return [
-        { id: "copy", title: t("Copy link"), image: "link" },
-        { id: "browser", title: t("Open in browser"), image: "safari" },
-        ...((watching ? canWatch : canStartWatch) && open
-          ? [
-              {
-                id: "watch",
-                title: watching ? "Stop watching" : "Watch for changes",
-                image: watching ? "eye.slash" : "eye",
-              },
-            ]
-          : []),
-        ...(canEdit
-          ? [
-              {
-                id: "unlink",
-                title: link.source === "stack" ? "Dismiss from thread" : "Unlink from thread",
-                image: "xmark",
-                attributes: { destructive: true },
-              },
-            ]
-          : []),
-      ];
-    },
-    [t, canEdit, canStartWatch, canWatch],
-  );
-
-  const onMenuAction = useCallback(
-    (link: ThreadPullRequestLink, action: string) => {
-      if (action === "copy") void Clipboard.setStringAsync(link.url);
-      else if (action === "browser")
-        void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
-          if (!opened) {
-            const { shortLabel, singular } = (
-              sourceControlClients.findByChangeRequestUrl(link.url) ??
-              sourceControlClients.get(undefined)
-            ).changeRequest;
-            Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
-          }
-        });
-      else if (action === "watch" && thread !== null)
-        void run(
-          "Couldn't change watching",
-          watch({
-            environmentId: thread.environmentId,
-            input: {
-              threadId: thread.id,
-              host: link.host,
-              repository: link.repository,
-              number: link.number,
-              watching: link.watch === undefined,
+  const menuActions = (link: ThreadPullRequestLink): MenuAction[] => {
+    const open = link.snapshot === null || link.snapshot.state === "open";
+    const watching = link.watch !== undefined;
+    return [
+      { id: "copy", title: t("Copy link"), image: "link" },
+      { id: "browser", title: t("Open in browser"), image: "safari" },
+      ...((watching ? canWatch : canStartWatch) && open
+        ? [
+            {
+              id: "watch",
+              title: watching ? t("Stop watching") : t("Watch for changes"),
+              image: watching ? "eye.slash" : "eye",
             },
-          }),
-        );
-      else if (action === "unlink") setLinked(link, false);
-    },
-    [run, setLinked, thread, watch],
-  );
+          ]
+        : []),
+      ...(canEdit
+        ? [
+            {
+              id: "unlink",
+              title: link.source === "stack" ? t("Dismiss from thread") : t("Unlink from thread"),
+              image: "xmark",
+              attributes: { destructive: true },
+            },
+          ]
+        : []),
+    ];
+  };
 
-  return useMemo(
-    () => ({ canLink: canEdit, terminology, promptLink, menuActions, onMenuAction }),
-    [canEdit, terminology, promptLink, menuActions, onMenuAction],
-  );
+  const onMenuAction = (link: ThreadPullRequestLink, action: string) => {
+    if (action === "copy") void Clipboard.setStringAsync(link.url);
+    else if (action === "browser")
+      void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
+        if (!opened) {
+          const { shortLabel, singular } = (
+            sourceControlClients.findByChangeRequestUrl(link.url) ??
+            sourceControlClients.get(undefined)
+          ).changeRequest;
+          Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
+        }
+      });
+    else if (action === "watch" && thread !== null)
+      void run(
+        "Couldn't change watching",
+        watch({
+          environmentId: thread.environmentId,
+          input: {
+            threadId: thread.id,
+            host: link.host,
+            repository: link.repository,
+            number: link.number,
+            watching: link.watch === undefined,
+          },
+        }),
+      );
+    else if (action === "unlink") setLinked(link, false);
+  };
+
+  return { canLink: canEdit, terminology, promptLink, menuActions, onMenuAction };
 }
 
 export type LinkedPullRequestActions = ReturnType<typeof useLinkedPullRequestActions>;

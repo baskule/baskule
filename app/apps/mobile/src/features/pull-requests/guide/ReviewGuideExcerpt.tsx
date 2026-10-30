@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../i18n";
+
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import type { FileDiffMetadata } from "@pierre/diffs";

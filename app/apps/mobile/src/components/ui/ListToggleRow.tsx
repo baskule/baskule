@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { Pressable } from "react-native";
 
 import { AppText } from "./AppText";

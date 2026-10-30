@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { useState } from "react";
 import { Platform, View } from "react-native";

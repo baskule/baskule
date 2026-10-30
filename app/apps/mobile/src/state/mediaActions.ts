@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { t } from "../i18n";
+
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import * as Dialog from "../components/ui/Dialog";
 import type { MediaActionsSource } from "../lib/mediaActionsSource";
@@ -14,10 +15,8 @@ import {
   type SessionGrantInput,
 } from "@t3tools/contracts";
 import { normalizeNativeMarkdownUrl } from "../lib/markdownLinks";
-import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
-
 import { useAssetConnectionLifetime, useRefreshAssetUrl } from "./assets";
 import { assetReadScope } from "../lib/mediaActionsSource";
 import { appAtomRegistry } from "./atom-registry";
@@ -34,11 +33,10 @@ function allowsHostMedia(session: SessionGrantInput | null) {
 function canReadHostMedia(environmentId: EnvironmentId | null): boolean {
   if (environmentId === null) return true;
   const result = appAtomRegistry.get(environmentSession.sessionStateAtom(environmentId));
-  return result._tag !== "Failure" && allowsHostMedia(Option.getOrNull(AsyncResult.value(result)));
+  return result._tag !== "Failure" && allowsHostMedia(AsyncResult.getOrElse(result, () => null));
 }
 
 export function useMediaActions(source: MediaActionsSource | undefined, onOpenFile?: () => void) {
-  const t = useTranslation();
   const navigation = useNavigation();
   const hostEnvironmentId =
     source &&
@@ -66,6 +64,7 @@ export function useMediaActions(source: MediaActionsSource | undefined, onOpenFi
     source && "resource" in source ? assetReadScope(source.resource) : undefined,
   );
   const [sharing, setSharing] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- aborts the in-flight media share when the component unmounts
   useEffect(() => () => controller.current?.abort(), []);
 
   const share = () => {
@@ -165,7 +164,7 @@ export function useMediaActions(source: MediaActionsSource | undefined, onOpenFi
             : []),
           {
             id: "save" as const,
-            title: sharing ? "Opening share sheet…" : "Save or share",
+            title: sharing ? t("Opening share sheet…") : t("Save or share"),
             run: share,
             disabled: sharing || !canReadMedia,
           },

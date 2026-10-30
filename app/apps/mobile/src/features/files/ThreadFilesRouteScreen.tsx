@@ -1,11 +1,12 @@
 import { useTranslation } from "../../i18n";
+
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { environmentSession } from "../../state/session";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
@@ -17,7 +18,6 @@ import {
   mediaMimeTypeFromExtension,
 } from "@t3tools/shared/filePreview";
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
-
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { filePreviewDelimiter, parseDelimitedPreview } from "@t3tools/shared/delimitedPreview";
 import { DelimitedFilePreview } from "./DelimitedFilePreview";
@@ -91,7 +91,7 @@ function FilesBrowserHeader(props: {
       search={{
         value: props.searchQuery,
         onChangeText: props.onSearchQueryChange,
-        placeholder: "Search files",
+        placeholder: t("Search files"),
         closeAccessibilityLabel: "Close file search",
         clearAccessibilityLabel: "Clear file search",
       }}
@@ -99,9 +99,9 @@ function FilesBrowserHeader(props: {
         Platform.OS === "android"
           ? [
               {
-                title: "File options",
+                title: t("File options"),
                 icon: "ellipsis",
-                items: [{ id: "refresh", title: "Refresh files", onPress: props.onRefresh }],
+                items: [{ id: "refresh", title: t("Refresh files"), onPress: props.onRefresh }],
               },
             ]
           : undefined
@@ -126,6 +126,7 @@ function FileHeader(props: {
     readonly onPress: () => unknown;
   }>;
 }) {
+  const t = useTranslation();
   const { panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const modes = props.actions.filter(({ inline }) => inline);
   return (
@@ -138,7 +139,7 @@ function FileHeader(props: {
       backInSplitView={
         props.fileInspectorSupported
           ? {
-              accessibilityLabel: "Return to chat",
+              accessibilityLabel: t("Return to chat"),
               icon: "chevron.left",
               onPress: props.onReturnToThread,
             }
@@ -149,8 +150,8 @@ function FileHeader(props: {
           ? [
               {
                 accessibilityLabel: panes.auxiliaryPaneVisible
-                  ? "Hide file navigator"
-                  : "Show file navigator",
+                  ? t("Hide file navigator")
+                  : t("Show file navigator"),
                 icon: "sidebar.right",
                 selected: panes.auxiliaryPaneVisible,
                 onPress: toggleAuxiliaryPane,
@@ -160,7 +161,7 @@ function FileHeader(props: {
       }
       menus={[
         {
-          title: "File actions",
+          title: t("File actions"),
           icon: "ellipsis",
           separateBackground: false,
           items: [
@@ -399,7 +400,7 @@ function FilesUnavailable({
   const t = useTranslation();
   return (
     <View className="flex-1 items-center justify-center bg-sheet px-6">
-      <NativeStackScreenOptions options={{ title: "Files" }} />
+      <NativeStackScreenOptions options={{ title: t("Files") }} />
       <EmptyState title={t("Files unavailable")} detail={detail} />
     </View>
   );
@@ -437,14 +438,13 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
   const t = useTranslation();
   useAdaptiveWorkspacePaneRole("inspector");
   const navigation = useNavigation();
-  const { fileInspector, layout, showAuxiliaryPane } = useAdaptiveWorkspaceLayout();
+  const { fileInspector, layout } = useAdaptiveWorkspaceLayout();
   const [searchQuery, setSearchQuery] = useState("");
   const { themeAppearance: highlightTheme } = useAppearancePreferences();
   const { cwd, environmentId, projectName, selectedThread, threadId } = useThreadFilesWorkspace(
     props.route.params,
   );
   const hasFileInspector = fileInspector.supported && threadId !== null;
-  const revealedInspectorRef = useRef(false);
   const fileAccessSession = useEnvironmentQuery(
     environmentId !== null ? environmentSession.sessionStateAtom(environmentId) : null,
   );
@@ -458,7 +458,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
   const { canReadFiles } = fileAccess;
   const entriesQuery = useFileTreeEntries({
     environmentId,
-    cwd: !canReadFiles || hasFileInspector ? null : cwd,
+    cwd: canReadFiles && !hasFileInspector ? cwd : null,
     searchQuery,
   });
   const handleReturnToThread = () => {
@@ -517,13 +517,6 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
       theme: highlightTheme,
     });
   };
-  useEffect(() => {
-    if (hasFileInspector && cwd !== null && !revealedInspectorRef.current) {
-      revealedInspectorRef.current = true;
-      showAuxiliaryPane("inspector");
-    }
-  }, [cwd, hasFileInspector, showAuxiliaryPane]);
-
   if (environmentId === null || (threadId !== null && selectedThread === null)) {
     if (hasFileInspector) {
       return (
@@ -573,6 +566,9 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
       <ScreenContent insetHorizontal={layout.usesSplitView}>
         <FileTreeBrowser
           key={JSON.stringify([environmentId, cwd])}
+          revealSelection={entriesQuery.revealSelection}
+          expandedPaths={entriesQuery.expandedPaths}
+          setExpandedPaths={entriesQuery.setExpandedPaths}
           entries={entriesQuery.entries}
           loadingDirectories={entriesQuery.loadingDirectories}
           onLoadDirectory={entriesQuery.loadDirectory}
@@ -582,10 +578,13 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
           searchQuery={searchQuery}
           searchResultPaths={entriesQuery.searchResultPaths}
           searchTruncated={entriesQuery.searchTruncated}
-          selectedPath={null}
+          selectedPath={entriesQuery.selectedPath}
           onPreviewFile={handlePreviewFile}
           onRefresh={entriesQuery.refresh}
-          onSelectFile={handleSelectFile}
+          onSelectFile={(path) => {
+            entriesQuery.selectPath(path);
+            handleSelectFile(path);
+          }}
         />
         <FilesToolbarBottomFade />
       </ScreenContent>
@@ -782,7 +781,10 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
         headerInset={headerInset}
         projectName={directoryPath ?? projectName}
         selectedPath={directoryPath === null ? relativePath : null}
-        onSelectFile={handleSelectFile}
+        onSelectFile={(path) => {
+          if (directoryPath !== null) entriesQuery.selectPath(path);
+          handleSelectFile(path);
+        }}
       />
     ) : undefined;
   const safeAreaInsets = useSafeAreaInsets();
@@ -821,7 +823,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
       resolvedActiveMode === "source"
         ? ({
             id: "word-wrap",
-            title: appearance.codeWordBreak ? "Disable word wrap" : "Enable word wrap",
+            title: appearance.codeWordBreak ? t("Disable word wrap") : t("Enable word wrap"),
             icon: "text.alignleft",
             inline: false,
             onPress: () => setCodeWordBreak(!appearance.codeWordBreak),
@@ -857,7 +859,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
       fileData?.contents != null
         ? ({
             id: "copy-contents",
-            title: fileData.truncated ? "Copy preview" : "Copy contents",
+            title: fileData.truncated ? t("Copy preview") : t("Copy contents"),
             icon: "doc.on.doc",
             inline: false,
             onPress: () => copyTextWithHaptic(fileData.contents),
@@ -880,7 +882,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
       isBrowserFile && typeof assetPreviewUri === "string"
         ? ({
             id: "open-browser",
-            title: Platform.OS === "ios" ? "Open in Safari" : "Open in browser",
+            title: Platform.OS === "ios" ? t("Open in Safari") : t("Open in browser"),
             icon: "safari",
             inline: false,
             onPress: () => tryOpenExternalUrl(assetPreviewUri, "file-preview"),
@@ -941,7 +943,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
   if (relativePath === null) {
     return (
       <View className="flex-1 items-center justify-center bg-sheet px-6">
-        <NativeStackScreenOptions options={{ title: "Files" }} />
+        <NativeStackScreenOptions options={{ title: t("Files") }} />
         <EmptyState title={t("File unavailable")} detail={t("This file path is invalid.")} />
       </View>
     );
@@ -963,6 +965,9 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
         <ScreenContent>
           <FileTreeBrowser
             key={JSON.stringify([environmentId, directoryPath])}
+            revealSelection={entriesQuery.revealSelection}
+            expandedPaths={entriesQuery.expandedPaths}
+            setExpandedPaths={entriesQuery.setExpandedPaths}
             entries={entriesQuery.entries}
             loadingDirectories={entriesQuery.loadingDirectories}
             onLoadDirectory={entriesQuery.loadDirectory}
@@ -972,9 +977,12 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
             searchQuery={searchQuery}
             searchResultPaths={entriesQuery.searchResultPaths}
             searchTruncated={entriesQuery.searchTruncated}
-            selectedPath={null}
+            selectedPath={entriesQuery.selectedPath}
             onRefresh={entriesQuery.refresh}
-            onSelectFile={handleSelectFile}
+            onSelectFile={(path) => {
+              entriesQuery.selectPath(path);
+              handleSelectFile(path);
+            }}
           />
           <FilesToolbarBottomFade />
         </ScreenContent>

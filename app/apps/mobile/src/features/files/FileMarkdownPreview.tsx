@@ -1,11 +1,13 @@
+import { useTranslation } from "../../i18n";
+
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { resolveMobileMarkdownMediaSource } from "../../lib/markdownMediaSource";
 import { getBrowseDirectoryPath } from "@t3tools/client-runtime/state/projects";
+import { maskMarkdownFrontmatter } from "@t3tools/shared/markdownFrontmatter";
 import { useState } from "react";
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { RefreshControl, ScrollView, View } from "react-native";
-
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { FONT_FAMILIES } from "../../lib/fontFamilies";
 import { resolveNativeMarkdownTypography } from "../../lib/appearancePreferences";
@@ -83,6 +85,7 @@ export function FileMarkdownPreview(props: {
   readonly threadId: ThreadId | null;
   readonly onRefresh?: () => Promise<void> | void;
 }) {
+  const t = useTranslation();
   const navigation = useNavigation();
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const [expandedFile, setExpandedFile] = useState<FilePreviewSource | null>(null);
@@ -122,7 +125,7 @@ export function FileMarkdownPreview(props: {
       return (
         <Text
           accessibilityRole="link"
-          accessibilityLabel={`Open ${name}`}
+          accessibilityLabel={t("Open {{value1}}", { value1: name })}
           onPress={() => openMedia(image.href, true)}
           style={{ color: styles.nativeTextStyle.linkColor }}
         >
@@ -235,7 +238,7 @@ export function FileMarkdownPreview(props: {
     >
       <View className="mx-auto w-full max-w-[760px]">
         <SelectableMarkdownText
-          markdown={props.markdown}
+          markdown={maskMarkdownFrontmatter(props.markdown)}
           fileEmbedLabel={(href) =>
             markdownFileEmbedLabel(
               href,

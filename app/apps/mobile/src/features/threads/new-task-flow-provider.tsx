@@ -1,10 +1,12 @@
 import { useSpaceEnvironments } from "../../baskule/spaces";
-import { newChatEnvironmentId, type NewChatSelection } from "./personal-environment-selection";
+import { newChatEnvironmentId } from "./personal-environment-selection";
 import { t } from "../../i18n";
-import { ActiveNewTaskContext } from "../../state/active-new-task";
-import * as Dialog from "../../components/ui/Dialog";
-import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import { ActiveNewTaskContext } from "../../state/active-new-task";
+import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
+import { useNowMinuteMs } from "../../lib/clock";
+import * as Dialog from "../../components/ui/Dialog";
+import React, { useEffect, useRef, useState } from "react";
 import type {
   EnvironmentId,
   ModelSelection,
@@ -23,7 +25,6 @@ import {
 import { threadContextsOutsideEnvironment } from "@t3tools/shared/composerContextReferences";
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
-
 import { useProjects, useServerConfigs, useThreadShells } from "../../state/entities";
 import type { TurnCommandMetadata } from "../../lib/commandMetadata";
 import type { DraftComposerAttachment } from "../../lib/composerImages";
@@ -36,6 +37,7 @@ import {
   resolveSelectableModelSelection,
 } from "../../lib/modelOptions";
 import { scopedProjectKey } from "../../lib/scopedEntities";
+import { useAtomValue } from "@effect/atom-react";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { projectEnvironment } from "../../state/projects";
 import { useEnvironmentQuery } from "../../state/query";
@@ -44,7 +46,7 @@ import {
   appendComposerDraftAttachments,
   type ComposerDraftInsertion,
   type ComposerDraftWorkspaceSelection,
-  composerDraftsAtom,
+  composerDraftsLoadedAtom,
   createNewTaskDraft,
   getComposerDraftSnapshot,
   isNewTaskDraftKey,
@@ -95,6 +97,18 @@ import {
 import { resolveEnvironmentProjectMatch } from "./new-task-project-selection";
 import { useNewTaskProjectDefaults } from "./use-new-task-project-defaults";
 import { resolveProjectThreadCreationBranch } from "./projectThreadCreationValidation";
+import {
+  INACTIVE_FLOW_KEY,
+  type NewTaskFlowState,
+  newTaskFlowStateAtom,
+  readNewTaskFlowState,
+  resolveRouteDraft,
+  type RouteDraftResolution,
+  stampedEnvironmentProjectsLoading,
+  updateNewTaskFlowState,
+} from "./new-task-flow-state";
+import { useEnvironmentShellReadiness } from "../../state/shell";
+import { useConnectionsReady, useWorkspaceEnvironments } from "../../state/workspace";
 
 type WorkspaceMode = "local" | "worktree";
 
@@ -156,10 +170,15 @@ type NewTaskFlowContextValue = {
   readonly selectedModelOption: ModelOption | null;
   readonly selectedProviderStatus: ServerProvider | null;
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
-  readonly reset: () => void;
   readonly setProject: (project: EnvironmentProject) => void;
-  /** Returns false if the existing draft is gone, allowing fallback to a fresh draft. */
-  readonly openDraft: (draftKey: string) => boolean;
+  /** The flow's project, read when a continuation resumes after an await. */
+  readonly getSelectedProjectKey: () => string | null;
+  /**
+   * The draft id of the route this flow serves when that draft, or its
+   * project, is gone. Only the topmost draft route is served, so a screen
+   * compares this with its own draft id.
+   */
+  readonly missingRouteDraftId: string | null;
   readonly selectEnvironment: (environmentId: EnvironmentId) => void;
   readonly switchEnvironment: (environmentId: EnvironmentId) => Promise<boolean>;
   readonly switchingToEnvironmentId: EnvironmentId | null;
@@ -200,6 +219,8 @@ const NewTaskFlowContext = React.createContext<NewTaskFlowContextValue | null>(n
 export function NewTaskFlowProvider(
   props: React.PropsWithChildren<{
     active?: boolean;
+    /** Identifies the draft route this flow serves; a new key starts a fresh flow. */
+    flowKey?: string;
     routeDraftId?: string;
   }>,
 ) {
@@ -220,37 +241,89 @@ export function NewTaskFlowProvider(
     projectSortOrder: "updated_at",
   });
 
-  const spaceEnvironments = useSpaceEnvironments();
-  const [environmentSelection, setEnvironmentSelection] = useState<NewChatSelection>({
-    kind: "default-personal",
+  const flowKey = props.flowKey ?? INACTIVE_FLOW_KEY;
+  const storedFlowState = useAtomValue(newTaskFlowStateAtom(flowKey));
+  const draftsLoaded = useAtomValue(composerDraftsLoadedAtom);
+  // A draft route opened from a list row, a deep link, or restored state binds
+  // its draft here until the flow's first write stores the binding.
+  const routeDraft = useComposerDraft(
+    storedFlowState.draftKey === null ? (props.routeDraftId ?? null) : null,
+  );
+  // Readiness of the environment the route's draft is stamped to; another
+  // environment's projects loading first says nothing about it.
+  const stampedEnvironmentId = routeDraft.project?.environmentId ?? null;
+  const connectionsReady = useConnectionsReady();
+  const stampedEnvironmentConnection =
+    useWorkspaceEnvironments().find(
+      (environment) => environment.environmentId === stampedEnvironmentId,
+    )?.connectionState ?? null;
+  const stampedEnvironmentShell = useEnvironmentShellReadiness(stampedEnvironmentId);
+  const stampedEnvironmentLoading = stampedEnvironmentProjectsLoading({
+    connectionsReady,
+    connectionState: stampedEnvironmentConnection,
+    shellCacheRead: stampedEnvironmentShell.cacheRead,
+    shellStatus: stampedEnvironmentShell.status,
+    shellHasError: stampedEnvironmentShell.hasError,
   });
-  const setSelectedEnvironmentId = (environmentId: EnvironmentId | null) =>
-    setEnvironmentSelection(
-      environmentId === null ? { kind: "default-personal" } : { kind: "explicit", environmentId },
+  const resolveRoute = (
+    flow: NewTaskFlowState,
+    loaded: boolean,
+    stamp: Parameters<typeof resolveRouteDraft>[0]["stamp"],
+  ): RouteDraftResolution =>
+    resolveRouteDraft({
+      flow,
+      routeDraftId: props.routeDraftId,
+      draftsLoaded: loaded,
+      stamp,
+      projects,
+      stampedEnvironmentLoading,
+    });
+  const routeDraftResolution = resolveRoute(storedFlowState, draftsLoaded, routeDraft.project);
+  const flowState =
+    routeDraftResolution.kind === "open" ? routeDraftResolution.flow : storedFlowState;
+  const {
+    environmentId: selectedEnvironmentIdOverride,
+    projectKey: selectedProjectKey,
+    draftKey: activeDraftKey,
+    submitting,
+    expandedProvider,
+  } = flowState;
+  // Continuations read the flow at use time, with the route's draft applied.
+  const readFlow = (): NewTaskFlowState => {
+    const stored = readNewTaskFlowState(flowKey);
+    const resolution = resolveRoute(
+      stored,
+      appAtomRegistry.get(composerDraftsLoadedAtom),
+      props.routeDraftId === undefined
+        ? undefined
+        : getComposerDraftSnapshot(props.routeDraftId).project,
     );
-  const selectedEnvironmentId = newChatEnvironmentId(environmentSelection, spaceEnvironments);
-  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
-  const [activeDraftKey, setActiveDraftKey] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
-
-  const reset = useCallback(() => {
-    setEnvironmentSelection({ kind: "default-personal" });
-    setSelectedProjectKey(null);
-    setActiveDraftKey(null);
-    setSubmitting(false);
-    setExpandedProvider(null);
-  }, []);
-
+    return resolution.kind === "open" ? resolution.flow : stored;
+  };
+  // Every flow write stores the route's draft binding along with it, so the
+  // binding outlives the draft's project stamp (submit clears it).
+  const updateFlow = (patch: Partial<NewTaskFlowState>) =>
+    updateNewTaskFlowState(flowKey, { ...readFlow(), ...patch });
+  const spaceEnvironments = useSpaceEnvironments();
+  const selectedEnvironmentId = newChatEnvironmentId(
+    selectedEnvironmentIdOverride === null
+      ? { kind: "default-personal" }
+      : { kind: "explicit", environmentId: selectedEnvironmentIdOverride },
+    spaceEnvironments,
+  );
   const projectsForEnvironment = pipe(
     projects,
     Arr.filter((project) => project.environmentId === selectedEnvironmentId),
   );
 
+  // A route draft still waiting for its environment has no project yet: the
+  // fallback would show, and could send to, another environment's project.
   const selectedProject =
-    projectsForEnvironment.find(
-      (project) => scopedProjectKey(project.environmentId, project.id) === selectedProjectKey,
-    ) ?? (selectedProjectKey === null ? (projectsForEnvironment[0] ?? null) : null);
+    routeDraftResolution.kind === "pending"
+      ? null
+      : (projectsForEnvironment.find(
+          (project) => scopedProjectKey(project.environmentId, project.id) === selectedProjectKey,
+        ) ?? (selectedProjectKey === null ? (projectsForEnvironment[0] ?? null) : null));
 
   const projectDefaults = useNewTaskProjectDefaults(selectedProject);
   const selectedEnvironmentServerConfig = projectDefaults.serverConfig;
@@ -319,18 +392,25 @@ export function NewTaskFlowProvider(
   })();
 
   const selectedProjectDraftKey = selectedProject ? activeDraftKey : null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- creates the persistent draft in the new-task flow store once a project is selected, before the composer mounts
   useEffect(() => {
-    if (props.active === false || activeDraftKey !== null || selectedProject === null) {
+    // A route that names a draft binds that draft, or returns to the picker.
+    if (
+      props.active === false ||
+      props.routeDraftId !== undefined ||
+      activeDraftKey !== null ||
+      selectedProject === null
+    ) {
       return;
     }
-    // oxlint-disable-next-line react/set-state-in-effect -- Creates the persistent draft once the project selection is ready; the key must exist before the composer mounts.
-    setActiveDraftKey(
-      createNewTaskDraft({
+    // Creates the persistent draft once the project selection is ready; the key must exist before the composer mounts.
+    updateNewTaskFlowState(flowKey, {
+      draftKey: createNewTaskDraft({
         environmentId: selectedProject.environmentId,
         projectId: selectedProject.id,
       }),
-    );
-  }, [activeDraftKey, selectedProject, props.active]);
+    });
+  }, [activeDraftKey, flowKey, selectedProject, props.active, props.routeDraftId]);
   const activePendingKey =
     props.active === false
       ? null
@@ -339,10 +419,7 @@ export function NewTaskFlowProvider(
         : selectedProjectDraftKey
           ? `draft-task:${selectedProjectDraftKey}`
           : null;
-  const activeNewTask = React.useMemo(
-    () => (props.active === false ? null : { pendingKey: activePendingKey }),
-    [props.active, activePendingKey],
-  );
+  const activeNewTask = props.active === false ? null : { pendingKey: activePendingKey };
   const selectedProjectDraft = useComposerDraft(selectedProjectDraftKey);
   const prompt = selectedProjectDraft.text;
   const attachments = selectedProjectDraft.attachments;
@@ -406,6 +483,7 @@ export function NewTaskFlowProvider(
     selectedProjectDraft.modelSelection ?? null,
     selectedProject?.id ?? null,
   );
+  const modelSelectionNow = useNowMinuteMs();
   const projectDefaultModelSelection = resolveDefaultableModelSelection(
     selectedEnvironmentServerConfig,
     projectSettings.settings.defaultModelSelection,
@@ -424,12 +502,24 @@ export function NewTaskFlowProvider(
     selectedProject?.id ?? null,
   );
 
-  const selectedModel = resolveNewTaskModelSelection({
+  const selectedDefaultModel = resolveNewTaskModelSelection({
     draftSelection: draftModelSelection,
     projectDefaultSelection: projectDefaultModelSelection,
     stickySelection: stickyModelSelection,
     modelOptions,
   });
+  const selectedModel = resolveNewThreadModelSelection({
+    defaultSelection: selectedDefaultModel,
+    explicitSelection:
+      draftModelSelection ?? (projectDefaultModelSelection ? null : stickyModelSelection),
+    fallbackSelection: selectedEnvironmentServerConfig?.settings.fallbackModelSelection ?? null,
+    providers: selectedEnvironmentServerConfig?.providers ?? [],
+    ...(selectedEnvironmentServerConfig
+      ? { settings: selectedEnvironmentServerConfig.settings }
+      : {}),
+    projectId: selectedProject?.id ?? null,
+    now: modelSelectionNow,
+  }).selection;
   const selectedModelKey = selectedModel
     ? `${selectedModel.instanceId}:${selectedModel.model}`
     : null;
@@ -530,38 +620,22 @@ export function NewTaskFlowProvider(
     replaceComposerDraftAttachments(selectedProjectDraftKey, []);
   };
 
-  const carryDraftContentTo = (project: EnvironmentProject) => {
+  const carryDraftContentTo = (project: EnvironmentProject): string => {
     const target = { environmentId: project.environmentId, projectId: project.id };
-    if (activeDraftKey !== null && isNewTaskDraftKey(activeDraftKey)) {
-      retargetNewTaskDraft(activeDraftKey, target);
-    } else {
-      setActiveDraftKey(createNewTaskDraft(target));
+    const current = readFlow().draftKey;
+    if (current !== null && isNewTaskDraftKey(current)) {
+      retargetNewTaskDraft(current, target);
+      return current;
     }
+    return createNewTaskDraft(target);
   };
 
   const setProject = (project: EnvironmentProject) => {
-    carryDraftContentTo(project);
-    setSelectedEnvironmentId(project.environmentId);
-    setSelectedProjectKey(scopedProjectKey(project.environmentId, project.id));
-  };
-
-  const openDraft = (draftKey: string): boolean => {
-    const draft = appAtomRegistry.get(composerDraftsAtom)[draftKey];
-    const stamp = draft?.project;
-    if (!isNewTaskDraftKey(draftKey) || !stamp) {
-      return false;
-    }
-    // Require the stamped project to load; selectedProject otherwise falls back and retargets the draft.
-    const projectLoaded = projects.some(
-      (project) => project.environmentId === stamp.environmentId && project.id === stamp.projectId,
-    );
-    if (!projectLoaded) {
-      return false;
-    }
-    setActiveDraftKey(draftKey);
-    setSelectedEnvironmentId(stamp.environmentId);
-    setSelectedProjectKey(scopedProjectKey(stamp.environmentId, stamp.projectId));
-    return true;
+    updateFlow({
+      draftKey: carryDraftContentTo(project),
+      environmentId: project.environmentId,
+      projectKey: scopedProjectKey(project.environmentId, project.id),
+    });
   };
 
   const selectEnvironment = (environmentId: EnvironmentId) => {
@@ -569,11 +643,11 @@ export function NewTaskFlowProvider(
       projects.filter((project) => project.environmentId === environmentId),
       selectedProject,
     );
-    if (match) {
-      carryDraftContentTo(match);
-    }
-    setSelectedEnvironmentId(environmentId);
-    setSelectedProjectKey(match ? scopedProjectKey(match.environmentId, match.id) : null);
+    updateFlow({
+      draftKey: match ? carryDraftContentTo(match) : readFlow().draftKey,
+      environmentId,
+      projectKey: match ? scopedProjectKey(match.environmentId, match.id) : null,
+    });
   };
 
   const openScratch = useAtomCommand(projectEnvironment.openScratch, { reportFailure: false });
@@ -799,9 +873,10 @@ export function NewTaskFlowProvider(
     selectedModelOption,
     selectedProviderStatus,
     providerGroups,
-    reset,
     setProject,
-    openDraft,
+    getSelectedProjectKey: () => readFlow().projectKey,
+    missingRouteDraftId:
+      routeDraftResolution.kind === "missing" ? (props.routeDraftId ?? null) : null,
     selectEnvironment,
     switchEnvironment,
     switchingToEnvironmentId,
@@ -815,12 +890,12 @@ export function NewTaskFlowProvider(
     appendAttachments,
     removeAttachment,
     clearAttachments,
-    setSubmitting,
+    setSubmitting: (value: boolean) => updateFlow({ submitting: value }),
     loadBranches,
     setRuntimeMode,
     setInteractionMode,
     setSelectedModelOptions,
-    setExpandedProvider,
+    setExpandedProvider: (value: string | null) => updateFlow({ expandedProvider: value }),
   } satisfies NewTaskFlowContextValue;
 
   return (

@@ -1,8 +1,10 @@
 import { useTranslation } from "../../i18n";
+
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveHandoffEndpoints, type HandoffEndpoints } from "@t3tools/client-runtime/handoff";
+import { resolveModelShortName } from "@t3tools/client-runtime/provider-clients";
 import {
   normalizeProviderAccentColor,
   resolveProviderInstanceDisplayName,
@@ -82,12 +84,6 @@ export function ThreadHandoffDivider(props: {
   const { endpoints } = props;
   const endpointProps = {
     providers: (config?.providers ?? []).map((provider) => {
-      const rawConfig = config?.settings.providerInstances[provider.instanceId]?.config;
-      const instanceConfig =
-        rawConfig !== null && typeof rawConfig === "object"
-          ? (rawConfig as Readonly<Record<string, unknown>>)
-          : null;
-      const agentId = instanceConfig?.source === "local" ? undefined : instanceConfig?.agentId;
       return {
         ...provider,
         driverKind: provider.driver,
@@ -136,7 +132,7 @@ function HandoffEndpoint(props: {
   const provider = props.providers.find((candidate) => candidate.instanceId === props.instanceId);
   const model = provider?.models.find((candidate) => candidate.slug === props.model);
   const label =
-    model?.shortName ??
+    (model ? resolveModelShortName(model, provider?.driver) : undefined) ??
     model?.name ??
     props.model ??
     (provider ? resolveProviderInstanceDisplayName(provider) : props.instanceId);

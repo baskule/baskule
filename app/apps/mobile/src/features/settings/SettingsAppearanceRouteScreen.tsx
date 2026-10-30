@@ -1,5 +1,8 @@
 import { useTranslation } from "../../i18n";
+
 import { LanguageSetting } from "./LanguageSetting";
+import { Platform } from "react-native";
+import { AndroidNavigationAppearanceSection } from "./appearance/sections/AndroidNavigationAppearanceSection";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -36,6 +39,7 @@ function UpstreamAppearanceSettings() {
       >
         <LanguageSetting />
         <ThemeAppearanceSection />
+        {Platform.OS === "android" ? <AndroidNavigationAppearanceSection /> : null}
         <TextAppearanceSection />
         <TerminalAppearanceSection />
         <CodeAppearanceSection />

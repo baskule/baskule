@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 import { SearchField } from "../../components/ui/SearchField";
 import { Toolbar } from "../../components/ui/Toolbar";
@@ -12,10 +13,9 @@ import {
   thirdPartyLicenseEntryKey,
   type ThirdPartyLicenseEntry,
 } from "@t3tools/shared/thirdPartyLicenses";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Linking, Platform, Pressable, type TextInputInstance, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ListRow } from "../../components/ui/ListRow";
@@ -26,7 +26,6 @@ import {
   NATIVE_MAIL_SEARCH_TOOLBAR_CONTENT_INSET,
 } from "../layout/native-mail-search-toolbar";
 import { useNativeMailSearchToolbar } from "../../native/use-native-mail-search-toolbar";
-
 import { getMobileThirdPartyLicenses } from "./mobileThirdPartyLicenses";
 
 function useMobileThirdPartyLicenses() {
@@ -63,22 +62,16 @@ export function SettingsOpenSourceLicensesRouteScreen() {
   const usesNativeMailSearchToolbar = useNativeMailSearchToolbar();
   const manifest = useMobileThirdPartyLicenses();
   const entries = manifest?.entries ?? [];
-  const filteredEntries = useMemo(
-    () => filterThirdPartyLicenseEntries(entries, query),
-    [entries, query],
-  );
-  const renderItem = useCallback(
-    ({ item }: { readonly item: ThirdPartyLicenseEntry }) => (
-      <LicenseRow
-        entry={item}
-        onPress={() =>
-          navigation.navigate("SettingsOpenSourceLicense", {
-            entryKey: thirdPartyLicenseEntryKey(item),
-          })
-        }
-      />
-    ),
-    [navigation],
+  const filteredEntries = filterThirdPartyLicenseEntries(entries, query);
+  const renderItem = ({ item }: { readonly item: ThirdPartyLicenseEntry }) => (
+    <LicenseRow
+      entry={item}
+      onPress={() =>
+        navigation.navigate("SettingsOpenSourceLicense", {
+          entryKey: thirdPartyLicenseEntryKey(item),
+        })
+      }
+    />
   );
 
   if (!manifest) {
@@ -118,7 +111,7 @@ export function SettingsOpenSourceLicensesRouteScreen() {
                   obscureBackground: false,
                   onCancelButtonPress: () => setQuery(""),
                   onChangeText: (event) => setQuery(event.nativeEvent.text),
-                  placeholder: "Search packages",
+                  placeholder: t("Search packages"),
                 },
           }}
         />

@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../i18n";
+
 import { resolveDefaultBranchActionDialogCopy } from "@t3tools/client-runtime/state/vcs";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { resolveAutoFeatureBranchName } from "@t3tools/shared/git";
@@ -68,7 +69,7 @@ export function GitConfirmSheet(props: GitConfirmSheetProps) {
     [branchName, confirmAction, includesCommit, terminology],
   );
 
-  const continuePendingAction = useCallback(async () => {
+  const continuePendingAction = async () => {
     if (!canWriteSourceControl || !confirmAction) return;
     navigation.dispatch(StackActions.replace("Thread", { environmentId, threadId }));
     await gitActions.onRunSelectedThreadGitAction({
@@ -76,15 +77,7 @@ export function GitConfirmSheet(props: GitConfirmSheetProps) {
       ...(params.commitMessage ? { commitMessage: params.commitMessage } : {}),
       ...(params.filePaths ? { filePaths: params.filePaths.split(",") } : {}),
     });
-  }, [
-    canWriteSourceControl,
-    confirmAction,
-    environmentId,
-    gitActions,
-    params,
-    navigation,
-    threadId,
-  ]);
+  };
 
   const movePendingActionToFeatureBranch = useCallback(async () => {
     if (!canChangeThreadBranch || !confirmAction) return;

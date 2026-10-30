@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { Schema } from "effect";
 import { fetch } from "expo/fetch";
 import { File } from "expo-file-system";
@@ -8,7 +9,6 @@ import {
   type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
 
-import { t } from "../i18n";
 import { readBaskuleSession, subscribeBaskuleSession } from "../baskule/session";
 
 const parseTranscript = Schema.decodeUnknownSync(Schema.Struct({ text: Schema.String }));

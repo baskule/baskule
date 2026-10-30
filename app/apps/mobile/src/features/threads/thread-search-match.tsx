@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { findSearchTokenRanges, splitSearchText } from "@t3tools/shared/paletteSearch";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 

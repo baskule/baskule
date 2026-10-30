@@ -1,9 +1,9 @@
+import { t } from "../i18n";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 
-import { t } from "../i18n";
 import * as Api from "./api";
 import { normalizeServerUrl } from "./config";
 import { decodeSavedConnection, type SavedConnection } from "./saved-connection";

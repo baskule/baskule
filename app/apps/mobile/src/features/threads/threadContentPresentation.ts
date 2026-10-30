@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import { type EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 
 export type ThreadContentPresentation =

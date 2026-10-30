@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { Platform } from "react-native";
 
 import { AndroidHeaderIconButton } from "../../components/ui/AndroidScreenHeader";

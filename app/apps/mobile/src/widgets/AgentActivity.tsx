@@ -1,3 +1,5 @@
+import { useTranslation } from "../i18n";
+
 import { HStack, Image, Spacer, Text, VStack, ZStack } from "@expo/ui/swift-ui";
 import type { ComponentProps } from "react";
 import {
@@ -52,11 +54,12 @@ export interface AgentActivityProps {
 }
 
 // Widget serialization excludes module helpers; use only imported view/modifier factories.
-export function AgentActivity(
+function AgentActivity(
   props: AgentActivityProps,
   environment: LiveActivityEnvironment,
 ): LiveActivityLayout {
-  "widget";
+  const t = useTranslation();
+  ("widget");
 
   // Hierarchical foregrounds inherit system tint and vibrancy.
   type Foreground = Parameters<typeof foregroundStyle>[0];
@@ -346,10 +349,10 @@ export function AgentActivity(
       >
         {attentionRow
           ? attentionRow.phase === "waiting_for_approval"
-            ? "Approval"
-            : "Input"
+            ? t("Approval")
+            : t("Input")
           : failedRow
-            ? "Failed"
+            ? t("Failed")
             : activeLabel}
       </Text>
     ),

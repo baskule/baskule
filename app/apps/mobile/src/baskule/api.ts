@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 /**
  * The Baskule front's account API, as a native client uses it (platform/README.md, "Sessions"):
  * Better Auth sign-in returns a signed bearer in `set-auth-token`; every later request sends
@@ -5,7 +6,6 @@
  */
 import type { BaskuleAuthConfig } from "@t3tools/contracts/baskule";
 
-import { t } from "../i18n";
 export interface BaskuleSpace {
   readonly id: string;
   readonly name: string;
@@ -112,10 +112,7 @@ export async function signIn(
     );
   }
   if (response.status === 429) {
-    throw new BaskuleApiError(
-      "rate-limited",
-      t("Too many attempts. Wait a minute and try again."),
-    );
+    throw new BaskuleApiError("rate-limited", t("Too many attempts. Wait a minute and try again."));
   }
   const token = response.headers.get("set-auth-token");
   if (!response.ok || !token) {
@@ -176,10 +173,7 @@ export async function redeemConnectCode(
     );
   }
   if (response.status === 429) {
-    throw new BaskuleApiError(
-      "rate-limited",
-      t("Too many attempts. Wait a minute and try again."),
-    );
+    throw new BaskuleApiError("rate-limited", t("Too many attempts. Wait a minute and try again."));
   }
   const token = response.headers.get("set-auth-token");
   if (!response.ok || !token) {

@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { uuidv4 } from "../../lib/uuid";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -17,7 +18,7 @@ import {
   pickedQuery,
   threadRecentUse,
 } from "@t3tools/shared/paletteSearch";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -29,9 +30,7 @@ import {
   View,
   type TextInputInstance,
 } from "react-native";
-
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { RowPressable } from "../../components/ui/RowPressable";
@@ -218,7 +217,7 @@ export function CommandPalette(props: {
   const runCommand = props.onCommand;
   const projects = useProjects();
   const threads = useThreadShells();
-  const activeThreadRef = useMemo(() => parseActiveThreadPath(props.pathname), [props.pathname]);
+  const activeThreadRef = parseActiveThreadPath(props.pathname);
   const activeThread = useThreadShell(activeThreadRef);
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
   const environments = useWorkspaceEnvironments();
@@ -513,6 +512,7 @@ export function CommandPalette(props: {
   // The native list follows the highlighted row. Key presses move it, but so do
   // live thread updates and late message matches that reorder or drop the
   // selected row under a kept selection, so no single handler owns the scroll.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the native list to the highlighted row, which key presses and live result updates both move
   useEffect(() => {
     if (selectedIndex === 0) {
       // Centering before the list measures its height scrolls half the first row out of view.
@@ -524,7 +524,7 @@ export function CommandPalette(props: {
 
   const dismissed = useRef(false);
   const dismissFallback = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleDismissed = useCallback(() => {
+  const handleDismissed = () => {
     if (dismissFallback.current !== null) clearTimeout(dismissFallback.current);
     dismissFallback.current = null;
     if (dismissed.current) return;
@@ -532,7 +532,8 @@ export function CommandPalette(props: {
     // Present navigation sheets only after UIKit has dismissed this modal.
     props.onClose();
     pendingAction.current?.();
-  }, [props]);
+  };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the dismiss fallback timer on unmount
   useEffect(
     () => () => {
       if (dismissFallback.current !== null) clearTimeout(dismissFallback.current);
@@ -654,7 +655,7 @@ export function CommandPalette(props: {
                 ListFooterComponent={
                   results.length > 0 && search.isPending && !query.startsWith(">") ? (
                     <Text className="px-5 pt-2 text-xs text-foreground-muted">
-                      Searching messages…
+                      {t("Searching messages…")}
                     </Text>
                   ) : undefined
                 }
@@ -665,7 +666,7 @@ export function CommandPalette(props: {
                         className="px-5 pt-2 text-xs text-foreground-muted"
                         style={{ height: SECTION_LABEL_HEIGHT }}
                       >
-                        In messages
+                        {t("In messages")}
                       </Text>
                     ) : null}
                     <PaletteRow

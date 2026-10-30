@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { PREVIEW_STREAM_BASE_PATH } from "@t3tools/client-runtime/preview/server-browser-stream";
@@ -13,7 +14,6 @@ import type {
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useMemo } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "./atom-registry";
@@ -139,10 +139,7 @@ export function useThreadServerBrowserTabs(input: {
         )
       : emptyTabsAtom,
   );
-  const sessions = useMemo(
-    () => tabs.sessions.filter((session) => session.runtime === "server"),
-    [tabs.sessions],
-  );
+  const sessions = tabs.sessions.filter((session) => session.runtime === "server");
   return { tabs: sessions, loaded: tabs.listed };
 }
 
