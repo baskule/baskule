@@ -300,28 +300,6 @@ export const PreviewEvent = Schema.Union([
 ]);
 export type PreviewEvent = typeof PreviewEvent.Type;
 
-export const DiscoveredLocalServer = Schema.Struct({
-  host: TrimmedNonEmptyString,
-  port: Schema.Int.check(Schema.isGreaterThan(0)).check(Schema.isLessThan(65536)),
-  url: Url,
-  processName: Schema.NullOr(TrimmedNonEmptyString),
-  pid: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
-  terminal: Schema.NullOr(
-    Schema.Struct({
-      threadId: ThreadId,
-      terminalId: TrimmedNonEmptyString,
-    }),
-  ),
-});
-export type DiscoveredLocalServer = typeof DiscoveredLocalServer.Type;
-
-export const DiscoveredLocalServerList = Schema.Struct({
-  servers: Schema.Array(DiscoveredLocalServer),
-  scannedAt: Schema.String,
-  configuredUrlProbing: Schema.optional(Schema.Literal(true)),
-});
-export type DiscoveredLocalServerList = typeof DiscoveredLocalServerList.Type;
-
 export class PreviewSessionLookupError extends Schema.TaggedError<PreviewSessionLookupError>()(
   "PreviewSessionLookupError",
   {

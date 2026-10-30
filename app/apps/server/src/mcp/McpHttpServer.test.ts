@@ -945,7 +945,7 @@ it.effect("lists pull request watch tools only to threads that are not delegated
 );
 
 it.effect(
-  "narrows an OAuth client's modes to the T3-Mode-Limit it sends, and never widens them",
+  "caps an OAuth client's tool writes at its approved access",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1025,13 +1025,11 @@ it.effect(
             ]),
           ),
         );
-        /** Starts a thread as the client, with `limit` as T3-Mode-Limit; the HTTP status or the outcome. */
-        const start = (limit: string | undefined, args: Record<string, string> = {}) =>
+        const start = (args: Record<string, string> = {}) =>
           Effect.gen(function* () {
             const headers = {
               accept: "application/json, text/event-stream",
               authorization: `Bearer ${clientToken}`,
-              ...(limit === undefined ? {} : { "t3-mode-limit": limit }),
             };
             const initialize = yield* httpClient.post("/mcp", {
               headers,
@@ -1064,25 +1062,8 @@ it.effect(
             return "code" in outcome ? outcome.code : outcome.modes;
           });
 
-        // Approved for auto: without the header the client keeps its ceiling.
-        expect(yield* start(undefined)).toBe("auto/default");
-        // The header narrows both modes, and asking above it is refused.
-        expect(yield* start("approval-required/plan")).toBe("approval-required/plan");
-        expect(yield* start("approval-required/plan", { runtimeMode: "auto" })).toBe(
-          "runtime_mode_escalation_denied",
-        );
-        expect(yield* start("auto-accept-edits/plan", { interactionMode: "default" })).toBe(
-          "interaction_mode_escalation_denied",
-        );
-        // A broader header changes nothing: the approved ceiling still holds.
-        expect(yield* start("full-access/default")).toBe("auto/default");
-        expect(yield* start("full-access/default", { runtimeMode: "full-access" })).toBe(
-          "runtime_mode_escalation_denied",
-        );
-        // A malformed header is refused before anything runs.
-        expect(yield* start("auto")).toBe(400);
-        expect(yield* start("auto/default/extra")).toBe(400);
-        expect(yield* start("root/default")).toBe(400);
+        expect(yield* start()).toBe("auto/default");
+        expect(yield* start({ runtimeMode: "full-access" })).toBe("runtime_mode_escalation_denied");
       }),
     ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

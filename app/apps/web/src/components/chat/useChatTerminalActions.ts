@@ -28,7 +28,7 @@ import { MAX_TERMINALS_PER_GROUP } from "../../types";
 import { type RightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
 import { isPreviewSupportedInRuntime } from "../../previewStateStore";
 import { openUrlInPreview } from "../../browser/openFileInPreview";
-import { resolveDiscoveredServerUrl } from "../../browser/browserTargetResolver";
+import { resolveBrowserNavigationUrl } from "../../browser/browserTargetResolver";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { confirmTerminalClose } from "../../lib/terminalCloseConfirm";
 import { findReusableProjectScriptTerminal } from "../../lib/projectScriptTerminal";
@@ -290,7 +290,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     if (script.autoOpenPreview && script.previewUrl && isPreviewSupportedInRuntime()) {
       const previewResult = await openUrlInPreview({
         threadRef: activeThreadRef,
-        url: resolveDiscoveredServerUrl(activeThreadRef.environmentId, script.previewUrl),
+        url: resolveBrowserNavigationUrl(activeThreadRef.environmentId, script.previewUrl),
         openPreview,
       });
       if (previewResult._tag === "Failure" && !isAtomCommandInterrupted(previewResult)) {
