@@ -504,6 +504,8 @@ export const OrchestratorMcpThreadInterruptInput = Schema.Struct({
   threadId: ThreadId,
   runId: Schema.optional(RunId),
   reason: Schema.optional(Schema.String.check(Schema.isMaxLength(2_000))),
+  /** Stop the running turn, hold queued work, end PR watches and stop delegated tasks; ignores runId. */
+  stop: Schema.optional(Schema.Boolean),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
 export type OrchestratorMcpThreadInterruptInput = typeof OrchestratorMcpThreadInterruptInput.Type;

@@ -1,3 +1,4 @@
+import { SubagentStopButton } from "./SubagentStopButton";
 import { useTranslation } from "../../i18n";
 
 import { useAtomValue } from "@effect/atom-react";
@@ -188,26 +189,30 @@ function AgentRow(props: {
     </View>
   );
 
-  if (childThreadId === null) {
-    return (
+  const content =
+    childThreadId === null ? (
       <View
         accessible
+        className="min-w-0 flex-1"
         accessibilityHint={t("Provider-managed agent. Its work appears in the transcript.")}
       >
         {row}
       </View>
+    ) : (
+      <Pressable
+        accessibilityRole="link"
+        accessibilityHint={t("Opens this agent's thread")}
+        onPress={() => props.onOpen(childThreadId)}
+        className="min-w-0 flex-1 active:opacity-70"
+      >
+        {row}
+      </Pressable>
     );
-  }
-
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityHint={t("Opens this agent's thread")}
-      onPress={() => props.onOpen(childThreadId)}
-      className="active:opacity-70"
-    >
-      {row}
-    </Pressable>
+    <View className="flex-row items-center">
+      {content}
+      <SubagentStopButton environmentId={props.environmentId} subagent={subagent} />
+    </View>
   );
 }
 

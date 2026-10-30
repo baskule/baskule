@@ -155,52 +155,10 @@ const make = Effect.gen(function* () {
             minutes: MANAGED_TUNNEL_PENDING_WINDOW_MINUTES,
           }),
         );
-        // Counts allocations, not links: a link is written only after its tunnel exists.
-        // Excludes this environment so relinking at the limit stays idempotent.
-        const allocation = relayManagedEndpointAllocations;
-        const withdrawnLink = (since?: typeof allocation.updatedAt) =>
-          exists(
-            new QueryBuilder()
-              .select({ userId: relayEnvironmentLinks.userId })
-              .from(relayEnvironmentLinks)
-              .where(
-                and(
-                  eq(relayEnvironmentLinks.userId, allocation.userId),
-                  eq(relayEnvironmentLinks.environmentId, allocation.environmentId),
-                  or(
-                    isNotNull(relayEnvironmentLinks.revokedAt),
-                    eq(relayEnvironmentLinks.managedTunnelsEnabled, false),
-                  ),
-                  since === undefined ? undefined : gte(relayEnvironmentLinks.updatedAt, since),
-                ),
-              ),
-          );
         const counted = yield* db
           .select({ activeTunnels: count() })
           .from(allocation)
-          .where(
-            and(
-              eq(allocation.userId, input.userId),
-              ne(allocation.environmentId, input.environmentId),
-              or(
-                // Reserved but not yet holding a tunnel. Release writes updatedAt = tunnelReleasedAt and
-                // a relink reserves before rewriting its link, so only a newer reservation counts here.
-                and(
-                  gt(allocation.updatedAt, pendingCutoff),
-                  or(
-                    isNull(allocation.tunnelReleasedAt),
-                    gt(allocation.updatedAt, allocation.tunnelReleasedAt),
-                  ),
-                  not(withdrawnLink(allocation.updatedAt)),
-                ),
-                and(
-                  isNotNull(allocation.tunnelId),
-                  isNull(allocation.tunnelReleasedAt),
-                  not(withdrawnLink()),
-                ),
-              ),
-            ),
-          )
+          .where(countedAllocations({ ...input, pendingCutoff, environment: ne }))
           .pipe(
             Effect.mapError(
               (cause) =>

@@ -54,16 +54,15 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
     canMaintain: canUpdateServer(sessionStates[index]!),
     updateState: updateStates[index]!,
   }));
-  const { targets: behindServers, skipped: unreachable } = collectServerUpdateTargets(
-    machines,
-    targetVersion,
-  );
-  // Desktop-managed servers use their app feed; only npm installs need to wait for publication.
-  const needsNpm = behindServers.some((server) => server.selfUpdate !== "desktop-managed");
-  const published = useNpmReleasePublished(needsNpm ? targetVersion : null);
+  const {
+    targets: behindServers,
+    skipped: unreachable,
+    waitForNpm,
+  } = collectServerUpdateTargets(machines, targetVersion, localUpdateVersion !== null);
+  const published = useNpmReleasePublished(waitForNpm.length > 0 ? targetVersion : null);
   const servers = published
     ? behindServers
-    : behindServers.filter((server) => server.selfUpdate === "desktop-managed");
+    : behindServers.filter((server) => !waitForNpm.includes(server));
   const skipped: ReadonlyArray<SkippedMachine> = [
     ...unreachable,
     ...behindServers
