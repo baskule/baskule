@@ -93,7 +93,7 @@ try {
   });
   async function waitFor(predicate) {
     for (let i = 0; i < 300; i++) {
-      if (predicate()) return;
+      if (await predicate()) return;
       await sleep(100);
     }
     throw new Error("viewer timed out: " + JSON.stringify(messages));
@@ -110,16 +110,40 @@ try {
     /human|control/i,
   );
   viewer.send(JSON.stringify({ type: "text", text: "Human input" }));
-  await sleep(300);
   messages.length = 0;
   viewer.send(JSON.stringify({ type: "releaseControl" }));
   await waitFor(() => messages.some((m) => m.type === "control" && m.controller === "agent"));
-  const field = await automate(
-    "evaluate",
-    { expression: "document.querySelector('input').value" },
-    tab.tabId,
+  await waitFor(async () => {
+    const field = await automate(
+      "evaluate",
+      { expression: "document.querySelector('input').value" },
+      tab.tabId,
+    );
+    return JSON.stringify(field).includes("Human input");
+  });
+  await call("markHeadless", { threadId: "smoke", tabId: tab.tabId });
+  const headless = await call("list", { threadId: "smoke" });
+  NodeAssert.equal(headless.sessions.find((session) => session.tabId === tab.tabId).headless, true);
+  const resized = await call("resize", {
+    threadId: "smoke",
+    tabId: tab.tabId,
+    viewport: { _tag: "freeform", width: 900, height: 700 },
+  });
+  NodeAssert.equal(resized.viewport.width, 900);
+  NodeAssert.equal(resized.viewport.height, 700);
+  viewer.close();
+  frames = 0;
+  messages.length = 0;
+  viewer = new WebSocket(
+    `ws://127.0.0.1:${port}/ws?threadId=smoke&tabId=${encodeURIComponent(tab.tabId)}`,
   );
-  NodeAssert.match(JSON.stringify(field), /Human input/);
+  viewer.on("message", (data, binary) => {
+    if (binary) {
+      frames++;
+      viewer.send(JSON.stringify({ type: "ack" }));
+    } else messages.push(JSON.parse(data));
+  });
+  await waitFor(() => frames > 0 && messages.some((m) => m.type === "control"));
   await automate(
     "evaluate",
     {
@@ -159,6 +183,9 @@ try {
       checks: [
         "real navigation",
         "shared tab list",
+        "headless transition",
+        "resize",
+        "viewer reconnect",
         "JPEG viewer frames",
         "human takeover blocks agent",
         "human text input",
