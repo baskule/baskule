@@ -20,7 +20,8 @@ computer-file persistence after down/up, then backs up and restores into empty v
 
 The cluster simulation uses two independent node projects, one computers project, a Caddy edge project, and an
 independent RustFS bucket. It binds test ports on the host's private IPv4 interface to simulate role-to-role
-traffic. It verifies two node leases and peer probes, chat and computer execution through the edge, and cell
+traffic. It excludes public and Docker bridge interfaces. Set `BASKULE_INSTALL_PRIVATE_IP` to choose among
+private host interfaces. It verifies two node leases and peer probes, chat and computer execution through the edge, and cell
 recovery after killing the owner node. This proves local role wiring, not network behavior across physical machines.
 
 The driver removes its own containers, networks, and volumes in a `finally` block. It never uses `scripts/stack`
@@ -33,3 +34,7 @@ the full packaging path. Anonymous GHCR pulls, public release downloads, and rea
 separate owner-controlled verification after publication.
 
 Pass `single` or `cluster` as the driver's last argument to rerun only that target after a classified failure.
+
+The single-machine driver saves private account and thread references in `.run/<run>/single-proof.json`.
+To rerun only restoration against the retained archive, pass `restore .run/<run>/single-proof.json` to the driver.
+The proof file contains test credentials and is not an uploaded artifact.

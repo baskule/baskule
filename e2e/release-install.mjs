@@ -11,7 +11,7 @@ import { createApi } from "./journeys/api.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const target = process.argv[2] ?? "all";
-if (!["all", "single", "cluster"].includes(target)) throw new Error("Choose all, single, or cluster");
+if (!["all", "single", "cluster", "restore"].includes(target)) throw new Error("Choose all, single, cluster, or restore");
 const version = process.env.BASKULE_INSTALL_VERSION ?? "local";
 const registry = process.env.BASKULE_INSTALL_REGISTRY ?? "ghcr.io/baskule";
 const image = `${registry}/baskule-celld:${version}`;
@@ -26,7 +26,7 @@ execFileSync(resolve(root, "scripts/release-install-assets.sh"), [assets], {
   env: { ...process.env, BASKULE_VERSION: version },
 });
 const projects = [];
-const containers = new Set();
+const containers = new Map();
 const fixtureVolumes = new Set();
 const fixtureNetworks = new Set();
 function command(args, { cwd = root, input, inputFile, output, allowFailure = false } = {}) {
@@ -122,7 +122,7 @@ async function fake(w, host) {
     args.push("--network", `${w.project}_baskule-net`, "--network-alias", "release-install-llm");
     endpoint = "http://release-install-llm:47601/v1";
   }
-  containers.add(name);
+  containers.set(name, "model");
   command([...args, "--entrypoint", "node", "-v", `${root}/platform/dev/fake-llm:/fake:ro`, computerImage,
     "/fake/server.mjs", "--host", "0.0.0.0"]);
   return { endpoint, name };
@@ -160,17 +160,25 @@ async function exercise(w, base, endpoint) {
   const networks = JSON.parse(command(["inspect", "-f", "{{json .NetworkSettings.Networks}}", gateway]));
   expect(Object.keys(networks)).toEqual([`${w.project}_baskule-computers`]);
   pass(`${w.project}: version, default password auth, admin sign-in, fake chat, platform-to-computer command, gateway network isolation`);
-  return { space, thread, user: { email: chatting.email, password: chatting.password } };
+  return { space, thread, admin, user: { email: chatting.email, password: chatting.password } };
 }
 async function persisted(base, previous) {
-  const api = createApi({ urls: { loopback: base, front: base }, admin });
-  await api.adminSession();
+  const api = createApi({ urls: { loopback: base, front: base }, admin: previous.admin ?? admin });
+  if (previous.admin) await api.adminSession();
   const person = await api.Person.signIn(previous.user.email, previous.user.password);
-  const client = await rpc(person, previous.space);
+  const client = await rpc(person, previous.space ?? api.personalSpace(person));
   try {
-    const state = api.watchThread(client, previous.thread);
-    await api.waitFor("chat persisted", () => state.assistantText().includes("RELEASE_INSTALL_CHAT_OK"));
-    state.stop();
+    if (previous.thread) {
+      const state = api.watchThread(client, previous.thread);
+      await api.waitFor("chat persisted", () => state.assistantText().includes("RELEASE_INSTALL_CHAT_OK"));
+      state.stop();
+    } else {
+      const shell = api.watchShell(client);
+      await api.waitFor("stored threads loaded", () => shell.ready);
+      const projections = await Promise.all([...shell.threads.keys()].map(threadId => client.ok("orchestration.getThreadProjection", { threadId })));
+      expect(JSON.stringify(projections)).toContain("RELEASE_INSTALL_CHAT_OK");
+      shell.stop();
+    }
     const result = await client.ok("projects.readFile", { cwd: "/sandbox/space", relativePath: "release-proof.txt" });
     expect(JSON.stringify(result)).toContain("RELEASE_INSTALL_DISK_OK");
   } finally { client.close(); await client.closed; }
@@ -183,6 +191,7 @@ async function single() {
   await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-openshell", "baskule-computerd"]);
   const llm = await fake(w);
   const result = await exercise(w, base, llm.endpoint);
+  writeFileSync(resolve(run, "single-proof.json"), JSON.stringify({ ...result, directory: w.directory }), { mode: 0o600 });
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
   envFile(w.file, { ADMIN_PASSWORD: "" });
   // Use exactly the documented stop/backup/start operations from the install directory.
@@ -201,13 +210,33 @@ async function single() {
   pass("single-machine backup restores chat and computer disk into empty volumes");
   w.dc(["down", "-v"]);
 }
+async function restoreOnly() {
+  if (!process.argv[3]) throw new Error("Pass the private single-proof.json path");
+  const previous = JSON.parse(readFileSync(resolve(process.argv[3]), "utf8"));
+  const p = await port();
+  const base = `http://127.0.0.1:${p}`;
+  const w = world("single", adminVars);
+  copyFileSync(resolve(previous.directory, ".env"), w.file);
+  envFile(w.file, { BASKULE_REGISTRY: registry, BASKULE_VERSION: version, BASKULE_PORT: p, PUBLIC_ORIGINS: base });
+  w.dc(["run", "--rm", "-T", "restore"], { inputFile: resolve(evidence, "single-backup.tar.gz") });
+  w.dc(["up", "-d"]);
+  await ready(`${base}/version.json`);
+  await persisted(base, previous);
+  pass("focused restore preserves chat and re-admits the computer disk into empty volumes");
+}
 async function cluster() {
-  const host = Object.values(networkInterfaces()).flat().find((a) => a.family === "IPv4" && !a.internal)?.address;
-  if (!host) throw new Error("Cluster simulation needs a private host IPv4 interface");
+  const addresses = Object.entries(networkInterfaces()).filter(([name]) => !/^(docker|br-|veth)/.test(name))
+    .flatMap(([, entries]) => entries).filter(({ family, internal, address }) => {
+      const [a, b] = address.split(".").map(Number);
+      return family === "IPv4" && !internal && (a === 10 || a === 192 && b === 168 ||
+        a === 172 && b >= 16 && b <= 31 || a === 100 && b >= 64 && b <= 127);
+    });
+  const host = process.env.BASKULE_INSTALL_PRIVATE_IP ?? addresses[0]?.address;
+  if (!addresses.some(a => a.address === host)) throw new Error("Cluster simulation needs a private host IPv4 interface");
   const storagePort = await port();
   const storage = `${id}-s3`;
   const storageVolume = `${id}-s3`;
-  containers.add(storage); fixtureVolumes.add(storageVolume);
+  containers.set(storage, "storage"); fixtureVolumes.add(storageVolume);
   fixtureNetworks.add(storage); command(["network", "create", storage]);
   const key = randomBytes(32).toString("hex");
   command(["run", "-d", "--name", storage, "--network", storage, "-p", `${host}:${storagePort}:47093`,
@@ -237,8 +266,13 @@ async function cluster() {
   edge.dc(["up", "-d"]);
   await health(a, ["node"]); await health(b, ["node"]);
   await health(computers, ["baskule-openshell", "baskule-computerd"]);
-  const fleet = a.dc(["exec", "-T", "node", "sh", "-c", 'celld diagnose --read-only --json --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT"']);
-  writeFileSync(resolve(evidence, "cluster-fleet.json"), fleet);
+  let fleet;
+  await expect.poll(() => {
+    fleet = a.dc(["exec", "-T", "node", "sh", "-c", 'celld diagnose --read-only --json --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT"'], { allowFailure: true });
+    writeFileSync(resolve(evidence, "cluster-fleet.json"), fleet);
+    const peers = fleet.split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line)).filter(row => row.check?.startsWith("peer "));
+    return peers.length === 2 && peers.every(row => row.verdict === "ok");
+  }, { message: "both fleet peers answer signed probes", timeout: 90_000 }).toBe(true);
   expect(fleet).toMatch(/2 node lease/);
   expect(fleet).toContain(`peer ${id}-a`); expect(fleet).toContain(`peer ${id}-b`);
   pass("cluster forms a two-node fleet with an external bucket");
@@ -257,14 +291,16 @@ async function cluster() {
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
 }
 try {
-  if (target !== "cluster") await single();
-  if (target !== "single") await cluster();
+  if (target === "restore") await restoreOnly();
+  if (target === "all" || target === "single") await single();
+  if (target === "all" || target === "cluster") await cluster();
 } finally {
-  for (const name of containers) command(["rm", "-f", name], { allowFailure: true });
+  for (const [name, kind] of containers) if (kind === "model") command(["rm", "-f", name], { allowFailure: true });
   for (const w of [...projects].reverse()) {
     writeFileSync(resolve(evidence, `${w.project}.log`), w.dc(["logs", "--no-color"], { allowFailure: true }));
     w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
   }
+  for (const [name, kind] of containers) if (kind === "storage") command(["rm", "-f", name], { allowFailure: true });
   for (const volume of fixtureVolumes) command(["volume", "rm", volume], { allowFailure: true });
   for (const network of fixtureNetworks) command(["network", "rm", network], { allowFailure: true });
 }

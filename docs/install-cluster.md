@@ -168,9 +168,10 @@ edge is also a single point of failure; use your own redundant HTTPS load balanc
 ## Back up, update, and stop
 
 For a consistent backup, stop platform nodes and the computers role, then snapshot the external bucket. On the
-computers host, run `docker compose run --rm -T backup > computers.tar.gz`. Save that archive and each role's
+computers host, run `umask 077`, then `docker compose run --rm -T backup > computers.tar.gz`. Save that archive and each role's
 private `.env` and optional `config/auth.json` off the machines. Restore the bucket first, restore the computers archive into empty volumes with
-`docker compose run --rm -T restore < computers.tar.gz`, then start the roles. Node caches can be recreated.
+`docker compose run --rm -T restore < computers.tar.gz`, then start the roles. Restore recreates computer
+containers to re-admit their persistent disks; files under `/sandbox/space` remain. Node caches can be recreated.
 
 Read the new release notes and back up before updating. Download the target release's role assets, keep your
 configuration, and update `BASKULE_VERSION` on each image-based role. For platform nodes, run `docker compose pull`

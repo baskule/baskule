@@ -128,7 +128,8 @@ docker compose run --rm -T restore < backup.tar.gz
 docker compose up -d
 ```
 
-The restore job refuses nonempty destination volumes. Use the same release for restore before updating.
+The restore job refuses nonempty destination volumes. Restored computers are recreated through OpenShell to
+re-admit their disks. Persistent files under `/sandbox/space` remain; other container files are temporary. Use the same release for restore before updating.
 Deleting volumes destroys the installation's local data; do so only after preserving a backup.
 
 ## Update and stop

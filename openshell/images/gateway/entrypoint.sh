@@ -66,14 +66,17 @@ done
 curl -sf -o /dev/null http://127.0.0.1:47097/readyz
 want=$(docker image inspect -f '{{.Id}}' "${REGISTRY:+$REGISTRY/}baskule-computer:$TAG")
 ids=$(docker ps -aq --filter label=baskule.managed=true --filter label=openshell.ai/isolation-role=sandbox)
+restored=0
+[ ! -f /var/lib/openshell/.baskule-restore ] || restored=1
 if [ -n "$ids" ]; then
   names=$(docker inspect -f '{{.Image}} {{index .Config.Labels "openshell.ai/sandbox-name"}}' $ids |
-    awk -v want="$want" '$1 != want && $2 ~ /^os-/ {print $2}')
+    awk -v want="$want" -v restored="$restored" '(restored || $1 != want) && $2 ~ /^os-/ {print $2}')
   for name in $names; do
     openshell --gateway-endpoint http://127.0.0.1:47095 sandbox delete "$name" >/dev/null
     log "updated computer $name (disk kept)"
   done
 fi
+rm -f /var/lib/openshell/.baskule-restore
 touch /var/run/baskule-ready
 # Any child exiting takes the container down (compose restarts it).
 set +e

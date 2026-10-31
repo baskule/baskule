@@ -264,5 +264,5 @@ does not stop computers using a guessed policy.
 
 ## Upgrade
 
-Back up and update the installation using the [deployment upgrade procedure](../deploy/README.md#upgrade).
+Back up and update the installation using the [installation update procedure](install.md#update-and-stop).
 Follow the release's data-wipe instructions when required, then configure the product in the admin area.

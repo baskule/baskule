@@ -72,6 +72,10 @@ services:
     restart: "no"
     environment: *s3
     networks: [baskule-net]
+    depends_on:
+      baskule-rustfs:
+        condition: service_healthy
+        required: false
 
   baskule-celld-a:
     <<: *celld-node
@@ -216,6 +220,8 @@ services:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     entrypoint: [baskule-celld-job, backup]
     network_mode: none
+    logging:
+      driver: none
     volumes:
       - baskule-rustfs:/backup/rustfs:ro
       - baskule-openshell-state:/backup/openshell-state:ro
@@ -226,6 +232,8 @@ services:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     entrypoint: [baskule-celld-job, restore]
     network_mode: none
+    logging:
+      driver: none
     volumes:
       - baskule-rustfs:/backup/rustfs
       - baskule-openshell-state:/backup/openshell-state

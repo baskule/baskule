@@ -34,7 +34,9 @@ case "${1:-}" in
     for directory in /backup/*; do
       [ -z "$(ls -A "$directory")" ] || { log "restore requires empty volumes"; exit 1; }
     done
-    exec tar -C /backup -xzf -
+    tar -C /backup -xzf -
+    # Restored disks need fresh OpenShell admission records, while their data and keys stay intact.
+    touch /backup/openshell-state/.baskule-restore
     ;;
   bootstrap)
     wait_s3
