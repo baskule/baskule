@@ -2740,6 +2740,15 @@ describe("OrchestratorMcpService thread list", () => {
         projectId: ProjectId.make("project:a"),
         snoozed: true,
       });
+      assert.equal(listed.threads[0]?.link, "[thread:a-snoozed](t3-thread://v1/thread:a-snoozed)");
+      const external = yield* mcp.listThreads(
+        { ...client, client: { ...client.client!, webOrigin: "https://box.example.ts.net" } },
+        { allProjects: true, snoozed: true },
+      );
+      assert.equal(
+        external.threads[0]?.link,
+        "https://box.example.ts.net/environment%3Athread-list/thread%3Aa-snoozed",
+      );
       assert.equal(listed.projectId, null);
       assert.deepStrictEqual(
         listed.threads.map((thread) => [thread.threadId, thread.projectId]),

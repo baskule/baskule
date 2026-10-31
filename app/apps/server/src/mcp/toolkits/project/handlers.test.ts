@@ -215,7 +215,7 @@ it.effect(
       expect(belowCeiling.result).toMatchObject({
         projectId: belowCeiling.projectId,
         modelSelection: belowCeiling.modelSelection,
-        link: `[Fix](t3-thread://v1/${belowCeiling.launched[0]?.threadId})`,
+        link: `[${belowCeiling.launched[0]?.threadId}](t3-thread://v1/${belowCeiling.launched[0]?.threadId})`,
       });
       expect(belowCeiling.launched[0]?.runtimeMode).toBe("approval-required");
       expect(belowCeiling.launched[0]?.initialMessage?.senderThreadId).toBeUndefined();
@@ -226,7 +226,7 @@ it.effect(
       });
       expect(aboveCeiling.launched[0]?.runtimeMode).toBe("auto-accept-edits");
       expect(aboveCeiling.result).toMatchObject({
-        link: `[Fix](t3-thread://v1/${aboveCeiling.launched[0]?.threadId})`,
+        link: `https://box.example.ts.net/environment/${encodeURIComponent(aboveCeiling.launched[0]!.threadId!)}`,
       });
 
       const requested = yield* launchWith("full-access", "approval-required", {

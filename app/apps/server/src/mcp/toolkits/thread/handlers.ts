@@ -1,4 +1,4 @@
-import { formatThreadLink } from "@t3tools/shared/threadLinks";
+import { threadLinkFor } from "../../McpInvocationContext.ts";
 import {
   type CommandId,
   type RuntimeRequestId,
@@ -115,7 +115,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   ),
   t3_thread_search: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
-      const { caller } = yield* readCaller();
+      const { caller, scope } = yield* readCaller();
       const threadSearch = yield* ThreadSearch.ThreadSearch;
       const { matches } = yield* threadSearch
         .searchThreads({ ...input, projectId: input.projectId ?? caller?.projectId })
@@ -123,7 +123,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       return {
         matches: matches.map((match) => ({
           ...match,
-          link: formatThreadLink(match.threadId, match.title),
+          link: threadLinkFor(scope, match.threadId),
         })),
       };
     }),
