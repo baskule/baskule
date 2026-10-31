@@ -130,7 +130,7 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft, view:
       <PageSection
         title={t("Import a plugin")}
         description={t(
-          "A Claude or Codex plugin, one skill folder, or a folder of skills. You see what it contains before anything is saved.",
+          "A Claude or Codex plugin, or a folder of skills. You review it before anything is saved.",
         )}
       >
         <form
@@ -213,7 +213,7 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft, view:
       <PageSection
         title={t("Add an MCP server")}
         description={t(
-          "Tools from a server on the web, such as one your company runs. Enter its address, or paste the JSON settings its documentation gives.",
+          "Tools from a server on the web. Enter its address, or paste the settings from its documentation.",
         )}
       >
         <form
@@ -278,9 +278,6 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft, view:
         >
           <span className="text-sm text-foreground">
             {t("Steps the assistant follows for one kind of task, with any files they need.")}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {t("It can stand alone, or come with MCP servers in the same plugin.")}
           </span>
         </PageRow>
       </PageSection>

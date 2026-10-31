@@ -5,7 +5,6 @@ import type { SkillFieldError, SkillWarning } from "@t3tools/contracts/baskule-p
 import type {
   CredentialMode,
   OmissionCode,
-  PluginServer,
   PluginSource,
   PluginStatus,
 } from "@t3tools/contracts/baskule-plugins";
@@ -75,14 +74,6 @@ export function statusText(status: PluginStatus, name: string): string {
   }
 }
 
-const hostOf = (url: string) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-};
-
 /** `owner/repo`, then the folder when the plugin is one folder of the repository. */
 export function githubName(source: Extract<PluginSource, { type: "github" }>): string {
   const repo = source.repo.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "");
@@ -101,10 +92,6 @@ export function sourceLabel(source: PluginSource): string {
     case "custom":
       return t("Made in Baskule");
   }
-}
-
-export function serverHost(server: PluginServer): string {
-  return hostOf(server.url);
 }
 
 export const CREDENTIAL_MODES: ReadonlyArray<CredentialMode> = [
@@ -177,17 +164,32 @@ export function skillFieldErrorText(error: SkillFieldError): string {
   }
 }
 
-/** What may not work outside Claude Code. Advice only: the skill can still be saved. */
-export function skillWarningText(warning: SkillWarning): string {
+/** What may not work outside Claude Code, and where: the instructions, or one of the skill's files.
+ * Advice only: the skill can still be saved. */
+export function skillWarningText(warning: SkillWarning, file: string | null): string {
   switch (warning) {
     case "slash_command":
-      return t("This skill uses a slash command. Baskule may not have that command.");
+      return file
+        ? t("{{file}} uses a slash command, which Baskule may not have.", { file })
+        : t("The instructions use a slash command, which Baskule may not have.");
     case "claude_only_tool":
-      return t("This skill names a tool specific to Claude Code. It may need changing here.");
+      return file
+        ? t("{{file}} names a tool made for Claude Code. It may need changing.", { file })
+        : t("The instructions name a tool made for Claude Code. They may need changing.");
     case "software_install":
-      return t("This skill asks to install software. The computer may need setup first.");
+      return file
+        ? t("{{file}} asks to install software. The computer may need setting up first.", {
+            file,
+          })
+        : t("The instructions ask to install software. The computer may need setting up first.");
     case "secret_in_file":
-      return t("This file may contain a password or key. Remove it before sharing the skill.");
+      return file
+        ? t("{{file}} may contain a password or key. Remove it before sharing the skill.", {
+            file,
+          })
+        : t(
+            "The instructions may contain a password or key. Remove it before sharing the skill.",
+          );
   }
 }
 

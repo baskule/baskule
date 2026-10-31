@@ -1,7 +1,7 @@
-// baskule: one installed plugin: paused or not, which groups may use it, how its servers sign in
-// (with the write-only organization key or vendor app), which tools it allows, what it contains, where it
-// came from, and removal. A plugin an admin brought opens in the plugin editor and downloads as a package;
-// skills from the catalog or GitHub are changed through a copy.
+// baskule: one installed plugin: paused or not, who may use it, and what is left to set up (a vendor app,
+// organization keys) as numbered steps; then what the service needs, the tools it allows and its skills.
+// Addresses, sign-in methods and its source wait under Technical details. A plugin an admin brought opens
+// in the plugin editor and downloads as a package; skills from the catalog or GitHub change through a copy.
 import { catalogService, catalogVendor } from "@t3tools/contracts/baskule-catalog";
 import type {
   Group,
@@ -28,22 +28,32 @@ import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";
 import { Switch } from "../../../components/ui/switch";
 import { notifyPluginError, pluginErrorText, pluginsApi, toolsErrorText } from "../../plugins/api";
-import { PluginContents, PluginIcon } from "../../plugins/PluginParts";
+import {
+  DocsLink,
+  PluginContents,
+  PluginIcon,
+  ServiceNeedsList,
+} from "../../plugins/PluginParts";
 import {
   contentsKind,
   contentsLabel,
-  credentialDescription,
   credentialLabel,
   groupName,
-  serverHost,
   sourceLabel,
 } from "../../plugins/presentation";
 import { confirmAction, FormField, notifySuccess, RowIcon, useApiResource } from "../../ui";
-import { PageHeading, PageRow, PageSection } from "../../views/BaskulePage";
+import { CopyField } from "../../views/AddPersonDialog";
+import { PageDisclosure, PageHeading, PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
 import { PluginEditor } from "./PluginEditor";
 import { ServerTools } from "./ServerTools";
-import { VendorSetup } from "./VendorSetup";
+import {
+  ClientMethodField,
+  SetupStep,
+  vendorCallback,
+  VendorSetupSteps,
+  type ClientMethod,
+} from "./VendorSetup";
 
 /** Saves a package under the plugin's name. */
 function saveZip(blob: Blob, name: string) {
@@ -76,6 +86,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   const data = useApiResource(load);
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<Opened | null>(null);
+  const [method, setMethod] = useState<ClientMethod>("client_secret_post");
 
   const run = async (key: string, action: () => Promise<unknown>, failure: string) => {
     setBusy(key);
@@ -242,6 +253,16 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
     );
   }
 
+  const appNeeded = fromCatalog ? vendorApp !== undefined : ownAccounts.length > 0;
+  // A vendor app is a setup step once people need it or one is saved; otherwise it is optional.
+  const appInSteps =
+    appNeeded &&
+    (plugin.vendorConfigured || ownAccounts.some((server) => unfinished.has(server.name)));
+  const keyServers = plugin.servers.filter((server) => server.credential === "organization");
+  const vendorName = vendor?.name ?? plugin.name;
+  const service = fromCatalog ? catalogService(plugin.id) : undefined;
+  const version = source.type === "github" ? source.sha.slice(0, 7) : null;
+
   return (
     <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
@@ -255,7 +276,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
               />
             }
             title={plugin.name}
-            description={`${contentsLabel(contentsKind(plugin))} · ${sourceLabel(plugin.source)}`}
+            description={contentsLabel(contentsKind(plugin))}
           >
             {plugin.description ? (
               <p className="pt-1 text-sm text-foreground/80">{plugin.description}</p>
@@ -263,48 +284,46 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
           </PageHeading>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 px-3 sm:px-4">
-          <>
-            {fromCatalog ? null : (
-              <Button
-                size="sm"
-                variant="outline"
-                aria-label={t("Edit {{name}}", { name: plugin.name })}
-                disabled={busy !== null}
-                onClick={() => open(false)}
-              >
-                {busy === "edit" ? <Spinner size="sm" /> : <PencilIcon />}
-                {t("Edit")}
-              </Button>
-            )}
+          {fromCatalog ? null : (
             <Button
               size="sm"
               variant="outline"
-              aria-label={
-                plugin.enabled
-                  ? t("Pause {{name}}", { name: plugin.name })
-                  : t("Resume {{name}}", { name: plugin.name })
-              }
+              aria-label={t("Edit {{name}}", { name: plugin.name })}
               disabled={busy !== null}
-              onClick={() =>
-                void run(
-                  "enabled",
-                  () => pluginsApi.update(plugin.id, { enabled: !plugin.enabled }),
-                  plugin.enabled
-                    ? t("Could not pause {{name}}", { name: plugin.name })
-                    : t("Could not resume {{name}}", { name: plugin.name }),
-                )
-              }
+              onClick={() => open(false)}
             >
-              {busy === "enabled" ? (
-                <Spinner size="sm" />
-              ) : plugin.enabled ? (
-                <PauseIcon />
-              ) : (
-                <PlayIcon />
-              )}
-              {plugin.enabled ? t("Pause") : t("Resume")}
+              {busy === "edit" ? <Spinner size="sm" /> : <PencilIcon />}
+              {t("Edit")}
             </Button>
-          </>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={
+              plugin.enabled
+                ? t("Pause {{name}}", { name: plugin.name })
+                : t("Resume {{name}}", { name: plugin.name })
+            }
+            disabled={busy !== null}
+            onClick={() =>
+              void run(
+                "enabled",
+                () => pluginsApi.update(plugin.id, { enabled: !plugin.enabled }),
+                plugin.enabled
+                  ? t("Could not pause {{name}}", { name: plugin.name })
+                  : t("Could not resume {{name}}", { name: plugin.name }),
+              )
+            }
+          >
+            {busy === "enabled" ? (
+              <Spinner size="sm" />
+            ) : plugin.enabled ? (
+              <PauseIcon />
+            ) : (
+              <PlayIcon />
+            )}
+            {plugin.enabled ? t("Pause") : t("Resume")}
+          </Button>
         </div>
       </div>
       {!plugin.enabled ? (
@@ -327,9 +346,13 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
 
       <PageSection
         title={t("Who can use it")}
-        description={t(
-          "Their people can use it in their chats, and connect their own account in Settings → Plugins if it needs one.",
-        )}
+        description={
+          ownAccounts.length > 0
+            ? `${t("People in these groups can use it in their chats.")} ${t(
+                "Each person connects their own account in Settings → Plugins. In team spaces, it works only where the space owner allows personal accounts.",
+              )}`
+            : t("People in these groups can use it in their chats.")
+        }
         action={
           <Button
             size="sm"
@@ -381,31 +404,52 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         })}
       </PageSection>
 
-      {plugin.servers.length > 0 ? (
+      {appInSteps || keyServers.length > 0 ? (
         <PageSection
-          title={t("Accounts")}
-          description={t("How each server signs in to its service.")}
+          title={t("Setup")}
+          description={
+            unfinished.size > 0
+              ? t("People can use it once these steps are done.")
+              : t("Everything is set up.")
+          }
         >
-          {plugin.servers.map((server) => (
-            <ServerSettings
-              key={server.name}
-              plugin={plugin}
-              server={server}
-              onKeyChanged={data.reload}
-            />
-          ))}
+          <ol aria-label={t("Setup steps")} className="flex flex-col divide-y divide-border/50">
+            {appInSteps ? (
+              <VendorSetupSteps
+                vendor={plugin.vendor}
+                name={vendorName}
+                configured={plugin.vendorConfigured}
+                docs={vendorApp?.docs}
+                method={method}
+                first={1}
+                onChanged={data.reload}
+              />
+            ) : null}
+            {keyServers.map((server, index) => (
+              <OrganizationKeyStep
+                key={server.name}
+                number={(appInSteps ? 3 : 1) + index}
+                title={
+                  keyServers.length > 1
+                    ? t("Enter the key for {{server}}", { server: server.name })
+                    : t("Enter the organization key")
+                }
+                done={!unfinished.has(server.name)}
+                plugin={plugin}
+                server={server}
+                onChanged={data.reload}
+              />
+            ))}
+          </ol>
         </PageSection>
       ) : null}
 
-      {(fromCatalog ? vendorApp : ownAccounts.length > 0) ? (
-        <VendorSetup
-          vendor={plugin.vendor}
-          name={vendor?.name ?? plugin.name}
-          configured={plugin.vendorConfigured}
-          required={ownAccounts.some((server) => unfinished.has(server.name))}
-          docs={vendorApp?.docs}
-          onChanged={data.reload}
-        />
+      {service && service.prerequisites.length > 0 ? (
+        <PageSection title={t("What it needs")} action={<DocsLink service={service} />}>
+          <div className="px-3 py-3 sm:px-4">
+            <ServiceNeedsList service={service} />
+          </div>
+        </PageSection>
       ) : null}
 
       {plugin.servers.length > 0 ? (
@@ -416,6 +460,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
           {plugin.servers.map((server) => (
             <SavedServerTools
               key={server.name}
+              title={plugin.servers.length > 1 ? server.name : plugin.name}
               pluginId={plugin.id}
               server={server}
               busy={busy}
@@ -438,44 +483,66 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         </PageSection>
       ) : null}
 
-      <PageSection
-        title={t("What it contains")}
-        description={
-          pinned && plugin.skills.length > 0
-            ? t("Its skills stay as published. Make your own copy to change them.")
-            : undefined
-        }
-        action={
-          pinned && plugin.skills.length > 0 ? (
-            <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => open(true)}>
-              {busy === "copy" ? <Spinner size="sm" /> : <CopyIcon />}
-              {t("Make your own copy")}
-            </Button>
-          ) : undefined
-        }
-      >
-        <div className="px-3 py-4 sm:px-4">
-          <PluginContents plugin={plugin} />
-        </div>
-      </PageSection>
-
-      <PageSection title={t("Source")}>
-        <PageRow
-          trailing={
-            fromCatalog ? null : (
-              <Button size="sm" variant="outline" disabled={busy !== null} onClick={download}>
-                {busy === "download" ? <Spinner size="sm" /> : <DownloadIcon />}
-                {t("Download as zip")}
+      {plugin.skills.length > 0 || plugin.omitted.length > 0 ? (
+        <PageSection
+          title={t("What it contains")}
+          description={
+            pinned && plugin.skills.length > 0
+              ? t("Its skills stay as published. Make your own copy to change them.")
+              : undefined
+          }
+          action={
+            pinned && plugin.skills.length > 0 ? (
+              <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => open(true)}>
+                {busy === "copy" ? <Spinner size="sm" /> : <CopyIcon />}
+                {t("Make your own copy")}
               </Button>
-            )
+            ) : undefined
           }
         >
-          <span className="text-sm text-foreground [overflow-wrap:anywhere]">
-            {sourceLabel(plugin.source)}
-          </span>
-          {sourceDetail(plugin) ? (
+          <div className="px-3 py-4 sm:px-4">
+            <PluginContents plugin={plugin} />
+          </div>
+        </PageSection>
+      ) : null}
+
+      <PageDisclosure title={t("Technical details")}>
+        {appNeeded ? (
+          <div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
+            <CopyField label={t("Callback address")} value={vendorCallback()} />
+            <ClientMethodField value={method} onChange={setMethod} />
+            {appInSteps ? null : (
+              <OptionalVendorApp
+                vendor={plugin.vendor}
+                name={vendorName}
+                docs={vendorApp?.docs}
+                method={method}
+                onChanged={data.reload}
+              />
+            )}
+          </div>
+        ) : null}
+        {plugin.servers.map((server) => (
+          <PageRow key={server.name}>
+            <span className="text-sm text-foreground [overflow-wrap:anywhere]">{server.name}</span>
             <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-              {sourceDetail(plugin)}
+              {server.url}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {credentialLabel(server.credential)}
+            </span>
+          </PageRow>
+        ))}
+        <PageRow>
+          <span className="text-sm text-foreground">{t("Source")}</span>
+          <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+            {sourceLabel(source)}
+            {source.type === "github" && source.path ? ` · ${source.repo} · ${source.path}` : null}
+            {source.type === "github" && !source.path ? ` · ${source.repo}` : null}
+          </span>
+          {version ? (
+            <span className="text-xs text-muted-foreground">
+              {t("Version {{version}}", { version })}
             </span>
           ) : null}
         </PageRow>
@@ -485,9 +552,24 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
             {new Date(plugin.createdAt).toLocaleString()}
           </span>
         </PageRow>
-      </PageSection>
+      </PageDisclosure>
 
-      <PageSection title={t("Remove")}>
+      <PageSection title={fromCatalog ? t("Remove") : t("Download or remove")}>
+        {fromCatalog ? null : (
+          <PageRow
+            trailing={
+              <Button size="sm" variant="outline" disabled={busy !== null} onClick={download}>
+                {busy === "download" ? <Spinner size="sm" /> : <DownloadIcon />}
+                {t("Download as zip")}
+              </Button>
+            }
+          >
+            <span className="text-sm text-foreground">{t("Download a copy")}</span>
+            <span className="text-xs text-muted-foreground">
+              {t("In the standard plugin format, to keep it or add it elsewhere.")}
+            </span>
+          </PageRow>
+        )}
         <PageRow
           trailing={
             <Button
@@ -526,7 +608,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
           <span className="text-xs text-muted-foreground">
             {fromCatalog
               ? t("You can add it again later from the catalog.")
-              : t("To keep a copy, download it as a zip first.")}
+              : t("To keep a copy, download it first.")}
           </span>
         </PageRow>
       </PageSection>
@@ -534,60 +616,62 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   );
 }
 
-function sourceDetail(plugin: Plugin): string | null {
-  const source = plugin.source;
-  switch (source.type) {
-    case "catalog":
-      return catalogService(plugin.id)?.docs ?? null;
-    case "github":
-      return source.path ? `${source.repo} · ${source.path}` : source.repo;
-    case "upload":
-    case "custom":
-      return null;
-  }
-}
-
-function ServerSettings({
-  plugin,
-  server,
-  onKeyChanged,
+/** A vendor app nobody needs yet: offered for services that turn out not to register Baskule. */
+function OptionalVendorApp({
+  vendor,
+  name,
+  docs,
+  method,
+  onChanged,
 }: {
-  readonly plugin: Plugin;
-  readonly server: PluginServer;
-  readonly onKeyChanged: () => Promise<unknown>;
+  readonly vendor: string;
+  readonly name: string;
+  readonly docs: string | undefined;
+  readonly method: ClientMethod;
+  readonly onChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
-  return (
-    <div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-sm text-foreground">{server.name}</span>
-          <span className="truncate text-xs text-muted-foreground">{serverHost(server)}</span>
-        </div>
-        <span className="text-sm text-foreground sm:text-end">
-          {credentialLabel(server.credential)}
+  const [opened, setOpened] = useState(false);
+  return opened ? (
+    <ol
+      aria-label={t("Your own app at {{name}}", { name })}
+      className="flex flex-col divide-y divide-border/50 rounded-lg border border-border/60"
+    >
+      <VendorSetupSteps
+        vendor={vendor}
+        name={name}
+        configured={false}
+        docs={docs}
+        method={method}
+        first={1}
+        onChanged={onChanged}
+      />
+    </ol>
+  ) : (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm text-foreground">{t("Your own app at {{name}}", { name })}</span>
+        <span className="text-xs text-muted-foreground">
+          {t("Only needed if {{name}} doesn't let Baskule register itself.", { name })}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {credentialDescription(server.credential)}
-        {server.credential === "user-oauth"
-          ? ` ${t("In team spaces it works only where the space owner allows personal accounts.")}`
-          : ""}
-      </p>
-      {server.credential === "organization" ? (
-        <OrganizationKeyForm plugin={plugin} server={server} onChanged={onKeyChanged} />
-      ) : null}
+      <Button size="sm" variant="outline" onClick={() => setOpened(true)}>
+        {t("Set up")}
+      </Button>
     </div>
   );
 }
 
 /** Lists every tool of a saved server on request, with the switches saved for it. */
 function SavedServerTools({
+  title,
   pluginId,
   server,
   busy,
   onAllowed,
 }: {
+  /** The plugin's name when it has one server, otherwise the server's. */
+  readonly title: string;
   readonly pluginId: string;
   readonly server: PluginServer;
   readonly busy: string | null;
@@ -609,7 +693,7 @@ function SavedServerTools({
     <div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-sm text-foreground">{server.name}</span>
+          <span className="truncate text-sm text-foreground">{title}</span>
           <span className="truncate text-xs text-muted-foreground">
             {off === 0
               ? t("Every tool is allowed")
@@ -647,34 +731,40 @@ function SavedServerTools({
   );
 }
 
-/** Write-only: the key is sent once and never read back, like the AI key. */
-function OrganizationKeyForm({
+/** One server's organization key as a setup step. Write-only: the key is sent once and never read
+ * back. Its header names are changed in the editor. */
+function OrganizationKeyStep({
+  number,
+  title,
+  done,
   plugin,
   server,
   onChanged,
 }: {
+  readonly number: number;
+  readonly title: string;
+  readonly done: boolean;
   readonly plugin: Plugin;
   readonly server: PluginServer;
   readonly onChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
-  const [entries, setEntries] = useState(() =>
-    (server.keyHeaders?.length ? server.keyHeaders : ["Authorization"]).map((header) => ({
-      header,
-      value: "",
-    })),
-  );
-  const ready = entries.every((entry) => entry.header.trim() && entry.value);
+  const headers = server.keyHeaders?.length ? server.keyHeaders : ["Authorization"];
+  const [values, setValues] = useState<ReadonlyArray<string>>(() => headers.map(() => ""));
+  const [replacing, setReplacing] = useState(false);
   const [saving, setSaving] = useState<"save" | "clear" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const ready = headers.every((_, at) => values[at]);
+  const editing = !done || replacing;
 
-  const save = async (headers: Record<string, string> | null) => {
-    setSaving(headers ? "save" : "clear");
+  const save = async (keys: Record<string, string> | null) => {
+    setSaving(keys ? "save" : "clear");
     setError(null);
     return (async () => {
-      await pluginsApi.secret(plugin.id, { server: server.name, headers });
-      setEntries((current) => current.map((entry) => ({ ...entry, value: "" })));
-      notifySuccess(headers ? t("Key saved") : t("Key removed"));
+      await pluginsApi.secret(plugin.id, { server: server.name, headers: keys });
+      setValues(headers.map(() => ""));
+      setReplacing(false);
+      notifySuccess(keys ? t("Key saved") : t("Key removed"));
       await onChanged();
     })()
       .catch((cause: unknown) => {
@@ -686,76 +776,92 @@ function OrganizationKeyForm({
   };
 
   return (
-    <form
-      className="flex flex-col gap-3 rounded-lg border border-border/60 p-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (ready)
-          void save(Object.fromEntries(entries.map((entry) => [entry.header.trim(), entry.value])));
-      }}
-    >
-      {entries.map((entry, index) => (
-        <FormField
-          key={index}
-          label={entries.length === 1 ? t("Key") : t("Key {{number}}", { number: index + 1 })}
-          type="password"
-          autoComplete="new-password"
-          value={entry.value}
-          onChange={(event) => {
-            const value = event.currentTarget.value;
-            setEntries((current) =>
-              current.map((item, at) => (at === index ? { ...item, value } : item)),
-            );
+    <SetupStep number={number} done={done} title={title}>
+      {editing ? (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (ready)
+              void save(Object.fromEntries(headers.map((header, at) => [header, values[at]!])));
           }}
-        />
-      ))}
-      <p className="text-xs text-muted-foreground">
-        {t("Saved keys are never shown again. Saving replaces the current keys.")}
-      </p>
-      <details className="text-xs text-muted-foreground">
-        <summary className="cursor-pointer">{t("Technical details")}</summary>
-        <div className="flex flex-col gap-3 pt-3">
-          {entries.map((entry, index) => (
+        >
+          {headers.map((header, at) => (
             <FormField
-              key={index}
-              label={
-                entries.length === 1
-                  ? t("Sent as")
-                  : t("Key {{number}} header", { number: index + 1 })
-              }
-              value={entry.header}
-              autoComplete="off"
+              key={header}
+              label={headers.length === 1 ? t("Key") : t("Key {{number}}", { number: at + 1 })}
+              type="password"
+              autoComplete="new-password"
+              value={values[at] ?? ""}
               onChange={(event) => {
-                const header = event.currentTarget.value;
-                setEntries((current) =>
-                  current.map((item, at) => (at === index ? { ...item, header } : item)),
-                );
+                const value = event.currentTarget.value;
+                setValues((current) => current.map((entry, index) => (index === at ? value : entry)));
               }}
             />
           ))}
-        </div>
-      </details>
-      {error ? (
-        <Alert variant="error" role="alert">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-      <div className="flex justify-end gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          disabled={saving !== null}
-          onClick={() => void save(null)}
-        >
-          {saving === "clear" ? <Spinner size="sm" /> : null}
-          {t("Remove key")}
-        </Button>
-        <Button type="submit" size="sm" disabled={saving !== null || !ready}>
-          {saving === "save" ? <Spinner size="sm" /> : null}
-          {t("Save key")}
-        </Button>
-      </div>
-    </form>
+          <p className="text-xs text-muted-foreground">
+            {replacing
+              ? t("Saving replaces the current key.")
+              : t("Stored encrypted and never shown again. Everyone who uses it shares this key.")}
+          </p>
+          {error ? (
+            <Alert variant="error" role="alert">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            {replacing ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={saving !== null}
+                onClick={() => setReplacing(false)}
+              >
+                {t("Cancel")}
+              </Button>
+            ) : null}
+            <Button type="submit" size="sm" disabled={saving !== null || !ready}>
+              {saving === "save" ? <Spinner size="sm" /> : null}
+              {t("Save key")}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {t("Saved. Everyone who uses it shares this key.")}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={saving !== null}
+                onClick={() => void save(null)}
+              >
+                {saving === "clear" ? <Spinner size="sm" /> : null}
+                {t("Remove key")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={saving !== null}
+                onClick={() => setReplacing(true)}
+              >
+                {t("Replace key")}
+              </Button>
+            </div>
+          </div>
+          {error ? (
+            <Alert variant="error" role="alert">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+        </>
+      )}
+    </SetupStep>
   );
 }

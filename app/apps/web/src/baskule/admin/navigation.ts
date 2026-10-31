@@ -160,7 +160,7 @@ export const ADMIN_SECTIONS: ReadonlyArray<AdminSection> = [
       {
         id: "catalog",
         label: msg("Catalog"),
-        description: msg("Find connectors and skills to add for your organization."),
+        description: msg("Plugins for the services your organization uses, ready to add."),
         icon: BlocksIcon,
         component: page(() => import("./plugins/CatalogPage"), "CatalogPage"),
       },
@@ -175,7 +175,7 @@ export const ADMIN_SECTIONS: ReadonlyArray<AdminSection> = [
       {
         id: "add",
         label: msg("Add your own"),
-        description: msg("Upload a plugin, import one from GitHub, or add an MCP server."),
+        description: msg("Upload a plugin, add an MCP server, or write a skill."),
         icon: PackagePlusIcon,
         component: page(() => import("./plugins/AddOwnPage"), "AddOwnPage"),
       },

@@ -23,7 +23,7 @@ export interface CatalogService {
   docs: string;             // the vendor's documentation of this server
   servers: { name: string; url: string; transport?: "sse"; scopes?: string[]; resource?: string }[];
   prerequisites: string[];  // msg(): plan, preview enrolment, tenant settings
-  notYet?: string;          // msg(): replaces Add until the service is qualified
+  notYet?: string;          // msg(): why it can't be added yet; replaces Add until the service is qualified
   reviewBy: string;         // YYYY-MM-DD. platform/test/unit/plugin-catalog.test.ts fails after it.
 }
 export const CATALOG_VENDORS: readonly CatalogVendor[] = [
@@ -396,7 +396,7 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
-    notYet: msg("Not available yet: Microsoft tenant-specific sign-in and permissions need qualification."),
+    notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
     reviewBy: "2027-01-31",
   },
   // UNVERIFIED final grant: WorkIQ.Act is documented but differs from the metadata-advertised Ask scope. Tenant-specific paths and write policy need an owned-client check. Full Word/Excel/PowerPoint document editing is not established.
@@ -416,7 +416,7 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
-    notYet: msg("Not available yet: Microsoft tenant-specific sign-in and permissions need qualification."),
+    notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
     reviewBy: "2027-01-31",
   },
   // UNVERIFIED final grant: WorkIQ.Act is documented but differs from the metadata-advertised Ask scope. Tenant-specific paths and write policy need an owned-client check. Full Word/Excel/PowerPoint document editing is not established.
@@ -436,7 +436,7 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
-    notYet: msg("Not available yet: Microsoft tenant-specific sign-in and permissions need qualification."),
+    notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
     reviewBy: "2027-01-31",
   },
   // UNVERIFIED final grant: WorkIQ.Act is documented but differs from the metadata-advertised Ask scope. Tenant-specific paths and write policy need an owned-client check. Full Word/Excel/PowerPoint document editing is not established.
@@ -456,7 +456,7 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
-    notYet: msg("Not available yet: Microsoft tenant-specific sign-in and permissions need qualification."),
+    notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
     reviewBy: "2027-01-31",
   },
   {
@@ -927,7 +927,7 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("A Shopify store and vendor-approved MCP client are required.")],
-    notYet: msg("Not available yet: Shopify must approve this client and confirm its merchant sign-in setup."),
+    notYet: msg("Shopify must first approve Baskule and confirm how merchants sign in."),
     reviewBy: "2027-01-31",
   },
   {
@@ -946,7 +946,7 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Figma must list the client in its MCP catalog; new clients must join the waitlist."), msg("Tool limits and available features depend on your Figma plan and seat.")],
-    notYet: msg("Not available yet: Figma must admit Baskule to its MCP client catalog."),
+    notYet: msg("Figma must first add Baskule to its list of approved apps."),
     reviewBy: "2027-01-31",
   },
   // UNVERIFIED minimum tool scopes and production onboarding. Resource metadata names mcp.docusign.com; its AS document declares account.docusign.com. Do not disable issuer validation or substitute a demo account.
@@ -966,7 +966,7 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator needs a Docusign integration key, callback and permissions; production and developer accounts are separate.")],
-    notYet: msg("Not available yet: Docusign's production sign-in metadata names conflicting issuers."),
+    notYet: msg("Docusign's sign-in details don't pass Baskule's checks yet."),
     reviewBy: "2027-01-31",
   },
 ];

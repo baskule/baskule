@@ -774,7 +774,7 @@ export function PluginEditor({
               {jsonInvalid
                 ? t("This JSON could not be read. Use an mcpServers or servers object.")
                 : t(
-                    "Paste the mcpServers settings of Claude, Cursor or a .mcp.json file, or the servers settings of VS Code. Keys in it move to encrypted fields.",
+                    "Paste the server settings from Claude, Cursor, VS Code or a .mcp.json file. Keys in it move to encrypted fields.",
                   )}
             </p>
           </div>
@@ -903,10 +903,7 @@ export function PluginEditor({
       ) : null}
 
       {omitted.length > 0 || jsonOmitted.length > 0 ? (
-        <PageSection
-          title={t("Not used, and why")}
-          description={t("The rest works without these parts.")}
-        >
+        <PageSection title={t("Not used, and why")}>
           <div className="px-3 py-4 sm:px-4">
             <NotUsedList omitted={[...omitted, ...jsonOmitted]} />
           </div>
@@ -1065,10 +1062,7 @@ function ServerFields({
         <RowIcon>
           <PlugIcon />
         </RowIcon>
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-sm text-foreground">{title}</span>
-          <span className="text-xs text-muted-foreground">{t("Tools from an MCP server")}</span>
-        </div>
+        <span className="min-w-0 flex-1 truncate text-sm text-foreground">{title}</span>
         {removable ? (
           <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onRemove}>
             {t("Remove server")}
@@ -1134,9 +1128,11 @@ function ServerFields({
                   </span>
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="text-sm text-foreground">{credentialLabel(mode)}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {credentialDescription(mode)}
-                    </span>
+                    {server.credential === mode ? (
+                      <span className="text-xs text-muted-foreground">
+                        {credentialDescription(mode)}
+                      </span>
+                    ) : null}
                   </span>
                 </label>
               ))}
@@ -1265,7 +1261,7 @@ function ServerFields({
             </Button>
             {outcome === null && !testing ? (
               <span className="text-xs text-muted-foreground">
-                {t("Optional. Lists its tools, so you can switch some off.")}
+                {t("Optional: see its tools and switch off any you don't want.")}
               </span>
             ) : null}
           </div>

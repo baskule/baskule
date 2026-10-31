@@ -69,7 +69,7 @@ export function SpacePluginSettings({
             <span className="text-sm">{t("Allow personal-account plugins")}</span>
             <span className="text-xs text-muted-foreground">
               {t(
-                "Plugins that act with a member's own account, such as their mailbox. Only each member's default account is used, and everyone here can read its results.",
+                "Plugins that act as a member, such as with their mailbox. Only each member's default account is used, and everyone here can see the results.",
               )}
             </span>
           </div>
@@ -95,7 +95,7 @@ export function SpacePluginSettings({
                 <span className="truncate text-sm">{plugin.name}</span>
                 <span className="truncate text-xs text-muted-foreground">
                   {blocked && !settings.personalPluginsAllowed
-                    ? t("Needs personal accounts allowed")
+                    ? t("Works once personal accounts are allowed")
                     : contentsLabel(contentsKind(plugin))}
                 </span>
               </div>

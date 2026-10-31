@@ -131,7 +131,7 @@ test("a connected member supplies discovery while calls keep the turn author's a
     await adminPage.getByLabel("Client ID", { exact: true }).fill("fake-client");
     await adminPage.getByLabel("Client secret", { exact: true }).fill("fake-secret");
     await adminPage.getByRole("button", { name: "Save setup", exact: true }).click();
-    await expect(adminPage.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(adminPage.getByText(`Saved. People sign in to ${name} through this app.`, { exact: true })).toBeVisible();
     await adminPage.screenshot({ path: test.info().outputPath("plugin-vendor-setup-saved.png") });
     await secondPage.reload();
     await secondPage.getByRole("button", { name: `Connect your ${name} account`, exact: true }).click();
@@ -188,6 +188,7 @@ test("the curated catalog adds assigned services and opens shared vendor setup",
       await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
       await adminPage.getByRole("button", { name: `Add ${name}`, exact: true }).click();
       await expect(adminPage.getByRole("checkbox", { name: /Everyone/ })).toBeChecked();
+      if (name === "Gmail") await adminPage.screenshot({ path: test.info().outputPath("plugin-catalog-add-dialog.png") });
       await adminPage.getByRole("button", { name: "Add plugin", exact: true }).click();
       const id = name.toLowerCase();
       await expect.poll(async () => (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.some(p => p.id === id), { message: `${name} is installed from the catalog` }).toBe(true);
@@ -198,9 +199,10 @@ test("the curated catalog adds assigned services and opens shared vendor setup",
     await expect(memberPage.getByText("Your administrator needs to finish setting it up", { exact: true })).toBeVisible();
     await memberPage.screenshot({ path: test.info().outputPath("plugin-catalog-member-status.png") });
     await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
-    await adminPage.getByText("Set up Google", { exact: true }).click();
+    await expect(adminPage.getByRole("link", { name: "Gmail", exact: true })).toHaveAccessibleDescription("Needs setup");
+    await adminPage.getByRole("link", { name: "Gmail", exact: true }).click();
     await expect(adminPage.getByLabel("Client ID", { exact: true })).toBeVisible();
-    await expect(adminPage.getByText("Your app at Google", { exact: true })).toBeVisible();
+    await expect(adminPage.getByRole("list", { name: "Setup steps", exact: true }).getByText("Create an app at Google (to do)", { exact: true })).toBeVisible();
     await expect(adminPage.getByRole("link", { name: "Setup instructions", exact: true })).toBeVisible();
     await adminPage.getByLabel("Client ID", { exact: true }).scrollIntoViewIfNeeded();
     await adminPage.screenshot({ path: test.info().outputPath("plugin-catalog-google-setup.png") });
@@ -257,7 +259,8 @@ test("named accounts select the requested identity and use a changed default", {
     expect(oauth.calls).toHaveLength(1);
     expect(oauth.calls[0]).toMatchObject({ identity: "Second", arguments: {} });
     expect(oauth.calls[0].arguments).not.toHaveProperty("baskule_account");
-    await list.getByRole("button", { name: "Make Second the default account", exact: true }).click();
+    await list.getByRole("button", { name: "Options for Second", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Make default", exact: true }).click();
     await expect(list.getByRole("listitem").filter({ hasText: "Second" }).getByText("Default", { exact: true })).toBeVisible();
     await list.scrollIntoViewIfNeeded();
     await page.screenshot({ path: test.info().outputPath("plugin-default-changed.png") });

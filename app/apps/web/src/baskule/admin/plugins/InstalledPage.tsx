@@ -8,12 +8,7 @@ import { useTranslation } from "../../../i18n";
 import { Button } from "../../../components/ui/button";
 import { pluginsApi } from "../../plugins/api";
 import { PluginIcon } from "../../plugins/PluginParts";
-import {
-  contentsKind,
-  contentsLabel,
-  credentialLabel,
-  groupName,
-} from "../../plugins/presentation";
+import { contentsKind, contentsLabel, groupName } from "../../plugins/presentation";
 import { useApiResource } from "../../ui";
 import { PageMessage, PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
@@ -23,14 +18,6 @@ const loadInventory = () =>
     plugins,
     groups,
   }));
-
-/** The credential modes a plugin's connectors need, without "none". */
-export function credentialSummary(plugin: Plugin): string | null {
-  const modes = [...new Set(plugin.servers.map((server) => server.credential))].filter(
-    (mode) => mode !== "none",
-  );
-  return modes.length > 0 ? modes.map(credentialLabel).join(", ") : null;
-}
 
 export function grantedGroups(plugin: Plugin, groups: ReadonlyArray<Group>) {
   return groups.filter((group) => group.plugins.includes(plugin.id));
@@ -49,7 +36,7 @@ export function InstalledPage() {
       render={<Link to="/admin/$section/$page" params={{ section: "plugins", page: "catalog" }} />}
     >
       <SearchIcon />
-      {t("Find plugins")}
+      {t("Browse the catalog")}
     </Button>
   );
 
@@ -64,7 +51,7 @@ export function InstalledPage() {
       {data.data && plugins.length === 0 ? (
         <PageMessage>
           <span className="flex flex-col items-center gap-3">
-            {t("No plugins yet. Nothing is installed until you add it.")}
+            {t("No plugins yet. Add one from the catalog.")}
             {catalogLink}
           </span>
         </PageMessage>
@@ -78,7 +65,6 @@ export function InstalledPage() {
       )}
       {plugins.map((plugin) => {
         const allowed = grantedGroups(plugin, groups);
-        const credentials = credentialSummary(plugin);
         const params = { section: "plugins", page: "installed", item: plugin.id };
         return (
           <PageRow
@@ -104,21 +90,17 @@ export function InstalledPage() {
               {plugin.name}
             </Link>
             <span className="truncate text-xs text-muted-foreground">
-              {contentsLabel(contentsKind(plugin))}
-              {" · "}
-              {plugin.enabled ? null : <>{t("Paused")} · </>}
-              {plugin.setup.some((entry) => !entry.done) ? (
-                <>
-                  <span className="text-warning-foreground">{t("Needs setup")}</span>
-                  {" · "}
-                </>
-              ) : null}
-              {allowed.length === 0 ? (
+              {!plugin.enabled ? (
+                t("Paused")
+              ) : plugin.setup.some((entry) => !entry.done) ? (
+                <span className="text-warning-foreground">{t("Needs setup")}</span>
+              ) : allowed.length === 0 ? (
                 <span className="text-warning-foreground">{t("No group can use it yet")}</span>
               ) : (
                 allowed.map(groupName).join(", ")
               )}
-              {credentials ? <span className="max-sm:hidden"> · {credentials}</span> : null}
+              {" · "}
+              {contentsLabel(contentsKind(plugin))}
             </span>
           </PageRow>
         );

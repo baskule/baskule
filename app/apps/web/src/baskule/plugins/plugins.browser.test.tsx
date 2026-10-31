@@ -27,6 +27,16 @@ type Route = (body: unknown, query: URLSearchParams) => unknown;
 // clicks go through the DOM, like the other browser tests of this app.
 const press = (target: Locator) => act(() => (target.element() as HTMLElement).click());
 
+/** Opens an account's options menu and chooses one of them. */
+async function chooseAccountOption(
+  scope: Pick<Locator, "getByRole">,
+  account: string,
+  option: string,
+) {
+  await press(scope.getByRole("button", { name: `Options for ${account}`, exact: true }));
+  await press(page.getByRole("menuitem", { name: option, exact: true }));
+}
+
 /** A fetch answering `METHOD /path` from `routes`, recording each call. A route may answer with
  * its own `Response`, such as a refusal, or later, with a promise. */
 function fakeControl(routes: Record<string, Route>) {
@@ -119,28 +129,42 @@ describe("admin catalog", () => {
       .toBeVisible();
     await expect.element(screen.getByRole("button", { name: "Add Linear" })).toBeVisible();
     await expect
-      .element(
-        screen.getByText("Not available yet: Figma must admit Baskule to its MCP client catalog."),
-      )
-      .toBeVisible();
+      .element(screen.getByRole("button", { name: "Linear", exact: true }))
+      .toHaveAccessibleDescription("Ready in one click");
+    await expect
+      .element(screen.getByRole("button", { name: "Gmail", exact: true }))
+      .toHaveAccessibleDescription("Needs setup");
     for (const held of ["Figma", "Shopify", "Docusign", "Microsoft Teams"]) {
       expect(screen.getByRole("button", { name: `Add ${held}` }).query()).toBeNull();
     }
+    // What a service needs stays off the list until its entry is opened.
+    expect(screen.getByText(/Workspace MCP Developer Preview/).query()).toBeNull();
+
+    const figma = screen.getByRole("button", { name: "Figma", exact: true });
+    await expect.element(figma).toHaveAccessibleDescription("Not available yet");
+    await press(figma);
+    const held = page.getByRole("dialog", { name: "Figma" });
     await expect
-      .element(screen.getByRole("link", { name: "Linear documentation" }))
-      .toHaveAttribute("target", "_blank");
+      .element(held.getByText("Figma must first add Baskule to its list of approved apps."))
+      .toBeVisible();
+    expect(held.getByRole("button", { name: "Add plugin" }).query()).toBeNull();
+    await press(held.getByText("Close", { exact: true }));
+    await expect.element(held).not.toBeInTheDocument();
 
     await press(screen.getByRole("button", { name: "Add Linear" }));
     const choose = page.getByRole("dialog", { name: "Add Linear" });
+    await expect
+      .element(choose.getByRole("link", { name: "Linear documentation" }))
+      .toHaveAttribute("target", "_blank");
     await expect.element(choose.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
     await expect.element(choose.getByRole("checkbox", { name: "Sales" })).not.toBeChecked();
     expect(postBody(control.calls)).toBeUndefined();
     await press(choose.getByRole("checkbox", { name: "Sales" }));
     await press(choose.getByRole("button", { name: "Add plugin" }));
 
-    await expect
-      .element(screen.getByRole("link", { name: "Linear is added: open it" }))
-      .toHaveAttribute("href", "/admin/plugins/installed/linear");
+    const added = screen.getByRole("link", { name: "Linear", exact: true });
+    await expect.element(added).toHaveAttribute("href", "/admin/plugins/installed/linear");
+    await expect.element(added).toHaveAccessibleDescription("Added");
     expect(postBody(control.calls)).toEqual({ catalog: "linear", groups: ["everyone", "sales"] });
     expect(control.calls.some((call) => call.route.includes("/search"))).toBe(false);
   });
@@ -173,13 +197,12 @@ describe("admin catalog", () => {
     using _fetch = control.stub;
     await using screen = await render(<CatalogPage />);
 
+    const gmail = screen.getByRole("link", { name: "Gmail", exact: true });
+    await expect.element(gmail).toHaveAttribute("href", "/admin/plugins/installed/gmail");
+    await expect.element(gmail).toHaveAccessibleDescription("Needs setup");
     await expect
-      .element(screen.getByRole("link", { name: "Set up Google for Gmail" }))
-      .toHaveAttribute("href", "/admin/plugins/installed/gmail");
-    await expect.element(screen.getByText("Set up Google", { exact: true })).toBeVisible();
-    await expect
-      .element(screen.getByRole("link", { name: "Linear is added: open it" }))
-      .toBeVisible();
+      .element(screen.getByRole("link", { name: "Linear", exact: true }))
+      .toHaveAccessibleDescription("Added");
     expect(screen.getByRole("button", { name: "Add Gmail" }).query()).toBeNull();
     await expect.element(screen.getByRole("button", { name: "Add Google Calendar" })).toBeVisible();
   });
@@ -244,7 +267,7 @@ describe("adding your own plugin", () => {
     await expect
       .element(screen.getByText("Commands for Claude Code. Baskule doesn't use these."))
       .toBeVisible();
-    await expect.element(screen.getByText("commands/forecast.md")).toBeVisible();
+    expect(screen.getByText("commands/forecast.md").query()).toBeNull();
     await expect.element(screen.getByLabelText("Header for the key")).not.toBeVisible();
     await expect.element(screen.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
     expect(control.calls.find((call) => call.route.endsWith("/inspect"))?.body).toEqual({
@@ -1371,12 +1394,25 @@ describe("signing in to a plugin's service", () => {
     using _fetch = control.stub;
     await using screen = await render(<PluginDetailPage id="gmail" />);
 
-    await expect.element(screen.getByText("Your app at Google", { exact: true })).toBeVisible();
+    const steps = screen.getByRole("list", { name: "Setup steps" });
+    await expect.element(steps.getByText("Create an app at Google (to do)")).toBeVisible();
+    await expect
+      .element(steps.getByText("Save the app's ID and secret here (to do)"))
+      .toBeVisible();
     expect(screen.getByLabelText("How gmail signs in", { exact: true }).query()).toBeNull();
     await expect
-      .element(screen.getByText("Each person connects their own account", { exact: true }))
+      .element(screen.getByText(/Each person connects their own account in Settings → Plugins/))
       .toBeVisible();
-    await expect.element(screen.getByText("Tools · Baskule catalog")).toBeVisible();
+    await expect.element(screen.getByText(/Workspace MCP Developer Preview/)).toBeVisible();
+    await expect
+      .element(screen.getByRole("link", { name: "Gmail documentation" }))
+      .toHaveAttribute("target", "_blank");
+    // The callback address and the server's host wait under Technical details.
+    await expect.element(screen.getByLabelText("Callback address", { exact: true })).not.toBeVisible();
+    await expect
+      .element(screen.getByText("https://gmailmcp.googleapis.com/mcp/v1"))
+      .not.toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Copy Baskule's address" })).toBeVisible();
     const instructions = screen.getByRole("link", { name: "Setup instructions" });
     await expect.element(instructions).toHaveAttribute("target", "_blank");
     await expect.element(instructions).toHaveAttribute("rel", "noreferrer noopener");
@@ -1702,7 +1738,8 @@ describe("signing in to a plugin's service", () => {
     );
     await using screen = await render(<PluginDetailPage id="p1" />);
 
-    await expect.element(screen.getByText("Not saved", { exact: true })).toBeVisible();
+    const steps = screen.getByRole("list", { name: "Setup steps" });
+    await expect.element(steps.getByText("Create an app at CRM (to do)")).toBeInTheDocument();
     await expect
       .element(screen.getByText("People can't use it until you finish setting it up below."))
       .toBeVisible();
@@ -1716,15 +1753,21 @@ describe("signing in to a plugin's service", () => {
     await userEvent.type(screen.getByLabelText("Client secret", { exact: true }), "s3cret");
     await press(screen.getByRole("button", { name: "Save setup" }));
 
-    await expect.element(screen.getByText("Saved", { exact: true })).toBeVisible();
-    await expect.element(screen.getByLabelText("Client ID", { exact: true })).toHaveValue("");
-    await expect.element(screen.getByLabelText("Client secret", { exact: true })).toHaveValue("");
+    await expect
+      .element(screen.getByText("Saved. People sign in to CRM through this app."))
+      .toBeVisible();
+    await expect.element(steps.getByText("Create an app at CRM (done)")).toBeInTheDocument();
+    // Saved secrets are never shown back: the form is gone until the admin replaces the app.
+    expect(screen.getByLabelText("Client ID", { exact: true }).query()).toBeNull();
     expect(
       screen.getByText("People can't use it until you finish setting it up below.").query(),
     ).toBeNull();
+    await press(screen.getByRole("button", { name: "Replace the app at CRM" }));
+    await expect.element(screen.getByLabelText("Client ID", { exact: true })).toHaveValue("");
+    await press(screen.getByRole("button", { name: "Cancel" }));
 
     await press(screen.getByRole("button", { name: "Remove setup" }));
-    await expect.element(screen.getByText("Not saved", { exact: true })).toBeVisible();
+    await expect.element(steps.getByText("Create an app at CRM (to do)")).toBeInTheDocument();
     expect(
       control.calls
         .filter((call) => call.route === "PUT /api/baskule/admin/vendors/crm-vendor")
@@ -2123,9 +2166,9 @@ describe("writing skills", () => {
 
     await expect.element(screen.getByText("Things to check")).toBeVisible();
     for (const warning of [
-      "This skill uses a slash command. Baskule may not have that command.",
-      "This skill asks to install software. The computer may need setup first.",
-      "This file may contain a password or key. Remove it before sharing the skill.",
+      "The instructions use a slash command, which Baskule may not have.",
+      "The instructions ask to install software. The computer may need setting up first.",
+      ".env may contain a password or key. Remove it before sharing the skill.",
       "You can still save this skill.",
     ]) {
       await expect.element(screen.getByText(warning)).toBeVisible();
@@ -2410,9 +2453,9 @@ describe("a person's plugins", () => {
     );
     // An organization's key is not the person's to disconnect.
     expect(screen.getByRole("list", { name: "Your Wiki accounts" }).query()).toBeNull();
-    expect(screen.getByRole("button", { name: /^Disconnect / }).all()).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /^Options for / }).all()).toHaveLength(2);
 
-    await press(screen.getByRole("button", { name: "Disconnect Notes" }));
+    await chooseAccountOption(screen, "Notes", "Disconnect…");
     await expect.element(screen.getByText("Connect your Notes account")).toBeVisible();
     expect(screen.getByText("Ready", { exact: true }).all()).toHaveLength(1);
     expect(changes(control.calls)).toEqual([
@@ -2490,11 +2533,11 @@ describe("a person's plugins", () => {
     await using screen = await render(<UserPluginsView />);
     const list = screen.getByRole("list", { name: "Your Gmail accounts" });
 
+    const row = (label: string) => list.getByRole("listitem").filter({ hasText: label });
     await expect.element(screen.getByText("Reconnect your Gmail account")).toBeVisible();
-    await expect.element(list.getByText("Default", { exact: true })).toBeVisible();
-    expect(list.getByRole("button", { name: "Make Work the default account" }).query()).toBeNull();
+    await expect.element(row("Work").getByText("Default", { exact: true })).toBeVisible();
 
-    await press(list.getByRole("button", { name: "Rename Second" }));
+    await chooseAccountOption(list, "Second", "Rename…");
     const rename = page.getByRole("dialog", { name: "Rename Second" });
     await userEvent.clear(rename.getByLabelText("Account name"));
     await userEvent.type(rename.getByLabelText("Account name"), "Work");
@@ -2505,13 +2548,12 @@ describe("a person's plugins", () => {
     await expect.element(list.getByText("Personal", { exact: true })).toBeVisible();
     await expect.element(rename).not.toBeInTheDocument();
 
-    await press(list.getByRole("button", { name: "Make Personal the default account" }));
+    await chooseAccountOption(list, "Personal", "Make default");
     await expect.element(screen.getByText("Ready", { exact: true })).toBeVisible();
-    await expect
-      .element(list.getByRole("button", { name: "Make Work the default account" }))
-      .toBeVisible();
+    await expect.element(row("Personal").getByText("Default", { exact: true })).toBeVisible();
+    expect(row("Work").getByText("Default", { exact: true }).query()).toBeNull();
 
-    await press(list.getByRole("button", { name: "Disconnect Personal" }));
+    await chooseAccountOption(list, "Personal", "Disconnect…");
     const replace = page.getByRole("dialog", { name: "Disconnect Personal?" });
     await expect.element(replace.getByRole("radio", { name: "Work" })).not.toBeChecked();
     await expect.element(replace.getByRole("button", { name: "Disconnect" })).toBeDisabled();
@@ -2519,7 +2561,7 @@ describe("a person's plugins", () => {
     await press(replace.getByRole("button", { name: "Disconnect" }));
     await expect.element(list.getByText("Personal", { exact: true })).not.toBeInTheDocument();
     await expect.element(screen.getByText("Reconnect your Gmail account")).toBeVisible();
-    expect(list.getByRole("button", { name: /^Make / }).query()).toBeNull();
+    await expect.element(row("Work").getByText("Default", { exact: true })).toBeVisible();
 
     expect(changes(control.calls)).toEqual([
       {
@@ -2553,7 +2595,7 @@ describe("a person's plugins", () => {
     await using screen = await render(<UserPluginsView />);
     using add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
 
-    await press(screen.getByRole("button", { name: "Make Second the default account" }));
+    await chooseAccountOption(screen, "Second", "Make default");
     await vi.waitFor(() =>
       expect(add).toHaveBeenCalledWith({
         type: "error",
@@ -2561,9 +2603,7 @@ describe("a person's plugins", () => {
         description: "This account is no longer connected. Reload the page.",
       }),
     );
-    await expect
-      .element(screen.getByRole("button", { name: "Make Second the default account" }))
-      .toBeEnabled();
+    await expect.element(screen.getByRole("button", { name: "Options for Second" })).toBeEnabled();
   });
 
   it("explains a failed sign-in in plain words when the person comes back", async () => {
