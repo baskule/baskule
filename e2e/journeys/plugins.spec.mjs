@@ -34,7 +34,10 @@ test("assigned skills are ready without activation and leave a team when its con
   let group;
   let team;
   try {
-    await signIn(adminPage, api.admin, stack);
+    await adminContext.addCookies(api.admin.cookie.split("; ").map(cookie => {
+      const [name, ...value] = cookie.split("=");
+      return { name, value: value.join("="), url: stack.urls.front };
+    }));
     await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
     await adminPage.getByRole("button", { name: "Add your own", exact: true }).click();
     await adminPage.getByRole("button", { name: "File", exact: true }).click();
