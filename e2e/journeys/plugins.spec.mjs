@@ -27,8 +27,6 @@ test("assigned skills are ready without activation and leave a team when its con
   const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
   const adminContext = await browser.newContext(options);
   const memberContext = await browser.newContext(options);
-  const teamContext = await browser.newContext(options);
-  const teamPage = await teamContext.newPage();
   const adminPage = await adminContext.newPage();
   const memberPage = await memberContext.newPage();
   const name = `Portable skills ${crypto.randomUUID()}`;
@@ -61,11 +59,16 @@ test("assigned skills are ready without activation and leave a team when its con
     const everyone = await api.admin.json("GET", "/api/baskule/admin/groups/everyone");
     await api.admin.json("PATCH", "/api/baskule/admin/groups/everyone", { plugins: everyone.plugins.filter(id => id !== plugin.id) });
     group = await api.admin.json("POST", "/api/baskule/admin/groups", { name, members: [people.alice.me.user.id], permissions: { canCreateSpaces: false }, plugins: [plugin.id] });
-    await signIn(teamPage, people.bob, stack);
     const skillDirectory = `/sandbox/space/plugins/${plugin.id}/hello`;
-    await startChat(teamPage, `Check shared files [[fake:tool shell ${JSON.stringify({ command: `test -f ${skillDirectory}/SKILL.md && echo TEAM_SKILL_PRESENT` })}]]`, people.teamName);
-    await expect(assistant(teamPage)).toContainText("TEAM_SKILL_PRESENT", { timeout: 90_000 });
-    await expect(teamPage.getByRole("button", { name: "Stop generation", exact: true })).toHaveCount(0);
+    const client = await people.bob.rpc(people.team);
+    try {
+      const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
+      const id = await api.launch(client, projectId, `Check shared files [[fake:tool shell ${JSON.stringify({ command: `test -f ${skillDirectory}/SKILL.md && echo TEAM_SKILL_PRESENT` })}]]`, "Shared skills", { generateTitle: false });
+      const state = api.watchThread(client, id);
+      await api.waitRun(state);
+      expect(state.assistantText()).toContain("TEAM_SKILL_PRESENT");
+      state.stop();
+    } finally { client.close(); await client.closed; }
     expect(await filesOnComputer(stack, people.team)).toContain(`${plugin.id}/hello/SKILL.md`);
     await api.admin.json("POST", `/api/baskule/admin/users/${people.alice.me.user.id}/deactivate`, {});
     await expect.poll(() => filesOnComputer(stack, people.team), { message: "the deactivated contributor's skills leave the managed tree", timeout: 90_000 }).not.toContain(`${plugin.id}/hello/`);
@@ -74,6 +77,5 @@ test("assigned skills are ready without activation and leave a team when its con
     if (group) await api.admin.json("DELETE", `/api/baskule/admin/groups/${group.id}`);
     await adminContext.close();
     await memberContext.close();
-    await teamContext.close();
   }
 });
