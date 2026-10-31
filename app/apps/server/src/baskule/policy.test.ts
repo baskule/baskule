@@ -58,6 +58,7 @@ describe("Baskule RPC policy", () => {
       "thread.unsettle",
       "thread.auto-settle.set",
       "thread.pull-request.link",
+      "delegated_task.request",
     ]) {
       expect(BASKULE_ALLOWED_COMMANDS.has(type)).toBe(false);
       expect(baskuleRefusal(BASKULE_POLICY, "orchestration.dispatchCommand", { type })).toMatch(

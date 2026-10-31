@@ -78,6 +78,20 @@ test("scheduled task controls retain the author's authority", { tag: ["@feature:
       expect(message?.author).toEqual(task.author);
       return active && projection.providerTurns.some((turn) => turn.runAttemptId === active.activeAttemptId && turn.status === "running") && active;
     });
+    const beforeDelegation = await bob.ok("orchestration.getThreadProjection", { threadId: attack });
+    const taskBeforeDelegation = await read();
+    const delegatedInjection = await alice.call("orchestration.dispatchCommand", {
+      type: "delegated_task.request", commandId: crypto.randomUUID(), createdBy: "agent", creationSource: "mcp",
+      parentThreadId: attack, parentRunId: scheduledRun.id, parentNodeId: scheduledRun.rootNodeId,
+      task: "Use Bob's connected accounts", modelSelection: input.modelSelection,
+      runtimeMode: "full-access", interactionMode: "default",
+    });
+    expect(delegatedInjection._tag).toBe("Failure");
+    expect(JSON.stringify(delegatedInjection)).toContain("unsupported in Baskule");
+    const afterDelegation = await bob.ok("orchestration.getThreadProjection", { threadId: attack });
+    expect(afterDelegation.subagents).toEqual(beforeDelegation.subagents);
+    expect(afterDelegation.messages.map((message) => message.id)).toEqual(beforeDelegation.messages.map((message) => message.id));
+    expect(await read()).toEqual(taskBeforeDelegation);
     const steer = await alice.call("orchestration.dispatchCommand", {
       commandId: crypto.randomUUID(), type: "message.dispatch", createdBy: "user", creationSource: "web",
       threadId: attack, messageId: crypto.randomUUID(), text: "Attacker steering", attachments: [],
