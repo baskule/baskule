@@ -1,5 +1,5 @@
 // baskule: one installed plugin: paused or not, which groups may use it, how its servers sign in
-// (with the write-only organization key), what it contains, where it came from, and removal.
+// (with the write-only organization key or vendor app), what it contains, where it came from, and removal.
 import type {
   CredentialMode,
   Group,
@@ -31,7 +31,6 @@ import {
   credentialDescription,
   credentialLabel,
   groupName,
-  isPersonalCredential,
   serverHost,
   sourceLabel,
 } from "../../plugins/presentation";
@@ -39,6 +38,7 @@ import { confirmAction, FormField, notifySuccess, RowIcon, useApiResource } from
 import { PageRow, PageSection } from "../../views/BaskulePage";
 import { PageHeading } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
+import { VendorSetup } from "./VendorSetup";
 
 export function PluginDetailPage({ id }: { readonly id: string }) {
   const t = useTranslation();
@@ -85,6 +85,10 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   }
 
   const granted = groups.filter((group) => group.plugins.includes(plugin.id));
+  const unfinished = new Set(
+    plugin.setup.filter((entry) => !entry.done).map((entry) => entry.server),
+  );
+  const ownAccounts = plugin.servers.filter((server) => server.credential === "user-oauth");
   const setGrant = (group: Group, allowed: boolean) =>
     run(
       `group:${group.id}`,
@@ -101,11 +105,10 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
       `server:${server.name}`,
       () =>
         pluginsApi.update(plugin.id, {
-          servers: plugin.servers.map((entry) =>
-            entry.name === server.name
-              ? { name: entry.name, credential, personal: isPersonalCredential(credential) }
-              : { name: entry.name, credential: entry.credential, personal: entry.personal },
-          ),
+          servers: plugin.servers.map((entry) => ({
+            name: entry.name,
+            credential: entry.name === server.name ? credential : entry.credential,
+          })),
         }),
       t("Could not change how {{name}} signs in", { name: server.name }),
     );
@@ -165,6 +168,12 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         <Alert variant="warning">
           <AlertDescription>
             {t("No group can use it yet. Choose who can use it below.")}
+          </AlertDescription>
+        </Alert>
+      ) : unfinished.size > 0 ? (
+        <Alert variant="warning">
+          <AlertDescription>
+            {t("People can't use it until you finish setting it up below.")}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -238,9 +247,20 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
               busy={busy === `server:${server.name}`}
               disabled={busy !== null}
               onCredential={(mode) => void setCredential(server, mode)}
+              onKeyChanged={data.reload}
             />
           ))}
         </PageSection>
+      ) : null}
+
+      {ownAccounts.length > 0 ? (
+        <VendorSetup
+          vendor={plugin.vendor}
+          name={plugin.name}
+          configured={plugin.vendorConfigured}
+          required={ownAccounts.some((server) => unfinished.has(server.name))}
+          onChanged={data.reload}
+        />
       ) : null}
 
       <PageSection title={t("What it contains")}>
@@ -331,12 +351,14 @@ function ServerSettings({
   busy,
   disabled,
   onCredential,
+  onKeyChanged,
 }: {
   readonly plugin: Plugin;
   readonly server: PluginServer;
   readonly busy: boolean;
   readonly disabled: boolean;
   readonly onCredential: (mode: CredentialMode) => void;
+  readonly onKeyChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
   return (
@@ -376,12 +398,12 @@ function ServerSettings({
       </div>
       <p className="text-xs text-muted-foreground">
         {credentialDescription(server.credential)}
-        {isPersonalCredential(server.credential)
+        {server.credential === "user-oauth"
           ? ` ${t("In team spaces it works only where the space owner allows personal accounts.")}`
           : ""}
       </p>
       {server.credential === "organization" ? (
-        <OrganizationKeyForm plugin={plugin} server={server} />
+        <OrganizationKeyForm plugin={plugin} server={server} onChanged={onKeyChanged} />
       ) : null}
     </div>
   );
@@ -391,9 +413,11 @@ function ServerSettings({
 function OrganizationKeyForm({
   plugin,
   server,
+  onChanged,
 }: {
   readonly plugin: Plugin;
   readonly server: PluginServer;
+  readonly onChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
   const [header, setHeader] = useState("Authorization");
@@ -408,6 +432,7 @@ function OrganizationKeyForm({
       await pluginsApi.secret(plugin.id, { server: server.name, headers });
       setValue("");
       notifySuccess(headers ? t("Key saved") : t("Key removed"));
+      await onChanged();
     })()
       .catch((cause: unknown) => {
         setError(pluginErrorText(cause, t("The key could not be saved.")));

@@ -150,11 +150,10 @@ export const pluginConnection = sqliteTable("plugin_connection", {
   data: text("data").notNull(),
 }, t => [primaryKey({ columns: [t.userId, t.pluginId, t.server] })]);
 
-export const pluginOAuthClient = sqliteTable("plugin_oauth_client", {
-  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-  server: text("server").notNull(),
+export const vendorSetup = sqliteTable("vendor_setup", {
+  vendor: text("vendor").primaryKey(),
   data: text("data").notNull(),
-}, t => [primaryKey({ columns: [t.pluginId, t.server] })]);
+});
 
 export const pluginOAuthState = sqliteTable("plugin_oauth_state", {
   stateHash: text("state_hash").primaryKey(),

@@ -80,7 +80,7 @@ export class PluginMcpProxy {
       if (method === "tools/list") return json(id, await client.listTools(undefined, { timeout: 15_000 }));
       if (!params?.name) return fail("Plugin error: missing tool name.");
       const result = await client.callTool({ name: params.name, arguments: params.arguments ?? {} }, { timeout: 120_000, signal: req.signal });
-      if (!this.server.personal) return json(id, result);
+      if (this.server.credential !== "user-oauth") return json(id, result);
       return json(id, { ...result, content: [{ type: "text", text: `Account used: ${author!.name} (${author!.id}).` }, ...result.content],
         _meta: { ...result._meta, "baskule/account": { userId: author!.id, name: author!.name, pluginId: this.server.pluginId, server: this.server.name } } });
     } catch {

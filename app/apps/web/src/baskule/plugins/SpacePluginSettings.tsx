@@ -84,8 +84,9 @@ export function SpacePluginSettings({
           />
         </li>
         {plugins.map((plugin) => {
-          const personal = plugin.servers.some((server) => server.personal);
-          const blocked = personal && !plugin.servers.some((server) => !server.personal);
+          const blocked =
+            plugin.servers.length > 0 &&
+            plugin.servers.every((server) => server.credential === "user-oauth");
           const used = !settings.disabled.includes(plugin.id);
           return (
             <li key={plugin.id} className="flex items-center gap-3 px-3 py-2">

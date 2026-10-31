@@ -270,7 +270,7 @@ if (REAL) {
     const E = new Agent(space("empty"));
     const dir = chat("empty-plugin");
     await http("POST", `${HARNESS}/_test/plugins`, { spaceId: E.space, plugins: { skills: [], servers: [{
-      pluginId: "unconnected", name: "remote", catalogUserId: "alice", credential: "user-oauth", personal: true,
+      pluginId: "unconnected", name: "remote", catalogUserId: "alice", credential: "user-oauth",
       transport: "streamable-http", url: "https://unconnected.invalid/mcp",
     }] } });
     const mcp = await fakeMcpServer(47654, ["preview_open"]);

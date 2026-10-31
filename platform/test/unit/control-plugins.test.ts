@@ -11,7 +11,7 @@ import { base64, sha256 } from "../../src/control/plugin-import";
 import { resolveGroupPermissions } from "../../src/control/groups";
 
 const API = "/api/baskule";
-const plugin: Plugin = { id: "plugin", name: "Test", description: "", source: { type: "url", url: "https://example.test/mcp" }, skills: [], servers: [{ name: "remote", url: "https://example.test/mcp", credential: "none", personal: false }], ignored: [], enabled: true, createdAt: "2026-10-25T00:00:00Z" };
+const plugin: Plugin = { id: "plugin", vendor: "plugin", name: "Test", description: "", source: { type: "url", url: "https://example.test/mcp" }, skills: [], servers: [{ name: "remote", url: "https://example.test/mcp", credential: "none" }], ignored: [], enabled: true, createdAt: "2026-10-25T00:00:00Z" };
 const everyone: Group = { id: "everyone", name: "Everyone", builtin: "everyone", members: [], permissions: { canCreateSpaces: false }, plugins: [plugin.id] };
 const snapshot = (): PluginPolicy => ({ user: { id: "alice", banned: false }, space: { id: "team", kind: "team", members: ["alice"], settings: { personalPluginsAllowed: false, disabled: [] } }, plugin: structuredClone(plugin), assigned: true });
 
@@ -32,7 +32,7 @@ describe("pure plugin policy", () => {
       (s: PluginPolicy) => { s.plugin = undefined; },
       (s: PluginPolicy) => { s.assigned = false; },
       (s: PluginPolicy) => { s.plugin!.servers = []; },
-      (s: PluginPolicy) => { s.plugin!.servers[0].personal = true; },
+      (s: PluginPolicy) => { s.plugin!.servers[0].credential = "user-oauth"; },
     ]) {
       const s = snapshot(); mutate(s);
       expect(check(s)).toEqual({ allowed: false, error: "unavailable" });
@@ -44,7 +44,7 @@ describe("pure plugin policy", () => {
       const s = snapshot(); mutate(s);
       expect(check(s)).toEqual({ allowed: false, error: "unavailable" });
     }
-    const personal = snapshot(); personal.plugin!.servers[0].personal = true;
+    const personal = snapshot(); personal.plugin!.servers[0].credential = "user-oauth";
     personal.space!.settings.personalPluginsAllowed = true;
     expect(check(personal)).toEqual({ allowed: true });
     personal.space!.settings.personalPluginsAllowed = false; personal.space!.kind = "personal";
@@ -90,7 +90,7 @@ describe("ControlCell plugins and groups", () => {
     const spaceId = personalSpaceOf(h, bob.id);
     await call(h, "PATCH", `${API}/admin/groups/everyone`, { ...admin, body: { plugins: [id] } });
     expect(h.svc.plugins.canUse(bob.id, spaceId, id, "remote")).toEqual({ allowed: true });
-    await call(h, "PATCH", path, { ...admin, body: { enabled: true, servers: [{ name: "remote", credential: "organization", personal: true }] } });
+    await call(h, "PATCH", path, { ...admin, body: { enabled: true, servers: [{ name: "remote", credential: "organization" }] } });
     expect((await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } })).status).toBe(200);
     expect(h.svc.plugins.canUse(bob.id, spaceId, id, "remote")).toEqual({ allowed: true });
     expect(await h.svc.plugins.organizationHeaders(id, "remote")).toEqual({ Authorization: "Bearer private-organization-key" });
@@ -101,17 +101,17 @@ describe("ControlCell plugins and groups", () => {
     expect((await call(h, "POST", "/_baskule/plugin-credential", { body: { spaceId, pluginId: id, server: "remote", userId: bob.id } })).status).toBe(404);
     await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: null } });
     expect((await requestCredential()).body).toEqual({ error: "needs_setup" });
-    await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", credential: "none", personal: false }] } });
+    await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", credential: "none" }] } });
     expect((await requestCredential()).body).toMatchObject({ headers: {} });
-    await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", credential: "organization", personal: false }] } });
+    await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", credential: "organization" }] } });
     await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } });
-    h.storage.sql.exec("insert into plugin_oauth_client(plugin_id,server,data) values (?,?,?)", id, "remote", "sealed-static-client").toArray();
-    await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", url: "https://CHANGED.test/mcp", credential: "organization", personal: false }] } });
+    h.storage.sql.exec("insert into vendor_setup(vendor,data) values (?,?)", id, "sealed-static-client").toArray();
+    await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", url: "https://CHANGED.test/mcp", credential: "organization" }] } });
     expect(await h.svc.plugins.organizationHeaders(id, "remote")).toBeUndefined();
-    expect(h.storage.sql.exec("select * from plugin_oauth_client where plugin_id=?", id).toArray()).toEqual([]);
+    expect(h.storage.sql.exec("select * from vendor_setup where vendor=?", id).toArray()).toEqual([]);
     await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } });
     const mine = await call(h, "GET", `${API}/plugins`, member);
-    expect(mine.body.plugins[0]).toMatchObject({ status: "ready", servers: [{ name: "remote", personal: false, status: "ready" }] });
+    expect(mine.body.plugins[0]).toMatchObject({ status: "ready", servers: [{ name: "remote", credential: "organization", status: "ready" }] });
     const settings = await call(h, "POST", "/_baskule/settings", { headers: { [INTERNAL_HEADER]: "1" }, body: { spaceId } });
     expect(settings.body.plugins.servers[0]).toMatchObject({ pluginId: id, credential: "organization" });
     for (const value of [mine.body, settings.body, (await call(h, "GET", `${API}/admin/plugins`, admin)).body]) expect(JSON.stringify(value)).not.toContain("private-organization-key");
@@ -131,7 +131,7 @@ describe("ControlCell plugins and groups", () => {
     const installed = await call(h, "POST", `${API}/admin/plugins`, { ...admin, body: { groups: [], source: plugin.source } });
     const id = installed.body.id;
     await call(h, "PATCH", `${API}/admin/groups/everyone`, { ...admin, body: { plugins: [id] } });
-    await call(h, "PATCH", `${API}/admin/plugins/${id}`, { ...admin, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth", personal: true }] } });
+    await call(h, "PATCH", `${API}/admin/plugins/${id}`, { ...admin, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth" }] } });
     expect(await h.svc.plugins.settings(team)).toEqual({ servers: [], skills: [] });
     expect((await h.svc.plugins.settings(personalSpaceOf(h, bob.id))).servers).toEqual([]);
     expect((await call(h, "GET", `${API}/spaces/${team}/plugins`, member)).status).toBe(403);
@@ -183,11 +183,11 @@ describe("assignment and member status", () => {
   it("derives the five statuses in priority order", () => {
     expect(pluginStatus({ allowed: false })).toBe("unavailable");
     expect(pluginStatus({ allowed: true })).toBe("ready");
-    for (const credential of ["none", "organization", "user-oauth", "login-identity"] as const) {
+    for (const credential of ["none", "organization", "user-oauth"] as const) {
       expect(pluginStatus({ allowed: false, server: { credential, setupDone: false, account: "ready" } })).toBe("unavailable");
       expect(pluginStatus({ allowed: true, server: { credential, setupDone: false, account: "ready" } })).toBe("needs_setup");
     }
-    for (const credential of ["user-oauth", "login-identity"] as const) {
+    for (const credential of ["user-oauth"] as const) {
       for (const account of ["connect", "reconnect", "ready"] as const) expect(pluginStatus({ allowed: true, server: { credential, setupDone: true, account } })).toBe(account);
       expect(pluginStatus({ allowed: true, server: { credential, setupDone: true } })).toBe("connect");
     }

@@ -1,3 +1,4 @@
+import type { OAuthRecipe } from "../../../app/packages/contracts/src/baskule-plugins";
 import { checkOutbound, serverNetwork, type Network } from "../shared/plugin-outbound";
 import { z } from "zod";
 import { pluginError } from "../shared/http";
@@ -13,7 +14,7 @@ const scopes = z.array(z.string().min(1).max(2048)).max(100);
 const resourceSchema = z.object({ resource: z.string(), authorization_servers: z.array(url).min(1).max(10), scopes_supported: scopes.optional() });
 const asSchema = z.object({
   issuer: z.string(), authorization_endpoint: url, token_endpoint: url, registration_endpoint: url.optional(),
-  code_challenge_methods_supported: z.array(z.string()).refine(v => v.includes("S256")),
+  code_challenge_methods_supported: z.array(z.string()).optional(),
   response_types_supported: z.array(z.string()).refine(v => v.includes("code")),
   token_endpoint_auth_methods_supported: z.array(z.string()).optional(),
   scopes_supported: scopes.optional(), authorization_response_iss_parameter_supported: z.boolean().optional(),
@@ -34,7 +35,7 @@ export async function oauthJson(fetcher: Fetcher, target: string, init?: Request
   } catch { throw pluginError(502, "oauth_unavailable"); }
   finally { clearTimeout(timer); }
 }
-export async function discoverOAuth(server: string, fetcher: Fetcher = fetch, network: Network = "public"): Promise<Discovery> {
+export async function discoverOAuth(server: string, fetcher: Fetcher = fetch, network: Network = "public", pinnedIssuer?: string): Promise<Discovery> {
   const resource = canonicalResource(server, network);
   const u = new URL(resource);
   // Inspect the resource's challenge without a credential, including its scoped metadata URL.
@@ -60,9 +61,10 @@ export async function discoverOAuth(server: string, fetcher: Fetcher = fetch, ne
     if (r.status !== 200 || !parsed.success) throw pluginError(502, "invalid_resource_metadata");
     protectedResource = parsed.data; break;
   }
-  if (!protectedResource || canonicalResource(protectedResource.resource, network) !== resource) throw pluginError(502, "oauth_resource_mismatch");
-  // The resource selects its issuer. Validate metadata's issuer exactly before trusting its endpoints.
-  const issuer = protectedResource.authorization_servers[0];
+  if (protectedResource && canonicalResource(protectedResource.resource, network) !== resource) throw pluginError(502, "oauth_resource_mismatch");
+  if (!protectedResource && !pinnedIssuer) throw pluginError(502, "oauth_resource_mismatch");
+  if (pinnedIssuer && protectedResource && !protectedResource.authorization_servers.includes(pinnedIssuer)) throw pluginError(409, "oauth_issuer_changed");
+  const issuer = pinnedIssuer ?? protectedResource!.authorization_servers[0];
   const authority = checkOutbound(issuer, network);
   if (authority.search) throw pluginError(502, "invalid_authorization_metadata");
   const suffix = authority.pathname === "/" ? "" : authority.pathname;
@@ -71,9 +73,9 @@ export async function discoverOAuth(server: string, fetcher: Fetcher = fetch, ne
     const r = await oauthJson(fetcher, endpoint, undefined, network);
     if (r.status === 404) continue;
     const parsed = asSchema.safeParse(r.value);
-    if (r.status !== 200 || !parsed.success || parsed.data.issuer !== protectedResource.authorization_servers[0]) throw pluginError(502, "invalid_authorization_metadata");
+    if (r.status !== 200 || !parsed.success || parsed.data.issuer !== issuer || (!parsed.data.code_challenge_methods_supported?.includes("S256") && !(pinnedIssuer && parsed.data.code_challenge_methods_supported === undefined))) throw pluginError(502, "invalid_authorization_metadata");
     for (const endpoint of [parsed.data.issuer, parsed.data.authorization_endpoint, parsed.data.token_endpoint, ...(parsed.data.registration_endpoint ? [parsed.data.registration_endpoint] : [])]) checkOutbound(endpoint, network);
-    return { resource, scopes: challengeScopes ?? protectedResource.scopes_supported ?? [], as: parsed.data };
+    return { resource, scopes: challengeScopes ?? protectedResource?.scopes_supported ?? [], as: parsed.data };
   }
   throw pluginError(502, "invalid_authorization_metadata");
 }
@@ -88,8 +90,8 @@ export async function registerClient(discovery: Discovery, redirectUri: string, 
   return { clientId: parsed.data.client_id, tokenEndpointAuthMethod: "none" };
 }
 export interface OAuthTokens { accessToken: string; refreshToken?: string; expiresAt: number | null; scopes: string[] }
-export async function exchangeToken(discovery: Discovery, client: OAuthClient, params: Record<string, string>, previousScopes: string[], fetcher: Fetcher): Promise<OAuthTokens> {
-  const form = new URLSearchParams({ ...params, resource: discovery.resource, client_id: client.clientId });
+export async function exchangeToken(discovery: Discovery, client: OAuthClient, params: Record<string, string>, previousScopes: string[], fetcher: Fetcher, recipe?: OAuthRecipe): Promise<OAuthTokens> {
+  const form = new URLSearchParams({ ...params, ...(recipe?.resource === false ? {} : { resource: discovery.resource }), client_id: client.clientId });
   const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
   if (client.tokenEndpointAuthMethod === "client_secret_post") form.set("client_secret", client.clientSecret!);
   if (client.tokenEndpointAuthMethod === "client_secret_basic") headers.authorization = `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret!)}`)}`;

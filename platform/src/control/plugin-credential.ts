@@ -24,7 +24,7 @@ export async function pluginCredential(req: Request, plugins: Plugins, connectio
       return json(headers ? { headers, expiresAt } : { error: "needs_setup" });
     }
     case "user-oauth":
-    case "login-identity": {
+    {
       const credential = await connections.credential(parsed.data);
       return json("headers" in credential ? { ...credential, expiresAt } satisfies PluginCredential : credential);
     }

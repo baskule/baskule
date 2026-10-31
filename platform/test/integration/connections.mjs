@@ -10,7 +10,7 @@ export async function checkConnections(req, check, admin, alice) {
     const installed = await req("POST", `${API}/admin/plugins`, { ...A, body: { groups: [], source: { type: "url", url: f.resource } } });
     pluginId = installed.json.id;
     check("OAuth fake MCP installed", installed.status === 201, installed.text);
-    const configured = await req("PATCH", `${API}/admin/plugins/${pluginId}`, { ...A, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth", personal: true }] } });
+    const configured = await req("PATCH", `${API}/admin/plugins/${pluginId}`, { ...A, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth" }] } });
     check("OAuth personal credential configured", configured.status === 200, configured.text);
     await req("PATCH", `${API}/admin/groups/everyone`, { ...A, body: { plugins: [pluginId] } });
     const me = await req("GET", `${API}/me`, U);

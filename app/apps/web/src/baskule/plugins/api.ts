@@ -1,5 +1,6 @@
 import {
   PLUGIN_ERROR_CODES,
+  type AdminPlugin,
   type Group,
   type GroupInput,
   type MemberPlugin,
@@ -18,6 +19,14 @@ import { BaskuleApiError, request } from "../api";
 
 const root = "/api/baskule";
 const enc = encodeURIComponent;
+
+/** One vendor's OAuth client. Write-only: the server only says whether one is saved. */
+export interface VendorClient {
+  clientId: string;
+  clientSecret?: string;
+  tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic";
+}
+
 export const pluginsApi = {
   search: (q: string, kind?: PluginSearchResult["kind"]) =>
     request<PluginSearchResponse>(
@@ -25,13 +34,19 @@ export const pluginsApi = {
       `${root}/admin/plugins/search?${new URLSearchParams({ q, ...(kind ? { kind } : {}) })}`,
     ),
   installed: async () =>
-    (await request<{ plugins: Plugin[] }>("GET", `${root}/admin/plugins`)).plugins,
+    (await request<{ plugins: AdminPlugin[] }>("GET", `${root}/admin/plugins`)).plugins,
   install: (input: PluginInstallInput) => request<Plugin>("POST", `${root}/admin/plugins`, input),
   update: (id: string, input: PluginPatch) =>
     request<Plugin>("PATCH", `${root}/admin/plugins/${enc(id)}`, input),
   remove: (id: string) => request<{ ok: true }>("DELETE", `${root}/admin/plugins/${enc(id)}`),
   secret: (id: string, input: PluginSecretInput) =>
     request<{ ok: true }>("PUT", `${root}/admin/plugins/${enc(id)}/secret`, input),
+  vendorSetup: (vendor: string, client: VendorClient | null) =>
+    request<{ ok: true; configured: boolean }>(
+      "PUT",
+      `${root}/admin/vendors/${enc(vendor)}`,
+      client,
+    ),
   mine: async () => (await request<{ plugins: MemberPlugin[] }>("GET", `${root}/plugins`)).plugins,
   disconnect: (id: string, server: string) =>
     request<{ ok: true }>(
@@ -61,10 +76,6 @@ export function accountConnectionUrl(id: string, server: string, returnTo: strin
 
 const tooLarge = () => t("It is too large to add (10 MB packed, 20 MB unpacked at most).");
 const cantOpen = () => t("This file can't be opened. Use a .zip or .tar.gz file.");
-const scopeMissing = () =>
-  t(
-    "The sign-in didn't give the access this plugin needs. Try again and allow everything it asks.",
-  );
 
 const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   address_not_allowed: () =>
@@ -85,8 +96,6 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   empty_plugin_archive: () => t("This file is empty."),
   forbidden: () => t("You don't have permission to do this."),
   group_exists: () => t("A group with this name already exists."),
-  identity_consent_failed: () => t("The sign-in couldn't start. Try again in a moment."),
-  identity_scope_missing: scopeMissing,
   invalid_archive: cantOpen,
   invalid_authorization_metadata: () =>
     t("This service's sign-in is set up in a way Baskule can't use. Ask your admin."),
@@ -110,16 +119,6 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   invalid_return_url: () =>
     t("The sign-in couldn't come back to Baskule. Start again from Settings → Plugins."),
   invalid_secret_headers: () => t("This key can't be sent with that header name."),
-  login_account_required: () =>
-    t("Your Baskule sign-in must use exactly one account from this service. Ask your admin."),
-  login_identity_audience_refused: () =>
-    t(
-      "This server can't use your Baskule sign-in. Ask your admin to choose another way to sign in.",
-    ),
-  login_provider_required: () =>
-    t("Signing in to Baskule with this service isn't set up. Ask your admin."),
-  microsoft_identity_configuration_required: () =>
-    t("Microsoft sign-in needs to be set up differently first. Ask your admin."),
   no_remote_servers: () =>
     t(
       "This server runs as a program on someone's computer. Baskule needs its web address; ask its maker whether it has one.",
@@ -129,15 +128,21 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   not_organization_server: () => t("This server doesn't use an organization key."),
   oauth_client_configuration_required: () => t("Your administrator needs to finish setting it up"),
   oauth_grant_expired: () => t("Your sign-in expired. Reconnect your account."),
+  oauth_issuer_changed: () =>
+    t(
+      "This service now signs in somewhere other than where it was set up. Ask your admin to check its setup and save it again.",
+    ),
   oauth_issuer_mismatch: () =>
     t("The sign-in came back from another service than expected. Try again."),
   oauth_registration_failed: () =>
     t("The service didn't accept Baskule's sign-in. Ask your admin."),
   oauth_resource_mismatch: () =>
     t("This service's sign-in is for another address. Ask your admin."),
-  oauth_scope_missing: scopeMissing,
+  oauth_scope_missing: () =>
+    t(
+      "The sign-in didn't give the access this plugin needs. Try again and allow everything it asks.",
+    ),
   oauth_unavailable: () => t("The service's sign-in didn't answer. Try again in a moment."),
-  personal_credential_required: () => t("This way of signing in must act as each person."),
   plugin_links_unsupported: () =>
     t("It contains links to other files. Put the files themselves in it instead."),
   plugin_not_found: () =>
@@ -164,6 +169,7 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
     t("This plugin has no fixed version to install. Add it from its git repository instead."),
   unsupported_plugin_version: () => t("It uses a plugin format version Baskule can't read yet."),
   user_not_found: () => t("One of these people no longer exists. Reload the page and try again."),
+  vendor_unknown: () => t("Baskule no longer knows this service. Reload the page and try again."),
 };
 
 const isPluginErrorCode = (code: string): code is PluginErrorCode =>

@@ -17,7 +17,7 @@ describe("bounded portable bundle importer", () => {
     const input = zipSync(Object.fromEntries(bundleFixture("portable")));
     const p = inspectBundle(unpackArchive(input));
     expect(p.servers.map(s => s.name)).toEqual(["docs", "account", "secret"]);
-    expect(p.servers.find(s => s.name === "account")).toMatchObject({ credential: "user-oauth", personal: true });
+    expect(p.servers.find(s => s.name === "account")).toMatchObject({ credential: "user-oauth" });
     expect(p.ignored.join(" ")).toContain("stdio");
     expect(p.ignored.join(" ")).toContain("com.example.client");
     expect(JSON.stringify(p)).not.toContain("DO-NOT-STORE");

@@ -159,7 +159,7 @@ export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: 
     if (!p.success || !name.trim() || name.length > 100 || (typeof raw === "object" && raw !== null && "command" in raw)) { ignored.push(`MCP server ${name}: stdio or unsupported configuration`); continue; }
     try {
       const credential = p.data.oauth ? "user-oauth" : p.data.headers ? "organization" : "none";
-      servers.push({ name, url: checkMcpUrl(p.data.url, "private").href, credential, personal: credential === "user-oauth", transport: p.data.type === "sse" ? "sse" : "streamable-http" });
+      servers.push({ name, url: checkMcpUrl(p.data.url, "private").href, credential, transport: p.data.type === "sse" ? "sse" : "streamable-http" });
       if (p.data.headers) ignored.push(`MCP server ${name}: bundled headers omitted; configure a write-only organization secret`);
       if (p.data.oauth) ignored.push(`MCP server ${name}: client OAuth configuration omitted; connect through Baskule`);
     } catch { ignored.push(`MCP server ${name}: invalid or templated URL`); }

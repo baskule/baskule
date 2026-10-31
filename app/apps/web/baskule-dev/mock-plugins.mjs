@@ -1,7 +1,7 @@
 // baskule: the plugins and groups part of the mock front (shapes: packages/contracts/src/baskule-plugins.ts,
-// behaviour: platform/src/control/plugins.ts and groups.ts). In memory, seeded with a few installed plugins
-// so every screen has something to show; the catalog is a fixed list standing in for the live registries.
-// Account connections (task P3): `/connect` signs in at once and redirects back, as after a real consent.
+// behaviour: platform/src/control/plugins.ts and groups.ts). In memory, seeded with a few installed plugins;
+// the catalog is a fixed list standing in for the live registries. `/connect` signs in at once and redirects
+// back, as after a real consent. A vendor app is only remembered as saved, never its values.
 import * as NodeCrypto from "node:crypto";
 
 const EVERYONE = "everyone";
@@ -22,7 +22,6 @@ const CATALOG = [
         name: "notion",
         url: "https://mcp.notion.com/mcp",
         credential: "user-oauth",
-        personal: true,
       },
     ],
   },
@@ -38,7 +37,6 @@ const CATALOG = [
         name: "linear",
         url: "https://mcp.linear.app/mcp",
         credential: "user-oauth",
-        personal: true,
       },
     ],
   },
@@ -54,7 +52,6 @@ const CATALOG = [
         name: "brave-search",
         url: "https://mcp.search.brave.com/mcp",
         credential: "organization",
-        personal: false,
       },
     ],
   },
@@ -70,7 +67,6 @@ const CATALOG = [
         name: "github",
         url: "https://api.githubcopilot.com/mcp/",
         credential: "user-oauth",
-        personal: true,
       },
     ],
   },
@@ -93,7 +89,6 @@ const CATALOG = [
         name: "hubspot",
         url: "https://mcp.hubspot.com/anthropic",
         credential: "organization",
-        personal: false,
       },
     ],
     ignored: [
@@ -132,8 +127,10 @@ const CATALOG = [
 ];
 
 function pluginFrom(entry, overrides = {}) {
+  const pluginId = id();
   return {
-    id: id(),
+    id: pluginId,
+    vendor: pluginId,
     name: entry.name,
     description: entry.description,
     source: { type: "registry", registry: entry.registry, id: entry.id, version: entry.version },
@@ -159,8 +156,10 @@ export function createPluginMock({ users, spaces }) {
   };
   const brave = seed("com.brave/search", { enabled: true, createdAt: at(5) });
   const sales = seed("sales", { enabled: false, createdAt: at(2) });
+  const driveId = id();
   const drive = {
-    id: id(),
+    id: driveId,
+    vendor: driveId,
     name: "Google Drive",
     description: "Find and read the files people can open in their own Google Drive.",
     source: { type: "url", url: "https://drivemcp.googleapis.com/mcp/v1" },
@@ -169,8 +168,8 @@ export function createPluginMock({ users, spaces }) {
       {
         name: "drive",
         url: "https://drivemcp.googleapis.com/mcp/v1",
-        credential: "login-identity",
-        personal: true,
+        credential: "user-oauth",
+        oauth: { staticClient: true },
         transport: "streamable-http",
       },
     ],
@@ -200,6 +199,8 @@ export function createPluginMock({ users, spaces }) {
   ];
   /** `${pluginId}\0${server}` with an organization key */
   const secrets = new Set([`${brave}\u0000brave-search`]);
+  /** Vendor keys with a saved app. Drive's is saved so people can connect it at once. */
+  const vendors = new Set([drive.vendor]);
   /** space id -> { personalPluginsAllowed, disabled } */
   const spaceSettings = new Map();
 
@@ -221,18 +222,22 @@ export function createPluginMock({ users, spaces }) {
   };
   const connected = new Set();
   const connectionKey = (userId, pluginId, server) => `${userId}\u0000${pluginId}\u0000${server}`;
+  /** Whether the shared part of a server's sign-in is done: its organization key or its vendor's app. */
+  const setupDone = (plugin, server) =>
+    server.credential === "organization"
+      ? secrets.has(`${plugin.id}\u0000${server.name}`)
+      : server.credential !== "user-oauth" ||
+        !server.oauth?.staticClient ||
+        vendors.has(plugin.vendor);
   const connectionState = (plugin, server, userId) =>
     !plugin.enabled
       ? "unavailable"
-      : server.credential === "none"
-        ? "ready"
-        : server.credential === "organization"
-          ? secrets.has(`${plugin.id}\u0000${server.name}`)
-            ? "ready"
-            : "needs_setup"
-          : connected.has(connectionKey(userId, plugin.id, server.name))
-            ? "ready"
-            : "connect";
+      : !setupDone(plugin, server)
+        ? "needs_setup"
+        : server.credential !== "user-oauth" ||
+            connected.has(connectionKey(userId, plugin.id, server.name))
+          ? "ready"
+          : "connect";
 
   async function install(body) {
     const source = body.source ?? {};
@@ -252,10 +257,12 @@ export function createPluginMock({ users, spaces }) {
       }
       if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search)
         return [400, { error: "invalid_mcp_url" }];
+      const pluginId = id();
       return [
         201,
         {
-          id: id(),
+          id: pluginId,
+          vendor: pluginId,
           name: body.name || url.hostname,
           description: "",
           source: { type: "url", url: url.href },
@@ -265,7 +272,6 @@ export function createPluginMock({ users, spaces }) {
               name: "remote",
               url: url.href,
               credential: "none",
-              personal: false,
               transport: "streamable-http",
             },
           ],
@@ -284,10 +290,12 @@ export function createPluginMock({ users, spaces }) {
         .filter(Boolean)
         .at(-1);
       const repo = String(source.repo).replace(/\/+$/, "").split("/").at(-1);
+      const pluginId = id();
       return [
         201,
         {
-          id: id(),
+          id: pluginId,
+          vendor: pluginId,
           name: body.name || folder || repo,
           description: "",
           source,
@@ -304,10 +312,12 @@ export function createPluginMock({ users, spaces }) {
       if (!bytes.length) return [400, { error: "archive_required" }];
       if (NodeCrypto.createHash("sha256").update(bytes).digest("hex") !== source.sha256)
         return [400, { error: "archive_hash_mismatch" }];
+      const pluginId = id();
       return [
         201,
         {
-          id: id(),
+          id: pluginId,
+          vendor: pluginId,
           name: body.name || "Uploaded skill",
           description: "",
           source,
@@ -326,7 +336,11 @@ export function createPluginMock({ users, spaces }) {
   async function handle({ req, res, url, api, me, isAdmin, send, fail, readBody }) {
     const method = req.method ?? "GET";
     let r;
-    if (api.startsWith("/admin/plugins") || api.startsWith("/admin/groups")) {
+    if (
+      api.startsWith("/admin/plugins") ||
+      api.startsWith("/admin/groups") ||
+      api.startsWith("/admin/vendors")
+    ) {
       if (!isAdmin) return (fail(res, 403, "forbidden"), true);
     }
     if (api === "/admin/plugins/search" && method === "GET") {
@@ -360,10 +374,42 @@ export function createPluginMock({ users, spaces }) {
     if (api === "/admin/plugins" && method === "GET")
       return (
         send(res, 200, {
-          plugins: [...plugins.values()].sort((a, b) => a.name.localeCompare(b.name)),
+          plugins: [...plugins.values()]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((plugin) => ({
+              ...plugin,
+              setup: plugin.servers.map((server) => ({
+                server: server.name,
+                done: setupDone(plugin, server),
+              })),
+              vendorConfigured: vendors.has(plugin.vendor),
+            })),
         }),
         true
       );
+    if ((r = /^\/admin\/vendors\/([^/]+)$/.exec(api))) {
+      const vendor = decodeURIComponent(r[1]);
+      const owned = [...plugins.values()].filter((plugin) => plugin.vendor === vendor);
+      if (owned.length === 0) return (fail(res, 404, "vendor_unknown"), true);
+      if (method === "PUT") {
+        const body = await readBody(req);
+        if (body !== null) {
+          const auth = body?.tokenEndpointAuthMethod;
+          if (
+            typeof body?.clientId !== "string" ||
+            !body.clientId ||
+            !["none", "client_secret_post", "client_secret_basic"].includes(auth) ||
+            (auth !== "none") !== Boolean(body.clientSecret)
+          )
+            return (fail(res, 400, "invalid_oauth_client"), true);
+          vendors.add(vendor);
+        } else vendors.delete(vendor);
+        // Saving or removing an app disconnects every account of this vendor.
+        for (const key of connected)
+          if (owned.some((plugin) => key.split("\u0000")[1] === plugin.id)) connected.delete(key);
+        return (send(res, 200, { ok: true, configured: vendors.has(vendor) }), true);
+      }
+    }
     if (api === "/admin/plugins" && method === "POST") {
       const input = await readBody(req);
       if (
@@ -406,13 +452,6 @@ export function createPluginMock({ users, spaces }) {
       if (method === "PATCH") {
         const { servers, ...fields } = await readBody(req);
         if (servers) {
-          if (
-            servers.some(
-              (server) =>
-                ["user-oauth", "login-identity"].includes(server.credential) && !server.personal,
-            )
-          )
-            return (fail(res, 400, "personal_credential_required"), true);
           plugin.servers = plugin.servers.map((server) => ({
             ...server,
             ...servers.find((entry) => entry.name === server.name),
@@ -487,7 +526,7 @@ export function createPluginMock({ users, spaces }) {
             .map((plugin) => {
               const servers = plugin.servers.map((server) => ({
                 name: server.name,
-                personal: ["user-oauth", "login-identity"].includes(server.credential),
+                credential: server.credential,
                 status: connectionState(plugin, server, me.id),
               }));
               const status = !plugin.enabled
@@ -522,9 +561,15 @@ export function createPluginMock({ users, spaces }) {
       if (r[2] === "connect" && method === "GET") {
         const target = plugin.servers.find((s) => s.name === server);
         if (!target) return (fail(res, 400, "unknown_server"), true);
-        connected.add(connectionKey(me.id, plugin.id, target.name));
         const back = new URL(url.searchParams.get("returnTo") ?? "/", url.origin);
-        back.searchParams.set("pluginConnection", "connected");
+        // A refused start comes back like a failed sign-in.
+        if (!setupDone(plugin, target)) {
+          back.searchParams.set("pluginConnection", "error");
+          back.searchParams.set("connectionError", "oauth_client_configuration_required");
+        } else {
+          connected.add(connectionKey(me.id, plugin.id, target.name));
+          back.searchParams.set("pluginConnection", "connected");
+        }
         res.writeHead(302, { location: back.pathname + back.search });
         res.end();
         return true;

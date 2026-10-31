@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 /** Separate fake resource and AS, shared by unit and stock-celld component checks. */
 export async function fakeOAuth() {
-  const state = { refreshes: 0, exchanges: 0, registrations: 0, invalidGrant: false, shortLived: false, scopes: "files.read", dcr: true, resourceMismatch: false, issuerMismatch: false, pkce: true, onRefresh: /** @type {null | (() => Promise<void>)} */ (null), onExchange: /** @type {null | (() => Promise<void>)} */ (null) };
+  const state = { refreshes: 0, exchanges: 0, registrations: 0, invalidGrant: false, shortLived: false, scopes: "files.read", dcr: true, resourceMismatch: false, issuerMismatch: false, pkce: true, metadata: true, resourceParameter: true, advertisedIssuer: /** @type {string | null} */ (null), onRefresh: /** @type {null | (() => Promise<void>)} */ (null), onExchange: /** @type {null | (() => Promise<void>)} */ (null) };
   const codes = new Map();
   const refreshTokens = new Set();
   const accessTokens = new Set();
@@ -22,7 +22,7 @@ export async function fakeOAuth() {
       });
       if (u.pathname === "/register") { state.registrations++; return json(res, { client_id: "fake-client", token_endpoint_auth_method: "none" }, 201); }
       if (u.pathname === "/authorize") {
-        if (u.searchParams.get("resource") !== resource || u.searchParams.get("code_challenge_method") !== "S256") return json(res, { error: "invalid_request" }, 400);
+        if ((state.resourceParameter ? u.searchParams.get("resource") !== resource : u.searchParams.has("resource")) || u.searchParams.get("code_challenge_method") !== "S256") return json(res, { error: "invalid_request" }, 400);
         const code = randomUUID();
         codes.set(code, Object.fromEntries(u.searchParams));
         const callback = new URL(u.searchParams.get("redirect_uri"));
@@ -34,7 +34,7 @@ export async function fakeOAuth() {
         for await (const chunk of req) body += chunk;
         const p = new URLSearchParams(body);
         requests.push({ ...Object.fromEntries(p), authorization: req.headers.authorization });
-        if (p.get("resource") !== resource) return json(res, { error: "invalid_target" }, 400);
+        if ((state.resourceParameter ? p.get("resource") !== resource : p.has("resource"))) return json(res, { error: "invalid_target" }, 400);
         if (p.get("grant_type") === "authorization_code") {
           state.exchanges++;
           const c = codes.get(p.get("code")); codes.delete(p.get("code"));
@@ -54,7 +54,10 @@ export async function fakeOAuth() {
   });
   issuer = await listen(as);
   const mcp = createServer(async (req, res) => {
-    if (req.url.startsWith("/.well-known/oauth-protected-resource")) return json(res, { resource: state.resourceMismatch ? `${resource}/other` : resource, authorization_servers: [issuer], scopes_supported: ["files.read"] });
+    if (req.url.startsWith("/.well-known/oauth-protected-resource")) {
+      if (!state.metadata) return json(res, {}, 404);
+      return json(res, { resource: state.resourceMismatch ? `${resource}/other` : resource, authorization_servers: [state.advertisedIssuer ?? issuer], scopes_supported: ["files.read"] });
+    }
     if (!accessTokens.has(req.headers.authorization?.replace(/^Bearer /, ""))) {
       res.setHeader("www-authenticate", `Bearer resource_metadata="${new URL(resource).origin}/.well-known/oauth-protected-resource/mcp", scope="files.read"`);
       return json(res, { error: "unauthorized" }, 401);

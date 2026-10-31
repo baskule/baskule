@@ -77,7 +77,7 @@ describe("turn author", () => {
   });
 });
 
-const server: SpacePlugins["servers"][number] = { pluginId: "test", pluginName: "Test", name: "remote", url: "https://vendor.test/mcp", credential: "organization", personal: true, catalogUserId: "alice", privateNetwork: false };
+const server: SpacePlugins["servers"][number] = { pluginId: "test", pluginName: "Test", name: "remote", url: "https://vendor.test/mcp", credential: "user-oauth", catalogUserId: "alice", privateNetwork: false };
 const rpc = async (proxy: PluginMcpProxy, method: string, user = "alice") => {
   const r = await proxy.handler(new Request("http://proxy/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: { name: "lookup", arguments: {}, _meta: { "ai.opencode/sessionID": user } } }) }));
   return r.json() as Promise<Record<string, any>>;

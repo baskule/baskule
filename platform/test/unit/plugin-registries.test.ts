@@ -20,7 +20,7 @@ describe("registry adapters (recorded public JSON; no network)", () => {
     const resolved = await adapter.resolve(results[0].id, results[0].source.version);
     expect(calls[0]).toContain("search=github");
     expect(calls[1]).toContain(encodeURIComponent(results[0].id));
-    expect(resolved.servers![0]).toMatchObject({ credential: "organization", personal: false });
+    expect(resolved.servers![0]).toMatchObject({ credential: "organization" });
     expect(await adapter.search("x", "skill")).toEqual([]);
     expect(calls).toHaveLength(2);
   });

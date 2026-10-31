@@ -174,48 +174,18 @@ same resource and issuer; callback issuer checks follow RFC 9207. Public servers
 OAuth endpoints never follow redirects with credentials. A client-ID metadata document is not served by this version;
 servers without DCR use pre-registration.
 
-Register `https://YOUR_HOST/api/baskule/plugins/oauth/callback` with the authorization server when pre-registration
-is needed. `PUT /api/baskule/admin/plugins/:id/oauth` accepts `{server, client: {clientId, clientSecret?,
-tokenEndpointAuthMethod}}`, with `none`, `client_secret_post` or `client_secret_basic` authentication. `client: null`
-deletes it. Values are write-only and encrypted; changing the client invalidates existing connections and pending
-consent. Server settings accept `oauth: {scopes: [...]}` alongside `credential` and `personal`; otherwise the server's
-challenge or resource metadata supplies the required scopes. Nothing uses OpenCode's per-space OAuth store.
+For a service without dynamic registration, open Admin → Plugins → the plugin → Sign-in setup. Register the
+callback address shown there with the vendor, then save its client ID, authentication method and secret.
+Values are write-only and encrypted. Saving or removing setup disconnects accounts and cancels pending consent
+for every plugin using that vendor; other vendors are unaffected. The saved issuer is pinned: a resource that
+changes its authorization server is refused before Baskule sends the client secret. If resource metadata disappears
+after setup, the saved issuer supplies discovery. Custom setup initially requires resource metadata; catalog issuers
+are added in the next layer. Plugin accounts are separate from signing in to Baskule.
 
-Login reuse (`credential: "login-identity"`, `personal: true`) additionally declares `loginIdentity: {provider,
-scopes, audience}`. Only the built-in `google` and `microsoft` social providers are supported. The person must have
-one linked login account for that provider before connecting. Consent upgrades that same provider subject; another
-account with the same email cannot replace it. Use normal login scopes at sign-in and request data scopes when the
-plugin connects. ControlCell uses Better Auth's `linkSocialAccount` (client API: `linkSocial`) and
-`getAccessToken` with the exact account row ID, including automatic refresh.
-
-Google connections request `access_type=offline`, `prompt=consent` and `include_granted_scopes=true` at connect time;
-these are managed parameters, so JSON-only `auth.json` needs no callback. The Google provider example above suffices.
-Only HTTPS `https://SERVICE.googleapis.com/mcp` destinations are accepted, and `audience` must equal that exact MCP
-URL (for example `https://bigquery.googleapis.com/mcp`). Third-party wrappers of Google APIs cannot receive the login
-token: configure their own `user-oauth` flow instead. Enable the service APIs in the login app's Google project.
-External users need Google's OAuth verification for sensitive/restricted scopes; restricted scopes may also require
-a security assessment. An internal Workspace app has different verification requirements. Review
-[Google's scope verification guidance](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification)
-and [remote MCP authentication](https://docs.cloud.google.com/mcp/authenticate-mcp) before enabling them.
-
-For Microsoft login reuse, remove Graph's default scopes from the login provider so the consent request targets
-one resource. Configure its JSON options as follows (alongside the normal `clientId`, `clientSecret` and `tenantId`):
-
-```json
-{
-  "disableDefaultScope": true,
-  "scope": ["openid", "profile", "email", "offline_access"]
-}
-```
-
-The runtime disables Microsoft's automatic Graph profile-photo fetch: a Work IQ token must never be sent to Graph.
-Only `https://workiq.svc.cloud.microsoft/mcp` is accepted, with audience `api://workiq.svc.cloud.microsoft` or
-`fdcc1f02-fc51-4226-8753-f668596af7f7` and fully qualified Work IQ delegated scopes such as
-`api://workiq.svc.cloud.microsoft/WorkIQAgent.Ask`. Register those permissions and arrange tenant admin consent and
-licensing as required by [Work IQ](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/work-iq/mcp/overview).
-The returned access token's `aud` must match the declared audience; a Graph token is refused. The pinned Better Auth
-Microsoft refresh hook uses the selected account's granted scopes instead of the installation's login scopes.
-Neither provider token is sent to arbitrary MCP servers; there is no token exchange, OBO or caller-token passthrough.
+Server settings accept `oauth: {scopes, params, resource, staticClient}` for `user-oauth` servers. Scopes default
+to the resource challenge or metadata; `params` adds vendor authorization parameters, and `resource: false`
+omits the resource parameter for vendors that refuse it. `staticClient: true` requires administrator setup.
+Protocol parameters such as the callback, state and PKCE cannot be overridden. Nothing uses OpenCode's per-space OAuth store.
 
 UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH`
 (`server` can be omitted for a single account server; `returnTo` defaults to `/` and must remain on this origin).
@@ -224,7 +194,7 @@ The callback requires the initiating live user session and returns to that path 
 with one of `unavailable`, `needs_setup`, `connect`, `reconnect`, or `ready`. The plugin status is the highest-priority
 server status in that order. A skills-only plugin is ready when assigned and unpaused. `DELETE /api/baskule/plugins/:id/connection[?server=NAME]` immediately
 forgets one or all plugin connections, cancels pending consent and prevents an in-flight refresh from restoring them.
-Disconnecting login reuse keeps the sign-in account and its provider grants; revoke grants at the provider if needed.
+Initial Connect failures also return to Settings → Plugins with a plain error.
 
 Better Auth's `account.encryptOAuthTokens: true` encrypts access and refresh tokens with the installation secret;
 login ID tokens are discarded after validation. Organization keys, plugin tokens, refresh data, pending PKCE verifiers and admin OAuth
@@ -267,6 +237,10 @@ current idle policy through its authenticated runtime-settings endpoint. If that
 does not stop computers using a guessed policy.
 
 ## Upgrading an earlier installation
+
+The vendor-setup layout drops per-server OAuth clients and deletes installed plugin data. Reinstall plugins,
+assign groups, enter organization keys and vendor clients, then reconnect accounts after the authorized deploy.
+This reset retains users, groups, spaces and chats.
 
 This change replaces the product configuration layout. Wipe the installation's data when deploying it:
 back up if wanted, stop and purge with `deploy/v2/down.sh --purge`, prepare `.env` and `auth.json`, then build and

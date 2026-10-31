@@ -160,7 +160,7 @@ export class ControlService {
     });
     const cipher = new ConnectionCipher(secret);
     this.plugins = new Plugins(this.storage, this.groups, cipher);
-    this.connections = new Connections(this.storage, this.plugins, this.auth, this.installation, cipher);
+    this.connections = new Connections(this.storage, this.plugins, this.installation, cipher);
     this.plugins.connections = this.connections;
     this.connections.onChange = userId => this.reloadSpaces(userId ? this.memberSpaceIds(userId) : "all");
     const org = this.one("select id from organization order by created_at limit 1");
@@ -981,7 +981,7 @@ export class ControlService {
       return json({ ok: true });
     }
     if (p === "/settings" && m === "GET") return json(this.settingsView());
-    if ((r = p.match(/^\/plugins\/([^/]+)\/oauth$/))) return this.connections.admin(req, r[1]);
+    if ((r = p.match(/^\/vendors\/([^/]+)$/))) return this.connections.vendor(req, r[1]);
     if (p === "/plugins" || p.startsWith("/plugins/")) return this.pluginChange(req, this.plugins.admin(req, `/admin${p}`));
     if (p === "/groups" || p.startsWith("/groups/")) return this.pluginChange(req, this.groups.handle(req, `/admin${p}`));
     if (p === "/settings" && m === "PATCH") return this.saveSettings(req);
