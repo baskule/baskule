@@ -570,7 +570,7 @@ const scenarios = {
     }
   },
 
-  /** Admin: catalog, add and review, set up, groups. Then a person's plugins and a space owner's setting. */
+  /** Admin: catalog, add, set up, groups. Then a person's plugins and a space owner's setting. */
   async plugins(browser, device) {
     // Each device adds its own catalog services and group: the mock keeps state between the two runs.
     const services =
@@ -620,32 +620,20 @@ const scenarios = {
       `${device}: Everyone is preselected`,
     );
     await choose.getByRole("button", { name: "Add plugin", exact: true }).click();
-    const review = page.getByRole("dialog", { name: `${pick} was added` });
-    await review.waitFor();
-    check(
-      (await review.getByText("Tools from 1 server").count()) === 1,
-      `${device}: adding shows what the plugin contains`,
-    );
-    await page.waitForTimeout(300);
-    await shot(page, `${device}-plugins-review`);
-    await review.getByRole("button", { name: "Done" }).click();
     await page.getByRole("link", { name: `${pick} is added: open it` }).waitFor();
     check(true, `${device}: a service that registers Baskule itself reads Added`);
+    await shot(page, `${device}-plugins-added`);
 
     await page.getByRole("button", { name: `Add ${google}`, exact: true }).click();
     await page
       .getByRole("dialog", { name: `Add ${google}`, exact: true })
       .getByRole("button", { name: "Add plugin", exact: true })
       .click();
-    await page
-      .getByRole("dialog", { name: `${google} was added` })
-      .getByRole("button", { name: "Done" })
-      .click();
     await page.getByRole("link", { name: `Set up Google for ${google}` }).click();
     await page.waitForURL(/\/admin\/plugins\/installed\/[^/]+$/);
     await page.getByRole("heading", { name: google, level: 1 }).waitFor();
     const installedId = new URL(page.url()).pathname.split("/").at(-1);
-    let inventory = await (await page.request.get("/api/baskule/admin/plugins")).json();
+    const inventory = await (await page.request.get("/api/baskule/admin/plugins")).json();
     const groups = (await (await page.request.get("/api/baskule/admin/groups")).json()).groups;
     check(
       inventory.plugins.some((plugin) => plugin.id === installedId && plugin.enabled) &&
@@ -679,30 +667,6 @@ const scenarios = {
       `${device}: an organization key is write-only`,
     );
     await shot(page, `${device}-plugins-key`);
-
-    await page.goto("/admin/plugins/catalog");
-    await page.getByRole("button", { name: "Add your own" }).click();
-    const own = page.getByRole("dialog", { name: "Add your own plugin" });
-    await own.getByRole("button", { name: "Git repository" }).click();
-    await own.getByLabel("Repository").fill("https://github.com/acme/plugins");
-    await own.getByLabel("Commit").fill("abc123");
-    check(
-      (await own.getByText("Enter the full commit ID: 40 letters and digits.").count()) === 1,
-      `${device}: a short commit is explained before sending`,
-    );
-    await own.getByLabel("Commit").fill("0123456789abcdef0123456789abcdef01234567");
-    await own.getByLabel("Folder (optional)").fill(`skills/handbook-${device}`);
-    await shot(page, `${device}-plugins-add-own`);
-    await own.getByRole("button", { name: "Add plugin" }).click();
-    const ownReview = page.getByRole("dialog", { name: `handbook-${device} was added` });
-    await ownReview.waitFor();
-    await ownReview.getByRole("button", { name: "Remove it" }).click();
-    await ownReview.waitFor({ state: "hidden" });
-    inventory = await (await page.request.get("/api/baskule/admin/plugins")).json();
-    check(
-      !inventory.plugins.some((plugin) => plugin.name === `handbook-${device}`),
-      `${device}: a plugin added from a git repository can be discarded after review`,
-    );
 
     await page.goto("/admin/people/groups");
     await page.getByRole("link", { name: "Everyone", exact: true }).waitFor();
