@@ -1,11 +1,19 @@
 // baskule: Settings → Plugins, for every person: the plugins their groups give them, what each
 // needs before it works, and the accounts they connect. People never add plugins; the admin does.
-import type { MemberPlugin, PluginStatus } from "@t3tools/contracts/baskule-plugins";
-import { CircleAlertIcon, CircleCheckIcon, CircleMinusIcon, LinkIcon } from "lucide-react";
+import type { Account, MemberPlugin, PluginStatus } from "@t3tools/contracts/baskule-plugins";
+import {
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleMinusIcon,
+  LinkIcon,
+  PlusIcon,
+  UserRoundIcon,
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { useTranslation } from "../../i18n";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { toastManager } from "../../components/ui/toast";
@@ -13,7 +21,14 @@ import { cn } from "../../lib/utils";
 import { ResourceState } from "../admin/ResourceState";
 import { confirmAction, useApiResource } from "../ui";
 import { PageMessage, PageSection } from "../views/BaskulePage";
-import { accountConnectionUrl, notifyPluginError, pluginErrorCodeText, pluginsApi } from "./api";
+import { AccountDialog, type AccountDialogRequest } from "./AccountDialog";
+import {
+  accountConnectionUrl,
+  notifyPluginError,
+  pluginErrorCodeText,
+  pluginsApi,
+  type AccountConnection,
+} from "./api";
 import { PluginIcon, PluginTitle } from "./PluginParts";
 import { contentsKind, statusText } from "./presentation";
 
@@ -70,7 +85,7 @@ export function UserPluginsView() {
           />
         )}
         {plugins.map((plugin) => (
-          <UserPluginRow key={plugin.id} plugin={plugin} onChanged={() => void data.reload()} />
+          <UserPluginRow key={plugin.id} plugin={plugin} onChanged={data.reload} />
         ))}
       </PageSection>
     </SettingsPageContainer>
@@ -121,83 +136,120 @@ function StatusLine({
   );
 }
 
+type Server = MemberPlugin["servers"][number];
+
 export function UserPluginRow({
   plugin,
   onChanged,
 }: {
   readonly plugin: MemberPlugin;
-  readonly onChanged: () => void;
+  readonly onChanged: () => Promise<void>;
 }) {
   const t = useTranslation();
   const [busy, setBusy] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<AccountDialogRequest | null>(null);
   const blocked = plugin.status === "unavailable" || plugin.status === "needs_setup";
-  const ownAccount = plugin.servers.some((server) => server.credential === "user-oauth");
+  const ownServers = plugin.servers.filter((server) => server.credential === "user-oauth");
   // With several servers, each account is named by its server.
   const accountName = (server: string) => (plugin.servers.length > 1 ? server : plugin.name);
 
-  const connect = (server: string) => {
-    setBusy(`connect:${server}`);
-    window.location.assign(accountConnectionUrl(plugin.id, server, "/settings/plugins"));
+  const connect = (server: string, target: AccountConnection) => {
+    setBusy(target.type === "new" ? `connect:${server}` : `reconnect:${target.account}`);
+    window.location.assign(accountConnectionUrl(plugin.id, server, "/settings/plugins", target));
   };
 
-  const disconnect = async (server: string) => {
-    const confirmed = await confirmAction(
-      t(
-        "Disconnect your account from {{name}}?\nIt stops working for you until you connect again.",
-        {
-          name: plugin.name,
-        },
-      ),
-    );
-    if (!confirmed) return;
-    setBusy(`disconnect:${server}`);
+  /** Sends one account change and shows its outcome before the dialog closes. */
+  const change = (key: string, failure: string, send: () => Promise<unknown>) => {
+    setBusy(key);
     return (async () => {
-      await pluginsApi.disconnect(plugin.id, server);
-      onChanged();
+      await send();
+      await onChanged();
+      setDialog(null);
     })()
       .catch((cause: unknown) => {
-        notifyPluginError(t("Could not disconnect your account"), cause);
+        notifyPluginError(failure, cause);
       })
       .finally(() => {
         setBusy(null);
       });
   };
 
-  const actions = plugin.servers.flatMap((server) => {
-    const name = accountName(server.name);
-    if (!blocked && (server.status === "connect" || server.status === "reconnect")) {
-      return [
-        <Button
-          key={server.name}
-          size="xs"
-          variant="outline"
-          aria-label={statusText(server.status, name)}
-          disabled={busy !== null}
-          onClick={() => connect(server.name)}
-        >
-          {busy === `connect:${server.name}` ? <Spinner size="sm" /> : null}
-          {server.status === "connect" ? t("Connect") : t("Reconnect")}
-        </Button>,
-      ];
+  const addAccount = (server: Server) =>
+    setDialog({
+      type: "name",
+      title:
+        server.accounts.length === 0
+          ? statusText("connect", accountName(server.name))
+          : t("Add another {{name}} account", { name: accountName(server.name) }),
+      action: t("Connect account"),
+      label: server.accounts.length === 0 ? plugin.name.slice(0, 100) : "",
+      taken: server.accounts.map((account) => account.label),
+      submit: (label) => connect(server.name, { type: "new", label }),
+    });
+
+  const rename = (server: Server, account: Account) =>
+    setDialog({
+      type: "name",
+      title: t("Rename {{name}}", { name: account.label }),
+      action: t("Save"),
+      label: account.label,
+      taken: server.accounts.filter((other) => other !== account).map((other) => other.label),
+      submit: (label) =>
+        void change(`rename:${account.id}`, t("Could not rename the account"), () =>
+          pluginsApi.updateAccount(plugin.id, account.id, { label }),
+        ),
+    });
+
+  const makeDefault = (account: Account) =>
+    change(`default:${account.id}`, t("Could not change your default account"), () =>
+      pluginsApi.updateAccount(plugin.id, account.id, { default: true }),
+    );
+
+  const disconnect = async (server: Server, account: Account) => {
+    const others = server.accounts.filter((other) => other !== account);
+    const send = (newDefault?: string) =>
+      change(`disconnect:${account.id}`, t("Could not disconnect your account"), () =>
+        pluginsApi.disconnectAccount(plugin.id, account.id, newDefault),
+      );
+    if (account.default && others.length > 0) {
+      setDialog({
+        type: "replace",
+        account,
+        others,
+        submit: (newDefault) => void send(newDefault),
+      });
+      return;
     }
-    // Only an account the person connected themselves can be disconnected here.
-    if (server.status === "ready" && server.credential === "user-oauth") {
-      return [
-        <Button
-          key={server.name}
-          size="xs"
-          variant="ghost"
-          aria-label={t("Disconnect your {{name}} account", { name })}
-          disabled={busy !== null}
-          onClick={() => void disconnect(server.name)}
-        >
-          {busy === `disconnect:${server.name}` ? <Spinner size="sm" /> : null}
-          {t("Disconnect")}
-        </Button>,
-      ];
-    }
-    return [];
-  });
+    const confirmed = await confirmAction(
+      `${t("Disconnect {{name}}?", { name: account.label })}\n${
+        others.length === 0
+          ? t("{{name}} stops working for you until you connect an account again.", {
+              name: accountName(server.name),
+            })
+          : t("The assistant can no longer use it. Your default account stays connected.")
+      }`,
+      "destructive",
+    );
+    if (confirmed) await send();
+  };
+
+  const connectActions = blocked
+    ? []
+    : ownServers
+        .filter((server) => server.accounts.length === 0)
+        .map((server) => (
+          <Button
+            key={server.name}
+            size="xs"
+            variant="outline"
+            aria-label={statusText("connect", accountName(server.name))}
+            disabled={busy !== null}
+            onClick={() => addAccount(server)}
+          >
+            {busy === `connect:${server.name}` ? <Spinner size="sm" /> : null}
+            {t("Connect")}
+          </Button>
+        ));
   const worst = plugin.servers.find((server) => server.status === plugin.status);
 
   return (
@@ -214,18 +266,121 @@ export function UserPluginRow({
       <div className="flex flex-col gap-1 ps-11">
         <StatusLine
           status={plugin.status}
-          action={actions.length > 0 ? <span className="flex gap-1.5">{actions}</span> : null}
+          action={
+            connectActions.length > 0 ? (
+              <span className="flex gap-1.5">{connectActions}</span>
+            ) : null
+          }
         >
           {statusText(plugin.status, accountName(worst?.name ?? plugin.name))}
         </StatusLine>
-        {ownAccount && plugin.status !== "unavailable" ? (
+        {ownServers
+          .filter((server) => server.accounts.length > 0)
+          .map((server) => (
+            <div key={server.name} className="flex flex-col items-start">
+              {plugin.servers.length > 1 ? (
+                <span className="pt-1 text-xs text-muted-foreground">{server.name}</span>
+              ) : null}
+              <ul
+                aria-label={t("Your {{name}} accounts", { name: accountName(server.name) })}
+                className="flex flex-col self-stretch"
+              >
+                {server.accounts.map((account) => (
+                  <li
+                    key={account.id}
+                    className="flex min-h-7 flex-wrap items-center justify-between gap-x-3"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5 text-xs [&_svg]:size-3.5 [&_svg]:shrink-0">
+                      <UserRoundIcon aria-hidden className="text-muted-foreground" />
+                      <span className="min-w-0 truncate text-foreground">{account.label}</span>
+                      {account.default ? (
+                        <Badge variant="outline" size="sm">
+                          {t("Default")}
+                        </Badge>
+                      ) : null}
+                      {account.status === "reconnect" ? (
+                        <span className="shrink-0 text-warning-foreground">
+                          {t("Needs reconnecting")}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="flex flex-wrap gap-1">
+                      {account.status === "reconnect" && !blocked ? (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          aria-label={t("Reconnect {{name}}", { name: account.label })}
+                          disabled={busy !== null}
+                          onClick={() =>
+                            connect(server.name, { type: "reconnect", account: account.id })
+                          }
+                        >
+                          {busy === `reconnect:${account.id}` ? <Spinner size="sm" /> : null}
+                          {t("Reconnect")}
+                        </Button>
+                      ) : null}
+                      {account.default ? null : (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          aria-label={t("Make {{name}} the default account", {
+                            name: account.label,
+                          })}
+                          disabled={busy !== null}
+                          onClick={() => void makeDefault(account)}
+                        >
+                          {busy === `default:${account.id}` ? <Spinner size="sm" /> : null}
+                          {t("Make default")}
+                        </Button>
+                      )}
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        aria-label={t("Rename {{name}}", { name: account.label })}
+                        disabled={busy !== null}
+                        onClick={() => rename(server, account)}
+                      >
+                        {t("Rename")}
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        aria-label={t("Disconnect {{name}}", { name: account.label })}
+                        disabled={busy !== null}
+                        onClick={() => void disconnect(server, account)}
+                      >
+                        {busy === `disconnect:${account.id}` ? <Spinner size="sm" /> : null}
+                        {t("Disconnect")}
+                      </Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {blocked ? null : (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  aria-label={t("Add another {{name}} account", {
+                    name: accountName(server.name),
+                  })}
+                  disabled={busy !== null}
+                  onClick={() => addAccount(server)}
+                >
+                  <PlusIcon aria-hidden />
+                  {t("Add another account")}
+                </Button>
+              )}
+            </div>
+          ))}
+        {ownServers.length > 0 && plugin.status !== "unavailable" ? (
           <p className="text-xs text-muted-foreground">
             {t(
-              "It acts as you. In team spaces it works only where the space owner allows personal accounts, and members can read its results.",
+              "It acts as you. In team spaces, only your default account is used where the space owner allows personal accounts. Everyone there can read its results.",
             )}
           </p>
         ) : null}
       </div>
+      <AccountDialog request={dialog} busy={busy !== null} onClose={() => setDialog(null)} />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import m0005 from './0005_reflective_miracleman.sql';
 import m0006 from './0006_wealthy_malcolm_colcord.sql';
 import m0007 from './0007_hot_corsair.sql';
 import m0008 from './0008_catalog_plugins.sql';
+import m0009 from './0009_sad_captain_flint.sql';
 
   export default {
     journal,
@@ -20,7 +21,8 @@ m0004,
 m0005,
 m0006,
 m0007,
-m0008
+m0008,
+m0009
     }
   }
   

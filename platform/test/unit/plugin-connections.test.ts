@@ -14,8 +14,15 @@ async function install(h: H, resource: string) {
   await call(h, "PATCH", `${API}/admin/plugins/${p.id}`, { creds: a.creds, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth" }] } });
   await call(h, "PATCH", `${API}/admin/groups/everyone`, { creds: a.creds, body: { plugins: [p.id] } });
   const input = { spaceId: personalSpaceOf(h, a.userId), userId: a.userId, pluginId: p.id, server: "remote" };
-  return { a, p, input, start: () => call(h, "GET", `${API}/plugins/${p.id}/connect`, { creds: a.creds }),
-    credential: () => call(h, "POST", "/_baskule/plugin-credential", { headers: { [INTERNAL_HEADER]: "1" }, body: input }) };
+  const accounts = async () => (await call(h, "GET", `${API}/plugins`, { creds: a.creds })).body.plugins.find((entry: { id: string }) => entry.id === p.id).servers.find((entry: { name: string }) => entry.name === "remote").accounts;
+  return { a, p, input, start: async () => {
+    const existing = (await accounts())[0];
+    return call(h, "GET", `${API}/plugins/${p.id}/connect${existing ? `?account=${existing.id}` : ""}`, { creds: a.creds });
+  }, disconnect: async () => {
+    const existing = (await accounts())[0];
+    if (existing) return call(h, "DELETE", `${API}/plugins/${p.id}/accounts/${existing.id}`, { creds: a.creds });
+  }, credential: () => call(h, "POST", "/_baskule/plugin-credential", { headers: { [INTERNAL_HEADER]: "1" }, body: input }) };
+
 }
 async function authorized(start: Awaited<ReturnType<typeof call>>) {
   expect(start.status, JSON.stringify(start.body)).toBe(302);
@@ -130,9 +137,9 @@ describe("MCP OAuth connections", () => {
       expect(ciphertext).not.toContain(credential.body.headers.Authorization.slice(7));
       expect(ciphertext).not.toContain("refreshToken");
       expect(f.requests[0]).toMatchObject({ grant_type: "authorization_code", resource: f.resource });
-      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].servers).toEqual([{ name: "remote", credential: "user-oauth", status: "ready" }]);
+      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].servers).toMatchObject([{ name: "remote", credential: "user-oauth", status: "ready", accounts: [{ default: true, status: "ready" }] }]);
       expect((await call(h, "GET", callback, { creds: x.a.creds })).headers.get("location")).toContain("connectionError=invalid_oauth_state");
-      await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds });
+      await x.disconnect();
       expect((await x.credential()).body.error).toBe("connect");
     } finally { await f.close(); }
   });
@@ -173,8 +180,8 @@ describe("MCP OAuth connections", () => {
       expect(f.requests[1]).toMatchObject({ grant_type: "refresh_token", resource: f.resource });
       // Force expiry without a fixed sleep.
       const cipher = new ConnectionCipher(h.storage.sql.exec("select value from kv where key='auth_secret'").toArray()[0].value as string);
-      const key = JSON.stringify([x.a.userId, x.p.id, "remote"]);
-      const row = h.storage.sql.exec("select data from plugin_connection").toArray()[0];
+      const row = h.storage.sql.exec("select id,data from plugin_connection").toArray()[0];
+      const key = JSON.stringify(["connection", row.id, x.a.userId, x.p.id, "remote"]);
       const c = await cipher.open<any>(row.data as string, key); c.oauth.tokens.expiresAt = 0;
       h.storage.sql.exec("update plugin_connection set data=?", await cipher.seal(c, key)).toArray();
       f.state.invalidGrant = true;
@@ -202,10 +209,12 @@ describe("MCP OAuth connections", () => {
     try {
       const h = await makeService(); const x = await install(h, f.resource);
       await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
-      const disconnect = async () => { await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds }); };
+      const disconnect = async () => { await x.disconnect(); };
       f.state.onRefresh = disconnect;
       expect((await x.credential()).body.error).toBe("connect");
       expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual([]);
+      f.state.onRefresh = null;
+      await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
       f.state.onExchange = disconnect;
       const done = await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
       expect(done.headers.get("location")).toContain("pluginConnection=error");
@@ -234,18 +243,22 @@ describe("vendor setup and recipes", () => {
     const f = await fakeOAuth(); f.state.dcr = false;
     try {
       const h = await makeService(); const x = await install(h, f.resource);
-      const other = (await call(h, "POST", `${API}/admin/plugins`, { creds: x.a.creds, body: { groups: [], source: { type: "url", url: f.resource } } })).body;
-      h.storage.sql.exec("insert into plugin_connection(user_id,plugin_id,server,data) values (?,?,?,?)", x.a.userId, other.id, "remote", "unrelated").toArray();
+      const other = (await call(h, "POST", `${API}/admin/plugins`, { creds: x.a.creds, body: { groups: ["everyone"], source: { type: "url", url: f.resource } } })).body;
+      await call(h, "PATCH", `${API}/admin/plugins/${other.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth" }] } });
+      await call(h, "PUT", `${API}/admin/vendors/${other.id}`, { creds: x.a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
+      const otherStart = await call(h, "GET", `${API}/plugins/${other.id}/connect`, { creds: x.a.creds });
+      expect((await call(h, "GET", await authorized(otherStart), { creds: x.a.creds })).headers.get("location")).toContain("pluginConnection=connected");
+      const previousRequests = f.requests.length;
       await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { staticClient: true } }] } });
-      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].status).toBe("needs_setup");
+      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins.find((p: { id: string }) => p.id === x.p.id).status).toBe("needs_setup");
       expect((await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { params: { state: "overridden" } } }] } })).body.error).toBe("invalid_plugin_input");
       const path = `${API}/admin/vendors/${x.p.id}`;
       expect((await call(h, "PUT", path, { creds: x.a.creds, body: { clientId: "fake-client", clientSecret: "private-secret", tokenEndpointAuthMethod: "client_secret_post" } })).status).toBe(200);
       expect((await call(h, "GET", `${API}/admin/plugins`, { creds: x.a.creds })).body.plugins.find((p: { id: string }) => p.id === x.p.id).vendorConfigured).toBe(true);
-      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].status).toBe("connect");
+      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins.find((p: { id: string }) => p.id === x.p.id).status).toBe("connect");
       f.state.advertisedIssuer = "https://other-issuer.test";
       expect((await x.start()).headers.get("location")).toContain("connectionError=oauth_issuer_changed");
-      expect(f.requests).toEqual([]);
+      expect(f.requests).toHaveLength(previousRequests);
       f.state.advertisedIssuer = null;
       expect((await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds })).headers.get("location")).toContain("pluginConnection=connected");
       await call(h, "PUT", path, { creds: x.a.creds, body: null });
@@ -312,7 +325,8 @@ describe("ready-member discovery and account reloads", () => {
       await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [] } });
       expect(await h.svc.connections.credential({ ...x.input, spaceId: team, userId: members[0].id })).toEqual({ error: "connect" });
       expect(await h.svc.connections.credential({ ...x.input, spaceId: team, userId: members[1].id })).toMatchObject({ headers: { Authorization: expect.stringMatching(/^Bearer /) } });
-      await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: members[1].creds });
+      const connected = (await call(h, "GET", `${API}/plugins`, { creds: members[1].creds })).body.plugins[0].servers[0].accounts[0];
+      await call(h, "DELETE", `${API}/plugins/${x.p.id}/accounts/${connected.id}`, { creds: members[1].creds });
       expect((await h.svc.plugins.settings(team)).servers).toEqual([]);
     } finally { await f.close(); }
   });
@@ -333,7 +347,7 @@ describe("ready-member discovery and account reloads", () => {
       expect((await x.credential()).body.headers.Authorization).toMatch(/^Bearer /);
       expect(f.state.refreshes).toBe(1);
       expect(reloads()).toEqual([]);
-      await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds });
+      await x.disconnect();
       expect(reloads()).toEqual(own);
       h.calls.length = 0;
       await call(h, "PUT", `${API}/admin/vendors/${x.p.id}`, { creds: x.a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });

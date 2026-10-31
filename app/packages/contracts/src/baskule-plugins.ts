@@ -59,6 +59,7 @@ export interface PluginPatch {
   servers?: (Pick<PluginServer, "name" | "credential"> & { oauth?: Omit<OAuthRecipe, "resourceUrl"> } & Partial<Pick<PluginServer, "url" | "transport">>)[];
 }
 export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
+export interface Account { id: string; label: string; default: boolean; status: "ready" | "reconnect" }
 export interface MemberPlugin {
   id: string;
   name: string;
@@ -66,7 +67,7 @@ export interface MemberPlugin {
   icon?: string;
   skills: { name: string; description: string }[];
   status: PluginStatus;
-  servers: { name: string; credential: CredentialMode; status: PluginStatus }[];
+  servers: { name: string; credential: CredentialMode; status: PluginStatus; accounts: Account[] }[];
 }
 export interface PluginSecretInput {
   server: string;
@@ -81,17 +82,21 @@ export interface PluginFile {
 }
 export interface SpacePlugins {
   /** Catalog discovery uses an allowed member; tool calls always use the turn author. */
-  servers: (PluginServer & { pluginId: string; pluginName: string; catalogUserId: string; privateNetwork: boolean })[];
+  servers: (PluginServer & { pluginId: string; pluginName: string; catalogUserId: string; privateNetwork: boolean; defaultAccountOnly: boolean })[];
   skills: { pluginId: string; name: string; description: string; files: PluginFile[] }[];
 }
 export type PluginCredential =
-  | { headers: Record<string, string>; expiresAt: number }
-  | { error: PluginCallError };
+  | { headers: Record<string, string>; expiresAt: number; account?: { id: string; label: string } }
+  | { error: PluginCallError; accounts?: string[] };
 
-export type PluginCallError = Exclude<PluginStatus, "ready">;
+export interface PluginCredentialRequest { spaceId: string; pluginId: string; server: string; userId: string; account?: string; tool?: string }
+export type PluginCallError = Exclude<PluginStatus, "ready"> | "unknown_account" | "default_account_required";
 
 export const PLUGIN_ERROR_CODES = [
   "address_not_allowed",
+  "account_label_taken",
+  "account_not_found",
+  "default_account_required",
   "catalog_unknown",
   "catalog_not_available",
   "already_installed",

@@ -41,10 +41,13 @@ export const pluginsApi = {
       client,
     ),
   mine: async () => (await request<{ plugins: MemberPlugin[] }>("GET", `${root}/plugins`)).plugins,
-  disconnect: (id: string, server: string) =>
+  updateAccount: (id: string, account: string, patch: { label: string } | { default: true }) =>
+    request<{ ok: true }>("PATCH", `${root}/plugins/${enc(id)}/accounts/${enc(account)}`, patch),
+  /** Disconnecting the default while other accounts remain names the account that replaces it. */
+  disconnectAccount: (id: string, account: string, newDefault?: string) =>
     request<{ ok: true }>(
       "DELETE",
-      `${root}/plugins/${enc(id)}/connection?server=${encodeURIComponent(server)}`,
+      `${root}/plugins/${enc(id)}/accounts/${enc(account)}${newDefault ? `?default=${enc(newDefault)}` : ""}`,
     ),
   space: (id: string) => request<SpacePluginSettings>("GET", `${root}/spaces/${enc(id)}/plugins`),
   saveSpace: (id: string, settings: SpacePluginSettings) =>
@@ -57,13 +60,25 @@ export const pluginsApi = {
   removeGroup: (id: string) => request<{ ok: true }>("DELETE", `${root}/admin/groups/${enc(id)}`),
 };
 
+/** A new account with its name, or a fresh sign-in for an account that keeps its name and default. */
+export type AccountConnection =
+  | { readonly type: "new"; readonly label: string }
+  | { readonly type: "reconnect"; readonly account: string };
+
 /**
  * Where the browser goes to connect one server of a plugin to the person's account. The endpoint
  * starts the sign-in and redirects; the person comes back to `returnTo` with `pluginConnection`.
  * Navigate to it: fetching it first would start a second sign-in.
  */
-export function accountConnectionUrl(id: string, server: string, returnTo: string): string {
+export function accountConnectionUrl(
+  id: string,
+  server: string,
+  returnTo: string,
+  target: AccountConnection,
+): string {
   const query = new URLSearchParams({ server, returnTo });
+  if (target.type === "new") query.set("label", target.label);
+  else query.set("account", target.account);
   return `${root}/plugins/${enc(id)}/connect?${query}`;
 }
 
@@ -71,6 +86,10 @@ const tooLarge = () => t("It is too large to add (10 MB packed, 20 MB unpacked a
 const cantOpen = () => t("This file can't be opened. Use a .zip or .tar.gz file.");
 
 const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
+  account_label_taken: () => t("You already have an account with this name."),
+  account_not_found: () => t("This account is no longer connected. Reload the page."),
+  default_account_required: () =>
+    t("Choose which account becomes your default before you disconnect this one."),
   already_installed: () => t("It is already added. Open it from Installed."),
   address_not_allowed: () =>
     t(

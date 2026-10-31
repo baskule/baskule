@@ -747,16 +747,49 @@ const scenarios = {
         (await bob.page.getByRole("switch", { name: /^Use / }).count()) === 0,
       `${device}: assigned plugins appear without activation`,
     );
-    // The mock keeps the connection from the other device's run.
+    // The mock keeps the accounts from the other device's run.
     const connectButton = bob.page.getByRole("button", {
       name: "Connect your Google Drive account",
+      exact: true,
     });
     if (await connectButton.count()) {
       await connectButton.click();
+      const naming = bob.page.getByRole("dialog", { name: "Connect your Google Drive account" });
+      const field = naming.getByRole("textbox", { name: "Account name", exact: true });
+      check(
+        (await field.inputValue()) === "Google Drive",
+        `${device}: a first account is named after its plugin`,
+      );
+      await shot(bob.page, `${device}-settings-plugins-account-name`);
+      await naming.getByRole("button", { name: "Connect account", exact: true }).click();
       await bob.page.waitForURL((url) => url.pathname === "/settings/plugins" && !url.search);
     }
-    await bob.page.getByRole("button", { name: "Disconnect your Google Drive account" }).waitFor();
+    const driveAccounts = bob.page.getByRole("list", {
+      name: "Your Google Drive accounts",
+      exact: true,
+    });
+    await driveAccounts
+      .getByRole("button", { name: "Disconnect Google Drive", exact: true })
+      .waitFor();
     check(true, `${device}: connecting an account returns to Settings → Plugins, connected`);
+    if (
+      !(await driveAccounts.getByRole("button", { name: "Disconnect Work", exact: true }).count())
+    ) {
+      await bob.page
+        .getByRole("button", { name: "Add another Google Drive account", exact: true })
+        .click();
+      const another = bob.page.getByRole("dialog", { name: "Add another Google Drive account" });
+      await another.getByRole("textbox", { name: "Account name", exact: true }).fill("Work");
+      await another.getByRole("button", { name: "Connect account", exact: true }).click();
+      await bob.page.waitForURL((url) => url.pathname === "/settings/plugins" && !url.search);
+    }
+    await driveAccounts
+      .getByRole("button", { name: "Make Work the default account", exact: true })
+      .waitFor();
+    check(
+      (await driveAccounts.getByRole("listitem").count()) === 2,
+      `${device}: a second account is added beside the default one`,
+    );
     await shot(bob.page, `${device}-settings-plugins`);
     await bob.context.close();
 

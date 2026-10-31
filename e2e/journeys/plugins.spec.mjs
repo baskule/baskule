@@ -132,6 +132,7 @@ test("a connected member supplies discovery while calls keep the turn author's a
     await adminPage.screenshot({ path: test.info().outputPath("plugin-vendor-setup-saved.png") });
     await secondPage.reload();
     await secondPage.getByRole("button", { name: `Connect your ${name} account`, exact: true }).click();
+    await secondPage.getByRole("button", { name: "Connect account", exact: true }).click();
     await expect(secondPage).toHaveURL(url => url.pathname === "/settings/plugins" && !url.searchParams.has("pluginConnection"));
     await expect(secondPage.getByText("Ready", { exact: true })).toBeVisible();
     await secondPage.screenshot({ path: test.info().outputPath("plugin-connected-discovery.png") });
@@ -204,5 +205,63 @@ test("the curated catalog adds assigned services and opens shared vendor setup",
     for (const id of installed) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${id}`);
     await adminContext.close();
     await memberContext.close();
+  }
+});
+
+
+test("named accounts select the requested identity and use a changed default", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api }) => {
+  const oauth = await fakeOAuth();
+  const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
+  const context = await browser.newContext(options);
+  const page = await context.newPage();
+  const person = people.alice;
+  const name = `Accounts ${crypto.randomUUID().slice(0, 8)}`;
+  let plugin;
+  try {
+    plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { name, groups: ["everyone"], source: { type: "url", url: oauth.resource } });
+    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { servers: [{ name: "remote", credential: "user-oauth" }] });
+    await context.addCookies(person.cookie.split("; ").map(cookie => {
+      const [name, ...value] = cookie.split("=");
+      return { name, value: value.join("="), url: stack.urls.front };
+    }));
+    await page.goto(`${stack.urls.front}/settings/plugins`);
+    for (const label of ["Work", "Second"]) {
+      oauth.state.identity = label;
+      await page.getByRole("button", { name: label === "Work" ? `Connect your ${name} account` : `Add another ${name} account`, exact: true }).click();
+      await page.getByLabel("Account name", { exact: true }).fill(label);
+      await page.getByRole("button", { name: "Connect account", exact: true }).click();
+      await expect(page.getByRole("list", { name: `Your ${name} accounts`, exact: true }).getByText(label, { exact: true })).toBeVisible();
+    }
+    const list = page.getByRole("list", { name: `Your ${name} accounts`, exact: true });
+    await expect(list.getByRole("listitem").filter({ hasText: "Work" }).getByText("Default", { exact: true })).toBeVisible();
+    await list.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("plugin-two-accounts.png") });
+    const reply = async args => {
+      const client = await person.rpc(api.personalSpace(person));
+      try {
+        const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
+        const id = await api.launch(client, projectId, `Look up the private document [[fake:tool *fixture_lookup ${JSON.stringify(args)}]]`, "Named plugin accounts", { generateTitle: false });
+        const state = api.watchThread(client, id);
+        await api.waitRun(state);
+        const answer = state.assistantText();
+        state.stop();
+        return answer;
+      } finally { client.close(); await client.closed; }
+    };
+    expect(await reply({ baskule_account: "Second" })).toContain("Account used: Second.");
+    expect(oauth.calls).toHaveLength(1);
+    expect(oauth.calls[0]).toMatchObject({ identity: "Second", arguments: {} });
+    expect(oauth.calls[0].arguments).not.toHaveProperty("baskule_account");
+    await list.getByRole("button", { name: "Make Second the default account", exact: true }).click();
+    await expect(list.getByRole("listitem").filter({ hasText: "Second" }).getByText("Default", { exact: true })).toBeVisible();
+    await list.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("plugin-default-changed.png") });
+    expect(await reply({})).toContain("Account used: Second.");
+    expect(oauth.calls).toHaveLength(2);
+    expect(oauth.calls[1]).toMatchObject({ identity: "Second", arguments: {} });
+  } finally {
+    if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
+    await context.close();
+    await oauth.close();
   }
 });
