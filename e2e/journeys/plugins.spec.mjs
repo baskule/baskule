@@ -237,8 +237,10 @@ test("named accounts select the requested identity and use a changed default", {
     await list.scrollIntoViewIfNeeded();
     await page.screenshot({ path: test.info().outputPath("plugin-two-accounts.png") });
     const reply = async args => {
-      const client = await person.rpc(api.personalSpace(person));
+      const client = await test.step("Open the personal space RPC", () => person.rpc(api.personalSpace(person)));
+      const shell = api.watchShell(client);
       try {
+        await expect.poll(() => shell.ready, { message: "personal RPC is ready before launching the account call" }).toBe(true);
         const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
         const id = await api.launch(client, projectId, `Look up the private document [[fake:tool *fixture_lookup ${JSON.stringify(args)}]]`, "Named plugin accounts", { generateTitle: false });
         const state = api.watchThread(client, id);
@@ -246,7 +248,7 @@ test("named accounts select the requested identity and use a changed default", {
         const answer = state.assistantText();
         state.stop();
         return answer;
-      } finally { client.close(); await client.closed; }
+      } finally { shell.stop(); client.close(); await client.closed; }
     };
     expect(await reply({ baskule_account: "Second" })).toContain("Account used: Second.");
     expect(oauth.calls).toHaveLength(1);
