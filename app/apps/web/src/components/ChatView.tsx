@@ -3456,7 +3456,7 @@ export default function ChatView(props: ChatViewProps) {
                                     : undefined
                                 }
                                 availableEnvironments={logicalProjectEnvironments}
-                                {...(isServerThread
+                                {...(isServerThread || baskule.plainChat // baskule: no permissions control
                                   ? {}
                                   : {
                                       trailing: (
