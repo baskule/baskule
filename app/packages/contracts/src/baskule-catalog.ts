@@ -23,7 +23,7 @@ export interface CatalogService {
   docs: string;             // the vendor's documentation of this server
   servers: { name: string; url: string; transport?: "sse"; scopes?: string[]; resource?: string }[];
   prerequisites: string[];  // msg(): plan, preview enrolment, tenant settings
-  notYet?: string;          // msg(): replaces Add while the vendor has not admitted Baskule (Shopify, Figma, Docusign)
+  notYet?: string;          // msg(): replaces Add until the service is qualified
   reviewBy: string;         // YYYY-MM-DD. platform/test/unit/plugin-catalog.test.ts fails after it.
 }
 export const CATALOG_VENDORS: readonly CatalogVendor[] = [
@@ -848,7 +848,6 @@ export const CATALOG: readonly CatalogService[] = [
       {
         name: "github",
         url: "https://api.githubcopilot.com/mcp/",
-        resource: "https://api.githubcopilot.com/mcp",
         scopes: ["repo"],
       }
     ],

@@ -189,10 +189,9 @@ changes its authorization server is refused before Baskule sends the client secr
 after setup, the saved issuer supplies discovery. Catalog setup uses the vendor issuer from the reviewed recipe;
 custom setup initially requires resource metadata. Plugin accounts are separate from signing in to Baskule.
 
-Server settings accept `oauth: {scopes, params, resource, resourceUrl, staticClient}` for `user-oauth` servers. Scopes default
+Server settings accept `oauth: {scopes, params, resource, staticClient}` for `user-oauth` servers. Scopes default
 to the resource challenge or metadata; `params` adds vendor authorization parameters, and `resource: false`
-omits the resource parameter for vendors that refuse it. `resourceUrl` explicitly selects a resource identifier
-on the same origin as the MCP endpoint. `staticClient: true` requires administrator setup.
+omits the resource parameter for vendors that refuse it. `staticClient: true` requires administrator setup.
 Protocol parameters such as the callback, state and PKCE cannot be overridden. Nothing uses OpenCode's per-space OAuth store.
 
 UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH`

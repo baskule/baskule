@@ -198,6 +198,7 @@ test("the curated catalog adds assigned services and opens shared vendor setup",
     await expect(adminPage.getByLabel("Client ID", { exact: true })).toBeVisible();
     await expect(adminPage.getByText("Your app at Google", { exact: true })).toBeVisible();
     await expect(adminPage.getByRole("link", { name: "Setup instructions", exact: true })).toBeVisible();
+    await adminPage.getByLabel("Client ID", { exact: true }).scrollIntoViewIfNeeded();
     await adminPage.screenshot({ path: test.info().outputPath("plugin-catalog-google-setup.png") });
   } finally {
     for (const id of installed) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${id}`);

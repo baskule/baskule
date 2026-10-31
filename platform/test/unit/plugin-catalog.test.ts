@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CATALOG, CATALOG_VENDORS } from "../../../app/packages/contracts/src/baskule-catalog";
+import { discoverOAuth } from "../../src/control/connection-oauth";
 import { pluginFromCatalog } from "../../src/control/plugins";
 import { checkOutbound } from "../../src/shared/plugin-outbound";
 import { asAdmin, call, makeService } from "../support/harness";
@@ -21,6 +22,7 @@ describe("curated plugin catalog", () => {
       expect(vendor).toBeDefined();
       expect(service.reviewBy >= new Date().toISOString().slice(0, 10), service.id).toBe(true);
       for (const url of [service.icon, service.docs, ...service.servers.flatMap(s => [s.url, ...(s.resource ? [s.resource] : [])])]) expect(checkOutbound(url, "public").protocol).toBe("https:");
+      for (const server of service.servers) if (server.resource) expect(new URL(server.resource).origin).toBe(new URL(server.url).origin);
       const plugin = pluginFromCatalog(service, vendor);
       expect(plugin).toMatchObject({ id: service.id, vendor: vendor.id, enabled: true, source: { type: "catalog" } });
       expect(plugin.servers).toHaveLength(service.servers.length);
@@ -28,6 +30,22 @@ describe("curated plugin catalog", () => {
     }
     for (const id of ["shopify", "figma", "docusign", "outlook", "onedrive", "sharepoint", "teams"]) expect(CATALOG.find(s => s.id === id)?.notYet).toBeTruthy();
     for (const id of ["monday", "qonto", "shopify"]) expect(CATALOG.find(s => s.id === id)?.servers[0]).not.toHaveProperty("scopes");
+  });
+  it("uses the GitHub resource from the exact metadata URL advertised by its challenge", async () => {
+    const service = CATALOG.find(s => s.id === "github")!;
+    const vendor = CATALOG_VENDORS.find(v => v.id === service.vendor)!;
+    const server = pluginFromCatalog(service, vendor).servers[0];
+    const metadata = "https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/";
+    const seen: string[] = [];
+    const fetcher = async (input: string | URL | Request) => {
+      const url = String(input); seen.push(url);
+      if (url === server.url) return new Response(null, { status: 401, headers: { "www-authenticate": `Bearer resource_metadata="${metadata}"` } });
+      if (url === metadata) return Response.json({ resource: "https://api.githubcopilot.com/mcp/", authorization_servers: ["https://github.com/login/oauth"] });
+      return Response.json({ issuer: "https://github.com/login/oauth", authorization_endpoint: "https://github.com/login/oauth/authorize", token_endpoint: "https://github.com/login/oauth/access_token", code_challenge_methods_supported: ["S256"], response_types_supported: ["code"] });
+    };
+    const discovery = await discoverOAuth(server.url, fetcher, "public", "https://github.com/login/oauth", server.oauth?.resourceUrl);
+    expect(discovery.resource).toBe("https://api.githubcopilot.com/mcp/");
+    expect(seen).toContain(metadata);
   });
   it("installs available services through the same save, assigns groups, refuses duplicates and holds", async () => {
     const h = await makeService(); const a = await asAdmin(h);

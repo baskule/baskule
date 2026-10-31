@@ -23,8 +23,6 @@ export interface VendorClient {
   clientId: string;
   clientSecret?: string;
   tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic";
-  /** The organization's directory ID, for vendors that sign in per organization. */
-  tenant?: string;
 }
 
 export const pluginsApi = {

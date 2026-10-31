@@ -7,7 +7,6 @@ import * as NodeCrypto from "node:crypto";
 import { catalogService, catalogVendor } from "../../../packages/contracts/src/baskule-catalog.ts";
 
 const EVERYONE = "everyone";
-const TENANT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const id = () => NodeCrypto.randomUUID();
 const at = (daysAgo) => new Date(Date.now() - daysAgo * 864e5).toISOString();
 
@@ -328,17 +327,12 @@ export function createPluginMock({ users, spaces }) {
         const body = await readBody(req);
         if (body !== null) {
           const auth = body?.tokenEndpointAuthMethod;
-          const signIn = catalogVendor(vendor)?.signIn;
           if (
             typeof body?.clientId !== "string" ||
             !body.clientId ||
             !["none", "client_secret_post", "client_secret_basic"].includes(auth) ||
-            (auth !== "none") !== Boolean(body.clientSecret) ||
-            (body.tenant !== undefined && !TENANT.test(String(body.tenant))) ||
-            (signIn?.type === "account" &&
-              signIn.client === "static" &&
-              signIn.fields?.includes("tenant") &&
-              !body.tenant)
+            (auth !== "none") !== Boolean(body.clientSecret)
+
           )
             return (fail(res, 400, "invalid_oauth_client"), true);
           vendors.add(vendor);

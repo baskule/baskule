@@ -56,7 +56,7 @@ export interface PluginPatch {
   description?: string;
   icon?: string;
   enabled?: boolean;
-  servers?: (Pick<PluginServer, "name" | "credential" | "oauth"> & Partial<Pick<PluginServer, "url" | "transport">>)[];
+  servers?: (Pick<PluginServer, "name" | "credential"> & { oauth?: Omit<OAuthRecipe, "resourceUrl"> } & Partial<Pick<PluginServer, "url" | "transport">>)[];
 }
 export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
 export interface MemberPlugin {

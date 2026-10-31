@@ -99,7 +99,7 @@ export class Connections {
     const plugins = this.plugins.list().filter(p => p.vendor === vendor);
     if (!plugins.length) throw pluginError(404, "vendor_unknown");
     if (req.method !== "PUT") return notFound();
-    const parsed = z.object({ clientId: z.string().min(1).max(4096), clientSecret: z.string().min(1).max(8192).optional(), tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]), tenant: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).optional() }).strict().nullable().safeParse(await req.json().catch(() => { throw pluginError(400, "invalid_json"); }));
+    const parsed = z.object({ clientId: z.string().min(1).max(4096), clientSecret: z.string().min(1).max(8192).optional(), tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]) }).strict().nullable().safeParse(await req.json().catch(() => { throw pluginError(400, "invalid_json"); }));
     if (!parsed.success) throw pluginError(400, "invalid_oauth_client");
     const client = parsed.data;
     if (client && (client.tokenEndpointAuthMethod !== "none") !== !!client.clientSecret) throw pluginError(400, "invalid_oauth_client");
@@ -107,8 +107,7 @@ export class Connections {
     if (client && !servers.length) throw pluginError(400, "not_oauth_server");
     const snapshot = JSON.stringify(plugins);
     const recipe = catalogVendor(vendor)?.signIn;
-    if (client && recipe?.type === "account" && recipe.client === "static" && recipe.fields?.includes("tenant") && !client.tenant) throw pluginError(400, "invalid_oauth_client");
-    const pin = recipe?.type === "account" && recipe.client === "static" ? recipe.issuer.replace("{tenant}", client?.tenant ?? "") : undefined;
+    const pin = recipe?.type === "account" && recipe.client === "static" ? recipe.issuer : undefined;
     const issuer = client ? (await discoverOAuth(servers[0].url, this.fetcher, serverNetwork(servers[0].url), pin, servers[0].oauth?.resourceUrl)).as.issuer : undefined;
     const data = client ? await this.cipher.seal({ ...client, issuer }, JSON.stringify(["vendor", vendor])) : null;
     this.storage.transactionSync(() => {

@@ -272,35 +272,35 @@ describe("pausing a plugin", () => {
 });
 
 describe("signing in to a plugin's service", () => {
-  it("keeps a catalog service's sign-in and asks for its vendor's app with the tenant", async () => {
+  it("keeps a catalog service's sign-in and links to its vendor setup instructions", async () => {
     const control = fakeControl({
       "GET /api/baskule/admin/plugins": () => ({
         plugins: [
           plugin({
-            id: "teams",
-            vendor: "microsoft",
-            name: "Microsoft Teams",
+            id: "gmail",
+            vendor: "google",
+            name: "Gmail",
             source: { type: "catalog" },
             servers: [
               {
-                name: "teams",
-                url: "https://workiq.svc.cloud.microsoft/mcp",
+                name: "gmail",
+                url: "https://gmailmcp.googleapis.com/mcp/v1",
                 credential: "user-oauth",
                 oauth: { staticClient: true },
               },
             ],
-            setup: [{ server: "teams", done: false }],
+            setup: [{ server: "gmail", done: false }],
           }),
         ],
       }),
       "GET /api/baskule/admin/groups": () => ({ groups }),
-      "PUT /api/baskule/admin/vendors/microsoft": () => ({ ok: true, configured: true }),
+      "PUT /api/baskule/admin/vendors/google": () => ({ ok: true, configured: true }),
     });
     using _fetch = control.stub;
-    await using screen = await render(<PluginDetailPage id="teams" />);
+    await using screen = await render(<PluginDetailPage id="gmail" />);
 
-    await expect.element(screen.getByText("Your app at Microsoft", { exact: true })).toBeVisible();
-    expect(screen.getByLabelText("How teams signs in", { exact: true }).query()).toBeNull();
+    await expect.element(screen.getByText("Your app at Google", { exact: true })).toBeVisible();
+    expect(screen.getByLabelText("How gmail signs in", { exact: true }).query()).toBeNull();
     await expect
       .element(screen.getByText("Each person connects their own account", { exact: true }))
       .toBeVisible();
@@ -311,26 +311,14 @@ describe("signing in to a plugin's service", () => {
 
     await userEvent.type(screen.getByLabelText("Client ID", { exact: true }), "client-1");
     await userEvent.type(screen.getByLabelText("Client secret", { exact: true }), "s3cret");
-    await userEvent.type(screen.getByLabelText("Tenant ID", { exact: true }), "contoso");
-    await expect
-      .element(screen.getByText("Enter the ID in the form 00000000-0000-0000-0000-000000000000."))
-      .toBeVisible();
-    await expect.element(screen.getByRole("button", { name: "Save setup" })).toBeDisabled();
-    await userEvent.clear(screen.getByLabelText("Tenant ID", { exact: true }));
-    await userEvent.type(
-      screen.getByLabelText("Tenant ID", { exact: true }),
-      "72f988bf-86f1-41af-91ab-2d7cd011db47",
-    );
     await press(screen.getByRole("button", { name: "Save setup" }));
 
-    await expect.element(screen.getByLabelText("Tenant ID", { exact: true })).toHaveValue("");
     expect(
-      control.calls.find((call) => call.route === "PUT /api/baskule/admin/vendors/microsoft")?.body,
+      control.calls.find((call) => call.route === "PUT /api/baskule/admin/vendors/google")?.body,
     ).toEqual({
       clientId: "client-1",
       tokenEndpointAuthMethod: "client_secret_post",
       clientSecret: "s3cret",
-      tenant: "72f988bf-86f1-41af-91ab-2d7cd011db47",
     });
   });
 

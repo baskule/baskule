@@ -266,7 +266,6 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
           configured={plugin.vendorConfigured}
           required={ownAccounts.some((server) => unfinished.has(server.name))}
           docs={vendorApp?.docs}
-          tenantRequired={vendorApp?.fields?.includes("tenant") ?? false}
           onChanged={data.reload}
         />
       ) : null}

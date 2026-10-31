@@ -23,7 +23,6 @@ import { PageRow, PageSection } from "../../views/BaskulePage";
 
 type Method = VendorClient["tokenEndpointAuthMethod"];
 const METHODS: ReadonlyArray<Method> = ["client_secret_post", "client_secret_basic", "none"];
-const TENANT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function VendorSetup({
   vendor,
@@ -31,7 +30,6 @@ export function VendorSetup({
   configured,
   required,
   docs,
-  tenantRequired = false,
   onChanged,
 }: {
   readonly vendor: string;
@@ -42,27 +40,17 @@ export function VendorSetup({
   readonly required: boolean;
   /** The vendor's instructions for registering the app. */
   readonly docs?: string | undefined;
-  /** The vendor signs in per organization directory, so the app needs its ID. */
-  readonly tenantRequired?: boolean;
   readonly onChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
   const [clientId, setClientId] = useState("");
   const [method, setMethod] = useState<Method>("client_secret_post");
   const [secret, setSecret] = useState("");
-  const [tenant, setTenant] = useState("");
   const [saving, setSaving] = useState<"save" | "remove" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const callback = `${window.desktopBridge?.getBaskuleServer?.() ?? window.location.origin}/api/baskule/plugins/oauth/callback`;
   const needsSecret = method !== "none";
-  const tenantError =
-    tenantRequired && tenant.trim() && !TENANT.test(tenant.trim())
-      ? t("Enter the ID in the form 00000000-0000-0000-0000-000000000000.")
-      : null;
-  const complete =
-    clientId.trim() !== "" &&
-    (!needsSecret || secret !== "") &&
-    (!tenantRequired || TENANT.test(tenant.trim()));
+  const complete = clientId.trim() !== "" && (!needsSecret || secret !== "");
 
   const methodLabel = (value: Method) => {
     switch (value) {
@@ -82,7 +70,6 @@ export function VendorSetup({
       await pluginsApi.vendorSetup(vendor, client);
       setClientId("");
       setSecret("");
-      setTenant("");
       notifySuccess(client ? t("Sign-in setup saved") : t("Sign-in setup removed"));
       await onChanged();
     })()
@@ -141,7 +128,6 @@ export function VendorSetup({
             clientId: clientId.trim(),
             tokenEndpointAuthMethod: method,
             ...(needsSecret ? { clientSecret: secret } : {}),
-            ...(tenantRequired ? { tenant: tenant.trim() } : {}),
           });
         }}
       >
@@ -165,18 +151,6 @@ export function VendorSetup({
             ) : null}
           </p>
         </div>
-        {tenantRequired ? (
-          <FormField
-            label={t("Tenant ID")}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="00000000-0000-0000-0000-000000000000"
-            hint={t("Your organization's directory ID at {{name}}.", { name })}
-            error={tenantError}
-            value={tenant}
-            onChange={(event) => setTenant(event.currentTarget.value)}
-          />
-        ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField
             label={t("Client ID")}
