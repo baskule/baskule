@@ -1,7 +1,7 @@
 import { EnvironmentId, ThreadId, ScheduledTaskId, type ScheduledTask } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
 
-const state = vi.hoisted(() => ({ allowed: true, toggle: vi.fn(), run: vi.fn() }));
+const state = vi.hoisted(() => ({ allowed: true, userId: "alice", toggle: vi.fn(), run: vi.fn() }));
 vi.mock(import("../../state/session"), async (importOriginal) => ({
   ...(await importOriginal()),
   useEnvironmentScope: () => state.allowed,
@@ -28,11 +28,21 @@ vi.mock(import("../../state/query"), async (importOriginal) => ({
   useEnvironmentQuery: (() => ({ data: { tasks: [task] }, error: null })) as never,
 }));
 
+vi.mock("../../baskule/session", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  useBaskuleMe: () => ({ user: { id: state.userId, role: "member" } }),
+}));
+vi.mock("../../baskule/spaces", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  useSpaceForEnvironment: () => ({ role: "member" }),
+}));
+
 import { act, render as renderUi } from "../../../test/render";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 const environmentId = EnvironmentId.make("remote");
 const threadId = ThreadId.make("thread");
 const task = {
+  author: { id: "alice", name: "Alice" },
   id: ScheduledTaskId.make("task"),
   threadId,
   title: "Daily review",
@@ -43,6 +53,7 @@ const task = {
 
 async function setup() {
   state.allowed = true;
+  state.userId = "alice";
   state.toggle.mockReset().mockResolvedValue({ _tag: "Success" });
   state.run.mockReset().mockResolvedValue({ _tag: "Success" });
 
@@ -84,4 +95,14 @@ it("rejects a retained toggle after task permission is revoked", async () => {
   state.allowed = true;
   await act(async () => byLabel("Pause Daily review").click());
   expect(state.toggle).toHaveBeenCalledOnce();
+});
+
+it("omits edit and run controls for a different task author", async () => {
+  await using fixture = await setup();
+  state.userId = "bob";
+  await fixture.renderPanel();
+  expect(fixture.byLabel("Edit Daily review")).toBeNull();
+  expect(fixture.byLabel("Run Daily review now")).toBeNull();
+  await act(async () => fixture.byLabel("Pause Daily review").click());
+  expect(state.toggle).not.toHaveBeenCalled();
 });

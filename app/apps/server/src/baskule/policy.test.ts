@@ -23,8 +23,7 @@ const registered = new Set([...WsRpcGroup.requests.keys()]);
 
 describe("Baskule RPC policy", () => {
   it("only names registered methods", () => {
-    for (const method of BASKULE_ALLOWED_METHODS)
-      expect(registered.has(method), method).toBe(true);
+    for (const method of BASKULE_ALLOWED_METHODS) expect(registered.has(method), method).toBe(true);
   });
 
   it("only names declared MCP tools", () => {
@@ -59,6 +58,7 @@ describe("Baskule RPC policy", () => {
       "thread.unsettle",
       "thread.auto-settle.set",
       "thread.pull-request.link",
+      "delegated_task.request",
     ]) {
       expect(BASKULE_ALLOWED_COMMANDS.has(type)).toBe(false);
       expect(baskuleRefusal(BASKULE_POLICY, "orchestration.dispatchCommand", { type })).toMatch(
@@ -118,6 +118,21 @@ describe("message authorship", () => {
     expect("author" in stampCommandAuthor(forged, undefined)).toBe(false);
     const other = { type: "thread.archive", commandId: "c2", threadId: "t1" } as never;
     expect(stampCommandAuthor(other, author)).toBe(other);
+    const response = {
+      type: "runtime-request.respond",
+      commandId: "answer",
+      threadId: "t1",
+      requestId: "question",
+      answers: { q: "Yes" },
+    } as never;
+    expect((stampCommandAuthor(response, author) as { author?: unknown }).author).toEqual(author);
+    expect(
+      "author" in
+        stampCommandAuthor(
+          { type: "runtime-request.respond", author: { id: "forged", name: "Forged" } } as never,
+          undefined,
+        ),
+    ).toBe(false);
     expect(stampLaunchAuthor({ text: "x", attachments: [] }, author)).toEqual({ author });
     expect(stampLaunchAuthor(undefined, author)).toEqual({});
   });

@@ -15,19 +15,16 @@ async function runAuthor(runId: unknown, query: Query): Promise<TurnAuthor | und
     SELECT run_id,thread_id,json_extract(payload_json,'$.delegatedTaskId'),0 FROM orchestration_v2_projection_runs WHERE run_id=?
     UNION ALL
     SELECT r.run_id,r.thread_id,json_extract(r.payload_json,'$.delegatedTaskId'),a.depth+1 FROM ancestors a
-      JOIN orchestration_v2_projection_subagents s ON s.child_thread_id=a.thread_id AND (a.task_id IS NULL OR a.task_id=s.subagent_id)
+      JOIN orchestration_v2_projection_subagents s ON s.child_thread_id=a.thread_id AND a.task_id=s.subagent_id
       JOIN orchestration_v2_projection_runs r ON r.run_id=s.run_id WHERE a.depth<32
     ) SELECT m.payload_json AS message FROM ancestors a
       JOIN orchestration_v2_projection_runs r ON r.run_id=a.run_id
       JOIN orchestration_v2_projection_messages m ON m.message_id=json_extract(r.payload_json,'$.userMessageId')
       ORDER BY a.depth`, [runId]);
   for (const row of messages) {
-    const message = JSON.parse(row.message as string) as { author?: TurnAuthor; scheduledTaskId?: string };
+    const message = JSON.parse(row.message as string) as { author?: TurnAuthor };
     if (message.author?.id) return message.author;
-    if (message.scheduledTaskId) {
-      const task = await query("SELECT author_json FROM scheduled_tasks WHERE task_id=?", [message.scheduledTaskId]);
-      if (task[0]?.author_json) return JSON.parse(task[0].author_json as string) as TurnAuthor;
-    }
+
   }
 }
 

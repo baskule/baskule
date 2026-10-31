@@ -1230,6 +1230,32 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
 });
 export type OrchestrationV2ConversationMessage = typeof OrchestrationV2ConversationMessage.Type;
 
+export function isAutomatedMessage(
+  message:
+    | Pick<
+        OrchestrationV2ConversationMessage,
+        | "createdBy"
+        | "creationSource"
+        | "scheduledTaskId"
+        | "senderThreadId"
+        | "notification"
+        | "idleCompaction"
+        | "delegatedCompletion"
+      >
+    | undefined,
+): boolean {
+  return (
+    message !== undefined &&
+    (message.createdBy === "agent" ||
+      message.creationSource === "server" ||
+      message.scheduledTaskId !== undefined ||
+      message.senderThreadId !== undefined ||
+      message.notification !== undefined ||
+      message.idleCompaction !== undefined ||
+      message.delegatedCompletion !== undefined)
+  );
+}
+
 export const OrchestrationV2PlanStep = Schema.Struct({
   id: TrimmedNonEmptyString,
   text: TrimmedNonEmptyString,
@@ -3127,6 +3153,7 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("runtime-request.respond"),
+    author: Schema.optional(OrchestrationV2Author),
     commandId: CommandId,
     threadId: ThreadId,
     requestId: RuntimeRequestId,

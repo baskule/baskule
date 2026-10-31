@@ -14,6 +14,7 @@ export const SecretRequestAnswerInput = Schema.Struct({
 export type SecretRequestAnswerInput = typeof SecretRequestAnswerInput.Type;
 
 const SECRET_REQUEST_FAILURE_MESSAGES = {
+  forbidden: "Only the run's author can answer this secret request.",
   load_failed: "Could not load the secret request.",
   not_found: "This secret request no longer exists.",
   already_answered: "This secret request was already answered.",

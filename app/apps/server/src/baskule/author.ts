@@ -25,7 +25,12 @@ export const stampCommandAuthor = <C extends OrchestrationV2Command>(
   command: C,
   author: OrchestrationV2Author | undefined,
 ): C => {
-  if (!("createdBy" in command) && !("author" in command)) return command;
+  if (
+    command.type !== "runtime-request.respond" &&
+    !("createdBy" in command) &&
+    !("author" in command)
+  )
+    return command;
   const { author: _clientAuthor, ...rest } = command as C & { author?: unknown };
   return (author === undefined ? rest : { ...rest, author }) as C;
 };

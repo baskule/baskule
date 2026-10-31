@@ -30,6 +30,8 @@ import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 import { renderWebhookPrompt } from "./webhookTemplate.ts";
 
+const taskActor = { id: "alice", name: "Alice" };
+
 const decodeUpsertInput = Schema.decodeUnknownEffect(ScheduledTaskUpsertInput);
 
 it.effect(
@@ -44,8 +46,9 @@ it.effect(
         };
         const { task } = yield* service.upsert(
           yield* webhookTaskInput({ schedule: { type: "webhook", dedupe } }),
+          taskActor,
         );
-        const updated = yield* service.upsert(yield* webhookTaskInput());
+        const updated = yield* service.upsert(yield* webhookTaskInput(), taskActor);
         assert.deepEqual(
           updated.task.schedule.type === "webhook" && updated.task.schedule.dedupe,
           dedupe,
@@ -76,7 +79,7 @@ it.effect(
           Array.from({ length: 5 }, (_, i) => `coalesced-${i}`),
         );
         assert.isTrue(
-          (yield* service.listWebhookDeliveries({ id: task.id })).deliveries.every(
+          (yield* service.listWebhookDeliveries({ id: task.id }, taskActor)).deliveries.every(
             (delivery) => delivery.outcome !== "duplicate" && delivery.outcome !== "coalesced",
           ),
         );
@@ -85,6 +88,7 @@ it.effect(
         yield* Queue.take(launches);
         const cleared = yield* service.upsert(
           yield* webhookTaskInput({ schedule: { type: "webhook", dedupe: {} } }),
+          taskActor,
         );
         assert.deepEqual(
           cleared.task.schedule.type === "webhook" && cleared.task.schedule.dedupe,
@@ -269,7 +273,7 @@ const withService = <A, E>(
 it.effect("dispatches exactly the rendered prompt and logs the delivery", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
       assert.equal(task.nextRunAt, null);
       assert.isDefined(task.webhook);
       assert.isTrue(task.webhook!.path.startsWith("/api/hooks/scheduled-task%3Ahook/"));
@@ -278,6 +282,7 @@ it.effect("dispatches exactly the rendered prompt and logs the delivery", () =>
       const result = yield* service.triggerWebhook(requestFor(task));
       assert.equal(result._tag, "accepted");
       const launched = yield* Queue.take(launches);
+      assert.deepEqual(launched.initialMessage?.author, taskActor);
       const framed =
         /^Review this PR: <(webhook-data-[0-9a-f]{12})>https:\/\/github\.com\/org\/repo\/pull\/45<\/\1>\n\nText between <\1> and <\/\1> was copied from the webhook request\./;
       const frame = framed.exec(launched.initialMessage?.text ?? "")?.[1];
@@ -287,16 +292,22 @@ it.effect("dispatches exactly the rendered prompt and logs the delivery", () =>
         `scheduled-task:${task.id}:webhook:${result._tag === "accepted" ? result.deliveryId : ""}`,
       );
 
-      const { deliveries } = yield* service.listWebhookDeliveries({
-        id: task.id,
-        acceptAnyOutcome: true,
-      });
+      const { deliveries } = yield* service.listWebhookDeliveries(
+        {
+          id: task.id,
+          acceptAnyOutcome: true,
+        },
+        taskActor,
+      );
       assert.equal(deliveries.length, 1);
       assert.equal(deliveries[0]?.outcome, "accepted");
-      const { delivery } = yield* service.getWebhookDelivery({
-        id: task.id,
-        deliveryId: deliveries[0]!.id,
-      });
+      const { delivery } = yield* service.getWebhookDelivery(
+        {
+          id: task.id,
+          deliveryId: deliveries[0]!.id,
+        },
+        taskActor,
+      );
       assert.equal(delivery.body, new TextDecoder().decode(pullRequestBody));
       assert.equal(delivery.renderedPrompt, launched.initialMessage?.text);
 
@@ -326,7 +337,7 @@ it.effect("gives webhook tasks a relay URL when the environment has a managed tu
   withService(
     ({ service }) =>
       Effect.gen(function* () {
-        const { task } = yield* service.upsert(yield* webhookTaskInput());
+        const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
         const token = task.webhook!.path.split("/").at(-1);
         assert.equal(
           task.webhook?.url,
@@ -340,14 +351,14 @@ it.effect("gives webhook tasks a relay URL when the environment has a managed tu
 it.effect("answers not found for a wrong token or unknown hook without logging", () =>
   withService(({ service }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
       const wrongToken = yield* service.triggerWebhook(requestFor(task, { token: "nope" }));
       assert.equal(wrongToken._tag, "not_found");
       const unknown = yield* service.triggerWebhook(requestFor(task, { hookId: "missing" }));
       assert.equal(unknown._tag, "not_found");
       assert.equal(
-        (yield* service.listWebhookDeliveries({ id: task.id, acceptAnyOutcome: true })).deliveries
-          .length,
+        (yield* service.listWebhookDeliveries({ id: task.id, acceptAnyOutcome: true }, taskActor))
+          .deliveries.length,
         0,
       );
     }),
@@ -358,11 +369,11 @@ it.effect("rotating the token retires the old URL and saving keeps it", () =>
   withService(({ service }) =>
     Effect.gen(function* () {
       const input = yield* webhookTaskInput();
-      const { task } = yield* service.upsert(input);
-      const saved = yield* service.upsert(yield* webhookTaskInput({ title: "Renamed" }));
+      const { task } = yield* service.upsert(input, taskActor);
+      const saved = yield* service.upsert(yield* webhookTaskInput({ title: "Renamed" }), taskActor);
       assert.equal(saved.task.webhook?.path, task.webhook?.path);
 
-      const rotated = yield* service.rotateWebhookToken({ id: task.id });
+      const rotated = yield* service.rotateWebhookToken({ id: task.id }, taskActor);
       assert.notEqual(rotated.task.webhook?.path, task.webhook?.path);
       assert.equal((yield* service.triggerWebhook(requestFor(task)))._tag, "not_found");
       assert.equal((yield* service.triggerWebhook(requestFor(rotated.task)))._tag, "accepted");
@@ -385,6 +396,7 @@ it.effect("checks the configured signature and keeps the secret write-only", () 
             },
           },
         }),
+        taskActor,
       );
       assert.deepEqual(task.schedule, {
         type: "webhook",
@@ -411,13 +423,17 @@ it.effect("checks the configured signature and keeps the secret write-only", () 
             signature: { header: "x-hub-signature-256", encoding: "hex", prefix: "sha256=" },
           },
         }),
+        taskActor,
       );
       assert.isTrue(resaved.task.webhook?.hasSecret);
 
-      const outcomes = (yield* service.listWebhookDeliveries({
-        id: task.id,
-        acceptAnyOutcome: true,
-      })).deliveries.map((delivery) => [delivery.outcome, delivery.signatureVerified]);
+      const outcomes = (yield* service.listWebhookDeliveries(
+        {
+          id: task.id,
+          acceptAnyOutcome: true,
+        },
+        taskActor,
+      )).deliveries.map((delivery) => [delivery.outcome, delivery.signatureVerified]);
       assert.deepEqual(outcomes.toSorted(), [
         ["accepted", true],
         ["rejected_signature", false],
@@ -429,10 +445,13 @@ it.effect("checks the configured signature and keeps the secret write-only", () 
 it.effect("logs but does not run deliveries to a disabled task, and refuses run now", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput({ enabled: false }));
+      const { task } = yield* service.upsert(
+        yield* webhookTaskInput({ enabled: false }),
+        taskActor,
+      );
       assert.equal((yield* service.triggerWebhook(requestFor(task)))._tag, "disabled");
       assert.equal(yield* Queue.size(launches), 0);
-      const runNow = yield* service.runNow({ id: task.id }).pipe(Effect.flip);
+      const runNow = yield* service.runNow({ id: task.id }, taskActor).pipe(Effect.flip);
       assert.equal(runNow.message, "Webhook tasks run when their URL receives a request.");
     }),
   ),
@@ -441,9 +460,9 @@ it.effect("logs but does not run deliveries to a disabled task, and refuses run 
 it.effect("a save carrying a stale token cannot undo a rotation", () =>
   withService(({ service }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
-      const rotated = yield* service.rotateWebhookToken({ id: task.id });
-      const saved = yield* service.upsert(yield* webhookTaskInput({ title: "Edited" }));
+      const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
+      const rotated = yield* service.rotateWebhookToken({ id: task.id }, taskActor);
+      const saved = yield* service.upsert(yield* webhookTaskInput({ title: "Edited" }), taskActor);
       assert.equal(saved.task.webhook?.path, rotated.task.webhook?.path);
       assert.equal((yield* service.triggerWebhook(requestFor(task)))._tag, "not_found");
     }),
@@ -453,7 +472,10 @@ it.effect("a save carrying a stale token cannot undo a rotation", () =>
 it.effect("keeps credential headers and query values out of the delivery log", () =>
   withService(({ service }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput({ enabled: false }));
+      const { task } = yield* service.upsert(
+        yield* webhookTaskInput({ enabled: false }),
+        taskActor,
+      );
       yield* service.triggerWebhook(
         requestFor(task, {
           query: "page=2&api_key=k",
@@ -465,14 +487,20 @@ it.effect("keeps credential headers and query values out of the delivery log", (
           },
         }),
       );
-      const [summary] = (yield* service.listWebhookDeliveries({
-        id: task.id,
-        acceptAnyOutcome: true,
-      })).deliveries;
-      const { delivery } = yield* service.getWebhookDelivery({
-        id: task.id,
-        deliveryId: summary!.id,
-      });
+      const [summary] = (yield* service.listWebhookDeliveries(
+        {
+          id: task.id,
+          acceptAnyOutcome: true,
+        },
+        taskActor,
+      )).deliveries;
+      const { delivery } = yield* service.getWebhookDelivery(
+        {
+          id: task.id,
+          deliveryId: summary!.id,
+        },
+        taskActor,
+      );
       assert.equal(delivery.query, "page=2&api_key=[redacted]");
       assert.equal(delivery.headers.authorization, "[redacted]");
       assert.equal(delivery.headers["x-webhook-key"], "[redacted]");
@@ -486,14 +514,14 @@ const queuedDeliveryCases = [
     change: "paused",
     reason: "The task was paused before this delivery ran.",
     apply: (service: ScheduledTaskService.ScheduledTaskService["Service"], id: string) =>
-      service.setEnabled({ id: id as never, enabled: false }),
+      service.setEnabled({ id: id as never, enabled: false }, taskActor),
   },
   {
     change: "switched to an interval trigger",
     reason: "The task's trigger changed before this delivery ran.",
     apply: (service: ScheduledTaskService.ScheduledTaskService["Service"]) =>
       webhookTaskInput({ schedule: { type: "interval", everyMs: 3_600_000 } }).pipe(
-        Effect.flatMap(service.upsert),
+        Effect.flatMap((input) => service.upsert(input, taskActor)),
       ),
   },
 ] as const;
@@ -520,7 +548,7 @@ it.effect.each(queuedDeliveryCases)(
       yield* withService(
         ({ service, launches }) =>
           Effect.gen(function* () {
-            const { task } = yield* service.upsert(yield* webhookTaskInput());
+            const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
             yield* service.triggerWebhook(requestFor(task));
             const queued = yield* service.triggerWebhook(requestFor(task));
             yield* Queue.take(launches);
@@ -528,10 +556,13 @@ it.effect.each(queuedDeliveryCases)(
             yield* Deferred.succeed(gate, undefined);
             const deliveryId = queued._tag === "accepted" ? queued.deliveryId : undefined;
             yield* Deferred.await(deliveryReleased);
-            const delivery = (yield* service.getWebhookDelivery({
-              id: task.id,
-              deliveryId: deliveryId!,
-            })).delivery;
+            const delivery = (yield* service.getWebhookDelivery(
+              {
+                id: task.id,
+                deliveryId: deliveryId!,
+              },
+              taskActor,
+            )).delivery;
             assert.equal(delivery.outcome, "dispatch_failed");
             assert.equal(delivery.error, reason);
             assert.equal(yield* Queue.size(launches), 0);
@@ -549,14 +580,17 @@ it.effect("a save without a secret keeps a secret changed after it was read", ()
         yield* webhookTaskInput({
           schedule: { type: "webhook", signature: { ...signature, secret: "old" } },
         }),
+        taskActor,
       );
       yield* service.upsert(
         yield* webhookTaskInput({
           schedule: { type: "webhook", signature: { ...signature, secret: "new" } },
         }),
+        taskActor,
       );
       yield* service.upsert(
         yield* webhookTaskInput({ title: "Edited", schedule: { type: "webhook", signature } }),
+        taskActor,
       );
       const sign = (secret: string) =>
         `sha256=${NodeCrypto.createHmac("sha256", secret).update(pullRequestBody).digest("hex")}`;
@@ -576,7 +610,7 @@ it.effect("a save without a secret keeps a secret changed after it was read", ()
 it.effect("a held request already delivered directly runs only once", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
       const direct = yield* service.triggerWebhook(
         requestFor(task, { relayDeliveryId: "relay-1" }),
       );
@@ -586,8 +620,10 @@ it.effect("a held request already delivered directly runs only once", () =>
       assert.equal(direct._tag, "accepted");
       assert.deepEqual(replayed, { ...direct, outcome: "duplicate" } as typeof replayed);
       yield* Queue.take(launches);
-      const logged = (yield* service.listWebhookDeliveries({ id: task.id, acceptAnyOutcome: true }))
-        .deliveries;
+      const logged = (yield* service.listWebhookDeliveries(
+        { id: task.id, acceptAnyOutcome: true },
+        taskActor,
+      )).deliveries;
       assert.equal(logged.length, 1);
     }),
   ),
@@ -596,7 +632,7 @@ it.effect("a held request already delivered directly runs only once", () =>
 it.effect("relay retries recover failed acceptance without releasing another request's claim", () =>
   withService(({ service, launches, sql }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
       const request = requestFor(task, { relayDeliveryId: "retry-after-log-failure" });
       yield* sql`
         CREATE TRIGGER fail_webhook_delivery_log
@@ -609,7 +645,8 @@ it.effect("relay retries recover failed acceptance without releasing another req
       assert.equal(error.message, "Could not record webhook delivery.");
       assert.equal(yield* Queue.size(launches), 0);
       assert.isEmpty(
-        (yield* service.listWebhookDeliveries({ id: task.id, acceptAnyOutcome: true })).deliveries,
+        (yield* service.listWebhookDeliveries({ id: task.id, acceptAnyOutcome: true }, taskActor))
+          .deliveries,
       );
       yield* sql`DROP TRIGGER fail_webhook_delivery_log`;
 
@@ -637,8 +674,8 @@ it.effect("relay retries recover failed acceptance without releasing another req
       assert.equal(replayed._tag === "accepted" ? replayed.outcome : replayed._tag, "duplicate");
       assert.equal(yield* Queue.size(launches), 0);
       assert.equal(
-        (yield* service.listWebhookDeliveries({ id: task.id, acceptAnyOutcome: true })).deliveries
-          .length,
+        (yield* service.listWebhookDeliveries({ id: task.id, acceptAnyOutcome: true }, taskActor))
+          .deliveries.length,
         1,
       );
     }),
@@ -648,7 +685,7 @@ it.effect("relay retries recover failed acceptance without releasing another req
 it.effect("a held request whose sender hung up mid-request still runs", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
       for (let step = 0; step < 60; step++) {
         const request = requestFor(task, { relayDeliveryId: `hung-up-${step}` });
         const fiber = yield* service
@@ -659,7 +696,7 @@ it.effect("a held request whose sender hung up mid-request still runs", () =>
         const retried = yield* service.triggerWebhook(request);
         assert.equal(retried._tag, "accepted");
         const deliveryId = retried._tag === "accepted" ? retried.deliveryId : undefined;
-        yield* service.getWebhookDelivery({ id: task.id, deliveryId: deliveryId! });
+        yield* service.getWebhookDelivery({ id: task.id, deliveryId: deliveryId! }, taskActor);
         const launch = yield* Queue.take(launches);
         assert.include(launch.commandId, `hung-up-${step}`);
         yield* TestClock.adjust("61 seconds");
@@ -672,15 +709,15 @@ it.effect("a held request whose sender hung up mid-request still runs", () =>
 it.effect("a held request runs once even after the log has trimmed it", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
       const first = yield* service.triggerWebhook(requestFor(task, { relayDeliveryId: "kept" }));
       assert.equal(first._tag, "accepted");
       yield* Queue.take(launches);
-      const paused = yield* service.upsert(yield* webhookTaskInput({ enabled: false }));
+      const paused = yield* service.upsert(yield* webhookTaskInput({ enabled: false }), taskActor);
       yield* Effect.forEach(Array.from({ length: 55 }), () =>
         service.triggerWebhook(requestFor(paused.task)),
       );
-      yield* service.upsert(yield* webhookTaskInput());
+      yield* service.upsert(yield* webhookTaskInput(), taskActor);
       const replay = yield* service.triggerWebhook(requestFor(task, { relayDeliveryId: "kept" }));
       assert.equal(replay._tag, "accepted");
       assert.equal(yield* Queue.size(launches), 0);
@@ -693,6 +730,7 @@ it.effect("skips a held request older than the task's max age", () =>
     Effect.gen(function* () {
       const { task } = yield* service.upsert(
         yield* webhookTaskInput({ schedule: { type: "webhook", maxDeliveryAgeMinutes: 30 } }),
+        taskActor,
       );
       const now = yield* DateTime.now;
       const old = DateTime.formatIso(DateTime.subtract(now, { minutes: 31 }));
@@ -706,10 +744,13 @@ it.effect("skips a held request older than the task's max age", () =>
         requestFor(task, { relayDeliveryId: "fresh", receivedAt: fresh }),
       );
       assert.equal(ok._tag, "accepted");
-      const outcomes = (yield* service.listWebhookDeliveries({
-        id: task.id,
-        acceptAnyOutcome: true,
-      })).deliveries.map((delivery) => delivery.outcome);
+      const outcomes = (yield* service.listWebhookDeliveries(
+        {
+          id: task.id,
+          acceptAnyOutcome: true,
+        },
+        taskActor,
+      )).deliveries.map((delivery) => delivery.outcome);
       assert.includeMembers(outcomes, ["expired", "accepted"]);
     }),
   ),
@@ -730,6 +771,7 @@ it.effect("a signature can take the user's secret by ref, which works only once"
         yield* webhookTaskInput({
           schedule: githubSchedule("secret-ref:00000000000000000000000000000001"),
         }),
+        taskActor,
       );
       assert.isTrue(task.webhook!.hasSecret);
       const signed = yield* service.triggerWebhook(
@@ -749,6 +791,7 @@ it.effect("a signature can take the user's secret by ref, which works only once"
             id: "scheduled-task:other",
             schedule: githubSchedule("secret-ref:00000000000000000000000000000001"),
           }),
+          taskActor,
         )
         .pipe(Effect.flip);
       assert.include(reused.message, "already used");
@@ -773,7 +816,7 @@ it.effect("a retried save with an already used secretRef keeps the stored secret
           },
         },
       });
-      const first = yield* service.upsert(yield* save);
+      const first = yield* service.upsert(yield* save, taskActor);
       const retried = yield* service.upsert(
         yield* webhookTaskInput({
           id: undefined,
@@ -789,6 +832,7 @@ it.effect("a retried save with an already used secretRef keeps the stored secret
             },
           },
         }),
+        taskActor,
       );
       assert.equal(retried.task.id, first.task.id);
       const signed = yield* service.triggerWebhook(
@@ -816,6 +860,7 @@ it.effect("a signature without any secret is refused", () =>
               signature: { header: "x-hub-signature-256", encoding: "hex", prefix: "sha256=" },
             },
           }),
+          taskActor,
         )
         .pipe(Effect.flip);
       assert.include(failure.message, "needs a signing secret");
@@ -828,7 +873,7 @@ it.effect("dedupes replay keys per task, persists them, and expires them after s
     ({ service, launches, sql }) =>
       Effect.gen(function* () {
         const schedule = { type: "webhook", dedupe: { replayKey: "{{headers.delivery-id}}" } };
-        const { task } = yield* service.upsert(yield* webhookTaskInput({ schedule }));
+        const { task } = yield* service.upsert(yield* webhookTaskInput({ schedule }), taskActor);
         const request = requestFor(task, { headers: { "delivery-id": "A" } });
         const first = yield* service.triggerWebhook(request);
         assert.equal(first._tag === "accepted" && first.outcome, "accepted");
@@ -838,6 +883,7 @@ it.effect("dedupes replay keys per task, persists them, and expires them after s
         assert.equal(yield* Queue.size(launches), 0);
         const other = yield* service.upsert(
           yield* webhookTaskInput({ id: "scheduled-task:other", schedule }),
+          taskActor,
         );
         yield* service.triggerWebhook(requestFor(other.task, { headers: request.headers }));
         yield* Queue.take(launches);
@@ -854,10 +900,13 @@ it.effect("dedupes replay keys per task, persists them, and expires them after s
         assert.equal(expired._tag === "accepted" && expired.outcome, "accepted");
         yield* Queue.take(launches);
         assert.include(
-          (yield* service.listWebhookDeliveries({
-            id: task.id,
-            acceptAnyOutcome: true,
-          })).deliveries.map((d) => d.outcome),
+          (yield* service.listWebhookDeliveries(
+            {
+              id: task.id,
+              acceptAnyOutcome: true,
+            },
+            taskActor,
+          )).deliveries.map((d) => d.outcome),
           "duplicate",
         );
       }),
@@ -880,6 +929,7 @@ it.effect.each([1, 3])(
                 dedupe: { coalesceKey: "{{body.key}}", coalesceWindowSeconds: 10 },
               },
             }),
+            taskActor,
           );
           for (let value = 1; value <= count; value++) {
             const bodyText = JSON.stringify({ key: "B", value });
@@ -893,16 +943,22 @@ it.effect.each([1, 3])(
             );
             if (value < count) yield* TestClock.adjust("2 seconds");
           }
-          const owner = (yield* service.listWebhookDeliveries({
-            id: task.id,
-            acceptAnyOutcome: true,
-          })).deliveries.find((delivery) => delivery.outcome === "accepted")!;
+          const owner = (yield* service.listWebhookDeliveries(
+            {
+              id: task.id,
+              acceptAnyOutcome: true,
+            },
+            taskActor,
+          )).deliveries.find((delivery) => delivery.outcome === "accepted")!;
           assert.isTrue(owner.pendingWindow);
-          const beforeDispatch = (yield* service.getWebhookDelivery({
-            id: task.id,
-            deliveryId: owner.id,
-            acceptAnyOutcome: true,
-          })).delivery;
+          const beforeDispatch = (yield* service.getWebhookDelivery(
+            {
+              id: task.id,
+              deliveryId: owner.id,
+              acceptAnyOutcome: true,
+            },
+            taskActor,
+          )).delivery;
           assert.isTrue(beforeDispatch.pendingWindow);
           assert.equal(beforeDispatch.body, JSON.stringify({ key: "B", value: count }));
           assert.equal(beforeDispatch.headers.version, String(count));
@@ -923,15 +979,21 @@ it.effect.each([1, 3])(
           );
           yield* workers.get("webhook-coalescing")!;
           assert.equal(yield* Queue.size(launches), 0);
-          const outcomes = (yield* service.listWebhookDeliveries({
-            id: task.id,
-            acceptAnyOutcome: true,
-          })).deliveries.map((d) => d.outcome);
-          const afterDispatch = (yield* service.getWebhookDelivery({
-            id: task.id,
-            deliveryId: owner.id,
-            acceptAnyOutcome: true,
-          })).delivery;
+          const outcomes = (yield* service.listWebhookDeliveries(
+            {
+              id: task.id,
+              acceptAnyOutcome: true,
+            },
+            taskActor,
+          )).deliveries.map((d) => d.outcome);
+          const afterDispatch = (yield* service.getWebhookDelivery(
+            {
+              id: task.id,
+              deliveryId: owner.id,
+              acceptAnyOutcome: true,
+            },
+            taskActor,
+          )).delivery;
           assert.isFalse(afterDispatch.pendingWindow);
           assert.equal(afterDispatch.body, beforeDispatch.body);
           assert.include(afterDispatch.renderedPrompt!, `>${count}<`);
@@ -955,6 +1017,7 @@ it.effect("recovers a persisted coalescing window after restarting the service",
               dedupe: { coalesceKey: "{{headers.content-type}}", coalesceWindowSeconds: 10 },
             },
           }),
+          taskActor,
         );
         yield* service.triggerWebhook(requestFor(task));
         yield* TestClock.adjust("4 seconds");
@@ -994,6 +1057,7 @@ it.effect("rolls back replay and pending state when recording a delivery fails",
               },
             },
           }),
+          taskActor,
         );
         yield* sql`CREATE TRIGGER fail_dedupe_log BEFORE INSERT ON scheduled_task_webhook_deliveries BEGIN SELECT RAISE(FAIL, 'injected'); END`;
         yield* service.triggerWebhook(requestFor(task)).pipe(Effect.flip);
@@ -1020,6 +1084,7 @@ it.effect("queue-full deliveries release replay keys so a later retry runs", () 
             yield* webhookTaskInput({
               schedule: { type: "webhook", dedupe: { replayKey: "{{headers.delivery-id}}" } },
             }),
+            taskActor,
           );
           const request = (i: number) =>
             requestFor(task, { headers: { "delivery-id": String(i) } });
@@ -1056,6 +1121,7 @@ it.effect.each(["task_json", "request_json"] as const)(
                 },
               },
             }),
+            taskActor,
           );
           yield* service.triggerWebhook(requestFor(task));
           yield* sql`UPDATE scheduled_task_webhook_pending SET ${sql(column)} = 'broken'`;
@@ -1064,7 +1130,8 @@ it.effect.each(["task_json", "request_json"] as const)(
           assert.equal((yield* sql`SELECT * FROM scheduled_task_webhook_pending`).length, 0);
           assert.equal((yield* sql`SELECT * FROM scheduled_task_webhook_replay_keys`).length, 0);
           assert.equal(
-            (yield* service.listWebhookDeliveries({ id: task.id })).deliveries[0]!.outcome,
+            (yield* service.listWebhookDeliveries({ id: task.id }, taskActor)).deliveries[0]!
+              .outcome,
             "dispatch_failed",
           );
           yield* workers.get("webhook-coalescing")!;
@@ -1088,6 +1155,7 @@ it.effect(
                 dedupe: { coalesceKey: "{{body}}", coalesceWindowSeconds: 10 },
               },
             }),
+            taskActor,
           );
           const accepted = yield* service.triggerWebhook(requestFor(task));
           yield* sql`CREATE TRIGGER fail_pending_delete BEFORE DELETE ON scheduled_task_webhook_pending BEGIN SELECT RAISE(FAIL,'crash after launch'); END`;
@@ -1098,7 +1166,7 @@ it.effect(
             launch.commandId,
             `scheduled-task:${task.id}:webhook:${accepted._tag === "accepted" && accepted.deliveryId}`,
           );
-          assert.equal((yield* service.list()).tasks[0]!.runCount, 1);
+          assert.equal((yield* service.list(taskActor)).tasks[0]!.runCount, 1);
           assert.equal(
             (yield* sql`SELECT * FROM scheduled_task_webhook_pending WHERE state = 'completed'`)
               .length,
@@ -1111,7 +1179,7 @@ it.effect(
               Effect.gen(function* () {
                 yield* drainPendingDispatch(restartedWorkers);
                 assert.equal(yield* Queue.size(secondLaunches), 0);
-                assert.equal((yield* restarted.list()).tasks[0]!.runCount, 1);
+                assert.equal((yield* restarted.list(taskActor)).tasks[0]!.runCount, 1);
                 assert.equal((yield* sql`SELECT * FROM scheduled_task_webhook_pending`).length, 0);
               }),
             { sql, workers: restartedWorkers },
@@ -1132,6 +1200,7 @@ it.effect("guards bad-signature floods separately from valid run admission", () 
             signature: { header: "signature", encoding: "hex", prefix: "", secret: "secret" },
           },
         }),
+        taskActor,
       );
       const results = yield* Effect.forEach(Array.from({ length: 75 }), () =>
         service.triggerWebhook(requestFor(task)),
@@ -1151,6 +1220,7 @@ it.effect("start failures release both replay keys and relay claims for redelive
           yield* webhookTaskInput({
             schedule: { type: "webhook", dedupe: { replayKey: "{{body}}" } },
           }),
+          taskActor,
         );
         const request = requestFor(task, { relayDeliveryId: "failed-start" });
         yield* waitForSpan(
@@ -1166,7 +1236,7 @@ it.effect("start failures release both replay keys and relay claims for redelive
         );
         assert.equal(retry._tag === "accepted" && retry.outcome, "accepted");
         yield* Queue.take(launches);
-        assert.equal((yield* service.list()).tasks[0]!.lastRunStatus, "succeeded");
+        assert.equal((yield* service.list(taskActor)).tasks[0]!.lastRunStatus, "succeeded");
       }),
     { failLaunches: { remaining: 1 } },
   ),
@@ -1175,7 +1245,7 @@ it.effect("start failures release both replay keys and relay claims for redelive
 it.effect("main retention keeps fifty runs and preserves filtered and dedupe buckets", () =>
   withService(({ service, sql, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const { task } = yield* service.upsert(yield* webhookTaskInput(), taskActor);
       yield* service.triggerWebhook(requestFor(task));
       yield* Queue.take(launches);
       for (const outcome of ["filtered", "duplicate"]) {
@@ -1218,6 +1288,7 @@ it.effect(
                   signature: { header: "signature", encoding: "hex", prefix: "", secret: "secret" },
                 },
               }),
+              taskActor,
             );
             const signature = NodeCrypto.createHmac("sha256", "secret")
               .update(pullRequestBody)
@@ -1258,6 +1329,7 @@ it.effect("keeps replay keys when dispatch succeeds but completion bookkeeping f
             dedupe: { replayKey: "{{body}}" },
           },
         }),
+        taskActor,
       );
       yield* sql`CREATE TRIGGER fail_completion BEFORE UPDATE ON scheduled_tasks
       WHEN NEW.last_run_status = 'succeeded' BEGIN SELECT RAISE(FAIL, 'completion unavailable'); END`;
@@ -1271,7 +1343,7 @@ it.effect("keeps replay keys when dispatch succeeds but completion bookkeeping f
       const retry = yield* service.triggerWebhook(requestFor(task));
       assert.equal(retry._tag === "accepted" && retry.outcome, "duplicate");
       assert.equal(yield* Queue.size(launches), 0);
-      assert.equal((yield* service.list()).tasks[0]!.runCount, 1);
+      assert.equal((yield* service.list(taskActor)).tasks[0]!.runCount, 1);
     }),
   ),
 );
@@ -1291,6 +1363,7 @@ it.effect.each([119_000, 120_000])(
                 dedupe: { coalesceKey: "{{body.group}}", coalesceWindowSeconds: 10 },
               },
             }),
+            taskActor,
           );
           const bodyText = JSON.stringify({ group: "B", text: "x".repeat(length) });
           const accepted = yield* service.triggerWebhook(
@@ -1299,15 +1372,19 @@ it.effect.each([119_000, 120_000])(
           assert.equal(accepted._tag, "accepted");
           yield* TestClock.adjust("10 seconds");
           yield* drainPendingDispatch(workers);
-          const delivery = (yield* service.listWebhookDeliveries({ id: task.id })).deliveries[0]!;
+          const delivery = (yield* service.listWebhookDeliveries({ id: task.id }, taskActor))
+            .deliveries[0]!;
           if (length === 119_000) {
             const launch = yield* Queue.take(launches);
             assert.isAbove(launch.initialMessage!.text.length, 120_000);
             assert.equal(delivery.outcome, "accepted");
-            const detail = yield* service.getWebhookDelivery({
-              id: task.id,
-              deliveryId: delivery.id,
-            });
+            const detail = yield* service.getWebhookDelivery(
+              {
+                id: task.id,
+                deliveryId: delivery.id,
+              },
+              taskActor,
+            );
             assert.equal(detail.delivery.renderedPrompt!.length, 64 * 1024);
           } else {
             assert.equal(yield* Queue.size(launches), 0);
@@ -1335,6 +1412,7 @@ it.effect.each([1, 11])(
                 dedupe: { coalesceKey: "{{body.group}}", coalesceWindowSeconds: 10 },
               },
             }),
+            taskActor,
           );
           const request = (value: number) => {
             const bodyText = JSON.stringify({ group: "B", value });
@@ -1359,7 +1437,7 @@ it.effect.each([1, 11])(
           const retry = yield* service.triggerWebhook(request(count));
           assert.equal(retry._tag === "accepted" && retry.outcome, "duplicate");
           assert.equal((yield* sql`SELECT 1 FROM scheduled_task_webhook_pending`).length, 0);
-          assert.equal((yield* service.list()).tasks[0]!.runCount, 1);
+          assert.equal((yield* service.list(taskActor)).tasks[0]!.runCount, 1);
           assert.equal(yield* Queue.size(launches), 0);
         }),
       { workers },
@@ -1384,6 +1462,7 @@ it.effect("failed windows release every member's replay key and relay claim", ()
               },
             },
           }),
+          taskActor,
         );
         const request = (id: string) => {
           const bodyText = JSON.stringify({ group: "same", value: id });
@@ -1410,7 +1489,7 @@ it.effect("failed windows release every member's replay key and relay claim", ()
         yield* TestClock.adjust("10 seconds");
         yield* drainPendingDispatch(workers);
         assert.include((yield* Queue.take(launches)).initialMessage!.text, "B11");
-        assert.equal((yield* service.list()).tasks[0]!.runCount, 2);
+        assert.equal((yield* service.list(taskActor)).tasks[0]!.runCount, 2);
       }),
     { workers, failLaunches: { remaining: 1 } },
   );
@@ -1434,6 +1513,7 @@ it.effect(
                 },
               },
             }),
+            taskActor,
           );
           const request = (id: string) =>
             requestFor(task, { headers: { "delivery-id": id }, relayDeliveryId: id });
@@ -1444,7 +1524,7 @@ it.effect(
           yield* TestClock.adjust("10 seconds");
           yield* drainPendingDispatch(workers);
           yield* Queue.take(launches);
-          assert.equal((yield* service.list()).tasks[0]!.runCount, 1);
+          assert.equal((yield* service.list(taskActor)).tasks[0]!.runCount, 1);
           assert.equal(
             (yield* sql<{ state: string }>`SELECT state FROM scheduled_task_webhook_pending`)[0]!
               .state,
@@ -1457,7 +1537,7 @@ it.effect(
               Effect.gen(function* () {
                 yield* drainPendingDispatch(restartedWorkers);
                 assert.equal(yield* Queue.size(restartedLaunches), 0);
-                assert.equal((yield* restarted.list()).tasks[0]!.runCount, 1);
+                assert.equal((yield* restarted.list(taskActor)).tasks[0]!.runCount, 1);
                 assert.equal((yield* sql`SELECT 1 FROM scheduled_task_webhook_pending`).length, 0);
                 assert.equal(
                   (yield* sql`SELECT 1 FROM scheduled_task_webhook_replay_keys`).length,
@@ -1472,7 +1552,7 @@ it.effect(
                 yield* TestClock.adjust("10 seconds");
                 yield* drainPendingDispatch(restartedWorkers);
                 yield* Queue.take(restartedLaunches);
-                assert.equal((yield* restarted.list()).tasks[0]!.runCount, 2);
+                assert.equal((yield* restarted.list(taskActor)).tasks[0]!.runCount, 2);
               }),
             { sql, workers: restartedWorkers },
           );
@@ -1495,6 +1575,7 @@ it.effect("dispatches an overdue window exactly once after its deadline passed w
                 dedupe: { coalesceKey: "{{body}}", coalesceWindowSeconds: 10 },
               },
             }),
+            taskActor,
           );
           yield* service.triggerWebhook(requestFor(task));
           assert.equal(yield* Queue.size(launches), 0);
@@ -1512,7 +1593,7 @@ it.effect("dispatches an overdue window exactly once after its deadline passed w
           yield* Queue.take(launches);
           for (let i = 0; i < 3; i++) yield* restartedWorkers.get("webhook-coalescing")!;
           assert.equal(yield* Queue.size(launches), 0);
-          assert.equal((yield* service.list()).tasks[0]!.runCount, 1);
+          assert.equal((yield* service.list(taskActor)).tasks[0]!.runCount, 1);
           assert.equal((yield* sql`SELECT 1 FROM scheduled_task_webhook_pending`).length, 0);
         }),
       { sql, workers: restartedWorkers },
@@ -1524,7 +1605,7 @@ it.effect("dispatches an overdue window exactly once after its deadline passed w
           yield* secondRestartWorkers.get("webhook-coalescing")!;
           assert.equal(yield* Queue.size(launches), 0);
           assert.equal(
-            (yield* service.list()).tasks.find((entry) => entry.id === task.id)!.runCount,
+            (yield* service.list(taskActor)).tasks.find((entry) => entry.id === task.id)!.runCount,
             1,
           );
         }),
@@ -1550,6 +1631,7 @@ it.effect("removes a window with a render defect and dispatches the task's next 
               },
             },
           }),
+          taskActor,
         );
         const request = (id: string, bodyText: string) =>
           requestFor(task, {
@@ -1581,15 +1663,18 @@ it.effect("removes a window with a render defect and dispatches the task's next 
             .length,
           0,
         );
-        const failed = (yield* service.getWebhookDelivery({
-          id: task.id,
-          deliveryId: ScheduledTaskWebhookDeliveryId.make("delivery:relay:bad-render"),
-          acceptAnyOutcome: true,
-        })).delivery;
+        const failed = (yield* service.getWebhookDelivery(
+          {
+            id: task.id,
+            deliveryId: ScheduledTaskWebhookDeliveryId.make("delivery:relay:bad-render"),
+            acceptAnyOutcome: true,
+          },
+          taskActor,
+        )).delivery;
         assert.equal(failed.outcome, "dispatch_failed");
         assert.equal(failed.error, "The pending webhook payload could not be prepared.");
         yield* workers.get("webhook-coalescing")!;
-        assert.equal((yield* service.list()).tasks[0]!.runCount, 1);
+        assert.equal((yield* service.list(taskActor)).tasks[0]!.runCount, 1);
       }),
     { workers },
   );
@@ -1613,6 +1698,7 @@ it.effect.each([false, true])(
                   dedupe: { coalesceKey: "{{headers.group}}", coalesceWindowSeconds: 10 },
                 },
               }),
+              taskActor,
             );
             const window = yield* service.triggerWebhook(
               requestFor(task, { headers: { group: "old" }, bodyText: '{"value":"old"}' }),
@@ -1662,13 +1748,13 @@ it.effect.each([false, true])(
                     yield* sql`UPDATE scheduled_tasks SET model_selection_json = ${before!.model_selection_json} WHERE task_id = ${task.id}`;
                   yield* drainPendingDispatch(restartedWorkers);
                   assert.equal(yield* Queue.size(recoveredLaunches), 0);
-                  assert.equal((yield* restarted.list()).tasks[0]!.runCount, 2);
+                  assert.equal((yield* restarted.list(taskActor)).tasks[0]!.runCount, 2);
                   assert.equal(
                     (yield* sql`SELECT 1 FROM scheduled_task_webhook_pending`).length,
                     0,
                   );
                   yield* restartedWorkers.get("webhook-coalescing")!;
-                  assert.equal((yield* restarted.list()).tasks[0]!.runCount, 2);
+                  assert.equal((yield* restarted.list(taskActor)).tasks[0]!.runCount, 2);
                 }),
               { sql, workers: restartedWorkers, completedLaunches },
             );
@@ -1704,6 +1790,7 @@ it.effect("checks filters after the signature and max age, and runs only matchin
             ],
           },
         }),
+        taskActor,
       );
       const delivery = (
         event: string,
@@ -1741,7 +1828,7 @@ it.effect("checks filters after the signature and max age, and runs only matchin
       assert.deepInclude(wrongEvent, { _tag: "accepted", outcome: "filtered" });
       assert.deepInclude(wrongAction, { _tag: "accepted", outcome: "filtered" });
       assert.equal(yield* Queue.size(launches), 0);
-      const [listed] = (yield* service.list()).tasks;
+      const [listed] = (yield* service.list(taskActor)).tasks;
       assert.equal(listed?.runCount, 0);
       assert.equal(listed?.lastRunStatus, "never");
 
@@ -1749,10 +1836,13 @@ it.effect("checks filters after the signature and max age, and runs only matchin
       assert.deepInclude(matched, { _tag: "accepted", outcome: "accepted" });
       assert.include((yield* Queue.take(launches)).initialMessage?.text ?? "", "pull/45");
 
-      const deliveries = (yield* service.listWebhookDeliveries({
-        id: task.id,
-        acceptAnyOutcome: true,
-      })).deliveries;
+      const deliveries = (yield* service.listWebhookDeliveries(
+        {
+          id: task.id,
+          acceptAnyOutcome: true,
+        },
+        taskActor,
+      )).deliveries;
       const filtered = deliveries
         .filter((entry) => entry.outcome === "filtered")
         .map((entry) => [entry.signatureVerified, entry.error]);
@@ -1778,7 +1868,7 @@ const githubEvent = (event: string) => ({
 it.effect("a filtered relay delivery releases its claim, so a redelivery is evaluated again", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* pullRequestFilterInput());
+      const { task } = yield* service.upsert(yield* pullRequestFilterInput(), taskActor);
       const held = { relayDeliveryId: "relay-filtered" };
       const first = yield* service.triggerWebhook(
         requestFor(task, { ...held, ...githubEvent("push") }),
@@ -1804,19 +1894,22 @@ it.effect("a filtered relay delivery releases its claim, so a redelivery is eval
 it.effect("leaves filtered rows out of the list for clients that only decode older outcomes", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* pullRequestFilterInput());
+      const { task } = yield* service.upsert(yield* pullRequestFilterInput(), taskActor);
       yield* service.triggerWebhook(requestFor(task, githubEvent("push")));
       yield* service.triggerWebhook(requestFor(task, githubEvent("pull_request")));
       yield* Queue.take(launches);
-      const legacy = (yield* service.listWebhookDeliveries({ id: task.id })).deliveries;
+      const legacy = (yield* service.listWebhookDeliveries({ id: task.id }, taskActor)).deliveries;
       assert.deepEqual(
         legacy.map((delivery) => delivery.outcome),
         ["accepted"],
       );
-      const current = (yield* service.listWebhookDeliveries({
-        id: task.id,
-        acceptAnyOutcome: true,
-      })).deliveries;
+      const current = (yield* service.listWebhookDeliveries(
+        {
+          id: task.id,
+          acceptAnyOutcome: true,
+        },
+        taskActor,
+      )).deliveries;
       assert.sameMembers(
         current.map((delivery) => delivery.outcome),
         ["accepted", "filtered"],
@@ -1843,6 +1936,7 @@ it.effect("filters run before replay and coalescing without claiming ignored del
               },
             },
           }),
+          taskActor,
         );
         const request = (id: string, run: boolean, value: string) => {
           const bodyText = JSON.stringify({ run, group: "B", value });
@@ -1860,14 +1954,17 @@ it.effect("filters run before replay and coalescing without claiming ignored del
         assert.equal((yield* sql`SELECT 1 FROM scheduled_task_webhook_relay_deliveries`).length, 0);
         const filteredId = ignored._tag === "accepted" ? ignored.deliveryId : assert.fail();
         const oldClient = yield* service
-          .getWebhookDelivery({ id: task.id, deliveryId: filteredId })
+          .getWebhookDelivery({ id: task.id, deliveryId: filteredId }, taskActor)
           .pipe(Effect.result);
         assert.equal(oldClient._tag, "Failure");
-        const currentClient = yield* service.getWebhookDelivery({
-          id: task.id,
-          deliveryId: filteredId,
-          acceptAnyOutcome: true,
-        });
+        const currentClient = yield* service.getWebhookDelivery(
+          {
+            id: task.id,
+            deliveryId: filteredId,
+            acceptAnyOutcome: true,
+          },
+          taskActor,
+        );
         assert.equal(currentClient.delivery.outcome, "filtered");
         assert.deepInclude(yield* service.triggerWebhook(request("A", true, "first")), {
           _tag: "accepted",

@@ -31,6 +31,8 @@ import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 
+const taskActor = { id: "alice", name: "Alice" };
+
 it.effect.each(["on time", "after restart"])(
   "runs Scheduled Tasks and a persisted limit retry through the same scheduler %s",
   (scenario) =>
@@ -93,10 +95,12 @@ it.effect.each(["on time", "after restart"])(
         NodeCrypto.layer,
         Layer.mock(Orchestrator.OrchestratorV2)({}),
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({
-          launch: () =>
-            Queue.offer(receipts, "task").pipe(
+          launch: (input) => {
+            expect(input.initialMessage?.author).toEqual(taskActor);
+            return Queue.offer(receipts, "task").pipe(
               Effect.andThen(Effect.die("fixture dispatch failure")),
-            ),
+            );
+          },
         }),
         Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
           namedProjectsRoot: "/projects",
@@ -139,17 +143,20 @@ it.effect.each(["on time", "after restart"])(
       ).pipe(Layer.provide(layerDependencies), Layer.provide(Scheduler.layer));
       yield* Effect.gen(function* () {
         const tasks = yield* ScheduledTasks.ScheduledTaskService;
-        const { task } = yield* tasks.upsert({
-          title: "Scheduled work",
-          prompt: "Run scheduled work",
-          enabled: true,
-          schedule: { type: "interval", everyMs: 60_000 },
-          projectId: thread.projectId,
-          workspaceStrategy: { type: "root" },
-          modelSelection: thread.modelSelection,
-          runtimeMode: thread.runtimeMode,
-          interactionMode: thread.interactionMode,
-        });
+        const { task } = yield* tasks.upsert(
+          {
+            title: "Scheduled work",
+            prompt: "Run scheduled work",
+            enabled: true,
+            schedule: { type: "interval", everyMs: 60_000 },
+            projectId: thread.projectId,
+            workspaceStrategy: { type: "root" },
+            modelSelection: thread.modelSelection,
+            runtimeMode: thread.runtimeMode,
+            interactionMode: thread.interactionMode,
+          },
+          taskActor,
+        );
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE scheduled_tasks SET next_run_at = ${resetAt} WHERE task_id = ${task.id}`;
         if (scenario === "on time") {

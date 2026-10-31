@@ -1,3 +1,4 @@
+import { isAutomatedMessage } from "@t3tools/contracts";
 import { useTranslation } from "../../i18n";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { otherAuthor } from "../../baskule/authorship"; // baskule
@@ -140,7 +141,11 @@ export function QueuedRunsControl({
       serverIndex,
       text,
       // A guest's message keeps the guest's words; the owner can cancel it, not rewrite it.
-      editable: context?.guest === undefined,
+      editable:
+        context?.guest === undefined &&
+        !isAutomatedMessage(
+          projection?.messages.find((message) => message.id === run.userMessageId),
+        ),
       guestName: context?.guest?.name,
       attachments,
       thumbnails: attachments
@@ -224,6 +229,9 @@ export function QueuedRunsControl({
       if (
         !latest ||
         latest.context?.guest !== undefined ||
+        isAutomatedMessage(
+          projection?.messages.find((message) => message.id === latest.run.userMessageId),
+        ) ||
         props.editingRunId !== null ||
         props.editBlockedReason !== null ||
         busyRunId !== null

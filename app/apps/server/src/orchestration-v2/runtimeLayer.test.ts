@@ -85,6 +85,8 @@ import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { FULL_TEST_PROVIDER_CAPABILITIES } from "./testkit/testProviderCapabilities.ts";
 
+const taskActor = { id: "alice", name: "Alice" };
+
 const layerPlatformTest = Layer.merge(
   NodeServices.layer,
   Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
@@ -358,7 +360,7 @@ const layerProjectDeletionTest = Layer.mergeAll(
   Layer.provideMerge(layerResourceCleanupTest),
   Layer.provide(McpSessionRegistryTestkit.layer),
   Layer.provide(McpProviderSessions.layer),
-  Layer.provide(SqlitePersistence.layerMemory),
+  Layer.provideMerge(SqlitePersistence.layerMemory),
   Layer.provide(layerCheckpointStoreTest),
   Layer.provide(layerServerConfig),
   Layer.provide(ServerSettings.layerTest()),
@@ -402,21 +404,24 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
           });
         }
         const save = (name: string, target: ThreadId | null, webhook = false) =>
-          tasks.upsert({
-            id: ScheduledTaskId.make(`automation:${deletion}:${name}`),
-            title: name,
-            prompt: "Check orchestration progress",
-            enabled: !webhook,
-            schedule: webhook ? { type: "webhook" } : { type: "interval", everyMs: 60_000 },
-            projectId,
-            threadId: target,
-            workspaceStrategy: { type: "root" },
-            modelSelection,
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            createdBy: "agent",
-            creationSource: "mcp",
-          });
+          tasks.upsert(
+            {
+              id: ScheduledTaskId.make(`automation:${deletion}:${name}`),
+              title: name,
+              prompt: "Check orchestration progress",
+              enabled: !webhook,
+              schedule: webhook ? { type: "webhook" } : { type: "interval", everyMs: 60_000 },
+              projectId,
+              threadId: target,
+              workspaceStrategy: { type: "root" },
+              modelSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              createdBy: "agent",
+              creationSource: "mcp",
+            },
+            taskActor,
+          );
         const { task: bound } = yield* save("bound", threadId);
         const { task: webhook } = yield* save("webhook", threadId, true);
         const { task: independent } = yield* save("independent", null);
@@ -435,7 +440,10 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
           body: new Uint8Array(),
           bodyText: "",
         });
-        assert.lengthOf((yield* tasks.listWebhookDeliveries({ id: webhook.id })).deliveries, 1);
+        assert.lengthOf(
+          (yield* tasks.listWebhookDeliveries({ id: webhook.id }, taskActor)).deliveries,
+          1,
+        );
 
         yield* orchestrator.dispatch({
           type: "thread.archive",
@@ -444,7 +452,7 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
         });
         yield* worker.drain();
         assert.include(
-          (yield* tasks.list()).tasks.map((task) => task.id),
+          (yield* tasks.list(taskActor)).tasks.map((task) => task.id),
           bound.id,
         );
 
@@ -462,12 +470,15 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
           });
         }
         yield* worker.drain();
-        const remainingIds = (yield* tasks.list()).tasks.map((task) => task.id);
+        const remainingIds = (yield* tasks.list(taskActor)).tasks.map((task) => task.id);
         assert.notInclude(remainingIds, bound.id);
         assert.notInclude(remainingIds, webhook.id);
         assert.includeMembers(remainingIds, [independent.id, detached.id, moved.id, other.id]);
-        assert.lengthOf((yield* tasks.listWebhookDeliveries({ id: webhook.id })).deliveries, 0);
-        const rejected = yield* tasks.runNow({ id: bound.id }).pipe(Effect.flip);
+        const sql = yield* SqlClient.SqlClient;
+        assert.lengthOf(yield* sql`SELECT 1 FROM scheduled_task_webhook_deliveries WHERE task_id = ${webhook.id}`, 0);
+        const missingDeliveries = yield* tasks.listWebhookDeliveries({ id: webhook.id }, taskActor).pipe(Effect.flip);
+        assert.equal(missingDeliveries.message, "Schedule task not found.");
+        const rejected = yield* tasks.runNow({ id: bound.id }, taskActor).pipe(Effect.flip);
         assert.equal(rejected.message, "Schedule task not found.");
         assert.equal(
           (yield* tasks.triggerWebhook({
@@ -485,7 +496,7 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
         // Retried cleanup is harmless and cannot affect unrelated tasks.
         yield* tasks.deleteForThread(threadId);
         assert.sameMembers(
-          (yield* tasks.list()).tasks.map((task) => task.id),
+          (yield* tasks.list(taskActor)).tasks.map((task) => task.id),
           remainingIds,
         );
       }),
@@ -903,7 +914,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
     }).pipe(Effect.provide(Layer.fresh(layerTest))),
   );
 
-  it.effect("resolves delivery intent against the active run and starts after it completes", () =>
+  it.effect("resolves delivery intent and protects scheduled steering", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const eventSink = yield* EventSink.EventSinkV2;
@@ -932,6 +943,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
         threadId,
         messageId: MessageId.make("runtime-delivery-intent-first"),
         text: "Start work.",
+        scheduledTaskId: ScheduledTaskId.make("task:steering"),
+        author: { id: "bob", name: "Bob" },
         attachments: [],
         dispatchMode: { type: "start_immediately" },
       });
@@ -997,6 +1010,32 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
       );
       yield* Effect.addFinalizer(() => Effect.sync(() => sessionSpy.mockRestore()));
 
+      const beforeSteer = yield* orchestrator.getThreadProjection(threadId);
+      for (const author of [{ id: "alice", name: "Alice" }, undefined]) {
+        for (const mode of ["steer_active", "restart_active"] as const) {
+          const commandId = CommandId.make(`forbidden:${author?.id}:${mode}`);
+          const error = yield* orchestrator
+            .dispatch({
+              type: "message.dispatch",
+              createdBy: "user",
+              creationSource: "web",
+              commandId,
+              threadId,
+              messageId: MessageId.make(commandId),
+              text: "Attacker instructions",
+              attachments: [],
+              ...(author === undefined ? {} : { author }),
+              dispatchMode: { type: mode, targetRunId: run.id },
+            })
+            .pipe(Effect.flip);
+          assert.include(String(error.cause), "Only the run's author");
+          assert.deepEqual(
+            (yield* orchestrator.getThreadProjection(threadId)).messages,
+            beforeSteer.messages,
+          );
+          assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
+        }
+      }
       const steerCommandId = CommandId.make("runtime-delivery-intent-auto");
       const steerMessageId = MessageId.make("runtime-delivery-intent-auto");
       yield* orchestrator.dispatch({
@@ -1007,6 +1046,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
         threadId,
         messageId: steerMessageId,
         text: "Include this in the active work.",
+        author: { id: "bob", name: "Bob" },
         attachments: [],
         dispatchMode: { type: "start_immediately" },
         deliveryIntent: "auto",
@@ -5215,6 +5255,103 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         .pipe(Effect.flip);
       assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
     }),
+  );
+
+  it.effect(
+    "refuses edits to scheduled queued messages without changing their author or prompt",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const threadId = ThreadId.make("runtime-layer-scheduled-queued-edit");
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(`${threadId}:create`),
+          threadId,
+          projectId: ProjectId.make("runtime-layer-scheduled-queued-project"),
+          title: "Scheduled queue",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: "/tmp/runtime-layer-scheduled-queued",
+        });
+        for (const scheduled of [false, true]) {
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            createdBy: "user",
+            creationSource: "web",
+            commandId: CommandId.make(`${threadId}:${scheduled}`),
+            threadId,
+            messageId: MessageId.make(`${threadId}:${scheduled}`),
+            text: "Authorized prompt",
+            attachments: [],
+            modelSelection,
+            author: { id: "bob", name: "Bob" },
+            scheduledTaskId: ScheduledTaskId.make("scheduled-task:bob"),
+            dispatchMode: { type: scheduled ? "queue_after_active" : "start_immediately" },
+          });
+        }
+        const before = yield* orchestrator.getThreadProjection(threadId);
+        const queued = before.runs.find((run) => run.status === "queued")!;
+        const error = yield* orchestrator
+          .dispatch({
+            type: "queued-run.edit",
+            commandId: CommandId.make(`${threadId}:attack`),
+            threadId,
+            runId: queued.id,
+            text: "Attacker prompt",
+          })
+          .pipe(Effect.flip);
+        assert.equal(error._tag, "OrchestratorCommandRejectedError");
+        assert.include(String(error.cause), "Scheduled runs and delegated inputs cannot be edited");
+        const promotion = yield* orchestrator
+          .dispatch({
+            type: "queued-message.promote-to-steer",
+            commandId: CommandId.make(`${threadId}:promote`),
+            threadId,
+            queuedRunId: queued.id,
+            targetRunId: before.runs[0]!.id,
+          })
+          .pipe(Effect.flip);
+        assert.include(
+          String(promotion.cause),
+          "Scheduled runs and delegated inputs cannot be edited or used to steer",
+        );
+        const after = yield* orchestrator.getThreadProjection(threadId);
+        assert.deepEqual(after.messages, before.messages);
+        const manualMessageId = MessageId.make(`${threadId}:manual`);
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`${threadId}:manual`),
+          createdBy: "user",
+          creationSource: "web",
+          threadId,
+          messageId: manualMessageId,
+          text: "Alice's queued input",
+          author: { id: "alice", name: "Alice" },
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "queue_after_active" },
+        });
+        const withManual = yield* orchestrator.getThreadProjection(threadId);
+        const manualRun = withManual.runs.find((run) => run.userMessageId === manualMessageId)!;
+        const deniedPromotion = yield* orchestrator
+          .dispatch({
+            type: "queued-message.promote-to-steer",
+            commandId: CommandId.make(`${threadId}:manual-promotion`),
+            threadId,
+            queuedRunId: manualRun.id,
+            targetRunId: withManual.runs[0]!.id,
+          })
+          .pipe(Effect.flip);
+        assert.include(String(deniedPromotion.cause), "Only the run's author");
+        assert.deepEqual(
+          (yield* orchestrator.getThreadProjection(threadId)).messages,
+          withManual.messages,
+        );
+      }),
   );
 });
 
