@@ -126,6 +126,36 @@ describe("several plugin accounts", () => {
       expect(f.state.refreshes).toBe(2);
     } finally { release?.(); await f.close(); }
   });
+  it("lists tools with only the admin's default account, independent of assignment and Pause", async () => {
+    const f = await fakeOAuth(); f.state.shortLived = true;
+    try {
+      const h = await makeService(); const x = await setup(h, f.resource);
+      const bob = await createUser(h, x.a.creds, "admin-test-bob@os.test", "Bob");
+      const b = await signIn(h, bob.email, "user-password-1");
+      await x.connect("Bob account", undefined, b.creds);
+      const tools = () => call(h, "GET", `${API}/admin/plugins/${x.id}/tools?server=remote`, { creds: x.a.creds });
+      expect((await tools()).body.error).toBe("connection_not_allowed");
+      await x.connect("Admin account");
+      f.state.shortLived = false;
+      const [headers, credential] = await Promise.all([h.svc.connections.adminHeaders(x.a.userId, x.id, "remote"), x.credential()]);
+      expect(headers).toEqual(credential.body.headers);
+      expect(f.state.refreshes).toBe(1);
+      await call(h, "PATCH", `${API}/admin/groups/everyone`, { creds: x.a.creds, body: { plugins: [] } });
+      await call(h, "PATCH", `${API}/admin/plugins/${x.id}`, { creds: x.a.creds, body: { enabled: false } });
+      expect((await tools()).body.tools).toEqual([{ name: "fixture_lookup", description: "Read the private fixture" }]);
+      expect(await h.svc.connections.adminHeaders(bob.id, x.id, "remote")).toBeUndefined();
+    } finally { await f.close(); }
+  });
+  it("rechecks a tool switch after an account refresh yields", async () => {
+    const f = await fakeOAuth(); f.state.shortLived = true;
+    try {
+      const h = await makeService(); const x = await setup(h, f.resource);
+      await x.connect("Work"); f.state.shortLived = false;
+      f.state.onRefresh = async () => { await call(h, "PATCH", `${API}/admin/plugins/${x.id}`, { creds: x.a.creds, body: { disabledTools: { remote: ["fixture_lookup"] } } }); };
+      const result = await call(h, "POST", "/_baskule/plugin-credential", { headers: { [INTERNAL_HEADER]: "1" }, body: { spaceId: personalSpaceOf(h, x.a.userId), userId: x.a.userId, pluginId: x.id, server: "remote", tool: "fixture_lookup" } });
+      expect(result.body).toEqual({ error: "tool_off" });
+    } finally { await f.close(); }
+  });
   it("does not overwrite a reconnected account with a refresh started before that reconnect", async () => {
     const f = await fakeOAuth(); f.state.shortLived = true;
     try {

@@ -1,9 +1,9 @@
 import { catalogService, catalogVendor, type CatalogService, type CatalogVendor } from "../../../app/packages/contracts/src/baskule-catalog";
 import type { ConnectionCipher } from "./connection-crypto";
-import { checkMcpUrl, serverNetwork } from "../shared/plugin-outbound";
+import { checkMcpUrl, connectMcp, serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
-import type { Plugin, PluginInput, PluginUpdate, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode } from "../../../app/packages/contracts/src/baskule-plugins";
-import { pluginError, json, notFound } from "../shared/http";
+import type { Plugin, PluginInput, PluginUpdate, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode, ServerInput, PluginTool } from "../../../app/packages/contracts/src/baskule-plugins";
+import { HttpError, pluginError, json, notFound } from "../shared/http";
 import type { StorageLike } from "./service";
 import type { Connections } from "./connections";
 import { Groups } from "./groups";
@@ -11,6 +11,8 @@ import { fromBase64, IMPORT_LIMITS, inspectPackage, exportPackage, skillFromInpu
 import { addressPlaceholders, serverFingerprint } from "../../../app/packages/contracts/src/baskule-plugin-formats";
 import { readBounded, type Fetcher } from "./plugin-source";
 import { fetchGitFiles } from "./plugin-source";
+import { SdkHttpError, SseError } from "@modelcontextprotocol/client";
+import { discoverOAuth } from "./connection-oauth";
 import { COMMIT_RE, resolveGithubLink } from "./plugin-source";
 
 const id = z.string().min(1).max(200);
@@ -22,6 +24,7 @@ const sourceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("upload"), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
 ]);
 const serverSchema = z.object({ name: id, url: z.string().max(2048), transport: z.enum(["streamable-http", "sse"]).optional(), credential,
+  disabledTools: z.array(id).max(1000).default([]),
   keyHeaders: z.array(headerName).max(20).optional(),
   oauth: z.object({ scopes: z.array(z.string().min(1).max(2048)).max(100).optional(),
     params: z.record(z.string().regex(/^[a-z_]+$/).refine(key => !["response_type", "client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "resource", "scope"].includes(key)), z.string().max(2048)).optional(), resource: z.literal(false).optional(), staticClient: z.literal(true).optional(),
@@ -33,7 +36,7 @@ const inputSchema = z.object({ name: z.string().trim().min(1).max(100), descript
   servers: z.array(serverSchema).max(100), skills: z.array(skillSchema).max(100),
   omitted: z.array(z.object({ code: z.enum(["claude_commands", "claude_agents", "hooks", "local_program", "invalid_server", "skill_without_instructions", "invalid_skill", "skill_license", "other_files"]), subject: z.string().max(512) }).strict()).max(IMPORT_LIMITS.files),
 }).strict();
-const patchSchema = z.union([z.object({ enabled: z.boolean() }).strict(), z.object({ plugin: inputSchema }).strict()]);
+const patchSchema = z.union([z.object({ enabled: z.boolean() }).strict(), z.object({ plugin: inputSchema }).strict(), z.object({ disabledTools: z.record(id, z.array(id).max(1000)) }).strict()]);
 const spaceSchema = z.object({ personalPluginsAllowed: z.boolean(), disabled: z.array(id).max(100) }).strict();
 const DEFAULT_SPACE_SETTINGS: SpacePluginSettings = { personalPluginsAllowed: false, disabled: [] };
 
@@ -85,7 +88,7 @@ export function pluginFromCatalog(service: CatalogService, vendor: CatalogVendor
   return { id: service.id, vendor: vendor.id, name: service.name, description: service.description, icon: service.icon,
     source: { type: "catalog" }, skills: [], omitted: [], enabled: true, createdAt: new Date().toISOString(),
     servers: service.servers.map(server => ({ name: server.name, url: server.url, transport: server.transport ?? "streamable-http",
-      credential: signIn.type === "account" ? "user-oauth" : signIn.type === "key" ? "organization" : "none",
+      disabledTools: [], credential: signIn.type === "account" ? "user-oauth" : signIn.type === "key" ? "organization" : "none",
       ...(signIn.type === "account" ? { oauth: {
         ...(server.scopes ? { scopes: server.scopes } : {}), ...(signIn.params ? { params: signIn.params } : {}),
         ...(server.resource ? { resourceUrl: server.resource } : {}),
@@ -173,18 +176,50 @@ export class Plugins {
   private validate(input: PluginInput) {
     if (!input.servers.length && !input.skills.length) throw pluginError(400, "empty_plugin");
     if (new Set(input.servers.map(s => s.name)).size !== input.servers.length) throw pluginError(400, "invalid_plugin_input");
-    const servers = input.servers.map(server => {
-      if (addressPlaceholders(server.url).length) throw pluginError(400, "address_placeholder");
-      if (server.oauth && server.credential !== "user-oauth") throw pluginError(400, "invalid_plugin_input");
-      const { keyHeaders, ...rest } = server;
-      return { ...rest, url: checkMcpUrl(server.url, "private").href, ...(server.credential === "organization" && keyHeaders ? { keyHeaders } : {}) };
-    });
+    const servers = input.servers.map(server => this.validateServer(server));
     const skills: StoredSkill[] = [];
     for (const skill of input.skills) skills.push(skillFromInput(skill, skills.map(s => s.name)));
     const storedBytes = skills.reduce((total, skill) => total + skill.files.reduce((n, file) => n + fromBase64(file.content).length, 0), 0);
     if (storedBytes > IMPORT_LIMITS.stored) throw pluginError(413, "plugin_too_large");
     if (skills.reduce((n, skill) => n + skill.files.length, 0) > IMPORT_LIMITS.files) throw pluginError(413, "too_many_plugin_files");
     return { servers, skills, storedBytes };
+  }
+
+  private validateServer(server: ServerInput): PluginServer {
+    if (addressPlaceholders(server.url).length) throw pluginError(400, "address_placeholder");
+    if (server.oauth && server.credential !== "user-oauth") throw pluginError(400, "invalid_plugin_input");
+    const { keyHeaders, ...rest } = server;
+    return { ...rest, disabledTools: [...new Set(server.disabledTools ?? [])], url: checkMcpUrl(server.url, "private").href,
+      ...(server.credential === "organization" && keyHeaders ? { keyHeaders } : {}) };
+  }
+
+  private async tools(server: PluginServer, headers: Record<string, string>): Promise<PluginTool[]> {
+    const client = await connectMcp(server, serverNetwork(server.url), headers, 15_000);
+    try { return (await client.listTools(undefined, { timeout: 15_000 })).tools.map(tool => ({ name: tool.name, description: tool.description ?? "" })); }
+    finally { await client.close(); }
+  }
+
+  private async test(req: Request): Promise<Response> {
+    const input = parse(z.object({ server: serverSchema, headers: z.record(headerName, z.string().max(8192).refine(v => !/[\r\n\0]/.test(v))).optional() }).strict(), await body(req));
+    const server = this.validateServer(input.server);
+    const headers = input.headers ?? {};
+    this.validateHeaders(headers, false);
+    try { return json({ tools: await this.tools(server, headers) }); }
+    catch (error) {
+      if (error instanceof SdkHttpError && error.status === 401 || error instanceof SseError && error.code === 401) {
+        try {
+          const discovery = await discoverOAuth(server.url, this.fetcher, serverNetwork(server.url));
+          return json({ signIn: "account", staticClient: !discovery.as.registration_endpoint });
+        } catch { throw pluginError(409, "key_required"); }
+      }
+      if (error instanceof HttpError) throw error;
+      throw pluginError(502, "server_unreachable");
+    }
+  }
+
+  private validateHeaders(headers: Record<string, string>, required: boolean) {
+    const names = Object.keys(headers);
+    if (required && !names.length || names.length > 20 || names.some(k => ["host", "cookie", "content-length", "connection", "transfer-encoding"].includes(k.toLowerCase()))) throw pluginError(400, "invalid_secret_headers");
   }
 
   private async inspect(req: Request): Promise<Response> {
@@ -229,14 +264,24 @@ export class Plugins {
     return json(plugin, 201);
   }
 
-  async admin(req: Request, path: string): Promise<Response> {
+  async admin(req: Request, path: string, userId: string): Promise<Response> {
     if (path === "/admin/plugins" && req.method === "GET") return json({ plugins: this.list().map(plugin => ({ ...plugin, setup: plugin.servers.map(server => ({ server: server.name, done: this.setupDone(plugin, server) })), vendorConfigured: !!this.connections?.vendorConfigured(plugin.vendor) })) });
     if (path === "/admin/plugins" && req.method === "POST") return this.install(req);
     if (path === "/admin/plugins/inspect" && req.method === "POST") return this.inspect(req);
-    const match = /^\/admin\/plugins\/([^/]+)(\/(?:secret|skills|export))?$/.exec(path);
+    if (path === "/admin/plugins/test" && req.method === "POST") return this.test(req);
+    const match = /^\/admin\/plugins\/([^/]+)(\/(?:secret|skills|export|tools))?$/.exec(path);
     if (!match) return notFound();
     const plugin = this.get(match[1]);
     if (!plugin) return notFound();
+    if (match[2] === "/tools" && req.method === "GET") {
+      const server = plugin.servers.find(s => s.name === new URL(req.url).searchParams.get("server"));
+      if (!server) throw pluginError(400, "plugin_server_required");
+      const headers = server.credential === "organization" ? await this.organizationHeaders(plugin.id, server.name)
+        : server.credential === "user-oauth" ? await this.connections!.adminHeaders(userId, plugin.id, server.name) : {};
+      if (!headers) throw pluginError(409, server.credential === "organization" ? "key_required" : "connection_not_allowed");
+      try { return json({ tools: await this.tools(server, headers) }); }
+      catch { throw pluginError(502, "server_unreachable"); }
+    }
     if (match[2] === "/skills" && req.method === "GET") return json({ skills: this.skills(plugin.id).map(skillToInput), editable: plugin.source.type === "custom" || plugin.source.type === "upload" });
     if (match[2] === "/export" && req.method === "GET") {
       if (plugin.source.type === "catalog") throw pluginError(409, "not_editable");
@@ -247,7 +292,7 @@ export class Plugins {
       if (!plugin.servers.some(s => s.name === data.server && s.credential === "organization")) throw pluginError(400, "not_organization_server");
       if (data.headers === null) this.rows("delete from plugin_secret where plugin_id=? and server=?", plugin.id, data.server);
       else {
-        if (!Object.keys(data.headers).length || Object.keys(data.headers).length > 20 || Object.keys(data.headers).some(k => ["host", "cookie", "content-length", "connection", "transfer-encoding"].includes(k.toLowerCase()))) throw pluginError(400, "invalid_secret_headers");
+        this.validateHeaders(data.headers, true);
         const sealed = await this.cipher.seal(data.headers, JSON.stringify(["secret", plugin.id, data.server]));
         if (JSON.stringify(this.get(plugin.id)?.servers.find(s => s.name === data.server)) !== JSON.stringify(plugin.servers.find(s => s.name === data.server))) throw pluginError(409, "connection_not_allowed");
         this.storage.transactionSync(() => {
@@ -267,6 +312,12 @@ export class Plugins {
       if (!current) return notFound();
       if ("enabled" in patch) {
         current.enabled = patch.enabled;
+        this.rows("update plugin set definition=? where id=?", JSON.stringify(current), current.id);
+        return json(current);
+      }
+      if ("disabledTools" in patch) {
+        if (Object.keys(patch.disabledTools).some(name => !current.servers.some(server => server.name === name))) throw pluginError(400, "plugin_server_required");
+        current.servers = current.servers.map(server => Object.hasOwn(patch.disabledTools, server.name) ? { ...server, disabledTools: [...new Set(patch.disabledTools[server.name])] } : server);
         this.rows("update plugin set definition=? where id=?", JSON.stringify(current), current.id);
         return json(current);
       }

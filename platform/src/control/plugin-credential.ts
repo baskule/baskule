@@ -14,6 +14,7 @@ export async function pluginCredential(req: Request, plugins: Plugins, connectio
   const decision = plugins.canUse(userId, spaceId, pluginId, server);
   if (!decision.allowed) return json({ error: decision.error } satisfies PluginCredential);
   const target = plugins.get(pluginId)!.servers.find(s => s.name === server)!;
+  if (parsed.data.tool && target.disabledTools.includes(parsed.data.tool)) return json({ error: "tool_off" } satisfies PluginCredential);
   const expiresAt = Date.now() + 60_000;
   switch (target.credential) {
     case "none": return json({ headers: {}, expiresAt } satisfies PluginCredential);
@@ -21,6 +22,7 @@ export async function pluginCredential(req: Request, plugins: Plugins, connectio
       const headers = await plugins.organizationHeaders(pluginId, server);
       const current = plugins.canUse(userId, spaceId, pluginId, server);
       if (!current.allowed) return json({ error: current.error });
+      if (parsed.data.tool && plugins.get(pluginId)!.servers.find(s => s.name === server)!.disabledTools.includes(parsed.data.tool)) return json({ error: "tool_off" } satisfies PluginCredential);
       return json(headers ? { headers, expiresAt } : { error: "needs_setup" });
     }
     case "user-oauth":

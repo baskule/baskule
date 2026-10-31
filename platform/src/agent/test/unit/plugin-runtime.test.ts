@@ -77,7 +77,7 @@ describe("turn author", () => {
   });
 });
 
-const server: SpacePlugins["servers"][number] = { pluginId: "test", pluginName: "Test", name: "remote", url: "https://vendor.test/mcp", credential: "user-oauth", catalogUserId: "alice", privateNetwork: false, defaultAccountOnly: false };
+const server: SpacePlugins["servers"][number] = { pluginId: "test", pluginName: "Test", name: "remote", url: "https://vendor.test/mcp", credential: "user-oauth", disabledTools: [], catalogUserId: "alice", privateNetwork: false, defaultAccountOnly: false };
 const rpc = async (proxy: PluginMcpProxy, method: string, user = "alice", args = {}) => {
   const r = await proxy.handler(new Request("http://proxy/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: { name: "lookup", arguments: args, _meta: { "ai.opencode/sessionID": user } } }) }));
   return r.json() as Promise<Record<string, any>>;
@@ -89,6 +89,7 @@ describe("plugin proxy", () => {
     const clean = { name: "lookup", inputSchema: { type: "object" as const, properties: { query: { type: "string" } }, required: ["query"] } };
     const collided = { ...clean, name: "collision", inputSchema: { ...clean.inputSchema, properties: { [ACCOUNT_ARG]: { type: "number" } } } };
     expect(publishTools(server, [clean, collided])).toEqual([{ ...clean, inputSchema: { ...clean.inputSchema, properties: { ...clean.inputSchema.properties, [ACCOUNT_ARG]: { type: "string", description: expect.any(String) } } } }]);
+    expect(publishTools({ ...server, disabledTools: ["lookup"] }, [clean])).toEqual([]);
     expect(publishTools({ ...server, defaultAccountOnly: true }, [clean, collided])).toEqual([clean]);
     expect(publishTools({ ...server, credential: "organization" }, [collided])).toEqual([collided]);
   });
