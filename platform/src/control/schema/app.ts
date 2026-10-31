@@ -134,7 +134,7 @@ export const userPlugin = sqliteTable("user_plugin", {
 export const pluginSecret = sqliteTable("plugin_secret", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
   server: text("server").notNull(),
-  headers: text("headers").notNull(), // write-only, same SQLite trust boundary as the AI key
+  data: text("data").notNull(),
 }, t => [primaryKey({ columns: [t.pluginId, t.server] })]);
 
 export const spacePluginSettings = sqliteTable("space_plugin_settings", {

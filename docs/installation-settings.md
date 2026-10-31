@@ -264,3 +264,14 @@ This change replaces the product configuration layout. Wipe the installation's d
 back up if wanted, stop and purge with `deploy/v2/down.sh --purge`, prepare `.env` and `auth.json`, then build and
 run `deploy/v2/up.sh` and configure the product in the admin area. Rebuild clients for their new login paths.
 There is no import or fallback from the retired organization/AI environment settings.
+
+Plugin outbound traffic requires HTTPS to public hosts. Admin-added servers may use private addresses and HTTP
+on those addresses. The in-isolate `baskule-mcp.internal` host is always refused. OAuth metadata for a public
+server may only point to public HTTPS addresses. Requests refuse redirects; MCP requests stay on their origin.
+These checks inspect URLs, not DNS answers. Deployment egress rules must deny private and reserved destination
+addresses for public hostnames, including DNS rebinding; this is not full SSRF protection.
+
+The encrypted-key schema recreates `plugin_secret`; existing organization keys are removed. Before deployment,
+obtain the installation owner's authorization and retain the keys privately if they must be re-entered. Deploy
+the new build, let ControlCell apply the schema, and re-enter organization keys in Admin → Plugins. Users,
+groups, spaces and chats are untouched. No plaintext reader or data conversion is retained.

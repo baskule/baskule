@@ -1,3 +1,4 @@
+import { ConnectionCipher } from "../../src/control/connection-crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
@@ -95,7 +96,8 @@ describe("ControlCell plugins and groups", () => {
     await call(h, "PATCH", path, { ...admin, body: { enabled: true, servers: [{ name: "remote", credential: "organization", personal: false }] } });
     expect((await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } })).status).toBe(200);
     expect(h.svc.plugins.canUse(bob.id, spaceId, id, "remote")).toEqual({ allowed: true });
-    expect(h.svc.plugins.organizationHeaders(id, "remote")).toEqual({ Authorization: "Bearer private-organization-key" });
+    expect(await h.svc.plugins.organizationHeaders(id, "remote")).toEqual({ Authorization: "Bearer private-organization-key" });
+    expect(h.storage.sql.exec("select data from plugin_secret").toArray()[0].data).not.toContain("private-organization-key");
     const requestCredential = (userId = bob.id) => call(h, "POST", "/_baskule/plugin-credential", { headers: { [INTERNAL_HEADER]: "1" }, body: { spaceId, pluginId: id, server: "remote", userId } });
     expect((await requestCredential()).body).toMatchObject({ headers: { Authorization: "Bearer private-organization-key" }, expiresAt: expect.any(Number) });
     expect((await requestCredential("outsider")).body).toEqual({ error: "not_allowed" });
@@ -108,6 +110,9 @@ describe("ControlCell plugins and groups", () => {
     expect((await requestCredential()).body).toEqual({ error: "not_enabled" });
     await call(h, "PUT", `${API}/plugins/${id}/enabled`, { ...member, body: { enabled: true } });
     await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", credential: "organization", personal: false }] } });
+    await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } });
+    await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", url: "https://changed.test/mcp", credential: "organization", personal: false }] } });
+    expect(await h.svc.plugins.organizationHeaders(id, "remote")).toBeUndefined();
     await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } });
     const mine = await call(h, "GET", `${API}/plugins`, member);
     expect(mine.body.plugins[0]).toMatchObject({ userEnabled: true, connections: [{ server: "remote", state: "configured" }] });
@@ -162,7 +167,7 @@ describe("ControlCell plugins and groups", () => {
     const bad = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { ...input, source: { type: "archive", sha256: "0".repeat(64) } } });
     expect(bad.body.error).toBe("archive_hash_mismatch");
     const urls: string[] = [];
-    const store = new Plugins(h.storage, h.svc.groups, async url => {
+    const store = new Plugins(h.storage, h.svc.groups, new ConnectionCipher("test"), async url => {
       urls.push(String(url));
       if (String(url).includes("/git/trees/")) return Response.json({ truncated: false, tree: Object.entries(files).map(([path, bytes]) => ({ path, mode: "100644", type: "blob", size: bytes.length })) });
       const path = String(url).split(`${"a".repeat(40)}/`)[1];

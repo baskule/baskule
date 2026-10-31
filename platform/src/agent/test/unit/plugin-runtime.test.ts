@@ -77,7 +77,7 @@ describe("turn author", () => {
   });
 });
 
-const server: SpacePlugins["servers"][number] = { pluginId: "test", name: "remote", url: "https://vendor.test/mcp", credential: "organization", personal: true, catalogUserId: "alice" };
+const server: SpacePlugins["servers"][number] = { pluginId: "test", name: "remote", url: "https://vendor.test/mcp", credential: "organization", personal: true, catalogUserId: "alice", privateNetwork: false };
 const rpc = async (proxy: PluginMcpProxy, method: string, user = "alice") => {
   const r = await proxy.handler(new Request("http://proxy/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: { name: "lookup", arguments: {}, _meta: { "ai.opencode/sessionID": user } } }) }));
   return r.json() as Promise<Record<string, any>>;
@@ -85,6 +85,13 @@ const rpc = async (proxy: PluginMcpProxy, method: string, user = "alice") => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("plugin proxy", () => {
+  it("refuses the in-isolate MCP host even for admin private servers", async () => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    const proxy = new PluginMcpProxy({ ...server, url: "https://baskule-mcp.internal/mcp", privateNetwork: true }, async () => alice, async () => ({ headers: {}, expiresAt: Date.now() + 60_000 }));
+    expect((await rpc(proxy, "tools/call")).result.isError).toBe(true);
+    expect(fetcher).not.toHaveBeenCalled();
+    await proxy.close();
+  });
   it("checks policy on every call, labels personal accounts and never forwards session metadata", async () => {
     const seen: { method: string; auth: string | null; params: any }[] = [];
     vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {

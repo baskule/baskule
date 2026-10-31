@@ -1,5 +1,6 @@
-import { Client, SSEClientTransport, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import type { Client } from "@modelcontextprotocol/client";
 import type { PluginCredential, SpacePlugins } from "../../../app/packages/contracts/src/baskule-plugins";
+import { connectMcp } from "../shared/plugin-outbound";
 import type { TurnAuthor } from "./turn-author";
 
 type Server = SpacePlugins["servers"][number];
@@ -28,19 +29,8 @@ export class PluginMcpProxy {
       entry = undefined;
     }
     if (!entry) {
-      const client = new Client({ name: "baskule-plugin-proxy", version: "0.4.0" }, { capabilities: {} });
-      // No OAuth provider: ControlCell owns authentication. Never forward credentials across redirects.
-      const options = { requestInit: { headers: credential.headers }, fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = new URL(input instanceof Request ? input.url : String(input));
-        if (url.origin !== new URL(this.server.url).origin) throw new Error("Cross-origin MCP endpoint refused");
-        return fetch(input, { ...init, redirect: "error" });
-      } };
-      const transport = this.server.transport === "sse"
-        ? new SSEClientTransport(new URL(this.server.url), options)
-        : new StreamableHTTPClientTransport(new URL(this.server.url), options);
-      const connecting = client.connect(transport, { timeout: 15_000 }).then(() => client).catch(async () => {
+      const connecting = connectMcp(this.server, this.server.privateNetwork ? "private" : "public", credential.headers, 15_000).catch(() => {
         if (this.clients.get(userId) === entry) this.clients.delete(userId);
-        await client.close().catch(() => {});
         throw new Error("Plugin server connection failed. Try again or contact your administrator.");
       });
       entry = { headers, expiresAt: credential.expiresAt, client: connecting, uses: 0, retired: false };
