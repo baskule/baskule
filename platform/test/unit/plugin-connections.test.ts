@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { zipSync } from "fflate";
-import { base64, sha256 } from "../../src/control/plugin-import";
+import { base64 } from "../../src/control/plugin-package";
 import { ConnectionCipher, digest, pkce } from "../../src/control/connection-crypto";
 import { canonicalResource, discoverOAuth } from "../../src/control/connection-oauth";
 import { asAdmin, call, createUser, makeService, ORIGIN, personalSpaceOf, signIn, type H } from "../support/harness";
@@ -10,8 +10,8 @@ import { INTERNAL_HEADER } from "../../src/shared/contract";
 const API = "/api/baskule";
 async function install(h: H, resource: string) {
   const a = await asAdmin(h);
-  const p = (await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: [], source: { type: "url", url: resource } } })).body;
-  await call(h, "PATCH", `${API}/admin/plugins/${p.id}`, { creds: a.creds, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth" }] } });
+  const p = (await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: [], plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: resource, credential: "none" }] } } })).body;
+  await call(h, "PATCH", `${API}/admin/plugins/${p.id}`, { creds: a.creds, body: { plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ url: resource, name: "remote", credential: "user-oauth" }] } } });
   await call(h, "PATCH", `${API}/admin/groups/everyone`, { creds: a.creds, body: { plugins: [p.id] } });
   const input = { spaceId: personalSpaceOf(h, a.userId), userId: a.userId, pluginId: p.id, server: "remote" };
   const accounts = async () => (await call(h, "GET", `${API}/plugins`, { creds: a.creds })).body.plugins.find((entry: { id: string }) => entry.id === p.id).servers.find((entry: { name: string }) => entry.name === "remote").accounts;
@@ -243,15 +243,15 @@ describe("vendor setup and recipes", () => {
     const f = await fakeOAuth(); f.state.dcr = false;
     try {
       const h = await makeService(); const x = await install(h, f.resource);
-      const other = (await call(h, "POST", `${API}/admin/plugins`, { creds: x.a.creds, body: { groups: ["everyone"], source: { type: "url", url: f.resource } } })).body;
-      await call(h, "PATCH", `${API}/admin/plugins/${other.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth" }] } });
+      const other = (await call(h, "POST", `${API}/admin/plugins`, { creds: x.a.creds, body: { groups: ["everyone"], plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: f.resource, credential: "none" }] } } })).body;
+      await call(h, "PATCH", `${API}/admin/plugins/${other.id}`, { creds: x.a.creds, body: { plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ url: f.resource, name: "remote", credential: "user-oauth" }] } } });
       await call(h, "PUT", `${API}/admin/vendors/${other.id}`, { creds: x.a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
       const otherStart = await call(h, "GET", `${API}/plugins/${other.id}/connect`, { creds: x.a.creds });
       expect((await call(h, "GET", await authorized(otherStart), { creds: x.a.creds })).headers.get("location")).toContain("pluginConnection=connected");
       const previousRequests = f.requests.length;
-      await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { staticClient: true } }] } });
+      await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ url: x.p.servers[0].url, name: "remote", credential: "user-oauth", oauth: { staticClient: true } }] } } });
       expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins.find((p: { id: string }) => p.id === x.p.id).status).toBe("needs_setup");
-      expect((await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { params: { state: "overridden" } } }] } })).body.error).toBe("invalid_plugin_input");
+      expect((await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ url: x.p.servers[0].url, name: "remote", credential: "user-oauth", oauth: { params: { state: "overridden" } } }] } } })).body.error).toBe("invalid_plugin_input");
       const path = `${API}/admin/vendors/${x.p.id}`;
       expect((await call(h, "PUT", path, { creds: x.a.creds, body: { clientId: "fake-client", clientSecret: "private-secret", tokenEndpointAuthMethod: "client_secret_post" } })).status).toBe(200);
       expect((await call(h, "GET", `${API}/admin/plugins`, { creds: x.a.creds })).body.plugins.find((p: { id: string }) => p.id === x.p.id).vendorConfigured).toBe(true);
@@ -271,18 +271,19 @@ describe("vendor setup and recipes", () => {
     try {
       const h = await makeService(); const a = await asAdmin(h);
       const archive = zipSync({ ".mcp.json": new TextEncoder().encode(JSON.stringify({ mcpServers: { first: { url: f.resource }, second: { url: f.resource } } })) });
-      const added = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: ["everyone"], source: { type: "archive", sha256: await sha256(archive) }, archive: base64(archive) } });
+      const draft = await call(h, "POST", `${API}/admin/plugins/inspect`, { creds: a.creds, body: { archive: base64(archive) } });
+      const added = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: ["everyone"], plugin: draft.body.plugin } });
       expect(added.status).toBe(201);
       const id = added.body.id;
-      const servers = ["first", "second"].map(name => ({ name, credential: name === "first" ? firstCredential : "user-oauth", oauth: { staticClient: true } }));
-      expect((await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { servers } })).status).toBe(200);
+      const servers = ["first", "second"].map(name => ({ url: f.resource, name, credential: name === "first" ? firstCredential : "user-oauth", ...(name !== "first" || firstCredential === "user-oauth" ? { oauth: { staticClient: true } } : {}) }));
+      expect((await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { plugin: { ...draft.body.plugin, servers } } })).status).toBe(200);
       await call(h, "PUT", `${API}/admin/vendors/${id}`, { creds: a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
       for (const name of firstCredential === "user-oauth" ? ["first", "second"] : ["second"]) {
         const start = await call(h, "GET", `${API}/plugins/${id}/connect?server=${name}`, { creds: a.creds });
         expect((await call(h, "GET", await authorized(start), { creds: a.creds })).headers.get("location")).toContain("pluginConnection=connected");
       }
       expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toHaveLength(firstCredential === "user-oauth" ? 2 : 1);
-      await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { servers: [{ ...servers[0], url: f.resource + "/changed" }] } });
+      await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { plugin: { name: "Test plugin", description: "", source: added.body.source, skills: [], omitted: [], servers: [{ ...servers[0], url: f.resource + "/changed" }, servers[1]] } } });
       expect((await call(h, "GET", `${API}/plugins`, { creds: a.creds })).body.plugins[0].servers.map((s: { status: string }) => s.status)).toEqual(firstCredential === "user-oauth" ? ["needs_setup", "needs_setup"] : ["needs_setup", "ready"]);
       expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toHaveLength(firstCredential === "user-oauth" ? 0 : 1);
     } finally { await f.close(); }
@@ -291,7 +292,7 @@ describe("vendor setup and recipes", () => {
     const f = await fakeOAuth(); f.state.dcr = false;
     try {
       const h = await makeService(); const x = await install(h, f.resource);
-      await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { params: { prompt: "consent select_account", access_type: "offline" }, resource: false, staticClient: true } }] } });
+      await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ url: x.p.servers[0].url, name: "remote", credential: "user-oauth", oauth: { params: { prompt: "consent select_account", access_type: "offline" }, resource: false, staticClient: true } }] } } });
       await call(h, "PUT", `${API}/admin/vendors/${x.p.id}`, { creds: x.a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
       f.state.metadata = false; f.state.resourceParameter = false;
       const start = await x.start();

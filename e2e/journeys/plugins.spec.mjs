@@ -41,13 +41,13 @@ test("assigned skills are ready without activation and leave a team when its con
       return { name, value: value.join("="), url: stack.urls.front };
     }));
     await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
-    await adminPage.getByRole("button", { name: "Add your own", exact: true }).click();
-    await adminPage.getByRole("button", { name: "File", exact: true }).click();
+    await adminPage.getByRole("link", { name: "Add your own", exact: true }).click();
     await adminPage.getByLabel("Plugin file", { exact: true }).setInputFiles({ name: "portable-skills.zip", mimeType: "application/zip", buffer: skillsArchive() });
-    await adminPage.getByLabel("Name (optional)", { exact: true }).fill(name);
+    await adminPage.getByRole("button", { name: "Review plugin", exact: true }).click();
+    await adminPage.getByLabel("Name", { exact: true }).fill(name);
     await expect(adminPage.getByRole("checkbox", { name: /Everyone/ })).toBeChecked();
-    await adminPage.getByRole("button", { name: "Add plugin", exact: true }).click();
-    await expect(adminPage.getByRole("heading", { name: `${name} was added`, exact: true })).toBeVisible();
+    await adminPage.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await expect(adminPage.getByRole("heading", { name, exact: true })).toBeVisible();
     plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
     expect(plugin.enabled).toBe(true);
     await adminPage.screenshot({ path: test.info().outputPath("plugin-upload-assigned.png") });
@@ -100,8 +100,8 @@ test("a connected member supplies discovery while calls keep the turn author's a
   let plugin;
   let team;
   try {
-    plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { name, groups: ["everyone"], source: { type: "url", url: oauth.resource } });
-    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { servers: [{ name: "remote", credential: "user-oauth", oauth: { staticClient: true } }] });
+    plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { groups: ["everyone"], plugin: { name, description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: oauth.resource, credential: "none" }] } });
+    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { plugin: { name, description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: oauth.resource, credential: "user-oauth", oauth: { staticClient: true } }] } });
     team = await api.teamSpace(api.admin, name, [people.alice, people.bob]);
     await api.admin.json("PATCH", `/api/baskule/spaces/${team}/members/${people.alice.me.user.id}`, { role: "owner" });
     await api.admin.json("DELETE", `/api/baskule/spaces/${team}/members/${api.admin.me.user.id}`);
@@ -218,8 +218,8 @@ test("named accounts select the requested identity and use a changed default", {
   const name = `Accounts ${crypto.randomUUID().slice(0, 8)}`;
   let plugin;
   try {
-    plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { name, groups: ["everyone"], source: { type: "url", url: oauth.resource } });
-    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { servers: [{ name: "remote", credential: "user-oauth" }] });
+    plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { groups: ["everyone"], plugin: { name, description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: oauth.resource, credential: "none" }] } });
+    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { plugin: { name, description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: oauth.resource, credential: "user-oauth" }] } });
     await context.addCookies(person.cookie.split("; ").map(cookie => {
       const [name, ...value] = cookie.split("=");
       return { name, value: value.join("="), url: stack.urls.front };
@@ -265,5 +265,70 @@ test("named accounts select the requested identity and use a changed default", {
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
     await context.close();
     await oauth.close();
+  }
+});
+
+
+test("an imported package is reviewed and repaired before save and exports for another installation", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api }) => {
+  const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
+  const context = await browser.newContext(options);
+  const memberContext = await browser.newContext(options);
+  const page = await context.newPage();
+  const member = await memberContext.newPage();
+  const name = `Reviewed plugin ${crypto.randomUUID()}`;
+  let plugin;
+  try {
+    await context.addCookies(api.admin.cookie.split("; ").map(cookie => {
+      const [name, ...value] = cookie.split("="); return { name, value: value.join("="), url: stack.urls.front };
+    }));
+    await page.goto(`${stack.urls.front}/admin/plugins/add`);
+    await expect(page.getByRole("heading", { name: "Import a plugin", exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("plugin-add-your-own.png"), fullPage: true });
+    const root = fileURLToPath(new URL("../../platform/test/fixtures/plugins/repair/", import.meta.url));
+    const archive = execFileSync("python3", ["-c", "import io,pathlib,sys,zipfile; r=pathlib.Path(sys.argv[1]); b=io.BytesIO(); z=zipfile.ZipFile(b,'w'); [z.write(p,p.relative_to(r)) for p in r.rglob('*') if p.is_file()]; z.close(); sys.stdout.buffer.write(b.getvalue())", root]);
+    await page.getByLabel("Plugin file", { exact: true }).setInputFiles({ name: "repair.zip", mimeType: "application/zip", buffer: archive });
+    const before = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.length;
+    await page.getByRole("button", { name: "Review plugin", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Included", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Not used, and why", exact: true })).toBeVisible();
+    await expect(page.getByText(/A program that runs on someone's computer/)).toBeVisible();
+    expect((await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.length).toBe(before);
+    await page.screenshot({ path: test.info().outputPath("plugin-review-unresolved.png"), fullPage: true });
+    await page.getByLabel("Name", { exact: true }).fill(name);
+    await page.getByLabel("tenant", { exact: true }).fill("workspace");
+    await page.getByLabel("Key", { exact: true }).fill("Bearer local-review-key");
+    await expect(page.getByText("The package didn't include its sign-in details. Check this choice.", { exact: true })).toBeVisible();
+    await page.getByRole("radio", { name: /No sign-in needed/ }).last().check();
+    await expect(page.getByRole("checkbox", { name: /Everyone/ })).toBeChecked();
+    await page.screenshot({ path: test.info().outputPath("plugin-review-ready.png"), fullPage: true });
+    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
+    expect(plugin.servers[0].url).toBe("https://workspace.example.com/mcp");
+    expect(plugin.setup.find(s => s.server === "docs").done).toBe(true);
+    expect(JSON.stringify(plugin)).not.toContain("local-review-key");
+    await page.screenshot({ path: test.info().outputPath("plugin-import-saved.png"), fullPage: true });
+    await signIn(member, people.alice, stack);
+    await member.goto(`${stack.urls.front}/settings/plugins`);
+    await expect(member.getByText(name, { exact: true })).toBeVisible();
+    await expect(member.getByText("Ready", { exact: true })).toBeVisible();
+    const downloaded = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download as zip", exact: true }).click();
+    const download = await downloaded;
+    const file = test.info().outputPath("exported-plugin.zip");
+    await download.saveAs(file);
+    await page.goto(`${stack.urls.front}/admin/plugins/add`);
+    await page.getByLabel("Plugin file", { exact: true }).setInputFiles(file);
+    await page.getByRole("button", { name: "Review plugin", exact: true }).click();
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue(name);
+    await expect(page.getByLabel("Key", { exact: true })).toHaveValue("");
+    await expect(page.getByText("greeting", { exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("plugin-export-reviewed.png"), fullPage: true });
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect((await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.length).toBe(before + 1);
+  } finally {
+    if (!plugin) plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
+    if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
+    await context.close(); await memberContext.close();
   }
 });

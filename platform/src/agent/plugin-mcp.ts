@@ -1,6 +1,7 @@
+import { serverFingerprint } from "../../../app/packages/contracts/src/baskule-plugin-formats";
 import type { Client } from "@modelcontextprotocol/client";
 import type { PluginCallError, PluginCredential, SpacePlugins } from "../../../app/packages/contracts/src/baskule-plugins";
-import { connectMcp, serverFingerprint } from "../shared/plugin-outbound";
+import { connectMcp } from "../shared/plugin-outbound";
 import type { TurnAuthor } from "./turn-author";
 
 type Server = SpacePlugins["servers"][number];

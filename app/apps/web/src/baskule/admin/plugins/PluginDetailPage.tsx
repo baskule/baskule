@@ -1,26 +1,21 @@
 // baskule: one installed plugin: paused or not, which groups may use it, how its servers sign in
 // (with the write-only organization key or vendor app), what it contains, where it came from, and removal.
+// A plugin an admin brought opens in the plugin editor and downloads as a package.
 import { catalogService, catalogVendor } from "@t3tools/contracts/baskule-catalog";
 import type {
-  CredentialMode,
+  AdminPlugin,
   Group,
   Plugin,
+  PluginInput,
   PluginServer,
 } from "@t3tools/contracts/baskule-plugins";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
-import { PauseIcon, PlayIcon, UsersRoundIcon } from "lucide-react";
+import { DownloadIcon, PauseIcon, PencilIcon, PlayIcon, UsersRoundIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from "../../../components/ui/select";
 import { Spinner } from "../../../components/ui/spinner";
 import { Switch } from "../../../components/ui/switch";
 import { notifyPluginError, pluginErrorText, pluginsApi } from "../../plugins/api";
@@ -28,7 +23,6 @@ import { PluginContents, PluginIcon } from "../../plugins/PluginParts";
 import {
   contentsKind,
   contentsLabel,
-  CREDENTIAL_MODES,
   credentialDescription,
   credentialLabel,
   groupName,
@@ -36,10 +30,36 @@ import {
   sourceLabel,
 } from "../../plugins/presentation";
 import { confirmAction, FormField, notifySuccess, RowIcon, useApiResource } from "../../ui";
-import { PageRow, PageSection } from "../../views/BaskulePage";
-import { PageHeading } from "../../views/BaskulePage";
+import { PageHeading, PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
+import { PluginEditor } from "./PluginEditor";
 import { VendorSetup } from "./VendorSetup";
+
+/** Saves a package under the plugin's name. */
+function saveZip(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${name.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "") || "plugin"}.zip`;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/** The saved plugin as the one shape the editor works on; skills come in full from the server. */
+async function editorInput(plugin: AdminPlugin): Promise<PluginInput | null> {
+  const source = plugin.source;
+  if (source.type === "catalog") return null;
+  const { skills } = await pluginsApi.skills(plugin.id);
+  return {
+    name: plugin.name,
+    description: plugin.description,
+    ...(plugin.icon ? { icon: plugin.icon } : {}),
+    source,
+    servers: plugin.servers,
+    skills,
+    omitted: plugin.omitted,
+  };
+}
 
 export function PluginDetailPage({ id }: { readonly id: string }) {
   const t = useTranslation();
@@ -54,6 +74,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   );
   const data = useApiResource(load);
   const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<PluginInput | null>(null);
 
   const run = async (key: string, action: () => Promise<unknown>, failure: string) => {
     setBusy(key);
@@ -91,6 +112,11 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   );
   const ownAccounts = plugin.servers.filter((server) => server.credential === "user-oauth");
   const fromCatalog = plugin.source.type === "catalog";
+  const savedKeys = new Set(
+    plugin.servers
+      .filter((server) => server.credential === "organization" && !unfinished.has(server.name))
+      .map((server) => server.name),
+  );
   const vendor = fromCatalog ? catalogVendor(plugin.vendor) : undefined;
   const signIn = vendor?.signIn;
   const vendorApp = signIn?.type === "account" && signIn.client === "static" ? signIn : undefined;
@@ -105,18 +131,54 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         }),
       t("Could not change who can use {{name}}", { name: plugin.name }),
     );
-  const setCredential = (server: PluginServer, credential: CredentialMode) =>
-    run(
-      `server:${server.name}`,
-      () =>
-        pluginsApi.update(plugin.id, {
-          servers: plugin.servers.map((entry) => ({
-            name: entry.name,
-            credential: entry.name === server.name ? credential : entry.credential,
-          })),
-        }),
-      t("Could not change how {{name}} signs in", { name: server.name }),
+  const edit = () => {
+    setBusy("edit");
+    editorInput(plugin)
+      .then(setEditing, (cause: unknown) =>
+        notifyPluginError(t("Could not open {{name}}", { name: plugin.name }), cause),
+      )
+      .finally(() => setBusy(null));
+  };
+  const download = () => {
+    setBusy("download");
+    pluginsApi
+      .exportZip(plugin.id)
+      .then(
+        (blob) => saveZip(blob, plugin.name),
+        (cause: unknown) =>
+          notifyPluginError(t("Could not download {{name}}", { name: plugin.name }), cause),
+      )
+      .finally(() => setBusy(null));
+  };
+
+  if (editing) {
+    return (
+      <>
+        <PageHeading
+          leading={
+            <PluginIcon
+              contents={contentsKind(plugin)}
+              icon={plugin.icon}
+              className="size-10 [&_svg]:size-5"
+            />
+          }
+          title={t("Edit {{name}}", { name: plugin.name })}
+          description={sourceLabel(plugin.source)}
+        />
+        <PluginEditor
+          initial={editing}
+          fixes={[]}
+          omitted={plugin.omitted}
+          target={{ type: "edit", id: plugin.id, savedKeys }}
+          onCancel={() => setEditing(null)}
+          onSaved={({ name }) => {
+            notifySuccess(t("{{name}} was saved", { name }));
+            void data.reload().then(() => setEditing(null));
+          }}
+        />
+      </>
     );
+  }
 
   return (
     <>
@@ -131,34 +193,48 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         title={plugin.name}
         description={`${contentsLabel(contentsKind(plugin))} · ${sourceLabel(plugin.source)}`}
         trailing={
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label={
-              plugin.enabled
-                ? t("Pause {{name}}", { name: plugin.name })
-                : t("Resume {{name}}", { name: plugin.name })
-            }
-            disabled={busy !== null}
-            onClick={() =>
-              void run(
-                "enabled",
-                () => pluginsApi.update(plugin.id, { enabled: !plugin.enabled }),
-                plugin.enabled
-                  ? t("Could not pause {{name}}", { name: plugin.name })
-                  : t("Could not resume {{name}}", { name: plugin.name }),
-              )
-            }
-          >
-            {busy === "enabled" ? (
-              <Spinner size="sm" />
-            ) : plugin.enabled ? (
-              <PauseIcon />
-            ) : (
-              <PlayIcon />
+          <>
+            {fromCatalog ? null : (
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={t("Edit {{name}}", { name: plugin.name })}
+                disabled={busy !== null}
+                onClick={edit}
+              >
+                {busy === "edit" ? <Spinner size="sm" /> : <PencilIcon />}
+                {t("Edit")}
+              </Button>
             )}
-            {plugin.enabled ? t("Pause") : t("Resume")}
-          </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label={
+                plugin.enabled
+                  ? t("Pause {{name}}", { name: plugin.name })
+                  : t("Resume {{name}}", { name: plugin.name })
+              }
+              disabled={busy !== null}
+              onClick={() =>
+                void run(
+                  "enabled",
+                  () => pluginsApi.update(plugin.id, { enabled: !plugin.enabled }),
+                  plugin.enabled
+                    ? t("Could not pause {{name}}", { name: plugin.name })
+                    : t("Could not resume {{name}}", { name: plugin.name }),
+                )
+              }
+            >
+              {busy === "enabled" ? (
+                <Spinner size="sm" />
+              ) : plugin.enabled ? (
+                <PauseIcon />
+              ) : (
+                <PlayIcon />
+              )}
+              {plugin.enabled ? t("Pause") : t("Resume")}
+            </Button>
+          </>
         }
       >
         {plugin.description ? (
@@ -249,10 +325,6 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
               key={server.name}
               plugin={plugin}
               server={server}
-              editable={!fromCatalog}
-              busy={busy === `server:${server.name}`}
-              disabled={busy !== null}
-              onCredential={(mode) => void setCredential(server, mode)}
               onKeyChanged={data.reload}
             />
           ))}
@@ -277,13 +349,24 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
       </PageSection>
 
       <PageSection title={t("Source")}>
-        <PageRow>
+        <PageRow
+          trailing={
+            fromCatalog ? null : (
+              <Button size="sm" variant="outline" disabled={busy !== null} onClick={download}>
+                {busy === "download" ? <Spinner size="sm" /> : <DownloadIcon />}
+                {t("Download as zip")}
+              </Button>
+            )
+          }
+        >
           <span className="text-sm text-foreground [overflow-wrap:anywhere]">
             {sourceLabel(plugin.source)}
           </span>
-          <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-            {sourceDetail(plugin)}
-          </span>
+          {sourceDetail(plugin) ? (
+            <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+              {sourceDetail(plugin)}
+            </span>
+          ) : null}
         </PageRow>
         <PageRow>
           <span className="text-sm text-foreground">{t("Added")}</span>
@@ -330,7 +413,9 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         >
           <span className="text-sm text-foreground">{t("Remove this plugin")}</span>
           <span className="text-xs text-muted-foreground">
-            {t("You can add it again later from the catalog.")}
+            {fromCatalog
+              ? t("You can add it again later from the catalog.")
+              : t("To keep a copy, download it as a zip first.")}
           </span>
         </PageRow>
       </PageSection>
@@ -338,36 +423,26 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   );
 }
 
-function sourceDetail(plugin: Plugin): string {
+function sourceDetail(plugin: Plugin): string | null {
   const source = plugin.source;
   switch (source.type) {
     case "catalog":
-      return catalogService(plugin.id)?.docs ?? "";
-    case "url":
-      return source.url;
-    case "git":
-      return [source.repo, source.path, source.ref].filter(Boolean).join(" · ");
-    case "archive":
-      return `SHA-256 ${source.sha256}`;
+      return catalogService(plugin.id)?.docs ?? null;
+    case "github":
+      return source.path ? `${source.repo} · ${source.path}` : source.repo;
+    case "upload":
+    case "custom":
+      return null;
   }
 }
 
 function ServerSettings({
   plugin,
   server,
-  editable,
-  busy,
-  disabled,
-  onCredential,
   onKeyChanged,
 }: {
   readonly plugin: Plugin;
   readonly server: PluginServer;
-  /** Catalog plugins sign in the way the catalog says. */
-  readonly editable: boolean;
-  readonly busy: boolean;
-  readonly disabled: boolean;
-  readonly onCredential: (mode: CredentialMode) => void;
   readonly onKeyChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
@@ -378,39 +453,9 @@ function ServerSettings({
           <span className="truncate text-sm text-foreground">{server.name}</span>
           <span className="truncate text-xs text-muted-foreground">{serverHost(server)}</span>
         </div>
-        {busy ? <Spinner size="sm" tone="muted" /> : null}
-        {editable ? (
-          <Select
-            value={server.credential}
-            disabled={disabled}
-            onValueChange={(value) => {
-              if (value && value !== server.credential) onCredential(value as CredentialMode);
-            }}
-          >
-            <SelectTrigger
-              className="w-full sm:w-72"
-              aria-label={t("How {{name}} signs in", { name: server.name })}
-            >
-              <SelectValue>{(value: CredentialMode) => credentialLabel(value)}</SelectValue>
-            </SelectTrigger>
-            <SelectPopup alignItemWithTrigger={false}>
-              {CREDENTIAL_MODES.map((mode) => (
-                <SelectItem key={mode} value={mode}>
-                  <span className="flex min-w-0 flex-col">
-                    <span>{credentialLabel(mode)}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {credentialDescription(mode)}
-                    </span>
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-        ) : (
-          <span className="text-sm text-foreground sm:text-end">
-            {credentialLabel(server.credential)}
-          </span>
-        )}
+        <span className="text-sm text-foreground sm:text-end">
+          {credentialLabel(server.credential)}
+        </span>
       </div>
       <p className="text-xs text-muted-foreground">
         {credentialDescription(server.credential)}
@@ -436,8 +481,13 @@ function OrganizationKeyForm({
   readonly onChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
-  const [header, setHeader] = useState("Authorization");
-  const [value, setValue] = useState("");
+  const [entries, setEntries] = useState(() =>
+    (server.keyHeaders?.length ? server.keyHeaders : ["Authorization"]).map((header) => ({
+      header,
+      value: "",
+    })),
+  );
+  const ready = entries.every((entry) => entry.header.trim() && entry.value);
   const [saving, setSaving] = useState<"save" | "clear" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -446,7 +496,7 @@ function OrganizationKeyForm({
     setError(null);
     return (async () => {
       await pluginsApi.secret(plugin.id, { server: server.name, headers });
-      setValue("");
+      setEntries((current) => current.map((entry) => ({ ...entry, value: "" })));
       notifySuccess(headers ? t("Key saved") : t("Key removed"));
       await onChanged();
     })()
@@ -463,30 +513,51 @@ function OrganizationKeyForm({
       className="flex flex-col gap-3 rounded-lg border border-border/60 p-3"
       onSubmit={(event) => {
         event.preventDefault();
-        if (header.trim() && value) void save({ [header.trim()]: value });
+        if (ready)
+          void save(Object.fromEntries(entries.map((entry) => [entry.header.trim(), entry.value])));
       }}
     >
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+      {entries.map((entry, index) => (
         <FormField
-          label={t("Sent as")}
-          value={header}
-          autoComplete="off"
-          onChange={(event) => setHeader(event.currentTarget.value)}
-        />
-        <FormField
-          label={t("Key")}
+          key={index}
+          label={entries.length === 1 ? t("Key") : t("Key {{number}}", { number: index + 1 })}
           type="password"
           autoComplete="new-password"
-          placeholder={t("Bearer sk-…")}
-          value={value}
-          onChange={(event) => setValue(event.currentTarget.value)}
+          value={entry.value}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setEntries((current) =>
+              current.map((item, at) => (at === index ? { ...item, value } : item)),
+            );
+          }}
         />
-      </div>
+      ))}
       <p className="text-xs text-muted-foreground">
-        {t(
-          "Saved keys are never shown again; saving replaces the current one. Most services expect “Authorization” with “Bearer” followed by the key.",
-        )}
+        {t("Saved keys are never shown again. Saving replaces the current keys.")}
       </p>
+      <details className="text-xs text-muted-foreground">
+        <summary className="cursor-pointer">{t("Technical details")}</summary>
+        <div className="flex flex-col gap-3 pt-3">
+          {entries.map((entry, index) => (
+            <FormField
+              key={index}
+              label={
+                entries.length === 1
+                  ? t("Sent as")
+                  : t("Key {{number}} header", { number: index + 1 })
+              }
+              value={entry.header}
+              autoComplete="off"
+              onChange={(event) => {
+                const header = event.currentTarget.value;
+                setEntries((current) =>
+                  current.map((item, at) => (at === index ? { ...item, header } : item)),
+                );
+              }}
+            />
+          ))}
+        </div>
+      </details>
       {error ? (
         <Alert variant="error" role="alert">
           <AlertDescription>{error}</AlertDescription>
@@ -503,7 +574,7 @@ function OrganizationKeyForm({
           {saving === "clear" ? <Spinner size="sm" /> : null}
           {t("Remove key")}
         </Button>
-        <Button type="submit" size="sm" disabled={saving !== null || !header.trim() || !value}>
+        <Button type="submit" size="sm" disabled={saving !== null || !ready}>
           {saving === "save" ? <Spinner size="sm" /> : null}
           {t("Save key")}
         </Button>

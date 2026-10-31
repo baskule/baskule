@@ -1,8 +1,8 @@
 export type PluginSource =
   | { type: "catalog" }
-  | { type: "url"; url: string }
-  | { type: "git"; repo: string; ref: string; path?: string }
-  | { type: "archive"; sha256: string };
+  | { type: "github"; repo: string; sha: string; path?: string }
+  | { type: "upload"; sha256: string }
+  | { type: "custom" };
 export type CredentialMode = "none" | "organization" | "user-oauth";
 export interface OAuthRecipe {
   scopes?: string[];
@@ -15,6 +15,7 @@ export interface PluginServer {
   name: string;
   url: string;
   credential: CredentialMode;
+  keyHeaders?: string[];
   oauth?: OAuthRecipe;
   transport?: "streamable-http" | "sse";
 }
@@ -27,7 +28,7 @@ export interface Plugin {
   source: PluginSource;
   skills: { name: string; description: string }[];
   servers: PluginServer[];
-  ignored: string[];
+  omitted: Omission[];
   enabled: boolean;
   createdAt: string;
 }
@@ -48,16 +49,33 @@ export interface SpacePluginSettings {
   personalPluginsAllowed: boolean;
   disabled: string[];
 }
-export type PluginInstallInput =
-  | { catalog: string; groups: string[] }
-  | { source: Exclude<PluginSource, { type: "catalog" }>; archive?: string; name?: string; groups: string[] };
-export interface PluginPatch {
-  name?: string;
-  description?: string;
-  icon?: string;
-  enabled?: boolean;
-  servers?: (Pick<PluginServer, "name" | "credential"> & { oauth?: Omit<OAuthRecipe, "resourceUrl"> } & Partial<Pick<PluginServer, "url" | "transport">>)[];
+export type OmissionCode = "claude_commands" | "claude_agents" | "hooks" | "local_program" | "invalid_server" | "skill_without_instructions" | "invalid_skill" | "skill_license" | "other_files";
+export interface Omission { code: OmissionCode; subject: string }
+export type Fix =
+  | { server: string; need: "sign_in" }
+  | { server: string; need: "address"; placeholders: string[] }
+  | { server: string; need: "key"; headers: string[] };
+export interface SkillInput {
+  name: string;
+  description: string;
+  instructions: string;
+  frontmatter?: string;
+  files: PluginFile[];
 }
+export type ServerInput = PluginServer;
+export interface PluginInput {
+  name: string;
+  description: string;
+  icon?: string;
+  source: Exclude<PluginSource, { type: "catalog" }>;
+  servers: ServerInput[];
+  skills: SkillInput[];
+  omitted: Omission[];
+}
+export type PluginCreate = { catalog: string; groups: string[] } | { plugin: PluginInput; groups: string[] };
+export type PluginUpdate = { enabled: boolean } | { plugin: PluginInput };
+export type PluginInspect = { archive: string } | { github: string };
+export interface PluginDraft { plugin: PluginInput; fixes: Fix[]; omitted: Omission[] }
 export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
 export interface Account { id: string; label: string; default: boolean; status: "ready" | "reconnect" }
 export interface MemberPlugin {
@@ -94,6 +112,9 @@ export type PluginCallError = Exclude<PluginStatus, "ready"> | "unknown_account"
 
 export const PLUGIN_ERROR_CODES = [
   "address_not_allowed",
+  "address_placeholder",
+  "github_link_invalid",
+  "invalid_skill",
   "account_label_taken",
   "account_not_found",
   "default_account_required",
@@ -101,8 +122,6 @@ export const PLUGIN_ERROR_CODES = [
   "catalog_not_available",
   "already_installed",
   "not_editable",
-  "archive_hash_mismatch",
-  "archive_required",
   "builtin_group",
   "connection_failed",
   "connection_not_allowed",
@@ -115,7 +134,6 @@ export const PLUGIN_ERROR_CODES = [
   "group_exists",
   "invalid_archive",
   "invalid_authorization_metadata",
-  "invalid_commit",
   "invalid_group",
   "invalid_json",
   "invalid_oauth_client",
@@ -155,7 +173,6 @@ export const PLUGIN_ERROR_CODES = [
   "unknown_plugin_server",
   "unsafe_plugin_path",
   "unsupported_archive",
-  "unsupported_git_host",
   "unsupported_plugin_version",
   "user_not_found",
 ] as const;

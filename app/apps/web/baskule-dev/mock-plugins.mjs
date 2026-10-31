@@ -1,8 +1,9 @@
 // baskule: the plugins and groups part of the mock front (shapes: packages/contracts/src/baskule-plugins.ts,
-// behaviour: platform/src/control/plugins.ts and groups.ts). In memory, seeded with a few plugins people
-// added themselves; catalog installs come from the real curated list. `/connect` signs a named account in
-// at once and redirects back, as after a real consent. A vendor app is only remembered as saved.
+// behaviour: platform/src/control/plugins.ts and groups.ts). In memory; catalog installs use the real list.
+// `/connect` signs an account in at once, a vendor app is only remembered as saved, reading a package returns
+// a fixed draft with something to fix, and the exported zip holds only plugin.json.
 import * as NodeCrypto from "node:crypto";
+import * as NodeZlib from "node:zlib";
 
 import { catalogService, catalogVendor } from "../../../packages/contracts/src/baskule-catalog.ts";
 
@@ -36,13 +37,13 @@ function pluginFromCatalog(service) {
           }
         : {}),
     })),
-    ignored: [],
+    omitted: [],
     enabled: true,
     createdAt: new Date().toISOString(),
   };
 }
 
-/** A plugin an admin added by address, git repository or file. */
+/** A plugin an admin brought: a package, a GitHub folder or a server by its address. */
 function ownPlugin(fields) {
   const pluginId = id();
   return {
@@ -51,11 +52,46 @@ function ownPlugin(fields) {
     description: "",
     skills: [],
     servers: [],
-    ignored: [],
+    omitted: [],
     enabled: true,
     createdAt: new Date().toISOString(),
     ...fields,
   };
+}
+
+const skillInput = (skill) => ({ ...skill, instructions: `# ${skill.name}\n`, files: [] });
+const summary = (skill) => ({ name: skill.name, description: skill.description });
+const placeholder = /\$?\{[^}]+\}/;
+
+/** A zip with one stored file, enough for "Download as zip" to save something real. */
+function zipOf(path, text) {
+  const name = Buffer.from(path);
+  const data = Buffer.from(text);
+  const crc = NodeZlib.crc32(data);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(0x21, 12); // 1980-01-01, the earliest DOS date
+  local.writeUInt32LE(crc, 14);
+  local.writeUInt32LE(data.length, 18);
+  local.writeUInt32LE(data.length, 22);
+  local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(0x21, 14);
+  central.writeUInt32LE(crc, 16);
+  central.writeUInt32LE(data.length, 20);
+  central.writeUInt32LE(data.length, 24);
+  central.writeUInt16LE(name.length, 28);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length + name.length, 12);
+  end.writeUInt32LE(local.length + name.length + data.length, 16);
+  return Buffer.concat([local, name, data, central, name, end]);
 }
 
 export function createPluginMock({ users, spaces }) {
@@ -69,7 +105,7 @@ export function createPluginMock({ users, spaces }) {
   const brave = seed({
     name: "Brave Search",
     description: "Web and news search through the Brave Search API.",
-    source: { type: "url", url: "https://mcp.search.brave.com/mcp" },
+    source: { type: "custom" },
     servers: [
       {
         name: "brave-search",
@@ -84,9 +120,9 @@ export function createPluginMock({ users, spaces }) {
     name: "Sales",
     description: "Prepare calls, research accounts and draft follow-ups, with your CRM connected.",
     source: {
-      type: "git",
+      type: "github",
       repo: "https://github.com/anthropics/knowledge-work-plugins",
-      ref: "8f14e45fceea167a5a36dedd4bea2543a1b2c3d4",
+      sha: "8f14e45fceea167a5a36dedd4bea2543a1b2c3d4",
       path: "sales",
     },
     skills: [
@@ -104,9 +140,9 @@ export function createPluginMock({ users, spaces }) {
         transport: "streamable-http",
       },
     ],
-    ignored: [
-      "commands/forecast.md (made for Claude Code)",
-      "hooks/hooks.json (made for Claude Code)",
+    omitted: [
+      { code: "claude_commands", subject: "commands/forecast.md" },
+      { code: "hooks", subject: "hooks/hooks.json" },
     ],
     enabled: false,
     createdAt: at(2),
@@ -118,7 +154,7 @@ export function createPluginMock({ users, spaces }) {
     vendor: driveId,
     name: "Google Drive",
     description: "Find and read the files people can open in their own Google Drive.",
-    source: { type: "url", url: "https://drivemcp.googleapis.com/mcp/v1" },
+    source: { type: "custom" },
     skills: [],
     servers: [
       {
@@ -129,11 +165,15 @@ export function createPluginMock({ users, spaces }) {
         transport: "streamable-http",
       },
     ],
-    ignored: [],
+    omitted: [],
     enabled: true,
     createdAt: at(4),
   };
   plugins.set(drive.id, drive);
+  /** Each plugin's skills in full, as `GET /admin/plugins/:id/skills` returns them. */
+  const skillsOf = new Map(
+    [...plugins.values()].map((plugin) => [plugin.id, plugin.skills.map(skillInput)]),
+  );
 
   /** @type {Array<{id: string, name: string, builtin?: "everyone", members: string[], permissions: {canCreateSpaces: boolean}, plugins: string[]}>} */
   const groups = [
@@ -204,7 +244,26 @@ export function createPluginMock({ users, spaces }) {
           ? "ready"
           : "connect";
 
-  async function install(body) {
+  /** The server's checks on a `PluginInput`, short of the address policy. */
+  function inputError(input) {
+    if (!input || typeof input.name !== "string" || !input.name.trim())
+      return "invalid_plugin_input";
+    if (!["github", "upload", "custom"].includes(input.source?.type)) return "invalid_plugin_input";
+    if (!Array.isArray(input.servers) || !Array.isArray(input.skills))
+      return "invalid_plugin_input";
+    if (input.servers.length === 0 && input.skills.length === 0) return "empty_plugin";
+    for (const server of input.servers) {
+      if (placeholder.test(String(server.url))) return "address_placeholder";
+      try {
+        if (new URL(String(server.url)).protocol !== "https:") return "address_not_allowed";
+      } catch {
+        return "address_not_allowed";
+      }
+    }
+    return null;
+  }
+
+  function install(body) {
     if ("catalog" in body) {
       const service = catalogService(String(body.catalog));
       if (!service || Object.keys(body).some((key) => key !== "catalog" && key !== "groups"))
@@ -216,89 +275,89 @@ export function createPluginMock({ users, spaces }) {
       if (plugins.has(service.id)) return [409, { error: "already_installed" }];
       return [201, pluginFromCatalog(service)];
     }
-    const source = body.source ?? {};
-    if (source.type === "url") {
-      let url;
-      try {
-        url = new URL(String(source.url));
-      } catch {
-        return [400, { error: "invalid_mcp_url" }];
-      }
-      if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search)
-        return [400, { error: "invalid_mcp_url" }];
-      const pluginId = id();
+    const error = inputError(body.plugin);
+    if (error) return [400, { error }];
+    const { name, description, icon, source, servers, skills, omitted } = body.plugin;
+    const plugin = ownPlugin({
+      name: name.trim(),
+      description: String(description ?? ""),
+      ...(icon ? { icon } : {}),
+      source,
+      servers,
+      skills: skills.map(summary),
+      omitted: omitted ?? [],
+    });
+    skillsOf.set(plugin.id, skills);
+    return [201, plugin];
+  }
+
+  /** What reading a package or GitHub link finds: a server to finish and parts left out. */
+  function inspect(body) {
+    if (typeof body.github === "string") {
+      const match =
+        /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?(?:\/tree\/[^/]+\/(.+?))?\/?$/.exec(
+          body.github.trim(),
+        );
+      if (!match) return [400, { error: "github_link_invalid" }];
+      const folder = match[3]?.split("/").at(-1);
+      const skillName = (folder ?? match[2]).toLowerCase().replace(/[^a-z0-9]+/g, "-");
       return [
-        201,
+        200,
         {
-          id: pluginId,
-          vendor: pluginId,
-          name: body.name || url.hostname,
-          description: "",
-          source: { type: "url", url: url.href },
-          skills: [],
+          plugin: {
+            name: folder ?? match[2],
+            description: "",
+            source: {
+              type: "github",
+              repo: `https://github.com/${match[1]}/${match[2]}`,
+              sha: NodeCrypto.createHash("sha1").update(body.github).digest("hex"),
+              ...(match[3] ? { path: match[3] } : {}),
+            },
+            servers: [],
+            skills: [skillInput({ name: skillName, description: "Imported from the repository." })],
+            omitted: [],
+          },
+          fixes: [],
+          omitted: [],
+        },
+      ];
+    }
+    const bytes = Buffer.from(String(body.archive ?? ""), "base64");
+    if (!bytes.length) return [400, { error: "empty_plugin_archive" }];
+    const omitted = [
+      { code: "claude_commands", subject: "commands/forecast.md" },
+      { code: "local_program", subject: "local-notes" },
+    ];
+    return [
+      200,
+      {
+        plugin: {
+          name: "Acme CRM",
+          description: "Accounts, contacts and deals from Acme CRM.",
+          source: {
+            type: "upload",
+            sha256: NodeCrypto.createHash("sha256").update(bytes).digest("hex"),
+          },
           servers: [
             {
-              name: "remote",
-              url: url.href,
-              credential: "none",
+              name: "crm",
+              url: "https://{tenant}.crm.example.com/mcp",
+              credential: "organization",
               transport: "streamable-http",
             },
           ],
-          ignored: [],
-          enabled: true,
-          createdAt: new Date().toISOString(),
+          skills: [
+            skillInput({ name: "call-prep", description: "Prepare a sales call from the CRM." }),
+          ],
+          omitted,
         },
-      ];
-    }
-    if (source.type === "git") {
-      if (!/^[0-9a-f]{40}$/.test(String(source.ref))) return [400, { error: "invalid_commit" }];
-      if (!/^https:\/\/github\.com\/[^/]+\/[^/]+/.test(String(source.repo)))
-        return [400, { error: "unsupported_git_host" }];
-      const folder = String(source.path ?? "")
-        .split("/")
-        .filter(Boolean)
-        .at(-1);
-      const repo = String(source.repo).replace(/\/+$/, "").split("/").at(-1);
-      const pluginId = id();
-      return [
-        201,
-        {
-          id: pluginId,
-          vendor: pluginId,
-          name: body.name || folder || repo,
-          description: "",
-          source,
-          skills: [{ name: folder || repo, description: "Imported from the repository." }],
-          servers: [],
-          ignored: [],
-          enabled: true,
-          createdAt: new Date().toISOString(),
-        },
-      ];
-    }
-    if (source.type === "archive") {
-      const bytes = Buffer.from(String(body.archive ?? ""), "base64");
-      if (!bytes.length) return [400, { error: "archive_required" }];
-      if (NodeCrypto.createHash("sha256").update(bytes).digest("hex") !== source.sha256)
-        return [400, { error: "archive_hash_mismatch" }];
-      const pluginId = id();
-      return [
-        201,
-        {
-          id: pluginId,
-          vendor: pluginId,
-          name: body.name || "Uploaded skill",
-          description: "",
-          source,
-          skills: [{ name: "uploaded-skill", description: "From the uploaded file." }],
-          servers: [],
-          ignored: [],
-          enabled: true,
-          createdAt: new Date().toISOString(),
-        },
-      ];
-    }
-    return [400, { error: "invalid_plugin_input" }];
+        fixes: [
+          { server: "crm", need: "address", placeholders: ["{tenant}"] },
+          { server: "crm", need: "key", headers: ["X-Api-Key"] },
+        ],
+        omitted,
+      },
+    ];
   }
 
   /** Answers the plugin and group routes; returns false for every other route. */
@@ -341,7 +400,6 @@ export function createPluginMock({ users, spaces }) {
             !body.clientId ||
             !["none", "client_secret_post", "client_secret_basic"].includes(auth) ||
             (auth !== "none") !== Boolean(body.clientSecret)
-
           )
             return (fail(res, 400, "invalid_oauth_client"), true);
           vendors.add(vendor);
@@ -360,7 +418,7 @@ export function createPluginMock({ users, spaces }) {
         input.groups.some((id) => !groups.some((g) => g.id === id))
       )
         return (fail(res, 400, "invalid_group"), true);
-      const [status, body] = await install(input);
+      const [status, body] = install(input);
       if (status === 201) {
         plugins.set(body.id, body);
         for (const group of groups)
@@ -368,10 +426,37 @@ export function createPluginMock({ users, spaces }) {
       }
       return (send(res, status, body), true);
     }
-    if ((r = /^\/admin\/plugins\/([^/]+)(\/secret)?$/.exec(api))) {
+    if (api === "/admin/plugins/inspect" && method === "POST") {
+      const [status, body] = inspect(await readBody(req));
+      return (send(res, status, body), true);
+    }
+    if ((r = /^\/admin\/plugins\/([^/]+)(\/secret|\/skills|\/export)?$/.exec(api))) {
       const plugin = plugins.get(r[1]);
       if (!plugin) return (fail(res, 404, "not_found"), true);
-      if (r[2] && method === "PUT") {
+      if (r[2] === "/skills" && method === "GET")
+        return (
+          send(res, 200, {
+            skills: skillsOf.get(plugin.id) ?? [],
+            editable: plugin.source.type === "custom" || plugin.source.type === "upload",
+              }),
+          true
+        );
+      if (r[2] === "/export" && method === "GET") {
+        if (plugin.source.type === "catalog") return (fail(res, 409, "not_editable"), true);
+        res.writeHead(200, {
+          "content-type": "application/zip",
+          "content-disposition": 'attachment; filename="plugin.zip"',
+          "cache-control": "no-store",
+        });
+        res.end(
+          zipOf(
+            ".claude-plugin/plugin.json",
+            JSON.stringify({ name: plugin.name, description: plugin.description }, null, 2),
+          ),
+        );
+        return true;
+      }
+      if (r[2] === "/secret" && method === "PUT") {
         const body = await readBody(req);
         if (
           !plugin.servers.some(
@@ -395,21 +480,37 @@ export function createPluginMock({ users, spaces }) {
           group.plugins = group.plugins.filter((entry) => entry !== plugin.id);
         return (send(res, 200, { ok: true }), true);
       }
-      if (method === "PATCH") {
+      if (r[2] === undefined && method === "PATCH") {
         const patch = await readBody(req);
-        if (plugin.source.type === "catalog" && Object.keys(patch).some((key) => key !== "enabled"))
-          return (fail(res, 409, "not_editable"), true);
-        const { servers, ...fields } = patch;
-        if (servers) {
-          plugin.servers = plugin.servers.map((server) => ({
-            ...server,
-            ...servers.find((entry) => entry.name === server.name),
-          }));
-          for (const server of plugin.servers)
-            if (server.credential !== "organization")
-              secrets.delete(`${plugin.id}\u0000${server.name}`);
+        if (typeof patch.enabled === "boolean" && Object.keys(patch).length === 1) {
+          plugin.enabled = patch.enabled;
+          return (send(res, 200, plugin), true);
         }
-        Object.assign(plugin, fields);
+        const input = patch.plugin;
+        if (
+          plugin.source.type === "catalog" ||
+          JSON.stringify(plugin.source) !== JSON.stringify(input?.source) ||
+          (plugin.source.type === "github" &&
+            JSON.stringify(input.skills) !== JSON.stringify(skillsOf.get(plugin.id)))
+        )
+          return (fail(res, 409, "not_editable"), true);
+        const error = inputError(input);
+        if (error) return (fail(res, 400, error), true);
+        for (const server of plugin.servers) {
+          const next = input.servers.find((entry) => entry.name === server.name);
+          if (next?.credential !== "organization" || next.url !== server.url)
+            secrets.delete(`${plugin.id}\u0000${server.name}`);
+        }
+        Object.assign(plugin, {
+          name: input.name.trim(),
+          description: String(input.description ?? ""),
+          ...(input.icon ? { icon: input.icon } : {}),
+          servers: input.servers,
+          skills: input.skills.map(summary),
+          omitted: input.omitted ?? [],
+        });
+        if (!input.icon) delete plugin.icon;
+        skillsOf.set(plugin.id, input.skills);
         return (send(res, 200, plugin), true);
       }
     }

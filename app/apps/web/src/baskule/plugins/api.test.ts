@@ -7,9 +7,9 @@ import { sourceLabel } from "./presentation";
 
 describe("plugin wording", () => {
   it("explains backend refusals in plain words and uses the fallback for unknown codes", () => {
-    expect(pluginErrorText(new BaskuleApiError(400, "invalid commit", "invalid_commit"), "x")).toBe(
-      "Enter the full commit ID: 40 letters and digits.",
-    );
+    expect(
+      pluginErrorText(new BaskuleApiError(400, "placeholder", "address_placeholder"), "x"),
+    ).toBe("Fill in every part of the address in braces first.");
     expect(pluginErrorText(new BaskuleApiError(500, "Boom", "other"), "x")).toBe("x");
   });
 
@@ -32,13 +32,14 @@ describe("plugin wording", () => {
     );
   });
 
-  it("names a pinned git source by repository and short commit", () => {
+  it("names a GitHub source by repository and folder, without its pinned commit", () => {
     expect(
       sourceLabel({
-        type: "git",
+        type: "github",
         repo: "https://github.com/acme/plugins.git",
-        ref: "0123456789abcdef0123456789abcdef01234567",
+        sha: "0123456789abcdef0123456789abcdef01234567",
+        path: "sales",
       }),
-    ).toBe("From acme/plugins at 0123456");
+    ).toBe("From acme/plugins/sales on GitHub");
   });
 });

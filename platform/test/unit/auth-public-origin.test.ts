@@ -18,10 +18,10 @@ async function adminSession(h: H) {
 }
 
 async function install(h: H, creds: Awaited<ReturnType<typeof adminSession>>, resource: string, credential: "user-oauth") {
-  const added = await publicCall(h, "POST", `${API}/admin/plugins`, { creds, body: { groups: [], source: { type: "url", url: resource } } });
+  const added = await publicCall(h, "POST", `${API}/admin/plugins`, { creds, body: { groups: [], plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: resource, credential: "none" }] } } });
   expect(added.status).toBe(201);
   const id = added.body.id;
-  expect((await publicCall(h, "PATCH", `${API}/admin/plugins/${id}`, { creds, body: { enabled: true, servers: [{ name: "remote", credential }] } })).status).toBe(200);
+  expect((await publicCall(h, "PATCH", `${API}/admin/plugins/${id}`, { creds, body: { plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ url: resource, name: "remote", credential }] } } })).status).toBe(200);
   expect((await publicCall(h, "PATCH", `${API}/admin/groups/everyone`, { creds, body: { plugins: [id] } })).status).toBe(200);
   return id;
 }

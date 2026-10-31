@@ -5,15 +5,18 @@ import {
   type GroupInput,
   type MemberPlugin,
   type Plugin,
+  type PluginCreate,
+  type PluginDraft,
   type PluginErrorCode,
-  type PluginInstallInput,
-  type PluginPatch,
+  type PluginInspect,
   type PluginSecretInput,
+  type PluginUpdate,
+  type SkillInput,
   type SpacePluginSettings,
 } from "@t3tools/contracts/baskule-plugins";
 import { toastManager } from "../../components/ui/toast";
 import { t } from "../../i18n";
-import { BaskuleApiError, request } from "../api";
+import { BaskuleApiError, messageFromBody, request } from "../api";
 
 const root = "/api/baskule";
 const enc = encodeURIComponent;
@@ -28,9 +31,39 @@ export interface VendorClient {
 export const pluginsApi = {
   installed: async () =>
     (await request<{ plugins: AdminPlugin[] }>("GET", `${root}/admin/plugins`)).plugins,
-  install: (input: PluginInstallInput) => request<Plugin>("POST", `${root}/admin/plugins`, input),
-  update: (id: string, input: PluginPatch) =>
+  /** Reads a package or GitHub link into a draft for review. Saves nothing. */
+  inspect: (input: PluginInspect) =>
+    request<PluginDraft>("POST", `${root}/admin/plugins/inspect`, input),
+  create: (input: PluginCreate) => request<Plugin>("POST", `${root}/admin/plugins`, input),
+  update: (id: string, input: PluginUpdate) =>
     request<Plugin>("PATCH", `${root}/admin/plugins/${enc(id)}`, input),
+  /** A plugin's skills in full, to edit it as one `PluginInput`. */
+  skills: (id: string) =>
+    request<{ skills: SkillInput[]; editable: boolean }>(
+      "GET",
+      `${root}/admin/plugins/${enc(id)}/skills`,
+    ),
+  /** The plugin as a Claude/Codex package. */
+  exportZip: async (id: string): Promise<Blob> => {
+    let response: Response;
+    try {
+      response = await fetch(`${root}/admin/plugins/${enc(id)}/export`, {
+        credentials: "same-origin",
+      });
+    } catch {
+      throw new BaskuleApiError(
+        0,
+        t("Can't reach the server. Check your connection and try again."),
+        "network",
+      );
+    }
+    if (!response.ok) {
+      const body: unknown = await response.json().catch(() => null);
+      const { message, code } = messageFromBody(body, response.status);
+      throw new BaskuleApiError(response.status, message, code);
+    }
+    return response.blob();
+  },
   remove: (id: string) => request<{ ok: true }>("DELETE", `${root}/admin/plugins/${enc(id)}`),
   secret: (id: string, input: PluginSecretInput) =>
     request<{ ok: true }>("PUT", `${root}/admin/plugins/${enc(id)}/secret`, input),
@@ -95,8 +128,7 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
     t(
       "Baskule can't use this address. Enter the full https:// address of the server, without a password or placeholder in it.",
     ),
-  archive_hash_mismatch: () => t("The file changed while it was being sent. Try again."),
-  archive_required: () => t("Choose the file to upload."),
+  address_placeholder: () => t("Fill in every part of the address in braces first."),
   builtin_group: () => t("Everyone always includes every person, and keeps its name."),
   catalog_not_available: () =>
     t("This service can't be added yet. Its card in the catalog says why."),
@@ -111,11 +143,12 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   empty_plugin: () => t("No skills or tools were found in it."),
   empty_plugin_archive: () => t("This file is empty."),
   forbidden: () => t("You don't have permission to do this."),
+  github_link_invalid: () =>
+    t("Enter a link to a public GitHub repository, or to a branch or folder in one."),
   group_exists: () => t("A group with this name already exists."),
   invalid_archive: cantOpen,
   invalid_authorization_metadata: () =>
     t("This service's sign-in is set up in a way Baskule can't use. Ask your admin."),
-  invalid_commit: () => t("Enter the full commit ID: 40 letters and digits."),
   invalid_group: () => t("One of these groups no longer exists. Reload the page and try again."),
   invalid_json: () => t("Baskule couldn't read what was sent. Reload the page and try again."),
   invalid_oauth_client: () => t("Check the client ID and secret, then try again."),
@@ -135,6 +168,8 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   invalid_return_url: () =>
     t("The sign-in couldn't come back to Baskule. Start again from Settings → Plugins."),
   invalid_secret_headers: () => t("This key can't be sent with that header name."),
+  invalid_skill: () =>
+    t("One of its skills doesn't follow the skill rules. Check its name and description."),
   no_remote_servers: () =>
     t(
       "This server runs as a program on someone's computer. Baskule needs its web address; ask its maker whether it has one.",
@@ -178,8 +213,6 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
     t("One of its servers no longer exists. Reload the page and try again."),
   unsafe_plugin_path: () => t("It contains a file path Baskule can't accept."),
   unsupported_archive: cantOpen,
-  unsupported_git_host: () =>
-    t("Only public GitHub repositories can be added by address. Upload the files instead."),
   unsupported_plugin_version: () => t("It uses a plugin format version Baskule can't read yet."),
   user_not_found: () => t("One of these people no longer exists. Reload the page and try again."),
   vendor_unknown: () => t("Baskule no longer knows this service. Reload the page and try again."),

@@ -8,7 +8,7 @@ checks: ["scripts/check features:6-plugins worker web"]
 
 ## Sub-features
 
-Curated catalog by area, installation, vendor setup, runtime tools, connection lifecycle.
+Curated catalog by area, import review and repair before saving, pinned GitHub links, zip export, installation, vendor setup, runtime tools, connection lifecycle.
 
 ## How to get to it (user POV)
 
@@ -16,7 +16,7 @@ Administrators add plugins under Admin → Plugins and choose groups. Members op
 
 ## Driving it with T3 preview or Playwright
 
-Run `scripts/check feature:plugins`. The plugins journey uploads portable skills, verifies Ready without activation, loads a skill in a fake-model personal chat, and checks that deactivating the sole contributor removes team skill files. The static-client journey shows Needs setup, saves the vendor client through the admin UI, then connects the member. A two-member OAuth journey boots the team before connection, connects the second member, and checks that tools become available while the unconnected author receives the account prompt and makes no vendor call. The connected author then calls successfully. The focused runtime check covers encrypted-key delivery and call-time policy; worker covers OAuth.
+Run `scripts/check feature:plugins`. The plugins journey uploads portable skills, verifies Ready without activation, loads a skill in a fake-model personal chat, and checks that deactivating the sole contributor removes team skill files. The static-client journey shows Needs setup, saves the vendor client through the admin UI, then connects the member. A two-member OAuth journey boots the team before connection, connects the second member, and checks that tools become available while the unconnected author receives the account prompt and makes no vendor call. The connected author then calls successfully. The import journey reviews a Claude package without creating a plugin, fills its address and encrypted key, confirms member readiness, downloads a zip and reviews it again. The focused runtime check covers encrypted-key delivery and call-time policy; worker covers OAuth.
 
 ## Gotchas
 

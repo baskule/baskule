@@ -35,7 +35,8 @@
     "./baskule-catalog": {
       "types": "./src/baskule-catalog.ts",
       "import": "./src/baskule-catalog.ts"
-    }
+    },
+    "./baskule-plugin-formats": "./src/baskule-plugin-formats.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
