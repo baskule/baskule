@@ -2824,6 +2824,7 @@ const make = Effect.gen(function* () {
       yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
       yield* resolveInteractionMode(limits.interactionMode, target.thread.interactionMode);
 
+      const author = yield* resolveTaskOwner(parent, loadProjection);
       const mode = input.mode ?? "auto";
       const key = yield* requestKey(input.clientRequestId);
       const messageId = stableOperationMessageId({
@@ -2842,6 +2843,7 @@ const make = Effect.gen(function* () {
           threadId: input.threadId,
           ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
           messageId,
+          ...(author === undefined ? {} : { author }),
           text: input.message,
           attachments: [],
           mode,

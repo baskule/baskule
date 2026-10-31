@@ -914,7 +914,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
     }).pipe(Effect.provide(Layer.fresh(layerTest))),
   );
 
-  it.effect("resolves delivery intent against the active run and starts after it completes", () =>
+  it.effect("resolves delivery intent and protects scheduled steering", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const eventSink = yield* EventSink.EventSinkV2;
@@ -943,6 +943,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
         threadId,
         messageId: MessageId.make("runtime-delivery-intent-first"),
         text: "Start work.",
+        scheduledTaskId: ScheduledTaskId.make("task:steering"),
+        author: { id: "bob", name: "Bob" },
         attachments: [],
         dispatchMode: { type: "start_immediately" },
       });
@@ -1008,6 +1010,32 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
       );
       yield* Effect.addFinalizer(() => Effect.sync(() => sessionSpy.mockRestore()));
 
+      const beforeSteer = yield* orchestrator.getThreadProjection(threadId);
+      for (const author of [{ id: "alice", name: "Alice" }, undefined]) {
+        for (const mode of ["steer_active", "restart_active"] as const) {
+          const commandId = CommandId.make(`forbidden:${author?.id}:${mode}`);
+          const error = yield* orchestrator
+            .dispatch({
+              type: "message.dispatch",
+              createdBy: "user",
+              creationSource: "web",
+              commandId,
+              threadId,
+              messageId: MessageId.make(commandId),
+              text: "Attacker instructions",
+              attachments: [],
+              ...(author === undefined ? {} : { author }),
+              dispatchMode: { type: mode, targetRunId: run.id },
+            })
+            .pipe(Effect.flip);
+          assert.include(String(error.cause), "Only the task's author");
+          assert.deepEqual(
+            (yield* orchestrator.getThreadProjection(threadId)).messages,
+            beforeSteer.messages,
+          );
+          assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
+        }
+      }
       const steerCommandId = CommandId.make("runtime-delivery-intent-auto");
       const steerMessageId = MessageId.make("runtime-delivery-intent-auto");
       yield* orchestrator.dispatch({
@@ -1018,6 +1046,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
         threadId,
         messageId: steerMessageId,
         text: "Include this in the active work.",
+        author: { id: "bob", name: "Bob" },
         attachments: [],
         dispatchMode: { type: "start_immediately" },
         deliveryIntent: "auto",
@@ -5277,6 +5306,16 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           .pipe(Effect.flip);
         assert.equal(error._tag, "OrchestratorCommandRejectedError");
         assert.include(String(error.cause), "Scheduled runs cannot be edited");
+        const promotion = yield* orchestrator
+          .dispatch({
+            type: "queued-message.promote-to-steer",
+            commandId: CommandId.make(`${threadId}:promote`),
+            threadId,
+            queuedRunId: queued.id,
+            targetRunId: before.runs[0]!.id,
+          })
+          .pipe(Effect.flip);
+        assert.include(String(promotion.cause), "Scheduled runs cannot be edited or used to steer");
         const after = yield* orchestrator.getThreadProjection(threadId);
         assert.deepEqual(after.messages, before.messages);
       }),

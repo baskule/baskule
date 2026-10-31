@@ -78,6 +78,8 @@ it.effect("loads only due tasks and skips corrupt due rows without decoding sett
     const credential = "CREDENTIAL-SECRET-DO-NOT-LOG";
     for (const row of [
       { id: "due-now", next: now, enabled: 1, status: "never" },
+      { id: "unattributed", next: now, enabled: 1, status: "never" },
+      { id: "empty-author", next: now, enabled: 1, status: "never" },
       { id: "", next: now, enabled: 1, status: "never" },
       { id: "   ", next: now, enabled: 1, status: "never" },
       { id: null, next: now, enabled: 1, status: "never" },
@@ -121,6 +123,8 @@ it.effect("loads only due tasks and skips corrupt due rows without decoding sett
     ]) {
       yield* insertRow(sql, { ...row, prompt: secret }, now);
     }
+    yield* sql`UPDATE scheduled_tasks SET author_json = NULL WHERE task_id = 'unattributed'`;
+    yield* sql`UPDATE scheduled_tasks SET author_json = '{"id":" ","name":""}' WHERE task_id = 'empty-author'`;
     const warnings: unknown[] = [];
     const tasks = yield* ScheduledTaskService.listDueTasks(DateTime.makeUnsafe(now)).pipe(
       Effect.provide(

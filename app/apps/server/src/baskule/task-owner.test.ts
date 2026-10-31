@@ -44,4 +44,17 @@ describe("agent-created task owner", () => {
       expect(yield* resolveTaskOwner(projection("orphan"), load)).toBeUndefined();
     }),
   );
+  it.effect("does not borrow a delegated child's author for an unrelated or mismatched run", () =>
+    Effect.gen(function* () {
+      const root = {
+        ...projection("root"), runs: [run("bob")], messages: [{ id: "bob", author: bob }],
+        subagents: [{ id: "spawn", childThreadId: ThreadId.make("child"), runId: "bob", status: "running" }],
+      };
+      for (const activeRun of [run("unattributed"), run("unattributed", "wrong-spawn")]) {
+        const child = { ...projection("child", "root"), runs: [activeRun], messages: [{ id: "unattributed" }] };
+        expect(yield* resolveTaskOwner(child, () => Effect.succeed(root))).toBeUndefined();
+      }
+    }),
+  );
+
 });

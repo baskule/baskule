@@ -1,3 +1,5 @@
+import { useBaskuleMe } from "../../baskule/session";
+import { useSpaceForEnvironment } from "../../baskule/spaces";
 import { t, useTranslation } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
@@ -64,6 +66,11 @@ export function ThreadAutomationsPanel(props: {
   const canOperate = useAtomValue(
     serverEnvironment.runScheduledTaskNow.permissionAtom(props.environmentId),
   );
+  const me = useBaskuleMe();
+  const space = useSpaceForEnvironment(props.environmentId);
+  const isAuthor = (task: ScheduledTask) =>
+    Boolean(me && task.author?.id && task.author.id === me.user.id);
+  const canStopOthers = me?.user.role === "admin" || space?.role === "owner";
   const tasksQuery = useEnvironmentQuery(
     serverEnvironment.scheduledTasksLive({ environmentId: props.environmentId, input: {} }),
   );
@@ -192,29 +199,31 @@ export function ThreadAutomationsPanel(props: {
                 <p className="text-muted-foreground">{taskScheduleLine(task)}</p>
               </TooltipPopup>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <ThreadDetailsControl
-                    size="icon-xs"
-                    variant="ghost"
-                    part="icon"
-                    aria-label={t("Edit {{title}}", { title: task.title })}
-                    onClick={() =>
-                      void navigate({
-                        to: "/settings/scheduled-tasks",
-                        search: { environmentId: props.environmentId, taskId: task.id },
-                      })
-                    }
-                  >
-                    <PencilIcon className="size-3.5" />
-                  </ThreadDetailsControl>
-                }
-              />
-              <TooltipPopup>{t("Edit automation")}</TooltipPopup>
-            </Tooltip>
+            {isAuthor(task) ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <ThreadDetailsControl
+                      size="icon-xs"
+                      variant="ghost"
+                      part="icon"
+                      aria-label={t("Edit {{title}}", { title: task.title })}
+                      onClick={() =>
+                        void navigate({
+                          to: "/settings/scheduled-tasks",
+                          search: { environmentId: props.environmentId, taskId: task.id },
+                        })
+                      }
+                    >
+                      <PencilIcon className="size-3.5" />
+                    </ThreadDetailsControl>
+                  }
+                />
+                <TooltipPopup>{t("Edit automation")}</TooltipPopup>
+              </Tooltip>
+            ) : null}
             {/* Webhook tasks need a request from their URL. */}
-            {task.schedule.type === "webhook" ? null : (
+            {task.schedule.type === "webhook" || !isAuthor(task) ? null : (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -237,7 +246,11 @@ export function ThreadAutomationsPanel(props: {
             )}
             <Switch
               checked={task.enabled}
-              disabled={!canOperate || busyTaskId !== null}
+              disabled={
+                !canOperate ||
+                busyTaskId !== null ||
+                (!isAuthor(task) && (!task.enabled || !canStopOthers))
+              }
               aria-label={
                 task.enabled
                   ? t("Pause {{title}}", { title: task.title })

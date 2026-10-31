@@ -236,7 +236,6 @@ const isTaskAuthor = (task: ScheduledTask, actor: ScheduledTaskActor | undefined
 const authorizeTask = (task: ScheduledTask, actor: ScheduledTaskActor | undefined, stop = false) =>
   isTaskAuthor(task, actor) ||
   (stop &&
-    Boolean(task.author?.id.trim()) &&
     Boolean(actor?.id.trim()) &&
     actor?.canStopOthers === true)
     ? Effect.void
@@ -405,7 +404,7 @@ export const listDueTasks = Effect.fn("ScheduledTaskService.listDueTasks")(funct
   const sql = yield* SqlClient.SqlClient;
   const rows = yield* sql<ScheduledTaskRow>`
     SELECT * FROM scheduled_tasks
-    WHERE enabled = 1 AND next_run_at IS NOT NULL
+    WHERE enabled = 1 AND author_json IS NOT NULL AND next_run_at IS NOT NULL
       AND next_run_at <= ${iso(now)} AND last_run_status <> 'running'
     ORDER BY next_run_at ASC, task_id ASC
   `.pipe(NodeSqliteClient.readOnly);
@@ -414,6 +413,7 @@ export const listDueTasks = Effect.fn("ScheduledTaskService.listDueTasks")(funct
     const decoded = yield* Effect.result(decodeRow(row));
     if (Result.isSuccess(decoded)) {
       const task = decoded.success;
+      if (!task.author?.id.trim()) continue;
       // next_run_at is freeform; skip unparseable values before they defect the poll.
       if (task.nextRunAt === null || Option.isSome(DateTime.make(task.nextRunAt))) {
         tasks.push(task);
@@ -875,7 +875,7 @@ export const layer = Layer.effect(
                     initialMessage: {
                       messageId,
                       scheduledTaskId: active.id,
-                      ...(active.author === undefined ? {} : { author: active.author }),
+                      author: active.author,
                       text: prompt,
                       attachments: [],
                     },
@@ -894,7 +894,7 @@ export const layer = Layer.effect(
                     threadId: ThreadId.make(active.threadId),
                     messageId,
                     scheduledTaskId: active.id,
-                    ...(active.author === undefined ? {} : { author: active.author }),
+                    author: active.author,
                     text: prompt,
                     attachments: [],
                     mode: "queue",
@@ -1219,10 +1219,10 @@ export const layer = Layer.effect(
           runCount: existingTask?.runCount ?? 0,
         };
         yield* saveTask(task, input.requireExisting === true, webhook);
-        yield* notifyChanged;
         return { task: (yield* findTask(id)) ?? task };
       },
       sql.withTransaction,
+      Effect.tap(() => notifyChanged),
       Effect.catchTag("SqlError", (cause) =>
         taskError("Could not update scheduled task.", { cause }),
       ),
@@ -1254,7 +1254,6 @@ export const layer = Layer.effect(
         if (updated.length === 0) {
           return yield* taskError("Schedule task not found.", { taskId: input.id });
         }
-        yield* notifyChanged;
         return {
           task: visibleTask(
             { ...existing, enabled: input.enabled, nextRunAt: next, updatedAt: iso(now) },
@@ -1263,6 +1262,7 @@ export const layer = Layer.effect(
         };
       },
       sql.withTransaction,
+      Effect.tap(() => notifyChanged),
       Effect.catchTag("SqlError", (cause) =>
         taskError("Could not update scheduled task.", { cause }),
       ),
@@ -1308,10 +1308,10 @@ export const layer = Layer.effect(
         yield* authorizeTask(task, actor, true);
         yield* deleteRow(input.id);
         yield* forgetWebhookTask(input.id);
-        yield* notifyChanged;
         return { id: input.id };
       },
       sql.withTransaction,
+      Effect.tap(() => notifyChanged),
       Effect.catchTag("SqlError", (cause) =>
         taskError("Could not delete scheduled task.", { cause }),
       ),
@@ -1388,10 +1388,10 @@ export const layer = Layer.effect(
         if (updated.length === 0) {
           return yield* taskError("Schedule task was deleted or replaced.", { taskId: input.id });
         }
-        yield* notifyChanged;
         return { task: yield* loadTask(input.id) };
       },
       sql.withTransaction,
+      Effect.tap(() => notifyChanged),
       Effect.catchTag("SqlError", (cause) =>
         taskError("Could not update scheduled task.", { cause }),
       ),

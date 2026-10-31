@@ -59,20 +59,32 @@ test("scheduled task controls retain the author's authority", { tag: ["@feature:
     await page.screenshot({ path: test.info().outputPath("non-author-controls.png") });
 
     // The agent tool must pass Alice's initiating author to the same service.
-    const attack = await api.launch(alice, projectId, `Try updating the schedule [[fake:tool *_schedule_task ${JSON.stringify({ scheduledTaskId: task.id, prompt: "Agent overwrite" })}]]`);
+    const attack = await api.launch(alice, projectId, `Try controlling the schedule [[fake:tool *_schedule_task ${JSON.stringify({ scheduledTaskId: task.id, prompt: "Agent overwrite" })}]] [[fake:tool *_run_scheduled_task_now ${JSON.stringify({ taskId: task.id })}]] [[fake:tool *_delete_scheduled_task ${JSON.stringify({ scheduledTaskId: task.id })}]]`);
     const attackState = api.watchThread(alice, attack);
     try {
       await api.waitFor("agent tool refusal", () => attackState.settled());
-      expect(attackState.assistantText()).toContain("Only the task's author");
+      expect((attackState.assistantText().match(/Only the task's author/g) ?? []).length).toBe(3);
       expect(await read()).toEqual(unchanged);
     } finally { attackState.stop(); }
 
-    const edited = (await bob.ok("scheduledTasks.upsert", { ...input, id: task.id, title: "Bob's updated work", threadId: attack })).task;
+    const edited = (await bob.ok("scheduledTasks.upsert", { ...input, id: task.id, title: "Bob's updated work", threadId: attack, prompt: "Scheduled work [[fake:long 200]] [[fake:delay 30]]" })).task;
     expect(edited.author).toEqual(task.author);
     const run = (await bob.ok("scheduledTasks.runNow", { id: task.id })).task;
     expect(run.lastRunStatus).toBe("succeeded");
-    const projection = await bob.ok("orchestration.getThreadProjection", { threadId: attack });
-    expect(projection.messages.find((m) => m.scheduledTaskId === task.id).author).toEqual(task.author);
+    const scheduledRun = await api.waitFor("scheduled provider running", async () => {
+      const projection = await bob.ok("orchestration.getThreadProjection", { threadId: attack });
+      const message = projection.messages.find((m) => m.scheduledTaskId === task.id);
+      const active = projection.runs.find((r) => r.userMessageId === message?.id);
+      expect(message?.author).toEqual(task.author);
+      return active && projection.providerTurns.some((turn) => turn.runAttemptId === active.activeAttemptId && turn.status === "running") && active;
+    });
+    const steer = await alice.call("orchestration.dispatchCommand", {
+      commandId: crypto.randomUUID(), type: "message.dispatch", createdBy: "user", creationSource: "web",
+      threadId: attack, messageId: crypto.randomUUID(), text: "Attacker steering", attachments: [],
+      dispatchMode: { type: "steer_active", targetRunId: scheduledRun.id },
+    });
+    expect(steer._tag).toBe("Failure");
+    expect(JSON.stringify(steer)).toContain("Only the task's author");
     await bob.ok("scheduledTasks.setEnabled", { id: task.id, enabled: true });
     const stopped = (await admin.ok("scheduledTasks.setEnabled", { id: task.id, enabled: false })).task;
     expect(stopped.author).toEqual(task.author);

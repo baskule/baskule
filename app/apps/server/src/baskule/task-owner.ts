@@ -21,12 +21,15 @@ export const resolveTaskOwner = Effect.fn("Baskule.resolveTaskOwner")(function* 
     seen.add(current.thread.id);
     const owner = current.messages.find(message => message.id === run?.userMessageId)?.author;
     if (owner) return owner;
+    if (run !== undefined && run.delegatedTaskId === undefined) return;
     const parentId = current.thread.lineage.parentThreadId;
     if (!parentId) return;
     const childId = current.thread.id;
     const parent = yield* load(parentId);
-    const task = parent.subagents.find(task => task.childThreadId === childId && task.id === run?.delegatedTaskId)
-      ?? parent.subagents.find(task => task.childThreadId === childId && active(task.status));
+    const delegatedTaskId = run?.delegatedTaskId;
+    const task = run === undefined
+      ? parent.subagents.find(task => task.childThreadId === childId && active(task.status))
+      : parent.subagents.find(task => task.childThreadId === childId && task.id === delegatedTaskId);
     if (!task) return;
     current = parent;
     run = parent.runs.find(run => run.id === task.runId);

@@ -2869,6 +2869,7 @@ export const layer = Layer.unwrap(
             failEnvironmentInternal("internal_error", error),
           ),
         );
+        const taskIdentity = identityFromRequest(request);
         const clientOrigin = readClientConnectionOrigin(request);
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
@@ -2909,8 +2910,7 @@ export const layer = Layer.unwrap(
               previewAutomationBroker,
               serverBrowser,
               baskuleAuthorFromRequest(request),
-              identityFromRequest(request)?.role === "admin" ||
-                identityFromRequest(request)?.spaceRole === "owner",
+              taskIdentity?.role === "admin" || taskIdentity?.spaceRole === "owner",
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.

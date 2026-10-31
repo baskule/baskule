@@ -4277,6 +4277,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const targetMessage = input.projection.messages.find(
       (message) => message.id === targetRun.userMessageId,
     );
+    if (
+      targetMessage?.scheduledTaskId !== undefined &&
+      (!targetMessage.author?.id.trim() ||
+        !input.author?.id.trim() ||
+        input.author.id !== targetMessage.author.id)
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: input.command.commandId,
+        commandType: input.command.type,
+        cause:
+          "Only the task's author can steer its scheduled run. Queue a separate message instead.",
+      });
+    }
     if (targetMessage !== undefined && isNativeMaintenanceCommand(targetMessage)) {
       return yield* new OrchestratorDispatchError({
         commandId: input.command.commandId,
@@ -8268,7 +8281,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
-        cause: "Scheduled runs cannot be edited or used to steer another run. Change the scheduled task instead.",
+        cause:
+          "Scheduled runs cannot be edited or used to steer another run. Change the scheduled task instead.",
       });
     }
     if (
@@ -8581,7 +8595,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
-        cause: "Scheduled runs cannot be edited or used to steer another run. Change the scheduled task instead.",
+        cause:
+          "Scheduled runs cannot be edited or used to steer another run. Change the scheduled task instead.",
       });
     }
     if (
