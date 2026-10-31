@@ -8,7 +8,7 @@ export const BASKULE_APP_NAME = "Baskule";
 const env = import.meta.env as unknown as Record<string, string | undefined>;
 
 /**
- * Alpha 0.2 multi-user build (VITE_BASKULE_HOSTED=1): the bundle is served by the Baskule
+ * Hosted multi-user build (VITE_BASKULE_HOSTED=1): the bundle is served by the Baskule
  * front, signs in with Better Auth and connects to one environment per space at `/s/<id>/`.
  * There is no primary environment (T3's "hosted" mode).
  */

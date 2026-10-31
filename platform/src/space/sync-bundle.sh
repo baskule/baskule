@@ -2,7 +2,7 @@
 # Builds T3's workerd bundle in the fork and copies it to src/space/t3/space-cell.js (gitignored),
 # where SpaceCell imports it. Run before `pnpm run build` whenever the fork changes.
 #   T3_APP_DIR   fork checkout with src/baskule/workerd/build.mjs (default: ../app)
-#   --minify     minify the bundle, keeping names (deploy/v2/build.sh does; the test runner's --sync does not)
+#   --minify     minify the bundle, keeping names (deploy/build.sh does; the test runner's --sync does not)
 set -euo pipefail
 D=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$D/../../.." && pwd)

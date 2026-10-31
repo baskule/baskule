@@ -31,7 +31,7 @@ const loadBundle = () => import("./t3/space-cell.js");
 export const SPACE_STOP_PATH = "/_baskule/stop";
 /** Runs the 60 s socket recheck now (ops and tests; internal like every /_baskule path). */
 export const SPACE_RECHECK_PATH = "/_baskule/recheck";
-/** Boots T3 ahead of the first view (0.2.1 pre-wake: the Worker calls it when a member's app loads). Never wakes the
+/** Boots T3 ahead of the first view (Pre-wake: the Worker calls it when a member's app loads). Never wakes the
  *  computer; the idle check disposes T3 again after IDLE_DISPOSE_MS if nobody connects. */
 export const SPACE_WAKE_PATH = "/_baskule/wake";
 /** Idle time (no request, no socket, no active run) after which T3 is disposed. */

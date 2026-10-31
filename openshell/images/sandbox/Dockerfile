@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-# baskule-openshell-sandbox:0.2: the sandbox runtime image (the static `openshell-sandbox` binary that becomes the
+# baskule-openshell-sandbox:local: the sandbox runtime image (the static `openshell-sandbox` binary that becomes the
 # workload's PID 1), built from our fork because it enforces the boundary's concurrent-stream limit
 # (BOUNDARY_MAX_CONCURRENT_STREAMS, raised with the supervisor's network-stream budget). Build context: the fork.
 # Alpine's Rust targets musl natively and links statically, like upstream's x86_64-unknown-linux-musl artifact.

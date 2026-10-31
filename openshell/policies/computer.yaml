@@ -2,7 +2,7 @@
 # TLS passed through (Chromium uses NSS and would reject OpenShell's MITM CA).
 # `public_internet` exists only in our vendored fork (vendor/openshell); an unpatched gateway rejects
 # this policy (fails closed).
-# computerd v2 sends the same policy with every CreateSandbox (computerd/v2/src/policy.ts); keep them in sync
+# computerd sends the same policy with every CreateSandbox (computerd/src/policy.ts); keep them in sync
 # (computerd's unit test compares the two).
 version: 1
 filesystem_policy:

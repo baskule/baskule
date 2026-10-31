@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The embedded-agent component loop, one command (from anywhere):
 #   src/agent/test/run.sh [--keep] [--real-llm] [-- run.mjs args]
-# 1. dev stack up (devstack.sh: shared OpenShell gateway + computerd v2 + fake LLM + celld dev with the merged SpaceCell);
+# 1. dev stack up (devstack.sh: shared OpenShell gateway + computerd + fake LLM + celld dev with the merged SpaceCell);
 # 2. the runtime checks (run.mjs);  3. everything stopped and the gateway removed, unless --keep.
 # Unit tests are not repeated here: they are part of `pnpm test` (scripts/check fast).
 # --real-llm runs the one real-model smoke turn instead of the fake-LLM checks (spend: log it in llm-spend.md).

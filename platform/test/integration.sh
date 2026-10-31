@@ -21,7 +21,7 @@ PORT=${PORT:-47620}
 APP=$D/test/.run/app
 export CELLD_ESBUILD=${CELLD_ESBUILD:-$D/node_modules/.bin/esbuild} CELLD_OTEL=0 DO_NOT_TRACK=1
 rm -rf "$APP" && mkdir -p "$APP/dl"
-printf 'fake desktop artifact\n' > "$APP/dl/Baskule-0.2.0-test.AppImage"
+printf 'fake desktop artifact\n' > "$APP/dl/Baskule-test.AppImage"
 BASKULE_ENTRY=test/integration/entry.ts BASKULE_OUT=test/.run/app/dist BASKULE_DOWNLOADS_DIR=test/.run/app/dl nice -n 10 node scripts/build.mjs
 node -e '
   const fs=require("fs"); const w=JSON.parse(fs.readFileSync("wrangler.json","utf8"));

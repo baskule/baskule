@@ -1,5 +1,5 @@
 /**
- * Baskule feature flags (Alpha 0.1, kept in 0.2) for the mobile client (architecture D12/D13).
+ * Baskule feature flags for the mobile client (architecture D12/D13).
  *
  * The app keeps T3 Code's code paths; these flags only hide entry points that are outside the alpha's
  * scope (a ChatGPT-like chat app: chat list with new/archive/delete, thread view, files). Flip a flag to

@@ -16,6 +16,6 @@ Delivery is at least once. A crash after provider acceptance but before saving t
 
 ## Installation requirements
 
-The ControlCell schema includes device registrations and delivery receipts. An installation with the retired schema needs an alpha data wipe. Follow [the deployment upgrade procedure](../deploy/v2/README.md#upgrade) only when the installation owner authorizes it. Recreate installation settings and accounts after a wipe.
+ControlCell stores device registrations and delivery receipts. Follow [the deployment upgrade procedure](../deploy/README.md#upgrade) when updating the installation. Recreate installation settings and accounts after a data wipe required by a release.
 
 Provider delivery requires credentials, outbound access, APNs HTTP/2 support where applicable, and a matching native build. Simulated provider checks establish request and retry behavior. Receipt on a real background device and notification taps need separate device verification.

@@ -3,11 +3,11 @@
 # (sandboxes are created there). Only images whose content differs are transferred.
 # usage: load-images.sh [container] [image...]
 #   default container: baskule-openshell
-#   default image: baskule-computer:0.2 (the supervisor and sandbox runtime are baked into the gateway image,
+#   default image: baskule-computer:local (the supervisor and sandbox runtime are baked into the gateway image,
 #   whose entrypoint loads them)
 set -euo pipefail
 C=${1:-baskule-openshell}; shift || true
-TAG=${BASKULE_TAG:-0.2}
+TAG=${BASKULE_TAG:-local}
 IMAGES=("$@")
 FP='{{.Created}} {{json .RootFS.Layers}}'
 [ ${#IMAGES[@]} -gt 0 ] || IMAGES=("baskule-computer:$TAG")

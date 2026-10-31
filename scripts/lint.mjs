@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-export const owned = /^(?:platform\/|computerd\/v2\/|e2e\/(?:v2|journeys)\/|scripts\/|app\/apps\/(?:server\/src\/baskule\/|web\/(?:src\/baskule\/|baskule-dev\/)))/;
+export const owned = /^(?:platform\/|computerd\/|e2e\/|scripts\/|app\/apps\/(?:server\/src\/baskule\/|web\/(?:src\/baskule\/|baskule-dev\/)))/;
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8" })
     .split("\0").filter((f) => owned.test(f) && /\.[cm]?[jt]sx?$/.test(f) && existsSync(root + f));

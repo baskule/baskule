@@ -17,7 +17,7 @@ New linked worktrees inherit the primary checkout's `.tools` location unless `BA
 
 Setup links `.tools` and installs dependencies for the root workspace and the separate `app/` workspace. Installations sharing a pnpm store run one at a time because package imports and build hooks modify shared files. Setup replaces generated dependency directories without a terminal prompt and appends plain install output. It does not build SpaceCell. `scripts/worktree host-init` installs only tools and shared caches.
 
-The root workspace contains `platform`, `computerd/v2`, and `e2e`. It has its own lockfile; `app/` keeps a separate workspace and lockfile. After setup, install with `pnpm install --frozen-lockfile` in the appropriate workspace. Use `pnpm --filter <package-name> <script>` from that workspace root.
+The root workspace contains `platform`, `computerd`, and `e2e`. It has its own lockfile; `app/` keeps a separate workspace and lockfile. After setup, install with `pnpm install --frozen-lockfile` in the appropriate workspace. Use `pnpm --filter <package-name> <script>` from that workspace root.
 
 ## Prepare the application runtime
 
@@ -33,14 +33,14 @@ The local celld launcher uses `.tools/bin/celld`, then `celld` on `PATH`. `CELLD
 
 ## Build server, web, and images
 
-Build OpenShell in the Ubuntu 24.04 amd64 environment defined by `deploy/v2/build-env/Dockerfile`. It pins Rust 1.95.0 and Z3 5.1.0. Ubuntu's older system Z3 cannot satisfy this build. The gateway image receives the same shared Z3 library used for linking.
+Build OpenShell in the Ubuntu 24.04 amd64 environment defined by `deploy/build-env/Dockerfile`. It pins Rust 1.95.0 and Z3 5.1.0. Ubuntu's older system Z3 cannot satisfy this build. The gateway image receives the same shared Z3 library used for linking.
 
 Native compilation requires a matching `CARGO_TARGET_DIR`. Keep native caches separate for each toolchain and target. Follow [OpenShell packaging](../openshell/README.md) for the build environment and [upstream contributor instructions](../vendor/openshell/CONTRIBUTING.md) for source development. Image builds also use jq, rsync, and zstd. Allow disk space for JavaScript dependencies, Rust outputs, and container images.
 
-Create private runtime configuration as described in [the deployment guide](../deploy/v2/README.md). From a prepared build environment, build without replacing a running installation:
+Create private runtime configuration as described in [the deployment guide](../deploy/README.md). From a prepared build environment, build without replacing a running installation:
 
 ```sh
-deploy/v2/build.sh --no-deploy
+deploy/build.sh --no-deploy
 ```
 
 Omitting `--no-deploy` also deploys. The build environment's `run.sh` entry point also builds and deploys; it is not a build-only command. Use deployment commands only for an installation you are authorized to operate. Keep `.env`, authentication secrets, storage credentials, and signing keys outside Git.

@@ -4,7 +4,7 @@
 //   BASKULE_DOWNLOADS_DIR  directory whose files are published under /downloads/ (default: none)
 //   BASKULE_ENTRY          Worker entry (default: src/worker.ts; the integration test uses its own)
 //   BASKULE_OUT            output dir (default: dist)
-//   BASKULE_MINIFY=1       minify the Worker, keeping function and class names (production: deploy/v2/build.sh)
+//   BASKULE_MINIFY=1       minify the Worker, keeping function and class names (production: deploy/build.sh)
 import { build } from "esbuild";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
