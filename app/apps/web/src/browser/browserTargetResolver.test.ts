@@ -13,34 +13,34 @@ describe("browser target resolver", () => {
 
   it("refuses public relay hosts until the authenticated gateway exists", async () => {
     readPreparedConnection.mockReturnValue({ httpBaseUrl: "https://relay.example.com" });
-    const { resolveBrowserNavigationUrl } = await import("./browserTargetResolver");
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
     expect(
-      resolveBrowserNavigationUrl(EnvironmentId.make("environment-1"), "http://localhost:5173"),
+      resolveDiscoveredServerUrl(EnvironmentId.make("environment-1"), "http://localhost:5173"),
     ).toBe("http://localhost:5173");
   });
 
   it("normalizes schemeless localhost navigation URLs", async () => {
     readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://localhost:3773" });
-    const { resolveBrowserNavigationUrl } = await import("./browserTargetResolver");
-    expect(resolveBrowserNavigationUrl(EnvironmentId.make("environment-1"), "localhost:5173")).toBe(
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
+    expect(resolveDiscoveredServerUrl(EnvironmentId.make("environment-1"), "localhost:5173")).toBe(
       "http://localhost:5173/",
     );
     expect(
-      resolveBrowserNavigationUrl(EnvironmentId.make("environment-1"), "0.0.0.0:3000/app"),
+      resolveDiscoveredServerUrl(EnvironmentId.make("environment-1"), "0.0.0.0:3000/app"),
     ).toBe("http://localhost:3000/app");
   });
 
   it("maps loopback navigation URLs onto a remote environment host", async () => {
     readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://192.168.1.25:3773" });
-    const { resolveBrowserNavigationUrl } = await import("./browserTargetResolver");
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
     expect(
-      resolveBrowserNavigationUrl(EnvironmentId.make("environment-1"), "localhost:3000/app"),
+      resolveDiscoveredServerUrl(EnvironmentId.make("environment-1"), "localhost:3000/app"),
     ).toBe("http://192.168.1.25:3000/app");
   });
 
   it("keeps localhost for servers on the desktop's own WSL or primary backend", async () => {
     // WSL NAT advertises a distro IP, but loopback-bound servers only answer on localhost.
-    const { resolveBrowserNavigationUrl } = await import("./browserTargetResolver");
+    const { resolveDiscoveredServerUrl } = await import("./browserTargetResolver");
     env.isElectron = true;
     try {
       for (const target of [
@@ -49,7 +49,7 @@ describe("browser target resolver", () => {
       ]) {
         readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://172.24.66.27:3773", target });
         expect(
-          resolveBrowserNavigationUrl(EnvironmentId.make("environment-1"), "localhost:3001/"),
+          resolveDiscoveredServerUrl(EnvironmentId.make("environment-1"), "localhost:3001/"),
         ).toBe("http://localhost:3001/");
       }
       readPreparedConnection.mockReturnValue({
@@ -57,7 +57,7 @@ describe("browser target resolver", () => {
         target: { _tag: "BearerConnectionTarget", connectionId: "saved:remote" },
       });
       expect(
-        resolveBrowserNavigationUrl(EnvironmentId.make("environment-1"), "localhost:3001/"),
+        resolveDiscoveredServerUrl(EnvironmentId.make("environment-1"), "localhost:3001/"),
       ).toBe("http://192.168.1.25:3001/");
     } finally {
       env.isElectron = false;

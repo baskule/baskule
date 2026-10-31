@@ -15,7 +15,7 @@ import { readEnvironmentScope } from "../../state/session";
 
 /** A No project thread that already has its own folder, on a server that can promote it. */
 export function canTurnThreadIntoProject(
-  thread: Pick<EnvironmentThreadShell, "worktreePath" | "environmentId" | "projectId">,
+  thread: EnvironmentThreadShell,
 ): boolean {
   if (thread.worktreePath === null) return false;
   const config = appAtomRegistry.get(environmentServerConfigsAtom).get(thread.environmentId);

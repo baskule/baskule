@@ -40,7 +40,7 @@ import {
   updatePreviewServerSnapshot,
   useThreadPreviewState,
 } from "~/previewStateStore";
-import { resolveBrowserNavigationUrl } from "~/browser/browserTargetResolver";
+import { resolveDiscoveredServerUrl } from "~/browser/browserTargetResolver";
 import { useEnvironmentSupportsServerBrowser } from "~/state/entities";
 import {
   useEnvironment,
@@ -270,7 +270,7 @@ export function PreviewView({
       const resolved =
         isServerTab || !previewBridge
           ? normalizePreviewUrl(next)
-          : resolveBrowserNavigationUrl(threadRef.environmentId, next);
+          : resolveDiscoveredServerUrl(threadRef.environmentId, next);
       if (await navigateToResolvedUrl(resolved)) {
         recordVisitForThread(threadRef, next);
       }
@@ -380,7 +380,7 @@ export function PreviewView({
         ? {
             url:
               moveTarget === "desktop"
-                ? resolveBrowserNavigationUrl(threadRef.environmentId, url)
+                ? resolveDiscoveredServerUrl(threadRef.environmentId, url)
                 : url,
           }
         : {}),
