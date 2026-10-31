@@ -104,6 +104,16 @@ export function PluginEditor({
       }),
     ),
   );
+  // Each server whose key is stored, as it was when the key was saved.
+  const [savedKeys, setSavedKeys] = useState<Readonly<Record<number, ServerInput>>>(() =>
+    target.type === "edit"
+      ? Object.fromEntries(
+          initial.servers.flatMap((server, index) =>
+            target.savedKeys.has(server.name) ? [[index, server]] : [],
+          ),
+        )
+      : {},
+  );
   const chosen = useGroupChoice(target.type === "create" ? target.groups : null);
   // Set once a new plugin exists, so a retry after a failed key save updates it instead.
   const [createdId, setCreatedId] = useState<string | null>(null);
@@ -147,10 +157,9 @@ export function PluginEditor({
   };
 
   const headersChanged = (index: number) =>
-    target.type === "edit" &&
-    target.savedKeys.has(servers[index]!.name) &&
+    savedKeys[index] !== undefined &&
     JSON.stringify(keyEntries(index).map((entry) => entry.header.trim())) !==
-      JSON.stringify(initial.servers[index]!.keyHeaders ?? ["Authorization"]);
+      JSON.stringify(savedKeys[index].keyHeaders ?? ["Authorization"]);
   const keyProblem = (index: number) => {
     const entries = keyEntries(index);
     const filled = entries.filter((entry) => entry.value !== "").length;
@@ -191,6 +200,11 @@ export function PluginEditor({
           server: server.name,
           headers: Object.fromEntries(entries.map((entry) => [entry.header.trim(), entry.value])),
         });
+        setSavedKeys((current) => ({ ...current, [index]: server }));
+        setKeys((current) => ({
+          ...current,
+          [index]: entries.map((entry) => ({ ...entry, value: "" })),
+        }));
       }
       onSaved({ id, name: input.name });
     })()
@@ -275,15 +289,13 @@ export function PluginEditor({
             signInFix={signInFixes.has(server.name)}
             keys={keyEntries(index)}
             keySaved={
-              target.type === "edit" &&
-              target.savedKeys.has(server.name) &&
-              serverFingerprint(finalServers[index]!) === serverFingerprint(initial.servers[index]!)
+              savedKeys[index] !== undefined &&
+              serverFingerprint(finalServers[index]!) === serverFingerprint(savedKeys[index])
             }
             headersChanged={headersChanged(index)}
             keyChanged={
-              target.type === "edit" &&
-              target.savedKeys.has(server.name) &&
-              serverFingerprint(finalServers[index]!) !== serverFingerprint(initial.servers[index]!)
+              savedKeys[index] !== undefined &&
+              serverFingerprint(finalServers[index]!) !== serverFingerprint(savedKeys[index])
             }
             keyProblem={attempted && keyProblem(index)}
             attempted={attempted}

@@ -599,6 +599,107 @@ describe("signing in to a plugin's service", () => {
     ).toEqual([]);
   });
 
+  it("clears each key once it is saved, so a retry sends only the keys that were not", async () => {
+    const mail = {
+      name: "mail",
+      url: "https://mcp.mail.example.test/mcp",
+      credential: "organization" as const,
+    };
+    const initial = {
+      name: "CRM",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: [
+        { ...crm, credential: "organization" as const, keyHeaders: ["X-Api-Key"] },
+        { ...mail, keyHeaders: ["Cookie"] },
+      ],
+    };
+    const onSaved = vi.fn();
+    const control = fakeControl({
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "p1" }),
+      "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
+      "PUT /api/baskule/admin/plugins/p1/secret": (body) =>
+        "Cookie" in (body as { readonly headers: object }).headers
+          ? Response.json({ error: "invalid_secret_headers" }, { status: 400 })
+          : { ok: true },
+    });
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "create", groups, groupsError: null }}
+        onCancel={vi.fn()}
+        onSaved={onSaved}
+      />,
+    );
+    const key = screen.getByLabelText("Key", { exact: true });
+    const header = screen.getByLabelText("Header for the key", { exact: true });
+    await userEvent.type(key.nth(0), "crm-key");
+    await userEvent.type(key.nth(1), "mail-key");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await expect
+      .element(
+        screen.getByText(
+          "CRM was saved, but its key was not: This key can't be sent with that header name.",
+        ),
+      )
+      .toBeVisible();
+    await expect.element(key.nth(0)).toHaveValue("");
+    await expect.element(key.nth(1)).toHaveValue("mail-key");
+    await expect
+      .element(screen.getByText("A key is saved. Leave this empty to keep it."))
+      .toBeVisible();
+
+    await userEvent.click(screen.getByText("Technical details", { exact: true }).nth(0));
+    await userEvent.click(screen.getByText("Technical details", { exact: true }).nth(1));
+    await userEvent.fill(header.nth(0), "X-Changed");
+    await expect.element(screen.getByText("Enter this key too.", { exact: true })).toBeVisible();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await userEvent.fill(header.nth(0), "X-Api-Key");
+    await userEvent.fill(header.nth(1), "X-Mail-Key");
+    await expect.element(key.nth(1)).toHaveValue("mail-key");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith({ id: "p1", name: "CRM" }));
+    expect(
+      control.calls
+        .filter((call) => !call.route.startsWith("GET "))
+        .map((call) => [call.route, call.body]),
+    ).toEqual([
+      ["POST /api/baskule/admin/plugins", expect.anything()],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "crm", headers: { "X-Api-Key": "crm-key" } },
+      ],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "mail", headers: { Cookie: "mail-key" } },
+      ],
+      [
+        "PATCH /api/baskule/admin/plugins/p1",
+        {
+          plugin: {
+            ...initial,
+            servers: [
+              { ...crm, credential: "organization", keyHeaders: ["X-Api-Key"] },
+              { ...mail, keyHeaders: ["X-Mail-Key"] },
+            ],
+          },
+        },
+      ],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "mail", headers: { "X-Mail-Key": "mail-key" } },
+      ],
+    ]);
+  });
+
   it("explains that changing a server needs its key again", async () => {
     const initial = {
       name: "CRM",
