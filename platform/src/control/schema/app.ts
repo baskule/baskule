@@ -1,6 +1,6 @@
 // Baskule-owned tables in ControlCell (E6). Better Auth's own tables are in ./auth.ts.
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, index, primaryKey, check } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex, primaryKey, check } from "drizzle-orm/sqlite-core";
 import { user, session } from "./auth";
 
 /** One organisation per installation in 0.2; the model allows several. */
@@ -142,13 +142,19 @@ export const spaceDisabledPlugin = sqliteTable("space_disabled_plugin", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
 }, t => [primaryKey({ columns: [t.spaceId, t.pluginId] })]);
 
-/** Encrypted per-user credentials. No plaintext token migration: deploying 0.4.0 wipes alpha data. */
 export const pluginConnection = sqliteTable("plugin_connection", {
+  id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
   server: text("server").notNull(),
+  label: text("label").notNull(),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull(),
   data: text("data").notNull(),
-}, t => [primaryKey({ columns: [t.userId, t.pluginId, t.server] })]);
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [
+  uniqueIndex("plugin_connection_label_uq").on(t.userId, t.pluginId, t.server, t.label),
+  uniqueIndex("plugin_connection_default_uq").on(t.userId, t.pluginId, t.server).where(sql`${t.isDefault} = 1`),
+]);
 
 export const vendorSetup = sqliteTable("vendor_setup", {
   vendor: text("vendor").primaryKey(),

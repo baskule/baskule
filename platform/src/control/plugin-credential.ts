@@ -4,7 +4,7 @@ import { json } from "../shared/http";
 import type { Plugins } from "./plugins";
 import type { Connections } from "./connections";
 
-const input = z.object({ spaceId: z.string().min(1).max(200), pluginId: z.string().min(1).max(200), server: z.string().min(1).max(200), userId: z.string().min(1).max(200) }).strict();
+const input = z.object({ spaceId: z.string().min(1).max(200), pluginId: z.string().min(1).max(200), server: z.string().min(1).max(200), userId: z.string().min(1).max(200), account: z.string().trim().min(1).max(100).optional(), tool: z.string().min(1).max(200).optional() }).strict();
 
 /** Private channel only. Policy is rechecked even when the caller has a cached credential. */
 export async function pluginCredential(req: Request, plugins: Plugins, connections: Connections): Promise<Response> {

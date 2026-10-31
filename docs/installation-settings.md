@@ -171,7 +171,15 @@ addresses for public hostnames, including DNS rebinding; this is not full SSRF p
 
 The administrator installs and grants plugins; users connect their own accounts. Connections are per user and
 plugin server across spaces. Personal-account servers are refused in team spaces until an owner enables
-personal-account plugins for that space. A connection never grants access beyond the group's plugin policy.
+personal-account plugins for that space. This owner-controlled switch is not per-account team consent.
+Team calls use only the author's default account; selecting another account is unavailable there. Everyone in
+the team can read returned results. A connection never grants access beyond the group's plugin policy.
+
+In Settings → Plugins, people can connect several accounts, name or rename them, and choose one default per
+plugin server. These names are their own labels, not verified vendor identities. Personal-space tool calls may
+name an account with `baskule_account`; omitted arguments use the author's current default. The selector is
+removed before the vendor receives the call. Results identify the account used. Scheduled work also uses the
+author's default at run time when no account is named; changing the default changes those future calls.
 
 For an MCP server with `credential: "user-oauth"`, ControlCell discovers protected-resource and authorization-server
 metadata, registers a public client with DCR, and runs the authorization-code flow with S256 PKCE. It sends the
@@ -194,13 +202,19 @@ to the resource challenge or metadata; `params` adds vendor authorization parame
 omits the resource parameter for vendors that refuse it. `staticClient: true` requires administrator setup.
 Protocol parameters such as the callback, state and PKCE cannot be overridden. Nothing uses OpenCode's per-space OAuth store.
 
-UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH`
+UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH&label=Work`
 (`server` can be omitted for a single account server; `returnTo` defaults to `/` and must remain on this origin).
+Use `account=CONNECTION_ID` instead of `label` to reconnect an existing account without changing its id, name or
+default. New connections become the default only when they are the person's first account on that server.
 The callback requires the initiating live user session and returns to that path with `pluginId`, `server`, and
 `pluginConnection=connected`, or `pluginConnection=error&connectionError=CODE`. Invalid, missing or expired state redirects to Settings → Plugins with `connectionError=invalid_oauth_state`. Callback state is single-use and expires after ten minutes. `GET /api/baskule/plugins` reports each server
 with one of `unavailable`, `needs_setup`, `connect`, `reconnect`, or `ready`. The plugin status is the highest-priority
-server status in that order. A skills-only plugin is ready when assigned and unpaused. `DELETE /api/baskule/plugins/:id/connection[?server=NAME]` immediately
-forgets one or all plugin connections, cancels pending consent and prevents an in-flight refresh from restoring them.
+server status in that order, using the default account's readiness. Each server also lists the person's accounts
+with id, label, default and ready/reconnect status. A skills-only plugin is ready when assigned and unpaused.
+`PATCH /api/baskule/plugins/:id/accounts/:accountId` renames (`{label}`) or sets the default (`{default:true}`).
+`DELETE /api/baskule/plugins/:id/accounts/:accountId` immediately forgets that account and prevents an in-flight
+refresh or reconnect from restoring it. Deleting the default while other accounts remain requires
+`?default=OTHER_CONNECTION_ID` from the same person's server. Other people's accounts are never exposed.
 Initial Connect failures also return to Settings → Plugins with a plain error.
 
 Better Auth's `account.encryptOAuthTokens: true` encrypts access and refresh tokens with the installation secret;
@@ -244,6 +258,10 @@ current idle policy through its authenticated runtime-settings endpoint. If that
 does not stop computers using a guessed policy.
 
 ## Upgrading an earlier installation
+
+The named-account layout recreates `plugin_connection` and clears pending plugin consent. After an authorized
+deploy, everyone must reconnect plugin accounts. Installed plugins, group assignments, organization keys,
+vendor setup, users, spaces and chats remain. No existing account data is converted.
 
 The vendor-setup layout drops per-server OAuth clients and deletes installed plugin data. Reinstall plugins,
 assign groups, enter organization keys and vendor clients, then reconnect accounts after the authorized deploy.

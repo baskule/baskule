@@ -69,7 +69,7 @@ export function SpacePluginSettings({
             <span className="text-sm">{t("Allow personal-account plugins")}</span>
             <span className="text-xs text-muted-foreground">
               {t(
-                "Plugins that act with a member's own account, such as their mailbox. Everyone here can read what they return.",
+                "Plugins that act with a member's own account, such as their mailbox. Only each member's default account is used, and everyone here can read its results.",
               )}
             </span>
           </div>

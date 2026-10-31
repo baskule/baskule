@@ -39,7 +39,7 @@ export async function checkConnections(req, check, admin, alice) {
       check("owner opt-in permits the turn author's account", (await invoke(team)).json.status === 200);
     } finally { await req("DELETE", `${API}/spaces/${team}`, A); }
     check("callback state is single-use", (await req("GET", callback.pathname + callback.search, U)).headers.get("location").includes("connectionError=invalid_oauth_state"));
-    await req("DELETE", `${API}/plugins/${pluginId}/connection`, U);
+    await req("DELETE", `${API}/plugins/${pluginId}/accounts/${mine.json.plugins.find(p => p.id === pluginId).servers[0].accounts[0].id}`, U);
     check("disconnect immediately prevents credential use", (await invoke()).json.error === "connect");
   } finally {
     if (pluginId) await req("DELETE", `${API}/admin/plugins/${pluginId}`, A);

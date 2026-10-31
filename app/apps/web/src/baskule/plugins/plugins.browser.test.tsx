@@ -1,6 +1,6 @@
 // baskule: the plugin screens against a fake ControlCell (fetch): what the admin adds, for whom,
 // pauses and sets up, and what a person is told about each plugin and can connect.
-import type { AdminPlugin, Group, MemberPlugin } from "@t3tools/contracts/baskule-plugins";
+import type { Account, AdminPlugin, Group, MemberPlugin } from "@t3tools/contracts/baskule-plugins";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent, type Locator } from "vite-plus/test/browser";
 
@@ -13,24 +13,26 @@ import { PluginDetailPage } from "../admin/plugins/PluginDetailPage";
 import { pluginErrorText } from "./api";
 import { UserPluginsView } from "./UserPluginsView";
 
-type Route = (body: unknown) => unknown;
+type Route = (body: unknown, query: URLSearchParams) => unknown;
 
 // Browser tests run without the app's CSS: dialog layers and switches are not hit-testable, so
 // clicks go through the DOM, like the other browser tests of this app.
 const press = (target: Locator) => act(() => (target.element() as HTMLElement).click());
 
-/** A fetch answering `METHOD /path` (query ignored) from `routes`, recording each call. */
+/** A fetch answering `METHOD /path` from `routes`, recording each call. A route may answer with
+ * its own `Response`, such as a refusal. */
 function fakeControl(routes: Record<string, Route>) {
-  const calls: Array<{ readonly route: string; readonly body: unknown }> = [];
+  const calls: Array<{ readonly route: string; readonly body: unknown; readonly query: string }> =
+    [];
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = new URL(String(input), "http://test").pathname;
-    const route = `${init?.method ?? "GET"} ${path}`;
+    const url = new URL(String(input), "http://test");
+    const route = `${init?.method ?? "GET"} ${url.pathname}`;
     const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-    calls.push({ route, body });
+    calls.push({ route, body, query: url.search });
     const handler = routes[route];
-    return handler
-      ? Response.json(handler(body))
-      : Response.json({ error: "not_found" }, { status: 404 });
+    if (!handler) return Response.json({ error: "not_found" }, { status: 404 });
+    const answer = handler(body, url.searchParams);
+    return answer instanceof Response ? answer : Response.json(answer);
   });
   return { calls, stub: stubGlobal("fetch", fetch) };
 }
@@ -102,7 +104,9 @@ describe("admin catalog", () => {
       .toBeVisible();
     await expect.element(screen.getByRole("button", { name: "Add Linear" })).toBeVisible();
     await expect
-      .element(screen.getByText("Not available yet: Figma must admit Baskule to its MCP client catalog."))
+      .element(
+        screen.getByText("Not available yet: Figma must admit Baskule to its MCP client catalog."),
+      )
       .toBeVisible();
     for (const held of ["Figma", "Shopify", "Docusign", "Microsoft Teams"]) {
       expect(screen.getByRole("button", { name: `Add ${held}` }).query()).toBeNull();
@@ -431,55 +435,57 @@ describe("a person's plugins", () => {
     servers: [],
     ...overrides,
   });
-  const mine: MemberPlugin[] = [
-    member({
-      id: "drive",
-      name: "Google Drive",
-      status: "connect",
-      servers: [{ name: "drive", status: "connect", credential: "user-oauth" }],
-    }),
-    member({
-      id: "mail",
-      name: "Mail",
-      status: "reconnect",
-      servers: [{ name: "mail", status: "reconnect", credential: "user-oauth" }],
-    }),
-    member({
-      id: "search",
-      name: "Search",
-      status: "needs_setup",
-      servers: [{ name: "search", status: "needs_setup", credential: "organization" }],
-    }),
-    member({
-      id: "sales",
-      name: "Sales",
-      status: "unavailable",
-      skills: [{ name: "pipeline", description: "Pipeline reviews." }],
-    }),
-    member({
-      id: "notes",
-      name: "Notes",
-      servers: [{ name: "notes", status: "ready", credential: "user-oauth" }],
-    }),
-    member({
-      id: "wiki",
-      name: "Wiki",
-      servers: [{ name: "wiki", status: "ready", credential: "organization" }],
-    }),
-  ];
+  const account = (overrides: Partial<Account> & Pick<Account, "id" | "label">): Account => ({
+    default: true,
+    status: "ready",
+    ...overrides,
+  });
+  /** An account plugin whose status follows its default account, as the ControlCell derives it. */
+  const withAccounts = (id: string, name: string, accounts: Account[]): MemberPlugin => {
+    const status = accounts.find((entry) => entry.default)?.status ?? "connect";
+    return member({
+      id,
+      name,
+      status,
+      servers: [{ name: id, credential: "user-oauth", status, accounts }],
+    });
+  };
+  const changes = (calls: ReadonlyArray<{ readonly route: string }>) =>
+    calls.filter((call) => !call.route.startsWith("GET "));
 
   it("tells the status of each plugin and offers only the action it needs", async () => {
-    let connected = true;
+    let notes = [account({ id: "notes-1", label: "Notes" })];
     const control = fakeControl({
       "GET /api/baskule/plugins": () => ({
-        plugins: mine.map((entry) =>
-          entry.id === "notes" && !connected
-            ? { ...entry, status: "connect", servers: [{ ...entry.servers[0], status: "connect" }] }
-            : entry,
-        ),
+        plugins: [
+          withAccounts("drive", "Google Drive", []),
+          withAccounts("mail", "Mail", [
+            account({ id: "mail-1", label: "Mail", status: "reconnect" }),
+          ]),
+          member({
+            id: "search",
+            name: "Search",
+            status: "needs_setup",
+            servers: [
+              { name: "search", status: "needs_setup", credential: "organization", accounts: [] },
+            ],
+          }),
+          member({
+            id: "sales",
+            name: "Sales",
+            status: "unavailable",
+            skills: [{ name: "pipeline", description: "Pipeline reviews." }],
+          }),
+          withAccounts("notes", "Notes", notes),
+          member({
+            id: "wiki",
+            name: "Wiki",
+            servers: [{ name: "wiki", status: "ready", credential: "organization", accounts: [] }],
+          }),
+        ],
       }),
-      "DELETE /api/baskule/plugins/notes/connection": () => {
-        connected = false;
+      "DELETE /api/baskule/plugins/notes/accounts/notes-1": () => {
+        notes = [];
         return { ok: true };
       },
     });
@@ -495,23 +501,173 @@ describe("a person's plugins", () => {
       .element(screen.getByRole("button", { name: "Connect your Google Drive account" }))
       .toBeEnabled();
     await expect.element(screen.getByText("Reconnect your Mail account")).toBeVisible();
-    await expect
-      .element(screen.getByRole("button", { name: "Reconnect your Mail account" }))
-      .toBeEnabled();
+    await expect.element(screen.getByText("Needs reconnecting")).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Reconnect Mail" })).toBeEnabled();
     await expect
       .element(screen.getByText("Your administrator needs to finish setting it up"))
       .toBeVisible();
     await expect.element(screen.getByText("Not available to you")).toBeVisible();
-    await expect.element(screen.getByText("Ready", { exact: true }).first()).toBeVisible();
     expect(screen.getByText("Ready", { exact: true }).all()).toHaveLength(2);
     expect(screen.getByRole("switch").query()).toBeNull();
-    expect(screen.getByRole("button", { name: /^(Connect|Reconnect) your/ }).all()).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /^(Connect your|Reconnect) / }).all()).toHaveLength(
+      2,
+    );
     // An organization's key is not the person's to disconnect.
-    expect(screen.getByRole("button", { name: "Disconnect your Wiki account" }).query()).toBeNull();
+    expect(screen.getByRole("list", { name: "Your Wiki accounts" }).query()).toBeNull();
+    expect(screen.getByRole("button", { name: /^Disconnect / }).all()).toHaveLength(2);
 
-    await press(screen.getByRole("button", { name: "Disconnect your Notes account" }));
+    await press(screen.getByRole("button", { name: "Disconnect Notes" }));
     await expect.element(screen.getByText("Connect your Notes account")).toBeVisible();
     expect(screen.getByText("Ready", { exact: true }).all()).toHaveLength(1);
+    expect(changes(control.calls)).toEqual([
+      { route: "DELETE /api/baskule/plugins/notes/accounts/notes-1", body: undefined, query: "" },
+    ]);
+  });
+
+  it("names an account before connecting it, starting from the plugin's name", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/plugins": () => ({
+        plugins: [
+          withAccounts("drive", "Google Drive", []),
+          withAccounts("notes", "Notes", [account({ id: "notes-1", label: "Work" })]),
+        ],
+      }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<UserPluginsView />);
+
+    await press(screen.getByRole("button", { name: "Connect your Google Drive account" }));
+    const first = page.getByRole("dialog", { name: "Connect your Google Drive account" });
+    await expect.element(first.getByLabelText("Account name")).toHaveValue("Google Drive");
+    await expect
+      .element(first.getByText("Choose a name you will recognize, such as Work or Second."))
+      .toBeVisible();
+    await expect.element(first.getByRole("button", { name: "Connect account" })).toBeEnabled();
+    await press(first.getByRole("button", { name: "Cancel" }));
+    await expect.element(first).not.toBeInTheDocument();
+
+    await press(screen.getByRole("button", { name: "Add another Notes account" }));
+    const another = page.getByRole("dialog", { name: "Add another Notes account" });
+    await expect.element(another.getByLabelText("Account name")).toHaveValue("");
+    await expect.element(another.getByRole("button", { name: "Connect account" })).toBeDisabled();
+    await userEvent.type(another.getByLabelText("Account name"), "Work");
+    await expect
+      .element(another.getByText("You already have an account with this name."))
+      .toBeVisible();
+    await expect.element(another.getByRole("button", { name: "Connect account" })).toBeDisabled();
+    await userEvent.clear(another.getByLabelText("Account name"));
+    await userEvent.type(another.getByLabelText("Account name"), "Second");
+    await expect.element(another.getByRole("button", { name: "Connect account" })).toBeEnabled();
+    expect(changes(control.calls)).toEqual([]);
+  });
+
+  it("renames, changes the default and disconnects the default only for a chosen one", async () => {
+    let accounts = [
+      account({ id: "a1", label: "Work", status: "reconnect" }),
+      account({ id: "a2", label: "Second", default: false }),
+    ];
+    const control = fakeControl({
+      "GET /api/baskule/plugins": () => ({ plugins: [withAccounts("gmail", "Gmail", accounts)] }),
+      "PATCH /api/baskule/plugins/gmail/accounts/a2": (body) => {
+        const patch = body as { label?: string; default?: true };
+        accounts = accounts.map((entry) =>
+          entry.id === "a2"
+            ? {
+                ...entry,
+                label: patch.label ?? entry.label,
+                default: entry.default || !!patch.default,
+              }
+            : { ...entry, default: entry.default && !patch.default },
+        );
+        return { ok: true };
+      },
+      "DELETE /api/baskule/plugins/gmail/accounts/a2": (_body, query) => {
+        if (query.get("default") !== "a1")
+          return Response.json({ error: "default_account_required" }, { status: 409 });
+        accounts = accounts
+          .filter((entry) => entry.id !== "a2")
+          .map((entry) => ({ ...entry, default: true }));
+        return { ok: true };
+      },
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<UserPluginsView />);
+    const list = screen.getByRole("list", { name: "Your Gmail accounts" });
+
+    await expect.element(screen.getByText("Reconnect your Gmail account")).toBeVisible();
+    await expect.element(list.getByText("Default", { exact: true })).toBeVisible();
+    expect(list.getByRole("button", { name: "Make Work the default account" }).query()).toBeNull();
+
+    await press(list.getByRole("button", { name: "Rename Second" }));
+    const rename = page.getByRole("dialog", { name: "Rename Second" });
+    await userEvent.clear(rename.getByLabelText("Account name"));
+    await userEvent.type(rename.getByLabelText("Account name"), "Work");
+    await expect.element(rename.getByRole("button", { name: "Save" })).toBeDisabled();
+    await userEvent.clear(rename.getByLabelText("Account name"));
+    await userEvent.type(rename.getByLabelText("Account name"), "  Personal ");
+    await press(rename.getByRole("button", { name: "Save" }));
+    await expect.element(list.getByText("Personal", { exact: true })).toBeVisible();
+    await expect.element(rename).not.toBeInTheDocument();
+
+    await press(list.getByRole("button", { name: "Make Personal the default account" }));
+    await expect.element(screen.getByText("Ready", { exact: true })).toBeVisible();
+    await expect
+      .element(list.getByRole("button", { name: "Make Work the default account" }))
+      .toBeVisible();
+
+    await press(list.getByRole("button", { name: "Disconnect Personal" }));
+    const replace = page.getByRole("dialog", { name: "Disconnect Personal?" });
+    await expect.element(replace.getByRole("radio", { name: "Work" })).not.toBeChecked();
+    await expect.element(replace.getByRole("button", { name: "Disconnect" })).toBeDisabled();
+    await press(replace.getByRole("radio", { name: "Work" }));
+    await press(replace.getByRole("button", { name: "Disconnect" }));
+    await expect.element(list.getByText("Personal", { exact: true })).not.toBeInTheDocument();
+    await expect.element(screen.getByText("Reconnect your Gmail account")).toBeVisible();
+    expect(list.getByRole("button", { name: /^Make / }).query()).toBeNull();
+
+    expect(changes(control.calls)).toEqual([
+      {
+        route: "PATCH /api/baskule/plugins/gmail/accounts/a2",
+        body: { label: "Personal" },
+        query: "",
+      },
+      { route: "PATCH /api/baskule/plugins/gmail/accounts/a2", body: { default: true }, query: "" },
+      {
+        route: "DELETE /api/baskule/plugins/gmail/accounts/a2",
+        body: undefined,
+        query: "?default=a1",
+      },
+    ]);
+  });
+
+  it("explains a refused account change in plain words", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/plugins": () => ({
+        plugins: [
+          withAccounts("gmail", "Gmail", [
+            account({ id: "a1", label: "Work" }),
+            account({ id: "a2", label: "Second", default: false }),
+          ]),
+        ],
+      }),
+      "PATCH /api/baskule/plugins/gmail/accounts/a2": () =>
+        Response.json({ error: "account_not_found" }, { status: 404 }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<UserPluginsView />);
+    using add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+
+    await press(screen.getByRole("button", { name: "Make Second the default account" }));
+    await vi.waitFor(() =>
+      expect(add).toHaveBeenCalledWith({
+        type: "error",
+        title: "Could not change your default account",
+        description: "This account is no longer connected. Reload the page.",
+      }),
+    );
+    await expect
+      .element(screen.getByRole("button", { name: "Make Second the default account" }))
+      .toBeEnabled();
   });
 
   it("explains a failed sign-in in plain words when the person comes back", async () => {

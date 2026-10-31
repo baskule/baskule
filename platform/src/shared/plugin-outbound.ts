@@ -46,6 +46,8 @@ export function checkMcpUrl(value: string, network: Network): URL {
   return url;
 }
 
+export const serverFingerprint = (server: PluginServer) => JSON.stringify([server.url, server.transport ?? "streamable-http", server.credential, server.oauth ?? null]);
+
 export async function connectMcp(server: Pick<PluginServer, "url" | "transport">, network: Network, headers: Record<string, string>, timeoutMs: number): Promise<Client> {
   const url = checkOutbound(server.url, network);
   const client = new Client({ name: "baskule-plugin-proxy", version: "0.4.0" }, { capabilities: {} });

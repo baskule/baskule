@@ -191,11 +191,11 @@ export class AgentRuntime {
         // Keep MCP tool prefixes short enough for model providers with bounded function names.
         const name = `plugin-${index}`;
         const key = `${this.spaceId}-${name}`;
-        const proxy = new PluginMcpProxy(server, sessionId => resolveTurnAuthor(sessionId, authorQuery(this.databaseClient)), async userId => {
+        const proxy = new PluginMcpProxy(server, sessionId => resolveTurnAuthor(sessionId, authorQuery(this.databaseClient)), async (userId, call) => {
           if (!this.control) throw new Error("ControlCell unavailable");
           const response = await this.control.fetch(new Request("http://control/_baskule/plugin-credential", {
             method: "POST", headers: { "content-type": "application/json", "x-baskule-internal": "1" },
-            body: JSON.stringify({ spaceId: this.spaceId, pluginId: server.pluginId, server: server.name, userId }),
+            body: JSON.stringify({ spaceId: this.spaceId, pluginId: server.pluginId, server: server.name, userId, ...call }),
           }));
           if (!response.ok) throw new Error("Plugin credential unavailable");
           return await response.json() as PluginCredential;

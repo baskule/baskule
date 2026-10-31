@@ -536,7 +536,7 @@ export class ControlService {
       return this.transcribe(req, session.user.id);
     }
     if (p === "/me" && m === "GET") return json(this.me(await this.requireSession(req)));
-    if (/^\/plugins\/(?:oauth\/callback|[^/]+\/(?:connect|connection))$/.test(p)) { const s = await this.requireSession(req); return this.connections.user(req, p, s.user, s.session.id); }
+    if (/^\/plugins\/(?:oauth\/callback|[^/]+\/(?:connect|accounts\/[^/]+))$/.test(p)) { const s = await this.requireSession(req); return this.connections.user(req, p, s.user, s.session.id); }
     if (p === "/plugins" || p.startsWith("/plugins/")) return this.plugins.user(req, p, (await this.requireSession(req)).user.id);
     if ((r = p.match(/^\/spaces\/([^/]+)\/plugins$/))) return this.pluginChange(req, this.plugins.space(req, r[1], (await this.requireSession(req)).user), r[1]);
     if (p === "/people" && m === "GET") {

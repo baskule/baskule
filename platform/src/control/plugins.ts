@@ -128,10 +128,12 @@ export class Plugins {
   async statusFor(userId: string, plugin: Plugin): Promise<MemberPlugin> {
     const user = this.rows("select banned from user where id=?", userId)[0];
     const allowed = !!user && !user.banned && plugin.enabled && this.assigned(userId, plugin.id);
-    const servers = await Promise.all(plugin.servers.map(async server => ({ name: server.name, credential: server.credential, status: pluginStatus({ allowed, server: {
-      credential: server.credential, setupDone: this.setupDone(plugin, server),
-      account: ["user-oauth"].includes(server.credential) ? await this.connections!.state(userId, plugin.id, server) : undefined,
-    } }) })));
+    const servers = await Promise.all(plugin.servers.map(async server => {
+      const accounts = server.credential === "user-oauth" ? await this.connections!.accounts(userId, plugin.id, server) : [];
+      return { name: server.name, credential: server.credential, accounts, status: pluginStatus({ allowed, server: {
+        credential: server.credential, setupDone: this.setupDone(plugin, server), account: accounts.find(a => a.default)?.status ?? "connect",
+      } }) };
+    }));
     return { id: plugin.id, name: plugin.name, description: plugin.description, ...(plugin.icon ? { icon: plugin.icon } : {}), skills: plugin.skills,
       status: servers.length ? worstStatus(servers.map(s => s.status)) : pluginStatus({ allowed }), servers };
   }
@@ -149,7 +151,7 @@ export class Plugins {
           let status = statuses.get(userId);
           if (!status) { status = await this.statusFor(userId, plugin); statuses.set(userId, status); }
           if (status.servers.find(s => s.name === server.name)?.status !== "ready" || !this.canUse(userId, spaceId, plugin.id, server.name).allowed) continue;
-          servers.push({ ...server, pluginId: plugin.id, pluginName: plugin.name, catalogUserId: userId, privateNetwork: serverNetwork(server.url) === "private" });
+          servers.push({ ...server, pluginId: plugin.id, pluginName: plugin.name, catalogUserId: userId, privateNetwork: serverNetwork(server.url) === "private", defaultAccountOnly: space.kind === "team" });
           break;
         }
       }

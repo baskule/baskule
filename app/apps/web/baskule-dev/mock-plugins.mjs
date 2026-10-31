@@ -1,7 +1,7 @@
 // baskule: the plugins and groups part of the mock front (shapes: packages/contracts/src/baskule-plugins.ts,
 // behaviour: platform/src/control/plugins.ts and groups.ts). In memory, seeded with a few plugins people
-// added themselves; catalog installs come from the real curated list. `/connect` signs in at once and
-// redirects back, as after a real consent. A vendor app is only remembered as saved, never its values.
+// added themselves; catalog installs come from the real curated list. `/connect` signs a named account in
+// at once and redirects back, as after a real consent. A vendor app is only remembered as saved.
 import * as NodeCrypto from "node:crypto";
 
 import { catalogService, catalogVendor } from "../../../packages/contracts/src/baskule-catalog.ts";
@@ -176,8 +176,16 @@ export function createPluginMock({ users, spaces }) {
       plugins: new Set(applicable.flatMap((group) => group.plugins)),
     };
   };
-  const connected = new Set();
-  const connectionKey = (userId, pluginId, server) => `${userId}\u0000${pluginId}\u0000${server}`;
+  /** @type {Array<{id: string, userId: string, pluginId: string, server: string, label: string, default: boolean}>} */
+  let accounts = [];
+  const accountsOf = (userId, pluginId, server) =>
+    accounts.filter(
+      (entry) => entry.userId === userId && entry.pluginId === pluginId && entry.server === server,
+    );
+  const accountLabel = (value) => {
+    const label = typeof value === "string" ? value.trim() : "";
+    return label.length >= 1 && label.length <= 100 && !/\p{Cc}/u.test(label) ? label : null;
+  };
   /** Whether the shared part of a server's sign-in is done: its organization key or its vendor's app. */
   const setupDone = (plugin, server) =>
     server.credential === "organization"
@@ -185,13 +193,14 @@ export function createPluginMock({ users, spaces }) {
       : server.credential !== "user-oauth" ||
         !server.oauth?.staticClient ||
         vendors.has(plugin.vendor);
+  /** A server's status follows the person's default account. */
   const connectionState = (plugin, server, userId) =>
     !plugin.enabled
       ? "unavailable"
       : !setupDone(plugin, server)
         ? "needs_setup"
         : server.credential !== "user-oauth" ||
-            connected.has(connectionKey(userId, plugin.id, server.name))
+            accountsOf(userId, plugin.id, server.name).some((entry) => entry.default)
           ? "ready"
           : "connect";
 
@@ -338,8 +347,9 @@ export function createPluginMock({ users, spaces }) {
           vendors.add(vendor);
         } else vendors.delete(vendor);
         // Saving or removing an app disconnects every account of this vendor.
-        for (const key of connected)
-          if (owned.some((plugin) => key.split("\u0000")[1] === plugin.id)) connected.delete(key);
+        accounts = accounts.filter(
+          (entry) => !owned.some((plugin) => plugin.id === entry.pluginId),
+        );
         return (send(res, 200, { ok: true, configured: vendors.has(vendor) }), true);
       }
     }
@@ -380,6 +390,7 @@ export function createPluginMock({ users, spaces }) {
         // A catalog plugin's vendor setup is shared by the vendor's other services.
         if (plugin.source.type !== "catalog") vendors.delete(plugin.vendor);
         plugins.delete(plugin.id);
+        accounts = accounts.filter((entry) => entry.pluginId !== plugin.id);
         for (const group of groups)
           group.plugins = group.plugins.filter((entry) => entry !== plugin.id);
         return (send(res, 200, { ok: true }), true);
@@ -466,6 +477,17 @@ export function createPluginMock({ users, spaces }) {
                 name: server.name,
                 credential: server.credential,
                 status: connectionState(plugin, server, me.id),
+                accounts:
+                  server.credential === "user-oauth"
+                    ? accountsOf(me.id, plugin.id, server.name)
+                        .toSorted((a, b) => Number(b.default) - Number(a.default))
+                        .map((entry) => ({
+                          id: entry.id,
+                          label: entry.label,
+                          default: entry.default,
+                          status: "ready",
+                        }))
+                    : [],
               }));
               const status = !plugin.enabled
                 ? "unavailable"
@@ -486,31 +508,85 @@ export function createPluginMock({ users, spaces }) {
         true
       );
     }
-    if ((r = /^\/plugins\/([^/]+)\/(connect|connection)$/.exec(api))) {
+    if ((r = /^\/plugins\/([^/]+)\/connect$/.exec(api)) && method === "GET") {
       const plugin = plugins.get(r[1]);
       if (!plugin || !grantsOf(me.id).plugins.has(r[1])) return (fail(res, 404, "not_found"), true);
-      const server = url.searchParams.get("server");
-      if (r[2] === "connection" && method === "DELETE") {
-        for (const s of plugin.servers)
-          if (server === null || s.name === server)
-            connected.delete(connectionKey(me.id, plugin.id, s.name));
+      const target = plugin.servers.find(
+        (s) => s.name === url.searchParams.get("server") && s.credential === "user-oauth",
+      );
+      if (!target) return (fail(res, 400, "plugin_server_required"), true);
+      const own = accountsOf(me.id, plugin.id, target.name);
+      const reconnect = url.searchParams.get("account");
+      const label = accountLabel(url.searchParams.get("label") ?? plugin.name.slice(0, 100));
+      const back = new URL(url.searchParams.get("returnTo") ?? "/", url.origin);
+      // A refused start comes back like a failed sign-in.
+      const error =
+        reconnect !== null && url.searchParams.has("label")
+          ? "invalid_plugin_input"
+          : reconnect !== null && !own.some((entry) => entry.id === reconnect)
+            ? "account_not_found"
+            : reconnect === null && !label
+              ? "invalid_plugin_input"
+              : reconnect === null && own.some((entry) => entry.label === label)
+                ? "account_label_taken"
+                : !setupDone(plugin, target)
+                  ? "oauth_client_configuration_required"
+                  : null;
+      if (error) {
+        back.searchParams.set("pluginConnection", "error");
+        back.searchParams.set("connectionError", error);
+      } else {
+        // Reconnecting keeps the account's id, name and default.
+        if (reconnect === null)
+          accounts.push({
+            id: id(),
+            userId: me.id,
+            pluginId: plugin.id,
+            server: target.name,
+            label,
+            default: own.length === 0,
+          });
+        back.searchParams.set("pluginConnection", "connected");
+      }
+      res.writeHead(302, { location: back.pathname + back.search });
+      res.end();
+      return true;
+    }
+    if ((r = /^\/plugins\/([^/]+)\/accounts\/([^/]+)$/.exec(api))) {
+      if (!plugins.has(r[1]) || !grantsOf(me.id).plugins.has(r[1]))
+        return (fail(res, 404, "not_found"), true);
+      const owned = accounts.find(
+        (entry) => entry.id === r[2] && entry.userId === me.id && entry.pluginId === r[1],
+      );
+      if (!owned) return (fail(res, 404, "account_not_found"), true);
+      const siblings = accountsOf(me.id, owned.pluginId, owned.server).filter(
+        (entry) => entry !== owned,
+      );
+      if (method === "PATCH") {
+        const body = await readBody(req);
+        const label = body?.label === undefined ? undefined : accountLabel(body.label);
+        if (
+          label === null ||
+          (body?.default !== undefined && body.default !== true) ||
+          (label === undefined && body?.default === undefined)
+        )
+          return (fail(res, 400, "invalid_plugin_input"), true);
+        if (label !== undefined && siblings.some((entry) => entry.label === label))
+          return (fail(res, 409, "account_label_taken"), true);
+        if (label !== undefined) owned.label = label;
+        if (body.default) {
+          for (const entry of siblings) entry.default = false;
+          owned.default = true;
+        }
         return (send(res, 200, { ok: true }), true);
       }
-      if (r[2] === "connect" && method === "GET") {
-        const target = plugin.servers.find((s) => s.name === server);
-        if (!target) return (fail(res, 400, "unknown_server"), true);
-        const back = new URL(url.searchParams.get("returnTo") ?? "/", url.origin);
-        // A refused start comes back like a failed sign-in.
-        if (!setupDone(plugin, target)) {
-          back.searchParams.set("pluginConnection", "error");
-          back.searchParams.set("connectionError", "oauth_client_configuration_required");
-        } else {
-          connected.add(connectionKey(me.id, plugin.id, target.name));
-          back.searchParams.set("pluginConnection", "connected");
-        }
-        res.writeHead(302, { location: back.pathname + back.search });
-        res.end();
-        return true;
+      if (method === "DELETE") {
+        const replacement = siblings.find((entry) => entry.id === url.searchParams.get("default"));
+        if (owned.default && siblings.length > 0 && !replacement)
+          return (fail(res, 409, "default_account_required"), true);
+        accounts = accounts.filter((entry) => entry !== owned);
+        if (owned.default && replacement) replacement.default = true;
+        return (send(res, 200, { ok: true }), true);
       }
     }
     if ((r = /^\/spaces\/([^/]+)\/plugins$/.exec(api))) {
