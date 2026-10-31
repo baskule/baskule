@@ -1,0 +1,80 @@
+# Developer-only overlay. deploy/lib.sh selects it for source-build commands.
+services:
+  baskule-bootstrap:
+    image: baskule-celld:${BASKULE_TAG:-local}
+    container_name: baskule-bootstrap
+    build:
+      context: ..
+      dockerfile: deploy/celld/Dockerfile
+  baskule-celld-a:
+    image: baskule-celld:${BASKULE_TAG:-local}
+    container_name: baskule-celld-a
+    environment:
+      CELLD_OTEL: ${BASKULE_CELLD_OTEL-http://baskule-traces:4318}
+    build:
+      context: ..
+      dockerfile: deploy/celld/Dockerfile
+  baskule-celld-b:
+    image: baskule-celld:${BASKULE_TAG:-local}
+    container_name: baskule-celld-b
+    environment:
+      CELLD_OTEL: ${BASKULE_CELLD_OTEL-http://baskule-traces:4318}
+    build:
+      context: ..
+      dockerfile: deploy/celld/Dockerfile
+  baskule-deploy:
+    image: baskule-celld:${BASKULE_TAG:-local}
+    container_name: baskule-deploy
+    environment:
+      DEPLOY_APP: ${DEPLOY_APP:-platform}
+      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
+    volumes:
+      - ${AUTH_CONFIG_FILE:-./auth.json}:/src/auth.json:ro
+      - ${BASKULE_PLATFORM_DIR:-../platform}:/src/platform:ro
+      - ./hello:/src/hello:ro
+  baskule-computerd:
+    image: baskule-computerd:${BASKULE_TAG:-local}
+    container_name: baskule-computerd
+    build:
+      context: ..
+      dockerfile: computerd/Dockerfile
+    environment:
+      COMPUTER_IMAGE: baskule-computer:${BASKULE_TAG:-local}
+      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
+  baskule-openshell:
+    image: baskule-openshell-gateway:${BASKULE_TAG:-local}
+    container_name: baskule-openshell
+    environment:
+      OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP-http://baskule-traces:4317}
+      BASKULE_REGISTRY: ""
+      BASKULE_VERSION: ${BASKULE_TAG:-local}
+  baskule-rustfs:
+    container_name: baskule-rustfs
+  baskule-edge:
+    container_name: baskule-edge
+  baskule-traces:
+    container_name: baskule-traces
+
+  backup:
+    image: baskule-celld:${BASKULE_TAG:-local}
+  restore:
+    image: baskule-celld:${BASKULE_TAG:-local}
+
+networks:
+  baskule-net:
+    name: baskule-net
+  baskule-computers:
+    name: baskule-computers
+volumes:
+  baskule-rustfs:
+    name: baskule-rustfs
+  baskule-celld-a:
+    name: baskule-celld-a
+  baskule-celld-b:
+    name: baskule-celld-b
+  baskule-edge-data:
+    name: baskule-edge-data
+  baskule-openshell-docker:
+    name: baskule-openshell-docker
+  baskule-openshell-state:
+    name: baskule-openshell-state

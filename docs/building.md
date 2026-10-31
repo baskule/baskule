@@ -37,13 +37,58 @@ Build OpenShell in the Ubuntu 24.04 amd64 environment defined by `deploy/build-e
 
 Native compilation requires a matching `CARGO_TARGET_DIR`. Keep native caches separate for each toolchain and target. Follow [OpenShell packaging](../openshell/README.md) for the build environment and [upstream contributor instructions](../vendor/openshell/CONTRIBUTING.md) for source development. Image builds also use jq, rsync, and zstd. Allow disk space for JavaScript dependencies, Rust outputs, and container images.
 
-Create private runtime configuration as described in [the deployment guide](../deploy/README.md). From a prepared build environment, build without replacing a running installation:
+For a source-build installation, clone the repository and configure its developer Compose override:
 
 ```sh
-deploy/build.sh --no-deploy
+git clone https://github.com/baskule/baskule
+cd baskule
+deploy/init-env.sh
+$EDITOR deploy/.env
 ```
 
-Omitting `--no-deploy` also deploys. The build environment's `run.sh` entry point also builds and deploys; it is not a build-only command. Use deployment commands only for an installation you are authorized to operate. Keep `.env`, authentication secrets, storage credentials, and signing keys outside Git.
+Set the first admin and public address as in the [installation guide](install.md). `deploy/auth.json` is the
+source build's optional authentication file; `AUTH_CONFIG_FILE` selects another. The released installation uses
+`AUTH_CONFIG` in `.env` instead. Keep secrets outside Git and do not source `.env` as shell code.
+
+Build and start from the Ubuntu build environment. For example, with the checkout and caches under `/opt/baskule`:
+
+```sh
+docker build --network=host -t baskule-build deploy/build-env
+docker run --rm --network=host --pid=host \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /opt/baskule:/opt/baskule -w /opt/baskule/src baskule-build
+```
+
+The build environment installs dependencies and runs `deploy/build.sh`. A cold native build can take 30–60 minutes.
+For a linked worktree, also mount its Git common directory and pinned-tool directory at their original paths.
+Use this only for an installation you are authorized to operate. To build without starting or replacing services,
+override the entry point and set a target-specific native cache:
+
+```sh
+build_key=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
+docker run --rm --network=host \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /opt/baskule:/opt/baskule -w /opt/baskule/src \
+  -e CARGO_HOME=/opt/baskule/cache/cargo \
+  -e CARGO_TARGET_DIR=/opt/baskule/cache/openshell-target-ubuntu24-$build_key \
+  baskule-build bash deploy/build.sh --no-deploy
+```
+
+`deploy/build.sh` builds the hosted web app, SpaceCell, downloads when available, and platform Worker, then packages
+computer, OpenShell, celld, and computerd images. The celld image contains the platform bundle. The gateway contains
+compressed computer, supervisor, and sandbox images for its private daemon. Source hashes reuse matching images;
+a computer change also rebuilds the gateway, and a platform bundle change rebuilds celld.
+
+The source scripts add `deploy/docker-compose.build.yml` to the single release Compose definition. This selects
+`:local` images, build contexts, checkout mounts for rapid app redeployment, and the developer stack's fixed resource
+names. `deploy/up.sh` builds missing images and starts this source stack; `deploy/deploy.sh` deploys a changed bundle.
+`deploy/down.sh` stops it. `openshell/load-images.sh` remains a developer helper for an existing shared test gateway;
+released installations load their images inside Compose. `scripts/stack` and `scripts/check` keep their worktree-local
+app path. Do not point them at another operator's installation.
+
+`deploy/build.sh --force` rebuilds web and SpaceCell. `DOWNLOADS=0` omits native downloads. Set
+`BASKULE_ARTIFACT_DIR` to a directory of packaged clients to include under `/downloads/`. Image and bundle build
+logs stay in `.run/build/`. Deployment scripts honor `deploy/.stack-lock` while checks use the source stack.
 
 Generated bundles, dependencies, downloaded packages, and local evidence stay ignored. Builds use checked-in source and lockfiles. `source-provenance.json` records the imported upstream snapshots; `/version.json` and generated `BUILT_FROM` files identify built inputs.
 

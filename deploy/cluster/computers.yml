@@ -1,0 +1,81 @@
+# Released cluster role. See docs/install-cluster.md.
+name: baskule-computers
+services:
+  baskule-computerd:
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computerd:${BASKULE_VERSION:-0.5.0}
+    restart: unless-stopped
+    environment:
+      COMPUTERD_TOKEN: ${COMPUTERD_TOKEN}
+      COMPUTERD_PORT: '47094'
+      OPENSHELL_GATEWAY: baskule-openshell:47095
+      OPENSHELL_VOLUMES_URL: http://baskule-openshell:47096
+      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN:?set OPENSHELL_VOLUMES_TOKEN in .env}
+      COMPUTER_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computer:${BASKULE_VERSION:-0.5.0}
+      COMPUTER_CPUS: ${COMPUTER_CPUS:-2}
+      COMPUTER_MEMORY: ${COMPUTER_MEMORY:-3Gi}
+      PRODUCT_SETTINGS_URL: ${PLATFORM_URL:?set PLATFORM_URL}/api/baskule/runtime-settings
+      LOG_LEVEL: ${COMPUTERD_LOG_LEVEL:-info}
+      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL:-}
+    networks:
+    - baskule-net
+    - baskule-computers
+    depends_on:
+      baskule-openshell:
+        condition: service_healthy
+    cpus: 1
+    mem_limit: 512m
+    ports:
+    - ${BASKULE_PRIVATE_IP:?set BASKULE_PRIVATE_IP}:${COMPUTERD_PORT:-47094}:47094
+  baskule-openshell:
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-openshell-gateway:${BASKULE_VERSION:-0.5.0}
+    restart: unless-stopped
+    # First start imports the bundled computer into the private daemon.
+    healthcheck:
+      start_period: 10m
+    privileged: true
+    environment:
+      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN}
+      OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP:-}
+      BASKULE_REGISTRY: ${BASKULE_REGISTRY:-ghcr.io/baskule}
+      BASKULE_VERSION: ${BASKULE_VERSION:-0.5.0}
+    volumes:
+    - baskule-openshell-docker:/var/lib/docker
+    - baskule-openshell-state:/var/lib/openshell
+    networks:
+    - baskule-computers
+    stop_grace_period: 60s
+    cpus: ${OPENSHELL_CPUS:-3}
+    mem_limit: ${OPENSHELL_MEMORY:-8g}
+    pids_limit: 16384
+  backup:
+    profiles:
+    - backup
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
+    entrypoint:
+    - baskule-celld-job
+    - backup
+    network_mode: none
+    logging:
+      driver: none
+    volumes:
+    - baskule-openshell-state:/backup/openshell-state:ro
+    - baskule-openshell-docker:/backup/openshell-docker:ro
+  restore:
+    profiles:
+    - backup
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
+    entrypoint:
+    - baskule-celld-job
+    - restore
+    network_mode: none
+    logging:
+      driver: none
+    volumes:
+    - baskule-openshell-state:/backup/openshell-state
+    - baskule-openshell-docker:/backup/openshell-docker
+networks:
+  baskule-net: {}
+  baskule-computers: {}
+volumes:
+  baskule-openshell-state: {}
+  baskule-openshell-docker: {}

@@ -1,24 +1,18 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="brand/wordmark-inverse.svg">
-    <img alt="Baskule" src="brand/wordmark.svg" width="340">
+    <img alt="Baskule" src="brand/wordmark.svg" width="300">
   </picture>
 </p>
 
 <h3 align="center">Self-hosted AI agents for your whole team.</h3>
 
-<p align="center">
-  Baskule is an open-source agent platform you run on your own servers. Your team chats with agents that work on a
-  sandboxed Linux computer with your files, your tools and the model you choose, from the web, the desktop or a phone.
-</p>
+Baskule is an open-source agent platform that you run on your own servers. Your team chats with agents from the web,
+desktop and mobile apps. Each agent has a sandboxed computer, so it can work on files, run code, browse the web and
+produce documents instead of only answering. You choose the model.
 
-<p align="center">
-  <a href="#install-it">Install</a> ·
-  <a href="#how-it-is-built">How it works</a> ·
-  <a href="#what-is-available-today">What is available</a> ·
-  <a href="docs/install.md">Installation guide</a> ·
-  <a href="LICENSE">MIT licence</a>
-</p>
+> [!NOTE]
+> Baskule is under active development. Expect breaking changes between releases.
 
 <p align="center">
   <picture>
@@ -27,92 +21,18 @@
   </picture>
 </p>
 
-> [!NOTE]
-> Baskule is under active development. New features and releases land often; the
-> [status table](#what-is-available-today) shows what is ready and what is coming.
+## How it works
 
-## What Baskule is
+Baskule has three parts:
 
-Baskule is one installation that gives everyone in your organization three things:
-
-- **A chat app** on the web, the desktop and the phone, with one account and the same conversations everywhere.
-- **An agent in every conversation.** It is built on OpenCode: it plans, calls tools and keeps going until the task
-  is done. It reads and writes files, searches the web and uses your plugins.
-- **A computer for every space.** Each personal or team space has its own sandboxed Linux machine with a shell,
-  Python, Node, a real browser and office tools. The agent works there, so it can actually produce the spreadsheet,
-  the document or the script instead of describing it.
-
-Most AI chats can only answer. A Baskule agent can also act on your files and tools, and it does so on
-infrastructure you control:
-
-- **Any model.** Mistral, OpenAI, Anthropic, a free model, or any OpenAI-compatible endpoint, including one running on
-  your own GPUs. An admin switches it at any time.
-- **Your servers.** One computer in your office, your data center, or a cloud in the country you choose.
-- **Your data.** Conversations, spaces and settings live in your own S3-compatible bucket, so you can back them up or
-  move them.
-- **Open source.** MIT licensed, in one repository. Change it, extend it, run your own build.
-
-## What your team gets
-
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <h4>Any model, swapped in one click</h4>
-      <p>Pick Mistral, OpenAI, Anthropic, a free model, or any OpenAI-compatible endpoint, including a model running
-      on your own network. Baskule checks the key and the model before it saves anything.</p>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/readme/models-dark.png">
-        <img alt="Choosing the AI provider in the admin area" src="docs/readme/models-light.png">
-      </picture>
-    </td>
-    <td width="50%" valign="top">
-      <h4>Plugins for your company's tools</h4>
-      <p>Add connectors, skills and plugin bundles from public catalogs (the official MCP Registry, Anthropic's and
-      OpenAI's plugin catalogs) or from your own address. Nothing runs until an admin turns it on for a group.</p>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/readme/plugins-dark.png">
-        <img alt="The plugin catalog" src="docs/readme/plugins-light.png">
-      </picture>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <h4>Personal and team spaces</h4>
-      <p>Everyone gets a private space. Teams share spaces with their chats, files and their own computer, so the
-      sales team's agent works on the sales team's documents.</p>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/readme/spaces-dark.png">
-        <img alt="Team spaces in the admin area" src="docs/readme/spaces-light.png">
-      </picture>
-    </td>
-    <td width="50%" valign="top">
-      <h4>People, groups and permissions</h4>
-      <p>Invite people, sign in with passwords, Google, Microsoft, GitHub or your company's single sign-on, and give
-      each group the plugins and permissions it needs.</p>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/readme/groups-dark.png">
-        <img alt="Groups in the admin area" src="docs/readme/groups-light.png">
-      </picture>
-    </td>
-  </tr>
-</table>
-
-And more, out of the box:
-
-- **Agents that use a real computer.** Files, a shell, Python and Node, a web browser that people can watch while the
-  agent drives it, and tools to read and write Word, Excel, PowerPoint and PDF files.
-- **Accounts that stay personal.** A plugin can act with each person's own Google or Microsoft account, so the agent
-  only sees what that person is allowed to see.
-- **Scheduled tasks.** Ask for a Monday-morning pipeline summary once, and it arrives every Monday.
-- **Usage and limits.** See usage by person, model and space, export it to CSV, and set daily, weekly or monthly
-  limits for each person.
-- **Voice input.** Dictate a message instead of typing it.
-- **Every device.** The same account, chats and files on the web, on the desktop and on the phone.
-
-## How it is built
-
-Baskule has three parts. People use the **clients**. The **agent platform** runs everyone's agents and holds the
-organization together. The **computers** are where the agents do the work.
+- **Clients.** Web, desktop and mobile apps built on [T3 Code](https://github.com/pingdotgg/t3code). One account,
+  the same conversations on every device.
+- **Agent platform.** People, groups, personal and team spaces, plugins and usage. It runs an
+  [OpenCode](https://github.com/anomalyco/opencode) agent for every conversation. Several platform nodes can run
+  side by side, and when one stops another takes over.
+- **Computers.** Each space gets an isolated Linux computer with a shell, Python, Node, a browser and office tools,
+  sandboxed by [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell). It starts when an agent needs it and stops
+  when idle. It can reach the internet, never your private network.
 
 <p align="center">
   <picture>
@@ -121,155 +41,89 @@ organization together. The **computers** are where the agents do the work.
   </picture>
 </p>
 
-**1. Clients.** A web app, desktop apps and mobile apps, all signed in to the same account. A chat started on a
-laptop continues on a phone. Desktop and mobile apps connect to any Baskule installation by its address or a QR code.
+What Baskule connects to in your environment:
 
-**2. The agent platform.** It manages people, groups, spaces, plugins, usage and the AI connection. Each space has
-its own chat engine and agent, and many spaces run side by side. Spaces sleep when nobody uses them and
-wake on the next message.
+| | |
+| --- | --- |
+| Model | Mistral, OpenAI, Anthropic, or any OpenAI-compatible endpoint, including your own GPUs. Admins change it in the app. |
+| Sign-in | Google, Microsoft, GitHub or any OIDC provider, or passwords. No SAML. |
+| Tools | MCP servers and plugins, using the organization's account or each person's own. |
+| Storage | All data lives in one S3-compatible bucket, or on the machine's disk. |
+| Network | One HTTP port, behind your HTTPS reverse proxy. |
+| Monitoring | OpenTelemetry traces, with a bundled Jaeger. |
 
-**3. Computers.** Each space gets an isolated Linux computer with its own disk, started when an agent needs it and
-stopped when it is idle. Its network access is checked against a policy, and it can never reach your private
-network or the platform's internal services.
+## What it does
 
-## What is available today
+| Area | Today |
+| --- | --- |
+| Clients | Web app, Linux desktop and Android. macOS and Windows build from source, unsigned. No iOS app yet. |
+| Agents | Files, shell, a browser that people can watch, Office and PDF documents, scheduled tasks, voice input. |
+| Organization | Personal and team spaces, groups and permissions, invitations. |
+| Plugins | Connectors, skills and bundles from public catalogs or your own address, off until an admin enables them for a group. |
+| Usage | By person, model and space, with CSV export and per-person limits. |
 
-| Part | Item | Status |
-| --- | --- | --- |
-| Clients | Web app | 🟢 Available |
-| | Linux desktop app (AppImage) | 🟢 Available |
-| | Android app (APK) | 🟢 Available, outside the Play Store for now |
-| | macOS desktop app | 🟡 Preview: builds today, signed releases coming |
-| | Windows desktop app | 🟡 Preview: builds today, signed releases coming |
-| | iOS app | ⚪ Not available yet |
-| Platform | Single-machine installation | 🟢 Available |
-| | Several platform nodes with automatic failover (on one machine today) | 🟢 Available |
-| | External S3-compatible storage | 🟢 Available |
-| | Mistral, OpenAI, Anthropic, OpenCode (free) and custom endpoints | 🟢 Available |
-| | Several models offered at once in one installation | ⚪ Not available yet: one model for the organization, switchable at any time |
-| | Plugins: MCP connectors, skills and bundles | 🟢 Available |
-| | Sign-in with passwords, Google, Microsoft, GitHub and OIDC | 🟢 Available |
-| | SAML sign-in | ⚪ Not available: use your identity provider's OIDC connection |
-| Computers | Computers on the platform's machine | 🟢 Available |
-| | Computers spread over several machines or Kubernetes | 🟡 In progress |
-| Installation | Build from source and run with Docker Compose | 🟢 Available |
-| | Prebuilt images and a one-command installer | ⚪ Coming |
+Not yet: several models in one organization, computers spread across several hosts.
 
-The native apps are built from this repository today. Ready-made downloads arrive with the first public release.
+## Install
 
-## From one computer to a fleet
+Run released images on a Linux x86-64 machine with Docker Compose 2.24.4 or newer, 4 CPU cores, 24 GiB RAM and
+80 GB free disk. Choose a published version, generate secrets, set the public address and first admin in `.env`,
+then start. The [installation guide](docs/install.md) covers configuration, HTTPS, SSO, storage, backups and updates.
 
-Install Baskule on a single machine and it works for a team of a few people. The platform is built so the same
-software can spread over a fleet of servers for hundreds of people and agents running in parallel. Today it runs
-several platform nodes with automatic failover on one machine; spreading over several machines is in progress (see
-the [status table](#what-is-available-today)).
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/readme/scale-dark.png">
-    <img alt="Baskule on one computer, then on a fleet of machines" src="docs/readme/scale-light.png" width="900">
-  </picture>
-</p>
-
-## Under the hood
-
-The agent platform runs on [celld](https://github.com/denoland/celld), a self-hosted runtime for distributed
-Durable Objects. Every celld node can serve every request. The organization lives in one cell, the **ControlCell**,
-and every space lives in its own **SpaceCell**, which runs the chat engine (derived from T3 Code) and the agent
-(OpenCode) on one SQLite database. When a node stops, its cells move to another node within seconds.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/readme/under-the-hood-dark.png">
-    <img alt="Detailed architecture: edge, celld nodes, S3 bucket, computerd and OpenShell computers" src="docs/readme/under-the-hood-light.png" width="900">
-  </picture>
-</p>
-
-**Storage is one S3 bucket.** Every cell's database and log are stored in an S3-compatible bucket. On a single
-machine that is [RustFS](https://github.com/rustfs/rustfs) writing to the local disk. In production it can be any S3
-provider: a replicated bucket so nothing is lost, or a sovereign provider in your own country. Backups are a copy
-of that bucket and of the computers' disks.
-
-**Computers are sandboxes.** `computerd` starts, stops and connects computers. They run in
-[NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell), which enforces file, process and network policy for each
-one. Computers only reach the public internet, never private addresses.
-
-**Credentials stay protected.** AI keys are write-only in the admin area. Plugin tokens and OAuth secrets are
-encrypted with a key derived from the installation's secret. Sessions are checked on every request and revoked at
-once when someone is removed.
-
-**Everything is observable.** Every platform service sends OpenTelemetry traces to a bundled Jaeger.
-
-## Install it
-
-The quickest way is to let a coding agent do it. Open [Codex](https://openai.com/codex/) or
-[Claude Code](https://claude.com/claude-code) on the machine that will run Baskule and paste:
-
-```text
-Install Baskule on this machine by following
-https://github.com/baskule/baskule/blob/main/docs/install.md
-Use local storage and password sign-in. Create the first admin account for <your email>.
-Ask me before running anything with sudo, and give me the address and the admin password when it is done.
+```sh
+mkdir baskule && cd baskule
+VERSION=0.5.0
+ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
+curl -fLO "$ASSETS/docker-compose.yml"
+curl -fL "$ASSETS/baskule.env.example" -o .env.example
+umask 077
+docker run --rm -i --network none --entrypoint baskule-celld-job \
+  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$VERSION" init-env - < .env.example > .env
+$EDITOR .env
+docker compose up -d
 ```
 
-For a first try you need one machine running **Ubuntu 24.04 (x86-64)** with **Docker**, **4 CPU cores**,
-**16 GB of memory** and **80 GB of free disk**. The first build compiles the sandbox runtime and takes a while; later
-updates are quick.
+For several platform machines with a separate computers host, follow the [cluster guide](docs/install-cluster.md).
 
-Prefer to do it yourself? Follow the [installation guide](docs/install.md). It also covers HTTPS, single sign-on,
-external storage, backups and updates.
+## Develop
 
-## Built on the shoulders of
+```sh
+scripts/worktree setup         # pinned toolchain and dependencies
+source scripts/env.sh
+scripts/worktree runtime       # build the chat engine bundle
+scripts/stack up --profile light
+scripts/stack url
+```
 
-Baskule would not exist without these projects. Thank you to their authors and communities.
-
-- [**T3 Code**](https://github.com/pingdotgg/t3code) by T3 Tools: the web, desktop and mobile clients and the chat
-  engine started as a fork of T3 Code (MIT).
-- [**NVIDIA OpenShell**](https://github.com/NVIDIA/OpenShell): the sandbox runtime for the computers, included with
-  small patches (Apache 2.0).
-- [**OpenCode**](https://github.com/anomalyco/opencode): the agent that runs inside every space.
-- [**celld**](https://github.com/denoland/celld) by Deno: the distributed runtime of the agent platform.
-- [**Better Auth**](https://github.com/better-auth/better-auth) for sign-in and sessions, and
-  [**Drizzle ORM**](https://github.com/drizzle-team/drizzle-orm) for the database schema.
-- [**RustFS**](https://github.com/rustfs/rustfs) for local S3 storage, [**Caddy**](https://github.com/caddyserver/caddy)
-  for the edge, and [**Jaeger**](https://github.com/jaegertracing/jaeger) with
-  [**OpenTelemetry**](https://opentelemetry.io) for tracing.
-- [**Playwright MCP**](https://github.com/microsoft/playwright-mcp) and [**Chromium**](https://www.chromium.org) for the
-  agents' browser, and [**LibreOffice**](https://www.libreoffice.org) and [**pandoc**](https://pandoc.org) for their
-  documents.
-- The [**Model Context Protocol**](https://modelcontextprotocol.io) and its registry for plugins, and
-  [**models.dev**](https://models.dev) for model prices and limits.
-- The clients are built with [React](https://react.dev), [TanStack Router](https://tanstack.com/router),
-  [Tiptap](https://tiptap.dev), [Effect](https://effect.website), [Electron](https://www.electronjs.org),
-  [Expo](https://expo.dev) and [React Native](https://reactnative.dev).
-- The build chain uses [Node.js](https://nodejs.org), [pnpm](https://pnpm.io), [TypeScript](https://www.typescriptlang.org),
-  [Vite+](https://github.com/voidzero-dev/vite-plus), [esbuild](https://esbuild.github.io), [Vitest](https://vitest.dev),
-  [Rust](https://www.rust-lang.org), [Z3](https://github.com/Z3Prover/z3) and [Docker](https://www.docker.com).
-
-Licences and notices for these projects are kept with their code; see [third-party notices](THIRD_PARTY_NOTICES.md)
-and [source provenance](source-provenance.json).
-
-## For developers
-
-Baskule is one repository. Start with [building from source](docs/building.md), the
-[development workflow](docs/development-workflow.md) and the [contribution guide](CONTRIBUTING.md).
+The `light` profile runs the platform with a fake model and no computers; `full` adds computers.
+[Building from source](docs/building.md) lists the prerequisites, and the
+[development workflow](docs/development-workflow.md) explains how to choose checks.
 
 | Directory | Contents |
 | --- | --- |
-| `app/` | The clients (web, desktop, mobile) and the SpaceCell chat engine, derived from T3 Code |
-| `platform/` | The agent platform: sign-in, accounts, spaces, plugins and the embedded OpenCode agent |
+| `app/` | Web, desktop and mobile clients and the chat engine, forked from T3 Code |
+| `platform/` | The agent platform: sign-in, organization, spaces, plugins and the OpenCode agent |
 | `computer/`, `computerd/` | The computer image and the service that manages computers |
 | `openshell/`, `vendor/openshell/` | OpenShell packaging and its patched source |
-| `desktop/` | Desktop packaging and native client checks |
-| `deploy/` | Docker Compose deployment, storage and operations scripts |
-| `e2e/` | End-to-end journeys and integration checks |
+| `deploy/` | Docker Compose deployment, build container and operation scripts |
+| `desktop/` | Desktop packaging |
+| `e2e/` | End-to-end tests |
 | `scripts/`, `stack/` | Toolchain setup, development stacks and check selection |
 
-More reading: [installation settings](docs/installation-settings.md), [hosted CI and releases](docs/ci.md),
-[localization](docs/localization.md) and the [agent platform internals](platform/README.md).
+## Built on
+
+- [T3 Code](https://github.com/pingdotgg/t3code): the clients and the chat engine started as a fork (MIT).
+- [OpenCode](https://github.com/anomalyco/opencode): the agent.
+- [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell): the computers' sandbox, included with patches (Apache 2.0).
+- [celld](https://github.com/denoland/celld): the runtime of the agent platform.
+- [Better Auth](https://github.com/better-auth/better-auth), [Drizzle ORM](https://github.com/drizzle-team/drizzle-orm),
+  [RustFS](https://github.com/rustfs/rustfs), [Caddy](https://github.com/caddyserver/caddy),
+  [Jaeger](https://github.com/jaegertracing/jaeger), [Playwright MCP](https://github.com/microsoft/playwright-mcp),
+  [LibreOffice](https://www.libreoffice.org) and [pandoc](https://pandoc.org).
 
 ## Licence
 
-Baskule is released under the [MIT licence](LICENSE). Included third-party code keeps its own licence: the T3 Code
-fork its [MIT licence](app/LICENSE), and OpenShell its [Apache 2.0 licence](vendor/openshell/LICENSE) and
-[third-party notices](vendor/openshell/THIRD-PARTY-NOTICES).
+Baskule is released under the [MIT licence](LICENSE). Included third-party code keeps its own licence: `app/` the
+T3 Code [MIT licence](app/LICENSE), and `vendor/openshell/` the [Apache 2.0 licence](vendor/openshell/LICENSE) with
+its [notices](vendor/openshell/THIRD-PARTY-NOTICES). See [third-party notices](THIRD_PARTY_NOTICES.md) and
+[source provenance](source-provenance.json).

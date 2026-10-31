@@ -33,7 +33,7 @@ gh workflow run release.yml --repo baskule/baskule --ref main \
 
 Manual factory runs also post a `Release factory` commit status, linking the candidate to the full run. [GitHub excludes workflow-dispatch job checks from PR checks](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks). This status is separate from the routine `CI required` gate.
 
-The backend job builds the Worker, SpaceCell and four runtime images, then exercises the disposable fake-model release stack. It runs `scripts/check release upstream --fresh`, including every upstream server and web unit test. Backend image IDs remain in that job; other jobs receive explicit artifacts. The Linux app job builds hosted web and a real AppImage and runs the packaged application under Xvfb. Cold OpenShell compilation can be lengthy; disk and build evidence are retained in the run.
+The Linux app job first verifies hosted web and the AppImage. The backend job embeds that web bundle and download, builds Worker, SpaceCell and six runtime images, then exercises the disposable fake-model release stack. It runs `scripts/check release upstream --fresh`, including every upstream server and web unit test. Backend image IDs remain in that job; other jobs receive explicit artifacts. Only tag runs or manual runs with `verify_only=false` log in to GHCR with `GITHUB_TOKEN` and push the verified version tags. The backend job needs `packages: write`; verification-only runs never log in or push. The packaged AppImage is checked under Xvfb. Cold OpenShell compilation can be lengthy; disk and build evidence are retained in the run.
 
 The native workflow compiles Android arm64, an iOS simulator app, macOS arm64/x64 and Windows x64. Windows packaging executes the existing native-load and server-archive probes. iOS includes a simulator install/launch smoke. Android does not add an emulator lane. Optional upstream Windows package diagnostics remain manual.
 
@@ -41,7 +41,7 @@ Each artifact includes checksums and verification/signing status. Android's defa
 
 ## Tags and releases
 
-`VERSION` is the source version (currently `0.5.0`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.0` starts the full release factory; its version must match `VERSION`. Its first build stage generates missing translations with the `release` environment's `TRANSLATION_API_KEY` (restricted to `v*` tags) and shares them with every build; see [localization](localization.md). The draft GitHub release waits for backend, Linux apps and native builds to succeed. This path does not deploy an installation or submit apps to stores. A manual verification run creates no release. Publishing a manual draft requires `verify_only=false`. A manual version override can be supplied for a candidate; otherwise the factory reads `VERSION`.
+`VERSION` is the source version (currently `0.5.0`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.0` starts the full release factory; its version must match `VERSION`. Its first build stage generates missing translations with the `release` environment's `TRANSLATION_API_KEY` (restricted to `v*` tags) and shares them with every build; see [localization](localization.md). The draft GitHub release waits for backend, Linux apps and native builds to succeed. It attaches the standalone Compose file and env example, the three cluster role files and their examples, checksums, and built packages. Images use version tags; Compose retains digest pins for third-party images. This path does not deploy an installation or submit apps to stores. A manual verification run creates no release and publishes no images. Publishing a manual draft requires `verify_only=false`. A manual version override can be supplied for a candidate; otherwise the factory reads `VERSION`.
 
 Versions and source revisions are recorded with the outputs. Use a versioned tag for an intended release. Local desktop and mobile builds also default to `VERSION`; `BASKULE_VERSION` and `T3CODE_MOBILE_VERSION` respectively override it. Standalone native workflow dispatches default to `VERSION`.
 
@@ -56,3 +56,11 @@ iOS device archives, provisioning, TestFlight and App Store submission require t
 ## Inspect evidence
 
 Use a run's job logs and artifacts to inspect failures, checksums, package status and source provenance. Classify a failure before rerunning only the affected jobs. Keep package/browser/unit evidence distinct from physical-device acceptance. Verification artifacts are retained for one day; a verified GitHub release is the durable distribution record.
+
+## First image release
+
+The owner must enable Actions package publishing and allow `GITHUB_TOKEN` to write packages for this repository.
+After the first publishing run, make all six Baskule GHCR packages public and verify anonymous pulls. The workflow
+links their source to this repository. Check the draft's Compose assets and image tags before publishing the draft.
+Version tags identify one release; do not replace a published tag with different image contents. A verification-only
+run checks builds and local behavior without proving GHCR visibility or anonymous downloads.

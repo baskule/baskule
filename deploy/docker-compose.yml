@@ -1,15 +1,7 @@
-# Baskule: single-machine deployment (architecture E11). See README.md.
-#   cd deploy && cp .env.example .env && $EDITOR .env && ./up.sh
-# Project `baskule`. Containers match their service DNS names. Volumes are `baskule-*`. Only the edge is published.
-#
-# Networks:
-#   baskule-net        edge, celld nodes, RustFS, computerd
-#   baskule-computers  computerd <-> baskule-openshell (gateway + private dockerd + the computers)
-# The computers' supervisors live in baskule-openshell's network namespace, so they never share a network with
-# celld/RustFS/edge; the fork's egress policy additionally refuses every private destination.
+# Released installation. See docs/install.md. Source builds add docker-compose.build.yml.
 name: baskule
 
-# The fleet bucket: RustFS by default; an external S3 bucket when .env sets S3_ENDPOINT (docker-compose.s3.yml).
+# The fleet shares one bucket. COMPOSE_PROFILES=storage enables the local RustFS service.
 x-s3: &s3
   AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-${RUSTFS_ACCESS_KEY:-}}
   AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-${RUSTFS_SECRET_KEY:-}}
@@ -26,13 +18,12 @@ x-celld-env: &celld-env
   # The desktop AppImage is served as a static asset under /downloads (WP-C/WP-G): >= 200 MiB.
   CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
   # Traces of every request, cell turn and storage operation go to baskule-traces ("0": off).
-  CELLD_OTEL: ${BASKULE_CELLD_OTEL-http://baskule-traces:4318}
+  CELLD_OTEL: ${BASKULE_CELLD_OTEL:-0}
   DO_NOT_TRACK: "1"
   RUST_LOG: ${CELLD_RUST_LOG:-info}
 
 x-celld-node: &celld-node
-  build: ./celld
-  image: baskule-celld:${BASKULE_TAG:-local}
+  image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
   restart: unless-stopped
   networks: [baskule-net]
   depends_on:
@@ -52,8 +43,8 @@ x-celld-node: &celld-node
 
 services:
   baskule-rustfs:
+    profiles: [storage]
     image: rustfs/rustfs@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b
-    container_name: baskule-rustfs
     restart: unless-stopped
     command: ["rustfs", "/data"]
     environment:
@@ -76,9 +67,7 @@ services:
 
   # One-shot: create the fleet bucket (idempotent).
   baskule-bootstrap:
-    build: ./celld
-    image: baskule-celld:${BASKULE_TAG:-local}
-    container_name: baskule-bootstrap
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     entrypoint: ["baskule-celld-job", "bootstrap"]
     restart: "no"
     environment: *s3
@@ -86,10 +75,10 @@ services:
     depends_on:
       baskule-rustfs:
         condition: service_healthy
+        required: false
 
   baskule-celld-a:
     <<: *celld-node
-    container_name: baskule-celld-a
     hostname: baskule-celld-a
     command: ["--listen", "0.0.0.0:47091", "--internal-listen", "0.0.0.0:47092", "--advertise", "baskule-celld-a:47092"]
     environment:
@@ -100,7 +89,6 @@ services:
 
   baskule-celld-b:
     <<: *celld-node
-    container_name: baskule-celld-b
     hostname: baskule-celld-b
     command: ["--listen", "0.0.0.0:47091", "--internal-listen", "0.0.0.0:47092", "--advertise", "baskule-celld-b:47092"]
     environment:
@@ -109,34 +97,29 @@ services:
     volumes:
       - baskule-celld-b:/var/lib/celld
 
-  # One-shot: `celld deploy` of platform/ (built by `cd platform && pnpm run build`), or of hello/ when the platform
-  # bundle is missing (DEPLOY_APP=auto) or when DEPLOY_APP=hello. Re-run with `./deploy.sh`.
+  # Deploy the platform bundled in the image, then ask every node to adopt it.
   baskule-deploy:
-    build: ./celld
-    image: baskule-celld:${BASKULE_TAG:-local}
-    container_name: baskule-deploy
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     entrypoint: ["baskule-celld-job", "deploy"]
     restart: "no"
     environment:
       <<: *s3
       # `celld deploy` checks asset sizes too (desktop artifacts under /downloads).
       CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
-      DEPLOY_APP: ${DEPLOY_APP:-auto}
+      DEPLOY_APP: platform
       CELLD_NODES_INTERNAL: baskule-celld-a:47092 baskule-celld-b:47092
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-http://127.0.0.1:47090}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
       AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
-      COMPUTERD_URL: http://baskule-computerd:47094
+      COMPUTERD_URL: ${COMPUTERD_URL:-http://baskule-computerd:47094}
       COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:?set COMPUTERD_TOKEN in .env}
       # T3's spans inside each SpaceCell (orchestration, provider turns, browser operations).
-      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
+      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL:-}
     env_file: .env
     volumes:
-      - ${AUTH_CONFIG_FILE:-./auth.json}:/src/auth.json:ro
-      - ${BASKULE_PLATFORM_DIR:-../platform}:/src/platform:ro
-      - ./hello:/src/hello:ro
+      - ./config:/src/config:ro
     networks: [baskule-net]
     # Only the bucket is needed: a fresh node answers nothing (not even its health route) until a deployment exists.
     depends_on:
@@ -149,15 +132,20 @@ services:
 
   baskule-edge:
     image: caddy:2@sha256:25cdc846626b62d05f6b633b9b40c2c9f6ef89b515dc76133cefd920f7dbe562
-    container_name: baskule-edge
     restart: unless-stopped
     ports:
       - "${BASKULE_BIND:-127.0.0.1}:${BASKULE_PORT:-47090}:47090"
     volumes:
-      - ./edge/Caddyfile:/etc/caddy/Caddyfile:ro
       - baskule-edge-data:/data
+    configs:
+      - source: edge
+        target: /etc/caddy/Caddyfile
+    environment:
+      BASKULE_NODES_WORKER: baskule-celld-a:47091 baskule-celld-b:47091
     networks: [baskule-net]
     depends_on:
+      baskule-deploy:
+        condition: service_completed_successfully
       baskule-celld-a:
         condition: service_started
       baskule-celld-b:
@@ -166,11 +154,7 @@ services:
     mem_limit: 256m
 
   baskule-computerd:
-    build:
-      context: ..
-      dockerfile: computerd/Dockerfile
-    image: baskule-computerd:${BASKULE_TAG:-local}
-    container_name: baskule-computerd
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computerd:${BASKULE_VERSION:-0.5.0}
     restart: unless-stopped
     environment:
       COMPUTERD_TOKEN: ${COMPUTERD_TOKEN}
@@ -178,12 +162,12 @@ services:
       OPENSHELL_GATEWAY: baskule-openshell:47095
       OPENSHELL_VOLUMES_URL: http://baskule-openshell:47096
       OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN:?set OPENSHELL_VOLUMES_TOKEN in .env}
-      COMPUTER_IMAGE: baskule-computer:${BASKULE_TAG:-local}
+      COMPUTER_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computer:${BASKULE_VERSION:-0.5.0}
       COMPUTER_CPUS: ${COMPUTER_CPUS:-2}
       COMPUTER_MEMORY: ${COMPUTER_MEMORY:-3Gi}
       PRODUCT_SETTINGS_URL: http://baskule-edge:47090/api/baskule/runtime-settings
       LOG_LEVEL: ${COMPUTERD_LOG_LEVEL:-info}
-      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
+      OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL:-}
     networks: [baskule-net, baskule-computers]
     depends_on:
       baskule-openshell:
@@ -192,15 +176,18 @@ services:
     mem_limit: 512m
 
   baskule-openshell:
-    image: baskule-openshell-gateway:${BASKULE_TAG:-local}
-    container_name: baskule-openshell
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-openshell-gateway:${BASKULE_VERSION:-0.5.0}
     restart: unless-stopped
+    # First start imports the bundled computer into the private daemon.
+    healthcheck:
+      start_period: 10m
     # Privileged: it runs its own dockerd (unix socket only, no bridge, no iptables). The computers run inside it.
     privileged: true
     environment:
       OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN}
-      OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP-http://baskule-traces:4317}
-      BASKULE_TAG: ${BASKULE_TAG:-local}
+      OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP:-}
+      BASKULE_REGISTRY: ${BASKULE_REGISTRY:-ghcr.io/baskule}
+      BASKULE_VERSION: ${BASKULE_VERSION:-0.5.0}
     volumes:
       - baskule-openshell-docker:/var/lib/docker
       - baskule-openshell-state:/var/lib/openshell
@@ -211,38 +198,164 @@ services:
     pids_limit: 16384
 
   # Traces of the whole stack (celld, the T3 server in each cell, the OpenShell gateway): Jaeger, in memory. The UI
-  # listens on the tailnet address only, like the edge.
+  # listens on the configured private bind address, like the edge.
   baskule-traces:
+    profiles: [traces]
     image: jaegertracing/jaeger:2.22.0@sha256:836b967b5abcf1f7758066aa6b348619267a2f1459f72d472840570f9bd88a17
-    container_name: baskule-traces
     restart: unless-stopped
     command: ["--config", "/etc/jaeger/config.yaml"]
     environment:
       JAEGER_MAX_TRACES: ${BASKULE_TRACES_MAX:-20000}
-    volumes:
-      - ./traces/jaeger.yaml:/etc/jaeger/config.yaml:ro
+    configs:
+      - source: traces
+        target: /etc/jaeger/config.yaml
     ports:
       - "${BASKULE_BIND:-127.0.0.1}:${BASKULE_TRACES_PORT:-47098}:16686"
     networks: [baskule-net, baskule-computers]
     cpus: 1
     mem_limit: ${BASKULE_TRACES_MEMORY:-1g}
 
+  backup:
+    profiles: [backup]
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
+    entrypoint: [baskule-celld-job, backup]
+    network_mode: none
+    logging:
+      driver: none
+    volumes:
+      - baskule-rustfs:/backup/rustfs:ro
+      - baskule-openshell-state:/backup/openshell-state:ro
+      - baskule-openshell-docker:/backup/openshell-docker:ro
+
+  restore:
+    profiles: [backup]
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
+    entrypoint: [baskule-celld-job, restore]
+    network_mode: none
+    logging:
+      driver: none
+    volumes:
+      - baskule-rustfs:/backup/rustfs
+      - baskule-openshell-state:/backup/openshell-state
+      - baskule-openshell-docker:/backup/openshell-docker
+
 networks:
-  baskule-net:
-    name: baskule-net
-  baskule-computers:
-    name: baskule-computers
+  baskule-net: {}
+  baskule-computers: {}
 
 volumes:
-  baskule-rustfs:
-    name: baskule-rustfs
-  baskule-celld-a:
-    name: baskule-celld-a
-  baskule-celld-b:
-    name: baskule-celld-b
-  baskule-edge-data:
-    name: baskule-edge-data
-  baskule-openshell-docker:
-    name: baskule-openshell-docker
-  baskule-openshell-state:
-    name: baskule-openshell-state
+  baskule-rustfs: {}
+  baskule-celld-a: {}
+  baskule-celld-b: {}
+  baskule-edge-data: {}
+  baskule-openshell-docker: {}
+  baskule-openshell-state: {}
+
+configs:
+  edge:
+    content: |
+      # baskule-edge: the only published port of the stack. Load-balances the celld nodes (any node can serve any
+      # request: celld forwards to the owner of a cell). Plain HTTP behind the HTTPS reverse proxy.
+      {
+          admin off
+          auto_https off
+          persist_config off
+          # Clients connect directly: never trust an inbound X-Forwarded-For.
+      }
+
+      :47090 {
+          # Compress static and JSON responses only: streams (SSE text/event-stream, exec NDJSON) must never be buffered.
+          encode {
+              zstd
+              gzip 6
+              minimum_length 1024
+              match {
+                  header Content-Type text/html*
+                  header Content-Type text/css*
+                  header Content-Type text/javascript*
+                  header Content-Type application/javascript*
+                  header Content-Type application/json*
+                  header Content-Type image/svg+xml*
+                  header Content-Type application/wasm*
+                  header Content-Type model/gltf-binary*
+              }
+          }
+          # Vite assets are content-hashed: cache them for good (the HTML still revalidates).
+          @assets path /assets/*
+          header @assets >Cache-Control "public, max-age=31536000, immutable"
+          reverse_proxy {$$BASKULE_NODES_WORKER} {
+              lb_policy round_robin
+              # Retry another node when a dial fails (node down, before the active check notices).
+              lb_retries 2
+              lb_try_duration 10s
+              lb_try_interval 250ms
+              fail_duration 10s
+              health_uri /.well-known/celld/health
+              health_interval 2s
+              health_timeout 2s
+              health_fails 2
+              health_passes 1
+              # The sign-in rate limit keys on the last X-Forwarded-For entry: set it to the real client address.
+              header_up X-Forwarded-For {remote_host}
+              header_up X-Forwarded-Proto {scheme}
+              # Stream responses (SSE, NDJSON) without buffering.
+              flush_interval -1
+              transport http {
+                  dial_timeout 3s
+                  keepalive 60s
+              }
+          }
+          request_body {
+              max_size 1GB
+          }
+          log {
+              output stdout
+              format console
+              level WARN
+          }
+      }
+  traces:
+    content: |
+      # Jaeger v2 (an OpenTelemetry Collector distribution) for the stack's traces: OTLP in (gRPC 4317, HTTP 4318),
+      # in-memory storage capped by trace count (restarts start empty), UI and query API on 16686.
+      service:
+        extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [jaeger_storage_exporter]
+        telemetry:
+          logs:
+            level: warn
+
+      extensions:
+        healthcheckv2:
+          use_v2: true
+          http:
+            endpoint: 0.0.0.0:13133
+        jaeger_query:
+          storage:
+            traces: memstore
+          http:
+            endpoint: 0.0.0.0:16686
+        jaeger_storage:
+          backends:
+            memstore:
+              memory:
+                max_traces: $${env:JAEGER_MAX_TRACES:-20000}
+
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+      processors:
+        batch: {}
+
+      exporters:
+        jaeger_storage_exporter:
+          trace_storage: memstore

@@ -4,9 +4,11 @@
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 [ -f "$DEPLOY_DIR/.env" ] || { log "no .env: run ./init-env.sh (or cp .env.example .env) first"; exit 1; }
+# The release image now includes the app; prepare it before building a missing celld image.
+[ -f "$ROOT/platform/dist/worker.js" ] || "$DEPLOY_DIR/build.sh" --no-deploy
 if [ "${1:-}" = --build ]; then "$DEPLOY_DIR/images.sh" --all >/dev/null; else "$DEPLOY_DIR/images.sh" --missing >/dev/null; fi
 dc up -d --no-build baskule-openshell
-wait_healthy baskule-openshell 180
+wait_healthy baskule-openshell 600
 "$ROOT/openshell/load-images.sh" baskule-openshell
 dc up -d --no-build
 # The deploy job runs once per `up` (when its dependencies are healthy).

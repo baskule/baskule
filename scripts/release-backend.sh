@@ -21,11 +21,18 @@ image_tag=${BASKULE_VERSION//+/_}
 }
 export BASKULE_TAG=local
 mkdir -p .run/release/backend .run/release/runtime
+# Use the web bundle and native downloads already verified by the Linux apps job.
+mkdir -p .run/release/web .run/release/downloads
+tar -xzf .run/release/linux-apps/hosted-web.tar.gz -C .run/release/web
+cp .run/release/linux-apps/*.AppImage .run/release/downloads/
 platform/src/space/sync-bundle.sh --minify
-(cd platform && BASKULE_MINIFY=1 node scripts/build.mjs)
+(cd platform && BASKULE_MINIFY=1 BASKULE_WEB_DIR="$ROOT/.run/release/web" \
+  BASKULE_DOWNLOADS_DIR="$ROOT/.run/release/downloads" node scripts/build.mjs)
+jq -n --arg version "$BASKULE_VERSION" --arg umbrella "$(git rev-parse HEAD)" \
+  --arg builtAt "$(date -u +%FT%TZ)" '{version:$version,umbrella:$umbrella,builtAt:$builtAt}' > platform/dist/web/version.json
 DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker} computer/build.sh
 docker build -t baskule-computerd:local -f computerd/Dockerfile .
-docker build -t baskule-celld:local deploy/celld
+docker build -t baskule-celld:local -f deploy/celld/Dockerfile .
 # The existing toolchain supplies Ubuntu, pinned Rust and libz3. Override its staging-only entry point.
 toolchain=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
 target="baskule-ci-native-x86-64-gnu-$toolchain"
@@ -47,18 +54,21 @@ if [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted ]]
   docker builder prune --all --force
 fi
 
-# The Worker is an independent backend asset; hosted web is built in the later apps job.
+# Keep the Worker independently downloadable as well as bundled in the celld image.
 tar -czf .run/release/backend/platform-worker.tar.gz -C platform/dist worker.js
 tar -czf .run/release/backend/space-cell.tar.gz -C platform/src/space/t3 space-cell.js BUILT_FROM
 : > .run/release/runtime/images.txt
-for image in baskule-computer baskule-computerd baskule-celld baskule-openshell-gateway; do
-  docker tag "$image:local" "$image:$image_tag"
-  printf '%s %s\n' "$image:$image_tag" "$(docker image inspect --format '{{.Id}}' "$image:$image_tag")" >> .run/release/runtime/images.txt
-  # The gateway already embeds the supervisor and sandbox images.
+for image in baskule-computer baskule-computerd baskule-celld baskule-openshell-gateway baskule-openshell-supervisor baskule-openshell-sandbox; do
+  docker tag "$image:local" "ghcr.io/baskule/$image:$image_tag"
+  printf '%s %s\n' "ghcr.io/baskule/$image:$image_tag" "$(docker image inspect --format '{{.Id}}' "ghcr.io/baskule/$image:$image_tag")" >> .run/release/runtime/images.txt
+  # All six images go to GHCR. The gateway embeds the workloads, so only four archives are needed.
+  case $image in baskule-openshell-supervisor|baskule-openshell-sandbox) continue ;; esac
   archive=".run/release/backend/$image.tar.gz"
-  docker save "$image:$image_tag" | gzip -1 > "$archive"
+  docker save "ghcr.io/baskule/$image:$image_tag" | gzip -1 > "$archive"
   bytes=$(stat -c %s "$archive")
   echo "$archive: $bytes bytes"
   (( bytes < 2147483648 )) || { echo "Release asset exceeds GitHub's 2 GiB limit: $archive" >&2; exit 1; }
 done
 cp .run/release/runtime/images.txt .run/release/backend/images.txt
+
+scripts/release-install-assets.sh .run/release/backend

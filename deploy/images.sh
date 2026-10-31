@@ -45,7 +45,8 @@ bridge=$(sha256sum "$ROOT/computer/browser/bridge.mjs" | cut -c1-16)
 build_one "baskule-computer:$TAG" '"$ROOT/computer/build.sh" -q >/dev/null' "$bridge" "$ROOT/computer"
 toolchain=$(sha256sum "$DEPLOY_DIR/build-env/Dockerfile" | cut -c1-16)
 # The gateway embeds supervisor/sandbox image names, which include TAG.
-build_one "baskule-openshell-gateway:$TAG" '"$ROOT/openshell/build.sh"' "$toolchain:$TAG" "$ROOT/openshell" "${OPENSHELL_FORK:-$ROOT/vendor/openshell}"
-build_one "baskule-celld:$TAG" 'nice -n 10 docker build --network host -q -t "baskule-celld:$TAG" "$DEPLOY_DIR/celld" >/dev/null' "" "$DEPLOY_DIR/celld"
+build_one "baskule-openshell-gateway:$TAG" '"$ROOT/openshell/build.sh"' "$toolchain:$TAG:$(docker image inspect -f '{{.Id}}' "baskule-computer:$TAG")" "$ROOT/openshell" "${OPENSHELL_FORK:-$ROOT/vendor/openshell}"
+bundle=$(cd "$ROOT/platform/dist" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)
+build_one "baskule-celld:$TAG" 'nice -n 10 docker build --network host -q -t "baskule-celld:$TAG" -f "$DEPLOY_DIR/celld/Dockerfile" "$ROOT" >/dev/null' "$bundle" "$DEPLOY_DIR/celld" "$ROOT/platform/wrangler.json" "$DEPLOY_DIR/.env.example"
 # Hash the shared lock as a whole: platform/e2e dependency changes may also rebuild computerd.
 build_one "baskule-computerd:$TAG" 'nice -n 10 docker build --network host -q -t "baskule-computerd:$TAG" -f "$ROOT/computerd/Dockerfile" "$ROOT" >/dev/null' "" "$ROOT/computerd" "$ROOT/package.json" "$ROOT/pnpm-workspace.yaml" "$ROOT/pnpm-lock.yaml"

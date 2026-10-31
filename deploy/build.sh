@@ -84,10 +84,12 @@ img_id() { docker image inspect -f '{{.Id}}' "$1" 2>/dev/null | cut -c8-19; }
 jq -n --arg umbrella "$(desc "$ROOT")" --arg fork "$fork_key" --arg forkBranch "$(git -C "$APP" rev-parse --abbrev-ref HEAD)" \
   --arg spaceBundle "$(cat "$PLATFORM/src/space/t3/BUILT_FROM" 2>/dev/null | cut -d' ' -f1)" \
   --arg builtAt "$(date -u +%FT%TZ)" --arg computer "$(img_id "baskule-computer:$TAG")" \
-  --arg computerd "$(img_id "baskule-computerd:$TAG")" --arg celld "$(img_id "baskule-celld:$TAG")" \
+  --arg computerd "$(img_id "baskule-computerd:$TAG")" \
   --arg openshell "$(img_id "baskule-openshell-gateway:$TAG")" \
   '{umbrella:$umbrella, fork:$fork, forkBranch:$forkBranch, spaceBundle:$spaceBundle, builtAt:$builtAt,
-    images:{computer:$computer, computerd:$computerd, celld:$celld, openshell:$openshell}}' >"$PLATFORM/dist/web/version.json"
+    images:{computer:$computer, computerd:$computerd, openshell:$openshell}}' >"$PLATFORM/dist/web/version.json"
+# Repack celld after writing the static stamp; its own image ID cannot be embedded in itself.
+rebuilt=$("$DEPLOY_DIR/images.sh")
 step "version: $(jq -c '{umbrella, fork}' "$PLATFORM/dist/web/version.json")"
 
 [ $DEPLOY = 1 ] || { step "built (no deploy)"; exit 0; }
@@ -100,7 +102,7 @@ if [ $was_up = 1 ]; then
   # Running stack: recreate only services whose image changed (compose compares image ids), then deploy once.
   step "refresh running services"
   dc up -d --no-build baskule-openshell baskule-traces baskule-edge baskule-computerd baskule-celld-a baskule-celld-b >&2
-  wait_healthy baskule-openshell 180
+  wait_healthy baskule-openshell 600
   "$ROOT/openshell/load-images.sh" baskule-openshell >&2
   step "deploy.sh"
   "$DEPLOY_DIR/deploy.sh" 2>&1 | tail -2 >&2
