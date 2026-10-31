@@ -361,8 +361,8 @@ export function PluginEditor({
             .catch((cause: unknown) => ({
               error: pluginErrorText(cause, t("Check the server details and try again.")),
             }));
-    void listing.then((outcome) =>
-      setRows((current) =>
+    void listing.then((outcome) => {
+      const finish = (current: ReadonlyArray<ServerRow>) =>
         current.map((entry) => {
           if (entry.key !== row.key || entry.test?.run !== run) return entry;
           if (!("signIn" in outcome) || signature(entry) !== requested) {
@@ -381,9 +381,11 @@ export function PluginEditor({
             },
           };
           return { ...signedIn, test: { signature: signature(signedIn), run, outcome } };
-        }),
-      ),
-    );
+        });
+      // A server left out of the JSON while it is edited keeps the result for when it comes back.
+      setRows(finish);
+      setJsonRows(finish);
+    });
   };
 
   const showJson = () => {
@@ -391,7 +393,8 @@ export function PluginEditor({
     setView("json");
   };
   /** Pasted servers replace the form's. What was typed for a server stays with it, even through edits
-   * that briefly leave it out: matched by name, or by its address while it is being renamed. */
+   * that briefly leave it out: matched by name, or by its address while it is being renamed. The
+   * form's servers match first; one left out comes back only at its own address. */
   const editJson = (text: string) => {
     const parsed = parseJson(text);
     if ("error" in parsed) {
@@ -402,18 +405,20 @@ export function PluginEditor({
     const matched = new Set<string>();
     setRows(
       parsed.servers.map((server) => {
+        const at = (row: ServerRow) => !matched.has(row.key) && server.url === finalServer(row).url;
+        const renamed = (row: ServerRow) =>
+          at(row) && !parsed.servers.some((entry) => entry.name === finalServer(row).name);
         const before =
-          known.find((row) => finalServer(row).name === server.name) ??
-          known.find(
-            (row) =>
-              !matched.has(row.key) &&
-              server.url === finalServer(row).url &&
-              !parsed.servers.some((entry) => entry.name === finalServer(row).name),
-          );
+          rows.find((row) => finalServer(row).name === server.name) ??
+          rows.find(renamed) ??
+          jsonRows.find((row) => at(row) && finalServer(row).name === server.name) ??
+          jsonRows.find(renamed);
         if (before) matched.add(before.key);
         const saved =
           target.type === "edit"
-            ? initial.servers.find((entry) => entry.name === server.name)
+            ? initial.servers.find(
+                (entry) => entry.name === server.name && entry.url === server.url,
+              )
             : undefined;
         const typed = parsed.secrets[server.name] ?? {};
         const recipe = [before?.server, saved].find(
