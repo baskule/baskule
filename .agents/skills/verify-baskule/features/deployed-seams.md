@@ -1,5 +1,5 @@
 ---
-paths: ["deploy/**", "e2e/**"]
+paths: ["deploy/**", "e2e/README.md", "e2e/fixtures/**", "e2e/infra/**", "e2e/infra-smoke.sh", "e2e/llm/**", "e2e/perf/**", "e2e/playwright.config.ts", "e2e/run.sh", "e2e/tests/**", "e2e/tsconfig.json", "e2e/ux/**", "e2e/ux-findings.md"]
 journeys: null
 profile: "full"
 checks: ["e2e/run.sh --project lifecycle"]

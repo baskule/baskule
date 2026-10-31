@@ -1,6 +1,6 @@
 {
   "name": "baskule-computerd",
-  "version": "0.5.0",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=24" },

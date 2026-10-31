@@ -76,7 +76,7 @@ export class T3McpProxy {
     this.session ??= (async () => {
       const t0 = Date.now();
       const id = `os-${this.nextId++}`;
-      const res = await this.post({ jsonrpc: "2.0", id, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "baskule-agent", version: "0.5.0" } } }, null);
+      const res = await this.post({ jsonrpc: "2.0", id, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "baskule-agent", version: "local" } } }, null);
       const init = await readAnswer(res, id);
       if (!res.ok || !init?.result) throw new Error(`T3 MCP initialize answered ${res.status}`);
       const sessionId = res.headers.get("mcp-session-id");

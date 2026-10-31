@@ -409,7 +409,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
   async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
     try {
       if (url.pathname === "/healthz") {
-        return json(res, 200, { ok: true, service: "baskule-computerd", version: "0.5.0" });
+        return json(res, 200, { ok: true, service: "baskule-computerd" });
       }
       if (!url.pathname.startsWith("/v1/")) throw new HttpError(404, "not found");
       if (!authorized(req)) throw new HttpError(401, "unauthorized");
