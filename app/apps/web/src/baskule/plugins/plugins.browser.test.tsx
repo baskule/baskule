@@ -571,7 +571,7 @@ describe("adding MCP servers by form or JSON", () => {
         initial={initial}
         fixes={[]}
         omitted={[]}
-        target={{ type: "edit", id: "p1", savedKeys: new Set(["notes"]) }}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["notes"]), versions: [] }}
         onCancel={vi.fn()}
         onSaved={onSaved}
       />,
