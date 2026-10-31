@@ -1,8 +1,8 @@
+import { useTranslation } from "../i18n";
 // baskule: the Settings modal's section nav and page heading. Like the admin nav, a rail of labelled
 // rows; below md, a row of labelled tabs under the header instead of an icon-only rail.
 import { Link, useLocation, useMatch } from "@tanstack/react-router";
 
-import { useTranslation } from "../i18n";
 import {
   SidebarContent,
   SidebarGroup,
@@ -94,7 +94,11 @@ export function BaskuleSettingsTabs() {
 export function BaskuleSettingsHeading() {
   const t = useTranslation();
   // The page on screen, not the location: a lazily loaded next page leaves this one up until it loads.
-  const pathname = useMatch({ strict: false, shouldThrow: false, select: (match) => match.pathname });
+  const pathname = useMatch({
+    strict: false,
+    shouldThrow: false,
+    select: (match) => match.pathname,
+  });
   const section = pathname === undefined ? null : baskuleSettingsSection(pathname);
   return section ? (
     <PageHeading title={t(section.label)} description={t(section.description)} />

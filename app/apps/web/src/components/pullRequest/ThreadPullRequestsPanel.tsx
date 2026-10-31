@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import type { ProjectId, ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
 import {
   sourceControlClients,
@@ -386,7 +387,7 @@ const lineKey = (line: PullRequestListLine) =>
 export function ThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThreadRef }) {
   const t = useTranslation();
   const configs = useServerConfigs();
-  if (configs.get(threadRef.environmentId)?.environment.capabilities.threadPullRequests !== true) {
+  if (configs.get(threadRef.environmentId) === undefined) {
     return (
       <PullRequestsUnavailableState
         title={t("Linked pull requests unavailable")}
@@ -481,7 +482,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
               line={line}
               threadRef={threadRef}
               projectId={
-                capabilities?.pullRequests === true
+                capabilities !== undefined
                   ? (findProjectForChangeRequest(environmentProjects, line.link)?.id ??
                     thread?.projectId ??
                     null)

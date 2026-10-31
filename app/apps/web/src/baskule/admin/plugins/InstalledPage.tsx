@@ -1,10 +1,10 @@
+import { useTranslation } from "../../../i18n";
 // baskule: Plugins → Installed: every plugin the admin added, on or off, and who may use it.
 import type { Group, Plugin } from "@t3tools/contracts/baskule-plugins";
 import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";
 import { Switch } from "../../../components/ui/switch";

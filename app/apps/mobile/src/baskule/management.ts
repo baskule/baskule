@@ -1,9 +1,9 @@
+import { t } from "../i18n";
 import { Schema } from "effect";
 import { fetch } from "expo/fetch";
 import { openBrowserAsync } from "expo-web-browser";
 import type { BaskuleManagementDestination } from "@t3tools/contracts/baskule";
 
-import { t } from "../i18n";
 import { readBaskuleSession, refreshBaskuleMe } from "./session";
 
 const parseCode = Schema.decodeUnknownSync(

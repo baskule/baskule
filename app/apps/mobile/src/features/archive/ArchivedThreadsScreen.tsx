@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 import { Button } from "../../components/ui/Button";
 import type {
@@ -16,11 +17,10 @@ import { useNavigation } from "@react-navigation/native";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppBar } from "../../components/ui/AppBar";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { useCallback, useMemo, useRef, type ComponentProps } from "react";
+import { useMemo, useRef, type ComponentProps } from "react";
 import { Platform, RefreshControl, useWindowDimensions, View } from "react-native";
 import { GestureDetector, useNativeGesture } from "react-native-gesture-handler";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
-
 import { AppText as Text } from "../../components/ui/AppText";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
@@ -60,25 +60,25 @@ function ArchivedThreadsHeader(props: {
       search={{
         value: props.searchQuery,
         onChangeText: props.onSearchQueryChange,
-        placeholder: "Search archived threads",
+        placeholder: t("Search archived threads"),
         compactPlaceholder: "Search",
         mode: "inline",
         compactToolbar: width < 700,
       }}
       menus={[
         {
-          title: "Archived thread options",
+          title: t("Archived thread options"),
           icon: hasCustomFilter
             ? "line.3.horizontal.decrease.circle.fill"
             : "line.3.horizontal.decrease.circle",
           items: [
             {
               id: "environment",
-              title: "Environment",
+              title: t("Environment"),
               items: [
                 {
                   id: "environment:all",
-                  title: "All environments",
+                  title: t("All environments"),
                   selected: props.selectedEnvironmentId === null,
                   onPress: () => props.onEnvironmentChange(null),
                 },
@@ -92,17 +92,17 @@ function ArchivedThreadsHeader(props: {
             },
             {
               id: "sort",
-              title: "Sort by archived date",
+              title: t("Sort by archived date"),
               items: [
                 {
                   id: "sort:newest",
-                  title: "Newest first",
+                  title: t("Newest first"),
                   selected: props.sortOrder === "newest",
                   onPress: () => props.onSortOrderChange("newest"),
                 },
                 {
                   id: "sort:oldest",
-                  title: "Oldest first",
+                  title: t("Oldest first"),
                   selected: props.sortOrder === "oldest",
                   onPress: () => props.onSortOrderChange("oldest"),
                 },
@@ -112,7 +112,7 @@ function ArchivedThreadsHeader(props: {
               ? [
                   {
                     id: "refresh",
-                    title: "Refresh archived threads",
+                    title: t("Refresh archived threads"),
                     onPress: props.onRefresh,
                   },
                 ]
@@ -189,6 +189,7 @@ function ArchivedThreadRow(props: {
   readonly onUnarchive: () => void;
   readonly thread: EnvironmentThreadShell;
 }) {
+  const t = useTranslation();
   const { width: windowWidth } = useWindowDimensions();
   const cardColor = useUniwindTheme()["--color-grouped-card"];
   const canOperateThread = useEnvironmentScope(
@@ -263,9 +264,9 @@ function ArchivedThreadRow(props: {
       onSwipeableClose={props.onSwipeableClose}
       onSwipeableWillOpen={props.onSwipeableWillOpen}
       primaryAction={{
-        accessibilityLabel: `Unarchive ${props.thread.title}`,
+        accessibilityLabel: t("Unarchive {{value1}}", { value1: props.thread.title }),
         icon: "arrow.uturn.backward",
-        label: "Unarchive",
+        label: t("Unarchive"),
         onPress: props.onUnarchive,
       }}
       simultaneousWith={props.simultaneousSwipeGesture}
@@ -345,55 +346,46 @@ export function ArchivedThreadsScreen(props: {
     }
     return items;
   }, [environmentLabelsById, props.groups, serverConfigs]);
-  const handleSwipeableWillOpen = useCallback((methods: SwipeableMethods) => {
+  const handleSwipeableWillOpen = (methods: SwipeableMethods) => {
     if (openSwipeableRef.current && openSwipeableRef.current !== methods) {
       openSwipeableRef.current.close();
     }
     openSwipeableRef.current = methods;
-  }, []);
-  const handleSwipeableClose = useCallback((methods: SwipeableMethods) => {
+  };
+  const handleSwipeableClose = (methods: SwipeableMethods) => {
     if (openSwipeableRef.current === methods) {
       openSwipeableRef.current = null;
     }
-  }, []);
+  };
   const isInitialLoad = props.isLoading && props.groups.length === 0 && props.error === null;
   const isFiltered = props.searchQuery.trim().length > 0 || props.selectedEnvironmentId !== null;
-  const renderListItem = useCallback(
-    ({ item }: { item: ArchivedThreadListItem }) => {
-      if (item.kind === "project") {
-        return (
-          <View className="pt-4">
-            <ProjectGroupLabel
-              environmentLabel={item.environmentLabel}
-              environmentMachine={item.environmentMachine}
-              project={item.project}
-            />
-          </View>
-        );
-      }
-
+  const renderListItem = ({ item }: { item: ArchivedThreadListItem }) => {
+    if (item.kind === "project") {
       return (
-        <ArchivedThreadRow
-          environmentLabel={item.environmentLabel}
-          isFirst={item.isFirst}
-          isLast={item.isLast}
-          onDelete={() => onDeleteThread(item.thread)}
-          onSwipeableClose={handleSwipeableClose}
-          onSwipeableWillOpen={handleSwipeableWillOpen}
-          onUnarchive={() => onUnarchiveThread(item.thread)}
-          simultaneousSwipeGesture={archiveScrollGesture}
-          thread={item.thread}
-        />
+        <View className="pt-4">
+          <ProjectGroupLabel
+            environmentLabel={item.environmentLabel}
+            environmentMachine={item.environmentMachine}
+            project={item.project}
+          />
+        </View>
       );
-    },
-    [
-      archiveScrollGesture,
-      handleSwipeableClose,
-      handleSwipeableWillOpen,
-      onDeleteThread,
-      onUnarchiveThread,
-    ],
-  );
+    }
+
+    return (
+      <ArchivedThreadRow
+        environmentLabel={item.environmentLabel}
+        isFirst={item.isFirst}
+        isLast={item.isLast}
+        onDelete={() => onDeleteThread(item.thread)}
+        onSwipeableClose={handleSwipeableClose}
+        onSwipeableWillOpen={handleSwipeableWillOpen}
+        onUnarchive={() => onUnarchiveThread(item.thread)}
+        simultaneousSwipeGesture={archiveScrollGesture}
+        thread={item.thread}
+      />
+    );
+  };
   const listEmptyComponent = useMemo(() => {
     if (isInitialLoad) {
       return (

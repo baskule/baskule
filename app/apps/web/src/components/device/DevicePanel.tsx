@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { DeviceHostUpdates } from "./DeviceHostUpdates";
 import type {
   DevicePlatform,

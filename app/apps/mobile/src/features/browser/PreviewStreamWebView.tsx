@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { t, useTranslation } from "../../i18n";
+
 import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import * as Dialog from "../../components/ui/Dialog";
@@ -21,7 +23,6 @@ import {
   useEffectEvent,
   useImperativeHandle,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type Ref,
@@ -425,6 +426,7 @@ function PreviewStreamDocumentView({
     }
   };
   const observeNativeMessage = useEffectEvent(handleNativeMessage);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the native browser socket bridge and revoke it with its connection or mounted view.
   useLayoutEffect(() => {
     const controller = new AbortController();
     transferController.current = controller;
@@ -481,6 +483,7 @@ function PreviewStreamDocumentView({
     onControl?.(null);
   });
   // The stream lives exactly as long as this view.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts the bootstrap timeout and stops the WebView stream when this view unmounts
   useLayoutEffect(() => {
     active.current = true;
     const view = webView.current;
@@ -493,13 +496,10 @@ function PreviewStreamDocumentView({
       streamEnded();
     };
   }, []);
-  const source = useMemo(
-    () => ({
-      html: previewStreamDocument(configuration, previewStreamScript),
-      baseUrl: Platform.OS === "android" ? "https://localhost/" : "file:///",
-    }),
-    [configuration],
-  );
+  const source = {
+    html: previewStreamDocument(configuration, previewStreamScript),
+    baseUrl: Platform.OS === "android" ? "https://localhost/" : "file:///",
+  };
   useImperativeHandle(ref, () => ({
     command,
     paste,

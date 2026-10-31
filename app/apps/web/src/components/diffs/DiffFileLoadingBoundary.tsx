@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { useEffect, useState } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -19,6 +20,7 @@ export function DiffFileLoadingBoundary({ load, count }: { load: () => void; cou
   };
   // A settled batch shrinks `count` without moving the boundary out of range, and no new
   // intersection entry arrives for that, so ask for the next batch whenever it changes.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- requests the next diff batch while the boundary is near the viewport and files remain
   useEffect(() => {
     if (isNear && count > 0) loadLatest();
   }, [isNear, count, loadLatest]);

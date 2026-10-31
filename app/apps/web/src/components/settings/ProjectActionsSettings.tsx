@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { useScopedSettingsWriteAllowed } from "./useScopedSettings";
 import { AuthSettingsWriteScope } from "@t3tools/contracts";
 import { EnvironmentId, type T3ProjectFileScript } from "@t3tools/contracts";
@@ -61,14 +62,6 @@ export function ProjectActionsSettings() {
       );
       if (!environment?.serverConfig) return [];
       const member = candidate.projectId ? memberById.get(candidate.projectId) : undefined;
-      // Older servers ignore override records; exclude them from edits and retain their legacy per-project
-      // map.
-      if (
-        member &&
-        environment.serverConfig.environment?.capabilities.projectSettingsOverrides !== true
-      ) {
-        return [];
-      }
       return [
         {
           environmentId: candidate.environmentId,
@@ -199,7 +192,7 @@ export function ProjectActionsSettings() {
       )}
       {t3File.status === "invalid" ? (
         <SettingsRow
-          title="t3.json is invalid"
+          title={t("t3.json is invalid")}
           description={t(
             "A t3.json exists in this checkout but fails to parse, so every action and icon it declares is ignored. Check the JSON syntax and icon values.",
           )}

@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { Button } from "../../components/ui/Button";
 import deviceStreamScript from "@t3tools/mobile-device-stream";
 import {
@@ -120,6 +121,7 @@ function DeviceStreamDocumentView({
   );
   const resetInput = useEffectEvent(() => void onInputConnected(false));
   // The stream lives exactly as long as this view.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts the bootstrap timeout and stops the WebView device stream when this view unmounts
   useLayoutEffect(() => {
     active.current = true;
     resetInput();

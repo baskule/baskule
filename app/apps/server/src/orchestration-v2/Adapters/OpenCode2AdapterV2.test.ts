@@ -2219,85 +2219,85 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       event.type === "turn_item.updated" ? [`${event.turnItem.type}:${event.turnItem.status}`] : [],
     );
 
-  for (const recovered of [false, true]) {
-    for (const error of [true, false, "true"]) {
-      it.effect(
-        `projects execute metadata.error=${typeof error}:${error} from ${recovered ? "history" : "live events"}`,
-        () =>
-          Effect.gen(function* () {
-            const tool = {
-              sessionID: SESSION,
-              assistantMessageID: "msg_assistant",
-              id: "call-execute",
-            };
-            const input = { code: 'throw new Error("boom")' };
-            const content = [{ type: "text", text: "Error: boom" }];
-            const metadata = { error };
-            const { runtime, thread } = yield* resumed([
-              out("session.prompt", { sessionID: SESSION, id: PROMPT_ID, text: "<any>" }),
-              promptAccepted,
-              ...(recovered
-                ? reconnected({}, "succeeded", {
-                    content: [
-                      {
-                        type: "tool",
-                        id: tool.id,
-                        name: "execute",
-                        executed: true,
-                        state: { status: "completed", input, content, metadata },
-                        time: { created: 2, ran: 2, completed: 2 },
-                      },
-                    ],
-                  })
-                : [
-                    event("session.execution.started", { sessionID: SESSION }),
-                    event("session.tool.input.started", { ...tool, name: "execute" }),
-                    event("session.tool.called", {
-                      ...tool,
-                      name: "execute",
-                      input,
-                      executed: false,
-                    }),
-                    {
-                      type: "emit_inbound",
-                      frame: {
-                        type: "sdk.event",
-                        event: {
-                          id: "evt_execute_success",
-                          created: 1,
-                          type: "session.tool.success",
-                          data: { ...tool, content, metadata, executed: true },
-                          durable: { aggregateID: SESSION, seq: 1, version: 2 },
-                        },
-                      },
-                    } satisfies ProviderReplayEntry,
-                    event("session.execution.succeeded", { sessionID: SESSION }),
-                  ]),
-            ]);
-            const events = yield* runtime.events.pipe(
-              Stream.takeUntil((event) => event.type === "turn.terminal"),
-              Stream.runCollect,
-              Effect.forkScoped,
-            );
-            yield* runtime.startTurn(turnInput(thread));
-            const collected = yield* Fiber.join(events);
-            const item = collected.findLast((event) => event.type === "turn_item.updated");
-            assert.deepInclude(item?.type === "turn_item.updated" ? item.turnItem : undefined, {
-              type: "dynamic_tool",
-              toolName: "execute",
-              status: error === true ? "failed" : "completed",
-              output: "Error: boom",
-            });
-            const node = collected.findLast((event) => event.type === "node.updated");
-            assert.equal(
-              node?.type === "node.updated" ? node.node.status : undefined,
-              error === true ? "failed" : "completed",
-            );
-            assert.deepInclude(collected.at(-1), { type: "turn.terminal", status: "completed" });
-          }).pipe(Effect.scoped),
-      );
-    }
-  }
+  it.effect.each(
+    [false, true].flatMap((recovered) =>
+      [true, false, "true"].map((error) => ({ recovered, error, kind: typeof error })),
+    ),
+  )(
+    "projects execute metadata.error=$kind:$error from recovered=$recovered",
+    ({ recovered, error }) =>
+      Effect.gen(function* () {
+        const tool = {
+          sessionID: SESSION,
+          assistantMessageID: "msg_assistant",
+          id: "call-execute",
+        };
+        const input = { code: 'throw new Error("boom")' };
+        const content = [{ type: "text", text: "Error: boom" }];
+        const metadata = { error };
+        const { runtime, thread } = yield* resumed([
+          out("session.prompt", { sessionID: SESSION, id: PROMPT_ID, text: "<any>" }),
+          promptAccepted,
+          ...(recovered
+            ? reconnected({}, "succeeded", {
+                content: [
+                  {
+                    type: "tool",
+                    id: tool.id,
+                    name: "execute",
+                    executed: true,
+                    state: { status: "completed", input, content, metadata },
+                    time: { created: 2, ran: 2, completed: 2 },
+                  },
+                ],
+              })
+            : [
+                event("session.execution.started", { sessionID: SESSION }),
+                event("session.tool.input.started", { ...tool, name: "execute" }),
+                event("session.tool.called", {
+                  ...tool,
+                  name: "execute",
+                  input,
+                  executed: false,
+                }),
+                {
+                  type: "emit_inbound",
+                  frame: {
+                    type: "sdk.event",
+                    event: {
+                      id: "evt_execute_success",
+                      created: 1,
+                      type: "session.tool.success",
+                      data: { ...tool, content, metadata, executed: true },
+                      durable: { aggregateID: SESSION, seq: 1, version: 2 },
+                    },
+                  },
+                } satisfies ProviderReplayEntry,
+                event("session.execution.succeeded", { sessionID: SESSION }),
+              ]),
+        ]);
+        const events = yield* runtime.events.pipe(
+          Stream.takeUntil((event) => event.type === "turn.terminal"),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+        yield* runtime.startTurn(turnInput(thread));
+        const collected = yield* Fiber.join(events);
+        const item = collected.findLast((event) => event.type === "turn_item.updated");
+        assert.deepInclude(item?.type === "turn_item.updated" ? item.turnItem : undefined, {
+          type: "dynamic_tool",
+          toolName: "execute",
+          status: error === true ? "failed" : "completed",
+          output: "Error: boom",
+        });
+        const node = collected.findLast((event) => event.type === "node.updated");
+        assert.equal(
+          node?.type === "node.updated" ? node.node.status : undefined,
+          error === true ? "failed" : "completed",
+        );
+        assert.deepInclude(collected.at(-1), { type: "turn.terminal", status: "completed" });
+      }).pipe(Effect.scoped),
+  );
 
   it.effect("does not end a turn from an earlier turn's history when its prompt is not there", () =>
     Effect.gen(function* () {

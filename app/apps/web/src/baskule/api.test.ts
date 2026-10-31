@@ -161,10 +161,18 @@ describe("Baskule API mapping", () => {
       "The recording could not be read. Try again.",
     );
     expect(
-      message({ error: "transcription_key_rejected", message: "The provider rejected the API key" }, 502),
-    ).toBe("The transcription provider rejected the API key. Ask an admin to check AI → Voice input.");
+      message(
+        { error: "transcription_key_rejected", message: "The provider rejected the API key" },
+        502,
+      ),
+    ).toBe(
+      "The transcription provider rejected the API key. Ask an admin to check AI → Voice input.",
+    );
     expect(
-      message({ error: "transcription_failed", message: "Transcription provider answered 500" }, 502),
+      message(
+        { error: "transcription_failed", message: "Transcription provider answered 500" },
+        502,
+      ),
     ).toBe("The recording could not be transcribed. Try again.");
     expect(message({ error: "transcription_failed", message: "transcription_failed" }, 502)).toBe(
       "The recording could not be transcribed. Try again.",

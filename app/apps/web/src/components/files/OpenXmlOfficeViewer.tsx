@@ -1,3 +1,5 @@
+import { useTranslation } from "../../i18n";
+
 import { useStableCallback } from "~/hooks/useStableCallback";
 import type { OfficePreviewKind } from "@t3tools/shared/filePreview";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -39,13 +41,14 @@ export default function OfficeViewer(props: {
   readonly kind: Extract<OfficePreviewKind, "docx" | "xlsx" | "pptx">;
   readonly sizeBytes?: number;
 }) {
+  const t = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<Extract<OfficeWorkerResult, { bytes: ArrayBuffer }>>();
   const [details, setDetails] = useState("");
   const fail = useStableCallback((cause: unknown) =>
     setError(cause instanceof Error ? cause.message : "Could not render this Office document."),
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- Own the Open XML fetch, preparation worker, and timeout for this source and release them on cleanup.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the Open XML fetch, preparation worker, and timeout for this source and release them on cleanup.
   useEffect(() => {
     if ((props.sizeBytes ?? 0) > OFFICE_PREVIEW_MAX_BYTES) {
       // Metadata bounds are checked before fetching or starting an engine.
@@ -97,9 +100,9 @@ export default function OfficeViewer(props: {
         role="alert"
         className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center"
       >
-        <p className="text-sm font-medium">No preview for this file</p>
+        <p className="text-sm font-medium">{t("No preview for this file")}</p>
         <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-          {error} Save it or open it in another app.
+          {error} {t("Save it or open it in another app.")}
         </p>
       </div>
     );
@@ -112,13 +115,13 @@ export default function OfficeViewer(props: {
         <div className={FILE_SURFACE_SUBHEADER_CLASS}>
           <span className="text-xs text-muted-foreground" aria-live="polite">
             {details}
-            {props.kind !== "xlsx" ? " · Fit to width" : ""}
+            {props.kind !== "xlsx" ? t(" · Fit to width") : ""}
           </span>
         </div>
       ) : null}
       {prepared.truncated ? (
         <FileSurfaceNotice>
-          Preview limited. Save it or open it in another app to read the full document.
+          {t("Preview limited. Save it or open it in another app to read the full document.")}
         </FileSurfaceNotice>
       ) : null}
       <Suspense fallback={<FileSurfaceLoading />}>

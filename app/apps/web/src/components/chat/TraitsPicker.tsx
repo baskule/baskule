@@ -8,6 +8,7 @@ import {
   type ScopedThreadRef,
   type ServerProviderModel,
 } from "@t3tools/contracts";
+import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
@@ -21,8 +22,8 @@ import {
   buildTraitsTriggerDisplay,
   REASONING_SELECT_DESCRIPTOR_IDS,
 } from "@t3tools/client-runtime/model-traits";
-import { memo } from "react";
-import { BrainIcon, GaugeIcon } from "lucide-react";
+import { memo, type ReactNode, useRef } from "react";
+import { GaugeIcon, ZapIcon } from "lucide-react";
 import {
   Menu,
   MenuGroup,
@@ -37,14 +38,10 @@ import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  ComposerControl,
-  ComposerControlChevron,
-  ComposerControlIcon,
-  type ComposerControlSize,
-} from "./ComposerControl";
-import { useComposerMenuProps } from "./composerEventScope";
+import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
+import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
+import { EffortGlyph, resolveEffortGlyph } from "./EffortGlyph";
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
 const SAVED_OPTION_LABELS: Readonly<Record<string, string>> = {
@@ -276,7 +273,7 @@ export function shouldRenderTraitsControls(input: {
   return getTraitsSectionVisibility(input).hasAnyControls;
 }
 
-export interface TraitsMenuContentProps {
+interface TraitsMenuContentProps {
   provider: ProviderDriverKind;
   instanceId?: ProviderInstanceId;
   models: ReadonlyArray<ServerProviderModel>;
@@ -286,6 +283,14 @@ export interface TraitsMenuContentProps {
   planModeEnabled: boolean;
   triggerClassName?: string;
   isComposerOwned?: boolean;
+  /** Composer chips name the effort level unless the user picked bars. */
+  effortDisplay?: EffortDisplay;
+  /** Extra section shown below the traits in the picker popup (Permissions). */
+  extraMenuContent?: ReactNode;
+  /** This trigger also answers composer.mode (while the permissions chip is hidden). */
+  extraMenuOwnsModeShortcut?: boolean;
+  /** Extra tooltip text naming what else the menu holds. */
+  extraMenuHint?: string;
 }
 
 export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
@@ -454,6 +459,24 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   );
 });
 
+/** One bolt for Fast. Ultrafast adds an outlined echo behind it, cut away by the surface color. */
+function FastBolt(props: { ultra: boolean }) {
+  if (!props.ultra) {
+    return (
+      <ZapIcon aria-hidden="true" data-composer-control-icon className="size-3 fill-current" />
+    );
+  }
+  return (
+    <span aria-hidden="true" className="relative h-3 w-3.75 shrink-0">
+      <ZapIcon className="absolute top-0 left-0.75 size-3" />
+      <ZapIcon
+        strokeWidth={4}
+        className="absolute top-0 left-0 size-3 fill-current stroke-(--chat-composer-glass-surface) [paint-order:stroke]"
+      />
+    </span>
+  );
+}
+
 export const TraitsPicker = memo(function TraitsPicker({
   provider,
   instanceId,
@@ -464,6 +487,10 @@ export const TraitsPicker = memo(function TraitsPicker({
   planModeEnabled,
   triggerClassName,
   isComposerOwned,
+  effortDisplay = "label",
+  extraMenuContent,
+  extraMenuOwnsModeShortcut,
+  extraMenuHint,
   size = "sm",
   hidden = false,
   disabled = false,
@@ -476,7 +503,8 @@ export const TraitsPicker = memo(function TraitsPicker({
   }) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(hidden || disabled);
-  const { descriptors } = getTraitsSectionVisibility({
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const { descriptors, primarySelectDescriptor } = getTraitsSectionVisibility({
     provider,
     models,
     model,
@@ -495,7 +523,11 @@ export const TraitsPicker = memo(function TraitsPicker({
     return null;
   }
 
-  const { label: triggerLabel } = buildTraitsTriggerDisplay({
+  const {
+    label: triggerLabel,
+    speedLabel,
+    otherLabels,
+  } = buildTraitsTriggerDisplay({
     provider,
     descriptors,
 
@@ -503,12 +535,37 @@ export const TraitsPicker = memo(function TraitsPicker({
     reportedModelSelection,
   });
 
+  const triggerDescription = isComposerOwned
+    ? [t("Effort: {{effort}}", { effort: triggerLabel }), speedLabel, extraMenuHint]
+        .filter(Boolean)
+        .join(" · ")
+    : triggerLabel;
+  const effortGlyph =
+    isComposerOwned &&
+    primarySelectDescriptor &&
+    REASONING_SELECT_DESCRIPTOR_IDS.has(primarySelectDescriptor.id)
+      ? resolveEffortGlyph(
+          primarySelectDescriptor,
+          getDescriptorStringValue(
+            primarySelectDescriptor,
+            instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null,
+            reportedModelSelection,
+          ),
+        )
+      : null;
+  const effortWord = effortGlyph
+    ? (effortGlyph.special ?? (effortDisplay === "label" ? effortGlyph.label : null))
+    : isComposerOwned
+      ? triggerLabel
+      : null;
+
   return (
     <Menu
       open={isMenuOpen}
       onOpenChange={(open) => {
         setIsMenuOpen(open && !disabled);
       }}
+      onOpenChangeComplete={(open) => focusRequestedPermission(open, triggerRef.current)}
     >
       <Tooltip>
         <TooltipTrigger
@@ -516,26 +573,83 @@ export const TraitsPicker = memo(function TraitsPicker({
             <MenuTrigger
               render={
                 <ComposerControl
+                  ref={triggerRef}
                   disabled={disabled}
-                  aria-label={triggerLabel}
-                  data-composer-shortcut={isComposerOwned ? "composer.effort" : undefined}
+                  aria-label={triggerDescription}
+                  data-composer-shortcut={
+                    isComposerOwned
+                      ? extraMenuOwnsModeShortcut
+                        ? "composer.effort composer.mode"
+                        : "composer.effort"
+                      : undefined
+                  }
                   size={size}
-                  className={cn("shrink-0 whitespace-nowrap", triggerClassName)}
+                  className={cn(
+                    "shrink-0 whitespace-nowrap",
+                    triggerClassName, // Effort reads on from the model name, "Opus 5.5 High", at about the space
+                    // inside the name: this cancels the model chip's end padding and the row gap.
+                    isComposerOwned && (effortWord !== null ? "-ms-1 ps-0" : "-ms-1 ps-0.5"),
+                    // The word is muted next to the model name and brightens like it on hover.
+                    effortWord !== null &&
+                      "text-muted-foreground hover:text-foreground data-pressed:text-foreground data-popup-open:text-foreground",
+                  )}
                 />
               }
             />
           }
         >
-          {
+          {effortGlyph ? (
+            <span className="flex items-center gap-1.5">
+              {effortWord === null ? (
+                <EffortGlyph count={effortGlyph.count} filled={effortGlyph.filled} size={size} />
+              ) : null}
+              {effortWord !== null ? (
+                <>
+                  <span data-composer-control-label>{effortWord}</span>
+                  {/* Icon-only footers hide labels and reveal this instead. */}
+                  <GaugeIcon
+                    aria-hidden="true"
+                    data-composer-control-compact-icon
+                    className="invisible absolute size-3.5"
+                  />
+                </>
+              ) : (
+                <span data-composer-control-label className="sr-only">
+                  {triggerLabel}
+                </span>
+              )}
+              {speedLabel === "Fast" || speedLabel === "Ultrafast" ? (
+                <FastBolt ultra={speedLabel === "Ultrafast"} />
+              ) : null}
+              {otherLabels.length > 0 ? (
+                <span
+                  aria-hidden="true"
+                  // A label, so icon-only footers drop it; compacted rows drop it before the model.
+                  data-composer-control-label
+                  data-composer-secondary-trait
+                  className="max-w-24 truncate text-xs"
+                >
+                  {otherLabels.join(" · ")}
+                </span>
+              ) : null}
+            </span>
+          ) : effortWord !== null ? (
             <>
-              <ComposerControlIcon icon={BrainIcon} size={size} className="redesign:hidden" />
-              <ComposerControlIcon icon={GaugeIcon} size={size} className="hidden redesign:block" />
-              <span data-composer-control-label>{triggerLabel}</span>
-              <ComposerControlChevron size={size} />
+              <span data-composer-control-label>{effortWord}</span>
+              <GaugeIcon
+                aria-hidden="true"
+                data-composer-control-compact-icon
+                className="invisible absolute size-3.5"
+              />
             </>
-          }
+          ) : (
+            <>
+              <ComposerControlIcon icon={GaugeIcon} size={size} />
+              <span data-composer-control-label>{triggerLabel}</span>
+            </>
+          )}
         </TooltipTrigger>
-        <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
+        <TooltipPopup side="top">{triggerDescription}</TooltipPopup>
       </Tooltip>
       <MenuPopup align="start" {...(isComposerOwned ? composerFloatingLayerProps : {})}>
         <TraitsMenuContent
@@ -548,6 +662,12 @@ export const TraitsPicker = memo(function TraitsPicker({
           planModeEnabled={planModeEnabled}
           {...persistence}
         />
+        {extraMenuContent ? (
+          <>
+            <MenuDivider />
+            {extraMenuContent}
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

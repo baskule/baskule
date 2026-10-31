@@ -1,9 +1,9 @@
+import { useTranslation } from "../../../i18n";
 // baskule: add a plugin that no registry lists: a connector by its address, skills or a bundle
 // from a git repository at a fixed commit, or an uploaded .zip / .tar.gz.
 import type { Plugin, PluginInstallInput } from "@t3tools/contracts/baskule-plugins";
 import { useState } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import {

@@ -1,3 +1,4 @@
+import { msg } from "../../i18n";
 // baskule: the admin area's sections and pages. One entry per page; the sidebar, the phone section
 // list and the `/admin/$section/$page` route all read this list.
 import {
@@ -18,7 +19,6 @@ import {
 } from "lucide-react";
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-import { msg } from "../../i18n";
 import type { BaskuleMe } from "../api";
 
 export interface AdminPage {

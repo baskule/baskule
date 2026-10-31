@@ -1,5 +1,6 @@
 import { useTranslation } from "../../i18n";
-import { documentIconColorForFileName } from "~/pierre-icons";
+
+import { documentChipKindForFileName } from "~/pierre-icons";
 import { isSvgAttachment } from "@t3tools/shared/image";
 import { useRenderedAppearance } from "../../hooks/useTheme";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
@@ -7,7 +8,7 @@ import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { COMPOSER_CONTEXT_KINDS } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import { use, type CSSProperties, type ReactNode } from "react";
+import { use, type ReactNode } from "react";
 import { FileDiff } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import {
@@ -67,14 +68,12 @@ function UserMessageMentionChip(props: {
 }) {
   const t = useTranslation();
   const ctx = use(TimelineRowCtx);
-  const accent = documentIconColorForFileName(props.record.path);
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <ContextChip
-            kind="mention"
-            style={accent ? ({ "--context-chip-accent": accent } as CSSProperties) : undefined}
+            kind={documentChipKindForFileName(props.record.path) ?? "mention"}
             render={<button type="button" />}
             aria-label={t("Preview {{path}}", { path: props.record.path })}
             data-markdown-copy={props.copyMarkdown}
@@ -220,12 +219,6 @@ function UserMessagePreviewAnnotationDetails(props: {
                 </div>
               );
             })}
-            {(props.record.elements?.length ?? 0) > visibleElements.length ? (
-              <div className="text-secondary-label text-3xs">
-                {(props.record.elements?.length ?? 0) - visibleElements.length}{" "}
-                {t("more selected elements")}
-              </div>
-            ) : null}
           </div>
         ) : null}
       </div>

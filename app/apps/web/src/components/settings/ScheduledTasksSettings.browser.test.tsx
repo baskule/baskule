@@ -45,12 +45,21 @@ vi.mock(import("../../baskule/session"), async (original) => ({
   useBaskuleMe: () => ({
     user: { id: state.userId, name: "Alice", email: "alice@test.invalid", role: "member" },
     authentication: { mode: "authenticated", password: true, providers: [] },
-    organizationName: "Test", spaces: [], canCreateSpaces: false, voiceInput: false,
+    organizationName: "Test",
+    spaces: [],
+    canCreateSpaces: false,
+    voiceInput: false,
   }),
 }));
 vi.mock(import("../../baskule/spaces"), async (original) => ({
   ...(await original()),
-  useSpaceForEnvironment: () => ({ id: "team", name: "Team", kind: "team", base: "/s/team", role: "member" }),
+  useSpaceForEnvironment: () => ({
+    id: "team",
+    name: "Team",
+    kind: "team",
+    base: "/s/team",
+    role: "member",
+  }),
 }));
 
 function environment() {
@@ -122,7 +131,7 @@ describe("ScheduledTasksSettings", () => {
     state.userId = "bob";
     state.connected = true;
     state.tasksLoaded = true;
-    await using screen = await render(<ScheduledTasksSettings taskId={task.id} />);
+    await using _screen = await render(<ScheduledTasksSettings taskId={task.id} />);
     await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: "Actions for Review issues" }))

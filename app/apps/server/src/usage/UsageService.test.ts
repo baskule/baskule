@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- integration fixtures use native Node I/O.
 import * as NodeFSP from "node:fs/promises";
-import { DatabaseSync } from "node:sqlite";
+import * as NodeSqlite from "node:sqlite";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
@@ -18,7 +18,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
+
 import * as Layer from "effect/Layer";
 import * as Scheduler from "effect/Scheduler";
 import * as Schema from "effect/Schema";
@@ -149,7 +149,7 @@ describe("UsageService", () => {
       yield* Effect.promise(async () => {
         for (const { root, id, output } of histories) {
           await NodeFSP.mkdir(root, { recursive: true });
-          const db = new DatabaseSync(NodePath.join(root, "opencode.db"));
+          const db = new NodeSqlite.DatabaseSync(NodePath.join(root, "opencode.db"));
           try {
             db.exec(
               "CREATE TABLE session_message (id TEXT, session_id TEXT, type TEXT, data TEXT, time_created INTEGER)",

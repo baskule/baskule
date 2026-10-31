@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 import { baskuleThreadMenuItems } from "../baskule/threadMenu"; // baskule:
@@ -6,6 +7,7 @@ import { baskuleThreadMenuItems } from "../baskule/threadMenu"; // baskule:
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
   | "filter-by-project"
+  | "turn-into-project"
   | "project-settings"
   | "pin"
   | "unpin"
@@ -93,6 +95,8 @@ export interface ThreadActionMenuState {
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
   /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
   readonly canShareWithGuest?: boolean;
+  /** A No project thread with its own folder, on a server that can promote it. */
+  readonly canTurnIntoProject?: boolean;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -151,7 +155,11 @@ export function buildThreadActionMenuItems(
                     id: `snooze:${preset.id}` as const,
                     label: `${preset.label} (${preset.whenLabel})`,
                   })),
-                  { id: "snooze:custom" as const, label: t("Custom…"), separatorBefore: true },
+                  {
+                    id: "snooze:custom" as const,
+                    label: t("Custom…"),
+                    separatorBefore: state.snoozePresets.length > 0,
+                  },
                 ],
               },
         ]
@@ -161,7 +169,7 @@ export function buildThreadActionMenuItems(
       ? [
           {
             id: "regenerate-title" as const,
-            label: state.isRegeneratingTitle ? "Regenerating…" : "Regenerate title",
+            label: state.isRegeneratingTitle ? t("Regenerating…") : t("Regenerate title"),
             icon: "refresh-cw",
             disabled: state.isRegeneratingTitle,
           },
@@ -176,9 +184,19 @@ export function buildThreadActionMenuItems(
           {
             id: "filter-by-project" as const,
             label: state.projectFilter.isActive
-              ? "Show all projects"
-              : `Filter by ${state.projectFilter.label}`,
+              ? t("Show all projects")
+              : t("Filter by {{value1}}", { value1: state.projectFilter.label }),
             icon: "folder-tree",
+          },
+        ]
+      : []),
+    ...(state.canTurnIntoProject
+      ? [
+          {
+            id: "turn-into-project" as const,
+            label: t("Turn into project"),
+            icon: "folder-plus",
+            disabled: state.isRunning,
           },
         ]
       : []),

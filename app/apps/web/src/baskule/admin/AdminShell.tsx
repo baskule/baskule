@@ -1,9 +1,9 @@
+import { useTranslation } from "../../i18n";
 // baskule: frame of the admin area, a modal over the chat that opened it like Settings: the admin-only
 // guard, the section nav, the breadcrumb and close button, and the placeholder of pages in progress.
 import { Link, Navigate, Outlet, useParams } from "@tanstack/react-router";
 import { Suspense } from "react";
 
-import { useTranslation } from "../../i18n";
 import { AppRouteModal, AppRouteModalClose } from "../../components/AppRouteModal";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Spinner } from "../../components/ui/spinner";

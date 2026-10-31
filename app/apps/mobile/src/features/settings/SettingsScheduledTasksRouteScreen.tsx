@@ -1,6 +1,7 @@
 import { useBaskuleSession } from "../../baskule/session";
 import { useSpaceEnvironments } from "../../baskule/spaces";
 import { t, useTranslation } from "../../i18n";
+
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -440,7 +441,7 @@ export function SettingsScheduledTasksRouteScreen() {
           withNativeGlassHeaderItem({
             type: "button",
             label: "",
-            accessibilityLabel: "New task",
+            accessibilityLabel: t("New task"),
             icon: { type: "sfSymbol", name: "plus" } as const,
             disabled: visibleEnvironments.length === 0,
             onPress: newTask,
@@ -956,17 +957,17 @@ function TaskForm({
             actions={[
               {
                 id: "worktree",
-                title: "New worktree",
+                title: t("New worktree"),
                 state: draft.workspace === "worktree" ? "on" : undefined,
               },
               {
                 id: "root",
-                title: "Project checkout",
+                title: t("Project checkout"),
                 state: draft.workspace === "root" ? "on" : undefined,
               },
               {
                 id: "existing_worktree",
-                title: "Specific checkout",
+                title: t("Specific checkout"),
                 state: draft.workspace === "existing_worktree" ? "on" : undefined,
               },
             ]}
@@ -1002,10 +1003,11 @@ function TaskForm({
         <SettingsSection title={t("Schedule")}>
           <View className="px-4 py-3">
             <SegmentedControl
+              variant="card"
               options={[
-                { value: "fixed_time", label: "At a time" },
-                { value: "interval", label: "Interval" },
-                { value: "webhook", label: "On webhook" },
+                { value: "fixed_time", label: t("At a time") },
+                { value: "interval", label: t("Interval") },
+                { value: "webhook", label: t("On webhook") },
               ]}
               selected={draft.schedule.mode}
               onSelect={(mode) => {
@@ -1066,12 +1068,12 @@ function TaskForm({
                 actions={[
                   {
                     id: "every_day",
-                    title: "Every day",
+                    title: t("Every day"),
                     state: draft.schedule.weekdays.length === 7 ? "on" : undefined,
                   },
                   {
                     id: "weekdays",
-                    title: "Weekdays",
+                    title: t("Weekdays"),
                     state: repeatLabel(draft.schedule.weekdays) === "Weekdays" ? "on" : undefined,
                   },
                   ...DAYS.map((day) => ({
@@ -1248,9 +1250,9 @@ function WebhookScheduleDetails({
   return (
     <View className="gap-2 border-t border-border-subtle px-4 py-3">
       <Text className="text-sm text-foreground-muted">
-        {
-          "The prompt can use {{body.a.b}}, {{headers.name}}, {{query.name}}, {{body}} and {{request}}. The filled-in prompt is all the agent sees."
-        }
+        {t(
+          "The prompt can use {{body.a.b}}, {{headers.name}}, {{query.name}}, {{body}} and {{request}}. The filled-in prompt is all the agent sees.",
+        )}
       </Text>
       {task === null || resolved === null ? (
         <Text className="text-sm text-foreground-muted">
@@ -1435,18 +1437,18 @@ function EnvironmentTasks({
             </Pressable>
             <Menu
               actions={[
-                ...(isAuthor(task) ? [{ id: "edit", title: "Edit" }] : []),
+                ...(isAuthor(task) ? [{ id: "edit", title: t("Edit") }] : []),
                 {
                   id: "toggle",
-                  title: task.enabled ? "Pause" : "Resume",
+                  title: task.enabled ? t("Pause") : t("Resume"),
                   attributes: { disabled: !canStop(task) || (!task.enabled && !isAuthor(task)) },
                 },
                 ...(task.schedule.type === "webhook" || !isAuthor(task)
                   ? []
-                  : [{ id: "run", title: "Run now", attributes: { disabled: !canOperate } }]),
+                  : [{ id: "run", title: t("Run now"), attributes: { disabled: !canOperate } }]),
                 {
                   id: "delete",
-                  title: "Delete",
+                  title: t("Delete"),
                   attributes: { destructive: true, disabled: !canStop(task) },
                 },
               ]}

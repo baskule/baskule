@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { isDraftThreadRoute } from "./thread-route-state";
 import * as Dialog from "../../components/ui/Dialog";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -34,7 +35,6 @@ import { useRemoteConnectionStatus } from "../../state/use-remote-environment-re
 import type { WorkspaceState } from "../../state/workspaceModel";
 import { useWorkspaceState } from "../../state/workspace";
 
-import { usePromptLinkResolver } from "../prompt-links/usePromptLinkResolver";
 import { useIncomingShare } from "../sharing/IncomingShareProvider";
 import { useNewTaskFlow } from "./new-task-flow-provider";
 import { filterProjectScopes, getProjectScopeSelectionTarget } from "./new-task-project-selection";
@@ -82,8 +82,8 @@ function deriveProjectEmptyState(catalogState: WorkspaceState): {
     return {
       title:
         catalogState.connectionState === "unsupported"
-          ? "Client not supported"
-          : "Environment unavailable",
+          ? t("Client not supported")
+          : t("Environment unavailable"),
       detail:
         catalogState.connectionError ??
         "The saved environment is offline. Check the URL or start the environment, then retry.",
@@ -117,6 +117,7 @@ function NewTaskHeader(props: {
   readonly searchText: string;
   readonly onSearchTextChange: (text: string) => void;
 }) {
+  const t = useTranslation();
   const navigation = useNavigation();
   const goBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
@@ -135,7 +136,7 @@ function NewTaskHeader(props: {
           props.canAddProject
             ? [
                 {
-                  accessibilityLabel: "Add project",
+                  accessibilityLabel: t("Add project"),
                   icon: "plus",
                   onPress: () => navigation.dispatch(StackActions.push("AddProject")),
                 },
@@ -145,7 +146,7 @@ function NewTaskHeader(props: {
         search={{
           value: props.searchText,
           onChangeText: props.onSearchTextChange,
-          placeholder: "Search projects",
+          placeholder: t("Search projects"),
         }}
       />
     </>
@@ -163,7 +164,6 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { getShare, releaseShareReservation } = useIncomingShare();
-  usePromptLinkResolver(route.params);
   const routeShareId = Array.isArray(route.params?.incomingShareId)
     ? route.params.incomingShareId[0]
     : route.params?.incomingShareId;
@@ -194,6 +194,11 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
       ) ?? null)
     : null;
   const { connectedEnvironments } = useRemoteConnectionStatus();
+  const connectedEnvironmentIds = new Set(
+    connectedEnvironments
+      .filter((environment) => environment.connectionState === "connected")
+      .map((environment) => environment.environmentId),
+  );
   const openScratch = useAtomCommand(projectEnvironment.openScratch, {
     reportFailure: false,
   });
@@ -280,6 +285,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
       return;
     void selectProject(project);
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel the scratch-workspace request continuation when the focused draft route changes.
   useEffect(() => {
     if (BASKULE_FLAGS.projects || !isFocused || !canStartScratch || incomingShare?.destination)
       return;
@@ -311,7 +317,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     scratchEnvironment?.environmentId,
   ]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Resume a reserved share after its asynchronous project catalog arrives.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- navigates to the incoming share's reserved destination draft once its project loads and the screen is focused
   useEffect(() => {
     const destination = incomingShare?.destination;
     if (!destination) {
@@ -509,6 +515,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                 const selectionTarget = getProjectScopeSelectionTarget(
                   scope,
                   selectedEnvironmentId,
+                  connectedEnvironmentIds,
                 );
                 if (Platform.OS === "android") {
                   return (

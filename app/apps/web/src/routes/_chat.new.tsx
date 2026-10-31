@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 import { parseNewThreadLink } from "@t3tools/shared/promptLinks";
 import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { NewThreadLinkView } from "../components/promptLinks/NewThreadLinkView";

@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- integration fixtures use native Node I/O.
-import { createHash } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -71,7 +71,7 @@ const mcpRules = (name: string) => {
   const server =
     readable.length <= 30
       ? readable
-      : `t3-code-${createHash("sha256").update(`thread:${name}`).digest("hex").slice(0, 16)}`;
+      : `t3-code-${NodeCrypto.createHash("sha256").update(`thread:${name}`).digest("hex").slice(0, 16)}`;
   return [
     { action: "t3-code-*", resource: "*", effect: "deny" },
     { action: `${server}_*`, resource: "*", effect: "allow" },

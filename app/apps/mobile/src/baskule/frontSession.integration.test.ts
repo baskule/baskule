@@ -18,11 +18,9 @@ import * as RpcSession from "../../../../packages/client-runtime/src/rpc/session
 import { fetchMe, signIn } from "./api";
 import { normalizeServerUrl } from "./config";
 import { fetchSpaceEnvironmentId, spaceRegistration } from "./registrations";
-// baskule: the phone's connection path against a real Baskule 0.2 server (platform/dev.sh), in Node:
-// Better Auth sign-in → /api/baskule/me → one front-session registration per space → the shared
-// client-runtime resolver (descriptor with the bearer, no ticket) → its RPC session over a WebSocket
-// whose upgrade carries `Authorization` → the space's server config snapshot.
-// Skipped unless BASKULE_TEST_SERVER_URL, BASKULE_TEST_EMAIL and BASKULE_TEST_PASSWORD are set.
+// baskule: front sign-in → space registrations → resolver bearer → WebSocket → config.
+// Runs only with BASKULE_TEST_SERVER_URL, BASKULE_TEST_EMAIL and BASKULE_TEST_PASSWORD.
+// The front-session descriptor needs no ticket; its socket upgrade carries Authorization.
 
 const serverUrl = normalizeServerUrl(process.env.BASKULE_TEST_SERVER_URL ?? "");
 const email = process.env.BASKULE_TEST_EMAIL ?? "";
@@ -59,79 +57,73 @@ const nativeLikeFetch = ((input: string, init: RequestInit = {}) =>
   })) as unknown as typeof fetch;
 
 describe.skipIf(serverUrl === null || email === "")("Baskule front-session (real server)", () => {
-  it(
-    "signs in, registers every space and opens each space's RPC session",
-    { timeout: 180_000 },
-    async () => {
-      const server = serverUrl!;
-      const token = await signIn(server, email, password, nativeLikeFetch);
-      const me = await fetchMe(server, token, nativeLikeFetch);
-      expect(me.spaces.length).toBeGreaterThan(0);
+  it("signs in, registers every space and opens each space's RPC session", async () => {
+    const server = serverUrl!;
+    const token = await signIn(server, email, password, nativeLikeFetch);
+    const me = await fetchMe(server, token, nativeLikeFetch);
+    expect(me.spaces.length).toBeGreaterThan(0);
 
-      const credentials = new Map<string, ConnectionCredential>();
-      const layerDependencies = Layer.mergeAll(
-        layerRemoteHttpClient(fetch),
-        NodeSocket.layerWebSocketConstructorWS,
-        Layer.succeed(ConnectionProfileStore.ConnectionProfileStore, {
-          get: () => Effect.succeed(Option.none()),
-          put: () => Effect.void,
-          remove: () => Effect.void,
-        }),
-        Layer.succeed(ConnectionCredentialStore.ConnectionCredentialStore, {
-          get: (id) => Effect.succeed(Option.fromNullishOr(credentials.get(id))),
-          put: (id, credential) => Effect.sync(() => void credentials.set(id, credential)),
-          remove: (id) => Effect.sync(() => void credentials.delete(id)),
-        }),
-        Layer.succeed(ClientCapabilities.PrimaryEnvironmentAuth, {
-          bearerToken: Effect.succeed(Option.none()),
-        }),
-        Layer.succeed(ClientCapabilities.ClientPresentation, {
-          metadata: { label: "Baskule test", deviceType: "mobile", surface: "mobile" },
-        }),
-        Layer.succeed(RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization, {
-          authorizeBearer: unused,
-          authorizeDpop: unused,
-          authorizeDpopHttp: unused,
-        }),
-        Layer.succeed(ClientCapabilities.SshEnvironmentGateway, {
-          provision: unused,
-          prepare: unused,
-          disconnect: () => Effect.void,
-        }),
-      );
-      const layer = Layer.mergeAll(
-        ConnectionResolver.layer,
-        RpcSession.layer({
-          environmentThemes: true,
-          usageLimitsCommand: true,
-        }),
-      ).pipe(Layer.provideMerge(layerDependencies));
+    const credentials = new Map<string, ConnectionCredential>();
+    const layerDependencies = Layer.mergeAll(
+      layerRemoteHttpClient(fetch),
+      NodeSocket.layerWebSocketConstructorWS,
+      Layer.succeed(ConnectionProfileStore.ConnectionProfileStore, {
+        get: () => Effect.succeed(Option.none()),
+        put: () => Effect.void,
+        remove: () => Effect.void,
+      }),
+      Layer.succeed(ConnectionCredentialStore.ConnectionCredentialStore, {
+        get: (id) => Effect.succeed(Option.fromNullishOr(credentials.get(id))),
+        put: (id, credential) => Effect.sync(() => void credentials.set(id, credential)),
+        remove: (id) => Effect.sync(() => void credentials.delete(id)),
+      }),
+      Layer.succeed(ClientCapabilities.PrimaryEnvironmentAuth, {
+        bearerToken: Effect.succeed(Option.none()),
+      }),
+      Layer.succeed(ClientCapabilities.ClientPresentation, {
+        metadata: { label: "Baskule test", deviceType: "mobile", surface: "mobile" },
+      }),
+      Layer.succeed(RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization, {
+        authorizeBearer: unused,
+        authorizeDpop: unused,
+        authorizeDpopHttp: unused,
+      }),
+      Layer.succeed(ClientCapabilities.SshEnvironmentGateway, {
+        provision: unused,
+        prepare: unused,
+        disconnect: () => Effect.void,
+      }),
+    );
+    const layer = Layer.mergeAll(
+      ConnectionResolver.layer,
+      RpcSession.layer({
+        environmentThemes: true,
+        usageLimitsCommand: true,
+      }),
+    ).pipe(Layer.provideMerge(layerDependencies));
 
-      for (const space of me.spaces) {
-        const environmentId = await fetchSpaceEnvironmentId(server, token, space);
-        expect(environmentId, `descriptor of ${space.name}`).not.toBeNull();
-        const registration = spaceRegistration({
-          serverUrl: server,
-          token,
-          space,
-          environmentId: environmentId!,
-        });
-        credentials.set(registration.target.connectionId, registration.credential);
+    for (const space of me.spaces) {
+      const environmentId = await fetchSpaceEnvironmentId(server, token, space);
+      expect(environmentId, `descriptor of ${space.name}`).not.toBeNull();
+      const registration = spaceRegistration({
+        serverUrl: server,
+        token,
+        space,
+        environmentId: environmentId!,
+      });
+      credentials.set(registration.target.connectionId, registration.credential);
 
-        const config = await Effect.gen(function* () {
-          const resolver = yield* ConnectionResolver.ConnectionResolver;
-          const prepared = yield* resolver.prepare(
-            connectionRegistrationCatalogEntry(registration),
-          );
-          expect(new URL(prepared.socketUrl).searchParams.has("wsTicket")).toBe(false);
-          const factory = yield* RpcSession.RpcSessionFactory;
-          const session = yield* factory.connect(prepared);
-          return yield* session.initialConfig;
-        }).pipe(Effect.scoped, Effect.provide(layer), Effect.runPromise);
+      const config = await Effect.gen(function* () {
+        const resolver = yield* ConnectionResolver.ConnectionResolver;
+        const prepared = yield* resolver.prepare(connectionRegistrationCatalogEntry(registration));
+        expect(new URL(prepared.socketUrl).searchParams.has("wsTicket")).toBe(false);
+        const factory = yield* RpcSession.RpcSessionFactory;
+        const session = yield* factory.connect(prepared);
+        return yield* session.initialConfig;
+      }).pipe(Effect.scoped, Effect.provide(layer), Effect.runPromise);
 
-        expect(config.environment.environmentId).toBe(environmentId);
-        console.log(`space ${space.name}: connected, environment ${environmentId}`);
-      }
-    },
-  );
+      expect(config.environment.environmentId).toBe(environmentId);
+      console.log(`space ${space.name}: connected, environment ${environmentId}`);
+    }
+  });
 });

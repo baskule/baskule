@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 import * as React from "react";
 import * as Schema from "effect/Schema";
 import {
@@ -233,6 +234,7 @@ export function useCopyToClipboard<TContext = void>({
     );
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the copied-state reset timer on unmount
   React.useEffect(() => {
     return (): void => {
       if (timeoutIdRef.current) {

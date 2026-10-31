@@ -1,8 +1,8 @@
 import { useTranslation } from "../../../i18n";
+
 import { useEffectEvent, useState } from "react";
 import { View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-
 import { SymbolView } from "../../../components/ui/AppSymbol";
 
 export function SettingsDragHandle(props: {
@@ -20,22 +20,17 @@ export function SettingsDragHandle(props: {
   const onEnd = useEffectEvent((translation: number, cancelled: boolean) =>
     props.onEnd(translation, cancelled),
   );
-  const [gesture] = useState(() => {
-    let translation = 0;
-    return Gesture.Pan()
+  // The worklets plugin copies the values these callbacks close over when the gesture is built,
+  // so the drop reads its translation from the final event rather than a tracked variable.
+  const [gesture] = useState(() =>
+    Gesture.Pan()
       .minDistance(0)
       .shouldCancelWhenOutside(false)
       .runOnJS(true)
-      .onStart(() => {
-        translation = 0;
-        onStart();
-      })
-      .onUpdate((event) => {
-        translation = event.translationY;
-        onMove(event.translationY);
-      })
-      .onFinalize((_, success) => onEnd(translation, !success));
-  });
+      .onStart(() => onStart())
+      .onUpdate((event) => onMove(event.translationY))
+      .onFinalize((event, success) => onEnd(event.translationY, !success)),
+  );
   return (
     <GestureDetector gesture={gesture}>
       <View
@@ -44,8 +39,8 @@ export function SettingsDragHandle(props: {
         accessibilityRole="adjustable"
         accessibilityLabel={t("Reorder {{title}}", { title: props.title })}
         accessibilityActions={[
-          ...(props.canMoveUp ? [{ name: "decrement", label: "Move up" }] : []),
-          ...(props.canMoveDown ? [{ name: "increment", label: "Move down" }] : []),
+          ...(props.canMoveUp ? [{ name: "decrement", label: t("Move up") }] : []),
+          ...(props.canMoveDown ? [{ name: "increment", label: t("Move down") }] : []),
         ]}
         onAccessibilityAction={({ nativeEvent }) => {
           if (nativeEvent.actionName === "decrement" && props.canMoveUp) props.onStep("up");

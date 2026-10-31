@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../../i18n";
+
 import { Platform, ScrollView, type StyleProp, type TextStyle, View } from "react-native";
 
 import { AppText as Text } from "../../../../components/ui/AppText";

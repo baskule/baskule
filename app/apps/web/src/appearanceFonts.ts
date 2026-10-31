@@ -1,4 +1,5 @@
 import { t } from "./i18n";
+
 import {
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_INTERFACE_FONT_SIZE,

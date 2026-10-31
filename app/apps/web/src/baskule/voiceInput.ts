@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 // baskule: voice input in the composer. The front's `/api/baskule/transcriptions` turns a
 // recording into text, which the composer appends to the prompt or appends and sends.
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -5,7 +6,7 @@ import type { ComposerDispatchMode } from "@t3tools/client-runtime/state/compose
 import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "@t3tools/contracts/baskule";
 
 import { toastManager } from "../components/ui/toast";
-import { t } from "../i18n";
+
 import { baskuleApi } from "./api";
 import { BASKULE_UI } from "./flags";
 import { useBaskuleMe } from "./session";
@@ -151,11 +152,9 @@ export interface BaskuleVoiceInput {
 }
 
 /**
- * The recording belongs to one composer target: switching chats, unmounting or `enabled` turning
- * false (a question or approval takes the composer over) discards it. `insert` appends the
- * transcript to the prompt and reports whether the composer accepted it. Escape cancels while
- * focus is inside `root` or on nothing, once every other handler has declined it; the composer's
- * editor handles its own Escape.
+ * A recording belongs to one composer: target changes, unmount or disabled input discard it.
+ * `insert` appends the transcript and reports acceptance. Escape cancels inside `root` or
+ * without focus, after other handlers decline; the editor handles its own Escape.
  */
 export function useBaskuleVoiceInput(options: {
   readonly targetKey: string;
@@ -338,14 +337,17 @@ export function useBaskuleVoiceInput(options: {
 
   // The new target's callbacks and the discard land in one commit: a transcript resolving before
   // passive effects run would otherwise be inserted into, and maybe sent to, the next chat.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Synchronize the recorder owner and callbacks before a transcript can reach the next chat.
   useLayoutEffect(() => {
     optionsRef.current = options;
     if (!options.enabled || ownerRef.current !== options.targetKey) controls.cancel();
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Release the microphone recorder when its owner unmounts.
   useLayoutEffect(() => controls.cancel, [controls]);
 
   const active =
     state.phase === "requesting" || state.phase === "recording" || state.phase === "transcribing";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Register Escape handling only while the microphone session is active.
   useEffect(() => {
     if (!active) return;
     // On window, bubbling, added after the app's own Escape handlers: a search, menu or dialog

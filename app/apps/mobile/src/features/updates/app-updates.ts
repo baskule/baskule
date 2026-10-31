@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import * as Updates from "expo-updates";
 // Metro namespace imports evaluate unrelated React Native getters, including unavailable native modules.
 import { AppState } from "react-native";
@@ -417,7 +418,7 @@ function defaultOnNextBackground(apply: () => void, includeCurrent: boolean): vo
   }
 }
 
-export const DEFERRED_INSTALL_PROMPT_AFTER_MS = 30 * 60 * 1000;
+const DEFERRED_INSTALL_PROMPT_AFTER_MS = 30 * 60 * 1000;
 
 /** iOS inactive blips, including the app switcher, leave this timer running. */
 function defaultOnForegroundStay(apply: () => void): void {
@@ -467,23 +468,9 @@ function isAppUpdateUnavailableError(error: unknown): boolean {
   return typeof code === "string" && UPDATE_CHECK_UNAVAILABLE_ERROR_CODES.has(code);
 }
 
-export function createAppUpdateLaunchCheck(
-  client: AppUpdateClient = Updates,
-): () => Promise<void> | undefined {
-  let started = false;
+const FOREGROUND_APP_UPDATE_RECHECK_AFTER_MS = 15 * 60 * 1000;
 
-  return () => {
-    if (started || !isAppUpdateCheckAvailable(client)) return undefined;
-    started = true;
-    return runAppUpdateCheck({ client });
-  };
-}
-
-export const checkForAppUpdateOnLaunch = createAppUpdateLaunchCheck();
-
-export const FOREGROUND_APP_UPDATE_RECHECK_AFTER_MS = 15 * 60 * 1000;
-
-export function shouldRecheckAppUpdateOnForeground(
+function shouldRecheckAppUpdateOnForeground(
   backgroundedAtMs: number | null,
   activeAtMs: number,
   pendingInstall: boolean,
@@ -495,31 +482,30 @@ export function shouldRecheckAppUpdateOnForeground(
   );
 }
 
-export function createAppUpdateForegroundRecheck(
+/**
+ * App-lifetime update checks: one at launch, then again when the app returns
+ * from a long stay in the background.
+ */
+export function installAppUpdateChecks(
   client: AppUpdateClient = Updates,
   deferral: AppUpdateDeferral = appUpdateDeferral,
 ): () => void {
-  let started = false;
-
-  return () => {
-    if (started || !isAppUpdateCheckAvailable(client)) return;
-    started = true;
-    let backgroundedAtMs: number | null = null;
-    AppState.addEventListener("change", (state) => {
-      if (state === "background") {
-        backgroundedAtMs = Date.now();
-        return;
-      }
-      if (state !== "active") return;
-      const shouldCheck = shouldRecheckAppUpdateOnForeground(
-        backgroundedAtMs,
-        Date.now(),
-        deferral.pendingInstall,
-      );
-      backgroundedAtMs = null;
-      if (shouldCheck) void runAppUpdateCheck({ client, deferral });
-    });
-  };
+  if (!isAppUpdateCheckAvailable(client)) return () => undefined;
+  void runAppUpdateCheck({ client, deferral });
+  let backgroundedAtMs: number | null = null;
+  const subscription = AppState.addEventListener("change", (state) => {
+    if (state === "background") {
+      backgroundedAtMs = Date.now();
+      return;
+    }
+    if (state !== "active") return;
+    const shouldCheck = shouldRecheckAppUpdateOnForeground(
+      backgroundedAtMs,
+      Date.now(),
+      deferral.pendingInstall,
+    );
+    backgroundedAtMs = null;
+    if (shouldCheck) void runAppUpdateCheck({ client, deferral });
+  });
+  return () => subscription.remove();
 }
-
-export const startAppUpdateForegroundRecheck = createAppUpdateForegroundRecheck();

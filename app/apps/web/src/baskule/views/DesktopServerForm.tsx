@@ -1,5 +1,6 @@
-import { useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "../../i18n";
+import { useRef, useState, type FormEvent } from "react";
+
 import { Button } from "../../components/ui/button";
 import { StandalonePage } from "../../components/ui/standalone-page";
 import { FormField, BaskuleWordmark } from "../ui";
@@ -93,7 +94,7 @@ export function DesktopServerForm({
   ) : initialAddress ? (
     form
   ) : (
-    <StandalonePage tone="brand">
+    <StandalonePage>
       <div className="flex flex-col gap-6">
         <BaskuleWordmark />
         <h1 className="text-2xl font-semibold">{t("Connect to a server")}</h1>

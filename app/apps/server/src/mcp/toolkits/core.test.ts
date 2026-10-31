@@ -8,17 +8,12 @@ import {
   CommandId,
   EnvironmentId,
   NodeId,
-  OrchestratorMcpThreadReadResult,
-  ProviderDriverKind,
   ProviderInstanceId,
-  RunId,
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
-  type OrchestrationV2ProjectedTurnItem,
-  type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
-import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
@@ -26,7 +21,6 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { McpAttachmentInput } from "./attachment/input.ts";
 import { McpSchema, McpServer } from "effect/ai";
-import { FetchHttpClient } from "effect/http";
 
 import {
   OrchestratorCommandRejectedError,
@@ -41,7 +35,7 @@ import * as ThreadLaunchService from "../../orchestration-v2/ThreadLaunchService
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadSearch from "../../orchestration-v2/ThreadSearch.ts";
-import * as PreviewBrowser from "../../preview/PreviewBrowser.ts";
+
 import * as ProjectService from "../../project/ProjectService.ts";
 import * as ProviderRegistry from "../../provider/ProviderRegistry.ts";
 import * as SecretRequests from "../../secrets/SecretRequests.ts";
@@ -64,10 +58,8 @@ const declaredFailure = (result: McpSchema.CallToolResult) => {
   const text = result.content[0];
   return result.isError === true && text?.type === "text" ? JSON.parse(text.text) : undefined;
 };
-import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
 
 const decodeMcpAttachmentInput = Schema.decodeUnknownEffect(McpAttachmentInput);
-const decodeThreadReadResult = Schema.decodeUnknownEffect(OrchestratorMcpThreadReadResult);
 
 const layerThreadToolkit = McpHttpServer.layerThreadToolkit.pipe(
   Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
@@ -455,7 +447,6 @@ it.effect("a client caller targets any thread within its ceiling and cannot act 
     ),
   ),
 );
-const dispatched: Array<string> = [];
 
 it.effect("refuses act-as-caller tools to a client caller", () =>
   Effect.gen(function* () {

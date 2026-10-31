@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../i18n";
+
 import { Button } from "../../../components/ui/Button";
 import { View } from "react-native";
 import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";

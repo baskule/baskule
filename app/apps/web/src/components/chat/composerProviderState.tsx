@@ -7,6 +7,7 @@ import {
   type ScopedThreadRef,
   type ServerProviderModel,
 } from "@t3tools/contracts";
+import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentValue,
@@ -23,7 +24,7 @@ import {
   TraitsMenuContent,
   TraitsPicker,
 } from "./TraitsPicker";
-export type ComposerProviderStateInput = {
+type ComposerProviderStateInput = {
   provider: ProviderDriverKind;
   model: string;
   models: ReadonlyArray<ServerProviderModel>;
@@ -52,6 +53,10 @@ type TraitsRenderInput = {
   hidden?: boolean;
   triggerClassName?: string;
   isComposerOwned?: boolean;
+  effortDisplay?: EffortDisplay;
+  extraMenuContent?: ReactNode;
+  extraMenuOwnsModeShortcut?: boolean;
+  extraMenuHint?: string;
 };
 
 /** Fast mode is enabled only by an explicit user selection. */
@@ -190,6 +195,10 @@ function renderTraitsControl(
     hidden,
     triggerClassName,
     isComposerOwned,
+    effortDisplay,
+    extraMenuContent,
+    extraMenuOwnsModeShortcut,
+    extraMenuHint,
   } = input;
   const hasTarget = threadRef !== undefined || draftId !== undefined;
   const { selections: resolvedModelOptions } = resolveComposerOptionSelections(
@@ -226,6 +235,10 @@ function renderTraitsControl(
       {...(hidden !== undefined ? { hidden } : {})}
       {...(triggerClassName !== undefined ? { triggerClassName } : {})}
       {...(isComposerOwned ? { isComposerOwned } : {})}
+      {...(effortDisplay ? { effortDisplay } : {})}
+      {...(extraMenuContent ? { extraMenuContent } : {})}
+      {...(extraMenuOwnsModeShortcut ? { extraMenuOwnsModeShortcut } : {})}
+      {...(extraMenuHint ? { extraMenuHint } : {})}
     />
   );
 }

@@ -3,7 +3,7 @@ import ts from "typescript-legacy";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
-import { locales, languageNames } from "@t3tools/shared/localization";
+import { locales } from "@t3tools/shared/localization";
 
 const root = NodePath.resolve(import.meta.dirname, "../..");
 const catalogDirectory = NodePath.join(root, "app/packages/shared/src/locales");

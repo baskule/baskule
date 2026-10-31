@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
@@ -9,7 +10,6 @@ import type {
   PullRequestFilesViewedResult,
   PullRequestRef,
 } from "@t3tools/contracts";
-import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -239,7 +239,7 @@ const filesViewedStore = createFilesViewedStore({
   subscribeAnswers: (target, onAnswer) =>
     appAtomRegistry.subscribe(
       filesViewedAtom(target),
-      (result) => onAnswer(Option.getOrNull(AsyncResult.value(result))),
+      (result) => onAnswer(AsyncResult.getOrElse(result, () => null)),
       { immediate: true },
     ),
   send: ({ environmentId, reference }, files) =>

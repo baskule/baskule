@@ -1,8 +1,10 @@
 import { t } from "../i18n";
+
 import { useAtomValue } from "@effect/atom-react";
 import { secondTick } from "@t3tools/client-runtime/clock";
 import { type VcsActionState, type VcsActionTarget } from "@t3tools/client-runtime/state/vcs";
 import { Atom } from "effect/reactivity";
+import * as Haptics from "expo-haptics";
 import { useSyncExternalStore } from "react";
 
 import { appAtomRegistry } from "./atom-registry";
@@ -32,6 +34,12 @@ function broadcast(result: GitActionResultNotification | null): void {
 }
 
 export function showGitActionResult(result: GitActionResultNotification): void {
+  // Best effort: devices without a haptics engine reject.
+  Haptics.notificationAsync(
+    result.type === "success"
+      ? Haptics.NotificationFeedbackType.Success
+      : Haptics.NotificationFeedbackType.Error,
+  ).catch(() => undefined);
   if (dismissTimer) clearTimeout(dismissTimer);
   broadcast(result);
   dismissTimer = setTimeout(() => {
@@ -46,7 +54,7 @@ export function dismissGitActionResult(): void {
   broadcast(null);
 }
 
-export function useGitActionResultNotification(): {
+function useGitActionResultNotification(): {
   readonly result: GitActionResultNotification | null;
   readonly dismiss: () => void;
 } {

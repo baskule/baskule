@@ -128,6 +128,7 @@ export function useApiResource<T>(load: () => Promise<T>, options?: { readonly p
   }>({ data: null, error: null, loading: true });
   const waiters = useRef<Array<() => void>>([]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel the active HTTP resource request when its view or request identity ends.
   useEffect(() => {
     let cancelled = false;
     const settle = () => {
@@ -157,6 +158,7 @@ export function useApiResource<T>(load: () => Promise<T>, options?: { readonly p
   }, [load, version]);
 
   const pollMs = options?.pollMs;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the refresh timer only while the resource view is mounted.
   useEffect(() => {
     if (!pollMs) return;
     const timer = window.setInterval(() => {

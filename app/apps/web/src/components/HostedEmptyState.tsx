@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 import { useAuth } from "@clerk/react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";

@@ -1,8 +1,8 @@
 import { useTranslation } from "../../i18n";
-import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
+
+import type { DesktopBridge } from "@t3tools/contracts";
 import { TriangleAlertIcon } from "lucide-react";
-import { type ComponentProps, useId, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { useState } from "react";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { isElectron } from "../../env";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -25,7 +25,6 @@ import {
 } from "../desktopUpdate.logic";
 import { showDesktopUpdateDownloadedToast } from "../desktopUpdate.toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { Popover, PopoverCreateHandle, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { SidebarMenuItem } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -34,7 +33,6 @@ import {
   shouldContinueDesktopUpdateCheckAnimation,
   shouldShowDesktopUpdateCheckIcon,
 } from "./DesktopUpdateStatusIcon";
-import { SidebarUpdateReleaseNotes } from "./SidebarUpdateReleaseNotes";
 import { SidebarUpdateCapsule } from "./SidebarUpdateCapsule";
 import { UpdateEverythingDialog } from "./UpdateEverythingDialog";
 import type { UpdateEverythingRun, UpdateRunLocalState } from "./updateEverything.logic";
@@ -44,35 +42,6 @@ import {
   useUpdateEverythingRun,
 } from "./updateEverythingRun";
 import { type ReportLocalUpdateError, useUpdateEverything } from "./useUpdateEverything";
-
-type SidebarUpdatePopoverChangeDetails = Parameters<
-  NonNullable<ComponentProps<typeof Popover>["onOpenChange"]>
->[1];
-type SidebarUpdatePopoverHandle = ReturnType<typeof PopoverCreateHandle>;
-
-function shouldUseSidebarUpdateReleaseNotesPopover(
-  showUpdateDetails: boolean,
-  state: DesktopUpdateState | null,
-): boolean {
-  return showUpdateDetails && state?.channel === "nightly" && state.releaseNotes.length > 0;
-}
-
-function handleSidebarUpdateReleaseNotesPopoverOpenChange(
-  _open: boolean,
-  details: Pick<SidebarUpdatePopoverChangeDetails, "reason" | "cancel">,
-): void {
-  if (details.reason === "trigger-press") details.cancel();
-}
-
-function openSidebarUpdateReleaseNotesPopoverOnForwardTab(
-  event: { readonly key: string; readonly shiftKey: boolean },
-  handle: Pick<SidebarUpdatePopoverHandle, "open">,
-  triggerId: string,
-): void {
-  if (event.key !== "Tab" || event.shiftKey) return;
-  // Hover-open popovers do not manage focus. Promote this one before native Tab runs.
-  flushSync(() => handle.open(triggerId));
-}
 
 function resolveSidebarUpdatePresentation({
   action,
@@ -197,10 +166,7 @@ function SidebarUpdateControl() {
   const [isActionPending, setIsActionPending] = useState(false);
   const [isConfirmingEverything, setIsConfirmingEverything] = useState(false);
   const [checkAnimationKey, setCheckAnimationKey] = useState(0);
-  const [releaseNotesPopoverHandle] = useState(() => PopoverCreateHandle());
-  const suppressReleaseNotesFocusOpen = useRef(false);
-  const releaseNotesPopupRef = useRef<HTMLDivElement>(null);
-  const releaseNotesTriggerId = useId();
+
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const updateStatus = state?.status;
@@ -259,19 +225,6 @@ function SidebarUpdateControl() {
         ? isDesktopUpdateButtonDisabled(state)
         : !canCheckForUpdate(state);
   const isInteractionDisabled = disabled || isActionPending || isRunningEverything;
-  const showReleaseNotesPopover =
-    !isRunningEverything && shouldUseSidebarUpdateReleaseNotesPopover(showUpdateDetails, state);
-
-  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
-  const [releaseNotesTriggerFocusVisible, setReleaseNotesTriggerFocusVisible] = useState(false);
-  // Release notes close when they stop applying, and open when they start
-  // applying while the trigger already holds keyboard focus.
-  const [releaseNotesShownBefore, setReleaseNotesShownBefore] = useState(showReleaseNotesPopover);
-  if (releaseNotesShownBefore !== showReleaseNotesPopover) {
-    setReleaseNotesShownBefore(showReleaseNotesPopover);
-    setReleaseNotesOpen(showReleaseNotesPopover && releaseNotesTriggerFocusVisible);
-  }
-
   const handleAction = async () => {
     const bridge = window.desktopBridge;
     if (isInteractionDisabled) return;
@@ -303,7 +256,7 @@ function SidebarUpdateControl() {
           stackedThreadToast({
             type: "error",
             title: t("Could not confirm update"),
-            description: error instanceof Error ? error.message : "Update confirmation failed.",
+            description: error instanceof Error ? error.message : t("Update confirmation failed."),
           }),
         );
         return;
@@ -338,7 +291,7 @@ function SidebarUpdateControl() {
           stackedThreadToast({
             type: "error",
             title: t("Could not check for updates"),
-            description: error instanceof Error ? error.message : "Update check failed.",
+            description: error instanceof Error ? error.message : t("Update check failed."),
           }),
         );
       })
@@ -368,7 +321,7 @@ function SidebarUpdateControl() {
         stackedThreadToast({
           type: "error",
           title: t("Could not update everything"),
-          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+          description: error instanceof Error ? error.message : t("An unexpected error occurred."),
         }),
       );
     }
@@ -399,10 +352,10 @@ function SidebarUpdateControl() {
     <UpdateEverythingDialog
       open={isConfirmingEverything}
       onOpenChange={setIsConfirmingEverything}
-      summary={everything.summary}
-      lines={everything.lines}
+      version={everything.version}
+      providerCount={everything.providerCount}
+      rows={everything.rows}
       restarts={everything.restarts}
-      skipped={everything.skipped}
       onConfirm={() => void runEverything()}
     />
   );
@@ -462,28 +415,6 @@ function SidebarUpdateControl() {
         disabled && !showUpdateIconState && "opacity-60",
       )}
       onClick={handleAction}
-      onBlur={() => {
-        suppressReleaseNotesFocusOpen.current = false;
-        setReleaseNotesTriggerFocusVisible(false);
-      }}
-      onFocus={(event) => {
-        const focusVisible = event.currentTarget.matches(":focus-visible");
-        setReleaseNotesTriggerFocusVisible(focusVisible);
-        if (!showReleaseNotesPopover || !focusVisible) return;
-        if (suppressReleaseNotesFocusOpen.current) {
-          suppressReleaseNotesFocusOpen.current = false;
-          return;
-        }
-        flushSync(() => releaseNotesPopoverHandle.open(releaseNotesTriggerId));
-      }}
-      onKeyDown={(event) => {
-        if (!showReleaseNotesPopover) return;
-        openSidebarUpdateReleaseNotesPopoverOnForwardTab(
-          event,
-          releaseNotesPopoverHandle,
-          releaseNotesTriggerId,
-        );
-      }}
     >
       {statusIcon}
     </button>
@@ -491,81 +422,19 @@ function SidebarUpdateControl() {
 
   return (
     <SidebarMenuItem className="ml-auto shrink-0">
-      <Popover
-        handle={releaseNotesPopoverHandle}
-        open={releaseNotesOpen && showReleaseNotesPopover}
-        triggerId={releaseNotesTriggerId}
-        onOpenChange={(open, details) => {
-          if (open && !showReleaseNotesPopover) {
-            details.cancel();
-            return;
-          }
-          handleSidebarUpdateReleaseNotesPopoverOpenChange(open, details);
-          if (!details.isCanceled) setReleaseNotesOpen(open);
-        }}
-      >
-        <Tooltip disabled={showReleaseNotesPopover}>
-          <TooltipTrigger
-            id={releaseNotesTriggerId}
-            render={
-              <PopoverTrigger
-                {...(!showReleaseNotesPopover
-                  ? {
-                      "aria-controls": undefined,
-                      "aria-expanded": undefined,
-                      "aria-haspopup": undefined,
-                    }
-                  : {})}
-                closeDelay={150}
-                handle={releaseNotesPopoverHandle}
-                id={releaseNotesTriggerId}
-                openOnHover={showReleaseNotesPopover}
-                render={updateButton}
-              />
-            }
-          />
-          {!showReleaseNotesPopover ? (
-            <TooltipPopup
-              align="center"
-              side="top"
-              variant={showUpdateDetails ? "glass" : "default"}
-            >
-              {idleTooltip?.detail ? (
-                <div className="text-left">
-                  <div className="font-medium">{idleTooltip.title}</div>
-                  <div className="text-muted-foreground">{idleTooltip.detail}</div>
-                </div>
-              ) : (
-                <span className="whitespace-pre-line">{tooltip}</span>
-              )}
-            </TooltipPopup>
-          ) : null}
-        </Tooltip>
-        {showReleaseNotesPopover && state ? (
-          <PopoverPopup
-            align="center"
-            aria-label={t("Nightly update release notes")}
-            initialFocus={false}
-            onKeyDownCapture={(event) => {
-              if (
-                event.key === "Escape" &&
-                releaseNotesPopupRef.current?.contains(document.activeElement)
-              ) {
-                suppressReleaseNotesFocusOpen.current = true;
-              }
-            }}
-            ref={releaseNotesPopupRef}
-            side="top"
-            tooltipStyle
-          >
-            <SidebarUpdateReleaseNotes
-              shell={window.desktopBridge}
-              state={state}
-              tooltip={tooltip}
-            />
-          </PopoverPopup>
-        ) : null}
-      </Popover>
+      <Tooltip>
+        <TooltipTrigger render={updateButton} />
+        <TooltipPopup align="center" side="top" variant={showUpdateDetails ? "glass" : "default"}>
+          {idleTooltip?.detail ? (
+            <div className="text-left">
+              <div className="font-medium">{idleTooltip.title}</div>
+              <div className="text-muted-foreground">{idleTooltip.detail}</div>
+            </div>
+          ) : (
+            <span className="whitespace-pre-line">{tooltip}</span>
+          )}
+        </TooltipPopup>
+      </Tooltip>
       {confirmDialog}
     </SidebarMenuItem>
   );

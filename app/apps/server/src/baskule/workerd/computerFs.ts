@@ -1,15 +1,7 @@
-// baskule: the space computer's files, through computerd (architecture v3, E4).
-//
-// computerd v2 API used here (computerd/v2/README.md; under `${COMPUTERD_URL}/v1`, bearer
-// `COMPUTERD_TOKEN`):
-// - `GET  /spaces/:id/files?path=&stat=1` → `{path, type: file|dir|symlink|other, size, mtime}`;
-// - `GET  /spaces/:id/files?path=` → a file's bytes (honours `Range`), or for a directory
-//   `{type: "dir", entries: [{name, type, …}]}`; 404 when missing;
-// - `PUT  /spaces/:id/files?path=` → writes the body, creating parents; `&type=dir` makes a dir;
-// - `POST /spaces/:id/exec` with JSON `{"argv": [...], "cwd"?, "stdin"?: base64}` → frames
-//   `{"t":"o"|"e","d":base64}`, then `{"t":"x","code":N}` or `{"t":"err","msg":…}`.
-// Exclusive mkdir, rm and mv run as small POSIX `sh` scripts through exec.
-
+// baskule: computerd v2 files under /v1/spaces/:id, using COMPUTERD_URL and COMPUTERD_TOKEN.
+// GET /files?path=&stat=1 returns metadata; without stat it returns bytes (with Range) or entries.
+// PUT /files writes bytes (parents created); &type=dir creates a directory.
+// POST /exec takes argv/cwd/base64 stdin and returns NDJSON o/e/x/err frames; mkdir/rm/mv use sh.
 export interface ComputerFsConfig {
   readonly baseUrl: string;
   readonly token: string;

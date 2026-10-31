@@ -23,37 +23,45 @@ const keys = (sql: SqlClient.SqlClient) =>
   );
 
 describe("DoSqlClient", () => {
-  it.live("cancellation before native entry skips the body and holds isolation until settlement", () =>
-    Effect.gen(function* () {
-      const storage = makeFakeDoStorage();
-      const entered = Promise.withResolvers<void>();
-      const release = Promise.withResolvers<void>();
-      const { client: sql } = yield* DoSql.make({
-        sql: storage.sql,
-        async transaction<T>(body: () => Promise<T>) {
-          entered.resolve();
-          await release.promise;
-          return storage.transaction(body);
-        },
-      });
-      yield* sql`CREATE TABLE t (k TEXT)`;
-      let bodyCalls = 0;
-      const transaction = yield* Effect.forkChild(sql.withTransaction(
-        Effect.sync(() => { bodyCalls++; }).pipe(Effect.andThen(sql`INSERT INTO t VALUES ('cancelled')`)),
-      ));
-      yield* Effect.promise(() => entered.promise);
-      yield* Effect.gen(function* () {
-        const cancelled = yield* Effect.forkChild(Fiber.interrupt(transaction), { startImmediately: true });
-        const other = yield* Effect.forkChild(sql`INSERT INTO t VALUES ('preserved')`);
-        yield* Effect.yieldNow;
-        expect(storage.db.prepare("SELECT k FROM t").all()).toEqual([]);
-        release.resolve();
-        yield* Fiber.join(cancelled);
-        yield* Fiber.join(other);
-        expect(bodyCalls).toBe(0);
-        expect(yield* keys(sql)).toBe("preserved");
-      }).pipe(Effect.ensuring(Effect.sync(() => release.resolve())));
-    }),
+  it.live(
+    "cancellation before native entry skips the body and holds isolation until settlement",
+    () =>
+      Effect.gen(function* () {
+        const storage = makeFakeDoStorage();
+        const entered = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const { client: sql } = yield* DoSql.make({
+          sql: storage.sql,
+          async transaction<T>(body: () => Promise<T>) {
+            entered.resolve();
+            await release.promise;
+            return storage.transaction(body);
+          },
+        });
+        yield* sql`CREATE TABLE t (k TEXT)`;
+        let bodyCalls = 0;
+        const transaction = yield* Effect.forkChild(
+          sql.withTransaction(
+            Effect.sync(() => {
+              bodyCalls++;
+            }).pipe(Effect.andThen(sql`INSERT INTO t VALUES ('cancelled')`)),
+          ),
+        );
+        yield* Effect.promise(() => entered.promise);
+        yield* Effect.gen(function* () {
+          const cancelled = yield* Effect.forkChild(Fiber.interrupt(transaction), {
+            startImmediately: true,
+          });
+          const other = yield* Effect.forkChild(sql`INSERT INTO t VALUES ('preserved')`);
+          yield* Effect.yieldNow;
+          expect(storage.db.prepare("SELECT k FROM t").all()).toEqual([]);
+          release.resolve();
+          yield* Fiber.join(cancelled);
+          yield* Fiber.join(other);
+          expect(bodyCalls).toBe(0);
+          expect(yield* keys(sql)).toBe("preserved");
+        }).pipe(Effect.ensuring(Effect.sync(() => release.resolve())));
+      }),
   );
 
   it.live("two embedded consumers share transaction isolation across rollback", () =>
@@ -91,9 +99,7 @@ describe("DoSqlClient", () => {
     withClient((sql) =>
       Effect.gen(function* () {
         yield* sql`CREATE TABLE t (k TEXT)`;
-        yield* sql.withTransaction(
-          Effect.andThen(sql`INSERT INTO t VALUES ('a')`, Effect.sleep(1)),
-        );
+        yield* sql.withTransaction(sql`INSERT INTO t VALUES ('a')`);
         const failed = yield* sql
           .withTransaction(
             sql`INSERT INTO t VALUES ('b')`.pipe(Effect.andThen(Effect.fail("boom" as const))),
@@ -138,17 +144,22 @@ describe("DoSqlClient", () => {
     withClient((sql) =>
       Effect.gen(function* () {
         yield* sql`CREATE TABLE t (k TEXT)`;
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
         const tx = yield* Effect.forkChild(
           sql.withTransaction(
             sql`INSERT INTO t VALUES ('in')`.pipe(
-              Effect.andThen(Effect.sleep(20)),
+              Effect.andThen(Deferred.succeed(entered, undefined)),
+              Effect.andThen(Deferred.await(release)),
               Effect.andThen(Effect.fail("rollback")),
             ),
           ),
         );
-        yield* Effect.sleep(5);
+        yield* Deferred.await(entered);
         // Without the permit this insert would land inside the transaction and be rolled back.
-        yield* sql`INSERT INTO t VALUES ('out')`;
+        const outside = yield* sql`INSERT INTO t VALUES ('out')`.pipe(Effect.forkChild);
+        yield* Deferred.succeed(release, undefined);
+        yield* Fiber.join(outside);
         yield* Fiber.await(tx);
         expect(yield* keys(sql)).toBe("out");
       }),

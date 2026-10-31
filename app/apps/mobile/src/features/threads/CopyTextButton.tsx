@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import * as Dialog from "../../components/ui/Dialog";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { memo, useState } from "react";

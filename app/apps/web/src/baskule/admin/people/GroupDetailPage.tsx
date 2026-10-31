@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n";
 // baskule: one group: its name, its people, the permissions and the plugins it gives them.
 // "Everyone" has every person automatically and keeps its name; its permissions and plugins change.
 import type { GroupInput } from "@t3tools/contracts/baskule-plugins";
@@ -5,7 +6,6 @@ import { Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { UserPlusIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Button } from "../../../components/ui/button";
 import {
   Select,

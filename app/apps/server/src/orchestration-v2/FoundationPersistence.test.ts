@@ -1960,7 +1960,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         attemptCount: 1,
         availableAt: now,
         leaseOwner: "claim-cancellation-worker",
-        leaseExpiresAt: now,
         createdAt: now,
         updatedAt: now,
         completedAt: null,
@@ -1974,7 +1973,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
             ...claimedEffect,
             status: "cancelled" as const,
             leaseOwner: null,
-            leaseExpiresAt: null,
             completedAt: now,
           }),
         clearCancellation: () => Effect.void,
@@ -2017,10 +2015,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       ]);
 
       const claims = yield* Effect.all(
-        [
-          outbox.claimNext({ workerId: "worker-a", leaseDurationMs: 30_000 }),
-          outbox.claimNext({ workerId: "worker-b", leaseDurationMs: 30_000 }),
-        ],
+        [outbox.claimNext({ workerId: "worker-a" }), outbox.claimNext({ workerId: "worker-b" })],
         { concurrency: "unbounded" },
       );
       assert.equal(claims.filter(Option.isSome).length, 1);
@@ -2054,7 +2049,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       const waiter = yield* outbox.awaitSettled(effectId).pipe(Effect.forkChild);
       const claimed = yield* outbox.claimNext({
         workerId: "settle-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(claimed));
       yield* Effect.yieldNow;
@@ -2113,7 +2107,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
 
       const title = yield* outbox.claimNext({
         workerId: "title-lane-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(title));
       if (Option.isNone(title)) return;
@@ -2121,7 +2114,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
 
       const provider = yield* outbox.claimNext({
         workerId: "critical-lane-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(provider));
       if (Option.isNone(provider)) return;
@@ -2131,7 +2123,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         Option.isNone(
           yield* outbox.claimNext({
             workerId: "blocked-lanes-worker",
-            leaseDurationMs: 30_000,
           }),
         ),
       );
@@ -2142,7 +2133,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       });
       const nextCritical = yield* outbox.claimNext({
         workerId: "critical-lane-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(nextCritical));
       if (Option.isNone(nextCritical)) return;
@@ -2158,7 +2148,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       });
       const nextTitle = yield* outbox.claimNext({
         workerId: "title-lane-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(nextTitle));
       if (Option.isSome(nextTitle)) {
@@ -2202,7 +2191,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
 
       const claimed = yield* outbox.claimNext({
         workerId: "next-claimable-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(claimed));
       if (Option.isNone(claimed)) return;
@@ -2226,7 +2214,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
 
       const unblocked = yield* outbox.claimNext({
         workerId: "next-claimable-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(unblocked));
       if (Option.isSome(unblocked)) {
@@ -2319,7 +2306,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
 
       const running = yield* outbox.claimNext({
         workerId: "cancellation-wakeup-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(running));
       if (Option.isNone(running)) return;
@@ -2338,7 +2324,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
 
       const unblocked = yield* outbox.claimNext({
         workerId: "cancellation-wakeup-worker",
-        leaseDurationMs: 30_000,
       });
       assert.isTrue(Option.isSome(unblocked));
       if (Option.isSome(unblocked)) {
@@ -2370,7 +2355,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
           },
         },
       ]);
-      const rollback = yield* outbox.claimNext({ workerId, leaseDurationMs: 30_000 });
+      const rollback = yield* outbox.claimNext({ workerId });
       assert.isTrue(Option.isSome(rollback));
       if (Option.isNone(rollback)) return;
       yield* outbox.retry({
@@ -2394,9 +2379,9 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
           request: { type: "thread-title.generate", kind: { type: "regenerate" } },
         },
       ]);
-      const title = yield* outbox.claimNext({ workerId, leaseDurationMs: 30_000 });
+      const title = yield* outbox.claimNext({ workerId });
       assert.equal(Option.getOrUndefined(title)?.id, "effect:foundation-retry-order:b-title");
-      const blocked = yield* outbox.claimNext({ workerId, leaseDurationMs: 30_000 });
+      const blocked = yield* outbox.claimNext({ workerId });
       assert.isTrue(Option.isNone(blocked));
       const nextClaimable = yield* outbox.nextClaimableAt;
       assert.isTrue(Option.isSome(nextClaimable));
@@ -2412,7 +2397,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         effectTypes: ["provider-thread.rollback"],
         reason: "Test cleanup.",
       });
-      const unblocked = yield* outbox.claimNext({ workerId, leaseDurationMs: 30_000 });
+      const unblocked = yield* outbox.claimNext({ workerId });
       assert.equal(Option.getOrUndefined(unblocked)?.id, "effect:foundation-retry-order:a-start");
       yield* outbox.succeed({ effectId: "effect:foundation-retry-order:a-start", workerId });
       yield* outbox.succeed({ effectId: "effect:foundation-retry-order:b-title", workerId });
@@ -2573,7 +2558,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       );
       const layerWorker = EffectWorker.layerWithOptions({
         workerId: "no-live-reclaim-worker",
-        leaseDurationMs: 1,
       }).pipe(
         Layer.provide(
           Layer.merge(Layer.succeed(EffectOutbox.EffectOutboxV2, outbox), layerExecutor),
@@ -2599,6 +2583,90 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         assert.deepEqual(yield* Ref.get(executions), [firstEffectId, secondEffectId]);
       }).pipe(Effect.provide(layerWorker));
     }),
+  );
+
+  it.effect.each([{ replayed: false }, { replayed: true }] as const)(
+    "starts later thread work behind a delegated-task stop that never returns (replayed: $replayed)",
+    ({ replayed }) =>
+      Effect.gen(function* () {
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        const key = `foundation-hung-delegated-stop:${replayed}`;
+        const threadId = ThreadId.make(`thread:${key}`);
+        const stopEffectId = `effect:${key}:stop`;
+        const stopStarted = yield* Deferred.make<void>();
+        const turnStarted = yield* Deferred.make<void>();
+        yield* outbox.enqueue([
+          {
+            id: stopEffectId,
+            commandId: CommandId.make(`command:${key}:stop`),
+            threadId,
+            request: { type: "delegated-tasks.stop" },
+          },
+        ]);
+        if (replayed) {
+          assert.isTrue(Option.isSome(yield* outbox.claimNext({ workerId: "crashed-worker" })));
+          assert.equal((yield* outbox.reconcileAfterProcessLoss).requeued, 1);
+        }
+
+        const layerExecutor = Layer.succeed(
+          EffectWorker.OrchestrationEffectExecutorV2,
+          EffectWorker.OrchestrationEffectExecutorV2.of({
+            execute: (effect) =>
+              effect.request.type === "delegated-tasks.stop"
+                ? Deferred.succeed(stopStarted, undefined).pipe(Effect.andThen(Effect.never))
+                : Deferred.succeed(turnStarted, undefined),
+          }),
+        );
+        const layerWorker = EffectWorker.layerWithOptions({
+          workerId: "hung-delegated-stop-worker",
+        }).pipe(
+          Layer.provide(
+            Layer.merge(Layer.succeed(EffectOutbox.EffectOutboxV2, outbox), layerExecutor),
+          ),
+        );
+
+        yield* Effect.gen(function* () {
+          yield* EffectWorker.runDaemonWithOptions({ concurrency: 2 }).pipe(Effect.forkScoped);
+          yield* Deferred.await(stopStarted);
+          yield* outbox.enqueue([
+            {
+              id: `effect:${key}:turn`,
+              commandId: CommandId.make(`command:${key}:turn`),
+              threadId,
+              request: { type: "provider-turn.start", runId: RunId.make(`run:${key}`) },
+            },
+          ]);
+          yield* outbox.notifyAvailable();
+
+          const turn = yield* Deferred.await(turnStarted).pipe(
+            Effect.timeoutOption("1 hour"),
+            Effect.forkChild,
+          );
+          yield* TestClock.adjust("1 hour");
+          assert.isTrue(
+            Option.isSome(yield* Fiber.join(turn)),
+            "provider-turn.start never ran behind the hung delegated-tasks.stop",
+          );
+          const stop = yield* outbox.get(stopEffectId);
+          assert.isTrue(Option.isSome(stop));
+          if (Option.isSome(stop)) {
+            assert.equal(stop.value.status, "failed");
+            assert.include(stop.value.lastError ?? "", "Timed out");
+          }
+        }).pipe(
+          Effect.provide(layerWorker),
+          Effect.scoped,
+          Effect.ensuring(
+            outbox
+              .cancelUnsettled({
+                threadId,
+                effectTypes: ["delegated-tasks.stop", "provider-turn.start"],
+                reason: "fixture complete",
+              })
+              .pipe(Effect.orDie),
+          ),
+        );
+      }),
   );
 
   it.effect(
@@ -2699,7 +2767,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       ]);
       const cleanup = yield* outbox.claimNext({
         workerId: "recovery",
-        leaseDurationMs: 30_000,
         excludeRestartContinuations: true,
       });
       assert.isTrue(Option.isSome(cleanup));
@@ -2711,7 +2778,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
         Option.isNone(
           yield* outbox.claimNext({
             workerId: "recovery",
-            leaseDurationMs: 30_000,
             excludeRestartContinuations: true,
           }),
         ),
@@ -2719,7 +2785,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
       const pending = yield* outbox.get("effect:activation-a-restart");
       assert.isTrue(Option.isSome(pending));
       if (Option.isSome(pending)) assert.equal(pending.value.status, "pending");
-      const resumed = yield* outbox.claimNext({ workerId: "activated", leaseDurationMs: 30_000 });
+      const resumed = yield* outbox.claimNext({ workerId: "activated" });
       assert.isTrue(Option.isSome(resumed));
       if (Option.isSome(resumed)) {
         assert.equal(resumed.value.request.type, "provider-runtime.continue");
@@ -2756,16 +2822,8 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
             request: replayRequest,
           },
         ]);
-        assert.isTrue(
-          Option.isSome(
-            yield* outbox.claimNext({ workerId: "crashed-worker", leaseDurationMs: 30_000 }),
-          ),
-        );
-        assert.isTrue(
-          Option.isSome(
-            yield* outbox.claimNext({ workerId: "crashed-worker", leaseDurationMs: 30_000 }),
-          ),
-        );
+        assert.isTrue(Option.isSome(yield* outbox.claimNext({ workerId: "crashed-worker" })));
+        assert.isTrue(Option.isSome(yield* outbox.claimNext({ workerId: "crashed-worker" })));
         assert.deepEqual(yield* outbox.reconcileAfterProcessLoss, {
           cancelled: 1,
           requeued: 1,
@@ -2778,7 +2836,6 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
 
         const reclaimed = yield* outbox.claimNext({
           workerId: "recovery-worker",
-          leaseDurationMs: 30_000,
         });
         assert.isTrue(Option.isSome(reclaimed));
         if (Option.isSome(reclaimed)) {
@@ -2842,11 +2899,7 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
           },
         ],
       });
-      assert.isTrue(
-        Option.isSome(
-          yield* outbox.claimNext({ workerId: "crashed-worker", leaseDurationMs: 30_000 }),
-        ),
-      );
+      assert.isTrue(Option.isSome(yield* outbox.claimNext({ workerId: "crashed-worker" })));
 
       const recovery = yield* ProviderRuntimeRecovery.make.pipe(
         Effect.provide(ServerSettings.layerTest()),
@@ -3337,13 +3390,11 @@ it.live(
             [...sequences].sort((left, right) => left - right),
           );
         }).pipe(
-          Effect.timeout("2 seconds"),
           // Release the first publisher before scoped cleanup interrupts the contending writer.
           Effect.ensuring(Fiber.interrupt(firstWrite)),
         );
       }).pipe(Effect.provide(layerEventSink));
     }).pipe(Effect.provide(layerDatabase)),
-  5_000,
 );
 
 it.live("releases the publication lane after a publication failure", () =>
@@ -3393,13 +3444,11 @@ it.live("releases the publication lane after a publication failure", () =>
         1,
       );
       const second = makeThread(ThreadId.make("thread:after-publication-failure"), now);
-      const written = yield* eventSink
-        .write({
-          events: [
-            threadCreatedEvent({ id: "event:after-publication-failure", thread: second, now }),
-          ],
-        })
-        .pipe(Effect.timeout("2 seconds"));
+      const written = yield* eventSink.write({
+        events: [
+          threadCreatedEvent({ id: "event:after-publication-failure", thread: second, now }),
+        ],
+      });
       assert.lengthOf(written, 1);
     }).pipe(Effect.provide(layerEventSink));
   }).pipe(Effect.provide(layerDatabase)),

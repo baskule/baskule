@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { useAuth } from "@clerk/react";
 import { useAtomValue } from "@effect/atom-react";
 import { AuthRelayReadScope, AuthRelayWriteScope, type AuthSessionState } from "@t3tools/contracts";

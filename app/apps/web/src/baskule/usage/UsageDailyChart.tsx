@@ -1,8 +1,8 @@
+import { useTranslation } from "../../i18n";
 // baskule: daily tokens or cost, drawn by T3's usage chart. One measure at a time: tokens and money
 // have different scales, so they never share an axis.
 import { useState } from "react";
 
-import { useTranslation } from "../../i18n";
 import { Toggle, ToggleGroup } from "../../components/ui/toggle-group";
 import {
   UsageProviderChart,

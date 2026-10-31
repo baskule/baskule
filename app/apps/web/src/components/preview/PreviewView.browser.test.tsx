@@ -14,8 +14,6 @@ import { page, userEvent } from "vite-plus/test/browser";
 import "~/index.css";
 import { act, render } from "../../../test/render";
 
-import type { PreviewableServer } from "./useDiscoveredLocalServers";
-
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(async (_tabId: string, _url: string): Promise<void> => undefined),
   rememberPreviewUrl: vi.fn(),
@@ -34,7 +32,6 @@ const mocks = vi.hoisted(() => ({
   loading: false,
   nativeServerTab: false,
   serverEpoch: null as string | null,
-  servers: [] as PreviewableServer[],
   recordingTabIds: new Set<string>(),
   recordingRuntimeTabId: null as string | null,
   recordVisitForThread: vi.fn(),
@@ -140,10 +137,6 @@ vi.mock(import("~/components/ui/toast"), async (original) => {
   const actual = await original();
   return { ...actual, toastManager: { ...actual.toastManager, add: mocks.toast } };
 });
-vi.mock(import("./useDiscoveredLocalServers"), async (original) => ({
-  ...(await original()),
-  useDiscoveredLocalServers: () => mocks.servers,
-}));
 vi.mock(import("./usePreviewSession"), async (original) => ({
   ...(await original()),
   usePreviewSession: () => {},
@@ -207,7 +200,6 @@ function setup() {
   mocks.loading = false;
   mocks.nativeServerTab = false;
   mocks.serverEpoch = null;
-  mocks.servers = [];
   mocks.recordingTabIds = new Set();
   mocks.recordingRuntimeTabId = null;
   useComposerDraftStore.setState({

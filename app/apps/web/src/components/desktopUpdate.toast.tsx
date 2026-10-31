@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../i18n";
+
 import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
 import { ArrowRightIcon } from "lucide-react";
 

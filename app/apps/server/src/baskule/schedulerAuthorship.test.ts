@@ -168,9 +168,9 @@ it.effect.each(["on time", "after restart"])(
         const receipt = Queue.take(receipts).pipe(
           Effect.timeout("5 seconds"),
           TestClock.withLive,
-          Effect.catchTag("TimeoutError", () =>
-            Effect.die("Expected scheduled task and limit retry receipts"),
-          ),
+          Effect.catchTags({
+            TimeoutError: () => Effect.die("Expected scheduled task and limit retry receipts"),
+          }),
         );
         assert.deepEqual([yield* receipt, yield* receipt].sort(), ["retry", "task"]);
         const delivered = yield* Ref.get(commands);

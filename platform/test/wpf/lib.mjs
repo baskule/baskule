@@ -22,6 +22,16 @@ export const assert = (cond, msg) => {
 };
 export const short = (v, n = 400) => JSON.stringify(v)?.slice(0, n);
 
+/** Read the initial list and close the subscription; no long-lived watcher is needed. */
+export const scheduledTasks = (client) => new Promise((resolve, reject) => {
+  const timeout = setTimeout(() => { unsubscribe(); reject(new Error("schedule snapshot timed out")); }, 30_000);
+  const unsubscribe = client.stream("scheduledTasks.subscribe", {}, (snapshot) => {
+    clearTimeout(timeout);
+    unsubscribe();
+    resolve(snapshot.tasks);
+  });
+});
+
 /** A signed-in person: cookie session, JSON API helper, RPC sockets to their spaces. */
 export class Person {
   constructor(email, password, cookie) {

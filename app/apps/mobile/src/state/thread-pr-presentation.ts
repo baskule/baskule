@@ -1,10 +1,7 @@
 import { t } from "../i18n";
+
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import type {
-  ExecutionEnvironmentCapabilities,
-  ThreadPullRequestLink,
-  VcsStatusResult,
-} from "@t3tools/contracts";
+import type { ThreadPullRequestLink, VcsStatusResult } from "@t3tools/contracts";
 import {
   sourceControlClients,
   type ChangeRequestTerminology,
@@ -95,7 +92,11 @@ export function presentThreadLinkedPullRequests(
     label,
     accessibilityLabel:
       badge.kind === "stack"
-        ? `${badge.layers} ${changeRequest.singular}s in stack, ${isDraft ? "draft" : (state ?? "status pending")}`
+        ? t("{{value1}} {{value2}}s in stack, {{value3}}", {
+            value1: badge.layers,
+            value2: changeRequest.singular,
+            value3: isDraft ? "draft" : (state ?? "status pending"),
+          })
         : linkedCount !== null
           ? `${linkedCount} linked ${changeRequest.plural}, overall ${badge.state}`
           : `#${link.number} ${changeRequest.singular} ${state === null ? "status pending" : isDraft ? "draft" : state}`,
@@ -110,11 +111,9 @@ export function presentThreadLinkedPullRequests(
 
 export function resolveThreadPrSource(
   thread: Pick<EnvironmentThreadShell, "pullRequests" | "linkedPullRequest" | "branchPullRequest">,
-  capabilities:
-    | Pick<ExecutionEnvironmentCapabilities, "threadPullRequests" | "threadPullRequestLinking">
-    | undefined,
+  /** False until the server config loads; the stored references serve until then. */
+  supportsSnapshots: boolean,
 ) {
-  const supportsSnapshots = capabilities?.threadPullRequests === true;
   const linkedPresentation = supportsSnapshots
     ? presentThreadLinkedPullRequests(thread.pullRequests)
     : null;

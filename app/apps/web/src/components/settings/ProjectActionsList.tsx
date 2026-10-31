@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { ProjectScript, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { SettingsIcon } from "lucide-react";
 import { shortcutLabelForCommand } from "../../keybindings";

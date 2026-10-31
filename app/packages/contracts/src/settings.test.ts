@@ -262,7 +262,7 @@ describe("ClientSettings environment identification", () => {
 
 describe("ClientSettings sidebar", () => {
   it("defaults to the current sidebar", () => {
-    expect(decodeClientSettings({}).legacySidebarEnabled).toBe(false);
+    expect(decodeClientSettings({}).boringSidebarEnabled).toBe(false);
   });
 
   it("drops the retired sidebar v2 beta keys, resetting everyone to the default", () => {
@@ -270,7 +270,7 @@ describe("ClientSettings sidebar", () => {
       sidebarV2Enabled: false,
       sidebarV2ConfiguredByUser: true,
     });
-    expect(decoded.legacySidebarEnabled).toBe(false);
+    expect(decoded.boringSidebarEnabled).toBe(false);
     expect(decoded).not.toHaveProperty("sidebarV2Enabled");
     expect(decoded).not.toHaveProperty("sidebarV2ConfiguredByUser");
   });
@@ -281,13 +281,6 @@ describe("ClientSettings sidebar", () => {
     expect(decoded).not.toHaveProperty("compactSidebarEnabled");
     expect(decoded).not.toHaveProperty("sidebarCompactThreadRows");
     expect(decodeClientSettingsPatch(stored)).toEqual({});
-  });
-
-  it("preserves an explicit legacy sidebar opt-in", () => {
-    expect(decodeClientSettings({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(true);
-    expect(decodeClientSettingsPatch({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(
-      true,
-    );
   });
 
   it("keeps unpin confirmation opt-in and patchable", () => {
@@ -330,21 +323,6 @@ describe("ClientSettings follow-up behavior", () => {
       );
     }
     expect(() => decodeClientSettingsPatch({ followUpBehavior: "invalid" })).toThrow();
-  });
-});
-
-describe("ClientSettings composer collapse", () => {
-  it("collapses on scroll by default and accepts opting out", () => {
-    expect(decodeClientSettings({}).composerCollapseOnScroll).toBe(true);
-    expect(
-      decodeClientSettingsPatch({ composerCollapseOnScroll: false }).composerCollapseOnScroll,
-    ).toBe(false);
-  });
-
-  it("drops the retired blur trigger key", () => {
-    const decoded = decodeClientSettings({ composerCollapseOnBlur: false });
-    expect(decoded.composerCollapseOnScroll).toBe(true);
-    expect(decoded).not.toHaveProperty("composerCollapseOnBlur");
   });
 });
 

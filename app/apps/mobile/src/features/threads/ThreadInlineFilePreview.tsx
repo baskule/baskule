@@ -1,7 +1,9 @@
+import { useTranslation } from "../../i18n";
+
 import { useIsFocused } from "@react-navigation/native";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { useAudioPlayerStatus } from "expo-audio";
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { AppState, Pressable, View } from "react-native";
 import type { FilePreviewSource } from "../../components/FilePreviewModal";
 import { filePreviewKey } from "../../lib/filePreviewGallery";
@@ -29,10 +31,11 @@ type PreviewProps = {
 };
 
 function FileCardHeader(props: PreviewProps) {
+  const t = useTranslation();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open ${props.source.name}`}
+      accessibilityLabel={t("Open {{value1}}", { value1: props.source.name })}
       onPress={props.onOpen}
       onLongPress={props.onLongPress}
       className="h-[72px] flex-row items-center gap-3 p-3 active:bg-subtle"
@@ -45,7 +48,7 @@ function FileCardHeader(props: PreviewProps) {
           {props.source.name}
         </Text>
         <Text className="text-xs text-foreground-muted" numberOfLines={1}>
-          Audio
+          {t("Audio")}
           {props.sizeBytes !== undefined ? ` · ${formatAttachmentSize(props.sizeBytes)}` : ""}
         </Text>
       </View>
@@ -60,6 +63,7 @@ function timestamp(seconds: number) {
 }
 
 function InlineAudio(props: PreviewProps & { readonly resolveUri: () => Promise<string | null> }) {
+  const t = useTranslation();
   // An empty source keeps native buffering off until the user explicitly plays.
   const player = usePlaybackAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
@@ -70,7 +74,7 @@ function InlineAudio(props: PreviewProps & { readonly resolveUri: () => Promise<
   const playRequested = useRef(false);
   const audioToken = useRef<ReturnType<typeof acquireAudioSession> | null>(null);
   const [playbackRequested, setPlaybackRequested] = useState(false);
-  const requestPlayback = useCallback((requested: boolean) => {
+  const requestPlayback = (requested: boolean) => {
     playRequested.current = requested;
     setPlaybackRequested(requested);
     if (!requested) {
@@ -81,9 +85,10 @@ function InlineAudio(props: PreviewProps & { readonly resolveUri: () => Promise<
         audioToken.current = null;
       }
     }
-  }, []);
+  };
   useMediaAudioSessionHold(status.playing);
   const fullscreenVideoOpen = useFullscreenVideoOpen();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drops the play request on fullscreen video, finish or error, and pauses the player for fullscreen
   useEffect(() => {
     if (fullscreenVideoOpen || status.didJustFinish || status.error) {
       // oxlint-disable-next-line react/set-state-in-effect -- Native completion and fullscreen takeover invalidate the pending playback request.
@@ -91,6 +96,7 @@ function InlineAudio(props: PreviewProps & { readonly resolveUri: () => Promise<
     }
     if (fullscreenVideoOpen) pauseAudioPlayer(player);
   }, [fullscreenVideoOpen, status.didJustFinish, status.error, player, requestPlayback]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to AppState to pause audio in the background and releases the audio session on cleanup
   useEffect(() => {
     active.current = true;
     const subscription = AppState.addEventListener("change", (state) => {
@@ -186,7 +192,7 @@ function InlineAudio(props: PreviewProps & { readonly resolveUri: () => Promise<
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            playing ? "Pause audio" : error || status.error ? "Retry audio" : "Play audio"
+            playing ? t("Pause audio") : error || status.error ? t("Retry audio") : t("Play audio")
           }
           accessibilityState={{ busy }}
           onPress={toggle}
@@ -208,9 +214,9 @@ function InlineAudio(props: PreviewProps & { readonly resolveUri: () => Promise<
           </View>
           <Text className="text-xs text-foreground-muted" numberOfLines={1}>
             {error || status.error
-              ? "Unavailable · tap play to retry"
+              ? t("Unavailable · tap play to retry")
               : busy
-                ? "Loading…"
+                ? t("Loading…")
                 : `${timestamp(status.currentTime)} / ${status.isLoaded ? timestamp(status.duration) : "--:--"}`}
           </Text>
         </View>
@@ -226,10 +232,7 @@ function VisibleFilePreview(props: PreviewProps) {
     "environmentId" in source ? source.environmentId : null,
     "resource" in source ? source.resource : null,
   );
-  const resolveUri = useCallback(
-    () => ("uri" in source ? Promise.resolve(source.uri) : refresh()),
-    [source, refresh],
-  );
+  const resolveUri = () => ("uri" in source ? Promise.resolve(source.uri) : refresh());
   return <InlineAudio {...props} resolveUri={resolveUri} />;
 }
 

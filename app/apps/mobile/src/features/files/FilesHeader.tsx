@@ -1,7 +1,7 @@
 import { useTranslation } from "../../i18n";
-import { useCallback, useRef, useState, type ReactNode } from "react";
-import { Keyboard, type TextInputInstance, View } from "react-native";
 
+import { useRef, useState, type ReactNode } from "react";
+import { Keyboard, type TextInputInstance, View } from "react-native";
 import {
   AndroidHeaderIconButton,
   AndroidScreenHeader,
@@ -25,11 +25,11 @@ export function FilesHeader(props: {
   const [searchOpen, setSearchOpen] = useState(false);
   const searching = searchOpen || props.searchQuery.length > 0;
   const { onSearchQueryChange } = props;
-  const closeSearch = useCallback(() => {
+  const closeSearch = () => {
     onSearchQueryChange("");
     setSearchOpen(false);
     Keyboard.dismiss();
-  }, [onSearchQueryChange]);
+  };
 
   useHardwareBack(searching, () => {
     closeSearch();
@@ -53,7 +53,7 @@ export function FilesHeader(props: {
           leading={props.leading}
           actions={[
             {
-              accessibilityLabel: "Search files",
+              accessibilityLabel: t("Search files"),
               icon: "magnifyingglass",
               onPress: () => setSearchOpen(true),
             },
@@ -61,7 +61,7 @@ export function FilesHeader(props: {
           trailing={
             <AndroidAnchoredMenu
               title={t("File options")}
-              actions={[{ id: "refresh", title: "Refresh files" }]}
+              actions={[{ id: "refresh", title: t("Refresh files") }]}
               onPressAction={({ nativeEvent }) => {
                 if (nativeEvent.event === "refresh") props.onRefresh();
               }}

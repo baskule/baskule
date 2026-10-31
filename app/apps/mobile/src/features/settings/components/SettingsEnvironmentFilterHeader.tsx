@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../i18n";
+
 import type { NativeStackHeaderItem } from "@react-navigation/native-stack";
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { Platform, Pressable } from "react-native";

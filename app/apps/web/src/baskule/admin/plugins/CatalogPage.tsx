@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n";
 // baskule: Plugins → Catalog: search the registries live, add a result, or add your own plugin.
 // Adding inspects the plugin and stores it turned off; the review dialog shows what it contains.
 import type {
@@ -10,7 +11,6 @@ import { Link } from "@tanstack/react-router";
 import { CheckIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../../components/ui/input-group";
@@ -39,6 +39,7 @@ function useCatalogSearch(query: string, kind: KindFilter) {
     readonly data: PluginSearchResponse | null;
     readonly error: string | null;
   }>({ key: null, data: null, error: null });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel publication of the catalog HTTP response when its query or view changes.
   useEffect(() => {
     let cancelled = false;
     pluginsApi.search(query, kind === "all" ? undefined : kind).then(

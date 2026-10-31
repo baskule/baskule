@@ -1,13 +1,14 @@
 import { t } from "../../i18n";
+
 import type { Action } from "expo-quick-actions";
 import type { NavigationState } from "@react-navigation/native";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 
 import type { RecentThreadShortcut } from "../../persistence/imperative";
 
-export const MAX_RECENT_THREAD_SHORTCUTS = 3;
+const MAX_RECENT_THREAD_SHORTCUTS = 3;
 
-export const NEW_TASK_SHORTCUT_ID = "new-task";
+const NEW_TASK_SHORTCUT_ID = "new-task";
 const NEW_TASK_SHORTCUT_HREF = "/new";
 
 const SHORTCUT_ICON = "shortcut_icon";

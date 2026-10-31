@@ -1,9 +1,9 @@
-import { useTranslation } from "../../i18n";
+import { useTranslation, t } from "../../i18n";
+
 import { useAtomValue } from "@effect/atom-react";
 import { sortProjectsByGroupOrder } from "@t3tools/client-runtime/state/project-grouping";
 import type { ScopedProjectRef, SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
-import { useMemo } from "react";
 import { Platform, ScrollView } from "react-native";
 import type { MenuProps } from "../../components/ui/Menu.types";
 import { ListFilterMenu } from "../workspace/ListFilterMenu";
@@ -80,7 +80,7 @@ function useProjectsInSidebarOrder<Project extends { id: string; environmentId: 
 ) {
   const { sidebarProjectGroupingMode } = useMobileProjectGroupingSettings();
   const scopes = useAtomValue(sidebarProjectOrderFamily(sidebarProjectGroupingMode));
-  return useMemo(() => sortProjectsByGroupOrder(projects, scopes), [projects, scopes]);
+  return sortProjectsByGroupOrder(projects, scopes);
 }
 
 export interface PullRequestFilterMenu {
@@ -108,7 +108,6 @@ export function usePullRequestListFilters(props: {
   /** Opens a picker that searches the host, for a label or author no loaded row carries. */
   readonly onSearch: (kind: "labels" | "authors") => void;
 }) {
-  const t = useTranslation();
   const { value } = props;
   const projects = useProjectsInSidebarOrder(props.projects);
   const selectedLabels = value.filters.labels?.flat() ?? [];
@@ -226,17 +225,17 @@ export function usePullRequestListFilters(props: {
   const more: MenuProps["actions"] = [
     {
       id: "drafts",
-      title: value.filters.draft ? DRAFTS[value.filters.draft] : "Drafts",
+      title: value.filters.draft ? DRAFTS[value.filters.draft] : t("Drafts"),
       subactions: choices("draft", DRAFTS, value.filters.draft ?? "all"),
     },
     {
       id: "reviews",
-      title: value.filters.review ? REVIEWS[value.filters.review] : "Reviews",
+      title: value.filters.review ? REVIEWS[value.filters.review] : t("Reviews"),
       subactions: choices("review", REVIEWS, value.filters.review ?? "all"),
     },
     {
       id: "checks",
-      title: value.filters.checks ? `${CHECKS[value.filters.checks]} checks` : "Checks",
+      title: value.filters.checks ? `${CHECKS[value.filters.checks]} checks` : t("Checks"),
       subactions: choices("checks", CHECKS, value.filters.checks ?? "all"),
     },
     {

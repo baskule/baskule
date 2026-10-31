@@ -1,26 +1,21 @@
-// baskule: builds T3's server for workerd as one ESM file, `apps/server/dist-workerd/space-cell.js`,
-// which the Baskule platform's SpaceCell imports (platform/src/space). Usage, from apps/server:
-//   node src/baskule/workerd/build.mjs [--minify] [--out <file>]
-// --minify (production, deploy/v2/build.sh): minified, function and class names kept for readable stack traces.
-//
-// Every substitution the workerd build needs is listed here, in one place:
-// - node built-ins celld lacks or stubs are aliased to ./shims (module, os, process, net,
-//   perf_hooks, sea, url) and proper-lockfile to a no-op lock;
-// - host-bound modules a space never uses are replaced by stubs in ./trim (`TRIM` below): terminals, devices,
-//   the local preview browser, source-control drivers (each stub's header says why it is safe);
-// - other node built-ins stay external (`node:*`), served by celld's nodejs_compat.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+// baskule: build one workerd ESM bundle; run from apps/server:
+// node src/baskule/workerd/build.mjs [--minify] [--out <file>]
+// Missing celld built-ins and proper-lockfile use shims; host-only modules use TRIM stubs below.
+// Other node:* modules stay external for nodejs_compat. Minification preserves stack-trace names.
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
 import * as esbuild from "esbuild";
 import { nativeEffectContinuations } from "./nativeEffectContinuations.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const serverRoot = resolve(here, "../../..");
+const here = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
+const serverRoot = NodePath.resolve(here, "../../..");
 const args = process.argv.slice(2);
 const outIndex = args.indexOf("--out");
 const outfile =
-  outIndex === -1 ? join(serverRoot, "dist-workerd/space-cell.js") : resolve(args[outIndex + 1]);
+  outIndex === -1
+    ? NodePath.join(serverRoot, "dist-workerd/space-cell.js")
+    : NodePath.resolve(args[outIndex + 1]);
 const minify = args.includes("--minify");
 
 const SHIMS = {
@@ -43,10 +38,13 @@ const TRIM = {
   "src/device/DeviceHubProxy.ts": "DeviceHubProxy.ts",
 };
 const TRIMMED = new Map(
-  Object.entries(TRIM).map(([real, stub]) => [resolve(serverRoot, real), join(here, "trim", stub)]),
+  Object.entries(TRIM).map(([real, stub]) => [
+    NodePath.resolve(serverRoot, real),
+    NodePath.join(here, "trim", stub),
+  ]),
 );
 const trimmedNames = [
-  ...new Set([...TRIMMED.keys()].map((p) => basename(p).replace(/\W/g, "\\$&"))),
+  ...new Set([...TRIMMED.keys()].map((p) => NodePath.basename(p).replace(/\W/g, "\\$&"))),
 ];
 const TRIM_FILTER = new RegExp(`/(${trimmedNames.join("|")})$`);
 const trimmedHits = new Set();
@@ -58,10 +56,10 @@ const substitutions = {
   setup(build) {
     build.onResolve({ filter: /^(node:)?(module|os|process|net|perf_hooks|sea|url)$/ }, (a) => {
       const name = a.path.replace(/^node:/, "");
-      return { path: join(here, "shims", SHIMS[name]) };
+      return { path: NodePath.join(here, "shims", SHIMS[name]) };
     });
     build.onResolve({ filter: /^proper-lockfile$/ }, () => ({
-      path: join(here, "shims/lockfile.js"),
+      path: NodePath.join(here, "shims/lockfile.js"),
     }));
     // Stubs are swapped at load time, so every import of the real module (relative or through a package
     // export) gets the stub, and the stub's own imports resolve from ./trim.
@@ -69,7 +67,11 @@ const substitutions = {
       const stub = TRIMMED.get(a.path);
       if (!stub) return undefined;
       trimmedHits.add(a.path);
-      return { contents: readFileSync(stub, "utf8"), loader: "ts", resolveDir: dirname(stub) };
+      return {
+        contents: NodeFS.readFileSync(stub, "utf8"),
+        loader: "ts",
+        resolveDir: NodePath.dirname(stub),
+      };
     });
     build.onResolve({ filter: NODE_BUILTIN }, (a) => ({
       path: a.path.startsWith("node:") ? a.path : `node:${a.path}`,
@@ -80,7 +82,7 @@ const substitutions = {
 
 const started = Date.now();
 const result = await esbuild.build({
-  entryPoints: [join(here, "index.ts")],
+  entryPoints: [NodePath.join(here, "index.ts")],
   outfile,
   bundle: true,
   format: "esm",
@@ -105,8 +107,8 @@ const unused = [...TRIMMED.keys()].filter((path) => !trimmedHits.has(path));
 if (unused.length > 0) {
   throw new Error(`trim entries matched no bundled module (moved upstream?): ${unused.join(", ")}`);
 }
-mkdirSync(dirname(outfile), { recursive: true });
-writeFileSync(`${outfile}.meta.json`, JSON.stringify(result.metafile));
+NodeFS.mkdirSync(NodePath.dirname(outfile), { recursive: true });
+NodeFS.writeFileSync(`${outfile}.meta.json`, JSON.stringify(result.metafile));
 const bytes = Object.values(result.metafile.outputs).reduce((n, o) => n + o.bytes, 0);
 console.log(
   `space-cell bundle: ${outfile} (${(bytes / 2 ** 20).toFixed(1)} MiB, ${Date.now() - started} ms)`,

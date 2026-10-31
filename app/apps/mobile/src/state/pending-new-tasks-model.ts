@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import { deriveThreadTitleFromPrompt } from "../lib/projectThreadStartTurn";
@@ -36,7 +37,7 @@ export interface PendingDraftTask {
   readonly draft: ComposerDraft;
 }
 
-export function composerDraftHasUserContent(draft: ComposerDraft): boolean {
+function composerDraftHasUserContent(draft: ComposerDraft): boolean {
   return draft.text.trim().length > 0 || draft.attachments.length > 0;
 }
 

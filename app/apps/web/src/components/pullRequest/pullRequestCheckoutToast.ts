@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type { ChangeRequestTerminology } from "@t3tools/client-runtime/source-control-clients";
 
 export function offHeadPullRequestCheckoutToast(terminology: ChangeRequestTerminology) {

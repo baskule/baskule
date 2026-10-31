@@ -1,8 +1,8 @@
+import { useLocale, useTranslation } from "../../../i18n";
 // baskule: the per-person limits. Off by default; each window is optional and takes a token limit,
 // a cost limit or both. Rules are kept while the master switch is off.
 import { useState, type FormEvent } from "react";
 
-import { useLocale, useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";

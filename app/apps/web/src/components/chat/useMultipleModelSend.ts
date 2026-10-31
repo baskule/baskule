@@ -1,3 +1,5 @@
+import { t } from "../../i18n";
+
 import {
   type EnvironmentId,
   type ModelSelection,
@@ -21,7 +23,6 @@ import type { ComposerHandleRef } from "../../composerHandleContext";
 import { releaseDraftAttachments } from "../../lib/attachmentUploadQueue";
 import type { buildMessageContext } from "../../lib/composerContextRecords";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
-import { environmentServerConfigsAtom } from "../../state/server";
 import { threadEnvironment } from "../../state/threads";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { buildThreadRouteParams } from "../../threadRoutes";
@@ -159,9 +160,6 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
             model: target.selection.model,
             uncertainSubmissions: uncertainSubmissionsRef.current,
             start: (targetThreadId) => {
-              const supportsInlineMessageContext =
-                appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment
-                  .capabilities.inlineMessageContext === true;
               return startThreadTurn({
                 environmentId,
                 input: {
@@ -173,7 +171,6 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
                     ...withMessageContext({
                       text: target.text,
                       context,
-                      supportsInlineMessageContext,
                     }),
                   },
                   modelSelection: target.selection,
@@ -221,7 +218,10 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
         toastManager.add(
           stackedThreadToast({
             type: "success",
-            title: `Started ${startedCount} ${startedCount === 1 ? "thread" : "threads"} in background`,
+            title: t("Started {{value1}} {{value2}} in background", {
+              value1: startedCount,
+              value2: startedCount === 1 ? "thread" : "threads",
+            }),
           }),
         );
       }
@@ -255,9 +255,10 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
         const recoveryToastId = toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "A background prompt could not be sent",
-            description:
+            title: t("A background prompt could not be sent"),
+            description: t(
               "Your newer draft is unchanged. Restore the failed prompt when this composer is empty.",
+            ),
             timeout: 0,
             actionProps: {
               children: "Restore prompt",
@@ -271,8 +272,9 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
                   )
                 ) {
                   toastManager.update(recoveryToastId, {
-                    description:
+                    description: t(
                       "Return to the original draft and send or clear its current prompt before restoring.",
+                    ),
                   });
                   return;
                 }

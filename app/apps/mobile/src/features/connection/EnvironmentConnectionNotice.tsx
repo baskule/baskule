@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { ConnectionTraceId } from "./ConnectionTraceId";

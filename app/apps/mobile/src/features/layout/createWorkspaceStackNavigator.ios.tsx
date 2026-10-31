@@ -1,3 +1,5 @@
+import { useTranslation } from "../../i18n";
+
 import {
   createNavigatorFactory,
   NavigationContext,
@@ -19,16 +21,7 @@ import {
   type NativeStackNavigatorProps,
   type NativeStackTypeBag,
 } from "@react-navigation/native-stack";
-import {
-  Fragment,
-  use,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentProps,
-} from "react";
+import { Fragment, use, useEffect, useRef, useState, type ComponentProps } from "react";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { Split, type SplitHostCommands } from "react-native-screens";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -42,7 +35,6 @@ import { isSettingsRoute, settingsOpenIn } from "../settings/settings-navigation
 import { workspaceRoutesOf } from "./workspace-overlay-routes";
 import { setNativelyPoppingWorkspaceRoute } from "../workspace/workspace-detail-selection";
 import { useDeviceType, useNativeLayoutMetrics } from "../../native/native-layout-metrics";
-
 import { useAdaptiveWorkspaceLayout } from "./AdaptiveWorkspaceLayout";
 import { WorkspacePaneDivider } from "./workspace-pane-divider";
 import { WorkspaceEmptyDetail } from "./WorkspaceEmptyDetail";
@@ -106,17 +98,13 @@ function ColumnScreen(props: {
     descriptor.options,
   );
   const [presented, setPresented] = useState(false);
-  const primaryColumn = useMemo(
-    () =>
-      props.primary
-        ? {
-            presented,
-            selectedThreadKey: props.selectedThreadKey ?? null,
-            selectedPullRequestKey: props.selectedPullRequestKey ?? null,
-          }
-        : null,
-    [props.primary, props.selectedThreadKey, props.selectedPullRequestKey, presented],
-  );
+  const primaryColumn = props.primary
+    ? {
+        presented,
+        selectedThreadKey: props.selectedThreadKey ?? null,
+        selectedPullRequestKey: props.selectedPullRequestKey ?? null,
+      }
+    : null;
   const key = descriptor.route.key;
   return (
     <Split.Screen
@@ -177,6 +165,7 @@ function ColumnScreen(props: {
 function WorkspaceColumns(
   props: ViewProps & { readonly primary: Route; readonly detail: Route[] },
 ) {
+  const t = useTranslation();
   const {
     layout,
     panes,
@@ -272,21 +261,18 @@ function WorkspaceColumns(
           ThreadId.make(threadParams.threadId),
         )
       : null;
-  const handleNativeDismiss = useCallback(
-    (key: string, native: boolean) => {
-      setScreens((current) => ({
-        ...current,
-        routes: current.routes.filter((route) => route.key !== key),
-        completed: new Set([...current.completed, key]),
-      }));
-      if (native) {
-        const state = props.navigation.getState();
-        const action = nativeWorkspacePopAction(state, key);
-        if (action) props.navigation.dispatch(action);
-      }
-    },
-    [props.navigation],
-  );
+  const handleNativeDismiss = (key: string, native: boolean) => {
+    setScreens((current) => ({
+      ...current,
+      routes: current.routes.filter((route) => route.key !== key),
+      completed: new Set([...current.completed, key]),
+    }));
+    if (native) {
+      const state = props.navigation.getState();
+      const action = nativeWorkspacePopAction(state, key);
+      if (action) props.navigation.dispatch(action);
+    }
+  };
   const followCollapsedSplit = (
     type: "willAppear" | "didAppear" | "willDisappear",
     key: string,
@@ -303,6 +289,7 @@ function WorkspaceColumns(
     if (transition.pop) props.navigation.dispatch(transition.pop);
   };
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the native split host which column to show while collapsed
   useEffect(() => {
     if (layout.usesSplitView || collapsedColumn.current.visible === compactColumn) return;
     collapsedColumn.current = { ...collapsedColumn.current, visible: compactColumn };
@@ -468,7 +455,7 @@ function WorkspaceColumns(
                       pointerEvents="box-none"
                     >
                       <WorkspacePaneDivider
-                        accessibilityLabel="Resize inspector"
+                        accessibilityLabel={t("Resize inspector")}
                         currentWidth={inspectorWidth}
                         resizeDirection={-1}
                         onResizeStart={() => {
@@ -505,6 +492,14 @@ function WorkspaceStackView(props: ViewProps & { readonly nativeColumns: boolean
     const presentation = props.descriptors[route.key]?.options.presentation;
     return presentation !== undefined && presentation !== "card";
   });
+  // The root's willDisappear reaches JS frames into the push, so hide the dock in the commit that
+  // pushes; the native events still own every later change, including back gestures.
+  const topDetailKey = projection.detail.at(-1)?.key;
+  const [pushedDetailKey, setPushedDetailKey] = useState(topDetailKey);
+  if (pushedDetailKey !== topDetailKey) {
+    setPushedDetailKey(topDetailKey);
+    if (topDetailKey !== undefined && primaryVisible) setPrimaryVisible(false);
+  }
   // Detail-only histories must stay single-stack: placeholder descriptors cannot own sidebar actions or setOptions.
   const primaryRoute = projection.primary;
   if (!primaryRoute) return <V5StackView {...props} />;

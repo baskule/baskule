@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 import type { ModelSelection, ProviderDriverKind } from "@t3tools/contracts";
 import { buildTraitsTriggerDisplay } from "@t3tools/client-runtime/model-traits";
 import type { ModelOption } from "../lib/modelOptions";
@@ -65,7 +66,7 @@ export function ComposerModelControl(props: {
           />
         )
       }
-      label={label}
+      label={props.modelOption?.shortName ?? label}
       iconOnly={props.iconOnly}
       suffix={
         summary ? (

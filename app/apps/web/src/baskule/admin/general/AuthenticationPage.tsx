@@ -1,8 +1,8 @@
+import { useTranslation } from "../../../i18n";
 // baskule: General → Authentication: installer-managed providers and admin-managed Google signup.
 import { useState, type FormEvent } from "react";
 import { KeyRoundIcon, LogInIcon, UsersIcon } from "lucide-react";
 
-import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";

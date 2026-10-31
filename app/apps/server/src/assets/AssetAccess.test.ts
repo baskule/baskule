@@ -1475,13 +1475,11 @@ describe("AssetAccess", () => {
       yield* fileSystem.writeFile(zipPath, new TextEncoder().encode("PK0123456789"));
       yield* fileSystem.writeFile(path.join(root, "out", "other.zip"), new Uint8Array([1]));
 
-      const preview = yield* Effect.flip(
-        issueAssetUrl({
-          resource: { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: zipPath },
-          workspaceRoot: root,
-        }),
-      );
-      expect(preview).toBeInstanceOf(AssetPreviewTypeValidationError);
+      const preview = yield* issueAssetUrl({
+        resource: { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: zipPath },
+        workspaceRoot: root,
+      });
+      expect(preview.relativeUrl).toContain("/report.zip");
 
       const result = yield* issueAssetUrl({
         resource: {

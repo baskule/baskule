@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   collectRestartingMachines,
   collectServerUpdateTargets,
+  describeUpdateEverything,
   runUpdateEverything,
   type UpdateEverythingMachine,
 } from "./updateEverything.logic";
@@ -63,6 +64,7 @@ describe("collectServerUpdateTargets", () => {
         machine("manual", "0.0.40", undefined),
       ],
       "0.0.50",
+      true,
     );
 
     expect(targets.map((target) => [target.serverLabel, target.targetVersion])).toEqual([
@@ -78,6 +80,24 @@ describe("collectServerUpdateTargets", () => {
       ["manual", "needs a manual update"],
     ]);
   });
+
+  it("waits for npm only for hosts that install from it or when the release may lack archives", () => {
+    const hosts = [
+      machine("archive-service", "0.0.41-nightly.20260914.1700", "boot-service"),
+      machine("npm-service", "0.0.41-nightly.20260914.1699", "boot-service"),
+      machine("legacy-respawn", "0.1.4-nightly.20261027.3796", "respawn"),
+      machine("desktop", "0.1.4-nightly.20261027.3796", "desktop-managed"),
+    ];
+    const waits = (releaseArchivesPublished: boolean) =>
+      collectServerUpdateTargets(
+        hosts,
+        "0.1.5-nightly.20261029.3873",
+        releaseArchivesPublished,
+      ).waitForNpm.map((target) => target.serverLabel);
+
+    expect(waits(true)).toEqual(["npm-service", "legacy-respawn"]);
+    expect(waits(false)).toEqual(["archive-service", "npm-service", "legacy-respawn"]);
+  });
 });
 
 describe("collectRestartingMachines", () => {
@@ -91,13 +111,7 @@ describe("collectRestartingMachines", () => {
       return {
         ...base,
         serverConfig: {
-          environment: {
-            ...base.serverConfig!.environment,
-            capabilities: {
-              ...base.serverConfig!.environment.capabilities,
-              threadRestartContinuation: true,
-            },
-          },
+          environment: base.serverConfig!.environment,
           settings: { continueThreadsAfterServerUpdate: enabled },
         },
       };
@@ -140,5 +154,45 @@ describe("runUpdateEverything", () => {
 
     expect(calls).toEqual(["providers", "servers"]);
     expect(result.localReady).toBe(false);
+  });
+});
+
+describe("describeUpdateEverything", () => {
+  it("gives each machine one row with its T3 Code and provider updates", () => {
+    const id = EnvironmentId.make;
+    const { rows } = describeUpdateEverything({
+      localVersion: "1.1.0",
+      localMachines: [
+        { environmentId: id("local"), label: "Mainbook" },
+        { environmentId: id("wsl"), label: "Mainbook WSL" },
+      ],
+      servers: [
+        {
+          environmentId: id("npm"),
+          serverLabel: "bb-1",
+          selfUpdate: "respawn",
+          targetVersion: "1.1.0",
+        },
+      ],
+      providerMachines: [
+        { environmentId: id("npm"), label: "bb-1", providers: ["Codex", "Claude"] },
+        { environmentId: id("local"), label: "Mainbook", providers: ["Codex"] },
+        { environmentId: id("manual"), label: "alvin", providers: ["Claude"] },
+      ],
+      skipped: [
+        { environmentId: id("manual"), label: "alvin", reason: "needs a manual update" },
+        { environmentId: id("offline"), label: "TheoRoom", reason: "not connected" },
+      ],
+    });
+
+    expect(
+      rows.map(({ label, app, skipped, providers }) => [label, app, skipped, providers]),
+    ).toEqual([
+      ["Mainbook", "this-app", null, ["Codex"]],
+      ["Mainbook WSL", "this-app", null, []],
+      ["bb-1", "server", null, ["Codex", "Claude"]],
+      ["alvin", null, "needs a manual update", ["Claude"]],
+      ["TheoRoom", null, "not connected", []],
+    ]);
   });
 });

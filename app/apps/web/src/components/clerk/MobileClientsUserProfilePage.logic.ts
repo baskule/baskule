@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type { RelayClientDeviceRecord } from "@t3tools/contracts/relay";
 
 const mobileClientUpdatedAtFormatter = new Intl.DateTimeFormat(undefined, {

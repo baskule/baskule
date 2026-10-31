@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { RelayClientDeviceRecord } from "@t3tools/contracts/relay";
 import { SmartphoneIcon } from "lucide-react";
 

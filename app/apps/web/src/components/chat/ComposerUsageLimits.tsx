@@ -1,9 +1,12 @@
 import { t, useTranslation } from "../../i18n";
+
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { limitsNotice } from "@t3tools/shared/usageLimits";
 import { GaugeIcon } from "lucide-react";
 
 import { ensureLocalApi } from "../../localApi";
+import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { providerClients } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -65,6 +68,43 @@ export function usageLimitsBannerItem(
     dismissLabel: "Dismiss usage limits",
     onDismiss,
     children: <UsageLimitsBannerBody report={report} environmentId={environmentId} />,
+  };
+}
+
+export function modelFallbackBannerItem({
+  fallbackModelName,
+  defaultProviderName,
+  defaultModelName,
+  resetsAt,
+  timestampFormat,
+  onUseDefault,
+  onDismiss,
+}: {
+  readonly fallbackModelName: string;
+  readonly defaultProviderName: string;
+  readonly defaultModelName: string;
+  readonly resetsAt: string | null;
+  readonly timestampFormat: TimestampFormat;
+  readonly onUseDefault: () => void;
+  readonly onDismiss: () => void;
+}): ComposerBannerStackItem {
+  return {
+    id: "fallback-model",
+    variant: "info",
+    icon: <GaugeIcon />,
+    title: t("Using {{value1}}", { value1: fallbackModelName }),
+    description: t("{{value1}} is out of usage{{value2}}", {
+      value1: defaultProviderName,
+      value2: resetsAt ? ` · resets ${formatUpcomingTimestamp(resetsAt, timestampFormat)}` : "",
+    }),
+    actions: (
+      <Button size="xs" variant="ghost" onClick={onUseDefault}>
+        {t("Use")}
+        {defaultModelName}
+      </Button>
+    ),
+    dismissLabel: "Dismiss fallback model notice",
+    onDismiss,
   };
 }
 

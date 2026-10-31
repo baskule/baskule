@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n";
 // baskule: one installed plugin: on or off, which groups may use it, how its connectors sign in
 // (with the write-only organization key), what it contains, where it came from, and removal.
 import type {
@@ -10,7 +11,6 @@ import { Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { UsersRoundIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import {

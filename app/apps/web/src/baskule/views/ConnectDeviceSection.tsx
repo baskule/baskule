@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-
 import { useTranslation } from "../../i18n";
+import { useEffect, useState } from "react";
 
 import { Button } from "../../components/ui/button";
 import { QRCodeSvg } from "../../components/ui/qr-code";
@@ -28,6 +27,7 @@ export function ConnectDeviceSection() {
     | null
   >(null);
   const [busy, setBusy] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the pairing-link expiration timer until its link or view changes.
   useEffect(() => {
     if (link?.kind !== "active") return;
     const timer = setTimeout(

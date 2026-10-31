@@ -22,10 +22,11 @@ restart from the update button when you are ready. A server still restarting
 finishes on its own, and the button keeps showing it after the desktop app
 restarts.
 
-Server updates appear only after that version is published to npm. Remote
-desktop apps do not wait for npm. The confirmation lists each machine it skips
-and why, such as a machine that is offline or needs a manual update. Use
-**Settings → Environments** for those.
+Remote desktop apps never wait for npm. When the desktop app offers the update,
+background services update right away too. Other servers, including older
+background services, update only after that version is published to npm. The
+confirmation lists each machine it skips and why, such as a machine that is
+offline or needs a manual update. Use **Settings → Environments** for those.
 
 If a desktop app restarts on its old version, T3 Code tells you the update did
 not apply. It does not install that version again on its own, even when another
@@ -110,6 +111,14 @@ update can roll back to the previous version. If the update still fails:
 Only one server can use a T3 home directory at a time. If startup reports that
 another server owns it, stop that server before retrying, or use a separate home
 directory and pair with the running server.
+
+## If the desktop app does not start
+
+If the desktop app's server keeps failing at startup, T3 Code shows a "T3 Code
+could not start" window instead of the app. If a newer version is available,
+choose **Update** to install it. If not, the window links to the last version
+that started on your computer. Download and install it to go back. Use **Copy
+details** to include the error in a bug report.
 
 ## Update providers
 

@@ -1,6 +1,7 @@
+import { useTranslation } from "../../i18n";
+
 import { LoaderCircleIcon, PauseIcon, PlayIcon, TriangleAlertIcon } from "lucide-react";
 import { createContext, useContext, useRef, useState } from "react";
-
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { middleTruncateAttachmentName } from "../composerInlineChip";
@@ -71,6 +72,7 @@ function audioTime(seconds: number) {
 }
 
 function AudioChip(props: AudioPreviewProps) {
+  const t = useTranslation();
   const audio = useRef<HTMLAudioElement | null>(null);
   const onUnmount = useContext(AudioPreviewUnmountContext);
   const [loadedSource, setLoadedSource] = useState<string | null>(null);
@@ -111,8 +113,8 @@ function AudioChip(props: AudioPreviewProps) {
     <ContextChip
       kind="file"
       {...(props.failed ? { state: "invalid" as const } : {})}
-      className="relative isolate overflow-hidden has-[button:enabled]:hover:border-(--context-chip-border-hover) has-[button:enabled]:hover:bg-(--context-chip-accent)/17"
-      title={props.failed ? "Audio unavailable. Open the file or retry playback." : props.name}
+      className="relative isolate overflow-hidden"
+      title={props.failed ? t("Audio unavailable. Open the file or retry playback.") : props.name}
     >
       <span
         aria-hidden
@@ -120,8 +122,8 @@ function AudioChip(props: AudioPreviewProps) {
         style={{ width: `${duration > 0 ? Math.min(100, (elapsed / duration) * 100) : 0}%` }}
       />
       <ContextChipAction
-        className="ml-0 [&_svg]:size-[1.17em]"
-        aria-label={`${props.failed ? "Audio unavailable. " : ""}${action} ${props.name}`}
+        className="ml-0 [&_svg]:size-[1em]"
+        aria-label={`${props.failed ? t("Audio unavailable. ") : ""}${action} ${props.name}`}
         disabled={loading}
         onClick={() => {
           if (props.failed) {
@@ -146,7 +148,7 @@ function AudioChip(props: AudioPreviewProps) {
             type="button"
             className="block max-w-full cursor-pointer truncate rounded-sm text-left focus-visible:outline-2 focus-visible:outline-foreground"
             onClick={open}
-            aria-label={`${props.failed && !props.onOpen ? "Retry" : "Preview"} ${props.name}`}
+            aria-label={`${props.failed && !props.onOpen ? t("Retry") : t("Preview")} ${props.name}`}
           >
             {middleTruncateAttachmentName(props.name)}
           </button>
@@ -154,9 +156,9 @@ function AudioChip(props: AudioPreviewProps) {
           middleTruncateAttachmentName(props.name)
         )}
       </ContextChipLabel>
-      <span className="shrink-0 text-3xs text-current">
+      <span className="shrink-0 self-baseline text-3xs text-current">
         {props.failed
-          ? "Unavailable"
+          ? t("Unavailable")
           : loading
             ? "..."
             : duration > 0

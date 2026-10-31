@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 import {
   foldSearchQuery,
   PALETTE_SECONDARY_LIMIT,

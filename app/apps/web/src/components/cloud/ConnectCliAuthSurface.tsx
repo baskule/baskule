@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { useAuth, useClerk } from "@clerk/react";
 import { readConnectAuthorizeRequest } from "@t3tools/shared/connectAuth";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
@@ -8,32 +9,12 @@ import {
   connectCliSignInRedirectUrl,
 } from "../../cloud/connectCliAuth";
 import { isElectron } from "../../env";
-import { AuthSurfaceShell } from "../auth/AuthSurfaceShell";
+import { StandalonePage, StandalonePageHeader } from "../ui/standalone-page";
 import { resolveClerkSignInProps } from "../clerk/authRedirect";
 import { Button } from "../ui/button";
 
-function ConnectCliAuthMessage({
-  eyebrow,
-  title,
-  description,
-}: {
-  readonly eyebrow?: string;
-  readonly title: string;
-  readonly description: string;
-}) {
-  return (
-    <>
-      {eyebrow ? (
-        <p className="text-3xs font-semibold tracking-widest text-primary uppercase">{eyebrow}</p>
-      ) : null}
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
-    </>
-  );
-}
-
 const invalidLinkMessage = {
-  eyebrow: "Authorization request",
+  context: t("Authorization request"),
   get title() {
     return t("This connect link is incomplete");
   },
@@ -65,6 +46,7 @@ export function ConnectCliAuthorizeSurface() {
   };
   const openSignInOnLoad = useEffectEvent(openSignIn);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens Clerk sign-in or navigates the window to the authorize URL once Clerk has loaded
   useEffect(() => {
     if (!request || !isLoaded || redirecting.current) {
       return;
@@ -86,16 +68,16 @@ export function ConnectCliAuthorizeSurface() {
 
   if (!request) {
     return (
-      <AuthSurfaceShell>
-        <ConnectCliAuthMessage {...invalidLinkMessage} />
-      </AuthSurfaceShell>
+      <StandalonePage>
+        <StandalonePageHeader {...invalidLinkMessage} />
+      </StandalonePage>
     );
   }
 
   return (
-    <AuthSurfaceShell>
-      <ConnectCliAuthMessage
-        eyebrow="Browser authorization"
+    <StandalonePage>
+      <StandalonePageHeader
+        context={t("Browser authorization")}
         title={t("Connecting your terminal")}
         description={
           isSignedIn
@@ -110,6 +92,6 @@ export function ConnectCliAuthorizeSurface() {
           </Button>
         </div>
       ) : null}
-    </AuthSurfaceShell>
+    </StandalonePage>
   );
 }

@@ -1,5 +1,6 @@
-import { nativeAssetImageSource } from "../lib/assetImageSource";
 import { useTranslation } from "../i18n";
+import { nativeAssetImageSource } from "../lib/assetImageSource";
+
 import { Button } from "./ui/Button";
 import * as Dialog from "./ui/Dialog";
 import { useEffect, useEffectEvent } from "react";
@@ -61,6 +62,7 @@ function DocumentPreview(props: {
       onRequestClose();
     }
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the attachment in an external viewer and aborts the open on cleanup
   useEffect(() => {
     const controller = new AbortController();
     const input = {

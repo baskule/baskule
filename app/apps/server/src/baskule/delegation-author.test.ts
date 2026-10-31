@@ -124,7 +124,7 @@ it.effect(
         const command = yield* Queue.take(dispatched).pipe(
           Effect.timeout("5 seconds"),
           TestClock.withLive,
-          Effect.catchTag("TimeoutError", () => Effect.die("No completion dispatch received")),
+          Effect.catchTags({ TimeoutError: () => Effect.die("No completion dispatch received") }),
         );
         assert.equal(command.type, "message.dispatch");
         if (command.type !== "message.dispatch") return;

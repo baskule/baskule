@@ -1,5 +1,23 @@
 import { test, expect, signIn } from "./fixtures.mjs";
 
+async function listTasks(client) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      stop();
+      reject(new Error("scheduledTasks.subscribe timed out"));
+    }, 30_000);
+    const stop = client.stream("scheduledTasks.subscribe", {}, (value) => {
+      clearTimeout(timer);
+      stop();
+      resolve(value);
+    }, (exit) => {
+      clearTimeout(timer);
+      stop();
+      reject(new Error(`scheduledTasks.subscribe failed: ${JSON.stringify(exit)}`));
+    });
+  });
+}
+
 test("scheduled task controls retain the author's authority", { tag: ["@feature:schedules-webhooks", "@profile:light"] }, async ({ page, stack, people, api }) => {
   const alice = await people.alice.rpc(people.team);
   const bob = await people.bob.rpc(people.team);
@@ -20,7 +38,7 @@ test("scheduled task controls retain the author's authority", { tag: ["@feature:
     };
     const { task } = await bob.ok("scheduledTasks.upsert", input);
     expect(task.author.id).toBe(people.bob.me.user.id);
-    const read = async () => (await bob.ok("scheduledTasks.list", {})).tasks.find((t) => t.id === task.id);
+    const read = async () => (await listTasks(bob)).tasks.find((t) => t.id === task.id);
     const unchanged = await read();
     for (const [method, payload] of [
       ["upsert", { ...input, id: task.id, prompt: "Use Bob's accounts" }],
@@ -37,7 +55,7 @@ test("scheduled task controls retain the author's authority", { tag: ["@feature:
     }
     const hookInput = { ...input, commandId: crypto.randomUUID(), title: "Bob's webhook", schedule: { type: "webhook" } };
     const hook = (await bob.ok("scheduledTasks.upsert", hookInput)).task;
-    const hookBefore = (await bob.ok("scheduledTasks.list", {})).tasks.find((t) => t.id === hook.id);
+    const hookBefore = (await listTasks(bob)).tasks.find((t) => t.id === hook.id);
     for (const [method, payload] of [
       ["rotateWebhookToken", { id: hook.id }],
       ["upsert", { ...hookInput, id: hook.id, schedule: { type: "webhook", signature: { header: "x-signature", encoding: "hex", prefix: "", secret: "attacker-secret" } } }],
@@ -45,9 +63,9 @@ test("scheduled task controls retain the author's authority", { tag: ["@feature:
       const refused = await alice.call(`scheduledTasks.${method}`, payload);
       expect(refused._tag).toBe("Failure");
       expect(JSON.stringify(refused)).toContain("Only the task's author");
-      expect((await bob.ok("scheduledTasks.list", {})).tasks.find((t) => t.id === hook.id)).toEqual(hookBefore);
+      expect((await listTasks(bob)).tasks.find((t) => t.id === hook.id)).toEqual(hookBefore);
     }
-    expect((await alice.ok("scheduledTasks.list", {})).tasks.find((t) => t.id === hook.id).webhook).toBeUndefined();
+    expect((await listTasks(alice)).tasks.find((t) => t.id === hook.id).webhook).toBeUndefined();
     const rotated = (await bob.ok("scheduledTasks.rotateWebhookToken", { id: hook.id })).task;
     expect(rotated.webhook.path).not.toBe(hook.webhook.path);
 

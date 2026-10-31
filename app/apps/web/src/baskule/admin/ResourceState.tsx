@@ -1,5 +1,6 @@
-// baskule: the loading, error and empty states of an admin list.
 import { useTranslation } from "../../i18n";
+// baskule: the loading, error and empty states of an admin list.
+
 import { Spinner } from "../../components/ui/spinner";
 import { PageMessage } from "../views/BaskulePage";
 

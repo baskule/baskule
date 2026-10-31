@@ -18,7 +18,6 @@ export const BASKULE_ALLOWED_METHODS: ReadonlySet<string> = new Set<string>([
   O.subscribeShell,
   O.subscribeThread,
   O.getArchivedShellSnapshot,
-  O.subscribeArchivedShell,
   O.getTurnItem,
   O.subscribeCommandOutput,
   O.searchThreads,
@@ -44,7 +43,6 @@ export const BASKULE_ALLOWED_METHODS: ReadonlySet<string> = new Set<string>([
   W.mcpAppsReadResource,
   W.mcpAppsUpdateModelContext,
   // 3. Scheduled and webhook-triggered work, private secret entry.
-  W.scheduledTasksList,
   W.scheduledTasksSubscribe,
   W.scheduledTasksUpsert,
   W.scheduledTasksSetEnabled,
@@ -56,10 +54,8 @@ export const BASKULE_ALLOWED_METHODS: ReadonlySet<string> = new Set<string>([
   W.secretsAnswerRequest,
   // 6. Shared browser sessions (the computer side is WP-F).
   W.previewOpen,
-  W.previewNavigate,
   W.previewResize,
   W.previewAdjust,
-  W.previewRefresh,
   W.previewClose,
   W.previewList,
   W.previewClearProfile,
@@ -71,11 +67,8 @@ export const BASKULE_ALLOWED_METHODS: ReadonlySet<string> = new Set<string>([
   W.serverGetConfig,
   W.subscribeServerConfig,
   W.subscribeServerLifecycle,
-  W.serverGetSettings,
   W.serverRefreshProviders,
   W.serverReportClientActivity,
-  W.serverGetBackgroundPolicy,
-  W.subscribeBackgroundPolicy,
 ]);
 
 /** `orchestration.dispatchCommand` command types a client may send. */
@@ -126,13 +119,9 @@ export const BASKULE_ALLOWED_COMMANDS: ReadonlySet<string> = new Set<string>([
   // title regeneration (server-produced).
 ]);
 
-/**
- * T3's own MCP tools offered to the space's agent (OpenCode in the AgentCell, through the platform's
- * bridge): delegation, other conversations (create, read, message, organize, fork/merge, queue,
- * pending questions), attachments, scheduled work, private secret entry, inline HTML (`html_render`)
- * and the shared browser. Off: `html_preview` (needs a headless Chrome on the cell's host), project,
- * worktree, pull-request, device and environment-preference tools.
- */
+// The embedded OpenCode agent gets chat/delegation, queue/questions, attachments, scheduling,
+// secrets, inline HTML and shared-browser tools through the platform bridge.
+// Host Chrome (html_preview), project/worktree, pull-request, device and environment tools stay off.
 export const BASKULE_ALLOWED_MCP_TOOLS: ReadonlySet<string> = new Set<string>([
   "orchestrator_capabilities",
   "delegate_task",

@@ -13,9 +13,6 @@ import * as Schema from "effect/Schema";
 
 export interface RelayClientConfig {
   readonly url: string | undefined;
-  readonly mobileTracingUrl: string;
-  readonly mobileTracingDataset: string;
-  readonly mobileTracingToken: Redacted.Redacted<string>;
   readonly clientTracingUrl: string;
   readonly clientTracingDataset: string;
   readonly clientTracingToken: Redacted.Redacted<string>;
@@ -32,12 +29,9 @@ export class RelayUrlUnavailableError extends Schema.TaggedError<RelayUrlUnavail
   }
 }
 
-export const relayClientConfigEnv = (config: RelayClientConfig & { readonly url: string }) =>
+const relayClientConfigEnv = (config: RelayClientConfig & { readonly url: string }) =>
   ({
     T3CODE_RELAY_URL: config.url,
-    T3CODE_MOBILE_OTLP_TRACES_URL: config.mobileTracingUrl,
-    T3CODE_MOBILE_OTLP_TRACES_DATASET: config.mobileTracingDataset,
-    T3CODE_MOBILE_OTLP_TRACES_TOKEN: Redacted.value(config.mobileTracingToken),
     T3CODE_RELAY_CLIENT_OTLP_TRACES_URL: config.clientTracingUrl,
     T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET: config.clientTracingDataset,
     T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN: Redacted.value(config.clientTracingToken),

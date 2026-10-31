@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 import { AuthOrchestrationReadScope, type ChatFileAttachment } from "@t3tools/contracts";
 import type { Directory } from "expo-file-system";
 import type { SharingOptions } from "expo-sharing";
@@ -359,6 +360,26 @@ export async function shareLocalAttachment(input: {
     }
   } finally {
     cached.preview.dispose();
+  }
+}
+
+export async function writeGeneratedAttachmentFile(input: {
+  readonly transfer?: ProtectedTransfer | null;
+  readonly bytes: Uint8Array;
+  readonly attachment: AttachmentFileMetadata;
+}): Promise<AttachmentPreviewFile> {
+  const cached = await createCachedAttachmentFile(input.attachment, input.transfer ?? null);
+  try {
+    const owner = input.transfer ? managedAttachmentOwner(cached.preview.uri) : null;
+    if (input.transfer && !owner)
+      throw new Error(t("Reconnect to this environment and try again."));
+    owner?.signal.throwIfAborted();
+    await cached.file.write(input.bytes);
+    owner?.signal.throwIfAborted();
+    return cached.preview;
+  } catch (error) {
+    cached.preview.dispose();
+    throw error;
   }
 }
 

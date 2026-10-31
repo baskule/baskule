@@ -1,10 +1,10 @@
+import { t as translate, useLocale, useTranslation } from "../../i18n";
 // baskule: the composer's limit notice. Silent until a limit is close (NEAR_LIMIT_SHARE); once a
 // limit is reached it says which one and when messages can be sent again, before anyone types.
 import { Link } from "@tanstack/react-router";
 import { GaugeIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { t as translate, useLocale, useTranslation } from "../../i18n";
 import { Button } from "../../components/ui/button";
 import { ComposerBanner } from "../../components/chat/ComposerBanner";
 import type { ComposerBannerStackItem } from "../../components/chat/ComposerBannerStack";
@@ -100,7 +100,7 @@ export function useUsageComposerBanner(input: {
   const [resetTick, setResetTick] = useState(0);
   const after = `${input.refreshKey ?? ""}:${resetTick}`;
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Fetch server usage after a turn settles or a limit resets.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Fetch server usage after a turn settles or a limit resets.
   useEffect(() => {
     if (!baskule.hosted) return;
     let cancelled = false;
@@ -121,7 +121,7 @@ export function useUsageComposerBanner(input: {
     const time = Date.parse(status.resetsAt);
     return Number.isNaN(time) ? soonest : soonest === null ? time : Math.min(soonest, time);
   }, null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Schedule a refresh against the server-provided reset timestamp.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Schedule a refresh against the server-provided reset timestamp.
   useEffect(() => {
     if (nextReset === null || nextReset === undefined) return;
     const timer = window.setTimeout(

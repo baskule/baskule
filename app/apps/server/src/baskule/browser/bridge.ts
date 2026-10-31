@@ -67,10 +67,9 @@ const json = (res: NodeHttp.ServerResponse, status: number, body: unknown) => {
 };
 const methods = new Set([
   "open",
-  "navigate",
+  "markHeadless",
   "resize",
   "adjust",
-  "refresh",
   "close",
   "list",
   "reportStatus",
@@ -252,7 +251,7 @@ server.on("upgrade", (req, socket, head) => {
               pending = null;
               frame(next);
             }
-          } else Effect.runFork(viewer.input(message));
+          } else runtime.runFork(viewer.input(message));
         } catch {
           ws.close(1003, "Invalid input");
         }

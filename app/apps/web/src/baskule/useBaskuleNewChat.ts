@@ -9,20 +9,22 @@ import { BASKULE_HOSTED } from "./flags";
 
 export function useBaskuleNewChat() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const { scratchEnvironmentId, openScratchProject } = useScratchProject();
+  const { scratchEnvironmentId, scratchWorkspaceRootFor, openScratchProject } = useScratchProject();
   const handleNewThread = useNewThreadHandler();
   // A ready team must not become the default while the personal space is still starting.
-  const environmentId =
-    BASKULE_HOSTED && primaryEnvironmentId === null
-      ? null
-      : scratchEnvironmentId(primaryEnvironmentId);
+  const environmentId = BASKULE_HOSTED
+    ? primaryEnvironmentId !== null && scratchWorkspaceRootFor(primaryEnvironmentId) !== null
+      ? primaryEnvironmentId
+      : null
+    : scratchEnvironmentId(primaryEnvironmentId);
   const startNewChat = async (options?: { readonly replace?: boolean }) => {
     if (environmentId === null) return null;
     const project = await openScratchProject(environmentId, "Could not start a new chat");
     if (project === null) return null;
-    return handleNewThread(scopeProjectRef(project.environmentId, project.id), {
-      ...(options?.replace ? { replace: true } : {}),
-    });
+    return handleNewThread(
+      scopeProjectRef(project.environmentId, project.id),
+      options?.replace ? { replace: true } : {},
+    );
   };
   return { available: environmentId !== null, startNewChat };
 }

@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 import * as Dialog from "./ui/Dialog";
 import { ComposerContextId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -63,6 +64,7 @@ export function ComposerEditor({
     ? preferencesResult.value.composerEnterBehavior
     : undefined;
   const contextHistory = createComposerDraftContextHistory();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the attachment file leases held for native text undo when the history is replaced or unmounts
   useEffect(() => () => contextHistory.dispose(), [contextHistory]);
   const changeText = (text: string) => {
     const restored = contextHistory.restore(

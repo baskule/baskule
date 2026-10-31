@@ -19,7 +19,7 @@ import {
 } from "./rpcPolicy.ts";
 import { classifyRoute } from "./workerd/routes.ts";
 
-const registered = new Set([...WsRpcGroup.requests.keys()]);
+const registered = new Set(WsRpcGroup.requests.keys());
 
 describe("Baskule RPC policy", () => {
   it("only names registered methods", () => {

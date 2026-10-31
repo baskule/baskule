@@ -13,7 +13,6 @@ export function BaskuleSpaceLabel({ environmentId }: { readonly environmentId: E
     <span
       className="max-w-16 shrink-0 truncate rounded-sm bg-sidebar-control-surface px-1 text-2xs leading-4 text-sidebar-muted-foreground"
       data-testid="baskule-chat-space"
-      title={space.name}
     >
       {space.name}
     </span>

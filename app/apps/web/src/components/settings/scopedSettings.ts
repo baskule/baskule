@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import {
   ClientSettingsSchema,
   type ClientSettingsPatch,
@@ -32,9 +33,6 @@ interface ScopedSettingsEnvironment {
   readonly connection: { readonly phase: EnvironmentConnectionPhase };
   readonly serverConfig: {
     readonly settings: ServerSettings;
-    readonly environment?: {
-      readonly capabilities: { readonly projectSettingsOverrides?: boolean | undefined };
-    };
   } | null;
 }
 
@@ -177,11 +175,7 @@ function projectOverrideWrites(
   const writes = new Map<EnvironmentId, ScopedServerWrite>();
   for (const member of scope.members) {
     const environment = byId.get(member.environmentId);
-    if (
-      !environment?.serverConfig ||
-      environment.connection.phase !== "connected" ||
-      environment.serverConfig.environment?.capabilities.projectSettingsOverrides !== true
-    ) {
+    if (!environment?.serverConfig || environment.connection.phase !== "connected") {
       continue;
     }
     const settings = environment.serverConfig.settings;
@@ -474,7 +468,7 @@ export async function persistScopedSettingsPatch(
         message:
           error instanceof Error
             ? error.message
-            : "The save failed. Try reconnecting and saving again.",
+            : t("The save failed. Try reconnecting and saving again."),
       },
     ];
   });

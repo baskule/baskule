@@ -1,10 +1,10 @@
+import { useTranslation } from "../../../i18n";
 // baskule: shown right after a plugin is added. It is stored turned off and granted to no one;
 // the admin sees what it contains, then keeps it (and sets it up) or removes it.
 import type { Plugin } from "@t3tools/contracts/baskule-plugins";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Button } from "../../../components/ui/button";
 import {
   Dialog,

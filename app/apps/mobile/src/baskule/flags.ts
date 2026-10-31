@@ -25,8 +25,7 @@ export const BASKULE_FLAGS = {
 export function isMobileRouteEnabled(name: string): boolean {
   if (name.startsWith("PullRequest") || name === "ThreadPullRequests")
     return BASKULE_FLAGS.pullRequests;
-  if (name.startsWith("Git") || name.startsWith("ThreadReview"))
-    return BASKULE_FLAGS.sourceControl;
+  if (name.startsWith("Git") || name.startsWith("ThreadReview")) return BASKULE_FLAGS.sourceControl;
   if (name === "ThreadTerminal") return BASKULE_FLAGS.terminal;
   if (name === "ThreadDevicePreview") return BASKULE_FLAGS.devicePreviews;
   if (name === "ThreadBrowserPreview") return BASKULE_FLAGS.browser;
