@@ -1,3 +1,4 @@
+import { catalogVendor } from "../../../app/packages/contracts/src/baskule-catalog";
 import { serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
 import type { Plugin, PluginStatus, PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
@@ -7,7 +8,7 @@ import type { Plugins } from "./plugins";
 import { HttpError, pluginError, json, notFound } from "../shared/http";
 import { type ConnectionCipher, digest, pkce, randomSecret } from "./connection-crypto";
 import { discoverOAuth, exchangeToken, registerClient, type Discovery, type OAuthClient, type OAuthTokens } from "./connection-oauth";
-import type { Fetcher } from "./registries/http";
+import type { Fetcher } from "./plugin-source";
 
 const TTL = 10 * 60_000;
 const CALLBACK = "/api/baskule/plugins/oauth/callback";
@@ -105,7 +106,9 @@ export class Connections {
     const servers = plugins.flatMap(p => p.servers).filter(s => s.credential === "user-oauth");
     if (client && !servers.length) throw pluginError(400, "not_oauth_server");
     const snapshot = JSON.stringify(plugins);
-    const issuer = client ? (await discoverOAuth(servers[0].url, this.fetcher, serverNetwork(servers[0].url))).as.issuer : undefined;
+    const recipe = catalogVendor(vendor)?.signIn;
+    const pin = recipe?.type === "account" && recipe.client === "static" ? recipe.issuer : undefined;
+    const issuer = client ? (await discoverOAuth(servers[0].url, this.fetcher, serverNetwork(servers[0].url), pin, servers[0].oauth?.resourceUrl)).as.issuer : undefined;
     const data = client ? await this.cipher.seal({ ...client, issuer }, JSON.stringify(["vendor", vendor])) : null;
     this.storage.transactionSync(() => {
       if (snapshot !== JSON.stringify(this.plugins.list().filter(p => p.vendor === vendor))) throw pluginError(409, "connection_not_allowed");
@@ -158,7 +161,7 @@ export class Connections {
     const row = this.rows("select data from vendor_setup where vendor=?", plugin.vendor)[0];
     const setup = row ? await this.cipher.open<OAuthClient & { issuer: string }>(row.data as string, JSON.stringify(["vendor", plugin.vendor])) : undefined;
     if (server.oauth?.staticClient && !setup) throw pluginError(409, "oauth_client_configuration_required");
-    const discovery = await discoverOAuth(server.url, this.fetcher, serverNetwork(server.url), setup?.issuer);
+    const discovery = await discoverOAuth(server.url, this.fetcher, serverNetwork(server.url), setup?.issuer, server.oauth?.resourceUrl);
     const callback = `${u.origin}${CALLBACK}`;
     const client = setup ?? await registerClient(discovery, callback, this.fetcher);
     if (this.rows("select data from vendor_setup where vendor=?", plugin.vendor)[0]?.data !== row?.data) throw pluginError(409, "connection_not_allowed");

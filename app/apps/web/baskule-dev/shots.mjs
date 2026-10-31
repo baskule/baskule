@@ -572,29 +572,53 @@ const scenarios = {
 
   /** Admin: catalog, add and review, set up, groups. Then a person's plugins and a space owner's setting. */
   async plugins(browser, device) {
-    // Each device adds its own catalog entry and group: the mock keeps state between the two runs.
-    const pick = device === "desktop" ? "Notion" : "Linear";
+    // Each device adds its own catalog services and group: the mock keeps state between the two runs.
+    const services =
+      device === "desktop"
+        ? { linear: "Linear", gmail: "Gmail" }
+        : { notion: "Notion", "google-calendar": "Google Calendar" };
+    const [pick, google] = Object.values(services);
     const groupName = `Support ${device}`;
     const admin = await newPage(browser, device);
     const page = admin.page;
+    const searches = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/baskule/admin/plugins/search")
+        searches.push(request.url());
+    });
     await signIn(page, "admin");
+    // Start with them not added, also when this mock already ran the scenario.
+    for (const service of Object.keys(services))
+      await page.request.delete(`/api/baskule/admin/plugins/${service}`);
     await page.goto("/admin/plugins/catalog");
-    await page.getByRole("button", { name: `Add ${pick}` }).waitFor();
+    await page.getByRole("button", { name: `Add ${pick}`, exact: true }).waitFor();
     check(
-      (await page.getByText("Official MCP Registry").count()) > 0,
-      `${device}: catalog results show their source`,
+      (await page.getByRole("heading", { name: "Work management", exact: true }).count()) === 1 &&
+        (await page
+          .getByRole("heading", { name: "Mail, calendar and files", exact: true })
+          .count()) === 1 &&
+        (await page.getByRole("searchbox").count()) === 0,
+      `${device}: the catalog is grouped by area, without a search`,
+    );
+    const held = await Promise.all(
+      ["Figma", "Shopify", "Docusign", "Microsoft Teams"].map((name) =>
+        page.getByRole("button", { name: `Add ${name}`, exact: true }).count(),
+      ),
+    );
+    check(
+      held.every((count) => count === 0) &&
+        (await page.getByText(/^Not available yet: Shopify /).count()) === 1,
+      `${device}: services not available yet say why and can't be added`,
     );
     await shot(page, `${device}-plugins-catalog`);
-    await page.getByRole("searchbox", { name: "Search plugins" }).fill("offline");
-    await page.getByRole("button", { name: "Search", exact: true }).click();
-    await page.getByText(/didn't answer/).waitFor();
-    check(true, `${device}: a registry that does not answer is reported, not fatal`);
-    await page.getByRole("searchbox", { name: "Search plugins" }).fill(pick.toLowerCase());
-    await page.getByRole("button", { name: "Search", exact: true }).click();
-    await page.getByText(`Results for “${pick.toLowerCase()}”`).waitFor();
-    await page.getByRole("button", { name: `Add ${pick}` }).click();
+
+    await page.getByRole("button", { name: `Add ${pick}`, exact: true }).click();
     const choose = page.getByRole("dialog", { name: `Add ${pick}`, exact: true });
     await choose.getByRole("checkbox", { name: "Everyone", exact: true }).waitFor();
+    check(
+      await choose.getByRole("checkbox", { name: "Everyone", exact: true }).isChecked(),
+      `${device}: Everyone is preselected`,
+    );
     await choose.getByRole("button", { name: "Add plugin", exact: true }).click();
     const review = page.getByRole("dialog", { name: `${pick} was added` });
     await review.waitFor();
@@ -604,9 +628,22 @@ const scenarios = {
     );
     await page.waitForTimeout(300);
     await shot(page, `${device}-plugins-review`);
-    await review.getByRole("button", { name: "Open it" }).click();
+    await review.getByRole("button", { name: "Done" }).click();
+    await page.getByRole("link", { name: `${pick} is added: open it` }).waitFor();
+    check(true, `${device}: a service that registers Baskule itself reads Added`);
+
+    await page.getByRole("button", { name: `Add ${google}`, exact: true }).click();
+    await page
+      .getByRole("dialog", { name: `Add ${google}`, exact: true })
+      .getByRole("button", { name: "Add plugin", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: `${google} was added` })
+      .getByRole("button", { name: "Done" })
+      .click();
+    await page.getByRole("link", { name: `Set up Google for ${google}` }).click();
     await page.waitForURL(/\/admin\/plugins\/installed\/[^/]+$/);
-    await page.getByRole("heading", { name: pick, level: 1 }).waitFor();
+    await page.getByRole("heading", { name: google, level: 1 }).waitFor();
     const installedId = new URL(page.url()).pathname.split("/").at(-1);
     let inventory = await (await page.request.get("/api/baskule/admin/plugins")).json();
     const groups = (await (await page.request.get("/api/baskule/admin/groups")).json()).groups;
@@ -615,10 +652,18 @@ const scenarios = {
         groups.find((group) => group.builtin === "everyone").plugins.includes(installedId),
       `${device}: the assigned plugin starts unpaused`,
     );
-    await page.getByRole("button", { name: `Pause ${pick}`, exact: true }).click();
-    await page.getByRole("button", { name: `Resume ${pick}`, exact: true }).click();
-    await page.getByRole("button", { name: `Pause ${pick}`, exact: true }).waitFor();
+    check(
+      (await page.getByRole("combobox", { name: /signs in$/ }).count()) === 0 &&
+        (await page.getByRole("link", { name: "Setup instructions" }).getAttribute("target")) ===
+          "_blank",
+      `${device}: a catalog service signs in as listed, with its vendor's instructions`,
+    );
+    await page.getByRole("button", { name: `Pause ${google}`, exact: true }).click();
+    await page.getByRole("button", { name: `Resume ${google}`, exact: true }).click();
+    await page.getByRole("button", { name: `Pause ${google}`, exact: true }).waitFor();
     await shot(page, `${device}-plugins-detail`);
+    await page.getByText("Your app at Google", { exact: true }).scrollIntoViewIfNeeded();
+    await shot(page, `${device}-plugins-vendor-setup`);
 
     await page.goto("/admin/plugins/installed");
     await page.getByRole("link", { name: "Brave Search" }).first().waitFor();
@@ -690,6 +735,7 @@ const scenarios = {
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       `${device}: plugin admin pages fit the viewport`,
     );
+    check(searches.length === 0, `${device}: no registry is searched`);
     await admin.context.close();
 
     const bob = await newPage(browser, device);

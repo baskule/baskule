@@ -1,82 +1,94 @@
 // baskule: the plugins and groups part of the mock front (shapes: packages/contracts/src/baskule-plugins.ts,
-// behaviour: platform/src/control/plugins.ts and groups.ts). In memory, seeded with a few installed plugins;
-// the catalog is a fixed list standing in for the live registries. `/connect` signs in at once and redirects
-// back, as after a real consent. A vendor app is only remembered as saved, never its values.
+// behaviour: platform/src/control/plugins.ts and groups.ts). In memory, seeded with a few plugins people
+// added themselves; catalog installs come from the real curated list. `/connect` signs in at once and
+// redirects back, as after a real consent. A vendor app is only remembered as saved, never its values.
 import * as NodeCrypto from "node:crypto";
+
+import { catalogService, catalogVendor } from "../../../packages/contracts/src/baskule-catalog.ts";
 
 const EVERYONE = "everyone";
 const id = () => NodeCrypto.randomUUID();
 const at = (daysAgo) => new Date(Date.now() - daysAgo * 864e5).toISOString();
 
-/** What a registry search may return, with what installing it gives. */
-const CATALOG = [
-  {
-    registry: "mcp",
-    id: "com.notion/mcp",
-    version: "1.2.0",
-    name: "Notion",
-    kind: "mcp",
-    description: "Search, read and update pages and databases in your Notion workspace.",
-    servers: [
-      {
-        name: "notion",
-        url: "https://mcp.notion.com/mcp",
-        credential: "user-oauth",
-      },
-    ],
-  },
-  {
-    registry: "mcp",
-    id: "app.linear/mcp",
-    version: "2.0.1",
-    name: "Linear",
-    kind: "mcp",
-    description: "Find, create and update issues and projects in Linear.",
-    servers: [
-      {
-        name: "linear",
-        url: "https://mcp.linear.app/mcp",
-        credential: "user-oauth",
-      },
-    ],
-  },
-  {
-    registry: "mcp",
-    id: "com.brave/search",
-    version: "0.9.4",
+/** As `pluginFromCatalog`: the service id is the plugin id, and its vendor is set up once. */
+function pluginFromCatalog(service) {
+  const signIn = catalogVendor(service.vendor).signIn;
+  return {
+    id: service.id,
+    vendor: service.vendor,
+    name: service.name,
+    description: service.description,
+    icon: service.icon,
+    source: { type: "catalog" },
+    skills: [],
+    servers: service.servers.map((server) => ({
+      name: server.name,
+      url: server.url,
+      transport: server.transport ?? "streamable-http",
+      credential:
+        signIn.type === "account" ? "user-oauth" : signIn.type === "key" ? "organization" : "none",
+      ...(signIn.type === "account"
+        ? {
+            oauth: {
+              ...(server.scopes ? { scopes: server.scopes } : {}),
+              ...(signIn.client === "static" ? { staticClient: true } : {}),
+            },
+          }
+        : {}),
+    })),
+    ignored: [],
+    enabled: true,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** A plugin an admin added by address, git repository or file. */
+function ownPlugin(fields) {
+  const pluginId = id();
+  return {
+    id: pluginId,
+    vendor: pluginId,
+    description: "",
+    skills: [],
+    servers: [],
+    ignored: [],
+    enabled: true,
+    createdAt: new Date().toISOString(),
+    ...fields,
+  };
+}
+
+export function createPluginMock({ users, spaces }) {
+  /** @type {Map<string, any>} */
+  const plugins = new Map();
+  const seed = (fields) => {
+    const plugin = ownPlugin(fields);
+    plugins.set(plugin.id, plugin);
+    return plugin.id;
+  };
+  const brave = seed({
     name: "Brave Search",
-    kind: "mcp",
     description: "Web and news search through the Brave Search API.",
+    source: { type: "url", url: "https://mcp.search.brave.com/mcp" },
     servers: [
       {
         name: "brave-search",
         url: "https://mcp.search.brave.com/mcp",
         credential: "organization",
+        transport: "streamable-http",
       },
     ],
-  },
-  {
-    registry: "mcp",
-    id: "io.github/mcp",
-    version: "1.0.0",
-    name: "GitHub",
-    kind: "mcp",
-    description: "Read repositories, issues and pull requests.",
-    servers: [
-      {
-        name: "github",
-        url: "https://api.githubcopilot.com/mcp/",
-        credential: "user-oauth",
-      },
-    ],
-  },
-  {
-    registry: "anthropic-knowledge-work",
-    id: "sales",
-    version: "8f14e45fceea167a5a36dedd4bea2543a1b2c3d4",
+    createdAt: at(5),
+  });
+  const sales = seed({
     name: "Sales",
-    kind: "bundle",
     description: "Prepare calls, research accounts and draft follow-ups, with your CRM connected.",
+    source: {
+      type: "git",
+      repo: "https://github.com/anthropics/knowledge-work-plugins",
+      ref: "8f14e45fceea167a5a36dedd4bea2543a1b2c3d4",
+      path: "sales",
+    },
     skills: [
       {
         name: "call-prep",
@@ -89,73 +101,17 @@ const CATALOG = [
         name: "hubspot",
         url: "https://mcp.hubspot.com/anthropic",
         credential: "organization",
+        transport: "streamable-http",
       },
     ],
     ignored: [
       "commands/forecast.md (made for Claude Code)",
       "hooks/hooks.json (made for Claude Code)",
     ],
-  },
-  {
-    registry: "anthropic-knowledge-work",
-    id: "finance",
-    version: "8f14e45fceea167a5a36dedd4bea2543a1b2c3d4",
-    name: "Finance",
-    kind: "bundle",
-    description: "Close the books, reconcile accounts and explain variances.",
-    skills: [{ name: "month-end-close", description: "Walk through a month-end close checklist." }],
-    ignored: ["servers/ledger (runs as a local program)"],
-  },
-  {
-    registry: "anthropic-skills",
-    id: "brand-guidelines",
-    version: "c4ca4238a0b923820dcc509a6f75849bc81e728d",
-    name: "Brand guidelines",
-    kind: "skill",
-    description: "Apply your brand's colours, fonts and tone to documents and slides.",
-    skills: [{ name: "brand-guidelines", description: "Use the organization's visual identity." }],
-  },
-  {
-    registry: "anthropic-skills",
-    id: "internal-comms",
-    version: "c4ca4238a0b923820dcc509a6f75849bc81e728d",
-    name: "Internal comms",
-    kind: "skill",
-    description: "Write status reports, newsletters and announcements in a house style.",
-    skills: [{ name: "internal-comms", description: "Draft internal communications." }],
-  },
-];
-
-function pluginFrom(entry, overrides = {}) {
-  const pluginId = id();
-  return {
-    id: pluginId,
-    vendor: pluginId,
-    name: entry.name,
-    description: entry.description,
-    source: { type: "registry", registry: entry.registry, id: entry.id, version: entry.version },
-    skills: entry.skills ?? [],
-    servers: (entry.servers ?? []).map((server) => ({ ...server, transport: "streamable-http" })),
-    ignored: entry.ignored ?? [],
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
-export function createPluginMock({ users, spaces }) {
-  /** @type {Map<string, any>} */
-  const plugins = new Map();
-  const seed = (registryId, overrides) => {
-    const plugin = pluginFrom(
-      CATALOG.find((entry) => entry.id === registryId),
-      overrides,
-    );
-    plugins.set(plugin.id, plugin);
-    return plugin.id;
-  };
-  const brave = seed("com.brave/search", { enabled: true, createdAt: at(5) });
-  const sales = seed("sales", { enabled: false, createdAt: at(2) });
+    enabled: false,
+    createdAt: at(2),
+  });
+  // Added by address with its own sign-in app, already saved, so people can connect it at once.
   const driveId = id();
   const drive = {
     id: driveId,
@@ -240,14 +196,18 @@ export function createPluginMock({ users, spaces }) {
           : "connect";
 
   async function install(body) {
-    const source = body.source ?? {};
-    if (source.type === "registry") {
-      const entry = CATALOG.find(
-        (item) => item.registry === source.registry && item.id === source.id,
-      );
-      if (!entry) return [404, { error: "registry_plugin_not_found" }];
-      return [201, pluginFrom(entry, body.name ? { name: body.name } : {})];
+    if ("catalog" in body) {
+      const service = catalogService(String(body.catalog));
+      if (!service || Object.keys(body).some((key) => key !== "catalog" && key !== "groups"))
+        return [
+          service ? 400 : 404,
+          { error: service ? "invalid_plugin_input" : "catalog_unknown" },
+        ];
+      if (service.notYet) return [409, { error: "catalog_not_available" }];
+      if (plugins.has(service.id)) return [409, { error: "already_installed" }];
+      return [201, pluginFromCatalog(service)];
     }
+    const source = body.source ?? {};
     if (source.type === "url") {
       let url;
       try {
@@ -343,34 +303,6 @@ export function createPluginMock({ users, spaces }) {
     ) {
       if (!isAdmin) return (fail(res, 403, "forbidden"), true);
     }
-    if (api === "/admin/plugins/search" && method === "GET") {
-      const q = (url.searchParams.get("q") ?? "").toLowerCase();
-      const kind = url.searchParams.get("kind");
-      // Shots exercise a registry that does not answer with a search containing "offline".
-      const failures = q.includes("offline")
-        ? [{ registry: "codex-plugins", error: "unavailable" }]
-        : [];
-      const results = CATALOG.filter(
-        (entry) =>
-          (!kind || entry.kind === kind) &&
-          (!q ||
-            `${entry.name} ${entry.description}`
-              .toLowerCase()
-              .includes(q.replace("offline", "").trim())),
-      ).map((entry) => ({
-        id: entry.id,
-        name: entry.name,
-        description: entry.description,
-        kind: entry.kind,
-        source: {
-          type: "registry",
-          registry: entry.registry,
-          id: entry.id,
-          version: entry.version,
-        },
-      }));
-      return (send(res, 200, { results, failures }), true);
-    }
     if (api === "/admin/plugins" && method === "GET")
       return (
         send(res, 200, {
@@ -400,6 +332,7 @@ export function createPluginMock({ users, spaces }) {
             !body.clientId ||
             !["none", "client_secret_post", "client_secret_basic"].includes(auth) ||
             (auth !== "none") !== Boolean(body.clientSecret)
+
           )
             return (fail(res, 400, "invalid_oauth_client"), true);
           vendors.add(vendor);
@@ -444,13 +377,18 @@ export function createPluginMock({ users, spaces }) {
         return (send(res, 200, { ok: true }), true);
       }
       if (method === "DELETE") {
+        // A catalog plugin's vendor setup is shared by the vendor's other services.
+        if (plugin.source.type !== "catalog") vendors.delete(plugin.vendor);
         plugins.delete(plugin.id);
         for (const group of groups)
           group.plugins = group.plugins.filter((entry) => entry !== plugin.id);
         return (send(res, 200, { ok: true }), true);
       }
       if (method === "PATCH") {
-        const { servers, ...fields } = await readBody(req);
+        const patch = await readBody(req);
+        if (plugin.source.type === "catalog" && Object.keys(patch).some((key) => key !== "enabled"))
+          return (fail(res, 409, "not_editable"), true);
+        const { servers, ...fields } = patch;
         if (servers) {
           plugin.servers = plugin.servers.map((server) => ({
             ...server,

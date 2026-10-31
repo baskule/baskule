@@ -31,7 +31,11 @@
       "types": "./src/baskule-usage.ts",
       "import": "./src/baskule-usage.ts"
     },
-    "./baskulePush": "./src/baskulePush.ts"
+    "./baskulePush": "./src/baskulePush.ts",
+    "./baskule-catalog": {
+      "types": "./src/baskule-catalog.ts",
+      "import": "./src/baskule-catalog.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

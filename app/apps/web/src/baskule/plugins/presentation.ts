@@ -55,23 +55,6 @@ export function statusText(status: PluginStatus, name: string): string {
   }
 }
 
-export function registryLabel(registry: string): string {
-  switch (registry) {
-    case "mcp":
-      return t("Official MCP Registry");
-    case "anthropic-knowledge-work":
-      return t("Anthropic work plugins");
-    case "anthropic-skills":
-      return t("Anthropic example skills");
-    case "claude-plugins":
-      return t("Claude plugin directory");
-    case "codex-plugins":
-      return t("OpenAI Codex plugins");
-    default:
-      return registry;
-  }
-}
-
 const shortCommit = (ref: string) => ref.slice(0, 7);
 const repoName = (repo: string) =>
   repo.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "");
@@ -86,8 +69,8 @@ const hostOf = (url: string) => {
 /** Where a plugin comes from, in one short line. */
 export function sourceLabel(source: PluginSource): string {
   switch (source.type) {
-    case "registry":
-      return t("From {{registry}}", { registry: registryLabel(source.registry) });
+    case "catalog":
+      return t("Baskule catalog");
     case "url":
       return t("Added by address: {{host}}", { host: hostOf(source.url) });
     case "git":

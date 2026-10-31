@@ -1,4 +1,5 @@
-// baskule: Plugins → Installed: every plugin the admin added, whether it is paused, and who may use it.
+// baskule: Plugins → Installed: every plugin the admin added, whether it is paused or needs setup,
+// and who may use it.
 import type { Group, Plugin } from "@t3tools/contracts/baskule-plugins";
 import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
@@ -106,6 +107,12 @@ export function InstalledPage() {
               {contentsLabel(contentsKind(plugin))}
               {" · "}
               {plugin.enabled ? null : <>{t("Paused")} · </>}
+              {plugin.setup.some((entry) => !entry.done) ? (
+                <>
+                  <span className="text-warning-foreground">{t("Needs setup")}</span>
+                  {" · "}
+                </>
+              ) : null}
               {allowed.length === 0 ? (
                 <span className="text-warning-foreground">{t("No group can use it yet")}</span>
               ) : (

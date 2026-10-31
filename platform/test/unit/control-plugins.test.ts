@@ -105,10 +105,8 @@ describe("ControlCell plugins and groups", () => {
     expect((await requestCredential()).body).toMatchObject({ headers: {} });
     await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", credential: "organization" }] } });
     await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } });
-    h.storage.sql.exec("insert into vendor_setup(vendor,data) values (?,?)", id, "sealed-static-client").toArray();
     await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", url: "https://CHANGED.test/mcp", credential: "organization" }] } });
     expect(await h.svc.plugins.organizationHeaders(id, "remote")).toBeUndefined();
-    expect(h.storage.sql.exec("select * from vendor_setup where vendor=?", id).toArray()).toEqual([]);
     await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } });
     const mine = await call(h, "GET", `${API}/plugins`, member);
     expect(mine.body.plugins[0]).toMatchObject({ status: "ready", servers: [{ name: "remote", credential: "organization", status: "ready" }] });

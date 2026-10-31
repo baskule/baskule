@@ -1,5 +1,6 @@
 // baskule: the OAuth app an organization registers once per vendor, for services that don't let
 // Baskule register itself. Write-only: the server only says whether one is saved.
+import { ExternalLinkIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n";
@@ -28,6 +29,7 @@ export function VendorSetup({
   name,
   configured,
   required,
+  docs,
   onChanged,
 }: {
   readonly vendor: string;
@@ -36,6 +38,8 @@ export function VendorSetup({
   readonly configured: boolean;
   /** A server of this vendor can't sign anyone in until an app is saved. */
   readonly required: boolean;
+  /** The vendor's instructions for registering the app. */
+  readonly docs?: string | undefined;
   readonly onChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
@@ -46,6 +50,7 @@ export function VendorSetup({
   const [error, setError] = useState<string | null>(null);
   const callback = `${window.desktopBridge?.getBaskuleServer?.() ?? window.location.origin}/api/baskule/plugins/oauth/callback`;
   const needsSecret = method !== "none";
+  const complete = clientId.trim() !== "" && (!needsSecret || secret !== "");
 
   const methodLabel = (value: Method) => {
     switch (value) {
@@ -118,7 +123,7 @@ export function VendorSetup({
         className="flex flex-col gap-3 px-3 py-3 sm:px-4"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!clientId.trim() || (needsSecret && !secret)) return;
+          if (!complete) return;
           void save({
             clientId: clientId.trim(),
             tokenEndpointAuthMethod: method,
@@ -130,6 +135,20 @@ export function VendorSetup({
           <CopyField label={t("Callback address")} value={callback} />
           <p className="text-xs text-muted-foreground">
             {t("Register this address at {{name}} as the app's redirect URI.", { name })}
+            {docs ? (
+              <>
+                {" "}
+                <a
+                  href={docs}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1 rounded-sm text-foreground/80 underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-3"
+                >
+                  {t("Setup instructions")}
+                  <ExternalLinkIcon aria-hidden />
+                </a>
+              </>
+            ) : null}
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -194,11 +213,7 @@ export function VendorSetup({
               {t("Remove setup")}
             </Button>
           ) : null}
-          <Button
-            type="submit"
-            size="sm"
-            disabled={saving !== null || !clientId.trim() || (needsSecret && !secret)}
-          >
+          <Button type="submit" size="sm" disabled={saving !== null || !complete}>
             {saving === "save" ? <Spinner size="sm" /> : null}
             {t("Save setup")}
           </Button>

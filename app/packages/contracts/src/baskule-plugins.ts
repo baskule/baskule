@@ -1,5 +1,5 @@
 export type PluginSource =
-  | { type: "registry"; registry: string; id: string; version?: string }
+  | { type: "catalog" }
   | { type: "url"; url: string }
   | { type: "git"; repo: string; ref: string; path?: string }
   | { type: "archive"; sha256: string };
@@ -8,6 +8,7 @@ export interface OAuthRecipe {
   scopes?: string[];
   params?: Record<string, string>;
   resource?: false;
+  resourceUrl?: string;
   staticClient?: true;
 }
 export interface PluginServer {
@@ -24,8 +25,6 @@ export interface Plugin {
   description: string;
   icon?: string;
   source: PluginSource;
-  /** Concrete, immutable source behind a registry selection. */
-  resolvedSource?: Exclude<PluginSource, { type: "registry" }>;
   skills: { name: string; description: string }[];
   servers: PluginServer[];
   ignored: string[];
@@ -49,31 +48,15 @@ export interface SpacePluginSettings {
   personalPluginsAllowed: boolean;
   disabled: string[];
 }
-export interface PluginSearchResult {
-  id: string;
-  name: string;
-  description: string;
-  kind: "mcp" | "skill" | "bundle";
-  source: Extract<PluginSource, { type: "registry" }>;
-  license?: string;
-}
-export interface PluginSearchResponse {
-  results: PluginSearchResult[];
-  failures: { registry: string; error: "unavailable" }[];
-}
-export interface PluginInstallInput {
-  source: PluginSource;
-  /** Base64 ZIP or tar.gz bytes, required only for archive sources; hash is verified. */
-  archive?: string;
-  name?: string;
-  groups: string[];
-}
+export type PluginInstallInput =
+  | { catalog: string; groups: string[] }
+  | { source: Exclude<PluginSource, { type: "catalog" }>; archive?: string; name?: string; groups: string[] };
 export interface PluginPatch {
   name?: string;
   description?: string;
   icon?: string;
   enabled?: boolean;
-  servers?: (Pick<PluginServer, "name" | "credential" | "oauth"> & Partial<Pick<PluginServer, "url" | "transport">>)[];
+  servers?: (Pick<PluginServer, "name" | "credential"> & { oauth?: Omit<OAuthRecipe, "resourceUrl"> } & Partial<Pick<PluginServer, "url" | "transport">>)[];
 }
 export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
 export interface MemberPlugin {
@@ -109,6 +92,10 @@ export type PluginCallError = Exclude<PluginStatus, "ready">;
 
 export const PLUGIN_ERROR_CODES = [
   "address_not_allowed",
+  "catalog_unknown",
+  "catalog_not_available",
+  "already_installed",
+  "not_editable",
   "archive_hash_mismatch",
   "archive_required",
   "builtin_group",
@@ -159,14 +146,11 @@ export const PLUGIN_ERROR_CODES = [
   "plugin_too_large",
   "plugin_tree_too_large",
   "proprietary_plugin",
-  "registry_plugin_not_found",
   "too_many_plugin_files",
   "unknown_plugin_server",
-  "unknown_registry",
   "unsafe_plugin_path",
   "unsupported_archive",
   "unsupported_git_host",
-  "unsupported_marketplace_source",
   "unsupported_plugin_version",
   "user_not_found",
 ] as const;

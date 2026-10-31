@@ -160,3 +160,49 @@ test("a connected member supplies discovery while calls keep the turn author's a
     await oauth.close();
   }
 });
+
+test("the curated catalog adds assigned services and opens shared vendor setup", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api }) => {
+  const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
+  const adminContext = await browser.newContext(options);
+  const memberContext = await browser.newContext(options);
+  const adminPage = await adminContext.newPage();
+  const memberPage = await memberContext.newPage();
+  const installed = [];
+  try {
+    for (const [context, person] of [[adminContext, api.admin], [memberContext, people.alice]]) {
+      await context.addCookies(person.cookie.split("; ").map(cookie => {
+        const [name, ...value] = cookie.split("=");
+        return { name, value: value.join("="), url: stack.urls.front };
+      }));
+    }
+    await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
+    await expect(adminPage.getByRole("heading", { name: "Work management", exact: true })).toBeVisible();
+    await expect(adminPage.getByRole("searchbox")).toHaveCount(0);
+    for (const name of ["Figma", "Shopify", "Docusign"]) await expect(adminPage.getByRole("button", { name: `Add ${name}`, exact: true })).toHaveCount(0);
+    await adminPage.screenshot({ path: test.info().outputPath("plugin-curated-catalog.png"), fullPage: true });
+    for (const name of ["Linear", "Gmail"]) {
+      await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
+      await adminPage.getByRole("button", { name: `Add ${name}`, exact: true }).click();
+      await expect(adminPage.getByRole("checkbox", { name: /Everyone/ })).toBeChecked();
+      await adminPage.getByRole("button", { name: "Add plugin", exact: true }).click();
+      const id = name.toLowerCase();
+      await expect.poll(async () => (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.some(p => p.id === id), { message: `${name} is installed from the catalog` }).toBe(true);
+      installed.push(id);
+    }
+    await memberPage.goto(`${stack.urls.front}/settings/plugins`);
+    await expect(memberPage.getByRole("button", { name: "Connect your Linear account", exact: true })).toBeVisible();
+    await expect(memberPage.getByText("Your administrator needs to finish setting it up", { exact: true })).toBeVisible();
+    await memberPage.screenshot({ path: test.info().outputPath("plugin-catalog-member-status.png") });
+    await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
+    await adminPage.getByText("Set up Google", { exact: true }).click();
+    await expect(adminPage.getByLabel("Client ID", { exact: true })).toBeVisible();
+    await expect(adminPage.getByText("Your app at Google", { exact: true })).toBeVisible();
+    await expect(adminPage.getByRole("link", { name: "Setup instructions", exact: true })).toBeVisible();
+    await adminPage.getByLabel("Client ID", { exact: true }).scrollIntoViewIfNeeded();
+    await adminPage.screenshot({ path: test.info().outputPath("plugin-catalog-google-setup.png") });
+  } finally {
+    for (const id of installed) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${id}`);
+    await adminContext.close();
+    await memberContext.close();
+  }
+});
