@@ -1,3 +1,4 @@
+import { checkMcpUrl } from "../shared/plugin-outbound";
 import { Gunzip, Unzip, UnzipInflate } from "fflate";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
@@ -115,14 +116,6 @@ export function unpackArchive(bytes: Uint8Array): Map<string, Uint8Array> {
   return files;
 }
 
-export function remoteUrl(value: string): string {
-  let u: URL;
-  try { u = new URL(value); } catch { throw new HttpError(400, "invalid_mcp_url"); }
-  if (!["https:", "http:"].includes(u.protocol) || u.username || u.password || u.hash || u.search || /[{}$]/.test(value))
-    throw new HttpError(400, "invalid_mcp_url", "Use an HTTP(S) MCP URL without credentials, query, fragment or placeholders");
-  return u.href;
-}
-
 export interface InspectedPlugin {
   name: string;
   description: string;
@@ -167,7 +160,7 @@ export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: 
     if (!p.success || !name.trim() || name.length > 100 || (typeof raw === "object" && raw !== null && "command" in raw)) { ignored.push(`MCP server ${name}: stdio or unsupported configuration`); continue; }
     try {
       const credential = p.data.oauth ? "user-oauth" : p.data.headers ? "organization" : "none";
-      servers.push({ name, url: remoteUrl(p.data.url), credential, personal: credential === "user-oauth", transport: p.data.type === "sse" ? "sse" : "streamable-http" });
+      servers.push({ name, url: checkMcpUrl(p.data.url, "private").href, credential, personal: credential === "user-oauth", transport: p.data.type === "sse" ? "sse" : "streamable-http" });
       if (p.data.headers) ignored.push(`MCP server ${name}: bundled headers omitted; configure a write-only organization secret`);
       if (p.data.oauth) ignored.push(`MCP server ${name}: client OAuth configuration omitted; connect through Baskule`);
     } catch { ignored.push(`MCP server ${name}: invalid or templated URL`); }

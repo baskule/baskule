@@ -1,3 +1,4 @@
+import { ConnectionCipher } from "../../src/control/connection-crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
@@ -95,7 +96,8 @@ describe("ControlCell plugins and groups", () => {
     await call(h, "PATCH", path, { ...admin, body: { enabled: true, servers: [{ name: "remote", credential: "organization", personal: false }] } });
     expect((await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } })).status).toBe(200);
     expect(h.svc.plugins.canUse(bob.id, spaceId, id, "remote")).toEqual({ allowed: true });
-    expect(h.svc.plugins.organizationHeaders(id, "remote")).toEqual({ Authorization: "Bearer private-organization-key" });
+    expect(await h.svc.plugins.organizationHeaders(id, "remote")).toEqual({ Authorization: "Bearer private-organization-key" });
+    expect(h.storage.sql.exec("select data from plugin_secret").toArray()[0].data).not.toContain("private-organization-key");
     const requestCredential = (userId = bob.id) => call(h, "POST", "/_baskule/plugin-credential", { headers: { [INTERNAL_HEADER]: "1" }, body: { spaceId, pluginId: id, server: "remote", userId } });
     expect((await requestCredential()).body).toMatchObject({ headers: { Authorization: "Bearer private-organization-key" }, expiresAt: expect.any(Number) });
     expect((await requestCredential("outsider")).body).toEqual({ error: "not_allowed" });
@@ -108,6 +110,11 @@ describe("ControlCell plugins and groups", () => {
     expect((await requestCredential()).body).toEqual({ error: "not_enabled" });
     await call(h, "PUT", `${API}/plugins/${id}/enabled`, { ...member, body: { enabled: true } });
     await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", credential: "organization", personal: false }] } });
+    await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } });
+    h.storage.sql.exec("insert into plugin_oauth_client(plugin_id,server,data) values (?,?,?)", id, "remote", "sealed-static-client").toArray();
+    await call(h, "PATCH", path, { ...admin, body: { servers: [{ name: "remote", url: "https://CHANGED.test/mcp", credential: "organization", personal: false }] } });
+    expect(await h.svc.plugins.organizationHeaders(id, "remote")).toBeUndefined();
+    expect(h.storage.sql.exec("select * from plugin_oauth_client where plugin_id=?", id).toArray()).toEqual([]);
     await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer private-organization-key" } } });
     const mine = await call(h, "GET", `${API}/plugins`, member);
     expect(mine.body.plugins[0]).toMatchObject({ userEnabled: true, connections: [{ server: "remote", state: "configured" }] });
@@ -161,8 +168,13 @@ describe("ControlCell plugins and groups", () => {
     expect(h.svc.plugins.settings(space).skills[0].files.find(f => f.path === "SKILL.md")!.content).toContain("LS0t");
     const bad = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { ...input, source: { type: "archive", sha256: "0".repeat(64) } } });
     expect(bad.body.error).toBe("archive_hash_mismatch");
+    const loopback = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { source: { type: "url", url: "http://127.0.0.1/mcp" } } });
+    await call(h, "PATCH", `${API}/admin/groups/everyone`, { creds: a.creds, body: { plugins: [loopback.body.id] } });
+    await call(h, "PATCH", `${API}/admin/plugins/${loopback.body.id}`, { creds: a.creds, body: { enabled: true } });
+    await call(h, "PUT", `${API}/plugins/${loopback.body.id}/enabled`, { creds: a.creds, body: { enabled: true } });
+    expect(h.svc.plugins.settings(space).servers[0].privateNetwork).toBe(true);
     const urls: string[] = [];
-    const store = new Plugins(h.storage, h.svc.groups, async url => {
+    const store = new Plugins(h.storage, h.svc.groups, new ConnectionCipher("test"), async url => {
       urls.push(String(url));
       if (String(url).includes("/git/trees/")) return Response.json({ truncated: false, tree: Object.entries(files).map(([path, bytes]) => ({ path, mode: "100644", type: "blob", size: bytes.length })) });
       const path = String(url).split(`${"a".repeat(40)}/`)[1];

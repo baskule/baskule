@@ -65,7 +65,7 @@ export interface PluginPatch {
   description?: string;
   icon?: string;
   enabled?: boolean;
-  servers?: Pick<PluginServer, "name" | "credential" | "personal" | "oauth" | "loginIdentity">[];
+  servers?: (Pick<PluginServer, "name" | "credential" | "personal" | "oauth" | "loginIdentity"> & Partial<Pick<PluginServer, "url" | "transport">>)[];
 }
 export type PluginConnectionState =
   | "connected"
@@ -90,7 +90,7 @@ export interface PluginFile {
 }
 export interface SpacePlugins {
   /** Catalog discovery uses an allowed member; tool calls always use the turn author. */
-  servers: (PluginServer & { pluginId: string; catalogUserId: string })[];
+  servers: (PluginServer & { pluginId: string; catalogUserId: string; privateNetwork: boolean })[];
   skills: { pluginId: string; name: string; description: string; files: PluginFile[] }[];
 }
 export type PluginCredential =

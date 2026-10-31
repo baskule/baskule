@@ -77,7 +77,7 @@ describe("turn author", () => {
   });
 });
 
-const server: SpacePlugins["servers"][number] = { pluginId: "test", name: "remote", url: "https://vendor.test/mcp", credential: "organization", personal: true, catalogUserId: "alice" };
+const server: SpacePlugins["servers"][number] = { pluginId: "test", name: "remote", url: "https://vendor.test/mcp", credential: "organization", personal: true, catalogUserId: "alice", privateNetwork: false };
 const rpc = async (proxy: PluginMcpProxy, method: string, user = "alice") => {
   const r = await proxy.handler(new Request("http://proxy/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: { name: "lookup", arguments: {}, _meta: { "ai.opencode/sessionID": user } } }) }));
   return r.json() as Promise<Record<string, any>>;
@@ -85,7 +85,14 @@ const rpc = async (proxy: PluginMcpProxy, method: string, user = "alice") => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("plugin proxy", () => {
-  it("checks policy on every call, labels personal accounts and never forwards session metadata", async () => {
+  it("refuses the in-isolate MCP host even for admin private servers", async () => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    const proxy = new PluginMcpProxy({ ...server, url: "https://baskule-mcp.internal/mcp", privateNetwork: true }, async () => alice, async () => ({ headers: {}, expiresAt: Date.now() + 60_000 }));
+    expect((await rpc(proxy, "tools/call")).result.isError).toBe(true);
+    expect(fetcher).not.toHaveBeenCalled();
+    await proxy.close();
+  });
+  it.each([false, true])("checks policy and calls the vendor with privateNetwork=%s", async privateNetwork => {
     const seen: { method: string; auth: string | null; params: any }[] = [];
     vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
       const body = JSON.parse(String(init.body));
@@ -98,7 +105,7 @@ describe("plugin proxy", () => {
     let allowed = true;
     const originalExpiry = Date.now() + 60_000;
     const credential = vi.fn(async (id: string): Promise<PluginCredential> => allowed ? { headers: { Authorization: `Bearer secret-${id}` }, expiresAt: Math.max(originalExpiry, Date.now() + 60_000) } : { error: "not_allowed" });
-    const proxy = new PluginMcpProxy(server, async id => id === "alice" ? alice : bob, credential);
+    const proxy = new PluginMcpProxy({ ...server, privateNetwork, url: privateNetwork ? "http://127.0.0.1/mcp" : server.url }, async id => id === "alice" ? alice : bob, credential);
     await rpc(proxy, "tools/list");
     const a = await rpc(proxy, "tools/call"); const b = await rpc(proxy, "tools/call", "bob");
     expect(a.result._meta["baskule/account"]).toMatchObject({ userId: "alice" });

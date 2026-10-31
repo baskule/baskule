@@ -18,7 +18,9 @@ export async function pluginCredential(req: Request, plugins: Plugins, connectio
   switch (target.credential) {
     case "none": return json({ headers: {}, expiresAt } satisfies PluginCredential);
     case "organization": {
-      const headers = plugins.organizationHeaders(pluginId, server);
+      const headers = await plugins.organizationHeaders(pluginId, server);
+      const current = plugins.canUse(userId, spaceId, pluginId, server);
+      if (!current.allowed) return json({ error: current.error });
       return json(headers ? { headers, expiresAt } : { error: "needs_connection", connectUrl: "/admin/plugins" });
     }
     case "user-oauth":

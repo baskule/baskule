@@ -63,16 +63,27 @@ describe("connection primitives", () => {
 });
 
 describe("MCP OAuth connections", () => {
+  it.each(["issuer", "token", "metadata"])("refuses private %s from a public server before contacting it", async part => {
+    const seen: string[] = [];
+    const fetcher = async (input: string | URL | Request) => {
+      const url = String(input); seen.push(url);
+      if (url === "https://resource.test/mcp") return new Response(null, { status: 401, headers: part === "metadata" ? { "www-authenticate": 'Bearer resource_metadata="http://127.0.0.1/metadata"' } : {} });
+      if (url.includes("oauth-protected-resource")) return Response.json({ resource: "https://resource.test/mcp", authorization_servers: [part === "issuer" ? "http://127.0.0.1" : "https://idp.test"] });
+      return Response.json({ issuer: "https://idp.test", authorization_endpoint: "https://idp.test/authorize", token_endpoint: "http://127.0.0.1/token", code_challenge_methods_supported: ["S256"], response_types_supported: ["code"] });
+    };
+    await expect(discoverOAuth("https://resource.test/mcp", fetcher)).rejects.toMatchObject({ code: "address_not_allowed" });
+    expect(seen.every(url => !url.includes("127.0.0.1"))).toBe(true);
+  });
   it("discovers resource → AS metadata, refuses mismatched resource/issuer and missing S256", async () => {
     const f = await fakeOAuth();
     try {
-      expect(await discoverOAuth(f.resource)).toMatchObject({ resource: f.resource, scopes: ["files.read"], as: { issuer: f.issuer } });
+      expect(await discoverOAuth(f.resource, fetch, "private")).toMatchObject({ resource: f.resource, scopes: ["files.read"], as: { issuer: f.issuer } });
       f.state.resourceMismatch = true;
-      await expect(discoverOAuth(f.resource)).rejects.toMatchObject({ code: "oauth_resource_mismatch" });
+      await expect(discoverOAuth(f.resource, fetch, "private")).rejects.toMatchObject({ code: "oauth_resource_mismatch" });
       f.state.resourceMismatch = false; f.state.issuerMismatch = true;
-      await expect(discoverOAuth(f.resource)).rejects.toMatchObject({ code: "invalid_authorization_metadata" });
+      await expect(discoverOAuth(f.resource, fetch, "private")).rejects.toMatchObject({ code: "invalid_authorization_metadata" });
       f.state.issuerMismatch = false; f.state.pkce = false;
-      await expect(discoverOAuth(f.resource)).rejects.toMatchObject({ code: "invalid_authorization_metadata" });
+      await expect(discoverOAuth(f.resource, fetch, "private")).rejects.toMatchObject({ code: "invalid_authorization_metadata" });
     } finally { await f.close(); }
   });
   it("uses the RFC 8414 and both OIDC metadata locations for an issuer with a path", async () => {

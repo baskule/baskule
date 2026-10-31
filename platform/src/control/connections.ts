@@ -1,3 +1,4 @@
+import { serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
 import type { Plugin, PluginConnectionState, PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
 import type { Auth } from "./auth";
@@ -5,7 +6,7 @@ import type { InstallationAuth } from "./auth-config";
 import type { StorageLike } from "./service";
 import type { Plugins } from "./plugins";
 import { HttpError, json, notFound, readJson } from "../shared/http";
-import { ConnectionCipher, digest, pkce, randomSecret } from "./connection-crypto";
+import { type ConnectionCipher, digest, pkce, randomSecret } from "./connection-crypto";
 import { canonicalResource, discoverOAuth, exchangeToken, registerClient, type Discovery, type OAuthClient, type OAuthTokens } from "./connection-oauth";
 import type { Fetcher } from "./registries/http";
 
@@ -51,11 +52,8 @@ export function microsoftAudience(token: string, audience: string): boolean {
 }
 
 export class Connections {
-  private cipher: ConnectionCipher;
   private refreshes = new Map<string, Promise<PluginCredential>>();
-  constructor(private storage: StorageLike, private plugins: Plugins, private auth: Auth, private installation: InstallationAuth, secret: string, private fetcher: Fetcher = fetch) {
-    this.cipher = new ConnectionCipher(secret);
-  }
+  constructor(private storage: StorageLike, private plugins: Plugins, private auth: Auth, private installation: InstallationAuth, private cipher: ConnectionCipher, private fetcher: Fetcher = fetch) {}
   private rows(q: string, ...p: unknown[]) { return this.storage.sql.exec(q, ...p).toArray(); }
   private allowed(userId: string, pluginId: string): Plugin {
     const p = this.plugins.get(pluginId);
@@ -192,7 +190,7 @@ export class Connections {
       for (const cookie of response.headers.getSetCookie()) result.headers.append("set-cookie", cookie);
       return result;
     }
-    const discovery = await discoverOAuth(server.url, this.fetcher);
+    const discovery = await discoverOAuth(server.url, this.fetcher, serverNetwork(server.url));
     const callback = `${u.origin}${CALLBACK}`;
     const row = this.rows("select data from plugin_oauth_client where plugin_id=? and server=?", plugin.id, server.name)[0];
     const client = row ? await this.cipher.open<OAuthClient>(row.data as string, context("client", plugin.id, server.name)) : await registerClient(discovery, callback, this.fetcher);

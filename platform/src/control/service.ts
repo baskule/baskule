@@ -1,3 +1,4 @@
+import { ConnectionCipher } from "./connection-crypto";
 // ControlService: all ControlCell logic (identity, spaces, invitations, admin, authorization, revocation).
 // Independent of the DO runtime so it runs under vitest with a fake `ctx.storage` (test/unit/fake-storage.ts).
 import { drizzle } from "drizzle-orm/durable-sqlite";
@@ -103,7 +104,7 @@ export class ControlService {
   readonly installation;
   readonly push: Push;
   readonly groups;
-  readonly plugins;
+  plugins!: Plugins;
   connections!: Connections;
   /** In-flight revocation calls; every request waits for them before answering (immediate revocation). */
   private pending = new Set<Promise<unknown>>();
@@ -121,7 +122,6 @@ export class ControlService {
     this.installation = parseAuthConfig(env.AUTH_CONFIG);
     this.push = new Push(storage, callSpace, this.installation.mode === "authenticated");
     this.groups = new Groups(storage);
-    this.plugins = new Plugins(storage, this.groups);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.db = drizzle(storage as any, { schema: { ...authSchema, ...appSchema } });
   }
@@ -158,7 +158,9 @@ export class ControlService {
       onSessionCreated: async (s) => this.onSessionCreated(s),
       onSessionDeleted: async (s) => this.onSessionDeleted(s),
     });
-    this.connections = new Connections(this.storage, this.plugins, this.auth, this.installation, secret);
+    const cipher = new ConnectionCipher(secret);
+    this.plugins = new Plugins(this.storage, this.groups, cipher);
+    this.connections = new Connections(this.storage, this.plugins, this.auth, this.installation, cipher);
     this.plugins.connections = this.connections;
     const org = this.one("select id from organization order by created_at limit 1");
     if (org) this.orgId = org.id as string;
