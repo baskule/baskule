@@ -13,7 +13,7 @@ import { fetchGitFiles } from "./registries/git";
 import { COMMIT_RE, githubRepo } from "./registries/marketplace";
 
 const id = z.string().min(1).max(200);
-const credential = z.enum(["none", "organization", "user-oauth", "login-identity"]);
+const credential = z.enum(["none", "organization", "user-oauth"]);
 const sourceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("registry"), registry: id, id, version: id.optional() }).strict(),
   z.object({ type: z.literal("url"), url: z.string().max(2048) }).strict(),
@@ -23,9 +23,10 @@ const sourceSchema = z.discriminatedUnion("type", [
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(), description: z.string().max(4000).optional(),
   icon: z.url().max(2048).refine(v => new URL(v).protocol === "https:").optional(), enabled: z.boolean().optional(),
-  servers: z.array(z.object({ name: id, url: z.string().max(2048).optional(), transport: z.enum(["streamable-http", "sse"]).optional(), credential, personal: z.boolean(),
-    oauth: z.object({ scopes: z.array(z.string().min(1).max(2048)).max(100) }).strict().optional(),
-    loginIdentity: z.object({ provider: z.enum(["google", "microsoft"]), scopes: z.array(z.string().min(1).max(2048)).min(1).max(100), audience: z.string().min(1).max(2048) }).strict().optional(),
+  servers: z.array(z.object({ name: id, url: z.string().max(2048).optional(), transport: z.enum(["streamable-http", "sse"]).optional(), credential,
+    oauth: z.object({ scopes: z.array(z.string().min(1).max(2048)).max(100).optional(),
+      params: z.record(z.string().regex(/^[a-z_]+$/), z.string().max(2048)).optional(), resource: z.literal(false).optional(), staticClient: z.literal(true).optional(),
+    }).strict().optional(),
   }).strict()).max(100).optional(),
 }).strict();
 const spaceSchema = z.object({ personalPluginsAllowed: z.boolean(), disabled: z.array(id).max(100) }).strict();
@@ -58,7 +59,7 @@ export function canUse(userId: string, spaceId: string, pluginId: string, server
       !plugin || plugin.id !== pluginId || !policy.assigned)
     return { allowed: false, error: "unavailable" };
   const target = server === undefined ? undefined : plugin.servers.find(s => s.name === server);
-  if (server !== undefined && (!target || (target.personal && space.kind !== "personal" && !space.settings.personalPluginsAllowed))) return { allowed: false, error: "unavailable" };
+  if (server !== undefined && (!target || (target.credential === "user-oauth" && space.kind !== "personal" && !space.settings.personalPluginsAllowed))) return { allowed: false, error: "unavailable" };
   if (!plugin.enabled || space.settings.disabled.includes(pluginId)) return { allowed: false, error: "unavailable" };
   return { allowed: true };
 }
@@ -67,7 +68,7 @@ export function pluginStatus(facts: { allowed: boolean; server?: { credential: C
   if (!facts.allowed) return "unavailable";
   if (!facts.server) return "ready";
   if (!facts.server.setupDone) return "needs_setup";
-  if (["user-oauth", "login-identity"].includes(facts.server.credential)) return facts.server.account ?? "connect";
+  if (["user-oauth"].includes(facts.server.credential)) return facts.server.account ?? "connect";
   return "ready";
 }
 export function worstStatus(statuses: PluginStatus[]): PluginStatus {
@@ -107,14 +108,15 @@ export class Plugins {
     return r ? this.cipher.open<Record<string, string>>(r.data as string, JSON.stringify(["secret", pluginId, server])) : undefined;
   }
   setupDone(plugin: Plugin, server: PluginServer): boolean {
-    return server.credential !== "organization" || !!this.rows("select 1 from plugin_secret where plugin_id=? and server=?", plugin.id, server.name).length;
+    if (server.credential === "organization") return !!this.rows("select 1 from plugin_secret where plugin_id=? and server=?", plugin.id, server.name).length;
+    return !server.oauth?.staticClient || !!this.connections?.vendorConfigured(plugin.vendor);
   }
   async statusFor(userId: string, plugin: Plugin): Promise<MemberPlugin> {
     const user = this.rows("select banned from user where id=?", userId)[0];
     const allowed = !!user && !user.banned && plugin.enabled && this.assigned(userId, plugin.id);
-    const servers = await Promise.all(plugin.servers.map(async server => ({ name: server.name, personal: ["user-oauth", "login-identity"].includes(server.credential), status: pluginStatus({ allowed, server: {
+    const servers = await Promise.all(plugin.servers.map(async server => ({ name: server.name, credential: server.credential, status: pluginStatus({ allowed, server: {
       credential: server.credential, setupDone: this.setupDone(plugin, server),
-      account: ["user-oauth", "login-identity"].includes(server.credential) ? await this.connections!.state(userId, plugin.id, server) : undefined,
+      account: ["user-oauth"].includes(server.credential) ? await this.connections!.state(userId, plugin.id, server) : undefined,
     } }) })));
     return { id: plugin.id, name: plugin.name, description: plugin.description, ...(plugin.icon ? { icon: plugin.icon } : {}), skills: plugin.skills,
       status: servers.length ? worstStatus(servers.map(s => s.status)) : pluginStatus({ allowed }), servers };
@@ -170,7 +172,7 @@ export class Plugins {
     let inspected;
     if (source.type === "url") {
       const url = checkMcpUrl(source.url, data.source.type === "registry" ? "public" : "private").href;
-      inspected = { name: name ?? new URL(url).hostname, description, servers: remoteServers ?? [{ name: "remote", url, credential: "none" as const, personal: false, transport: "streamable-http" as const }], skills: [], ignored: [], storedBytes: 0 };
+      inspected = { name: name ?? new URL(url).hostname, description, servers: remoteServers ?? [{ name: "remote", url, credential: "none" as const, transport: "streamable-http" as const }], skills: [], ignored: [], storedBytes: 0 };
     } else {
       let bytes: Uint8Array;
       if (source.type === "git") {
@@ -186,7 +188,8 @@ export class Plugins {
       }
     }
     for (const server of inspected.servers) checkMcpUrl(server.url, data.source.type === "registry" ? "public" : "private");
-    const plugin: Plugin = { id: crypto.randomUUID(), name: name ?? inspected.name, description: inspected.description || description,
+    const pluginId = crypto.randomUUID();
+    const plugin: Plugin = { id: pluginId, vendor: pluginId, name: name ?? inspected.name, description: inspected.description || description,
       source: data.source, ...(resolvedSource ? { resolvedSource } : {}), skills: inspected.skills.map(s => ({ name: s.name, description: s.description })), servers: inspected.servers,
       ignored: inspected.ignored, enabled: true, createdAt: new Date().toISOString() };
     this.storage.transactionSync(() => {
@@ -207,7 +210,7 @@ export class Plugins {
       const kind = parse(z.enum(["mcp", "skill", "bundle"]).optional(), query.get("kind") ?? undefined);
       return json(await searchRegistries(registries(this.fetcher), q, kind));
     }
-    if (path === "/admin/plugins" && req.method === "GET") return json({ plugins: this.list() });
+    if (path === "/admin/plugins" && req.method === "GET") return json({ plugins: this.list().map(plugin => ({ ...plugin, setup: plugin.servers.map(server => ({ server: server.name, done: this.setupDone(plugin, server) })), vendorConfigured: !!this.connections?.vendorConfigured(plugin.vendor) })) });
     if (path === "/admin/plugins" && req.method === "POST") return this.install(req);
     const match = /^\/admin\/plugins\/([^/]+)(\/secret)?$/.exec(path);
     if (!match) return notFound();
@@ -226,19 +229,24 @@ export class Plugins {
       return json({ ok: true });
     }
     if (match[2]) return notFound();
-    if (req.method === "DELETE") { this.rows("delete from plugin where id=?", plugin.id); return json({ ok: true }); }
+    if (req.method === "DELETE") { this.rows("delete from vendor_setup where vendor=?", plugin.vendor); this.rows("delete from plugin where id=?", plugin.id); return json({ ok: true }); }
     if (req.method === "PATCH") {
       const patch: PluginPatch = parse(patchSchema, await body(req));
-      const servers = patch.servers ? plugin.servers.map(server => ({ ...server, ...patch.servers!.find(p => p.name === server.name) })) : plugin.servers;
+      const servers = patch.servers ? plugin.servers.map(server => {
+        const update = patch.servers!.find(p => p.name === server.name);
+        const next = { ...server, ...update };
+        if (next.credential !== "user-oauth") delete next.oauth;
+        return next;
+      }) : plugin.servers;
       if (patch.servers) {
-        if (patch.servers.some(s => ["user-oauth", "login-identity"].includes(s.credential) && !s.personal)) throw pluginError(400, "personal_credential_required");
         if (new Set(patch.servers.map(s => s.name)).size !== patch.servers.length || patch.servers.some(s => !plugin.servers.some(p => p.name === s.name))) throw pluginError(400, "unknown_plugin_server");
         for (const server of servers) server.url = checkMcpUrl(server.url, plugin.source.type === "registry" ? "public" : "private").href;
       }
       const { servers: _servers, ...fields } = patch;
       this.storage.transactionSync(() => {
         for (const old of plugin.servers) if (JSON.stringify(old) !== JSON.stringify(servers.find(s => s.name === old.name))) {
-          for (const table of ["plugin_secret", "plugin_oauth_client", "plugin_connection", "plugin_oauth_state"]) this.rows(`delete from ${table} where plugin_id=? and server=?`, plugin.id, old.name);
+          this.rows("delete from vendor_setup where vendor=?", plugin.vendor);
+          for (const table of ["plugin_secret", "plugin_connection", "plugin_oauth_state"]) this.rows(`delete from ${table} where plugin_id=? and server=?`, plugin.id, old.name);
         }
         Object.assign(plugin, fields, { servers });
         this.rows("update plugin set definition=? where id=?", JSON.stringify(plugin), plugin.id);

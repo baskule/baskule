@@ -1,13 +1,12 @@
 import { serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
 import type { Plugin, PluginStatus, PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
-import type { Auth } from "./auth";
 import type { InstallationAuth } from "./auth-config";
 import type { StorageLike } from "./service";
 import type { Plugins } from "./plugins";
-import { HttpError, pluginError, json, notFound, readJson } from "../shared/http";
+import { HttpError, pluginError, json, notFound } from "../shared/http";
 import { type ConnectionCipher, digest, pkce, randomSecret } from "./connection-crypto";
-import { canonicalResource, discoverOAuth, exchangeToken, registerClient, type Discovery, type OAuthClient, type OAuthTokens } from "./connection-oauth";
+import { discoverOAuth, exchangeToken, registerClient, type Discovery, type OAuthClient, type OAuthTokens } from "./connection-oauth";
 import type { Fetcher } from "./registries/http";
 
 const TTL = 10 * 60_000;
@@ -18,43 +17,20 @@ const redirect = (location: string, headers?: HeadersInit) => new Response(null,
 interface User { id: string; email: string }
 interface Pending {
   userId: string; pluginId: string; server: string; sessionId: string; config: string; origin: string; returnTo: string;
-  oauth?: { discovery: Discovery; client: OAuthClient; verifier: string; redirectUri: string; scopes: string[] };
-  accountId?: string;
+  oauth: { discovery: Discovery; client: OAuthClient; verifier: string; redirectUri: string; scopes: string[] };
   stateHash?: string;
 }
 interface Connection {
   config: string;
-  oauth?: { discovery: Discovery; client: OAuthClient; tokens: OAuthTokens };
-  accountId?: string;
+  oauth: { discovery: Discovery; client: OAuthClient; tokens: OAuthTokens };
 }
 export type CredentialRequest = { spaceId: string; pluginId: string; server: string; userId: string };
 export type PluginCredential = { headers: Record<string, string> } | { error: Exclude<PluginStatus, "ready"> };
 
-/** A provider token may only go to that provider's MCP resource, never to a third-party wrapper. */
-export function loginIdentityAudience(server: PluginServer): boolean {
-  const identity = server.loginIdentity;
-  if (!identity) return false;
-  let u: URL;
-  try { u = new URL(server.url); } catch { return false; }
-  if (u.protocol !== "https:" || u.port || u.username || u.password || u.search || u.hash) return false;
-  if (identity.provider === "google") return /^[a-z0-9-]+\.googleapis\.com$/.test(u.hostname) && u.pathname === "/mcp" && identity.audience === canonicalResource(server.url);
-  return u.origin === "https://workiq.svc.cloud.microsoft" && u.pathname === "/mcp" &&
-    ["api://workiq.svc.cloud.microsoft", "fdcc1f02-fc51-4226-8753-f668596af7f7"].includes(identity.audience) &&
-    identity.scopes.length > 0 && identity.scopes.every(s => s.startsWith("api://workiq.svc.cloud.microsoft/") || s.startsWith("fdcc1f02-fc51-4226-8753-f668596af7f7/"));
-}
-
-/** Tokens here came directly from Better Auth's configured provider; this checks their destination, not their signature. */
-export function microsoftAudience(token: string, audience: string): boolean {
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return payload.aud === audience && typeof payload.exp === "number" && payload.exp * 1000 > Date.now();
-  } catch { return false; }
-}
-
 export class Connections {
   onChange?: (userId: string | undefined) => void;
   private refreshes = new Map<string, Promise<PluginCredential>>();
-  constructor(private storage: StorageLike, private plugins: Plugins, private auth: Auth, private installation: InstallationAuth, private cipher: ConnectionCipher, private fetcher: Fetcher = fetch) {}
+  constructor(private storage: StorageLike, private plugins: Plugins, private installation: InstallationAuth, private cipher: ConnectionCipher, private fetcher: Fetcher = fetch) {}
   private rows(q: string, ...p: unknown[]) { return this.storage.sql.exec(q, ...p).toArray(); }
   private allowed(userId: string, pluginId: string): Plugin {
     const p = this.plugins.get(pluginId);
@@ -62,25 +38,10 @@ export class Connections {
     return p;
   }
   private server(plugin: Plugin, name: string | null): PluginServer {
-    const candidates = plugin.servers.filter(s => ["user-oauth", "login-identity"].includes(s.credential));
+    const candidates = plugin.servers.filter(s => s.credential === "user-oauth");
     const server = name ? candidates.find(s => s.name === name) : candidates.length === 1 ? candidates[0] : undefined;
     if (!server) throw pluginError(400, "plugin_server_required");
     return server;
-  }
-  private account(userId: string, provider: string) {
-    const accounts = this.rows("select id,account_id,scope,refresh_token from account where user_id=? and provider_id=?", userId, provider);
-    if (accounts.length !== 1) throw pluginError(409, "login_account_required");
-    return accounts[0];
-  }
-  private identity(server: PluginServer) {
-    if (!loginIdentityAudience(server)) throw pluginError(400, "login_identity_audience_refused");
-    const identity = server.loginIdentity!;
-    const provider = this.installation.providers.find(p => p.type === "social" && p.id === identity.provider);
-    if (!provider) throw pluginError(409, "login_provider_required");
-    if (identity.provider === "microsoft" && (provider.options.disableDefaultScope !== true ||
-      (Array.isArray(provider.options.scope) && provider.options.scope.some(s => typeof s !== "string" || !["openid", "email", "profile", "offline_access"].includes(s)))))
-      throw pluginError(409, "microsoft_identity_configuration_required");
-    return identity;
   }
   private async save(userId: string, pluginId: string, server: string, value: Connection, pending: Pending) {
     const data = await this.cipher.seal(value, context(userId, pluginId, server));
@@ -127,26 +88,34 @@ export class Connections {
     try {
       const c = await this.cipher.open<Connection>(row, context(userId, pluginId, server.name));
       if (c.config !== fingerprint(server)) return "reconnect";
-      if (c.oauth) return (c.oauth.tokens.expiresAt === null || c.oauth.tokens.expiresAt > Date.now()) || c.oauth.tokens.refreshToken ? "ready" : "reconnect";
-      const i = this.identity(server);
-      const a = this.account(userId, i.provider);
-      return a.id === c.accountId && a.refresh_token && i.scopes.every(s => String(a.scope ?? "").split(/[,\s]+/).includes(s)) ? "ready" : "reconnect";
+      return (c.oauth.tokens.expiresAt === null || c.oauth.tokens.expiresAt > Date.now()) || c.oauth.tokens.refreshToken ? "ready" : "reconnect";
     } catch { return "reconnect"; }
   }
-  async admin(req: Request, pluginId: string): Promise<Response> {
-    if (!this.plugins.get(pluginId)) return notFound();
+  vendorConfigured(vendor: string): boolean {
+    return !!this.rows("select 1 from vendor_setup where vendor=?", vendor).length;
+  }
+  async vendor(req: Request, vendor: string): Promise<Response> {
+    const plugins = this.plugins.list().filter(p => p.vendor === vendor);
+    if (!plugins.length) throw pluginError(404, "vendor_unknown");
+    if (req.method === "GET") return json({ configured: this.vendorConfigured(vendor) });
     if (req.method !== "PUT") return notFound();
-    const parsed = z.object({ server: z.string().max(200), client: z.object({ clientId: z.string().min(1).max(4096), clientSecret: z.string().min(1).max(8192).optional(), tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]).default("none") }).strict().nullable() }).strict().safeParse(await readJson(req));
+    const parsed = z.object({ clientId: z.string().min(1).max(4096), clientSecret: z.string().min(1).max(8192).optional(), tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]) }).strict().nullable().safeParse(await req.json().catch(() => { throw pluginError(400, "invalid_json"); }));
     if (!parsed.success) throw pluginError(400, "invalid_oauth_client");
-    const { server, client } = parsed.data;
-    if (!this.plugins.get(pluginId)!.servers.some(s => s.name === server && s.credential === "user-oauth")) throw pluginError(400, "not_oauth_server");
+    const client = parsed.data;
     if (client && (client.tokenEndpointAuthMethod !== "none") !== !!client.clientSecret) throw pluginError(400, "invalid_oauth_client");
-    const data = client ? await this.cipher.seal(client, context("client", pluginId, server)) : null;
+    const servers = plugins.flatMap(p => p.servers).filter(s => s.credential === "user-oauth");
+    if (client && !servers.length) throw pluginError(400, "not_oauth_server");
+    const snapshot = JSON.stringify(plugins);
+    const issuer = client ? (await discoverOAuth(servers[0].url, this.fetcher, serverNetwork(servers[0].url))).as.issuer : undefined;
+    const data = client ? await this.cipher.seal({ ...client, issuer }, JSON.stringify(["vendor", vendor])) : null;
     this.storage.transactionSync(() => {
-      this.rows("delete from plugin_oauth_client where plugin_id=? and server=?", pluginId, server);
-      if (data) this.rows("insert into plugin_oauth_client(plugin_id,server,data) values (?,?,?)", pluginId, server, data);
-      this.rows("delete from plugin_connection where plugin_id=? and server=?", pluginId, server);
-      this.rows("delete from plugin_oauth_state where plugin_id=? and server=?", pluginId, server);
+      if (snapshot !== JSON.stringify(this.plugins.list().filter(p => p.vendor === vendor))) throw pluginError(409, "connection_not_allowed");
+      this.rows("delete from vendor_setup where vendor=?", vendor);
+      if (data) this.rows("insert into vendor_setup(vendor,data) values (?,?)", vendor, data);
+      for (const p of plugins) {
+        this.rows("delete from plugin_connection where plugin_id=?", p.id);
+        this.rows("delete from plugin_oauth_state where plugin_id=?", p.id);
+      }
     });
     this.onChange?.(undefined);
     return json({ ok: true, configured: !!client });
@@ -156,6 +125,15 @@ export class Connections {
     if (path === "/plugins/oauth/callback" && req.method === "GET") return this.callback(req, user.id, sessionId);
     const match = /^\/plugins\/([^/]+)\/(connect|connection)$/.exec(path);
     if (!match) return notFound();
+    if (match[2] === "connect" && req.method === "GET") {
+      try { return await this.connect(req, match[1], user, sessionId); }
+      catch (error) {
+        const target = new URL("/settings/plugins", u.origin);
+        target.searchParams.set("pluginConnection", "error");
+        target.searchParams.set("connectionError", error instanceof HttpError ? error.code : "connection_failed");
+        return redirect(target.href);
+      }
+    }
     const plugin = this.allowed(user.id, match[1]);
     if (match[2] === "connection" && req.method === "DELETE") {
       const name = u.searchParams.get("server");
@@ -168,42 +146,35 @@ export class Connections {
       this.onChange?.(user.id);
       return json({ ok: true });
     }
-    if (match[2] !== "connect" || req.method !== "GET") return notFound();
+    return notFound();
+  }
+  private async connect(req: Request, pluginId: string, user: User, sessionId: string): Promise<Response> {
+    const u = new URL(req.url);
+    const plugin = this.allowed(user.id, pluginId);
     if (this.installation.mode === "anonymous") throw pluginError(403, "connection_not_allowed");
     if (!plugin.enabled) throw pluginError(403, "connection_not_allowed");
     const server = this.server(plugin, u.searchParams.get("server"));
     const returnTo = new URL(u.searchParams.get("returnTo") ?? "/", u.origin);
     if (returnTo.origin !== u.origin || returnTo.username || returnTo.password) throw pluginError(400, "invalid_return_url");
-    const pending: Pending = { userId: user.id, pluginId: plugin.id, server: server.name, sessionId, config: fingerprint(server), origin: u.origin, returnTo: returnTo.href };
-    if (server.credential === "login-identity") {
-      const identity = this.identity(server);
-      const account = this.account(user.id, identity.provider);
-      pending.accountId = account.id as string;
-      const state = await this.pending(pending);
-      const callback = `${u.origin}${CALLBACK}?state=${state}`;
-      const response = await this.auth.api.linkSocialAccount({ headers: req.headers, body: {
-        provider: identity.provider, callbackURL: callback, errorCallbackURL: callback + "&error=consent_denied", disableRedirect: true,
-        scopes: [...new Set([...identity.scopes, ...(identity.provider === "microsoft" ? ["offline_access"] : [])])], loginHint: user.email,
-        additionalParams: identity.provider === "google" ? { access_type: "offline", prompt: "consent", include_granted_scopes: "true" } : { prompt: "consent" },
-      }, asResponse: true });
-      const body = await response.json() as { url?: string };
-      if (!response.ok || !body.url) throw pluginError(502, "identity_consent_failed");
-      // Preserve Better Auth's signed state cookies on the browser redirect.
-      const result = redirect(body.url);
-      for (const cookie of response.headers.getSetCookie()) result.headers.append("set-cookie", cookie);
-      return result;
-    }
-    const discovery = await discoverOAuth(server.url, this.fetcher, serverNetwork(server.url));
+    const row = this.rows("select data from vendor_setup where vendor=?", plugin.vendor)[0];
+    const setup = row ? await this.cipher.open<OAuthClient & { issuer: string }>(row.data as string, JSON.stringify(["vendor", plugin.vendor])) : undefined;
+    if (server.oauth?.staticClient && !setup) throw pluginError(409, "oauth_client_configuration_required");
+    const discovery = await discoverOAuth(server.url, this.fetcher, serverNetwork(server.url), setup?.issuer);
     const callback = `${u.origin}${CALLBACK}`;
-    const row = this.rows("select data from plugin_oauth_client where plugin_id=? and server=?", plugin.id, server.name)[0];
-    const client = row ? await this.cipher.open<OAuthClient>(row.data as string, context("client", plugin.id, server.name)) : await registerClient(discovery, callback, this.fetcher);
+    const client = setup ?? await registerClient(discovery, callback, this.fetcher);
+    if (this.rows("select data from vendor_setup where vendor=?", plugin.vendor)[0]?.data !== row?.data) throw pluginError(409, "connection_not_allowed");
     if (discovery.as.token_endpoint_auth_methods_supported && !discovery.as.token_endpoint_auth_methods_supported.includes(client.tokenEndpointAuthMethod)) throw pluginError(409, "oauth_client_configuration_required");
     const proof = await pkce();
     const scopes = [...new Set([...(server.oauth?.scopes ?? discovery.scopes), ...(discovery.as.scopes_supported?.includes("offline_access") ? ["offline_access"] : [])])];
-    pending.oauth = { discovery, client, verifier: proof.verifier, redirectUri: callback, scopes };
+    const pending: Pending = { userId: user.id, pluginId: plugin.id, server: server.name, sessionId, config: fingerprint(server), origin: u.origin, returnTo: returnTo.href,
+      oauth: { discovery, client, verifier: proof.verifier, redirectUri: callback, scopes } };
     const state = await this.pending(pending);
     const authorization = new URL(discovery.as.authorization_endpoint);
-    for (const [key, value] of Object.entries({ response_type: "code", client_id: client.clientId, redirect_uri: callback, state, code_challenge: proof.challenge, code_challenge_method: "S256", resource: discovery.resource })) authorization.searchParams.set(key, value);
+    for (const [key, value] of Object.entries({ response_type: "code", client_id: client.clientId, redirect_uri: callback, state, code_challenge: proof.challenge, code_challenge_method: "S256", ...(server.oauth?.resource === false ? {} : { resource: discovery.resource }) })) authorization.searchParams.set(key, value);
+    for (const [key, value] of Object.entries(server.oauth?.params ?? {})) {
+      if (["response_type", "client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "resource", "scope"].includes(key)) throw pluginError(400, "invalid_plugin_input");
+      authorization.searchParams.set(key, value);
+    }
     if (scopes.length) authorization.searchParams.set("scope", scopes.join(" "));
     return redirect(authorization.href);
   }
@@ -217,24 +188,16 @@ export class Connections {
     target.searchParams.set("server", pending.server);
     try {
       const server = this.active(pending);
-      if (pending.oauth) {
         const { discovery, client, verifier, redirectUri, scopes } = pending.oauth;
         const issuer = u.searchParams.get("iss");
         if ((discovery.as.authorization_response_iss_parameter_supported && !issuer) || (issuer !== null && issuer !== discovery.as.issuer)) throw pluginError(400, "oauth_issuer_mismatch");
         if (u.searchParams.has("error")) throw pluginError(400, "consent_denied");
         const code = u.searchParams.get("code");
         if (!code || code.length > 8192) throw pluginError(400, "invalid_oauth_code");
-        const tokens = await exchangeToken(discovery, client, { grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: redirectUri }, scopes, this.fetcher);
+        const tokens = await exchangeToken(discovery, client, { grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: redirectUri }, scopes, this.fetcher, server.oauth);
         this.active(pending);
         if (!(server.oauth?.scopes ?? discovery.scopes).every(s => tokens.scopes.includes(s))) throw pluginError(400, "oauth_scope_missing");
         await this.save(userId, pending.pluginId, pending.server, { config: pending.config, oauth: { discovery, client, tokens } }, pending);
-      } else {
-        if (u.searchParams.has("error")) throw pluginError(400, "consent_denied");
-        const identity = this.identity(server);
-        const account = this.account(userId, identity.provider);
-        if (account.id !== pending.accountId || !account.refresh_token || !identity.scopes.every(s => String(account.scope ?? "").split(/[,\s]+/).includes(s))) throw pluginError(400, "identity_scope_missing");
-        await this.save(userId, pending.pluginId, pending.server, { config: pending.config, accountId: pending.accountId }, pending);
-      }
       target.searchParams.set("pluginConnection", "connected");
     } catch (error) {
       target.searchParams.set("pluginConnection", "error");
@@ -259,19 +222,19 @@ export class Connections {
   private async resolve(input: CredentialRequest): Promise<PluginCredential> {
     const { userId, pluginId, server: name } = input;
     const server = this.plugins.get(pluginId)!.servers.find(s => s.name === name)!;
+    if (!this.plugins.setupDone(this.plugins.get(pluginId)!, server)) return { error: "needs_setup" };
     const row = this.row(userId, pluginId, name);
     const needs = (): PluginCredential => ({ error: this.row(userId, pluginId, name) ? "reconnect" : "connect" });
-    if (!row || !["user-oauth", "login-identity"].includes(server.credential)) return needs();
-    if (server.credential === "login-identity" && !loginIdentityAudience(server)) return { error: "unavailable" };
+    if (!row || server.credential !== "user-oauth") return needs();
     try {
       const c = await this.cipher.open<Connection>(row, context(userId, pluginId, name));
       if (c.config !== fingerprint(server)) return needs();
       let token: string;
       let liveData = row;
-      if (c.oauth && server.credential === "user-oauth") {
+      {
         if (c.oauth.tokens.expiresAt !== null && c.oauth.tokens.expiresAt <= Date.now() + 30_000) {
           if (!c.oauth.tokens.refreshToken) return needs();
-          const tokens = await exchangeToken(c.oauth.discovery, c.oauth.client, { grant_type: "refresh_token", refresh_token: c.oauth.tokens.refreshToken }, c.oauth.tokens.scopes, this.fetcher);
+          const tokens = await exchangeToken(c.oauth.discovery, c.oauth.client, { grant_type: "refresh_token", refresh_token: c.oauth.tokens.refreshToken }, c.oauth.tokens.scopes, this.fetcher, server.oauth);
           if (!c.oauth.tokens.scopes.filter(s => s !== "offline_access").every(s => tokens.scopes.includes(s))) return needs();
           c.oauth.tokens = { ...tokens, refreshToken: tokens.refreshToken ?? c.oauth.tokens.refreshToken };
           const data = await this.cipher.seal(c, context(userId, pluginId, name));
@@ -279,15 +242,7 @@ export class Connections {
           liveData = data;
         }
         token = c.oauth.tokens.accessToken;
-      } else if (server.credential === "login-identity" && c.accountId) {
-        const identity = this.identity(server);
-        const account = this.account(userId, identity.provider);
-        if (account.id !== c.accountId || !account.refresh_token) return needs();
-        const tokens = await this.auth.api.getAccessToken({ body: { userId, accountId: c.accountId } });
-        if (!tokens.accessToken || !identity.scopes.every(s => tokens.scopes.includes(s)) || (tokens.accessTokenExpiresAt && tokens.accessTokenExpiresAt.getTime() <= Date.now())) return needs();
-        if (identity.provider === "microsoft" && !microsoftAudience(tokens.accessToken, identity.audience)) return { error: "unavailable" };
-        token = tokens.accessToken;
-      } else return needs();
+      }
       const policy = this.plugins.canUse(userId, input.spaceId, pluginId, name);
       if (!policy.allowed) return { error: policy.error };
       if (this.row(userId, pluginId, name) !== liveData || fingerprint(this.plugins.get(pluginId)!.servers.find(s => s.name === name)!) !== c.config) return needs();
@@ -296,12 +251,10 @@ export class Connections {
     } catch (error) {
       if (error instanceof HttpError && error.code === "oauth_grant_expired") {
         const value = await this.cipher.open<Connection>(row, context(userId, pluginId, name));
-        if (value.oauth) {
           value.oauth.tokens.expiresAt = 0;
           delete value.oauth.tokens.refreshToken;
           const data = await this.cipher.seal(value, context(userId, pluginId, name));
           this.rows("update plugin_connection set data=? where user_id=? and plugin_id=? and server=? and data=?", data, userId, pluginId, name, row);
-        }
       }
       return needs();
     }

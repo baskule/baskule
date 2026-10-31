@@ -1,6 +1,6 @@
 // baskule: the plugin screens against a fake ControlCell (fetch): what the admin adds, for whom,
-// and pauses, and what a person is told about each plugin and can connect.
-import type { Group, MemberPlugin, Plugin } from "@t3tools/contracts/baskule-plugins";
+// pauses and sets up, and what a person is told about each plugin and can connect.
+import type { AdminPlugin, Group, MemberPlugin } from "@t3tools/contracts/baskule-plugins";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent, type Locator } from "vite-plus/test/browser";
 
@@ -63,9 +63,10 @@ const groups: Group[] = [
   },
 ];
 
-function plugin(overrides: Partial<Plugin>): Plugin {
+function plugin(overrides: Partial<AdminPlugin>): AdminPlugin {
   return {
     id: "p1",
+    vendor: "p1",
     name: "Plugin",
     description: "",
     source: { type: "url", url: "https://mcp.example.test/mcp" },
@@ -74,6 +75,8 @@ function plugin(overrides: Partial<Plugin>): Plugin {
     ignored: [],
     enabled: true,
     createdAt: "2026-10-25T10:00:00Z",
+    setup: [],
+    vendorConfigured: false,
     ...overrides,
   };
 }
@@ -102,7 +105,6 @@ describe("admin catalog", () => {
               name: "notion",
               url: "https://mcp.notion.com/mcp",
               credential: "user-oauth",
-              personal: true,
             },
           ],
           ignored: ["hooks/hooks.json"],
@@ -168,7 +170,7 @@ describe("adding your own plugin", () => {
         "everyone",
       ]),
     );
-    expect(control.calls[0]?.body).toEqual({
+    expect(postBody(control.calls)).toEqual({
       source: {
         type: "git",
         repo: "https://github.com/acme/plugins",
@@ -201,7 +203,7 @@ describe("adding your own plugin", () => {
     await press(dialog.getByRole("button", { name: "Add plugin" }));
 
     await vi.waitFor(() => expect(onAdded).toHaveBeenCalled());
-    expect(control.calls[0]?.body).toEqual({
+    expect(postBody(control.calls)).toEqual({
       source: {
         type: "archive",
         sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
@@ -237,6 +239,106 @@ describe("pausing a plugin", () => {
   });
 });
 
+describe("signing in to a plugin's service", () => {
+  const crm = { name: "crm", url: "https://mcp.crm.example.test/mcp" };
+
+  it("offers the three ways to sign in and saves a choice without a personal flag", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          plugin({
+            name: "CRM",
+            servers: [{ ...crm, credential: "organization" }],
+            setup: [{ server: "crm", done: false }],
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<PluginDetailPage id="p1" />);
+
+    await userEvent.click(screen.getByLabelText("How crm signs in", { exact: true }));
+    await expect.element(page.getByRole("option", { name: /^Each person connects/ })).toBeVisible();
+    expect(page.getByRole("option").all()).toHaveLength(3);
+    expect(page.getByRole("option", { name: /sign-in account/ }).query()).toBeNull();
+    await userEvent.click(page.getByRole("option", { name: /^Each person connects/ }));
+
+    await vi.waitFor(() =>
+      expect(
+        control.calls.find((call) => call.route === "PATCH /api/baskule/admin/plugins/p1")?.body,
+      ).toEqual({ servers: [{ name: "crm", credential: "user-oauth" }] }),
+    );
+  });
+
+  it("saves the vendor's app once, never shows it back, and removes it", async () => {
+    let configured = false;
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          plugin({
+            name: "CRM",
+            vendor: "crm-vendor",
+            servers: [{ ...crm, credential: "user-oauth", oauth: { staticClient: true } }],
+            setup: [{ server: "crm", done: configured }],
+            vendorConfigured: configured,
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({
+        groups: groups.map((group) => (group.builtin ? { ...group, plugins: ["p1"] } : group)),
+      }),
+      "PUT /api/baskule/admin/vendors/crm-vendor": (body) => {
+        configured = body !== null;
+        return { ok: true, configured };
+      },
+    });
+    using _fetch = control.stub;
+    using _confirm = stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    await using screen = await render(<PluginDetailPage id="p1" />);
+
+    await expect.element(screen.getByText("Not saved", { exact: true })).toBeVisible();
+    await expect
+      .element(screen.getByText("People can't use it until you finish setting it up below."))
+      .toBeVisible();
+    await expect
+      .element(screen.getByLabelText("Callback address", { exact: true }))
+      .toHaveValue(`${window.location.origin}/api/baskule/plugins/oauth/callback`);
+    expect(screen.getByRole("button", { name: "Remove setup" }).query()).toBeNull();
+
+    await userEvent.type(screen.getByLabelText("Client ID", { exact: true }), "client-1");
+    await expect.element(screen.getByRole("button", { name: "Save setup" })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Client secret", { exact: true }), "s3cret");
+    await press(screen.getByRole("button", { name: "Save setup" }));
+
+    await expect.element(screen.getByText("Saved", { exact: true })).toBeVisible();
+    await expect.element(screen.getByLabelText("Client ID", { exact: true })).toHaveValue("");
+    await expect.element(screen.getByLabelText("Client secret", { exact: true })).toHaveValue("");
+    expect(
+      screen.getByText("People can't use it until you finish setting it up below.").query(),
+    ).toBeNull();
+
+    await press(screen.getByRole("button", { name: "Remove setup" }));
+    await expect.element(screen.getByText("Not saved", { exact: true })).toBeVisible();
+    expect(
+      control.calls
+        .filter((call) => call.route === "PUT /api/baskule/admin/vendors/crm-vendor")
+        .map((call) => call.body),
+    ).toEqual([
+      {
+        clientId: "client-1",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientSecret: "s3cret",
+      },
+      null,
+    ]);
+  });
+});
+
 describe("a person's plugins", () => {
   const member = (overrides: Partial<MemberPlugin>): MemberPlugin => ({
     id: "m1",
@@ -252,19 +354,19 @@ describe("a person's plugins", () => {
       id: "drive",
       name: "Google Drive",
       status: "connect",
-      servers: [{ name: "drive", status: "connect", personal: true }],
+      servers: [{ name: "drive", status: "connect", credential: "user-oauth" }],
     }),
     member({
       id: "mail",
       name: "Mail",
       status: "reconnect",
-      servers: [{ name: "mail", status: "reconnect", personal: true }],
+      servers: [{ name: "mail", status: "reconnect", credential: "user-oauth" }],
     }),
     member({
       id: "search",
       name: "Search",
       status: "needs_setup",
-      servers: [{ name: "search", status: "needs_setup", personal: false }],
+      servers: [{ name: "search", status: "needs_setup", credential: "organization" }],
     }),
     member({
       id: "sales",
@@ -275,12 +377,12 @@ describe("a person's plugins", () => {
     member({
       id: "notes",
       name: "Notes",
-      servers: [{ name: "notes", status: "ready", personal: true }],
+      servers: [{ name: "notes", status: "ready", credential: "user-oauth" }],
     }),
     member({
       id: "wiki",
       name: "Wiki",
-      servers: [{ name: "wiki", status: "ready", personal: false }],
+      servers: [{ name: "wiki", status: "ready", credential: "organization" }],
     }),
   ];
 
@@ -346,6 +448,26 @@ describe("a person's plugins", () => {
         title: "Could not connect your account",
         description:
           "This sign-in expired or was started in another browser. Start again from Settings → Plugins.",
+      }),
+    );
+    expect(new URL(window.location.href).searchParams.has("connectionError")).toBe(false);
+  });
+
+  it("explains a sign-in refused before it started", async () => {
+    const control = fakeControl({ "GET /api/baskule/plugins": () => ({ plugins: [] }) });
+    using _fetch = control.stub;
+    const back = new URL(window.location.href);
+    back.searchParams.set("connectionError", "oauth_issuer_changed");
+    window.history.replaceState(window.history.state, "", back);
+    using add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+    await using _screen = await render(<UserPluginsView />);
+
+    await vi.waitFor(() =>
+      expect(add).toHaveBeenCalledWith({
+        type: "error",
+        title: "Could not connect your account",
+        description:
+          "This service now signs in somewhere other than where it was set up. Ask your admin to check its setup and save it again.",
       }),
     );
     expect(new URL(window.location.href).searchParams.has("connectionError")).toBe(false);

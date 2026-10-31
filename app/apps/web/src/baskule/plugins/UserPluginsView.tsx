@@ -19,18 +19,19 @@ import { contentsKind, statusText } from "./presentation";
 
 const loadMine = () => pluginsApi.mine();
 
-/** The connect endpoint sends the person back here with the outcome in the query. */
+/** The connect endpoint sends the person back here with the outcome in the query; any
+ * `connectionError` means it failed. */
 function useConnectionOutcome() {
   const t = useTranslation();
   useEffect(() => {
     const url = new URL(window.location.href);
     const outcome = url.searchParams.get("pluginConnection");
-    if (!outcome) return;
     const code = url.searchParams.get("connectionError");
+    if (!outcome && !code) return;
     url.searchParams.delete("pluginConnection");
     url.searchParams.delete("connectionError");
     window.history.replaceState(window.history.state, "", url);
-    if (outcome === "connected") {
+    if (outcome === "connected" && !code) {
       toastManager.add({ type: "success", title: t("Your account is connected.") });
     } else {
       toastManager.add({
@@ -130,7 +131,7 @@ export function UserPluginRow({
   const t = useTranslation();
   const [busy, setBusy] = useState<string | null>(null);
   const blocked = plugin.status === "unavailable" || plugin.status === "needs_setup";
-  const personal = plugin.servers.some((server) => server.personal);
+  const ownAccount = plugin.servers.some((server) => server.credential === "user-oauth");
   // With several servers, each account is named by its server.
   const accountName = (server: string) => (plugin.servers.length > 1 ? server : plugin.name);
 
@@ -180,7 +181,7 @@ export function UserPluginRow({
       ];
     }
     // Only an account the person connected themselves can be disconnected here.
-    if (server.status === "ready" && server.personal) {
+    if (server.status === "ready" && server.credential === "user-oauth") {
       return [
         <Button
           key={server.name}
@@ -217,7 +218,7 @@ export function UserPluginRow({
         >
           {statusText(plugin.status, accountName(worst?.name ?? plugin.name))}
         </StatusLine>
-        {personal && plugin.status !== "unavailable" ? (
+        {ownAccount && plugin.status !== "unavailable" ? (
           <p className="text-xs text-muted-foreground">
             {t(
               "It acts as you. In team spaces it works only where the space owner allows personal accounts, and members can read its results.",

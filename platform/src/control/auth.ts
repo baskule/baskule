@@ -1,12 +1,10 @@
 // Better Auth 1.7.12 configuration for ControlCell (E6). Pinned exactly in package.json: minors have breaking cutovers.
-import { and, eq } from "drizzle-orm";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { admin, bearer, genericOAuth } from "better-auth/plugins";
 import { socialProviders } from "better-auth/social-providers";
-import { refreshAccessToken, type OAuthRefreshContext } from "better-auth/oauth2";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import type { InstallationAuth } from "./auth-config";
 import { z } from "zod";
@@ -89,21 +87,7 @@ export function createAuth(db: any, cfg: AuthConfig, hooks: AuthHooks) {
   const social: NonNullable<BetterAuthOptions["socialProviders"]> = {};
   for (const p of cfg.installation.providers.filter(p => p.type === "social")) {
     if (!Object.hasOwn(socialProviders, p.id)) throw new Error(`Unsupported social provider: ${p.id}`);
-    if (p.id === "microsoft") {
-      const options = p.options as unknown as Parameters<typeof socialProviders.microsoft>[0];
-      social.microsoft = { ...options, disableSignUp: true, disableProfilePhoto: true,
-        // Pinned Better Auth passes the endpoint context; its public refresh type exposes only headers/request.
-        refreshAccessToken: async (token: string, ctx?: OAuthRefreshContext) => {
-          const accountId = (ctx as (OAuthRefreshContext & { body?: { accountId?: string } }) | undefined)?.body?.accountId;
-          const selected = accountId ? await db.select().from(authSchema.account).where(eq(authSchema.account.id, accountId)) : [];
-          if (selected.length !== 1 || selected[0].providerId !== "microsoft") throw new Error("Explicit Microsoft account required for refresh");
-          return refreshAccessToken({ refreshToken: token, options,
-            tokenEndpoint: `${(options.authority || "https://login.microsoftonline.com").replace(/\/$/, "")}/${options.tenantId || "common"}/oauth2/v2.0/token`,
-            extraParams: { scope: String(selected[0].scope ?? "").split(/[,\s]+/).filter(Boolean).join(" ") },
-          });
-        },
-      };
-    } else Object.assign(social, { [p.id]: { ...p.options, disableSignUp: p.id !== "google" } });
+    Object.assign(social, { [p.id]: { ...p.options, disableSignUp: p.id !== "google" } });
   }
   return betterAuth({
     appName: "Baskule",
@@ -124,14 +108,6 @@ export function createAuth(db: any, cfg: AuthConfig, hooks: AuthHooks) {
     // Existing accounts can link a proven email (or an explicitly trusted provider).
     account: { encryptOAuthTokens: true, accountLinking: { enabled: true, requireLocalEmailVerified: false, trustedProviders: cfg.installation.trustedProviders } },
     user: { validateUserInfo: async ({ user, source }) => {
-      // Incremental consent must upgrade the linked login account, even if an IdP returns the same email for another subject.
-      if (source.action === "link-account" && typeof user.id === "string" && source.oauth && ["google", "microsoft"].includes(source.oauth.providerId)) {
-        const accounts = await db.select().from(authSchema.account).where(and(eq(authSchema.account.userId, user.id), eq(authSchema.account.providerId, source.oauth.providerId)));
-        const profile = source.oauth.profile as Record<string, unknown>;
-        const subject = source.oauth.providerId === "google" ? profile.sub : profile.oid;
-        if (accounts.length && (accounts.length !== 1 || accounts[0].accountId !== subject))
-          return { error: "login_account_mismatch", errorDescription: "Consent must use the connected login account." };
-      }
       if (source.action === "create-user" && source.method === "oauth") {
         const domain = user.email?.split("@")[1]?.toLowerCase();
         if (source.oauth?.providerId === "google" && user.emailVerified === true && domain && source.oauth.profile?.hd === domain && hooks.googleSignupDomains().includes(domain))

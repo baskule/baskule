@@ -90,7 +90,10 @@ test("assigned skills are ready without activation and leave a team when its con
 
 test("a connected member supplies discovery while calls keep the turn author's account", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api }) => {
   const oauth = await fakeOAuth();
+  oauth.state.dcr = false;
   const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
+  const adminContext = await browser.newContext(options);
+  const adminPage = await adminContext.newPage();
   const secondContext = await browser.newContext(options);
   const secondPage = await secondContext.newPage();
   const name = `Discovery ${crypto.randomUUID().slice(0, 8)}`;
@@ -98,7 +101,7 @@ test("a connected member supplies discovery while calls keep the turn author's a
   let team;
   try {
     plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { name, groups: ["everyone"], source: { type: "url", url: oauth.resource } });
-    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { servers: [{ name: "remote", credential: "user-oauth", personal: true }] });
+    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { servers: [{ name: "remote", credential: "user-oauth", oauth: { staticClient: true } }] });
     team = await api.teamSpace(api.admin, name, [people.alice, people.bob]);
     await api.admin.json("PATCH", `/api/baskule/spaces/${team}/members/${people.alice.me.user.id}`, { role: "owner" });
     await api.admin.json("DELETE", `/api/baskule/spaces/${team}/members/${api.admin.me.user.id}`);
@@ -115,6 +118,19 @@ test("a connected member supplies discovery while calls keep the turn author's a
       return { name, value: value.join("="), url: stack.urls.front };
     }));
     await secondPage.goto(`${stack.urls.front}/settings/plugins`);
+    await expect(secondPage.getByText("Your administrator needs to finish setting it up", { exact: true })).toBeVisible();
+    await secondPage.screenshot({ path: test.info().outputPath("plugin-needs-vendor-setup.png") });
+    await adminContext.addCookies(api.admin.cookie.split("; ").map(cookie => {
+      const [name, ...value] = cookie.split("=");
+      return { name, value: value.join("="), url: stack.urls.front };
+    }));
+    await adminPage.goto(`${stack.urls.front}/admin/plugins/installed/${plugin.id}`);
+    await adminPage.getByLabel("Client ID", { exact: true }).fill("fake-client");
+    await adminPage.getByLabel("Client secret", { exact: true }).fill("fake-secret");
+    await adminPage.getByRole("button", { name: "Save setup", exact: true }).click();
+    await expect(adminPage.getByText("Saved", { exact: true })).toBeVisible();
+    await adminPage.screenshot({ path: test.info().outputPath("plugin-vendor-setup-saved.png") });
+    await secondPage.reload();
     await secondPage.getByRole("button", { name: `Connect your ${name} account`, exact: true }).click();
     await expect(secondPage).toHaveURL(url => url.pathname === "/settings/plugins" && !url.searchParams.has("pluginConnection"));
     await expect(secondPage.getByText("Ready", { exact: true })).toBeVisible();
@@ -140,6 +156,7 @@ test("a connected member supplies discovery while calls keep the turn author's a
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
     if (team) await api.admin.json("POST", `/api/baskule/admin/spaces/${team}/stop`, {});
     await secondContext.close();
+    await adminContext.close();
     await oauth.close();
   }
 });

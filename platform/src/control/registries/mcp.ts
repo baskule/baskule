@@ -16,7 +16,7 @@ function servers(e: z.infer<typeof entry>): PluginServer[] {
     let url: URL;
     try { url = new URL(remote.url); } catch { return []; }
     if (url.protocol !== "https:" || url.username || url.password || url.hash || url.search) return [];
-    return [{ name: `remote-${i + 1}`, url: url.href, credential: remote.headers?.some(h => h.isSecret || h.isRequired) ? "organization" : "none", personal: false, transport: remote.type as "sse" | "streamable-http" }];
+    return [{ name: `remote-${i + 1}`, url: url.href, credential: remote.headers?.some(h => h.isSecret || h.isRequired) ? "organization" : "none", transport: remote.type as "sse" | "streamable-http" }];
   });
 }
 function active(e: z.infer<typeof entry>) {

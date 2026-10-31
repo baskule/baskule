@@ -1,17 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ConnectionCipher, digest, pkce } from "../../src/control/connection-crypto";
 import { canonicalResource, discoverOAuth } from "../../src/control/connection-oauth";
-import { loginIdentityAudience, microsoftAudience } from "../../src/control/connections";
 import { asAdmin, call, createUser, makeService, ORIGIN, personalSpaceOf, signIn, type H } from "../support/harness";
 import { fakeOAuth } from "../fixtures/oauth.mjs";
-import type { PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
 import { INTERNAL_HEADER } from "../../src/shared/contract";
 
 const API = "/api/baskule";
 async function install(h: H, resource: string) {
   const a = await asAdmin(h);
   const p = (await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: [], source: { type: "url", url: resource } } })).body;
-  await call(h, "PATCH", `${API}/admin/plugins/${p.id}`, { creds: a.creds, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth", personal: true }] } });
+  await call(h, "PATCH", `${API}/admin/plugins/${p.id}`, { creds: a.creds, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth" }] } });
   await call(h, "PATCH", `${API}/admin/groups/everyone`, { creds: a.creds, body: { plugins: [p.id] } });
   const input = { spaceId: personalSpaceOf(h, a.userId), userId: a.userId, pluginId: p.id, server: "remote" };
   return { a, p, input, start: () => call(h, "GET", `${API}/plugins/${p.id}/connect`, { creds: a.creds }),
@@ -46,19 +44,7 @@ describe("connection primitives", () => {
     expect(canonicalResource("https://MCP.example.test")).toBe("https://mcp.example.test");
     for (const u of ["http://example.test/mcp", "https://example.test/mcp#fragment", "https://example.test/mcp?q=1", "https://user:pass@example.test/mcp"]) expect(() => canonicalResource(u)).toThrow();
   });
-  it("only permits provider-owned destinations with the declared resource audience", () => {
-    const google: PluginServer = { name: "g", url: "https://bigquery.googleapis.com/mcp", credential: "login-identity", personal: true, loginIdentity: { provider: "google", scopes: ["https://www.googleapis.com/auth/cloud-platform"], audience: "https://bigquery.googleapis.com/mcp" } };
-    expect(loginIdentityAudience(google)).toBe(true);
-    for (const u of ["https://googleapis.com.evil.test/mcp", "https://customer.googleapis.com.evil.test/mcp", "https://mcp.customer.test/mcp", "https://bigquery.googleapis.com/redirect", "https://bigquery.googleapis.com/mcp?redirect=x", "http://bigquery.googleapis.com/mcp"]) expect(loginIdentityAudience({ ...google, url: u })).toBe(false);
-    expect(loginIdentityAudience({ ...google, loginIdentity: { ...google.loginIdentity!, audience: "https://other.googleapis.com/mcp" } })).toBe(false);
-    const microsoft: PluginServer = { ...google, url: "https://workiq.svc.cloud.microsoft/mcp", loginIdentity: { provider: "microsoft", scopes: ["api://workiq.svc.cloud.microsoft/WorkIQAgent.Ask"], audience: "api://workiq.svc.cloud.microsoft" } };
-    expect(loginIdentityAudience(microsoft)).toBe(true);
-    expect(loginIdentityAudience({ ...microsoft, loginIdentity: { ...microsoft.loginIdentity!, audience: "https://graph.microsoft.com" } })).toBe(false);
-    const jwt = (aud: string, exp = Date.now() / 1000 + 3600) => `header.${Buffer.from(JSON.stringify({ aud, exp })).toString("base64url")}.signature`;
-    expect(microsoftAudience(jwt("api://workiq.svc.cloud.microsoft"), "api://workiq.svc.cloud.microsoft")).toBe(true);
-    expect(microsoftAudience(jwt("https://graph.microsoft.com"), "api://workiq.svc.cloud.microsoft")).toBe(false);
-    expect(microsoftAudience(jwt("api://workiq.svc.cloud.microsoft", 0), "api://workiq.svc.cloud.microsoft")).toBe(false);
-  });
+
 });
 
 describe("MCP OAuth connections", () => {
@@ -117,7 +103,7 @@ describe("MCP OAuth connections", () => {
       expect(ciphertext).not.toContain(credential.body.headers.Authorization.slice(7));
       expect(ciphertext).not.toContain("refreshToken");
       expect(f.requests[0]).toMatchObject({ grant_type: "authorization_code", resource: f.resource });
-      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].servers).toEqual([{ name: "remote", personal: true, status: "ready" }]);
+      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].servers).toEqual([{ name: "remote", credential: "user-oauth", status: "ready" }]);
       expect((await call(h, "GET", callback, { creds: x.a.creds })).headers.get("location")).toContain("connectionError=invalid_oauth_state");
       await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds });
       expect((await x.credential()).body.error).toBe("connect");
@@ -143,7 +129,7 @@ describe("MCP OAuth connections", () => {
       h.storage.sql.exec("update plugin_oauth_state set expires_at=0").toArray();
       expect((await call(h, "GET", expired, { creds: x.a.creds })).headers.get("location")).toContain("connectionError=invalid_oauth_state");
       const start = await call(h, "GET", `${API}/plugins/${x.p.id}/connect?returnTo=https://evil.test`, { creds: x.a.creds });
-      expect(start.body.error).toBe("invalid_return_url");
+      expect(start.headers.get("location")).toContain("connectionError=invalid_return_url");
     } finally { await f.close(); }
   });
   it("refreshes on demand once for concurrent calls, rotates refresh tokens and handles invalid grants", async () => {
@@ -203,93 +189,57 @@ describe("MCP OAuth connections", () => {
     const f = await fakeOAuth(); f.state.dcr = false;
     try {
       const h = await makeService(); const x = await install(h, f.resource);
-      expect((await x.start()).body.error).toBe("oauth_client_configuration_required");
-      const clientPath = `${API}/admin/plugins/${x.p.id}/oauth`;
-      expect((await call(h, "PUT", clientPath, { creds: x.a.creds, body: { server: "remote", client: { clientId: "fake-client", clientSecret: "private-secret", tokenEndpointAuthMethod: "client_secret_post" } } })).status).toBe(200);
-      expect(JSON.stringify(h.storage.sql.exec("select * from plugin_oauth_client").toArray())).not.toContain("private-secret");
+      expect((await x.start()).headers.get("location")).toContain("connectionError=oauth_client_configuration_required");
+      const clientPath = `${API}/admin/vendors/${x.p.id}`;
+      expect((await call(h, "PUT", clientPath, { creds: x.a.creds, body: { clientId: "fake-client", clientSecret: "private-secret", tokenEndpointAuthMethod: "client_secret_post" } })).status).toBe(200);
+      expect(JSON.stringify(h.storage.sql.exec("select * from vendor_setup").toArray())).not.toContain("private-secret");
       await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
       expect(f.requests[0].client_secret).toBe("private-secret");
       expect(JSON.stringify((await call(h, "GET", `${API}/admin/plugins`, { creds: x.a.creds })).body)).not.toContain("private-secret");
-      await call(h, "PUT", clientPath, { creds: x.a.creds, body: { server: "remote", client: null } });
+      await call(h, "PUT", clientPath, { creds: x.a.creds, body: null });
       expect((await x.credential()).body.error).toBe("connect");
     } finally { await f.close(); }
   });
 });
 
-describe("login identity connections", () => {
-  it("uses Better Auth incremental consent for the selected login account and keeps credentials server-side", async () => {
-    const h = await makeService({ AUTH_CONFIG: JSON.stringify({ providers: [{ id: "google", name: "Google", type: "social", options: { clientId: "test-id", clientSecret: "test-secret" } }] }) });
-    const x = await install(h, "https://bigquery.googleapis.com/mcp");
-    const identity = { provider: "google", scopes: ["https://www.googleapis.com/auth/cloud-platform"], audience: "https://bigquery.googleapis.com/mcp" };
-    await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "login-identity", personal: true, loginIdentity: identity }] } });
-    expect((await x.start()).body.error).toBe("login_account_required");
-    const ctx = await h.svc.auth.$context;
-    // Better Auth's internal adapter expects already encrypted tokens, just like its callback's setTokenUtil.
-    const { symmetricEncrypt } = await import("better-auth/crypto");
-    const account = await ctx.internalAdapter.createAccount({ userId: x.a.userId, providerId: "google", accountId: "google-subject", scope: identity.scopes.join(","),
-      accessToken: await symmetricEncrypt({ key: ctx.secretConfig, data: "provider-access" }), refreshToken: await symmetricEncrypt({ key: ctx.secretConfig, data: "provider-refresh" }), accessTokenExpiresAt: new Date(Date.now() + 3600_000) });
-    const start = await x.start();
-    expect(start.status).toBe(302);
-    const auth = new URL(start.headers.get("location")!);
-    expect(auth.origin).toBe("https://accounts.google.com");
-    expect(auth.searchParams.get("scope")).toContain(identity.scopes[0]);
-    expect(auth.searchParams.get("access_type")).toBe("offline");
-    expect(auth.searchParams.get("prompt")).toBe("consent");
-    expect(auth.searchParams.get("include_granted_scopes")).toBe("true");
-    expect(auth.searchParams.get("login_hint")).toBe("admin@os.test");
-    expect(start.headers.getSetCookie().length).toBeGreaterThan(0);
-    // Simulate only the post-Better-Auth return; provider callbacks themselves are covered by the OIDC fixture.
-    const pending = h.storage.sql.exec("select state_hash,data from plugin_oauth_state").toArray()[0];
-    const cipher = new ConnectionCipher(h.storage.sql.exec("select value from kv where key='auth_secret'").toArray()[0].value as string);
-    const stateData = await cipher.open<any>(pending.data as string, pending.state_hash as string);
-    const getTokens = vi.spyOn(h.svc.auth.api, "getAccessToken");
-    // The state plaintext is intentionally unavailable in SQLite; derive the return from Better Auth's encrypted state.
-    // Consume the pending using a known random state in a test-only sealed record.
-    const state = "a".repeat(43), hash = await digest(state);
-    h.storage.sql.exec("update plugin_oauth_state set state_hash=?,data=?", hash, await cipher.seal(stateData, hash)).toArray();
-    const done = await call(h, "GET", `${API}/plugins/oauth/callback?state=${state}`, { creds: x.a.creds });
-    expect(done.headers.get("location")).toContain("pluginConnection=connected");
-    expect((await x.credential()).body).toMatchObject({ headers: { Authorization: "Bearer provider-access" }, expiresAt: expect.any(Number) });
-    expect(getTokens).toHaveBeenCalledWith({ body: { userId: x.a.userId, accountId: account.id } });
-    getTokens.mockRestore();
-    await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds });
-    expect((await x.credential()).body.error).toBe("connect");
-    expect(h.storage.sql.exec("select id from account where id=?", account.id).toArray()).toHaveLength(1);
-    expect((await call(h, "POST", "/auth/link-social", { creds: x.a.creds, body: { provider: "google", idToken: { token: "forged", accessToken: "caller-token" } } })).body.error).toBe("provider_code_flow_required");
-  });
-  it("refuses a third-party wrapper and unavailable login providers before consent", async () => {
-    const h = await makeService(); const x = await install(h, "https://customer.test/mcp");
-    await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "login-identity", personal: true,
-      loginIdentity: { provider: "google", scopes: ["drive.read"], audience: "https://customer.test/mcp" } }] } });
-    expect((await x.start()).body.error).toBe("login_identity_audience_refused");
-  });
-  it("rejects a different provider subject even if the email matches", async () => {
-    const h = await makeService({ AUTH_CONFIG: JSON.stringify({ providers: [{ id: "google", name: "Google", type: "social", options: { clientId: "test-id", clientSecret: "test-secret" } }] }) });
-    const a = await asAdmin(h);
-    const ctx = await h.svc.auth.$context;
-    await ctx.internalAdapter.createAccount({ userId: a.userId, providerId: "google", accountId: "original-subject" });
-    const validate = ctx.options.user!.validateUserInfo!;
-    const result = await validate({ user: { id: a.userId, email: "admin@os.test" }, source: { action: "link-account", method: "oauth", oauth: { providerId: "google", profile: { sub: "different-subject", email: "admin@os.test" } } } });
-    expect(result).toMatchObject({ error: "login_account_mismatch" });
-  });
-  it("refreshes Microsoft through Better Auth with the account's granted audience scopes", async () => {
-    const h = await makeService({ AUTH_CONFIG: JSON.stringify({ providers: [{ id: "microsoft", name: "Microsoft", type: "social", options: { clientId: "test-id", clientSecret: "test-secret", tenantId: "tenant", disableDefaultScope: true, scope: ["openid", "email", "profile", "offline_access"] } }] }) });
-    const a = await asAdmin(h); const ctx = await h.svc.auth.$context;
-    const { symmetricEncrypt } = await import("better-auth/crypto");
-    const account = await ctx.internalAdapter.createAccount({ userId: a.userId, providerId: "microsoft", accountId: "oid", scope: "openid,offline_access,api://workiq.svc.cloud.microsoft/WorkIQAgent.Ask",
-      accessToken: await symmetricEncrypt({ key: ctx.secretConfig, data: "expired-access" }), refreshToken: await symmetricEncrypt({ key: ctx.secretConfig, data: "refresh" }), accessTokenExpiresAt: new Date(0) });
-    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
-      expect(String(url)).toBe("https://login.microsoftonline.com/tenant/oauth2/v2.0/token");
-      const params = new URLSearchParams(init?.body as string);
-      expect(params.get("scope")).toContain("api://workiq.svc.cloud.microsoft/WorkIQAgent.Ask");
-      expect(params.get("scope")).not.toContain("User.Read");
-      return Response.json({ access_token: "refreshed-access", refresh_token: "rotated-refresh", token_type: "Bearer", expires_in: 3600 });
-    });
+describe("vendor setup and recipes", () => {
+  it("pins the issuer before secrets are used and clears only this vendor's connections", async () => {
+    const f = await fakeOAuth(); f.state.dcr = false;
     try {
-      expect((await h.svc.auth.api.getAccessToken({ body: { userId: a.userId, accountId: account.id } })).accessToken).toBe("refreshed-access");
-      const stored = h.storage.sql.exec("select access_token,refresh_token,id_token from account where id=?", account.id).toArray()[0];
-      expect(stored.access_token).not.toContain("refreshed-access"); expect(stored.refresh_token).not.toContain("rotated-refresh"); expect(stored.id_token).toBeNull();
-    } finally { fetcher.mockRestore(); }
+      const h = await makeService(); const x = await install(h, f.resource);
+      const other = (await call(h, "POST", `${API}/admin/plugins`, { creds: x.a.creds, body: { groups: [], source: { type: "url", url: f.resource } } })).body;
+      h.storage.sql.exec("insert into plugin_connection(user_id,plugin_id,server,data) values (?,?,?,?)", x.a.userId, other.id, "remote", "unrelated").toArray();
+      await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { staticClient: true } }] } });
+      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].status).toBe("needs_setup");
+      const path = `${API}/admin/vendors/${x.p.id}`;
+      expect((await call(h, "PUT", path, { creds: x.a.creds, body: { clientId: "fake-client", clientSecret: "private-secret", tokenEndpointAuthMethod: "client_secret_post" } })).status).toBe(200);
+      expect((await call(h, "GET", path, { creds: x.a.creds })).body).toEqual({ configured: true });
+      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].status).toBe("connect");
+      f.state.advertisedIssuer = "https://other-issuer.test";
+      expect((await x.start()).headers.get("location")).toContain("connectionError=oauth_issuer_changed");
+      expect(f.requests).toEqual([]);
+      f.state.advertisedIssuer = null;
+      await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
+      await call(h, "PUT", path, { creds: x.a.creds, body: null });
+      expect(h.storage.sql.exec("select plugin_id from plugin_connection").toArray()).toEqual([{ plugin_id: other.id }]);
+      expect(h.storage.sql.exec("select * from plugin_oauth_state").toArray()).toEqual([]);
+    } finally { await f.close(); }
+  });
+  it("uses a pinned issuer without resource metadata, adds recipe params and omits resource", async () => {
+    const f = await fakeOAuth(); f.state.dcr = false;
+    try {
+      const h = await makeService(); const x = await install(h, f.resource);
+      await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { params: { prompt: "consent select_account", access_type: "offline" }, resource: false, staticClient: true } }] } });
+      await call(h, "PUT", `${API}/admin/vendors/${x.p.id}`, { creds: x.a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
+      f.state.metadata = false; f.state.resourceParameter = false;
+      const start = await x.start();
+      const authorization = new URL(start.headers.get("location")!);
+      expect(authorization.searchParams.get("prompt")).toBe("consent select_account");
+      expect(authorization.searchParams.get("access_type")).toBe("offline");
+      expect(authorization.searchParams.has("resource")).toBe(false);
+      expect((await call(h, "GET", await authorized(start), { creds: x.a.creds })).headers.get("location")).toContain("pluginConnection=connected");
+      expect(f.requests[0]).not.toHaveProperty("resource");
+    } finally { await f.close(); }
   });
 });
 
@@ -337,7 +287,7 @@ describe("ready-member discovery and account reloads", () => {
       await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds });
       expect(reloads()).toEqual(own);
       h.calls.length = 0;
-      await call(h, "PUT", `${API}/admin/plugins/${x.p.id}/oauth`, { creds: x.a.creds, body: { server: "remote", client: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } } });
+      await call(h, "PUT", `${API}/admin/vendors/${x.p.id}`, { creds: x.a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
       expect(reloads()).toEqual([...own, personalSpaceOf(h, bob.id)].sort());
     } finally { await f.close(); }
   });

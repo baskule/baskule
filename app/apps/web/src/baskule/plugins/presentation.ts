@@ -104,15 +104,10 @@ export function serverHost(server: PluginServer): string {
   return hostOf(server.url);
 }
 
-/** User modes act as the person whose turn it is. The backend requires `personal` for them. */
-export const isPersonalCredential = (mode: CredentialMode) =>
-  mode === "user-oauth" || mode === "login-identity";
-
 export const CREDENTIAL_MODES: ReadonlyArray<CredentialMode> = [
   "none",
   "organization",
   "user-oauth",
-  "login-identity",
 ];
 
 export function credentialLabel(mode: CredentialMode): string {
@@ -123,8 +118,6 @@ export function credentialLabel(mode: CredentialMode): string {
       return t("Organization key");
     case "user-oauth":
       return t("Each person connects their own account");
-    case "login-identity":
-      return t("Each person's sign-in account");
   }
 }
 
@@ -136,8 +129,6 @@ export function credentialDescription(mode: CredentialMode): string {
       return t("You enter one key here. Everyone who uses it shares that key.");
     case "user-oauth":
       return t("People connect their account in Settings → Plugins. It acts as them.");
-    case "login-identity":
-      return t("Uses the Google or Microsoft account people sign in with. It acts as them.");
   }
 }
 

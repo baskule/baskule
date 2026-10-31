@@ -17,12 +17,11 @@ async function adminSession(h: H) {
   return { cookie };
 }
 
-async function install(h: H, creds: Awaited<ReturnType<typeof adminSession>>, resource: string, credential: "user-oauth" | "login-identity") {
+async function install(h: H, creds: Awaited<ReturnType<typeof adminSession>>, resource: string, credential: "user-oauth") {
   const added = await publicCall(h, "POST", `${API}/admin/plugins`, { creds, body: { groups: [], source: { type: "url", url: resource } } });
   expect(added.status).toBe(201);
   const id = added.body.id;
-  const loginIdentity = credential === "login-identity" ? { provider: "google", scopes: ["https://www.googleapis.com/auth/cloud-platform"], audience: resource } : undefined;
-  expect((await publicCall(h, "PATCH", `${API}/admin/plugins/${id}`, { creds, body: { enabled: true, servers: [{ name: "remote", credential, personal: true, loginIdentity }] } })).status).toBe(200);
+  expect((await publicCall(h, "PATCH", `${API}/admin/plugins/${id}`, { creds, body: { enabled: true, servers: [{ name: "remote", credential }] } })).status).toBe(200);
   expect((await publicCall(h, "PATCH", `${API}/admin/groups/everyone`, { creds, body: { plugins: [id] } })).status).toBe(200);
   return id;
 }
@@ -113,23 +112,6 @@ describe("installation public origin", () => {
     const reset = await publicCall(h, "POST", `${API}/admin/users/${me.body.user.id}/reset-link`, { creds });
     expect(reset.status).toBe(201);
     expect(reset.body.url).toBe(`${PUBLIC}/reset-password#token=${reset.body.token}`);
-  });
-
-  it("uses the public Google callback for account consent and preserves Secure state cookies", async () => {
-    const h = await configured();
-    const creds = await adminSession(h);
-    const id = await install(h, creds, "https://bigquery.googleapis.com/mcp", "login-identity");
-    const me = await publicCall(h, "GET", `${API}/me`, { creds });
-    const ctx = await h.svc.auth.$context;
-    await ctx.internalAdapter.createAccount({ userId: me.body.user.id, providerId: "google", accountId: "google-subject" });
-    const start = await publicCall(h, "GET", `${API}/plugins/${id}/connect?server=remote&returnTo=%2Fsettings%3Ftab%3Dplugins`, { creds });
-    expect(start.status).toBe(302);
-    const authorization = new URL(start.headers.get("location")!);
-    expect(authorization.origin).toBe("https://accounts.google.com");
-    expect(authorization.searchParams.get("redirect_uri")).toBe(PUBLIC + "/auth/callback/google");
-    expect(authorization.searchParams.get("prompt")).toBe("consent");
-    expect(start.headers.getSetCookie().length).toBeGreaterThan(0);
-    for (const cookie of start.headers.getSetCookie()) expect(cookie).toMatch(/; Secure(?:;|$)/);
   });
 
   it("registers and completes MCP OAuth with public callback and return URLs", async () => {

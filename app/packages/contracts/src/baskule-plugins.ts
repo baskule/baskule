@@ -3,18 +3,23 @@ export type PluginSource =
   | { type: "url"; url: string }
   | { type: "git"; repo: string; ref: string; path?: string }
   | { type: "archive"; sha256: string };
-export type CredentialMode = "none" | "organization" | "user-oauth" | "login-identity";
+export type CredentialMode = "none" | "organization" | "user-oauth";
+export interface OAuthRecipe {
+  scopes?: string[];
+  params?: Record<string, string>;
+  resource?: false;
+  staticClient?: true;
+}
 export interface PluginServer {
   name: string;
   url: string;
   credential: CredentialMode;
-  personal: boolean;
-  oauth?: { scopes: string[] };
-  loginIdentity?: { provider: "google" | "microsoft"; scopes: string[]; audience: string };
+  oauth?: OAuthRecipe;
   transport?: "streamable-http" | "sse";
 }
 export interface Plugin {
   id: string;
+  vendor: string;
   name: string;
   description: string;
   icon?: string;
@@ -26,6 +31,10 @@ export interface Plugin {
   ignored: string[];
   enabled: boolean;
   createdAt: string;
+}
+export interface AdminPlugin extends Plugin {
+  setup: { server: string; done: boolean }[];
+  vendorConfigured: boolean;
 }
 export interface Group {
   id: string;
@@ -64,7 +73,7 @@ export interface PluginPatch {
   description?: string;
   icon?: string;
   enabled?: boolean;
-  servers?: (Pick<PluginServer, "name" | "credential" | "personal" | "oauth" | "loginIdentity"> & Partial<Pick<PluginServer, "url" | "transport">>)[];
+  servers?: (Pick<PluginServer, "name" | "credential" | "oauth"> & Partial<Pick<PluginServer, "url" | "transport">>)[];
 }
 export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
 export interface MemberPlugin {
@@ -74,7 +83,7 @@ export interface MemberPlugin {
   icon?: string;
   skills: { name: string; description: string }[];
   status: PluginStatus;
-  servers: { name: string; personal: boolean; status: PluginStatus }[];
+  servers: { name: string; credential: CredentialMode; status: PluginStatus }[];
 }
 export interface PluginSecretInput {
   server: string;
@@ -112,8 +121,6 @@ export const PLUGIN_ERROR_CODES = [
   "empty_plugin_archive",
   "forbidden",
   "group_exists",
-  "identity_consent_failed",
-  "identity_scope_missing",
   "invalid_archive",
   "invalid_authorization_metadata",
   "invalid_commit",
@@ -129,10 +136,6 @@ export const PLUGIN_ERROR_CODES = [
   "invalid_resource_metadata",
   "invalid_return_url",
   "invalid_secret_headers",
-  "login_account_required",
-  "login_identity_audience_refused",
-  "login_provider_required",
-  "microsoft_identity_configuration_required",
   "no_remote_servers",
   "not_found",
   "not_oauth_server",
@@ -140,11 +143,12 @@ export const PLUGIN_ERROR_CODES = [
   "oauth_client_configuration_required",
   "oauth_grant_expired",
   "oauth_issuer_mismatch",
+  "oauth_issuer_changed",
+  "vendor_unknown",
   "oauth_registration_failed",
   "oauth_resource_mismatch",
   "oauth_scope_missing",
   "oauth_unavailable",
-  "personal_credential_required",
   "plugin_links_unsupported",
   "plugin_not_found",
   "plugin_server_required",
