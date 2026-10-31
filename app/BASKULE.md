@@ -96,7 +96,7 @@ cd ../.run/authtest-cwd && BASKULE_AUTH_MODE=none node ../../app/apps/server/dis
 curl -s http://127.0.0.1:47310/api/auth/session      # {"authenticated":true,...} with no cookie
 ```
 
-Verified 2026-10-22: `/`, `/api/auth/session`, `/api/auth/pairing-links`, `/api/projects`, `/api/auth/websocket-ticket` -> 200
+Verified 2026-10-22: `/`, `/api/auth/session`, `/api/projects`, `/api/auth/websocket-ticket` -> 200
 without credentials; cross-origin -> 401; `/oauth/token` with `subject_token=dummy` -> Bearer token that authenticates;
 headless Chrome with no pairing token gets an authenticated session and an open `/ws` (environment "Connected").
 The first-run wizard still shows in this baseline (that is the UI patch). Restart reuses the
@@ -213,21 +213,25 @@ fallback is retained; the OpenCode v2 adapter does not implement provider fallba
 These upstream PRs were reversed or filtered by owner decision. Generic follow-up fixes in the
 same hunks remain applicable; a feature revert is never authority to discard them.
 
-| Owner decision                              | Upstream PRs                                                                                   |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| No linked environments or remote delegation | #16655, #16684, #16695, #16698, #16719, #17129, #17130, #26143, #26201, #26202, #26239, #26434 |
-| No issue triage                             | #22753                                                                                         |
-| No developer servers panel or port scanner  | #22542                                                                                         |
-| No Simlock pool                             | #25259, #26706                                                                                 |
-| No GitHub-app sign-in                       | #26245                                                                                         |
-| No T3 Connect plans/usage                   | #25931, #26366, #26369                                                                         |
-| No fleet Stable/Nightly switch              | #26288                                                                                         |
-| No upstream release-note popover            | #26893                                                                                         |
-| No mobile Axiom crash reporting             | #19093                                                                                         |
+| Owner decision                              | Upstream PRs                                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| No linked environments or remote delegation | #16653, #16655, #16684, #16695, #16698, #16719, #17129, #17130, #26143, #26201, #26202, #26239, #26434 |
+| No issue triage                             | #22753                                                                                                 |
+| No developer servers panel or port scanner  | #22542                                                                                                 |
+| No Simlock pool                             | #25259, #26706                                                                                         |
+| No GitHub-app sign-in                       | #26245                                                                                                 |
+| No T3 Connect plans/usage                   | #25931, #26366, #26369                                                                                 |
+| No fleet Stable/Nightly switch              | #26288                                                                                                 |
+| No upstream release-note popover            | #26893                                                                                                 |
+| No mobile Axiom crash reporting             | #19093                                                                                                 |
+
+Keep the `t3_thread_interrupt` `stop` option from #16684: it provides the retained local full-Stop
+operation (running turn, queue, watches and delegated tasks), covered by MCP Stop behavior tests.
+T3-Mode-Limit from #16653 is removed with linked environments.
 
 **Keep #26917 and #26921:** these make ordinary Update Everything wait for npm only when
 needed and test the exact archive-install version floor. They do not require fleet switching.
-The [filter conflict audit](docs/upstream-0.1.5-filter-audit.md) records all 41 overlap records
+The [filter conflict audit](../docs/upstream/t3-0.1.5-filter-audit.md) records all 41 overlap records
 from this upgrade and the independent changes retained from them.
 
 ### Reproduce the filtered merge
@@ -240,7 +244,7 @@ chooses the pre-feature side automatically. For example, from the umbrella root:
 ```sh
 python3 app/scripts/filter-upstream.py --upstream /path/to/t3code \
   --from-ref v0.1.3 --to-ref v0.1.5 --output .run/filtered-t3 \
-  --exclude-pr 16655 --exclude-pr 16684 --exclude-pr 16695 --exclude-pr 16698 \
+  --exclude-pr 16653 --exclude-pr 16655 --exclude-pr 16684 --exclude-pr 16695 --exclude-pr 16698 \
   --exclude-pr 16719 --exclude-pr 17129 --exclude-pr 17130 --exclude-pr 26143 \
   --exclude-pr 26201 --exclude-pr 26202 --exclude-pr 26239 --exclude-pr 26434 \
   --exclude-pr 22753 --exclude-pr 22542 --exclude-pr 25259 --exclude-pr 26706 \
@@ -252,7 +256,9 @@ Exit 2 means review is required. In that checkout, inspect `git diff --cc`, `git
 `:2:path` and `:3:path`. Remove only the selected feature, retain independent later fixes,
 `git add` the resolution, then `git -c gc.auto=0 revert --continue`. Repeat until the sequencer
 finishes. `.git/baskule-filter.json` records the input SHAs, selected commits and initial conflicts.
-Review and commit the resulting staged tree locally before merging it into Baskule.
+Review the resulting tree and commit any staged resolutions before merging it into Baskule. The reversals
+filter the version delta; apply the owner exclusions above to older baseline code too, including
+port discovery and mobile tracing. Those older paths are not introduced by the reversed PRs.
 
 For each changed path, the three inputs are the starting Baskule commit's `app/<path>`, the old
 upstream tag's `<path>`, and the reviewed filtered target's `<path>`, in that order. Normalize
@@ -286,7 +292,8 @@ upgrade requires no new wipe for an already OpenCode-only Baskule installation.
    sync third-party notices whenever dependency manifests or the lockfile change.
 5. Diff `apps/server/src/baskule/rpcPolicy.ts` against the starting Baskule commit and compare every
    removed/renamed method with the target's `packages/contracts/src/rpc.ts` and orchestration contracts.
-   Audit replacements and actual web/mobile callers, not name prefixes. Extend the hosted-policy behavior
+   Audit replacements and actual web/mobile callers, not name prefixes. Grep the `platform/` harnesses for
+   removed RPC method names too. Extend the hosted-policy behavior
    test, then run `scripts/check space`, including bounded/deferred history and restart questions.
 6. Extract and check catalogs. Translation generation needs explicit credentials and is separate from local builds.
 7. Run affected lint, typechecks and tests, frozen install, SpaceCell/web builds and a disposable fake-LLM journey.
