@@ -35,7 +35,14 @@ for (const c of checks) {
 // This run owns its newly created team space. Do not leave timers/runs waking old test cells.
 if (ctx.state.ca) {
   try {
-    const { tasks } = await ctx.state.ca.ok("scheduledTasks.list", {});
+    const { tasks } = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { unsubscribe(); reject(new Error("schedule cleanup snapshot timed out")); }, 30_000);
+      const unsubscribe = ctx.state.ca.stream("scheduledTasks.subscribe", {}, (snapshot) => {
+        clearTimeout(timeout);
+        unsubscribe();
+        resolve(snapshot);
+      });
+    });
     for (const task of tasks) await ctx.state.ca.ok("scheduledTasks.delete", { id: task.id });
   } catch (e) { log("cleanup schedules:", String(e)); }
 }
