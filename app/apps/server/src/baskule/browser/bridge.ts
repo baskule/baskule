@@ -240,13 +240,6 @@ server.on("upgrade", (req, socket, head) => {
         ack = out.ack;
         ws.send(out.data);
       };
-      // Preserve socket order: releasing control must wait for the preceding input to finish.
-      const input = await runtime.runPromise(Queue.unbounded<unknown>());
-      await runtime.runPromise(
-        Effect.forever(Queue.take(input).pipe(Effect.flatMap(viewer.input))).pipe(
-          Effect.forkIn(scope),
-        ),
-      );
       ws.on("message", (data) => {
         try {
           const message = JSON.parse(data.toString());
@@ -258,7 +251,7 @@ server.on("upgrade", (req, socket, head) => {
               pending = null;
               frame(next);
             }
-          } else runtime.runFork(Queue.offer(input, message));
+          } else runtime.runFork(viewer.input(message));
         } catch {
           ws.close(1003, "Invalid input");
         }

@@ -7,11 +7,18 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { WebSocket } from "ws";
 const port = Number(process.env.BASKULE_BROWSER_TEST_PORT ?? 47812);
-const fixture = NodeHttp.createServer((_req, res) =>
+let humanInput = "";
+let confirmed = false;
+const fixture = NodeHttp.createServer((req, res) => {
+  const url = new URL(req.url, "http://fixture");
+  if (url.pathname === "/input") humanInput = url.searchParams.get("value");
+  if (url.pathname === "/confirmed") confirmed = url.searchParams.get("accepted") === "true";
   res.end(
-    '<title>Shared browser fixture</title><h1>Shared browser</h1><input id="name" autofocus>',
-  ),
-);
+    `<title>Shared browser fixture</title><h1>Shared browser</h1>
+    <input id="name" autofocus oninput="fetch('/input?value='+encodeURIComponent(this.value))">
+    <button style="position:fixed;left:8px;top:120px" onmousedown="fetch('/confirmed?accepted='+confirm('Continue?'))">Confirm</button>`,
+  );
+});
 await new Promise((r) => fixture.listen(port + 1, "127.0.0.1", r));
 const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "baskule-browser-"));
 const binary =
@@ -110,6 +117,16 @@ try {
     /human|control/i,
   );
   viewer.send(JSON.stringify({ type: "text", text: "Human input" }));
+  await waitFor(() => humanInput === "Human input");
+  viewer.send(
+    JSON.stringify({ type: "mouse", action: "down", button: "left", buttons: 1, x: 30, y: 130 }),
+  );
+  await waitFor(() => messages.some((m) => m.type === "control" && m.dialog?.type === "confirm"));
+  viewer.send(JSON.stringify({ type: "dialog", accept: true }));
+  await waitFor(() => confirmed);
+  viewer.send(
+    JSON.stringify({ type: "mouse", action: "up", button: "left", buttons: 0, x: 30, y: 130 }),
+  );
   messages.length = 0;
   viewer.send(JSON.stringify({ type: "releaseControl" }));
   await waitFor(() => messages.some((m) => m.type === "control" && m.controller === "agent"));
@@ -189,6 +206,7 @@ try {
         "JPEG viewer frames",
         "human takeover blocks agent",
         "human text input",
+        "human confirm dialog reply unblocks mouse input",
         "release resumes agent",
         "profile survives restart",
         "space profiles isolated",
