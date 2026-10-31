@@ -191,7 +191,7 @@ describe("MCP OAuth connections", () => {
       await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
       const disconnect = async () => { await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds }); };
       f.state.onRefresh = disconnect;
-      expect((await x.credential()).body.error).toBe("reconnect");
+      expect((await x.credential()).body.error).toBe("connect");
       expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual([]);
       f.state.onExchange = disconnect;
       const done = await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });

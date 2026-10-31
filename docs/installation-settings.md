@@ -12,8 +12,8 @@ decide when to compact context automatically.
 People, invitations, roles and space membership are under **Admin → People** and **Admin → Spaces**.
 Groups (**Admin → People → Groups**; every person is in the built-in **Everyone**) grant plugins and permissions
 such as creating team spaces. Plugins are under **Admin → Plugins**: nothing is installed by default.
-An admin adds a plugin from the catalog or from its own address, git commit or file, checks what it contains, and
-chooses the groups that may use it. New plugins are unpaused. Assigned skills and tools work after setup, with no
+An admin adds a plugin from the catalog or from its own address, git commit or file, chooses the groups that may use it, and reviews
+what was added. New plugins are unpaused. Assigned skills and tools work after setup, with no
 member activation. Administrators can Pause and Resume a plugin. Members see readiness and connect accounts in
 **Settings → Plugins**. In a team
 space, plugins that act with a member's own account stay off until a space owner allows them in the space settings.

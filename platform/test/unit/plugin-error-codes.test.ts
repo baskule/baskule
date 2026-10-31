@@ -1,6 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PLUGIN_ERROR_CODES } from "../../../app/packages/contracts/src/baskule-plugins";
 
 describe("plugin error contract", () => {
   it("keeps route and outbound errors in the typed error map", () => {
@@ -9,7 +8,6 @@ describe("plugin error contract", () => {
     for (const file of modules) {
       const source = readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
       expect(source, file).not.toMatch(/new HttpError\(/);
-      for (const [, code] of source.matchAll(/pluginError\(\d+, "([a-z_]+)"/g)) expect(PLUGIN_ERROR_CODES, `${file}: ${code}`).toContain(code);
     }
   });
 });

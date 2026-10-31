@@ -138,7 +138,6 @@ export class Plugins {
 
   private async install(req: Request): Promise<Response> {
     const data = parse(z.object({ source: sourceSchema, groups: z.array(id).max(1000), name: z.string().trim().min(1).max(100).optional(), archive: z.string().max(Math.ceil(IMPORT_LIMITS.archive / 3) * 4).optional() }).strict(), await body(req, Math.ceil(IMPORT_LIMITS.archive / 3) * 4 + 8192));
-    if (data.groups.some(id => !this.groups.list().some(g => g.id === id))) throw pluginError(400, "invalid_group");
     let source: PluginSource = data.source;
     let resolvedSource: Plugin["resolvedSource"];
     let selectedSkills: string[] | undefined;
@@ -180,6 +179,8 @@ export class Plugins {
       source: data.source, ...(resolvedSource ? { resolvedSource } : {}), skills: inspected.skills.map(s => ({ name: s.name, description: s.description })), servers: inspected.servers,
       ignored: inspected.ignored, enabled: true, createdAt: new Date().toISOString() };
     this.storage.transactionSync(() => {
+      const groups = new Set(this.groups.list().map(group => group.id));
+      if (data.groups.some(id => !groups.has(id))) throw pluginError(400, "invalid_group");
       const total = this.rows("select count(*) as n, coalesce(sum(stored_bytes),0) as bytes from plugin")[0];
       if (Number(total.n) >= IMPORT_LIMITS.plugins || Number(total.bytes) + inspected.storedBytes > IMPORT_LIMITS.totalStored) throw pluginError(413, "plugin_storage_limit");
       this.rows("insert into plugin(id,definition,skill_files,stored_bytes) values (?,?,?,?)", plugin.id, JSON.stringify(plugin), JSON.stringify(inspected.skills), inspected.storedBytes);

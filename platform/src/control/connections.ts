@@ -120,7 +120,6 @@ export class Connections {
     return s;
   }
   async state(userId: string, pluginId: string, server: PluginServer): Promise<"connect" | "reconnect" | "ready"> {
-    if (!["user-oauth", "login-identity"].includes(server.credential)) return "reconnect";
     const row = this.row(userId, pluginId, server.name);
     if (!row) return "connect";
     try {
@@ -257,38 +256,38 @@ export class Connections {
     const { userId, pluginId, server: name } = input;
     const server = this.plugins.get(pluginId)!.servers.find(s => s.name === name)!;
     const row = this.row(userId, pluginId, name);
-    const needs: PluginCredential = { error: row ? "reconnect" : "connect" };
-    if (!row || !["user-oauth", "login-identity"].includes(server.credential)) return needs;
+    const needs = (): PluginCredential => ({ error: this.row(userId, pluginId, name) ? "reconnect" : "connect" });
+    if (!row || !["user-oauth", "login-identity"].includes(server.credential)) return needs();
     if (server.credential === "login-identity" && !loginIdentityAudience(server)) return { error: "unavailable" };
     try {
       const c = await this.cipher.open<Connection>(row, context(userId, pluginId, name));
-      if (c.config !== fingerprint(server)) return needs;
+      if (c.config !== fingerprint(server)) return needs();
       let token: string;
       let liveData = row;
       if (c.oauth && server.credential === "user-oauth") {
         if (c.oauth.tokens.expiresAt !== null && c.oauth.tokens.expiresAt <= Date.now() + 30_000) {
-          if (!c.oauth.tokens.refreshToken) return needs;
+          if (!c.oauth.tokens.refreshToken) return needs();
           const tokens = await exchangeToken(c.oauth.discovery, c.oauth.client, { grant_type: "refresh_token", refresh_token: c.oauth.tokens.refreshToken }, c.oauth.tokens.scopes, this.fetcher);
-          if (!c.oauth.tokens.scopes.filter(s => s !== "offline_access").every(s => tokens.scopes.includes(s))) return needs;
+          if (!c.oauth.tokens.scopes.filter(s => s !== "offline_access").every(s => tokens.scopes.includes(s))) return needs();
           c.oauth.tokens = { ...tokens, refreshToken: tokens.refreshToken ?? c.oauth.tokens.refreshToken };
           const data = await this.cipher.seal(c, context(userId, pluginId, name));
-          if (!this.rows("update plugin_connection set data=? where user_id=? and plugin_id=? and server=? and data=? returning data", data, userId, pluginId, name, row).length) return needs;
+          if (!this.rows("update plugin_connection set data=? where user_id=? and plugin_id=? and server=? and data=? returning data", data, userId, pluginId, name, row).length) return needs();
           liveData = data;
         }
         token = c.oauth.tokens.accessToken;
       } else if (server.credential === "login-identity" && c.accountId) {
         const identity = this.identity(server);
         const account = this.account(userId, identity.provider);
-        if (account.id !== c.accountId || !account.refresh_token) return needs;
+        if (account.id !== c.accountId || !account.refresh_token) return needs();
         const tokens = await this.auth.api.getAccessToken({ body: { userId, accountId: c.accountId } });
-        if (!tokens.accessToken || !identity.scopes.every(s => tokens.scopes.includes(s)) || (tokens.accessTokenExpiresAt && tokens.accessTokenExpiresAt.getTime() <= Date.now())) return needs;
+        if (!tokens.accessToken || !identity.scopes.every(s => tokens.scopes.includes(s)) || (tokens.accessTokenExpiresAt && tokens.accessTokenExpiresAt.getTime() <= Date.now())) return needs();
         if (identity.provider === "microsoft" && !microsoftAudience(tokens.accessToken, identity.audience)) return { error: "unavailable" };
         token = tokens.accessToken;
-      } else return needs;
+      } else return needs();
       const policy = this.plugins.canUse(userId, input.spaceId, pluginId, name);
       if (!policy.allowed) return { error: policy.error };
-      if (this.row(userId, pluginId, name) !== liveData || fingerprint(this.plugins.get(pluginId)!.servers.find(s => s.name === name)!) !== c.config) return needs;
-      if (!/^[A-Za-z0-9\-._~+/]+=*$/.test(token)) return needs;
+      if (this.row(userId, pluginId, name) !== liveData || fingerprint(this.plugins.get(pluginId)!.servers.find(s => s.name === name)!) !== c.config) return needs();
+      if (!/^[A-Za-z0-9\-._~+/]+=*$/.test(token)) return needs();
       return { headers: { Authorization: `Bearer ${token}` } };
     } catch (error) {
       if (error instanceof HttpError && error.code === "oauth_grant_expired") {
@@ -300,7 +299,7 @@ export class Connections {
           this.rows("update plugin_connection set data=? where user_id=? and plugin_id=? and server=? and data=?", data, userId, pluginId, name, row);
         }
       }
-      return needs;
+      return needs();
     }
   }
 }

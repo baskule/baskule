@@ -66,8 +66,6 @@ test("assigned skills are ready without activation and leave a team when its con
     await expect(memberPage.getByRole("button", { name: "Stop generation", exact: true })).toHaveCount(0);
     expect(await filesOnComputer(stack, people.team)).toContain(`${plugin.id}/hello/SKILL.md`);
     await api.admin.json("POST", `/api/baskule/admin/users/${people.alice.me.user.id}/deactivate`, {});
-    await startChat(memberPage, `Check removed skills [[fake:tool shell ${JSON.stringify({ command: `test ! -e ${skillDirectory} && echo TEAM_SKILL_REMOVED` })}]]`, people.teamName);
-    await expect(assistant(memberPage)).toContainText("TEAM_SKILL_REMOVED", { timeout: 90_000 });
     await expect.poll(() => filesOnComputer(stack, people.team), { message: "the deactivated contributor's skills leave the managed tree", timeout: 90_000 }).not.toContain(`${plugin.id}/hello/`);
   } finally {
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
