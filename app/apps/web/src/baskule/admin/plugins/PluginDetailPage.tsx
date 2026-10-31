@@ -1,17 +1,25 @@
 // baskule: one installed plugin: paused or not, which groups may use it, how its servers sign in
 // (with the write-only organization key or vendor app), which tools it allows, what it contains, where it
-// came from, and removal. A plugin an admin brought opens in the plugin editor and downloads as a package.
+// came from, and removal. A plugin an admin brought opens in the plugin editor and downloads as a package;
+// skills from the catalog or GitHub are changed through a copy.
 import { catalogService, catalogVendor } from "@t3tools/contracts/baskule-catalog";
 import type {
-  AdminPlugin,
   Group,
   Plugin,
   PluginInput,
   PluginServer,
   PluginTool,
+  SkillHistory,
 } from "@t3tools/contracts/baskule-plugins";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
-import { DownloadIcon, PauseIcon, PencilIcon, PlayIcon, UsersRoundIcon } from "lucide-react";
+import {
+  CopyIcon,
+  DownloadIcon,
+  PauseIcon,
+  PencilIcon,
+  PlayIcon,
+  UsersRoundIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n";
@@ -47,20 +55,11 @@ function saveZip(blob: Blob, name: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-/** The saved plugin as the one shape the editor works on; skills come in full from the server. */
-async function editorInput(plugin: AdminPlugin): Promise<PluginInput | null> {
-  const source = plugin.source;
-  if (source.type === "catalog") return null;
-  const { skills } = await pluginsApi.skills(plugin.id);
-  return {
-    name: plugin.name,
-    description: plugin.description,
-    ...(plugin.icon ? { icon: plugin.icon } : {}),
-    source,
-    servers: plugin.servers,
-    skills,
-    omitted: plugin.omitted,
-  };
+/** What the editor opens with: the saved plugin, or a copy of its skills only, made in Baskule. */
+interface Opened {
+  readonly copy: boolean;
+  readonly input: PluginInput;
+  readonly versions: SkillHistory["versions"];
 }
 
 export function PluginDetailPage({ id }: { readonly id: string }) {
@@ -76,7 +75,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   );
   const data = useApiResource(load);
   const [busy, setBusy] = useState<string | null>(null);
-  const [editing, setEditing] = useState<PluginInput | null>(null);
+  const [editing, setEditing] = useState<Opened | null>(null);
 
   const run = async (key: string, action: () => Promise<unknown>, failure: string) => {
     setBusy(key);
@@ -113,7 +112,9 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
     plugin.setup.filter((entry) => !entry.done).map((entry) => entry.server),
   );
   const ownAccounts = plugin.servers.filter((server) => server.credential === "user-oauth");
-  const fromCatalog = plugin.source.type === "catalog";
+  const source = plugin.source;
+  const fromCatalog = source.type === "catalog";
+  const pinned = source.type === "catalog" || source.type === "github";
   const savedKeys = new Set(
     plugin.servers
       .filter((server) => server.credential === "organization" && !unfinished.has(server.name))
@@ -133,11 +134,39 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         }),
       t("Could not change who can use {{name}}", { name: plugin.name }),
     );
-  const edit = () => {
-    setBusy("edit");
-    editorInput(plugin)
-      .then(setEditing, (cause: unknown) =>
-        notifyPluginError(t("Could not open {{name}}", { name: plugin.name }), cause),
+  /** Skills come in full from the server; a copy takes nothing else that is tied to this plugin. */
+  const open = (copy: boolean) => {
+    setBusy(copy ? "copy" : "edit");
+    pluginsApi
+      .skills(plugin.id)
+      .then(
+        ({ skills, versions }) =>
+          setEditing({
+            copy,
+            versions,
+            input:
+              copy || source.type === "catalog"
+                ? {
+                    name: t("Copy of {{name}}", { name: plugin.name }),
+                    description: plugin.description,
+                    ...(plugin.icon ? { icon: plugin.icon } : {}),
+                    source: { type: "custom" },
+                    servers: [],
+                    skills,
+                    omitted: [],
+                  }
+                : {
+                    name: plugin.name,
+                    description: plugin.description,
+                    ...(plugin.icon ? { icon: plugin.icon } : {}),
+                    source,
+                    servers: plugin.servers,
+                    skills,
+                    omitted: plugin.omitted,
+                  },
+          }),
+        (cause: unknown) =>
+          notifyPluginError(t("Could not open {{name}}", { name: plugin.name }), cause),
       )
       .finally(() => setBusy(null));
   };
@@ -153,6 +182,36 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
       .finally(() => setBusy(null));
   };
 
+  if (editing?.copy) {
+    return (
+      <>
+        <PageHeading
+          leading={
+            <PluginIcon contents="skills" icon={plugin.icon} className="size-10 [&_svg]:size-5" />
+          }
+          title={t("Make your own copy of {{name}}", { name: plugin.name })}
+          description={t(
+            "Only its skills are copied, and they are yours to change. {{name}} stays as it is. Nothing is saved until you click Save plugin.",
+            { name: plugin.name },
+          )}
+        />
+        <PluginEditor
+          initial={editing.input}
+          fixes={[]}
+          omitted={[]}
+          target={{ type: "create", groups, groupsError: null }}
+          onCancel={() => setEditing(null)}
+          onSaved={({ id: copyId, name }) => {
+            notifySuccess(t("{{name}} was added", { name }));
+            void navigate({
+              to: "/admin/$section/$page/$item",
+              params: { section: "plugins", page: "installed", item: copyId },
+            });
+          }}
+        />
+      </>
+    );
+  }
   if (editing) {
     return (
       <>
@@ -168,15 +227,16 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
           description={sourceLabel(plugin.source)}
         />
         <PluginEditor
-          initial={editing}
+          initial={editing.input}
           fixes={[]}
           omitted={plugin.omitted}
-          target={{ type: "edit", id: plugin.id, savedKeys }}
+          target={{ type: "edit", id: plugin.id, savedKeys, versions: editing.versions }}
           onCancel={() => setEditing(null)}
           onSaved={({ name }) => {
             notifySuccess(t("{{name}} was saved", { name }));
             void data.reload().then(() => setEditing(null));
           }}
+          onReverted={() => void data.reload()}
         />
       </>
     );
@@ -210,7 +270,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
                 variant="outline"
                 aria-label={t("Edit {{name}}", { name: plugin.name })}
                 disabled={busy !== null}
-                onClick={edit}
+                onClick={() => open(false)}
               >
                 {busy === "edit" ? <Spinner size="sm" /> : <PencilIcon />}
                 {t("Edit")}
@@ -378,7 +438,22 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         </PageSection>
       ) : null}
 
-      <PageSection title={t("What it contains")}>
+      <PageSection
+        title={t("What it contains")}
+        description={
+          pinned && plugin.skills.length > 0
+            ? t("Its skills stay as published. Make your own copy to change them.")
+            : undefined
+        }
+        action={
+          pinned && plugin.skills.length > 0 ? (
+            <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => open(true)}>
+              {busy === "copy" ? <Spinner size="sm" /> : <CopyIcon />}
+              {t("Make your own copy")}
+            </Button>
+          ) : undefined
+        }
+      >
         <div className="px-3 py-4 sm:px-4">
           <PluginContents plugin={plugin} />
         </div>

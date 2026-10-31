@@ -6,6 +6,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeZlib from "node:zlib";
 
 import { catalogService, catalogVendor } from "../../../packages/contracts/src/baskule-catalog.ts";
+import { skillFieldErrors } from "../../../packages/contracts/src/baskule-plugin-formats.ts";
 
 const EVERYONE = "everyone";
 const id = () => NodeCrypto.randomUUID();
@@ -61,6 +62,33 @@ function ownPlugin(fields) {
 }
 
 const skillInput = (skill) => ({ ...skill, instructions: `# ${skill.name}\n`, files: [] });
+const textFile = (path, text) => ({
+  path,
+  content: Buffer.from(text).toString("base64"),
+  encoding: "base64",
+});
+/** As `safePath` and `skillFromInput`: SKILL.md is the instructions, and no path repeats. */
+function skillsError(skills) {
+  for (const [index, skill] of skills.entries()) {
+    const others = skills.filter((_, at) => at !== index).map((entry) => entry.name);
+    if (skillFieldErrors(skill, others).length) return "invalid_skill";
+    const paths = new Set(["SKILL.md"]);
+    for (const file of skill.files ?? []) {
+      const path = String(file.path).replace(/^\.\//, "").replace(/\/$/, "");
+      if (
+        !path ||
+        path.length > 512 ||
+        /[\\\x00-\x1f:]/.test(path) ||
+        path.startsWith("/") ||
+        path.split("/").some((part) => !part || part === "." || part === "..")
+      )
+        return "unsafe_plugin_path";
+      if (paths.has(path)) return "duplicate_plugin_path";
+      paths.add(path);
+    }
+  }
+  return null;
+}
 /** As `validateServer`: switched-off tools are stored once each. */
 const savedServer = (server) => ({
   ...server,
@@ -188,6 +216,51 @@ export function createPluginMock({ users, spaces }) {
   const skillsOf = new Map(
     [...plugins.values()].map((plugin) => [plugin.id, plugin.skills.map(skillInput)]),
   );
+  skillsOf.set(sales, [
+    {
+      name: "call-prep",
+      description: "Prepare a sales call from the account's history and news.",
+      instructions:
+        "# Call prep\n\n1. Find the account in the CRM and read its last three meetings.\n2. Run `/forecast` for the account's open deals.\n3. Write a one-page brief with **goals**, risks and questions.\n",
+      frontmatter: "license: Apache-2.0\n",
+      files: [textFile("templates/brief.md", "# Brief for {{account}}\n\n## Goals\n\n## Risks\n")],
+    },
+    {
+      name: "account-research",
+      description: "Build a short brief on a company and its people.",
+      instructions: "# Account research\n\nSearch the web for the company's recent news.\n",
+      frontmatter: "license: Apache-2.0\n",
+      files: [],
+    },
+  ]);
+  /** plugin id -> earlier skill versions; the current skills are only in `skillsOf`. */
+  const versionsOf = new Map();
+  /** As `saveSkills`: changed skills keep the previous ones as the next version, ten at most. */
+  const saveSkills = (plugin, skills, actor) => {
+    const previous = skillsOf.get(plugin.id) ?? [];
+    if (JSON.stringify(previous) !== JSON.stringify(skills)) {
+      const earlier = versionsOf.get(plugin.id) ?? [];
+      const version = Math.max(0, ...earlier.map((entry) => entry.version)) + 1;
+      versionsOf.set(
+        plugin.id,
+        [
+          { version, skills: previous, savedAt: new Date().toISOString(), savedBy: actor.name },
+          ...earlier,
+        ].slice(0, 10),
+      );
+    }
+    skillsOf.set(plugin.id, skills);
+    plugin.skills = skills.map(summary);
+  };
+  const history = (plugin) => ({
+    skills: skillsOf.get(plugin.id) ?? [],
+    editable: plugin.source.type === "custom" || plugin.source.type === "upload",
+    versions: (versionsOf.get(plugin.id) ?? []).map(({ version, savedAt, savedBy }) => ({
+      version,
+      savedAt,
+      savedBy,
+    })),
+  });
 
   /** @type {Array<{id: string, name: string, builtin?: "everyone", members: string[], permissions: {canCreateSpaces: boolean}, plugins: string[]}>} */
   const groups = [
@@ -266,6 +339,8 @@ export function createPluginMock({ users, spaces }) {
     if (!Array.isArray(input.servers) || !Array.isArray(input.skills))
       return "invalid_plugin_input";
     if (input.servers.length === 0 && input.skills.length === 0) return "empty_plugin";
+    const skillError = skillsError(input.skills);
+    if (skillError) return skillError;
     for (const server of input.servers) {
       if (placeholder.test(String(server.url))) return "address_placeholder";
       try {
@@ -440,6 +515,19 @@ export function createPluginMock({ users, spaces }) {
       }
       return (send(res, status, body), true);
     }
+    if (
+      (r = /^\/admin\/plugins\/([^/]+)\/versions\/(\d+)\/revert$/.exec(api)) &&
+      method === "POST"
+    ) {
+      const plugin = plugins.get(r[1]);
+      if (!plugin) return (fail(res, 404, "not_found"), true);
+      if (plugin.source.type !== "custom" && plugin.source.type !== "upload")
+        return (fail(res, 409, "not_editable"), true);
+      const earlier = versionsOf.get(plugin.id)?.find((entry) => entry.version === Number(r[2]));
+      if (!earlier) return (fail(res, 404, "version_not_found"), true);
+      saveSkills(plugin, earlier.skills, me);
+      return (send(res, 200, history(plugin)), true);
+    }
     if (api === "/admin/plugins/inspect" && method === "POST") {
       const [status, body] = inspect(await readBody(req));
       return (send(res, status, body), true);
@@ -478,14 +566,7 @@ export function createPluginMock({ users, spaces }) {
           return (fail(res, 409, "connection_not_allowed"), true);
         return (send(res, 200, { tools: toolsOf(server) }), true);
       }
-      if (r[2] === "/skills" && method === "GET")
-        return (
-          send(res, 200, {
-            skills: skillsOf.get(plugin.id) ?? [],
-            editable: plugin.source.type === "custom" || plugin.source.type === "upload",
-          }),
-          true
-        );
+      if (r[2] === "/skills" && method === "GET") return (send(res, 200, history(plugin)), true);
       if (r[2] === "/export" && method === "GET") {
         if (plugin.source.type === "catalog") return (fail(res, 409, "not_editable"), true);
         res.writeHead(200, {
@@ -571,11 +652,10 @@ export function createPluginMock({ users, spaces }) {
                 : {}),
             });
           }),
-          skills: input.skills.map(summary),
           omitted: input.omitted ?? [],
         });
         if (!input.icon) delete plugin.icon;
-        skillsOf.set(plugin.id, input.skills);
+        saveSkills(plugin, input.skills, me);
         return (send(res, 200, plugin), true);
       }
     }

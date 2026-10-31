@@ -1,6 +1,7 @@
 // baskule: how plugins are named to people. Everything is a "plugin" that gives the assistant tools,
 // skills or both; its source, credential mode and status are shown in plain words (the people
 // reading them are not developers).
+import type { SkillFieldError, SkillWarning } from "@t3tools/contracts/baskule-plugin-formats";
 import type {
   CredentialMode,
   OmissionCode,
@@ -157,6 +158,36 @@ export function omissionText(code: OmissionCode): string {
       return t("A skill whose license doesn't allow using it here.");
     case "other_files":
       return t("Files that aren't part of a skill or a server.");
+  }
+}
+
+/** Why a skill's name or description can't be saved, with the rule it breaks. */
+export function skillFieldErrorText(error: SkillFieldError): string {
+  switch (error) {
+    case "name_format":
+      return t("Use only lowercase letters, numbers and single hyphens, like call-prep.");
+    case "name_too_long":
+      return t("Use 64 characters at most.");
+    case "name_taken":
+      return t("Another skill in this plugin has this name.");
+    case "description_empty":
+      return t("Say what the skill does and when to use it.");
+    case "description_too_long":
+      return t("Use 1,024 characters at most.");
+  }
+}
+
+/** What may not work outside Claude Code. Advice only: the skill can still be saved. */
+export function skillWarningText(warning: SkillWarning): string {
+  switch (warning) {
+    case "slash_command":
+      return t("This skill uses a slash command. Baskule may not have that command.");
+    case "claude_only_tool":
+      return t("This skill names a tool specific to Claude Code. It may need changing here.");
+    case "software_install":
+      return t("This skill asks to install software. The computer may need setup first.");
+    case "secret_in_file":
+      return t("This file may contain a password or key. Remove it before sharing the skill.");
   }
 }
 

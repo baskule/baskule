@@ -124,3 +124,54 @@ export const serverFingerprint = (server: ServerInput) =>
     server.credential,
     server.oauth ?? null,
   ]);
+
+export type SkillWarning =
+  | "slash_command"
+  | "claude_only_tool"
+  | "software_install"
+  | "secret_in_file";
+export function skillWarnings(skill: SkillInput): { warning: SkillWarning; path: string }[] {
+  const sources = [
+    { path: "SKILL.md", text: `${skill.frontmatter ?? ""}\n${skill.instructions}` },
+    ...skill.files.map((file) => {
+      try {
+        return {
+          path: file.path,
+          text: new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
+            Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0)),
+          ),
+        };
+      } catch {
+        return { path: file.path, text: "" };
+      }
+    }),
+  ];
+  return sources.flatMap(({ path, text }) => {
+    const warnings: SkillWarning[] = [];
+    if (
+      /^commands\//.test(path) ||
+      /(?:^|[\s`"'(\[])\/[a-z][a-z0-9-]*(?=$|[\s`"'.,;:!?)\]])/i.test(text)
+    )
+      warnings.push("slash_command");
+    if (
+      /\b(?:TodoWrite|TaskCreate|TaskUpdate|AskUserQuestion|EnterPlanMode|ExitPlanMode)\b/.test(
+        text,
+      )
+    )
+      warnings.push("claude_only_tool");
+    if (
+      /\b(?:(?:npm|pnpm|yarn|pip3?|uv|brew|apt(?:-get)?)\s+(?:add|install|i)\b|npx\s+\S)/i.test(
+        text,
+      )
+    )
+      warnings.push("software_install");
+    if (
+      /(?:^|\/)(?:\.env(?:\.[^/]*)?|credentials(?:\.json)?|[^/]+\.pem)$/i.test(path) ||
+      /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:api[_-]?key|client[_-]?secret|access[_-]?token|password)["']?\s*[:=]\s*["']?(?!\$\{|\{|<)[^\s"'{}<>]{8,}/i.test(
+        text,
+      )
+    )
+      warnings.push("secret_in_file");
+    return warnings.map((warning) => ({ warning, path }));
+  });
+}

@@ -1,7 +1,7 @@
 // baskule: the one editor for a plugin an admin brings: the review of an import before it is saved,
-// MCP servers entered as a form or pasted as JSON, and later edits. Nothing is saved until Save; a
-// server's test only reads its tools. Entered keys are written after the plugin itself, through the
-// write-only key route.
+// MCP servers entered as a form or pasted as JSON, skills, and later edits. Nothing is saved until
+// Save, except Revert, which restores earlier skills at once; a server's test only reads its tools.
+// Entered keys are written after the plugin itself, through the write-only key route.
 import {
   addressPlaceholders,
   parseServersJson,
@@ -17,6 +17,8 @@ import type {
   PluginInput,
   PluginTool,
   ServerInput,
+  SkillHistory,
+  SkillInput,
 } from "@t3tools/contracts/baskule-plugins";
 import { BookOpenTextIcon, ChevronRightIcon, PlugIcon, PlusIcon, XIcon } from "lucide-react";
 import { useId, useState } from "react";
@@ -29,7 +31,7 @@ import { Radio, RadioGroup } from "../../../components/ui/radio-group";
 import { Spinner } from "../../../components/ui/spinner";
 import { Textarea } from "../../../components/ui/textarea";
 import { Toggle, ToggleGroup } from "../../../components/ui/toggle-group";
-import { pluginErrorText, pluginsApi, toolsErrorText } from "../../plugins/api";
+import { base64Of, pluginErrorText, pluginsApi, toolsErrorText } from "../../plugins/api";
 import {
   GroupChoiceRows,
   NotUsedList,
@@ -43,9 +45,10 @@ import {
   credentialLabel,
   includedSummary,
 } from "../../plugins/presentation";
-import { FormField, RowIcon } from "../../ui";
+import { confirmAction, FormField, RowIcon } from "../../ui";
 import { PageMessage, PageRow, PageSection } from "../../views/BaskulePage";
 import { ServerTools } from "./ServerTools";
+import { SkillEditor, skillInvalid, SkillVersions, type RevertState } from "./SkillEditor";
 
 export type EditorTarget =
   | {
@@ -58,6 +61,7 @@ export type EditorTarget =
       readonly id: string;
       /** Servers whose organization key is already saved. */
       readonly savedKeys: ReadonlySet<string>;
+      readonly versions: SkillHistory["versions"];
     };
 
 interface KeyEntry {
@@ -112,6 +116,16 @@ const newRow = (
   checked: false,
 });
 
+interface SkillRow {
+  /** Stable through renames: the React key and what is open. */
+  readonly key: string;
+  readonly skill: SkillInput;
+}
+
+let skillCount = 0;
+const newSkillRow = (skill: SkillInput): SkillRow => ({ key: `skill-${skillCount++}`, skill });
+const NEW_SKILL: SkillInput = { name: "", description: "", instructions: "", files: [] };
+
 const NO_SERVERS: ParsedServers = { servers: [], secrets: {}, fixes: [], omitted: [] };
 const parseJson = (text: string) => (text.trim() ? parseServersJson(text) : NO_SERVERS);
 
@@ -164,6 +178,7 @@ export function PluginEditor({
   initialView = "form",
   onCancel,
   onSaved,
+  onReverted,
 }: {
   readonly initial: PluginInput;
   /** What the import found to fix in place: sign-in, address placeholders, keys. */
@@ -178,6 +193,8 @@ export function PluginEditor({
     readonly name: string;
     readonly count: number;
   }) => void;
+  /** Revert saved earlier skills: what the page shows of the plugin is out of date. */
+  readonly onReverted?: () => void;
 }) {
   const t = useTranslation();
   const [name, setName] = useState(initial.name);
@@ -196,6 +213,14 @@ export function PluginEditor({
       };
     }),
   );
+  const [skills, setSkills] = useState(() => initial.skills.map(newSkillRow));
+  const [openSkills, setOpenSkills] = useState<ReadonlySet<string>>(
+    () => new Set(skills.filter((row) => !row.skill.name).map((row) => row.key)),
+  );
+  // Revert replaces the skills shown here, so unsaved skill edits are confirmed first.
+  const [skillsEdited, setSkillsEdited] = useState(false);
+  const [versions, setVersions] = useState(target.type === "edit" ? target.versions : []);
+  const [reverted, setReverted] = useState<RevertState>(null);
   const [view, setView] = useState(initialView);
   const [json, setJson] = useState(() =>
     initialView === "json" && initial.servers.length ? serversJson(initial.servers) : "",
@@ -210,6 +235,7 @@ export function PluginEditor({
   const [created, setCreated] = useState<Readonly<Record<string, string>>>({});
   const [done, setDone] = useState<ReadonlySet<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
+  const [readingFiles, setReadingFiles] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const descriptionId = useId();
@@ -222,7 +248,7 @@ export function PluginEditor({
   const canSplit =
     target.type === "create" &&
     initial.source.type === "custom" &&
-    initial.skills.length === 0 &&
+    skills.length === 0 &&
     rows.length > 1;
   const split = canSplit && splitChosen;
   const createdIds = Object.entries(created);
@@ -230,6 +256,20 @@ export function PluginEditor({
   const frozen = split && createdIds.length > 0;
   const parsedJson = view === "json" ? parseJson(json) : null;
   const jsonInvalid = parsedJson !== null && "error" in parsedJson;
+  // Pinned GitHub skills change only through a copy once saved; an import is still the admin's to edit.
+  const skillsEditable =
+    (target.type === "create" && !created.plugin) ||
+    initial.source.type === "custom" ||
+    initial.source.type === "upload";
+  const otherNames = (key: string) =>
+    skills.filter((row) => row.key !== key).map((row) => row.skill.name);
+  const invalidSkills = skillsEditable
+    ? skills.filter((row) => skillInvalid(row.skill, otherNames(row.key)))
+    : [];
+  const onlySkill =
+    target.type === "create" && rows.length === 0 && skills.length === 1 ? skills[0]!.skill : null;
+  const reverting = reverted !== null && "done" in reverted && !reverted.done;
+  const canAddSkill = skillsEditable && !split;
 
   const prior = (row: ServerRow) => initial.servers.find((server) => server.name === row.origin);
   /** Switches left as they were loaded aren't sent, so the save keeps any changed since. */
@@ -252,12 +292,12 @@ export function PluginEditor({
   };
 
   const input: PluginInput = {
-    name: name.trim(),
-    description: description.trim(),
+    name: name.trim() || onlySkill?.name || "",
+    description: description.trim() || onlySkill?.description.trim() || "",
     ...(icon.trim() ? { icon: icon.trim() } : {}),
     source: initial.source,
     servers: rows.map((row, index) => sent(row, finals[index]!)),
-    skills: initial.skills,
+    skills: skills.map((row) => row.skill),
     omitted: initial.omitted,
   };
   const units = split
@@ -325,7 +365,8 @@ export function PluginEditor({
   const invalid =
     jsonInvalid ||
     (!split && !input.name) ||
-    (rows.length === 0 && initial.skills.length === 0) ||
+    (rows.length === 0 && skills.length === 0) ||
+    invalidSkills.length > 0 ||
     duplicateNames ||
     rows.some(
       (row) => addressProblem(row) || (row.server.credential === "organization" && keyProblem(row)),
@@ -333,6 +374,71 @@ export function PluginEditor({
 
   const updateRow = (key: string, change: (row: ServerRow) => ServerRow) =>
     setRows((current) => current.map((row) => (row.key === key ? change(row) : row)));
+  const updateSkill = (key: string, change: (skill: SkillInput) => SkillInput) => {
+    setSkillsEdited(true);
+    setSkills((current) =>
+      current.map((row) => (row.key === key ? { ...row, skill: change(row.skill) } : row)),
+    );
+  };
+  const addFiles = (key: string, files: ReadonlyArray<File>) => {
+    if (!files.length || readingFiles) return;
+    setReadingFiles(true);
+    setSkillsEdited(true);
+    setError(null);
+    void Promise.all(
+      files.map(async (file) => ({
+        path: file.name,
+        content: await base64Of(file),
+        encoding: "base64" as const,
+      })),
+    )
+      .then((added) =>
+        updateSkill(key, (skill) => ({ ...skill, files: [...skill.files, ...added] })),
+      )
+      .catch(() => setError(t("The files could not be read. Add them again.")))
+      .finally(() => setReadingFiles(false));
+  };
+  const toggleSkill = (key: string) =>
+    setOpenSkills((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  const addSkill = () => {
+    const row = newSkillRow(NEW_SKILL);
+    setSkillsEdited(true);
+    setSkills((current) => [...current, row]);
+    setOpenSkills((current) => new Set(current).add(row.key));
+  };
+
+  const revert = async (version: number) => {
+    if (target.type !== "edit" || readingFiles) return;
+    if (
+      skillsEdited &&
+      !(await confirmAction(
+        t(
+          "Revert to version {{version}}?\nThe skill changes you haven't saved are replaced by that version. Other changes on this page stay.",
+          { version },
+        ),
+      ))
+    )
+      return;
+    setReverted({ version, done: false });
+    return pluginsApi.revert(target.id, version).then(
+      (history) => {
+        setSkills(history.skills.map(newSkillRow));
+        setOpenSkills(new Set());
+        setSkillsEdited(false);
+        setVersions(history.versions);
+        setReverted({ version, done: true });
+        onReverted?.();
+      },
+      (cause: unknown) =>
+        setReverted({
+          error: pluginErrorText(cause, t("The skills could not be restored. Try again.")),
+        }),
+    );
+  };
 
   const test = (row: ServerRow) => {
     if (addressProblem(row) || testKeyMissing(row)) {
@@ -470,7 +576,9 @@ export function PluginEditor({
 
   const save = async () => {
     setAttempted(true);
-    if (invalid || saving || testing) return;
+    if (invalidSkills.length > 0)
+      setOpenSkills((current) => new Set([...current, ...invalidSkills.map((row) => row.key)]));
+    if (invalid || saving || testing || reverting || readingFiles) return;
     setSaving(true);
     setError(null);
     const ids = { ...created };
@@ -589,8 +697,9 @@ export function PluginEditor({
             <FormField
               label={t("Name")}
               value={name}
-              placeholder={t("Shown to people in their plugins")}
+              placeholder={onlySkill?.name || t("Shown to people in their plugins")}
               error={attempted && !input.name ? t("Give it a name.") : null}
+              hint={onlySkill ? t("Leave empty to use the skill's name and description.") : null}
               onChange={(event) => setName(event.currentTarget.value)}
             />
             <div className="flex flex-col gap-1.5">
@@ -620,9 +729,7 @@ export function PluginEditor({
 
       <PageSection
         title={t("Included")}
-        description={
-          rows.length > 0 || initial.skills.length > 0 ? includedSummary(input) : undefined
-        }
+        description={rows.length > 0 || skills.length > 0 ? includedSummary(input) : undefined}
         action={
           <ToggleGroup
             aria-label={t("Server settings")}
@@ -691,7 +798,7 @@ export function PluginEditor({
                   showErrors={attempted || row.checked}
                   nameTaken={nameTaken(index)}
                   disabled={saving || done.has(row.key)}
-                  removable={!frozen && (rows.length > 1 || initial.skills.length > 0)}
+                  removable={!frozen && (rows.length > 1 || skills.length > 0)}
                   testing={shown !== null && shown.outcome === null}
                   outcome={shown?.outcome ?? null}
                   onChange={(change) => updateRow(row.key, change)}
@@ -702,47 +809,98 @@ export function PluginEditor({
                 />
               );
             })}
-            {frozen ? null : (
-              <div className="px-3 py-2.5 sm:px-4">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  disabled={saving}
-                  onClick={() =>
-                    setRows((current) => [
-                      ...current,
-                      newRow(
-                        { name: "", url: "", credential: "none", transport: "streamable-http" },
-                        null,
-                      ),
-                    ])
-                  }
-                >
-                  <PlusIcon />
-                  {t("Add a server")}
-                </Button>
-              </div>
-            )}
           </>
         )}
-        {initial.skills.map((skill) => (
-          <PageRow
-            key={skill.name}
-            leading={
-              <RowIcon>
-                <BookOpenTextIcon />
-              </RowIcon>
-            }
-          >
-            <span className="truncate text-sm text-foreground">{skill.name}</span>
-            <span className="line-clamp-2 text-xs text-muted-foreground">{skill.description}</span>
-          </PageRow>
-        ))}
-        {view === "form" && rows.length === 0 && initial.skills.length === 0 ? (
+        {skills.map((row) =>
+          skillsEditable ? (
+            <SkillEditor
+              key={row.key}
+              skill={row.skill}
+              otherNames={otherNames(row.key)}
+              open={openSkills.has(row.key)}
+              showErrors={attempted}
+              disabled={saving || reverting || readingFiles}
+              removable={!frozen && (rows.length > 0 || skills.length > 1)}
+              onToggle={() => toggleSkill(row.key)}
+              onChange={(change) => updateSkill(row.key, change)}
+              onAddFiles={(files) => addFiles(row.key, files)}
+              onRemove={() => {
+                setSkillsEdited(true);
+                setSkills((current) => current.filter((entry) => entry.key !== row.key));
+              }}
+            />
+          ) : (
+            <PageRow
+              key={row.key}
+              leading={
+                <RowIcon>
+                  <BookOpenTextIcon />
+                </RowIcon>
+              }
+            >
+              <span className="truncate text-sm text-foreground">{row.skill.name}</span>
+              <span className="line-clamp-2 text-xs text-muted-foreground">
+                {row.skill.description}
+              </span>
+            </PageRow>
+          ),
+        )}
+        {!skillsEditable && skills.length > 0 ? (
+          <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
+            {t(
+              "These skills stay as published. To change them, make your own copy from the plugin's page.",
+            )}
+          </p>
+        ) : null}
+        {view === "form" && rows.length === 0 && skills.length === 0 ? (
           <PageMessage>{t("Nothing usable was found in this plugin.")}</PageMessage>
         ) : null}
+        {frozen || (view === "json" && !canAddSkill) ? null : (
+          <div className="flex flex-wrap gap-2 px-3 py-2.5 sm:px-4">
+            {view === "form" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={saving}
+                onClick={() =>
+                  setRows((current) => [
+                    ...current,
+                    newRow(
+                      { name: "", url: "", credential: "none", transport: "streamable-http" },
+                      null,
+                    ),
+                  ])
+                }
+              >
+                <PlusIcon />
+                {t("Add a server")}
+              </Button>
+            ) : null}
+            {canAddSkill ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={saving || reverting || readingFiles}
+                onClick={addSkill}
+              >
+                <PlusIcon />
+                {t("Add a skill")}
+              </Button>
+            ) : null}
+          </div>
+        )}
       </PageSection>
+
+      {target.type === "edit" && skillsEditable && versions.length > 0 ? (
+        <SkillVersions
+          versions={versions}
+          state={reverted}
+          disabled={saving || readingFiles}
+          onRevert={(version) => void revert(version)}
+        />
+      ) : null}
 
       {omitted.length > 0 || jsonOmitted.length > 0 ? (
         <PageSection
@@ -783,6 +941,11 @@ export function PluginEditor({
       ) : null}
 
       <div className="flex flex-col gap-3">
+        {readingFiles ? (
+          <p role="status" className="px-3 text-sm text-muted-foreground sm:px-4">
+            {t("Reading files…")}
+          </p>
+        ) : null}
         {split && createdIds.length > 0 ? (
           <p role="status" className="px-3 text-sm text-muted-foreground sm:px-4">
             {t("{{saved}} of {{count}} plugins are ready. Save again to finish the rest.", {
@@ -817,7 +980,13 @@ export function PluginEditor({
           </Button>
           <Button
             type="submit"
-            disabled={saving || testing || (target.type === "create" && !target.groups)}
+            disabled={
+              saving ||
+              testing ||
+              reverting ||
+              readingFiles ||
+              (target.type === "create" && !target.groups)
+            }
           >
             {saving ? <Spinner size="sm" /> : null}
             {split ? t("Save plugins") : t("Save plugin")}

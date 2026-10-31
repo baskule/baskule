@@ -9,10 +9,10 @@ const portable = fileURLToPath(new URL("../../platform/test/fixtures/plugins/por
 function skillsArchive() {
   return execFileSync("python3", ["-c", "import io,pathlib,sys,zipfile; root=pathlib.Path(sys.argv[1]); b=io.BytesIO(); z=zipfile.ZipFile(b,'w'); [z.write(p,p.relative_to(root)) for p in root.rglob('*') if p.is_file() and (p.relative_to(root).parts[0]=='skills' or p.name=='LICENSE')]; z.close(); sys.stdout.buffer.write(b.getvalue())", portable]);
 }
-async function filesOnComputer(stack, spaceId) {
+async function computerOutput(stack, spaceId, argv) {
   const response = await fetch(`http://127.0.0.1:${stack.ports.computerd}/v1/spaces/${spaceId}/exec`, {
     method: "POST", headers: { authorization: `Bearer ${stack.computerdToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ argv: ["find", "/sandbox/space/plugins", "-type", "f"] }),
+    body: JSON.stringify({ argv }),
   });
   expect(response.ok).toBe(true);
   let output = "";
@@ -25,6 +25,8 @@ async function filesOnComputer(stack, spaceId) {
   expect(code).toBe(0);
   return output;
 }
+
+const filesOnComputer = (stack, spaceId) => computerOutput(stack, spaceId, ["find", "/sandbox/space/plugins", "-type", "f"]);
 
 test("assigned skills are ready without activation and leave a team when its contributor is deactivated", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api, fakeLlm }) => {
   const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
@@ -398,6 +400,121 @@ test("MCP JSON lifts keys, tests tools and enforces a switched-off tool during a
     if (client) { client.close(); await client.closed; }
     if (!plugin) plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
+    await context.close(); await fixture.close();
+  }
+});
+
+test("skills can be written, versioned and reverted on the computer, and pinned skills copied", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api, fakeLlm }) => {
+  const fixture = await fakeMcp();
+  const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
+  const context = await browser.newContext(options);
+  const page = await context.newPage();
+  const name = `Team notes ${crypto.randomUUID()}`;
+  const originalBody = "## Clear decisions\n\nKeep each decision with its next step.\nUse AskUserQuestion to collect missing details.";
+  const originalDescription = "Write clear notes with decisions and next steps.";
+  const updatedDescription = "Track owners and deadlines for team actions.";
+  let plugin, pinned, copy;
+  try {
+    await context.addCookies(api.admin.cookie.split("; ").map(cookie => {
+      const [name, ...value] = cookie.split("="); return { name, value: value.join("="), url: stack.urls.front };
+    }));
+    await page.goto(`${stack.urls.front}/admin/plugins/add`);
+    await page.getByRole("button", { name: "New skill", exact: true }).click();
+    await page.getByLabel("Name", { exact: true }).fill(name);
+    await page.getByLabel("Skill name", { exact: true }).fill("Bad Name");
+    await expect(page.getByLabel("Skill name", { exact: true })).toHaveAttribute("aria-invalid", "true");
+    await page.getByLabel("Skill name", { exact: true }).fill("team-notes");
+    await page.getByLabel("Skill description", { exact: true }).fill(originalDescription);
+    await page.getByLabel("Instructions", { exact: true }).fill(originalBody);
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Clear decisions", exact: true })).toBeVisible();
+    await page.getByRole("heading", { name: "Clear decisions", exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("skill-markdown-preview.png"), fullPage: true });
+    await page.getByLabel("Add files", { exact: true }).setInputFiles([
+      { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("Keep decisions next to the next action.") },
+      { name: "remove-me.txt", mimeType: "text/plain", buffer: Buffer.from("Temporary notes") },
+    ]);
+    await page.getByLabel("Path of file 1", { exact: true }).fill("references/guide.txt");
+    await page.getByRole("button", { name: "Remove remove-me.txt", exact: true }).click();
+    await expect(page.getByLabel("Path of file 2", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("You can still save this skill.", { exact: true })).toBeVisible();
+    await page.getByLabel("Path of file 1", { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("skill-files-and-warning.png"), fullPage: true });
+    await page.getByRole("button", { name: "Add a server", exact: true }).click();
+    await page.getByLabel("Address", { exact: true }).fill(fixture.resource);
+    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
+    expect(plugin.servers[0].url).toBe(fixture.resource);
+    let skills = await api.admin.json("GET", `/api/baskule/admin/plugins/${plugin.id}/skills`);
+    expect(skills.skills[0].files.map(f => f.path)).toEqual(["references/guide.txt"]);
+    const useSkill = async (slug, marker) => {
+      const channel = await people.alice.rpc(api.personalSpace(people.alice));
+      const ready = api.watchShell(channel);
+      try {
+        await expect.poll(() => ready.ready).toBe(true);
+        const projectId = (await channel.ok("projects.ensureScratch", {})).projectId;
+        const id = await api.launch(channel, projectId, `${marker} [[fake:tool skill ${JSON.stringify({ id: `${plugin.id}/${slug}` })}]]`, "Skill versions", { generateTitle: false });
+        const state = api.watchThread(channel, id);
+        try { await api.waitRun(state); return state.assistantText(); } finally { state.stop(); }
+      } finally { ready.stop(); channel.close(); await channel.closed; }
+    };
+    expect(await useSkill("team-notes", "Initial skill")).toContain("Keep each decision");
+    await page.getByRole("button", { name: `Edit ${name}`, exact: true }).click();
+    await page.getByRole("group", { name: "team-notes", exact: true }).getByRole("button", { expanded: false }).first().click();
+    await page.getByLabel("Skill name", { exact: true }).fill("team-decisions");
+    await page.getByLabel("Skill description", { exact: true }).fill(updatedDescription);
+    await page.getByLabel("Instructions", { exact: true }).fill("## Track actions\n\nRecord the owner and deadline for each next action.");
+    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    await expect.poll(() => filesOnComputer(stack, api.personalSpace(people.alice))).toContain(`${plugin.id}/team-decisions/SKILL.md`);
+    expect(await useSkill("team-decisions", "Updated skill")).toContain("Record the owner and deadline");
+    expect(await filesOnComputer(stack, api.personalSpace(people.alice))).not.toContain(`${plugin.id}/team-notes/`);
+    await page.getByRole("button", { name: `Edit ${name}`, exact: true }).click();
+    await expect(page.getByRole("button", { name: "Revert to version 1", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Revert to version 1", exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("skill-earlier-versions.png"), fullPage: true });
+    await page.getByRole("button", { name: "Revert to version 1", exact: true }).click();
+    await expect(page.getByText(/The skills of version 1 are back and saved/)).toBeVisible();
+    skills = await api.admin.json("GET", `/api/baskule/admin/plugins/${plugin.id}/skills`);
+    expect(skills.skills[0]).toMatchObject({ name: "team-notes", instructions: originalBody, description: originalDescription });
+    expect(skills.versions.map(v => v.version)).toEqual([2, 1]);
+    expect((await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.id === plugin.id).servers[0].url).toBe(fixture.resource);
+    await page.screenshot({ path: test.info().outputPath("skill-reverted.png"), fullPage: true });
+    const marker = `Restored skill ${crypto.randomUUID()}`;
+    await expect.poll(() => filesOnComputer(stack, api.personalSpace(people.alice))).toContain(`${plugin.id}/team-notes/SKILL.md`);
+    expect(await useSkill("team-notes", marker)).toContain("Keep each decision");
+    const tree = await filesOnComputer(stack, api.personalSpace(people.alice));
+    expect(tree).toContain(`${plugin.id}/team-notes/references/guide.txt`);
+    expect(tree).not.toContain(`${plugin.id}/team-decisions/`);
+    expect(await computerOutput(stack, api.personalSpace(people.alice), ["cat", `/sandbox/space/plugins/${plugin.id}/team-notes/SKILL.md`])).toContain(originalBody);
+    const request = (await fakeLlm.requests()).find(r => r.messages.some(m => m.role === "user" && JSON.stringify(m.content).includes(marker)));
+    expect(JSON.stringify(request.messages)).toContain(`<id>${plugin.id}/team-notes</id>`);
+    expect(JSON.stringify(request.messages)).toContain(originalDescription);
+    expect(JSON.stringify(request.messages)).not.toContain("<name>team-decisions</name>");
+    pinned = await api.admin.json("POST", "/api/baskule/admin/plugins", { groups: [], plugin: {
+      name: `Published notes ${crypto.randomUUID()}`, description: "A published skill to make your own.", source: { type: "github", repo: "https://github.com/example/skills", sha: "a".repeat(40) }, servers: [], omitted: [],
+      skills: [{ name: "published-notes", description: "Write published notes.", instructions: "Keep the original published wording.", frontmatter: "license: MIT\n", files: [{ path: "LICENSE", content: Buffer.from("MIT licence").toString("base64"), encoding: "base64" }] }],
+    } });
+    await page.goto(`${stack.urls.front}/admin/plugins/installed/${pinned.id}`);
+    await page.getByRole("button", { name: "Make your own copy", exact: true }).click();
+    await page.getByLabel("Name", { exact: true }).fill(`${name} copy`);
+    await page.getByRole("group", { name: "published-notes", exact: true }).getByRole("button", { expanded: false }).first().click();
+    await page.getByLabel("Instructions", { exact: true }).fill("My own published-notes instructions.");
+    await expect(page.getByLabel("Path of file 1", { exact: true })).toHaveValue("LICENSE");
+    await page.getByLabel("Instructions", { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("skill-copy-editor.png"), fullPage: true });
+    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await expect(page.getByRole("heading", { name: `${name} copy`, exact: true })).toBeVisible();
+    copy = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === `${name} copy`);
+    expect(copy.source.type).toBe("custom"); expect(copy.servers).toEqual([]);
+    const original = await api.admin.json("GET", `/api/baskule/admin/plugins/${pinned.id}/skills`);
+    expect(original.skills[0].instructions).toBe("Keep the original published wording.");
+    expect(original.versions).toEqual([]);
+    const copied = await api.admin.json("GET", `/api/baskule/admin/plugins/${copy.id}/skills`);
+    expect(copied.skills[0]).toMatchObject({ instructions: "My own published-notes instructions.", frontmatter: "license: MIT\n", files: original.skills[0].files });
+  } finally {
+    for (const item of [copy, pinned, plugin]) if (item) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${item.id}`);
     await context.close(); await fixture.close();
   }
 });

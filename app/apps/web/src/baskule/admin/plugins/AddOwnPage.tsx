@@ -1,7 +1,14 @@
 // baskule: Plugins → Add your own: a package (a file or a GitHub link), an MCP server's address or its
-// pasted JSON opens the plugin editor. Reading a package saves nothing; only Save in the editor does.
-import type { PluginDraft, PluginInspect, ServerInput } from "@t3tools/contracts/baskule-plugins";
+// pasted JSON, or a new skill opens the plugin editor. Reading a package saves nothing; only Save in the
+// editor does.
+import type {
+  PluginDraft,
+  PluginInspect,
+  ServerInput,
+  SkillInput,
+} from "@t3tools/contracts/baskule-plugins";
 import { useNavigate } from "@tanstack/react-router";
+import { BookOpenTextIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { useTranslation } from "../../../i18n";
@@ -10,10 +17,10 @@ import { Button } from "../../../components/ui/button";
 import { Label } from "../../../components/ui/label";
 import { Spinner } from "../../../components/ui/spinner";
 import { Toggle, ToggleGroup } from "../../../components/ui/toggle-group";
-import { pluginErrorText, pluginsApi } from "../../plugins/api";
+import { base64Of, pluginErrorText, pluginsApi } from "../../plugins/api";
 import { sourceLabel } from "../../plugins/presentation";
-import { FormField, notifySuccess, useApiResource } from "../../ui";
-import { PageSection } from "../../views/BaskulePage";
+import { FormField, notifySuccess, RowIcon, useApiResource } from "../../ui";
+import { PageRow, PageSection } from "../../views/BaskulePage";
 import { PluginEditor } from "./PluginEditor";
 
 /** The ControlCell's upload limit (`IMPORT_LIMITS.archive`). */
@@ -21,23 +28,14 @@ const MAX_ARCHIVE_BYTES = 10 * 1024 * 1024;
 
 const loadGroups = () => pluginsApi.groups();
 
-async function base64Of(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
-  return btoa(binary);
-}
-
-/** A plugin of MCP servers only; the editor asks for the rest. */
-const serversDraft = (servers: ServerInput[]): PluginDraft => ({
+/** A plugin made here, of MCP servers or skills; the editor asks for the rest. */
+const customDraft = (servers: ServerInput[], skills: SkillInput[] = []): PluginDraft => ({
   plugin: {
     name: "",
     description: "",
     source: { type: "custom" },
     servers,
-    skills: [],
+    skills,
     omitted: [],
   },
   fixes: [],
@@ -225,7 +223,7 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft, view:
             event.preventDefault();
             if (address.trim())
               onDraft(
-                serversDraft([
+                customDraft([
                   {
                     name: "",
                     url: address.trim(),
@@ -249,11 +247,42 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft, view:
             <Button type="submit" variant="outline" disabled={!address.trim()}>
               {t("Continue")}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => onDraft(serversDraft([]), "json")}>
+            <Button type="button" variant="ghost" onClick={() => onDraft(customDraft([]), "json")}>
               {t("Paste JSON")}
             </Button>
           </div>
         </form>
+      </PageSection>
+
+      <PageSection title={t("Write a skill")}>
+        <PageRow
+          leading={
+            <RowIcon>
+              <BookOpenTextIcon />
+            </RowIcon>
+          }
+          trailing={
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                onDraft(
+                  customDraft([], [{ name: "", description: "", instructions: "", files: [] }]),
+                  "form",
+                )
+              }
+            >
+              {t("New skill")}
+            </Button>
+          }
+        >
+          <span className="text-sm text-foreground">
+            {t("Steps the assistant follows for one kind of task, with any files they need.")}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("It can stand alone, or come with MCP servers in the same plugin.")}
+          </span>
+        </PageRow>
       </PageSection>
     </>
   );

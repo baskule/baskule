@@ -114,8 +114,8 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
     const id = this.spaceIdCache ?? await this.ctx.storage.get<string>("baskule:spaceId");
     if (!id) return; // Never-opened spaces cannot have started a computer through this cell.
     const computer = new Computerd(this.env.COMPUTERD_URL, this.env.COMPUTERD_TOKEN, id);
-    const status = await computer.status() as { state?: string };
-    if (status.state !== "running") return;
+    const status = await computer.status() as { running?: boolean };
+    if (!status.running) return;
     const skills = (await this.loadSettings(id)).plugins.skills;
     if (!skills.length && !await this.ctx.storage.get("baskule:plugin-skills")) return;
     await syncSkills(computer, skills);

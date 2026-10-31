@@ -109,6 +109,15 @@ export const plugin = sqliteTable("plugin", {
   storedBytes: integer("stored_bytes").notNull(),
 });
 
+export const pluginVersion = sqliteTable("plugin_version", {
+  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  skillFiles: text("skill_files").notNull(),
+  storedBytes: integer("stored_bytes").notNull(),
+  savedAt: integer("saved_at", { mode: "timestamp_ms" }).notNull(),
+  savedBy: text("saved_by").references(() => user.id, { onDelete: "set null" }),
+}, t => [primaryKey({ columns: [t.pluginId, t.version] })]);
+
 export const group = sqliteTable("permission_group", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
