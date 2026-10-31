@@ -302,11 +302,15 @@ describe("ready-member discovery and account reloads", () => {
       const b = await signIn(h, bob.email, "user-password-1");
       const team = (await call(h, "POST", `${API}/spaces`, { creds: x.a.creds, body: { name: "Discovery", members: [{ userId: bob.id }] } })).body.space.id;
       await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [] } });
-      const members = [{ id: x.a.userId, creds: x.a.creds }, { id: bob.id, creds: b.creds }].sort((a, b) => a.id.localeCompare(b.id));
-      expect((await h.svc.plugins.settings(team)).servers).toEqual([]);
+      const members = [{ id: x.a.userId, creds: x.a.creds }, { id: bob.id, creds: b.creds }].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
       const start = await call(h, "GET", `${API}/plugins/${x.p.id}/connect`, { creds: members[1].creds });
       await call(h, "GET", await authorized(start), { creds: members[1].creds });
       expect((await h.svc.plugins.settings(team)).servers[0].catalogUserId).toBe(members[1].id);
+      await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: false, disabled: [] } });
+      expect((await h.svc.plugins.settings(team)).servers).toEqual([]);
+      await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [x.p.id] } });
+      expect((await h.svc.plugins.settings(team)).servers).toEqual([]);
+      await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [] } });
       expect(await h.svc.connections.credential({ ...x.input, spaceId: team, userId: members[0].id })).toEqual({ error: "connect" });
       expect(await h.svc.connections.credential({ ...x.input, spaceId: team, userId: members[1].id })).toMatchObject({ headers: { Authorization: expect.stringMatching(/^Bearer /) } });
       await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: members[1].creds });

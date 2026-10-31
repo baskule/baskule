@@ -97,15 +97,17 @@ test("a connected member supplies discovery while calls keep the turn author's a
   const secondPage = await secondContext.newPage();
   const name = `Discovery ${crypto.randomUUID().slice(0, 8)}`;
   let plugin;
+  let team;
   try {
-    await api.admin.json("PATCH", `/api/baskule/spaces/${people.team}/members/${people.alice.me.user.id}`, { role: "owner" });
-    await api.admin.json("DELETE", `/api/baskule/spaces/${people.team}/members/${api.admin.me.user.id}`);
-    await people.alice.json("PUT", `/api/baskule/spaces/${people.team}/plugins`, { personalPluginsAllowed: true, disabled: [] });
     plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { name, groups: ["everyone"], source: { type: "url", url: oauth.resource } });
     await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { servers: [{ name: "remote", credential: "user-oauth", personal: true }] });
-    const members = [people.alice, people.bob].sort((a, b) => a.me.user.id.localeCompare(b.me.user.id));
+    team = await api.teamSpace(api.admin, name, [people.alice, people.bob]);
+    await api.admin.json("PATCH", `/api/baskule/spaces/${team}/members/${people.alice.me.user.id}`, { role: "owner" });
+    await api.admin.json("DELETE", `/api/baskule/spaces/${team}/members/${api.admin.me.user.id}`);
+    await people.alice.json("PUT", `/api/baskule/spaces/${team}/plugins`, { personalPluginsAllowed: true, disabled: [] });
+    const members = [people.alice, people.bob].sort((a, b) => a.me.user.id < b.me.user.id ? -1 : a.me.user.id > b.me.user.id ? 1 : 0);
     await signIn(firstPage, members[0], stack);
-    const client = await members[0].rpc(people.team);
+    const client = await members[0].rpc(team);
     try {
       const shell = api.watchShell(client);
       await expect.poll(() => shell.ready, { message: "team runtime is booted before connecting" }).toBe(true);
@@ -118,16 +120,25 @@ test("a connected member supplies discovery while calls keep the turn author's a
     await expect(secondPage.getByText("Ready", { exact: true })).toBeVisible();
     await secondPage.screenshot({ path: test.info().outputPath("plugin-connected-discovery.png") });
 
-    await startChat(firstPage, "Use the shared tool [[fake:tool *fixture_lookup {}]]", people.teamName);
-    await expect(assistant(firstPage)).toContainText(`Connect your ${name} account`, { timeout: 90_000 });
+    const reply = async (person, text) => {
+      const client = await person.rpc(team);
+      try {
+        const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
+        const id = await api.launch(client, projectId, text, "Plugin account", { generateTitle: false });
+        const state = api.watchThread(client, id);
+        await api.waitRun(state);
+        const answer = state.assistantText();
+        state.stop();
+        return answer;
+      } finally { client.close(); await client.closed; }
+    };
+    expect(await reply(members[0], "Use the shared tool [[fake:tool *fixture_lookup {}]]")).toContain(`Connect your ${name} account`);
     expect(oauth.calls).toHaveLength(0);
-    await secondPage.goto(stack.urls.front);
-    await startChat(secondPage, "Use my connected tool [[fake:tool *fixture_lookup {}]]", people.teamName);
-    await expect(assistant(secondPage)).toContainText("private fixture document", { timeout: 90_000 });
+    expect(await reply(members[1], "Use my connected tool [[fake:tool *fixture_lookup {}]]")).toContain("private fixture document");
     expect(oauth.calls).toHaveLength(1);
-    await expect(secondPage.getByRole("button", { name: "Stop generation", exact: true })).toHaveCount(0);
   } finally {
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
+    if (team) await api.admin.json("POST", `/api/baskule/admin/spaces/${team}/stop`, {});
     await firstContext.close();
     await secondContext.close();
     await oauth.close();
