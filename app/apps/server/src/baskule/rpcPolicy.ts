@@ -107,7 +107,6 @@ export const BASKULE_ALLOWED_COMMANDS: ReadonlySet<string> = new Set<string>([
   "runtime-request.respond",
   "thread.user-input.dismiss",
   "subagent.stop",
-  "delegated_task.request",
   "delegated_task.wake-policy",
   "delegated_task.completion-delivery.acknowledge",
   "delegated_task.completion-delivery.dispose",

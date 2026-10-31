@@ -9,6 +9,7 @@ import {
   ProviderThreadId,
   RunAttemptId,
   RunId,
+  ScheduledTaskId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -694,3 +695,42 @@ layer("CommandPolicyV2", (it) => {
     }),
   );
 });
+
+it.each(["scheduled", "delegated", "retry", "agent"])(
+  "queues automatic input from a different author during %s work",
+  (kind) => {
+    const projection = dispatchProjection(baseCapabilities);
+    const source = projection.messages[0]!;
+    const protectedProjection = {
+      ...projection,
+      messages: [
+        {
+          ...source,
+          author: { id: "bob", name: "Bob" },
+          ...(kind === "scheduled"
+            ? { scheduledTaskId: ScheduledTaskId.make("task:bob") }
+            : kind === "delegated"
+              ? { senderThreadId: ThreadId.make("parent") }
+              : kind === "retry"
+                ? { creationSource: "server" as const }
+                : { createdBy: "agent" as const }),
+        },
+      ],
+    };
+    const requested = { type: "start_immediately" as const };
+    assert.deepEqual(
+      CommandPolicy.resolveMessageDispatchIntent(protectedProjection, requested, "auto", {
+        id: "alice",
+        name: "Alice",
+      }),
+      { type: "queue_after_active" },
+    );
+    assert.deepEqual(
+      CommandPolicy.resolveMessageDispatchIntent(protectedProjection, requested, "auto", {
+        id: "bob",
+        name: "Bob",
+      }),
+      { type: "steer_active", targetRunId: activeRunId },
+    );
+  },
+);

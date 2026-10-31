@@ -1,3 +1,4 @@
+import { resolveTaskOwner } from "../baskule/task-owner.ts";
 import type { ProjectionRecordField } from "../orchestration-v2/ProjectionStore.ts";
 import {
   CommandId,
@@ -174,4 +175,15 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
 export const newCommandId = Effect.fn("mcp.newCommandId")(function* () {
   const crypto = yield* Crypto.Crypto;
   return CommandId.make(`mcp:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`);
+});
+
+export const readCallerAuthor = Effect.fn("mcp.readCallerAuthor")(function* () {
+  const { scope } = yield* readCaller();
+  if (scope.thread === undefined) return;
+  const { projection } = yield* readThread(undefined, ["runs", "messages", "subagents"]);
+  return yield* resolveTaskOwner(projection, (id) =>
+    readThread(id, ["runs", "messages", "subagents"]).pipe(
+      Effect.map(({ projection }) => projection),
+    ),
+  );
 });

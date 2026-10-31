@@ -10,6 +10,7 @@ import type {
   ShellSnapshotOptions,
 } from "./ProjectionStore.ts";
 import {
+  isAutomatedMessage,
   type ChatAttachment,
   CommandId,
   MessageId,
@@ -759,6 +760,16 @@ const make = Effect.gen(function* () {
         threadId: input.threadId,
       });
     }
+    const author =
+      input.author ??
+      (input.senderThreadId === undefined
+        ? undefined
+        : usageAuthor(
+            yield* getProjectThreadRecords({ ...input, threadId: input.senderThreadId }, [
+              "runs",
+              "messages",
+            ]),
+          ));
     const steerableRun = latestSteerableRun(target);
     let dispatchMode: Extract<
       OrchestrationV2Command,
@@ -776,23 +787,22 @@ const make = Effect.gen(function* () {
         targetRunId: steerableRun.id,
       };
     } else if (input.mode === "auto" && steerableRun !== undefined) {
-      dispatchMode = { type: "steer_active", targetRunId: steerableRun.id };
+      const origin = yield* getProjectThreadRecords(input, ["messages"], {
+        messageIds: [steerableRun.userMessageId],
+      });
+      const message = origin.messages[0];
+      dispatchMode =
+        message &&
+        isAutomatedMessage(message) &&
+        (!message.author?.id.trim() || !author?.id.trim() || message.author.id !== author.id)
+          ? { type: "queue_after_active" }
+          : { type: "steer_active", targetRunId: steerableRun.id };
     } else {
       dispatchMode = {
         type: input.mode === "queue" ? "queue_after_active" : "start_immediately",
       };
     }
 
-    const author =
-      input.author ??
-      (input.senderThreadId === undefined
-        ? undefined
-        : usageAuthor(
-            yield* getProjectThreadRecords({ ...input, threadId: input.senderThreadId }, [
-              "runs",
-              "messages",
-            ]),
-          ));
     const dispatched = yield* dispatch({
       type: "message.dispatch",
       commandId: input.commandId,

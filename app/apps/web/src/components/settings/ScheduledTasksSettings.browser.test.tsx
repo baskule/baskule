@@ -27,6 +27,7 @@ const task: ScheduledTask = {
   modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
   runtimeMode: "full-access",
   interactionMode: "default",
+  author: { id: "alice", name: "Alice" },
   createdBy: "user",
   creationSource: "web",
   createdAt: "2026-09-17T00:00:00.000Z",
@@ -38,7 +39,28 @@ const task: ScheduledTask = {
   runCount: 0,
 };
 
-const state = vi.hoisted(() => ({ connected: true, tasksLoaded: true }));
+const state = vi.hoisted(() => ({ connected: true, tasksLoaded: true, userId: "alice" }));
+vi.mock(import("../../baskule/session"), async (original) => ({
+  ...(await original()),
+  useBaskuleMe: () => ({
+    user: { id: state.userId, name: "Alice", email: "alice@test.invalid", role: "member" },
+    authentication: { mode: "authenticated", password: true, providers: [] },
+    organizationName: "Test",
+    spaces: [],
+    canCreateSpaces: false,
+    voiceInput: false,
+  }),
+}));
+vi.mock(import("../../baskule/spaces"), async (original) => ({
+  ...(await original()),
+  useSpaceForEnvironment: () => ({
+    id: "team",
+    name: "Team",
+    kind: "team",
+    base: "/s/team",
+    role: "member",
+  }),
+}));
 
 function environment() {
   return {
@@ -105,7 +127,19 @@ vi.mock(import("../../hooks/useSettings"), async (original) => ({
 }));
 
 describe("ScheduledTasksSettings", () => {
+  it("hides task editing and run controls from a different author", async () => {
+    state.userId = "bob";
+    state.connected = true;
+    state.tasksLoaded = true;
+    await using _screen = await render(<ScheduledTasksSettings taskId={task.id} />);
+    await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Actions for Review issues" }))
+      .toBeDisabled();
+    await expect.element(page.getByRole("switch", { name: "Enable Review issues" })).toBeDisabled();
+  });
   it("keeps a linked task's unsaved edits across a disconnect and reconnect", async () => {
+    state.userId = "alice";
     state.connected = true;
     state.tasksLoaded = true;
     await using screen = await render(<ScheduledTasksSettings taskId={task.id} />);
@@ -118,12 +152,14 @@ describe("ScheduledTasksSettings", () => {
 
     await expect.element(name).toHaveValue("Review stale issues");
 
+    state.userId = "alice";
     state.connected = true;
     await screen.rerender(<ScheduledTasksSettings taskId={task.id} />);
     await expect.element(name).toHaveValue("Review stale issues");
   });
 
   it("keeps an editor the user opened when the linked task loads later", async () => {
+    state.userId = "alice";
     state.connected = true;
     state.tasksLoaded = false;
     await using screen = await render(<ScheduledTasksSettings taskId={task.id} />);

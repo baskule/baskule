@@ -17,6 +17,7 @@ import {
   dispatchFailure,
   newCommandId,
   readCaller,
+  readCallerAuthor,
   readThread,
   unavailable,
 } from "../../threadAccess.ts";
@@ -95,15 +96,15 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   run_scheduled_task_now: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const scheduler = yield* ScheduledTasks.ScheduledTaskService;
-      const { tasks } = yield* scheduler.list().pipe(Effect.mapError(unavailable));
-      if (!tasks.some((task) => task.id === input.taskId))
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message: "The scheduled task was not found.",
-        });
+      const actor = yield* readCallerAuthor();
       const { task, threadId } = yield* scheduler
-        .runNow({ id: input.taskId })
-        .pipe(Effect.mapError(unavailable));
+        .runNow({ id: input.taskId }, actor)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+          ),
+        );
       return {
         taskId: task.id,
         threadId,
@@ -240,9 +241,11 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
           threadId: input.threadId,
           requestId,
         });
+        const author = yield* readCallerAuthor();
         const result = yield* threads
           .dispatch({
             type: "runtime-request.respond",
+            ...(author === undefined ? {} : { author }),
             threadId: projection.thread.id,
             commandId: yield* newCommandId(),
             requestId,

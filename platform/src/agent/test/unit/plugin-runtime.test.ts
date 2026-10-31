@@ -13,8 +13,7 @@ function fixture() {
     CREATE TABLE orchestration_v2_projection_runs(run_id TEXT,thread_id TEXT,status TEXT,ordinal INTEGER,started_at TEXT,payload_json TEXT);
     CREATE TABLE orchestration_v2_projection_messages(message_id TEXT,payload_json TEXT);
     CREATE TABLE orchestration_v2_projection_subagents(child_thread_id TEXT,run_id TEXT,subagent_id TEXT,provider_thread_id TEXT,thread_id TEXT,origin TEXT,status TEXT,started_at TEXT);
-    CREATE TABLE session_v2(id TEXT,parent_id TEXT,time_created INTEGER);
-    CREATE TABLE scheduled_tasks(task_id TEXT,author_json TEXT);`);
+    CREATE TABLE session_v2(id TEXT,parent_id TEXT,time_created INTEGER);`);
   const query = async (sql: string, bindings: readonly unknown[]) => db.prepare(sql).all(...bindings as (string | number | null)[]);
   function run(id: string, session: string, author?: typeof alice, extra = {}, status = "running") {
     db.prepare("INSERT INTO orchestration_v2_projection_provider_threads VALUES(?,?,?)").run(id, id, JSON.stringify({ nativeThreadRef: { nativeId: session } }));
@@ -47,15 +46,20 @@ describe("turn author", () => {
     const { db, query, run } = fixture();
     run("a", "a", alice, {}, "completed"); run("b", "b"); run("c", "c");
     db.exec("INSERT INTO orchestration_v2_projection_subagents(child_thread_id,run_id,subagent_id) VALUES('b','a','delegate-a'),('c','b','delegate-b')");
+    db.exec("UPDATE orchestration_v2_projection_runs SET payload_json=json_set(payload_json,'$.delegatedTaskId','delegate-a') WHERE run_id='b'");
+    db.exec("UPDATE orchestration_v2_projection_runs SET payload_json=json_set(payload_json,'$.delegatedTaskId','delegate-b') WHERE run_id='c'");
     expect(await resolveTurnAuthor("c", query)).toEqual(alice);
     // Reusing a delegated thread for a later task must select that task's spawning run.
     run("bob-parent", "bob-parent", bob, {}, "completed");
     db.exec("INSERT INTO orchestration_v2_projection_subagents(child_thread_id,run_id,subagent_id) VALUES('c','bob-parent','delegate-c')");
     db.exec("UPDATE orchestration_v2_projection_runs SET payload_json=json_set(payload_json,'$.delegatedTaskId','delegate-c') WHERE run_id='c'");
     expect(await resolveTurnAuthor("c", query)).toEqual(bob);
-    run("task", "task", undefined, { scheduledTaskId: "timer" });
-    db.prepare("INSERT INTO scheduled_tasks VALUES(?,?)").run("timer", JSON.stringify(bob));
+    run("task", "task", bob, { scheduledTaskId: "timer" });
     expect(await resolveTurnAuthor("task", query)).toEqual(bob);
+    run("unattributed", "unattributed", undefined, { scheduledTaskId: "timer" });
+    expect(await resolveTurnAuthor("unattributed", query)).toBeUndefined();
+    db.exec("UPDATE orchestration_v2_projection_runs SET payload_json=json_remove(payload_json,'$.delegatedTaskId') WHERE run_id='c'");
+    expect(await resolveTurnAuthor("c", query)).toBeUndefined();
     db.exec("INSERT INTO session_v2 VALUES('cycle','cycle',1)");
     expect(await resolveTurnAuthor("cycle", query)).toBeUndefined(); db.close();
   });

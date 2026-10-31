@@ -1,3 +1,4 @@
+import { isAutomatedMessage } from "@t3tools/contracts";
 import { useTranslation } from "../../i18n";
 
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -141,7 +142,7 @@ export function QueuedRunsControl({
       serverIndex,
       text,
       // A guest's message keeps the guest's words; the owner can cancel it, not rewrite it.
-      editable: context?.guest === undefined,
+      editable: context?.guest === undefined && !isAutomatedMessage(message),
       attachments,
       thumbnails: attachments
         .filter((attachment) => attachment.type === "image")
@@ -205,6 +206,9 @@ export function QueuedRunsControl({
       if (
         !latest ||
         latest.context?.guest !== undefined ||
+        isAutomatedMessage(
+          projection?.messages.find((message) => message.id === latest.run.userMessageId),
+        ) ||
         props.editingRunId !== null ||
         props.editBlockedReason !== null ||
         busyRunId !== null

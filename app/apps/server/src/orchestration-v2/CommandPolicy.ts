@@ -1,5 +1,7 @@
 import {
+  isAutomatedMessage,
   type ChatAttachment,
+  type OrchestrationV2Author,
   CommandId,
   type OrchestrationV2Command,
   OrchestrationV2ProviderCapabilities,
@@ -68,13 +70,25 @@ export function resolveMessageDispatchIntent(
   projection: OrchestrationV2ThreadProjection,
   requestedMode: MessageDispatchMode,
   deliveryIntent?: "auto" | "steer" | "restart",
+  author?: OrchestrationV2Author,
 ): MessageDispatchMode {
   const mode = resolveDeliveryIntent(projection, requestedMode, deliveryIntent);
-  if (mode.type !== "steer_active") return mode;
+  if (mode.type !== "steer_active" && mode.type !== "restart_active") return mode;
   // Sign-out turns cannot take steering input. A message sent while one runs
   // waits in the queue like any other follow-up.
   const target = projection.runs.find((run) => run.id === mode.targetRunId);
   const targetMessage = projection.messages.find((message) => message.id === target?.userMessageId);
+  if (
+    deliveryIntent === "auto" &&
+    targetMessage !== undefined &&
+    isAutomatedMessage(targetMessage) &&
+    (!author?.id.trim() ||
+      !targetMessage.author?.id.trim() ||
+      author.id !== targetMessage.author.id)
+  ) {
+    return { type: "queue_after_active" };
+  }
+  if (mode.type === "restart_active") return mode;
   if (targetMessage !== undefined && isNativeMaintenanceCommand(targetMessage)) {
     return { type: "queue_after_active" };
   }

@@ -1,3 +1,5 @@
+import { useBaskuleMe } from "~/baskule/session";
+import { useSpaceForEnvironment } from "~/baskule/spaces";
 import { t, useTranslation } from "../../i18n";
 
 import { baskule } from "../../baskule/flags";
@@ -397,7 +399,14 @@ export function ScheduledTasksSettings(target: {
   if (target.taskId === undefined && openedLinkTaskId !== undefined) {
     setOpenedLinkTaskId(undefined);
   }
-  if (linkedTask && linkedEnvironmentId !== undefined && openedLinkTaskId !== target.taskId) {
+  const me = useBaskuleMe();
+  if (
+    linkedTask &&
+    linkedTask.author?.id === me?.user.id &&
+    me !== null &&
+    linkedEnvironmentId !== undefined &&
+    openedLinkTaskId !== target.taskId
+  ) {
     setOpenedLinkTaskId(target.taskId);
     if (editor === null) setEditor({ environmentId: linkedEnvironmentId, task: linkedTask });
   }
@@ -708,6 +717,11 @@ function ScheduledTaskRow({
   const canOperate = useAtomValue(
     serverEnvironment.upsertScheduledTask.permissionAtom(environmentId),
   );
+  const me = useBaskuleMe();
+  const space = useSpaceForEnvironment(environmentId);
+  const isAuthor = Boolean(me && task.author?.id && task.author.id === me.user.id);
+  const canEdit = canOperate && isAuthor;
+  const canStop = canOperate && (isAuthor || me?.user.role === "admin" || space?.role === "owner");
   const [busy, setBusy] = useState(false);
   const [deliveriesOpen, setDeliveriesOpen] = useState(false);
   const isWebhook = task.schedule.type === "webhook";
@@ -777,7 +791,7 @@ function ScheduledTaskRow({
         <div className="flex items-center gap-2">
           <Switch
             checked={task.enabled}
-            disabled={busy || !canOperate}
+            disabled={busy || !(isAuthor ? canEdit : task.enabled && canStop)}
             aria-label={t("Enable {{title}}", { title: task.title })}
             onCheckedChange={() => void act("toggle")}
           />
@@ -787,7 +801,7 @@ function ScheduledTaskRow({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  disabled={busy || !canOperate}
+                  disabled={busy || !(canEdit || canStop)}
                   aria-label={t("Actions for {{title}}", { title: task.title })}
                 />
               }
@@ -795,26 +809,30 @@ function ScheduledTaskRow({
               <MoreHorizontalIcon className="size-4" />
             </MenuTrigger>
             <MenuPopup align="end">
-              <MenuItem onClick={onEdit}>
-                <PencilIcon />
-                {t("Edit")}
-              </MenuItem>
-              {isWebhook ? (
+              {canEdit ? (
+                <MenuItem onClick={onEdit}>
+                  <PencilIcon />
+                  {t("Edit")}
+                </MenuItem>
+              ) : null}
+              {isWebhook && canEdit ? (
                 <MenuItem onClick={() => setDeliveriesOpen(true)}>
                   <InboxIcon />
                   {t("Deliveries")}
                 </MenuItem>
-              ) : (
+              ) : !isWebhook && canEdit ? (
                 <MenuItem onClick={() => void act("run")}>
                   <PlayIcon />
                   {t("Run now")}
                 </MenuItem>
-              )}
-              <MenuSeparator />
-              <MenuItem onClick={() => void act("delete")}>
-                <Trash2Icon />
-                {t("Delete")}
-              </MenuItem>
+              ) : null}
+              {canStop ? <MenuSeparator /> : null}
+              {canStop ? (
+                <MenuItem onClick={() => void act("delete")}>
+                  <Trash2Icon />
+                  {t("Delete")}
+                </MenuItem>
+              ) : null}
             </MenuPopup>
           </Menu>
           {deliveriesOpen ? (
@@ -1165,6 +1183,8 @@ function ScheduledTaskEditorForm({
   const canOperate = useAtomValue(
     serverEnvironment.upsertScheduledTask.permissionAtom(environmentId),
   );
+  const me = useBaskuleMe();
+  const canEdit = task === null || Boolean(me && task.author?.id && task.author.id === me.user.id);
   const upsertTask = useAtomCommand(serverEnvironment.upsertScheduledTask, {
     label: t("scheduled task upsert"),
   });
@@ -1824,7 +1844,14 @@ function ScheduledTaskEditorForm({
         </DialogClose>
         <Button
           size="sm"
-          disabled={!canOperate || saving || editingTaskMissing || !connected || !tasksQuery.data}
+          disabled={
+            !canOperate ||
+            !canEdit ||
+            saving ||
+            editingTaskMissing ||
+            !connected ||
+            !tasksQuery.data
+          }
           onClick={() => void submit()}
         >
           {draft.editingId ? t("Save task") : t("Create task")}

@@ -171,6 +171,7 @@ import {
   stampCommandAuthor,
   stampLaunchAuthor,
 } from "./baskule/author.ts";
+import { identityFromRequest } from "./auth/BaskuleFrontAuth.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import { remoteSshDeviceHosts } from "./device/localSshDeviceHost.ts";
@@ -1199,9 +1200,12 @@ export const layerWsRpc = (
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   // baskule: the Baskule member behind this socket, stamped on the messages it sends.
   messageAuthor?: OrchestrationV2Author,
+  canStopOthers = false,
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
+      const taskActor =
+        messageAuthor === undefined ? undefined : { ...messageAuthor, canStopOthers };
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
       const threadManagement = yield* ThreadManagementService.ThreadManagementService;
@@ -1785,23 +1789,23 @@ export const layerWsRpc = (
             ),
           ),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
-          scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
-        [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input, messageAuthor),
+          scheduledTasks.subscribeList(taskActor).pipe(Stream.map(withVisibleWebhookUrls)),
+        [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input, taskActor),
         [WS_METHODS.scheduledTasksSetEnabled]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
-            Effect.andThen(scheduledTasks.setEnabled(input)),
+            Effect.andThen(scheduledTasks.setEnabled(input, taskActor)),
           ),
         [WS_METHODS.scheduledTasksDelete]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
-            Effect.andThen(scheduledTasks.delete(input)),
+            Effect.andThen(scheduledTasks.delete(input, taskActor)),
           ),
         [WS_METHODS.scheduledTasksRunNow]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
-            Effect.andThen(scheduledTasks.runNow(input)),
+            Effect.andThen(scheduledTasks.runNow(input, taskActor)),
           ),
         [WS_METHODS.scheduledTasksRotateWebhookToken]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
-            Effect.andThen(scheduledTasks.rotateWebhookToken(input)),
+            Effect.andThen(scheduledTasks.rotateWebhookToken(input, taskActor)),
           ),
         [WS_METHODS.guestShareCreate]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
@@ -1809,15 +1813,15 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.secretsAnswerRequest]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
-            Effect.andThen(secretRequests.answer(input)),
+            Effect.andThen(secretRequests.answer(input, messageAuthor)),
           ),
         [WS_METHODS.scheduledTasksListWebhookDeliveries]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
-            Effect.andThen(scheduledTasks.listWebhookDeliveries(input)),
+            Effect.andThen(scheduledTasks.listWebhookDeliveries(input, taskActor)),
           ),
         [WS_METHODS.scheduledTasksGetWebhookDelivery]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
-            Effect.andThen(scheduledTasks.getWebhookDelivery(input)),
+            Effect.andThen(scheduledTasks.getWebhookDelivery(input, taskActor)),
           ),
         [WS_METHODS.serverProbe]: (_input) => Effect.succeed({}),
         [WS_METHODS.serverGetConfig]: (_input) =>
@@ -2766,6 +2770,7 @@ export const layer = Layer.unwrap(
             failEnvironmentInternal("internal_error", error),
           ),
         );
+        const taskIdentity = identityFromRequest(request);
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* analytics.recordOwners(readClientOwners(request), "client");
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
@@ -2802,6 +2807,7 @@ export const layer = Layer.unwrap(
               clientAnalyticsProps,
               serverBrowser,
               baskuleAuthorFromRequest(request),
+              taskIdentity?.role === "admin" || taskIdentity?.spaceRole === "owner",
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.

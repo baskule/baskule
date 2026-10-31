@@ -30,6 +30,8 @@ import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 
+const taskActor = { id: "alice", name: "Alice" };
+
 const isScheduledTaskError = Schema.is(ScheduledTaskError);
 
 const insertRow = (
@@ -46,6 +48,7 @@ const insertRow = (
 ) =>
   sql`INSERT INTO scheduled_tasks ${sql.insert({
     task_id: row.id,
+    author_json: JSON.stringify(taskActor),
     title: "task",
     prompt: row.prompt ?? "Run task",
     enabled: row.enabled,
@@ -75,6 +78,8 @@ it.effect("loads only due tasks and skips corrupt due rows without decoding sett
     const credential = "CREDENTIAL-SECRET-DO-NOT-LOG";
     for (const row of [
       { id: "due-now", next: now, enabled: 1, status: "never" },
+      { id: "unattributed", next: now, enabled: 1, status: "never" },
+      { id: "empty-author", next: now, enabled: 1, status: "never" },
       { id: "", next: now, enabled: 1, status: "never" },
       { id: "   ", next: now, enabled: 1, status: "never" },
       { id: null, next: now, enabled: 1, status: "never" },
@@ -118,6 +123,8 @@ it.effect("loads only due tasks and skips corrupt due rows without decoding sett
     ]) {
       yield* insertRow(sql, { ...row, prompt: secret }, now);
     }
+    yield* sql`UPDATE scheduled_tasks SET author_json = NULL WHERE task_id = 'unattributed'`;
+    yield* sql`UPDATE scheduled_tasks SET author_json = '{"id":" ","name":""}' WHERE task_id = 'empty-author'`;
     const warnings: unknown[] = [];
     const tasks = yield* ScheduledTaskService.listDueTasks(DateTime.makeUnsafe(now)).pipe(
       Effect.provide(
@@ -385,12 +392,9 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
         },
         { id: "alice", name: "Alice" },
       );
-      const edited = yield* service.upsert(
-        { ...task, prompt: "Updated progress" },
-        { id: "bob", name: "Bob" },
-      );
+      const edited = yield* service.upsert({ ...task, prompt: "Updated progress" }, taskActor);
       assert.deepEqual(edited.task.author, { id: "alice", name: "Alice" });
-      yield* service.subscribeList().pipe(
+      yield* service.subscribeList(taskActor).pipe(
         Stream.runForEach(({ tasks }) => {
           const current = tasks.find((candidate) => candidate.id === task.id);
           if (current === undefined) return Deferred.succeed(removed, undefined);
@@ -401,14 +405,14 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
         Effect.forkChild,
       );
       yield* Deferred.await(subscribed);
-      const run = yield* service.runNow({ id: task.id }).pipe(Effect.forkChild);
+      const run = yield* service.runNow({ id: task.id }, taskActor).pipe(Effect.forkChild);
       yield* Deferred.await(started);
       yield* Deferred.await(running);
       yield* service.deleteForThread(threadId);
       yield* Deferred.await(removed);
       yield* Deferred.succeed(release, undefined);
       yield* Fiber.join(run);
-      assert.lengthOf((yield* service.list()).tasks, 0);
+      assert.lengthOf((yield* service.list(taskActor)).tasks, 0);
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
@@ -460,21 +464,24 @@ it.effect("a bound run follows its thread when promotion moves it mid-send", () 
     yield* Effect.gen(function* () {
       const service = yield* ScheduledTaskService.ScheduledTaskService;
       const threadId = ThreadId.make("thread:promoted-during-run");
-      const { task } = yield* service.upsert({
-        id: ScheduledTaskId.make("task:promoted-during-run"),
-        title: "Check in",
-        prompt: "Check progress",
-        enabled: true,
-        schedule: { type: "interval", everyMs: 60_000 },
-        projectId: promoted,
-        threadId,
-        workspaceStrategy: { type: "root" },
-        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-        runtimeMode: "full-access",
-        interactionMode: "default",
-      });
+      const { task } = yield* service.upsert(
+        {
+          id: ScheduledTaskId.make("task:promoted-during-run"),
+          title: "Check in",
+          prompt: "Check progress",
+          enabled: true,
+          schedule: { type: "interval", everyMs: 60_000 },
+          projectId: promoted,
+          threadId,
+          workspaceStrategy: { type: "root" },
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+        },
+        taskActor,
+      );
 
-      const result = yield* service.runNow({ id: task.id });
+      const result = yield* service.runNow({ id: task.id }, taskActor);
 
       assert.equal(result.threadId, threadId);
       const attempts = yield* Ref.get(sends);

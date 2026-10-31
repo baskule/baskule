@@ -64,6 +64,8 @@ import * as ThreadTitleRegeneration from "./ThreadTitleRegenerationService.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
+const taskActor = { id: "alice", name: "Alice" };
+
 const projectId = ProjectId.make("project:launch-test");
 const otherProjectId = ProjectId.make("project:launch-other");
 const encodeThreadProjection = Schema.encodeEffect(OrchestrationV2ThreadProjectionJson);
@@ -344,22 +346,25 @@ it.effect.each(
               launchInput({ command: "command:existing", thread: "thread:existing" }),
             )
           : null;
-      const { task } = yield* tasks.upsert({
-        id: ScheduledTaskId.make("scheduled-task:attribution"),
-        title: "Daily audit",
-        prompt: "Audit performance and crashes.",
-        enabled: false,
-        schedule: { type: "interval", everyMs: 60_000 },
-        projectId,
-        threadId: existing?.threadId ?? null,
-        workspaceStrategy: { type: "root" },
-        modelSelection,
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        createdBy,
-        creationSource: createdBy === "agent" ? "mcp" : "web",
-      });
-      const result = yield* tasks.runNow({ id: task.id });
+      const { task } = yield* tasks.upsert(
+        {
+          id: ScheduledTaskId.make("scheduled-task:attribution"),
+          title: "Daily audit",
+          prompt: "Audit performance and crashes.",
+          enabled: false,
+          schedule: { type: "interval", everyMs: 60_000 },
+          projectId,
+          threadId: existing?.threadId ?? null,
+          workspaceStrategy: { type: "root" },
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdBy,
+          creationSource: createdBy === "agent" ? "mcp" : "web",
+        },
+        taskActor,
+      );
+      const result = yield* tasks.runNow({ id: task.id }, taskActor);
       assert.equal(result.task.lastRunStatus, "succeeded");
       const projectThreads = yield* threads.listProjectThreads({
         projectId,
@@ -402,21 +407,24 @@ it.effect(
     return Effect.gen(function* () {
       const tasks = yield* ScheduledTasks.ScheduledTaskService;
       const threadId = ThreadId.make("thread:missing");
-      const { task } = yield* tasks.upsert({
-        title: "Daily audit",
-        prompt: "Audit performance and crashes.",
-        enabled: false,
-        schedule: { type: "interval", everyMs: 60_000 },
-        projectId,
-        threadId,
-        workspaceStrategy: { type: "root" },
-        modelSelection,
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        createdBy: "user",
-        creationSource: "web",
-      });
-      const result = yield* tasks.runNow({ id: task.id });
+      const { task } = yield* tasks.upsert(
+        {
+          title: "Daily audit",
+          prompt: "Audit performance and crashes.",
+          enabled: false,
+          schedule: { type: "interval", everyMs: 60_000 },
+          projectId,
+          threadId,
+          workspaceStrategy: { type: "root" },
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdBy: "user",
+          creationSource: "web",
+        },
+        taskActor,
+      );
+      const result = yield* tasks.runNow({ id: task.id }, taskActor);
       assert.equal(result.task.lastRunStatus, "failed");
       assert.isNull(result.threadId);
       assert.equal(result.task.threadId, threadId);
@@ -443,21 +451,24 @@ it.effect("runs a thread-bound automation on the provider the thread uses now", 
     const launched = yield* launches.launch(
       launchInput({ command: "command:switched", thread: "thread:switched" }),
     );
-    const { task } = yield* tasks.upsert({
-      id: ScheduledTaskId.make("scheduled-task:switched"),
-      title: "Hourly check",
-      prompt: "Check on the delegated workers.",
-      enabled: false,
-      schedule: { type: "interval", everyMs: 3_600_000 },
-      projectId,
-      threadId: launched.threadId,
-      workspaceStrategy: { type: "root" },
-      modelSelection,
-      runtimeMode: "full-access",
-      interactionMode: "default",
-      createdBy: "agent",
-      creationSource: "mcp",
-    });
+    const { task } = yield* tasks.upsert(
+      {
+        id: ScheduledTaskId.make("scheduled-task:switched"),
+        title: "Hourly check",
+        prompt: "Check on the delegated workers.",
+        enabled: false,
+        schedule: { type: "interval", everyMs: 3_600_000 },
+        projectId,
+        threadId: launched.threadId,
+        workspaceStrategy: { type: "root" },
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdBy: "agent",
+        creationSource: "mcp",
+      },
+      taskActor,
+    );
     yield* threads.dispatch({
       type: "thread.model-selection.set",
       commandId: CommandId.make("command:switch-selection"),
@@ -465,7 +476,7 @@ it.effect("runs a thread-bound automation on the provider the thread uses now", 
       modelSelection: claudeModelSelection,
     });
 
-    const result = yield* tasks.runNow({ id: task.id });
+    const result = yield* tasks.runNow({ id: task.id }, taskActor);
     assert.equal(result.task.lastRunStatus, "succeeded");
     const projection = yield* threads.getThreadProjection(launched.threadId);
     const message = projection.messages.find((item) => item.scheduledTaskId === task.id);
@@ -972,10 +983,12 @@ it.effect("stores a Scratch scheduled task at the root and keeps worktrees elsew
     const tasks = yield* ScheduledTasks.ScheduledTaskService;
     const scratch = yield* tasks.upsert(
       scheduledTaskInput("scheduled-task:scratch-upsert", projectId),
+      taskActor,
     );
     assert.deepEqual(scratch.task.workspaceStrategy, { type: "root" });
     const git = yield* tasks.upsert(
       scheduledTaskInput("scheduled-task:git-upsert", otherProjectId),
+      taskActor,
     );
     assert.deepEqual(git.task.workspaceStrategy, worktreeStrategy);
   }).pipe(Effect.provide(harness.layer));
@@ -989,6 +1002,7 @@ it.effect("runs a Scratch scheduled task saved with a worktree in its own folder
     const sql = yield* SqlClient.SqlClient;
     const { task } = yield* tasks.upsert(
       scheduledTaskInput("scheduled-task:scratch-stored", projectId),
+      taskActor,
     );
     // Tasks saved before Scratch was coerced still hold a worktree strategy.
     yield* sql`
@@ -996,7 +1010,7 @@ it.effect("runs a Scratch scheduled task saved with a worktree in its own folder
       SET workspace_strategy_json = ${JSON.stringify(worktreeStrategy)}
       WHERE task_id = ${task.id}
     `;
-    const ran = yield* tasks.runNow({ id: task.id });
+    const ran = yield* tasks.runNow({ id: task.id }, taskActor);
     assert.equal(ran.task.lastRunStatus, "succeeded");
     const [thread] = yield* threads.listProjectThreads({ projectId, includeSubagents: false });
     assert.isDefined(thread);
