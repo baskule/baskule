@@ -1,5 +1,5 @@
 // T3's per-chat MCP server (its agent tools and the shared browser's preview_* tools), proxied in-process with a static
-// tool list (0.2.1, latency).
+// tool list (latency).
 //
 // T3 adds its server to a chat's OpenCode location before each turn (`PUT /api/experimental/mcp/t3-code-…`, see
 // index.ts mcpRoute). Connecting OpenCode straight to it costs an MCP handshake over the space bridge (initialize,
@@ -76,7 +76,7 @@ export class T3McpProxy {
     this.session ??= (async () => {
       const t0 = Date.now();
       const id = `os-${this.nextId++}`;
-      const res = await this.post({ jsonrpc: "2.0", id, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "baskule-agent", version: "0.2.1" } } }, null);
+      const res = await this.post({ jsonrpc: "2.0", id, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "baskule-agent", version: "0.5.0" } } }, null);
       const init = await readAnswer(res, id);
       if (!res.ok || !init?.result) throw new Error(`T3 MCP initialize answered ${res.status}`);
       const sessionId = res.headers.get("mcp-session-id");

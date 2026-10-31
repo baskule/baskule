@@ -39,10 +39,10 @@ answers finish. Chats using a model no longer offered then run on the new defaul
 
 ## First installation
 
-1. Generate deployment secrets with `deploy/v2/init-env.sh`; fill in the infrastructure settings and initial
+1. Generate deployment secrets with `deploy/init-env.sh`; fill in the infrastructure settings and initial
    `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env`. For SSO-only installations, `ADMIN_EMAIL` is sufficient.
-2. Configure `deploy/v2/auth.json` (password login is the checked-in default), then build/deploy using the
-   deployment guide. `AUTH_CONFIG_FILE` selects another file, relative to `deploy/v2` or absolute.
+2. Configure `deploy/auth.json` (password login is the checked-in default), then build/deploy using the
+   deployment guide. `AUTH_CONFIG_FILE` selects another file, relative to `deploy` or absolute.
 3. Sign in as the initial admin and configure **Admin → AI → Models**. Without an AI connection, administration and
    existing data remain accessible; chat generation requires a model and either a provider key or a keyless provider.
 4. Remove the bootstrap password and redeploy. The bootstrap variables never override an existing administrator.
@@ -95,7 +95,7 @@ then enter the same domain in the admin setting after deployment. No data wipe i
 Existing accounts continue to sign in when signup is disabled or their domain is removed. Password accounts
 remain provisioned by admins or invitations.
 
-For a reusable configuration, select `deploy/v2/auth.google-workspace.example.json` with `AUTH_CONFIG_FILE`.
+For a reusable configuration, select `deploy/auth.google-workspace.example.json` with `AUTH_CONFIG_FILE`.
 Set `AUTH_PUBLIC_ORIGIN`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` in the deployment's private `.env`.
 The deploy job resolves these references before validating the authentication configuration. An empty or missing
 value stops deployment. You can also put literal values in a private authentication file selected by
@@ -258,9 +258,7 @@ CPU/memory limits, celld heap/timeouts, and bootstrap admin details stay in `.en
 current idle policy through its authenticated runtime-settings endpoint. If that read fails, that idle check
 does not stop computers using a guessed policy.
 
-## Upgrading an earlier installation
+## Upgrade
 
-This change replaces the product configuration layout. Wipe the installation's data when deploying it:
-back up if wanted, stop and purge with `deploy/v2/down.sh --purge`, prepare `.env` and `auth.json`, then build and
-run `deploy/v2/up.sh` and configure the product in the admin area. Rebuild clients for their new login paths.
-There is no import or fallback from the retired organization/AI environment settings.
+Back up and update the installation using the [deployment upgrade procedure](../deploy/README.md#upgrade).
+Follow the release's data-wipe instructions when required, then configure the product in the admin area.

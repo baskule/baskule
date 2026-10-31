@@ -258,10 +258,10 @@ Baskule is one repository. Start with [building from source](docs/building.md), 
 | --- | --- |
 | `app/` | The clients (web, desktop, mobile) and the SpaceCell chat engine, derived from T3 Code |
 | `platform/` | The agent platform: sign-in, accounts, spaces, plugins and the embedded OpenCode agent |
-| `computer/v2/`, `computerd/v2/` | The computer image and the service that manages computers |
+| `computer/`, `computerd/` | The computer image and the service that manages computers |
 | `openshell/`, `vendor/openshell/` | OpenShell packaging and its patched source |
 | `desktop/` | Desktop packaging and native client checks |
-| `deploy/v2/` | Docker Compose deployment, storage and operations scripts |
+| `deploy/` | Docker Compose deployment, storage and operations scripts |
 | `e2e/` | End-to-end journeys and integration checks |
 | `scripts/`, `stack/` | Toolchain setup, development stacks and check selection |
 

@@ -58,7 +58,7 @@ const CONNECTION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Relay and pending-accept streams share the boundary's concurrent stream
 /// limit with exec and control exchanges; leave the remainder for those.
 /// Baskule: 128, because one computer's browser alone can hold ~100 keep-alive
-/// connections and starve every other process (2026-10-24 Contabo study).
+/// connections and starve every other process (2026-10-24 dedicated-host study).
 const MAX_NETWORK_STREAMS: usize = 128;
 const _: () = assert!(
     MAX_NETWORK_STREAMS < crate::boundary_protocol::BOUNDARY_MAX_CONCURRENT_STREAMS as usize

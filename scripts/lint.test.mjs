@@ -43,6 +43,6 @@ for (const [label, file, body, passes, imports = ""] of cases) {
 }
 
 test("lint ownership excludes upstream T3", () => {
-  for (const file of ["platform/src/x.ts", "computerd/v2/src/x.ts", "e2e/v2/tests/x.ts", "scripts/x.mjs", "app/apps/server/src/baskule/x.ts", "app/apps/web/src/baskule/x.tsx", "app/apps/web/baskule-dev/x.mjs"]) assert.equal(owned.test(file), true, file);
+  for (const file of ["platform/src/x.ts", "computerd/src/x.ts", "e2e/tests/x.ts", "scripts/x.mjs", "app/apps/server/src/baskule/x.ts", "app/apps/web/src/baskule/x.tsx", "app/apps/web/baskule-dev/x.mjs"]) assert.equal(owned.test(file), true, file);
   for (const file of ["app/apps/server/src/ws.ts", "app/apps/web/src/components/x.tsx", "app/packages/contracts/src/x.ts", "vendor/x.js"]) assert.equal(owned.test(file), false, file);
 });

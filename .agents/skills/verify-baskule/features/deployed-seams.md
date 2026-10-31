@@ -1,8 +1,8 @@
 ---
-paths: ["deploy/v2/**", "e2e/v2/**"]
+paths: ["deploy/**", "e2e/**"]
 journeys: null
 profile: "full"
-checks: ["e2e/v2/run.sh --project lifecycle"]
+checks: ["e2e/run.sh --project lifecycle"]
 ownerRun: true
 ---
 # Deployed edge, fleet and failover

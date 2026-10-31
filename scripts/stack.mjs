@@ -350,7 +350,7 @@ async function cleanupComputers(s, purge) {
     if (!s.volumes?.length && !run("docker", ["ps", "-aq", "--filter", "name=^/osdev-openshell$"])) return;
     run(join(ROOT, "openshell/dev-up.sh"), [], { env: environment(s), stdio: ["ignore", 2, 2] });
   }
-  const { Gateway } = await import("../computerd/v2/src/gateway.ts");
+  const { Gateway } = await import("../computerd/src/gateway.ts");
   const env = environment(s);
   const gw = new Gateway(env.OPENSHELL_GATEWAY);
   try {

@@ -30,7 +30,7 @@ sudo git clone https://github.com/baskule/baskule /opt/baskule/src
 ## 2. Configure the installation
 
 ```sh
-cd /opt/baskule/src/deploy/v2
+cd /opt/baskule/src/deploy
 sudo ./init-env.sh
 sudo nano .env
 ```
@@ -41,17 +41,17 @@ of Git. Set at least these values:
 | Setting | Value |
 | --- | --- |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The first administrator. The password is only used at first start. |
-| `BASKULE02_BIND` | `127.0.0.1` to use Baskule from this machine only, or the machine's private network address (for example its LAN or Tailscale address) so other people can reach it |
+| `BASKULE_BIND` | `127.0.0.1` to use Baskule from this machine only, or the machine's private network address (for example its LAN or Tailscale address) so other people can reach it |
 | `PUBLIC_ORIGINS` | The exact address people will open, for example `http://192.168.1.20:47090` or `https://baskule.example.com` |
 
 Leave the other values as they are for a first installation. Sign-in uses passwords by default
-(`deploy/v2/auth.json`); [single sign-on](#sign-in-with-google-microsoft-or-your-company-account) can be added later.
+(`deploy/auth.json`); [single sign-on](#sign-in-with-google-microsoft-or-your-company-account) can be added later.
 
 ## 3. Build and start
 
 ```sh
 cd /opt/baskule/src
-sudo docker build --network=host -t baskule-build deploy/v2/build-env
+sudo docker build --network=host -t baskule-build deploy/build-env
 sudo docker run --rm --name baskule-build --network=host --pid=host \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /opt/baskule:/opt/baskule -w /opt/baskule/src baskule-build
@@ -63,7 +63,7 @@ starts everything and deploys the app. It ends by printing the address, by defau
 Check that it is up:
 
 ```sh
-curl -s http://<BASKULE02_BIND>:47090/version.json
+curl -s http://<BASKULE_BIND>:47090/version.json
 ```
 
 ## 4. Finish the setup in the app
@@ -87,7 +87,7 @@ QR code. Native apps are built from this repository today (see [the desktop guid
 
 ## Make it reachable by your team
 
-- **On a private network**, set `BASKULE02_BIND` to the machine's private address and `PUBLIC_ORIGINS` to the URL
+- **On a private network**, set `BASKULE_BIND` to the machine's private address and `PUBLIC_ORIGINS` to the URL
   people use, then run the build container again.
 - **Over the internet**, put an HTTPS reverse proxy in front of port 47090 and set `publicOrigin` in `auth.json` to
   your HTTPS address (for example `https://baskule.example.com`). Set `PUBLIC_ORIGINS` to that address too, then run
@@ -95,7 +95,7 @@ QR code. Native apps are built from this repository today (see [the desktop guid
 
 ## Sign in with Google, Microsoft or your company account
 
-Add login providers to `deploy/v2/auth.json`: Google, Microsoft, GitHub or any OIDC provider, then run the build
+Add login providers to `deploy/auth.json`: Google, Microsoft, GitHub or any OIDC provider, then run the build
 container again. Only invited people can join, except Google Workspace domains that admins allow in
 **Admin → General → Authentication**. The [installation settings](installation-settings.md) give
 complete examples, including Google Workspace domains and plugin accounts that reuse a person's login.
@@ -105,7 +105,7 @@ complete examples, including Google Workspace domains and plugin accounts that r
 By default every cell is stored in a RustFS bucket on the machine's disk. To use any S3-compatible bucket instead
 (a replicated bucket, or a provider in your own country), set `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`,
 `S3_SECRET_KEY` and `CELLD_BUCKET_NAME` in `.env` before the first start. See
-[deploy on a dedicated host](../deploy/v2/contabo.md).
+[deploy on a dedicated host](../deploy/dedicated-host.md).
 
 ## Back up, update and stop
 
@@ -113,18 +113,18 @@ Run these from `/opt/baskule/src`.
 
 | Task | Command |
 | --- | --- |
-| Back up the local bucket, the sandbox state and every computer's disk | `sudo deploy/v2/down.sh`, then `sudo deploy/v2/backup.sh` |
-| Update to the latest version | Read the [upgrade notes](../deploy/v2/README.md#upgrade) first: some updates require a backup and a wipe. Then `sudo git -C /opt/baskule/src pull` and run the build container again (step 3) |
-| Stop, keeping all data | `sudo deploy/v2/down.sh` |
+| Back up the local bucket, the sandbox state and every computer's disk | `sudo deploy/down.sh`, then `sudo deploy/backup.sh` |
+| Update to the latest version | Read the [upgrade notes](../deploy/README.md#upgrade) first: some updates require a backup and a wipe. Then `sudo git -C /opt/baskule/src pull` and run the build container again (step 3) |
+| Stop, keeping all data | `sudo deploy/down.sh` |
 | Start again | run the build container again (step 3) |
 
 Stop Baskule before a backup so the copy is consistent. An external bucket is not included: back it up with your
-storage provider. `deploy/v2/down.sh --purge` deletes **all** data. Back up first. Restoring, rolling upgrades and the other
-operations are in the [deployment guide](../deploy/v2/README.md).
+storage provider. `deploy/down.sh --purge` deletes **all** data. Back up first. Restoring, rolling upgrades and the other
+operations are in the [deployment guide](../deploy/README.md).
 
 ## If something goes wrong
 
-- `docker ps` lists the services. Every container name starts with `baskule02-`.
-- `docker logs baskule02-celld-a` shows the agent platform, and `docker logs baskule02-computerd` the computers.
+- `docker ps` lists the services. Every container name starts with `baskule-`.
+- `docker logs baskule-celld-a` shows the agent platform, and `docker logs baskule-computerd` the computers.
 - A trace view of every request is published on port 47098 of the bind address.
 - [Building from source](building.md) explains the toolchains in detail.

@@ -37,7 +37,7 @@ SpaceCell calls `stop()` (interrupt active sessions) and `dispose()` directly.
 | `index.ts` | AgentRuntime: lazy boot, session binding, tools, #258 keepalives, heartbeat and idle disposal |
 | `opencode.js` | the **only** module using OpenCode SDK internals (`@opencode/sdk/dist/internal/{host,workerd}.js`); workspace provider `computer`; shared SQL client; `rg` resolved on the computer |
 | `remote-spawner.js` | Effect `ChildProcessSpawner` over computerd `POST /v1/spaces/:id/exec` (NDJSON frames) and `/kill` |
-| `computerd.ts` | computerd v2 client (exec, kill, status) |
+| `computerd.ts` | computerd client (exec, kill, status) |
 | `space-bridge.ts` | OpenCode's route back to T3's MCP server (agent and preview tools) in the same SpaceCell |
 | `t3-mcp.ts` | cached static tool list in front of T3's MCP server, so a chat's first step needs no round trip |
 | `lazy-mcp.ts` | in-isolate MCP registry (`baskule-mcp.internal`) for `t3-mcp.ts` proxies and the sample app |
@@ -68,12 +68,12 @@ OpenCode's automatic compaction: it reserves the larger of 15% of the context wi
 
 | Var | Default | |
 |---|---|---|
-| `COMPUTERD_URL`, `COMPUTERD_TOKEN` | | computerd v2 |
+| `COMPUTERD_URL`, `COMPUTERD_TOKEN` | | computerd |
 | `BASKULE_AGENT_IDLE_S` | 300 | idle time before OpenCode is closed (cell evictable) |
 | `BASKULE_AGENT_DEBUG` | off | `1`: debug routes + the `gpt-fake-patch` test model. Never in deployments |
 
 celld nodes need `CELLD_V8_HEAP_LIMIT_MB` ≥ 1024 (OpenCode + T3 in one isolate) and `CELLD_FETCH_TIMEOUT_S` raised
-(long exec streams), as in `deploy/v2`.
+(long exec streams), as in `deploy`.
 
 ## Feedback loops
 
@@ -87,10 +87,10 @@ src/agent/test/devstack.sh start|reload|restart-celld|stop|down   # the stack by
 
 The harness (`test/harness`) routes `/a/<spaceId>/…` to the **merged SpaceCell** at `/_baskule/agent/…`, so the checks
 exercise the embedded runtime in its production composition (shared SQL client, SpaceCell-owned alarms and wipe). It
-uses the fake LLM (requires the bearer key, so the key path is exercised), **computerd v2 from source** and the shared
-private OpenShell gateway of the component loops (`openshell/dev-up.sh`, real `baskule-computer:0.2` sandboxes).
+uses the fake LLM (requires the bearer key, so the key path is exercised), **computerd from source** and the shared
+private OpenShell gateway of the component loops (`openshell/dev-up.sh`, real `baskule-computer:local` sandboxes).
 Each run uses fresh space ids and deletes its computers at the end. Feature-level behaviour across members (queue,
-delegation, MCP apps) is `platform/test/wpf`; the deployed fleet (restart/failover with real nodes) is `e2e/v2`.
+delegation, MCP apps) is `platform/test/wpf`; the deployed fleet (restart/failover with real nodes) is `e2e`.
 Which loop to run for a change: [development workflow](../../../docs/development-workflow.md).
 
 Remote plugin MCP servers use only in-isolate config URLs. Each call resolves the T3 turn author (including delegated

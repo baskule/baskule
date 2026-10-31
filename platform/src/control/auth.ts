@@ -49,7 +49,7 @@ async function connectIdentifier(code: string): Promise<string> {
 }
 
 /**
- * Connect codes (0.3 client connection): a signed-in person signs another device or browser in without typing a
+ * Connect codes: a signed-in person signs another device or browser in without typing a
  * password. `POST /auth/connect/code` (session) issues a 256-bit code valid once for CONNECT_CODE_TTL_MS, stored hashed in
  * Better Auth's `verification` table. `POST /auth/connect/redeem {code}` (public) consumes it and creates a NEW session
  * for that person: cookie for browsers and the desktop window, `set-auth-token` (bearer plugin) for mobile. A new session,

@@ -1,8 +1,8 @@
 # Baskule fork of T3 Code
 
-This repo is the Baskule Alpha 0.1 product fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (MIT,
-Copyright (c) 2026 T3 Tools Inc.; keep `LICENSE`). Baskule is a ChatGPT-like assistant UI driving OpenCode 2 inside a
-sleepable "computer" container. See the [project README](../README.md) for the current repository layout.
+Baskule forks [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (MIT,
+Copyright (c) 2026 T3 Tools Inc.; keep `LICENSE`) for a self-hosted agent platform. SpaceCell embeds OpenCode 2,
+and tools run on each space's OpenShell computer. See the [project README](../README.md) for the repository layout.
 
 - **Upstream base:** tag `v0.1.5` = `6d450a4284852af137b2f3407fddd89eb76e7644`.
 - `app/` is tracked in the Baskule umbrella repository. The original fork history and snapshot source are recorded in `../source-provenance.json`.
@@ -44,18 +44,6 @@ cd ../.run/baseline-cwd && T3CODE_TELEMETRY_ENABLED=false node ../../app/apps/se
 (cd packages/contracts && CI=1 pnpm test)
 (cd apps/server && HOME="$BASKULE_ROOT/.run/baseline-testhome" CI=1 node_modules/.bin/vp test run src/auth src/provider)
 ```
-
-## Baseline (v0.1.1, unpatched, 2026-10-22, 4 cores)
-
-| Suite                                      | Result                                                                          | Duration |
-| ------------------------------------------ | ------------------------------------------------------------------------------- | -------- |
-| packages/provider-opencode                 | 16 files passed, 2 skipped; 228 tests passed, 2 skipped                         | 34 s     |
-| packages/contracts                         | 39 files passed; 695 tests passed                                               | 15 s     |
-| apps/server subset `src/auth src/provider` | 70 files passed; 1071 tests passed                                              | 226 s    |
-| apps/server full (462 files)               | not completed: killed by a 9 min timeout (CI mode prints nothing until the end) | > 9 min  |
-
-Smoke: built server with `--base-dir baskule/.run/baseline` on 127.0.0.1:47080 -> `GET /` 200 (`<title>T3 Code (Beta)</title>`)
-4 s after start, then stopped.
 
 ## Original fork patches
 
@@ -140,7 +128,7 @@ Render to `<baseDir>/userdata/settings.json` before start (`${VAR}` placeholders
 | apps/server subset `src/auth src/provider src/telemetry` | 77 files passed; 1106 tests passed                      |
 | typecheck `packages/provider-opencode`, `apps/server`    | clean                                                   |
 
-## 0.2: T3 in a celld SpaceCell (`apps/server/src/baskule/workerd/`)
+## T3 in a celld SpaceCell (`apps/server/src/baskule/workerd/`)
 
 The server runs as one Durable Object per space (architecture v3 E2/E8). `createSpaceServer` (spaceServer.ts) builds
 T3's runtime from `server.ts`'s exported layers with workerd edges; the platform's `SpaceCell`
@@ -154,7 +142,7 @@ HOME=/tmp/t CI=1 node_modules/.bin/vp test run src/baskule src/auth/BaskuleFront
 | Piece                                                                                                                                                                                                   | Where                                                                                                                       |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | SqlClient over `ctx.storage.sql`: `storage.transaction` (nested = savepoint), >100 params inlined, compound SELECTs regrouped (recursive CTE aware), tuning PRAGMAs no-ops                              | `workerd/doSqlClient.ts`; hook `persistence/Sqlite.ts` (`InjectedSqlClient`)                                                |
-| FileSystem: T3 home `/baskule/spaces/<id>` in DO SQLite, chat folders as DO records materialized lazily, `/sandbox` via computerd v2, `/tmp` in memory                                                  | `workerd/fileSystem.ts`, `workerd/computerFs.ts`                                                                            |
+| FileSystem: T3 home `/baskule/spaces/<id>` in DO SQLite, chat folders as DO records materialized lazily, `/sandbox` via computerd, `/tmp` in memory                                                  | `workerd/fileSystem.ts`, `workerd/computerFs.ts`                                                                            |
 | Raw `node:fs` users (WorkspaceEntries, WorkspaceFileSystem, MediaFile, attachmentStore)                                                                                                                 | seams `baskule/HostFileSystem.ts`, `baskule/attachmentFs.ts` (defaults = Node)                                              |
 | HTTP + WebSocket (`WebSocketPair`), #258 keepalive per socket, route allowlist                                                                                                                          | `workerd/transport.ts`, `workerd/routes.ts`                                                                                 |
 | `BASKULE_AUTH_MODE=front` (identity header only; tickets bound to it)                                                                                                                                   | `auth/BaskuleFrontAuth.ts`; hook at the end of `EnvironmentAuth.make`                                                       |
@@ -163,7 +151,7 @@ HOME=/tmp/t CI=1 node_modules/.bin/vp test run src/baskule src/auth/BaskuleFront
 | Message author (`author` on `message.dispatch`, launch `initialMessage`, messages), stamped at the RPC boundary                                                                                         | `baskule/author.ts`; `ws.ts`, `Orchestrator.ts` (4 sites + steer), `ThreadLaunchService.ts`, contracts                      |
 | Scratch root `/sandbox/space/chats`, webhook base `/hooks/<id>`                                                                                                                                         | `BASKULE_SCRATCH_ROOT` (`ManagedProjectFolders.ts`), `BASKULE_WEBHOOK_BASE` (`server.ts`)                                   |
 | Node shims, OpenCode-only driver list                                                                                                                                                                   | `workerd/shims/`, `workerd/trim/` (aliased by `workerd/build.mjs`, the only place)                                          |
-| Trimmed host modules (0.2.1): terminals, devices, local preview browser, source-control drivers                                                                                                         | `workerd/trim/*.ts` (stub = same exports and service keys, inert), listed in `TRIM` in `workerd/build.mjs`                  |
+| Trimmed host modules: terminals, devices, local preview browser, source-control drivers                                                                                                         | `workerd/trim/*.ts` (stub = same exports and service keys, inert), listed in `TRIM` in `workerd/build.mjs`                  |
 | MCP toolkits filtered by the space policy before registration; in a cell they register on the first `/mcp` request                                                                                      | `mcp/McpHttpServer.ts`, `baskule/mcpDeferredRegistrations.ts`                                                               |
 | New chat start: the title is queued when the run leaves "starting" (not with the message); a run that starts right away counts its work from the send (`workStartedAt`); no git probe after each answer | `baskule/newChatStart.ts`; `Orchestrator.ts` (2 sites), `ProviderTurnStartService.ts`, `RunFinalizationService.ts`          |
 
@@ -362,9 +350,9 @@ as a "Context compacted" divider in the turn (fixture `testkit/fixtures/opencode
 
 Compaction is automatic. There is no manual `/compact` action, provider compaction hook, or idle compaction worker.
 
-## 0.2 web client (WP-E, branch `wp/e-web`)
+## Hosted web client
 
-Hosted multi-user build: `VITE_BASKULE_HOSTED=1` (with the 0.1 UI flags on).
+Hosted multi-user build: `VITE_BASKULE_HOSTED=1`.
 Dev loop: `apps/web/baskule-dev/` (`./check.sh`).
 
 | Area                                                | Patch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -375,4 +363,4 @@ Dev loop: `apps/web/baskule-dev/` (`./check.sh`).
 | New views                                           | routes `login`, `invite` (`#token=`), `reset-password`, `admin` (people + invitations, spaces, health), `apps` (desktop downloads; `/downloads/` is the front's file listing); `baskule/SpaceManagementDialog.tsx` (team space members/roles/rename/delete, new team space); `baskule/BaskuleUserMenu.tsx` in the sidebar footer (spaces you manage, admin, desktop app, change password, sign out); API client `baskule/api.ts` against WP-C's `/api/baskule`                                                                                                                                                 |
 | Authorship                                          | contracts `OrchestrationV2Author` (optional `author` on creation fields, as spike path-c); `session-logic.ts`, `types.ts`; `MessagesTimeline.tsx` names other people's messages (`baskule/authorship.ts`)                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Spaces in the UI                                    | `Sidebar.tsx` row label (`baskule/BaskuleSpaceLabel.tsx`, shown with 2+ spaces); the composer's "Run on" picker lists the spaces (upstream); connection banners say "Acme did not answer" (`baskule/copy.ts`, `ConnectionDiagnosisDetails.tsx`)                                                                                                                                                                                                                                                                                                                                                                |
-| 0.1 hides lifted in hosted mode (thin-server scope) | chat menu: Pin, Snooze, Mark unread (`baskule/threadMenu.ts`); sidebar: pinned first, snoozed last, unread dot and weight (`Sidebar.tsx`, `BaskuleChatStatus.tsx`); `/settings/scheduled-tasks` + footer link (`baskule/settingsPages.ts`, `routes/settings.tsx`, `SidebarChrome.tsx`); shared Browser surface in the right panel (`baskule/rightPanel.ts`)                                                                                                                                                                                                                                                    |
+| Controls available in hosted mode | chat menu: Pin, Snooze, Mark unread (`baskule/threadMenu.ts`); sidebar: pinned first, snoozed last, unread dot and weight (`Sidebar.tsx`, `BaskuleChatStatus.tsx`); `/settings/scheduled-tasks` + footer link (`baskule/settingsPages.ts`, `routes/settings.tsx`, `SidebarChrome.tsx`); shared Browser surface in the right panel (`baskule/rightPanel.ts`)                                                                                                                                                                                                                                                    |

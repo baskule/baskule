@@ -57,8 +57,8 @@ case "$suite" in
     ;;
   type-root)
     run pnpm --dir platform typecheck
-    run pnpm --dir computerd/v2 typecheck
-    run pnpm --dir computerd/v2 test
+    run pnpm --dir computerd typecheck
+    run pnpm --dir computerd test
     run pnpm --dir e2e typecheck
     ;;
   type-web|type-mobile)
