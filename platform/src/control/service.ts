@@ -18,7 +18,7 @@ import { Groups } from "./groups";
 import { Connections } from "./connections";
 import { Plugins } from "./plugins";
 import { pluginCredential } from "./plugin-credential";
-import { readBounded } from "./registries/http";
+import { readBounded } from "./plugin-source";
 import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "../../../app/packages/contracts/src/baskule";
 import {
   INTERNAL_HEADER,

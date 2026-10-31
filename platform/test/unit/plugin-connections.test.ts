@@ -85,6 +85,31 @@ describe("MCP OAuth connections", () => {
     expect((await discoverOAuth("https://resource.test/mcp", fetcher)).as.issuer).toBe("https://idp.test/tenant");
     expect(seen).toEqual(["https://resource.test/mcp", "https://resource.test/.well-known/oauth-protected-resource/mcp", "https://resource.test/.well-known/oauth-protected-resource", "https://idp.test/.well-known/oauth-authorization-server/tenant", "https://idp.test/.well-known/openid-configuration/tenant", "https://idp.test/tenant/.well-known/openid-configuration"]);
   });
+  it.each(["https://accounts.google.com", "https://api.box.com"])("accepts only the authority-root slash equivalence for %s", async issuer => {
+    let declared = issuer;
+    const fetcher = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === "https://resource.test/mcp") return new Response(null, { status: 401 });
+      if (url.includes("oauth-protected-resource")) return Response.json({ resource: "https://resource.test/mcp", authorization_servers: [issuer + "/"] });
+      return Response.json({ issuer: declared, authorization_endpoint: issuer + "/authorize", token_endpoint: issuer + "/token", code_challenge_methods_supported: ["S256"], response_types_supported: ["code"] });
+    };
+    expect((await discoverOAuth("https://resource.test/mcp", fetcher)).as.issuer).toBe(issuer);
+    expect((await discoverOAuth("https://resource.test/mcp", fetcher, "public", issuer)).as.issuer).toBe(issuer);
+    for (const other of [issuer + "/tenant", "https://other.test", issuer.toUpperCase()]) {
+      declared = other;
+      await expect(discoverOAuth("https://resource.test/mcp", fetcher)).rejects.toMatchObject({ code: "invalid_authorization_metadata" });
+    }
+  });
+  it("uses an explicit catalog resource without treating endpoint queries or other paths as that identifier", async () => {
+    const fetcher = async (input: string | URL | Request) => {
+      if (String(input) === "https://resource.test/mcp?tools=all") return new Response(null, { status: 401 });
+      if (String(input).includes("oauth-protected-resource")) return Response.json({ resource: "https://resource.test", authorization_servers: ["https://idp.test"] });
+      return Response.json({ issuer: "https://idp.test", authorization_endpoint: "https://idp.test/authorize", token_endpoint: "https://idp.test/token", code_challenge_methods_supported: ["S256"], response_types_supported: ["code"] });
+    };
+    expect((await discoverOAuth("https://resource.test/mcp?tools=all", fetcher, "public", undefined, "https://resource.test")).resource).toBe("https://resource.test");
+    await expect(discoverOAuth("https://resource.test/mcp?tools=all", fetcher)).rejects.toMatchObject({ code: "invalid_oauth_resource" });
+    await expect(discoverOAuth("https://resource.test/mcp?tools=all", fetcher, "public", undefined, "https://other.test")).rejects.toMatchObject({ code: "invalid_oauth_resource" });
+  });
   it("completes PKCE/DCR with resource on both requests, encrypts tokens, lists state and disconnects", async () => {
     const f = await fakeOAuth();
     try {
@@ -228,7 +253,7 @@ describe("vendor setup and recipes", () => {
       expect(h.storage.sql.exec("select * from plugin_oauth_state").toArray()).toEqual([]);
     } finally { await f.close(); }
   });
-  it("invalidates every account of a custom plugin when a server edit removes its saved client", async () => {
+  it.each(["user-oauth", "organization"] as const)("invalidates a custom vendor client only when its %s server changes", async firstCredential => {
     const f = await fakeOAuth(); f.state.dcr = false;
     try {
       const h = await makeService(); const a = await asAdmin(h);
@@ -236,17 +261,17 @@ describe("vendor setup and recipes", () => {
       const added = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: ["everyone"], source: { type: "archive", sha256: await sha256(archive) }, archive: base64(archive) } });
       expect(added.status).toBe(201);
       const id = added.body.id;
-      const servers = ["first", "second"].map(name => ({ name, credential: "user-oauth", oauth: { staticClient: true } }));
+      const servers = ["first", "second"].map(name => ({ name, credential: name === "first" ? firstCredential : "user-oauth", oauth: { staticClient: true } }));
       expect((await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { servers } })).status).toBe(200);
       await call(h, "PUT", `${API}/admin/vendors/${id}`, { creds: a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
-      for (const name of ["first", "second"]) {
+      for (const name of firstCredential === "user-oauth" ? ["first", "second"] : ["second"]) {
         const start = await call(h, "GET", `${API}/plugins/${id}/connect?server=${name}`, { creds: a.creds });
         expect((await call(h, "GET", await authorized(start), { creds: a.creds })).headers.get("location")).toContain("pluginConnection=connected");
       }
-      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toHaveLength(2);
+      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toHaveLength(firstCredential === "user-oauth" ? 2 : 1);
       await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { servers: [{ ...servers[0], url: f.resource + "/changed" }] } });
-      expect((await call(h, "GET", `${API}/plugins`, { creds: a.creds })).body.plugins[0].servers.map((s: { status: string }) => s.status)).toEqual(["needs_setup", "needs_setup"]);
-      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual([]);
+      expect((await call(h, "GET", `${API}/plugins`, { creds: a.creds })).body.plugins[0].servers.map((s: { status: string }) => s.status)).toEqual(firstCredential === "user-oauth" ? ["needs_setup", "needs_setup"] : ["needs_setup", "ready"]);
+      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toHaveLength(firstCredential === "user-oauth" ? 0 : 1);
     } finally { await f.close(); }
   });
   it("uses a pinned issuer without resource metadata, adds recipe params and omits resource", async () => {

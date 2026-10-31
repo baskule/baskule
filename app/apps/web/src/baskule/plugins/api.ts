@@ -8,8 +8,6 @@ import {
   type PluginErrorCode,
   type PluginInstallInput,
   type PluginPatch,
-  type PluginSearchResponse,
-  type PluginSearchResult,
   type PluginSecretInput,
   type SpacePluginSettings,
 } from "@t3tools/contracts/baskule-plugins";
@@ -25,14 +23,11 @@ export interface VendorClient {
   clientId: string;
   clientSecret?: string;
   tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic";
+  /** The organization's directory ID, for vendors that sign in per organization. */
+  tenant?: string;
 }
 
 export const pluginsApi = {
-  search: (q: string, kind?: PluginSearchResult["kind"]) =>
-    request<PluginSearchResponse>(
-      "GET",
-      `${root}/admin/plugins/search?${new URLSearchParams({ q, ...(kind ? { kind } : {}) })}`,
-    ),
   installed: async () =>
     (await request<{ plugins: AdminPlugin[] }>("GET", `${root}/admin/plugins`)).plugins,
   install: (input: PluginInstallInput) => request<Plugin>("POST", `${root}/admin/plugins`, input),
@@ -78,6 +73,7 @@ const tooLarge = () => t("It is too large to add (10 MB packed, 20 MB unpacked a
 const cantOpen = () => t("This file can't be opened. Use a .zip or .tar.gz file.");
 
 const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
+  already_installed: () => t("It is already added. Open it from Installed."),
   address_not_allowed: () =>
     t(
       "Baskule can't use this address. Enter the full https:// address of the server, without a password or placeholder in it.",
@@ -85,6 +81,9 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   archive_hash_mismatch: () => t("The file changed while it was being sent. Try again."),
   archive_required: () => t("Choose the file to upload."),
   builtin_group: () => t("Everyone always includes every person, and keeps its name."),
+  catalog_not_available: () =>
+    t("This service can't be added yet. Its card in the catalog says why."),
+  catalog_unknown: () => t("The catalog no longer lists this service. Reload the page."),
   connection_failed: () =>
     t("The sign-in didn't finish. Try again. If it keeps failing, ask your admin."),
   connection_not_allowed: () =>
@@ -124,6 +123,7 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
       "This server runs as a program on someone's computer. Baskule needs its web address; ask its maker whether it has one.",
     ),
   not_found: () => t("It no longer exists. Reload the page."),
+  not_editable: () => t("A plugin from the catalog can only be paused or resumed here."),
   not_oauth_server: () => t("This server doesn't use each person's own account."),
   not_organization_server: () => t("This server doesn't use an organization key."),
   oauth_client_configuration_required: () => t("Your administrator needs to finish setting it up"),
@@ -156,17 +156,13 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   plugin_too_large: tooLarge,
   plugin_tree_too_large: tooLarge,
   proprietary_plugin: () => t("Its license doesn't allow using it here."),
-  registry_plugin_not_found: () => t("This plugin is no longer listed. Search again."),
   too_many_plugin_files: () => t("It has too many files to add."),
   unknown_plugin_server: () =>
     t("One of its servers no longer exists. Reload the page and try again."),
-  unknown_registry: () => t("This catalog is no longer available. Reload the page."),
   unsafe_plugin_path: () => t("It contains a file path Baskule can't accept."),
   unsupported_archive: cantOpen,
   unsupported_git_host: () =>
     t("Only public GitHub repositories can be added by address. Upload the files instead."),
-  unsupported_marketplace_source: () =>
-    t("This plugin has no fixed version to install. Add it from its git repository instead."),
   unsupported_plugin_version: () => t("It uses a plugin format version Baskule can't read yet."),
   user_not_found: () => t("One of these people no longer exists. Reload the page and try again."),
   vendor_unknown: () => t("Baskule no longer knows this service. Reload the page and try again."),

@@ -28,7 +28,7 @@ type Method = "address" | "git" | "file";
 const MAX_ARCHIVE_BYTES = 10 * 1024 * 1024;
 const COMMIT = /^[0-9a-f]{40}$/i;
 
-type InstallSource = Pick<PluginInstallInput, "source" | "archive">;
+type InstallSource = Pick<Extract<PluginInstallInput, { source: unknown }>, "source" | "archive">;
 
 async function archiveInput(file: File): Promise<InstallSource> {
   const bytes = new Uint8Array(await file.arrayBuffer());

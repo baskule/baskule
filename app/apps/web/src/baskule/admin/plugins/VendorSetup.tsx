@@ -1,5 +1,6 @@
 // baskule: the OAuth app an organization registers once per vendor, for services that don't let
 // Baskule register itself. Write-only: the server only says whether one is saved.
+import { ExternalLinkIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n";
@@ -22,12 +23,15 @@ import { PageRow, PageSection } from "../../views/BaskulePage";
 
 type Method = VendorClient["tokenEndpointAuthMethod"];
 const METHODS: ReadonlyArray<Method> = ["client_secret_post", "client_secret_basic", "none"];
+const TENANT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function VendorSetup({
   vendor,
   name,
   configured,
   required,
+  docs,
+  tenantRequired = false,
   onChanged,
 }: {
   readonly vendor: string;
@@ -36,16 +40,29 @@ export function VendorSetup({
   readonly configured: boolean;
   /** A server of this vendor can't sign anyone in until an app is saved. */
   readonly required: boolean;
+  /** The vendor's instructions for registering the app. */
+  readonly docs?: string | undefined;
+  /** The vendor signs in per organization directory, so the app needs its ID. */
+  readonly tenantRequired?: boolean;
   readonly onChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
   const [clientId, setClientId] = useState("");
   const [method, setMethod] = useState<Method>("client_secret_post");
   const [secret, setSecret] = useState("");
+  const [tenant, setTenant] = useState("");
   const [saving, setSaving] = useState<"save" | "remove" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const callback = `${window.desktopBridge?.getBaskuleServer?.() ?? window.location.origin}/api/baskule/plugins/oauth/callback`;
   const needsSecret = method !== "none";
+  const tenantError =
+    tenantRequired && tenant.trim() && !TENANT.test(tenant.trim())
+      ? t("Enter the ID in the form 00000000-0000-0000-0000-000000000000.")
+      : null;
+  const complete =
+    clientId.trim() !== "" &&
+    (!needsSecret || secret !== "") &&
+    (!tenantRequired || TENANT.test(tenant.trim()));
 
   const methodLabel = (value: Method) => {
     switch (value) {
@@ -65,6 +82,7 @@ export function VendorSetup({
       await pluginsApi.vendorSetup(vendor, client);
       setClientId("");
       setSecret("");
+      setTenant("");
       notifySuccess(client ? t("Sign-in setup saved") : t("Sign-in setup removed"));
       await onChanged();
     })()
@@ -118,11 +136,12 @@ export function VendorSetup({
         className="flex flex-col gap-3 px-3 py-3 sm:px-4"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!clientId.trim() || (needsSecret && !secret)) return;
+          if (!complete) return;
           void save({
             clientId: clientId.trim(),
             tokenEndpointAuthMethod: method,
             ...(needsSecret ? { clientSecret: secret } : {}),
+            ...(tenantRequired ? { tenant: tenant.trim() } : {}),
           });
         }}
       >
@@ -130,8 +149,34 @@ export function VendorSetup({
           <CopyField label={t("Callback address")} value={callback} />
           <p className="text-xs text-muted-foreground">
             {t("Register this address at {{name}} as the app's redirect URI.", { name })}
+            {docs ? (
+              <>
+                {" "}
+                <a
+                  href={docs}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1 rounded-sm text-foreground/80 underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-3"
+                >
+                  {t("Setup instructions")}
+                  <ExternalLinkIcon aria-hidden />
+                </a>
+              </>
+            ) : null}
           </p>
         </div>
+        {tenantRequired ? (
+          <FormField
+            label={t("Tenant ID")}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="00000000-0000-0000-0000-000000000000"
+            hint={t("Your organization's directory ID at {{name}}.", { name })}
+            error={tenantError}
+            value={tenant}
+            onChange={(event) => setTenant(event.currentTarget.value)}
+          />
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField
             label={t("Client ID")}
@@ -194,11 +239,7 @@ export function VendorSetup({
               {t("Remove setup")}
             </Button>
           ) : null}
-          <Button
-            type="submit"
-            size="sm"
-            disabled={saving !== null || !clientId.trim() || (needsSecret && !secret)}
-          >
+          <Button type="submit" size="sm" disabled={saving !== null || !complete}>
             {saving === "save" ? <Spinner size="sm" /> : null}
             {t("Save setup")}
           </Button>

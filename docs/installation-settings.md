@@ -18,6 +18,12 @@ member activation. Administrators can Pause and Resume a plugin. Members see rea
 **Settings → Plugins**. In a team
 space, plugins that act with a member's own account stay off until a space owner allows them in the space settings.
 
+The catalog lists reviewed vendor-hosted services by area, with their prerequisites and instructions. A vendor's
+sign-in app is set up once for its plugins. Adding a plugin asks which groups can use it; people then connect
+their accounts in Settings → Plugins. Unqualified services show Not available yet. This includes Microsoft
+Work IQ until its tenant-specific sign-in and permissions are qualified, as well as Shopify, Figma and Docusign.
+Catalog content stays pinned. Use a custom plugin to configure a different server.
+
 The model's prices (USD per million tokens) turn token counts into estimated costs. Built-in providers' prices are
 read-only and come from Baskule's presets, then models.dev, or the built-in snapshot when it is unreachable; a custom
 endpoint's prices are entered on the Models page. A model without prices records tokens at zero cost. **Admin → AI → Usage & limits** shows usage per person, model and space (each
@@ -169,8 +175,9 @@ personal-account plugins for that space. A connection never grants access beyond
 
 For an MCP server with `credential: "user-oauth"`, ControlCell discovers protected-resource and authorization-server
 metadata, registers a public client with DCR, and runs the authorization-code flow with S256 PKCE. It sends the
-canonical MCP URL as `resource` on authorization, token exchange and refresh requests. Metadata must identify that
-same resource and issuer; callback issuer checks follow RFC 9207. Public servers require HTTPS; admin-added private servers may use HTTP.
+configured resource identifier as `resource` on authorization, token exchange and refresh requests. Metadata must identify that
+same resource and issuer; callback issuer checks follow RFC 9207. Catalog recipes record a distinct resource
+identifier where vendor metadata requires one. Custom servers default to their MCP URL. Public servers require HTTPS; admin-added private servers may use HTTP.
 OAuth endpoints never follow redirects with credentials. A client-ID metadata document is not served by this version;
 servers without DCR use pre-registration.
 
@@ -179,12 +186,13 @@ callback address shown there with the vendor, then save its client ID, authentic
 Values are write-only and encrypted. Saving or removing setup disconnects accounts and cancels pending consent
 for every plugin using that vendor; other vendors are unaffected. The saved issuer is pinned: a resource that
 changes its authorization server is refused before Baskule sends the client secret. If resource metadata disappears
-after setup, the saved issuer supplies discovery. Custom setup initially requires resource metadata; catalog issuers
-are added in the next layer. Plugin accounts are separate from signing in to Baskule.
+after setup, the saved issuer supplies discovery. Catalog setup uses the vendor issuer from the reviewed recipe;
+custom setup initially requires resource metadata. Plugin accounts are separate from signing in to Baskule.
 
-Server settings accept `oauth: {scopes, params, resource, staticClient}` for `user-oauth` servers. Scopes default
+Server settings accept `oauth: {scopes, params, resource, resourceUrl, staticClient}` for `user-oauth` servers. Scopes default
 to the resource challenge or metadata; `params` adds vendor authorization parameters, and `resource: false`
-omits the resource parameter for vendors that refuse it. `staticClient: true` requires administrator setup.
+omits the resource parameter for vendors that refuse it. `resourceUrl` explicitly selects a resource identifier
+on the same origin as the MCP endpoint. `staticClient: true` requires administrator setup.
 Protocol parameters such as the callback, state and PKCE cannot be overridden. Nothing uses OpenCode's per-space OAuth store.
 
 UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH`

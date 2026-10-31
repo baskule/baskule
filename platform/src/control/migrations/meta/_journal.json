@@ -57,6 +57,13 @@
       "when": 1793422748772,
       "tag": "0007_hot_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793424638291,
+      "tag": "0008_catalog_plugins",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 // baskule: one installed plugin: paused or not, which groups may use it, how its servers sign in
 // (with the write-only organization key or vendor app), what it contains, where it came from, and removal.
+import { catalogService, catalogVendor } from "@t3tools/contracts/baskule-catalog";
 import type {
   CredentialMode,
   Group,
@@ -89,6 +90,10 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
     plugin.setup.filter((entry) => !entry.done).map((entry) => entry.server),
   );
   const ownAccounts = plugin.servers.filter((server) => server.credential === "user-oauth");
+  const fromCatalog = plugin.source.type === "catalog";
+  const vendor = fromCatalog ? catalogVendor(plugin.vendor) : undefined;
+  const signIn = vendor?.signIn;
+  const vendorApp = signIn?.type === "account" && signIn.client === "static" ? signIn : undefined;
   const setGrant = (group: Group, allowed: boolean) =>
     run(
       `group:${group.id}`,
@@ -244,6 +249,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
               key={server.name}
               plugin={plugin}
               server={server}
+              editable={!fromCatalog}
               busy={busy === `server:${server.name}`}
               disabled={busy !== null}
               onCredential={(mode) => void setCredential(server, mode)}
@@ -253,12 +259,14 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         </PageSection>
       ) : null}
 
-      {ownAccounts.length > 0 ? (
+      {(fromCatalog ? vendorApp : ownAccounts.length > 0) ? (
         <VendorSetup
           vendor={plugin.vendor}
-          name={plugin.name}
+          name={vendor?.name ?? plugin.name}
           configured={plugin.vendorConfigured}
           required={ownAccounts.some((server) => unfinished.has(server.name))}
+          docs={vendorApp?.docs}
+          tenantRequired={vendorApp?.fields?.includes("tenant") ?? false}
           onChanged={data.reload}
         />
       ) : null}
@@ -332,22 +340,23 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
 }
 
 function sourceDetail(plugin: Plugin): string {
-  const concrete = plugin.resolvedSource ?? plugin.source;
-  switch (concrete.type) {
-    case "registry":
-      return concrete.version ? `${concrete.id} · ${concrete.version}` : concrete.id;
+  const source = plugin.source;
+  switch (source.type) {
+    case "catalog":
+      return catalogService(plugin.id)?.docs ?? "";
     case "url":
-      return concrete.url;
+      return source.url;
     case "git":
-      return [concrete.repo, concrete.path, concrete.ref].filter(Boolean).join(" · ");
+      return [source.repo, source.path, source.ref].filter(Boolean).join(" · ");
     case "archive":
-      return `SHA-256 ${concrete.sha256}`;
+      return `SHA-256 ${source.sha256}`;
   }
 }
 
 function ServerSettings({
   plugin,
   server,
+  editable,
   busy,
   disabled,
   onCredential,
@@ -355,6 +364,8 @@ function ServerSettings({
 }: {
   readonly plugin: Plugin;
   readonly server: PluginServer;
+  /** Catalog plugins sign in the way the catalog says. */
+  readonly editable: boolean;
   readonly busy: boolean;
   readonly disabled: boolean;
   readonly onCredential: (mode: CredentialMode) => void;
@@ -369,32 +380,38 @@ function ServerSettings({
           <span className="truncate text-xs text-muted-foreground">{serverHost(server)}</span>
         </div>
         {busy ? <Spinner size="sm" tone="muted" /> : null}
-        <Select
-          value={server.credential}
-          disabled={disabled}
-          onValueChange={(value) => {
-            if (value && value !== server.credential) onCredential(value as CredentialMode);
-          }}
-        >
-          <SelectTrigger
-            className="w-full sm:w-72"
-            aria-label={t("How {{name}} signs in", { name: server.name })}
+        {editable ? (
+          <Select
+            value={server.credential}
+            disabled={disabled}
+            onValueChange={(value) => {
+              if (value && value !== server.credential) onCredential(value as CredentialMode);
+            }}
           >
-            <SelectValue>{(value: CredentialMode) => credentialLabel(value)}</SelectValue>
-          </SelectTrigger>
-          <SelectPopup alignItemWithTrigger={false}>
-            {CREDENTIAL_MODES.map((mode) => (
-              <SelectItem key={mode} value={mode}>
-                <span className="flex min-w-0 flex-col">
-                  <span>{credentialLabel(mode)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {credentialDescription(mode)}
+            <SelectTrigger
+              className="w-full sm:w-72"
+              aria-label={t("How {{name}} signs in", { name: server.name })}
+            >
+              <SelectValue>{(value: CredentialMode) => credentialLabel(value)}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup alignItemWithTrigger={false}>
+              {CREDENTIAL_MODES.map((mode) => (
+                <SelectItem key={mode} value={mode}>
+                  <span className="flex min-w-0 flex-col">
+                    <span>{credentialLabel(mode)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {credentialDescription(mode)}
+                    </span>
                   </span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        ) : (
+          <span className="text-sm text-foreground sm:text-end">
+            {credentialLabel(server.credential)}
+          </span>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
         {credentialDescription(server.credential)}

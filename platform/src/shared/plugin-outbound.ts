@@ -47,7 +47,7 @@ export function checkMcpUrl(value: string, network: Network): URL {
 }
 
 export async function connectMcp(server: Pick<PluginServer, "url" | "transport">, network: Network, headers: Record<string, string>, timeoutMs: number): Promise<Client> {
-  const url = checkMcpUrl(server.url, network);
+  const url = checkOutbound(server.url, network);
   const client = new Client({ name: "baskule-plugin-proxy", version: "0.4.0" }, { capabilities: {} });
   const options = { requestInit: { headers }, fetch: (input: RequestInfo | URL, init?: RequestInit) => {
     const target = checkOutbound(input instanceof Request ? input.url : String(input), network);

@@ -35,16 +35,6 @@ function fakeControl(routes: Record<string, Route>) {
   return { calls, stub: stubGlobal("fetch", fetch) };
 }
 
-const notion = {
-  id: "com.notion/mcp",
-  name: "Notion",
-  description: "Pages and databases.",
-  kind: "mcp" as const,
-  source: { type: "registry" as const, registry: "mcp", id: "com.notion/mcp", version: "1" },
-};
-const brave = { ...notion, id: "com.brave/search", name: "Brave Search", description: "Search." };
-const braveSource = { ...brave.source, id: brave.id };
-
 const groups: Group[] = [
   {
     id: "everyone",
@@ -85,56 +75,98 @@ const postBody = (calls: ReadonlyArray<{ readonly route: string; readonly body: 
   calls.find((call) => call.route === "POST /api/baskule/admin/plugins")?.body;
 
 describe("admin catalog", () => {
-  it("asks who can use a result before adding it, then reviews what it adds", async () => {
+  const linear = plugin({
+    id: "linear",
+    vendor: "linear",
+    name: "Linear",
+    source: { type: "catalog" },
+    servers: [{ name: "linear", url: "https://mcp.linear.app/mcp", credential: "user-oauth" }],
+    setup: [{ server: "linear", done: true }],
+  });
+
+  it("lists services by area and adds one for the chosen groups, then reviews it", async () => {
+    let installed: AdminPlugin[] = [];
     const control = fakeControl({
-      "GET /api/baskule/admin/plugins/search": () => ({
-        results: [notion, { ...brave, source: braveSource }],
-        failures: [{ registry: "codex-plugins", error: "unavailable" }],
-      }),
-      "GET /api/baskule/admin/plugins": () => ({
-        plugins: [plugin({ id: "installed-brave", name: "Brave Search", source: braveSource })],
-      }),
+      "GET /api/baskule/admin/plugins": () => ({ plugins: installed }),
       "GET /api/baskule/admin/groups": () => ({ groups }),
-      "POST /api/baskule/admin/plugins": () =>
-        plugin({
-          id: "new-notion",
-          name: "Notion",
-          source: notion.source,
-          servers: [
-            {
-              name: "notion",
-              url: "https://mcp.notion.com/mcp",
-              credential: "user-oauth",
-            },
-          ],
-          ignored: ["hooks/hooks.json"],
-        }),
+      "POST /api/baskule/admin/plugins": () => {
+        installed = [linear];
+        return linear;
+      },
     });
     using _fetch = control.stub;
     await using screen = await render(<CatalogPage />);
 
-    await expect.element(screen.getByRole("button", { name: "Add Notion" })).toBeVisible();
     await expect
-      .element(screen.getByRole("link", { name: "Brave Search is added: open it" }))
-      .toHaveAttribute("href", "/admin/plugins/installed/installed-brave");
-    await expect.element(screen.getByText(/OpenAI Codex plugins didn't answer/)).toBeVisible();
+      .element(screen.getByRole("heading", { name: "Work management", exact: true }))
+      .toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Add Linear" })).toBeVisible();
+    await expect
+      .element(screen.getByText("Not available yet: Figma must admit Baskule to its MCP client catalog."))
+      .toBeVisible();
+    for (const held of ["Figma", "Shopify", "Docusign", "Microsoft Teams"]) {
+      expect(screen.getByRole("button", { name: `Add ${held}` }).query()).toBeNull();
+    }
+    await expect
+      .element(screen.getByRole("link", { name: "Linear documentation" }))
+      .toHaveAttribute("target", "_blank");
 
-    await press(screen.getByRole("button", { name: "Add Notion" }));
-    const choose = page.getByRole("dialog", { name: "Add Notion" });
+    await press(screen.getByRole("button", { name: "Add Linear" }));
+    const choose = page.getByRole("dialog", { name: "Add Linear" });
     await expect.element(choose.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
     await expect.element(choose.getByRole("checkbox", { name: "Sales" })).not.toBeChecked();
     expect(postBody(control.calls)).toBeUndefined();
     await press(choose.getByRole("checkbox", { name: "Sales" }));
     await press(choose.getByRole("button", { name: "Add plugin" }));
 
-    const review = page.getByRole("dialog", { name: "Notion was added" });
+    const review = page.getByRole("dialog", { name: "Linear was added" });
     await expect.element(review.getByText("It is available to Everyone, Sales.")).toBeVisible();
     await expect.element(review.getByText("Tools from 1 server")).toBeVisible();
-    await expect.element(review.getByText("1 part Baskule can't run")).toBeVisible();
-    expect(postBody(control.calls)).toEqual({
-      source: notion.source,
-      groups: ["everyone", "sales"],
+    expect(postBody(control.calls)).toEqual({ catalog: "linear", groups: ["everyone", "sales"] });
+    await press(review.getByRole("button", { name: "Done" }));
+
+    await expect
+      .element(screen.getByRole("link", { name: "Linear is added: open it" }))
+      .toHaveAttribute("href", "/admin/plugins/installed/linear");
+    expect(control.calls.some((call) => call.route.includes("/search"))).toBe(false);
+  });
+
+  it("sends an added service that needs its vendor's app to that vendor's setup", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          linear,
+          plugin({
+            id: "gmail",
+            vendor: "google",
+            name: "Gmail",
+            source: { type: "catalog" },
+            servers: [
+              {
+                name: "gmail",
+                url: "https://gmailmcp.googleapis.com/mcp/v1",
+                credential: "user-oauth",
+                oauth: { staticClient: true },
+              },
+            ],
+            setup: [{ server: "gmail", done: false }],
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
     });
+    using _fetch = control.stub;
+    await using screen = await render(<CatalogPage />);
+
+    await expect
+      .element(screen.getByRole("link", { name: "Set up Google for Gmail" }))
+      .toHaveAttribute("href", "/admin/plugins/installed/gmail");
+    await expect.element(screen.getByText("Set up Google", { exact: true })).toBeVisible();
+    await expect
+      .element(screen.getByRole("link", { name: "Linear is added: open it" }))
+      .toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Gmail" }).query()).toBeNull();
+    await expect.element(screen.getByRole("button", { name: "Add Google Calendar" })).toBeVisible();
   });
 });
 
@@ -240,6 +272,68 @@ describe("pausing a plugin", () => {
 });
 
 describe("signing in to a plugin's service", () => {
+  it("keeps a catalog service's sign-in and asks for its vendor's app with the tenant", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          plugin({
+            id: "teams",
+            vendor: "microsoft",
+            name: "Microsoft Teams",
+            source: { type: "catalog" },
+            servers: [
+              {
+                name: "teams",
+                url: "https://workiq.svc.cloud.microsoft/mcp",
+                credential: "user-oauth",
+                oauth: { staticClient: true },
+              },
+            ],
+            setup: [{ server: "teams", done: false }],
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "PUT /api/baskule/admin/vendors/microsoft": () => ({ ok: true, configured: true }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<PluginDetailPage id="teams" />);
+
+    await expect.element(screen.getByText("Your app at Microsoft", { exact: true })).toBeVisible();
+    expect(screen.getByLabelText("How teams signs in", { exact: true }).query()).toBeNull();
+    await expect
+      .element(screen.getByText("Each person connects their own account", { exact: true }))
+      .toBeVisible();
+    await expect.element(screen.getByText("Tools · Baskule catalog")).toBeVisible();
+    const instructions = screen.getByRole("link", { name: "Setup instructions" });
+    await expect.element(instructions).toHaveAttribute("target", "_blank");
+    await expect.element(instructions).toHaveAttribute("rel", "noreferrer noopener");
+
+    await userEvent.type(screen.getByLabelText("Client ID", { exact: true }), "client-1");
+    await userEvent.type(screen.getByLabelText("Client secret", { exact: true }), "s3cret");
+    await userEvent.type(screen.getByLabelText("Tenant ID", { exact: true }), "contoso");
+    await expect
+      .element(screen.getByText("Enter the ID in the form 00000000-0000-0000-0000-000000000000."))
+      .toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Save setup" })).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText("Tenant ID", { exact: true }));
+    await userEvent.type(
+      screen.getByLabelText("Tenant ID", { exact: true }),
+      "72f988bf-86f1-41af-91ab-2d7cd011db47",
+    );
+    await press(screen.getByRole("button", { name: "Save setup" }));
+
+    await expect.element(screen.getByLabelText("Tenant ID", { exact: true })).toHaveValue("");
+    expect(
+      control.calls.find((call) => call.route === "PUT /api/baskule/admin/vendors/microsoft")?.body,
+    ).toEqual({
+      clientId: "client-1",
+      tokenEndpointAuthMethod: "client_secret_post",
+      clientSecret: "s3cret",
+      tenant: "72f988bf-86f1-41af-91ab-2d7cd011db47",
+    });
+  });
+
   const crm = { name: "crm", url: "https://mcp.crm.example.test/mcp" };
 
   it("offers the three ways to sign in and saves a choice without a personal flag", async () => {

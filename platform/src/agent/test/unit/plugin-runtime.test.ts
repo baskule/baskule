@@ -93,10 +93,10 @@ describe("plugin proxy", () => {
     await proxy.close();
   });
   it.each([false, true])("checks policy and calls the vendor with privateNetwork=%s", async privateNetwork => {
-    const seen: { method: string; auth: string | null; params: any }[] = [];
+    const seen: { url: string; method: string; auth: string | null; params: any }[] = [];
     vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
       const body = JSON.parse(String(init.body));
-      seen.push({ method: body.method, auth: new Headers(init.headers).get("authorization"), params: body.params });
+      seen.push({ url: String(_url), method: body.method, auth: new Headers(init.headers).get("authorization"), params: body.params });
       if (body.id === undefined) return new Response(null, { status: 202 });
       if (body.method === "initialize") return Response.json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" } } });
       if (body.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "lookup", inputSchema: { type: "object" } }] } });
@@ -105,7 +105,7 @@ describe("plugin proxy", () => {
     let allowed = true;
     const originalExpiry = Date.now() + 60_000;
     const credential = vi.fn(async (id: string): Promise<PluginCredential> => allowed ? { headers: { Authorization: `Bearer secret-${id}` }, expiresAt: Math.max(originalExpiry, Date.now() + 60_000) } : { error: "unavailable" });
-    const proxy = new PluginMcpProxy({ ...server, privateNetwork, url: privateNetwork ? "http://127.0.0.1/mcp" : server.url }, async id => id === "alice" ? alice : bob, credential);
+    const proxy = new PluginMcpProxy({ ...server, privateNetwork, url: privateNetwork ? "http://127.0.0.1/mcp" : `${server.url}?tools=all` }, async id => id === "alice" ? alice : bob, credential);
     await rpc(proxy, "tools/list");
     const a = await rpc(proxy, "tools/call"); const b = await rpc(proxy, "tools/call", "bob");
     expect(a.result._meta["baskule/account"]).toMatchObject({ userId: "alice" });
@@ -114,6 +114,7 @@ describe("plugin proxy", () => {
     expect(seen.filter(s => s.method === "tools/call").every(s => s.params._meta === undefined)).toBe(true);
     expect(JSON.stringify([a, b])).not.toContain("secret-");
     expect(seen.filter(s => s.method === "initialize")).toHaveLength(2);
+    if (!privateNetwork) expect(seen.every(s => new URL(s.url).searchParams.get("tools") === "all")).toBe(true);
     vi.spyOn(Date, "now").mockReturnValue(originalExpiry + 60_000);
     await rpc(proxy, "tools/call");
     expect(seen.filter(s => s.method === "initialize")).toHaveLength(3);
