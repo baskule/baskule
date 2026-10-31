@@ -2369,9 +2369,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 type: "error",
                 title:
                   snoozedThreadRefs.length > 0
-                    ? t("Failed to snooze {{value1}} thread{{value2}}", {
-                        value1: failures.length,
-                        value2: failures.length === 1 ? "" : "s",
+                    ? t("Failed to snooze {{count}} thread", {
+                        count: failures.length,
+                        defaultValue_other: "Failed to snooze {{count}} threads",
                       })
                     : t("Failed to snooze threads"),
                 description:

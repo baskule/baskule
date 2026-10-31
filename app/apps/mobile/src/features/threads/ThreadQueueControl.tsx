@@ -89,15 +89,15 @@ function QueuedRunSender(props: {
       ? {
           icon: "calendar.badge.clock" as const,
           label:
-            tasks.data?.tasks.find((task) => task.id === scheduledTaskId)?.title ?? "Automation",
+            tasks.data?.tasks.find((task) => task.id === scheduledTaskId)?.title ?? t("Automation"),
         }
       : attribution === "agent"
         ? {
             icon: "bubble.left.and.bubble.right" as const,
-            label: senderShell?.title.trim() || "Agent",
+            label: senderShell?.title.trim() || t("Agent"),
           }
         : attribution === "t3code"
-          ? { icon: null, label: t("Sent by T3 Code") }
+          ? { icon: null, label: t("Sent by Baskule") }
           : null;
   if (sender === null) return null;
   return (

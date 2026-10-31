@@ -240,9 +240,9 @@ export function QueuedRunsControl({
 
   return (
     <section
-      aria-label={t("{{value1}} queued message{{value2}}", {
-        value1: items.length,
-        value2: items.length === 1 ? "" : "s",
+      aria-label={t("{{count}} queued message", {
+        count: items.length,
+        defaultValue_other: "{{count}} queued messages",
       })}
       data-thread-queue="true"
       // Anchors the sr-only live region; unanchored, it escapes the timeline scroller and makes the chat column scroll.
@@ -441,7 +441,7 @@ function QueuedMessage(props: {
       : attribution === "agent"
         ? {
             icon: MessagesSquareIcon,
-            label: senderShell?.title.trim() || "Agent",
+            label: senderShell?.title.trim() || t("Agent"),
             summary: props.previewText.split(/\r?\n/).find((line) => line.trim()) ?? "",
           }
         : null;
@@ -450,7 +450,7 @@ function QueuedMessage(props: {
   return (
     <>
       {attribution === "t3code" ? (
-        <p className="me-1 text-2xs text-muted-foreground/70">{t("Sent by T3 Code")}</p>
+        <p className="me-1 text-2xs text-muted-foreground/70">{t("Sent by Baskule")}</p>
       ) : null}
       {presentation?.guestName === undefined ? null : (
         <GuestMessageName name={presentation.guestName} />
