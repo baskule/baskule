@@ -201,6 +201,12 @@ describe("ControlCell plugins and groups", () => {
     const renamed = await call(h, "PATCH", `${API}/admin/plugins/${unfinished.body.id}`, { ...admin, body: { plugin: { ...draft, servers: [{ ...draft.servers[0], keyHeaders: ["X-Changed"] }] } } });
     expect(renamed.body.servers[0].keyHeaders).toEqual(["X-Api-Key", "X-Workspace"]);
     expect(await h.svc.plugins.organizationHeaders(unfinished.body.id, "remote")).toEqual({ "X-Api-Key": "private-key", "X-Workspace": "private-workspace" });
+    await call(h, "PUT", `${API}/admin/plugins/${unfinished.body.id}/secret`, { ...admin, body: { server: "remote", headers: { "X-Changed": "private-renamed" } } });
+    expect(h.svc.plugins.get(unfinished.body.id)!.servers[0].keyHeaders).toEqual(["X-Changed"]);
+    expect(await h.svc.plugins.organizationHeaders(unfinished.body.id, "remote")).toEqual({ "X-Changed": "private-renamed" });
+    const renamedZip = await h.svc.plugins.admin(new Request("http://control"), `/admin/plugins/${unfinished.body.id}/export`);
+    const renamedDraft = await call(h, "POST", `${API}/admin/plugins/inspect`, { ...admin, body: { archive: base64(new Uint8Array(await renamedZip.arrayBuffer())) } });
+    expect(renamedDraft.body.fixes).toContainEqual({ server: "remote", need: "key", headers: ["X-Changed"] });
     const preserve = await call(h, "PATCH", `${API}/admin/plugins/${added.body.id}`, { ...admin, body: { plugin: { ...draft, servers: [{ ...draft.servers[0], keyHeaders: ["X-Changed"] }] } } });
     expect(preserve.body.servers[0].keyHeaders).toEqual(["Authorization"]);
     expect(await h.svc.plugins.organizationHeaders(added.body.id, "remote")).toEqual({ Authorization: "Bearer encrypted-key" });

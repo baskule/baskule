@@ -80,10 +80,12 @@ export function serversJson(servers: ServerInput[]): string {
             ...(server.credential === "organization"
               ? {
                   headers: Object.fromEntries(
-                    (server.keyHeaders?.length ? server.keyHeaders : ["Authorization"]).map((header) => [
-                      header,
-                      `\${${header.toUpperCase().replace(/[^A-Z0-9_]/g, "_")}}`,
-                    ]),
+                    (server.keyHeaders?.length ? server.keyHeaders : ["Authorization"]).map(
+                      (header) => [
+                        header,
+                        `\${${header.toUpperCase().replace(/[^A-Z0-9_]/g, "_")}}`,
+                      ],
+                    ),
                   ),
                 }
               : {}),

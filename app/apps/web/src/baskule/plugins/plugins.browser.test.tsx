@@ -583,14 +583,20 @@ describe("signing in to a plugin's service", () => {
       { router: false },
     );
     await userEvent.click(screen.getByText("Technical details", { exact: true }));
-    await expect.element(screen.getByLabelText("Header for the key", { exact: true })).toBeVisible();
+    await expect
+      .element(screen.getByLabelText("Header for the key", { exact: true }))
+      .toBeVisible();
     await userEvent.fill(screen.getByLabelText("Header for the key", { exact: true }), "X-Changed");
     await expect
       .element(screen.getByText("The key fields changed. Enter all keys again before saving."))
       .toBeVisible();
     await press(screen.getByRole("button", { name: "Save plugin" }));
     await expect.element(screen.getByText("Enter this key too.", { exact: true })).toBeVisible();
-    expect(control.calls.filter(call => call.route.startsWith("PATCH ") || call.route.startsWith("PUT "))).toEqual([]);
+    expect(
+      control.calls.filter(
+        (call) => call.route.startsWith("PATCH ") || call.route.startsWith("PUT "),
+      ),
+    ).toEqual([]);
   });
 
   it("explains that changing a server needs its key again", async () => {
