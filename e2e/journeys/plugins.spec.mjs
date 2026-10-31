@@ -307,6 +307,7 @@ test("an imported package is reviewed and repaired before save and exports for a
     expect(plugin.servers[0].url).toBe("https://workspace.example.com/mcp");
     expect(plugin.setup.find(s => s.server === "docs").done).toBe(true);
     expect(JSON.stringify(plugin)).not.toContain("local-review-key");
+    await expect(page.getByText(`${name} was added`, { exact: true })).toBeHidden();
     await page.screenshot({ path: test.info().outputPath("plugin-import-saved.png"), fullPage: true });
     await signIn(member, people.alice, stack);
     await member.goto(`${stack.urls.front}/settings/plugins`);

@@ -1,4 +1,4 @@
-import type { Fix, Omission, ServerInput, SkillInput } from "./baskule-plugins";
+import type { Fix, Omission, ServerInput, SkillInput } from "./baskule-plugins.js";
 
 export type ServerSecrets = Record<string, Record<string, string>>;
 export interface ParsedServers {

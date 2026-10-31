@@ -182,17 +182,25 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
 
   return (
     <>
-      <PageHeading
-        leading={
-          <PluginIcon
-            contents={contentsKind(plugin)}
-            icon={plugin.icon}
-            className="size-10 [&_svg]:size-5"
-          />
-        }
-        title={plugin.name}
-        description={`${contentsLabel(contentsKind(plugin))} · ${sourceLabel(plugin.source)}`}
-        trailing={
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div className="min-w-0 flex-1">
+          <PageHeading
+            leading={
+              <PluginIcon
+                contents={contentsKind(plugin)}
+                icon={plugin.icon}
+                className="size-10 [&_svg]:size-5"
+              />
+            }
+            title={plugin.name}
+            description={`${contentsLabel(contentsKind(plugin))} · ${sourceLabel(plugin.source)}`}
+          >
+            {plugin.description ? (
+              <p className="pt-1 text-sm text-foreground/80">{plugin.description}</p>
+            ) : null}
+          </PageHeading>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 px-3 sm:px-4">
           <>
             {fromCatalog ? null : (
               <Button
@@ -235,12 +243,8 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
               {plugin.enabled ? t("Pause") : t("Resume")}
             </Button>
           </>
-        }
-      >
-        {plugin.description ? (
-          <p className="pt-1 text-sm text-foreground/80">{plugin.description}</p>
-        ) : null}
-      </PageHeading>
+        </div>
+      </div>
       {!plugin.enabled ? (
         <Alert variant="warning">
           <AlertDescription>{t("Paused. No one can use it until you resume it.")}</AlertDescription>
