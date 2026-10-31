@@ -134,14 +134,13 @@ const CATALOG = [
 function pluginFrom(entry, overrides = {}) {
   return {
     id: id(),
-    kind: entry.kind,
     name: entry.name,
     description: entry.description,
     source: { type: "registry", registry: entry.registry, id: entry.id, version: entry.version },
     skills: entry.skills ?? [],
     servers: (entry.servers ?? []).map((server) => ({ ...server, transport: "streamable-http" })),
     ignored: entry.ignored ?? [],
-    enabled: false,
+    enabled: true,
     createdAt: new Date().toISOString(),
     ...overrides,
   };
@@ -159,10 +158,9 @@ export function createPluginMock({ users, spaces }) {
     return plugin.id;
   };
   const brave = seed("com.brave/search", { enabled: true, createdAt: at(5) });
-  const sales = seed("sales", { createdAt: at(2) });
+  const sales = seed("sales", { enabled: false, createdAt: at(2) });
   const drive = {
     id: id(),
-    kind: "mcp",
     name: "Google Drive",
     description: "Find and read the files people can open in their own Google Drive.",
     source: { type: "url", url: "https://drivemcp.googleapis.com/mcp/v1" },
@@ -200,8 +198,6 @@ export function createPluginMock({ users, spaces }) {
       plugins: [sales],
     },
   ];
-  /** user id -> plugin ids they turned on */
-  const userEnabled = new Map([["u-bob", new Set([brave])]]);
   /** `${pluginId}\0${server}` with an organization key */
   const secrets = new Set([`${brave}\u0000brave-search`]);
   /** space id -> { personalPluginsAllowed, disabled } */
@@ -226,15 +222,17 @@ export function createPluginMock({ users, spaces }) {
   const connected = new Set();
   const connectionKey = (userId, pluginId, server) => `${userId}\u0000${pluginId}\u0000${server}`;
   const connectionState = (plugin, server, userId) =>
-    server.credential === "none"
-      ? "not_required"
-      : server.credential === "organization"
-        ? secrets.has(`${plugin.id}\u0000${server.name}`)
-          ? "configured"
-          : "needs_configuration"
-        : connected.has(connectionKey(userId, plugin.id, server.name))
-          ? "connected"
-          : "needs_connection";
+    !plugin.enabled
+      ? "unavailable"
+      : server.credential === "none"
+        ? "ready"
+        : server.credential === "organization"
+          ? secrets.has(`${plugin.id}\u0000${server.name}`)
+            ? "ready"
+            : "needs_setup"
+          : connected.has(connectionKey(userId, plugin.id, server.name))
+            ? "ready"
+            : "connect";
 
   async function install(body) {
     const source = body.source ?? {};
@@ -258,7 +256,6 @@ export function createPluginMock({ users, spaces }) {
         201,
         {
           id: id(),
-          kind: "mcp",
           name: body.name || url.hostname,
           description: "",
           source: { type: "url", url: url.href },
@@ -273,7 +270,7 @@ export function createPluginMock({ users, spaces }) {
             },
           ],
           ignored: [],
-          enabled: false,
+          enabled: true,
           createdAt: new Date().toISOString(),
         },
       ];
@@ -291,14 +288,13 @@ export function createPluginMock({ users, spaces }) {
         201,
         {
           id: id(),
-          kind: "skill",
           name: body.name || folder || repo,
           description: "",
           source,
           skills: [{ name: folder || repo, description: "Imported from the repository." }],
           servers: [],
           ignored: [],
-          enabled: false,
+          enabled: true,
           createdAt: new Date().toISOString(),
         },
       ];
@@ -312,14 +308,13 @@ export function createPluginMock({ users, spaces }) {
         201,
         {
           id: id(),
-          kind: "skill",
           name: body.name || "Uploaded skill",
           description: "",
           source,
           skills: [{ name: "uploaded-skill", description: "From the uploaded file." }],
           servers: [],
           ignored: [],
-          enabled: false,
+          enabled: true,
           createdAt: new Date().toISOString(),
         },
       ];
@@ -370,8 +365,18 @@ export function createPluginMock({ users, spaces }) {
         true
       );
     if (api === "/admin/plugins" && method === "POST") {
-      const [status, body] = await install(await readBody(req));
-      if (status === 201) plugins.set(body.id, body);
+      const input = await readBody(req);
+      if (
+        !Array.isArray(input.groups) ||
+        input.groups.some((id) => !groups.some((g) => g.id === id))
+      )
+        return (fail(res, 400, "invalid_group"), true);
+      const [status, body] = await install(input);
+      if (status === 201) {
+        plugins.set(body.id, body);
+        for (const group of groups)
+          if (input.groups.includes(group.id)) group.plugins.push(body.id);
+      }
       return (send(res, status, body), true);
     }
     if ((r = /^\/admin\/plugins\/([^/]+)(\/secret)?$/.exec(api))) {
@@ -474,20 +479,32 @@ export function createPluginMock({ users, spaces }) {
     }
     if (api === "/plugins" && method === "GET") {
       const allowed = grantsOf(me.id).plugins;
-      const mine = userEnabled.get(me.id) ?? new Set();
       return (
         send(res, 200, {
           plugins: [...plugins.values()]
             .filter((plugin) => allowed.has(plugin.id))
             .sort((a, b) => a.name.localeCompare(b.name))
-            .map((plugin) => ({
-              ...plugin,
-              userEnabled: mine.has(plugin.id),
-              connections: plugin.servers.map((server) => ({
-                server: server.name,
-                state: connectionState(plugin, server, me.id),
-              })),
-            })),
+            .map((plugin) => {
+              const servers = plugin.servers.map((server) => ({
+                name: server.name,
+                personal: ["user-oauth", "login-identity"].includes(server.credential),
+                status: connectionState(plugin, server, me.id),
+              }));
+              const status = !plugin.enabled
+                ? "unavailable"
+                : (["needs_setup", "connect", "reconnect", "ready"].find((s) =>
+                    servers.some((server) => server.status === s),
+                  ) ?? "ready");
+              return {
+                id: plugin.id,
+                name: plugin.name,
+                description: plugin.description,
+                icon: plugin.icon,
+                skills: plugin.skills,
+                status,
+                servers,
+              };
+            }),
         }),
         true
       );
@@ -498,7 +515,8 @@ export function createPluginMock({ users, spaces }) {
       const server = url.searchParams.get("server");
       if (r[2] === "connection" && method === "DELETE") {
         for (const s of plugin.servers)
-          if (server === null || s.name === server) connected.delete(connectionKey(me.id, plugin.id, s.name));
+          if (server === null || s.name === server)
+            connected.delete(connectionKey(me.id, plugin.id, s.name));
         return (send(res, 200, { ok: true }), true);
       }
       if (r[2] === "connect" && method === "GET") {
@@ -511,16 +529,6 @@ export function createPluginMock({ users, spaces }) {
         res.end();
         return true;
       }
-    }
-    if ((r = /^\/plugins\/([^/]+)\/enabled$/.exec(api)) && method === "PUT") {
-      if (!grantsOf(me.id).plugins.has(r[1]) || !plugins.has(r[1]))
-        return (fail(res, 404, "not_found"), true);
-      const { enabled } = await readBody(req);
-      const mine = userEnabled.get(me.id) ?? new Set();
-      if (enabled) mine.add(r[1]);
-      else mine.delete(r[1]);
-      userEnabled.set(me.id, mine);
-      return (send(res, 200, { enabled: Boolean(enabled) }), true);
     }
     if ((r = /^\/spaces\/([^/]+)\/plugins$/.exec(api))) {
       const space = spaces.get(r[1]);

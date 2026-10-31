@@ -1,16 +1,18 @@
-// baskule: Plugins → Installed: every plugin the admin added, on or off, and who may use it.
+// baskule: Plugins → Installed: every plugin the admin added, whether it is paused, and who may use it.
 import type { Group, Plugin } from "@t3tools/contracts/baskule-plugins";
 import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
-import { useState } from "react";
 
 import { useTranslation } from "../../../i18n";
 import { Button } from "../../../components/ui/button";
-import { Spinner } from "../../../components/ui/spinner";
-import { Switch } from "../../../components/ui/switch";
-import { notifyPluginError, pluginsApi } from "../../plugins/api";
+import { pluginsApi } from "../../plugins/api";
 import { PluginIcon } from "../../plugins/PluginParts";
-import { credentialLabel, groupName, kindLabel } from "../../plugins/presentation";
+import {
+  contentsKind,
+  contentsLabel,
+  credentialLabel,
+  groupName,
+} from "../../plugins/presentation";
 import { useApiResource } from "../../ui";
 import { PageMessage, PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
@@ -36,28 +38,8 @@ export function grantedGroups(plugin: Plugin, groups: ReadonlyArray<Group>) {
 export function InstalledPage() {
   const t = useTranslation();
   const data = useApiResource(loadInventory);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const plugins = data.data?.plugins ?? [];
   const groups = data.data?.groups ?? [];
-
-  const setEnabled = async (plugin: Plugin, enabled: boolean) => {
-    setBusyId(plugin.id);
-    return (async () => {
-      await pluginsApi.update(plugin.id, { enabled });
-      await data.reload();
-    })()
-      .catch((cause: unknown) => {
-        notifyPluginError(
-          enabled
-            ? t("Could not turn on {{name}}", { name: plugin.name })
-            : t("Could not turn off {{name}}", { name: plugin.name }),
-          cause,
-        );
-      })
-      .finally(() => {
-        setBusyId(null);
-      });
-  };
 
   const catalogLink = (
     <Button
@@ -74,7 +56,7 @@ export function InstalledPage() {
     <PageSection
       title={data.data ? t("Plugins ({{count}})", { count: plugins.length }) : t("Plugins")}
       description={t(
-        "A plugin works for the people of the groups you choose, once it is on and they turn it on for themselves.",
+        "A plugin works for the people of the groups you choose, unless you pause it.",
       )}
       action={plugins.length > 0 ? catalogLink : null}
     >
@@ -101,25 +83,16 @@ export function InstalledPage() {
           <PageRow
             key={plugin.id}
             muted={!plugin.enabled}
-            leading={<PluginIcon kind={plugin.kind} icon={plugin.icon} />}
+            leading={<PluginIcon contents={contentsKind(plugin)} icon={plugin.icon} />}
             trailing={
-              <>
-                {busyId === plugin.id ? <Spinner size="sm" tone="muted" /> : null}
-                <Switch
-                  aria-label={t("{{name}} is on", { name: plugin.name })}
-                  checked={plugin.enabled}
-                  disabled={busyId === plugin.id}
-                  onCheckedChange={(checked) => void setEnabled(plugin, checked)}
-                />
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={t("Open {{name}}", { name: plugin.name })}
-                  render={<Link to="/admin/$section/$page/$item" params={params} />}
-                >
-                  <ChevronRightIcon />
-                </Button>
-              </>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("Open {{name}}", { name: plugin.name })}
+                render={<Link to="/admin/$section/$page/$item" params={params} />}
+              >
+                <ChevronRightIcon />
+              </Button>
             }
           >
             <Link
@@ -130,8 +103,9 @@ export function InstalledPage() {
               {plugin.name}
             </Link>
             <span className="truncate text-xs text-muted-foreground">
-              {kindLabel(plugin.kind)}
+              {contentsLabel(contentsKind(plugin))}
               {" · "}
+              {plugin.enabled ? null : <>{t("Paused")} · </>}
               {allowed.length === 0 ? (
                 <span className="text-warning-foreground">{t("No group can use it yet")}</span>
               ) : (

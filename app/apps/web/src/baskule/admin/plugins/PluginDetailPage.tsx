@@ -1,4 +1,4 @@
-// baskule: one installed plugin: on or off, which groups may use it, how its connectors sign in
+// baskule: one installed plugin: paused or not, which groups may use it, how its servers sign in
 // (with the write-only organization key), what it contains, where it came from, and removal.
 import type {
   CredentialMode,
@@ -7,7 +7,7 @@ import type {
   PluginServer,
 } from "@t3tools/contracts/baskule-plugins";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
-import { UsersRoundIcon } from "lucide-react";
+import { PauseIcon, PlayIcon, UsersRoundIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n";
@@ -25,12 +25,13 @@ import { Switch } from "../../../components/ui/switch";
 import { notifyPluginError, pluginErrorText, pluginsApi } from "../../plugins/api";
 import { PluginContents, PluginIcon } from "../../plugins/PluginParts";
 import {
+  contentsKind,
+  contentsLabel,
   CREDENTIAL_MODES,
   credentialDescription,
   credentialLabel,
   groupName,
   isPersonalCredential,
-  kindLabel,
   serverHost,
   sourceLabel,
 } from "../../plugins/presentation";
@@ -113,46 +114,66 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
     <>
       <PageHeading
         leading={
-          <PluginIcon kind={plugin.kind} icon={plugin.icon} className="size-10 [&_svg]:size-5" />
+          <PluginIcon
+            contents={contentsKind(plugin)}
+            icon={plugin.icon}
+            className="size-10 [&_svg]:size-5"
+          />
         }
         title={plugin.name}
-        description={`${kindLabel(plugin.kind)} · ${sourceLabel(plugin.source)}`}
+        description={`${contentsLabel(contentsKind(plugin))} · ${sourceLabel(plugin.source)}`}
         trailing={
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            {busy === "enabled" ? <Spinner size="sm" tone="muted" /> : null}
-            {plugin.enabled ? t("On") : t("Off")}
-            <Switch
-              aria-label={t("{{name}} is on", { name: plugin.name })}
-              checked={plugin.enabled}
-              disabled={busy !== null}
-              onCheckedChange={(enabled) =>
-                void run(
-                  "enabled",
-                  () => pluginsApi.update(plugin.id, { enabled }),
-                  enabled
-                    ? t("Could not turn on {{name}}", { name: plugin.name })
-                    : t("Could not turn off {{name}}", { name: plugin.name }),
-                )
-              }
-            />
-          </label>
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={
+              plugin.enabled
+                ? t("Pause {{name}}", { name: plugin.name })
+                : t("Resume {{name}}", { name: plugin.name })
+            }
+            disabled={busy !== null}
+            onClick={() =>
+              void run(
+                "enabled",
+                () => pluginsApi.update(plugin.id, { enabled: !plugin.enabled }),
+                plugin.enabled
+                  ? t("Could not pause {{name}}", { name: plugin.name })
+                  : t("Could not resume {{name}}", { name: plugin.name }),
+              )
+            }
+          >
+            {busy === "enabled" ? (
+              <Spinner size="sm" />
+            ) : plugin.enabled ? (
+              <PauseIcon />
+            ) : (
+              <PlayIcon />
+            )}
+            {plugin.enabled ? t("Pause") : t("Resume")}
+          </Button>
         }
       >
         {plugin.description ? (
           <p className="pt-1 text-sm text-foreground/80">{plugin.description}</p>
         ) : null}
       </PageHeading>
-      {plugin.enabled && granted.length === 0 ? (
+      {!plugin.enabled ? (
+        <Alert variant="warning">
+          <AlertDescription>{t("Paused. No one can use it until you resume it.")}</AlertDescription>
+        </Alert>
+      ) : granted.length === 0 ? (
         <Alert variant="warning">
           <AlertDescription>
-            {t("It is on, but no group can use it yet. Choose who can use it below.")}
+            {t("No group can use it yet. Choose who can use it below.")}
           </AlertDescription>
         </Alert>
       ) : null}
 
       <PageSection
         title={t("Who can use it")}
-        description={t("Their people find it in Settings → Plugins and turn it on for themselves.")}
+        description={t(
+          "Their people can use it in their chats, and connect their own account in Settings → Plugins if it needs one.",
+        )}
         action={
           <Button
             size="sm"
@@ -207,7 +228,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
       {plugin.servers.length > 0 ? (
         <PageSection
           title={t("Accounts")}
-          description={t("How each connector signs in to its service.")}
+          description={t("How each server signs in to its service.")}
         >
           {plugin.servers.map((server) => (
             <ServerSettings

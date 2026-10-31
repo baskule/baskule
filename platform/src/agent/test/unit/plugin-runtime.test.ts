@@ -77,7 +77,7 @@ describe("turn author", () => {
   });
 });
 
-const server: SpacePlugins["servers"][number] = { pluginId: "test", name: "remote", url: "https://vendor.test/mcp", credential: "organization", personal: true, catalogUserId: "alice", privateNetwork: false };
+const server: SpacePlugins["servers"][number] = { pluginId: "test", pluginName: "Test", name: "remote", url: "https://vendor.test/mcp", credential: "organization", personal: true, catalogUserId: "alice", privateNetwork: false };
 const rpc = async (proxy: PluginMcpProxy, method: string, user = "alice") => {
   const r = await proxy.handler(new Request("http://proxy/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: { name: "lookup", arguments: {}, _meta: { "ai.opencode/sessionID": user } } }) }));
   return r.json() as Promise<Record<string, any>>;
@@ -104,7 +104,7 @@ describe("plugin proxy", () => {
     });
     let allowed = true;
     const originalExpiry = Date.now() + 60_000;
-    const credential = vi.fn(async (id: string): Promise<PluginCredential> => allowed ? { headers: { Authorization: `Bearer secret-${id}` }, expiresAt: Math.max(originalExpiry, Date.now() + 60_000) } : { error: "not_allowed" });
+    const credential = vi.fn(async (id: string): Promise<PluginCredential> => allowed ? { headers: { Authorization: `Bearer secret-${id}` }, expiresAt: Math.max(originalExpiry, Date.now() + 60_000) } : { error: "unavailable" });
     const proxy = new PluginMcpProxy({ ...server, privateNetwork, url: privateNetwork ? "http://127.0.0.1/mcp" : server.url }, async id => id === "alice" ? alice : bob, credential);
     await rpc(proxy, "tools/list");
     const a = await rpc(proxy, "tools/call"); const b = await rpc(proxy, "tools/call", "bob");
@@ -123,12 +123,12 @@ describe("plugin proxy", () => {
     expect(seen.filter(s => s.method === "tools/call")).toHaveLength(3);
     await proxy.close();
   });
-  it.each(["not_allowed", "not_enabled", "needs_connection"] as const)("returns a clear %s tool error without contacting the vendor", async error => {
+  it.each(["unavailable", "needs_setup", "connect", "reconnect"] as const)("returns a clear %s tool error without contacting the vendor", async error => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
-    const proxy = new PluginMcpProxy(server, async () => alice, async () => ({ error, connectUrl: "/connect" }));
+    const proxy = new PluginMcpProxy(server, async () => alice, async () => ({ error }));
     const result = await rpc(proxy, "tools/call");
-    expect(result.result.isError).toBe(true); expect(result.result.content[0].text).toContain(error);
-    expect(result.result.content[0].text).toContain("/connect"); expect(fetcher).not.toHaveBeenCalled();
+    expect(result.result.isError).toBe(true); expect(result.result.content[0].text).toMatch(/available|administrator|Connect|Reconnect/);
+    expect(fetcher).not.toHaveBeenCalled();
   });
   it("lets an in-flight call finish when another call renews an expired credential", async () => {
     let finish: (() => void) | undefined;

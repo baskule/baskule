@@ -1,6 +1,6 @@
 // baskule: add a plugin that no registry lists: a connector by its address, skills or a bundle
 // from a git repository at a fixed commit, or an uploaded .zip / .tar.gz.
-import type { Plugin, PluginInstallInput } from "@t3tools/contracts/baskule-plugins";
+import type { Group, Plugin, PluginInstallInput } from "@t3tools/contracts/baskule-plugins";
 import { useState } from "react";
 
 import { useTranslation } from "../../../i18n";
@@ -19,6 +19,7 @@ import { Label } from "../../../components/ui/label";
 import { Spinner } from "../../../components/ui/spinner";
 import { Toggle, ToggleGroup } from "../../../components/ui/toggle-group";
 import { pluginErrorText, pluginsApi } from "../../plugins/api";
+import { PluginGroupsField, useGroupChoice } from "../../plugins/PluginParts";
 import { FormField } from "../../ui";
 
 type Method = "address" | "git" | "file";
@@ -27,7 +28,9 @@ type Method = "address" | "git" | "file";
 const MAX_ARCHIVE_BYTES = 10 * 1024 * 1024;
 const COMMIT = /^[0-9a-f]{40}$/i;
 
-async function archiveInput(file: File): Promise<PluginInstallInput> {
+type InstallSource = Pick<PluginInstallInput, "source" | "archive">;
+
+async function archiveInput(file: File): Promise<InstallSource> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   const sha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -42,12 +45,17 @@ export function AddOwnPluginDialog({
   open,
   onOpenChange,
   onAdded,
+  groups,
+  groupsError,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  readonly onAdded: (plugin: Plugin) => void;
+  readonly onAdded: (plugin: Plugin, groups: ReadonlyArray<string>) => void;
+  readonly groups: ReadonlyArray<Group> | null;
+  readonly groupsError?: string | null;
 }) {
   const t = useTranslation();
+  const chosen = useGroupChoice(groups);
   const [method, setMethod] = useState<Method>("address");
   const [address, setAddress] = useState("");
   const [repo, setRepo] = useState("");
@@ -66,6 +74,7 @@ export function AddOwnPluginDialog({
     setFile(null);
     setName("");
     setError(null);
+    chosen.reset();
   };
 
   const commitError =
@@ -75,17 +84,18 @@ export function AddOwnPluginDialog({
   const fileError =
     file && file.size > MAX_ARCHIVE_BYTES ? t("This file is larger than 10 MB.") : null;
   const ready =
-    method === "address"
+    groups !== null &&
+    (method === "address"
       ? address.trim() !== ""
       : method === "git"
         ? repo.trim() !== "" && COMMIT.test(commit.trim())
-        : file !== null && !fileError;
+        : file !== null && !fileError);
 
   const submit = async () => {
     setSubmitting(true);
     setError(null);
     return (async () => {
-      const input: PluginInstallInput =
+      const input: InstallSource =
         method === "address"
           ? { source: { type: "url", url: address.trim() } }
           : method === "git"
@@ -98,12 +108,14 @@ export function AddOwnPluginDialog({
                 },
               }
             : await archiveInput(file!);
+      const groupIds = [...chosen.value];
       const plugin = await pluginsApi.install({
         ...input,
         ...(name.trim() ? { name: name.trim() } : {}),
+        groups: groupIds,
       });
       reset();
-      onAdded(plugin);
+      onAdded(plugin, groupIds);
     })()
       .catch((cause: unknown) => {
         setError(pluginErrorText(cause, t("The plugin could not be added.")));
@@ -134,7 +146,7 @@ export function AddOwnPluginDialog({
             <DialogTitle>{t("Add your own plugin")}</DialogTitle>
             <DialogDescription>
               {t(
-                "For a plugin no registry lists, such as one your company made. You check what it contains before anyone can use it.",
+                "For a plugin no registry lists, such as one your company made. The groups you choose get it as soon as it is added.",
               )}
             </DialogDescription>
           </DialogHeader>
@@ -222,6 +234,14 @@ export function AddOwnPluginDialog({
               placeholder={t("Shown to people instead of its own name")}
               value={name}
               onChange={(event) => setName(event.currentTarget.value)}
+            />
+
+            <PluginGroupsField
+              groups={groups}
+              error={groupsError}
+              value={chosen.value}
+              onChange={chosen.onChange}
+              disabled={submitting}
             />
 
             {error ? (

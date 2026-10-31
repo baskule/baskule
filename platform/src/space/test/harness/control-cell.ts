@@ -90,7 +90,7 @@ export class TestControlCell extends DurableObject<{ TEST_PRODUCT_SETTINGS: stri
       this.ctx.storage.sql.exec("insert into kv(key,value) values(?,?) on conflict(key) do update set value=excluded.value", `plugins:${spaceId}`, JSON.stringify(plugins));
       return Response.json({ ok: true });
     }
-    if (url.pathname === "/_baskule/plugin-credential") return Response.json({ error: "needs_connection" });
+    if (url.pathname === "/_baskule/plugin-credential") return Response.json({ error: "connect" });
     // This harness has no registered push devices, like an unconfigured installation.
     if (url.pathname === "/_baskule/push/deliver") return Response.json({ ok: true });
     if (url.pathname === "/_baskule/settings") {

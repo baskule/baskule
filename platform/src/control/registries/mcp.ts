@@ -1,8 +1,9 @@
+import type { PluginSearchResult } from "../../../../app/packages/contracts/src/baskule-plugins";
 import { z } from "zod";
-import type { PluginKind, PluginServer } from "../../../../app/packages/contracts/src/baskule-plugins";
+import type { PluginServer } from "../../../../app/packages/contracts/src/baskule-plugins";
 import type { Registry, ResolvedPlugin } from "./index";
 import { fetchJson, type Fetcher } from "./http";
-import { HttpError } from "../../shared/http";
+import { pluginError } from "../../shared/http";
 
 const entry = z.object({ server: z.object({
   name: z.string(), title: z.string().optional(), description: z.string().default(""), version: z.string(),
@@ -25,7 +26,7 @@ function active(e: z.infer<typeof entry>) {
 export class McpRegistry implements Registry {
   readonly id = "mcp";
   constructor(private fetcher: Fetcher) {}
-  async search(q: string, kind?: PluginKind) {
+  async search(q: string, kind?: PluginSearchResult["kind"]) {
     if (kind && kind !== "mcp") return [];
     const url = new URL(base);
     url.search = new URLSearchParams({ search: q, version: "latest", limit: "100" }).toString();
@@ -41,7 +42,7 @@ export class McpRegistry implements Registry {
   async resolve(id: string, version = "latest"): Promise<ResolvedPlugin> {
     const e = entry.parse(await fetchJson(this.fetcher, `${base}/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}`));
     const remotes = servers(e);
-    if (!active(e) || !remotes.length) throw new HttpError(400, "no_remote_servers");
+    if (!active(e) || !remotes.length) throw pluginError(400, "no_remote_servers");
     return { source: { type: "url", url: remotes[0].url }, name: e.server.title ?? e.server.name, description: e.server.description, servers: remotes };
   }
 }

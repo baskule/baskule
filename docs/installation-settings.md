@@ -11,9 +11,11 @@ prefilled when the provider or models.dev knows them. Set them to the model's ac
 decide when to compact context automatically.
 People, invitations, roles and space membership are under **Admin → People** and **Admin → Spaces**.
 Groups (**Admin → People → Groups**; every person is in the built-in **Everyone**) grant plugins and permissions
-such as creating team spaces. Plugins are under **Admin → Plugins**: nothing is installed or turned on by default.
-An admin adds a plugin from the catalog or from its own address, git commit or file, checks what it contains, turns
-it on and chooses the groups that may use it. Each person then turns it on in **Settings → Plugins**. In a team
+such as creating team spaces. Plugins are under **Admin → Plugins**: nothing is installed by default.
+An admin adds a plugin from the catalog or from its own address, git commit or file, checks what it contains, and
+chooses the groups that may use it. New plugins are unpaused. Assigned skills and tools work after setup, with no
+member activation. Administrators can Pause and Resume a plugin. Members see readiness and connect accounts in
+**Settings → Plugins**. In a team
 space, plugins that act with a member's own account stay off until a space owner allows them in the space settings.
 
 The model's prices (USD per million tokens) turn token counts into estimated costs. Built-in providers' prices are
@@ -218,10 +220,9 @@ Neither provider token is sent to arbitrary MCP servers; there is no token excha
 UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH`
 (`server` can be omitted for a single account server; `returnTo` defaults to `/` and must remain on this origin).
 The callback requires the initiating live user session and returns to that path with `pluginId`, `server`, and
-`pluginConnection=connected`, or `pluginConnection=error&connectionError=CODE`. Invalid/missing/expired state returns
-HTTP 400. Callback state is single-use and expires after ten minutes. `GET /api/baskule/plugins` reports each server
-as `connected` or `needs_connection` (the existing `not_required`, `configured`, `needs_configuration` states still
-apply to no-auth and organization servers). `DELETE /api/baskule/plugins/:id/connection[?server=NAME]` immediately
+`pluginConnection=connected`, or `pluginConnection=error&connectionError=CODE`. Invalid, missing or expired state redirects to Settings → Plugins with `connectionError=invalid_oauth_state`. Callback state is single-use and expires after ten minutes. `GET /api/baskule/plugins` reports each server
+with one of `unavailable`, `needs_setup`, `connect`, `reconnect`, or `ready`. The plugin status is the highest-priority
+server status in that order. A skills-only plugin is ready when assigned and unpaused. `DELETE /api/baskule/plugins/:id/connection[?server=NAME]` immediately
 forgets one or all plugin connections, cancels pending consent and prevents an in-flight refresh from restoring them.
 Disconnecting login reuse keeps the sign-in account and its provider grants; revoke grants at the provider if needed.
 
@@ -276,3 +277,7 @@ The encrypted-key schema recreates `plugin_secret`; existing organization keys a
 obtain the installation owner's authorization and retain the keys privately if they must be re-entered. Deploy
 the new build, let ControlCell apply the schema, and re-enter organization keys in Admin → Plugins. Users,
 groups, spaces and chats are untouched. No plaintext reader or data conversion is retained.
+
+The assignment schema drops `user_plugin` and its member activation preferences. Existing plugins retain their
+stored Pause state. The launch reset removes plugin data with the installation owner's authorization; users,
+groups, spaces and chats are retained. No activation route or compatibility reader remains.

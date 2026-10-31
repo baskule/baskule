@@ -10,10 +10,9 @@ import { INTERNAL_HEADER } from "../../src/shared/contract";
 const API = "/api/baskule";
 async function install(h: H, resource: string) {
   const a = await asAdmin(h);
-  const p = (await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { source: { type: "url", url: resource } } })).body;
+  const p = (await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: [], source: { type: "url", url: resource } } })).body;
   await call(h, "PATCH", `${API}/admin/plugins/${p.id}`, { creds: a.creds, body: { enabled: true, servers: [{ name: "remote", credential: "user-oauth", personal: true }] } });
   await call(h, "PATCH", `${API}/admin/groups/everyone`, { creds: a.creds, body: { plugins: [p.id] } });
-  await call(h, "PUT", `${API}/plugins/${p.id}/enabled`, { creds: a.creds, body: { enabled: true } });
   const input = { spaceId: personalSpaceOf(h, a.userId), userId: a.userId, pluginId: p.id, server: "remote" };
   return { a, p, input, start: () => call(h, "GET", `${API}/plugins/${p.id}/connect`, { creds: a.creds }),
     credential: () => call(h, "POST", "/_baskule/plugin-credential", { headers: { [INTERNAL_HEADER]: "1" }, body: input }) };
@@ -102,7 +101,7 @@ describe("MCP OAuth connections", () => {
     const f = await fakeOAuth();
     try {
       const h = await makeService(); const x = await install(h, f.resource);
-      expect((await x.credential()).body).toMatchObject({ error: "needs_connection", connectUrl: `${API}/plugins/${x.p.id}/connect?server=remote` });
+      expect((await x.credential()).body).toMatchObject({ error: "connect" });
       const start = await x.start();
       const authorize = new URL(start.headers.get("location")!);
       expect(authorize.searchParams.get("resource")).toBe(f.resource);
@@ -118,10 +117,10 @@ describe("MCP OAuth connections", () => {
       expect(ciphertext).not.toContain(credential.body.headers.Authorization.slice(7));
       expect(ciphertext).not.toContain("refreshToken");
       expect(f.requests[0]).toMatchObject({ grant_type: "authorization_code", resource: f.resource });
-      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].connections).toEqual([{ server: "remote", state: "connected" }]);
-      expect((await call(h, "GET", callback, { creds: x.a.creds })).body.error).toBe("invalid_oauth_state");
+      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].servers).toEqual([{ name: "remote", personal: true, status: "ready" }]);
+      expect((await call(h, "GET", callback, { creds: x.a.creds })).headers.get("location")).toContain("connectionError=invalid_oauth_state");
       await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds });
-      expect((await x.credential()).body.error).toBe("needs_connection");
+      expect((await x.credential()).body.error).toBe("connect");
     } finally { await f.close(); }
   });
   it("binds state to user/session/origin, expires it and validates callback issuer before token exchange", async () => {
@@ -131,18 +130,18 @@ describe("MCP OAuth connections", () => {
       const bob = await createUser(h, x.a.creds, "bob@os.test", "Bob");
       const b = await signIn(h, bob.email, "user-password-1");
       const callback = await authorized(await x.start());
-      expect((await call(h, "GET", callback, { creds: b.creds })).body.error).toBe("invalid_oauth_state");
+      expect((await call(h, "GET", callback, { creds: b.creds })).headers.get("location")).toContain("connectionError=invalid_oauth_state");
       const wrongOrigin = await h.svc.handle(new Request("http://other.test" + callback, { headers: { cookie: x.a.creds.cookie! } }));
-      expect((await wrongOrigin.json() as { error: string }).error).toBe("invalid_oauth_state");
+      expect(wrongOrigin.headers.get("location")).toContain("connectionError=invalid_oauth_state");
       const a2 = await asAdmin(h);
-      expect((await call(h, "GET", callback, { creds: a2.creds })).body.error).toBe("invalid_oauth_state");
+      expect((await call(h, "GET", callback, { creds: a2.creds })).headers.get("location")).toContain("connectionError=invalid_oauth_state");
       const forged = new URL(ORIGIN + callback); forged.searchParams.set("iss", f.issuer + "/wrong");
       const done = await call(h, "GET", forged.pathname + forged.search, { creds: x.a.creds });
       expect(done.headers.get("location")).toContain("oauth_issuer_mismatch");
       expect(f.state.exchanges).toBe(0);
       const expired = await authorized(await x.start());
       h.storage.sql.exec("update plugin_oauth_state set expires_at=0").toArray();
-      expect((await call(h, "GET", expired, { creds: x.a.creds })).body.error).toBe("invalid_oauth_state");
+      expect((await call(h, "GET", expired, { creds: x.a.creds })).headers.get("location")).toContain("connectionError=invalid_oauth_state");
       const start = await call(h, "GET", `${API}/plugins/${x.p.id}/connect?returnTo=https://evil.test`, { creds: x.a.creds });
       expect(start.body.error).toBe("invalid_return_url");
     } finally { await f.close(); }
@@ -166,8 +165,8 @@ describe("MCP OAuth connections", () => {
       const c = await cipher.open<any>(row.data as string, key); c.oauth.tokens.expiresAt = 0;
       h.storage.sql.exec("update plugin_connection set data=?", await cipher.seal(c, key)).toArray();
       f.state.invalidGrant = true;
-      expect((await x.credential()).body.error).toBe("needs_connection");
-      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual([]);
+      expect((await x.credential()).body.error).toBe("reconnect");
+      expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].status).toBe("reconnect");
     } finally { await f.close(); }
   });
   it("never reads/refreshes personal credentials when team policy, grants or enablement refuse them", async () => {
@@ -177,11 +176,11 @@ describe("MCP OAuth connections", () => {
       await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
       const team = (await call(h, "POST", `${API}/spaces`, { creds: x.a.creds, body: { name: "Team" } })).body.space.id;
       const resolve = () => h.svc.connections.credential({ ...x.input, spaceId: team });
-      expect(await resolve()).toEqual({ error: "not_allowed" }); expect(f.state.refreshes).toBe(0);
+      expect(await resolve()).toEqual({ error: "unavailable" }); expect(f.state.refreshes).toBe(0);
       await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [] } });
       expect(await resolve()).toHaveProperty("headers.Authorization"); expect(f.state.refreshes).toBe(1);
       await call(h, "PATCH", `${API}/admin/groups/everyone`, { creds: x.a.creds, body: { plugins: [] } });
-      expect((await x.credential()).body).toEqual({ error: "not_allowed" });
+      expect((await x.credential()).body).toEqual({ error: "unavailable" });
       expect((await call(h, "POST", "/_baskule/plugin-credential", { body: x.input })).status).toBe(404);
     } finally { await f.close(); }
   });
@@ -192,7 +191,7 @@ describe("MCP OAuth connections", () => {
       await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
       const disconnect = async () => { await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds }); };
       f.state.onRefresh = disconnect;
-      expect((await x.credential()).body.error).toBe("needs_connection");
+      expect((await x.credential()).body.error).toBe("reconnect");
       expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual([]);
       f.state.onExchange = disconnect;
       const done = await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
@@ -212,7 +211,7 @@ describe("MCP OAuth connections", () => {
       expect(f.requests[0].client_secret).toBe("private-secret");
       expect(JSON.stringify((await call(h, "GET", `${API}/admin/plugins`, { creds: x.a.creds })).body)).not.toContain("private-secret");
       await call(h, "PUT", clientPath, { creds: x.a.creds, body: { server: "remote", client: null } });
-      expect((await x.credential()).body.error).toBe("needs_connection");
+      expect((await x.credential()).body.error).toBe("connect");
     } finally { await f.close(); }
   });
 });
@@ -254,7 +253,7 @@ describe("login identity connections", () => {
     expect(getTokens).toHaveBeenCalledWith({ body: { userId: x.a.userId, accountId: account.id } });
     getTokens.mockRestore();
     await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds });
-    expect((await x.credential()).body.error).toBe("needs_connection");
+    expect((await x.credential()).body.error).toBe("connect");
     expect(h.storage.sql.exec("select id from account where id=?", account.id).toArray()).toHaveLength(1);
     expect((await call(h, "POST", "/auth/link-social", { creds: x.a.creds, body: { provider: "google", idToken: { token: "forged", accessToken: "caller-token" } } })).body.error).toBe("provider_code_flow_required");
   });

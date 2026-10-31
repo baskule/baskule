@@ -2,15 +2,15 @@ import { checkMcpUrl } from "../shared/plugin-outbound";
 import { Gunzip, Unzip, UnzipInflate } from "fflate";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-import type { Plugin, PluginFile, PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
-import { HttpError } from "../shared/http";
+import type { PluginFile, PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
+import { HttpError, pluginError } from "../shared/http";
 
 export const IMPORT_LIMITS = { archive: 10 * 1024 * 1024, expanded: 20 * 1024 * 1024, files: 2000, skillFile: 1024 * 1024, stored: 4 * 1024 * 1024, totalStored: 32 * 1024 * 1024, plugins: 100 };
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
 export function safePath(path: string): string {
   const p = path.replace(/^\.\//, "").replace(/\/$/, "");
   if (!p || p.length > 512 || /[\\\x00-\x1f:]/.test(p) || p.startsWith("/") || p.split("/").some(s => !s || s === "." || s === ".."))
-    throw new HttpError(400, "unsafe_plugin_path");
+    throw pluginError(400, "unsafe_plugin_path");
   return p;
 }
 export function base64(bytes: Uint8Array): string {
@@ -19,7 +19,7 @@ export function base64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 export function fromBase64(value: string): Uint8Array {
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) throw new HttpError(400, "invalid_archive");
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) throw pluginError(400, "invalid_archive");
   return Uint8Array.from(atob(value), c => c.charCodeAt(0));
 }
 export async function sha256(bytes: Uint8Array): Promise<string> {
@@ -35,13 +35,13 @@ function concat(chunks: Uint8Array[]) {
 
 /** In-memory only: no archive paths ever reach a host filesystem. Links and special files are rejected. */
 export function unpackArchive(bytes: Uint8Array): Map<string, Uint8Array> {
-  if (bytes.length > IMPORT_LIMITS.archive) throw new HttpError(413, "plugin_too_large");
+  if (bytes.length > IMPORT_LIMITS.archive) throw pluginError(413, "plugin_too_large");
   const files = new Map<string, Uint8Array>();
   let expanded = 0;
   const add = (name: string, data: Uint8Array) => {
     const path = safePath(name);
-    if (files.has(path)) throw new HttpError(400, "duplicate_plugin_path");
-    if (files.size >= IMPORT_LIMITS.files) throw new HttpError(413, "too_many_plugin_files");
+    if (files.has(path)) throw pluginError(400, "duplicate_plugin_path");
+    if (files.size >= IMPORT_LIMITS.files) throw pluginError(413, "too_many_plugin_files");
     files.set(path, data);
   };
   try {
@@ -50,18 +50,18 @@ export function unpackArchive(bytes: Uint8Array): Map<string, Uint8Array> {
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       let end = bytes.length - 22;
       while (end >= Math.max(0, bytes.length - 65557) && view.getUint32(end, true) !== 0x06054b50) end--;
-      if (end < 0 || end < bytes.length - 65557 || end + 22 + view.getUint16(end + 20, true) !== bytes.length || view.getUint16(end + 4, true) || view.getUint16(end + 6, true)) throw new HttpError(400, "invalid_archive");
+      if (end < 0 || end < bytes.length - 65557 || end + 22 + view.getUint16(end + 20, true) !== bytes.length || view.getUint16(end + 4, true) || view.getUint16(end + 6, true)) throw pluginError(400, "invalid_archive");
       const entries = view.getUint16(end + 10, true);
-      if (entries > IMPORT_LIMITS.files) throw new HttpError(413, "too_many_plugin_files");
+      if (entries > IMPORT_LIMITS.files) throw pluginError(413, "too_many_plugin_files");
       let central = view.getUint32(end + 16, true);
       for (let n = 0; n < entries; n++) {
         const i = central;
-        if (i + 46 > end || view.getUint32(i, true) !== 0x02014b50) throw new HttpError(400, "invalid_archive");
+        if (i + 46 > end || view.getUint32(i, true) !== 0x02014b50) throw pluginError(400, "invalid_archive");
         const mode = view.getUint32(i + 38, true) >>> 16;
-        if ((mode & 0xf000) && ![0x8000, 0x4000].includes(mode & 0xf000)) throw new HttpError(400, "plugin_links_unsupported");
+        if ((mode & 0xf000) && ![0x8000, 0x4000].includes(mode & 0xf000)) throw pluginError(400, "plugin_links_unsupported");
         central += 46 + view.getUint16(i + 28, true) + view.getUint16(i + 30, true) + view.getUint16(i + 32, true);
       }
-      if (central !== end) throw new HttpError(400, "invalid_archive");
+      if (central !== end) throw pluginError(400, "invalid_archive");
       let unfinished = 0;
       const unzip = new Unzip(file => {
         safePath(file.name);
@@ -71,7 +71,7 @@ export function unpackArchive(bytes: Uint8Array): Map<string, Uint8Array> {
         file.ondata = (error, chunk, final) => {
           if (error) throw error;
           expanded += chunk.length;
-          if (expanded > IMPORT_LIMITS.expanded) throw new HttpError(413, "plugin_too_large");
+          if (expanded > IMPORT_LIMITS.expanded) throw pluginError(413, "plugin_too_large");
           chunks.push(chunk);
           if (final) { add(file.name, concat(chunks)); unfinished--; }
         };
@@ -79,12 +79,12 @@ export function unpackArchive(bytes: Uint8Array): Map<string, Uint8Array> {
       });
       unzip.register(UnzipInflate);
       for (let i = 0; i < bytes.length; i += 1024) unzip.push(bytes.subarray(i, i + 1024), i + 1024 >= bytes.length);
-      if (unfinished) throw new HttpError(400, "invalid_archive");
+      if (unfinished) throw pluginError(400, "invalid_archive");
     } else if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
       const chunks: Uint8Array[] = [];
       const gunzip = new Gunzip(chunk => {
         expanded += chunk.length;
-        if (expanded > IMPORT_LIMITS.expanded) throw new HttpError(413, "plugin_too_large");
+        if (expanded > IMPORT_LIMITS.expanded) throw pluginError(413, "plugin_too_large");
         chunks.push(chunk);
       });
       for (let i = 0; i < bytes.length; i += 1024) gunzip.push(bytes.subarray(i, i + 1024), i + 1024 >= bytes.length);
@@ -94,32 +94,31 @@ export function unpackArchive(bytes: Uint8Array): Map<string, Uint8Array> {
       for (let at = 0; at + 512 <= tar.length; ) {
         if (tar.subarray(at, at + 512).every(b => b === 0)) break;
         const size = parseInt(field(at + 124, 12).trim(), 8);
-        if (!Number.isSafeInteger(size) || size < 0 || at + 512 + size > tar.length) throw new HttpError(400, "invalid_archive");
+        if (!Number.isSafeInteger(size) || size < 0 || at + 512 + size > tar.length) throw pluginError(400, "invalid_archive");
         const data = tar.slice(at + 512, at + 512 + size);
         const type = field(at + 156, 1);
         const name = nextPath ?? [field(at + 345, 155), field(at, 100)].filter(Boolean).join("/");
         nextPath = undefined;
         if (type === "x" || type === "g") {
           const pax = utf8.decode(data);
-          if (/\blinkpath=/.test(pax)) throw new HttpError(400, "plugin_links_unsupported");
+          if (/\blinkpath=/.test(pax)) throw pluginError(400, "plugin_links_unsupported");
           const p = /(?:^|\n)\d+ path=([^\n]+)/.exec(pax)?.[1];
           if (p) nextPath = safePath(p);
         } else if (type === "L") nextPath = safePath(utf8.decode(data).split("\0")[0]);
         else if (type === "5") { if (name !== "./" && name !== ".") safePath(name); }
         else if (type === "0" || type === "") add(name, data);
-        else throw new HttpError(400, "plugin_links_unsupported");
+        else throw pluginError(400, "plugin_links_unsupported");
         at += 512 + Math.ceil(size / 512) * 512;
       }
-    } else throw new HttpError(400, "unsupported_archive", "Upload a ZIP or tar.gz archive");
-  } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(400, "invalid_archive"); }
-  if (!files.size) throw new HttpError(400, "empty_plugin_archive");
+    } else throw pluginError(400, "unsupported_archive", "Upload a ZIP or tar.gz archive");
+  } catch (e) { if (e instanceof HttpError) throw e; throw pluginError(400, "invalid_archive"); }
+  if (!files.size) throw pluginError(400, "empty_plugin_archive");
   return files;
 }
 
 export interface InspectedPlugin {
   name: string;
   description: string;
-  kind: Plugin["kind"];
   servers: PluginServer[];
   skills: { name: string; description: string; files: PluginFile[] }[];
   ignored: string[];
@@ -139,15 +138,15 @@ export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: 
   const ignored: string[] = [];
   const readObject = (p: string): Record<string, unknown> => {
     try { return z.record(z.string(), z.unknown()).parse(JSON.parse(utf8.decode(files.get(p)!))); }
-    catch { throw new HttpError(400, "invalid_plugin_manifest", p); }
+    catch { throw pluginError(400, "invalid_plugin_manifest", p); }
   };
   let manifest: Record<string, unknown> = {};
   const manifestPath = ["plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"].find(p => files.has(p));
   if (manifestPath) manifest = readObject(manifestPath);
-  if (manifest.$schema && manifest.$schema !== "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json") throw new HttpError(400, "unsupported_plugin_version");
+  if (manifest.$schema && manifest.$schema !== "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json") throw pluginError(400, "unsupported_plugin_version");
   if (manifestPath) {
     const m = metadata.safeParse(manifest);
-    if (!m.success) throw new HttpError(400, "invalid_plugin_manifest");
+    if (!m.success) throw pluginError(400, "invalid_plugin_manifest");
     for (const key of Object.keys(manifest)) if (!["$schema", "name", "description", "version", "author", "homepage", "repository", "license", "keywords"].includes(key)) ignored.push(`manifest field: ${key}`);
   }
   const servers: PluginServer[] = [];
@@ -183,12 +182,12 @@ export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: 
       const fm = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(utf8.decode(skill));
       if (!fm) throw new Error("frontmatter");
       const m = metadata.extend({ name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(64), description: z.string().min(1).max(1024) }).parse(parseYaml(fm[1], { maxAliasCount: 20 }));
-      if (skills.some(s => s.name === m.name)) throw new HttpError(400, "duplicate_skill_name");
+      if (skills.some(s => s.name === m.name)) throw pluginError(400, "duplicate_skill_name");
       if (path && path.split("/").at(-1) !== m.name) throw new Error("skill name must match directory");
       const content = [...retained.map(([p, b]) => [p.slice(prefix.length), b] as const), ...inherited.map(([p, b], i) => [`licenses/${i}-${p.split("/").at(-1)}`, b] as const)].map(([p, b]) => {
-        if (b.length > IMPORT_LIMITS.skillFile) throw new HttpError(413, "plugin_skill_file_too_large");
+        if (b.length > IMPORT_LIMITS.skillFile) throw pluginError(413, "plugin_skill_file_too_large");
         storedBytes += b.length;
-        if (storedBytes > IMPORT_LIMITS.stored) throw new HttpError(413, "plugin_too_large");
+        if (storedBytes > IMPORT_LIMITS.stored) throw pluginError(413, "plugin_too_large");
         return { path: safePath(p), content: base64(b), encoding: "base64" as const };
       });
       skills.push({ ...m, files: content });
@@ -197,6 +196,6 @@ export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: 
   const understood = new Set(["skills", "plugin.json", ".claude-plugin", ".codex-plugin", "mcp.json", ".mcp.json", "SKILL.md", "LICENSE", "LICENSE.txt", "README.md", "CHANGELOG.md", ...paths.map(p => p.split("/")[0])]);
   for (const p of new Set([...files.keys()].map(p => p.split("/")[0]))) if (!understood.has(p) && !files.has("SKILL.md")) ignored.push(`unsupported bundle part: ${p}`);
   for (const p of files.keys()) if (/^\.(?:claude|codex)-plugin\//.test(p) && !p.endsWith("/plugin.json")) ignored.push(`unsupported client file: ${p}`);
-  if (!servers.length && !skills.length) throw new HttpError(400, "empty_plugin", ignored.join("; ") || "No usable skills or remote MCP servers");
-  return { name: typeof manifest.name === "string" ? manifest.name : skills[0]?.name ?? "Plugin", description: typeof manifest.description === "string" ? manifest.description : skills[0]?.description ?? "", kind: servers.length ? skills.length ? "bundle" : "mcp" : "skill", servers, skills, ignored, storedBytes };
+  if (!servers.length && !skills.length) throw pluginError(400, "empty_plugin", ignored.join("; ") || "No usable skills or remote MCP servers");
+  return { name: typeof manifest.name === "string" ? manifest.name : skills[0]?.name ?? "Plugin", description: typeof manifest.description === "string" ? manifest.description : skills[0]?.description ?? "", servers, skills, ignored, storedBytes };
 }
