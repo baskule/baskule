@@ -6,7 +6,7 @@ configuration files. No checkout, compiler, or build container is needed. For se
 
 ## Requirements
 
-- Docker Engine with Compose **2.24.4 or newer**, and curl. Your account must be able to run Docker.
+- Docker Engine **25 or newer** with Compose **2.24.4 or newer**, and curl. Your account must be able to run Docker.
 - Start with **4 CPU cores, 24 GiB RAM, and 80 GB free disk**. Allow more disk for conversations and computer files.
   The default memory caps total 15.75 GiB: two platform nodes at 3 GiB each, storage at 1 GiB, edge at 256 MiB,
   computerd at 512 MiB, and all computers together at 8 GiB. The remaining memory is for Docker and the OS.
@@ -23,13 +23,15 @@ Choose a version from [Releases](https://github.com/baskule/baskule/releases), t
 
 ```sh
 mkdir baskule && cd baskule
+mkdir config
 VERSION=0.5.0
+IMAGE_VERSION=$(printf '%s' "$VERSION" | tr '+' '_')
 ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
 curl -fLO "$ASSETS/docker-compose.yml"
 curl -fL "$ASSETS/baskule.env.example" -o .env.example
 umask 077
 docker run --rm -i --network none --entrypoint baskule-celld-job \
-  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$VERSION" init-env - < .env.example > .env
+  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$IMAGE_VERSION" init-env - < .env.example > .env
 chmod 600 .env
 ```
 
@@ -91,7 +93,7 @@ For SSO, put the authentication JSON in the single-quoted `AUTH_CONFIG` value in
 `.env` secrets using `{"env":"NAME"}`. Follow [installation settings](installation-settings.md#authentication-file)
 for providers and callback addresses. Run `docker compose up -d` after changing it. An invalid configuration
 fails deployment. You can instead save it as `config/auth.json`; that optional file takes precedence over
-`AUTH_CONFIG`. Compose creates the empty `config` directory on first start. Keep the file private and run
+`AUTH_CONFIG`. The download step creates `config` with your account as its owner. Keep the file private and run
 `docker compose run --rm --no-deps baskule-deploy` after editing it. Back up before switching authentication modes,
 which requires a fresh bucket.
 
@@ -134,9 +136,18 @@ Deleting volumes destroys the installation's local data; do so only after preser
 
 ## Update and stop
 
-Read the target release's notes for any required alpha data wipe. Back up first. Download its `docker-compose.yml`
-and env example with the commands above, retain your private `.env`, and set `BASKULE_VERSION` to the new tag.
-Compare the new example for configuration changes, then run:
+Read the target release's notes for any required alpha data wipe. Back up first. Download only the new assets;
+keep your existing `.env` and its secrets:
+
+```sh
+VERSION=0.5.0 # Set the target release.
+ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
+curl -fLO "$ASSETS/docker-compose.yml"
+curl -fL "$ASSETS/baskule.env.example" -o .env.example
+```
+
+Compare the new example for configuration changes. Edit `BASKULE_VERSION` in your existing `.env` to the target
+version, replacing any `+` with `_` for the image tag. Do not run the initializer again. Then run:
 
 ```sh
 docker compose pull

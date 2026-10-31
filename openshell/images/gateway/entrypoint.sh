@@ -6,6 +6,7 @@ if [ "${1:-}" != "--inner" ]; then exec dind "$0" --inner; fi
 
 log() { echo "[baskule-openshell] $*" >&2; }
 mkdir -p /var/lib/openshell/state /var/run
+rm -f /var/run/baskule-ready
 
 # 1. Private dockerd: unix socket only, no bridge, no iptables (sandboxes run --network none, supervisors host-net).
 dockerd --host=unix:///var/run/docker.sock --bridge=none --iptables=false --ip6tables=false \
@@ -20,12 +21,24 @@ REGISTRY=${BASKULE_REGISTRY:-}
 TAG=${BASKULE_VERSION:-${BASKULE_TAG:-local}}
 while read -r file created tag; do
   [ -n "$tag" ] || continue
-  if [ "$(docker image inspect --format '{{.Created}}' "$tag" 2>/dev/null)" != "$created" ]; then
-    docker load -q -i "/usr/local/lib/baskule/images/$file" >/dev/null && log "loaded $tag"
-  fi
   name=${tag%:*}
-  docker tag "$tag" "${REGISTRY:+$REGISTRY/}$name:$TAG"
+  current="${REGISTRY:+$REGISTRY/}$name:$TAG"
+  if [ "$(docker image inspect --format '{{.Created}}' "$current" 2>/dev/null)" != "$created" ]; then
+    docker load -q -i "/usr/local/lib/baskule/images/$file" >/dev/null && log "loaded $tag"
+    docker tag "$tag" "$current"
+  fi
 done < /usr/local/lib/baskule/images/images.txt
+
+# Untag previous releases, including the archive's build tags. Running workloads keep their image by ID.
+while read -r reference; do
+  repository=${reference%:*}
+  name=${repository##*/}
+  case "$name" in
+    baskule-*)
+      [ "$reference" = "${REGISTRY:+$REGISTRY/}$name:$TAG" ] || docker image rm --force "$reference" >/dev/null
+      ;;
+  esac
+done < <(docker image ls --format '{{.Repository}}:{{.Tag}}')
 
 # 3. Supervisor JWT keys (kept across restarts on the state volume).
 if [ ! -s /var/lib/openshell/tls/jwt/signing.pem ]; then
@@ -77,6 +90,7 @@ if [ -n "$ids" ]; then
   done
 fi
 rm -f /var/lib/openshell/.baskule-restore
+docker image prune -f >/dev/null
 touch /var/run/baskule-ready
 # Any child exiting takes the container down (compose restarts it).
 set +e

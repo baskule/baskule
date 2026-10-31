@@ -11,15 +11,39 @@ sig="aws:amz:${AWS_REGION:-us-east-1}:s3"
 # RustFS requires the payload hash header (empty body).
 h="x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
+# Keep retries inside one minute, including time spent in curl.
 wait_s3() {
-  for _ in $(seq 120); do curl -s --connect-timeout 2 --max-time 5 -o /dev/null "$S3_ENDPOINT/" && return 0; sleep 0.5; done
-  log "RustFS not reachable at $S3_ENDPOINT"; return 1
+  local deadline=$((SECONDS + 60)) remaining code=000 put=none
+  while (( SECONDS < deadline )); do
+    remaining=$((deadline - SECONDS))
+    (( remaining <= 5 )) || remaining=5
+    if [ "${1:-}" = bucket ]; then
+      code=$(curl -s --connect-timeout 2 --max-time "$remaining" -o /dev/null -w '%{http_code}' \
+        --aws-sigv4 "$sig" -H "$h" -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+        -I "$S3_ENDPOINT/$CELLD_BUCKET_NAME") || code=000
+      if [ "$code" = 200 ]; then log "bucket $CELLD_BUCKET_NAME ready"; return 0; fi
+      if (( SECONDS < deadline )); then
+        remaining=$((deadline - SECONDS))
+        (( remaining <= 5 )) || remaining=5
+        put=$(curl -s --connect-timeout 2 --max-time "$remaining" -o /dev/null -w '%{http_code}' \
+          --aws-sigv4 "$sig" -H "$h" -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+          -X PUT "$S3_ENDPOINT/$CELLD_BUCKET_NAME") || put=000
+      fi
+    else
+      code=$(curl -s --connect-timeout 2 --max-time "$remaining" -o /dev/null -w '%{http_code}' "$S3_ENDPOINT/") || code=000
+      # An authenticated endpoint may reject unsigned probes once it is ready.
+      case "$code" in 200|403) return 0 ;; esac
+    fi
+    (( SECONDS >= deadline )) || sleep 0.5
+  done
+  log "S3 readiness timed out at $S3_ENDPOINT (last HTTP status: HEAD/GET=$code PUT=$put)"
+  return 1
 }
 
 case "${1:-}" in
   init-env)
-    template=/etc/baskule/env.example
-    [ "${2:-}" != - ] || template=/dev/stdin
+    [ "${2:-}" = - ] || { log "usage: baskule-celld-job init-env - < env.example"; exit 2; }
+    template=/dev/stdin
     random() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
     sed -e "s/^RUSTFS_SECRET_KEY=$/RUSTFS_SECRET_KEY=$(random)/" \
         -e "s/^COMPUTERD_TOKEN=$/COMPUTERD_TOKEN=$(random)/" \
@@ -27,24 +51,19 @@ case "${1:-}" in
     ;;
   backup)
     # Stop the entire project first. stdout is the archive, never log output.
-    tar -C /backup -cf - . | gzip -1
+    tar --xattrs --xattrs-include='*' --numeric-owner -C /backup -cf - . | gzip -1
     ;;
   restore)
     # Restore into empty volumes only; never merge two installations' state.
     for directory in /backup/*; do
       [ -z "$(ls -A "$directory")" ] || { log "restore requires empty volumes"; exit 1; }
     done
-    tar -C /backup -xzf -
+    tar --xattrs --xattrs-include='*' --numeric-owner -C /backup -xzf -
     # Restored disks need fresh OpenShell admission records, while their data and keys stay intact.
     touch /backup/openshell-state/.baskule-restore
     ;;
   bootstrap)
-    wait_s3
-    code=$(curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 "$sig" -H "$h" -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" -I "$S3_ENDPOINT/$CELLD_BUCKET_NAME")
-    if [ "$code" = 200 ]; then log "bucket $CELLD_BUCKET_NAME exists"; exit 0; fi
-    curl -sf -o /dev/null --aws-sigv4 "$sig" -H "$h" -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" -X PUT "$S3_ENDPOINT/$CELLD_BUCKET_NAME"
-    log "bucket $CELLD_BUCKET_NAME created"
-    celld diagnose --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT" >/dev/null && log "celld diagnose: bucket OK"
+    wait_s3 bucket
     ;;
   deploy)
     app=${DEPLOY_APP:-auto}
@@ -78,5 +97,5 @@ case "${1:-}" in
     done
     log "deployed $app"
     ;;
-  *) echo "usage: baskule-celld-job bootstrap|deploy|init-env [-]|backup|restore" >&2; exit 2 ;;
+  *) echo "usage: baskule-celld-job bootstrap|deploy|init-env -|backup|restore" >&2; exit 2 ;;
 esac

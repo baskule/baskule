@@ -10,14 +10,14 @@ import { createApi } from "./journeys/api.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const target = process.argv[2] ?? "all";
-if (!["all", "single", "cluster", "restore"].includes(target)) throw new Error("Choose all, single, cluster, or restore");
+if (!["all", "single", "cluster", "restore", "fresh"].includes(target)) throw new Error("Choose all, single, cluster, restore, or fresh");
 const version = process.env.BASKULE_INSTALL_VERSION ?? "local";
 const registry = process.env.BASKULE_INSTALL_REGISTRY ?? "ghcr.io/baskule";
 const image = `${registry}/baskule-celld:${version}`;
 const computerImage = `${registry}/baskule-computerd:${version}`;
 const id = `release-install-${randomBytes(4).toString("hex")}`;
 const run = resolve(root, ".run", id);
-const evidence = resolve(root, ".run/evidence/release-install");
+const evidence = resolve(root, process.env.BASKULE_INSTALL_EVIDENCE ?? ".run/evidence/release-install");
 mkdirSync(run, { recursive: true });
 mkdirSync(evidence, { recursive: true });
 const assets = resolve(run, "assets");
@@ -28,6 +28,7 @@ const projects = [];
 const containers = new Map();
 const fixtureVolumes = new Set();
 const fixtureNetworks = new Set();
+const fixtureImages = new Set();
 function command(args, { cwd = root, input, inputFile, output, allowFailure = false } = {}) {
   appendFileSync(resolve(evidence, "commands.log"), `docker ${args.map(a => a.startsWith("RUSTFS_SECRET_KEY=") ? "RUSTFS_SECRET_KEY=<redacted>" : a).join(" ")}\n`);
   const source = inputFile ? openSync(inputFile, "r") : undefined;
@@ -62,7 +63,8 @@ function envFile(file, values) {
 function world(role, values) {
   const directory = resolve(run, role);
   mkdirSync(directory);
-  const kind = role.startsWith("node") ? "node" : role;
+  mkdirSync(resolve(directory, "config"));
+  const kind = role.startsWith("node") ? "node" : role.startsWith("single") ? "single" : role;
   const compose = kind === "single" ? "docker-compose.yml" : `cluster-${kind}.yml`;
   const example = kind === "single" ? "baskule.env.example" : `cluster-${kind}.env.example`;
   copyFileSync(resolve(assets, compose), resolve(directory, "docker-compose.yml"));
@@ -76,7 +78,7 @@ function world(role, values) {
   const project = `${id}-${role}`;
   const files = ["-f", resolve(directory, "docker-compose.yml")];
   const dc = (args, options = {}) => command(["compose", "-p", project, ...files, ...args], { cwd: directory, ...options });
-  expect(readdirSync(directory).sort()).toEqual([".env", ".env.example", "docker-compose.yml"]);
+  expect(readdirSync(directory).sort()).toEqual([".env", ".env.example", "config", "docker-compose.yml"]);
   const w = { directory, file, project, dc, values, files };
   projects.push(w);
   dc(["--profile", "*", "config", "-q"]);
@@ -108,8 +110,8 @@ async function rpc(person, space) {
   }, { message: "space RPC socket opened", timeout: 60_000 }).toBe(true);
   return client;
 }
-const admin = { email: "admin@release.test", password: randomBytes(24).toString("hex") };
-const adminVars = { ADMIN_EMAIL: admin.email, ADMIN_PASSWORD: admin.password, AUTH_CONFIG: "'{\"version\":1,\"password\":true}'" };
+const admin = { email: "admin@release.test", password: `quoted$"${randomBytes(24).toString("hex")}` };
+const adminVars = { ADMIN_EMAIL: admin.email, ADMIN_PASSWORD: `'${admin.password}'`, AUTH_CONFIG: "'{\"version\":1,\"password\":true}'" };
 async function fake(w, lan) {
   const name = `${w.project}-llm`;
   const args = ["run", "-d", "--no-healthcheck", "--name", name];
@@ -182,6 +184,54 @@ async function persisted(base, previous) {
     expect(JSON.stringify(result)).toContain("RELEASE_INSTALL_DISK_OK");
   } finally { client.close(); await client.closed; }
 }
+async function fresh() {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const p = await port();
+    const base = `http://127.0.0.1:${p}`;
+    const w = world(`single-${attempt}`, { ...adminVars, AUTH_CONFIG: "", BASKULE_PORT: p, PUBLIC_ORIGINS: base });
+    w.dc(["up", "-d"]);
+    await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-openshell", "baskule-computerd"]);
+    await ready(`${base}/version.json`);
+    await createApi({ urls: { loopback: base, front: base }, admin }).adminSession();
+    expect(w.dc(["ps", "-a", "--format", "{{.ExitCode}}", "baskule-bootstrap"])).toBe("0");
+    writeFileSync(resolve(evidence, `${w.project}.log`), w.dc(["logs", "--no-color"]));
+    pass(`fresh install ${attempt}/3: first up, bucket bootstrap, all services healthy, version and quoted-password admin sign-in`);
+    w.dc(["down", "-v"]);
+  }
+}
+function imageCleanup(w) {
+  const gateway = w.dc(["ps", "-q", "baskule-openshell"]);
+  // A distinct obsolete image proves that pruning frees an image, beyond just removing aliases.
+  const old = command(["exec", gateway, "sh", "-c",
+    `mkdir -p /tmp/obsolete; echo old > /tmp/obsolete/release; tar -C /tmp/obsolete -cf - . | docker import - ${registry}/baskule-computer:obsolete`]);
+  const next = `${version}-upgrade`;
+  for (const name of ["celld", "computerd", "openshell-gateway"]) {
+    const tag = `${registry}/baskule-${name}:${next}`;
+    fixtureImages.add(tag);
+    command(["tag", `${registry}/baskule-${name}:${version}`, tag]);
+  }
+  envFile(w.file, { BASKULE_VERSION: next });
+  w.dc(["up", "-d"]);
+  const updated = w.dc(["ps", "-q", "baskule-openshell"]);
+  const references = command(["exec", updated, "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"]);
+  expect(references.split("\n").sort()).toEqual(["computer", "openshell-supervisor", "openshell-sandbox"].map(name => `${registry}/baskule-${name}:${next}`).sort());
+  expect(command(["exec", updated, "docker", "image", "ls", "-aq"])).not.toContain(old.replace("sha256:", "").slice(0, 12));
+  writeFileSync(resolve(evidence, "gateway-upgrade-images.txt"), `${references}\nobsolete image pruned: ${old}\n`);
+  pass("gateway update keeps only current workload tags and prunes a distinct obsolete image");
+}
+function metadata(w, create = false) {
+  const gateway = w.dc(["ps", "-q", "baskule-openshell"]);
+  const code = `import os,json,stat
+path='/var/lib/openshell/backup-metadata-proof'
+${create ? `open(path,'w').write('backup metadata')
+os.setxattr(path,'user.baskule-test',b'preserved')
+os.setxattr(path,'trusted.overlay.opaque',b'y')
+os.chown(path,12345,23456)
+os.chmod(path,0o640)` : ""}
+s=os.stat(path)
+print(json.dumps([s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),os.getxattr(path,'user.baskule-test').decode(),os.getxattr(path,'trusted.overlay.opaque').decode()]))`;
+  expect(JSON.parse(command(["exec", gateway, "python3", "-c", code]))).toEqual([12345, 23456, 0o640, "preserved", "y"]);
+}
 async function single() {
   const p = await port();
   const base = `http://127.0.0.1:${p}`;
@@ -190,9 +240,12 @@ async function single() {
   await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-openshell", "baskule-computerd"]);
   const llm = await fake(w);
   const result = await exercise(w, base, llm.endpoint);
+  imageCleanup(w);
+  await persisted(base, result);
   writeFileSync(resolve(run, "single-proof.json"), JSON.stringify({ ...result, directory: w.directory }), { mode: 0o600 });
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
   envFile(w.file, { ADMIN_PASSWORD: "" });
+  metadata(w, true);
   // Use exactly the documented stop/backup/start operations from the install directory.
   w.dc(["down"]);
   const backup = resolve(evidence, "single-backup.tar.gz");
@@ -206,8 +259,8 @@ async function single() {
   w.dc(["up", "-d"]);
   await ready(`${base}/version.json`);
   await persisted(base, result);
-  pass("single-machine backup restores chat and computer disk into empty volumes");
-  w.dc(["down", "-v"]);
+  metadata(w);
+  pass("single-machine backup restores chat, computer disk, user/trusted xattrs, numeric ownership and modes into empty volumes");
 }
 async function restoreOnly() {
   if (!process.argv[3]) throw new Error("Pass the private single-proof.json path");
@@ -261,7 +314,7 @@ async function cluster() {
   adapter(edge, `  edge:\n    ports: !reset []\n    networks:\n      lan:\n        ipv4_address: ${edgeHost}\n`);
   // The external bucket is an independent fixture, not a service of any cluster role.
   await expect.poll(async () => {
-    try { await fetch(shared.S3_ENDPOINT, { signal: AbortSignal.timeout(3000) }); return true; } catch { return false; }
+    try { return (await fetch(`${shared.S3_ENDPOINT}/health/ready`, { signal: AbortSignal.timeout(3000) })).ok; } catch { return false; }
   }, { message: "external S3 fixture ready", timeout: 60_000 }).toBe(true);
   // Create only the bucket, as the guide requires; do not initialize celld state with a bootstrap shortcut.
   a.dc(["run", "--rm", "--no-deps", "--entrypoint", "sh", "deploy", "-c",
@@ -297,16 +350,19 @@ async function cluster() {
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
 }
 try {
+  if (target === "fresh") await fresh();
   if (target === "restore") await restoreOnly();
   if (target === "all" || target === "single") await single();
   if (target === "all" || target === "cluster") await cluster();
 } finally {
   for (const [name, kind] of containers) if (kind === "model") command(["rm", "-f", name], { allowFailure: true });
   for (const w of [...projects].reverse()) {
-    writeFileSync(resolve(evidence, `${w.project}.log`), w.dc(["logs", "--no-color"], { allowFailure: true }));
+    const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
+    if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);
     w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
   }
   for (const [name, kind] of containers) if (kind === "storage") command(["rm", "-f", name], { allowFailure: true });
   for (const volume of fixtureVolumes) command(["volume", "rm", volume], { allowFailure: true });
+  for (const image of fixtureImages) command(["image", "rm", image], { allowFailure: true });
   for (const network of fixtureNetworks) command(["network", "rm", network], { allowFailure: true });
 }

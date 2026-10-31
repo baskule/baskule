@@ -72,13 +72,15 @@ then start. The [installation guide](docs/install.md) covers configuration, HTTP
 
 ```sh
 mkdir baskule && cd baskule
+mkdir config
 VERSION=0.5.0
+IMAGE_VERSION=$(printf '%s' "$VERSION" | tr '+' '_')
 ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
 curl -fLO "$ASSETS/docker-compose.yml"
 curl -fL "$ASSETS/baskule.env.example" -o .env.example
 umask 077
 docker run --rm -i --network none --entrypoint baskule-celld-job \
-  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$VERSION" init-env - < .env.example > .env
+  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$IMAGE_VERSION" init-env - < .env.example > .env
 $EDITOR .env
 docker compose up -d
 ```

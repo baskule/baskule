@@ -88,8 +88,6 @@ jq -n --arg umbrella "$(desc "$ROOT")" --arg fork "$fork_key" --arg forkBranch "
   --arg openshell "$(img_id "baskule-openshell-gateway:$TAG")" \
   '{umbrella:$umbrella, fork:$fork, forkBranch:$forkBranch, spaceBundle:$spaceBundle, builtAt:$builtAt,
     images:{computer:$computer, computerd:$computerd, openshell:$openshell}}' >"$PLATFORM/dist/web/version.json"
-# Repack celld after writing the static stamp; its own image ID cannot be embedded in itself.
-rebuilt=$("$DEPLOY_DIR/images.sh")
 step "version: $(jq -c '{umbrella, fork}' "$PLATFORM/dist/web/version.json")"
 
 [ $DEPLOY = 1 ] || { step "built (no deploy)"; exit 0; }
@@ -103,7 +101,6 @@ if [ $was_up = 1 ]; then
   step "refresh running services"
   dc up -d --no-build baskule-openshell baskule-traces baskule-edge baskule-computerd baskule-celld-a baskule-celld-b >&2
   wait_healthy baskule-openshell 600
-  "$ROOT/openshell/load-images.sh" baskule-openshell >&2
   step "deploy.sh"
   "$DEPLOY_DIR/deploy.sh" 2>&1 | tail -2 >&2
 else

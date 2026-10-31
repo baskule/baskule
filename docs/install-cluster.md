@@ -2,7 +2,8 @@
 
 A cluster runs platform nodes on several machines and keeps their cell state in one external S3-compatible bucket.
 The computers run on one separate host. Use the [single-machine guide](install.md) for a smaller installation.
-All machines need Linux x86-64 and Docker Compose 2.24.4 or newer. No source checkout or build is needed.
+All machines need Linux x86-64 and Docker Engine 25 or newer with Compose 2.24.4 or newer.
+No source checkout or build is needed.
 
 ## Roles and network
 
@@ -21,6 +22,11 @@ Caddy distributes requests and checks node health. The computers host runs compu
 networks. Only computerd joins both. Computers never share a network with platform nodes, storage, or the edge;
 their egress policy denies private destinations.
 
+Node↔computerd requests and responses use **plain HTTP**, including `COMPUTERD_TOKEN`, command execution,
+and file streams in both directions. That token controls every computer. Computerd also reads platform settings
+over HTTP. Use a trusted private network or an encrypted overlay such as WireGuard for these connections.
+A private IP address alone does not encrypt traffic.
+
 | Port | Access |
 | --- | --- |
 | 443 | Clients to your HTTPS load balancer |
@@ -33,7 +39,13 @@ their egress policy denies private destinations.
 
 Bind node listeners to a private IPv4 interface, never `0.0.0.0` on an internet-facing machine. Platform nodes
 use Linux host networking so their advertised address is also reachable from the node itself. Other roles use
-separate Docker networks. Apply host or network firewalls to node ports, and Docker forwarding rules to published ports. OpenShell is privileged and has no host Docker socket mount or published port.
+separate Docker networks. Apply host or network firewalls to node ports, and Docker forwarding rules to published
+ports. Allow port 47092 only between platform nodes, including the machine
+running the deploy job. Allow access to the S3 endpoint only from platform nodes. Explicitly exclude the computers
+host from both rules; a broad private-subnet allow rule would admit it. The computers host shares the private
+network with the nodes, so Docker network separation alone cannot prevent this access. With these restrictions,
+OpenShell's egress policy remains the barrier against computers reaching other private destinations.
+OpenShell is privileged and has no host Docker socket mount or published port.
 
 Allow platform nodes 2 cores and 3 GiB RAM each, plus OS memory and cache disk. The computers host's default cap
 is 3 cores and 8 GiB for OpenShell plus 1 core and 512 MiB for computerd. Start that host with at least 4 cores,
@@ -57,12 +69,13 @@ Create an installation directory on the computers machine and download its role 
 ```sh
 mkdir baskule-computers && cd baskule-computers
 VERSION=0.5.0
+IMAGE_VERSION=$(printf '%s' "$VERSION" | tr '+' '_')
 ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
 curl -fL "$ASSETS/cluster-computers.yml" -o docker-compose.yml
 curl -fL "$ASSETS/cluster-computers.env.example" -o .env.example
 umask 077
 docker run --rm -i --network none --entrypoint baskule-celld-job \
-  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$VERSION" init-env - < .env.example > .env
+  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$IMAGE_VERSION" init-env - < .env.example > .env
 chmod 600 .env
 ```
 
@@ -84,6 +97,7 @@ On each platform machine:
 
 ```sh
 mkdir baskule-node && cd baskule-node
+mkdir config
 VERSION=0.5.0
 ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
 curl -fL "$ASSETS/cluster-node.yml" -o docker-compose.yml
@@ -175,7 +189,8 @@ private `.env` and optional `config/auth.json` off the machines. Restore the buc
 containers to re-admit their persistent disks; files under `/sandbox/space` remain. Node caches can be recreated.
 
 Read the new release notes and back up before updating. Download the target release's role assets, keep your
-configuration, and update `BASKULE_VERSION` on each image-based role. For platform nodes, run `docker compose pull`
+configuration, and update `BASKULE_VERSION` on each image-based role (replace any `+` with `_` for Docker tags).
+For platform nodes, run `docker compose pull`
 and `docker compose up -d` **one node at a time**. Wait for each node to be healthy before the next. Once all nodes
 run the new image, run `docker compose run --rm deploy` once to publish its bundled app to the fleet.
 Update the computers role and edge with `docker compose pull && docker compose up -d`. Computers restart with

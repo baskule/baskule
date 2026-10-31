@@ -58,11 +58,10 @@ fi
 tar -czf .run/release/backend/platform-worker.tar.gz -C platform/dist worker.js
 tar -czf .run/release/backend/space-cell.tar.gz -C platform/src/space/t3 space-cell.js BUILT_FROM
 : > .run/release/runtime/images.txt
-for image in baskule-computer baskule-computerd baskule-celld baskule-openshell-gateway baskule-openshell-supervisor baskule-openshell-sandbox; do
+for image in baskule-computerd baskule-celld baskule-openshell-gateway; do
   docker tag "$image:local" "ghcr.io/baskule/$image:$image_tag"
   printf '%s %s\n' "ghcr.io/baskule/$image:$image_tag" "$(docker image inspect --format '{{.Id}}' "ghcr.io/baskule/$image:$image_tag")" >> .run/release/runtime/images.txt
-  # All six images go to GHCR. The gateway embeds the workloads, so only four archives are needed.
-  case $image in baskule-openshell-supervisor|baskule-openshell-sandbox) continue ;; esac
+  # Workload images travel inside the gateway; only host-pulled images are published.
   archive=".run/release/backend/$image.tar.gz"
   docker save "ghcr.io/baskule/$image:$image_tag" | gzip -1 > "$archive"
   bytes=$(stat -c %s "$archive")

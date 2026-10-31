@@ -75,8 +75,8 @@ jobs:
   translate:
     needs: version
     runs-on: ubuntu-24.04
-    # Only tag runs use the key; manual runs package the committed catalogs.
-    environment: ${{ github.ref_type == 'tag' && 'release' || '' }}
+    # Only tag pushes use the key; manual runs package the committed catalogs.
+    environment: ${{ github.event_name == 'push' && 'release' || '' }}
     permissions:
       contents: write
     steps:
@@ -85,14 +85,14 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Translate missing release messages
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push'
         env:
           TRANSLATION_API_KEY: ${{ secrets.TRANSLATION_API_KEY }}
           TRANSLATION_MODEL: ${{ vars.TRANSLATION_MODEL }}
           TRANSLATION_BASE_URL: ${{ vars.TRANSLATION_BASE_URL }}
         run: node app/scripts/localization.ts translate
       - name: Check release catalogs
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push'
         run: node app/scripts/localization.ts check
       - name: Upload release translations
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -104,7 +104,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Push translations for review
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}
@@ -128,7 +128,6 @@ jobs:
     needs: [version, translate, linux-apps]
     permissions:
       contents: read
-      packages: write
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
@@ -163,20 +162,6 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Build backend and run fake-model release checks
         run: scripts/ci/backend.sh
-      - name: Publish verified images to GHCR
-        if: github.ref_type == 'tag' || inputs.verify_only == false
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_ACTOR: ${{ github.actor }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-          while read -r image identity; do
-            [[ $(docker image inspect --format '{{.Id}}' "$image") == "$identity" ]]
-            docker push "$image"
-          done < .run/release/runtime/images.txt
-          docker logout ghcr.io
       - name: Upload backend artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -306,13 +291,41 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             -f description="Full artifact verification: $state." --silent
 
-  draft-release:
+  publish:
     needs: [version, backend, linux-apps, native]
     if: >-
       always() && needs.version.result == 'success' && needs.backend.result == 'success' &&
       needs.linux-apps.result == 'success' &&
       (needs.native.result == 'success' || (github.ref_type != 'tag' && inputs.include_native == false && needs.native.result == 'skipped')) &&
-      (github.ref_type == 'tag' || inputs.verify_only == false)
+      (github.event_name == 'push' || inputs.verify_only == false)
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: release-images-${{ needs.version.outputs.version }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-${{ needs.version.outputs.version }}
+          path: artifacts/backend
+      - name: Publish verified archives without overwriting release tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: scripts/ci/publish-images.sh artifacts/backend
+
+  draft-release:
+    needs: [version, backend, linux-apps, native, publish]
+    if: >-
+      always() && needs.publish.result == 'success' && needs.version.result == 'success' && needs.backend.result == 'success' &&
+      needs.linux-apps.result == 'success' &&
+      (needs.native.result == 'success' || (github.ref_type != 'tag' && inputs.include_native == false && needs.native.result == 'skipped')) &&
+      (github.event_name == 'push' || inputs.verify_only == false)
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -370,4 +383,4 @@ jobs:
         run: |
           gh release create "v$VERSION" release/* --draft --target "$SOURCE_COMMIT" \
             --title "Baskule $VERSION" \
-            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes single-machine and cluster Compose assets, six versioned GHCR images, Worker, SpaceCell, hosted web and a Linux x64 AppImage. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'
+            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes single-machine and cluster Compose assets, three versioned GHCR images, Worker, SpaceCell, hosted web and a Linux x64 AppImage. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'

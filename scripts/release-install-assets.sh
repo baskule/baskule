@@ -14,5 +14,5 @@ for role in node computers edge; do
 done
 # SemVer build metadata uses '_' in Docker tags. Asset defaults always match the published image tags.
 for file in "$out"/*.yml "$out"/*.env.example; do
-  sed -i "s/BASKULE_VERSION:-0.5.0/BASKULE_VERSION:-$tag/g; s/^BASKULE_VERSION=.*/BASKULE_VERSION=$tag/" "$file"
+  sed -i "s/BASKULE_VERSION:-[^}]*/BASKULE_VERSION:-$tag/g; s/^BASKULE_VERSION=.*/BASKULE_VERSION=$tag/" "$file"
 done

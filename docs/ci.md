@@ -33,7 +33,16 @@ gh workflow run release.yml --repo baskule/baskule --ref main \
 
 Manual factory runs also post a `Release factory` commit status, linking the candidate to the full run. [GitHub excludes workflow-dispatch job checks from PR checks](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks). This status is separate from the routine `CI required` gate.
 
-The Linux app job first verifies hosted web and the AppImage. The backend job embeds that web bundle and download, builds Worker, SpaceCell and six runtime images, then exercises the disposable fake-model release stack. It runs `scripts/check release upstream --fresh`, including every upstream server and web unit test. Backend image IDs remain in that job; other jobs receive explicit artifacts. Only tag runs or manual runs with `verify_only=false` log in to GHCR with `GITHUB_TOKEN` and push the verified version tags. The backend job needs `packages: write`; verification-only runs never log in or push. The packaged AppImage is checked under Xvfb. Cold OpenShell compilation can be lengthy; disk and build evidence are retained in the run.
+The Linux app job first verifies hosted web and the AppImage. The backend job embeds that web bundle and download,
+builds Worker, SpaceCell and six runtime images, then exercises the disposable fake-model release stack. It runs
+`scripts/check release upstream --fresh`, including every upstream server and web unit test. The packaged AppImage
+is checked under Xvfb. Cold OpenShell compilation can be lengthy; disk and build evidence are retained in the run.
+
+Verified image archives and checksums pass to a separate publish job after backend, Linux app, and requested native
+checks pass. Only that job holds `packages: write`. Tag pushes or manual runs with `verify_only=false` publish the
+three host images: celld, computerd, and the gateway. Computer, supervisor, and sandbox images stay bundled in the
+gateway. Publication refuses existing version tags and fails on registry authentication or transport errors.
+Verification-only runs never log in or push, including manual runs on tag refs.
 
 The native workflow compiles Android arm64, an iOS simulator app, macOS arm64/x64 and Windows x64. Windows packaging executes the existing native-load and server-archive probes. iOS includes a simulator install/launch smoke. Android does not add an emulator lane. Optional upstream Windows package diagnostics remain manual.
 
@@ -60,7 +69,7 @@ Use a run's job logs and artifacts to inspect failures, checksums, package statu
 ## First image release
 
 The owner must enable Actions package publishing and allow `GITHUB_TOKEN` to write packages for this repository.
-After the first publishing run, make all six Baskule GHCR packages public and verify anonymous pulls. The workflow
+After the first publishing run, make the three host-image GHCR packages public and verify anonymous pulls. The workflow
 links their source to this repository. Check the draft's Compose assets and image tags before publishing the draft.
 Version tags identify one release; do not replace a published tag with different image contents. A verification-only
 run checks builds and local behavior without proving GHCR visibility or anonymous downloads.

@@ -76,14 +76,6 @@ export function routerUsage(): { requests: number; input: number; output: number
     'fetch("http://127.0.0.1:47098/_router/usage").then(r=>r.text()).then(t=>process.stdout.write(t))']));
 }
 
-/** compose on the project (as deploy/lib.sh does). */
-export function dc(args: string[], env: Record<string, string> = {}, timeoutMs = 300_000): string {
-  return sh("docker", ["compose", "--project-directory", DEPLOY_DIR, "-f", `${DEPLOY_DIR}/docker-compose.yml`, ...args], {
-    timeoutMs,
-    env: { COMPOSE_BAKE: "false", DOCKER_CONFIG: `${process.env.HOME}/.local/baskule/docker-cli`, ...env },
-  });
-}
-
 /** Organization idle policy for the run; computers keep running. */
 export function applyIdleMinutes(minutes = process.env.E2E_IDLE_MINUTES ?? "1.5"): void {
   sh(process.execPath, [`${ROOT}/e2e/llm/settings.mjs`, "idle", minutes]);

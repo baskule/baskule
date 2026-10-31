@@ -6,16 +6,16 @@ Developers use [Build Baskule](../docs/building.md). These files describe the cu
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yml`, `.env.example` | Standalone single-machine release assets |
-| `cluster/node.yml`, `node.env.example` | One platform node and an optional app deployment job |
-| `cluster/computers.yml`, `computers.env.example` | One computers host, plus offline backup and restore jobs |
-| `cluster/edge.yml`, `edge.env.example` | Optional HTTP edge for a node list |
+| `cluster/node.yml`, `cluster/node.env.example` | One platform node and an optional app deployment job |
+| `cluster/computers.yml`, `cluster/computers.env.example` | One computers host, plus offline backup and restore jobs |
+| `cluster/edge.yml`, `cluster/edge.env.example` | Optional HTTP edge for a node list |
 | `docker-compose.build.yml` | Source-build override, selected by `lib.sh` |
 | `celld/` | Shared node/job image containing Worker, web app, downloads, and deployment utilities |
 | `build-env/` | Ubuntu 24.04 native build environment |
 | `runner/` | Optional operator-managed runner tools |
 
-Released images use `ghcr.io/baskule/baskule-{celld,computerd,computer,openshell-gateway,openshell-supervisor,openshell-sandbox}:VERSION`.
-Third-party storage, edge, and trace images are pinned by digest in Compose. The gateway also embeds all three
+Released images use `ghcr.io/baskule/baskule-{celld,computerd,openshell-gateway}:VERSION`.
+Third-party storage, edge, and trace images are pinned by digest in Compose. The gateway embeds the computer, supervisor, and sandbox
 workload images, so its private daemon needs no registry access or host image loader.
 
 The single-machine stack has separate platform and computer networks. Only computerd joins both; the optional

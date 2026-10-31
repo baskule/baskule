@@ -75,9 +75,11 @@ docker run --rm --network=host \
 ```
 
 `deploy/build.sh` builds the hosted web app, SpaceCell, downloads when available, and platform Worker, then packages
-computer, OpenShell, celld, and computerd images. The celld image contains the platform bundle. The gateway contains
+computer, OpenShell, celld, and computerd images. The source celld image contains deployment tools; the deploy
+job mounts `../platform`. Release images bake in the bundle. The gateway contains
 compressed computer, supervisor, and sandbox images for its private daemon. Source hashes reuse matching images;
-a computer change also rebuilds the gateway, and a platform bundle change rebuilds celld.
+a computer change also rebuilds the gateway. App changes use `celld deploy` without rebuilding or restarting nodes.
+The source image hash excludes the platform bundle and `version.json`.
 
 The source scripts add `deploy/docker-compose.build.yml` to the single release Compose definition. This selects
 `:local` images, build contexts, checkout mounts for rapid app redeployment, and the developer stack's fixed resource

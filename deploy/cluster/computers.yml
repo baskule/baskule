@@ -55,6 +55,8 @@ services:
     - baskule-celld-job
     - backup
     network_mode: none
+    # Preserve trusted overlay filesystem attributes in the private Docker store.
+    cap_add: [SYS_ADMIN]
     logging:
       driver: none
     volumes:
@@ -68,6 +70,8 @@ services:
     - baskule-celld-job
     - restore
     network_mode: none
+    # Preserve trusted overlay filesystem attributes in the private Docker store.
+    cap_add: [SYS_ADMIN]
     logging:
       driver: none
     volumes:
