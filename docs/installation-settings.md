@@ -17,7 +17,7 @@ member activation. Administrators can Pause and Resume a plugin. Members see rea
 **Settings → Plugins**. In a team
 space, plugins that act with a member's own account stay off until a space owner allows them in the space settings.
 
-The catalog lists reviewed vendor-hosted services by area, with their prerequisites and instructions. A vendor's
+The catalog lists reviewed vendor-hosted services by area; opening one shows its prerequisites and instructions. A vendor's
 sign-in app is set up once for its plugins. Adding a plugin asks which groups can use it; people then connect
 their accounts in Settings → Plugins. Unqualified services show Not available yet. This includes Microsoft
 Work IQ until its tenant-specific sign-in and permissions are qualified, as well as Shopify, Figma and Docusign.
@@ -188,8 +188,9 @@ identifier where vendor metadata requires one. Custom servers default to their M
 OAuth endpoints never follow redirects with credentials. A client-ID metadata document is not served by this version;
 servers without DCR use pre-registration.
 
-For a service without dynamic registration, open Admin → Plugins → the plugin → Sign-in setup. Register the
-callback address shown there with the vendor, then save its client ID, authentication method and secret.
+For a service without dynamic registration, open the plugin from Admin → Plugins and follow its Setup steps. Register
+Baskule's address with the vendor as the callback, then save the client ID and secret. Technical details shows the
+callback address and the client authentication method.
 Values are write-only and encrypted. Saving or removing setup disconnects accounts and cancels pending consent
 for every plugin using that vendor; other vendors are unaffected. The saved issuer is pinned: a resource that
 changes its authorization server is refused before Baskule sends the client secret. If resource metadata disappears
