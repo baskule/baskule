@@ -1220,7 +1220,7 @@ describe("adding MCP servers by form or JSON", () => {
         initial={initial}
         fixes={[]}
         omitted={[]}
-        target={{ type: "edit", id: "p1", savedKeys: new Set() }}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(), versions: [] }}
         onCancel={vi.fn()}
         onSaved={onSaved}
       />,
@@ -2216,6 +2216,7 @@ describe("writing skills", () => {
     expect(control.calls.some((call) => call.route.startsWith("PATCH "))).toBe(false);
 
     await press(screen.getByRole("button", { name: "Save plugin" }));
+    const { disabledTools: _unchanged, ...unchangedServer } = server;
     await vi.waitFor(() =>
       expect(
         control.calls.find((call) => call.route === "PATCH /api/baskule/admin/plugins/p1")?.body,
@@ -2224,7 +2225,7 @@ describe("writing skills", () => {
           name: "Team notes",
           description: "",
           source: { type: "custom" },
-          servers: [server],
+          servers: [unchangedServer],
           skills: [earlier],
           omitted: [],
         },
