@@ -5,6 +5,7 @@ import {
   CircleAlertIcon,
   CircleCheckIcon,
   CircleMinusIcon,
+  EllipsisIcon,
   LinkIcon,
   PlusIcon,
   UserRoundIcon,
@@ -15,6 +16,7 @@ import { useTranslation } from "../../i18n";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../components/ui/menu";
 import { Spinner } from "../../components/ui/spinner";
 import { toastManager } from "../../components/ui/toast";
 import { cn } from "../../lib/utils";
@@ -29,7 +31,7 @@ import {
   pluginsApi,
   type AccountConnection,
 } from "./api";
-import { PluginIcon, PluginTitle } from "./PluginParts";
+import { PluginIcon } from "./PluginParts";
 import { contentsKind, statusText } from "./presentation";
 
 const loadMine = () => pluginsApi.mine();
@@ -88,6 +90,17 @@ export function UserPluginsView() {
           <UserPluginRow key={plugin.id} plugin={plugin} onChanged={data.reload} />
         ))}
       </PageSection>
+      {plugins.some(
+        (plugin) =>
+          plugin.status !== "unavailable" &&
+          plugin.servers.some((server) => server.credential === "user-oauth"),
+      ) ? (
+        <p className="px-3 text-xs text-muted-foreground sm:px-4">
+          {t(
+            "Plugins that use your account act as you. In a team space, only your default account is used, and only if the space owner allows it. Everyone in that space can see the results.",
+          )}
+        </p>
+      ) : null}
     </SettingsPageContainer>
   );
 }
@@ -253,33 +266,31 @@ export function UserPluginRow({
   const worst = plugin.servers.find((server) => server.status === plugin.status);
 
   return (
-    <div className={cn("flex flex-col gap-2 px-3 py-3 sm:px-4", blocked && "opacity-70")}>
-      <div className="flex items-start gap-3">
-        <PluginIcon contents={contentsKind(plugin)} icon={plugin.icon} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <PluginTitle name={plugin.name} contents={contentsKind(plugin)} />
-          {plugin.description ? (
-            <span className="line-clamp-2 text-xs text-muted-foreground">{plugin.description}</span>
-          ) : null}
+    <div className={cn("flex items-start gap-3 px-3 py-3 sm:px-4", blocked && "opacity-70")}>
+      <PluginIcon contents={contentsKind(plugin)} icon={plugin.icon} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm text-foreground">{plugin.name}</span>
+          <StatusLine
+            status={plugin.status}
+            action={
+              connectActions.length > 0 ? (
+                <span className="flex gap-1.5">{connectActions}</span>
+              ) : null
+            }
+          >
+            {statusText(plugin.status, accountName(worst?.name ?? plugin.name))}
+          </StatusLine>
         </div>
-      </div>
-      <div className="flex flex-col gap-1 ps-11">
-        <StatusLine
-          status={plugin.status}
-          action={
-            connectActions.length > 0 ? (
-              <span className="flex gap-1.5">{connectActions}</span>
-            ) : null
-          }
-        >
-          {statusText(plugin.status, accountName(worst?.name ?? plugin.name))}
-        </StatusLine>
+        {plugin.description ? (
+          <span className="line-clamp-2 text-xs text-muted-foreground">{plugin.description}</span>
+        ) : null}
         {ownServers
           .filter((server) => server.accounts.length > 0)
           .map((server) => (
-            <div key={server.name} className="flex flex-col items-start">
+            <div key={server.name} className="flex flex-col items-start pt-1">
               {plugin.servers.length > 1 ? (
-                <span className="pt-1 text-xs text-muted-foreground">{server.name}</span>
+                <span className="text-xs text-muted-foreground">{server.name}</span>
               ) : null}
               <ul
                 aria-label={t("Your {{name}} accounts", { name: accountName(server.name) })}
@@ -288,7 +299,7 @@ export function UserPluginRow({
                 {server.accounts.map((account) => (
                   <li
                     key={account.id}
-                    className="flex min-h-7 flex-wrap items-center justify-between gap-x-3"
+                    className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-1"
                   >
                     <span className="flex min-w-0 items-center gap-1.5 text-xs [&_svg]:size-3.5 [&_svg]:shrink-0">
                       <UserRoundIcon aria-hidden className="text-muted-foreground" />
@@ -304,7 +315,8 @@ export function UserPluginRow({
                         </span>
                       ) : null}
                     </span>
-                    <span className="flex flex-wrap gap-1">
+                    <span className="ms-auto flex shrink-0 items-center gap-1">
+                      {busy?.endsWith(`:${account.id}`) ? <Spinner size="sm" tone="muted" /> : null}
                       {account.status === "reconnect" && !blocked ? (
                         <Button
                           size="xs"
@@ -315,43 +327,40 @@ export function UserPluginRow({
                             connect(server.name, { type: "reconnect", account: account.id })
                           }
                         >
-                          {busy === `reconnect:${account.id}` ? <Spinner size="sm" /> : null}
                           {t("Reconnect")}
                         </Button>
                       ) : null}
-                      {account.default ? null : (
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          aria-label={t("Make {{name}} the default account", {
-                            name: account.label,
-                          })}
-                          disabled={busy !== null}
-                          onClick={() => void makeDefault(account)}
+                      <Menu>
+                        <MenuTrigger
+                          render={
+                            <Button
+                              size="icon-xs"
+                              variant="ghost"
+                              aria-label={t("Options for {{name}}", { name: account.label })}
+                              disabled={busy !== null}
+                            />
+                          }
                         >
-                          {busy === `default:${account.id}` ? <Spinner size="sm" /> : null}
-                          {t("Make default")}
-                        </Button>
-                      )}
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        aria-label={t("Rename {{name}}", { name: account.label })}
-                        disabled={busy !== null}
-                        onClick={() => rename(server, account)}
-                      >
-                        {t("Rename")}
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        aria-label={t("Disconnect {{name}}", { name: account.label })}
-                        disabled={busy !== null}
-                        onClick={() => void disconnect(server, account)}
-                      >
-                        {busy === `disconnect:${account.id}` ? <Spinner size="sm" /> : null}
-                        {t("Disconnect")}
-                      </Button>
+                          <EllipsisIcon />
+                        </MenuTrigger>
+                        <MenuPopup align="end">
+                          {account.default ? null : (
+                            <MenuItem onClick={() => void makeDefault(account)}>
+                              {t("Make default")}
+                            </MenuItem>
+                          )}
+                          <MenuItem onClick={() => rename(server, account)}>
+                            {t("Rename…")}
+                          </MenuItem>
+                          <MenuSeparator />
+                          <MenuItem
+                            variant="destructive"
+                            onClick={() => void disconnect(server, account)}
+                          >
+                            {t("Disconnect…")}
+                          </MenuItem>
+                        </MenuPopup>
+                      </Menu>
                     </span>
                   </li>
                 ))}
@@ -372,13 +381,6 @@ export function UserPluginRow({
               )}
             </div>
           ))}
-        {ownServers.length > 0 && plugin.status !== "unavailable" ? (
-          <p className="text-xs text-muted-foreground">
-            {t(
-              "It acts as you. In team spaces, only your default account is used where the space owner allows personal accounts. Everyone there can read its results.",
-            )}
-          </p>
-        ) : null}
       </div>
       <AccountDialog request={dialog} busy={busy !== null} onClose={() => setDialog(null)} />
     </div>

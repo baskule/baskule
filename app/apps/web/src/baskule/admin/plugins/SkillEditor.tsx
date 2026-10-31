@@ -300,7 +300,7 @@ export function SkillEditor({
                           {problem === "empty"
                             ? t("Enter a path for this file.")
                             : file.path === "SKILL.md"
-                              ? t("SKILL.md holds the instructions above. Rename this file.")
+                              ? t("This name is kept for the instructions above. Rename this file.")
                               : t("Another file has this path. Rename one of them.")}
                         </p>
                       ) : null}
@@ -329,13 +329,13 @@ export function SkillEditor({
             <Alert variant="warning">
               <AlertTitle>{t("Things to check")}</AlertTitle>
               <AlertDescription>
-                <ul className="flex flex-col gap-1.5">
+                <ul className="flex list-disc flex-col gap-1 ps-4">
                   {warnings.map((entry) => (
-                    <li key={`${entry.warning}:${entry.path}`} className="flex flex-col">
-                      <span>{skillWarningText(entry.warning)}</span>
-                      <span className="font-mono text-xs [overflow-wrap:anywhere]">
-                        {entry.path}
-                      </span>
+                    <li key={`${entry.warning}:${entry.path}`} className="[overflow-wrap:anywhere]">
+                      {skillWarningText(
+                        entry.warning,
+                        entry.path === "SKILL.md" ? null : entry.path,
+                      )}
                     </li>
                   ))}
                 </ul>

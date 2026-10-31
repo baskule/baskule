@@ -607,10 +607,21 @@ const scenarios = {
     );
     check(
       held.every((count) => count === 0) &&
-        (await page.getByText(/^Not available yet: Shopify /).count()) === 1,
-      `${device}: services not available yet say why and can't be added`,
+        (await page.getByText(/Workspace MCP Developer Preview/).count()) === 0,
+      `${device}: catalog entries leave what a service needs off the list`,
     );
     await shot(page, `${device}-plugins-catalog`);
+    await page.getByRole("button", { name: "Shopify", exact: true }).click();
+    const unavailable = page.getByRole("dialog", { name: "Shopify", exact: true });
+    await unavailable.getByText("Not available yet", { exact: true }).waitFor();
+    check(
+      (await unavailable.getByText(/^Shopify must first approve Baskule/).count()) === 1 &&
+        (await unavailable.getByRole("button", { name: "Add plugin" }).count()) === 0,
+      `${device}: a service not available yet says why when opened, and can't be added`,
+    );
+    await shot(page, `${device}-plugins-catalog-unavailable`);
+    await unavailable.getByText("Close", { exact: true }).click();
+    await unavailable.waitFor({ state: "detached" });
 
     await page.getByRole("button", { name: `Add ${pick}`, exact: true }).click();
     const choose = page.getByRole("dialog", { name: `Add ${pick}`, exact: true });
@@ -620,16 +631,16 @@ const scenarios = {
       `${device}: Everyone is preselected`,
     );
     await choose.getByRole("button", { name: "Add plugin", exact: true }).click();
-    await page.getByRole("link", { name: `${pick} is added: open it` }).waitFor();
+    await page.getByRole("link", { name: pick, exact: true }).waitFor();
     check(true, `${device}: a service that registers Baskule itself reads Added`);
     await shot(page, `${device}-plugins-added`);
 
     await page.getByRole("button", { name: `Add ${google}`, exact: true }).click();
-    await page
-      .getByRole("dialog", { name: `Add ${google}`, exact: true })
-      .getByRole("button", { name: "Add plugin", exact: true })
-      .click();
-    await page.getByRole("link", { name: `Set up Google for ${google}` }).click();
+    const addGoogle = page.getByRole("dialog", { name: `Add ${google}`, exact: true });
+    await addGoogle.getByText("What it needs", { exact: true }).waitFor();
+    await shot(page, `${device}-plugins-add-dialog`);
+    await addGoogle.getByRole("button", { name: "Add plugin", exact: true }).click();
+    await page.getByRole("link", { name: google, exact: true }).click();
     await page.waitForURL(/\/admin\/plugins\/installed\/[^/]+$/);
     await page.getByRole("heading", { name: google, level: 1 }).waitFor();
     const installedId = new URL(page.url()).pathname.split("/").at(-1);
@@ -650,13 +661,20 @@ const scenarios = {
     await page.getByRole("button", { name: `Resume ${google}`, exact: true }).click();
     await page.getByRole("button", { name: `Pause ${google}`, exact: true }).waitFor();
     await shot(page, `${device}-plugins-detail`);
-    await page.getByText("Your app at Google", { exact: true }).scrollIntoViewIfNeeded();
+    await page.getByRole("list", { name: "Setup steps" }).scrollIntoViewIfNeeded();
     await shot(page, `${device}-plugins-vendor-setup`);
+    await page.getByText("Technical details", { exact: true }).click();
+    await page.getByLabel("Callback address", { exact: true }).scrollIntoViewIfNeeded();
+    await shot(page, `${device}-plugins-technical-details`);
 
     await page.goto("/admin/plugins/installed");
     await page.getByRole("link", { name: "Brave Search" }).first().waitFor();
     await shot(page, `${device}-plugins-installed`);
     await page.getByRole("link", { name: "Brave Search" }).first().click();
+    // The key the other device's run saved is replaced.
+    const replaceKey = page.getByRole("button", { name: "Replace key", exact: true });
+    await page.getByRole("list", { name: "Setup steps" }).waitFor();
+    if (await replaceKey.count()) await replaceKey.click();
     await page.getByLabel("Key", { exact: true }).fill(`Bearer mock-secret-${device}`);
     await page.getByRole("button", { name: "Save key" }).click();
     await page.getByText("Key saved").first().waitFor();
@@ -705,7 +723,7 @@ const scenarios = {
     const bob = await newPage(browser, device);
     await signIn(bob.page, "bob");
     await bob.page.goto("/settings/plugins");
-    await bob.page.getByText("Google Drive", { exact: true }).waitFor();
+    await bob.page.getByText("Google Drive", { exact: true }).first().waitFor();
     check(
       (await bob.page.getByText("Sales", { exact: true }).count()) === 1 &&
         (await bob.page.getByRole("switch", { name: /^Use / }).count()) === 0,
@@ -733,11 +751,11 @@ const scenarios = {
       exact: true,
     });
     await driveAccounts
-      .getByRole("button", { name: "Disconnect Google Drive", exact: true })
+      .getByRole("button", { name: "Options for Google Drive", exact: true })
       .waitFor();
     check(true, `${device}: connecting an account returns to Settings → Plugins, connected`);
     if (
-      !(await driveAccounts.getByRole("button", { name: "Disconnect Work", exact: true }).count())
+      !(await driveAccounts.getByRole("button", { name: "Options for Work", exact: true }).count())
     ) {
       await bob.page
         .getByRole("button", { name: "Add another Google Drive account", exact: true })
@@ -747,9 +765,7 @@ const scenarios = {
       await another.getByRole("button", { name: "Connect account", exact: true }).click();
       await bob.page.waitForURL((url) => url.pathname === "/settings/plugins" && !url.search);
     }
-    await driveAccounts
-      .getByRole("button", { name: "Make Work the default account", exact: true })
-      .waitFor();
+    await driveAccounts.getByRole("button", { name: "Options for Work", exact: true }).waitFor();
     check(
       (await driveAccounts.getByRole("listitem").count()) === 2,
       `${device}: a second account is added beside the default one`,

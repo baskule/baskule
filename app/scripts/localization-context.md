@@ -34,6 +34,14 @@ Glossary:
 - Pause / Resume / Paused: an administrator stops a plugin for everyone, then starts it again; nothing is
   deleted. Use “Suspendre” / “Reprendre” / “Suspendu” in French, not “désactiver” / “activer”.
 - Catalog: the list of plugins an administrator can add. Use “catalogue” in French.
+- Ready in one click / Needs setup / Not available yet: a catalog plugin's state. Ready in one click means the
+  administrator adds it with nothing to set up; Needs setup means the administrator still registers an app or
+  enters a key; Not available yet means it can't be added. Keep them short (“Prêt en un clic”, “À configurer”).
+- Setup / Setup steps: the numbered steps an administrator finishes before people can use a plugin. Use
+  “configuration” / “étapes de configuration” in French.
+- What it needs: what the service itself requires, such as a plan or an organization setting (“Prérequis”).
+- Technical details: a collapsed section with addresses and sign-in settings for administrators who need them
+  (“Détails techniques”). Keep the codes it shows, such as client_secret_post, untranslated.
 
 Target languages: French (fr), Spanish (es), German (de), Dutch (nl), Italian (it).
 Use standard, broadly understood language, not region-specific slang. Use “vous” for French and “Sie”

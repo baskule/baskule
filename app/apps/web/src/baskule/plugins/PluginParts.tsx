@@ -1,7 +1,8 @@
-// baskule: pieces every plugin screen shares: its tile, its title lines, what it contains and what
-// Baskule leaves out, and, for admins adding one, who can use it.
-import type { Group, Omission, OmissionCode, Plugin } from "@t3tools/contracts/baskule-plugins";
-import { BanIcon, type LucideIcon } from "lucide-react";
+// baskule: pieces every plugin screen shares: its tile, its title lines, its skills and what Baskule
+// leaves out, and, for admins adding one, who can use it.
+import type { CatalogService } from "@t3tools/contracts/baskule-catalog";
+import type { Group, Omission, Plugin } from "@t3tools/contracts/baskule-plugins";
+import { BanIcon, ExternalLinkIcon, type LucideIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { useTranslation } from "../../i18n";
@@ -12,10 +13,8 @@ import { cn } from "../../lib/utils";
 import {
   CONTENTS_ICONS,
   contentsLabel,
-  credentialLabel,
   groupName,
   omissionText,
-  serverHost,
   type PluginContentsKind,
 } from "./presentation";
 
@@ -98,44 +97,25 @@ function ContentsItem({ name, detail }: { readonly name: string; readonly detail
   );
 }
 
-/** What a package had that Baskule leaves out, one reason at a time with the parts it covers. */
+/** What a package had that Baskule leaves out: one plain sentence per reason. */
 export function NotUsedList({ omitted }: { readonly omitted: ReadonlyArray<Omission> }) {
-  const byCode = new Map<OmissionCode, string[]>();
-  for (const entry of omitted) {
-    byCode.set(entry.code, [...(byCode.get(entry.code) ?? []), entry.subject]);
-  }
+  const codes = [...new Set(omitted.map((entry) => entry.code))];
   return (
-    <ul className="flex flex-col gap-3">
-      {[...byCode].map(([code, subjects]) => (
-        <li key={code} className="flex min-w-0 flex-col gap-1">
-          <span className="text-sm text-foreground">{omissionText(code)}</span>
-          <ul className="flex flex-col gap-0.5">
-            {subjects.map((subject) => (
-              <li
-                key={subject}
-                className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]"
-              >
-                {subject}
-              </li>
-            ))}
-          </ul>
-        </li>
+    <ul className="flex list-disc flex-col gap-1.5 ps-4 text-sm text-foreground/80">
+      {codes.map((code) => (
+        <li key={code}>{omissionText(code)}</li>
       ))}
     </ul>
   );
 }
 
-/**
- * What a plugin brings: its skills and the servers its tools come from, then the parts Baskule
- * doesn't use and why. Shown on its page.
- */
+/** A plugin's skills, then the parts Baskule doesn't use and why. Its servers are listed with their tools. */
 export function PluginContents({
   plugin,
 }: {
-  readonly plugin: Pick<Plugin, "servers" | "skills" | "omitted">;
+  readonly plugin: Pick<Plugin, "skills" | "omitted">;
 }) {
   const t = useTranslation();
-  const empty = plugin.skills.length === 0 && plugin.servers.length === 0;
   return (
     <div className="flex flex-col gap-4">
       {plugin.skills.length > 0 ? (
@@ -150,28 +130,6 @@ export function PluginContents({
             <ContentsItem key={skill.name} name={skill.name} detail={skill.description} />
           ))}
         </ContentsGroup>
-      ) : null}
-      {plugin.servers.length > 0 ? (
-        <ContentsGroup
-          icon={CONTENTS_ICONS.tools}
-          title={t("Tools from {{count}} server", {
-            count: plugin.servers.length,
-            defaultValue_other: "Tools from {{count}} servers",
-          })}
-        >
-          {plugin.servers.map((server) => (
-            <ContentsItem
-              key={server.name}
-              name={server.name}
-              detail={`${serverHost(server)} · ${credentialLabel(server.credential)}`}
-            />
-          ))}
-        </ContentsGroup>
-      ) : null}
-      {empty ? (
-        <p className="text-sm text-muted-foreground">
-          {t("Nothing usable was found in this plugin.")}
-        </p>
       ) : null}
       {plugin.omitted.length > 0 ? (
         <div className="flex flex-col gap-1.5">
@@ -286,5 +244,47 @@ export function PluginGroupsField({
         </p>
       )}
     </div>
+  );
+}
+
+/** A catalog service's plan, preview and tenant requirements, as its vendor states them. */
+export function ServiceNeedsList({ service }: { readonly service: CatalogService }) {
+  const t = useTranslation();
+  return (
+    <ul className="flex list-disc flex-col gap-1 ps-4 text-sm text-muted-foreground">
+      {service.prerequisites.map((prerequisite) => (
+        <li key={prerequisite}>{t(prerequisite)}</li>
+      ))}
+    </ul>
+  );
+}
+
+export function ServiceNeeds({ service }: { readonly service: CatalogService }) {
+  const t = useTranslation();
+  const id = useId();
+  if (service.prerequisites.length === 0) return null;
+  return (
+    <div role="group" aria-labelledby={id} className="flex flex-col gap-1.5">
+      <h3 id={id} className="text-sm font-medium text-foreground">
+        {t("What it needs")}
+      </h3>
+      <ServiceNeedsList service={service} />
+    </div>
+  );
+}
+
+/** The vendor's documentation of a catalog service, in a new tab. */
+export function DocsLink({ service }: { readonly service: CatalogService }) {
+  const t = useTranslation();
+  return (
+    <a
+      href={service.docs}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="inline-flex w-fit items-center gap-1 rounded-sm text-sm text-foreground/80 underline underline-offset-4 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [&_svg]:size-3.5"
+    >
+      {t("{{name}} documentation", { name: service.name })}
+      <ExternalLinkIcon aria-hidden />
+    </a>
   );
 }
