@@ -206,6 +206,46 @@ describe("admin catalog", () => {
     expect(screen.getByRole("button", { name: "Add Gmail" }).query()).toBeNull();
     await expect.element(screen.getByRole("button", { name: "Add Google Calendar" })).toBeVisible();
   });
+  it("counts a vendor's app saved for one service as setup for its other services", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          plugin({
+            id: "gmail",
+            vendor: "google",
+            name: "Gmail",
+            source: { type: "catalog" },
+            servers: [
+              {
+                name: "gmail",
+                url: "https://gmailmcp.googleapis.com/mcp/v1",
+                credential: "user-oauth",
+                oauth: { staticClient: true },
+                disabledTools: [],
+              },
+            ],
+            setup: [{ server: "gmail", done: true }],
+            vendorConfigured: true,
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<CatalogPage />);
+
+    const calendar = screen.getByRole("button", { name: "Google Calendar", exact: true });
+    await expect.element(calendar).toHaveAccessibleDescription("Ready in one click");
+    await expect
+      .element(screen.getByRole("button", { name: "Slack", exact: true }))
+      .toHaveAccessibleDescription("Needs setup");
+    await press(screen.getByRole("button", { name: "Add Google Calendar" }));
+    const choose = page.getByRole("dialog", { name: "Add Google Calendar" });
+    await expect.element(choose.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
+    expect(
+      choose.getByText("After you add it, finish setting it up on its page.").query(),
+    ).toBeNull();
+  });
 });
 
 describe("adding your own plugin", () => {
@@ -1408,11 +1448,15 @@ describe("signing in to a plugin's service", () => {
       .element(screen.getByRole("link", { name: "Gmail documentation" }))
       .toHaveAttribute("target", "_blank");
     // The callback address and the server's host wait under Technical details.
-    await expect.element(screen.getByLabelText("Callback address", { exact: true })).not.toBeVisible();
+    await expect
+      .element(screen.getByLabelText("Callback address", { exact: true }))
+      .not.toBeVisible();
     await expect
       .element(screen.getByText("https://gmailmcp.googleapis.com/mcp/v1"))
       .not.toBeVisible();
-    await expect.element(screen.getByRole("button", { name: "Copy Baskule's address" })).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Copy Baskule's address" }))
+      .toBeVisible();
     const instructions = screen.getByRole("link", { name: "Setup instructions" });
     await expect.element(instructions).toHaveAttribute("target", "_blank");
     await expect.element(instructions).toHaveAttribute("rel", "noreferrer noopener");

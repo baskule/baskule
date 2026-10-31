@@ -28,12 +28,7 @@ import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";
 import { Switch } from "../../../components/ui/switch";
 import { notifyPluginError, pluginErrorText, pluginsApi, toolsErrorText } from "../../plugins/api";
-import {
-  DocsLink,
-  PluginContents,
-  PluginIcon,
-  ServiceNeedsList,
-} from "../../plugins/PluginParts";
+import { DocsLink, PluginContents, PluginIcon, ServiceNeedsList } from "../../plugins/PluginParts";
 import {
   contentsKind,
   contentsLabel,
@@ -795,7 +790,9 @@ function OrganizationKeyStep({
               value={values[at] ?? ""}
               onChange={(event) => {
                 const value = event.currentTarget.value;
-                setValues((current) => current.map((entry, index) => (index === at ? value : entry)));
+                setValues((current) =>
+                  current.map((entry, index) => (index === at ? value : entry)),
+                );
               }}
             />
           ))}

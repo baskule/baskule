@@ -191,11 +191,7 @@ export function VendorSetupSteps({
 
   return (
     <>
-      <SetupStep
-        number={first}
-        done={configured}
-        title={t("Create an app at {{name}}", { name })}
-      >
+      <SetupStep number={first} done={configured} title={t("Create an app at {{name}}", { name })}>
         {configured ? null : (
           <>
             <p className="text-xs text-muted-foreground">

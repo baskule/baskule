@@ -57,17 +57,25 @@ const AREAS: Record<CatalogArea, string> = {
   engineering: msg("Engineering"),
 };
 
-/** A service before it is added: whether the admin has anything to set up once it is. */
-function needsVendorSetup(service: CatalogService): boolean {
+/** A service before it is added: whether the admin has anything to set up once it is. A vendor's app is
+ * shared by its services, so one saved for another of them counts. */
+function needsVendorSetup(service: CatalogService, configured: ReadonlySet<string>): boolean {
   const signIn = catalogVendor(service.vendor)?.signIn;
-  return signIn?.type === "key" || (signIn?.type === "account" && signIn.client === "static");
+  if (signIn?.type === "key") return true;
+  return (
+    signIn?.type === "account" && signIn.client === "static" && !configured.has(service.vendor)
+  );
 }
 
 type ServiceState = "ready" | "setup" | "unavailable" | "added" | "paused" | "unfinished";
 
-function serviceState(service: CatalogService, installed: AdminPlugin | undefined): ServiceState {
+function serviceState(
+  service: CatalogService,
+  installed: AdminPlugin | undefined,
+  configured: ReadonlySet<string>,
+): ServiceState {
   if (service.notYet) return "unavailable";
-  if (!installed) return needsVendorSetup(service) ? "setup" : "ready";
+  if (!installed) return needsVendorSetup(service, configured) ? "setup" : "ready";
   if (!installed.enabled) return "paused";
   return installed.setup.some((entry) => !entry.done) ? "unfinished" : "added";
 }
@@ -89,6 +97,9 @@ export function CatalogPage() {
   const installed = useApiResource(loadInstalled);
   const groups = useApiResource(loadGroups);
   const [opened, setOpened] = useState<CatalogService | null>(null);
+  const configured = new Set(
+    installed.data?.filter((plugin) => plugin.vendorConfigured).map((plugin) => plugin.vendor),
+  );
 
   return (
     <>
@@ -121,6 +132,7 @@ export function CatalogPage() {
                 key={service.id}
                 service={service}
                 installed={installed.data?.find((plugin) => plugin.id === service.id)}
+                configured={configured}
                 loading={!installed.data}
                 onOpen={() => setOpened(service)}
               />
@@ -131,6 +143,7 @@ export function CatalogPage() {
 
       <ServiceDialog
         service={opened}
+        configured={configured}
         groups={groups.data}
         groupsError={groups.error}
         onClose={() => setOpened(null)}
@@ -172,18 +185,21 @@ const OPENER =
 function CatalogEntry({
   service,
   installed,
+  configured,
   loading,
   onOpen,
 }: {
   readonly service: CatalogService;
   readonly installed: AdminPlugin | undefined;
+  /** Vendors whose shared app is saved. */
+  readonly configured: ReadonlySet<string>;
   /** Whether it is added is not known yet. */
   readonly loading: boolean;
   readonly onOpen: () => void;
 }) {
   const t = useTranslation();
   const stateId = useId();
-  const state = serviceState(service, installed);
+  const state = serviceState(service, installed, configured);
   const known = state === "unavailable" || !loading;
   const shown = STATES[state];
   const StateIcon = shown.icon;
@@ -256,12 +272,14 @@ function CatalogEntry({
 /** A service that isn't added yet: what it needs, its documentation, and who can use it once added. */
 function ServiceDialog({
   service,
+  configured,
   groups,
   groupsError,
   onClose,
   onAdded,
 }: {
   readonly service: CatalogService | null;
+  readonly configured: ReadonlySet<string>;
   readonly groups: ReadonlyArray<Group> | null;
   readonly groupsError: string | null;
   readonly onClose: () => void;
@@ -323,7 +341,7 @@ function ServiceDialog({
                 </Alert>
               ) : (
                 <>
-                  {needsVendorSetup(shown) ? (
+                  {needsVendorSetup(shown, configured) ? (
                     <p className="text-sm text-muted-foreground">
                       {t("After you add it, finish setting it up on its page.")}
                     </p>

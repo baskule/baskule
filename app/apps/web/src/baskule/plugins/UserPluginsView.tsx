@@ -16,13 +16,7 @@ import { useTranslation } from "../../i18n";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import {
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuSeparator,
-  MenuTrigger,
-} from "../../components/ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../components/ui/menu";
 import { Spinner } from "../../components/ui/spinner";
 import { toastManager } from "../../components/ui/toast";
 import { cn } from "../../lib/utils";
@@ -303,7 +297,10 @@ export function UserPluginRow({
                 className="flex flex-col self-stretch"
               >
                 {server.accounts.map((account) => (
-                  <li key={account.id} className="flex min-h-8 items-center justify-between gap-3">
+                  <li
+                    key={account.id}
+                    className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-1"
+                  >
                     <span className="flex min-w-0 items-center gap-1.5 text-xs [&_svg]:size-3.5 [&_svg]:shrink-0">
                       <UserRoundIcon aria-hidden className="text-muted-foreground" />
                       <span className="min-w-0 truncate text-foreground">{account.label}</span>
@@ -318,7 +315,7 @@ export function UserPluginRow({
                         </span>
                       ) : null}
                     </span>
-                    <span className="flex shrink-0 items-center gap-1">
+                    <span className="ms-auto flex shrink-0 items-center gap-1">
                       {busy?.endsWith(`:${account.id}`) ? <Spinner size="sm" tone="muted" /> : null}
                       {account.status === "reconnect" && !blocked ? (
                         <Button

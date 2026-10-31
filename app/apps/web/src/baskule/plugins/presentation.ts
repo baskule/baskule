@@ -187,9 +187,7 @@ export function skillWarningText(warning: SkillWarning, file: string | null): st
         ? t("{{file}} may contain a password or key. Remove it before sharing the skill.", {
             file,
           })
-        : t(
-            "The instructions may contain a password or key. Remove it before sharing the skill.",
-          );
+        : t("The instructions may contain a password or key. Remove it before sharing the skill.");
   }
 }
 
