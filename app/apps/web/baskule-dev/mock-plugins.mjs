@@ -562,7 +562,15 @@ export function createPluginMock({ users, spaces }) {
           name: input.name.trim(),
           description: String(input.description ?? ""),
           ...(input.icon ? { icon: input.icon } : {}),
-          servers: input.servers.map(savedServer),
+          servers: input.servers.map((server) => {
+            const previous = plugin.servers.find((entry) => entry.name === server.name);
+            return savedServer({
+              ...server,
+              ...(previous?.url === server.url && server.disabledTools === undefined
+                ? { disabledTools: previous.disabledTools }
+                : {}),
+            });
+          }),
           skills: input.skills.map(summary),
           omitted: input.omitted ?? [],
         });

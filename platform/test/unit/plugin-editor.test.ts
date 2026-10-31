@@ -4,11 +4,38 @@ import { fakeMcp } from "../fixtures/mcp.mjs";
 import { fakeOAuth } from "../fixtures/oauth.mjs";
 import { INTERNAL_HEADER } from "../../src/shared/contract";
 import { PluginMcpProxy } from "../../src/agent/plugin-mcp";
-import type { PluginCredential } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { PluginCredential, PluginInput, PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
 
 interface RpcResult { result: { tools: { name: string }[]; isError?: boolean; content: { type: string; text: string }[] } }
 const root = "/api/baskule/admin/plugins";
 describe("admin MCP editor", () => {
+  it("keeps current tool switches when an editor omits them for the same name and URL", async () => {
+    const h = await makeService(); const a = await asAdmin(h);
+    const input: PluginInput = { name: "Notes", description: "", source: { type: "custom" }, omitted: [], skills: [],
+      servers: ["notes", "renamed", "moved"].map(name => ({ name, url: `https://example.test/${name}`, credential: "none" })) };
+    const created = await call(h, "POST", root, { creds: a.creds, body: { groups: ["everyone"], plugin: input } });
+    expect(created.status).toBe(201);
+    expect(created.body.servers.map((server: PluginServer) => server.disabledTools)).toEqual([[], [], []]);
+    const path = `${root}/${created.body.id}`;
+    expect((await call(h, "PATCH", path, { creds: a.creds, body: { disabledTools: {
+      notes: ["fixture_write"], renamed: ["fixture_write"], moved: ["fixture_write"],
+    } } })).status).toBe(200);
+    const edited: PluginInput = { ...input, description: "Edited in an earlier tab", servers: input.servers.map(server => ({ ...server,
+      ...(server.name === "notes" ? { credential: "organization" } : {}),
+      ...(server.name === "renamed" ? { name: "new-name" } : {}),
+      ...(server.name === "moved" ? { url: "https://example.test/new-address" } : {}),
+    })) };
+    const saved = await call(h, "PATCH", path, { creds: a.creds, body: { plugin: edited } });
+    expect(saved.status).toBe(200);
+    expect(saved.body.servers.map((server: PluginServer) => server.disabledTools)).toEqual([["fixture_write"], [], []]);
+    expect(h.svc.plugins.get(created.body.id)?.servers.map(server => server.disabledTools)).toEqual([["fixture_write"], [], []]);
+    for (const disabledTools of [["fixture_read"], []]) {
+      const explicit = { ...edited, servers: edited.servers.map(server => ({ ...server, disabledTools })) };
+      const changed = await call(h, "PATCH", path, { creds: a.creds, body: { plugin: explicit } });
+      expect(changed.status).toBe(200);
+      expect(h.svc.plugins.get(created.body.id)?.servers[0].disabledTools).toEqual(disabledTools);
+    }
+  });
   it("tests unsaved servers with a key, saves nothing and enforces admin outbound policy", async () => {
     const f = await fakeMcp({ key: "Bearer test-key", paginate: true });
     try {

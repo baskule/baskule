@@ -24,7 +24,7 @@ const sourceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("upload"), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
 ]);
 const serverSchema = z.object({ name: id, url: z.string().max(2048), transport: z.enum(["streamable-http", "sse"]).optional(), credential,
-  disabledTools: z.array(id).max(1000).default([]),
+  disabledTools: z.array(id).max(1000).optional(),
   keyHeaders: z.array(headerName).max(20).optional(),
   oauth: z.object({ scopes: z.array(z.string().min(1).max(2048)).max(100).optional(),
     params: z.record(z.string().regex(/^[a-z_]+$/).refine(key => !["response_type", "client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "resource", "scope"].includes(key)), z.string().max(2048)).optional(), resource: z.literal(false).optional(), staticClient: z.literal(true).optional(),
@@ -323,8 +323,9 @@ export class Plugins {
       }
       if (current.source.type === "catalog" || JSON.stringify(current.source) !== JSON.stringify(patch.plugin.source)) throw pluginError(409, "not_editable");
       const next = this.validate(patch.plugin);
-      for (const server of next.servers) {
+      for (const [index, server] of next.servers.entries()) {
         const previous = current.servers.find(s => s.name === server.name);
+        if (previous && previous.url === server.url && patch.plugin.servers[index].disabledTools === undefined) server.disabledTools = previous.disabledTools;
         if (previous && server.credential === "organization" && serverFingerprint(previous) === serverFingerprint(server) && this.setupDone(current, previous)) server.keyHeaders = previous.keyHeaders;
       }
       if (current.source.type === "github" && JSON.stringify(next.skills) !== JSON.stringify(this.skills(current.id))) throw pluginError(409, "not_editable");
