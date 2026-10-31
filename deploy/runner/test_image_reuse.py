@@ -18,7 +18,8 @@ class ImageReuseTests(unittest.TestCase):
             for name in ('deploy/images.sh', 'deploy/lib.sh', 'scripts/source-hash.py',
                          'deploy/build-env/Dockerfile', 'computer/input', 'openshell/input',
                          'vendor/openshell/input', 'deploy/celld/input', 'computerd/input',
-                         'app/browser-source', 'app/unrelated-ui'):
+                         'app/browser-source', 'app/unrelated-ui', 'platform/dist/worker.js',
+                         'platform/dist/web/version.json', 'platform/wrangler.json', 'deploy/.env.example'):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 source = ROOT / name
@@ -69,12 +70,15 @@ p.write_text(json.dumps(s))
             self.assertEqual(images(), first, 'unrelated fork edits must not rebuild computers')
             (root / 'app/browser-source').write_text('a browser bridge edit')
             changed = images()
-            self.assertEqual(changed, first + ['baskule-computer:local'])
+            self.assertEqual(changed, first + ['baskule-computer:local', 'baskule-openshell-gateway:local'])
             (root / 'app/browser-source').write_text('original')
             self.assertEqual(images(), changed, 'reverting must reuse the original source-tagged image')
             (root / 'deploy/build-env/Dockerfile').write_text('a different native toolchain')
             changed = changed + ['baskule-openshell-gateway:local']
             self.assertEqual(images(), changed)
+            (root / 'platform/dist/worker.js').write_text('a new app bundle')
+            changed = changed + ['baskule-celld:local']
+            self.assertEqual(images(), changed, 'bundle changes must rebuild the deploy image')
             environment['BASKULE_TAG'] = 'validation'
             self.assertEqual(images(), changed + ['baskule-openshell-gateway:validation'],
                              'the embedded image tags are gateway build inputs')

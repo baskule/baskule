@@ -7,11 +7,12 @@ TAG=${BASKULE_TAG:-local}
 mkdir -p "${DOCKER_CONFIG:-$HOME/.docker}"
 # Compose builds use the host network so they do not require a docker0 bridge.
 export COMPOSE_BAKE=false
-# An external bucket (.env sets S3_ENDPOINT, see dedicated-host.md) adds docker-compose.s3.yml: no RustFS.
+# Source builds use local images and fixed developer resource names. External S3 disables local storage.
 dc() {
-  local f=(-f "$DEPLOY_DIR/docker-compose.yml")
-  [ -n "$(env_get S3_ENDPOINT 2>/dev/null)" ] && f+=(-f "$DEPLOY_DIR/docker-compose.s3.yml")
-  docker compose --project-directory "$DEPLOY_DIR" "${f[@]}" "$@"
+  local f=(-f "$DEPLOY_DIR/docker-compose.yml" -f "$DEPLOY_DIR/docker-compose.build.yml")
+  local profiles=storage,traces
+  [ -z "$(env_get S3_ENDPOINT 2>/dev/null)" ] || profiles=traces
+  COMPOSE_PROFILES=${COMPOSE_PROFILES:-$profiles} docker compose --project-directory "$DEPLOY_DIR" "${f[@]}" "$@"
 }
 log() { echo "[baskule] $*" >&2; }
 wait_healthy() { # wait_healthy <container> [seconds]

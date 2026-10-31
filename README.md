@@ -62,27 +62,28 @@ What Baskule connects to in your environment:
 | Plugins | Connectors, skills and bundles from public catalogs or your own address, off until an admin enables them for a group. |
 | Usage | By person, model and space, with CSV export and per-person limits. |
 
-Not yet: several models in one organization, deployment across several machines.
+Not yet: several models in one organization, computers spread across several hosts.
 
 ## Install
 
-Baskule runs on one machine with Docker Compose. You need Ubuntu 24.04 on x86-64 with Docker, 4 CPU cores, 16 GB of
-memory and 80 GB of free disk. It builds from source; the first build takes 30 to 60 minutes.
+Run released images on a Linux x86-64 machine with Docker Compose 2.24.4 or newer, 4 CPU cores, 24 GiB RAM and
+80 GB free disk. Choose a published version, generate secrets, set the public address and first admin in `.env`,
+then start. The [installation guide](docs/install.md) covers configuration, HTTPS, SSO, storage, backups and updates.
 
 ```sh
-sudo install -d -m 700 /opt/baskule /opt/baskule/cache
-sudo git clone https://github.com/baskule/baskule /opt/baskule/src
-cd /opt/baskule/src
-sudo deploy/init-env.sh        # writes deploy/.env with random secrets
-sudo nano deploy/.env          # ADMIN_EMAIL, ADMIN_PASSWORD, BASKULE_BIND, PUBLIC_ORIGINS
-sudo docker build --network=host -t baskule-build deploy/build-env
-sudo docker run --rm --network=host --pid=host \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /opt/baskule:/opt/baskule -w /opt/baskule/src baskule-build
+mkdir baskule && cd baskule
+VERSION=0.5.0
+ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
+curl -fLO "$ASSETS/docker-compose.yml"
+curl -fL "$ASSETS/baskule.env.example" -o .env.example
+umask 077
+docker run --rm -i --network none --entrypoint baskule-celld-job \
+  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$VERSION" init-env - < .env.example > .env
+$EDITOR .env
+docker compose up -d
 ```
 
-Open `http://<BASKULE_BIND>:47090`, sign in as the admin and choose a model in **Admin → AI → Models**. The
-[installation guide](docs/install.md) covers HTTPS, single sign-on, external storage, backups and updates.
+For several platform machines with a separate computers host, follow the [cluster guide](docs/install-cluster.md).
 
 ## Develop
 

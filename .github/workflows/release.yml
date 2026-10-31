@@ -10,7 +10,7 @@ on:
         type: string
         required: false
       verify_only:
-        description: 'Build and verify artifacts without creating a GitHub release'
+        description: 'Verify artifacts without publishing images or a GitHub release'
         type: boolean
         default: true
       include_native:
@@ -125,7 +125,10 @@ jobs:
           echo "[Review translations and create a PR]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$branch?expand=1)" >> "$GITHUB_STEP_SUMMARY"
 
   backend:
-    needs: [version, translate]
+    needs: [version, translate, linux-apps]
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
@@ -140,6 +143,11 @@ jobs:
         with:
           name: translations
           path: app
+      - name: Download verified web and desktop downloads
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-apps-${{ needs.version.outputs.version }}
+          path: .run/release/linux-apps
       - name: Make room for the native and musl builds
         shell: bash
         run: |
@@ -155,6 +163,20 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Build backend and run fake-model release checks
         run: scripts/ci/backend.sh
+      - name: Publish verified images to GHCR
+        if: github.ref_type == 'tag' || inputs.verify_only == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          while read -r image identity; do
+            [[ $(docker image inspect --format '{{.Id}}' "$image") == "$identity" ]]
+            docker push "$image"
+          done < .run/release/runtime/images.txt
+          docker logout ghcr.io
       - name: Upload backend artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -170,6 +192,8 @@ jobs:
           name: backend-evidence-${{ needs.version.outputs.version }}
           path: |
             .run/evidence/release/
+            .run/evidence/release-install/
+            !.run/evidence/release-install/*.tar.gz
             .run/check/
             .run/wp-e/artifacts/
             e2e/test-results/
@@ -319,6 +343,7 @@ jobs:
             tar -czf "release/$kind-$VERSION-metadata.tar.gz" --exclude='*.tar.gz' --exclude='*.AppImage' -C "$directory" .
           done
           cp artifacts/backend/*.tar.gz artifacts/linux-apps/*.tar.gz artifacts/linux-apps/*.AppImage release/
+          cp artifacts/backend/*.yml artifacts/backend/*.env.example release/
           if [[ -d artifacts/native ]]; then
             for directory in artifacts/native/*; do
               (cd "$directory" && sha256sum -c SHA256SUMS)
@@ -331,7 +356,7 @@ jobs:
               done < <(find "$directory" -type f \( -name '*.apk' -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' \) -print0)
             done
           fi
-          (cd release && sha256sum *.tar.gz > SHA256SUMS)
+          (cd release && sha256sum * > SHA256SUMS)
           find release -type f -size +2147483647c -print -quit | while read -r oversized; do
             echo "Release asset exceeds GitHub's 2 GiB limit: $oversized" >&2
             exit 1
@@ -345,4 +370,4 @@ jobs:
         run: |
           gh release create "v$VERSION" release/* --draft --target "$SOURCE_COMMIT" \
             --title "Baskule $VERSION" \
-            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes Worker, SpaceCell, four backend images, hosted web and a Linux x64 AppImage. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'
+            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes single-machine and cluster Compose assets, six versioned GHCR images, Worker, SpaceCell, hosted web and a Linux x64 AppImage. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'

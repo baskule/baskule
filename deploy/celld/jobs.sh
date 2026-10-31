@@ -12,11 +12,30 @@ sig="aws:amz:${AWS_REGION:-us-east-1}:s3"
 h="x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 wait_s3() {
-  for _ in $(seq 120); do curl -s -o /dev/null "$S3_ENDPOINT/" && return 0; sleep 0.5; done
+  for _ in $(seq 120); do curl -s --connect-timeout 2 --max-time 5 -o /dev/null "$S3_ENDPOINT/" && return 0; sleep 0.5; done
   log "RustFS not reachable at $S3_ENDPOINT"; return 1
 }
 
 case "${1:-}" in
+  init-env)
+    template=/etc/baskule/env.example
+    [ "${2:-}" != - ] || template=/dev/stdin
+    random() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
+    sed -e "s/^RUSTFS_SECRET_KEY=$/RUSTFS_SECRET_KEY=$(random)/" \
+        -e "s/^COMPUTERD_TOKEN=$/COMPUTERD_TOKEN=$(random)/" \
+        -e "s/^OPENSHELL_VOLUMES_TOKEN=$/OPENSHELL_VOLUMES_TOKEN=$(random)/" "$template"
+    ;;
+  backup)
+    # Stop the entire project first. stdout is the archive, never log output.
+    tar -C /backup -cf - . | gzip -1
+    ;;
+  restore)
+    # Restore into empty volumes only; never merge two installations' state.
+    for directory in /backup/*; do
+      [ -z "$(ls -A "$directory")" ] || { log "restore requires empty volumes"; exit 1; }
+    done
+    exec tar -C /backup -xzf -
+    ;;
   bootstrap)
     wait_s3
     code=$(curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 "$sig" -H "$h" -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" -I "$S3_ENDPOINT/$CELLD_BUCKET_NAME")
@@ -34,9 +53,12 @@ case "${1:-}" in
     trap 'rm -rf "$work"' EXIT
     cp -r "/src/$app/." "$work/"
     # Resolve {"env":"NAME"} leaves without evaluating shell syntax. Never print the result.
-    AUTH_CONFIG=$(jq -ce 'walk(if type == "object" and keys == ["env"] then
+    auth=${AUTH_CONFIG:-'{"version":1,"mode":"authenticated","password":true}'}
+    if [ -f /src/config/auth.json ]; then auth=$(cat /src/config/auth.json); fi
+    if [ -f /src/auth.json ]; then auth=$(cat /src/auth.json); fi
+    AUTH_CONFIG=$(printf '%s' "$auth" | jq -ce 'walk(if type == "object" and keys == ["env"] then
       .env as $name | env[$name] | if type == "string" and length > 0 then . else error("Missing authentication environment reference") end
-      else . end)' /src/auth.json)
+      else . end)')
     jq --arg PUBLIC_ORIGINS "${PUBLIC_ORIGINS:-}" --arg AUTH_CONFIG "$AUTH_CONFIG" \
        --arg ADMIN_EMAIL "${ADMIN_EMAIL:-}" --arg ADMIN_PASSWORD "${ADMIN_PASSWORD:-}" --arg ADMIN_NAME "${ADMIN_NAME:-Admin}" \
        --arg AUTH_SECRET "${AUTH_SECRET:-}" --arg COMPUTERD_URL "${COMPUTERD_URL:-}" --arg COMPUTERD_TOKEN "${COMPUTERD_TOKEN:-}" \
@@ -54,5 +76,5 @@ case "${1:-}" in
     done
     log "deployed $app"
     ;;
-  *) echo "usage: baskule-celld-job bootstrap|deploy" >&2; exit 2 ;;
+  *) echo "usage: baskule-celld-job bootstrap|deploy|init-env [-]|backup|restore" >&2; exit 2 ;;
 esac

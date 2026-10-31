@@ -27,4 +27,8 @@ export BASKULE_STACK_PROXY=0
 (cd e2e && pnpm exec playwright install --with-deps chromium)
 (cd app/apps/web && pnpm exec playwright install chromium)
 scripts/check release upstream --fresh 2>&1 | tee .run/evidence/release/backend-checks.log
+# Free the component stacks before exercising independent operator assets.
+scripts/stack down --purge
+openshell/dev-down.sh
+BASKULE_INSTALL_VERSION=${BASKULE_VERSION//+/_} node e2e/release-install.mjs 2>&1 | tee .run/evidence/release/install.log
 scripts/ci/artifacts.sh .run/release/backend backend
