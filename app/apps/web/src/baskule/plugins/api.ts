@@ -209,8 +209,6 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   plugin_tree_too_large: tooLarge,
   proprietary_plugin: () => t("Its license doesn't allow using it here."),
   too_many_plugin_files: () => t("It has too many files to add."),
-  unknown_plugin_server: () =>
-    t("One of its servers no longer exists. Reload the page and try again."),
   unsafe_plugin_path: () => t("It contains a file path Baskule can't accept."),
   unsupported_archive: cantOpen,
   unsupported_plugin_version: () => t("It uses a plugin format version Baskule can't read yet."),

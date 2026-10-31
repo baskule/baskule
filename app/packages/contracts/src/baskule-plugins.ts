@@ -170,7 +170,6 @@ export const PLUGIN_ERROR_CODES = [
   "plugin_tree_too_large",
   "proprietary_plugin",
   "too_many_plugin_files",
-  "unknown_plugin_server",
   "unsafe_plugin_path",
   "unsupported_archive",
   "unsupported_plugin_version",
