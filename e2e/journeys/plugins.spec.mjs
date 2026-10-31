@@ -32,6 +32,7 @@ test("assigned skills are ready without activation and leave a team when its con
   const name = `Portable skills ${crypto.randomUUID()}`;
   let plugin;
   let group;
+  let team;
   try {
     await signIn(adminPage, api.admin, stack);
     await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
@@ -59,8 +60,9 @@ test("assigned skills are ready without activation and leave a team when its con
     const everyone = await api.admin.json("GET", "/api/baskule/admin/groups/everyone");
     await api.admin.json("PATCH", "/api/baskule/admin/groups/everyone", { plugins: everyone.plugins.filter(id => id !== plugin.id) });
     group = await api.admin.json("POST", "/api/baskule/admin/groups", { name, members: [people.alice.me.user.id], permissions: { canCreateSpaces: false }, plugins: [plugin.id] });
+    team = await api.teamSpace(people.bob, `Shared skills ${name}`, [people.alice]);
     const skillDirectory = `/sandbox/space/plugins/${plugin.id}/hello`;
-    const client = await people.bob.rpc(people.team);
+    const client = await people.bob.rpc(team);
     try {
       const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
       const id = await api.launch(client, projectId, `Check shared files [[fake:tool shell ${JSON.stringify({ command: `test -f ${skillDirectory}/SKILL.md && echo TEAM_SKILL_PRESENT` })}]]`, "Shared skills", { generateTitle: false });
@@ -69,12 +71,13 @@ test("assigned skills are ready without activation and leave a team when its con
       expect(state.assistantText()).toContain("TEAM_SKILL_PRESENT");
       state.stop();
     } finally { client.close(); await client.closed; }
-    expect(await filesOnComputer(stack, people.team)).toContain(`${plugin.id}/hello/SKILL.md`);
+    expect(await filesOnComputer(stack, team)).toContain(`${plugin.id}/hello/SKILL.md`);
     await api.admin.json("POST", `/api/baskule/admin/users/${people.alice.me.user.id}/deactivate`, {});
-    await expect.poll(() => filesOnComputer(stack, people.team), { message: "the deactivated contributor's skills leave the managed tree", timeout: 90_000 }).not.toContain(`${plugin.id}/hello/`);
+    await expect.poll(() => filesOnComputer(stack, team), { message: "the deactivated contributor's skills leave the managed tree", timeout: 90_000 }).not.toContain(`${plugin.id}/hello/`);
   } finally {
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
     if (group) await api.admin.json("DELETE", `/api/baskule/admin/groups/${group.id}`);
+    if (team) await api.admin.json("POST", `/api/baskule/admin/spaces/${team}/stop`, {});
     await adminContext.close();
     await memberContext.close();
   }
