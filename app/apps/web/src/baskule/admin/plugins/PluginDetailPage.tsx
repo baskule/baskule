@@ -1,6 +1,6 @@
 // baskule: one installed plugin: paused or not, which groups may use it, how its servers sign in
-// (with the write-only organization key or vendor app), what it contains, where it came from, and removal.
-// A plugin an admin brought opens in the plugin editor and downloads as a package.
+// (with the write-only organization key or vendor app), which tools it allows, what it contains, where it
+// came from, and removal. A plugin an admin brought opens in the plugin editor and downloads as a package.
 import { catalogService, catalogVendor } from "@t3tools/contracts/baskule-catalog";
 import type {
   AdminPlugin,
@@ -8,6 +8,7 @@ import type {
   Plugin,
   PluginInput,
   PluginServer,
+  PluginTool,
 } from "@t3tools/contracts/baskule-plugins";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { DownloadIcon, PauseIcon, PencilIcon, PlayIcon, UsersRoundIcon } from "lucide-react";
@@ -18,7 +19,7 @@ import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";
 import { Switch } from "../../../components/ui/switch";
-import { notifyPluginError, pluginErrorText, pluginsApi } from "../../plugins/api";
+import { notifyPluginError, pluginErrorText, pluginsApi, toolsErrorText } from "../../plugins/api";
 import { PluginContents, PluginIcon } from "../../plugins/PluginParts";
 import {
   contentsKind,
@@ -33,6 +34,7 @@ import { confirmAction, FormField, notifySuccess, RowIcon, useApiResource } from
 import { PageHeading, PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
 import { PluginEditor } from "./PluginEditor";
+import { ServerTools } from "./ServerTools";
 import { VendorSetup } from "./VendorSetup";
 
 /** Saves a package under the plugin's name. */
@@ -346,6 +348,36 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         />
       ) : null}
 
+      {plugin.servers.length > 0 ? (
+        <PageSection
+          title={t("Tools")}
+          description={t("Switch off any tool the assistant shouldn't use. Changes apply at once.")}
+        >
+          {plugin.servers.map((server) => (
+            <SavedServerTools
+              key={server.name}
+              pluginId={plugin.id}
+              server={server}
+              busy={busy}
+              onAllowed={(tool, allowed) =>
+                void run(
+                  `tools:${server.name}`,
+                  () =>
+                    pluginsApi.update(plugin.id, {
+                      disabledTools: {
+                        [server.name]: allowed
+                          ? server.disabledTools.filter((entry) => entry !== tool)
+                          : [...server.disabledTools, tool],
+                      },
+                    }),
+                  t("Could not change {{tool}}", { tool }),
+                )
+              }
+            />
+          ))}
+        </PageSection>
+      ) : null}
+
       <PageSection title={t("What it contains")}>
         <div className="px-3 py-4 sm:px-4">
           <PluginContents plugin={plugin} />
@@ -470,6 +502,72 @@ function ServerSettings({
       {server.credential === "organization" ? (
         <OrganizationKeyForm plugin={plugin} server={server} onChanged={onKeyChanged} />
       ) : null}
+    </div>
+  );
+}
+
+/** Lists every tool of a saved server on request, with the switches saved for it. */
+function SavedServerTools({
+  pluginId,
+  server,
+  busy,
+  onAllowed,
+}: {
+  readonly pluginId: string;
+  readonly server: PluginServer;
+  readonly busy: string | null;
+  readonly onAllowed: (tool: string, allowed: boolean) => void;
+}) {
+  const t = useTranslation();
+  const [listed, setListed] = useState<
+    { readonly tools: ReadonlyArray<PluginTool> } | { readonly error: string } | "loading" | null
+  >(null);
+  const show = () => {
+    setListed("loading");
+    pluginsApi.tools(pluginId, server.name).then(
+      (tools) => setListed({ tools }),
+      (cause: unknown) => setListed({ error: toolsErrorText(cause) }),
+    );
+  };
+  const off = server.disabledTools.length;
+  return (
+    <div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
+      <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate text-sm text-foreground">{server.name}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {off === 0
+              ? t("Every tool is allowed")
+              : t("{{count}} tool switched off", {
+                  count: off,
+                  defaultValue_other: "{{count}} tools switched off",
+                })}
+          </span>
+        </div>
+        {busy === `tools:${server.name}` ? <Spinner size="sm" tone="muted" /> : null}
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={t("Show tools of {{server}}", { server: server.name })}
+          disabled={listed === "loading"}
+          onClick={show}
+        >
+          {listed === "loading" ? <Spinner size="sm" /> : null}
+          {t("Show tools")}
+        </Button>
+      </div>
+      {listed === null || listed === "loading" ? null : "error" in listed ? (
+        <p role="alert" className="text-xs text-destructive-foreground">
+          {listed.error}
+        </p>
+      ) : (
+        <ServerTools
+          tools={listed.tools}
+          disabledTools={server.disabledTools}
+          disabled={busy !== null}
+          onAllowed={onAllowed}
+        />
+      )}
     </div>
   );
 }

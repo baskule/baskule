@@ -15,6 +15,7 @@ export interface PluginServer {
   name: string;
   url: string;
   credential: CredentialMode;
+  disabledTools: string[];
   keyHeaders?: string[];
   oauth?: OAuthRecipe;
   transport?: "streamable-http" | "sse";
@@ -62,7 +63,10 @@ export interface SkillInput {
   frontmatter?: string;
   files: PluginFile[];
 }
-export type ServerInput = PluginServer;
+export type ServerInput = Omit<PluginServer, "disabledTools"> & { disabledTools?: string[] };
+export interface ServerTestInput { server: ServerInput; headers?: Record<string, string> }
+export interface PluginTool { name: string; description: string }
+export type ServerTestResult = { tools: PluginTool[] } | { signIn: "account"; staticClient: boolean };
 export interface PluginInput {
   name: string;
   description: string;
@@ -73,7 +77,7 @@ export interface PluginInput {
   omitted: Omission[];
 }
 export type PluginCreate = { catalog: string; groups: string[] } | { plugin: PluginInput; groups: string[] };
-export type PluginUpdate = { enabled: boolean } | { plugin: PluginInput };
+export type PluginUpdate = { enabled: boolean } | { plugin: PluginInput } | { disabledTools: Record<string, string[]> };
 export type PluginInspect = { archive: string } | { github: string };
 export interface PluginDraft { plugin: PluginInput; fixes: Fix[]; omitted: Omission[] }
 export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
@@ -108,7 +112,7 @@ export type PluginCredential =
   | { error: PluginCallError; accounts?: string[] };
 
 export interface PluginCredentialRequest { spaceId: string; pluginId: string; server: string; userId: string; account?: string; tool?: string }
-export type PluginCallError = Exclude<PluginStatus, "ready"> | "unknown_account" | "default_account_required";
+export type PluginCallError = Exclude<PluginStatus, "ready"> | "unknown_account" | "default_account_required" | "tool_off";
 
 export const PLUGIN_ERROR_CODES = [
   "address_not_allowed",
@@ -147,6 +151,8 @@ export const PLUGIN_ERROR_CODES = [
   "invalid_return_url",
   "invalid_secret_headers",
   "no_remote_servers",
+  "server_unreachable",
+  "key_required",
   "not_found",
   "not_oauth_server",
   "not_organization_server",

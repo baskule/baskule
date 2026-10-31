@@ -257,6 +257,7 @@ export class Connections {
     if (!policy.allowed) return { error: policy.error };
     const plugin = this.plugins.get(input.pluginId)!;
     const server = plugin.servers.find(s => s.name === input.server)!;
+    if (input.tool && server.disabledTools.includes(input.tool)) return { error: "tool_off" };
     if (!this.plugins.setupDone(plugin, server)) return { error: "needs_setup" };
     const accounts = this.records(input.userId, input.pluginId, input.server);
     const first = accounts[0];
@@ -268,21 +269,37 @@ export class Connections {
     if (team && chosen?.id !== first.id) return { error: "default_account_required" };
     return chosen ?? { error: "unknown_account", accounts: accounts.map(a => a.label + (a.isDefault ? " (default)" : "")) };
   }
+  async adminHeaders(userId: string, pluginId: string, server: string): Promise<Record<string, string> | undefined> {
+    const input = { userId, pluginId, server };
+    const select = (): StoredAccount | Refusal => {
+      if (!this.rows("select 1 from user where id=? and role='admin' and coalesce(banned,0)=0", userId).length) return { error: "unavailable" };
+      const plugin = this.plugins.get(pluginId);
+      const target = plugin?.servers.find(s => s.name === server && s.credential === "user-oauth");
+      if (!plugin || !target) return { error: "unavailable" };
+      if (!this.plugins.setupDone(plugin, target)) return { error: "needs_setup" };
+      return this.records(userId, pluginId, server)[0] ?? { error: "connect" };
+    };
+    const credential = await this.withCredential(input, select);
+    return "headers" in credential ? credential.headers : undefined;
+  }
   async credential(input: PluginCredentialRequest): Promise<Credential> {
-    const selected = this.selected(input);
+    return this.withCredential(input, () => this.selected(input));
+  }
+  private async withCredential(input: Pick<PluginCredentialRequest, "userId" | "pluginId" | "server">, select: () => StoredAccount | Refusal): Promise<Credential> {
+    const selected = select();
     if ("error" in selected) return selected;
     const existing = this.refreshes.get(selected.id);
-    if (existing) { await existing; return this.credential(input); }
-    const work = this.resolve(input, selected);
+    if (existing) { await existing; return this.withCredential(input, select); }
+    const work = this.resolve(input, selected, select);
     this.refreshes.set(selected.id, work);
     try { return await work; } finally { this.refreshes.delete(selected.id); }
   }
-  private async resolve(input: PluginCredentialRequest, row: StoredAccount): Promise<Credential> {
+  private async resolve(input: Pick<PluginCredentialRequest, "userId" | "pluginId" | "server">, row: StoredAccount, select: () => StoredAccount | Refusal): Promise<Credential> {
     const { userId, pluginId, server: name } = input;
     const key = context(row.id, userId, pluginId, name);
     let liveData = row.data;
     const current = (): StoredAccount | Refusal => {
-      const latest = this.selected(input);
+      const latest = select();
       if ("error" in latest) return latest;
       return latest.id === row.id && latest.data === liveData ? latest : { error: "unavailable" };
     };

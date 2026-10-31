@@ -13,6 +13,7 @@ export const ACCOUNT_ARG = "baskule_account";
 const json = (id: unknown, result: unknown) => Response.json({ jsonrpc: "2.0", id, result });
 
 export function publishTools(server: Server, tools: Tool[]): Tool[] {
+  tools = tools.filter(tool => !server.disabledTools.includes(tool.name));
   if (server.credential !== "user-oauth") return tools;
   return tools.filter(tool => !Object.hasOwn(tool.inputSchema.properties ?? {}, ACCOUNT_ARG) && !tool.inputSchema.required?.includes(ACCOUNT_ARG)).map(tool => server.defaultAccountOnly ? tool : {
     ...tool, inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, [ACCOUNT_ARG]: {
@@ -133,6 +134,7 @@ export class PluginMcpProxy {
 
 export function callErrorText(error: PluginCallError, name: string, accounts?: string[]): string {
   switch (error) {
+    case "tool_off": return "Your administrator turned this tool off.";
     case "unavailable": return "This plugin is not available to you here.";
     case "needs_setup": return `Your administrator needs to finish setting up ${name}.`;
     case "connect": return `Connect your ${name} account in Settings → Plugins, then try again.`;

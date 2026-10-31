@@ -6,6 +6,7 @@ import type {
   Group,
   MemberPlugin,
   PluginDraft,
+  PluginInput,
 } from "@t3tools/contracts/baskule-plugins";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent, type Locator } from "vite-plus/test/browser";
@@ -17,7 +18,7 @@ import { AddOwnPage } from "../admin/plugins/AddOwnPage";
 import { CatalogPage } from "../admin/plugins/CatalogPage";
 import { PluginEditor } from "../admin/plugins/PluginEditor";
 import { PluginDetailPage } from "../admin/plugins/PluginDetailPage";
-import { pluginErrorText } from "./api";
+import { pluginErrorText, pluginsApi } from "./api";
 import { UserPluginsView } from "./UserPluginsView";
 
 type Route = (body: unknown, query: URLSearchParams) => unknown;
@@ -27,7 +28,7 @@ type Route = (body: unknown, query: URLSearchParams) => unknown;
 const press = (target: Locator) => act(() => (target.element() as HTMLElement).click());
 
 /** A fetch answering `METHOD /path` from `routes`, recording each call. A route may answer with
- * its own `Response`, such as a refusal. */
+ * its own `Response`, such as a refusal, or later, with a promise. */
 function fakeControl(routes: Record<string, Route>) {
   const calls: Array<{ readonly route: string; readonly body: unknown; readonly query: string }> =
     [];
@@ -38,7 +39,7 @@ function fakeControl(routes: Record<string, Route>) {
     calls.push({ route, body, query: url.search });
     const handler = routes[route];
     if (!handler) return Response.json({ error: "not_found" }, { status: 404 });
-    const answer = handler(body, url.searchParams);
+    const answer = await handler(body, url.searchParams);
     return answer instanceof Response ? answer : Response.json(answer);
   });
   return { calls, stub: stubGlobal("fetch", fetch) };
@@ -89,7 +90,14 @@ describe("admin catalog", () => {
     vendor: "linear",
     name: "Linear",
     source: { type: "catalog" },
-    servers: [{ name: "linear", url: "https://mcp.linear.app/mcp", credential: "user-oauth" }],
+    servers: [
+      {
+        name: "linear",
+        url: "https://mcp.linear.app/mcp",
+        credential: "user-oauth",
+        disabledTools: [],
+      },
+    ],
     setup: [{ server: "linear", done: true }],
   });
 
@@ -153,6 +161,7 @@ describe("admin catalog", () => {
                 url: "https://gmailmcp.googleapis.com/mcp/v1",
                 credential: "user-oauth",
                 oauth: { staticClient: true },
+                disabledTools: [],
               },
             ],
             setup: [{ server: "gmail", done: false }],
@@ -389,6 +398,925 @@ describe("adding your own plugin", () => {
   });
 });
 
+describe("adding MCP servers by form or JSON", () => {
+  const notesTools = [
+    { name: "search_notes", description: "Search notes." },
+    { name: "delete_note", description: "Delete a note." },
+  ];
+  const changes = <T extends { readonly route: string }>(calls: ReadonlyArray<T>) =>
+    calls.filter((call) => !call.route.startsWith("GET ") && !call.route.endsWith("/test"));
+  const jsonBox = () => page.getByRole("textbox", { name: "Server settings as JSON" });
+
+  it("moves pasted keys out of the JSON into key fields, and keeps them through later edits", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "notes-plugin", name: "Notes" }),
+      "PUT /api/baskule/admin/plugins/notes-plugin/secret": () => ({ ok: true }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await press(screen.getByRole("button", { name: "Paste JSON" }));
+    await userEvent.fill(
+      jsonBox(),
+      JSON.stringify({
+        servers: {
+          notes: {
+            type: "http",
+            url: "https://mcp.notes.example.test/mcp",
+            headers: { Authorization: "Bearer secret-1" },
+          },
+        },
+      }),
+    );
+
+    const text = () => (jsonBox().element() as HTMLTextAreaElement).value;
+    await vi.waitFor(() => expect(text()).toContain('"Authorization": "${AUTHORIZATION}"'));
+    expect(text()).not.toContain("secret-1");
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+    const notes = screen.getByRole("group", { name: "notes" });
+    await expect
+      .element(notes.getByLabelText("Key", { exact: true }))
+      .toHaveValue("Bearer secret-1");
+    await expect.element(notes.getByRole("radio", { name: /^Organization key/ })).toBeChecked();
+
+    await press(screen.getByRole("button", { name: "JSON", exact: true }));
+    await userEvent.fill(
+      jsonBox(),
+      JSON.stringify({
+        mcpServers: {
+          notes: {
+            url: "https://mcp2.notes.example.test/mcp",
+            headers: { Authorization: "${AUTHORIZATION}" },
+          },
+        },
+      }),
+    );
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+    await expect
+      .element(screen.getByLabelText("Address", { exact: true }))
+      .toHaveValue("https://mcp2.notes.example.test/mcp");
+    await expect
+      .element(screen.getByLabelText("Key", { exact: true }))
+      .toHaveValue("Bearer secret-1");
+    await press(screen.getByRole("button", { name: "JSON", exact: true }));
+    await userEvent.fill(jsonBox(), text().replace('"notes"', '"team-notes"'));
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+    await expect
+      .element(
+        screen.getByRole("group", { name: "team-notes" }).getByLabelText("Key", { exact: true }),
+      )
+      .toHaveValue("Bearer secret-1");
+    await userEvent.type(screen.getByLabelText("Name", { exact: true }), "Notes");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() => expect(changes(control.calls)).toHaveLength(2));
+    expect(changes(control.calls)).toEqual([
+      {
+        route: "POST /api/baskule/admin/plugins",
+        body: {
+          plugin: {
+            name: "Notes",
+            description: "",
+            source: { type: "custom" },
+            servers: [
+              {
+                name: "team-notes",
+                url: "https://mcp2.notes.example.test/mcp",
+                transport: "streamable-http",
+                credential: "organization",
+                keyHeaders: ["Authorization"],
+              },
+            ],
+            skills: [],
+            omitted: [],
+          },
+          groups: ["everyone"],
+        },
+        query: "",
+      },
+      {
+        route: "PUT /api/baskule/admin/plugins/notes-plugin/secret",
+        body: { server: "team-notes", headers: { Authorization: "Bearer secret-1" } },
+        query: "",
+      },
+    ]);
+  });
+
+  it("does not carry a typed key to a replacement server with another name and address", async () => {
+    const control = fakeControl({ "GET /api/baskule/admin/groups": () => ({ groups }) });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await press(screen.getByRole("button", { name: "Paste JSON" }));
+    await userEvent.fill(
+      jsonBox(),
+      JSON.stringify({
+        mcpServers: {
+          notes: {
+            url: "https://notes.example.test/mcp",
+            headers: { Authorization: "Bearer notes-key" },
+          },
+        },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect((jsonBox().element() as HTMLTextAreaElement).value).not.toContain("notes-key"),
+    );
+    await userEvent.fill(
+      jsonBox(),
+      JSON.stringify({
+        mcpServers: {
+          calendar: {
+            url: "https://calendar.example.test/mcp",
+            headers: { Authorization: "${AUTHORIZATION}" },
+          },
+        },
+      }),
+    );
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+    await expect
+      .element(
+        screen.getByRole("group", { name: "calendar" }).getByLabelText("Key", { exact: true }),
+      )
+      .toHaveValue("");
+    expect(changes(control.calls)).toEqual([]);
+  });
+
+  it("does not carry a key or switched-off tools to a replacement server given the old one's name", async () => {
+    const initial = {
+      name: "Notes",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: [
+        {
+          name: "notes",
+          url: "https://notes.example.test/mcp",
+          transport: "streamable-http" as const,
+          credential: "organization" as const,
+          keyHeaders: ["X-Api-Key"],
+          disabledTools: ["delete_note"],
+        },
+      ],
+    };
+    const onSaved = vi.fn();
+    const control = fakeControl({
+      "POST /api/baskule/admin/plugins/test": () => ({ tools: notesTools }),
+      "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
+      "PUT /api/baskule/admin/plugins/p1/secret": () => ({ ok: true }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["notes"]) }}
+        onCancel={vi.fn()}
+        onSaved={onSaved}
+      />,
+      // This standalone form has no routing or navigation.
+      { router: false },
+    );
+    await userEvent.type(screen.getByLabelText("Key", { exact: true }), "notes-key");
+    await press(screen.getByRole("button", { name: "JSON", exact: true }));
+    const calendar = (name: string) =>
+      JSON.stringify({
+        mcpServers: {
+          [name]: {
+            url: "https://calendar.example.test/mcp",
+            headers: { "X-Api-Key": "${X_API_KEY}" },
+          },
+        },
+      });
+    await userEvent.fill(jsonBox(), calendar("calendar"));
+    await userEvent.fill(jsonBox(), calendar("notes"));
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+
+    await expect.element(screen.getByLabelText("Key", { exact: true })).toHaveValue("");
+    await userEvent.type(screen.getByLabelText("Key", { exact: true }), "calendar-key");
+    await press(screen.getByRole("button", { name: "Test connection" }));
+    await expect.element(screen.getByRole("switch", { name: "Allow delete_note" })).toBeChecked();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const { disabledTools: _notes, ...server } = {
+      ...initial.servers[0]!,
+      url: "https://calendar.example.test/mcp",
+    };
+    expect(
+      control.calls
+        .filter((call) => !call.route.startsWith("GET "))
+        .map((call) => [call.route, call.body]),
+    ).toEqual([
+      [
+        "POST /api/baskule/admin/plugins/test",
+        { server, headers: { "X-Api-Key": "calendar-key" } },
+      ],
+      ["PATCH /api/baskule/admin/plugins/p1", { plugin: { ...initial, servers: [server] } }],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "notes", headers: { "X-Api-Key": "calendar-key" } },
+      ],
+    ]);
+  });
+
+  const fixtureTools = [
+    { name: "fixture_read", description: "Read fixtures." },
+    { name: "fixture_write", description: "Write fixtures." },
+  ];
+  const fixtures = {
+    name: "Fixtures",
+    description: "",
+    source: { type: "custom" as const },
+    skills: [],
+    omitted: [],
+    servers: ["fixture", "archive"].map((name) => ({
+      name,
+      url: `https://${name}.example.test/mcp`,
+      transport: "streamable-http" as const,
+      credential: "organization" as const,
+      keyHeaders: ["X-Api-Key"],
+    })),
+  };
+  /** The fixture server keyed, tested and with fixture_write switched off, then shown as JSON. */
+  async function fixturesAsJson(servers: number) {
+    const onSaved = vi.fn();
+    const control = fakeControl({
+      "POST /api/baskule/admin/plugins/test": () => ({ tools: fixtureTools }),
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "p1" }),
+      "PUT /api/baskule/admin/plugins/p1/secret": () => ({ ok: true }),
+    });
+    const initial = { ...fixtures, servers: fixtures.servers.slice(0, servers) };
+    await using stack = new AsyncDisposableStack();
+    stack.use(control.stub);
+    const screen = stack.use(
+      await render(
+        <PluginEditor
+          initial={initial}
+          fixes={[]}
+          omitted={[]}
+          target={{ type: "create", groups, groupsError: null }}
+          onCancel={vi.fn()}
+          onSaved={onSaved}
+        />,
+        // This standalone form has no routing or navigation.
+        { router: false },
+      ),
+    );
+    for (const server of initial.servers) {
+      await userEvent.type(
+        screen.getByRole("group", { name: server.name }).getByLabelText("Key", { exact: true }),
+        `${server.name}-key`,
+      );
+    }
+    const fixture = screen.getByRole("group", { name: "fixture" });
+    await press(fixture.getByRole("button", { name: "Test connection" }));
+    await press(fixture.getByRole("switch", { name: "Allow fixture_write" }));
+    await expect
+      .element(fixture.getByRole("switch", { name: "Allow fixture_write" }))
+      .not.toBeChecked();
+    await press(screen.getByRole("button", { name: "JSON", exact: true }));
+    return { initial, control, onSaved, screen, resources: stack.move() };
+  }
+  /** Deletes part of the JSON with the keyboard, leaving the caret there for typing. */
+  async function deleteJson(start: number, end: number) {
+    const box = jsonBox().element() as HTMLTextAreaElement;
+    await act(() => {
+      box.focus();
+      box.setSelectionRange(start, end);
+    });
+    await userEvent.keyboard("{Backspace}");
+  }
+
+  it("keeps a server's key, test and switched-off tools while its name is retyped in the JSON", async () => {
+    const { initial, control, onSaved, screen, resources } = await fixturesAsJson(1);
+    await using _resources = resources;
+    const text = () => (jsonBox().element() as HTMLTextAreaElement).value;
+    const start = text().indexOf('"fixture"') + 1;
+    await deleteJson(start, start + "fixture".length);
+    // The JSON stays readable while the name is empty, and describes no server.
+    await vi.waitFor(() => expect(text()).toContain('"": {'));
+    await expect.element(screen.getByRole("button", { name: "Form", exact: true })).toBeEnabled();
+    await userEvent.keyboard("renamed");
+    await vi.waitFor(() => expect(text()).toContain('"renamed": {'));
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+
+    const renamed = screen.getByRole("group", { name: "renamed" });
+    await expect.element(renamed.getByLabelText("Key", { exact: true })).toHaveValue("fixture-key");
+    await expect
+      .element(renamed.getByRole("switch", { name: "Allow fixture_write" }))
+      .not.toBeChecked();
+    await expect.element(renamed.getByRole("switch", { name: "Allow fixture_read" })).toBeChecked();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() =>
+      expect(onSaved).toHaveBeenCalledWith({ id: "p1", name: "Fixtures", count: 1 }),
+    );
+    expect(changes(control.calls).map((call) => [call.route, call.body])).toEqual([
+      [
+        "POST /api/baskule/admin/plugins",
+        {
+          plugin: {
+            ...initial,
+            servers: [{ ...initial.servers[0], name: "renamed", disabledTools: ["fixture_write"] }],
+          },
+          groups: ["everyone"],
+        },
+      ],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "renamed", headers: { "X-Api-Key": "fixture-key" } },
+      ],
+    ]);
+  });
+
+  it("keeps what was entered for servers when the JSON is cleared and pasted again without one", async () => {
+    const { initial, control, onSaved, screen, resources } = await fixturesAsJson(2);
+    await using _resources = resources;
+    const text = () => (jsonBox().element() as HTMLTextAreaElement).value;
+    await deleteJson(0, text().length);
+    await expect.element(jsonBox()).toHaveValue("");
+    await userEvent.fill(jsonBox(), '{ "mcpServers": {} }');
+    await userEvent.fill(
+      jsonBox(),
+      JSON.stringify({
+        mcpServers: {
+          fixture: {
+            url: "https://fixture.example.test/mcp",
+            headers: { "X-Api-Key": "${X_API_KEY}" },
+          },
+        },
+      }),
+    );
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+
+    expect(screen.getByRole("group", { name: "archive" }).query()).toBeNull();
+    const fixture = screen.getByRole("group", { name: "fixture" });
+    await expect.element(fixture.getByLabelText("Key", { exact: true })).toHaveValue("fixture-key");
+    await expect
+      .element(fixture.getByRole("switch", { name: "Allow fixture_write" }))
+      .not.toBeChecked();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() =>
+      expect(onSaved).toHaveBeenCalledWith({ id: "p1", name: "Fixtures", count: 1 }),
+    );
+    expect(changes(control.calls).map((call) => [call.route, call.body])).toEqual([
+      [
+        "POST /api/baskule/admin/plugins",
+        {
+          plugin: {
+            ...initial,
+            servers: [{ ...initial.servers[0], disabledTools: ["fixture_write"] }],
+          },
+          groups: ["everyone"],
+        },
+      ],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "fixture", headers: { "X-Api-Key": "fixture-key" } },
+      ],
+    ]);
+  });
+
+  it("shows a test's tools when it finishes while the server's name is retyped in the JSON", async () => {
+    let answer: (result: unknown) => void = () => {};
+    const control = fakeControl({
+      "POST /api/baskule/admin/plugins/test": () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={{ ...fixtures, servers: fixtures.servers.slice(0, 1) }}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "create", groups, groupsError: null }}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+      // This standalone form has no routing or navigation.
+      { router: false },
+    );
+    using tested = vi.spyOn(pluginsApi, "test");
+    await userEvent.type(screen.getByLabelText("Key", { exact: true }), "fixture-key");
+    await press(screen.getByRole("button", { name: "Test connection" }));
+    await expect.element(screen.getByRole("button", { name: "Save plugin" })).toBeDisabled();
+    await press(screen.getByRole("button", { name: "JSON", exact: true }));
+    const text = () => (jsonBox().element() as HTMLTextAreaElement).value;
+    const start = text().indexOf('"fixture"') + 1;
+    await deleteJson(start, start + "fixture".length);
+    await vi.waitFor(() => expect(text()).toContain('"": {'));
+    // The test finishes while the JSON describes no server.
+    await act(async () => {
+      answer({ tools: fixtureTools });
+      await tested.mock.results[0]?.value;
+    });
+    await userEvent.keyboard("fixture");
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+
+    await expect.element(screen.getByRole("switch", { name: "Allow fixture_write" })).toBeChecked();
+    await expect.element(screen.getByRole("button", { name: "Test connection" })).toBeEnabled();
+    await expect.element(screen.getByRole("button", { name: "Save plugin" })).toBeEnabled();
+  });
+
+  it("keeps JSON it can't read and saves nothing until it is fixed", async () => {
+    const control = fakeControl({ "GET /api/baskule/admin/groups": () => ({ groups }) });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await press(screen.getByRole("button", { name: "Paste JSON" }));
+    await userEvent.fill(jsonBox(), '{"mcpServers": {"notes": ');
+
+    await expect
+      .element(
+        screen.getByText("This JSON could not be read. Use an mcpServers or servers object."),
+      )
+      .toBeVisible();
+    await expect.element(jsonBox()).toHaveValue('{"mcpServers": {"notes": ');
+    await expect.element(screen.getByRole("button", { name: "Form", exact: true })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Name", { exact: true }), "Notes");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await expect.element(screen.getByText("Fix the JSON before saving.")).toBeVisible();
+    expect(changes(control.calls)).toEqual([]);
+  });
+
+  it("tests a server before saving and saves the tools switched off", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins/test": () => ({ tools: notesTools }),
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "notes" }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await userEvent.type(
+      screen.getByLabelText("Server address", { exact: true }),
+      "https://mcp.notes.example.test/mcp",
+    );
+    await press(screen.getByRole("button", { name: "Continue" }));
+    await press(screen.getByRole("button", { name: "Test connection" }));
+
+    await expect.element(screen.getByText("Delete a note.")).toBeVisible();
+    expect(control.calls.find((call) => call.route.endsWith("/test"))?.body).toEqual({
+      server: {
+        name: "mcp.notes.example.test",
+        url: "https://mcp.notes.example.test/mcp",
+        credential: "none",
+        transport: "streamable-http",
+      },
+    });
+    await press(screen.getByRole("switch", { name: "Allow delete_note" }));
+    await expect
+      .element(screen.getByRole("switch", { name: "Allow delete_note" }))
+      .not.toBeChecked();
+    await expect.element(screen.getByRole("switch", { name: "Allow search_notes" })).toBeChecked();
+    await userEvent.type(screen.getByLabelText("Name", { exact: true }), "Notes");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() =>
+      expect(postBody(control.calls)).toMatchObject({
+        plugin: { servers: [{ name: "mcp.notes.example.test", disabledTools: ["delete_note"] }] },
+      }),
+    );
+  });
+
+  it("waits for a pending sign-in test before saving its result", async () => {
+    let answer: (result: unknown) => void = () => {};
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins/test": () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "notes" }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await userEvent.fill(
+      screen.getByLabelText("Server address", { exact: true }),
+      "https://mcp.notes.example.test/mcp",
+    );
+    await press(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.fill(screen.getByLabelText("Name", { exact: true }), "Notes");
+    await press(screen.getByRole("button", { name: "Test connection" }));
+    try {
+      await expect.element(screen.getByRole("button", { name: "Save plugin" })).toBeDisabled();
+      screen.getByLabelText("Name", { exact: true }).element().closest("form")!.requestSubmit();
+      expect(
+        control.calls.filter((call) => call.route === "POST /api/baskule/admin/plugins"),
+      ).toEqual([]);
+    } finally {
+      answer({ signIn: "account", staticClient: true });
+    }
+    await expect.element(screen.getByRole("button", { name: "Save plugin" })).toBeEnabled();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await vi.waitFor(() =>
+      expect(postBody(control.calls)).toMatchObject({
+        plugin: {
+          servers: [{ credential: "user-oauth", oauth: { staticClient: true } }],
+        },
+      }),
+    );
+  });
+
+  it("shows a test's tools only while the server has the settings it was tested with", async () => {
+    let answer: (tools: unknown) => void = () => {};
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins/test": () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await userEvent.type(
+      screen.getByLabelText("Server address", { exact: true }),
+      "https://mcp.notes.example.test/mcp",
+    );
+    await press(screen.getByRole("button", { name: "Continue" }));
+    await press(screen.getByRole("button", { name: "Test connection" }));
+    await expect.element(screen.getByRole("button", { name: /Testing…/ })).toBeDisabled();
+    await vi.waitFor(() =>
+      expect(control.calls.some((call) => call.route.endsWith("/test"))).toBe(true),
+    );
+
+    const address = screen.getByLabelText("Address", { exact: true });
+    await userEvent.fill(address, "https://other.notes.example.test/mcp");
+    await expect.element(screen.getByRole("button", { name: "Test connection" })).toBeEnabled();
+    await act(() => answer({ tools: notesTools }));
+
+    await userEvent.fill(address, "https://mcp.notes.example.test/mcp");
+    await expect
+      .element(screen.getByRole("switch", { name: "Allow delete_note" }))
+      .toBeInTheDocument();
+    await userEvent.fill(address, "https://other.notes.example.test/mcp");
+    await expect.element(screen.getByRole("button", { name: "Test connection" })).toBeEnabled();
+    expect(screen.getByRole("switch").query()).toBeNull();
+  });
+
+  it("switches a server that asks people to sign in to their own accounts", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins/test": () => ({ signIn: "account", staticClient: true }),
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "notes" }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await userEvent.type(
+      screen.getByLabelText("Server address", { exact: true }),
+      "https://mcp.notes.example.test/mcp",
+    );
+    await press(screen.getByRole("button", { name: "Continue" }));
+    await press(screen.getByRole("button", { name: "Test connection" }));
+
+    await expect
+      .element(screen.getByText("People connect their own account after this plugin is saved."))
+      .toBeVisible();
+    await expect
+      .element(
+        screen.getByText(
+          "Your administrator needs to register this service before people can connect.",
+        ),
+      )
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("radio", { name: /^Each person connects/ }))
+      .toBeChecked();
+    await userEvent.type(screen.getByLabelText("Name", { exact: true }), "Notes");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await vi.waitFor(() =>
+      expect(postBody(control.calls)).toMatchObject({
+        plugin: { servers: [{ credential: "user-oauth", oauth: { staticClient: true } }] },
+      }),
+    );
+  });
+
+  it("adds pasted servers as separate plugins and retries only the one that failed", async () => {
+    let refuse = true;
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins": (body) => {
+        const name = (body as { plugin: { name: string } }).plugin.name;
+        if (name === "beta" && refuse) {
+          refuse = false;
+          return Response.json({ error: "plugin_storage_limit" }, { status: 413 });
+        }
+        return plugin({ id: `${name}-id`, name });
+      },
+    });
+    using _fetch = control.stub;
+    using add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+    await using screen = await render(<AddOwnPage />);
+    await press(screen.getByRole("button", { name: "Paste JSON" }));
+    await userEvent.fill(
+      jsonBox(),
+      JSON.stringify({
+        mcpServers: {
+          alpha: { url: "https://alpha.example.test/mcp" },
+          beta: { url: "https://beta.example.test/mcp" },
+        },
+      }),
+    );
+    await press(screen.getByRole("radio", { name: /^Separate plugins/ }));
+    expect(screen.getByLabelText("Name", { exact: true }).query()).toBeNull();
+    await press(screen.getByRole("button", { name: "Save plugins" }));
+
+    await expect
+      .element(
+        screen.getByText("There is no room for more plugins. Remove one you don't use first."),
+      )
+      .toBeVisible();
+    await expect
+      .element(screen.getByText("1 of 2 plugins are ready. Save again to finish the rest."))
+      .toBeVisible();
+    await expect.element(screen.getByRole("radio", { name: /^One plugin/ })).toBeDisabled();
+    await press(screen.getByRole("button", { name: "Save plugins" }));
+
+    await vi.waitFor(() =>
+      expect(add).toHaveBeenCalledWith({ type: "success", title: "2 plugins were added" }),
+    );
+    expect(
+      changes(control.calls).map((call) => (call.body as { plugin: PluginInput }).plugin),
+    ).toEqual(
+      ["alpha", "beta", "beta"].map((name) => ({
+        name,
+        description: "",
+        source: { type: "custom" },
+        servers: [
+          {
+            name,
+            url: `https://${name}.example.test/mcp`,
+            transport: "streamable-http",
+            credential: "none",
+          },
+        ],
+        skills: [],
+        omitted: [],
+      })),
+    );
+  });
+
+  it("clears a separate plugin's key once it is saved, even when a later plugin fails", async () => {
+    let refuse = true;
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins": (body) => {
+        const name = (body as { plugin: { name: string } }).plugin.name;
+        if (name === "beta" && refuse) {
+          refuse = false;
+          return Response.json({ error: "plugin_storage_limit" }, { status: 413 });
+        }
+        return plugin({ id: `${name}-id`, name });
+      },
+      "PUT /api/baskule/admin/plugins/alpha-id/secret": () => ({ ok: true }),
+      "PUT /api/baskule/admin/plugins/beta-id/secret": () => ({ ok: true }),
+    });
+    using _fetch = control.stub;
+    using add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+    await using screen = await render(<AddOwnPage />);
+    await press(screen.getByRole("button", { name: "Paste JSON" }));
+    await userEvent.fill(
+      jsonBox(),
+      JSON.stringify({
+        mcpServers: Object.fromEntries(
+          ["alpha", "beta"].map((name) => [
+            name,
+            { url: `https://${name}.example.test/mcp`, headers: { "X-Api-Key": `${name}-key` } },
+          ]),
+        ),
+      }),
+    );
+    await press(screen.getByRole("radio", { name: /^Separate plugins/ }));
+    await press(screen.getByRole("button", { name: "Form", exact: true }));
+    await press(screen.getByRole("button", { name: "Save plugins" }));
+
+    await expect
+      .element(screen.getByText("1 of 2 plugins are ready. Save again to finish the rest."))
+      .toBeVisible();
+    const alpha = screen.getByRole("group", { name: "alpha" });
+    await expect.element(alpha.getByLabelText("Key", { exact: true })).toHaveValue("");
+    await expect
+      .element(alpha.getByText("A key is saved. Leave this empty to keep it."))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("group", { name: "beta" }).getByLabelText("Key", { exact: true }))
+      .toHaveValue("beta-key");
+    await press(screen.getByRole("button", { name: "Save plugins" }));
+
+    await vi.waitFor(() =>
+      expect(add).toHaveBeenCalledWith({ type: "success", title: "2 plugins were added" }),
+    );
+    expect(
+      changes(control.calls).map((call) =>
+        call.route.endsWith("/secret")
+          ? [call.route, call.body]
+          : [call.route, (call.body as { plugin: PluginInput }).plugin.name],
+      ),
+    ).toEqual([
+      ["POST /api/baskule/admin/plugins", "alpha"],
+      [
+        "PUT /api/baskule/admin/plugins/alpha-id/secret",
+        { server: "alpha", headers: { "X-Api-Key": "alpha-key" } },
+      ],
+      ["POST /api/baskule/admin/plugins", "beta"],
+      ["POST /api/baskule/admin/plugins", "beta"],
+      [
+        "PUT /api/baskule/admin/plugins/beta-id/secret",
+        { server: "beta", headers: { "X-Api-Key": "beta-key" } },
+      ],
+    ]);
+  });
+
+  it("lists a saved server's tools with its saved key, but never sends it to a new address", async () => {
+    const initial = {
+      name: "CRM",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: [
+        {
+          name: "crm",
+          url: "https://mcp.crm.example.test/mcp",
+          credential: "organization" as const,
+          keyHeaders: ["X-Api-Key"],
+          disabledTools: ["delete_note"],
+        },
+      ],
+    };
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins/p1/tools": () => ({ tools: notesTools }),
+      "POST /api/baskule/admin/plugins/test": () => ({ tools: notesTools }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+      // This standalone form has no routing or navigation.
+      { router: false },
+    );
+    await press(screen.getByRole("button", { name: "Test connection" }));
+    await expect
+      .element(screen.getByRole("switch", { name: "Allow delete_note" }))
+      .not.toBeChecked();
+    expect(control.calls.find((call) => call.route.endsWith("/tools"))?.query).toBe("?server=crm");
+
+    await userEvent.fill(
+      screen.getByLabelText("Address", { exact: true }),
+      "https://changed.example.test/mcp",
+    );
+    await press(screen.getByRole("button", { name: "Test connection" }));
+    await expect.element(screen.getByText("Enter this key too.", { exact: true })).toBeVisible();
+    expect(control.calls.some((call) => call.route.endsWith("/test"))).toBe(false);
+
+    await userEvent.type(screen.getByLabelText("Key", { exact: true }), "new-key");
+    await press(screen.getByRole("button", { name: "Test connection" }));
+    await vi.waitFor(() =>
+      expect(control.calls.find((call) => call.route.endsWith("/test"))?.body).toEqual({
+        server: {
+          name: "crm",
+          url: "https://changed.example.test/mcp",
+          credential: "organization",
+          keyHeaders: ["X-Api-Key"],
+          disabledTools: ["delete_note"],
+        },
+        headers: { "X-Api-Key": "new-key" },
+      }),
+    );
+  });
+
+  it("sends only the tool switches the admin changed, so switches changed since it opened are kept", async () => {
+    const initial = {
+      name: "Notes",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: ["notes", "files", "drafts"].map((name) => ({
+        name,
+        url: `https://${name}.example.test/mcp`,
+        transport: "streamable-http" as const,
+        credential: "none" as const,
+        disabledTools: ["delete_note"],
+      })),
+    };
+    const onSaved = vi.fn();
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins/p1/tools": () => ({ tools: notesTools }),
+      "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "edit", id: "p1", savedKeys: new Set() }}
+        onCancel={vi.fn()}
+        onSaved={onSaved}
+      />,
+      // This standalone form has no routing or navigation.
+      { router: false },
+    );
+    const files = screen.getByRole("group", { name: "files" });
+    await press(files.getByRole("button", { name: "Test connection" }));
+    await press(files.getByRole("switch", { name: "Allow delete_note" }));
+    await expect.element(files.getByRole("switch", { name: "Allow delete_note" })).toBeChecked();
+    const drafts = screen.getByRole("group", { name: "drafts" });
+    await userEvent.click(drafts.getByText("Technical details", { exact: true }));
+    await userEvent.fill(drafts.getByLabelText("Server name", { exact: true }), "team-drafts");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const [notes, ...changed] = initial.servers;
+    const { disabledTools: _loaded, ...untouched } = notes!;
+    expect(
+      control.calls.find((call) => call.route === "PATCH /api/baskule/admin/plugins/p1")?.body,
+    ).toEqual({
+      plugin: {
+        ...initial,
+        servers: [
+          untouched,
+          { ...changed[0], disabledTools: [] },
+          { ...changed[1], name: "team-drafts" },
+        ],
+      },
+    });
+  });
+});
+
+describe("a saved plugin's tools", () => {
+  it("switches a tool off and on again, and says when the admin has no account to list them", async () => {
+    let off: string[] = [];
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          plugin({
+            name: "Notes",
+            servers: [
+              {
+                name: "notes",
+                url: "https://mcp.notes.example.test/mcp",
+                credential: "none",
+                disabledTools: off,
+              },
+              {
+                name: "mail",
+                url: "https://mcp.mail.example.test/mcp",
+                credential: "user-oauth",
+                disabledTools: [],
+              },
+            ],
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/plugins/p1/tools": (_body, query) =>
+        query.get("server") === "notes"
+          ? {
+              tools: [
+                { name: "search_notes", description: "Search notes." },
+                { name: "delete_note", description: "Delete a note." },
+              ],
+            }
+          : Response.json({ error: "connection_not_allowed" }, { status: 409 }),
+      "PATCH /api/baskule/admin/plugins/p1": (body) => {
+        off = (body as { disabledTools: Record<string, string[]> }).disabledTools.notes!;
+        return plugin({});
+      },
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<PluginDetailPage id="p1" />);
+
+    await press(screen.getByRole("button", { name: "Show tools of notes" }));
+    const deleteNote = screen.getByRole("switch", { name: "Allow delete_note" });
+    await expect.element(deleteNote).toBeChecked();
+    await press(deleteNote);
+    await expect.element(screen.getByText("1 tool switched off")).toBeVisible();
+    await expect.element(deleteNote).not.toBeChecked();
+    await expect.element(deleteNote).toBeEnabled();
+    await press(deleteNote);
+    await expect.element(deleteNote).toBeChecked();
+    expect(
+      control.calls.filter((call) => call.route.startsWith("PATCH ")).map((call) => call.body),
+    ).toEqual([{ disabledTools: { notes: ["delete_note"] } }, { disabledTools: { notes: [] } }]);
+
+    await press(screen.getByRole("button", { name: "Show tools of mail" }));
+    await expect
+      .element(screen.getByText("Connect your own account in Settings → Plugins to see its tools."))
+      .toBeVisible();
+  });
+});
+
 describe("pausing a plugin", () => {
   it("pauses it for everyone and offers to resume it", async () => {
     let enabled = true;
@@ -430,6 +1358,7 @@ describe("signing in to a plugin's service", () => {
                 url: "https://gmailmcp.googleapis.com/mcp/v1",
                 credential: "user-oauth",
                 oauth: { staticClient: true },
+                disabledTools: [],
               },
             ],
             setup: [{ server: "gmail", done: false }],
@@ -465,7 +1394,7 @@ describe("signing in to a plugin's service", () => {
     });
   });
 
-  const crm = { name: "crm", url: "https://mcp.crm.example.test/mcp" };
+  const crm = { name: "crm", url: "https://mcp.crm.example.test/mcp", disabledTools: [] };
 
   it("edits a plugin an admin brought in the shared editor and saves it whole", async () => {
     const skill = {
@@ -513,7 +1442,14 @@ describe("signing in to a plugin's service", () => {
           name: "CRM",
           description: "",
           source: { type: "upload", sha256: "b".repeat(64) },
-          servers: [{ ...crm, credential: "user-oauth", transport: "streamable-http" }],
+          servers: [
+            {
+              name: crm.name,
+              url: crm.url,
+              credential: "user-oauth",
+              transport: "streamable-http",
+            },
+          ],
           skills: [skill],
           omitted: [],
         },
@@ -666,7 +1602,9 @@ describe("signing in to a plugin's service", () => {
     await expect.element(key.nth(1)).toHaveValue("mail-key");
     await press(screen.getByRole("button", { name: "Save plugin" }));
 
-    await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith({ id: "p1", name: "CRM" }));
+    await vi.waitFor(() =>
+      expect(onSaved).toHaveBeenCalledWith({ id: "p1", name: "CRM", count: 1 }),
+    );
     expect(
       control.calls
         .filter((call) => !call.route.startsWith("GET "))

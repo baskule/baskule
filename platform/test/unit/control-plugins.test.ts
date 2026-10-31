@@ -9,7 +9,7 @@ import { base64 } from "../../src/control/plugin-package";
 import { resolveGroupPermissions } from "../../src/control/groups";
 
 const API = "/api/baskule";
-const plugin: Plugin = { id: "plugin", vendor: "plugin", name: "Test", description: "", source: { type: "custom" }, skills: [], servers: [{ name: "remote", url: "https://example.test/mcp", credential: "none" }], omitted: [], enabled: true, createdAt: "2026-10-25T00:00:00Z" };
+const plugin: Plugin = { id: "plugin", vendor: "plugin", name: "Test", description: "", source: { type: "custom" }, skills: [], servers: [{ name: "remote", url: "https://example.test/mcp", credential: "none", disabledTools: [] }], omitted: [], enabled: true, createdAt: "2026-10-25T00:00:00Z" };
 const input = { name: plugin.name, description: plugin.description, source: { type: "custom" }, servers: plugin.servers, skills: [], omitted: [] };
 const everyone: Group = { id: "everyone", name: "Everyone", builtin: "everyone", members: [], permissions: { canCreateSpaces: false }, plugins: [plugin.id] };
 const snapshot = (): PluginPolicy => ({ user: { id: "alice", banned: false }, space: { id: "team", kind: "team", members: ["alice"], settings: { personalPluginsAllowed: false, disabled: [] } }, plugin: structuredClone(plugin), assigned: true });
@@ -168,11 +168,11 @@ describe("ControlCell plugins and groups", () => {
       return new Response(text);
     });
     const request = (github: string) => new Request("http://control", { method: "POST", body: JSON.stringify({ github }) });
-    const result = await store.admin(request("https://github.com/example/plugin/tree/main/skills/hello"), "/admin/plugins/inspect");
+    const result = await store.admin(request("https://github.com/example/plugin/tree/main/skills/hello"), "/admin/plugins/inspect", "admin");
     const draft = await result.json();
     expect(draft).toMatchObject({ plugin: { source: { type: "github", repo: "https://github.com/example/plugin", sha: "a".repeat(40), path: "skills/hello" }, skills: [{ name: "hello" }] } });
     expect(store.list()).toEqual([]);
-    await expect(store.admin(request("https://github.com/anthropics/skills/tree/main/skills/pdf"), "/admin/plugins/inspect")).rejects.toMatchObject({ code: "proprietary_plugin" });
+    await expect(store.admin(request("https://github.com/anthropics/skills/tree/main/skills/pdf"), "/admin/plugins/inspect", "admin")).rejects.toMatchObject({ code: "proprietary_plugin" });
   });
 
   it("reviews without saving, validates fixes, exports without keys and accepts private admin addresses", async () => {
@@ -194,7 +194,7 @@ describe("ControlCell plugins and groups", () => {
     expect((await h.svc.plugins.settings(personalSpaceOf(h, a.userId))).skills[0].name).toBe("hello");
     expect((await call(h, "PUT", `${API}/admin/plugins/${added.body.id}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer encrypted-key" } } })).status).toBe(200);
     const unfinished = await call(h, "POST", `${API}/admin/plugins`, { ...admin, body: { groups: [], plugin: { ...draft, servers: [{ ...draft.servers[0], keyHeaders: ["X-Api-Key", "X-Workspace"] }] } } });
-    const unfinishedZip = await h.svc.plugins.admin(new Request("http://control"), `/admin/plugins/${unfinished.body.id}/export`);
+    const unfinishedZip = await h.svc.plugins.admin(new Request("http://control"), `/admin/plugins/${unfinished.body.id}/export`, a.userId);
     const unfinishedDraft = await call(h, "POST", `${API}/admin/plugins/inspect`, { ...admin, body: { archive: base64(new Uint8Array(await unfinishedZip.arrayBuffer())) } });
     expect(unfinishedDraft.body.fixes).toContainEqual({ server: "remote", need: "key", headers: ["X-Api-Key", "X-Workspace"] });
     await call(h, "PUT", `${API}/admin/plugins/${unfinished.body.id}/secret`, { ...admin, body: { server: "remote", headers: { "X-Api-Key": "private-key", "X-Workspace": "private-workspace" } } });
@@ -204,13 +204,13 @@ describe("ControlCell plugins and groups", () => {
     await call(h, "PUT", `${API}/admin/plugins/${unfinished.body.id}/secret`, { ...admin, body: { server: "remote", headers: { "X-Changed": "private-renamed" } } });
     expect(h.svc.plugins.get(unfinished.body.id)!.servers[0].keyHeaders).toEqual(["X-Changed"]);
     expect(await h.svc.plugins.organizationHeaders(unfinished.body.id, "remote")).toEqual({ "X-Changed": "private-renamed" });
-    const renamedZip = await h.svc.plugins.admin(new Request("http://control"), `/admin/plugins/${unfinished.body.id}/export`);
+    const renamedZip = await h.svc.plugins.admin(new Request("http://control"), `/admin/plugins/${unfinished.body.id}/export`, a.userId);
     const renamedDraft = await call(h, "POST", `${API}/admin/plugins/inspect`, { ...admin, body: { archive: base64(new Uint8Array(await renamedZip.arrayBuffer())) } });
     expect(renamedDraft.body.fixes).toContainEqual({ server: "remote", need: "key", headers: ["X-Changed"] });
     const preserve = await call(h, "PATCH", `${API}/admin/plugins/${added.body.id}`, { ...admin, body: { plugin: { ...draft, servers: [{ ...draft.servers[0], keyHeaders: ["X-Changed"] }] } } });
     expect(preserve.body.servers[0].keyHeaders).toEqual(["Authorization"]);
     expect(await h.svc.plugins.organizationHeaders(added.body.id, "remote")).toEqual({ Authorization: "Bearer encrypted-key" });
-    const exported = await h.svc.plugins.admin(new Request("http://control"), `/admin/plugins/${added.body.id}/export`);
+    const exported = await h.svc.plugins.admin(new Request("http://control"), `/admin/plugins/${added.body.id}/export`, a.userId);
     expect(exported.headers.get("Content-Type")).toBe("application/zip");
     const bytes = new Uint8Array(await exported.arrayBuffer());
     const again = await call(h, "POST", `${API}/admin/plugins/inspect`, { ...admin, body: { archive: base64(bytes) } });
