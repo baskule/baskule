@@ -18,7 +18,7 @@ class ImageReuseTests(unittest.TestCase):
             for name in ('deploy/images.sh', 'deploy/lib.sh', 'scripts/source-hash.py',
                          'deploy/build-env/Dockerfile', 'computer/input', 'openshell/input',
                          'vendor/openshell/input', 'deploy/celld/input', 'computerd/input',
-                         'app/browser-source', 'app/unrelated-ui', 'VERSION'):
+                         'app/browser-source', 'app/unrelated-ui'):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 source = ROOT / name
@@ -72,10 +72,6 @@ p.write_text(json.dumps(s))
             self.assertEqual(changed, first + ['baskule-computer:local'])
             (root / 'app/browser-source').write_text('original')
             self.assertEqual(images(), changed, 'reverting must reuse the original source-tagged image')
-            version = root / 'VERSION'
-            version.write_text(version.read_text().strip() + '-test')
-            changed = changed + ['baskule-computer:local']
-            self.assertEqual(images(), changed, 'the product version changes the computer image label')
             (root / 'deploy/build-env/Dockerfile').write_text('a different native toolchain')
             changed = changed + ['baskule-openshell-gateway:local']
             self.assertEqual(images(), changed)

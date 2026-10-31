@@ -83,8 +83,7 @@ ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 TZ=Etc/UTC \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     CHROME_PATH=/usr/local/bin/chromium-baskule \
     PATH=/sandbox/space/home/.local/bin:/sandbox/space/home/.local/share/pnpm:/sandbox/space/home/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ARG BASKULE_VERSION=local
-LABEL org.opencontainers.image.title=baskule-computer org.opencontainers.image.version=${BASKULE_VERSION}
+LABEL org.opencontainers.image.title=baskule-computer
 WORKDIR /sandbox
 USER 1000:1000
 ENTRYPOINT []

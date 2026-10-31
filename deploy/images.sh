@@ -42,7 +42,7 @@ mkdir -p "$ROOT/computer/browser"
 (cd "$ROOT" && nice -n 10 node "$BASKULE_T3_FORK/apps/server/src/baskule/browser/build.mjs" computer/browser/bridge.mjs)
 bridge=$(sha256sum "$ROOT/computer/browser/bridge.mjs" | cut -c1-16)
 
-build_one "baskule-computer:$TAG" '"$ROOT/computer/build.sh" -q >/dev/null' "$bridge" "$ROOT/computer" "$ROOT/VERSION"
+build_one "baskule-computer:$TAG" '"$ROOT/computer/build.sh" -q >/dev/null' "$bridge" "$ROOT/computer"
 toolchain=$(sha256sum "$DEPLOY_DIR/build-env/Dockerfile" | cut -c1-16)
 # The gateway embeds supervisor/sandbox image names, which include TAG.
 build_one "baskule-openshell-gateway:$TAG" '"$ROOT/openshell/build.sh"' "$toolchain:$TAG" "$ROOT/openshell" "${OPENSHELL_FORK:-$ROOT/vendor/openshell}"
