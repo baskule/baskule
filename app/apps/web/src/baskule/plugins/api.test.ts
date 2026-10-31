@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { BaskuleApiError } from "../api";
-import { accountConnectionUrl, pluginErrorText } from "./api";
+import { accountConnectionUrl, pluginErrorText, toolsErrorText } from "./api";
 import { sourceLabel } from "./presentation";
 
 describe("plugin wording", () => {
@@ -11,6 +11,18 @@ describe("plugin wording", () => {
       pluginErrorText(new BaskuleApiError(400, "placeholder", "address_placeholder"), "x"),
     ).toBe("Fill in every part of the address in braces first.");
     expect(pluginErrorText(new BaskuleApiError(500, "Boom", "other"), "x")).toBe("x");
+  });
+
+  it("says why a server's tools couldn't be listed, never with a raw code", () => {
+    expect(toolsErrorText(new BaskuleApiError(409, "key required", "key_required"))).toBe(
+      "This server needs a key. Enter it, then try again.",
+    );
+    expect(toolsErrorText(new BaskuleApiError(502, "unreachable", "server_unreachable"))).toBe(
+      "Baskule couldn't connect to this server. Check the server details and try again.",
+    );
+    expect(toolsErrorText(new BaskuleApiError(500, "Boom", "other"))).toBe(
+      "Check the server details and try again.",
+    );
   });
 
   it("starts a new account with its name, or reconnects an existing account by its id", () => {

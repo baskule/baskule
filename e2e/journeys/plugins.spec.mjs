@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test, expect, signIn, startChat, assistant, phoneOptions } from "./fixtures.mjs";
 
+import { fakeMcp } from "../../platform/test/fixtures/mcp.mjs";
 import { fakeOAuth } from "../../platform/test/fixtures/oauth.mjs";
 
 const portable = fileURLToPath(new URL("../../platform/test/fixtures/plugins/portable/", import.meta.url));
@@ -331,5 +332,72 @@ test("an imported package is reviewed and repaired before save and exports for a
     if (!plugin) plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
     await context.close(); await memberContext.close();
+  }
+});
+
+test("MCP JSON lifts keys, tests tools and enforces a switched-off tool during a run", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api }) => {
+  const fixture = await fakeMcp({ key: "Bearer local-mcp-key" });
+  const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
+  const context = await browser.newContext(options);
+  const page = await context.newPage();
+  const name = `Team notes ${crypto.randomUUID()}`;
+  let plugin, releaseRead, client, shell, run;
+  try {
+    await context.addCookies(api.admin.cookie.split("; ").map(cookie => {
+      const [name, ...value] = cookie.split("="); return { name, value: value.join("="), url: stack.urls.front };
+    }));
+    await page.goto(`${stack.urls.front}/admin/plugins/add`);
+    await page.getByRole("button", { name: "Paste JSON", exact: true }).click();
+    const json = page.getByRole("textbox", { name: "Server settings as JSON", exact: true });
+    await json.fill(JSON.stringify({ servers: {
+      notes: { type: "http", url: fixture.resource, headers: { Authorization: "Bearer local-mcp-key" } },
+      local: { command: "npx", args: ["local-server"] },
+    } }, null, 2));
+    await expect(json).toHaveValue(/\$\{AUTHORIZATION\}/);
+    expect(await json.inputValue()).not.toContain("local-mcp-key");
+    await json.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("mcp-json-placeholders.png"), fullPage: true });
+    await page.getByLabel("Name", { exact: true }).fill(name);
+    await page.getByRole("button", { name: "Form", exact: true }).click();
+    await expect(page.getByLabel("Key", { exact: true })).toHaveValue("Bearer local-mcp-key");
+    await expect(page.getByText(/A program that runs on someone's computer/)).toBeVisible();
+    await page.getByRole("button", { name: "Test connection", exact: true }).click();
+    await expect(page.getByText("Read the team's notes", { exact: true })).toBeVisible();
+    await expect(page.getByText("Change the team's notes", { exact: true })).toBeVisible();
+    await page.getByRole("switch", { name: /fixture_write/ }).uncheck();
+    await page.screenshot({ path: test.info().outputPath("mcp-tested-tools.png"), fullPage: true });
+    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
+    expect(plugin.servers[0].disabledTools).toEqual(["fixture_write"]);
+    expect(JSON.stringify(plugin)).not.toContain("local-mcp-key");
+    await page.getByRole("button", { name: "Show tools of notes", exact: true }).click();
+    const write = page.getByRole("switch", { name: /fixture_write/ });
+    await expect(write).not.toBeChecked();
+    await write.click();
+    await expect(write).toBeChecked();
+    await expect.poll(async () => (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.id === plugin.id).servers[0].disabledTools).toEqual([]);
+    client = await people.alice.rpc(api.personalSpace(people.alice));
+    shell = api.watchShell(client);
+    await expect.poll(() => shell.ready).toBe(true);
+    const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
+    fixture.state.onRead = () => new Promise(resolve => { releaseRead = resolve; });
+    const id = await api.launch(client, projectId, "Read then update the team notes [[fake:tool *fixture_read {}]] [[fake:tool *fixture_write {}]]", "MCP tool permission", { generateTitle: false });
+    run = api.watchThread(client, id);
+    await expect.poll(() => fixture.calls).toEqual(["fixture_read"]);
+    await write.click();
+    await expect(write).not.toBeChecked();
+    await expect.poll(async () => (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.id === plugin.id).servers[0].disabledTools).toEqual(["fixture_write"]);
+    releaseRead(); releaseRead = undefined;
+    await api.waitRun(run);
+    expect(run.assistantText()).toContain("Your administrator turned this tool off.");
+    expect(fixture.calls).toEqual(["fixture_read"]);
+    await page.screenshot({ path: test.info().outputPath("mcp-saved-tools.png"), fullPage: true });
+  } finally {
+    releaseRead?.(); run?.stop(); shell?.stop();
+    if (client) { client.close(); await client.closed; }
+    if (!plugin) plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
+    if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
+    await context.close(); await fixture.close();
   }
 });

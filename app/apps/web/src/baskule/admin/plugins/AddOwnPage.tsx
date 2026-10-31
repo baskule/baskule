@@ -1,6 +1,6 @@
-// baskule: Plugins → Add your own: a package (a file or a GitHub link) or an MCP server's address
-// opens the plugin editor. Reading a package saves nothing; only Save plugin in the editor does.
-import type { PluginDraft, PluginInspect } from "@t3tools/contracts/baskule-plugins";
+// baskule: Plugins → Add your own: a package (a file or a GitHub link), an MCP server's address or its
+// pasted JSON opens the plugin editor. Reading a package saves nothing; only Save in the editor does.
+import type { PluginDraft, PluginInspect, ServerInput } from "@t3tools/contracts/baskule-plugins";
 import { useNavigate } from "@tanstack/react-router";
 import { useId, useState } from "react";
 
@@ -30,13 +30,13 @@ async function base64Of(file: File): Promise<string> {
   return btoa(binary);
 }
 
-/** One server at the address the admin entered; the editor asks for the rest. */
-const serverDraft = (url: string): PluginDraft => ({
+/** A plugin of MCP servers only; the editor asks for the rest. */
+const serversDraft = (servers: ServerInput[]): PluginDraft => ({
   plugin: {
     name: "",
     description: "",
     source: { type: "custom" },
-    servers: [{ name: "", url, credential: "none", transport: "streamable-http" }],
+    servers,
     skills: [],
     omitted: [],
   },
@@ -44,13 +44,18 @@ const serverDraft = (url: string): PluginDraft => ({
   omitted: [],
 });
 
+type View = "form" | "json";
+
 export function AddOwnPage() {
   const t = useTranslation();
   const navigate = useNavigate();
   const groups = useApiResource(loadGroups);
-  const [draft, setDraft] = useState<PluginDraft | null>(null);
+  const [opened, setOpened] = useState<{ readonly draft: PluginDraft; readonly view: View } | null>(
+    null,
+  );
 
-  if (!draft) return <AddOwnStart onDraft={setDraft} />;
+  if (!opened) return <AddOwnStart onDraft={(draft, view) => setOpened({ draft, view })} />;
+  const { draft } = opened;
   return (
     <>
       <p className="px-3 text-sm text-muted-foreground sm:px-4">
@@ -63,8 +68,22 @@ export function AddOwnPage() {
         fixes={draft.fixes}
         omitted={draft.omitted}
         target={{ type: "create", groups: groups.data, groupsError: groups.error }}
-        onCancel={() => setDraft(null)}
-        onSaved={({ id, name }) => {
+        initialView={opened.view}
+        onCancel={() => setOpened(null)}
+        onSaved={({ id, name, count }) => {
+          if (count > 1) {
+            notifySuccess(
+              t("{{count}} plugin was added", {
+                count,
+                defaultValue_other: "{{count}} plugins were added",
+              }),
+            );
+            void navigate({
+              to: "/admin/$section/$page",
+              params: { section: "plugins", page: "installed" },
+            });
+            return;
+          }
           notifySuccess(t("{{name}} was added", { name }));
           void navigate({
             to: "/admin/$section/$page/$item",
@@ -78,7 +97,7 @@ export function AddOwnPage() {
 
 type Method = "file" | "github";
 
-function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft) => void }) {
+function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft, view: View) => void }) {
   const t = useTranslation();
   const fileId = useId();
   const [method, setMethod] = useState<Method>("file");
@@ -98,7 +117,7 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft) => vo
     return (async () => {
       const input: PluginInspect =
         method === "file" ? { archive: await base64Of(file!) } : { github: link.trim() };
-      onDraft(await pluginsApi.inspect(input));
+      onDraft(await pluginsApi.inspect(input), "form");
     })()
       .catch((cause: unknown) => {
         setError(pluginErrorText(cause, t("Baskule couldn't read this plugin.")));
@@ -196,7 +215,7 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft) => vo
       <PageSection
         title={t("Add an MCP server")}
         description={t(
-          "Tools from a server on the web, such as one your company runs. You choose how it signs in next.",
+          "Tools from a server on the web, such as one your company runs. Enter its address, or paste the JSON settings its documentation gives.",
         )}
       >
         <form
@@ -204,7 +223,18 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft) => vo
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            if (address.trim()) onDraft(serverDraft(address.trim()));
+            if (address.trim())
+              onDraft(
+                serversDraft([
+                  {
+                    name: "",
+                    url: address.trim(),
+                    credential: "none",
+                    transport: "streamable-http",
+                  },
+                ]),
+                "form",
+              );
           }}
         >
           <FormField
@@ -215,9 +245,14 @@ function AddOwnStart({ onDraft }: { readonly onDraft: (draft: PluginDraft) => vo
             value={address}
             onChange={(event) => setAddress(event.currentTarget.value)}
           />
-          <Button type="submit" variant="outline" disabled={!address.trim()}>
-            {t("Continue")}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="submit" variant="outline" disabled={!address.trim()}>
+              {t("Continue")}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => onDraft(serversDraft([]), "json")}>
+              {t("Paste JSON")}
+            </Button>
+          </div>
         </form>
       </PageSection>
     </>

@@ -10,7 +10,10 @@ import {
   type PluginErrorCode,
   type PluginInspect,
   type PluginSecretInput,
+  type PluginTool,
   type PluginUpdate,
+  type ServerTestInput,
+  type ServerTestResult,
   type SkillInput,
   type SpacePluginSettings,
 } from "@t3tools/contracts/baskule-plugins";
@@ -64,6 +67,17 @@ export const pluginsApi = {
     }
     return response.blob();
   },
+  /** Connects to a server that isn't saved yet, with only the keys sent here, and lists its tools. */
+  test: (input: ServerTestInput) =>
+    request<ServerTestResult>("POST", `${root}/admin/plugins/test`, input),
+  /** Every tool of a saved server, switched off or not, through its saved key or the admin's own account. */
+  tools: async (id: string, server: string) =>
+    (
+      await request<{ tools: PluginTool[] }>(
+        "GET",
+        `${root}/admin/plugins/${enc(id)}/tools?server=${enc(server)}`,
+      )
+    ).tools,
   remove: (id: string) => request<{ ok: true }>("DELETE", `${root}/admin/plugins/${enc(id)}`),
   secret: (id: string, input: PluginSecretInput) =>
     request<{ ok: true }>("PUT", `${root}/admin/plugins/${enc(id)}/secret`, input),
@@ -170,6 +184,7 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   invalid_secret_headers: () => t("This key can't be sent with that header name."),
   invalid_skill: () =>
     t("One of its skills doesn't follow the skill rules. Check its name and description."),
+  key_required: () => t("This server needs a key. Enter it, then try again."),
   no_remote_servers: () =>
     t(
       "This server runs as a program on someone's computer. Baskule needs its web address; ask its maker whether it has one.",
@@ -208,6 +223,8 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   plugin_too_large: tooLarge,
   plugin_tree_too_large: tooLarge,
   proprietary_plugin: () => t("Its license doesn't allow using it here."),
+  server_unreachable: () =>
+    t("Baskule couldn't connect to this server. Check the server details and try again."),
   too_many_plugin_files: () => t("It has too many files to add."),
   unsafe_plugin_path: () => t("It contains a file path Baskule can't accept."),
   unsupported_archive: cantOpen,
@@ -227,6 +244,13 @@ export function pluginErrorCodeText(code: string | null | undefined, fallback: s
 /** The backend's error codes for plugins and groups, in plain words. */
 export function pluginErrorText(cause: unknown, fallback: string): string {
   return pluginErrorCodeText(cause instanceof BaskuleApiError ? cause.code : undefined, fallback);
+}
+
+/** Why a server's tools couldn't be listed. Without an account, the admin connects their own. */
+export function toolsErrorText(cause: unknown): string {
+  return cause instanceof BaskuleApiError && cause.code === "connection_not_allowed"
+    ? t("Connect your own account in Settings → Plugins to see its tools.")
+    : pluginErrorText(cause, t("Check the server details and try again."));
 }
 
 export function notifyPluginError(title: string, cause: unknown) {

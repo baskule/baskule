@@ -1,7 +1,7 @@
 // baskule: the plugins and groups part of the mock front (shapes: packages/contracts/src/baskule-plugins.ts,
 // behaviour: platform/src/control/plugins.ts and groups.ts). In memory; catalog installs use the real list.
-// `/connect` signs an account in at once, a vendor app is only remembered as saved, reading a package returns
-// a fixed draft with something to fix, and the exported zip holds only plugin.json.
+// `/connect` signs an account in at once, a vendor app is only remembered as saved, a package reads as a fixed
+// draft to fix, the exported zip holds only plugin.json, and every server lists the same three tools.
 import * as NodeCrypto from "node:crypto";
 import * as NodeZlib from "node:zlib";
 
@@ -26,6 +26,7 @@ function pluginFromCatalog(service) {
       name: server.name,
       url: server.url,
       transport: server.transport ?? "streamable-http",
+      disabledTools: [],
       credential:
         signIn.type === "account" ? "user-oauth" : signIn.type === "key" ? "organization" : "none",
       ...(signIn.type === "account"
@@ -60,6 +61,16 @@ function ownPlugin(fields) {
 }
 
 const skillInput = (skill) => ({ ...skill, instructions: `# ${skill.name}\n`, files: [] });
+/** As `validateServer`: switched-off tools are stored once each. */
+const savedServer = (server) => ({
+  ...server,
+  disabledTools: [...new Set(server.disabledTools ?? [])],
+});
+const toolsOf = (server) => [
+  { name: "search", description: `Search ${new URL(server.url).hostname}.` },
+  { name: "read_item", description: "Read one item." },
+  { name: "delete_item", description: "Delete an item." },
+];
 const summary = (skill) => ({ name: skill.name, description: skill.description });
 const placeholder = /\$?\{[^}]+\}/;
 
@@ -112,6 +123,7 @@ export function createPluginMock({ users, spaces }) {
         url: "https://mcp.search.brave.com/mcp",
         credential: "organization",
         transport: "streamable-http",
+        disabledTools: [],
       },
     ],
     createdAt: at(5),
@@ -138,6 +150,7 @@ export function createPluginMock({ users, spaces }) {
         url: "https://mcp.hubspot.com/anthropic",
         credential: "organization",
         transport: "streamable-http",
+        disabledTools: [],
       },
     ],
     omitted: [
@@ -163,6 +176,7 @@ export function createPluginMock({ users, spaces }) {
         credential: "user-oauth",
         oauth: { staticClient: true },
         transport: "streamable-http",
+        disabledTools: [],
       },
     ],
     omitted: [],
@@ -283,7 +297,7 @@ export function createPluginMock({ users, spaces }) {
       description: String(description ?? ""),
       ...(icon ? { icon } : {}),
       source,
-      servers,
+      servers: servers.map(savedServer),
       skills: skills.map(summary),
       omitted: omitted ?? [],
     });
@@ -430,15 +444,46 @@ export function createPluginMock({ users, spaces }) {
       const [status, body] = inspect(await readBody(req));
       return (send(res, status, body), true);
     }
-    if ((r = /^\/admin\/plugins\/([^/]+)(\/secret|\/skills|\/export)?$/.exec(api))) {
+    // Tests a server that isn't saved: each person's sign-in, or a key that must be sent with it.
+    if (api === "/admin/plugins/test" && method === "POST") {
+      const { server, headers } = await readBody(req);
+      const error = inputError({
+        name: "test",
+        source: { type: "custom" },
+        servers: [server],
+        skills: [],
+      });
+      if (error) return (fail(res, 400, error), true);
+      if (server.credential === "user-oauth")
+        return (send(res, 200, { signIn: "account", staticClient: false }), true);
+      if (server.credential === "organization" && !Object.values(headers ?? {}).some(Boolean))
+        return (fail(res, 409, "key_required"), true);
+      return (send(res, 200, { tools: toolsOf(server) }), true);
+    }
+    if ((r = /^\/admin\/plugins\/([^/]+)(\/secret|\/skills|\/export|\/tools)?$/.exec(api))) {
       const plugin = plugins.get(r[1]);
       if (!plugin) return (fail(res, 404, "not_found"), true);
+      // Every tool, switched off or not, through the saved key or the admin's own default account.
+      if (r[2] === "/tools" && method === "GET") {
+        const server = plugin.servers.find(
+          (entry) => entry.name === url.searchParams.get("server"),
+        );
+        if (!server) return (fail(res, 400, "plugin_server_required"), true);
+        if (server.credential === "organization" && !setupDone(plugin, server))
+          return (fail(res, 409, "key_required"), true);
+        if (
+          server.credential === "user-oauth" &&
+          !accountsOf(me.id, plugin.id, server.name).some((entry) => entry.default)
+        )
+          return (fail(res, 409, "connection_not_allowed"), true);
+        return (send(res, 200, { tools: toolsOf(server) }), true);
+      }
       if (r[2] === "/skills" && method === "GET")
         return (
           send(res, 200, {
             skills: skillsOf.get(plugin.id) ?? [],
             editable: plugin.source.type === "custom" || plugin.source.type === "upload",
-              }),
+          }),
           true
         );
       if (r[2] === "/export" && method === "GET") {
@@ -486,6 +531,18 @@ export function createPluginMock({ users, spaces }) {
           plugin.enabled = patch.enabled;
           return (send(res, 200, plugin), true);
         }
+        // Only the servers named change their switches.
+        if (patch.disabledTools && Object.keys(patch).length === 1) {
+          const names = Object.keys(patch.disabledTools);
+          if (names.some((name) => !plugin.servers.some((server) => server.name === name)))
+            return (fail(res, 400, "plugin_server_required"), true);
+          plugin.servers = plugin.servers.map((server) =>
+            names.includes(server.name)
+              ? savedServer({ ...server, disabledTools: patch.disabledTools[server.name] })
+              : server,
+          );
+          return (send(res, 200, plugin), true);
+        }
         const input = patch.plugin;
         if (
           plugin.source.type === "catalog" ||
@@ -505,7 +562,7 @@ export function createPluginMock({ users, spaces }) {
           name: input.name.trim(),
           description: String(input.description ?? ""),
           ...(input.icon ? { icon: input.icon } : {}),
-          servers: input.servers,
+          servers: input.servers.map(savedServer),
           skills: input.skills.map(summary),
           omitted: input.omitted ?? [],
         });
