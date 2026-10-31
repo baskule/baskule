@@ -2,32 +2,38 @@ import { catalogService, catalogVendor, type CatalogService, type CatalogVendor 
 import type { ConnectionCipher } from "./connection-crypto";
 import { checkMcpUrl, serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
-import type { Plugin, PluginPatch, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { Plugin, PluginInput, PluginUpdate, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode } from "../../../app/packages/contracts/src/baskule-plugins";
 import { pluginError, json, notFound } from "../shared/http";
 import type { StorageLike } from "./service";
 import type { Connections } from "./connections";
 import { Groups } from "./groups";
-import { fromBase64, IMPORT_LIMITS, inspectBundle, sha256, unpackArchive } from "./plugin-import";
+import { fromBase64, IMPORT_LIMITS, inspectPackage, exportPackage, skillFromInput, skillToInput, sha256, unpackArchive, type StoredSkill } from "./plugin-package";
+import { addressPlaceholders, serverFingerprint } from "../../../app/packages/contracts/src/baskule-plugin-formats";
 import { readBounded, type Fetcher } from "./plugin-source";
 import { fetchGitFiles } from "./plugin-source";
-import { COMMIT_RE, githubRepo } from "./plugin-source";
+import { COMMIT_RE, resolveGithubLink } from "./plugin-source";
 
 const id = z.string().min(1).max(200);
 const credential = z.enum(["none", "organization", "user-oauth"]);
+const headerName = z.string().regex(/^[!#$%&'*+.^_`|~0-9a-z-]+$/i).max(200);
 const sourceSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("url"), url: z.string().max(2048) }).strict(),
-  z.object({ type: z.literal("git"), repo: z.string().max(2048), ref: z.string().regex(COMMIT_RE), path: z.string().max(512).optional() }).strict(),
-  z.object({ type: z.literal("archive"), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  z.object({ type: z.literal("custom") }).strict(),
+  z.object({ type: z.literal("github"), repo: z.string().regex(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/), sha: z.string().regex(COMMIT_RE), path: z.string().max(512).optional() }).strict(),
+  z.object({ type: z.literal("upload"), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
 ]);
-const patchSchema = z.object({
-  name: z.string().trim().min(1).max(100).optional(), description: z.string().max(4000).optional(),
-  icon: z.url().max(2048).refine(v => new URL(v).protocol === "https:").optional(), enabled: z.boolean().optional(),
-  servers: z.array(z.object({ name: id, url: z.string().max(2048).optional(), transport: z.enum(["streamable-http", "sse"]).optional(), credential,
-    oauth: z.object({ scopes: z.array(z.string().min(1).max(2048)).max(100).optional(),
-      params: z.record(z.string().regex(/^[a-z_]+$/).refine(key => !["response_type", "client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "resource", "scope"].includes(key)), z.string().max(2048)).optional(), resource: z.literal(false).optional(), staticClient: z.literal(true).optional(),
-    }).strict().optional(),
-  }).strict()).max(100).optional(),
+const serverSchema = z.object({ name: id, url: z.string().max(2048), transport: z.enum(["streamable-http", "sse"]).optional(), credential,
+  keyHeaders: z.array(headerName).max(20).optional(),
+  oauth: z.object({ scopes: z.array(z.string().min(1).max(2048)).max(100).optional(),
+    params: z.record(z.string().regex(/^[a-z_]+$/).refine(key => !["response_type", "client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "resource", "scope"].includes(key)), z.string().max(2048)).optional(), resource: z.literal(false).optional(), staticClient: z.literal(true).optional(),
+  }).strict().optional(),
 }).strict();
+const skillSchema = z.object({ name: z.string().max(64), description: z.string().max(1024), instructions: z.string(), frontmatter: z.string().optional(), files: z.array(z.object({ path: z.string(), content: z.string(), encoding: z.literal("base64") }).strict()).max(IMPORT_LIMITS.files) }).strict();
+const inputSchema = z.object({ name: z.string().trim().min(1).max(100), description: z.string().max(4000),
+  icon: z.url().max(2048).refine(v => new URL(v).protocol === "https:").optional(), source: sourceSchema,
+  servers: z.array(serverSchema).max(100), skills: z.array(skillSchema).max(100),
+  omitted: z.array(z.object({ code: z.enum(["claude_commands", "claude_agents", "hooks", "local_program", "invalid_server", "skill_without_instructions", "invalid_skill", "skill_license", "other_files"]), subject: z.string().max(512) }).strict()).max(IMPORT_LIMITS.files),
+}).strict();
+const patchSchema = z.union([z.object({ enabled: z.boolean() }).strict(), z.object({ plugin: inputSchema }).strict()]);
 const spaceSchema = z.object({ personalPluginsAllowed: z.boolean(), disabled: z.array(id).max(100) }).strict();
 const DEFAULT_SPACE_SETTINGS: SpacePluginSettings = { personalPluginsAllowed: false, disabled: [] };
 
@@ -77,7 +83,7 @@ export function worstStatus(statuses: PluginStatus[]): PluginStatus {
 export function pluginFromCatalog(service: CatalogService, vendor: CatalogVendor): Plugin {
   const signIn = vendor.signIn;
   return { id: service.id, vendor: vendor.id, name: service.name, description: service.description, icon: service.icon,
-    source: { type: "catalog" }, skills: [], ignored: [], enabled: true, createdAt: new Date().toISOString(),
+    source: { type: "catalog" }, skills: [], omitted: [], enabled: true, createdAt: new Date().toISOString(),
     servers: service.servers.map(server => ({ name: server.name, url: server.url, transport: server.transport ?? "streamable-http",
       credential: signIn.type === "account" ? "user-oauth" : signIn.type === "key" ? "organization" : "none",
       ...(signIn.type === "account" ? { oauth: {
@@ -116,7 +122,6 @@ export class Plugins {
   canUse(userId: string, spaceId: string, pluginId: string, server?: string): PluginUseDecision {
     return canUse(userId, spaceId, pluginId, server, this.policy(userId, spaceId, pluginId));
   }
-  /** Only P2's private credential handler should read these values. */
   async organizationHeaders(pluginId: string, server: string): Promise<Record<string, string> | undefined> {
     const r = this.rows("select data from plugin_secret where plugin_id=? and server=?", pluginId, server)[0];
     return r ? this.cipher.open<Record<string, string>>(r.data as string, JSON.stringify(["secret", pluginId, server])) : undefined;
@@ -165,13 +170,41 @@ export class Plugins {
     };
   }
 
+  private validate(input: PluginInput) {
+    if (!input.servers.length && !input.skills.length) throw pluginError(400, "empty_plugin");
+    if (new Set(input.servers.map(s => s.name)).size !== input.servers.length) throw pluginError(400, "invalid_plugin_input");
+    const servers = input.servers.map(server => {
+      if (addressPlaceholders(server.url).length) throw pluginError(400, "address_placeholder");
+      if (server.oauth && server.credential !== "user-oauth") throw pluginError(400, "invalid_plugin_input");
+      const { keyHeaders, ...rest } = server;
+      return { ...rest, url: checkMcpUrl(server.url, "private").href, ...(server.credential === "organization" && keyHeaders ? { keyHeaders } : {}) };
+    });
+    const skills: StoredSkill[] = [];
+    for (const skill of input.skills) skills.push(skillFromInput(skill, skills.map(s => s.name)));
+    const storedBytes = skills.reduce((total, skill) => total + skill.files.reduce((n, file) => n + fromBase64(file.content).length, 0), 0);
+    if (storedBytes > IMPORT_LIMITS.stored) throw pluginError(413, "plugin_too_large");
+    if (skills.reduce((n, skill) => n + skill.files.length, 0) > IMPORT_LIMITS.files) throw pluginError(413, "too_many_plugin_files");
+    return { servers, skills, storedBytes };
+  }
+
+  private async inspect(req: Request): Promise<Response> {
+    const data = parse(z.union([z.object({ archive: z.string() }).strict(), z.object({ github: z.string().max(2048) }).strict()]), await body(req, Math.ceil(IMPORT_LIMITS.archive / 3) * 4 + 8192));
+    if ("github" in data) {
+      const source = await resolveGithubLink(this.fetcher, data.github);
+      if (source.repo.toLowerCase() === "https://github.com/anthropics/skills" && /(?:^|\/)(docx|pdf|pptx|xlsx)(?:\/|$)/.test(source.path ?? "")) throw pluginError(400, "proprietary_plugin");
+      return json(inspectPackage(await fetchGitFiles(this.fetcher, source), { path: source.path, source }));
+    }
+    const bytes = fromBase64(data.archive);
+    return json(inspectPackage(unpackArchive(bytes), { stripRoot: true, source: { type: "upload", sha256: await sha256(bytes) } }));
+  }
+
   private async install(req: Request): Promise<Response> {
     const data = parse(z.union([
       z.object({ catalog: id, groups: z.array(id).max(1000) }).strict(),
-      z.object({ source: sourceSchema, groups: z.array(id).max(1000), name: z.string().trim().min(1).max(100).optional(), archive: z.string().max(Math.ceil(IMPORT_LIMITS.archive / 3) * 4).optional() }).strict(),
-    ]), await body(req, Math.ceil(IMPORT_LIMITS.archive / 3) * 4 + 8192));
+      z.object({ plugin: inputSchema, groups: z.array(id).max(1000) }).strict(),
+    ]), await body(req, IMPORT_LIMITS.stored * 2));
     let plugin: Plugin;
-    let skills: ReturnType<typeof inspectBundle>["skills"] = [];
+    let skills: StoredSkill[] = [];
     let storedBytes = 0;
     if ("catalog" in data) {
       const service = catalogService(data.catalog);
@@ -179,27 +212,10 @@ export class Plugins {
       if (service.notYet) throw pluginError(409, "catalog_not_available");
       plugin = pluginFromCatalog(service, catalogVendor(service.vendor)!);
     } else {
-      const source = data.source;
-      let inspected;
-      if (source.type === "url") {
-        const url = checkMcpUrl(source.url, "private").href;
-        inspected = { name: data.name ?? new URL(url).hostname, description: "", servers: [{ name: "remote", url, credential: "none" as const, transport: "streamable-http" as const }], skills: [], ignored: [], storedBytes: 0 };
-      } else if (source.type === "git") {
-        const repo = githubRepo(source.repo);
-        if (repo.toLowerCase() === "anthropics/skills" && /(?:^|\/)(docx|pdf|pptx|xlsx)(?:\/|$)/.test(source.path ?? "")) throw pluginError(400, "proprietary_plugin");
-        inspected = inspectBundle(await fetchGitFiles(this.fetcher, source), { path: source.path });
-      } else {
-        if (!data.archive) throw pluginError(400, "archive_required");
-        const bytes = fromBase64(data.archive);
-        if (await sha256(bytes) !== source.sha256) throw pluginError(400, "archive_hash_mismatch");
-        inspected = inspectBundle(unpackArchive(bytes), { stripRoot: true });
-      }
-      for (const server of inspected.servers) checkMcpUrl(server.url, "private");
+      const validated = this.validate(data.plugin);
+      skills = validated.skills; storedBytes = validated.storedBytes;
       const pluginId = crypto.randomUUID();
-      plugin = { id: pluginId, vendor: pluginId, name: data.name ?? inspected.name, description: inspected.description,
-        source, skills: inspected.skills.map(s => ({ name: s.name, description: s.description })), servers: inspected.servers,
-        ignored: inspected.ignored, enabled: true, createdAt: new Date().toISOString() };
-      skills = inspected.skills; storedBytes = inspected.storedBytes;
+      plugin = { ...data.plugin, id: pluginId, vendor: pluginId, skills: skills.map(s => ({ name: s.name, description: s.description })), servers: validated.servers, enabled: true, createdAt: new Date().toISOString() };
     }
     this.storage.transactionSync(() => {
       if (this.get(plugin.id)) throw pluginError(409, "already_installed");
@@ -216,54 +232,74 @@ export class Plugins {
   async admin(req: Request, path: string): Promise<Response> {
     if (path === "/admin/plugins" && req.method === "GET") return json({ plugins: this.list().map(plugin => ({ ...plugin, setup: plugin.servers.map(server => ({ server: server.name, done: this.setupDone(plugin, server) })), vendorConfigured: !!this.connections?.vendorConfigured(plugin.vendor) })) });
     if (path === "/admin/plugins" && req.method === "POST") return this.install(req);
-    const match = /^\/admin\/plugins\/([^/]+)(\/secret)?$/.exec(path);
+    if (path === "/admin/plugins/inspect" && req.method === "POST") return this.inspect(req);
+    const match = /^\/admin\/plugins\/([^/]+)(\/(?:secret|skills|export))?$/.exec(path);
     if (!match) return notFound();
     const plugin = this.get(match[1]);
     if (!plugin) return notFound();
-    if (match[2] && req.method === "PUT") {
-      const data = parse(z.object({ server: id, headers: z.record(z.string().regex(/^[!#$%&'*+.^_`|~0-9a-z-]+$/i), z.string().max(8192).refine(v => !/[\r\n\0]/.test(v))).nullable() }).strict(), await body(req));
+    if (match[2] === "/skills" && req.method === "GET") return json({ skills: this.skills(plugin.id).map(skillToInput), editable: plugin.source.type === "custom" || plugin.source.type === "upload" });
+    if (match[2] === "/export" && req.method === "GET") {
+      if (plugin.source.type === "catalog") throw pluginError(409, "not_editable");
+      return new Response(exportPackage(plugin, this.skills(plugin.id)) as Uint8Array<ArrayBuffer>, { headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="plugin.zip"' } });
+    }
+    if (match[2] === "/secret" && req.method === "PUT") {
+      const data = parse(z.object({ server: id, headers: z.record(headerName, z.string().max(8192).refine(v => !/[\r\n\0]/.test(v))).nullable() }).strict(), await body(req));
       if (!plugin.servers.some(s => s.name === data.server && s.credential === "organization")) throw pluginError(400, "not_organization_server");
       if (data.headers === null) this.rows("delete from plugin_secret where plugin_id=? and server=?", plugin.id, data.server);
       else {
         if (!Object.keys(data.headers).length || Object.keys(data.headers).length > 20 || Object.keys(data.headers).some(k => ["host", "cookie", "content-length", "connection", "transfer-encoding"].includes(k.toLowerCase()))) throw pluginError(400, "invalid_secret_headers");
         const sealed = await this.cipher.seal(data.headers, JSON.stringify(["secret", plugin.id, data.server]));
         if (JSON.stringify(this.get(plugin.id)?.servers.find(s => s.name === data.server)) !== JSON.stringify(plugin.servers.find(s => s.name === data.server))) throw pluginError(409, "connection_not_allowed");
-        this.rows("insert into plugin_secret(plugin_id,server,data) values (?,?,?) on conflict(plugin_id,server) do update set data=excluded.data", plugin.id, data.server, sealed);
+        this.storage.transactionSync(() => {
+          this.rows("insert into plugin_secret(plugin_id,server,data) values (?,?,?) on conflict(plugin_id,server) do update set data=excluded.data", plugin.id, data.server, sealed);
+          const current = this.get(plugin.id)!;
+          current.servers = current.servers.map(s => s.name === data.server ? { ...s, keyHeaders: Object.keys(data.headers!) } : s);
+          this.rows("update plugin set definition=? where id=?", JSON.stringify(current), current.id);
+        });
       }
       return json({ ok: true });
     }
     if (match[2]) return notFound();
     if (req.method === "DELETE") { if (plugin.vendor === plugin.id && plugin.source.type !== "catalog") this.rows("delete from vendor_setup where vendor=?", plugin.vendor); this.rows("delete from plugin where id=?", plugin.id); return json({ ok: true }); }
     if (req.method === "PATCH") {
-      const patch: PluginPatch = parse(patchSchema, await body(req));
-      if (plugin.source.type === "catalog" && Object.keys(patch).some(key => key !== "enabled")) throw pluginError(409, "not_editable");
-      const servers = patch.servers ? plugin.servers.map(server => {
-        const update = patch.servers!.find(p => p.name === server.name);
-        const next = { ...server, ...update };
-        if (next.credential !== "user-oauth") delete next.oauth;
-        return next;
-      }) : plugin.servers;
-      if (patch.servers) {
-        if (new Set(patch.servers.map(s => s.name)).size !== patch.servers.length || patch.servers.some(s => !plugin.servers.some(p => p.name === s.name))) throw pluginError(400, "unknown_plugin_server");
-        for (const server of servers) server.url = checkMcpUrl(server.url, "private").href;
+      const patch: PluginUpdate = parse(patchSchema, await body(req, IMPORT_LIMITS.stored * 2));
+      const current = this.get(plugin.id);
+      if (!current) return notFound();
+      if ("enabled" in patch) {
+        current.enabled = patch.enabled;
+        this.rows("update plugin set definition=? where id=?", JSON.stringify(current), current.id);
+        return json(current);
       }
-      const { servers: _servers, ...fields } = patch;
+      if (current.source.type === "catalog" || JSON.stringify(current.source) !== JSON.stringify(patch.plugin.source)) throw pluginError(409, "not_editable");
+      const next = this.validate(patch.plugin);
+      for (const server of next.servers) {
+        const previous = current.servers.find(s => s.name === server.name);
+        if (previous && server.credential === "organization" && serverFingerprint(previous) === serverFingerprint(server) && this.setupDone(current, previous)) server.keyHeaders = previous.keyHeaders;
+      }
+      if (current.source.type === "github" && JSON.stringify(next.skills) !== JSON.stringify(this.skills(current.id))) throw pluginError(409, "not_editable");
+      const updated: Plugin = { ...patch.plugin, id: current.id, vendor: current.vendor, enabled: current.enabled, createdAt: current.createdAt,
+        skills: next.skills.map(s => ({ name: s.name, description: s.description })), servers: next.servers };
       this.storage.transactionSync(() => {
-        for (const old of plugin.servers) if (JSON.stringify(old) !== JSON.stringify(servers.find(s => s.name === old.name))) {
-          if (old.credential === "user-oauth" && this.connections?.vendorConfigured(plugin.vendor)) {
-            this.rows("delete from vendor_setup where vendor=?", plugin.vendor);
-            this.rows("delete from plugin_connection where plugin_id=?", plugin.id);
-            this.rows("delete from plugin_oauth_state where plugin_id=?", plugin.id);
+        const total = Number(this.rows("select coalesce(sum(stored_bytes),0) as bytes from plugin where id<>?", current.id)[0].bytes);
+        if (total + next.storedBytes > IMPORT_LIMITS.totalStored) throw pluginError(413, "plugin_storage_limit");
+        for (const old of current.servers) {
+          const replacement = next.servers.find(s => s.name === old.name);
+          if (replacement && serverFingerprint(old) === serverFingerprint(replacement)) continue;
+          if (old.credential === "user-oauth" && this.connections?.vendorConfigured(current.vendor)) {
+            this.rows("delete from vendor_setup where vendor=?", current.vendor);
+            this.rows("delete from plugin_connection where plugin_id=?", current.id);
+            this.rows("delete from plugin_oauth_state where plugin_id=?", current.id);
           }
-          for (const table of ["plugin_secret", "plugin_connection", "plugin_oauth_state"]) this.rows(`delete from ${table} where plugin_id=? and server=?`, plugin.id, old.name);
+          for (const table of ["plugin_secret", "plugin_connection", "plugin_oauth_state"]) this.rows(`delete from ${table} where plugin_id=? and server=?`, current.id, old.name);
         }
-        Object.assign(plugin, fields, { servers });
-        this.rows("update plugin set definition=? where id=?", JSON.stringify(plugin), plugin.id);
+        this.rows("update plugin set definition=?,skill_files=?,stored_bytes=? where id=?", JSON.stringify(updated), JSON.stringify(next.skills), next.storedBytes, current.id);
       });
-      return json(plugin);
+      return json(updated);
     }
     return notFound();
   }
+
+  private skills(id: string): StoredSkill[] { return JSON.parse(this.rows("select skill_files from plugin where id=?", id)[0].skill_files as string); }
 
   async user(req: Request, path: string, userId: string): Promise<Response> {
     if (path === "/plugins" && req.method === "GET") return json({ plugins: await Promise.all(this.list().filter(p => this.assigned(userId, p.id)).map(p => this.statusFor(userId, p))) });

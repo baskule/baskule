@@ -6,9 +6,9 @@ import { INTERNAL_HEADER } from "../../src/shared/contract";
 const API = "/api/baskule";
 async function setup(h: H, resource: string) {
   const a = await asAdmin(h);
-  const added = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: ["everyone"], source: { type: "url", url: resource } } });
+  const added = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: ["everyone"], plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: resource, credential: "none" }] } } });
   const id = added.body.id;
-  await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { servers: [{ name: "remote", credential: "user-oauth" }] } });
+  await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ url: resource, name: "remote", credential: "user-oauth" }] } } });
   const accounts = async () => (await call(h, "GET", `${API}/plugins`, { creds: a.creds })).body.plugins.find((p: { id: string }) => p.id === id).servers[0].accounts;
   const start = async (label: string, account?: string, creds = a.creds) => {
     const start = await call(h, "GET", `${API}/plugins/${id}/connect?${new URLSearchParams({ server: "remote", ...(account ? { account } : { label }) })}`, { creds });

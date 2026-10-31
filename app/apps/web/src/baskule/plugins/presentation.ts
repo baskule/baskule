@@ -3,6 +3,7 @@
 // reading them are not developers).
 import type {
   CredentialMode,
+  OmissionCode,
   PluginServer,
   PluginSource,
   PluginStatus,
@@ -39,6 +40,24 @@ export function contentsLabel(kind: PluginContentsKind): string {
   }
 }
 
+/** "Tools from 2 servers and 3 skills": what a plugin gives the assistant, in one line. */
+export function includedSummary(contents: {
+  readonly servers: ReadonlyArray<unknown>;
+  readonly skills: ReadonlyArray<unknown>;
+}): string {
+  const tools = t("Tools from {{count}} server", {
+    count: contents.servers.length,
+    defaultValue_other: "Tools from {{count}} servers",
+  });
+  const skills = t("{{count}} skill", {
+    count: contents.skills.length,
+    defaultValue_other: "{{count}} skills",
+  });
+  if (contents.servers.length === 0) return skills;
+  if (contents.skills.length === 0) return tools;
+  return t("{{tools}} and {{skills}}", { tools, skills });
+}
+
 /** The only five things a person is told about a plugin or one of its servers. */
 export function statusText(status: PluginStatus, name: string): string {
   switch (status) {
@@ -55,9 +74,6 @@ export function statusText(status: PluginStatus, name: string): string {
   }
 }
 
-const shortCommit = (ref: string) => ref.slice(0, 7);
-const repoName = (repo: string) =>
-  repo.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "");
 const hostOf = (url: string) => {
   try {
     return new URL(url).host;
@@ -66,20 +82,23 @@ const hostOf = (url: string) => {
   }
 };
 
-/** Where a plugin comes from, in one short line. */
+/** `owner/repo`, then the folder when the plugin is one folder of the repository. */
+export function githubName(source: Extract<PluginSource, { type: "github" }>): string {
+  const repo = source.repo.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "");
+  return source.path ? `${repo}/${source.path}` : repo;
+}
+
+/** Where a plugin comes from, in one short line. Pins (commits, file hashes) stay out of it. */
 export function sourceLabel(source: PluginSource): string {
   switch (source.type) {
     case "catalog":
       return t("Baskule catalog");
-    case "url":
-      return t("Added by address: {{host}}", { host: hostOf(source.url) });
-    case "git":
-      return t("From {{repo}} at {{commit}}", {
-        repo: repoName(source.repo),
-        commit: shortCommit(source.ref),
-      });
-    case "archive":
+    case "github":
+      return t("From {{repo}} on GitHub", { repo: githubName(source) });
+    case "upload":
       return t("Uploaded file");
+    case "custom":
+      return t("Made in Baskule");
   }
 }
 
@@ -89,8 +108,8 @@ export function serverHost(server: PluginServer): string {
 
 export const CREDENTIAL_MODES: ReadonlyArray<CredentialMode> = [
   "none",
-  "organization",
   "user-oauth",
+  "organization",
 ];
 
 export function credentialLabel(mode: CredentialMode): string {
@@ -112,6 +131,32 @@ export function credentialDescription(mode: CredentialMode): string {
       return t("You enter one key here. Everyone who uses it shares that key.");
     case "user-oauth":
       return t("People connect their account in Settings → Plugins. It acts as them.");
+  }
+}
+
+/** Why Baskule leaves a part of a package out, in words for people who don't write plugins. */
+export function omissionText(code: OmissionCode): string {
+  switch (code) {
+    case "claude_commands":
+      return t("Commands for Claude Code. Baskule doesn't use these.");
+    case "claude_agents":
+      return t("Agents for Claude Code. Baskule doesn't use these.");
+    case "hooks":
+      return t("Hooks that run inside Claude Code. Baskule doesn't use these.");
+    case "local_program":
+      return t(
+        "A program that runs on someone's computer. Baskule needs a web address; ask its maker whether it has one.",
+      );
+    case "invalid_server":
+      return t("A server described in a way Baskule can't read.");
+    case "skill_without_instructions":
+      return t("A skill folder without instructions, so the assistant couldn't use it.");
+    case "invalid_skill":
+      return t("A skill whose name or description doesn't follow the skill rules.");
+    case "skill_license":
+      return t("A skill whose license doesn't allow using it here.");
+    case "other_files":
+      return t("Files that aren't part of a skill or a server.");
   }
 }
 

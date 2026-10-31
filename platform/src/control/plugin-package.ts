@@ -1,8 +1,8 @@
-import { checkMcpUrl } from "../shared/plugin-outbound";
-import { Gunzip, Unzip, UnzipInflate } from "fflate";
-import { parse as parseYaml } from "yaml";
+import { Gunzip, Unzip, UnzipInflate, zipSync } from "fflate";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
-import type { PluginFile, PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { PluginFile, PluginDraft, PluginInput, SkillInput, Omission, Fix } from "../../../app/packages/contracts/src/baskule-plugins";
+import { parseServersJson, serversJson, skillFieldErrors } from "../../../app/packages/contracts/src/baskule-plugin-formats";
 import { HttpError, pluginError } from "../shared/http";
 
 export const IMPORT_LIMITS = { archive: 10 * 1024 * 1024, expanded: 20 * 1024 * 1024, files: 2000, skillFile: 1024 * 1024, stored: 4 * 1024 * 1024, totalStored: 32 * 1024 * 1024, plugins: 100 };
@@ -116,16 +116,9 @@ export function unpackArchive(bytes: Uint8Array): Map<string, Uint8Array> {
   return files;
 }
 
-export interface InspectedPlugin {
-  name: string;
-  description: string;
-  servers: PluginServer[];
-  skills: { name: string; description: string; files: PluginFile[] }[];
-  ignored: string[];
-  storedBytes: number;
-}
+export interface StoredSkill { name: string; description: string; files: PluginFile[] }
 const metadata = z.object({ name: z.string().min(1).max(100), description: z.string().max(4000).default("") });
-export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: string; stripRoot?: boolean; skillPaths?: string[] } = {}): InspectedPlugin {
+export function inspectPackage(input: Map<string, Uint8Array>, options: { path?: string; stripRoot?: boolean; source: PluginInput["source"] }): PluginDraft {
   let files = input;
   if (options.stripRoot) {
     const roots = new Set([...files.keys()].map(p => p.split("/")[0]));
@@ -135,7 +128,8 @@ export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: 
   const licenses = [...files].filter(([p]) => /(?:^|\/)(?:LICENSE(?:\.txt)?|NOTICE)$/i.test(p) && !p.startsWith(root) && root.startsWith(p.slice(0, p.lastIndexOf("/") + 1)));
   files = new Map([...files].filter(([p]) => p.startsWith(root)).map(([p, b]) => [p.slice(root.length), b]));
   for (const [i, [, data]] of licenses.entries()) files.set(`LICENSE.parent-${i}`, data);
-  const ignored: string[] = [];
+  const omitted: Omission[] = [];
+  const fixes: Fix[] = [];
   const readObject = (p: string): Record<string, unknown> => {
     try { return z.record(z.string(), z.unknown()).parse(JSON.parse(utf8.decode(files.get(p)!))); }
     catch { throw pluginError(400, "invalid_plugin_manifest", p); }
@@ -147,41 +141,33 @@ export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: 
   if (manifestPath) {
     const m = metadata.safeParse(manifest);
     if (!m.success) throw pluginError(400, "invalid_plugin_manifest");
-    for (const key of Object.keys(manifest)) if (!["$schema", "name", "description", "version", "author", "homepage", "repository", "license", "keywords"].includes(key)) ignored.push(`manifest field: ${key}`);
+    for (const key of Object.keys(manifest)) if (!["$schema", "name", "description", "version", "author", "homepage", "repository", "license", "keywords", "mcpServers"].includes(key)) omitted.push({ code: key === "hooks" ? "hooks" : key === "commands" ? "claude_commands" : key === "agents" ? "claude_agents" : "other_files", subject: key });
   }
-  const servers: PluginServer[] = [];
   const mcpPath = ["mcp.json", ".mcp.json"].find(p => files.has(p));
-  const mcp = mcpPath ? readObject(mcpPath) : (manifestPath?.startsWith(".") && typeof manifest.mcpServers === "object" ? { mcpServers: manifest.mcpServers } : {});
-  const definitions = z.record(z.string(), z.unknown()).safeParse(mcp.mcpServers ?? {});
-  if (!definitions.success) ignored.push("invalid MCP configuration");
-  else for (const [name, raw] of Object.entries(definitions.data)) {
-    const p = z.object({ url: z.string(), type: z.enum(["http", "streamable-http", "sse"]).optional(), oauth: z.unknown().optional(), headers: z.unknown().optional() }).safeParse(raw);
-    if (!p.success || !name.trim() || name.length > 100 || (typeof raw === "object" && raw !== null && "command" in raw)) { ignored.push(`MCP server ${name}: stdio or unsupported configuration`); continue; }
-    try {
-      const credential = p.data.oauth ? "user-oauth" : p.data.headers ? "organization" : "none";
-      servers.push({ name, url: checkMcpUrl(p.data.url, "private").href, credential, transport: p.data.type === "sse" ? "sse" : "streamable-http" });
-      if (p.data.headers) ignored.push(`MCP server ${name}: bundled headers omitted; configure a write-only organization secret`);
-      if (p.data.oauth) ignored.push(`MCP server ${name}: client OAuth configuration omitted; connect through Baskule`);
-    } catch { ignored.push(`MCP server ${name}: invalid or templated URL`); }
-  }
-  const paths = options.skillPaths?.map(p => safePath(p)) ?? (files.has("SKILL.md") ? [""] : [...files.keys()].filter(p => /^skills\/[^/]+\/SKILL\.md$/.test(p)).map(p => p.slice(0, -9)));
-  const skills: InspectedPlugin["skills"] = [];
+  const mcp = mcpPath ? readObject(mcpPath) : { mcpServers: manifest.mcpServers ?? {} };
+  const parsed = parseServersJson(JSON.stringify(mcp));
+  if ("error" in parsed) omitted.push({ code: "invalid_server", subject: mcpPath ?? "mcpServers" });
+  const servers = "error" in parsed ? [] : parsed.servers;
+  if (!("error" in parsed)) { fixes.push(...parsed.fixes); omitted.push(...parsed.omitted); }
+  const paths = (files.has("SKILL.md") ? [""] : [...files.keys()].filter(p => /^(?:skills\/)?[^/]+\/SKILL\.md$/.test(p)).map(p => p.slice(0, -9)));
+  const skills: SkillInput[] = [];
   let storedBytes = 0;
   for (const path of paths) {
     const prefix = path ? path + "/" : "";
     const skill = files.get(prefix + "SKILL.md");
-    if (!skill) { ignored.push(`skill ${path}: missing SKILL.md`); continue; }
+    if (!skill) { omitted.push({ code: "skill_without_instructions", subject: path }); continue; }
     const inherited = [...files].filter(([p]) => /(?:^|\/)(?:LICENSE(?:\.txt)?(?:\.parent-\d+)?|NOTICE)$/i.test(p) && !p.startsWith(prefix) && (!p.includes("/") || prefix.startsWith(p.slice(0, p.lastIndexOf("/") + 1))));
     // A bare skill is also the package root: component configuration must not become computer files.
     const retained = [...files].filter(([p]) => p.startsWith(prefix) && (prefix !== "" ||
       (!["mcp.json", ".mcp.json", "plugin.json"].includes(p) && !/^\.(?:claude|codex)-plugin\//.test(p))));
     if ([...retained, ...inherited].some(([p, b]) => /LICENSE/i.test(p) && /governed by your agreement with\s+Anthropic|proprietary|non-commercial/i.test(new TextDecoder().decode(b)))) {
-      ignored.push(`skill ${path}: proprietary license; not imported`); continue;
+      omitted.push({ code: "skill_license", subject: path }); continue;
     }
     try {
       const fm = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(utf8.decode(skill));
       if (!fm) throw new Error("frontmatter");
-      const m = metadata.extend({ name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(64), description: z.string().min(1).max(1024) }).parse(parseYaml(fm[1], { maxAliasCount: 20 }));
+      const m = z.object({ name: z.string(), description: z.string() }).parse(parseYaml(fm[1], { maxAliasCount: 20 }));
+      if (skillFieldErrors(m, []).length) throw new Error("skill fields");
       if (skills.some(s => s.name === m.name)) throw pluginError(400, "duplicate_skill_name");
       if (path && path.split("/").at(-1) !== m.name) throw new Error("skill name must match directory");
       const content = [...retained.map(([p, b]) => [p.slice(prefix.length), b] as const), ...inherited.map(([p, b], i) => [`licenses/${i}-${p.split("/").at(-1)}`, b] as const)].map(([p, b]) => {
@@ -190,12 +176,51 @@ export function inspectBundle(input: Map<string, Uint8Array>, options: { path?: 
         if (storedBytes > IMPORT_LIMITS.stored) throw pluginError(413, "plugin_too_large");
         return { path: safePath(p), content: base64(b), encoding: "base64" as const };
       });
-      skills.push({ ...m, files: content });
-    } catch (e) { if (e instanceof HttpError) throw e; ignored.push(`skill ${path || "SKILL.md"}: invalid frontmatter`); }
+      skills.push(skillToInput({ ...m, files: content }));
+    } catch (e) { if (e instanceof HttpError) throw e; omitted.push({ code: "invalid_skill", subject: path || "SKILL.md" }); }
   }
   const understood = new Set(["skills", "plugin.json", ".claude-plugin", ".codex-plugin", "mcp.json", ".mcp.json", "SKILL.md", "LICENSE", "LICENSE.txt", "README.md", "CHANGELOG.md", ...paths.map(p => p.split("/")[0])]);
-  for (const p of new Set([...files.keys()].map(p => p.split("/")[0]))) if (!understood.has(p) && !files.has("SKILL.md")) ignored.push(`unsupported bundle part: ${p}`);
-  for (const p of files.keys()) if (/^\.(?:claude|codex)-plugin\//.test(p) && !p.endsWith("/plugin.json")) ignored.push(`unsupported client file: ${p}`);
-  if (!servers.length && !skills.length) throw pluginError(400, "empty_plugin", ignored.join("; ") || "No usable skills or remote MCP servers");
-  return { name: typeof manifest.name === "string" ? manifest.name : skills[0]?.name ?? "Plugin", description: typeof manifest.description === "string" ? manifest.description : skills[0]?.description ?? "", servers, skills, ignored, storedBytes };
+  for (const p of new Set([...files.keys()].map(p => p.split("/")[0]))) if (!understood.has(p) && !files.has("SKILL.md")) omitted.push({ code: p === "commands" ? "claude_commands" : p === "agents" ? "claude_agents" : p === "hooks" ? "hooks" : "other_files", subject: p });
+  for (const p of files.keys()) if (/^\.(?:claude|codex)-plugin\//.test(p) && !p.endsWith("/plugin.json")) omitted.push({ code: "other_files", subject: p });
+  return { plugin: { name: typeof manifest.name === "string" ? manifest.name : skills[0]?.name ?? "Plugin", description: typeof manifest.description === "string" ? manifest.description : skills[0]?.description ?? "", source: options.source, servers, skills, omitted }, fixes, omitted };
+}
+
+export function skillToInput(stored: StoredSkill): SkillInput {
+  const file = stored.files.find(f => f.path === "SKILL.md");
+  if (!file) throw pluginError(400, "invalid_skill");
+  const text = utf8.decode(fromBase64(file.content));
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  if (!fm) throw pluginError(400, "invalid_skill");
+  const extra = z.record(z.string(), z.unknown()).parse(parseYaml(fm[1], { maxAliasCount: 20 }));
+  delete extra.name; delete extra.description;
+  return { name: stored.name, description: stored.description, instructions: text.slice(fm[0].length),
+    ...(Object.keys(extra).length ? { frontmatter: stringifyYaml(extra) } : {}), files: stored.files.filter(f => f.path !== "SKILL.md") };
+}
+
+export function skillFromInput(input: SkillInput, otherNames: string[]): StoredSkill {
+  if (skillFieldErrors(input, otherNames).length) throw pluginError(400, "invalid_skill");
+  let extra: Record<string, unknown> = {};
+  if (input.frontmatter) {
+    try { extra = z.record(z.string(), z.unknown()).parse(parseYaml(input.frontmatter, { maxAliasCount: 20 })); }
+    catch { throw pluginError(400, "invalid_skill"); }
+  }
+  const instructions = `---\n${stringifyYaml({ ...extra, name: input.name, description: input.description })}---\n${input.instructions}`;
+  const files: PluginFile[] = [{ path: "SKILL.md", content: base64(new TextEncoder().encode(instructions)), encoding: "base64" }];
+  const paths = new Set(["SKILL.md"]);
+  for (const file of input.files) {
+    const path = safePath(file.path);
+    if (paths.has(path)) throw pluginError(400, "duplicate_plugin_path");
+    paths.add(path); files.push({ ...file, path });
+  }
+  for (const file of files) if (fromBase64(file.content).length > IMPORT_LIMITS.skillFile) throw pluginError(413, "plugin_skill_file_too_large");
+  return { name: input.name, description: input.description, files };
+}
+
+export function exportPackage(plugin: Pick<PluginInput, "name" | "description" | "servers">, skills: StoredSkill[]): Uint8Array {
+  const encode = (text: string) => new TextEncoder().encode(text);
+  const manifest = encode(JSON.stringify({ name: plugin.name, description: plugin.description }, null, 2));
+  const files: Record<string, Uint8Array> = { ".claude-plugin/plugin.json": manifest, ".codex-plugin/plugin.json": manifest,
+    ".mcp.json": encode(serversJson(plugin.servers)) };
+  for (const skill of skills) for (const file of skill.files) files[`skills/${skill.name}/${file.path}`] = fromBase64(file.content);
+  return zipSync(files);
 }

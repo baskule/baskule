@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { PluginSource } from "../../../app/packages/contracts/src/baskule-plugins";
-import { IMPORT_LIMITS, safePath } from "./plugin-import";
+import { IMPORT_LIMITS, safePath } from "./plugin-package";
 import { pluginError } from "../shared/http";
 
 export type Fetcher = typeof fetch;
@@ -46,19 +46,52 @@ export async function fetchJson(fetcher: Fetcher, url: string): Promise<unknown>
 }
 
 export const COMMIT_RE = /^[a-f0-9]{40}$/i;
-export function githubRepo(repo: string): string {
-  const m = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(repo);
-  if (!m) throw pluginError(400, "unsupported_git_host", "Use a public HTTPS GitHub repository and a full commit SHA");
-  return m[1];
+export async function resolveGithubLink(fetcher: Fetcher, link: string): Promise<Extract<PluginSource, { type: "github" }>> {
+  const normalized = link.trim().replace(/^github\.com\//, "https://github.com/");
+  let url: URL;
+  try { url = new URL(normalized.includes("://") ? normalized : `https://github.com/${normalized}`); }
+  catch { throw pluginError(400, "github_link_invalid"); }
+  if (url.origin !== "https://github.com" || url.username || url.password) throw pluginError(400, "github_link_invalid");
+  let parts: string[];
+  try { parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent); }
+  catch { throw pluginError(400, "github_link_invalid"); }
+  const [owner, rawRepo, kind, ...tail] = parts;
+  const repo = rawRepo?.replace(/\.git$/, "");
+  if (!owner || !repo || !/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(repo) || [owner, repo].some(p => p === "." || p === "..")) throw pluginError(400, "github_link_invalid");
+  if (kind && !["tree", "blob", "commit"].includes(kind)) throw pluginError(400, "github_link_invalid");
+  const commit = async (ref: string) => {
+    let response: Response;
+    try { response = await fetcher(`https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}`, { redirect: "error", signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS), headers: { accept: "application/vnd.github.sha", "User-Agent": "Baskule" } }); }
+    catch { throw pluginError(502, "plugin_source_unavailable"); }
+    if (response.status === 404 || response.status === 422) { await response.body?.cancel(); return undefined; }
+    if (!response.ok) { await response.body?.cancel(); throw pluginError(502, "plugin_source_unavailable"); }
+    const sha = new TextDecoder().decode(await readBounded(response.body, 1024)).trim();
+    if (!COMMIT_RE.test(sha)) throw pluginError(502, "plugin_source_unavailable");
+    return sha.toLowerCase();
+  };
+  const result = (sha: string, path?: string): Extract<PluginSource, { type: "github" }> => ({ type: "github", repo: `https://github.com/${owner}/${repo}`, sha, ...(path ? { path: safePath(path) } : {}) });
+  if (!kind) { const sha = await commit("HEAD"); if (sha) return result(sha); }
+  else {
+    if (!tail.length || (kind === "commit" && tail.length !== 1)) throw pluginError(400, "github_link_invalid");
+    for (let count = Math.min(tail.length, 5); count > 0; count--) {
+      const ref = tail.slice(0, count).join("/");
+      const sha = await commit(ref);
+      if (sha) {
+        const rest = tail.slice(count);
+        if (kind === "blob") { if (rest.at(-1) !== "SKILL.md") throw pluginError(400, "github_link_invalid"); rest.pop(); }
+        return result(sha, rest.join("/"));
+      }
+    }
+  }
+  throw pluginError(400, "github_link_invalid");
 }
 
-
-export async function fetchGitFiles(fetcher: Fetcher, source: Extract<PluginSource, { type: "git" }>): Promise<Map<string, Uint8Array>> {
-  const repo = githubRepo(source.repo);
+export async function fetchGitFiles(fetcher: Fetcher, source: Extract<PluginSource, { type: "github" }>): Promise<Map<string, Uint8Array>> {
+  const repo = new URL(source.repo).pathname.slice(1);
   const prefix = source.path ? `${safePath(source.path)}/` : "";
   const license = (p: string) => /(?:^|\/)(?:LICENSE(?:\.txt)?|NOTICE)$/i.test(p);
   const tree = z.object({ truncated: z.boolean(), tree: z.array(z.object({ path: z.string(), mode: z.string(), type: z.string(), size: z.number().optional() })) }).parse(
-    await fetchJson(fetcher, `https://api.github.com/repos/${repo}/git/trees/${source.ref}?recursive=1`));
+    await fetchJson(fetcher, `https://api.github.com/repos/${repo}/git/trees/${source.sha}?recursive=1`));
   if (tree.truncated) throw pluginError(413, "plugin_tree_too_large", "Upload the selected plugin directory as an archive instead");
   const entries = tree.tree.filter(e => e.type !== "tree" && (
     e.path.startsWith(prefix) ||
@@ -73,7 +106,7 @@ export async function fetchGitFiles(fetcher: Fetcher, source: Extract<PluginSour
   const files = new Map<string, Uint8Array>();
   for (let i = 0; i < entries.length; i += 6) {
     const batch = await Promise.all(entries.slice(i, i + 6).map(async e => {
-      const url = `https://raw.githubusercontent.com/${repo}/${source.ref}/${e.path.split("/").map(encodeURIComponent).join("/")}`;
+      const url = `https://raw.githubusercontent.com/${repo}/${source.sha}/${e.path.split("/").map(encodeURIComponent).join("/")}`;
       const bytes = await fetchBytes(fetcher, url, e.size!);
       if (bytes.length !== e.size) throw pluginError(502, "plugin_source_changed");
       return [e.path, bytes] as const;

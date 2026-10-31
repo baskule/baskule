@@ -1,6 +1,6 @@
-// baskule: pieces every plugin screen shares: its tile, its title lines, what it contains and,
-// for admins adding one, who can use it.
-import type { Group, Plugin } from "@t3tools/contracts/baskule-plugins";
+// baskule: pieces every plugin screen shares: its tile, its title lines, what it contains and what
+// Baskule leaves out, and, for admins adding one, who can use it.
+import type { Group, Omission, OmissionCode, Plugin } from "@t3tools/contracts/baskule-plugins";
 import { BanIcon, type LucideIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
@@ -14,6 +14,7 @@ import {
   contentsLabel,
   credentialLabel,
   groupName,
+  omissionText,
   serverHost,
   type PluginContentsKind,
 } from "./presentation";
@@ -97,14 +98,44 @@ function ContentsItem({ name, detail }: { readonly name: string; readonly detail
   );
 }
 
+/** What a package had that Baskule leaves out, one reason at a time with the parts it covers. */
+export function NotUsedList({ omitted }: { readonly omitted: ReadonlyArray<Omission> }) {
+  const byCode = new Map<OmissionCode, string[]>();
+  for (const entry of omitted) {
+    byCode.set(entry.code, [...(byCode.get(entry.code) ?? []), entry.subject]);
+  }
+  return (
+    <ul className="flex flex-col gap-3">
+      {[...byCode].map(([code, subjects]) => (
+        <li key={code} className="flex min-w-0 flex-col gap-1">
+          <span className="text-sm text-foreground">{omissionText(code)}</span>
+          <ul className="flex flex-col gap-0.5">
+            {subjects.map((subject) => (
+              <li
+                key={subject}
+                className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]"
+              >
+                {subject}
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
- * What an installed plugin brings: its skills, the servers its tools come from and the parts
- * Baskule skips. Shown when it is added and on its page.
+ * What a plugin brings: its skills and the servers its tools come from, then the parts Baskule
+ * doesn't use and why. Shown on its page.
  */
-export function PluginContents({ plugin }: { readonly plugin: Plugin }) {
+export function PluginContents({
+  plugin,
+}: {
+  readonly plugin: Pick<Plugin, "servers" | "skills" | "omitted">;
+}) {
   const t = useTranslation();
-  const empty =
-    plugin.skills.length === 0 && plugin.servers.length === 0 && plugin.ignored.length === 0;
+  const empty = plugin.skills.length === 0 && plugin.servers.length === 0;
   return (
     <div className="flex flex-col gap-4">
       {plugin.skills.length > 0 ? (
@@ -137,28 +168,21 @@ export function PluginContents({ plugin }: { readonly plugin: Plugin }) {
           ))}
         </ContentsGroup>
       ) : null}
-      {plugin.ignored.length > 0 ? (
-        <ContentsGroup
-          icon={BanIcon}
-          title={t("{{count}} part Baskule can't run", {
-            count: plugin.ignored.length,
-            defaultValue_other: "{{count}} parts Baskule can't run",
-          })}
-        >
-          <li className="text-xs text-muted-foreground">
-            {t(
-              "Programs that would run on a computer, and parts made for other apps, are left out. The rest works without them.",
-            )}
-          </li>
-          {plugin.ignored.map((part) => (
-            <ContentsItem key={part} name={part} />
-          ))}
-        </ContentsGroup>
-      ) : null}
       {empty ? (
         <p className="text-sm text-muted-foreground">
           {t("Nothing usable was found in this plugin.")}
         </p>
+      ) : null}
+      {plugin.omitted.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <h3 className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground [&_svg]:size-3.5">
+            <BanIcon aria-hidden />
+            {t("Not used, and why")}
+          </h3>
+          <div className="ps-5">
+            <NotUsedList omitted={plugin.omitted} />
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -172,6 +196,47 @@ export function useGroupChoice(groups: ReadonlyArray<Group> | null | undefined) 
     groups?.filter((group) => group.builtin === "everyone").map((group) => group.id) ??
     [];
   return { value, onChange: setPicked, reset: () => setPicked(null) };
+}
+
+/** One checkbox row per group, with its size; the parent draws the frame around them. */
+export function GroupChoiceRows({
+  groups,
+  value,
+  onChange,
+  disabled = false,
+  rowClassName,
+}: {
+  readonly groups: ReadonlyArray<Group>;
+  readonly value: ReadonlyArray<string>;
+  readonly onChange: (value: ReadonlyArray<string>) => void;
+  readonly disabled?: boolean;
+  readonly rowClassName?: string;
+}) {
+  const t = useTranslation();
+  const id = useId();
+  return groups.map((group) => (
+    <div key={group.id} className={cn("flex items-center gap-3", rowClassName)}>
+      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+        <Checkbox
+          aria-describedby={`${id}-${group.id}`}
+          checked={value.includes(group.id)}
+          disabled={disabled}
+          onCheckedChange={(checked) =>
+            onChange(checked ? [...value, group.id] : value.filter((entry) => entry !== group.id))
+          }
+        />
+        <span className="truncate text-sm">{groupName(group)}</span>
+      </label>
+      <span id={`${id}-${group.id}`} className="shrink-0 text-xs text-muted-foreground">
+        {group.builtin
+          ? t("Every person in your organization")
+          : t("{{count}} person", {
+              count: group.members.length,
+              defaultValue_other: "{{count}} people",
+            })}
+      </span>
+    </div>
+  ));
 }
 
 /** Who can use a plugin from the moment it is added. */
@@ -197,38 +262,15 @@ export function PluginGroupsField({
       </Label>
       {groups ? (
         <>
-          <ul className="flex flex-col rounded-lg border border-border/60 [&>*+*]:border-t [&>*+*]:border-border/50">
-            {groups.map((group) => (
-              <li key={group.id} className="flex items-center gap-3 px-3 py-2">
-                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                  <Checkbox
-                    aria-describedby={`${labelId}-${group.id}`}
-                    checked={value.includes(group.id)}
-                    disabled={disabled}
-                    onCheckedChange={(checked) =>
-                      onChange(
-                        checked
-                          ? [...value, group.id]
-                          : value.filter((entry) => entry !== group.id),
-                      )
-                    }
-                  />
-                  <span className="truncate text-sm">{groupName(group)}</span>
-                </label>
-                <span
-                  id={`${labelId}-${group.id}`}
-                  className="shrink-0 text-xs text-muted-foreground"
-                >
-                  {group.builtin
-                    ? t("Every person in your organization")
-                    : t("{{count}} person", {
-                        count: group.members.length,
-                        defaultValue_other: "{{count}} people",
-                      })}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col rounded-lg border border-border/60 [&>*+*]:border-t [&>*+*]:border-border/50">
+            <GroupChoiceRows
+              groups={groups}
+              value={value}
+              onChange={onChange}
+              disabled={disabled}
+              rowClassName="px-3 py-2"
+            />
+          </div>
           <p className="text-xs text-muted-foreground">
             {value.length === 0
               ? t("No one can use it until you choose a group on its page.")

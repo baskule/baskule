@@ -122,12 +122,14 @@ export async function startChat(page, text, space = "Personal") {
     await page.getByTestId("baskule-new-chat").click();
     await expect(page).toHaveURL((url) => url.href !== previous && /^\/draft\/[^/]+$/.test(url.pathname));
   }
-  await closeSidebar(page);
+  await openComposer(page);
   const picker = page.getByRole("combobox", { name: "Run on", exact: true });
-  await expect(picker).toBeVisible();
-  if ((await picker.innerText()).trim() !== space) {
-    await picker.click();
-    await page.getByRole("option", { name: space, exact: true }).click();
+  if (space !== "Personal" || await picker.isVisible()) {
+    await expect(picker).toBeVisible();
+    if ((await picker.innerText()).trim() !== space) {
+      await picker.click();
+      await page.getByRole("option", { name: space, exact: true }).click();
+    }
   }
   await sendMessage(page, text);
   await expect(page).toHaveURL((url) => /^\/[^/]+\/[^/]+$/.test(url.pathname) && !url.pathname.startsWith("/draft/"));

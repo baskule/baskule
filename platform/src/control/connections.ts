@@ -1,5 +1,6 @@
+import { serverFingerprint } from "../../../app/packages/contracts/src/baskule-plugin-formats";
 import { catalogVendor } from "../../../app/packages/contracts/src/baskule-catalog";
-import { serverNetwork, serverFingerprint } from "../shared/plugin-outbound";
+import { serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
 import type { Account, Plugin, PluginServer, PluginCredential, PluginCredentialRequest } from "../../../app/packages/contracts/src/baskule-plugins";
 import type { InstallationAuth } from "./auth-config";

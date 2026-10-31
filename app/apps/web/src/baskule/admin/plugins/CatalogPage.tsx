@@ -1,12 +1,12 @@
-// baskule: Plugins → Catalog: the services Baskule offers, by area, or add your own plugin.
-// Adding asks who can use it first; the review dialog then shows what it contains.
+// baskule: Plugins → Catalog: the services Baskule offers, by area, or a way to add your own.
+// Adding asks who can use it first; its row then shows whether it still needs setting up.
 import {
   CATALOG,
   catalogVendor,
   type CatalogArea,
   type CatalogService,
 } from "@t3tools/contracts/baskule-catalog";
-import type { AdminPlugin, Group, Plugin } from "@t3tools/contracts/baskule-plugins";
+import type { AdminPlugin, Group } from "@t3tools/contracts/baskule-plugins";
 import { Link } from "@tanstack/react-router";
 import { CheckIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
@@ -26,10 +26,8 @@ import {
 import { Spinner } from "../../../components/ui/spinner";
 import { notifyPluginError, pluginsApi } from "../../plugins/api";
 import { PluginGroupsField, PluginIcon, useGroupChoice } from "../../plugins/PluginParts";
-import { useApiResource } from "../../ui";
+import { notifySuccess, useApiResource } from "../../ui";
 import { PageRow, PageSection } from "../../views/BaskulePage";
-import { AddOwnPluginDialog } from "./AddOwnPluginDialog";
-import { PluginReviewDialog, type AddedPlugin } from "./PluginReviewDialog";
 
 /** Shown in this order. */
 const AREAS: Record<CatalogArea, string> = {
@@ -52,16 +50,6 @@ export function CatalogPage() {
   const installed = useApiResource(loadInstalled);
   const groups = useApiResource(loadGroups);
   const [choosing, setChoosing] = useState<CatalogService | null>(null);
-  const [review, setReview] = useState<AddedPlugin | null>(null);
-  const [addingOwn, setAddingOwn] = useState(false);
-
-  const added = (plugin: Plugin, chosen: ReadonlyArray<string>) => {
-    setReview({
-      plugin,
-      groups: (groups.data ?? []).filter((group) => chosen.includes(group.id)),
-    });
-    void installed.reload();
-  };
 
   return (
     <>
@@ -71,7 +59,11 @@ export function CatalogPage() {
             "Each service's own server, reviewed by Baskule. When you add one, you choose who can use it.",
           )}
         </p>
-        <Button size="sm" variant="outline" onClick={() => setAddingOwn(true)}>
+        <Button
+          size="sm"
+          variant="outline"
+          render={<Link to="/admin/$section/$page" params={{ section: "plugins", page: "add" }} />}
+        >
           <PlusIcon />
           {t("Add your own")}
         </Button>
@@ -105,26 +97,9 @@ export function CatalogPage() {
         groups={groups.data}
         groupsError={groups.error}
         onClose={() => setChoosing(null)}
-        onAdded={(plugin, chosen) => {
+        onAdded={(name) => {
           setChoosing(null);
-          added(plugin, chosen);
-        }}
-      />
-      <AddOwnPluginDialog
-        open={addingOwn}
-        onOpenChange={setAddingOwn}
-        groups={groups.data}
-        groupsError={groups.error}
-        onAdded={(plugin, chosen) => {
-          setAddingOwn(false);
-          added(plugin, chosen);
-        }}
-      />
-      <PluginReviewDialog
-        added={review}
-        onClose={() => setReview(null)}
-        onRemoved={() => {
-          setReview(null);
+          notifySuccess(t("{{name}} was added", { name }));
           void installed.reload();
         }}
       />
@@ -223,7 +198,7 @@ function AddServiceDialog({
   readonly groups: ReadonlyArray<Group> | null;
   readonly groupsError: string | null;
   readonly onClose: () => void;
-  readonly onAdded: (plugin: Plugin, groups: ReadonlyArray<string>) => void;
+  readonly onAdded: (name: string) => void;
 }) {
   const t = useTranslation();
   // Keep the last service while the dialog animates out.
@@ -240,10 +215,9 @@ function AddServiceDialog({
   const add = async (entry: CatalogService) => {
     setAdding(true);
     return (async () => {
-      const groupIds = [...chosen.value];
-      const plugin = await pluginsApi.install({ catalog: entry.id, groups: groupIds });
+      const plugin = await pluginsApi.create({ catalog: entry.id, groups: [...chosen.value] });
       chosen.reset();
-      onAdded(plugin, groupIds);
+      onAdded(plugin.name);
     })()
       .catch((cause: unknown) => {
         notifyPluginError(t("Could not add {{name}}", { name: entry.name }), cause);

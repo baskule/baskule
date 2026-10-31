@@ -982,7 +982,7 @@ export class ControlService {
     }
     if (p === "/settings" && m === "GET") return json(this.settingsView());
     if ((r = p.match(/^\/vendors\/([^/]+)$/))) return this.connections.vendor(req, r[1]);
-    if (p === "/plugins" || p.startsWith("/plugins/")) return this.pluginChange(req, this.plugins.admin(req, `/admin${p}`));
+    if (p === "/plugins" || p.startsWith("/plugins/")) return p === "/plugins/inspect" ? this.plugins.admin(req, `/admin${p}`) : this.pluginChange(req, this.plugins.admin(req, `/admin${p}`));
     if (p === "/groups" || p.startsWith("/groups/")) return this.pluginChange(req, this.groups.handle(req, `/admin${p}`));
     if (p === "/settings" && m === "PATCH") return this.saveSettings(req);
     if (this.installation.mode === "anonymous" && p.startsWith("/users")) return notFound();

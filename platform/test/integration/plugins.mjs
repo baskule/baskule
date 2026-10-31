@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { zipSync } from "fflate";
 import { checkConnections } from "./connections.mjs";
@@ -10,14 +9,16 @@ export async function checkPlugins(req, check, admin, alice) {
   const U = { cookie: alice.cookie };
   const files = { "hello/SKILL.md": new Uint8Array(readFileSync(new URL("../fixtures/plugins/portable/skills/hello/SKILL.md", import.meta.url))) };
   const archive = zipSync(files);
-  const installed = await req("POST", `${API}/admin/plugins`, { ...A, body: { groups: [], source: { type: "archive", sha256: createHash("sha256").update(archive).digest("hex") }, archive: Buffer.from(archive).toString("base64") } });
+  const draft = await req("POST", `${API}/admin/plugins/inspect`, { ...A, body: { archive: Buffer.from(archive).toString("base64") } });
+  check("inspection does not install a plugin", draft.status === 200 && (await req("GET", `${API}/admin/plugins`, A)).json.plugins.length === 0, draft.text);
+  const installed = await req("POST", `${API}/admin/plugins`, { ...A, body: { groups: [], plugin: draft.json.plugin } });
   check("plugin archive imported unpaused on celld", installed.status === 201 && installed.json.enabled === true && installed.json.skills[0]?.name === "hello", installed.text);
   const id = installed.json.id;
   const grant = await req("PATCH", `${API}/admin/groups/everyone`, { ...A, body: { plugins: [id], permissions: { canCreateSpaces: true } } });
   check("Everyone group grants a plugin and space creation", grant.status === 200 && grant.json.members.includes(alice.userId), grant.text);
   const me = await req("GET", `${API}/me`, U);
   check("me resolves space creation from groups", me.json.user.canCreateSpaces === true);
-  check("users cannot install plugins", (await req("POST", `${API}/admin/plugins`, { ...U, body: { groups: [], source: { type: "url", url: "https://example.test/mcp" } } })).status === 403);
+  check("users cannot install plugins", (await req("POST", `${API}/admin/plugins`, { ...U, body: { groups: [], plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: "https://example.test/mcp", credential: "none" }] } } })).status === 403);
   const mine = await req("GET", `${API}/plugins`, U);
   check("assigned plugin is ready without activation or skill contents", mine.json.plugins[0]?.status === "ready" && !mine.text.includes("Say hello"));
   check("Everyone cannot be deleted", (await req("DELETE", `${API}/admin/groups/everyone`, A)).status === 409);

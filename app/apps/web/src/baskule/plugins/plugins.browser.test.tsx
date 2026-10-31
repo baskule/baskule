@@ -1,14 +1,21 @@
 // baskule: the plugin screens against a fake ControlCell (fetch): what the admin adds, for whom,
 // pauses and sets up, and what a person is told about each plugin and can connect.
-import type { Account, AdminPlugin, Group, MemberPlugin } from "@t3tools/contracts/baskule-plugins";
+import type {
+  Account,
+  AdminPlugin,
+  Group,
+  MemberPlugin,
+  PluginDraft,
+} from "@t3tools/contracts/baskule-plugins";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent, type Locator } from "vite-plus/test/browser";
 
 import { act, render, stubGlobal } from "../../../test/render";
 import { toastManager } from "../../components/ui/toast";
 import { BaskuleApiError } from "../api";
+import { AddOwnPage } from "../admin/plugins/AddOwnPage";
 import { CatalogPage } from "../admin/plugins/CatalogPage";
-import { AddOwnPluginDialog } from "../admin/plugins/AddOwnPluginDialog";
+import { PluginEditor } from "../admin/plugins/PluginEditor";
 import { PluginDetailPage } from "../admin/plugins/PluginDetailPage";
 import { pluginErrorText } from "./api";
 import { UserPluginsView } from "./UserPluginsView";
@@ -61,10 +68,10 @@ function plugin(overrides: Partial<AdminPlugin>): AdminPlugin {
     vendor: "p1",
     name: "Plugin",
     description: "",
-    source: { type: "url", url: "https://mcp.example.test/mcp" },
+    source: { type: "custom" },
     skills: [],
     servers: [],
-    ignored: [],
+    omitted: [],
     enabled: true,
     createdAt: "2026-10-25T10:00:00Z",
     setup: [],
@@ -86,7 +93,7 @@ describe("admin catalog", () => {
     setup: [{ server: "linear", done: true }],
   });
 
-  it("lists services by area and adds one for the chosen groups, then reviews it", async () => {
+  it("lists services by area and adds one for the chosen groups", async () => {
     let installed: AdminPlugin[] = [];
     const control = fakeControl({
       "GET /api/baskule/admin/plugins": () => ({ plugins: installed }),
@@ -123,15 +130,10 @@ describe("admin catalog", () => {
     await press(choose.getByRole("checkbox", { name: "Sales" }));
     await press(choose.getByRole("button", { name: "Add plugin" }));
 
-    const review = page.getByRole("dialog", { name: "Linear was added" });
-    await expect.element(review.getByText("It is available to Everyone, Sales.")).toBeVisible();
-    await expect.element(review.getByText("Tools from 1 server")).toBeVisible();
-    expect(postBody(control.calls)).toEqual({ catalog: "linear", groups: ["everyone", "sales"] });
-    await press(review.getByRole("button", { name: "Done" }));
-
     await expect
       .element(screen.getByRole("link", { name: "Linear is added: open it" }))
       .toHaveAttribute("href", "/admin/plugins/installed/linear");
+    expect(postBody(control.calls)).toEqual({ catalog: "linear", groups: ["everyone", "sales"] });
     expect(control.calls.some((call) => call.route.includes("/search"))).toBe(false);
   });
 
@@ -175,78 +177,215 @@ describe("admin catalog", () => {
 });
 
 describe("adding your own plugin", () => {
-  it("pins a git repository to a full commit and sends it for Everyone", async () => {
+  /** A package with a server to finish (its tenant and its key) and parts Baskule leaves out. */
+  const draft: PluginDraft = {
+    plugin: {
+      name: "Acme CRM",
+      description: "Accounts and deals.",
+      source: { type: "upload", sha256: "a".repeat(64) },
+      servers: [
+        {
+          name: "crm",
+          url: "https://{tenant}.crm.example.test/mcp",
+          credential: "organization",
+          keyHeaders: ["X-Api-Key"],
+          transport: "streamable-http",
+        },
+      ],
+      skills: [
+        { name: "call-prep", description: "Prepare a sales call.", instructions: "", files: [] },
+      ],
+      omitted: [
+        { code: "claude_commands", subject: "commands/forecast.md" },
+        { code: "local_program", subject: "local-notes" },
+      ],
+    },
+    fixes: [
+      { server: "crm", need: "address", placeholders: ["{tenant}"] },
+      { server: "crm", need: "key", headers: ["X-Api-Key"] },
+    ],
+    omitted: [
+      { code: "claude_commands", subject: "commands/forecast.md" },
+      { code: "local_program", subject: "local-notes" },
+    ],
+  };
+  const saved = (calls: ReadonlyArray<{ readonly route: string }>) =>
+    calls.filter((call) => !call.route.startsWith("GET ") && !call.route.endsWith("/inspect"));
+
+  async function reviewUpload() {
+    await userEvent.upload(
+      page.getByLabelText("Plugin file"),
+      new File(["hello"], "crm.zip", { type: "application/zip" }),
+    );
+    await press(page.getByRole("button", { name: "Review plugin" }));
+  }
+
+  it("reviews an uploaded package, fixes it in place and saves it once", async () => {
     const control = fakeControl({
-      "POST /api/baskule/admin/plugins": () => plugin({ id: "git-plugin", name: "handbook" }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins/inspect": () => draft,
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "crm-plugin", name: "Acme CRM" }),
+      "PUT /api/baskule/admin/plugins/crm-plugin/secret": () => ({ ok: true }),
     });
     using _fetch = control.stub;
-    const onAdded = vi.fn();
-    await using _screen = await render(
-      <AddOwnPluginDialog open onOpenChange={() => undefined} onAdded={onAdded} groups={groups} />,
-    );
-    const dialog = page.getByRole("dialog", { name: "Add your own plugin" });
-    await press(dialog.getByRole("button", { name: "Git repository" }));
-    await userEvent.type(dialog.getByLabelText("Repository"), "https://github.com/acme/plugins");
-    await userEvent.type(dialog.getByLabelText("Commit"), "abc123");
+    await using screen = await render(<AddOwnPage />);
+    await reviewUpload();
+
+    await expect.element(screen.getByText("Tools from 1 server and 1 skill")).toBeVisible();
     await expect
-      .element(dialog.getByText("Enter the full commit ID: 40 letters and digits."))
+      .element(screen.getByText("Commands for Claude Code. Baskule doesn't use these."))
       .toBeVisible();
-    await expect.element(dialog.getByRole("button", { name: "Add plugin" })).toBeDisabled();
+    await expect.element(screen.getByText("commands/forecast.md")).toBeVisible();
+    await expect.element(screen.getByLabelText("Header for the key")).not.toBeVisible();
+    await expect.element(screen.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
+    expect(control.calls.find((call) => call.route.endsWith("/inspect"))?.body).toEqual({
+      archive: "aGVsbG8=",
+    });
+    expect(saved(control.calls)).toEqual([]);
 
-    await userEvent.clear(dialog.getByLabelText("Commit"));
-    await userEvent.type(
-      dialog.getByLabelText("Commit"),
-      "0123456789ABCDEF0123456789ABCDEF01234567",
-    );
-    await userEvent.type(dialog.getByLabelText("Folder (optional)"), "/skills/handbook/");
-    await press(dialog.getByRole("button", { name: "Add plugin" }));
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await expect.element(screen.getByText("Fill this in to complete the address.")).toBeVisible();
+    expect(saved(control.calls)).toEqual([]);
 
-    await vi.waitFor(() =>
-      expect(onAdded).toHaveBeenCalledWith(expect.objectContaining({ id: "git-plugin" }), [
-        "everyone",
-      ]),
-    );
-    expect(postBody(control.calls)).toEqual({
-      source: {
-        type: "git",
-        repo: "https://github.com/acme/plugins",
-        ref: "0123456789abcdef0123456789abcdef01234567",
-        path: "skills/handbook",
+    await userEvent.type(screen.getByLabelText("tenant", { exact: true }), "acme");
+    await userEvent.type(screen.getByLabelText("Key", { exact: true }), "k-1");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() => expect(saved(control.calls)).toHaveLength(2));
+    expect(saved(control.calls)).toEqual([
+      {
+        route: "POST /api/baskule/admin/plugins",
+        body: {
+          plugin: {
+            ...draft.plugin,
+            servers: [{ ...draft.plugin.servers[0], url: "https://acme.crm.example.test/mcp" }],
+          },
+          groups: ["everyone"],
+        },
+        query: "",
       },
-      groups: ["everyone"],
+      {
+        route: "PUT /api/baskule/admin/plugins/crm-plugin/secret",
+        body: { server: "crm", headers: { "X-Api-Key": "k-1" } },
+        query: "",
+      },
+    ]);
+  });
+
+  it("keeps the plugin it created when its key isn't saved, so a retry doesn't add it twice", async () => {
+    let refuseKey = true;
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins/inspect": () => draft,
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "crm-plugin", name: "Acme CRM" }),
+      "PATCH /api/baskule/admin/plugins/crm-plugin": () => plugin({ id: "crm-plugin" }),
+      "PUT /api/baskule/admin/plugins/crm-plugin/secret": () => {
+        if (!refuseKey) return { ok: true };
+        refuseKey = false;
+        return Response.json({ error: "invalid_secret_headers" }, { status: 400 });
+      },
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await reviewUpload();
+    await expect.element(screen.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
+    await userEvent.type(screen.getByLabelText("tenant", { exact: true }), "acme");
+    await userEvent.type(screen.getByLabelText("Key", { exact: true }), "k-1");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await expect
+      .element(
+        screen.getByText(
+          "Acme CRM was saved, but its key was not: This key can't be sent with that header name.",
+        ),
+      )
+      .toBeVisible();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() => expect(saved(control.calls)).toHaveLength(4));
+    expect(saved(control.calls).map((call) => call.route)).toEqual([
+      "POST /api/baskule/admin/plugins",
+      "PUT /api/baskule/admin/plugins/crm-plugin/secret",
+      "PATCH /api/baskule/admin/plugins/crm-plugin",
+      "PUT /api/baskule/admin/plugins/crm-plugin/secret",
+    ]);
+  });
+
+  it("reads any GitHub link and changes nothing when the review is cancelled", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins/inspect": () => ({
+        ...draft,
+        plugin: {
+          ...draft.plugin,
+          source: {
+            type: "github",
+            repo: "https://github.com/acme/plugins",
+            sha: "0123456789abcdef0123456789abcdef01234567",
+            path: "crm",
+          },
+        },
+      }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await press(screen.getByRole("button", { name: "GitHub link" }));
+    await userEvent.type(
+      screen.getByLabelText("GitHub link", { exact: true }),
+      "https://github.com/acme/plugins/tree/main/crm",
+    );
+    await press(screen.getByRole("button", { name: "Review plugin" }));
+
+    await expect.element(screen.getByText(/^From acme\/plugins\/crm on GitHub/)).toBeVisible();
+    expect(screen.getByText(/0123456/).query()).toBeNull();
+    await press(screen.getByRole("button", { name: "Cancel" }));
+
+    await expect.element(screen.getByRole("button", { name: "Review plugin" })).toBeVisible();
+    expect(control.calls.map((call) => call.route)).not.toContain(
+      "POST /api/baskule/admin/plugins",
+    );
+    expect(control.calls.find((call) => call.route.endsWith("/inspect"))?.body).toEqual({
+      github: "https://github.com/acme/plugins/tree/main/crm",
     });
   });
 
-  it("sends an uploaded file with the SHA-256 of its bytes, for no group when none is chosen", async () => {
+  it("adds an MCP server by its address, named by the admin", async () => {
     const control = fakeControl({
-      "POST /api/baskule/admin/plugins": () => plugin({ id: "uploaded" }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "notes" }),
     });
     using _fetch = control.stub;
-    const onAdded = vi.fn();
-    await using _screen = await render(
-      <AddOwnPluginDialog open onOpenChange={() => undefined} onAdded={onAdded} groups={groups} />,
+    await using screen = await render(<AddOwnPage />);
+    await userEvent.type(
+      screen.getByLabelText("Server address", { exact: true }),
+      "https://mcp.notes.example.test/mcp",
     );
-    const dialog = page.getByRole("dialog", { name: "Add your own plugin" });
-    await press(dialog.getByRole("button", { name: "File" }));
-    await userEvent.upload(
-      dialog.getByLabelText("Plugin file"),
-      new File(["hello"], "skill.zip", { type: "application/zip" }),
-    );
-    await press(dialog.getByRole("checkbox", { name: "Everyone" }));
-    await expect
-      .element(dialog.getByText("No one can use it until you choose a group on its page."))
-      .toBeVisible();
-    await press(dialog.getByRole("button", { name: "Add plugin" }));
+    await press(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.type(screen.getByLabelText("Name", { exact: true }), "Notes");
+    await press(screen.getByRole("radio", { name: /^Each person connects/ }));
+    await expect.element(screen.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
 
-    await vi.waitFor(() => expect(onAdded).toHaveBeenCalled());
-    expect(postBody(control.calls)).toEqual({
-      source: {
-        type: "archive",
-        sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
-      },
-      archive: "aGVsbG8=",
-      groups: [],
-    });
+    await vi.waitFor(() =>
+      expect(postBody(control.calls)).toEqual({
+        plugin: {
+          name: "Notes",
+          description: "",
+          source: { type: "custom" },
+          servers: [
+            {
+              name: "mcp.notes.example.test",
+              url: "https://mcp.notes.example.test/mcp",
+              credential: "user-oauth",
+              transport: "streamable-http",
+            },
+          ],
+          skills: [],
+          omitted: [],
+        },
+        groups: ["everyone"],
+      }),
+    );
   });
 });
 
@@ -328,34 +467,271 @@ describe("signing in to a plugin's service", () => {
 
   const crm = { name: "crm", url: "https://mcp.crm.example.test/mcp" };
 
-  it("offers the three ways to sign in and saves a choice without a personal flag", async () => {
+  it("edits a plugin an admin brought in the shared editor and saves it whole", async () => {
+    const skill = {
+      name: "notes",
+      description: "Write notes.",
+      instructions: "Write them.",
+      files: [],
+    };
     const control = fakeControl({
       "GET /api/baskule/admin/plugins": () => ({
         plugins: [
           plugin({
             name: "CRM",
-            servers: [{ ...crm, credential: "organization" }],
-            setup: [{ server: "crm", done: false }],
+            source: { type: "upload", sha256: "b".repeat(64) },
+            servers: [{ ...crm, credential: "organization", transport: "streamable-http" }],
+            skills: [{ name: skill.name, description: skill.description }],
+            setup: [{ server: "crm", done: true }],
           }),
         ],
       }),
       "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/plugins/p1/skills": () => ({
+        skills: [skill],
+        editable: true,
+      }),
       "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
     });
     using _fetch = control.stub;
     await using screen = await render(<PluginDetailPage id="p1" />);
 
-    await userEvent.click(screen.getByLabelText("How crm signs in", { exact: true }));
-    await expect.element(page.getByRole("option", { name: /^Each person connects/ })).toBeVisible();
-    expect(page.getByRole("option").all()).toHaveLength(3);
-    expect(page.getByRole("option", { name: /sign-in account/ }).query()).toBeNull();
-    await userEvent.click(page.getByRole("option", { name: /^Each person connects/ }));
+    expect(screen.getByLabelText("How crm signs in", { exact: true }).query()).toBeNull();
+    await expect.element(screen.getByRole("button", { name: "Download as zip" })).toBeVisible();
+    await press(screen.getByRole("button", { name: "Edit CRM" }));
+    await expect
+      .element(screen.getByText("A key is saved. Leave this empty to keep it."))
+      .toBeVisible();
+    await press(screen.getByRole("radio", { name: /^Each person connects/ }));
+    await press(screen.getByRole("button", { name: "Save plugin" }));
 
     await vi.waitFor(() =>
       expect(
         control.calls.find((call) => call.route === "PATCH /api/baskule/admin/plugins/p1")?.body,
-      ).toEqual({ servers: [{ name: "crm", credential: "user-oauth" }] }),
+      ).toEqual({
+        plugin: {
+          name: "CRM",
+          description: "",
+          source: { type: "upload", sha256: "b".repeat(64) },
+          servers: [{ ...crm, credential: "user-oauth", transport: "streamable-http" }],
+          skills: [skill],
+          omitted: [],
+        },
+      }),
     );
+    expect(control.calls.some((call) => call.route.endsWith("/secret"))).toBe(false);
+  });
+
+  it("keeps every saved key's header name when replacing keys in the editor", async () => {
+    const initial = {
+      name: "CRM",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: [
+        { ...crm, credential: "organization" as const, keyHeaders: ["X-Api-Key", "X-Workspace"] },
+      ],
+    };
+    const control = fakeControl({
+      "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
+      "PUT /api/baskule/admin/plugins/p1/secret": () => ({ ok: true }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText("Key 1", { exact: true }), "new-key");
+    await userEvent.type(screen.getByLabelText("Key 2", { exact: true }), "workspace-key");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await vi.waitFor(() =>
+      expect(control.calls.find((call) => call.route.endsWith("/secret"))?.body).toEqual({
+        server: "crm",
+        headers: { "X-Api-Key": "new-key", "X-Workspace": "workspace-key" },
+      }),
+    );
+  });
+
+  it("requires keys again when a saved key's header name is changed", async () => {
+    const initial = {
+      name: "CRM",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: [{ ...crm, credential: "organization" as const, keyHeaders: ["X-Api-Key"] }],
+    };
+    const control = fakeControl({});
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+      // This standalone form has no routing or navigation.
+      { router: false },
+    );
+    await userEvent.click(screen.getByText("Technical details", { exact: true }));
+    await expect
+      .element(screen.getByLabelText("Header for the key", { exact: true }))
+      .toBeVisible();
+    await userEvent.fill(screen.getByLabelText("Header for the key", { exact: true }), "X-Changed");
+    await expect
+      .element(screen.getByText("The key fields changed. Enter all keys again before saving."))
+      .toBeVisible();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await expect.element(screen.getByText("Enter this key too.", { exact: true })).toBeVisible();
+    expect(
+      control.calls.filter(
+        (call) => call.route.startsWith("PATCH ") || call.route.startsWith("PUT "),
+      ),
+    ).toEqual([]);
+  });
+
+  it("clears each key once it is saved, so a retry sends only the keys that were not", async () => {
+    const mail = {
+      name: "mail",
+      url: "https://mcp.mail.example.test/mcp",
+      credential: "organization" as const,
+    };
+    const initial = {
+      name: "CRM",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: [
+        { ...crm, credential: "organization" as const, keyHeaders: ["X-Api-Key"] },
+        { ...mail, keyHeaders: ["Cookie"] },
+      ],
+    };
+    const onSaved = vi.fn();
+    const control = fakeControl({
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "p1" }),
+      "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
+      "PUT /api/baskule/admin/plugins/p1/secret": (body) =>
+        "Cookie" in (body as { readonly headers: object }).headers
+          ? Response.json({ error: "invalid_secret_headers" }, { status: 400 })
+          : { ok: true },
+    });
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "create", groups, groupsError: null }}
+        onCancel={vi.fn()}
+        onSaved={onSaved}
+      />,
+    );
+    const key = screen.getByLabelText("Key", { exact: true });
+    const header = screen.getByLabelText("Header for the key", { exact: true });
+    await userEvent.type(key.nth(0), "crm-key");
+    await userEvent.type(key.nth(1), "mail-key");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await expect
+      .element(
+        screen.getByText(
+          "CRM was saved, but its key was not: This key can't be sent with that header name.",
+        ),
+      )
+      .toBeVisible();
+    await expect.element(key.nth(0)).toHaveValue("");
+    await expect.element(key.nth(1)).toHaveValue("mail-key");
+    await expect
+      .element(screen.getByText("A key is saved. Leave this empty to keep it."))
+      .toBeVisible();
+
+    await userEvent.click(screen.getByText("Technical details", { exact: true }).nth(0));
+    await userEvent.click(screen.getByText("Technical details", { exact: true }).nth(1));
+    await userEvent.fill(header.nth(0), "X-Changed");
+    await expect.element(screen.getByText("Enter this key too.", { exact: true })).toBeVisible();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await userEvent.fill(header.nth(0), "X-Api-Key");
+    await userEvent.fill(header.nth(1), "X-Mail-Key");
+    await expect.element(key.nth(1)).toHaveValue("mail-key");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith({ id: "p1", name: "CRM" }));
+    expect(
+      control.calls
+        .filter((call) => !call.route.startsWith("GET "))
+        .map((call) => [call.route, call.body]),
+    ).toEqual([
+      ["POST /api/baskule/admin/plugins", expect.anything()],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "crm", headers: { "X-Api-Key": "crm-key" } },
+      ],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "mail", headers: { Cookie: "mail-key" } },
+      ],
+      [
+        "PATCH /api/baskule/admin/plugins/p1",
+        {
+          plugin: {
+            ...initial,
+            servers: [
+              { ...crm, credential: "organization", keyHeaders: ["X-Api-Key"] },
+              { ...mail, keyHeaders: ["X-Mail-Key"] },
+            ],
+          },
+        },
+      ],
+      [
+        "PUT /api/baskule/admin/plugins/p1/secret",
+        { server: "mail", headers: { "X-Mail-Key": "mail-key" } },
+      ],
+    ]);
+  });
+
+  it("explains that changing a server needs its key again", async () => {
+    const initial = {
+      name: "CRM",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: [{ ...crm, credential: "organization" as const, keyHeaders: ["X-Api-Key"] }],
+    };
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+    await expect
+      .element(screen.getByText("A key is saved. Leave this empty to keep it."))
+      .toBeVisible();
+    await userEvent.fill(
+      screen.getByLabelText("Address", { exact: true }),
+      "https://changed.example/mcp",
+    );
+    await expect
+      .element(
+        screen.getByText("The server changed. Enter its key again, or finish setting it up later."),
+      )
+      .toBeVisible();
+    expect(screen.getByText("A key is saved. Leave this empty to keep it.").query()).toBeNull();
   });
 
   it("saves the vendor's app once, never shows it back, and removes it", async () => {

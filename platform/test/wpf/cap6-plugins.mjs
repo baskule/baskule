@@ -1,6 +1,5 @@
 import http from "node:http";
 import { once } from "node:events";
-import { createHash } from "node:crypto";
 import { zipSync } from "fflate";
 import { MODEL, adminSession, assert, cx, fakeRequests, launch, projection, reconnect, waitFor, watchShell, watchThread, world } from "./lib.mjs";
 
@@ -32,9 +31,10 @@ export const pluginChecks = [{ name: "plugin-runtime", capability: "6-plugins", 
       "skills/greeting/assets/data.bin": Buffer.from([0, 1, 127, 255]),
     };
     const archive = Buffer.from(zipSync(files));
-    plugin = await admin.json("POST", "/api/baskule/admin/plugins", { groups: [], source: { type: "archive", sha256: createHash("sha256").update(archive).digest("hex") }, archive: archive.toString("base64") });
+    const draft = await admin.json("POST", "/api/baskule/admin/plugins/inspect", { archive: archive.toString("base64") });
+    draft.plugin.servers[0].credential = "organization";
+    plugin = await admin.json("POST", "/api/baskule/admin/plugins", { groups: [], plugin: draft.plugin });
     assert(plugin.skills.length === 1 && plugin.servers.length === 1, `bad import: ${JSON.stringify(plugin)}`);
-    await admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { enabled: true, servers: [{ name: "organization", credential: "organization" }] });
     await admin.json("PUT", `/api/baskule/admin/plugins/${plugin.id}/secret`, { server: "organization", headers: { Authorization: `Bearer ${key}` } });
     group = await admin.json("POST", "/api/baskule/admin/groups", { name: `Allowed-${ctx.run}`, members: [s.alice.me.user.id], permissions: { canCreateSpaces: false }, plugins: [plugin.id] });
     await s.alice.json("PUT", `/api/baskule/spaces/${s.team}/plugins`, { personalPluginsAllowed: true, disabled: [] });

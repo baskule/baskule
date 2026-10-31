@@ -72,7 +72,7 @@ describe("curated plugin catalog", () => {
     for (const catalog of ["gmail", "google-calendar"]) await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { catalog, groups: ["everyone"] } });
     expect((await call(h, "PUT", `${API}/admin/vendors/google`, { creds: a.creds, body: { clientId: "own-client", clientSecret: "private-secret", tokenEndpointAuthMethod: "client_secret_post" } })).status).toBe(200);
     expect(stub).toHaveBeenCalled();
-    expect((await call(h, "PATCH", `${API}/admin/plugins/gmail`, { creds: a.creds, body: { servers: [{ name: "gmail", credential: "none", url: "https://other.test" }] } })).body.error).toBe("not_editable");
+    expect((await call(h, "PATCH", `${API}/admin/plugins/gmail`, { creds: a.creds, body: { plugin: { name: "Changed", description: "", source: { type: "custom" }, servers: [{ name: "gmail", credential: "none", url: "https://other.test" }], skills: [], omitted: [] } } })).body.error).toBe("not_editable");
     await call(h, "DELETE", `${API}/admin/plugins/gmail`, { creds: a.creds });
     const installed = (await call(h, "GET", `${API}/admin/plugins`, { creds: a.creds })).body.plugins;
     expect(installed).toMatchObject([{ id: "google-calendar", vendorConfigured: true }]);
