@@ -137,7 +137,8 @@ export function SkillEditor({
         </button>
         {removable ? (
           <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onRemove}>
-            {t("Remove skill")}
+            <XIcon className="sm:hidden" />
+            <span className="max-sm:sr-only">{t("Remove skill")}</span>
           </Button>
         ) : null}
       </div>

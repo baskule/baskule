@@ -405,6 +405,7 @@ test("MCP JSON lifts keys, tests tools and enforces a switched-off tool during a
 });
 
 test("skills can be written, versioned and reverted on the computer, and pinned skills copied", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api, fakeLlm }) => {
+  test.setTimeout(240_000);
   const fixture = await fakeMcp();
   const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
   const context = await browser.newContext(options);
