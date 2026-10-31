@@ -571,7 +571,7 @@ describe("adding MCP servers by form or JSON", () => {
         initial={initial}
         fixes={[]}
         omitted={[]}
-        target={{ type: "edit", id: "p1", savedKeys: new Set(["notes"]) }}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["notes"]), versions: [] }}
         onCancel={vi.fn()}
         onSaved={onSaved}
       />,
@@ -1157,7 +1157,7 @@ describe("adding MCP servers by form or JSON", () => {
         initial={initial}
         fixes={[]}
         omitted={[]}
-        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]), versions: [] }}
         onCancel={vi.fn()}
         onSaved={vi.fn()}
       />,
@@ -1220,7 +1220,7 @@ describe("adding MCP servers by form or JSON", () => {
         initial={initial}
         fixes={[]}
         omitted={[]}
-        target={{ type: "edit", id: "p1", savedKeys: new Set() }}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(), versions: [] }}
         onCancel={vi.fn()}
         onSaved={onSaved}
       />,
@@ -1419,6 +1419,7 @@ describe("signing in to a plugin's service", () => {
       "GET /api/baskule/admin/plugins/p1/skills": () => ({
         skills: [skill],
         editable: true,
+        versions: [],
       }),
       "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
     });
@@ -1479,7 +1480,7 @@ describe("signing in to a plugin's service", () => {
         initial={initial}
         fixes={[]}
         omitted={[]}
-        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]), versions: [] }}
         onCancel={vi.fn()}
         onSaved={vi.fn()}
       />,
@@ -1511,7 +1512,7 @@ describe("signing in to a plugin's service", () => {
         initial={initial}
         fixes={[]}
         omitted={[]}
-        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]), versions: [] }}
         onCancel={vi.fn()}
         onSaved={vi.fn()}
       />,
@@ -1652,7 +1653,7 @@ describe("signing in to a plugin's service", () => {
         initial={initial}
         fixes={[]}
         omitted={[]}
-        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]), versions: [] }}
         onCancel={vi.fn()}
         onSaved={vi.fn()}
       />,
@@ -1736,6 +1737,587 @@ describe("signing in to a plugin's service", () => {
       },
       null,
     ]);
+  });
+});
+
+describe("writing skills", () => {
+  const crmServer = { name: "crm", url: "https://mcp.crm.example.test/mcp", disabledTools: [] };
+  const writeControl = () =>
+    fakeControl({
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "skill-plugin" }),
+    });
+  async function startSkill() {
+    await press(page.getByRole("button", { name: "New skill" }));
+    await expect.element(page.getByLabelText("Skill name", { exact: true })).toBeVisible();
+  }
+  const skillName = () => page.getByLabelText("Skill name", { exact: true });
+  const skillDescription = () => page.getByLabelText("Skill description", { exact: true });
+
+  it("checks a new skill's name and description as they are typed and saves nothing until they follow the rules", async () => {
+    const control = writeControl();
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await startSkill();
+
+    await userEvent.type(skillName(), "Call Prep");
+    await expect
+      .element(
+        screen.getByText("Use only lowercase letters, numbers and single hyphens, like call-prep."),
+      )
+      .toBeVisible();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await expect
+      .element(screen.getByText("Say what the skill does and when to use it."))
+      .toBeVisible();
+    expect(postBody(control.calls)).toBeUndefined();
+
+    await userEvent.clear(skillName());
+    await userEvent.type(skillName(), "call-prep");
+    await userEvent.type(skillDescription(), "Prepare a sales call.");
+    await press(screen.getByRole("button", { name: "Add a skill" }));
+    await userEvent.type(skillName().nth(1), "call-prep");
+    await expect
+      .element(screen.getByText("Another skill in this plugin has this name.").first())
+      .toBeVisible();
+    await press(
+      screen.getByRole("group", { name: "call-prep" }).nth(1).getByRole("button", {
+        name: "Remove skill",
+      }),
+    );
+    expect(
+      screen
+        .getByText("Use only lowercase letters, numbers and single hyphens, like call-prep.")
+        .query(),
+    ).toBeNull();
+    await expect
+      .element(screen.getByText("Leave empty to use the skill's name and description."))
+      .toBeVisible();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() =>
+      expect(postBody(control.calls)).toEqual({
+        plugin: {
+          name: "call-prep",
+          description: "Prepare a sales call.",
+          source: { type: "custom" },
+          servers: [],
+          skills: [
+            {
+              name: "call-prep",
+              description: "Prepare a sales call.",
+              instructions: "",
+              files: [],
+            },
+          ],
+          omitted: [],
+        },
+        groups: ["everyone"],
+      }),
+    );
+  });
+
+  it("previews the instructions as Markdown and shows HTML in them as text", async () => {
+    using _fetch = writeControl().stub;
+    await using screen = await render(<AddOwnPage />);
+    await startSkill();
+    const text = "# Steps\n\nWrite **short** notes. <img src=x onerror=alert(1)>";
+    await userEvent.fill(screen.getByLabelText("Instructions", { exact: true }), text);
+    await press(screen.getByRole("button", { name: "Preview" }));
+
+    const preview = screen.getByRole("region", { name: "Preview of the instructions" });
+    await expect.element(preview.getByRole("heading", { name: "Steps" })).toBeVisible();
+    expect(preview.element().querySelector("strong")?.textContent).toBe("short");
+    expect(preview.element().querySelector("img")).toBeNull();
+    expect(preview.element().textContent).toContain("<img src=x onerror=alert(1)>");
+
+    await press(screen.getByRole("button", { name: "Write" }));
+    await expect.element(screen.getByLabelText("Instructions", { exact: true })).toHaveValue(text);
+  });
+
+  it("adds, renames and removes a skill's files, keeping their bytes exactly", async () => {
+    const control = writeControl();
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await startSkill();
+    await userEvent.type(skillName(), "tools");
+    await userEvent.type(skillDescription(), "Run the team's tools.");
+    await userEvent.upload(screen.getByLabelText("Add files"), [
+      new File([new Uint8Array([0, 255, 128, 10])], "run.bin"),
+      new File(["# Notes\n"], "notes.md"),
+      new File(["old"], "old.txt"),
+    ]);
+    await expect.element(screen.getByLabelText("Path of file 3")).toHaveValue("old.txt");
+    await expect.element(screen.getByText("4 B", { exact: true })).toBeVisible();
+
+    await press(screen.getByRole("button", { name: "Remove old.txt" }));
+    await userEvent.fill(screen.getByLabelText("Path of file 2"), "run.bin");
+    await expect
+      .element(screen.getByText("Another file has this path. Rename one of them.").first())
+      .toBeVisible();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    expect(postBody(control.calls)).toBeUndefined();
+
+    await userEvent.fill(screen.getByLabelText("Path of file 2"), "refs/notes.md");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await vi.waitFor(() =>
+      expect(
+        (postBody(control.calls) as { plugin: PluginInput } | undefined)?.plugin.skills[0]?.files,
+      ).toEqual([
+        { path: "run.bin", content: "AP+ACg==", encoding: "base64" },
+        { path: "refs/notes.md", content: btoa("# Notes\n"), encoding: "base64" },
+      ]),
+    );
+  });
+
+  it("waits for selected file reads before saving all of their bytes", async () => {
+    const control = writeControl();
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await startSkill();
+    await userEvent.fill(skillName(), "notes");
+    await userEvent.fill(skillDescription(), "Write notes.");
+    let finish: ((value: ArrayBuffer) => void) | undefined;
+    using _read = vi.spyOn(File.prototype, "arrayBuffer");
+    screen
+      .getByLabelText("Add files")
+      .element()
+      .addEventListener(
+        "change",
+        () => {
+          _read.mockImplementation(
+            () =>
+              new Promise((resolve) => {
+                finish = resolve;
+              }),
+          );
+        },
+        { capture: true, once: true },
+      );
+    await userEvent.upload(
+      screen.getByLabelText("Add files"),
+      new File([new Uint8Array([0, 255, 10])], "notes.bin"),
+    );
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    try {
+      await expect.element(screen.getByRole("button", { name: "Save plugin" })).toBeDisabled();
+      screen
+        .getByLabelText("Skill name", { exact: true })
+        .element()
+        .closest("form")!
+        .requestSubmit();
+      expect(postBody(control.calls)).toBeUndefined();
+    } finally {
+      finish!(new Uint8Array([0, 255, 10]).buffer);
+    }
+    await expect.element(screen.getByLabelText("Path of file 1")).toHaveValue("notes.bin");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await vi.waitFor(() =>
+      expect((postBody(control.calls) as { plugin: PluginInput })?.plugin.skills[0]?.files).toEqual(
+        [{ path: "notes.bin", content: "AP8K", encoding: "base64" }],
+      ),
+    );
+  });
+
+  it("waits for file reads before reverting and confirms discarding the selected file", async () => {
+    const skill = {
+      name: "notes",
+      description: "Write notes.",
+      instructions: "Current notes.",
+      files: [],
+    };
+    const control = fakeControl({
+      "POST /api/baskule/admin/plugins/p1/versions/1/revert": () => ({
+        skills: [{ ...skill, instructions: "Earlier notes." }],
+        editable: true,
+        versions: [],
+      }),
+    });
+    using _fetch = control.stub;
+    const confirm = vi.fn(() => true);
+    using _confirm = stubGlobal("confirm", confirm);
+    await using screen = await render(
+      <PluginEditor
+        initial={{
+          name: "Notes",
+          description: "",
+          source: { type: "custom" },
+          skills: [skill],
+          servers: [],
+          omitted: [],
+        }}
+        fixes={[]}
+        omitted={[]}
+        target={{
+          type: "edit",
+          id: "p1",
+          savedKeys: new Set(),
+          versions: [{ version: 1, savedAt: "2026-10-30T09:00:00Z" }],
+        }}
+        onCancel={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    await press(
+      screen.getByRole("group", { name: "notes" }).getByRole("button", { expanded: false }),
+    );
+    let finish: ((value: ArrayBuffer) => void) | undefined;
+    using _read = vi.spyOn(File.prototype, "arrayBuffer");
+    screen
+      .getByLabelText("Add files")
+      .element()
+      .addEventListener(
+        "change",
+        () => {
+          _read.mockImplementation(
+            () =>
+              new Promise((resolve) => {
+                finish = resolve;
+              }),
+          );
+        },
+        { capture: true, once: true },
+      );
+    await userEvent.upload(screen.getByLabelText("Add files"), new File(["new"], "notes.txt"));
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    try {
+      await expect
+        .element(screen.getByRole("button", { name: "Revert to version 1" }))
+        .toBeDisabled();
+    } finally {
+      finish!(new TextEncoder().encode("new").buffer);
+    }
+    await expect.element(screen.getByLabelText("Path of file 1")).toHaveValue("notes.txt");
+    await press(screen.getByRole("button", { name: "Revert to version 1" }));
+    await vi.waitFor(() =>
+      expect(control.calls.filter((call) => call.route.endsWith("/revert"))).toHaveLength(1),
+    );
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("skill changes you haven't saved"),
+    );
+  });
+
+  it("shows a file read failure and lets the file be selected again", async () => {
+    const control = writeControl();
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await startSkill();
+    await userEvent.fill(skillName(), "notes");
+    await userEvent.fill(skillDescription(), "Write notes.");
+    const read = File.prototype.arrayBuffer;
+    using _read = vi.spyOn(File.prototype, "arrayBuffer");
+    screen
+      .getByLabelText("Add files")
+      .element()
+      .addEventListener(
+        "change",
+        () => {
+          _read.mockRejectedValue(new Error("unreadable file"));
+        },
+        { capture: true, once: true },
+      );
+    await userEvent.upload(screen.getByLabelText("Add files"), new File(["notes"], "notes.txt"));
+    await expect
+      .element(screen.getByText("The files could not be read. Add them again."))
+      .toBeVisible();
+    expect(postBody(control.calls)).toBeUndefined();
+    _read.mockImplementation(read);
+    await userEvent.upload(screen.getByLabelText("Add files"), new File(["notes"], "notes.txt"));
+    await expect.element(screen.getByLabelText("Path of file 1")).toHaveValue("notes.txt");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await vi.waitFor(() =>
+      expect((postBody(control.calls) as { plugin: PluginInput })?.plugin.skills[0]?.files).toEqual(
+        [{ path: "notes.txt", content: btoa("notes"), encoding: "base64" }],
+      ),
+    );
+  });
+
+  it("locks pinned skills once creation succeeds so a failed key write can be retried", async () => {
+    const source = {
+      type: "github" as const,
+      repo: "https://github.com/example/skills",
+      sha: "a".repeat(40),
+    };
+    let refuse = true;
+    const control = fakeControl({
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "imported", source }),
+      "PATCH /api/baskule/admin/plugins/imported": () => plugin({ id: "imported", source }),
+      "PUT /api/baskule/admin/plugins/imported/secret": () => {
+        if (!refuse) return { ok: true };
+        refuse = false;
+        return Response.json({ error: "invalid_secret_headers" }, { status: 400 });
+      },
+    });
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={{
+          name: "Imported",
+          description: "",
+          source,
+          omitted: [],
+          servers: [
+            {
+              name: "crm",
+              url: "https://crm.example.test/mcp",
+              credential: "organization",
+              keyHeaders: ["Authorization"],
+            },
+          ],
+          skills: [
+            {
+              name: "notes",
+              description: "Write notes.",
+              instructions: "Published notes.",
+              files: [],
+            },
+          ],
+        }}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "create", groups, groupsError: null }}
+        onCancel={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    await press(
+      screen.getByRole("group", { name: "notes" }).getByRole("button", { expanded: false }),
+    );
+    await userEvent.fill(
+      screen.getByLabelText("Instructions", { exact: true }),
+      "First-save edits.",
+    );
+    await userEvent.fill(screen.getByLabelText("Key", { exact: true }), "Bearer key");
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await expect.element(screen.getByText(/was saved, but its key was not/)).toBeVisible();
+    expect(screen.getByLabelText("Instructions", { exact: true }).query()).toBeNull();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await vi.waitFor(() =>
+      expect(control.calls.filter((call) => call.route.endsWith("/secret"))).toHaveLength(2),
+    );
+    expect(
+      control.calls.filter((call) => !call.route.startsWith("GET ")).map((call) => call.route),
+    ).toEqual([
+      "POST /api/baskule/admin/plugins",
+      "PUT /api/baskule/admin/plugins/imported/secret",
+      "PATCH /api/baskule/admin/plugins/imported",
+      "PUT /api/baskule/admin/plugins/imported/secret",
+    ]);
+  });
+
+  it("warns about what may not work outside Claude Code and saves anyway", async () => {
+    const control = writeControl();
+    using _fetch = control.stub;
+    await using screen = await render(<AddOwnPage />);
+    await startSkill();
+    await userEvent.type(skillName(), "deploy");
+    await userEvent.type(skillDescription(), "Deploy the site.");
+    await userEvent.fill(
+      screen.getByLabelText("Instructions", { exact: true }),
+      "Run npm install first.\n/deploy the site.",
+    );
+    await userEvent.upload(
+      screen.getByLabelText("Add files"),
+      new File(["API_KEY=abcdefgh12345\n"], ".env"),
+    );
+
+    await expect.element(screen.getByText("Things to check")).toBeVisible();
+    for (const warning of [
+      "This skill uses a slash command. Baskule may not have that command.",
+      "This skill asks to install software. The computer may need setup first.",
+      "This file may contain a password or key. Remove it before sharing the skill.",
+      "You can still save this skill.",
+    ]) {
+      await expect.element(screen.getByText(warning)).toBeVisible();
+    }
+    expect(screen.getByText(/abcdefgh12345/).query()).toBeNull();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await vi.waitFor(() => expect(postBody(control.calls)).toBeDefined());
+  });
+
+  it("reverts every skill to an earlier version at once and leaves servers and other edits alone", async () => {
+    const current = {
+      name: "notes",
+      description: "Write notes.",
+      instructions: "Version three.",
+      files: [],
+    };
+    const earlier = {
+      name: "notes",
+      description: "Write short notes.",
+      instructions: "Version one.",
+      frontmatter: "license: MIT\n",
+      files: [{ path: "template.md", content: btoa("# Notes\n"), encoding: "base64" as const }],
+    };
+    const server = {
+      ...crmServer,
+      credential: "none" as const,
+      transport: "streamable-http" as const,
+    };
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          plugin({
+            name: "Notes",
+            servers: [server],
+            skills: [{ name: "notes", description: "Write notes." }],
+            setup: [{ server: "crm", done: true }],
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/plugins/p1/skills": () => ({
+        skills: [current],
+        editable: true,
+        versions: [
+          { version: 2, savedAt: "2026-10-30T09:00:00Z", savedBy: "Ada" },
+          { version: 1, savedAt: "2026-10-29T09:00:00Z" },
+        ],
+      }),
+      "POST /api/baskule/admin/plugins/p1/versions/1/revert": () => ({
+        skills: [earlier],
+        editable: true,
+        versions: [
+          { version: 3, savedAt: "2026-10-31T09:00:00Z", savedBy: "Ada" },
+          { version: 2, savedAt: "2026-10-30T09:00:00Z", savedBy: "Ada" },
+          { version: 1, savedAt: "2026-10-29T09:00:00Z" },
+        ],
+      }),
+      "PATCH /api/baskule/admin/plugins/p1": () => plugin({}),
+    });
+    using _fetch = control.stub;
+    const confirm = vi.fn(() => true);
+    using _confirm = stubGlobal("confirm", confirm);
+    await using screen = await render(<PluginDetailPage id="p1" />);
+    await press(screen.getByRole("button", { name: "Edit Notes" }));
+
+    await expect
+      .element(
+        screen.getByText(
+          "Reverting restores this plugin's skills. Its servers and keys stay as they are.",
+        ),
+      )
+      .toBeVisible();
+    await userEvent.fill(screen.getByLabelText("Name", { exact: true }), "Team notes");
+    await press(screen.getByRole("button", { name: /^notes/ }));
+    await userEvent.fill(skillDescription(), "Changed, not saved.");
+    await press(screen.getByRole("button", { name: "Revert to version 1" }));
+
+    await expect
+      .element(screen.getByText(/^The skills of version 1 are back and saved\./))
+      .toBeVisible();
+    expect(confirm).toHaveBeenCalledOnce();
+    await expect.element(screen.getByText("Write short notes.")).toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Revert to version 3" })).toBeVisible();
+    await expect.element(screen.getByLabelText("Name", { exact: true })).toHaveValue("Team notes");
+    expect(
+      control.calls.filter((call) => call.route === "GET /api/baskule/admin/plugins"),
+    ).toHaveLength(2);
+    expect(control.calls.some((call) => call.route.startsWith("PATCH "))).toBe(false);
+
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    const { disabledTools: _unchanged, ...unchangedServer } = server;
+    await vi.waitFor(() =>
+      expect(
+        control.calls.find((call) => call.route === "PATCH /api/baskule/admin/plugins/p1")?.body,
+      ).toEqual({
+        plugin: {
+          name: "Team notes",
+          description: "",
+          source: { type: "custom" },
+          servers: [unchangedServer],
+          skills: [earlier],
+          omitted: [],
+        },
+      }),
+    );
+  });
+
+  it("keeps a GitHub plugin's skills as published and copies them into a plugin of the admin's own", async () => {
+    const pinned = {
+      name: "call-prep",
+      description: "Prepare a call.",
+      instructions: "Use the CRM.",
+      frontmatter: "license: Apache-2.0\n",
+      files: [
+        { path: "templates/brief.md", content: btoa("# Brief\n"), encoding: "base64" as const },
+      ],
+    };
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          plugin({
+            name: "Sales",
+            description: "Sales calls.",
+            source: {
+              type: "github",
+              repo: "https://github.com/acme/plugins",
+              sha: "0123456789abcdef0123456789abcdef01234567",
+              path: "sales",
+            },
+            servers: [
+              { ...crmServer, credential: "none", transport: "streamable-http", disabledTools: [] },
+            ],
+            skills: [{ name: pinned.name, description: pinned.description }],
+            setup: [{ server: "crm", done: true }],
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/plugins/p1/skills": () => ({
+        skills: [pinned],
+        editable: false,
+        versions: [],
+      }),
+      "POST /api/baskule/admin/plugins": () => plugin({ id: "copy-1" }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<PluginDetailPage id="p1" />);
+
+    await press(screen.getByRole("button", { name: "Edit Sales" }));
+    await expect
+      .element(
+        screen.getByText(
+          "These skills stay as published. To change them, make your own copy from the plugin's page.",
+        ),
+      )
+      .toBeVisible();
+    expect(screen.getByLabelText("Skill name", { exact: true }).query()).toBeNull();
+    expect(screen.getByText("Earlier versions").query()).toBeNull();
+    await press(screen.getByRole("button", { name: "Cancel" }));
+
+    await expect
+      .element(screen.getByText("Its skills stay as published. Make your own copy to change them."))
+      .toBeVisible();
+    await press(screen.getByRole("button", { name: "Make your own copy" }));
+    await expect
+      .element(screen.getByRole("heading", { name: "Make your own copy of Sales" }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByLabelText("Name", { exact: true }))
+      .toHaveValue("Copy of Sales");
+    await expect.element(screen.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
+    await press(screen.getByRole("button", { name: /^call-prep/ }));
+    await userEvent.fill(
+      screen.getByLabelText("Instructions", { exact: true }),
+      "Use the CRM, then email.",
+    );
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+
+    await vi.waitFor(() =>
+      expect(postBody(control.calls)).toEqual({
+        plugin: {
+          name: "Copy of Sales",
+          description: "Sales calls.",
+          source: { type: "custom" },
+          servers: [],
+          skills: [{ ...pinned, instructions: "Use the CRM, then email." }],
+          omitted: [],
+        },
+        groups: ["everyone"],
+      }),
+    );
+    expect(control.calls.some((call) => call.route.startsWith("PATCH "))).toBe(false);
   });
 });
 

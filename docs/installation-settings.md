@@ -256,26 +256,42 @@ CPU/memory limits, celld heap/timeouts, and bootstrap admin details stay in `.en
 current idle policy through its authenticated runtime-settings endpoint. If that read fails, that idle check
 does not stop computers using a guessed policy.
 
-## Upgrading an earlier installation
+## Launch reset for the plugins revamp
 
-The named-account layout recreates `plugin_connection` and clears pending plugin consent. After an authorized
-deploy, everyone must reconnect plugin accounts. Installed plugins, group assignments, organization keys,
-vendor setup, users, spaces and chats remain. No existing account data is converted.
+Deploy the completed plugin stack together. Do not deploy its intermediate pull requests to an existing
+installation. This is an alpha reset, with no conversion of earlier plugin data. Obtain the installation
+owner's authorization before deploying or resetting their installation. This runbook documents the operation;
+it does not authorize or execute it.
 
-The vendor-setup layout drops per-server OAuth clients and deletes installed plugin data. Reinstall plugins,
-assign groups, enter organization keys and vendor clients, then reconnect accounts after the authorized deploy.
-This reset retains users, groups, spaces and chats.
+The stack's ControlCell schema changes recreate encrypted plugin-key and account storage, replace per-server
+OAuth clients with vendor setup, drop member activation preferences, and delete installed plugins. Plugin
+history is new and belongs to its plugin. The combined reset removes:
 
-This change replaces the product configuration layout. Wipe the installation's data when deploying it:
-back up if wanted, stop and purge with `deploy/v2/down.sh --purge`, prepare `.env` and `auth.json`, then build and
-run `deploy/v2/up.sh` and configure the product in the admin area. Rebuild clients for their new login paths.
-There is no import or fallback from the retired organization/AI environment settings.
+- Every installed plugin and its earlier skill versions.
+- Plugin group assignments and per-space disabled-plugin lists.
+- Organization keys, static vendor OAuth clients, connected plugin accounts and pending plugin consent.
+- Managed skill files on space computers, when each space next boots or reloads and replaces its managed tree.
 
-The encrypted-key schema recreates `plugin_secret`; existing organization keys are removed. Before deployment,
-obtain the installation owner's authorization and retain the keys privately if they must be re-entered. Deploy
-the new build, let ControlCell apply the schema, and re-enter organization keys in Admin → Plugins. Users,
-groups, spaces and chats are untouched. No plaintext reader or data conversion is retained.
+It keeps users, groups and memberships, spaces and their setting for allowing members' own accounts,
+Better Auth accounts and sessions, chats, computers, organization and AI settings, and the installation secret.
+The reset does not revoke tokens at vendors or erase plugin results already present in chats. Keep the
+installation secret stable so retained sessions and other encrypted settings remain usable.
 
-The assignment schema drops `user_plugin` and its member activation preferences. Existing plugins retain their
-stored Pause state. The launch reset removes plugin data with the installation owner's authorization; users,
-groups, spaces and chats are retained. No activation route or compatibility reader remains.
+After the owner authorizes the operation:
+
+1. Retain any plugin packages and setup information that must be re-entered in private storage. Back up the
+   installation if the owner needs a recovery point; do not put keys or account tokens in source control.
+2. Deploy the complete stack through the installation's existing deployment workflow. Confirm that the
+   ControlCell schema changes applied, including the installed-plugin reset. Do not purge the installation's
+   volumes: that would also remove the users, spaces and chats this reset keeps.
+3. Open one personal space and one team space. Confirm their managed `/sandbox/space/plugins` tree is empty or absent
+   and their model lists no plugin skills. Other computers lose managed plugin files when their spaces next
+   boot or reload; unrelated files remain.
+4. Reinstall catalog plugins or reviewed custom packages, assign groups, and re-enter organization keys and
+   vendor sign-in clients. Finish shared setup before asking people to connect.
+5. Ask members to reconnect their plugin accounts and choose their defaults. Check readiness in Settings →
+   Plugins and verify the required personal/team access with the installation's approved test accounts.
+
+Existing development databases that contain plugins saved by an intermediate branch must reinstall those
+plugins against the final input shape or use a separately authorized disposable-data reset. No compatibility
+reader or data conversion is provided.

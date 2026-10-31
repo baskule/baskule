@@ -63,6 +63,12 @@ export interface SkillInput {
   frontmatter?: string;
   files: PluginFile[];
 }
+export interface SkillHistory {
+  skills: SkillInput[];
+  editable: boolean;
+  /** When each snapshot stopped being current, and who replaced it. */
+  versions: { version: number; savedAt: string; savedBy?: string }[];
+}
 export type ServerInput = Omit<PluginServer, "disabledTools"> & { disabledTools?: string[] };
 export interface ServerTestInput { server: ServerInput; headers?: Record<string, string> }
 export interface PluginTool { name: string; description: string }
@@ -126,6 +132,7 @@ export const PLUGIN_ERROR_CODES = [
   "catalog_not_available",
   "already_installed",
   "not_editable",
+  "version_not_found",
   "builtin_group",
   "connection_failed",
   "connection_not_allowed",

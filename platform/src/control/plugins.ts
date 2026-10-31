@@ -2,7 +2,7 @@ import { catalogService, catalogVendor, type CatalogService, type CatalogVendor 
 import type { ConnectionCipher } from "./connection-crypto";
 import { checkMcpUrl, connectMcp, serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
-import type { Plugin, PluginInput, PluginUpdate, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode, ServerInput, PluginTool } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { Plugin, PluginInput, PluginUpdate, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode, ServerInput, PluginTool, SkillHistory } from "../../../app/packages/contracts/src/baskule-plugins";
 import { HttpError, pluginError, json, notFound } from "../shared/http";
 import type { StorageLike } from "./service";
 import type { Connections } from "./connections";
@@ -222,6 +222,30 @@ export class Plugins {
     if (required && !names.length || names.length > 20 || names.some(k => ["host", "cookie", "content-length", "connection", "transfer-encoding"].includes(k.toLowerCase()))) throw pluginError(400, "invalid_secret_headers");
   }
 
+  private storedTotal(): number {
+    return Number(this.rows("select (select coalesce(sum(stored_bytes),0) from plugin) + (select coalesce(sum(stored_bytes),0) from plugin_version) as bytes")[0].bytes);
+  }
+  private history(plugin: Plugin): SkillHistory {
+    return {
+      skills: this.skills(plugin.id).map(skillToInput),
+      editable: plugin.source.type === "custom" || plugin.source.type === "upload",
+      versions: this.rows("select v.version,v.saved_at,u.name from plugin_version v left join user u on u.id=v.saved_by where v.plugin_id=? order by v.version desc", plugin.id).map(row => ({
+        version: Number(row.version), savedAt: new Date(Number(row.saved_at)).toISOString(), ...(row.name ? { savedBy: row.name as string } : {}),
+      })),
+    };
+  }
+  private saveSkills(plugin: Plugin, skills: StoredSkill[], storedBytes: number, actor: string) {
+    const previous = this.rows("select skill_files,stored_bytes from plugin where id=?", plugin.id)[0];
+    const files = JSON.stringify(skills);
+    if (previous.skill_files !== files) {
+      const version = Number(this.rows("select coalesce(max(version),0)+1 as next from plugin_version where plugin_id=?", plugin.id)[0].next);
+      this.rows("insert into plugin_version(plugin_id,version,skill_files,stored_bytes,saved_at,saved_by) values (?,?,?,?,?,?)", plugin.id, version, previous.skill_files, previous.stored_bytes, Date.now(), actor);
+      this.rows("delete from plugin_version where plugin_id=? and version not in (select version from plugin_version where plugin_id=? order by version desc limit ?)", plugin.id, plugin.id, IMPORT_LIMITS.versions);
+    }
+    this.rows("update plugin set definition=?,skill_files=?,stored_bytes=? where id=?", JSON.stringify(plugin), files, storedBytes, plugin.id);
+    if (this.storedTotal() > IMPORT_LIMITS.totalStored) throw pluginError(413, "plugin_storage_limit");
+  }
+
   private async inspect(req: Request): Promise<Response> {
     const data = parse(z.union([z.object({ archive: z.string() }).strict(), z.object({ github: z.string().max(2048) }).strict()]), await body(req, Math.ceil(IMPORT_LIMITS.archive / 3) * 4 + 8192));
     if ("github" in data) {
@@ -256,8 +280,8 @@ export class Plugins {
       if (this.get(plugin.id)) throw pluginError(409, "already_installed");
       const groups = new Set(this.groups.list().map(group => group.id));
       if (data.groups.some(id => !groups.has(id))) throw pluginError(400, "invalid_group");
-      const total = this.rows("select count(*) as n, coalesce(sum(stored_bytes),0) as bytes from plugin")[0];
-      if (Number(total.n) >= IMPORT_LIMITS.plugins || Number(total.bytes) + storedBytes > IMPORT_LIMITS.totalStored) throw pluginError(413, "plugin_storage_limit");
+      const total = this.rows("select count(*) as n from plugin")[0];
+      if (Number(total.n) >= IMPORT_LIMITS.plugins || this.storedTotal() + storedBytes > IMPORT_LIMITS.totalStored) throw pluginError(413, "plugin_storage_limit");
       this.rows("insert into plugin(id,definition,skill_files,stored_bytes) values (?,?,?,?)", plugin.id, JSON.stringify(plugin), JSON.stringify(skills), storedBytes);
       for (const group of new Set(data.groups)) this.rows("insert into group_plugin(group_id,plugin_id) values (?,?)", group, plugin.id);
     });
@@ -269,6 +293,17 @@ export class Plugins {
     if (path === "/admin/plugins" && req.method === "POST") return this.install(req);
     if (path === "/admin/plugins/inspect" && req.method === "POST") return this.inspect(req);
     if (path === "/admin/plugins/test" && req.method === "POST") return this.test(req);
+    const revert = /^\/admin\/plugins\/([^/]+)\/versions\/([1-9]\d{0,8})\/revert$/.exec(path);
+    if (revert && req.method === "POST") {
+      const plugin = this.get(revert[1]);
+      if (!plugin) return notFound();
+      if (plugin.source.type !== "custom" && plugin.source.type !== "upload") throw pluginError(409, "not_editable");
+      const earlier = this.rows("select skill_files,stored_bytes from plugin_version where plugin_id=? and version=?", plugin.id, Number(revert[2]))[0];
+      if (!earlier) throw pluginError(404, "version_not_found");
+      const skills: StoredSkill[] = JSON.parse(earlier.skill_files as string);
+      this.storage.transactionSync(() => this.saveSkills({ ...plugin, skills: skills.map(s => ({ name: s.name, description: s.description })) }, skills, Number(earlier.stored_bytes), userId));
+      return json(this.history(this.get(plugin.id)!));
+    }
     const match = /^\/admin\/plugins\/([^/]+)(\/(?:secret|skills|export|tools))?$/.exec(path);
     if (!match) return notFound();
     const plugin = this.get(match[1]);
@@ -282,7 +317,7 @@ export class Plugins {
       try { return json({ tools: await this.tools(server, headers) }); }
       catch { throw pluginError(502, "server_unreachable"); }
     }
-    if (match[2] === "/skills" && req.method === "GET") return json({ skills: this.skills(plugin.id).map(skillToInput), editable: plugin.source.type === "custom" || plugin.source.type === "upload" });
+    if (match[2] === "/skills" && req.method === "GET") return json(this.history(plugin));
     if (match[2] === "/export" && req.method === "GET") {
       if (plugin.source.type === "catalog") throw pluginError(409, "not_editable");
       return new Response(exportPackage(plugin, this.skills(plugin.id)) as Uint8Array<ArrayBuffer>, { headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="plugin.zip"' } });
@@ -332,8 +367,6 @@ export class Plugins {
       const updated: Plugin = { ...patch.plugin, id: current.id, vendor: current.vendor, enabled: current.enabled, createdAt: current.createdAt,
         skills: next.skills.map(s => ({ name: s.name, description: s.description })), servers: next.servers };
       this.storage.transactionSync(() => {
-        const total = Number(this.rows("select coalesce(sum(stored_bytes),0) as bytes from plugin where id<>?", current.id)[0].bytes);
-        if (total + next.storedBytes > IMPORT_LIMITS.totalStored) throw pluginError(413, "plugin_storage_limit");
         for (const old of current.servers) {
           const replacement = next.servers.find(s => s.name === old.name);
           if (replacement && serverFingerprint(old) === serverFingerprint(replacement)) continue;
@@ -344,7 +377,7 @@ export class Plugins {
           }
           for (const table of ["plugin_secret", "plugin_connection", "plugin_oauth_state"]) this.rows(`delete from ${table} where plugin_id=? and server=?`, current.id, old.name);
         }
-        this.rows("update plugin set definition=?,skill_files=?,stored_bytes=? where id=?", JSON.stringify(updated), JSON.stringify(next.skills), next.storedBytes, current.id);
+        this.saveSkills(updated, next.skills, next.storedBytes, userId);
       });
       return json(updated);
     }

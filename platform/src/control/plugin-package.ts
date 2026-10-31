@@ -5,7 +5,7 @@ import type { PluginFile, PluginDraft, PluginInput, SkillInput, Omission, Fix } 
 import { parseServersJson, serversJson, skillFieldErrors } from "../../../app/packages/contracts/src/baskule-plugin-formats";
 import { HttpError, pluginError } from "../shared/http";
 
-export const IMPORT_LIMITS = { archive: 10 * 1024 * 1024, expanded: 20 * 1024 * 1024, files: 2000, skillFile: 1024 * 1024, stored: 4 * 1024 * 1024, totalStored: 32 * 1024 * 1024, plugins: 100 };
+export const IMPORT_LIMITS = { archive: 10 * 1024 * 1024, expanded: 20 * 1024 * 1024, files: 2000, skillFile: 1024 * 1024, stored: 4 * 1024 * 1024, totalStored: 32 * 1024 * 1024, plugins: 100, versions: 10 };
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
 export function safePath(path: string): string {
   const p = path.replace(/^\.\//, "").replace(/\/$/, "");

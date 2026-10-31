@@ -14,7 +14,7 @@ import {
   type PluginUpdate,
   type ServerTestInput,
   type ServerTestResult,
-  type SkillInput,
+  type SkillHistory,
   type SpacePluginSettings,
 } from "@t3tools/contracts/baskule-plugins";
 import { toastManager } from "../../components/ui/toast";
@@ -40,12 +40,11 @@ export const pluginsApi = {
   create: (input: PluginCreate) => request<Plugin>("POST", `${root}/admin/plugins`, input),
   update: (id: string, input: PluginUpdate) =>
     request<Plugin>("PATCH", `${root}/admin/plugins/${enc(id)}`, input),
-  /** A plugin's skills in full, to edit it as one `PluginInput`. */
-  skills: (id: string) =>
-    request<{ skills: SkillInput[]; editable: boolean }>(
-      "GET",
-      `${root}/admin/plugins/${enc(id)}/skills`,
-    ),
+  /** A plugin's skills in full, to edit it as one `PluginInput`, and its earlier skill versions. */
+  skills: (id: string) => request<SkillHistory>("GET", `${root}/admin/plugins/${enc(id)}/skills`),
+  /** Saves an earlier version's skills as the current ones at once; servers and keys stay as they are. */
+  revert: (id: string, version: number) =>
+    request<SkillHistory>("POST", `${root}/admin/plugins/${enc(id)}/versions/${version}/revert`),
   /** The plugin as a Claude/Codex package. */
   exportZip: async (id: string): Promise<Blob> => {
     let response: Response;
@@ -190,7 +189,10 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
       "This server runs as a program on someone's computer. Baskule needs its web address; ask its maker whether it has one.",
     ),
   not_found: () => t("It no longer exists. Reload the page."),
-  not_editable: () => t("A plugin from the catalog can only be paused or resumed here."),
+  not_editable: () =>
+    t(
+      "Its skills come from the catalog or GitHub and can't be changed here. Make your own copy to change them.",
+    ),
   not_oauth_server: () => t("This server doesn't use each person's own account."),
   not_organization_server: () => t("This server doesn't use an organization key."),
   oauth_client_configuration_required: () => t("Your administrator needs to finish setting it up"),
@@ -226,12 +228,26 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
   server_unreachable: () =>
     t("Baskule couldn't connect to this server. Check the server details and try again."),
   too_many_plugin_files: () => t("It has too many files to add."),
-  unsafe_plugin_path: () => t("It contains a file path Baskule can't accept."),
+  unsafe_plugin_path: () =>
+    t(
+      "One of its file paths can't be used. Use names and folders like scripts/run.py, without .. or a leading /.",
+    ),
   unsupported_archive: cantOpen,
   unsupported_plugin_version: () => t("It uses a plugin format version Baskule can't read yet."),
   user_not_found: () => t("One of these people no longer exists. Reload the page and try again."),
+  version_not_found: () => t("This version is no longer kept. Reload the page."),
   vendor_unknown: () => t("Baskule no longer knows this service. Reload the page and try again."),
 };
+
+/** A file as base64, the way plugin files travel to the server. */
+export async function base64Of(file: Blob): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return btoa(binary);
+}
 
 const isPluginErrorCode = (code: string): code is PluginErrorCode =>
   (PLUGIN_ERROR_CODES as ReadonlyArray<string>).includes(code);
