@@ -269,12 +269,14 @@ it.effect("refuses every cross-author control without changing the persisted tas
         (yield* service.setEnabled({ id: task.id, enabled: true }, owner).pipe(Effect.flip))
           .message,
       ).toContain("author");
-      yield* sql`UPDATE scheduled_tasks SET author_json = NULL WHERE task_id = ${task.id}`;
+      yield* sql`UPDATE scheduled_tasks SET author_json = NULL, enabled = 1 WHERE task_id = ${task.id}`;
       expect((yield* service.upsert(input, bob).pipe(Effect.flip)).message).toContain("author");
       expect((yield* service.runNow({ id: task.id }, bob).pipe(Effect.flip)).message).toContain(
         "author",
       );
-      yield* service.setEnabled({ id: task.id, enabled: false }, owner);
+      expect((yield* service.setEnabled({ id: task.id, enabled: false }, owner)).task.enabled).toBe(
+        false,
+      );
       expect(
         (yield* service.setEnabled({ id: task.id, enabled: true }, owner).pipe(Effect.flip))
           .message,

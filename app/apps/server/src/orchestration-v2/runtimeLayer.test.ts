@@ -360,7 +360,7 @@ const layerProjectDeletionTest = Layer.mergeAll(
   Layer.provideMerge(layerResourceCleanupTest),
   Layer.provide(McpSessionRegistryTestkit.layer),
   Layer.provide(McpProviderSessions.layer),
-  Layer.provide(SqlitePersistence.layerMemory),
+  Layer.provideMerge(SqlitePersistence.layerMemory),
   Layer.provide(layerCheckpointStoreTest),
   Layer.provide(layerServerConfig),
   Layer.provide(ServerSettings.layerTest()),
@@ -474,10 +474,10 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
         assert.notInclude(remainingIds, bound.id);
         assert.notInclude(remainingIds, webhook.id);
         assert.includeMembers(remainingIds, [independent.id, detached.id, moved.id, other.id]);
-        assert.lengthOf(
-          (yield* tasks.listWebhookDeliveries({ id: webhook.id }, taskActor)).deliveries,
-          0,
-        );
+        const sql = yield* SqlClient.SqlClient;
+        assert.lengthOf(yield* sql`SELECT 1 FROM scheduled_task_webhook_deliveries WHERE task_id = ${webhook.id}`, 0);
+        const missingDeliveries = yield* tasks.listWebhookDeliveries({ id: webhook.id }, taskActor).pipe(Effect.flip);
+        assert.equal(missingDeliveries.message, "Schedule task not found.");
         const rejected = yield* tasks.runNow({ id: bound.id }, taskActor).pipe(Effect.flip);
         assert.equal(rejected.message, "Schedule task not found.");
         assert.equal(
@@ -1028,7 +1028,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
               dispatchMode: { type: mode, targetRunId: run.id },
             })
             .pipe(Effect.flip);
-          assert.include(String(error.cause), "Only the task's author");
+          assert.include(String(error.cause), "Only the run's author");
           assert.deepEqual(
             (yield* orchestrator.getThreadProjection(threadId)).messages,
             beforeSteer.messages,
@@ -5289,7 +5289,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
             attachments: [],
             modelSelection,
             author: { id: "bob", name: "Bob" },
-            ...(scheduled ? { scheduledTaskId: ScheduledTaskId.make("scheduled-task:bob") } : {}),
+            scheduledTaskId: ScheduledTaskId.make("scheduled-task:bob"),
             dispatchMode: { type: scheduled ? "queue_after_active" : "start_immediately" },
           });
         }
@@ -5305,7 +5305,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           })
           .pipe(Effect.flip);
         assert.equal(error._tag, "OrchestratorCommandRejectedError");
-        assert.include(String(error.cause), "Scheduled runs cannot be edited");
+        assert.include(String(error.cause), "Scheduled runs and delegated inputs cannot be edited");
         const promotion = yield* orchestrator
           .dispatch({
             type: "queued-message.promote-to-steer",
@@ -5315,9 +5315,42 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
             targetRunId: before.runs[0]!.id,
           })
           .pipe(Effect.flip);
-        assert.include(String(promotion.cause), "Scheduled runs cannot be edited or used to steer");
+        assert.include(
+          String(promotion.cause),
+          "Scheduled runs and delegated inputs cannot be edited or used to steer",
+        );
         const after = yield* orchestrator.getThreadProjection(threadId);
         assert.deepEqual(after.messages, before.messages);
+        const manualMessageId = MessageId.make(`${threadId}:manual`);
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`${threadId}:manual`),
+          createdBy: "user",
+          creationSource: "web",
+          threadId,
+          messageId: manualMessageId,
+          text: "Alice's queued input",
+          author: { id: "alice", name: "Alice" },
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "queue_after_active" },
+        });
+        const withManual = yield* orchestrator.getThreadProjection(threadId);
+        const manualRun = withManual.runs.find((run) => run.userMessageId === manualMessageId)!;
+        const deniedPromotion = yield* orchestrator
+          .dispatch({
+            type: "queued-message.promote-to-steer",
+            commandId: CommandId.make(`${threadId}:manual-promotion`),
+            threadId,
+            queuedRunId: manualRun.id,
+            targetRunId: withManual.runs[0]!.id,
+          })
+          .pipe(Effect.flip);
+        assert.include(String(deniedPromotion.cause), "Only the run's author");
+        assert.deepEqual(
+          (yield* orchestrator.getThreadProjection(threadId)).messages,
+          withManual.messages,
+        );
       }),
   );
 });

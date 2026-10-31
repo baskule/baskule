@@ -84,7 +84,7 @@ test("scheduled task controls retain the author's authority", { tag: ["@feature:
       dispatchMode: { type: "steer_active", targetRunId: scheduledRun.id },
     });
     expect(steer._tag).toBe("Failure");
-    expect(JSON.stringify(steer)).toContain("Only the task's author");
+    expect(JSON.stringify(steer)).toContain("Only the run's author");
     await bob.ok("scheduledTasks.setEnabled", { id: task.id, enabled: true });
     const stopped = (await admin.ok("scheduledTasks.setEnabled", { id: task.id, enabled: false })).task;
     expect(stopped.author).toEqual(task.author);
@@ -92,6 +92,50 @@ test("scheduled task controls retain the author's authority", { tag: ["@feature:
     expect(reenable._tag).toBe("Failure");
     await admin.ok("scheduledTasks.delete", { id: task.id });
     await bob.ok("scheduledTasks.delete", { id: hook.id });
+
+    const interactiveThread = await api.launch(bob, projectId, "Ready [[fake:text ready]]");
+    const ready = api.watchThread(bob, interactiveThread);
+    try { await api.waitFor("interactive thread ready", () => ready.settled()); } finally { ready.stop(); }
+    const delegateArgs = { task: "Scheduled child <<fake:long 400>> <<fake:delay 30>>", title: "Scheduled child", mode: "async" };
+    const delegatedInput = { ...input, commandId: crypto.randomUUID(), threadId: interactiveThread, title: "Delegating scheduled work", prompt: `Delegate [[fake:tool *_delegate_task ${JSON.stringify(delegateArgs)}]]` };
+    const delegatedTask = (await bob.ok("scheduledTasks.upsert", delegatedInput)).task;
+    await bob.ok("scheduledTasks.runNow", { id: delegatedTask.id });
+    const delegated = await api.waitFor("scheduled child running", async () => {
+      const parent = await bob.ok("orchestration.getThreadProjection", { threadId: interactiveThread });
+      const childId = parent.subagents.find((child) => child.childThreadId)?.childThreadId;
+      if (!childId) return;
+      const child = await bob.ok("orchestration.getThreadProjection", { threadId: childId });
+      const active = child.runs.find((run) => run.status === "running");
+      return active && child.providerTurns.some((turn) => turn.runAttemptId === active.activeAttemptId && turn.status === "running") && { childId, active };
+    });
+    const childSteer = await alice.call("orchestration.dispatchCommand", {
+      type: "message.dispatch", commandId: crypto.randomUUID(), createdBy: "user", creationSource: "web",
+      threadId: delegated.childId, messageId: crypto.randomUUID(), text: "Attacker child instructions", attachments: [],
+      dispatchMode: { type: "steer_active", targetRunId: delegated.active.id },
+    });
+    expect(childSteer._tag).toBe("Failure");
+    expect(JSON.stringify(childSteer)).toContain("Only the run's author");
+    await bob.ok("scheduledTasks.delete", { id: delegatedTask.id });
+    const childState = api.watchThread(bob, delegated.childId);
+    try { await api.waitFor("scheduled child completed", () => childState.settled()); } finally { childState.stop(); }
+
+    const questionThread = await api.launch(bob, projectId, "Ready for questions [[fake:text ready]]");
+    const questionReady = api.watchThread(bob, questionThread);
+    try { await api.waitFor("question thread ready", () => questionReady.settled()); } finally { questionReady.stop(); }
+    const questionArgs = { questions: [{ question: "Which report?", header: "Report", options: [{ label: "Daily", description: "Today's report" }] }] };
+    const questionTask = (await bob.ok("scheduledTasks.upsert", { ...input, commandId: crypto.randomUUID(), threadId: questionThread, title: "Scheduled question", prompt: `Ask [[fake:tool question ${JSON.stringify(questionArgs)}]]` })).task;
+    const questions = api.watchThread(bob, questionThread);
+    try {
+      await bob.ok("scheduledTasks.runNow", { id: questionTask.id });
+      const request = await api.waitFor("scheduled question pending", () => [...questions.requests.values()].find((request) => request.kind === "user_input" && request.status === "pending"));
+      const refused = await alice.call("orchestration.dispatchCommand", { type: "runtime-request.respond", commandId: crypto.randomUUID(), threadId: questionThread, requestId: request.id, author: { id: people.bob.me.user.id, name: "Forged Bob" }, answers: { q0: "Attacker instructions" } });
+      expect(refused._tag).toBe("Failure");
+      expect(JSON.stringify(refused)).toContain("Only the run's author");
+      await api.dispatch(bob, { type: "runtime-request.respond", threadId: questionThread, requestId: request.id, answers: { q0: "Daily" } });
+      await api.waitFor("author's answer accepted", () => questions.requests.get(request.id)?.status === "resolved");
+    } finally { questions.stop(); }
+    await bob.ok("scheduledTasks.delete", { id: questionTask.id });
+
   } finally {
     for (const client of [alice, bob, admin]) client.close();
     await Promise.all([alice.closed, bob.closed, admin.closed]);

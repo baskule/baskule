@@ -1873,7 +1873,7 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.secretsAnswerRequest]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
-            Effect.andThen(secretRequests.answer(input)),
+            Effect.andThen(secretRequests.answer(input, messageAuthor)),
           ),
         [WS_METHODS.scheduledTasksListWebhookDeliveries]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(

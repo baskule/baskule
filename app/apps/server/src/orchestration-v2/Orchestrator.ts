@@ -1,3 +1,4 @@
+import { resolveTaskOwner } from "../baskule/task-owner.ts";
 import { runInputAuthor } from "../baskule/usageAuthor.ts"; // baskule: share exact-run attribution.
 import type {
   GuestShareId,
@@ -20,6 +21,7 @@ import {
   legacyThreadPullRequestKey,
 } from "../sourceControl/threadPullRequests.ts";
 import {
+  isAutomatedMessage,
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type ChatAttachment,
   CommandId,
@@ -4278,7 +4280,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       (message) => message.id === targetRun.userMessageId,
     );
     if (
-      targetMessage?.scheduledTaskId !== undefined &&
+      targetMessage !== undefined &&
+      isAutomatedMessage(targetMessage) &&
       (!targetMessage.author?.id.trim() ||
         !input.author?.id.trim() ||
         input.author.id !== targetMessage.author.id)
@@ -4287,7 +4290,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandId: input.command.commandId,
         commandType: input.command.type,
         cause:
-          "Only the task's author can steer its scheduled run. Queue a separate message instead.",
+          "Only the run's author can steer scheduled or delegated work. Queue a separate message instead.",
       });
     }
     if (targetMessage !== undefined && isNativeMaintenanceCommand(targetMessage)) {
@@ -5174,6 +5177,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       projection,
       command.dispatchMode,
       command.deliveryIntent,
+      command.author,
     );
     if (dispatchMode.type === "steer_active") {
       const targetRunId = dispatchMode.targetRunId;
@@ -7819,6 +7823,46 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Runtime request ${command.requestId} is ${runtimeRequest.status}.`,
         });
       }
+      const sourceRunId = context.node?.runId ?? context.item?.runId;
+      const sourceInput =
+        sourceRunId == null
+          ? undefined
+          : yield* projectionStore
+              .getRunMessage(command.threadId, sourceRunId)
+              .pipe(mapDispatchError(command));
+      const sourceShell =
+        sourceInput === undefined
+          ? yield* projectionStore.getThreadShell(command.threadId).pipe(mapDispatchError(command))
+          : undefined;
+      const inherited = sourceShell?.lineage.parentThreadId != null;
+      const pureCancel =
+        command.decision === "cancel" &&
+        command.feedback === undefined &&
+        command.answers === undefined &&
+        command.attachmentsByQuestionId === undefined;
+      if (!pureCancel && (isAutomatedMessage(sourceInput) || inherited)) {
+        const owner =
+          sourceInput?.author ??
+          (inherited
+            ? yield* resolveTaskOwner(
+                yield* projectionStore
+                  .getThreadRecords(command.threadId, ["runs", "messages", "subagents"])
+                  .pipe(mapDispatchError(command)),
+                (id) =>
+                  projectionStore
+                    .getThreadRecords(id, ["runs", "messages", "subagents"])
+                    .pipe(mapDispatchError(command)),
+              )
+            : undefined);
+        if (!owner?.id.trim() || !command.author?.id.trim() || command.author.id !== owner.id) {
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause:
+              "Only the run's author can answer questions or approvals for scheduled or delegated work.",
+          });
+        }
+      }
       if (runtimeRequest.responseCapability.type === "not_resumable") {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
@@ -8041,6 +8085,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             cause: "Enter an answer before sending.",
           });
         }
+        // baskule: queued answers continue the run that asked the question.
+        const author = yield* runInputAuthor(
+          command.threadId,
+          requestNode?.runId,
+          projectionStore.getThreadRecords,
+        ).pipe(mapDispatchError(command));
         let dispatchMode: Extract<
           OrchestrationV2Command,
           { type: "message.dispatch" }
@@ -8054,7 +8104,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         } = yield* projectionStore
           .getRunningTurnContext(command.threadId)
           .pipe(mapDispatchError(command));
-        if (activeRun && activeProviderTurn && activeProviderThread?.providerSessionId) {
+        const activeInput = activeRun
+          ? yield* projectionStore
+              .getRunMessage(command.threadId, activeRun.id)
+              .pipe(mapDispatchError(command))
+          : undefined;
+        if (
+          activeRun &&
+          activeProviderTurn &&
+          activeProviderThread?.providerSessionId &&
+          (!activeInput?.author?.id || activeInput.author.id === author?.id)
+        ) {
           const activeSession = yield* providerSessions
             .get(activeProviderThread.providerSessionId)
             .pipe(
@@ -8074,12 +8134,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             dispatchMode = { type: "steer_active", targetRunId: activeRun.id };
           }
         }
-        // baskule: queued answers continue the run that asked the question.
-        const author = yield* runInputAuthor(
-          command.threadId,
-          requestNode?.runId,
-          projectionStore.getThreadRecords,
-        ).pipe(mapDispatchError(command));
         return yield* dispatchMessage(
           {
             type: "message.dispatch",
@@ -8277,12 +8331,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Queued run ${queuedRun.id} is missing message or execution state.`,
       });
     }
-    if (queuedMessage.scheduledTaskId !== undefined) {
+    if (isAutomatedMessage(queuedMessage)) {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
         cause:
-          "Scheduled runs cannot be edited or used to steer another run. Change the scheduled task instead.",
+          "Scheduled runs and delegated inputs cannot be edited or used to steer another run. Change the task instead.",
       });
     }
     if (
@@ -8591,12 +8645,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Queued run ${queuedRun.id} has no user message.`,
       });
     }
-    if (queuedMessage.scheduledTaskId !== undefined) {
+    if (isAutomatedMessage(queuedMessage)) {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
         cause:
-          "Scheduled runs cannot be edited or used to steer another run. Change the scheduled task instead.",
+          "Scheduled runs and delegated inputs cannot be edited or used to steer another run. Change the task instead.",
       });
     }
     if (

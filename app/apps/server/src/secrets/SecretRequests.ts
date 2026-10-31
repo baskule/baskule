@@ -2,10 +2,12 @@
 // Consuming tools keep values out of transcripts, projections, clients and model context.
 // A `file` request instead moves its value to an owner-only file for the agent's own shell.
 import {
+  isAutomatedMessage,
   CommandId,
   SecretRef,
   SecretRequestError,
   type ProjectId,
+  type OrchestrationV2Author,
   type SecretRequestAnswerInput,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -51,7 +53,10 @@ const decodeStored = Schema.decodeUnknownOption(StoredSecret);
 export class SecretRequests extends Context.Service<
   SecretRequests,
   {
-    readonly answer: (input: SecretRequestAnswerInput) => Effect.Effect<void, SecretRequestError>;
+    readonly answer: (
+      input: SecretRequestAnswerInput,
+      actor: OrchestrationV2Author | undefined,
+    ) => Effect.Effect<void, SecretRequestError>;
     readonly savedRef: (input: {
       readonly threadId: ThreadId;
       readonly turnItemId: string;
@@ -81,15 +86,15 @@ const make = Effect.gen(function* () {
   ).toString("hex");
 
   const answer: SecretRequests["Service"]["answer"] = Effect.fn("SecretRequests.answer")(
-    function* (input) {
+    function* (input, actor) {
       yield* Effect.annotateCurrentSpan({
         "orchestration_v2.thread_id": input.threadId,
         "secret_request.answer": input.answer.type,
       });
       const records = yield* threadManagement
-        .getThreadRecords(input.threadId, ["runs", "turnItems"], {
+        .getThreadRecords(input.threadId, ["runs", "messages", "turnItems"], {
           turnItemTypes: ["secret_request"],
-          messageRoles: [],
+          messageRoles: ["user"],
         })
         .pipe(Effect.mapError((cause) => new SecretRequestError({ reason: "load_failed", cause })));
       const item = records.turnItems.find((candidate) => candidate.id === input.turnItemId);
@@ -102,6 +107,14 @@ const make = Effect.gen(function* () {
       const run = records.runs.find((candidate) => candidate.id === item.runId);
       if (run === undefined || ThreadManagementService.isTerminalRunStatus(run.status)) {
         return yield* new SecretRequestError({ reason: "agent_stopped" });
+      }
+      const source = records.messages.find((message) => message.id === run.userMessageId);
+      if (
+        source !== undefined &&
+        isAutomatedMessage(source) &&
+        (!source.author?.id.trim() || !actor?.id.trim() || source.author.id !== actor.id)
+      ) {
+        return yield* new SecretRequestError({ reason: "forbidden" });
       }
       // Create before recording so racing answers cannot overwrite values or show saved before storage.
       // Existing values on pending cards finish earlier saves whose recording failed.

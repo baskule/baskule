@@ -17,13 +17,11 @@ import {
   dispatchFailure,
   newCommandId,
   readCaller,
+  readCallerAuthor,
   readThread,
   unavailable,
 } from "../../threadAccess.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
-import * as McpInvocationContext from "../../McpInvocationContext.ts";
-import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
-import { resolveTaskOwner } from "../../../baskule/task-owner.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import { ThreadToolkit } from "./tools.ts";
@@ -98,16 +96,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   run_scheduled_task_now: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const scheduler = yield* ScheduledTasks.ScheduledTaskService;
-      const { projection } = yield* readThread(undefined, ["runs", "messages", "subagents"]);
-      const context = yield* Effect.context<
-        McpInvocationContext.McpInvocationContext | ThreadManagementService.ThreadManagementService
-      >();
-      const actor = yield* resolveTaskOwner(projection, (id) =>
-        readThread(id, ["runs", "messages", "subagents"]).pipe(
-          Effect.map(({ projection }) => projection),
-          Effect.provide(context),
-        ),
-      );
+      const actor = yield* readCallerAuthor();
       const { task, threadId } = yield* scheduler
         .runNow({ id: input.taskId }, actor)
         .pipe(
@@ -252,9 +241,11 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
           threadId: input.threadId,
           requestId,
         });
+        const author = yield* readCallerAuthor();
         const result = yield* threads
           .dispatch({
             type: "runtime-request.respond",
+            ...(author === undefined ? {} : { author }),
             threadId: projection.thread.id,
             commandId: yield* newCommandId(),
             requestId,

@@ -1626,7 +1626,7 @@ describe("orchestrator MCP toolkit", () => {
               threadId: parentThreadId,
               turnItemId: card.id,
               answer: { type: "save", secret: "github-webhook-secret" },
-            });
+            }, undefined);
             const secretCall = yield* Fiber.join(secretFiber);
             expect(secretCall.isError).toBe(false);
             const secretResult = secretCall.structuredContent as {
