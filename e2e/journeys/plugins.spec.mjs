@@ -63,7 +63,7 @@ test("assigned skills are ready without activation and leave a team when its con
     const everyone = await api.admin.json("GET", "/api/baskule/admin/groups/everyone");
     await api.admin.json("PATCH", "/api/baskule/admin/groups/everyone", { plugins: everyone.plugins.filter(id => id !== plugin.id) });
     group = await api.admin.json("POST", "/api/baskule/admin/groups", { name, members: [people.alice.me.user.id], permissions: { canCreateSpaces: false }, plugins: [plugin.id] });
-    team = await api.teamSpace(people.bob, `Shared skills ${name}`, [people.alice]);
+    team = await api.teamSpace(api.admin, `Shared skills ${name}`, [people.alice, people.bob]);
     const skillDirectory = `/sandbox/space/plugins/${plugin.id}/hello`;
     const client = await people.bob.rpc(team);
     try {
