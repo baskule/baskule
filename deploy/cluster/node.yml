@@ -11,7 +11,7 @@ services:
       - -sf
       - -o
       - /dev/null
-      - http://127.0.0.1:47091/.well-known/celld/health
+      - http://${BASKULE_PRIVATE_IP}:${CELLD_WORKER_PORT:-47091}/.well-known/celld/health
       interval: 5s
       timeout: 3s
       start_period: 60s
@@ -22,9 +22,9 @@ services:
     mem_limit: ${CELLD_MEMORY:-3g}
     command:
     - --listen
-    - 0.0.0.0:47091
+    - ${BASKULE_PRIVATE_IP:?set BASKULE_PRIVATE_IP}:${CELLD_WORKER_PORT:-47091}
     - --internal-listen
-    - 0.0.0.0:47092
+    - ${BASKULE_PRIVATE_IP}:${CELLD_INTERNAL_PORT:-47092}
     - --advertise
     - ${BASKULE_PRIVATE_IP}:${CELLD_INTERNAL_PORT:-47092}
     environment:
@@ -43,9 +43,7 @@ services:
       CELLD_NODE: ${CELLD_NODE:?set a unique CELLD_NODE}
     volumes:
     - celld:/var/lib/celld
-    ports:
-    - ${BASKULE_PRIVATE_IP:?set BASKULE_PRIVATE_IP}:${CELLD_WORKER_PORT:-47091}:47091
-    - ${BASKULE_PRIVATE_IP}:${CELLD_INTERNAL_PORT:-47092}:47092
+    network_mode: host
   deploy:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     entrypoint:
@@ -78,5 +76,6 @@ services:
         condition: service_started
     profiles:
     - deploy
+    network_mode: host
 volumes:
   celld: {}

@@ -18,11 +18,12 @@ source-build override. The fake LLM is a separate fixture. Checks cover default 
 sign-in, a streamed fake chat, and a shell command through the platform's computerd endpoint. It checks chat and
 computer-file persistence after down/up, then backs up and restores into empty volumes.
 
-The cluster simulation uses two independent node projects, one computers project, a Caddy edge project, and an
-independent RustFS bucket. It binds test ports on the host's private IPv4 interface to simulate role-to-role
-traffic. It excludes public and Docker bridge interfaces. Set `BASKULE_INSTALL_PRIVATE_IP` to choose among
-private host interfaces. It verifies two node leases and peer probes, chat and computer execution through the edge, and cell
-recovery after killing the owner node. This proves local role wiring, not network behavior across physical machines.
+The cluster simulation gives each role its own network namespace on an isolated Docker LAN. Test-only Compose
+network overrides model machine interfaces and avoid the host firewall's bridge-to-host rules. The release node
+role uses private host bindings; the override gives each simulated node its own private interface instead. The
+computers' gateway stays on its separate private bridge. The S3 bucket and fake model are independent fixtures.
+Checks cover two node leases and signed peer probes, chat and computer execution through the edge, and recovery
+after killing the owner node. This proves local role wiring, not network behavior or firewall rules across physical machines.
 
 The driver removes its own containers, networks, and volumes in a `finally` block. It never uses `scripts/stack`
 or the shared development gateway. Evidence, logs, the backup, and private generated configuration stay under

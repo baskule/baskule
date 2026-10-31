@@ -4,7 +4,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { appendFileSync, closeSync, copyFileSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { networkInterfaces } from "node:os";
 import { resolve } from "node:path";
 import { expect } from "@playwright/test";
 import { createApi } from "./journeys/api.mjs";
@@ -75,9 +74,10 @@ function world(role, values) {
   writeFileSync(file, `${generated}\n`, { mode: 0o600 });
   envFile(file, { BASKULE_REGISTRY: registry, BASKULE_VERSION: version, ...values });
   const project = `${id}-${role}`;
-  const dc = (args, options = {}) => command(["compose", "-p", project, ...args], { cwd: directory, ...options });
+  const files = ["-f", resolve(directory, "docker-compose.yml")];
+  const dc = (args, options = {}) => command(["compose", "-p", project, ...files, ...args], { cwd: directory, ...options });
   expect(readdirSync(directory).sort()).toEqual([".env", ".env.example", "docker-compose.yml"]);
-  const w = { directory, file, project, dc, values };
+  const w = { directory, file, project, dc, values, files };
   projects.push(w);
   dc(["--profile", "*", "config", "-q"]);
   return w;
@@ -110,14 +110,13 @@ async function rpc(person, space) {
 }
 const admin = { email: "admin@release.test", password: randomBytes(24).toString("hex") };
 const adminVars = { ADMIN_EMAIL: admin.email, ADMIN_PASSWORD: admin.password, AUTH_CONFIG: "'{\"version\":1,\"password\":true}'" };
-async function fake(w, host) {
+async function fake(w, lan) {
   const name = `${w.project}-llm`;
   const args = ["run", "-d", "--no-healthcheck", "--name", name];
   let endpoint;
-  if (host) {
-    const p = await port();
-    args.push("--network", `${w.project}_baskule-net`, "-p", `${host}:${p}:47601`);
-    endpoint = `http://${host}:${p}/v1`;
+  if (lan) {
+    args.push("--network", lan.network, "--ip", lan.address);
+    endpoint = `http://${lan.address}:47601/v1`;
   } else {
     args.push("--network", `${w.project}_baskule-net`, "--network-alias", "release-install-llm");
     endpoint = "http://release-install-llm:47601/v1";
@@ -225,34 +224,41 @@ async function restoreOnly() {
   pass("focused restore preserves chat and re-admits the computer disk into empty volumes");
 }
 async function cluster() {
-  const addresses = Object.entries(networkInterfaces()).filter(([name]) => !/^(docker|br-|veth)/.test(name))
-    .flatMap(([, entries]) => entries).filter(({ family, internal, address }) => {
-      const [a, b] = address.split(".").map(Number);
-      return family === "IPv4" && !internal && (a === 10 || a === 192 && b === 168 ||
-        a === 172 && b >= 16 && b <= 31 || a === 100 && b >= 64 && b <= 127);
-    });
-  const host = process.env.BASKULE_INSTALL_PRIVATE_IP ?? addresses[0]?.address;
-  if (!addresses.some(a => a.address === host)) throw new Error("Cluster simulation needs a private host IPv4 interface");
-  const storagePort = await port();
+  const network = `${id}-lan`;
+  fixtureNetworks.add(network); command(["network", "create", network]);
+  const [{ Subnet: subnet }] = JSON.parse(command(["network", "inspect", "-f", "{{json .IPAM.Config}}", network]));
+  const [baseAddress, bits] = subnet.split("/");
+  if (Number(bits) > 28) throw new Error("The private test LAN needs at least eight addresses");
+  const octets = baseAddress.split(".").map(Number);
+  const address = offset => [...octets.slice(0, 3), octets[3] + offset].join(".");
+  const [nodeA, nodeB, computerHost, edgeHost, modelHost, storageHost] = [2, 3, 4, 5, 6, 7].map(address);
+  const adapter = (w, services) => {
+    const file = resolve(run, `${w.project}-lan.yml`);
+    writeFileSync(file, `services:\n${services}networks:\n  lan:\n    external: true\n    name: ${network}\n`);
+    w.files.push("-f", file);
+    w.dc(["--profile", "*", "config", "-q"]);
+  };
   const storage = `${id}-s3`;
   const storageVolume = `${id}-s3`;
   containers.set(storage, "storage"); fixtureVolumes.add(storageVolume);
-  fixtureNetworks.add(storage); command(["network", "create", storage]);
   const key = randomBytes(32).toString("hex");
-  command(["run", "-d", "--name", storage, "--network", storage, "-p", `${host}:${storagePort}:47093`,
+  command(["run", "-d", "--name", storage, "--network", network, "--ip", storageHost,
     "-e", "RUSTFS_ADDRESS=0.0.0.0:47093", "-e", "RUSTFS_CONSOLE_ENABLE=false", "-e", "RUSTFS_ACCESS_KEY=release-test",
     "-e", `RUSTFS_SECRET_KEY=${key}`, "-v", `${storageVolume}:/data`,
     "rustfs/rustfs@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b", "rustfs", "/data"]);
   const token = randomBytes(32).toString("hex");
-  const workerA = await port(), workerB = await port(), peerA = await port(), peerB = await port(), cp = await port(), ep = await port();
-  const base = `http://${host}:${ep}`;
-  const shared = { ...adminVars, BASKULE_PRIVATE_IP: host, S3_ENDPOINT: `http://${host}:${storagePort}`, S3_REGION: "us-east-1",
+  const base = `http://${edgeHost}:47090`;
+  const shared = { ...adminVars, S3_ENDPOINT: `http://${storageHost}:47093`, S3_REGION: "us-east-1",
     S3_ACCESS_KEY: "release-test", S3_SECRET_KEY: key, CELLD_BUCKET_NAME: "baskule", COMPUTERD_TOKEN: token,
-    COMPUTERD_URL: `http://${host}:${cp}`, CELLD_NODES_INTERNAL: `${host}:${peerA} ${host}:${peerB}`, PUBLIC_ORIGINS: base };
-  const a = world("node-a", { ...shared, CELLD_NODE: `${id}-a`, CELLD_WORKER_PORT: workerA, CELLD_INTERNAL_PORT: peerA });
-  const b = world("node-b", { ...shared, CELLD_NODE: `${id}-b`, CELLD_WORKER_PORT: workerB, CELLD_INTERNAL_PORT: peerB });
-  const computers = world("computers", { BASKULE_PRIVATE_IP: host, COMPUTERD_PORT: cp, COMPUTERD_TOKEN: token, PLATFORM_URL: base });
-  const edge = world("edge", { BASKULE_BIND: host, BASKULE_PORT: ep, BASKULE_NODES_WORKER: `${host}:${workerA} ${host}:${workerB}` });
+    COMPUTERD_URL: `http://${computerHost}:47094`, CELLD_NODES_INTERNAL: `${nodeA}:47092 ${nodeB}:47092`, PUBLIC_ORIGINS: base };
+  const a = world("node-a", { ...shared, BASKULE_PRIVATE_IP: nodeA, CELLD_NODE: `${id}-a` });
+  const b = world("node-b", { ...shared, BASKULE_PRIVATE_IP: nodeB, CELLD_NODE: `${id}-b` });
+  const computers = world("computers", { BASKULE_PRIVATE_IP: computerHost, COMPUTERD_TOKEN: token, PLATFORM_URL: base });
+  const edge = world("edge", { BASKULE_BIND: edgeHost, BASKULE_NODES_WORKER: `${nodeA}:47091 ${nodeB}:47091` });
+  for (const [w, ip] of [[a, nodeA], [b, nodeB]]) adapter(w,
+    `  node:\n    network_mode: !reset null\n    networks:\n      lan:\n        ipv4_address: ${ip}\n  deploy:\n    network_mode: !reset null\n    networks: [lan]\n`);
+  adapter(computers, `  baskule-computerd:\n    ports: !reset []\n    networks:\n      lan:\n        ipv4_address: ${computerHost}\n`);
+  adapter(edge, `  edge:\n    ports: !reset []\n    networks:\n      lan:\n        ipv4_address: ${edgeHost}\n`);
   // The external bucket is an independent fixture, not a service of any cluster role.
   await expect.poll(async () => {
     try { await fetch(shared.S3_ENDPOINT, { signal: AbortSignal.timeout(3000) }); return true; } catch { return false; }
@@ -276,11 +282,11 @@ async function cluster() {
   expect(fleet).toMatch(/2 node lease/);
   expect(fleet).toContain(`peer ${id}-a`); expect(fleet).toContain(`peer ${id}-b`);
   pass("cluster forms a two-node fleet with an external bucket");
-  const llm = await fake(computers, host);
+  const llm = await fake(computers, { network, address: modelHost });
   const result = await exercise(computers, base, llm.endpoint);
   // Kill the node owning the most cells; disable automatic restart for this drill.
-  const owned = (w, port) => JSON.parse(w.dc(["exec", "-T", "node", "curl", "-sf", `http://${host}:${port}/state`])).owned_cells ?? 0;
-  const victim = owned(a, peerA) >= owned(b, peerB) ? a : b;
+  const owned = (w, ip) => JSON.parse(w.dc(["exec", "-T", "node", "curl", "-sf", `http://${ip}:47092/state`])).owned_cells ?? 0;
+  const victim = owned(a, nodeA) >= owned(b, nodeB) ? a : b;
   const victimId = victim.dc(["ps", "-q", "node"]);
   command(["update", "--restart=no", victimId]); command(["kill", victimId]);
   for (let i = 0; i < 20; i++) expect((await fetch(`${base}/version.json`)).status).toBe(200);

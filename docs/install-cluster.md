@@ -31,8 +31,9 @@ their egress policy denies private destinations.
 | 47095, 47096 | OpenShell and volume helper, inside the computers Docker network only |
 | S3 endpoint | Platform nodes and deploy job to external storage |
 
-Publish node listeners on a private IPv4 interface, never `0.0.0.0` on an internet-facing machine. Each role
-has its own Docker networks. Apply host or network firewalls and Docker forwarding rules to published ports. OpenShell is privileged and has no host Docker socket mount or published port.
+Bind node listeners to a private IPv4 interface, never `0.0.0.0` on an internet-facing machine. Platform nodes
+use Linux host networking so their advertised address is also reachable from the node itself. Other roles use
+separate Docker networks. Apply host or network firewalls to node ports, and Docker forwarding rules to published ports. OpenShell is privileged and has no host Docker socket mount or published port.
 
 Allow platform nodes 2 cores and 3 GiB RAM each, plus OS memory and cache disk. The computers host's default cap
 is 3 cores and 8 GiB for OpenShell plus 1 core and 512 MiB for computerd. Start that host with at least 4 cores,
