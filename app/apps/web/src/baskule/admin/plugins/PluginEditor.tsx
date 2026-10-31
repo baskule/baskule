@@ -146,10 +146,18 @@ export function PluginEditor({
     omitted: initial.omitted,
   };
 
+  const headersChanged = (index: number) =>
+    target.type === "edit" &&
+    target.savedKeys.has(servers[index]!.name) &&
+    JSON.stringify(keyEntries(index).map((entry) => entry.header.trim())) !==
+      JSON.stringify(initial.servers[index]!.keyHeaders ?? ["Authorization"]);
   const keyProblem = (index: number) => {
     const entries = keyEntries(index);
     const filled = entries.filter((entry) => entry.value !== "").length;
-    return filled > 0 && (filled < entries.length || entries.some((e) => !e.header.trim()));
+    return (
+      (filled > 0 || headersChanged(index)) &&
+      (filled < entries.length || entries.some((e) => !e.header.trim()))
+    );
   };
   const invalid =
     !input.name ||
@@ -271,6 +279,7 @@ export function PluginEditor({
               target.savedKeys.has(server.name) &&
               serverFingerprint(finalServers[index]!) === serverFingerprint(initial.servers[index]!)
             }
+            headersChanged={headersChanged(index)}
             keyChanged={
               target.type === "edit" &&
               target.savedKeys.has(server.name) &&
@@ -386,6 +395,7 @@ function ServerFields({
   keys,
   keySaved,
   keyChanged,
+  headersChanged,
   keyProblem,
   attempted,
   disabled,
@@ -404,6 +414,7 @@ function ServerFields({
   readonly keys: ReadonlyArray<KeyEntry>;
   readonly keySaved: boolean;
   readonly keyChanged: boolean;
+  readonly headersChanged: boolean;
   readonly keyProblem: boolean;
   readonly attempted: boolean;
   readonly disabled: boolean;
@@ -509,13 +520,17 @@ function ServerFields({
                 error={keyProblem && !entry.value ? t("Enter this key too.") : null}
                 hint={
                   at === keys.length - 1
-                    ? keyChanged
-                      ? t("The server changed. Enter its key again, or finish setting it up later.")
-                      : keySaved
-                        ? t("A key is saved. Leave this empty to keep it.")
-                        : t(
-                            "Stored encrypted and never shown again. You can also add it later on its page.",
+                    ? headersChanged
+                      ? t("The key fields changed. Enter all keys again before saving.")
+                      : keyChanged
+                        ? t(
+                            "The server changed. Enter its key again, or finish setting it up later.",
                           )
+                        : keySaved
+                          ? t("A key is saved. Leave this empty to keep it.")
+                          : t(
+                              "Stored encrypted and never shown again. You can also add it later on its page.",
+                            )
                     : null
                 }
                 onChange={(event) => onKey(at, { value: event.currentTarget.value })}

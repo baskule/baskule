@@ -4929,6 +4929,7 @@
   "The inspector couldn't be displayed": "The inspector couldn't be displayed",
   "The invitation could not be loaded.": "The invitation could not be loaded.",
   "The key could not be saved.": "The key could not be saved.",
+  "The key fields changed. Enter all keys again before saving.": "The key fields changed. Enter all keys again before saving.",
   "The language and theme Baskule uses on this device.": "The language and theme Baskule uses on this device.",
   "The line is where even spending would be.": "The line is where even spending would be.",
   "The link is missing its authorization request. Re-run `t3 connect` in your terminal and open the freshly printed URL.": "The link is missing its authorization request. Re-run `t3 connect` in your terminal and open the freshly printed URL.",

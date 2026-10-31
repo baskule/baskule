@@ -67,7 +67,7 @@ describe("bounded portable bundle importer", () => {
 
   it("exports standard packages with placeholder keys and preserves skill files on re-import", () => {
     const draft = inspectPackage(bundleFixture("portable"), { source: { type: "custom" } });
-    const zip = exportPackage(draft.plugin, draft.plugin.skills.map(skill => skillFromInput(skill, [])), { secret: ["Authorization"] });
+    const zip = exportPackage(draft.plugin, draft.plugin.skills.map(skill => skillFromInput(skill, [])));
     const roundtrip = inspectPackage(unpackArchive(zip), { source: { type: "custom" } });
     expect(roundtrip.plugin.skills).toEqual(draft.plugin.skills);
     expect(roundtrip.plugin.servers).toEqual(draft.plugin.servers);

@@ -216,11 +216,11 @@ export function skillFromInput(input: SkillInput, otherNames: string[]): StoredS
   return { name: input.name, description: input.description, files };
 }
 
-export function exportPackage(plugin: Pick<PluginInput, "name" | "description" | "servers">, skills: StoredSkill[], keyHeaders: Record<string, string[]>): Uint8Array {
+export function exportPackage(plugin: Pick<PluginInput, "name" | "description" | "servers">, skills: StoredSkill[]): Uint8Array {
   const encode = (text: string) => new TextEncoder().encode(text);
   const manifest = encode(JSON.stringify({ name: plugin.name, description: plugin.description }, null, 2));
   const files: Record<string, Uint8Array> = { ".claude-plugin/plugin.json": manifest, ".codex-plugin/plugin.json": manifest,
-    ".mcp.json": encode(serversJson(plugin.servers, keyHeaders)) };
+    ".mcp.json": encode(serversJson(plugin.servers)) };
   for (const skill of skills) for (const file of skill.files) files[`skills/${skill.name}/${file.path}`] = fromBase64(file.content);
   return zipSync(files);
 }

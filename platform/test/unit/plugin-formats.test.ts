@@ -11,7 +11,7 @@ describe("portable plugin formats", () => {
     expect(result).toMatchObject({ secrets: { remote: { Authorization: "Bearer private-key" } }, omitted: [{ code: "local_program", subject: "local" }],
       fixes: expect.arrayContaining([{ server: "remote", need: "address", placeholders: ["{tenant}", "${path}"] }, { server: "remote", need: "key", headers: ["Authorization", "X-Key"] }, { server: "account", need: "sign_in" }]) });
     if ("error" in result) throw new Error(result.error);
-    const json = serversJson(result.servers, { remote: ["Authorization", "X-Key"] });
+    const json = serversJson(result.servers);
     expect(json).not.toContain("private-key");
     expect(JSON.parse(json).mcpServers.remote.headers).toEqual({ Authorization: "${AUTHORIZATION}", "X-Key": "${X_KEY}" });
   });

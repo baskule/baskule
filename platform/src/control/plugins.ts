@@ -1,4 +1,3 @@
-import { serverFingerprint } from "../../../app/packages/contracts/src/baskule-plugin-formats";
 import { catalogService, catalogVendor, type CatalogService, type CatalogVendor } from "../../../app/packages/contracts/src/baskule-catalog";
 import type { ConnectionCipher } from "./connection-crypto";
 import { checkMcpUrl, serverNetwork } from "../shared/plugin-outbound";
@@ -9,20 +8,21 @@ import type { StorageLike } from "./service";
 import type { Connections } from "./connections";
 import { Groups } from "./groups";
 import { fromBase64, IMPORT_LIMITS, inspectPackage, exportPackage, skillFromInput, skillToInput, sha256, unpackArchive, type StoredSkill } from "./plugin-package";
-import { addressPlaceholders } from "../../../app/packages/contracts/src/baskule-plugin-formats";
+import { addressPlaceholders, serverFingerprint } from "../../../app/packages/contracts/src/baskule-plugin-formats";
 import { readBounded, type Fetcher } from "./plugin-source";
 import { fetchGitFiles } from "./plugin-source";
 import { COMMIT_RE, resolveGithubLink } from "./plugin-source";
 
 const id = z.string().min(1).max(200);
 const credential = z.enum(["none", "organization", "user-oauth"]);
+const headerName = z.string().regex(/^[!#$%&'*+.^_`|~0-9a-z-]+$/i).max(200);
 const sourceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("custom") }).strict(),
   z.object({ type: z.literal("github"), repo: z.string().regex(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/), sha: z.string().regex(COMMIT_RE), path: z.string().max(512).optional() }).strict(),
   z.object({ type: z.literal("upload"), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
 ]);
 const serverSchema = z.object({ name: id, url: z.string().max(2048), transport: z.enum(["streamable-http", "sse"]).optional(), credential,
-  keyHeaders: z.array(z.string().regex(/^[!#$%&'*+.^_`|~0-9a-z-]+$/i).max(200)).max(20).optional(),
+  keyHeaders: z.array(headerName).max(20).optional(),
   oauth: z.object({ scopes: z.array(z.string().min(1).max(2048)).max(100).optional(),
     params: z.record(z.string().regex(/^[a-z_]+$/).refine(key => !["response_type", "client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "resource", "scope"].includes(key)), z.string().max(2048)).optional(), resource: z.literal(false).optional(), staticClient: z.literal(true).optional(),
   }).strict().optional(),
@@ -122,7 +122,6 @@ export class Plugins {
   canUse(userId: string, spaceId: string, pluginId: string, server?: string): PluginUseDecision {
     return canUse(userId, spaceId, pluginId, server, this.policy(userId, spaceId, pluginId));
   }
-  /** Only P2's private credential handler should read these values. */
   async organizationHeaders(pluginId: string, server: string): Promise<Record<string, string> | undefined> {
     const r = this.rows("select data from plugin_secret where plugin_id=? and server=?", pluginId, server)[0];
     return r ? this.cipher.open<Record<string, string>>(r.data as string, JSON.stringify(["secret", pluginId, server])) : undefined;
@@ -241,12 +240,10 @@ export class Plugins {
     if (match[2] === "/skills" && req.method === "GET") return json({ skills: this.skills(plugin.id).map(skillToInput), editable: plugin.source.type === "custom" || plugin.source.type === "upload" });
     if (match[2] === "/export" && req.method === "GET") {
       if (plugin.source.type === "catalog") throw pluginError(409, "not_editable");
-      const headers: Record<string, string[]> = {};
-      for (const server of plugin.servers) if (server.credential === "organization") headers[server.name] = Object.keys(await this.organizationHeaders(plugin.id, server.name) ?? { Authorization: "" });
-      return new Response(exportPackage(plugin, this.skills(plugin.id), headers) as Uint8Array<ArrayBuffer>, { headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="plugin.zip"' } });
+      return new Response(exportPackage(plugin, this.skills(plugin.id)) as Uint8Array<ArrayBuffer>, { headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="plugin.zip"' } });
     }
     if (match[2] === "/secret" && req.method === "PUT") {
-      const data = parse(z.object({ server: id, headers: z.record(z.string().regex(/^[!#$%&'*+.^_`|~0-9a-z-]+$/i), z.string().max(8192).refine(v => !/[\r\n\0]/.test(v))).nullable() }).strict(), await body(req));
+      const data = parse(z.object({ server: id, headers: z.record(headerName, z.string().max(8192).refine(v => !/[\r\n\0]/.test(v))).nullable() }).strict(), await body(req));
       if (!plugin.servers.some(s => s.name === data.server && s.credential === "organization")) throw pluginError(400, "not_organization_server");
       if (data.headers === null) this.rows("delete from plugin_secret where plugin_id=? and server=?", plugin.id, data.server);
       else {
@@ -275,6 +272,10 @@ export class Plugins {
       }
       if (current.source.type === "catalog" || JSON.stringify(current.source) !== JSON.stringify(patch.plugin.source)) throw pluginError(409, "not_editable");
       const next = this.validate(patch.plugin);
+      for (const server of next.servers) {
+        const previous = current.servers.find(s => s.name === server.name);
+        if (previous && server.credential === "organization" && serverFingerprint(previous) === serverFingerprint(server) && this.setupDone(current, previous)) server.keyHeaders = previous.keyHeaders;
+      }
       if (current.source.type === "github" && JSON.stringify(next.skills) !== JSON.stringify(this.skills(current.id))) throw pluginError(409, "not_editable");
       const updated: Plugin = { ...patch.plugin, id: current.id, vendor: current.vendor, enabled: current.enabled, createdAt: current.createdAt,
         skills: next.skills.map(s => ({ name: s.name, description: s.description })), servers: next.servers };

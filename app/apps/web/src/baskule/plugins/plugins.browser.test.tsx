@@ -559,6 +559,40 @@ describe("signing in to a plugin's service", () => {
     );
   });
 
+  it("requires keys again when a saved key's header name is changed", async () => {
+    const initial = {
+      name: "CRM",
+      description: "",
+      source: { type: "custom" as const },
+      skills: [],
+      omitted: [],
+      servers: [{ ...crm, credential: "organization" as const, keyHeaders: ["X-Api-Key"] }],
+    };
+    const control = fakeControl({});
+    using _fetch = control.stub;
+    await using screen = await render(
+      <PluginEditor
+        initial={initial}
+        fixes={[]}
+        omitted={[]}
+        target={{ type: "edit", id: "p1", savedKeys: new Set(["crm"]) }}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+      // This standalone form has no routing or navigation.
+      { router: false },
+    );
+    await userEvent.click(screen.getByText("Technical details", { exact: true }));
+    await expect.element(screen.getByLabelText("Header for the key", { exact: true })).toBeVisible();
+    await userEvent.fill(screen.getByLabelText("Header for the key", { exact: true }), "X-Changed");
+    await expect
+      .element(screen.getByText("The key fields changed. Enter all keys again before saving."))
+      .toBeVisible();
+    await press(screen.getByRole("button", { name: "Save plugin" }));
+    await expect.element(screen.getByText("Enter this key too.", { exact: true })).toBeVisible();
+    expect(control.calls.filter(call => call.route.startsWith("PATCH ") || call.route.startsWith("PUT "))).toEqual([]);
+  });
+
   it("explains that changing a server needs its key again", async () => {
     const initial = {
       name: "CRM",

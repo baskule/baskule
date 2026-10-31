@@ -67,7 +67,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function serversJson(servers: ServerInput[], keyHeaders: Record<string, string[]>): string {
+export function serversJson(servers: ServerInput[]): string {
   return JSON.stringify(
     {
       mcpServers: Object.fromEntries(
@@ -80,7 +80,7 @@ export function serversJson(servers: ServerInput[], keyHeaders: Record<string, s
             ...(server.credential === "organization"
               ? {
                   headers: Object.fromEntries(
-                    (keyHeaders[server.name] ?? ["Authorization"]).map((header) => [
+                    (server.keyHeaders?.length ? server.keyHeaders : ["Authorization"]).map((header) => [
                       header,
                       `\${${header.toUpperCase().replace(/[^A-Z0-9_]/g, "_")}}`,
                     ]),
