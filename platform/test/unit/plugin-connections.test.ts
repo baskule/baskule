@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { zipSync } from "fflate";
+import { base64, sha256 } from "../../src/control/plugin-import";
 import { ConnectionCipher, digest, pkce } from "../../src/control/connection-crypto";
 import { canonicalResource, discoverOAuth } from "../../src/control/connection-oauth";
 import { asAdmin, call, createUser, makeService, ORIGIN, personalSpaceOf, signIn, type H } from "../support/harness";
@@ -211,18 +213,40 @@ describe("vendor setup and recipes", () => {
       h.storage.sql.exec("insert into plugin_connection(user_id,plugin_id,server,data) values (?,?,?,?)", x.a.userId, other.id, "remote", "unrelated").toArray();
       await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { staticClient: true } }] } });
       expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].status).toBe("needs_setup");
+      expect((await call(h, "PATCH", `${API}/admin/plugins/${x.p.id}`, { creds: x.a.creds, body: { servers: [{ name: "remote", credential: "user-oauth", oauth: { params: { state: "overridden" } } }] } })).body.error).toBe("invalid_plugin_input");
       const path = `${API}/admin/vendors/${x.p.id}`;
       expect((await call(h, "PUT", path, { creds: x.a.creds, body: { clientId: "fake-client", clientSecret: "private-secret", tokenEndpointAuthMethod: "client_secret_post" } })).status).toBe(200);
-      expect((await call(h, "GET", path, { creds: x.a.creds })).body).toEqual({ configured: true });
+      expect((await call(h, "GET", `${API}/admin/plugins`, { creds: x.a.creds })).body.plugins.find((p: { id: string }) => p.id === x.p.id).vendorConfigured).toBe(true);
       expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].status).toBe("connect");
       f.state.advertisedIssuer = "https://other-issuer.test";
       expect((await x.start()).headers.get("location")).toContain("connectionError=oauth_issuer_changed");
       expect(f.requests).toEqual([]);
       f.state.advertisedIssuer = null;
-      await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds });
+      expect((await call(h, "GET", await authorized(await x.start()), { creds: x.a.creds })).headers.get("location")).toContain("pluginConnection=connected");
       await call(h, "PUT", path, { creds: x.a.creds, body: null });
       expect(h.storage.sql.exec("select plugin_id from plugin_connection").toArray()).toEqual([{ plugin_id: other.id }]);
       expect(h.storage.sql.exec("select * from plugin_oauth_state").toArray()).toEqual([]);
+    } finally { await f.close(); }
+  });
+  it("invalidates every account of a custom plugin when a server edit removes its saved client", async () => {
+    const f = await fakeOAuth(); f.state.dcr = false;
+    try {
+      const h = await makeService(); const a = await asAdmin(h);
+      const archive = zipSync({ ".mcp.json": new TextEncoder().encode(JSON.stringify({ mcpServers: { first: { url: f.resource }, second: { url: f.resource } } })) });
+      const added = await call(h, "POST", `${API}/admin/plugins`, { creds: a.creds, body: { groups: ["everyone"], source: { type: "archive", sha256: await sha256(archive) }, archive: base64(archive) } });
+      expect(added.status).toBe(201);
+      const id = added.body.id;
+      const servers = ["first", "second"].map(name => ({ name, credential: "user-oauth", oauth: { staticClient: true } }));
+      expect((await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { servers } })).status).toBe(200);
+      await call(h, "PUT", `${API}/admin/vendors/${id}`, { creds: a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
+      for (const name of ["first", "second"]) {
+        const start = await call(h, "GET", `${API}/plugins/${id}/connect?server=${name}`, { creds: a.creds });
+        expect((await call(h, "GET", await authorized(start), { creds: a.creds })).headers.get("location")).toContain("pluginConnection=connected");
+      }
+      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toHaveLength(2);
+      await call(h, "PATCH", `${API}/admin/plugins/${id}`, { creds: a.creds, body: { servers: [{ ...servers[0], url: f.resource + "/changed" }] } });
+      expect((await call(h, "GET", `${API}/plugins`, { creds: a.creds })).body.plugins[0].servers.map((s: { status: string }) => s.status)).toEqual(["needs_setup", "needs_setup"]);
+      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual([]);
     } finally { await f.close(); }
   });
   it("uses a pinned issuer without resource metadata, adds recipe params and omits resource", async () => {

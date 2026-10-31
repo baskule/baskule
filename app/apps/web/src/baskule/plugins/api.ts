@@ -41,9 +41,6 @@ export const pluginsApi = {
   remove: (id: string) => request<{ ok: true }>("DELETE", `${root}/admin/plugins/${enc(id)}`),
   secret: (id: string, input: PluginSecretInput) =>
     request<{ ok: true }>("PUT", `${root}/admin/plugins/${enc(id)}/secret`, input),
-  vendorStatus: (vendor: string) =>
-    request<{ configured: boolean }>("GET", `${root}/admin/vendors/${enc(vendor)}`),
-  /** Saving or removing (null) the client disconnects every account of this vendor. */
   vendorSetup: (vendor: string, client: VendorClient | null) =>
     request<{ ok: true; configured: boolean }>(
       "PUT",

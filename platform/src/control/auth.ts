@@ -87,7 +87,7 @@ export function createAuth(db: any, cfg: AuthConfig, hooks: AuthHooks) {
   const social: NonNullable<BetterAuthOptions["socialProviders"]> = {};
   for (const p of cfg.installation.providers.filter(p => p.type === "social")) {
     if (!Object.hasOwn(socialProviders, p.id)) throw new Error(`Unsupported social provider: ${p.id}`);
-    Object.assign(social, { [p.id]: { ...p.options, disableSignUp: p.id !== "google" } });
+    Object.assign(social, { [p.id]: { ...p.options, disableSignUp: p.id !== "google", ...(p.id === "microsoft" ? { disableProfilePhoto: true } : {}) } });
   }
   return betterAuth({
     appName: "Baskule",

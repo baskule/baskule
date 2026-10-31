@@ -174,12 +174,13 @@ same resource and issuer; callback issuer checks follow RFC 9207. Public servers
 OAuth endpoints never follow redirects with credentials. A client-ID metadata document is not served by this version;
 servers without DCR use pre-registration.
 
-For a service without dynamic registration, open Admin → Plugins → the plugin → Vendor setup. Register the
+For a service without dynamic registration, open Admin → Plugins → the plugin → Sign-in setup. Register the
 callback address shown there with the vendor, then save its client ID, authentication method and secret.
 Values are write-only and encrypted. Saving or removing setup disconnects accounts and cancels pending consent
 for every plugin using that vendor; other vendors are unaffected. The saved issuer is pinned: a resource that
-changes its authorization server is refused before Baskule sends the client secret. If resource metadata is
-absent, the saved issuer supplies discovery. Plugin accounts are separate from signing in to Baskule.
+changes its authorization server is refused before Baskule sends the client secret. If resource metadata disappears
+after setup, the saved issuer supplies discovery. Custom setup initially requires resource metadata; catalog issuers
+are added in the next layer. Plugin accounts are separate from signing in to Baskule.
 
 Server settings accept `oauth: {scopes, params, resource, staticClient}` for `user-oauth` servers. Scopes default
 to the resource challenge or metadata; `params` adds vendor authorization parameters, and `resource: false`
@@ -236,6 +237,10 @@ current idle policy through its authenticated runtime-settings endpoint. If that
 does not stop computers using a guessed policy.
 
 ## Upgrading an earlier installation
+
+The vendor-setup layout drops per-server OAuth clients and deletes installed plugin data. Reinstall plugins,
+assign groups, enter organization keys and vendor clients, then reconnect accounts after the authorized deploy.
+This reset retains users, groups, spaces and chats.
 
 This change replaces the product configuration layout. Wipe the installation's data when deploying it:
 back up if wanted, stop and purge with `deploy/v2/down.sh --purge`, prepare `.env` and `auth.json`, then build and

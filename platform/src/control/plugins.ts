@@ -25,7 +25,7 @@ const patchSchema = z.object({
   icon: z.url().max(2048).refine(v => new URL(v).protocol === "https:").optional(), enabled: z.boolean().optional(),
   servers: z.array(z.object({ name: id, url: z.string().max(2048).optional(), transport: z.enum(["streamable-http", "sse"]).optional(), credential,
     oauth: z.object({ scopes: z.array(z.string().min(1).max(2048)).max(100).optional(),
-      params: z.record(z.string().regex(/^[a-z_]+$/), z.string().max(2048)).optional(), resource: z.literal(false).optional(), staticClient: z.literal(true).optional(),
+      params: z.record(z.string().regex(/^[a-z_]+$/).refine(key => !["response_type", "client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "resource", "scope"].includes(key)), z.string().max(2048)).optional(), resource: z.literal(false).optional(), staticClient: z.literal(true).optional(),
     }).strict().optional(),
   }).strict()).max(100).optional(),
 }).strict();
@@ -245,7 +245,11 @@ export class Plugins {
       const { servers: _servers, ...fields } = patch;
       this.storage.transactionSync(() => {
         for (const old of plugin.servers) if (JSON.stringify(old) !== JSON.stringify(servers.find(s => s.name === old.name))) {
-          this.rows("delete from vendor_setup where vendor=?", plugin.vendor);
+          if (this.connections?.vendorConfigured(plugin.vendor)) {
+            this.rows("delete from vendor_setup where vendor=?", plugin.vendor);
+            this.rows("delete from plugin_connection where plugin_id=?", plugin.id);
+            this.rows("delete from plugin_oauth_state where plugin_id=?", plugin.id);
+          }
           for (const table of ["plugin_secret", "plugin_connection", "plugin_oauth_state"]) this.rows(`delete from ${table} where plugin_id=? and server=?`, plugin.id, old.name);
         }
         Object.assign(plugin, fields, { servers });

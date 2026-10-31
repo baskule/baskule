@@ -97,7 +97,6 @@ export class Connections {
   async vendor(req: Request, vendor: string): Promise<Response> {
     const plugins = this.plugins.list().filter(p => p.vendor === vendor);
     if (!plugins.length) throw pluginError(404, "vendor_unknown");
-    if (req.method === "GET") return json({ configured: this.vendorConfigured(vendor) });
     if (req.method !== "PUT") return notFound();
     const parsed = z.object({ clientId: z.string().min(1).max(4096), clientSecret: z.string().min(1).max(8192).optional(), tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]) }).strict().nullable().safeParse(await req.json().catch(() => { throw pluginError(400, "invalid_json"); }));
     if (!parsed.success) throw pluginError(400, "invalid_oauth_client");
@@ -172,7 +171,6 @@ export class Connections {
     const authorization = new URL(discovery.as.authorization_endpoint);
     for (const [key, value] of Object.entries({ response_type: "code", client_id: client.clientId, redirect_uri: callback, state, code_challenge: proof.challenge, code_challenge_method: "S256", ...(server.oauth?.resource === false ? {} : { resource: discovery.resource }) })) authorization.searchParams.set(key, value);
     for (const [key, value] of Object.entries(server.oauth?.params ?? {})) {
-      if (["response_type", "client_id", "redirect_uri", "state", "code_challenge", "code_challenge_method", "resource", "scope"].includes(key)) throw pluginError(400, "invalid_plugin_input");
       authorization.searchParams.set(key, value);
     }
     if (scopes.length) authorization.searchParams.set("scope", scopes.join(" "));

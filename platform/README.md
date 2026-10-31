@@ -121,9 +121,9 @@ one per user and eight globally in flight, and users blocked by usage limits rec
 |---|---|---|
 | `GET /me` | any | `{user{id,name,email,role,canCreateSpaces}, session{id}, organization{id,name}, spaces[{id,name,kind,role,base}], voiceInput}` — `base` = `/s/<id>`, personal first; `voiceInput` requires enabled transcription and a saved key |
 | `POST /transcriptions` | any | supported raw audio body, ≤25 MiB; forwards multipart to the configured `/audio/transcriptions` without redirects, with one 120 s deadline covering the upload and the provider; returns `{text}`; 404 disabled, 400 invalid or stalled audio, 413 too large, 429 usage or concurrency limit or provider rate limit, 502 `transcription_key_rejected` when the provider refuses the key, else `transcription_failed` |
-| `GET /plugins/:id/connect`, `GET /plugins/oauth/callback` | signed-in user | per-server MCP OAuth or incremental login-identity consent; [installation setup](../docs/installation-settings.md#plugin-account-connections-040) |
-| `DELETE /plugins/:id/connection` | signed-in user | forget a connection (optional `?server=NAME`); login account remains linked |
-| `PUT /admin/plugins/:id/oauth` | admin | encrypted, write-only pre-registered OAuth client settings |
+| `GET /plugins/:id/connect`, `GET /plugins/oauth/callback` | signed-in user | per-person OAuth for a plugin server; [installation setup](../docs/installation-settings.md#plugin-account-connections-040) |
+| `DELETE /plugins/:id/connection` | signed-in user | forget a connection (optional `?server=NAME`); Baskule sign-in remains separate |
+| `PUT /admin/vendors/:vendor` | admin | encrypted, write-only OAuth client setup, shared by the vendor's plugins |
 | `GET /people` | any | `{people[{id,name,email}]}` (active accounts, to add members) |
 | `GET /spaces` | any | the caller's spaces |
 | `POST /spaces {name, members?[{userId|email, role?}]}` | admin, or a member whose groups grant `canCreateSpaces` | team space; the creator is owner |

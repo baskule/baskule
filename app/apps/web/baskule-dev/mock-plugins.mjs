@@ -391,7 +391,6 @@ export function createPluginMock({ users, spaces }) {
       const vendor = decodeURIComponent(r[1]);
       const owned = [...plugins.values()].filter((plugin) => plugin.vendor === vendor);
       if (owned.length === 0) return (fail(res, 404, "vendor_unknown"), true);
-      if (method === "GET") return (send(res, 200, { configured: vendors.has(vendor) }), true);
       if (method === "PUT") {
         const body = await readBody(req);
         if (body !== null) {
