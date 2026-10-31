@@ -1,6 +1,6 @@
 import { Client, SSEClientTransport, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import type { PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
-import { HttpError } from "./http";
+import { pluginError } from "./http";
 
 export type Network = "public" | "private";
 
@@ -28,11 +28,11 @@ export function isPrivateHost(hostname: string): boolean {
 // URL checks cannot see public DNS names resolving to private IPs; deployment egress must block those.
 export function checkOutbound(value: string | URL, network: Network): URL {
   let url: URL;
-  try { url = new URL(value); } catch { throw new HttpError(400, "address_not_allowed"); }
+  try { url = new URL(value); } catch { throw pluginError(400, "address_not_allowed"); }
   const privateHost = isPrivateHost(url.hostname);
   if (url.hostname.toLowerCase().replace(/\.$/, "") === "baskule-mcp.internal" || url.username || url.password || url.hash ||
       /[{}$]/.test(String(value)) || !(url.protocol === "https:" || url.protocol === "http:" && network === "private" && privateHost) ||
-      network === "public" && privateHost) throw new HttpError(400, "address_not_allowed");
+      network === "public" && privateHost) throw pluginError(400, "address_not_allowed");
   return url;
 }
 
@@ -42,7 +42,7 @@ export function serverNetwork(value: string): Network {
 
 export function checkMcpUrl(value: string, network: Network): URL {
   const url = checkOutbound(value, network);
-  if (url.search) throw new HttpError(400, "address_not_allowed");
+  if (url.search) throw pluginError(400, "address_not_allowed");
   return url;
 }
 
@@ -51,7 +51,7 @@ export async function connectMcp(server: Pick<PluginServer, "url" | "transport">
   const client = new Client({ name: "baskule-plugin-proxy", version: "0.4.0" }, { capabilities: {} });
   const options = { requestInit: { headers }, fetch: (input: RequestInfo | URL, init?: RequestInit) => {
     const target = checkOutbound(input instanceof Request ? input.url : String(input), network);
-    if (target.origin !== url.origin) throw new HttpError(400, "address_not_allowed");
+    if (target.origin !== url.origin) throw pluginError(400, "address_not_allowed");
     return fetch(input, { ...init, redirect: "error" });
   } };
   const transport = server.transport === "sse" ? new SSEClientTransport(url, options) : new StreamableHTTPClientTransport(url, options);

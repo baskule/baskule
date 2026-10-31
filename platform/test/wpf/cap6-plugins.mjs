@@ -32,12 +32,11 @@ export const pluginChecks = [{ name: "plugin-runtime", capability: "6-plugins", 
       "skills/greeting/assets/data.bin": Buffer.from([0, 1, 127, 255]),
     };
     const archive = Buffer.from(zipSync(files));
-    plugin = await admin.json("POST", "/api/baskule/admin/plugins", { source: { type: "archive", sha256: createHash("sha256").update(archive).digest("hex") }, archive: archive.toString("base64") });
+    plugin = await admin.json("POST", "/api/baskule/admin/plugins", { groups: [], source: { type: "archive", sha256: createHash("sha256").update(archive).digest("hex") }, archive: archive.toString("base64") });
     assert(plugin.skills.length === 1 && plugin.servers.length === 1, `bad import: ${JSON.stringify(plugin)}`);
     await admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { enabled: true, servers: [{ name: "organization", credential: "organization", personal: true }] });
     await admin.json("PUT", `/api/baskule/admin/plugins/${plugin.id}/secret`, { server: "organization", headers: { Authorization: `Bearer ${key}` } });
     group = await admin.json("POST", "/api/baskule/admin/groups", { name: `Allowed-${ctx.run}`, members: [s.alice.me.user.id], permissions: { canCreateSpaces: false }, plugins: [plugin.id] });
-    await s.alice.json("PUT", `/api/baskule/plugins/${plugin.id}/enabled`, { enabled: true });
     await s.alice.json("PUT", `/api/baskule/spaces/${s.team}/plugins`, { personalPluginsAllowed: true, disabled: [] });
     await reconnect(ctx);
     const prompt = `[[fake:tool *org_lookup {}]] [[fake:tool skill {"id":"${plugin.id}/greeting"}]] [[fake:tool shell {"command":"cat /sandbox/space/plugins/*/greeting/SKILL.md; stat -c %a /sandbox/space/plugins/*/greeting/SKILL.md"}]]`;
@@ -86,7 +85,7 @@ export const pluginChecks = [{ name: "plugin-runtime", capability: "6-plugins", 
     const b = watchThread(s.cb, denied);
     await waitFor("Bob plugin refusal", () => b.settled(), 90_000);
     const pb = await projection(s.cb, denied);
-    assert(JSON.stringify(pb).includes("not_allowed"), `missing policy refusal: ${JSON.stringify(pb).slice(-2000)}`);
+    assert(JSON.stringify(pb).includes("This plugin is not available to you here."), `missing policy refusal: ${JSON.stringify(pb).slice(-2000)}`);
     assert(calls.length === 3, "disallowed member reached vendor"); b.stop();
     // Disable the bundle. The same managed tree is emptied before the next computer tool, and MCP tools vanish.
     await s.alice.json("PUT", `/api/baskule/spaces/${s.team}/plugins`, { personalPluginsAllowed: true, disabled: [plugin.id] });

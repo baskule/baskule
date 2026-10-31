@@ -1,43 +1,57 @@
-// baskule: how plugins are named to people. Everything is a "plugin"; its kind, source and
-// credential mode are shown in plain words (the people reading them are not developers).
+// baskule: how plugins are named to people. Everything is a "plugin" that gives the assistant tools,
+// skills or both; its source, credential mode and status are shown in plain words (the people
+// reading them are not developers).
 import type {
   CredentialMode,
-  PluginKind,
   PluginServer,
   PluginSource,
+  PluginStatus,
 } from "@t3tools/contracts/baskule-plugins";
 import { BookOpenTextIcon, PackageIcon, PlugIcon, type LucideIcon } from "lucide-react";
 
 import { t } from "../../i18n";
 
-export const PLUGIN_KINDS: ReadonlyArray<PluginKind> = ["mcp", "skill", "bundle"];
+/** What a plugin gives the assistant. Derived from what it contains; plugins store no kind. */
+export type PluginContentsKind = "tools" | "skills" | "both";
 
-export const KIND_ICONS: Record<PluginKind, LucideIcon> = {
-  mcp: PlugIcon,
-  skill: BookOpenTextIcon,
-  bundle: PackageIcon,
+export function contentsKind(plugin: {
+  readonly servers: ReadonlyArray<unknown>;
+  readonly skills: ReadonlyArray<unknown>;
+}): PluginContentsKind {
+  if (plugin.servers.length === 0) return "skills";
+  return plugin.skills.length > 0 ? "both" : "tools";
+}
+
+export const CONTENTS_ICONS: Record<PluginContentsKind, LucideIcon> = {
+  tools: PlugIcon,
+  skills: BookOpenTextIcon,
+  both: PackageIcon,
 };
 
-export function kindLabel(kind: PluginKind): string {
+export function contentsLabel(kind: PluginContentsKind): string {
   switch (kind) {
-    case "mcp":
-      return t("Connector · MCP");
-    case "skill":
-      return t("Skill");
-    case "bundle":
-      return t("Bundle");
+    case "tools":
+      return t("Tools");
+    case "skills":
+      return t("Skills");
+    case "both":
+      return t("Tools and skills");
   }
 }
 
-/** The kind filter's plural labels. */
-export function kindFilterLabel(kind: PluginKind): string {
-  switch (kind) {
-    case "mcp":
-      return t("Connectors");
-    case "skill":
-      return t("Skills");
-    case "bundle":
-      return t("Bundles");
+/** The only five things a person is told about a plugin or one of its servers. */
+export function statusText(status: PluginStatus, name: string): string {
+  switch (status) {
+    case "unavailable":
+      return t("Not available to you");
+    case "needs_setup":
+      return t("Your administrator needs to finish setting it up");
+    case "connect":
+      return t("Connect your {{name}} account", { name });
+    case "reconnect":
+      return t("Reconnect your {{name}} account", { name });
+    case "ready":
+      return t("Ready");
   }
 }
 
@@ -117,7 +131,7 @@ export function credentialLabel(mode: CredentialMode): string {
 export function credentialDescription(mode: CredentialMode): string {
   switch (mode) {
     case "none":
-      return t("Works as soon as it is turned on.");
+      return t("Works with nothing to set up.");
     case "organization":
       return t("You enter one key here. Everyone who uses it shares that key.");
     case "user-oauth":

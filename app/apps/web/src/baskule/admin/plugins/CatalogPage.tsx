@@ -1,8 +1,8 @@
 // baskule: Plugins → Catalog: search the registries live, add a result, or add your own plugin.
-// Adding inspects the plugin and stores it turned off; the review dialog shows what it contains.
+// Adding asks who can use it first; the review dialog then shows what it contains.
 import type {
+  Group,
   Plugin,
-  PluginKind,
   PluginSearchResponse,
   PluginSearchResult,
 } from "@t3tools/contracts/baskule-plugins";
@@ -13,21 +13,45 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../../../components/ui/dialog";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../../components/ui/input-group";
 import { Spinner } from "../../../components/ui/spinner";
 import { Toggle, ToggleGroup } from "../../../components/ui/toggle-group";
 import { notifyPluginError, pluginErrorText, pluginsApi } from "../../plugins/api";
-import { PluginIcon, PluginTitle } from "../../plugins/PluginParts";
-import { kindFilterLabel, PLUGIN_KINDS, registryLabel } from "../../plugins/presentation";
+import {
+  PluginGroupsField,
+  PluginIcon,
+  PluginTitle,
+  useGroupChoice,
+} from "../../plugins/PluginParts";
+import { contentsLabel, registryLabel, type PluginContentsKind } from "../../plugins/presentation";
 import { useApiResource } from "../../ui";
 import { PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
 import { AddOwnPluginDialog } from "./AddOwnPluginDialog";
-import { PluginReviewDialog } from "./PluginReviewDialog";
+import { PluginReviewDialog, type AddedPlugin } from "./PluginReviewDialog";
 
-type KindFilter = PluginKind | "all";
+type SearchKind = PluginSearchResult["kind"];
+type KindFilter = SearchKind | "all";
+
+/** Registry results name their kind; installed plugins derive it from what they contain. */
+const SEARCH_CONTENTS: Record<SearchKind, PluginContentsKind> = {
+  mcp: "tools",
+  skill: "skills",
+  bundle: "both",
+};
+const SEARCH_KINDS = Object.keys(SEARCH_CONTENTS) as SearchKind[];
 
 const loadInstalled = () => pluginsApi.installed();
+const loadGroups = () => pluginsApi.groups();
 const resultKey = (result: PluginSearchResult) => `${result.source.registry}\u0000${result.id}`;
 
 /** The search the page shows: re-run when the submitted words or the kind filter change. */
@@ -67,9 +91,18 @@ export function CatalogPage() {
   const [kind, setKind] = useState<KindFilter>("all");
   const search = useCatalogSearch(query, kind);
   const installed = useApiResource(loadInstalled);
-  const [adding, setAdding] = useState<string | null>(null);
-  const [review, setReview] = useState<Plugin | null>(null);
+  const groups = useApiResource(loadGroups);
+  const [choosing, setChoosing] = useState<PluginSearchResult | null>(null);
+  const [review, setReview] = useState<AddedPlugin | null>(null);
   const [addingOwn, setAddingOwn] = useState(false);
+
+  const added = (plugin: Plugin, chosen: ReadonlyArray<string>) => {
+    setReview({
+      plugin,
+      groups: (groups.data ?? []).filter((group) => chosen.includes(group.id)),
+    });
+    void installed.reload();
+  };
 
   const installedFor = (result: PluginSearchResult) =>
     installed.data?.find(
@@ -78,21 +111,6 @@ export function CatalogPage() {
         plugin.source.registry === result.source.registry &&
         plugin.source.id === result.id,
     );
-
-  const add = async (result: PluginSearchResult) => {
-    setAdding(resultKey(result));
-    return (async () => {
-      const plugin = await pluginsApi.install({ source: result.source });
-      setReview(plugin);
-      void installed.reload();
-    })()
-      .catch((cause: unknown) => {
-        notifyPluginError(t("Could not add {{name}}", { name: result.name }), cause);
-      })
-      .finally(() => {
-        setAdding(null);
-      });
-  };
 
   const results = search.data?.results ?? [];
   const failed = search.data?.failures.map((failure) => registryLabel(failure.registry)) ?? [];
@@ -134,9 +152,9 @@ export function CatalogPage() {
             }}
           >
             <Toggle value="all">{t("All")}</Toggle>
-            {PLUGIN_KINDS.map((entry) => (
+            {SEARCH_KINDS.map((entry) => (
               <Toggle key={entry} value={entry}>
-                {kindFilterLabel(entry)}
+                {contentsLabel(SEARCH_CONTENTS[entry])}
               </Toggle>
             ))}
           </ToggleGroup>
@@ -162,7 +180,7 @@ export function CatalogPage() {
           query ? t("Results for “{{query}}”", { query }) : t("Everything the registries list")
         }
         description={t(
-          "Nothing here is checked by Baskule. Adding a plugin shows what it contains; it stays off until you turn it on.",
+          "Nothing here is checked by Baskule. When you add a plugin, you choose who can use it.",
         )}
         action={search.loading && results.length > 0 ? <Spinner size="sm" tone="muted" /> : null}
       >
@@ -184,7 +202,7 @@ export function CatalogPage() {
           return (
             <PageRow
               key={key}
-              leading={<PluginIcon kind={result.kind} />}
+              leading={<PluginIcon contents={SEARCH_CONTENTS[result.kind]} />}
               trailing={
                 existing ? (
                   <Button
@@ -205,11 +223,10 @@ export function CatalogPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={adding !== null}
                     aria-label={t("Add {{name}}", { name: result.name })}
-                    onClick={() => void add(result)}
+                    onClick={() => setChoosing(result)}
                   >
-                    {adding === key ? <Spinner size="sm" /> : <PlusIcon />}
+                    <PlusIcon />
                     {t("Add")}
                   </Button>
                 )
@@ -217,7 +234,7 @@ export function CatalogPage() {
             >
               <PluginTitle
                 name={result.name}
-                kind={result.kind}
+                contents={SEARCH_CONTENTS[result.kind]}
                 extra={registryLabel(result.source.registry)}
               />
               {result.description ? (
@@ -230,17 +247,28 @@ export function CatalogPage() {
         })}
       </PageSection>
 
+      <AddResultDialog
+        result={choosing}
+        groups={groups.data}
+        groupsError={groups.error}
+        onClose={() => setChoosing(null)}
+        onAdded={(plugin, chosen) => {
+          setChoosing(null);
+          added(plugin, chosen);
+        }}
+      />
       <AddOwnPluginDialog
         open={addingOwn}
         onOpenChange={setAddingOwn}
-        onAdded={(plugin) => {
+        groups={groups.data}
+        groupsError={groups.error}
+        onAdded={(plugin, chosen) => {
           setAddingOwn(false);
-          setReview(plugin);
-          void installed.reload();
+          added(plugin, chosen);
         }}
       />
       <PluginReviewDialog
-        plugin={review}
+        added={review}
         onClose={() => setReview(null)}
         onRemoved={() => {
           setReview(null);
@@ -248,5 +276,92 @@ export function CatalogPage() {
         }}
       />
     </>
+  );
+}
+
+/** Who can use a registry result, chosen before it is added. */
+function AddResultDialog({
+  result,
+  groups,
+  groupsError,
+  onClose,
+  onAdded,
+}: {
+  readonly result: PluginSearchResult | null;
+  readonly groups: ReadonlyArray<Group> | null;
+  readonly groupsError: string | null;
+  readonly onClose: () => void;
+  readonly onAdded: (plugin: Plugin, groups: ReadonlyArray<string>) => void;
+}) {
+  const t = useTranslation();
+  // Keep the last result while the dialog animates out.
+  const [shown, setShown] = useState(result);
+  if (result && result !== shown) setShown(result);
+  const chosen = useGroupChoice(groups);
+  const [adding, setAdding] = useState(false);
+
+  const close = () => {
+    chosen.reset();
+    onClose();
+  };
+
+  const add = async (entry: PluginSearchResult) => {
+    setAdding(true);
+    return (async () => {
+      const groupIds = [...chosen.value];
+      const plugin = await pluginsApi.install({ source: entry.source, groups: groupIds });
+      chosen.reset();
+      onAdded(plugin, groupIds);
+    })()
+      .catch((cause: unknown) => {
+        notifyPluginError(t("Could not add {{name}}", { name: entry.name }), cause);
+      })
+      .finally(() => {
+        setAdding(false);
+      });
+  };
+
+  return (
+    <Dialog open={result !== null} onOpenChange={(open) => !open && !adding && close()}>
+      <DialogPopup className="sm:max-w-md">
+        {shown ? (
+          <form
+            className="contents"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (groups && !adding) void add(shown);
+            }}
+          >
+            <DialogHeader>
+              <div className="flex items-center gap-3">
+                <PluginIcon contents={SEARCH_CONTENTS[shown.kind]} />
+                <DialogTitle>{t("Add {{name}}", { name: shown.name })}</DialogTitle>
+              </div>
+              {shown.description ? (
+                <DialogDescription>{shown.description}</DialogDescription>
+              ) : null}
+            </DialogHeader>
+            <DialogPanel>
+              <PluginGroupsField
+                groups={groups}
+                error={groupsError}
+                value={chosen.value}
+                onChange={chosen.onChange}
+                disabled={adding}
+              />
+            </DialogPanel>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={adding} onClick={close}>
+                {t("Cancel")}
+              </Button>
+              <Button type="submit" disabled={!groups || adding}>
+                {adding ? <Spinner size="sm" /> : null}
+                {t("Add plugin")}
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : null}
+      </DialogPopup>
+    </Dialog>
   );
 }

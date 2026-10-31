@@ -1,6 +1,6 @@
-// baskule: Settings → Plugins, for every person: the plugins their groups allow, turned on or off
-// for themselves, and the accounts they connect. People never add plugins; the admin does.
-import type { UserPlugin } from "@t3tools/contracts/baskule-plugins";
+// baskule: Settings → Plugins, for every person: the plugins their groups give them, what each
+// needs before it works, and the accounts they connect. People never add plugins; the admin does.
+import type { MemberPlugin, PluginStatus } from "@t3tools/contracts/baskule-plugins";
 import { CircleAlertIcon, CircleCheckIcon, CircleMinusIcon, LinkIcon } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -8,14 +8,14 @@ import { useTranslation } from "../../i18n";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
 import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
-import { Switch } from "../../components/ui/switch";
 import { toastManager } from "../../components/ui/toast";
 import { cn } from "../../lib/utils";
 import { ResourceState } from "../admin/ResourceState";
 import { confirmAction, useApiResource } from "../ui";
 import { PageMessage, PageSection } from "../views/BaskulePage";
-import { notifyPluginError, pluginsApi, accountConnectionUrl } from "./api";
+import { accountConnectionUrl, notifyPluginError, pluginErrorCodeText, pluginsApi } from "./api";
 import { PluginIcon, PluginTitle } from "./PluginParts";
+import { contentsKind, statusText } from "./presentation";
 
 const loadMine = () => pluginsApi.mine();
 
@@ -36,10 +36,10 @@ function useConnectionOutcome() {
       toastManager.add({
         type: "error",
         title: t("Could not connect your account"),
-        description:
-          code === "consent_denied"
-            ? t("The sign-in was cancelled or permission was not granted.")
-            : t("Try again. If it keeps failing, ask your admin."),
+        description: pluginErrorCodeText(
+          code,
+          t("Try again. If it keeps failing, ask your admin."),
+        ),
       });
     }
   }, [t]);
@@ -55,7 +55,7 @@ export function UserPluginsView() {
       <PageSection
         title={t("Your plugins")}
         description={t(
-          "Your admin chooses which plugins you can use. Turn on the ones you want: they work in your chats.",
+          "Your admin chooses which plugins you can use. Each one works in your chats once it is ready.",
         )}
       >
         {data.data && plugins.length === 0 ? (
@@ -76,15 +76,24 @@ export function UserPluginsView() {
   );
 }
 
+const STATUS_TONES = {
+  unavailable: "off",
+  needs_setup: "warning",
+  connect: "connect",
+  reconnect: "warning",
+  ready: "success",
+} as const satisfies Record<PluginStatus, string>;
+
 function StatusLine({
-  tone,
+  status,
   children,
   action,
 }: {
-  readonly tone: "off" | "connect" | "warning" | "success";
+  readonly status: PluginStatus;
   readonly children: ReactNode;
   readonly action?: ReactNode;
 }) {
+  const tone = STATUS_TONES[status];
   const Icon = {
     off: CircleMinusIcon,
     connect: LinkIcon,
@@ -115,13 +124,15 @@ export function UserPluginRow({
   plugin,
   onChanged,
 }: {
-  readonly plugin: UserPlugin;
+  readonly plugin: MemberPlugin;
   readonly onChanged: () => void;
 }) {
   const t = useTranslation();
   const [busy, setBusy] = useState<string | null>(null);
-  const offByAdmin = !plugin.enabled;
+  const blocked = plugin.status === "unavailable" || plugin.status === "needs_setup";
   const personal = plugin.servers.some((server) => server.personal);
+  // With several servers, each account is named by its server.
+  const accountName = (server: string) => (plugin.servers.length > 1 ? server : plugin.name);
 
   const connect = (server: string) => {
     setBusy(`connect:${server}`);
@@ -151,116 +162,62 @@ export function UserPluginRow({
       });
   };
 
-  const connectionLines = plugin.connections.flatMap((connection) => {
-    const server = plugin.servers.find((entry) => entry.name === connection.server);
-    const label = plugin.servers.length > 1 ? connection.server : null;
-    switch (connection.state) {
-      case "not_required":
-        return [];
-      case "needs_configuration":
-        return [
-          <StatusLine key={connection.server} tone="warning">
-            {label
-              ? t("{{server}}: waiting for your admin to add its key.", { server: label })
-              : t("Waiting for your admin to add its key.")}
-          </StatusLine>,
-        ];
-      case "needs_connection":
-        return [
-          <StatusLine
-            key={connection.server}
-            tone="connect"
-            action={
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={busy !== null || offByAdmin}
-                onClick={() => connect(connection.server)}
-              >
-                {busy === `connect:${connection.server}` ? <Spinner size="sm" /> : null}
-                {t("Connect your account")}
-              </Button>
-            }
-          >
-            {label
-              ? t("{{server}} needs your own account.", { server: label })
-              : t("It needs your own account.")}
-          </StatusLine>,
-        ];
-      case "configured":
-        // Organization keys are the admin's business.
-        return [];
-      case "connected":
-        return server?.personal
-          ? [
-              <StatusLine
-                key={connection.server}
-                tone="success"
-                action={
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={busy !== null}
-                    onClick={() => void disconnect(connection.server)}
-                  >
-                    {busy === `disconnect:${connection.server}` ? <Spinner size="sm" /> : null}
-                    {t("Disconnect")}
-                  </Button>
-                }
-              >
-                {label
-                  ? t("{{server}}: your account is connected.", { server: label })
-                  : t("Your account is connected.")}
-              </StatusLine>,
-            ]
-          : [];
+  const actions = plugin.servers.flatMap((server) => {
+    const name = accountName(server.name);
+    if (!blocked && (server.status === "connect" || server.status === "reconnect")) {
+      return [
+        <Button
+          key={server.name}
+          size="xs"
+          variant="outline"
+          aria-label={statusText(server.status, name)}
+          disabled={busy !== null}
+          onClick={() => connect(server.name)}
+        >
+          {busy === `connect:${server.name}` ? <Spinner size="sm" /> : null}
+          {server.status === "connect" ? t("Connect") : t("Reconnect")}
+        </Button>,
+      ];
     }
+    // Only an account the person connected themselves can be disconnected here.
+    if (server.status === "ready" && server.personal) {
+      return [
+        <Button
+          key={server.name}
+          size="xs"
+          variant="ghost"
+          aria-label={t("Disconnect your {{name}} account", { name })}
+          disabled={busy !== null}
+          onClick={() => void disconnect(server.name)}
+        >
+          {busy === `disconnect:${server.name}` ? <Spinner size="sm" /> : null}
+          {t("Disconnect")}
+        </Button>,
+      ];
+    }
+    return [];
   });
+  const worst = plugin.servers.find((server) => server.status === plugin.status);
 
   return (
-    <div className={cn("flex flex-col gap-2 px-3 py-3 sm:px-4", offByAdmin && "opacity-70")}>
+    <div className={cn("flex flex-col gap-2 px-3 py-3 sm:px-4", blocked && "opacity-70")}>
       <div className="flex items-start gap-3">
-        <PluginIcon kind={plugin.kind} icon={plugin.icon} />
+        <PluginIcon contents={contentsKind(plugin)} icon={plugin.icon} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <PluginTitle name={plugin.name} kind={plugin.kind} />
+          <PluginTitle name={plugin.name} contents={contentsKind(plugin)} />
           {plugin.description ? (
             <span className="line-clamp-2 text-xs text-muted-foreground">{plugin.description}</span>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 pt-1">
-          {busy === "enabled" ? <Spinner size="sm" tone="muted" /> : null}
-          <Switch
-            aria-label={t("Use {{name}}", { name: plugin.name })}
-            checked={plugin.userEnabled && !offByAdmin}
-            disabled={busy !== null || offByAdmin}
-            onCheckedChange={(enabled) => {
-              setBusy("enabled");
-              pluginsApi.enable(plugin.id, enabled).then(
-                () => {
-                  setBusy(null);
-                  onChanged();
-                },
-                (cause: unknown) => {
-                  setBusy(null);
-                  notifyPluginError(
-                    enabled
-                      ? t("Could not turn on {{name}}", { name: plugin.name })
-                      : t("Could not turn off {{name}}", { name: plugin.name }),
-                    cause,
-                  );
-                },
-              );
-            }}
-          />
-        </div>
       </div>
       <div className="flex flex-col gap-1 ps-11">
-        {offByAdmin ? (
-          <StatusLine tone="off">{t("Your admin turned it off for now.")}</StatusLine>
-        ) : plugin.userEnabled ? (
-          connectionLines
-        ) : null}
-        {personal && plugin.userEnabled && !offByAdmin ? (
+        <StatusLine
+          status={plugin.status}
+          action={actions.length > 0 ? <span className="flex gap-1.5">{actions}</span> : null}
+        >
+          {statusText(plugin.status, accountName(worst?.name ?? plugin.name))}
+        </StatusLine>
+        {personal && plugin.status !== "unavailable" ? (
           <p className="text-xs text-muted-foreground">
             {t(
               "It acts as you. In team spaces it works only where the space owner allows personal accounts, and members can read its results.",

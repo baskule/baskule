@@ -1,5 +1,5 @@
 import type { Client } from "@modelcontextprotocol/client";
-import type { PluginCredential, SpacePlugins } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { PluginCallError, PluginCredential, SpacePlugins } from "../../../app/packages/contracts/src/baskule-plugins";
 import { connectMcp } from "../shared/plugin-outbound";
 import type { TurnAuthor } from "./turn-author";
 
@@ -71,10 +71,10 @@ export class PluginMcpProxy {
     try {
       const nativeId = params?._meta?.["ai.opencode/sessionID"];
       const author = method === "tools/call" && typeof nativeId === "string" ? await this.author(nativeId) : undefined;
-      if (method === "tools/call" && !author) return fail("Plugin error: not_allowed. The turn author could not be resolved.");
+      if (method === "tools/call" && !author) return fail("This plugin is not available to you here.");
       // Catalogs are the union visible to this space. Calls ALWAYS recheck the actual author's policy in ControlCell.
       const credential = await this.credential(author?.id ?? this.server.catalogUserId);
-      if ("error" in credential) return fail(`Plugin error: ${credential.error}.${credential.connectUrl ? ` Connect or configure this plugin: ${credential.connectUrl}` : credential.error === "needs_connection" ? " Ask your administrator to configure this plugin." : " Check your plugin permissions and enabled state."}`);
+      if ("error" in credential) return fail(callErrorText(credential.error, this.server.pluginName));
       connection = this.connection(author?.id ?? this.server.catalogUserId, credential);
       const client = await connection.client;
       if (method === "tools/list") return json(id, await client.listTools(undefined, { timeout: 15_000 }));
@@ -90,4 +90,13 @@ export class PluginMcpProxy {
       if (connection) this.release(connection);
     }
   };
+}
+
+export function callErrorText(error: PluginCallError, name: string): string {
+  switch (error) {
+    case "unavailable": return "This plugin is not available to you here.";
+    case "needs_setup": return `Your administrator needs to finish setting up ${name}.`;
+    case "connect": return `Connect your ${name} account in Settings → Plugins, then try again.`;
+    case "reconnect": return `Reconnect your ${name} account in Settings → Plugins, then try again.`;
+  }
 }

@@ -126,11 +126,6 @@ export const groupPlugin = sqliteTable("group_plugin", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
 }, t => [primaryKey({ columns: [t.groupId, t.pluginId] })]);
 
-export const userPlugin = sqliteTable("user_plugin", {
-  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
-  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-}, t => [primaryKey({ columns: [t.userId, t.pluginId] })]);
-
 export const pluginSecret = sqliteTable("plugin_secret", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
   server: text("server").notNull(),

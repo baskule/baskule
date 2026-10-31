@@ -593,35 +593,31 @@ const scenarios = {
     await page.getByRole("button", { name: "Search", exact: true }).click();
     await page.getByText(`Results for “${pick.toLowerCase()}”`).waitFor();
     await page.getByRole("button", { name: `Add ${pick}` }).click();
+    const choose = page.getByRole("dialog", { name: `Add ${pick}`, exact: true });
+    await choose.getByRole("checkbox", { name: "Everyone", exact: true }).waitFor();
+    await choose.getByRole("button", { name: "Add plugin", exact: true }).click();
     const review = page.getByRole("dialog", { name: `${pick} was added` });
     await review.waitFor();
     check(
-      (await review.getByText("1 connector").count()) === 1,
+      (await review.getByText("Tools from 1 server").count()) === 1,
       `${device}: adding shows what the plugin contains`,
     );
     await page.waitForTimeout(300);
     await shot(page, `${device}-plugins-review`);
-    await review.getByRole("button", { name: "Set it up" }).click();
+    await review.getByRole("button", { name: "Open it" }).click();
     await page.waitForURL(/\/admin\/plugins\/installed\/[^/]+$/);
     await page.getByRole("heading", { name: pick, level: 1 }).waitFor();
     const installedId = new URL(page.url()).pathname.split("/").at(-1);
     let inventory = await (await page.request.get("/api/baskule/admin/plugins")).json();
-    check(
-      inventory.plugins.some((plugin) => plugin.id === installedId && !plugin.enabled),
-      `${device}: an added plugin starts turned off`,
-    );
-    await page.getByRole("switch", { name: `Everyone can use ${pick}` }).click();
-    await page.getByRole("switch", { name: `${pick} is on` }).click();
-    await page
-      .getByRole("switch", { name: `${pick} is on`, checked: true, disabled: false })
-      .waitFor();
-    inventory = await (await page.request.get("/api/baskule/admin/plugins")).json();
     const groups = (await (await page.request.get("/api/baskule/admin/groups")).json()).groups;
     check(
       inventory.plugins.some((plugin) => plugin.id === installedId && plugin.enabled) &&
         groups.find((group) => group.builtin === "everyone").plugins.includes(installedId),
-      `${device}: the admin turns it on and grants it to Everyone`,
+      `${device}: the assigned plugin starts unpaused`,
     );
+    await page.getByRole("button", { name: `Pause ${pick}`, exact: true }).click();
+    await page.getByRole("button", { name: `Resume ${pick}`, exact: true }).click();
+    await page.getByRole("button", { name: `Pause ${pick}`, exact: true }).waitFor();
     await shot(page, `${device}-plugins-detail`);
 
     await page.goto("/admin/plugins/installed");
@@ -699,22 +695,21 @@ const scenarios = {
     const bob = await newPage(browser, device);
     await signIn(bob.page, "bob");
     await bob.page.goto("/settings/plugins");
-    await bob.page.getByRole("switch", { name: "Use Google Drive" }).waitFor();
+    await bob.page.getByText("Google Drive", { exact: true }).waitFor();
     check(
-      (await bob.page.getByRole("switch", { name: "Use Sales" }).count()) === 1,
-      `${device}: a person sees the plugins their groups allow`,
+      (await bob.page.getByText("Sales", { exact: true }).count()) === 1 &&
+        (await bob.page.getByRole("switch", { name: /^Use / }).count()) === 0,
+      `${device}: assigned plugins appear without activation`,
     );
-    // The mock keeps Bob's choice from the other device's run.
-    const drive = bob.page.getByRole("switch", { name: "Use Google Drive" });
-    if (!(await drive.isChecked())) await drive.click();
-    await bob.page.getByRole("switch", { name: "Use Google Drive", checked: true }).waitFor();
     // The mock keeps the connection from the other device's run.
-    const connectButton = bob.page.getByRole("button", { name: "Connect your account" });
+    const connectButton = bob.page.getByRole("button", {
+      name: "Connect your Google Drive account",
+    });
     if (await connectButton.count()) {
       await connectButton.click();
       await bob.page.waitForURL((url) => url.pathname === "/settings/plugins" && !url.search);
     }
-    await bob.page.getByRole("button", { name: "Disconnect" }).waitFor();
+    await bob.page.getByRole("button", { name: "Disconnect your Google Drive account" }).waitFor();
     check(true, `${device}: connecting an account returns to Settings → Plugins, connected`);
     await shot(bob.page, `${device}-settings-plugins`);
     await bob.context.close();

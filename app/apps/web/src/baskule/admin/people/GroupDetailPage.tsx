@@ -20,7 +20,7 @@ import { baskuleApi } from "../../api";
 import { refreshBaskuleMe } from "../../session";
 import { notifyPluginError, pluginsApi } from "../../plugins/api";
 import { PluginIcon, PluginTitle } from "../../plugins/PluginParts";
-import { groupName } from "../../plugins/presentation";
+import { contentsKind, groupName } from "../../plugins/presentation";
 import { Avatar, confirmAction, FormField, notifySuccess, useApiResource } from "../../ui";
 import { PageMessage, PageRow, PageSection } from "../../views/BaskulePage";
 import { PageHeading } from "../../views/BaskulePage";
@@ -271,7 +271,7 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
 
       <PageSection
         title={t("Plugins")}
-        description={t("Its people can turn these on for themselves in Settings → Plugins.")}
+        description={t("Its people can use these plugins in their chats.")}
       >
         {plugins.length === 0 ? (
           <PageMessage>
@@ -297,7 +297,7 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
           return (
             <PageRow
               key={plugin.id}
-              leading={<PluginIcon kind={plugin.kind} icon={plugin.icon} />}
+              leading={<PluginIcon contents={contentsKind(plugin)} icon={plugin.icon} />}
               trailing={
                 <>
                   {busy === `plugin:${plugin.id}` ? <Spinner size="sm" tone="muted" /> : null}
@@ -325,8 +325,8 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
             >
               <PluginTitle
                 name={plugin.name}
-                kind={plugin.kind}
-                extra={plugin.enabled ? null : t("Off for everyone")}
+                contents={contentsKind(plugin)}
+                extra={plugin.enabled ? null : t("Paused")}
               />
             </PageRow>
           );

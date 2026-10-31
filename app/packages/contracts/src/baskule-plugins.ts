@@ -1,4 +1,3 @@
-export type PluginKind = "mcp" | "skill" | "bundle";
 export type PluginSource =
   | { type: "registry"; registry: string; id: string; version?: string }
   | { type: "url"; url: string }
@@ -16,7 +15,6 @@ export interface PluginServer {
 }
 export interface Plugin {
   id: string;
-  kind: PluginKind;
   name: string;
   description: string;
   icon?: string;
@@ -46,7 +44,7 @@ export interface PluginSearchResult {
   id: string;
   name: string;
   description: string;
-  kind: PluginKind;
+  kind: "mcp" | "skill" | "bundle";
   source: Extract<PluginSource, { type: "registry" }>;
   license?: string;
 }
@@ -59,6 +57,7 @@ export interface PluginInstallInput {
   /** Base64 ZIP or tar.gz bytes, required only for archive sources; hash is verified. */
   archive?: string;
   name?: string;
+  groups: string[];
 }
 export interface PluginPatch {
   name?: string;
@@ -67,15 +66,15 @@ export interface PluginPatch {
   enabled?: boolean;
   servers?: (Pick<PluginServer, "name" | "credential" | "personal" | "oauth" | "loginIdentity"> & Partial<Pick<PluginServer, "url" | "transport">>)[];
 }
-export type PluginConnectionState =
-  | "connected"
-  | "not_required"
-  | "configured"
-  | "needs_configuration"
-  | "needs_connection";
-export interface UserPlugin extends Plugin {
-  userEnabled: boolean;
-  connections: { server: string; state: PluginConnectionState }[];
+export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
+export interface MemberPlugin {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  skills: { name: string; description: string }[];
+  status: PluginStatus;
+  servers: { name: string; personal: boolean; status: PluginStatus }[];
 }
 export interface PluginSecretInput {
   server: string;
@@ -90,12 +89,81 @@ export interface PluginFile {
 }
 export interface SpacePlugins {
   /** Catalog discovery uses an allowed member; tool calls always use the turn author. */
-  servers: (PluginServer & { pluginId: string; catalogUserId: string; privateNetwork: boolean })[];
+  servers: (PluginServer & { pluginId: string; pluginName: string; catalogUserId: string; privateNetwork: boolean })[];
   skills: { pluginId: string; name: string; description: string; files: PluginFile[] }[];
 }
 export type PluginCredential =
   | { headers: Record<string, string>; expiresAt: number }
-  | { error: "not_allowed" | "not_enabled" | "needs_connection"; connectUrl?: string };
-export type PluginUseDecision =
-  | { allowed: true }
-  | { allowed: false; error: "not_allowed" | "not_enabled" };
+  | { error: PluginCallError };
+
+export type PluginCallError = Exclude<PluginStatus, "ready">;
+
+export const PLUGIN_ERROR_CODES = [
+  "address_not_allowed",
+  "archive_hash_mismatch",
+  "archive_required",
+  "builtin_group",
+  "connection_failed",
+  "connection_not_allowed",
+  "consent_denied",
+  "duplicate_plugin_path",
+  "duplicate_skill_name",
+  "empty_plugin",
+  "empty_plugin_archive",
+  "forbidden",
+  "group_exists",
+  "identity_consent_failed",
+  "identity_scope_missing",
+  "invalid_archive",
+  "invalid_authorization_metadata",
+  "invalid_commit",
+  "invalid_group",
+  "invalid_json",
+  "invalid_oauth_client",
+  "invalid_oauth_code",
+  "invalid_oauth_resource",
+  "invalid_oauth_state",
+  "invalid_oauth_token",
+  "invalid_plugin_input",
+  "invalid_plugin_manifest",
+  "invalid_resource_metadata",
+  "invalid_return_url",
+  "invalid_secret_headers",
+  "login_account_required",
+  "login_identity_audience_refused",
+  "login_provider_required",
+  "microsoft_identity_configuration_required",
+  "no_remote_servers",
+  "not_found",
+  "not_oauth_server",
+  "not_organization_server",
+  "oauth_client_configuration_required",
+  "oauth_grant_expired",
+  "oauth_issuer_mismatch",
+  "oauth_registration_failed",
+  "oauth_resource_mismatch",
+  "oauth_scope_missing",
+  "oauth_unavailable",
+  "personal_credential_required",
+  "plugin_links_unsupported",
+  "plugin_not_found",
+  "plugin_server_required",
+  "plugin_skill_file_too_large",
+  "plugin_source_changed",
+  "plugin_source_unavailable",
+  "plugin_storage_limit",
+  "plugin_too_large",
+  "plugin_tree_too_large",
+  "proprietary_plugin",
+  "registry_plugin_not_found",
+  "too_many_plugin_files",
+  "unknown_plugin_server",
+  "unknown_registry",
+  "unsafe_plugin_path",
+  "unsupported_archive",
+  "unsupported_git_host",
+  "unsupported_marketplace_source",
+  "unsupported_plugin_version",
+  "user_not_found",
+] as const;
+export type PluginErrorCode = (typeof PLUGIN_ERROR_CODES)[number];

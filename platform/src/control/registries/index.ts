@@ -1,4 +1,4 @@
-import type { PluginKind, PluginSearchResult, PluginServer, PluginSource, PluginSearchResponse } from "../../../../app/packages/contracts/src/baskule-plugins";
+import type { PluginSearchResult, PluginServer, PluginSource, PluginSearchResponse } from "../../../../app/packages/contracts/src/baskule-plugins";
 import { McpRegistry } from "./mcp";
 import { GithubMarketplace } from "./marketplace";
 import type { Fetcher } from "./http";
@@ -12,7 +12,7 @@ export interface ResolvedPlugin {
 }
 export interface Registry {
   id: string;
-  search(q: string, kind?: PluginKind): Promise<PluginSearchResult[]>;
+  search(q: string, kind?: PluginSearchResult["kind"]): Promise<PluginSearchResult[]>;
   resolve(id: string, version?: string): Promise<ResolvedPlugin>;
 }
 
@@ -24,7 +24,7 @@ export function registries(fetcher: Fetcher = fetch): Registry[] {
     new GithubMarketplace("codex-plugins", "openai/plugins", fetcher, undefined, ".agents/plugins/marketplace.json")];
 }
 
-export async function searchRegistries(sources: Registry[], q: string, kind?: PluginKind): Promise<PluginSearchResponse> {
+export async function searchRegistries(sources: Registry[], q: string, kind?: PluginSearchResult["kind"]): Promise<PluginSearchResponse> {
   const settled = await Promise.allSettled(sources.map(r => r.search(q, kind)));
   return {
     results: settled.flatMap(r => r.status === "fulfilled" ? r.value : []),

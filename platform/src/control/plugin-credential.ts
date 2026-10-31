@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { PluginCredential } from "../../../app/packages/contracts/src/baskule-plugins";
 import { json } from "../shared/http";
 import type { Plugins } from "./plugins";
-import { resolveAccountCredential, type Connections } from "./connections";
+import type { Connections } from "./connections";
 
 const input = z.object({ spaceId: z.string().min(1).max(200), pluginId: z.string().min(1).max(200), server: z.string().min(1).max(200), userId: z.string().min(1).max(200) }).strict();
 
@@ -21,11 +21,11 @@ export async function pluginCredential(req: Request, plugins: Plugins, connectio
       const headers = await plugins.organizationHeaders(pluginId, server);
       const current = plugins.canUse(userId, spaceId, pluginId, server);
       if (!current.allowed) return json({ error: current.error });
-      return json(headers ? { headers, expiresAt } : { error: "needs_connection", connectUrl: "/admin/plugins" });
+      return json(headers ? { headers, expiresAt } : { error: "needs_setup" });
     }
     case "user-oauth":
     case "login-identity": {
-      const credential = await resolveAccountCredential(connections, parsed.data);
+      const credential = await connections.credential(parsed.data);
       return json("headers" in credential ? { ...credential, expiresAt } satisfies PluginCredential : credential);
     }
   }

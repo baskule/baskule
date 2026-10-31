@@ -24,6 +24,16 @@ Glossary:
 - Owner / member / administrator: access roles. Do not confuse ownership with the current speaker.
 - Branch, commit, checkout, pull request: source-control terminology. Prefer established developer vocabulary.
 - Snooze: temporarily hide a chat until later. Settle: mark it handled. Neither means delete or archive.
+- Plugin: what an administrator adds to give the assistant tools, skills or both. Use “plugin” in French;
+  never “extension”, “connecteur” or “pack”, and use one word for it everywhere.
+- Tools: actions the assistant can take through a plugin. Use “outils” in French.
+- Skills: instructions and files the assistant follows for a task. Use “compétences” in French.
+- Connected account: a person's own account at a service, such as Gmail, that a plugin acts as. Use “compte”
+  in French (“Connectez votre compte Gmail”). Default account: the one used when none is named
+  (“compte par défaut”).
+- Pause / Resume / Paused: an administrator stops a plugin for everyone, then starts it again; nothing is
+  deleted. Use “Suspendre” / “Reprendre” / “Suspendu” in French, not “désactiver” / “activer”.
+- Catalog: the list of plugins an administrator can add. Use “catalogue” in French.
 
 Target languages: French (fr), Spanish (es), German (de), Dutch (nl), Italian (it).
 Use standard, broadly understood language, not region-specific slang. Use “vous” for French and “Sie”

@@ -1,6 +1,6 @@
 // baskule: a team space's plugin settings, for its owners and admins: whether plugins that act
 // with a member's own account may run here (off by default), and plugins turned off in this space.
-import type { Plugin, SpacePluginSettings as Settings } from "@t3tools/contracts/baskule-plugins";
+import type { SpacePluginSettings as Settings } from "@t3tools/contracts/baskule-plugins";
 import { useState } from "react";
 
 import { useTranslation } from "../../i18n";
@@ -10,14 +10,14 @@ import { Switch } from "../../components/ui/switch";
 import { useApiResource } from "../ui";
 import { notifyPluginError, pluginsApi } from "./api";
 import { PluginIcon } from "./PluginParts";
-import { kindLabel } from "./presentation";
+import { contentsKind, contentsLabel } from "./presentation";
 
 export function SpacePluginSettings({
   spaceId,
   isAdmin,
 }: {
   readonly spaceId: string;
-  /** Admins see every installed plugin; an owner sees the ones they may use themselves. */
+  /** Admins see every plugin that is not paused; an owner sees the ones available to them. */
   readonly isAdmin: boolean;
 }) {
   const t = useTranslation();
@@ -26,11 +26,12 @@ export function SpacePluginSettings({
     () => () =>
       Promise.all([
         pluginsApi.space(spaceId),
-        isAdmin ? pluginsApi.installed() : pluginsApi.mine().then((list): Plugin[] => list),
-      ]).then(([settings, plugins]) => ({
-        settings,
-        plugins: plugins.filter((plugin) => plugin.enabled),
-      })),
+        isAdmin
+          ? pluginsApi.installed().then((list) => list.filter((plugin) => plugin.enabled))
+          : pluginsApi
+              .mine()
+              .then((list) => list.filter((plugin) => plugin.status !== "unavailable")),
+      ]).then(([settings, plugins]) => ({ settings, plugins })),
   );
   const data = useApiResource(load);
   const [saving, setSaving] = useState<string | null>(null);
@@ -88,13 +89,13 @@ export function SpacePluginSettings({
           const used = !settings.disabled.includes(plugin.id);
           return (
             <li key={plugin.id} className="flex items-center gap-3 px-3 py-2">
-              <PluginIcon kind={plugin.kind} icon={plugin.icon} className="size-7" />
+              <PluginIcon contents={contentsKind(plugin)} icon={plugin.icon} className="size-7" />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm">{plugin.name}</span>
                 <span className="truncate text-xs text-muted-foreground">
                   {blocked && !settings.personalPluginsAllowed
                     ? t("Needs personal accounts allowed")
-                    : kindLabel(plugin.kind)}
+                    : contentsLabel(contentsKind(plugin))}
                 </span>
               </div>
               {saving === plugin.id ? <Spinner size="sm" tone="muted" /> : null}
@@ -117,7 +118,7 @@ export function SpacePluginSettings({
       </ul>
       <p className="text-xs text-muted-foreground">
         {plugins.length === 0
-          ? t("No plugins are turned on in your organization yet.")
+          ? t("No plugins are available in your organization yet.")
           : t("A plugin turned off here is off for every member of this space.")}
       </p>
     </div>

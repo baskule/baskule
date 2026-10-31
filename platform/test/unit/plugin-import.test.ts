@@ -16,7 +16,6 @@ describe("bounded portable bundle importer", () => {
   it("normalizes skills, binary assets, and remotes while omitting stdio, client extensions, and embedded credentials", () => {
     const input = zipSync(Object.fromEntries(bundleFixture("portable")));
     const p = inspectBundle(unpackArchive(input));
-    expect(p.kind).toBe("bundle");
     expect(p.servers.map(s => s.name)).toEqual(["docs", "account", "secret"]);
     expect(p.servers.find(s => s.name === "account")).toMatchObject({ credential: "user-oauth", personal: true });
     expect(p.ignored.join(" ")).toContain("stdio");
@@ -29,7 +28,6 @@ describe("bounded portable bundle importer", () => {
 
   it.each(["claude", "codex", "bare"])("accepts the %s layout", name => {
     const p = inspectBundle(bundleFixture(name));
-    expect(p.kind).toBe(name === "bare" ? "skill" : "mcp");
     if (name === "claude") expect(p.ignored.join(" ")).toContain("commands");
   });
 
@@ -40,7 +38,6 @@ describe("bounded portable bundle importer", () => {
     } })));
     files.set(".claude-plugin/plugin.json", new TextEncoder().encode(JSON.stringify({ name: "bare" })));
     const p = inspectBundle(files);
-    expect(p.kind).toBe("bundle");
     expect(p.servers[0].credential).toBe("organization");
     expect(p.skills[0].files.map(f => f.path)).toEqual(["SKILL.md"]);
     expect(JSON.stringify(p)).not.toContain("PRIVATE-BUNDLE-KEY");
@@ -55,7 +52,7 @@ describe("bounded portable bundle importer", () => {
   it("selects the pinned repository subdirectory or catalog's explicit skill list", () => {
     const input = new Map([...bundleFixture("portable")].map(([p, b]) => [`repo/pkg/${p}`, b]));
     expect(inspectBundle(input, { stripRoot: true, path: "pkg" }).skills).toHaveLength(1);
-    expect(inspectBundle(bundleFixture("portable"), { skillPaths: [] }).kind).toBe("mcp");
+    expect(inspectBundle(bundleFixture("portable"), { skillPaths: [] }).skills).toEqual([]);
   });
 
   it("rejects traversal, bad archives, expansion bombs, and oversized skill files", () => {

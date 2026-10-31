@@ -1,9 +1,9 @@
-import { HttpError } from "../../shared/http";
+import { pluginError } from "../../shared/http";
 
 export type Fetcher = typeof fetch;
 export const SOURCE_TIMEOUT_MS = 8_000;
 
-export async function readBounded(body: ReadableStream<Uint8Array> | null, limit: number, tooLarge = new HttpError(413, "plugin_too_large"), signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+export async function readBounded(body: ReadableStream<Uint8Array> | null, limit: number, tooLarge = pluginError(413, "plugin_too_large"), signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
   if (!body) return new Uint8Array();
   const reader = body.getReader();
   const bytes = new Uint8Array(limit);
@@ -33,7 +33,7 @@ export async function fetchBytes(fetcher: Fetcher, url: string, limit: number): 
   const timeout = setTimeout(() => controller.abort(), SOURCE_TIMEOUT_MS);
   try {
     const response = await fetcher(url, { signal: controller.signal, headers: { "User-Agent": "Baskule/0.4.0", accept: "application/json" } });
-    if (!response.ok) { await response.body?.cancel(); throw new HttpError(502, "plugin_source_unavailable"); }
+    if (!response.ok) { await response.body?.cancel(); throw pluginError(502, "plugin_source_unavailable"); }
     return await readBounded(response.body, limit);
   } finally { clearTimeout(timeout); }
 }

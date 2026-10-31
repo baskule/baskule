@@ -18,7 +18,7 @@ async function adminSession(h: H) {
 }
 
 async function install(h: H, creds: Awaited<ReturnType<typeof adminSession>>, resource: string, credential: "user-oauth" | "login-identity") {
-  const added = await publicCall(h, "POST", `${API}/admin/plugins`, { creds, body: { source: { type: "url", url: resource } } });
+  const added = await publicCall(h, "POST", `${API}/admin/plugins`, { creds, body: { groups: [], source: { type: "url", url: resource } } });
   expect(added.status).toBe(201);
   const id = added.body.id;
   const loginIdentity = credential === "login-identity" ? { provider: "google", scopes: ["https://www.googleapis.com/auth/cloud-platform"], audience: resource } : undefined;

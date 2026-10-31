@@ -1,6 +1,6 @@
-// baskule: shown right after a plugin is added. It is stored turned off and granted to no one;
-// the admin sees what it contains, then keeps it (and sets it up) or removes it.
-import type { Plugin } from "@t3tools/contracts/baskule-plugins";
+// baskule: shown right after a plugin is added for the groups the admin chose. The admin sees what
+// it contains and who can use it, then keeps it (and sets it up) or removes it.
+import type { Group, Plugin } from "@t3tools/contracts/baskule-plugins";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
@@ -18,43 +18,55 @@ import {
 import { Spinner } from "../../../components/ui/spinner";
 import { notifyPluginError, pluginsApi } from "../../plugins/api";
 import { PluginContents, PluginIcon } from "../../plugins/PluginParts";
-import { kindLabel, sourceLabel } from "../../plugins/presentation";
+import { contentsKind, contentsLabel, groupName, sourceLabel } from "../../plugins/presentation";
+
+export interface AddedPlugin {
+  readonly plugin: Plugin;
+  /** The groups chosen when it was added. */
+  readonly groups: ReadonlyArray<Group>;
+}
 
 export function PluginReviewDialog({
-  plugin,
+  added,
   onClose,
   onRemoved,
 }: {
-  readonly plugin: Plugin | null;
+  readonly added: AddedPlugin | null;
   readonly onClose: () => void;
   readonly onRemoved: () => void;
 }) {
   const t = useTranslation();
   const navigate = useNavigate();
   // Keep the last plugin while the dialog animates out.
-  const [shown, setShown] = useState(plugin);
-  if (plugin && plugin !== shown) setShown(plugin);
+  const [last, setLast] = useState(added);
+  if (added && added !== last) setLast(added);
   const [removing, setRemoving] = useState(false);
+  const shown = last?.plugin;
 
   return (
-    <Dialog open={plugin !== null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={added !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogPopup className="sm:max-w-lg">
-        {shown ? (
+        {shown && last ? (
           <>
             <DialogHeader>
               <div className="flex items-center gap-3">
-                <PluginIcon kind={shown.kind} icon={shown.icon} />
+                <PluginIcon contents={contentsKind(shown)} icon={shown.icon} />
                 <div className="flex min-w-0 flex-col gap-1">
                   <DialogTitle>{t("{{name}} was added", { name: shown.name })}</DialogTitle>
                   <span className="text-xs text-muted-foreground">
-                    {kindLabel(shown.kind)} · {sourceLabel(shown.source)}
+                    {contentsLabel(contentsKind(shown))} · {sourceLabel(shown.source)}
                   </span>
                 </div>
               </div>
               <DialogDescription>
-                {t(
-                  "It is turned off, and no one can use it yet. Check what it contains before you set it up.",
-                )}
+                {last.groups.length === 0
+                  ? t("No group can use it yet. Open it to choose who can.")
+                  : t("It is available to {{groups}}.", {
+                      groups: last.groups.map(groupName).join(", "),
+                    })}
+                {shown.servers.some((server) => server.credential === "organization")
+                  ? ` ${t("It needs an organization key before it works: add it on its page.")}`
+                  : ""}
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>
@@ -89,7 +101,7 @@ export function PluginReviewDialog({
                 {t("Remove it")}
               </Button>
               <Button variant="outline" onClick={onClose}>
-                {t("Later")}
+                {t("Done")}
               </Button>
               <Button
                 onClick={() => {
@@ -100,7 +112,7 @@ export function PluginReviewDialog({
                   });
                 }}
               >
-                {t("Set it up")}
+                {t("Open it")}
               </Button>
             </DialogFooter>
           </>
