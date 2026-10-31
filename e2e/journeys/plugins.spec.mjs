@@ -91,9 +91,7 @@ test("assigned skills are ready without activation and leave a team when its con
 test("a connected member supplies discovery while calls keep the turn author's account", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api }) => {
   const oauth = await fakeOAuth();
   const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
-  const firstContext = await browser.newContext(options);
   const secondContext = await browser.newContext(options);
-  const firstPage = await firstContext.newPage();
   const secondPage = await secondContext.newPage();
   const name = `Discovery ${crypto.randomUUID().slice(0, 8)}`;
   let plugin;
@@ -106,14 +104,16 @@ test("a connected member supplies discovery while calls keep the turn author's a
     await api.admin.json("DELETE", `/api/baskule/spaces/${team}/members/${api.admin.me.user.id}`);
     await people.alice.json("PUT", `/api/baskule/spaces/${team}/plugins`, { personalPluginsAllowed: true, disabled: [] });
     const members = [people.alice, people.bob].sort((a, b) => a.me.user.id < b.me.user.id ? -1 : a.me.user.id > b.me.user.id ? 1 : 0);
-    await signIn(firstPage, members[0], stack);
     const client = await members[0].rpc(team);
     try {
       const shell = api.watchShell(client);
       await expect.poll(() => shell.ready, { message: "team runtime is booted before connecting" }).toBe(true);
     } finally { client.close(); await client.closed; }
 
-    await signIn(secondPage, members[1], stack);
+    await secondContext.addCookies(members[1].cookie.split("; ").map(cookie => {
+      const [name, ...value] = cookie.split("=");
+      return { name, value: value.join("="), url: stack.urls.front };
+    }));
     await secondPage.goto(`${stack.urls.front}/settings/plugins`);
     await secondPage.getByRole("button", { name: `Connect your ${name} account`, exact: true }).click();
     await expect(secondPage).toHaveURL(url => url.pathname === "/settings/plugins" && !url.searchParams.has("pluginConnection"));
@@ -139,7 +139,6 @@ test("a connected member supplies discovery while calls keep the turn author's a
   } finally {
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
     if (team) await api.admin.json("POST", `/api/baskule/admin/spaces/${team}/stop`, {});
-    await firstContext.close();
     await secondContext.close();
     await oauth.close();
   }
