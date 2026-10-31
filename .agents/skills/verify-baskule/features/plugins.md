@@ -16,7 +16,7 @@ Administrators add plugins under Admin → Plugins and choose groups. Members op
 
 ## Driving it with T3 preview or Playwright
 
-Run `scripts/check feature:plugins`. The plugins journey uploads portable skills, verifies Ready without activation, loads a skill in a fake-model personal chat, and checks that deactivating the sole contributor removes team skill files. The focused runtime check covers encrypted-key delivery and call-time policy; worker covers OAuth.
+Run `scripts/check feature:plugins`. The plugins journey uploads portable skills, verifies Ready without activation, loads a skill in a fake-model personal chat, and checks that deactivating the sole contributor removes team skill files. A two-member OAuth journey boots the team before connection, connects the second member, and checks that tools become available while the unconnected author receives the account prompt and makes no vendor call. The connected author then calls successfully. The focused runtime check covers encrypted-key delivery and call-time policy; worker covers OAuth.
 
 ## Gotchas
 

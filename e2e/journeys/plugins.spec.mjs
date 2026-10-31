@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test, expect, signIn, startChat, assistant, phoneOptions } from "./fixtures.mjs";
 
+import { fakeOAuth } from "../../platform/test/fixtures/oauth.mjs";
+
 const portable = fileURLToPath(new URL("../../platform/test/fixtures/plugins/portable/", import.meta.url));
 function skillsArchive() {
   return execFileSync("python3", ["-c", "import io,pathlib,sys,zipfile; root=pathlib.Path(sys.argv[1]); b=io.BytesIO(); z=zipfile.ZipFile(b,'w'); [z.write(p,p.relative_to(root)) for p in root.rglob('*') if p.is_file() and (p.relative_to(root).parts[0]=='skills' or p.name=='LICENSE')]; z.close(); sys.stdout.buffer.write(b.getvalue())", portable]);
@@ -83,5 +85,51 @@ test("assigned skills are ready without activation and leave a team when its con
     if (team) await api.admin.json("POST", `/api/baskule/admin/spaces/${team}/stop`, {});
     await adminContext.close();
     await memberContext.close();
+  }
+});
+
+test("a connected member supplies discovery while calls keep the turn author's account", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api }) => {
+  const oauth = await fakeOAuth();
+  const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
+  const firstContext = await browser.newContext(options);
+  const secondContext = await browser.newContext(options);
+  const firstPage = await firstContext.newPage();
+  const secondPage = await secondContext.newPage();
+  const name = `Discovery ${crypto.randomUUID().slice(0, 8)}`;
+  let plugin;
+  try {
+    await api.admin.json("PATCH", `/api/baskule/spaces/${people.team}/members/${people.alice.me.user.id}`, { role: "owner" });
+    await api.admin.json("DELETE", `/api/baskule/spaces/${people.team}/members/${api.admin.me.user.id}`);
+    await people.alice.json("PUT", `/api/baskule/spaces/${people.team}/plugins`, { personalPluginsAllowed: true, disabled: [] });
+    plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { name, groups: ["everyone"], source: { type: "url", url: oauth.resource } });
+    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { servers: [{ name: "remote", credential: "user-oauth", personal: true }] });
+    const members = [people.alice, people.bob].sort((a, b) => a.me.user.id.localeCompare(b.me.user.id));
+    await signIn(firstPage, members[0], stack);
+    const client = await members[0].rpc(people.team);
+    try {
+      const shell = api.watchShell(client);
+      await expect.poll(() => shell.ready, { message: "team runtime is booted before connecting" }).toBe(true);
+    } finally { client.close(); await client.closed; }
+
+    await signIn(secondPage, members[1], stack);
+    await secondPage.goto(`${stack.urls.front}/settings/plugins`);
+    await secondPage.getByRole("button", { name: `Connect your ${name} account`, exact: true }).click();
+    await expect(secondPage).toHaveURL(url => url.pathname === "/settings/plugins" && !url.searchParams.has("pluginConnection"));
+    await expect(secondPage.getByText("Ready", { exact: true })).toBeVisible();
+    await secondPage.screenshot({ path: test.info().outputPath("plugin-connected-discovery.png") });
+
+    await startChat(firstPage, "Use the shared tool [[fake:tool *fixture_lookup {}]]", people.teamName);
+    await expect(assistant(firstPage)).toContainText(`Connect your ${name} account`, { timeout: 90_000 });
+    expect(oauth.calls).toHaveLength(0);
+    await secondPage.goto(stack.urls.front);
+    await startChat(secondPage, "Use my connected tool [[fake:tool *fixture_lookup {}]]", people.teamName);
+    await expect(assistant(secondPage)).toContainText("private fixture document", { timeout: 90_000 });
+    expect(oauth.calls).toHaveLength(1);
+    await expect(secondPage.getByRole("button", { name: "Stop generation", exact: true })).toHaveCount(0);
+  } finally {
+    if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
+    await firstContext.close();
+    await secondContext.close();
+    await oauth.close();
   }
 });

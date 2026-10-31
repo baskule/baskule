@@ -162,6 +162,7 @@ export class ControlService {
     this.plugins = new Plugins(this.storage, this.groups, cipher);
     this.connections = new Connections(this.storage, this.plugins, this.auth, this.installation, cipher);
     this.plugins.connections = this.connections;
+    this.connections.onChange = userId => this.reloadSpaces(userId ? this.memberSpaceIds(userId) : "all");
     const org = this.one("select id from organization order by created_at limit 1");
     if (org) this.orgId = org.id as string;
     else {
@@ -411,7 +412,7 @@ export class ControlService {
       const { spaceId } = await readJson<{ spaceId: string }>(req);
       if (!this.spaceRow(spaceId)) return notFound();
       const settings = this.productSettings();
-      return json({ ...settings, usageLimits: this.usage.settings(), plugins: this.plugins.settings(spaceId), apiKey: this.one("select value from kv where key=?", this.apiKeySlot(settings.ai.providerId, settings.ai.baseUrl))?.value ?? "" });
+      return json({ ...settings, usageLimits: this.usage.settings(), plugins: await this.plugins.settings(spaceId), apiKey: this.one("select value from kv where key=?", this.apiKeySlot(settings.ai.providerId, settings.ai.baseUrl))?.value ?? "" });
     }
     if (path === "/auth" || path.startsWith("/auth/")) return this.authRoute(req, path);
     if (path === WELL_KNOWN_PATH && req.method === "GET") return this.instanceInfo();

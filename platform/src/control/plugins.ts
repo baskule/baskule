@@ -119,17 +119,28 @@ export class Plugins {
     return { id: plugin.id, name: plugin.name, description: plugin.description, ...(plugin.icon ? { icon: plugin.icon } : {}), skills: plugin.skills,
       status: servers.length ? worstStatus(servers.map(s => s.status)) : pluginStatus({ allowed }), servers };
   }
-  settings(spaceId: string): SpacePlugins {
+  async settings(spaceId: string): Promise<SpacePlugins> {
     const space = this.rows("select kind from space where id=?", spaceId)[0];
     if (!space) throw pluginError(404, "not_found");
     const members = this.rows("select user_id from space_member where space_id=? order by user_id", spaceId).map(r => r.user_id as string);
     const plugins = this.list().filter(p => members.some(userId => this.canUse(userId, spaceId, p.id).allowed));
+    const servers: SpacePlugins["servers"] = [];
+    for (const plugin of plugins) {
+      const statuses = new Map<string, MemberPlugin>();
+      for (const server of plugin.servers) {
+        for (const userId of members) {
+          if (!this.canUse(userId, spaceId, plugin.id, server.name).allowed) continue;
+          let status = statuses.get(userId);
+          if (!status) { status = await this.statusFor(userId, plugin); statuses.set(userId, status); }
+          if (status.servers.find(s => s.name === server.name)?.status !== "ready" || !this.canUse(userId, spaceId, plugin.id, server.name).allowed) continue;
+          servers.push({ ...server, pluginId: plugin.id, pluginName: plugin.name, catalogUserId: userId, privateNetwork: serverNetwork(server.url) === "private" });
+          break;
+        }
+      }
+    }
     return {
-      servers: plugins.flatMap(p => p.servers.flatMap(s => {
-        const catalogUserId = members.find(userId => this.canUse(userId, spaceId, p.id, s.name).allowed);
-        return catalogUserId ? [{ ...s, pluginId: p.id, pluginName: p.name, catalogUserId, privateNetwork: serverNetwork(s.url) === "private" }] : [];
-      })),
-      skills: plugins.flatMap(p => {
+      servers,
+      skills: plugins.filter(p => members.some(userId => this.canUse(userId, spaceId, p.id).allowed)).flatMap(p => {
         const row = this.rows("select skill_files from plugin where id=?", p.id)[0];
         return JSON.parse(row.skill_files as string).map((s: SpacePlugins["skills"][number]) => ({ ...s, pluginId: p.id }));
       }),

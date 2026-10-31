@@ -8,6 +8,7 @@ export async function fakeOAuth() {
   const refreshTokens = new Set();
   const accessTokens = new Set();
   const requests = [];
+  const calls = [];
   const listen = server => new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${server.address().port}`)));
   let issuer, resource;
   const json = (res, value, status = 200) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(value)); };
@@ -52,16 +53,25 @@ export async function fakeOAuth() {
     } catch { json(res, { error: "fixture_failure" }, 500); }
   });
   issuer = await listen(as);
-  const mcp = createServer((req, res) => {
+  const mcp = createServer(async (req, res) => {
     if (req.url.startsWith("/.well-known/oauth-protected-resource")) return json(res, { resource: state.resourceMismatch ? `${resource}/other` : resource, authorization_servers: [issuer], scopes_supported: ["files.read"] });
     if (!accessTokens.has(req.headers.authorization?.replace(/^Bearer /, ""))) {
       res.setHeader("www-authenticate", `Bearer resource_metadata="${new URL(resource).origin}/.well-known/oauth-protected-resource/mcp", scope="files.read"`);
       return json(res, { error: "unauthorized" }, 401);
     }
+    if (req.method === "POST") {
+      let body = ""; for await (const chunk of req) body += chunk;
+      const message = JSON.parse(body);
+      if (message.id === undefined) { res.writeHead(202); return res.end(); }
+      if (message.method === "initialize") return json(res, { jsonrpc: "2.0", id: message.id, result: { protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "oauth-fixture", version: "1" } } });
+      if (message.method === "tools/list") return json(res, { jsonrpc: "2.0", id: message.id, result: { tools: [{ name: "fixture_lookup", description: "Read the private fixture", inputSchema: { type: "object", properties: {} } }] } });
+      if (message.method === "tools/call") calls.push(message.params);
+      return json(res, { jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "private fixture document" }] } });
+    }
     json(res, { jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "private fixture document" }] } });
   });
   resource = `${await listen(mcp)}/mcp`;
-  return { issuer, resource, state, requests, close: async () => {
+  return { issuer, resource, state, requests, calls, close: async () => {
     for (const server of [mcp, as]) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   } };
 }
