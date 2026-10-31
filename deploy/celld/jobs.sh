@@ -31,8 +31,8 @@ wait_s3() {
       fi
     else
       code=$(curl -s --connect-timeout 2 --max-time "$remaining" -o /dev/null -w '%{http_code}' "$S3_ENDPOINT/") || code=000
-      # An authenticated endpoint may reject unsigned probes once it is ready.
-      case "$code" in 200|403) return 0 ;; esac
+      # Any HTTP answer means the endpoint is reachable: providers answer unsigned probes with 200, 3xx, 400 or 403.
+      [ "$code" = 000 ] || return 0
     fi
     (( SECONDS >= deadline )) || sleep 0.5
   done

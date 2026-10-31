@@ -188,9 +188,20 @@ private `.env` and optional `config/auth.json` off the machines. Restore the buc
 `docker compose run --rm -T restore < computers.tar.gz`, then start the roles. Restore recreates computer
 containers to re-admit their persistent disks; files under `/sandbox/space` remain. Node caches can be recreated.
 
-Read the new release notes and back up before updating. Download the target release's role assets, keep your
-configuration, and update `BASKULE_VERSION` on each image-based role (replace any `+` with `_` for Docker tags).
-For platform nodes, run `docker compose pull`
+Read the new release notes and back up before updating, keeping each role's current `docker-compose.yml` with the
+backup. On each machine, download only that role's new compose file and env example. Keep the existing `.env`: do
+not rerun the setup steps above, which would replace it and its secrets (a new `COMPUTERD_TOKEN` locks every node
+out of computerd). For example, on a platform node (use `cluster-computers` or `cluster-edge` on the other roles):
+
+```sh
+VERSION=0.5.0 # Set the target release.
+ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
+curl -fL "$ASSETS/cluster-node.yml" -o docker-compose.yml
+curl -fL "$ASSETS/cluster-node.env.example" -o .env.example
+```
+
+Compare the new example for configuration changes, then set `BASKULE_VERSION` in the existing `.env` of each
+image-based role (replace any `+` with `_` for Docker tags). For platform nodes, run `docker compose pull`
 and `docker compose up -d` **one node at a time**. Wait for each node to be healthy before the next. Once all nodes
 run the new image, run `docker compose run --rm deploy` once to publish its bundled app to the fleet.
 Update the computers role and edge with `docker compose pull && docker compose up -d`. Computers restart with

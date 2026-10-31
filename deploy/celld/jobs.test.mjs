@@ -39,3 +39,13 @@ test("init-env requires an explicit stdin template", () => {
   assert.equal(result.status, 2);
   assert.match(result.stderr, /init-env -/);
 });
+
+for (const status of ["200", "307", "400", "403"]) test(`deploy readiness accepts an unsigned ${status} answer`, () => {
+  const work = mkdtempSync(resolve(tmpdir(), "deploy-ready-test-"));
+  try {
+    writeFileSync(resolve(work, "curl"), `#!/bin/bash\necho ${status}\n`, { mode: 0o755 });
+    const result = spawnSync("bash", ["-c", 'source <(sed -n "/^wait_s3()/,/^}/p" deploy/celld/jobs.sh); wait_s3'], { encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, PATH: `${work}:${process.env.PATH}`, S3_ENDPOINT: "http://storage.test" } });
+    assert.equal(result.status, 0, result.stderr);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});

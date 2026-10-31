@@ -122,7 +122,8 @@ whole private Docker store, including computer disks and cached images. It can b
 An external bucket is excluded; snapshot it separately while the stack is stopped. Protect backups like credentials.
 Start again with `docker compose up -d`.
 
-To restore, put the same release assets, saved `.env`, and optional authentication file in an installation directory with **empty volumes**.
+To restore, create an installation directory with `mkdir config`, then put the same release assets, the saved `.env`, and the optional
+`config/auth.json` in it. Its volumes must be **empty**.
 Restore an external bucket first if used, then run:
 
 ```sh
@@ -136,7 +137,8 @@ Deleting volumes destroys the installation's local data; do so only after preser
 
 ## Update and stop
 
-Read the target release's notes for any required alpha data wipe. Back up first. Download only the new assets;
+Read the target release's notes for any required alpha data wipe. Back up first, and keep a copy of the current
+`docker-compose.yml` with the backup: a restore needs the same release assets. Download only the new assets;
 keep your existing `.env` and its secrets:
 
 ```sh
@@ -155,7 +157,7 @@ docker compose up -d
 ```
 
 The new platform bundle deploys to both nodes. OpenShell restarts computers; their persistent disks remain.
-Updates can interrupt chats, commands, and WebSockets. Reconnect after the services become healthy. Keep the old
+Updates can interrupt chats, commands, and WebSockets. Reconnect after the services become healthy. Keep the saved
 assets and backup until you have checked `/version.json`, sign-in, and a computer command.
 
 `docker compose down` stops Baskule and keeps data. `docker compose up -d` starts it again.
