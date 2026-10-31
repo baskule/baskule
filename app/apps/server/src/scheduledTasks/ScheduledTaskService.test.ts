@@ -30,6 +30,8 @@ import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 
+const taskActor = { id: "alice", name: "Alice" };
+
 const isScheduledTaskError = Schema.is(ScheduledTaskError);
 
 const insertRow = (
@@ -46,6 +48,7 @@ const insertRow = (
 ) =>
   sql`INSERT INTO scheduled_tasks ${sql.insert({
     task_id: row.id,
+    author_json: JSON.stringify(taskActor),
     title: "task",
     prompt: row.prompt ?? "Run task",
     enabled: row.enabled,
@@ -369,22 +372,25 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
     yield* Effect.gen(function* () {
       const service = yield* ScheduledTaskService.ScheduledTaskService;
       const threadId = ThreadId.make("thread:deleted-during-run");
-      const { task } = yield* service.upsert({
-        id: ScheduledTaskId.make("task:deleted-during-run"),
-        title: "Check orchestration",
-        prompt: "Check progress",
-        enabled: true,
-        schedule: { type: "interval", everyMs: 60_000 },
-        projectId: ProjectId.make("project:test"),
-        threadId,
-        workspaceStrategy: { type: "root" },
-        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-        runtimeMode: "full-access",
-        interactionMode: "default",
-      }, { id: "alice", name: "Alice" });
-      const edited = yield* service.upsert({ ...task, prompt: "Updated progress" }, { id: "bob", name: "Bob" });
+      const { task } = yield* service.upsert(
+        {
+          id: ScheduledTaskId.make("task:deleted-during-run"),
+          title: "Check orchestration",
+          prompt: "Check progress",
+          enabled: true,
+          schedule: { type: "interval", everyMs: 60_000 },
+          projectId: ProjectId.make("project:test"),
+          threadId,
+          workspaceStrategy: { type: "root" },
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+        },
+        { id: "alice", name: "Alice" },
+      );
+      const edited = yield* service.upsert({ ...task, prompt: "Updated progress" }, taskActor);
       assert.deepEqual(edited.task.author, { id: "alice", name: "Alice" });
-      yield* service.subscribeList().pipe(
+      yield* service.subscribeList(taskActor).pipe(
         Stream.runForEach(({ tasks }) => {
           const current = tasks.find((candidate) => candidate.id === task.id);
           if (current === undefined) return Deferred.succeed(removed, undefined);
@@ -395,14 +401,14 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
         Effect.forkChild,
       );
       yield* Deferred.await(subscribed);
-      const run = yield* service.runNow({ id: task.id }).pipe(Effect.forkChild);
+      const run = yield* service.runNow({ id: task.id }, taskActor).pipe(Effect.forkChild);
       yield* Deferred.await(started);
       yield* Deferred.await(running);
       yield* service.deleteForThread(threadId);
       yield* Deferred.await(removed);
       yield* Deferred.succeed(release, undefined);
       yield* Fiber.join(run);
-      assert.lengthOf((yield* service.list()).tasks, 0);
+      assert.lengthOf((yield* service.list(taskActor)).tasks, 0);
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

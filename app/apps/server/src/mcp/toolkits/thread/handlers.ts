@@ -21,6 +21,9 @@ import {
   unavailable,
 } from "../../threadAccess.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
+import { resolveTaskOwner } from "../../../baskule/task-owner.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import { ThreadToolkit } from "./tools.ts";
@@ -95,15 +98,24 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   run_scheduled_task_now: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const scheduler = yield* ScheduledTasks.ScheduledTaskService;
-      const { tasks } = yield* scheduler.list().pipe(Effect.mapError(unavailable));
-      if (!tasks.some((task) => task.id === input.taskId))
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message: "The scheduled task was not found.",
-        });
+      const { projection } = yield* readThread(undefined, ["runs", "messages", "subagents"]);
+      const context = yield* Effect.context<
+        McpInvocationContext.McpInvocationContext | ThreadManagementService.ThreadManagementService
+      >();
+      const actor = yield* resolveTaskOwner(projection, (id) =>
+        readThread(id, ["runs", "messages", "subagents"]).pipe(
+          Effect.map(({ projection }) => projection),
+          Effect.provide(context),
+        ),
+      );
       const { task, threadId } = yield* scheduler
-        .runNow({ id: input.taskId })
-        .pipe(Effect.mapError(unavailable));
+        .runNow({ id: input.taskId }, actor)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+          ),
+        );
       return {
         taskId: task.id,
         threadId,

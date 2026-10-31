@@ -1773,9 +1773,10 @@ const make = Effect.gen(function* () {
       readonly runtimeMode: RuntimeMode;
       readonly interactionMode: ProviderInteractionMode;
     },
+    actor: ScheduledTaskService.ScheduledTaskActor | undefined,
   ): Effect.fn.Return<ScheduledTask, OrchestratorMcpFailure> {
     const { tasks } = yield* scheduledTasks
-      .list()
+      .list(actor)
       .pipe(
         Effect.mapError((error) =>
           failure("orchestration_error", `Could not load scheduled task: ${error.message}`),
@@ -1795,6 +1796,7 @@ const make = Effect.gen(function* () {
   return OrchestratorMcpService.of({
     scheduleTask: Effect.fn("OrchestratorMcpService.scheduleTask")(function* (scope, input) {
       const { parent, limits } = yield* loadCaller(scope);
+      const actor = yield* resolveTaskOwner(parent, loadProjection);
       const projectId = yield* resolveProjectTarget(parent, input.projectId);
       yield* assertLiveCallerForOtherProject(scope, parent, projectId);
       const project = yield* requireProject(projectId);
@@ -1840,7 +1842,7 @@ const make = Effect.gen(function* () {
             }),
       };
       const { task } = yield* scheduledTasks
-        .upsert(upsertInput, yield* resolveTaskOwner(parent, loadProjection))
+        .upsert(upsertInput, actor)
         .pipe(
           Effect.mapError((error) =>
             failure("orchestration_error", `Could not schedule task: ${error.message}`),
@@ -1851,9 +1853,10 @@ const make = Effect.gen(function* () {
     listScheduledTasks: Effect.fn("OrchestratorMcpService.listScheduledTasks")(
       function* (scope, input) {
         const { parent, limits } = yield* loadCaller(scope);
+        const actor = yield* resolveTaskOwner(parent, loadProjection);
         const projectId = input.projectId ?? parent?.thread.projectId;
         const { tasks } = yield* scheduledTasks
-          .list()
+          .list(actor)
           .pipe(
             Effect.mapError((error) =>
               failure("orchestration_error", `Could not list scheduled tasks: ${error.message}`),
@@ -1870,7 +1873,8 @@ const make = Effect.gen(function* () {
     updateScheduledTask: Effect.fn("OrchestratorMcpService.updateScheduledTask")(
       function* (scope, input) {
         const { parent, limits } = yield* loadCaller(scope);
-        const existing = yield* loadScheduledTask(input.scheduledTaskId, limits);
+        const actor = yield* resolveTaskOwner(parent, loadProjection);
+        const existing = yield* loadScheduledTask(input.scheduledTaskId, limits, actor);
         yield* assertLiveCallerForOtherProject(scope, parent, existing.projectId);
         if (
           input.bindToCurrentThread === true &&
@@ -1910,7 +1914,7 @@ const make = Effect.gen(function* () {
           creationSource: existing.creationSource,
         };
         const { task } = yield* scheduledTasks
-          .upsert(upsertInput)
+          .upsert(upsertInput, actor)
           .pipe(
             Effect.mapError((error) =>
               failure("orchestration_error", `Could not update scheduled task: ${error.message}`),
@@ -1922,10 +1926,11 @@ const make = Effect.gen(function* () {
     deleteScheduledTask: Effect.fn("OrchestratorMcpService.deleteScheduledTask")(
       function* (scope, input) {
         const { parent, limits } = yield* loadCaller(scope);
-        const existing = yield* loadScheduledTask(input.scheduledTaskId, limits);
+        const actor = yield* resolveTaskOwner(parent, loadProjection);
+        const existing = yield* loadScheduledTask(input.scheduledTaskId, limits, actor);
         yield* assertLiveCallerForOtherProject(scope, parent, existing.projectId);
         yield* scheduledTasks
-          .delete({ id: existing.id })
+          .delete({ id: existing.id }, actor)
           .pipe(
             Effect.mapError((error) =>
               failure("orchestration_error", `Could not delete scheduled task: ${error.message}`),

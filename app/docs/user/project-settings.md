@@ -71,9 +71,15 @@ environment's time zone, which may differ from your phone's.
 Deleting a thread also deletes tasks that post into that thread. Tasks that start
 a new thread on each run survive deletion of their previous threads.
 
-You can edit, pause, resume, run immediately, or delete a task from the list.
+A task runs as its author, using that person's connected accounts. Only the author
+can edit, enable, run immediately, or manage its webhook URL and signing secret.
+Space owners and administrators can pause or delete another person's task as a
+safety stop; only its author can resume it. Copying a task into a new task makes
+you the new task's author. Tasks without author attribution cannot be changed or
+run; create a new task instead. A scheduled run's queued message cannot be edited;
+change the task for future runs.
 Webhook tasks only run when their URL is called, so they can't be run
-immediately.
+immediately. Their URL and delivery details are visible only to their author.
 Leaving an edited form asks before discarding unsaved changes.
 
 ## Webhook automations

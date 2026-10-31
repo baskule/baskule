@@ -1,3 +1,5 @@
+import { useBaskuleSession } from "../../baskule/session";
+import { useSpaceEnvironments } from "../../baskule/spaces";
 import { t, useTranslation } from "../../i18n";
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
@@ -1324,6 +1326,17 @@ function EnvironmentTasks({
   readonly onEdit: (task: ScheduledTask) => void;
 }) {
   const t = useTranslation();
+  const session = useBaskuleSession();
+  const spaces = useSpaceEnvironments();
+  const me = session.status === "signed-in" ? session.me : null;
+  const spaceId = spaces.find(
+    (entry) => entry.environmentId === environment.environmentId,
+  )?.spaceId;
+  const space = me?.spaces.find((entry) => entry.id === spaceId);
+  const isAuthor = (task: ScheduledTask) =>
+    Boolean(me && task.author?.id && task.author.id === me.user.id);
+  const canStop = (task: ScheduledTask) =>
+    canOperate && (isAuthor(task) || me?.user.role === "admin" || space?.role === "owner");
   const environmentId = environment.environmentId;
   const tasks = useEnvironmentQuery(
     serverEnvironment.scheduledTasksLive({ environmentId, input: {} }),
@@ -1397,6 +1410,7 @@ function EnvironmentTasks({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t("Edit {{title}}", { title: task.title })}
+              disabled={!canOperate || !isAuthor(task)}
               onPress={() => {
                 onEdit(task);
               }}
@@ -1421,19 +1435,19 @@ function EnvironmentTasks({
             </Pressable>
             <Menu
               actions={[
-                { id: "edit", title: "Edit" },
+                ...(isAuthor(task) ? [{ id: "edit", title: "Edit" }] : []),
                 {
                   id: "toggle",
                   title: task.enabled ? "Pause" : "Resume",
-                  attributes: { disabled: !canOperate },
+                  attributes: { disabled: !canStop(task) || (!task.enabled && !isAuthor(task)) },
                 },
-                ...(task.schedule.type === "webhook"
+                ...(task.schedule.type === "webhook" || !isAuthor(task)
                   ? []
                   : [{ id: "run", title: "Run now", attributes: { disabled: !canOperate } }]),
                 {
                   id: "delete",
                   title: "Delete",
-                  attributes: { destructive: true, disabled: !canOperate },
+                  attributes: { destructive: true, disabled: !canStop(task) },
                 },
               ]}
               onPressAction={({ nativeEvent }) => {

@@ -8264,6 +8264,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Queued run ${queuedRun.id} is missing message or execution state.`,
       });
     }
+    if (queuedMessage.scheduledTaskId !== undefined) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Scheduled runs cannot be edited or used to steer another run. Change the scheduled task instead.",
+      });
+    }
     if (
       queuedMessage.delegatedCompletion !== undefined ||
       queuedMessage.notification !== undefined
@@ -8568,6 +8575,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandId: command.commandId,
         commandType: command.type,
         cause: `Queued run ${queuedRun.id} has no user message.`,
+      });
+    }
+    if (queuedMessage.scheduledTaskId !== undefined) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Scheduled runs cannot be edited or used to steer another run. Change the scheduled task instead.",
       });
     }
     if (
