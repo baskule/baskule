@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test, expect, signIn, startChat, assistant, phoneOptions } from "./fixtures.mjs";
 
+import { fakeOAuth } from "../../platform/test/fixtures/oauth.mjs";
+
 const portable = fileURLToPath(new URL("../../platform/test/fixtures/plugins/portable/", import.meta.url));
 function skillsArchive() {
   return execFileSync("python3", ["-c", "import io,pathlib,sys,zipfile; root=pathlib.Path(sys.argv[1]); b=io.BytesIO(); z=zipfile.ZipFile(b,'w'); [z.write(p,p.relative_to(root)) for p in root.rglob('*') if p.is_file() and (p.relative_to(root).parts[0]=='skills' or p.name=='LICENSE')]; z.close(); sys.stdout.buffer.write(b.getvalue())", portable]);
@@ -83,5 +85,61 @@ test("assigned skills are ready without activation and leave a team when its con
     if (team) await api.admin.json("POST", `/api/baskule/admin/spaces/${team}/stop`, {});
     await adminContext.close();
     await memberContext.close();
+  }
+});
+
+test("a connected member supplies discovery while calls keep the turn author's account", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api }) => {
+  const oauth = await fakeOAuth();
+  const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
+  const secondContext = await browser.newContext(options);
+  const secondPage = await secondContext.newPage();
+  const name = `Discovery ${crypto.randomUUID().slice(0, 8)}`;
+  let plugin;
+  let team;
+  try {
+    plugin = await api.admin.json("POST", "/api/baskule/admin/plugins", { name, groups: ["everyone"], source: { type: "url", url: oauth.resource } });
+    await api.admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, { servers: [{ name: "remote", credential: "user-oauth", personal: true }] });
+    team = await api.teamSpace(api.admin, name, [people.alice, people.bob]);
+    await api.admin.json("PATCH", `/api/baskule/spaces/${team}/members/${people.alice.me.user.id}`, { role: "owner" });
+    await api.admin.json("DELETE", `/api/baskule/spaces/${team}/members/${api.admin.me.user.id}`);
+    await people.alice.json("PUT", `/api/baskule/spaces/${team}/plugins`, { personalPluginsAllowed: true, disabled: [] });
+    const members = [people.alice, people.bob].sort((a, b) => a.me.user.id < b.me.user.id ? -1 : a.me.user.id > b.me.user.id ? 1 : 0);
+    const client = await members[0].rpc(team);
+    try {
+      const shell = api.watchShell(client);
+      await expect.poll(() => shell.ready, { message: "team runtime is booted before connecting" }).toBe(true);
+    } finally { client.close(); await client.closed; }
+
+    await secondContext.addCookies(members[1].cookie.split("; ").map(cookie => {
+      const [name, ...value] = cookie.split("=");
+      return { name, value: value.join("="), url: stack.urls.front };
+    }));
+    await secondPage.goto(`${stack.urls.front}/settings/plugins`);
+    await secondPage.getByRole("button", { name: `Connect your ${name} account`, exact: true }).click();
+    await expect(secondPage).toHaveURL(url => url.pathname === "/settings/plugins" && !url.searchParams.has("pluginConnection"));
+    await expect(secondPage.getByText("Ready", { exact: true })).toBeVisible();
+    await secondPage.screenshot({ path: test.info().outputPath("plugin-connected-discovery.png") });
+
+    const reply = async (person, text) => {
+      const client = await person.rpc(team);
+      try {
+        const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
+        const id = await api.launch(client, projectId, text, "Plugin account", { generateTitle: false });
+        const state = api.watchThread(client, id);
+        await api.waitRun(state);
+        const answer = state.assistantText();
+        state.stop();
+        return answer;
+      } finally { client.close(); await client.closed; }
+    };
+    expect(await reply(members[0], "Use the shared tool [[fake:tool *fixture_lookup {}]]")).toContain(`Connect your ${name} account`);
+    expect(oauth.calls).toHaveLength(0);
+    expect(await reply(members[1], "Use my connected tool [[fake:tool *fixture_lookup {}]]")).toContain("private fixture document");
+    expect(oauth.calls).toHaveLength(1);
+  } finally {
+    if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
+    if (team) await api.admin.json("POST", `/api/baskule/admin/spaces/${team}/stop`, {});
+    await secondContext.close();
+    await oauth.close();
   }
 });

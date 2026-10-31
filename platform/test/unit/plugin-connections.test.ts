@@ -292,3 +292,53 @@ describe("login identity connections", () => {
     } finally { fetcher.mockRestore(); }
   });
 });
+
+describe("ready-member discovery and account reloads", () => {
+  it("discovers through the second member when the first has no account, without lending that account to calls", async () => {
+    const f = await fakeOAuth();
+    try {
+      const h = await makeService(); const x = await install(h, f.resource);
+      const bob = await createUser(h, x.a.creds, "discovery@os.test", "Discovery");
+      const b = await signIn(h, bob.email, "user-password-1");
+      const team = (await call(h, "POST", `${API}/spaces`, { creds: x.a.creds, body: { name: "Discovery", members: [{ userId: bob.id }] } })).body.space.id;
+      await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [] } });
+      const members = [{ id: x.a.userId, creds: x.a.creds }, { id: bob.id, creds: b.creds }].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      const start = await call(h, "GET", `${API}/plugins/${x.p.id}/connect`, { creds: members[1].creds });
+      await call(h, "GET", await authorized(start), { creds: members[1].creds });
+      expect((await h.svc.plugins.settings(team)).servers[0].catalogUserId).toBe(members[1].id);
+      await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: false, disabled: [] } });
+      expect((await h.svc.plugins.settings(team)).servers).toEqual([]);
+      await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [x.p.id] } });
+      expect((await h.svc.plugins.settings(team)).servers).toEqual([]);
+      await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [] } });
+      expect(await h.svc.connections.credential({ ...x.input, spaceId: team, userId: members[0].id })).toEqual({ error: "connect" });
+      expect(await h.svc.connections.credential({ ...x.input, spaceId: team, userId: members[1].id })).toMatchObject({ headers: { Authorization: expect.stringMatching(/^Bearer /) } });
+      await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: members[1].creds });
+      expect((await h.svc.plugins.settings(team)).servers).toEqual([]);
+    } finally { await f.close(); }
+  });
+
+  it("reloads the author's spaces after connect/disconnect and all spaces after setup, but never after refresh", async () => {
+    const f = await fakeOAuth(); f.state.shortLived = true;
+    try {
+      const h = await makeService(); const x = await install(h, f.resource);
+      const bob = await createUser(h, x.a.creds, "reload@os.test", "Reload");
+      const team = (await call(h, "POST", `${API}/spaces`, { creds: x.a.creds, body: { name: "Reload", members: [{ userId: bob.id }] } })).body.space.id;
+      const callback = await authorized(await x.start());
+      h.calls.length = 0;
+      await call(h, "GET", callback, { creds: x.a.creds });
+      const reloads = () => h.calls.filter(c => c.path === "/_baskule/reconfigure").map(c => c.spaceId).sort();
+      const own = [team, personalSpaceOf(h, x.a.userId)].sort();
+      expect(reloads()).toEqual(own);
+      h.calls.length = 0;
+      expect((await x.credential()).body.headers.Authorization).toMatch(/^Bearer /);
+      expect(f.state.refreshes).toBe(1);
+      expect(reloads()).toEqual([]);
+      await call(h, "DELETE", `${API}/plugins/${x.p.id}/connection`, { creds: x.a.creds });
+      expect(reloads()).toEqual(own);
+      h.calls.length = 0;
+      await call(h, "PUT", `${API}/admin/plugins/${x.p.id}/oauth`, { creds: x.a.creds, body: { server: "remote", client: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } } });
+      expect(reloads()).toEqual([...own, personalSpaceOf(h, bob.id)].sort());
+    } finally { await f.close(); }
+  });
+});

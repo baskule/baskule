@@ -52,6 +52,7 @@ export function microsoftAudience(token: string, audience: string): boolean {
 }
 
 export class Connections {
+  onChange?: (userId: string | undefined) => void;
   private refreshes = new Map<string, Promise<PluginCredential>>();
   constructor(private storage: StorageLike, private plugins: Plugins, private auth: Auth, private installation: InstallationAuth, private cipher: ConnectionCipher, private fetcher: Fetcher = fetch) {}
   private rows(q: string, ...p: unknown[]) { return this.storage.sql.exec(q, ...p).toArray(); }
@@ -85,6 +86,7 @@ export class Connections {
     const data = await this.cipher.seal(value, context(userId, pluginId, server));
     this.active(pending);
     this.rows("insert into plugin_connection(user_id,plugin_id,server,data) values (?,?,?,?) on conflict(user_id,plugin_id,server) do update set data=excluded.data", userId, pluginId, server, data);
+    this.onChange?.(userId);
   }
   private row(userId: string, pluginId: string, server: string) {
     return this.rows("select data from plugin_connection where user_id=? and plugin_id=? and server=?", userId, pluginId, server)[0]?.data as string | undefined;
@@ -146,6 +148,7 @@ export class Connections {
       this.rows("delete from plugin_connection where plugin_id=? and server=?", pluginId, server);
       this.rows("delete from plugin_oauth_state where plugin_id=? and server=?", pluginId, server);
     });
+    this.onChange?.(undefined);
     return json({ ok: true, configured: !!client });
   }
   async user(req: Request, path: string, user: User, sessionId: string): Promise<Response> {
@@ -162,6 +165,7 @@ export class Connections {
           this.rows("delete from plugin_oauth_state where user_id=? and plugin_id=? and server=?", user.id, plugin.id, s.name);
         }
       });
+      this.onChange?.(user.id);
       return json({ ok: true });
     }
     if (match[2] !== "connect" || req.method !== "GET") return notFound();
