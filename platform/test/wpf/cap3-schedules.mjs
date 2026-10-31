@@ -1,5 +1,4 @@
-import { FRONT, MODEL, assert, waitFor, world } from './lib.mjs';
-const tasks = async (c) => (await c.ok('scheduledTasks.list', {})).tasks;
+import { FRONT, MODEL, assert, waitFor, world, scheduledTasks as tasks } from './lib.mjs';
 export const scheduleChecks = [
  {name:'schedule-lifecycle-and-webhook', capability:'3-schedules', fn:async(ctx)=>{
   const s=await world(ctx);
