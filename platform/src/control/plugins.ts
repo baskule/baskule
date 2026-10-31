@@ -1,5 +1,5 @@
 import type { ConnectionCipher } from "./connection-crypto";
-import { checkOutbound, isPrivateHost } from "../shared/plugin-outbound";
+import { checkMcpUrl, serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
 import type { Group, Plugin, PluginPatch, PluginServer, PluginSource, PluginUseDecision, SpacePlugins, SpacePluginSettings, UserPlugin } from "../../../app/packages/contracts/src/baskule-plugins";
 import { HttpError, json, notFound } from "../shared/http";
@@ -103,7 +103,7 @@ export class Plugins {
     return {
       servers: plugins.flatMap(p => p.servers.flatMap(s => {
         const catalogUserId = members.find(userId => this.canUse(userId, spaceId, p.id, s.name).allowed);
-        return catalogUserId ? [{ ...s, pluginId: p.id, catalogUserId, privateNetwork: isPrivateHost(new URL(s.url).hostname) }] : [];
+        return catalogUserId ? [{ ...s, pluginId: p.id, catalogUserId, privateNetwork: serverNetwork(s.url) === "private" }] : [];
       })),
       // Shared-computer skills are intentionally space-scoped. Per-user grants gate MCP calls later.
       skills: plugins.flatMap(p => {
@@ -135,7 +135,7 @@ export class Plugins {
     }
     let inspected;
     if (source.type === "url") {
-      const url = checkOutbound(source.url, data.source.type === "registry" ? "public" : "private").href;
+      const url = checkMcpUrl(source.url, data.source.type === "registry" ? "public" : "private").href;
       inspected = { name: name ?? new URL(url).hostname, description, kind: "mcp" as const, servers: remoteServers ?? [{ name: "remote", url, credential: "none" as const, personal: false, transport: "streamable-http" as const }], skills: [], ignored: [], storedBytes: 0 };
     } else {
       let bytes: Uint8Array;
@@ -151,7 +151,7 @@ export class Plugins {
         inspected = inspectBundle(unpackArchive(bytes), { stripRoot: true });
       }
     }
-    for (const server of inspected.servers) checkOutbound(server.url, data.source.type === "registry" ? "public" : "private");
+    for (const server of inspected.servers) checkMcpUrl(server.url, data.source.type === "registry" ? "public" : "private");
     const plugin: Plugin = { id: crypto.randomUUID(), name: name ?? inspected.name, description: inspected.description || description, kind: inspected.kind,
       source: data.source, ...(resolvedSource ? { resolvedSource } : {}), skills: inspected.skills.map(s => ({ name: s.name, description: s.description })), servers: inspected.servers,
       ignored: inspected.ignored, enabled: false, createdAt: new Date().toISOString() };
@@ -192,25 +192,19 @@ export class Plugins {
     if (req.method === "DELETE") { this.rows("delete from plugin where id=?", plugin.id); return json({ ok: true }); }
     if (req.method === "PATCH") {
       const patch: PluginPatch = parse(patchSchema, await body(req));
+      const servers = patch.servers ? plugin.servers.map(server => ({ ...server, ...patch.servers!.find(p => p.name === server.name) })) : plugin.servers;
       if (patch.servers) {
         if (patch.servers.some(s => ["user-oauth", "login-identity"].includes(s.credential) && !s.personal)) throw new HttpError(400, "personal_credential_required");
         if (new Set(patch.servers.map(s => s.name)).size !== patch.servers.length || patch.servers.some(s => !plugin.servers.some(p => p.name === s.name))) throw new HttpError(400, "unknown_plugin_server");
-        for (const old of plugin.servers) {
-          const next = { ...old, ...patch.servers.find(p => p.name === old.name) };
-          checkOutbound(next.url, plugin.source.type === "registry" ? "public" : "private");
-          if (JSON.stringify(old) !== JSON.stringify(next)) {
-            this.rows("delete from plugin_secret where plugin_id=? and server=?", plugin.id, old.name);
-            this.rows("delete from plugin_connection where plugin_id=? and server=?", plugin.id, old.name);
-            this.rows("delete from plugin_oauth_state where plugin_id=? and server=?", plugin.id, old.name);
-          }
-        }
-        plugin.servers = plugin.servers.map(s => ({ ...s, ...patch.servers!.find(p => p.name === s.name) }));
+        for (const server of servers) server.url = checkMcpUrl(server.url, plugin.source.type === "registry" ? "public" : "private").href;
       }
       const { servers: _servers, ...fields } = patch;
-      Object.assign(plugin, fields);
       this.storage.transactionSync(() => {
+        for (const old of plugin.servers) if (JSON.stringify(old) !== JSON.stringify(servers.find(s => s.name === old.name))) {
+          for (const table of ["plugin_secret", "plugin_oauth_client", "plugin_connection", "plugin_oauth_state"]) this.rows(`delete from ${table} where plugin_id=? and server=?`, plugin.id, old.name);
+        }
+        Object.assign(plugin, fields, { servers });
         this.rows("update plugin set definition=? where id=?", JSON.stringify(plugin), plugin.id);
-        for (const s of plugin.servers) if (s.credential !== "organization") this.rows("delete from plugin_secret where plugin_id=? and server=?", plugin.id, s.name);
       });
       return json(plugin);
     }
@@ -222,7 +216,7 @@ export class Plugins {
     if (path === "/plugins" && req.method === "GET") {
       const enabled = this.rows("select plugin_id from user_plugin where user_id=?", userId).map(r => r.plugin_id);
       const plugins: UserPlugin[] = await Promise.all(this.list().filter(p => allowed.includes(p.id)).map(async p => ({ ...p, userEnabled: enabled.includes(p.id),
-        connections: await Promise.all(p.servers.map(async s => ({ server: s.name, state: s.credential === "none" ? "not_required" as const : s.credential === "organization" ? await this.organizationHeaders(p.id, s.name) ? "configured" as const : "needs_configuration" as const : await this.connections!.state(userId, p.id, s) }))) })));
+        connections: await Promise.all(p.servers.map(async s => ({ server: s.name, state: s.credential === "none" ? "not_required" as const : s.credential === "organization" ? this.rows("select 1 from plugin_secret where plugin_id=? and server=?", p.id, s.name).length ? "configured" as const : "needs_configuration" as const : await this.connections!.state(userId, p.id, s) }))) })));
       return json({ plugins });
     }
     const match = /^\/plugins\/([^/]+)\/enabled$/.exec(path);

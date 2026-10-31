@@ -154,6 +154,13 @@ the file is authoritative. Do not recycle a provider ID for a different identity
 
 ## Plugin account connections
 
+Plugin outbound traffic requires HTTPS to public hosts. Admin-added servers may use private addresses and HTTP
+on those addresses. The in-isolate `baskule-mcp.internal` host is always refused. OAuth metadata for a public
+server may only point to public HTTPS addresses. Requests refuse redirects; MCP requests stay on their origin.
+These checks inspect URLs, not DNS answers. Deployment egress rules must deny private and reserved destination
+addresses for public hostnames, including DNS rebinding; this is not full SSRF protection.
+
+
 The administrator installs and grants plugins; users connect their own accounts. Connections are per user and
 plugin server across spaces. Personal-account servers are refused in team spaces until an owner enables
 personal-account plugins for that space. A connection never grants access beyond the group's plugin policy.
@@ -161,7 +168,7 @@ personal-account plugins for that space. A connection never grants access beyond
 For an MCP server with `credential: "user-oauth"`, ControlCell discovers protected-resource and authorization-server
 metadata, registers a public client with DCR, and runs the authorization-code flow with S256 PKCE. It sends the
 canonical MCP URL as `resource` on authorization, token exchange and refresh requests. Metadata must identify that
-same resource and issuer; callback issuer checks follow RFC 9207. HTTPS is required, except for loopback fixtures.
+same resource and issuer; callback issuer checks follow RFC 9207. Public servers require HTTPS; admin-added private servers may use HTTP.
 OAuth endpoints never follow redirects with credentials. A client-ID metadata document is not served by this version;
 servers without DCR use pre-registration.
 
@@ -219,7 +226,7 @@ forgets one or all plugin connections, cancels pending consent and prevents an i
 Disconnecting login reuse keeps the sign-in account and its provider grants; revoke grants at the provider if needed.
 
 Better Auth's `account.encryptOAuthTokens: true` encrypts access and refresh tokens with the installation secret;
-login ID tokens are discarded after validation. Plugin tokens, refresh data, pending PKCE verifiers and admin OAuth
+login ID tokens are discarded after validation. Organization keys, plugin tokens, refresh data, pending PKCE verifiers and admin OAuth
 client secrets use AES-256-GCM with a domain-separated HKDF key derived from the same secret and authenticated row
 identity. Backups containing both the database and its generated secret remain sensitive. Keep `AUTH_SECRET` stable;
 changing it invalidates sessions and encrypted credentials. Deploying this configuration layout requires the data wipe below;
@@ -264,12 +271,6 @@ This change replaces the product configuration layout. Wipe the installation's d
 back up if wanted, stop and purge with `deploy/v2/down.sh --purge`, prepare `.env` and `auth.json`, then build and
 run `deploy/v2/up.sh` and configure the product in the admin area. Rebuild clients for their new login paths.
 There is no import or fallback from the retired organization/AI environment settings.
-
-Plugin outbound traffic requires HTTPS to public hosts. Admin-added servers may use private addresses and HTTP
-on those addresses. The in-isolate `baskule-mcp.internal` host is always refused. OAuth metadata for a public
-server may only point to public HTTPS addresses. Requests refuse redirects; MCP requests stay on their origin.
-These checks inspect URLs, not DNS answers. Deployment egress rules must deny private and reserved destination
-addresses for public hostnames, including DNS rebinding; this is not full SSRF protection.
 
 The encrypted-key schema recreates `plugin_secret`; existing organization keys are removed. Before deployment,
 obtain the installation owner's authorization and retain the keys privately if they must be re-entered. Deploy

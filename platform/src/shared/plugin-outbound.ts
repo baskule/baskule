@@ -13,13 +13,13 @@ export function isPrivateHost(hostname: string): boolean {
     const words = [...left, ...Array(parts.length === 2 ? 8 - left.length - right.length : 0).fill("0"), ...right].map(v => parseInt(v, 16));
     if (words.slice(0, 5).every(v => v === 0) && words[5] === 0xffff)
       return isPrivateHost(`${words[6] >> 8}.${words[6] & 255}.${words[7] >> 8}.${words[7] & 255}`);
-    return words.slice(0, 7).every(v => v === 0) || (words[0] & 0xfe00) === 0xfc00 ||
+    return words.slice(0, 6).every(v => v === 0) || words[0] === 0x64 && words[1] === 0xff9b && words.slice(2, 6).every(v => v === 0) || (words[0] & 0xfe00) === 0xfc00 ||
       (words[0] & 0xffc0) === 0xfe80 || (words[0] & 0xff00) === 0xff00 || words[0] === 0x2001 && words[1] === 0xdb8;
   }
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
     const [a, b, c] = host.split(".").map(Number);
     return a === 0 || a === 10 || a === 127 || a >= 224 || a === 100 && b >= 64 && b <= 127 ||
-      a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 || b === 2) ||
+      a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 && (c === 0 || c === 2)) ||
       a === 198 && (b === 18 || b === 19 || b === 51 && c === 100) || a === 203 && b === 0 && c === 113;
   }
   return !host.includes(".") || host === "localhost" || /\.(localhost|local|internal)$/.test(host);
@@ -31,13 +31,23 @@ export function checkOutbound(value: string | URL, network: Network): URL {
   try { url = new URL(value); } catch { throw new HttpError(400, "address_not_allowed"); }
   const privateHost = isPrivateHost(url.hostname);
   if (url.hostname.toLowerCase().replace(/\.$/, "") === "baskule-mcp.internal" || url.username || url.password || url.hash ||
-      /[{}$]/.test(url.href) || !(url.protocol === "https:" || url.protocol === "http:" && network === "private" && privateHost) ||
+      /[{}$]/.test(String(value)) || !(url.protocol === "https:" || url.protocol === "http:" && network === "private" && privateHost) ||
       network === "public" && privateHost) throw new HttpError(400, "address_not_allowed");
   return url;
 }
 
+export function serverNetwork(value: string): Network {
+  return isPrivateHost(new URL(value).hostname) ? "private" : "public";
+}
+
+export function checkMcpUrl(value: string, network: Network): URL {
+  const url = checkOutbound(value, network);
+  if (url.search) throw new HttpError(400, "address_not_allowed");
+  return url;
+}
+
 export async function connectMcp(server: Pick<PluginServer, "url" | "transport">, network: Network, headers: Record<string, string>, timeoutMs: number): Promise<Client> {
-  const url = checkOutbound(server.url, network);
+  const url = checkMcpUrl(server.url, network);
   const client = new Client({ name: "baskule-plugin-proxy", version: "0.4.0" }, { capabilities: {} });
   const options = { requestInit: { headers }, fetch: (input: RequestInfo | URL, init?: RequestInit) => {
     const target = checkOutbound(input instanceof Request ? input.url : String(input), network);

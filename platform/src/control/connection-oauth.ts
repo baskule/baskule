@@ -1,4 +1,4 @@
-import { checkOutbound, isPrivateHost, type Network } from "../shared/plugin-outbound";
+import { checkOutbound, serverNetwork, type Network } from "../shared/plugin-outbound";
 import { z } from "zod";
 import { HttpError } from "../shared/http";
 import { readBounded, type Fetcher } from "./registries/http";
@@ -82,7 +82,7 @@ export async function registerClient(discovery: Discovery, redirectUri: string, 
   if (!discovery.as.registration_endpoint) throw new HttpError(409, "oauth_client_configuration_required");
   const r = await oauthJson(fetcher, discovery.as.registration_endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
     client_name: "Baskule", redirect_uris: [redirectUri], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none",
-  }) }, isPrivateHost(new URL(discovery.resource).hostname) ? "private" : "public");
+  }) }, serverNetwork(discovery.resource));
   const parsed = z.object({ client_id: z.string().min(1).max(4096), token_endpoint_auth_method: z.literal("none").optional() }).safeParse(r.value);
   if ((r.status !== 200 && r.status !== 201) || !parsed.success) throw new HttpError(502, "oauth_registration_failed");
   return { clientId: parsed.data.client_id, tokenEndpointAuthMethod: "none" };
@@ -93,12 +93,12 @@ export async function exchangeToken(discovery: Discovery, client: OAuthClient, p
   const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
   if (client.tokenEndpointAuthMethod === "client_secret_post") form.set("client_secret", client.clientSecret!);
   if (client.tokenEndpointAuthMethod === "client_secret_basic") headers.authorization = `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret!)}`)}`;
-  const r = await oauthJson(fetcher, discovery.as.token_endpoint, { method: "POST", headers, body: form.toString() }, isPrivateHost(new URL(discovery.resource).hostname) ? "private" : "public");
+  const r = await oauthJson(fetcher, discovery.as.token_endpoint, { method: "POST", headers, body: form.toString() }, serverNetwork(discovery.resource));
   if (r.status === 400 && (r.value as { error?: string } | null)?.error === "invalid_grant") throw new HttpError(401, "oauth_grant_expired");
   const token = z.object({ access_token: z.string().min(1).max(32768).regex(/^[A-Za-z0-9\-._~+/]+=*$/), token_type: z.string().regex(/^Bearer$/i),
     refresh_token: z.string().min(1).max(32768).optional(), expires_in: z.number().positive().max(365 * 86400).optional(), scope: z.string().max(16384).optional(), resource: z.string().optional(),
   }).safeParse(r.value);
-  if (r.status !== 200 || !token.success || (token.data.resource && canonicalResource(token.data.resource, isPrivateHost(new URL(discovery.resource).hostname) ? "private" : "public") !== discovery.resource)) throw new HttpError(502, "invalid_oauth_token");
+  if (r.status !== 200 || !token.success || (token.data.resource && canonicalResource(token.data.resource, serverNetwork(discovery.resource)) !== discovery.resource)) throw new HttpError(502, "invalid_oauth_token");
   return { accessToken: token.data.access_token, refreshToken: token.data.refresh_token,
     expiresAt: token.data.expires_in === undefined ? null : Date.now() + token.data.expires_in * 1000, scopes: token.data.scope === undefined ? previousScopes : token.data.scope.split(/\s+/).filter(Boolean) };
 }

@@ -92,7 +92,7 @@ describe("plugin proxy", () => {
     expect(fetcher).not.toHaveBeenCalled();
     await proxy.close();
   });
-  it("checks policy on every call, labels personal accounts and never forwards session metadata", async () => {
+  it.each([false, true])("checks policy and calls the vendor with privateNetwork=%s", async privateNetwork => {
     const seen: { method: string; auth: string | null; params: any }[] = [];
     vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
       const body = JSON.parse(String(init.body));
@@ -105,7 +105,7 @@ describe("plugin proxy", () => {
     let allowed = true;
     const originalExpiry = Date.now() + 60_000;
     const credential = vi.fn(async (id: string): Promise<PluginCredential> => allowed ? { headers: { Authorization: `Bearer secret-${id}` }, expiresAt: Math.max(originalExpiry, Date.now() + 60_000) } : { error: "not_allowed" });
-    const proxy = new PluginMcpProxy(server, async id => id === "alice" ? alice : bob, credential);
+    const proxy = new PluginMcpProxy({ ...server, privateNetwork, url: privateNetwork ? "http://127.0.0.1/mcp" : server.url }, async id => id === "alice" ? alice : bob, credential);
     await rpc(proxy, "tools/list");
     const a = await rpc(proxy, "tools/call"); const b = await rpc(proxy, "tools/call", "bob");
     expect(a.result._meta["baskule/account"]).toMatchObject({ userId: "alice" });

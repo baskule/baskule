@@ -1,4 +1,4 @@
-import { isPrivateHost } from "../shared/plugin-outbound";
+import { serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
 import type { Plugin, PluginConnectionState, PluginServer } from "../../../app/packages/contracts/src/baskule-plugins";
 import type { Auth } from "./auth";
@@ -190,7 +190,7 @@ export class Connections {
       for (const cookie of response.headers.getSetCookie()) result.headers.append("set-cookie", cookie);
       return result;
     }
-    const discovery = await discoverOAuth(server.url, this.fetcher, isPrivateHost(new URL(server.url).hostname) ? "private" : "public");
+    const discovery = await discoverOAuth(server.url, this.fetcher, serverNetwork(server.url));
     const callback = `${u.origin}${CALLBACK}`;
     const row = this.rows("select data from plugin_oauth_client where plugin_id=? and server=?", plugin.id, server.name)[0];
     const client = row ? await this.cipher.open<OAuthClient>(row.data as string, context("client", plugin.id, server.name)) : await registerClient(discovery, callback, this.fetcher);
