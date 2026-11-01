@@ -4,6 +4,13 @@ import m0001 from './0001_personal_space_triggers.sql';
 import m0002 from './0002_complex_moondragon.sql';
 import m0003 from './0003_motionless_carlie_cooper.sql';
 import m0004 from './0004_remarkable_hellcat.sql';
+import m0005 from './0005_reflective_miracleman.sql';
+import m0006 from './0006_wealthy_malcolm_colcord.sql';
+import m0007 from './0007_hot_corsair.sql';
+import m0008 from './0008_catalog_plugins.sql';
+import m0009 from './0009_sad_captain_flint.sql';
+import m0010 from './0010_plugin_review.sql';
+import m0011 from './0011_plugin_versions.sql';
 
   export default {
     journal,
@@ -12,7 +19,14 @@ import m0004 from './0004_remarkable_hellcat.sql';
 m0001,
 m0002,
 m0003,
-m0004
+m0004,
+m0005,
+m0006,
+m0007,
+m0008,
+m0009,
+m0010,
+m0011
     }
   }
   

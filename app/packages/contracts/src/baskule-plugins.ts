@@ -1,33 +1,51 @@
-export type PluginKind = "mcp" | "skill" | "bundle";
 export type PluginSource =
-  | { type: "registry"; registry: string; id: string; version?: string }
-  | { type: "url"; url: string }
-  | { type: "git"; repo: string; ref: string; path?: string }
-  | { type: "archive"; sha256: string };
-export type CredentialMode = "none" | "organization" | "user-oauth" | "login-identity";
+  | { type: "catalog" }
+  | { type: "github"; repo: string; sha: string; path?: string }
+  | { type: "upload"; sha256: string }
+  | { type: "custom" }
+  | { type: "folder"; path: string };
+export type CredentialMode = "none" | "organization" | "user-oauth";
+export interface OAuthRecipe {
+  scopes?: string[];
+  params?: Record<string, string>;
+  resource?: false;
+  resourceUrl?: string;
+  staticClient?: true;
+}
 export interface PluginServer {
   name: string;
   url: string;
   credential: CredentialMode;
-  personal: boolean;
-  oauth?: { scopes: string[] };
-  loginIdentity?: { provider: "google" | "microsoft"; scopes: string[]; audience: string };
+  disabledTools: string[];
+  keyHeaders?: string[];
+  oauth?: OAuthRecipe;
   transport?: "streamable-http" | "sse";
 }
 export interface Plugin {
   id: string;
-  kind: PluginKind;
+  vendor: string;
   name: string;
   description: string;
   icon?: string;
   source: PluginSource;
-  /** Concrete, immutable source behind a registry selection. */
-  resolvedSource?: Exclude<PluginSource, { type: "registry" }>;
   skills: { name: string; description: string }[];
   servers: PluginServer[];
-  ignored: string[];
+  omitted: Omission[];
   enabled: boolean;
   createdAt: string;
+}
+export interface PluginFolder {
+  syncedAt: number;
+  problems: { path: string; message: string }[];
+}
+export interface AdminPlugin extends Plugin {
+  setup: { server: string; done: boolean }[];
+  vendorConfigured: boolean;
+}
+/** `GET /admin/plugins`; `folder` is null when no plugins folder is mounted. */
+export interface AdminPluginList {
+  plugins: AdminPlugin[];
+  folder: PluginFolder | null;
 }
 export interface Group {
   id: string;
@@ -42,40 +60,52 @@ export interface SpacePluginSettings {
   personalPluginsAllowed: boolean;
   disabled: string[];
 }
-export interface PluginSearchResult {
+export type OmissionCode = "claude_commands" | "claude_agents" | "hooks" | "local_program" | "invalid_server" | "skill_without_instructions" | "invalid_skill" | "skill_license" | "other_files";
+export interface Omission { code: OmissionCode; subject: string }
+export type Fix =
+  | { server: string; need: "sign_in" }
+  | { server: string; need: "address"; placeholders: string[] }
+  | { server: string; need: "key"; headers: string[] };
+export interface SkillInput {
+  name: string;
+  description: string;
+  instructions: string;
+  frontmatter?: string;
+  files: PluginFile[];
+}
+export interface SkillHistory {
+  skills: SkillInput[];
+  editable: boolean;
+  /** When each snapshot stopped being current, and who replaced it. */
+  versions: { version: number; savedAt: string; savedBy?: string }[];
+}
+export type ServerInput = Omit<PluginServer, "disabledTools"> & { disabledTools?: string[] };
+export interface ServerTestInput { server: ServerInput; headers?: Record<string, string> }
+export interface PluginTool { name: string; description: string }
+export type ServerTestResult = { tools: PluginTool[] } | { signIn: "account"; staticClient: boolean };
+export interface PluginInput {
+  name: string;
+  description: string;
+  icon?: string;
+  source: Exclude<PluginSource, { type: "catalog" }>;
+  servers: ServerInput[];
+  skills: SkillInput[];
+  omitted: Omission[];
+}
+export type PluginCreate = { catalog: string; groups: string[] } | { plugin: PluginInput; groups: string[] };
+export type PluginUpdate = { enabled: boolean } | { plugin: PluginInput } | { disabledTools: Record<string, string[]> };
+export type PluginInspect = { archive: string } | { github: string };
+export interface PluginDraft { plugin: PluginInput; fixes: Fix[]; omitted: Omission[] }
+export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
+export interface Account { id: string; label: string; default: boolean; status: "ready" | "reconnect" }
+export interface MemberPlugin {
   id: string;
   name: string;
   description: string;
-  kind: PluginKind;
-  source: Extract<PluginSource, { type: "registry" }>;
-  license?: string;
-}
-export interface PluginSearchResponse {
-  results: PluginSearchResult[];
-  failures: { registry: string; error: "unavailable" }[];
-}
-export interface PluginInstallInput {
-  source: PluginSource;
-  /** Base64 ZIP or tar.gz bytes, required only for archive sources; hash is verified. */
-  archive?: string;
-  name?: string;
-}
-export interface PluginPatch {
-  name?: string;
-  description?: string;
   icon?: string;
-  enabled?: boolean;
-  servers?: Pick<PluginServer, "name" | "credential" | "personal" | "oauth" | "loginIdentity">[];
-}
-export type PluginConnectionState =
-  | "connected"
-  | "not_required"
-  | "configured"
-  | "needs_configuration"
-  | "needs_connection";
-export interface UserPlugin extends Plugin {
-  userEnabled: boolean;
-  connections: { server: string; state: PluginConnectionState }[];
+  skills: { name: string; description: string }[];
+  status: PluginStatus;
+  servers: { name: string; credential: CredentialMode; status: PluginStatus; accounts: Account[] }[];
 }
 export interface PluginSecretInput {
   server: string;
@@ -90,12 +120,83 @@ export interface PluginFile {
 }
 export interface SpacePlugins {
   /** Catalog discovery uses an allowed member; tool calls always use the turn author. */
-  servers: (PluginServer & { pluginId: string; catalogUserId: string })[];
+  servers: (PluginServer & { pluginId: string; pluginName: string; catalogUserId: string; privateNetwork: boolean; defaultAccountOnly: boolean })[];
   skills: { pluginId: string; name: string; description: string; files: PluginFile[] }[];
 }
 export type PluginCredential =
-  | { headers: Record<string, string>; expiresAt: number }
-  | { error: "not_allowed" | "not_enabled" | "needs_connection"; connectUrl?: string };
-export type PluginUseDecision =
-  | { allowed: true }
-  | { allowed: false; error: "not_allowed" | "not_enabled" };
+  | { headers: Record<string, string>; expiresAt: number; account?: { id: string; label: string } }
+  | { error: PluginCallError; accounts?: string[] };
+
+export interface PluginCredentialRequest { spaceId: string; pluginId: string; server: string; userId: string; account?: string; tool?: string }
+export type PluginCallError = Exclude<PluginStatus, "ready"> | "unknown_account" | "default_account_required" | "tool_off";
+
+export const PLUGIN_ERROR_CODES = [
+  "address_not_allowed",
+  "address_placeholder",
+  "github_link_invalid",
+  "invalid_skill",
+  "account_label_taken",
+  "account_not_found",
+  "default_account_required",
+  "catalog_unknown",
+  "catalog_not_available",
+  "already_installed",
+  "not_editable",
+  "version_not_found",
+  "builtin_group",
+  "connection_failed",
+  "connection_not_allowed",
+  "consent_denied",
+  "duplicate_plugin_path",
+  "duplicate_skill_name",
+  "empty_plugin",
+  "empty_plugin_archive",
+  "forbidden",
+  "group_exists",
+  "invalid_archive",
+  "invalid_authorization_metadata",
+  "invalid_group",
+  "invalid_json",
+  "invalid_oauth_client",
+  "invalid_oauth_code",
+  "invalid_oauth_resource",
+  "invalid_oauth_state",
+  "invalid_oauth_token",
+  "invalid_plugin_input",
+  "invalid_plugin_manifest",
+  "invalid_resource_metadata",
+  "invalid_return_url",
+  "invalid_secret_headers",
+  "no_remote_servers",
+  "server_unreachable",
+  "key_required",
+  "not_found",
+  "not_oauth_server",
+  "not_organization_server",
+  "oauth_client_configuration_required",
+  "oauth_grant_expired",
+  "oauth_issuer_mismatch",
+  "oauth_issuer_changed",
+  "vendor_unknown",
+  "oauth_registration_failed",
+  "oauth_resource_mismatch",
+  "oauth_scope_missing",
+  "oauth_unavailable",
+  "plugin_from_folder",
+  "plugin_links_unsupported",
+  "plugin_not_found",
+  "plugin_server_required",
+  "plugin_skill_file_too_large",
+  "plugin_source_changed",
+  "plugin_source_unavailable",
+  "plugin_storage_limit",
+  "plugin_too_large",
+  "plugin_tree_too_large",
+  "proprietary_plugin",
+  "too_many_plugin_files",
+  "unsafe_plugin_path",
+  "unsupported_archive",
+  "unsupported_plugin_version",
+  "user_not_found",
+] as const;
+export type PluginErrorCode = (typeof PLUGIN_ERROR_CODES)[number];

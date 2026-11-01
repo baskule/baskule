@@ -1,3 +1,4 @@
+import { ConnectionCipher } from "./connection-crypto";
 // ControlService: all ControlCell logic (identity, spaces, invitations, admin, authorization, revocation).
 // Independent of the DO runtime so it runs under vitest with a fake `ctx.storage` (test/unit/fake-storage.ts).
 import { z } from "zod";
@@ -19,7 +20,7 @@ import { Groups } from "./groups";
 import { Connections } from "./connections";
 import { Plugins } from "./plugins";
 import { pluginCredential } from "./plugin-credential";
-import { readBounded } from "./registries/http";
+import { readBounded } from "./plugin-source";
 import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "../../../app/packages/contracts/src/baskule";
 import {
   INTERNAL_HEADER,
@@ -105,7 +106,7 @@ export class ControlService {
   readonly installation;
   readonly push: Push;
   readonly groups;
-  readonly plugins;
+  plugins!: Plugins;
   connections!: Connections;
   /** In-flight revocation calls; every request waits for them before answering (immediate revocation). */
   private pending = new Set<Promise<unknown>>();
@@ -125,7 +126,6 @@ export class ControlService {
     this.installation = parseAuthConfig(env.AUTH_CONFIG);
     this.push = new Push(storage, callSpace, this.installation.mode === "authenticated");
     this.groups = new Groups(storage);
-    this.plugins = new Plugins(storage, this.groups);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.db = drizzle(storage as any, { schema: { ...authSchema, ...appSchema } });
   }
@@ -162,8 +162,11 @@ export class ControlService {
       onSessionCreated: async (s) => this.onSessionCreated(s),
       onSessionDeleted: async (s) => this.onSessionDeleted(s),
     });
-    this.connections = new Connections(this.storage, this.plugins, this.auth, this.installation, secret);
+    const cipher = new ConnectionCipher(secret);
+    this.plugins = new Plugins(this.storage, this.groups, cipher);
+    this.connections = new Connections(this.storage, this.plugins, this.installation, cipher);
     this.plugins.connections = this.connections;
+    this.connections.onChange = userId => this.reloadSpaces(userId ? this.memberSpaceIds(userId) : "all");
     const org = this.one("select id from organization order by created_at limit 1");
     if (org) this.orgId = org.id as string;
     else {
@@ -264,17 +267,22 @@ export class ControlService {
     return json({ ...this.settingsView(), reloadPending });
   }
 
+  private reloadSpaces(spaceIds: string[] | "all"): void {
+    const ids = spaceIds === "all" ? this.all("select id from space").map(row => row.id as string) : spaceIds;
+    const work = Promise.all(ids.map(async id => {
+      try {
+        const response = await withTimeout(this.callSpace(id, "/_baskule/reconfigure", { method: "POST" }), REVOKE_TIMEOUT_MS);
+        await response.body?.cancel();
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } catch { console.warn(`Plugin settings saved; space ${id} will reload on its next boot`); }
+    }));
+    this.pending.add(work);
+    void work.finally(() => this.pending.delete(work));
+  }
+
   private async pluginChange(req: Request, action: Promise<Response>, spaceId?: string): Promise<Response> {
     const response = await action;
-    if (req.method === "GET" || !response.ok) return response;
-    const spaces = spaceId ? [{ id: spaceId }] : this.all("select id from space");
-    await Promise.all(spaces.map(async row => {
-      try {
-        const r = await withTimeout(this.callSpace(row.id as string, "/_baskule/reconfigure", { method: "POST" }), REVOKE_TIMEOUT_MS);
-        await r.body?.cancel();
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      } catch { console.warn(`Plugin settings saved; space ${row.id} will reload on its next boot`); }
-    }));
+    if (req.method !== "GET" && response.ok) this.reloadSpaces(spaceId ? [spaceId] : "all");
     return response;
   }
 
@@ -466,7 +474,7 @@ export class ControlService {
       const { spaceId } = await readJson<{ spaceId: string }>(req);
       if (!this.spaceRow(spaceId)) return notFound();
       const settings = this.productSettings();
-      return json({ ...settings, usageLimits: this.usage.settings(), plugins: this.plugins.settings(spaceId), apiKey: this.one("select value from kv where key=?", this.apiKeySlot(settings.ai.providerId, settings.ai.baseUrl))?.value ?? "" });
+      return json({ ...settings, usageLimits: this.usage.settings(), plugins: await this.plugins.settings(spaceId), apiKey: this.one("select value from kv where key=?", this.apiKeySlot(settings.ai.providerId, settings.ai.baseUrl))?.value ?? "" });
     }
     if (path === "/auth" || path.startsWith("/auth/")) return this.authRoute(req, path);
     if (path === WELL_KNOWN_PATH && req.method === "GET") return this.instanceInfo();
@@ -575,6 +583,10 @@ export class ControlService {
     }
     if (p === "/admin/push" && ["GET", "PUT", "PATCH"].includes(m)) { await this.requireAdmin(req); return this.push.settings(req); }
     if (p.startsWith("/native-login")) return this.nativeLogin(req, p, url);
+    if (p === "/plugins/folder-sync" && m === "POST") {
+      if (!this.env.PLUGIN_SYNC_TOKEN || req.headers.get("authorization") !== `Bearer ${this.env.PLUGIN_SYNC_TOKEN}`) throw new HttpError(401, "unauthenticated");
+      return this.pluginChange(req, this.plugins.syncFolder(req));
+    }
     if (p === "/runtime-settings" && m === "GET") {
       if (!this.env.COMPUTERD_TOKEN || req.headers.get("authorization") !== `Bearer ${this.env.COMPUTERD_TOKEN}`) throw new HttpError(401, "unauthenticated");
       return json({ idleMinutes: this.productSettings().idleMinutes });
@@ -591,8 +603,8 @@ export class ControlService {
       return this.transcribe(req, session.user.id);
     }
     if (p === "/me" && m === "GET") return json(this.me(await this.requireSession(req)));
-    if (/^\/plugins\/(?:oauth\/callback|[^/]+\/(?:connect|connection))$/.test(p)) { const s = await this.requireSession(req); return this.connections.user(req, p, s.user, s.session.id); }
-    if (p === "/plugins" || p.startsWith("/plugins/")) return this.pluginChange(req, this.plugins.user(req, p, (await this.requireSession(req)).user.id));
+    if (/^\/plugins\/(?:oauth\/callback|[^/]+\/(?:connect|accounts\/[^/]+))$/.test(p)) { const s = await this.requireSession(req); return this.connections.user(req, p, s.user, s.session.id); }
+    if (p === "/plugins" || p.startsWith("/plugins/")) return this.plugins.user(req, p, (await this.requireSession(req)).user.id);
     if ((r = p.match(/^\/spaces\/([^/]+)\/plugins$/))) return this.pluginChange(req, this.plugins.space(req, r[1], (await this.requireSession(req)).user), r[1]);
     if (p === "/people" && m === "GET") {
       await this.requireSession(req);
@@ -838,6 +850,7 @@ export class ControlService {
     const role = this.spaceRoleOf(body.role);
     if (this.memberRole(id, userId)) throw new HttpError(409, "already_member");
     this.run("insert into space_member(space_id, user_id, role, created_at) values (?, ?, ?, ?)", id, userId, role, Date.now());
+    this.reloadSpaces([id]);
     return json({ members: this.members(id) }, 201);
   }
 
@@ -866,6 +879,7 @@ export class ControlService {
     if (space.kind !== "team") throw new HttpError(409, "personal_space");
     if (cur === "owner" && this.ownerCount(id) <= 1) throw new HttpError(409, "last_owner", "a team space keeps at least one owner");
     this.run("delete from space_member where space_id = ? and user_id = ?", id, userId);
+    this.reloadSpaces([id]);
     this.revoke([id], { userId });
     return json({ ok: true });
   }
@@ -1034,8 +1048,8 @@ export class ControlService {
       return json({ ok: true });
     }
     if (p === "/settings" && m === "GET") return json(this.settingsView());
-    if ((r = p.match(/^\/plugins\/([^/]+)\/oauth$/))) return this.connections.admin(req, r[1]);
-    if (p === "/plugins" || p.startsWith("/plugins/")) return this.pluginChange(req, this.plugins.admin(req, `/admin${p}`));
+    if ((r = p.match(/^\/vendors\/([^/]+)$/))) return this.connections.vendor(req, r[1]);
+    if (p === "/plugins" || p.startsWith("/plugins/")) return ["/plugins/inspect", "/plugins/test"].includes(p) ? this.plugins.admin(req, `/admin${p}`, s.user.id) : this.pluginChange(req, this.plugins.admin(req, `/admin${p}`, s.user.id));
     if (p === "/groups" || p.startsWith("/groups/")) return this.pluginChange(req, this.groups.handle(req, `/admin${p}`));
     if (p === "/settings" && m === "PATCH") return this.saveSettings(req);
     if (this.installation.mode === "anonymous" && p.startsWith("/users")) return notFound();
@@ -1052,10 +1066,12 @@ export class ControlService {
         case "deactivate":
           if (userId === s.user.id) throw new HttpError(409, "self", "you cannot deactivate yourself");
           await this.auth.api.banUser({ body: { userId, banReason: "deactivated" }, headers: req.headers });
+          this.reloadSpaces(this.memberSpaceIds(userId));
           this.revoke(this.memberSpaceIds(userId), { userId });
           return json({ ok: true });
         case "activate":
           await this.auth.api.unbanUser({ body: { userId }, headers: req.headers });
+          this.reloadSpaces(this.memberSpaceIds(userId));
           return json({ ok: true });
         case "sign-out-everywhere":
           await this.auth.api.revokeUserSessions({ body: { userId }, headers: req.headers });
@@ -1129,12 +1145,14 @@ export class ControlService {
     if (!this.one("select id from user where id = ?", userId)) return notFound();
     const personal = this.one("select id from space where personal_user_id = ?", userId);
     if (personal) await this.deleteSpace(personal.id as string); // wipe first; fails closed
-    this.revoke(this.memberSpaceIds(userId), { userId });
+    const affected = this.memberSpaceIds(userId);
+    this.revoke(affected, { userId });
     await this.auth.api.removeUser({ body: { userId }, headers: req.headers });
     this.storage.transactionSync(() => {
       this.run("delete from space_member where user_id = ?", userId);
       this.run("delete from user_profile where user_id = ?", userId);
     });
+    this.reloadSpaces(affected);
     return json({ ok: true });
   }
 

@@ -11,10 +11,17 @@ prefilled when the provider or models.dev knows them. Set them to the model's ac
 decide when to compact context automatically.
 People, invitations, roles and space membership are under **Admin → People** and **Admin → Spaces**.
 Groups (**Admin → People → Groups**; every person is in the built-in **Everyone**) grant plugins and permissions
-such as creating team spaces. Plugins are under **Admin → Plugins**: nothing is installed or turned on by default.
-An admin adds a plugin from the catalog or from its own address, git commit or file, checks what it contains, turns
-it on and chooses the groups that may use it. Each person then turns it on in **Settings → Plugins**. In a team
+such as creating team spaces. Plugins are under **Admin → Plugins**: nothing is installed by default.
+An admin adds a plugin from the catalog or from its own web address, GitHub link or file, reviews its contents and fixes setup details before saving, and chooses the groups that may use it. New plugins are unpaused. Assigned skills and tools work after setup, with no
+member activation. Administrators can Pause and Resume a plugin. Members see readiness and connect accounts in
+**Settings → Plugins**. In a team
 space, plugins that act with a member's own account stay off until a space owner allows them in the space settings.
+
+The catalog lists reviewed vendor-hosted services by area; opening one shows its prerequisites and instructions. A vendor's
+sign-in app is set up once for its plugins. Adding a plugin asks which groups can use it; people then connect
+their accounts in Settings → Plugins. Unqualified services show Not available yet. This includes Microsoft
+Work IQ until its tenant-specific sign-in and permissions are qualified, as well as Shopify, Figma and Docusign.
+Catalog content stays pinned. Use a custom plugin to configure a different server.
 
 The model's prices (USD per million tokens) turn token counts into estimated costs. Built-in providers' prices are
 read-only and come from Baskule's presets, then models.dev, or the built-in snapshot when it is unreachable; a custom
@@ -156,72 +163,64 @@ the file is authoritative. Do not recycle a provider ID for a different identity
 
 ## Plugin account connections
 
+Plugin outbound traffic requires HTTPS to public hosts. Admin-added servers may use private addresses and HTTP
+on those addresses. The in-isolate `baskule-mcp.internal` host is always refused. OAuth metadata for a public
+server may only point to public HTTPS addresses. Requests refuse redirects; MCP requests stay on their origin.
+These checks inspect URLs, not DNS answers. Deployment egress rules must deny private and reserved destination
+addresses for public hostnames, including DNS rebinding; this is not full SSRF protection.
+
+
 The administrator installs and grants plugins; users connect their own accounts. Connections are per user and
 plugin server across spaces. Personal-account servers are refused in team spaces until an owner enables
-personal-account plugins for that space. A connection never grants access beyond the group's plugin policy.
+personal-account plugins for that space. This owner-controlled switch is not per-account team consent.
+Team calls use only the author's default account; selecting another account is unavailable there. Everyone in
+the team can read returned results. A connection never grants access beyond the group's plugin policy.
+
+In Settings → Plugins, people can connect several accounts, name or rename them, and choose one default per
+plugin server. These names are their own labels, not verified vendor identities. Personal-space tool calls may
+name an account with `baskule_account`; omitted arguments use the author's current default. The selector is
+removed before the vendor receives the call. Results identify the account used. Scheduled work also uses the
+author's default at run time when no account is named; changing the default changes those future calls.
 
 For an MCP server with `credential: "user-oauth"`, ControlCell discovers protected-resource and authorization-server
 metadata, registers a public client with DCR, and runs the authorization-code flow with S256 PKCE. It sends the
-canonical MCP URL as `resource` on authorization, token exchange and refresh requests. Metadata must identify that
-same resource and issuer; callback issuer checks follow RFC 9207. HTTPS is required, except for loopback fixtures.
+configured resource identifier as `resource` on authorization, token exchange and refresh requests. Metadata must identify that
+same resource and issuer; callback issuer checks follow RFC 9207. Catalog recipes record a distinct resource
+identifier where vendor metadata requires one. Custom servers default to their MCP URL. Public servers require HTTPS; admin-added private servers may use HTTP.
 OAuth endpoints never follow redirects with credentials. A client-ID metadata document is not served by this version;
 servers without DCR use pre-registration.
 
-Register `https://YOUR_HOST/api/baskule/plugins/oauth/callback` with the authorization server when pre-registration
-is needed. `PUT /api/baskule/admin/plugins/:id/oauth` accepts `{server, client: {clientId, clientSecret?,
-tokenEndpointAuthMethod}}`, with `none`, `client_secret_post` or `client_secret_basic` authentication. `client: null`
-deletes it. Values are write-only and encrypted; changing the client invalidates existing connections and pending
-consent. Server settings accept `oauth: {scopes: [...]}` alongside `credential` and `personal`; otherwise the server's
-challenge or resource metadata supplies the required scopes. Nothing uses OpenCode's per-space OAuth store.
+For a service without dynamic registration, open the plugin from Admin → Plugins and follow its Setup steps. Register
+Baskule's address with the vendor as the callback, then save the client ID and secret. Technical details shows the
+callback address and the client authentication method.
+Values are write-only and encrypted. Saving or removing setup disconnects accounts and cancels pending consent
+for every plugin using that vendor; other vendors are unaffected. The saved issuer is pinned: a resource that
+changes its authorization server is refused before Baskule sends the client secret. If resource metadata disappears
+after setup, the saved issuer supplies discovery. Catalog setup uses the vendor issuer from the reviewed recipe;
+custom setup initially requires resource metadata. Plugin accounts are separate from signing in to Baskule.
 
-Login reuse (`credential: "login-identity"`, `personal: true`) additionally declares `loginIdentity: {provider,
-scopes, audience}`. Only the built-in `google` and `microsoft` social providers are supported. The person must have
-one linked login account for that provider before connecting. Consent upgrades that same provider subject; another
-account with the same email cannot replace it. Use normal login scopes at sign-in and request data scopes when the
-plugin connects. ControlCell uses Better Auth's `linkSocialAccount` (client API: `linkSocial`) and
-`getAccessToken` with the exact account row ID, including automatic refresh.
+Server settings accept `oauth: {scopes, params, resource, staticClient}` for `user-oauth` servers. Scopes default
+to the resource challenge or metadata; `params` adds vendor authorization parameters, and `resource: false`
+omits the resource parameter for vendors that refuse it. `staticClient: true` requires administrator setup.
+Protocol parameters such as the callback, state and PKCE cannot be overridden. Nothing uses OpenCode's per-space OAuth store.
 
-Google connections request `access_type=offline`, `prompt=consent` and `include_granted_scopes=true` at connect time;
-these are managed parameters, so JSON-only `auth.json` needs no callback. The Google provider example above suffices.
-Only HTTPS `https://SERVICE.googleapis.com/mcp` destinations are accepted, and `audience` must equal that exact MCP
-URL (for example `https://bigquery.googleapis.com/mcp`). Third-party wrappers of Google APIs cannot receive the login
-token: configure their own `user-oauth` flow instead. Enable the service APIs in the login app's Google project.
-External users need Google's OAuth verification for sensitive/restricted scopes; restricted scopes may also require
-a security assessment. An internal Workspace app has different verification requirements. Review
-[Google's scope verification guidance](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification)
-and [remote MCP authentication](https://docs.cloud.google.com/mcp/authenticate-mcp) before enabling them.
-
-For Microsoft login reuse, remove Graph's default scopes from the login provider so the consent request targets
-one resource. Configure its JSON options as follows (alongside the normal `clientId`, `clientSecret` and `tenantId`):
-
-```json
-{
-  "disableDefaultScope": true,
-  "scope": ["openid", "profile", "email", "offline_access"]
-}
-```
-
-The runtime disables Microsoft's automatic Graph profile-photo fetch: a Work IQ token must never be sent to Graph.
-Only `https://workiq.svc.cloud.microsoft/mcp` is accepted, with audience `api://workiq.svc.cloud.microsoft` or
-`fdcc1f02-fc51-4226-8753-f668596af7f7` and fully qualified Work IQ delegated scopes such as
-`api://workiq.svc.cloud.microsoft/WorkIQAgent.Ask`. Register those permissions and arrange tenant admin consent and
-licensing as required by [Work IQ](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/work-iq/mcp/overview).
-The returned access token's `aud` must match the declared audience; a Graph token is refused. The pinned Better Auth
-Microsoft refresh hook uses the selected account's granted scopes instead of the installation's login scopes.
-Neither provider token is sent to arbitrary MCP servers; there is no token exchange, OBO or caller-token passthrough.
-
-UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH`
+UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH&label=Work`
 (`server` can be omitted for a single account server; `returnTo` defaults to `/` and must remain on this origin).
+Use `account=CONNECTION_ID` instead of `label` to reconnect an existing account without changing its id, name or
+default. New connections become the default only when they are the person's first account on that server.
 The callback requires the initiating live user session and returns to that path with `pluginId`, `server`, and
-`pluginConnection=connected`, or `pluginConnection=error&connectionError=CODE`. Invalid/missing/expired state returns
-HTTP 400. Callback state is single-use and expires after ten minutes. `GET /api/baskule/plugins` reports each server
-as `connected` or `needs_connection` (the existing `not_required`, `configured`, `needs_configuration` states still
-apply to no-auth and organization servers). `DELETE /api/baskule/plugins/:id/connection[?server=NAME]` immediately
-forgets one or all plugin connections, cancels pending consent and prevents an in-flight refresh from restoring them.
-Disconnecting login reuse keeps the sign-in account and its provider grants; revoke grants at the provider if needed.
+`pluginConnection=connected`, or `pluginConnection=error&connectionError=CODE`. Invalid, missing or expired state redirects to Settings → Plugins with `connectionError=invalid_oauth_state`. Callback state is single-use and expires after ten minutes. `GET /api/baskule/plugins` reports each server
+with one of `unavailable`, `needs_setup`, `connect`, `reconnect`, or `ready`. The plugin status is the highest-priority
+server status in that order, using the default account's readiness. Each server also lists the person's accounts
+with id, label, default and ready/reconnect status. A skills-only plugin is ready when assigned and unpaused.
+`PATCH /api/baskule/plugins/:id/accounts/:accountId` renames (`{label}`) or sets the default (`{default:true}`).
+`DELETE /api/baskule/plugins/:id/accounts/:accountId` immediately forgets that account and prevents an in-flight
+refresh or reconnect from restoring it. Deleting the default while other accounts remain requires
+`?default=OTHER_CONNECTION_ID` from the same person's server. Other people's accounts are never exposed.
+Initial Connect failures also return to Settings → Plugins with a plain error.
 
 Better Auth's `account.encryptOAuthTokens: true` encrypts access and refresh tokens with the installation secret;
-login ID tokens are discarded after validation. Plugin tokens, refresh data, pending PKCE verifiers and admin OAuth
+login ID tokens are discarded after validation. Organization keys, plugin tokens, refresh data, pending PKCE verifiers and admin OAuth
 client secrets use AES-256-GCM with a domain-separated HKDF key derived from the same secret and authenticated row
 identity. Backups containing both the database and its generated secret remain sensitive. Keep `AUTH_SECRET` stable;
 changing it invalidates sessions and encrypted credentials. Deploying this configuration layout requires the data wipe below;
@@ -260,6 +259,45 @@ CPU/memory limits, celld heap/timeouts, and the setup token stay in `.env`/Compo
 current idle policy through its authenticated runtime-settings endpoint. If that read fails, that idle check
 does not stop computers using a guessed policy.
 
+## Launch reset for the plugins revamp
+
+Deploy the completed plugin stack together. Do not deploy its intermediate pull requests to an existing
+installation. This is an alpha reset, with no conversion of earlier plugin data. Obtain the installation
+owner's authorization before deploying or resetting their installation. This runbook documents the operation;
+it does not authorize or execute it.
+
+The stack's ControlCell schema changes recreate encrypted plugin-key and account storage, replace per-server
+OAuth clients with vendor setup, drop member activation preferences, and delete installed plugins. Plugin
+history is new and belongs to its plugin. The combined reset removes:
+
+- Every installed plugin and its earlier skill versions.
+- Plugin group assignments and per-space disabled-plugin lists.
+- Organization keys, static vendor OAuth clients, connected plugin accounts and pending plugin consent.
+- Managed skill files on space computers, when each space next boots or reloads and replaces its managed tree.
+
+It keeps users, groups and memberships, spaces and their setting for allowing members' own accounts,
+Better Auth accounts and sessions, chats, computers, organization and AI settings, and the installation secret.
+The reset does not revoke tokens at vendors or erase plugin results already present in chats. Keep the
+installation secret stable so retained sessions and other encrypted settings remain usable.
+
+After the owner authorizes the operation:
+
+1. Retain any plugin packages and setup information that must be re-entered in private storage. Back up the
+   installation if the owner needs a recovery point; do not put keys or account tokens in source control.
+2. Deploy the complete stack through the installation's existing deployment workflow. Confirm that the
+   ControlCell schema changes applied, including the installed-plugin reset. Do not purge the installation's
+   volumes: that would also remove the users, spaces and chats this reset keeps.
+3. Open one personal space and one team space. Confirm their managed `/sandbox/space/plugins` tree is empty or absent
+   and their model lists no plugin skills. Other computers lose managed plugin files when their spaces next
+   boot or reload; unrelated files remain.
+4. Reinstall catalog plugins or reviewed custom packages, assign groups, and re-enter organization keys and
+   vendor sign-in clients. Finish shared setup before asking people to connect.
+5. Ask members to reconnect their plugin accounts and choose their defaults. Check readiness in Settings →
+   Plugins and verify the required personal/team access with the installation's approved test accounts.
+
+Existing development databases that contain plugins saved by an intermediate branch must reinstall those
+plugins against the final input shape or use a separately authorized disposable-data reset. No compatibility
+reader or data conversion is provided.
 ## Upgrade
 
 Back up and update the installation using the [installation update procedure](install.md#update).

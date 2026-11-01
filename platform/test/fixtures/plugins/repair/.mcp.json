@@ -1,0 +1,1 @@
+{"mcpServers":{"docs":{"url":"https://{tenant}.example.com/mcp","headers":{"Authorization":"${AUTHORIZATION}"}},"account":{"url":"https://account.example.com/mcp","oauth":{}},"local":{"command":"node","args":["server.js"]}}}

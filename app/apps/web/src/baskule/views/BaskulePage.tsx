@@ -1,4 +1,5 @@
 // baskule: building blocks of the Baskule pages in the admin and settings modals.
+import { ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 /** A page's title block under its frame's header; detail pages pass their item's tile and controls. */
@@ -43,8 +44,19 @@ export function PageSection({
 }) {
   return (
     <section className="flex flex-col gap-2.5">
-      <div className="flex min-h-7 items-end justify-between gap-4 px-3 sm:px-4">
-        <div className="flex min-w-0 flex-col gap-0.5">
+      <div
+        className={
+          description
+            ? "flex min-h-7 flex-wrap items-end justify-between gap-x-4 gap-y-2 px-3 sm:px-4"
+            : "flex min-h-7 items-end justify-between gap-4 px-3 sm:px-4"
+        }
+      >
+        {/* With a description, a narrow screen moves the action under the text instead of squeezing it. */}
+        <div
+          className={
+            description ? "flex min-w-48 flex-1 flex-col gap-0.5" : "flex min-w-0 flex-col gap-0.5"
+          }
+        >
           <h2 className="text-sm font-normal text-foreground/70">{title}</h2>
           {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
         </div>
@@ -54,6 +66,27 @@ export function PageSection({
         {children}
       </div>
     </section>
+  );
+}
+
+/** A section that starts collapsed, for what most people never need to see. */
+export function PageDisclosure({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <details className="group">
+      <summary className="flex min-h-7 w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm px-3 text-sm text-foreground/70 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-4 [&::-webkit-details-marker]:hidden">
+        <ChevronRightIcon aria-hidden className="size-3.5 group-open:rotate-90" />
+        {title}
+      </summary>
+      <div className="mt-2.5 rounded-xl border border-border/60 bg-card/40 shadow-xs/5 [&>*+*]:border-t [&>*+*]:border-border/50">
+        {children}
+      </div>
+    </details>
   );
 }
 

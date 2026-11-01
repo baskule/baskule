@@ -36,6 +36,7 @@ export async function extractMessages(): Promise<Map<string, Message>> {
         !/(?:\.test\.|\.spec\.|\/test-fixtures\.|\/fixtures\/|\/showcase\/)/.test(file),
     );
   files.push(NodePath.join(root, "app/apps/mobile/app.config.ts"));
+  files.push(NodePath.join(root, "app/packages/contracts/src/baskule-catalog.ts"));
   for (const file of files.sort()) {
     const content = await NodeFSP.readFile(file, "utf8");
     const source = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true);

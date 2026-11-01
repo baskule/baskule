@@ -22,7 +22,7 @@ export function planSkills(skills: SpacePlugins["skills"]) {
 }
 
 // The computer runs as uid 1000. Modes make the managed tree read-only for ordinary file tools; this is not a
-// security boundary against a shell that deliberately chmods its own files. Secrets are never installed here.
+// security boundary against a shell that deliberately chmods its own files.
 const INSTALL = `import base64,json,os,pathlib,shutil,sys,tempfile
 root=pathlib.Path(sys.argv[1])
 stage=pathlib.Path(tempfile.mkdtemp(prefix='.plugins-',dir=root.parent))

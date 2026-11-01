@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Group } from "../../../app/packages/contracts/src/baskule-plugins";
-import { HttpError, json, notFound, readJson } from "../shared/http";
+import { pluginError, json, notFound, readJson } from "../shared/http";
 import type { StorageLike } from "./service";
 
 export const EVERYONE_GROUP_ID = "everyone";
@@ -49,20 +49,20 @@ export class Groups {
     if (id && !current) return notFound();
     if (req.method === "GET") return json(id ? current : { groups: this.list() });
     if (id && req.method === "DELETE") {
-      if (current!.builtin) throw new HttpError(409, "builtin_group");
+      if (current!.builtin) throw pluginError(409, "builtin_group");
       this.rows("delete from permission_group where id=?", id);
       return json({ ok: true });
     }
     if ((!id && req.method === "POST") || (id && req.method === "PATCH")) {
       const parsed = (id ? input.partial() : input).safeParse(await readJson(req));
-      if (!parsed.success) throw new HttpError(400, "invalid_group", parsed.error.message);
+      if (!parsed.success) throw pluginError(400, "invalid_group", parsed.error.message);
       const data = { ...current, ...parsed.data } as z.infer<typeof input>;
       if (current?.builtin && (parsed.data.members !== undefined || (parsed.data.name !== undefined && parsed.data.name !== current.name)))
-        throw new HttpError(409, "builtin_group", "Everyone membership and name are automatic");
+        throw pluginError(409, "builtin_group", "Everyone membership and name are automatic");
       if (this.rows("select id from permission_group where name=? and id<>?", data.name, id ?? "").length)
-        throw new HttpError(409, "group_exists");
-      for (const uid of data.members) if (!this.rows("select id from user where id=?", uid).length) throw new HttpError(400, "user_not_found");
-      for (const pid of data.plugins) if (!this.rows("select id from plugin where id=?", pid).length) throw new HttpError(400, "plugin_not_found");
+        throw pluginError(409, "group_exists");
+      for (const uid of data.members) if (!this.rows("select id from user where id=?", uid).length) throw pluginError(400, "user_not_found");
+      for (const pid of data.plugins) if (!this.rows("select id from plugin where id=?", pid).length) throw pluginError(400, "plugin_not_found");
       const gid = id ?? crypto.randomUUID();
       this.storage.transactionSync(() => {
         this.rows("insert into permission_group(id,name,can_create_spaces) values (?,?,?) on conflict(id) do update set name=excluded.name,can_create_spaces=excluded.can_create_spaces", gid, data.name, Number(data.permissions.canCreateSpaces));

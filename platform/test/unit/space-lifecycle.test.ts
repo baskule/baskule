@@ -151,3 +151,21 @@ it("boots OpenCode before T3 in a new space, so OpenCode can create its schema i
   expect(order).toEqual(["opencode", "t3"]);
   await c.dispose();
 });
+
+it.each([false, true])("refreshes managed skills on an already running v2 computer, clearing=%s", async clear => {
+  const installed: { path: string; content: string }[][] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/computer")) return Response.json({ phase: "ready", running: true });
+    const command = JSON.parse(String(init?.body));
+    installed.push(JSON.parse(Buffer.from(command.stdin, "base64").toString()));
+    return new Response('{"t":"x","code":0}\n');
+  });
+  const c = cell();
+  c.env.COMPUTERD_URL = "http://computerd";
+  c.env.COMPUTERD_TOKEN = "test-token";
+  c.ctx.storage.get.mockImplementation(async (key: string) => key === "baskule:spaceId" ? "space-a" : key === "baskule:plugin-skills" ? true : undefined);
+  c.env.CONTROL = { getByName: () => ({ fetch: async () => Response.json({ ...defaultSettings, apiKey: "test", plugins: { servers: [], skills: clear ? [] : [{ pluginId: "plugin", name: "notes", description: "Notes", files: [{ path: "SKILL.md", content: btoa("Updated notes"), encoding: "base64" }] }] } }) }) };
+  expect((await c.fetch(new Request("http://space/_baskule/reconfigure", { method: "POST" }))).ok).toBe(true);
+  expect(installed).toEqual([clear ? [] : [{ path: "plugin/notes/SKILL.md", content: btoa("Updated notes") }]]);
+  expect(createServer).not.toHaveBeenCalled();
+});

@@ -74,6 +74,8 @@ docker compose logs setup        # prints the one-time link that creates the fir
 
 Open the setup link to create the first admin; see [configuration and built-in HTTPS](docs/install.md), or the [cluster guide](docs/install-cluster.md) for several machines.
 
+Optional: [sync plugins from a folder](docs/install.md#plugins-folder).
+
 ## Develop
 
 ```sh

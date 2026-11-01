@@ -60,6 +60,8 @@ services:
       CELLD_BUCKET: s3://${CELLD_BUCKET_NAME}
       CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
       DEPLOY_APP: platform
+      PLUGIN_SYNC_TOKEN: ${PLUGIN_SYNC_TOKEN:-}
+      PLUGIN_SYNC_URL: http://${BASKULE_PRIVATE_IP}:${CELLD_WORKER_PORT:-47091}
       CELLD_NODES_INTERNAL: ${CELLD_NODES_INTERNAL:?list all platform nodes as private-ip:47092}
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-http://127.0.0.1:47090}
       SETUP_TOKEN: ${SETUP_TOKEN:?set SETUP_TOKEN}
@@ -72,6 +74,7 @@ services:
     env_file: .env
     volumes:
     - ./config:/src/config:ro
+    # - ./plugins:/plugins:ro
     depends_on:
       node:
         condition: service_started

@@ -1,6 +1,6 @@
 // Baskule-owned tables in ControlCell (E6). Better Auth's own tables are in ./auth.ts.
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, index, primaryKey, check } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex, primaryKey, check } from "drizzle-orm/sqlite-core";
 import { user, session } from "./auth";
 
 /** One organisation per installation; the model allows several. */
@@ -109,6 +109,15 @@ export const plugin = sqliteTable("plugin", {
   storedBytes: integer("stored_bytes").notNull(),
 });
 
+export const pluginVersion = sqliteTable("plugin_version", {
+  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  skillFiles: text("skill_files").notNull(),
+  storedBytes: integer("stored_bytes").notNull(),
+  savedAt: integer("saved_at", { mode: "timestamp_ms" }).notNull(),
+  savedBy: text("saved_by").references(() => user.id, { onDelete: "set null" }),
+}, t => [primaryKey({ columns: [t.pluginId, t.version] })]);
+
 export const group = sqliteTable("permission_group", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
@@ -126,15 +135,10 @@ export const groupPlugin = sqliteTable("group_plugin", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
 }, t => [primaryKey({ columns: [t.groupId, t.pluginId] })]);
 
-export const userPlugin = sqliteTable("user_plugin", {
-  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
-  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-}, t => [primaryKey({ columns: [t.userId, t.pluginId] })]);
-
 export const pluginSecret = sqliteTable("plugin_secret", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
   server: text("server").notNull(),
-  headers: text("headers").notNull(), // write-only, same SQLite trust boundary as the AI key
+  data: text("data").notNull(),
 }, t => [primaryKey({ columns: [t.pluginId, t.server] })]);
 
 export const spacePluginSettings = sqliteTable("space_plugin_settings", {
@@ -147,19 +151,24 @@ export const spaceDisabledPlugin = sqliteTable("space_disabled_plugin", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
 }, t => [primaryKey({ columns: [t.spaceId, t.pluginId] })]);
 
-/** Encrypted per-user credentials. No plaintext token migration: deploying 0.4.0 wipes alpha data. */
 export const pluginConnection = sqliteTable("plugin_connection", {
+  id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
   server: text("server").notNull(),
+  label: text("label").notNull(),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull(),
   data: text("data").notNull(),
-}, t => [primaryKey({ columns: [t.userId, t.pluginId, t.server] })]);
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [
+  uniqueIndex("plugin_connection_label_uq").on(t.userId, t.pluginId, t.server, t.label),
+  uniqueIndex("plugin_connection_default_uq").on(t.userId, t.pluginId, t.server).where(sql`${t.isDefault} = 1`),
+]);
 
-export const pluginOAuthClient = sqliteTable("plugin_oauth_client", {
-  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-  server: text("server").notNull(),
+export const vendorSetup = sqliteTable("vendor_setup", {
+  vendor: text("vendor").primaryKey(),
   data: text("data").notNull(),
-}, t => [primaryKey({ columns: [t.pluginId, t.server] })]);
+});
 
 export const pluginOAuthState = sqliteTable("plugin_oauth_state", {
   stateHash: text("state_hash").primaryKey(),

@@ -1,103 +1,105 @@
-import { t } from "../../i18n";
-// baskule: how plugins are named to people. Everything is a "plugin"; its kind, source and
-// credential mode are shown in plain words (the people reading them are not developers).
+// baskule: how plugins are named to people. Everything is a "plugin" that gives the assistant tools,
+// skills or both; its source, credential mode and status are shown in plain words (the people
+// reading them are not developers).
+import type { SkillFieldError, SkillWarning } from "@t3tools/contracts/baskule-plugin-formats";
 import type {
   CredentialMode,
-  PluginKind,
-  PluginServer,
+  OmissionCode,
   PluginSource,
+  PluginStatus,
 } from "@t3tools/contracts/baskule-plugins";
 import { BookOpenTextIcon, PackageIcon, PlugIcon, type LucideIcon } from "lucide-react";
 
-export const PLUGIN_KINDS: ReadonlyArray<PluginKind> = ["mcp", "skill", "bundle"];
+import { t } from "../../i18n";
 
-export const KIND_ICONS: Record<PluginKind, LucideIcon> = {
-  mcp: PlugIcon,
-  skill: BookOpenTextIcon,
-  bundle: PackageIcon,
-};
+/** What a plugin gives the assistant. Derived from what it contains; plugins store no kind. */
+export type PluginContentsKind = "tools" | "skills" | "both";
 
-export function kindLabel(kind: PluginKind): string {
-  switch (kind) {
-    case "mcp":
-      return t("Connector · MCP");
-    case "skill":
-      return t("Skill");
-    case "bundle":
-      return t("Bundle");
-  }
+export function contentsKind(plugin: {
+  readonly servers: ReadonlyArray<unknown>;
+  readonly skills: ReadonlyArray<unknown>;
+}): PluginContentsKind {
+  if (plugin.servers.length === 0) return "skills";
+  return plugin.skills.length > 0 ? "both" : "tools";
 }
 
-/** The kind filter's plural labels. */
-export function kindFilterLabel(kind: PluginKind): string {
+export const CONTENTS_ICONS: Record<PluginContentsKind, LucideIcon> = {
+  tools: PlugIcon,
+  skills: BookOpenTextIcon,
+  both: PackageIcon,
+};
+
+export function contentsLabel(kind: PluginContentsKind): string {
   switch (kind) {
-    case "mcp":
-      return t("Connectors");
-    case "skill":
+    case "tools":
+      return t("Tools");
+    case "skills":
       return t("Skills");
-    case "bundle":
-      return t("Bundles");
+    case "both":
+      return t("Tools and skills");
   }
 }
 
-export function registryLabel(registry: string): string {
-  switch (registry) {
-    case "mcp":
-      return t("Official MCP Registry");
-    case "anthropic-knowledge-work":
-      return t("Anthropic work plugins");
-    case "anthropic-skills":
-      return t("Anthropic example skills");
-    case "claude-plugins":
-      return t("Claude plugin directory");
-    case "codex-plugins":
-      return t("OpenAI Codex plugins");
-    default:
-      return registry;
+/** "Tools from 2 servers and 3 skills": what a plugin gives the assistant, in one line. */
+export function includedSummary(contents: {
+  readonly servers: ReadonlyArray<unknown>;
+  readonly skills: ReadonlyArray<unknown>;
+}): string {
+  const tools = t("Tools from {{count}} server", {
+    count: contents.servers.length,
+    defaultValue_other: "Tools from {{count}} servers",
+  });
+  const skills = t("{{count}} skill", {
+    count: contents.skills.length,
+    defaultValue_other: "{{count}} skills",
+  });
+  if (contents.servers.length === 0) return skills;
+  if (contents.skills.length === 0) return tools;
+  return t("{{tools}} and {{skills}}", { tools, skills });
+}
+
+/** The only five things a person is told about a plugin or one of its servers. */
+export function statusText(status: PluginStatus, name: string): string {
+  switch (status) {
+    case "unavailable":
+      return t("Not available to you");
+    case "needs_setup":
+      return t("Your administrator needs to finish setting it up");
+    case "connect":
+      return t("Connect your {{name}} account", { name });
+    case "reconnect":
+      return t("Reconnect your {{name}} account", { name });
+    case "ready":
+      return t("Ready");
   }
 }
 
-const shortCommit = (ref: string) => ref.slice(0, 7);
-const repoName = (repo: string) =>
-  repo.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "");
-const hostOf = (url: string) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-};
+/** `owner/repo`, then the folder when the plugin is one folder of the repository. */
+export function githubName(source: Extract<PluginSource, { type: "github" }>): string {
+  const repo = source.repo.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "");
+  return source.path ? `${repo}/${source.path}` : repo;
+}
 
-/** Where a plugin comes from, in one short line. */
+/** Where a plugin comes from, in one short line. Pins (commits, file hashes) stay out of it. */
 export function sourceLabel(source: PluginSource): string {
   switch (source.type) {
-    case "registry":
-      return t("From {{registry}}", { registry: registryLabel(source.registry) });
-    case "url":
-      return t("Added by address: {{host}}", { host: hostOf(source.url) });
-    case "git":
-      return t("From {{repo}} at {{commit}}", {
-        repo: repoName(source.repo),
-        commit: shortCommit(source.ref),
-      });
-    case "archive":
+    case "catalog":
+      return t("Baskule catalog");
+    case "github":
+      return t("From {{repo}} on GitHub", { repo: githubName(source) });
+    case "upload":
       return t("Uploaded file");
+    case "folder":
+      return source.path;
+    case "custom":
+      return t("Made in Baskule");
   }
 }
-
-export function serverHost(server: PluginServer): string {
-  return hostOf(server.url);
-}
-
-/** User modes act as the person whose turn it is. The backend requires `personal` for them. */
-export const isPersonalCredential = (mode: CredentialMode) =>
-  mode === "user-oauth" || mode === "login-identity";
 
 export const CREDENTIAL_MODES: ReadonlyArray<CredentialMode> = [
   "none",
-  "organization",
   "user-oauth",
-  "login-identity",
+  "organization",
 ];
 
 export function credentialLabel(mode: CredentialMode): string {
@@ -108,21 +110,86 @@ export function credentialLabel(mode: CredentialMode): string {
       return t("Organization key");
     case "user-oauth":
       return t("Each person connects their own account");
-    case "login-identity":
-      return t("Each person's sign-in account");
   }
 }
 
 export function credentialDescription(mode: CredentialMode): string {
   switch (mode) {
     case "none":
-      return t("Works as soon as it is turned on.");
+      return t("Works with nothing to set up.");
     case "organization":
       return t("You enter one key here. Everyone who uses it shares that key.");
     case "user-oauth":
       return t("People connect their account in Settings → Plugins. It acts as them.");
-    case "login-identity":
-      return t("Uses the Google or Microsoft account people sign in with. It acts as them.");
+  }
+}
+
+/** Why Baskule leaves a part of a package out, in words for people who don't write plugins. */
+export function omissionText(code: OmissionCode): string {
+  switch (code) {
+    case "claude_commands":
+      return t("Commands for Claude Code. Baskule doesn't use these.");
+    case "claude_agents":
+      return t("Agents for Claude Code. Baskule doesn't use these.");
+    case "hooks":
+      return t("Hooks that run inside Claude Code. Baskule doesn't use these.");
+    case "local_program":
+      return t(
+        "A program that runs on someone's computer. Baskule needs a web address; ask its maker whether it has one.",
+      );
+    case "invalid_server":
+      return t("A server described in a way Baskule can't read.");
+    case "skill_without_instructions":
+      return t("A skill folder without instructions, so the assistant couldn't use it.");
+    case "invalid_skill":
+      return t("A skill whose name or description doesn't follow the skill rules.");
+    case "skill_license":
+      return t("A skill whose license doesn't allow using it here.");
+    case "other_files":
+      return t("Files that aren't part of a skill or a server.");
+  }
+}
+
+/** Why a skill's name or description can't be saved, with the rule it breaks. */
+export function skillFieldErrorText(error: SkillFieldError): string {
+  switch (error) {
+    case "name_format":
+      return t("Use only lowercase letters, numbers and single hyphens, like call-prep.");
+    case "name_too_long":
+      return t("Use 64 characters at most.");
+    case "name_taken":
+      return t("Another skill in this plugin has this name.");
+    case "description_empty":
+      return t("Say what the skill does and when to use it.");
+    case "description_too_long":
+      return t("Use 1,024 characters at most.");
+  }
+}
+
+/** What may not work outside Claude Code, and where: the instructions, or one of the skill's files.
+ * Advice only: the skill can still be saved. */
+export function skillWarningText(warning: SkillWarning, file: string | null): string {
+  switch (warning) {
+    case "slash_command":
+      return file
+        ? t("{{file}} uses a slash command, which Baskule may not have.", { file })
+        : t("The instructions use a slash command, which Baskule may not have.");
+    case "claude_only_tool":
+      return file
+        ? t("{{file}} names a tool made for Claude Code. It may need changing.", { file })
+        : t("The instructions name a tool made for Claude Code. They may need changing.");
+    case "software_install":
+      return file
+        ? t("{{file}} asks to install software. The computer may need setting up first.", {
+            file,
+          })
+        : t("The instructions ask to install software. The computer may need setting up first.");
+    case "secret_in_file":
+      return file
+        ? t("{{file}} may contain a password or key. Remove it before sharing the skill.", {
+            file,
+          })
+        : t("The instructions may contain a password or key. Remove it before sharing the skill.");
   }
 }
 
