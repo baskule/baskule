@@ -10,7 +10,7 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   projects: [
     { name: "desktop", use: { viewport: { width: 1440, height: 900 } } },
-    { name: "phone", testIgnore: "**/chat-contracts.spec.mjs", use: { ...devices["iPhone 13"], defaultBrowserType: "chromium" } },
+    { name: "phone", testIgnore: ["**/chat-contracts.spec.mjs", "**/folder-plugins.spec.mjs"], use: { ...devices["iPhone 13"], defaultBrowserType: "chromium" } },
   ],
   use: {
     headless: true,

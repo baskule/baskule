@@ -82,8 +82,13 @@ umask 077
 docker run --rm -i --network none --entrypoint baskule-celld-job \
   "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$IMAGE_VERSION" init-env - < .env.example > .env
 $EDITOR .env
+# Optional: on baskule-deploy, add this read-only volume (standard files only):
+# volumes:
+#   - ./plugins:/plugins:ro
 docker compose up -d
 ```
+
+See [folder plugins](docs/plugins.md) for the layout and startup sync rules.
 
 For several platform machines with a separate computers host, follow the [cluster guide](docs/install-cluster.md).
 

@@ -89,6 +89,8 @@ export function sourceLabel(source: PluginSource): string {
       return t("From {{repo}} on GitHub", { repo: githubName(source) });
     case "upload":
       return t("Uploaded file");
+    case "folder":
+      return source.path;
     case "custom":
       return t("Made in Baskule");
   }

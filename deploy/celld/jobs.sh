@@ -95,6 +95,9 @@ case "${1:-}" in
     for n in ${CELLD_NODES_INTERNAL:-}; do
       curl -s -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
+    if [ "$app" = platform ]; then
+      /usr/local/bin/baskule-sync-plugins /plugins "${PLUGIN_SYNC_URL:-http://baskule-celld-a:47091}"
+    fi
     log "deployed $app"
     ;;
   *) echo "usage: baskule-celld-job bootstrap|deploy|init-env -|backup|restore" >&2; exit 2 ;;

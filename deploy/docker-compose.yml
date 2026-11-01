@@ -120,6 +120,8 @@ services:
     env_file: .env
     volumes:
       - ./config:/src/config:ro
+      # Optional standard plugin tree; see docs/plugins.md.
+      # - ./plugins:/plugins:ro
     networks: [baskule-net]
     # Only the bucket is needed: a fresh node answers nothing (not even its health route) until a deployment exists.
     depends_on:

@@ -60,7 +60,7 @@ describe("ControlCell plugins and groups", () => {
     const bob = await createUser(h, a.creds, "bob@os.test", "Bob");
     const b = await signIn(h, "bob@os.test", "user-password-1");
     const admin = { creds: a.creds };
-    expect((await call(h, "GET", `${API}/admin/plugins`, admin)).body).toEqual({ plugins: [] });
+    expect((await call(h, "GET", `${API}/admin/plugins`, admin)).body).toEqual({ plugins: [], folder: null });
     const groups = (await call(h, "GET", `${API}/admin/groups`, admin)).body.groups;
     expect(groups).toHaveLength(1);
     expect(groups[0].members).toContain(bob.id);
@@ -265,5 +265,81 @@ describe("assignment and member status", () => {
     await call(h, "PATCH", `${API}/admin/plugins/${id}`, { ...admin, body: { enabled: false } });
     expect((await h.svc.plugins.statusFor(bob.id, h.svc.plugins.get(id)!)).status).toBe("unavailable");
     expect((await h.svc.plugins.settings(team)).skills).toEqual([]);
+  });
+});
+
+describe("startup folder sync", () => {
+  const token = "local-installation-token";
+  const headers = { authorization: `Bearer ${token}` };
+  const archive = (files: Record<string, string>) => base64(zipSync(Object.fromEntries(Object.entries(files).map(([path, text]) => [path, new TextEncoder().encode(text)]))));
+  const mcp = (url = "https://example.test/mcp") => archive({ ".mcp.json": JSON.stringify({ mcpServers: { remote: { url, headers: { Authorization: "${API_KEY}" } } } }) });
+  const sync = (h: Awaited<ReturnType<typeof makeService>>, entries: unknown[]) => call(h, "POST", `${API}/plugins/folder-sync`, { headers, body: { mounted: true, entries } });
+
+  it("authenticates inventory, preserves UI config on updates, locks definitions and cascades removal", async () => {
+    const h = await makeService({ COMPUTERD_TOKEN: token }); const a = await asAdmin(h); const admin = { creds: a.creds };
+    const endpoint = `${API}/plugins/folder-sync`;
+    expect((await call(h, "POST", endpoint, { ...admin, body: { mounted: true, entries: [] } })).status).toBe(401);
+    expect((await call(h, "POST", endpoint, { headers: { authorization: "Bearer wrong" }, body: { mounted: false } })).status).toBe(401);
+    expect((await sync(h, [{ path: "mcp/crm.json", archive: mcp() }])).body.folder.problems).toEqual([]);
+    const listing = await call(h, "GET", `${API}/admin/plugins`, admin);
+    expect(listing.body.folder).toEqual({ syncedAt: expect.any(Number), problems: [] });
+    const p = listing.body.plugins[0];
+    expect(p).toMatchObject({ name: "crm", source: { type: "folder", path: "mcp/crm.json" }, setup: [{ server: "remote", done: false }] });
+    expect(h.svc.plugins.assigned(a.userId, p.id)).toBe(false);
+    const path = `${API}/admin/plugins/${p.id}`;
+    expect((await call(h, "PUT", `${path}/secret`, { ...admin, body: { server: "remote", headers: { Authorization: "Bearer saved-key" } } })).status).toBe(200);
+    await call(h, "PATCH", `${API}/admin/groups/everyone`, { ...admin, body: { plugins: [p.id] } });
+    await call(h, "PATCH", path, { ...admin, body: { disabledTools: { remote: ["delete"] } } });
+    await call(h, "PATCH", path, { ...admin, body: { enabled: false } });
+    // UI configuration belongs to the stable folder path, including across definition changes.
+    expect((await sync(h, [{ path: "mcp/crm.json", archive: mcp("https://changed.test/mcp") }])).status).toBe(200);
+    const updated = h.svc.plugins.get(p.id)!;
+    expect(updated).toMatchObject({ enabled: false, createdAt: p.createdAt, servers: [{ url: "https://changed.test/mcp", disabledTools: ["delete"] }] });
+    expect(h.svc.plugins.assigned(a.userId, p.id)).toBe(true);
+    expect(await h.svc.plugins.organizationHeaders(p.id, "remote")).toEqual({ Authorization: "Bearer saved-key" });
+    expect(h.storage.sql.exec("select data from plugin_secret").toArray()[0].data).not.toContain("saved-key");
+    for (const [method, suffix, body] of [["DELETE", "", undefined], ["PATCH", "", { plugin: input }], ["POST", "/versions/1/revert", {}]] as const) {
+      expect(await call(h, method, path + suffix, { ...admin, body })).toMatchObject({ status: 409, body: { error: "plugin_from_folder" } });
+    }
+    expect((await call(h, "GET", `${path}/skills`, admin)).body.editable).toBe(false);
+    expect((await call(h, "GET", `${path}/export`, admin)).status).toBe(200);
+    // Missing mount turns the feature off without removing persisted plugins.
+    expect((await call(h, "POST", endpoint, { headers, body: { mounted: false } })).body).toEqual({ folder: null });
+    expect(h.svc.plugins.get(p.id)).toBeDefined();
+    expect((await call(h, "GET", `${API}/admin/plugins`, admin)).body.folder).toBeNull();
+    await sync(h, []);
+    expect(h.svc.plugins.get(p.id)).toBeUndefined();
+    expect(h.storage.sql.exec("select * from plugin_secret").toArray()).toEqual([]);
+    expect(h.storage.sql.exec("select * from group_plugin").toArray()).toEqual([]);
+    await sync(h, [{ path: "mcp/renamed.json", archive: mcp() }]);
+    expect(h.svc.plugins.list()[0].id).not.toBe(p.id);
+    expect(h.svc.plugins.assigned(a.userId, h.svc.plugins.list()[0].id)).toBe(false);
+  });
+
+  it("reports invalid entries, retains their last valid definition, and reconciles the other entries", async () => {
+    const h = await makeService({ COMPUTERD_TOKEN: token });
+    const initial = { path: "mcp/valid.json", archive: mcp() };
+    await sync(h, [initial]);
+    const previous = h.svc.plugins.list()[0];
+    const result = await sync(h, [
+      { path: initial.path, archive: "broken" },
+      { path: "plugins/bad", archive: archive({ ".claude-plugin/plugin.json": "bad" }) },
+      { path: "plugins/link", problem: "plugin_links_unsupported" },
+      { path: "skills/voice", archive: archive({ "SKILL.md": "---\nname: voice\ndescription: Brand voice\n---\nWrite clearly.", "reference.txt": "Style notes" }) },
+      { path: "plugins/full", archive: archive({ ".codex-plugin/plugin.json": '{"name":"Full","description":"Standard package"}', ".mcp.json": '{"servers":{"public":{"url":"https://public.test/mcp"}}}' }) },
+    ]);
+    expect(result.status).toBe(200);
+    expect(result.body.folder.problems).toEqual([
+      { path: initial.path, message: "invalid_archive" },
+      { path: "plugins/bad", message: "invalid_plugin_manifest" },
+      { path: "plugins/link", message: "plugin_links_unsupported" },
+    ]);
+    expect(h.svc.plugins.get(previous.id)).toEqual(previous);
+    expect(h.svc.plugins.list().map(p => p.name).sort()).toEqual(["Full", "valid", "voice"]);
+    const duplicate = await sync(h, [initial, initial]);
+    expect(duplicate).toMatchObject({ status: 400, body: { error: "duplicate_plugin_path" } });
+    expect(h.svc.plugins.list()).toHaveLength(3);
+    await sync(h, [initial]);
+    expect(h.svc.plugins.list()).toHaveLength(1);
   });
 });

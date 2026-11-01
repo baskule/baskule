@@ -520,6 +520,10 @@ export class ControlService {
     }
     if (p === "/admin/push" && ["GET", "PUT", "PATCH"].includes(m)) { await this.requireAdmin(req); return this.push.settings(req); }
     if (p.startsWith("/native-login")) return this.nativeLogin(req, p, url);
+    if (p === "/plugins/folder-sync" && m === "POST") {
+      if (!this.env.COMPUTERD_TOKEN || req.headers.get("authorization") !== `Bearer ${this.env.COMPUTERD_TOKEN}`) throw new HttpError(401, "unauthenticated");
+      return this.pluginChange(req, this.plugins.syncFolder(req));
+    }
     if (p === "/runtime-settings" && m === "GET") {
       if (!this.env.COMPUTERD_TOKEN || req.headers.get("authorization") !== `Bearer ${this.env.COMPUTERD_TOKEN}`) throw new HttpError(401, "unauthenticated");
       return json({ idleMinutes: this.productSettings().idleMinutes });

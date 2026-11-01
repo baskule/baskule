@@ -2,7 +2,7 @@ import { catalogService, catalogVendor, type CatalogService, type CatalogVendor 
 import type { ConnectionCipher } from "./connection-crypto";
 import { checkMcpUrl, connectMcp, serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
-import type { Plugin, PluginInput, PluginUpdate, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode, ServerInput, PluginTool, SkillHistory } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { Plugin, PluginInput, PluginUpdate, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode, ServerInput, PluginTool, SkillHistory, PluginFolder } from "../../../app/packages/contracts/src/baskule-plugins";
 import { HttpError, pluginError, json, notFound } from "../shared/http";
 import type { StorageLike } from "./service";
 import type { Connections } from "./connections";
@@ -16,6 +16,7 @@ import { discoverOAuth } from "./connection-oauth";
 import { COMMIT_RE, resolveGithubLink } from "./plugin-source";
 
 const id = z.string().min(1).max(200);
+const folderPath = z.string().max(512).regex(/^(?:(?:plugins|skills)\/[^/\\\x00-\x1f:]+|mcp\/[^/\\\x00-\x1f:]+\.json)$/).refine(p => !p.split("/").some(s => s === "." || s === ".."));
 const credential = z.enum(["none", "organization", "user-oauth"]);
 const headerName = z.string().regex(/^[!#$%&'*+.^_`|~0-9a-z-]+$/i).max(200);
 const sourceSchema = z.discriminatedUnion("type", [
@@ -288,8 +289,77 @@ export class Plugins {
     return json(plugin, 201);
   }
 
+  private folder(): PluginFolder | null {
+    const row = this.rows("select value from kv where key='plugin_folder'")[0];
+    return row ? JSON.parse(row.value as string) : null;
+  }
+
+  async syncFolder(req: Request): Promise<Response> {
+    const entry = z.union([
+      z.object({ path: z.string().max(512), archive: z.string().max(Math.ceil(IMPORT_LIMITS.archive / 3) * 4) }).strict(),
+      z.object({ path: z.string().max(512), problem: z.string().min(1).max(200) }).strict(),
+    ]);
+    const data = parse(z.discriminatedUnion("mounted", [
+      z.object({ mounted: z.literal(false) }).strict(),
+      z.object({ mounted: z.literal(true), entries: z.array(entry).max(IMPORT_LIMITS.files) }).strict(),
+    ]), await body(req, 64 * 1024 * 1024));
+    if (!data.mounted) {
+      this.rows("delete from kv where key='plugin_folder'");
+      return json({ folder: null });
+    }
+    if (new Set(data.entries.map(e => e.path)).size !== data.entries.length) throw pluginError(400, "duplicate_plugin_path");
+    const folder: PluginFolder = { syncedAt: Date.now(), problems: [] };
+    this.storage.transactionSync(() => {
+      const existing = new Map(this.list().flatMap(p => p.source.type === "folder" ? [[p.source.path, p] as const] : []));
+      const present = new Set(data.entries.map(e => e.path));
+      for (const [path, plugin] of existing) if (!present.has(path)) this.remove(plugin);
+      for (const entry of data.entries) {
+        try {
+          if ("problem" in entry) { folder.problems.push({ path: entry.path, message: entry.problem }); continue; }
+          parse(folderPath, entry.path);
+          const source = { type: "folder", path: entry.path } as const;
+          const draft = inspectPackage(unpackArchive(fromBase64(entry.archive)), { source });
+          const { source: _source, ...definition } = draft.plugin;
+          const input = parse(inputSchema.omit({ source: true }), definition);
+          // inspectPackage understands packages and bare skills; MCP files are packed as .mcp.json.
+          const next = this.validate({ ...input, source });
+          const current = existing.get(entry.path);
+          const pluginId = current?.id ?? crypto.randomUUID();
+          const plugin: Plugin = { ...input, source, id: pluginId, vendor: current?.vendor ?? pluginId,
+            name: entry.path.startsWith("mcp/") ? entry.path.slice(4, -5) : input.name,
+            enabled: current?.enabled ?? true, createdAt: current?.createdAt ?? new Date().toISOString(),
+            skills: next.skills.map(s => ({ name: s.name, description: s.description })),
+            servers: next.servers.map(server => {
+              const previous = current?.servers.find(s => s.name === server.name);
+              return { ...server, disabledTools: previous?.disabledTools ?? [],
+                ...(server.credential === "organization" && previous?.credential === "organization" && previous.keyHeaders ? { keyHeaders: previous.keyHeaders } : {}) };
+            }),
+          };
+          // Per-entry rollback keeps the last valid definition if a storage limit rejects an update.
+          this.storage.transactionSync(() => {
+            if (!current && Number(this.rows("select count(*) as n from plugin")[0].n) >= IMPORT_LIMITS.plugins) throw pluginError(413, "plugin_storage_limit");
+            this.rows("insert into plugin(id,definition,skill_files,stored_bytes) values (?,?,?,?) on conflict(id) do update set definition=excluded.definition,skill_files=excluded.skill_files,stored_bytes=excluded.stored_bytes",
+              plugin.id, JSON.stringify(plugin), JSON.stringify(next.skills), next.storedBytes);
+            if (this.storedTotal() > IMPORT_LIMITS.totalStored) throw pluginError(413, "plugin_storage_limit");
+          });
+          for (const omission of draft.omitted) folder.problems.push({ path: entry.path, message: `${omission.code}: ${omission.subject}` });
+        } catch (error) {
+          if (!(error instanceof HttpError)) throw error;
+          folder.problems.push({ path: entry.path, message: error.code });
+        }
+      }
+      this.rows("insert into kv(key,value) values ('plugin_folder',?) on conflict(key) do update set value=excluded.value", JSON.stringify(folder));
+    });
+    return json({ folder });
+  }
+
+  private remove(plugin: Plugin) {
+    if (plugin.vendor === plugin.id && plugin.source.type !== "catalog") this.rows("delete from vendor_setup where vendor=?", plugin.vendor);
+    this.rows("delete from plugin where id=?", plugin.id);
+  }
+
   async admin(req: Request, path: string, userId: string): Promise<Response> {
-    if (path === "/admin/plugins" && req.method === "GET") return json({ plugins: this.list().map(plugin => ({ ...plugin, setup: plugin.servers.map(server => ({ server: server.name, done: this.setupDone(plugin, server) })), vendorConfigured: !!this.connections?.vendorConfigured(plugin.vendor) })) });
+    if (path === "/admin/plugins" && req.method === "GET") return json({ folder: this.folder(), plugins: this.list().map(plugin => ({ ...plugin, setup: plugin.servers.map(server => ({ server: server.name, done: this.setupDone(plugin, server) })), vendorConfigured: !!this.connections?.vendorConfigured(plugin.vendor) })) });
     if (path === "/admin/plugins" && req.method === "POST") return this.install(req);
     if (path === "/admin/plugins/inspect" && req.method === "POST") return this.inspect(req);
     if (path === "/admin/plugins/test" && req.method === "POST") return this.test(req);
@@ -297,6 +367,7 @@ export class Plugins {
     if (revert && req.method === "POST") {
       const plugin = this.get(revert[1]);
       if (!plugin) return notFound();
+      if (plugin.source.type === "folder") throw pluginError(409, "plugin_from_folder");
       if (plugin.source.type !== "custom" && plugin.source.type !== "upload") throw pluginError(409, "not_editable");
       const earlier = this.rows("select skill_files,stored_bytes from plugin_version where plugin_id=? and version=?", plugin.id, Number(revert[2]))[0];
       if (!earlier) throw pluginError(404, "version_not_found");
@@ -340,9 +411,14 @@ export class Plugins {
       return json({ ok: true });
     }
     if (match[2]) return notFound();
-    if (req.method === "DELETE") { if (plugin.vendor === plugin.id && plugin.source.type !== "catalog") this.rows("delete from vendor_setup where vendor=?", plugin.vendor); this.rows("delete from plugin where id=?", plugin.id); return json({ ok: true }); }
+    if (req.method === "DELETE") {
+      if (plugin.source.type === "folder") throw pluginError(409, "plugin_from_folder");
+      this.remove(plugin); return json({ ok: true });
+    }
     if (req.method === "PATCH") {
-      const patch: PluginUpdate = parse(patchSchema, await body(req, IMPORT_LIMITS.stored * 2));
+      const data = await body(req, IMPORT_LIMITS.stored * 2);
+      if (plugin.source.type === "folder" && z.object({ plugin: z.unknown() }).passthrough().safeParse(data).success) throw pluginError(409, "plugin_from_folder");
+      const patch: PluginUpdate = parse(patchSchema, data);
       const current = this.get(plugin.id);
       if (!current) return notFound();
       if ("enabled" in patch) {

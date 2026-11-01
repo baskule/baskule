@@ -334,6 +334,9 @@ async function startService(s, name) {
     if (!alive(s.processes[name])) throw Object.assign(new Error(`${name} exited; inspect ${s.logs[name]}`), { code: "STACK_SERVICE_EXITED" });
     return probe(r.health);
   });
+  if (name === "celld") run("bash", [join(ROOT, "deploy/celld/sync-plugins.sh"), process.env.BASKULE_PLUGINS_DIR || join(ROOT, ".run/plugins"), s.urls.loopback], {
+    env: { ...env, COMPUTERD_TOKEN: s.computerdToken }, stdio: ["ignore", 2, 2],
+  });
   s.processes[name].children = descendants(s.processes[name]).filter((p) => p.pid !== s.processes[name].pid);
   persist(s);
 }

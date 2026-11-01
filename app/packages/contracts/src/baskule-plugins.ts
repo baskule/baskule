@@ -2,7 +2,8 @@ export type PluginSource =
   | { type: "catalog" }
   | { type: "github"; repo: string; sha: string; path?: string }
   | { type: "upload"; sha256: string }
-  | { type: "custom" };
+  | { type: "custom" }
+  | { type: "folder"; path: string };
 export type CredentialMode = "none" | "organization" | "user-oauth";
 export interface OAuthRecipe {
   scopes?: string[];
@@ -32,6 +33,10 @@ export interface Plugin {
   omitted: Omission[];
   enabled: boolean;
   createdAt: string;
+}
+export interface PluginFolder {
+  syncedAt: number;
+  problems: { path: string; message: string }[];
 }
 export interface AdminPlugin extends Plugin {
   setup: { server: string; done: boolean }[];
@@ -172,6 +177,7 @@ export const PLUGIN_ERROR_CODES = [
   "oauth_resource_mismatch",
   "oauth_scope_missing",
   "oauth_unavailable",
+  "plugin_from_folder",
   "plugin_links_unsupported",
   "plugin_not_found",
   "plugin_server_required",

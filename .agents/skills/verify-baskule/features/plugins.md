@@ -1,5 +1,5 @@
 ---
-paths: ["platform/src/control/**", "platform/src/agent/**", "app/apps/web/src/baskule/plugins/**", "app/apps/web/src/baskule/admin/plugins/**", "app/apps/web/src/routes/_chat.settings.plugins.tsx", "app/apps/web/baskule-dev/mock-plugins.mjs", "e2e/journeys/plugins.spec.mjs"]
+paths: ["platform/src/control/**", "platform/src/agent/**", "app/apps/web/src/baskule/plugins/**", "app/apps/web/src/baskule/admin/plugins/**", "app/apps/web/src/routes/_chat.settings.plugins.tsx", "app/apps/web/baskule-dev/mock-plugins.mjs", "e2e/journeys/plugins.spec.mjs", "e2e/journeys/folder-plugins.spec.mjs", "deploy/celld/sync-plugins.sh"]
 journeys: "@feature:plugins"
 profile: "full"
 checks: ["scripts/check features:6-plugins worker web"]
@@ -17,6 +17,8 @@ Administrators add plugins under Admin → Plugins and choose groups. Members op
 ## Driving it with T3 preview or Playwright
 
 Run `scripts/check feature:plugins`. The plugins journey uploads portable skills, verifies Ready without activation, loads a skill in a fake-model personal chat, and checks that deactivating the sole contributor removes team skill files. The static-client journey shows Needs setup, saves the vendor client through the admin UI, then connects the member. A two-member OAuth journey boots the team before connection, connects the second member, and checks that tools become available while the unconnected author receives the account prompt and makes no vendor call. The connected author then calls successfully. The import journey reviews a Claude package without creating a plugin, fills its address and encrypted key, confirms member readiness, downloads a zip and reviews it again. The focused runtime check covers encrypted-key delivery and call-time policy; worker covers OAuth.
+
+The folder journey uses the light profile and a desktop viewport. It writes a standard MCP JSON file to `.run/plugins`, restarts celld to exercise the startup collector, configures its key, group and Pause in the UI, verifies persistence after restart, and removes the entry on disk before another restart.
 
 ## Gotchas
 
