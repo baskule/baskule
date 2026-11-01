@@ -517,12 +517,18 @@ export const baskuleApi = {
 
   // First administrator of a new installation (public; the token travels in the link's fragment).
   setupStatus: () => request<SetupStatus>("GET", "/api/baskule/setup"),
-  completeSetup: (input: {
+  /** Resolves with the new administrator. */
+  completeSetup: async (input: {
     readonly token: string;
     readonly name: string;
     readonly email: string;
     readonly password?: string;
-  }) => request<unknown>("POST", "/api/baskule/setup", input),
+  }) =>
+    (
+      await request<{
+        readonly user: { readonly id: string; readonly email: string; readonly name: string };
+      }>("POST", "/api/baskule/setup", input)
+    ).user,
 
   // Invitations (public; the token travels in the link's fragment).
   invitation: async (token: string): Promise<Invitation> => {
