@@ -6,6 +6,7 @@ import { fakeMcp } from "../../platform/test/fixtures/mcp.mjs";
 const folder = fileURLToPath(new URL("../../.run/plugins/mcp/", import.meta.url));
 
 test("folder entry is configured in the UI, survives restart, and disappears after removal", { tag: ["@feature:plugins", "@profile:light"] }, async ({ browser, stack, stackCtl, api }) => {
+  test.slow(); // Three celld restarts rebuild the real Worker and assets.
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
   const page = await context.newPage();
   const name = `folder-crm-${crypto.randomUUID()}`;
@@ -32,8 +33,12 @@ test("folder entry is configured in the UI, survives restart, and disappears aft
     await page.getByLabel("Key", { exact: true }).fill("Bearer folder-journey-key");
     await page.getByRole("button", { name: "Save key", exact: true }).click();
     await expect(page.getByRole("button", { name: "Replace key", exact: true })).toBeVisible();
-    await page.getByRole("switch", { name: /Everyone/ }).check();
+    await page.getByRole("switch", { name: /Everyone/ }).click();
     await expect(page.getByRole("switch", { name: /Everyone/ })).toBeChecked();
+    await page.getByRole("button", { name: "Show tools", exact: true }).click();
+    await expect(page.getByRole("switch", { name: "Allow fixture_write", exact: true })).toBeChecked();
+    await page.getByRole("switch", { name: "Allow fixture_write", exact: true }).click();
+    await expect(page.getByRole("switch", { name: "Allow fixture_write", exact: true })).not.toBeChecked();
     await page.getByRole("button", { name: `Pause ${name}`, exact: true }).click();
     await expect(page.getByRole("button", { name: `Resume ${name}`, exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("folder-configured.png") });
@@ -41,7 +46,7 @@ test("folder entry is configured in the UI, survives restart, and disappears aft
     await page.goto("about:blank");
     stackCtl.restart("celld");
     const after = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.id === plugin.id);
-    expect(after).toMatchObject({ enabled: false, setup: [{ server: "crm", done: true }] });
+    expect(after).toMatchObject({ enabled: false, setup: [{ server: "crm", done: true }], servers: [{ name: "crm", disabledTools: ["fixture_write"] }] });
     expect((await api.admin.json("GET", "/api/baskule/admin/groups")).groups.find(g => g.id === "everyone").plugins).toContain(plugin.id);
     await page.goto(url);
     await expect(page.getByRole("button", { name: "Replace key", exact: true })).toBeVisible();
@@ -55,7 +60,7 @@ test("folder entry is configured in the UI, survives restart, and disappears aft
     expect((await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.some(p => p.id === plugin.id)).toBe(false);
     expect((await api.admin.json("GET", "/api/baskule/admin/groups")).groups.find(g => g.id === "everyone").plugins).not.toContain(plugin.id);
     await page.goto(`${stack.urls.front}/admin/plugins/installed`);
-    await expect(page.getByRole("heading", { name: "Installed plugins", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Plugins/ })).toBeVisible();
     await expect(page.getByText(name, { exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("folder-removed.png") });
   } finally {

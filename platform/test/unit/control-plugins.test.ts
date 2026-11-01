@@ -6,6 +6,7 @@ import { INTERNAL_HEADER } from "../../src/shared/contract";
 import { pluginStatus, worstStatus, canUse, type PluginPolicy, Plugins } from "../../src/control/plugins";
 import { ConnectionCipher } from "../../src/control/connection-crypto";
 import { base64 } from "../../src/control/plugin-package";
+import { fakeOAuth } from "../fixtures/oauth.mjs";
 import { resolveGroupPermissions } from "../../src/control/groups";
 
 const API = "/api/baskule";
@@ -342,4 +343,34 @@ describe("startup folder sync", () => {
     await sync(h, [initial]);
     expect(h.svc.plugins.list()).toHaveLength(1);
   });
+  it("preserves encrypted vendor setup and connected accounts across same-path definition updates", async () => {
+    const oauth = await fakeOAuth(); oauth.state.dcr = false;
+    try {
+      const h = await makeService({ COMPUTERD_TOKEN: token }); const a = await asAdmin(h); const admin = { creds: a.creds };
+      const entry = (description: string) => ({ path: "plugins/accounts", archive: archive({
+        ".claude-plugin/plugin.json": JSON.stringify({ name: "Accounts", description }),
+        ".mcp.json": JSON.stringify({ mcpServers: { remote: { url: oauth.resource, oauth: {} } } }),
+      }) });
+      await sync(h, [entry("Before")]);
+      const p = h.svc.plugins.list()[0];
+      await call(h, "PATCH", `${API}/admin/groups/everyone`, { ...admin, body: { plugins: [p.id] } });
+      expect((await call(h, "PUT", `${API}/admin/vendors/${p.id}`, { ...admin, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } })).status).toBe(200);
+      const start = await call(h, "GET", `${API}/plugins/${p.id}/connect?server=remote`, admin);
+      expect(start.status).toBe(302);
+      const consent = await fetch(start.headers.get("location")!, { redirect: "manual" });
+      const callback = new URL(consent.headers.get("location")!);
+      expect((await call(h, "GET", callback.pathname + callback.search, admin)).status).toBe(302);
+      const vendor = h.storage.sql.exec("select * from vendor_setup").toArray();
+      const accounts = h.storage.sql.exec("select * from plugin_connection").toArray();
+      expect(accounts).toHaveLength(1);
+      await sync(h, [entry("After")]);
+      expect(h.svc.plugins.get(p.id)?.description).toBe("After");
+      expect(h.storage.sql.exec("select * from vendor_setup").toArray()).toEqual(vendor);
+      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual(accounts);
+      await sync(h, []);
+      expect(h.storage.sql.exec("select * from vendor_setup").toArray()).toEqual([]);
+      expect(h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual([]);
+    } finally { await oauth.close(); }
+  });
+
 });

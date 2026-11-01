@@ -198,7 +198,7 @@ function plan(files, base) {
   if (has(/^scripts\/(?:check(?:[.-]|$)|stack(?:[.-]|$)|celld(?:[.-]|$)|lint(?:[.-]|$)|feature-map(?:[.-]|$)|run-feature\.mjs$|no-fixed-sleep\.mjs$)|^platform\/dev\/fake-llm\/|^\.oxlintrc\.json$/)) add("scripts/check: harness tests", "node", ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], ".");
   if (has(/^openshell\/dev-down\.sh$/)) add("stack: shared gateway teardown", "node", ["--test", "scripts/stack.test.mjs"], ".");
   if (has(/^deploy\/(?:docker-compose|cluster\/|\.env\.example)|^scripts\/check-compose\.sh$/)) add("deploy: compose config", "bash", ["scripts/check-compose.sh"], ".");
-  if (has(/^deploy\/celld\//)) add("deploy: S3 bootstrap retries", "node", ["--test", "deploy/celld/jobs.test.mjs"], ".");
+  if (has(/^deploy\/celld\//)) add("deploy: startup jobs", "node", ["--test", "deploy/celld/jobs.test.mjs", "deploy/celld/sync-plugins.test.mjs"], ".");
   if (has(/^scripts\/ci\/publish-images/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
   if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
   if (has(/^(deploy|openshell|computer)\//)) tags.add("infra");
