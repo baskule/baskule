@@ -457,8 +457,9 @@ async function folder() {
     await page.screenshot({ path: resolve(evidence, "fresh-folder-installed.png") });
     pass("fresh zero-config release install: mounted folder plugin appears in Admin → Plugins after setup; consumers retain scoped secrets");
   } finally {
-    for (const context of browser.contexts()) await context.tracing.stop({ path: resolve(evidence, "fresh-folder-trace.zip") });
-    await browser.close();
+    try {
+      for (const context of browser.contexts()) await context.tracing.stop({ path: resolve(evidence, "fresh-folder-trace.zip") });
+    } finally { await browser.close(); }
   }
 }
 async function fresh() {
