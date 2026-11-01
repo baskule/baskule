@@ -11,6 +11,7 @@ const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url")
 let issuer;
 let identity = "admin@it.test";
 let nonce;
+const setupToken = crypto.randomUUID();
 const idp = createServer(async (req, res) => {
   res.setHeader("content-type", "application/json");
   if (req.url === "/jwks") return res.end(JSON.stringify({ keys: [jwk] }));
@@ -23,7 +24,7 @@ const idp = createServer(async (req, res) => {
 });
 await new Promise(resolve => idp.listen(0, "127.0.0.1", resolve));
 issuer = `http://127.0.0.1:${idp.address().port}`;
-appendFileSync(`${app}/.dev.vars`, `\nAUTH_CONFIG=${JSON.stringify({ password: false, providers: [{ id: "company", name: "Company", type: "oidc", options: { clientId: "baskule-test", clientSecret: "fixture-secret", discoveryUrl: `${issuer}/.well-known/openid-configuration`, scopes: ["openid", "email", "profile"] } }] })}\n`);
+appendFileSync(`${app}/.dev.vars`, `\nSETUP_TOKEN=${setupToken}\nAUTH_CONFIG=${JSON.stringify({ password: false, providers: [{ id: "company", name: "Company", type: "oidc", options: { clientId: "baskule-test", clientSecret: "fixture-secret", discoveryUrl: `${issuer}/.well-known/openid-configuration`, scopes: ["openid", "email", "profile"] } }] })}\n`);
 const fd = openSync(`${app}/../oidc-celld.log`, "w");
 const child = spawn(celld, ["dev", app, "--port", new URL(base).port, "--no-watch", "--logs", "--clean"], { stdio: ["ignore", fd, fd] });
 const exited = new Promise(resolve => child.once("exit", resolve));
@@ -41,6 +42,9 @@ try {
       await new Promise(resolve => setTimeout(resolve, 100)); // no-fixed-sleep-allow: Retry server readiness until the deadline or child exit.
     }
   }
+  const setup = await request("/api/baskule/setup", { token: setupToken, name: "SSO admin", email: "admin@it.test" });
+  assert.equal(setup.status, 201);
+  assert.equal(setup.headers.get("set-cookie"), null);
   const login = async (email, formPost = false) => {
     identity = email;
     const start = await request("/auth/sign-in/social", { provider: "company", callbackURL: "/", errorCallbackURL: "/login?error=provider", disableRedirect: true, requestSignUp: true });

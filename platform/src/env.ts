@@ -7,9 +7,7 @@ export interface Env {
   /** Comma-separated exact origins allowed for state-changing requests and WS upgrades, besides the request's own. */
   PUBLIC_ORIGINS?: string;
   /** First-boot bootstrap (ignored once an admin exists). */
-  ADMIN_EMAIL?: string;
-  ADMIN_PASSWORD?: string;
-  ADMIN_NAME?: string;
+  SETUP_TOKEN?: string;
   /** Validated installation-owned auth.json, resolved at deploy time. */
   AUTH_CONFIG?: string;
   /** Optional Better Auth secret; when empty ControlCell generates one at first boot and keeps it in its own SQLite. */

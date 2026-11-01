@@ -34,10 +34,24 @@ case $n in 0|1) echo 503 ;; 2) echo 404 ;; 3|4) echo 200 ;; *) exit 99 ;; esac
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 
-test("init-env requires an explicit stdin template", () => {
-  const result = spawnSync("bash", ["deploy/celld/jobs.sh", "init-env"], { encoding: "utf8" });
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /init-env -/);
+test("setup generates secrets once, preserves overrides, and prints the effective setup link", () => {
+  const work = mkdtempSync(resolve(tmpdir(), "setup-test-"));
+  try {
+    const env = { ...process.env, BASKULE_SECRETS_DIR: work };
+    const first = spawnSync("bash", ["deploy/celld/jobs.sh", "setup"], { env, encoding: "utf8" });
+    assert.equal(first.status, 0, first.stderr);
+    const secrets = readFileSync(resolve(work, "secrets"), "utf8");
+    assert.equal(secrets.trim().split("\n").length, 5);
+    assert.match(first.stderr, /http:\/\/127.0.0.1:47090\/setup#token=[a-f0-9]{64}/);
+    const second = spawnSync("bash", ["deploy/celld/jobs.sh", "setup"], { env: { ...env, SETUP_TOKEN: "override", PUBLIC_URL: "https://example.test" }, encoding: "utf8" });
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(readFileSync(resolve(work, "secrets"), "utf8"), secrets);
+    assert.match(second.stderr, /https:\/\/example.test\/setup#token=override/);
+    const override = spawnSync("bash", ["deploy/celld/jobs.sh", "run", "bash", "-c", 'printf "%s\n" "$COMPUTERD_TOKEN" "$OPENSHELL_VOLUMES_TOKEN" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY"'], {
+      env: { ...env, COMPUTERD_TOKEN: "computer override", OPENSHELL_VOLUMES_TOKEN: "volume override", S3_ACCESS_KEY: "external key", S3_SECRET_KEY: "external secret" }, encoding: "utf8" });
+    assert.equal(override.status, 0, override.stderr);
+    assert.equal(override.stdout, "computer override\nvolume override\nexternal key\nexternal secret\n");
+  } finally { rmSync(work, { recursive: true, force: true }); }
 });
 
 for (const status of ["200", "307", "400", "403"]) test(`deploy readiness accepts an unsigned ${status} answer`, () => {

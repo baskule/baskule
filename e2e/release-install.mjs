@@ -2,7 +2,7 @@
 // Exercise the operator assets without checkout mounts. Only disposable, uniquely named projects are changed.
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, closeSync, copyFileSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, copyFileSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { expect } from "@playwright/test";
@@ -10,10 +10,9 @@ import { createApi } from "./journeys/api.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const target = process.argv[2] ?? "all";
-if (!["all", "single", "cluster", "restore", "fresh"].includes(target)) throw new Error("Choose all, single, cluster, restore, or fresh");
+if (!["all", "single", "cluster", "restore", "fresh", "proxy"].includes(target)) throw new Error("Choose all, single, cluster, restore, or fresh");
 const version = process.env.BASKULE_INSTALL_VERSION ?? "local";
 const registry = process.env.BASKULE_INSTALL_REGISTRY ?? "ghcr.io/baskule";
-const image = `${registry}/baskule-celld:${version}`;
 const computerImage = `${registry}/baskule-computerd:${version}`;
 const id = `release-install-${randomBytes(4).toString("hex")}`;
 const run = resolve(root, ".run", id);
@@ -35,7 +34,7 @@ function command(args, { cwd = root, input, inputFile, output, allowFailure = fa
   const destination = output ? openSync(output, "w", 0o600) : undefined;
   let result;
   try {
-    result = spawnSync("docker", args, { cwd, input, encoding: "utf8", timeout: 900_000,
+    result = spawnSync("docker", args, { cwd, input, env: { ...process.env, BASKULE_REGISTRY: registry }, encoding: "utf8", timeout: 900_000,
       stdio: [source ?? "pipe", destination ?? "pipe", "pipe"], maxBuffer: 20 * 1024 * 1024 });
   } finally {
     if (source !== undefined) closeSync(source);
@@ -52,7 +51,7 @@ async function port() {
   return value;
 }
 function envFile(file, values) {
-  let content = readFileSync(file, "utf8");
+  let content = existsSync(file) ? readFileSync(file, "utf8") : "";
   for (const [key, value] of Object.entries(values)) {
     const line = `${key}=${value}`;
     const pattern = new RegExp(`^${key}=.*$`, "m");
@@ -63,22 +62,21 @@ function envFile(file, values) {
 function world(role, values) {
   const directory = resolve(run, role);
   mkdirSync(directory);
-  mkdirSync(resolve(directory, "config"));
   const kind = role.startsWith("node") ? "node" : role.startsWith("single") ? "single" : role;
   const compose = kind === "single" ? "docker-compose.yml" : `cluster-${kind}.yml`;
   const example = kind === "single" ? "baskule.env.example" : `cluster-${kind}.env.example`;
   copyFileSync(resolve(assets, compose), resolve(directory, "docker-compose.yml"));
-  copyFileSync(resolve(assets, example), resolve(directory, ".env.example"));
-  const generated = command(["run", "--rm", "-i", "--network", "none", "--entrypoint", "baskule-celld-job", image, "init-env", "-"], {
-    input: readFileSync(resolve(directory, ".env.example")),
-  });
   const file = resolve(directory, ".env");
-  writeFileSync(file, `${generated}\n`, { mode: 0o600 });
-  envFile(file, { BASKULE_REGISTRY: registry, BASKULE_VERSION: version, ...values });
+  if (kind !== "single") {
+    mkdirSync(resolve(directory, "config"));
+    copyFileSync(resolve(assets, example), file);
+    envFile(file, { COMPUTERD_TOKEN: randomBytes(32).toString("hex"), OPENSHELL_VOLUMES_TOKEN: randomBytes(32).toString("hex") });
+  }
+  if (Object.keys(values).length) envFile(file, values);
   const project = `${id}-${role}`;
   const files = ["-f", resolve(directory, "docker-compose.yml")];
   const dc = (args, options = {}) => command(["compose", "-p", project, ...files, ...args], { cwd: directory, ...options });
-  expect(readdirSync(directory).sort()).toEqual([".env", ".env.example", "config", "docker-compose.yml"]);
+  if (kind === "single" && !Object.keys(values).length) expect(readdirSync(directory)).toEqual(["docker-compose.yml"]);
   const w = { directory, file, project, dc, values, files };
   projects.push(w);
   dc(["--profile", "*", "config", "-q"]);
@@ -111,7 +109,7 @@ async function rpc(person, space) {
   return client;
 }
 const admin = { email: "admin@release.test", password: `quoted$"${randomBytes(24).toString("hex")}` };
-const adminVars = { ADMIN_EMAIL: admin.email, ADMIN_PASSWORD: `'${admin.password}'`, AUTH_CONFIG: "'{\"version\":1,\"password\":true}'" };
+const adminVars = { SETUP_TOKEN: randomBytes(32).toString("hex") };
 async function fake(w, lan) {
   const name = `${w.project}-llm`;
   const args = ["run", "-d", "--no-healthcheck", "--name", name];
@@ -128,12 +126,77 @@ async function fake(w, lan) {
     "/fake/server.mjs", "--host", "0.0.0.0"]);
   return { endpoint, name };
 }
+function secretHash(w) {
+  return w.dc(["run", "--rm", "--no-deps", "--entrypoint", "sha256sum", "setup", "/run/baskule/secrets"]);
+}
+async function completeSetup(w, base) {
+  const status = await (await fetch(`${base}/api/baskule/setup`)).json();
+  if (!status.required) return;
+  const logs = w.values.SETUP_TOKEN ? "" : w.dc(["logs", "--no-color", "setup"]);
+  const token = w.values.SETUP_TOKEN ?? logs.match(/\/setup#token=([^\s]+)/)?.[1];
+  expect(token).toBeTruthy();
+  const result = spawnSync("curl", ["-sS", "-c", resolve(w.directory, "setup-cookies"), "-H", `Origin: ${base}`, "-H", "Content-Type: application/json", "--data-binary", "@-", "-w", "\n%{http_code}", `${base}/api/baskule/setup`], {
+    input: JSON.stringify({ token, name: "Release admin", ...admin }), encoding: "utf8" });
+  expect(result.status).toBe(0);
+  expect(result.stdout.trim().split("\n").at(-1)).toBe("201");
+  const me = spawnSync("curl", ["-sS", "-b", resolve(w.directory, "setup-cookies"), `${base}/api/baskule/me`], { encoding: "utf8" });
+  expect(JSON.parse(me.stdout).user.role).toBe("admin");
+  pass("logs setup link creates the first admin through curl and its browser session cookie works");
+}
+async function proxy() {
+  const p = await port();
+  const w = world("single-proxy", { BASKULE_PORT: p, SETUP_TOKEN: adminVars.SETUP_TOKEN, COMPUTERD_TOKEN: "computer-env-override", OPENSHELL_VOLUMES_TOKEN: "volume-env-override", RUSTFS_ACCESS_KEY: "rustfs-env-override", RUSTFS_SECRET_KEY: "rustfs-env-secret-override" });
+  w.dc(["up", "-d"]);
+  const edge = `http://127.0.0.1:${p}`;
+  await ready(`${edge}/api/baskule/setup`);
+  const proxyPort = await port();
+  const proxyConfig = resolve(w.directory, "outer-proxy.Caddyfile");
+  writeFileSync(proxyConfig, `{
+    admin off
+    auto_https off
+  }
+  :${proxyPort} {
+    bind 127.0.0.1
+    reverse_proxy ${edge} {
+      header_up Host proxy.baskule.test
+      header_up X-Forwarded-Host proxy.baskule.test
+      header_up X-Forwarded-Proto https
+      header_up X-Forwarded-For {http.request.header.X-Test-Client-IP}
+    }
+  }`);
+  const proxyName = `${w.project}-outer-proxy`;
+  containers.set(proxyName, "proxy");
+  command(["run", "-d", "--name", proxyName, "--network", "host", "-v", `${proxyConfig}:/etc/caddy/Caddyfile:ro`,
+    "caddy:2@sha256:25cdc846626b62d05f6b633b9b40c2c9f6ef89b515dc76133cefd920f7dbe562"]);
+  const base = `http://127.0.0.1:${proxyPort}`;
+  await ready(`${base}/api/baskule/setup`);
+  const origin = "https://proxy.baskule.test";
+  const headers = { "X-Test-Client-IP": "203.0.113.17", Origin: origin, "Content-Type": "application/json" };
+  const token = w.dc(["logs", "--no-color", "setup"]).match(/\/setup#token=([^\s]+)/)[1];
+  expect(token).toBe(adminVars.SETUP_TOKEN);
+  const post = async (path, body, extra = {}) => {
+    const result = spawnSync("curl", ["-sS", "-D", resolve(w.directory, "proxy-headers"), ...Object.entries({ ...headers, ...extra }).flatMap(([key,value]) => ["-H", `${key}: ${value}`]), "--data-binary", "@-", "-w", "\n%{http_code}", `${base}${path}`], { input: JSON.stringify(body), encoding: "utf8" });
+    expect(result.status).toBe(0);
+    return Number(result.stdout.trim().split("\n").at(-1));
+  };
+  expect(await post("/api/baskule/setup", { token, name: "Proxy admin", ...admin }, { Origin: "https://foreign.test" })).toBe(403);
+  expect(await post("/api/baskule/setup", { token, name: "Proxy admin", ...admin })).toBe(201);
+  expect(/set-cookie: (?:__Secure-)?baskule\.session_token=.*; Secure(?:;|\r|$)/i.test(readFileSync(resolve(w.directory, "proxy-headers"), "utf8"))).toBe(true);
+  expect(await post("/auth/sign-in/email", admin)).toBe(200);
+  expect(await post("/auth/sign-in/email", admin, { Origin: "https://foreign.test" })).toBe(403);
+  // Distinct forwarded client addresses have independent sign-in budgets.
+  for (let n = 0; n < 10; n++) expect(await post("/auth/sign-in/email", { ...admin, password: "wrong" }, { "X-Test-Client-IP": "203.0.113.18" })).toBe(401);
+  expect(await post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.18" })).toBe(429);
+  expect(await post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.19" })).toBe(200);
+  pass("HTTPS proxy headers without PUBLIC_ORIGINS: setup, Secure session, sign-in, foreign Origin refusal and real-client rate limits");
+}
 async function exercise(w, base, endpoint) {
   await ready(`${base}/version.json`);
   const stamp = await (await fetch(`${base}/version.json`)).json();
   expect(stamp.umbrella).toBeTruthy();
   expect((await (await fetch(`${base}/.well-known/baskule`)).json()).authentication.password).toBe(true);
   const api = createApi({ urls: { loopback: base, front: base }, admin });
+  await completeSetup(w, base);
   const person = await api.adminSession();
   const { apiKeyConfigured: _key, transcriptionApiKeyConfigured: _voiceKey, authentication: _auth, ...settings } = await person.json("GET", "/api/baskule/admin/settings");
   await person.json("PATCH", "/api/baskule/admin/settings", {
@@ -188,10 +251,11 @@ async function fresh() {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const p = await port();
     const base = `http://127.0.0.1:${p}`;
-    const w = world(`single-${attempt}`, { ...adminVars, AUTH_CONFIG: "", BASKULE_PORT: p, PUBLIC_ORIGINS: base });
+    const w = world(`single-${attempt}`, { BASKULE_PORT: p });
     w.dc(["up", "-d"]);
     await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-openshell", "baskule-computerd"]);
     await ready(`${base}/version.json`);
+    await completeSetup(w, base);
     await createApi({ urls: { loopback: base, front: base }, admin }).adminSession();
     expect(w.dc(["ps", "-a", "--format", "{{.ExitCode}}", "baskule-bootstrap"])).toBe("0");
     writeFileSync(resolve(evidence, `${w.project}.log`), w.dc(["logs", "--no-color"]));
@@ -210,7 +274,8 @@ function imageCleanup(w) {
     fixtureImages.add(tag);
     command(["tag", `${registry}/baskule-${name}:${version}`, tag]);
   }
-  envFile(w.file, { BASKULE_VERSION: next });
+  const composeFile = resolve(w.directory, "docker-compose.yml");
+  writeFileSync(composeFile, readFileSync(composeFile, "utf8").replaceAll(`BASKULE_VERSION:-${version}`, `BASKULE_VERSION:-${next}`));
   w.dc(["up", "-d"]);
   const updated = w.dc(["ps", "-q", "baskule-openshell"]);
   const references = command(["exec", updated, "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"]);
@@ -233,18 +298,22 @@ print(json.dumps([s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),os.getxattr(path,'us
   expect(JSON.parse(command(["exec", gateway, "python3", "-c", code]))).toEqual([12345, 23456, 0o640, "preserved", "y"]);
 }
 async function single() {
-  const p = await port();
-  const base = `http://127.0.0.1:${p}`;
-  const w = world("single", { ...adminVars, AUTH_CONFIG: "", BASKULE_PORT: p, PUBLIC_ORIGINS: base });
+  const base = "http://127.0.0.1:47090";
+  const w = world("single", {});
   w.dc(["up", "-d"]);
   await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-openshell", "baskule-computerd"]);
   const llm = await fake(w);
   const result = await exercise(w, base, llm.endpoint);
+  const secrets = secretHash(w);
+  w.dc(["up", "-d"]);
+  expect(secretHash(w)).toBe(secrets);
+  pass("second up preserves generated secrets");
   imageCleanup(w);
+  expect(secretHash(w)).toBe(secrets);
+  pass("downloaded compose version update preserves generated secrets");
   await persisted(base, result);
   writeFileSync(resolve(run, "single-proof.json"), JSON.stringify({ ...result, directory: w.directory }), { mode: 0o600 });
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
-  envFile(w.file, { ADMIN_PASSWORD: "" });
   metadata(w, true);
   // Use exactly the documented stop/backup/start operations from the install directory.
   w.dc(["down"]);
@@ -260,6 +329,8 @@ async function single() {
   await ready(`${base}/version.json`);
   await persisted(base, result);
   metadata(w);
+  expect(secretHash(w)).toBe(secrets);
+  pass("restored secrets match the original volume");
   pass("single-machine backup restores chat, computer disk, user/trusted xattrs, numeric ownership and modes into empty volumes");
 }
 async function restoreOnly() {
@@ -268,7 +339,7 @@ async function restoreOnly() {
   const p = await port();
   const base = `http://127.0.0.1:${p}`;
   const w = world("single", adminVars);
-  copyFileSync(resolve(previous.directory, ".env"), w.file);
+  if (existsSync(resolve(previous.directory, ".env"))) copyFileSync(resolve(previous.directory, ".env"), w.file);
   envFile(w.file, { BASKULE_REGISTRY: registry, BASKULE_VERSION: version, BASKULE_PORT: p, PUBLIC_ORIGINS: base });
   w.dc(["run", "--rm", "-T", "restore"], { inputFile: resolve(evidence, "single-backup.tar.gz") });
   w.dc(["up", "-d"]);
@@ -336,6 +407,7 @@ async function cluster() {
   expect(fleet).toContain(`peer ${id}-a`); expect(fleet).toContain(`peer ${id}-b`);
   pass("cluster forms a two-node fleet with an external bucket");
   const llm = await fake(computers, { network, address: modelHost });
+  await completeSetup(a, base);
   const result = await exercise(computers, base, llm.endpoint);
   // Kill the node owning the most cells; disable automatic restart for this drill.
   const owned = (w, ip) => JSON.parse(w.dc(["exec", "-T", "node", "curl", "-sf", `http://${ip}:47092/state`])).owned_cells ?? 0;
@@ -350,12 +422,13 @@ async function cluster() {
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
 }
 try {
+  if (target === "proxy") await proxy();
   if (target === "fresh") await fresh();
   if (target === "restore") await restoreOnly();
   if (target === "all" || target === "single") await single();
   if (target === "all" || target === "cluster") await cluster();
 } finally {
-  for (const [name, kind] of containers) if (kind === "model") command(["rm", "-f", name], { allowFailure: true });
+  for (const [name, kind] of containers) if (kind === "model" || kind === "proxy") command(["rm", "-f", name], { allowFailure: true });
   for (const w of [...projects].reverse()) {
     const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
     if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);

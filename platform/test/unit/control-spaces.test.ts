@@ -113,7 +113,7 @@ describe("invitations", () => {
 
     // email-bound: another email is refused, and the token stays usable
     expect((await call(h, "POST", "/api/baskule/invitations/accept", { body: { token, name: "Mallory", password: "mallory-pass-1", email: "mallory@os.test" } })).status).toBe(400);
-    const acc = await call(h, "POST", "/api/baskule/invitations/accept", { body: { token, name: "Carol", password: "carol-pass-1" } });
+    const acc = await call(h, "POST", "/api/baskule/invitations/accept", { body: { token, name: "Carol", password: "carol-pass-1" }, origin: null, headers: { cookie: "" } });
     expect(acc.status).toBe(201);
     expect(acc.body.user.email).toBe("carol@os.test");
     expect(acc.body.spaces.map((s: any) => s.name)).toEqual(["Personal", "Acme"]);

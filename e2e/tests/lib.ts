@@ -191,7 +191,7 @@ const WORLD = () => {
 };
 
 export function adminCreds(): { email: string; password: string } {
-  return { email: envGet("ADMIN_EMAIL") || "admin@baskule.local", password: process.env.E2E_ADMIN_PASSWORD || envGet("ADMIN_PASSWORD") };
+  return { email: process.env.E2E_LOGIN_EMAIL || envGet("E2E_LOGIN_EMAIL") || "admin@baskule.local", password: process.env.E2E_LOGIN_PASSWORD || envGet("E2E_LOGIN_PASSWORD") };
 }
 
 export function names(run = runId()) {

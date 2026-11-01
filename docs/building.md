@@ -42,13 +42,12 @@ For a source-build installation, clone the repository and configure its develope
 ```sh
 git clone https://github.com/baskule/baskule
 cd baskule
-deploy/init-env.sh
-$EDITOR deploy/.env
 ```
 
-Set the first admin and public address as in the [installation guide](install.md). `deploy/auth.json` is the
-source build's optional authentication file; `AUTH_CONFIG_FILE` selects another. The released installation uses
-`AUTH_CONFIG` in `.env` instead. Keep secrets outside Git and do not source `.env` as shell code.
+After startup, read `docker compose logs setup` using the source Compose files and open the setup link to create
+the first admin. The optional `deploy/.env` overrides defaults. `deploy/auth.json` is the source build's optional
+authentication file; `AUTH_CONFIG_FILE` selects another. Releases use `AUTH_CONFIG` in `.env`.
+Keep secrets outside Git and do not source `.env` as shell code.
 
 Build and start from the Ubuntu build environment. For example, with the checkout and caches under `/opt/baskule`:
 

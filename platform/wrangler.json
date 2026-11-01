@@ -18,9 +18,7 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ControlCell", "SpaceCell"] }],
   "vars": {
     "PUBLIC_ORIGINS": "",
-    "ADMIN_EMAIL": "",
-    "ADMIN_PASSWORD": "",
-    "ADMIN_NAME": "Admin",
+    "SETUP_TOKEN": "",
     "AUTH_SECRET": "",
     "AUTH_RATE_LIMIT": "1",
     "COMPUTERD_URL": "http://127.0.0.1:47091",

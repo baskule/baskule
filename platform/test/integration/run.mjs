@@ -134,9 +134,11 @@ async function transcriptions(admin) {
 }
 
 async function phase1() {
-  // 1. bootstrap admin
+  const setup = await req("POST", "/api/baskule/setup", { body: { token: process.env.SETUP_TOKEN, name: "Root Admin", ...ADMIN } });
+  check("first admin setup", setup.status === 201);
+  // 1. setup admin
   const admin = await signIn(ADMIN.email, ADMIN.password);
-  check("bootstrap admin signs in (cookie + signed bearer)", admin.status === 200 && admin.cookie.startsWith("baskule.session_token=") && admin.bearer?.includes("."));
+  check("setup admin signs in (cookie + signed bearer)", admin.status === 200 && admin.cookie.startsWith("baskule.session_token=") && admin.bearer?.includes("."));
   check("me: admin with role and personal space", admin.me.user.role === "admin" && admin.me.spaces.length === 1 && admin.me.spaces[0].kind === "personal" && admin.me.organization.name === "Baskule");
   check("me without session → 401", (await req("GET", "/api/baskule/me")).status === 401);
   check("public sign-up disabled", (await req("POST", "/auth/sign-up/email", { body: { email: "x@it.test", password: "password-123", name: "X" } })).status === 404);
@@ -307,7 +309,7 @@ async function phase1() {
 async function phase2() {
   const s = JSON.parse(readFileSync(STATE, "utf8"));
   const admin = await signIn(ADMIN.email, ADMIN.password);
-  check("after restart: admin signs in (no second bootstrap)", admin.status === 200);
+  check("after restart: admin signs in (setup remains complete)", admin.status === 200);
   const users = await req("GET", "/api/baskule/admin/users", { cookie: admin.cookie });
   check("after restart: accounts kept", users.json.users.map((u) => u.email).sort().join() === "admin@it.test,alice@it.test,bob@it.test,carol@it.test");
   const me = await req("GET", "/api/baskule/me", { cookie: s.aliceCookie });
@@ -317,6 +319,8 @@ async function phase2() {
 
 try {
   if (ONLY === "transcriptions") {
+    const setup = await req("POST", "/api/baskule/setup", { body: { token: process.env.SETUP_TOKEN, name: "Root Admin", ...ADMIN } });
+    check("first admin setup", setup.status === 201);
     const admin = await signIn(ADMIN.email, ADMIN.password);
     if (admin.status !== 200) throw new Error(`Transcription admin sign-in: HTTP ${admin.status}`);
     await transcriptions(admin);

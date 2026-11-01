@@ -15,7 +15,7 @@ const RUN = process.env.UX_RUN ?? `ux${Date.now().toString(36).slice(-5)}`;
 const OUT = path.join(ROOT, "e2e/artifacts/ux");
 const env = readFileSync(path.join(ROOT, "deploy/.env"), "utf8");
 const envGet = (k) => (env.match(new RegExp(`^${k}=(.*)$`, "m")) ?? [])[1] ?? "";
-const ADMIN = { email: envGet("ADMIN_EMAIL") || "admin@baskule.local", password: envGet("ADMIN_PASSWORD") };
+const ADMIN = { email: process.env.E2E_LOGIN_EMAIL || envGet("E2E_LOGIN_EMAIL") || "admin@baskule.local", password: process.env.E2E_LOGIN_PASSWORD || envGet("E2E_LOGIN_PASSWORD") };
 const P = {
   carol: { name: "Carol Martin", email: `carol-${RUN}@example.test`, password: `carol-${RUN}-password` },
   dan: { name: "Dan Lefebvre", email: `dan-${RUN}@example.test`, password: `dan-${RUN}-password` },

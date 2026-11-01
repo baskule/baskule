@@ -1,7 +1,7 @@
 # Released installation. See docs/install.md. Source builds add docker-compose.build.yml.
 name: baskule
 
-# The fleet shares one bucket. COMPOSE_PROFILES=storage enables the local RustFS service.
+# The fleet shares one bucket. Local RustFS is ready by default; S3_* selects an external bucket.
 x-s3: &s3
   AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-${RUSTFS_ACCESS_KEY:-}}
   AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-${RUSTFS_SECRET_KEY:-}}
@@ -12,6 +12,7 @@ x-s3: &s3
 
 x-celld-env: &celld-env
   <<: *s3
+  CELLD_TRUST_FORWARDED_HEADERS: "1"
   CELLD_V8_HEAP_LIMIT_MB: ${CELLD_V8_HEAP_LIMIT_MB:-1024}
   # Outbound fetches include LLM streams and computerd exec streams: allow long ones.
   CELLD_FETCH_TIMEOUT_S: ${CELLD_FETCH_TIMEOUT_S:-3600}
@@ -25,6 +26,10 @@ x-celld-env: &celld-env
 x-celld-node: &celld-node
   image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
   restart: unless-stopped
+  entrypoint: ["baskule-celld-job", "run", "celld"]
+  env_file: &optional-env
+    - path: .env
+      required: false
   networks: [baskule-net]
   depends_on:
     baskule-bootstrap:
@@ -42,11 +47,23 @@ x-celld-node: &celld-node
   mem_limit: ${CELLD_MEMORY:-3g}
 
 services:
+  setup:
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
+    entrypoint: ["baskule-celld-job", "setup"]
+    restart: "no"
+    env_file: *optional-env
+    network_mode: none
+    volumes:
+      - baskule-secrets:/run/baskule
+
   baskule-rustfs:
-    profiles: [storage]
     image: rustfs/rustfs@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b
     restart: unless-stopped
-    command: ["rustfs", "/data"]
+    entrypoint: ["/bin/sh", "-c", ". /run/baskule/secrets; exec /entrypoint.sh rustfs /data"]
+    env_file: *optional-env
+    depends_on:
+      setup:
+        condition: service_completed_successfully
     environment:
       RUSTFS_ADDRESS: 0.0.0.0:47093
       RUSTFS_CONSOLE_ENABLE: "false"
@@ -54,6 +71,7 @@ services:
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-}
     volumes:
       - baskule-rustfs:/data
+      - baskule-secrets:/run/baskule:ro
     networks: [baskule-net]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:47093/health/ready"]
@@ -71,11 +89,15 @@ services:
     entrypoint: ["baskule-celld-job", "bootstrap"]
     restart: "no"
     environment: *s3
+    env_file: *optional-env
+    volumes:
+      - baskule-secrets:/run/baskule:ro
     networks: [baskule-net]
     depends_on:
+      setup:
+        condition: service_completed_successfully
       baskule-rustfs:
         condition: service_healthy
-        required: false
 
   baskule-celld-a:
     <<: *celld-node
@@ -86,6 +108,7 @@ services:
       CELLD_NODE: baskule-a
     volumes:
       - baskule-celld-a:/var/lib/celld
+      - baskule-secrets:/run/baskule:ro
 
   baskule-celld-b:
     <<: *celld-node
@@ -96,6 +119,7 @@ services:
       CELLD_NODE: baskule-b
     volumes:
       - baskule-celld-b:/var/lib/celld
+      - baskule-secrets:/run/baskule:ro
 
   # Deploy the platform bundled in the image, then ask every node to adopt it.
   baskule-deploy:
@@ -108,18 +132,16 @@ services:
       CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
       DEPLOY_APP: platform
       CELLD_NODES_INTERNAL: baskule-celld-a:47092 baskule-celld-b:47092
-      PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-http://127.0.0.1:47090}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
       AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       COMPUTERD_URL: ${COMPUTERD_URL:-http://baskule-computerd:47094}
-      COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:?set COMPUTERD_TOKEN in .env}
+      COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:-}
       # T3's spans inside each SpaceCell (orchestration, provider turns, browser operations).
       OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL:-}
-    env_file: .env
+    env_file: *optional-env
     volumes:
-      - ./config:/src/config:ro
+      - baskule-secrets:/run/baskule:ro
     networks: [baskule-net]
     # Only the bucket is needed: a fresh node answers nothing (not even its health route) until a deployment exists.
     depends_on:
@@ -156,12 +178,16 @@ services:
   baskule-computerd:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computerd:${BASKULE_VERSION:-0.5.0}
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", ". /run/baskule/secrets; exec node --disable-warning=ExperimentalWarning src/main.ts"]
+    env_file: *optional-env
+    volumes:
+      - baskule-secrets:/run/baskule:ro
     environment:
-      COMPUTERD_TOKEN: ${COMPUTERD_TOKEN}
+      COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:-}
       COMPUTERD_PORT: "47094"
       OPENSHELL_GATEWAY: baskule-openshell:47095
       OPENSHELL_VOLUMES_URL: http://baskule-openshell:47096
-      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN:?set OPENSHELL_VOLUMES_TOKEN in .env}
+      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN:-}
       COMPUTER_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computer:${BASKULE_VERSION:-0.5.0}
       COMPUTER_CPUS: ${COMPUTER_CPUS:-2}
       COMPUTER_MEMORY: ${COMPUTER_MEMORY:-3Gi}
@@ -170,6 +196,8 @@ services:
       OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL:-}
     networks: [baskule-net, baskule-computers]
     depends_on:
+      setup:
+        condition: service_completed_successfully
       baskule-openshell:
         condition: service_healthy
     cpus: 1
@@ -183,14 +211,20 @@ services:
       start_period: 10m
     # Privileged: it runs its own dockerd (unix socket only, no bridge, no iptables). The computers run inside it.
     privileged: true
+    entrypoint: ["/bin/sh", "-c", ". /run/baskule/secrets; exec /usr/bin/tini -g -- /usr/local/bin/baskule-openshell-entrypoint"]
+    env_file: *optional-env
+    depends_on:
+      setup:
+        condition: service_completed_successfully
     environment:
-      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN}
+      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN:-}
       OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP:-}
       BASKULE_REGISTRY: ${BASKULE_REGISTRY:-ghcr.io/baskule}
       BASKULE_VERSION: ${BASKULE_VERSION:-0.5.0}
     volumes:
       - baskule-openshell-docker:/var/lib/docker
       - baskule-openshell-state:/var/lib/openshell
+      - baskule-secrets:/run/baskule:ro
     networks: [baskule-computers]
     stop_grace_period: 60s
     cpus: ${OPENSHELL_CPUS:-3}
@@ -225,6 +259,7 @@ services:
     logging:
       driver: none
     volumes:
+      - baskule-secrets:/backup/secrets:ro
       - baskule-rustfs:/backup/rustfs:ro
       - baskule-openshell-state:/backup/openshell-state:ro
       - baskule-openshell-docker:/backup/openshell-docker:ro
@@ -239,6 +274,7 @@ services:
     logging:
       driver: none
     volumes:
+      - baskule-secrets:/backup/secrets
       - baskule-rustfs:/backup/rustfs
       - baskule-openshell-state:/backup/openshell-state
       - baskule-openshell-docker:/backup/openshell-docker
@@ -248,6 +284,7 @@ networks:
   baskule-computers: {}
 
 volumes:
+  baskule-secrets: {}
   baskule-rustfs: {}
   baskule-celld-a: {}
   baskule-celld-b: {}
@@ -264,7 +301,10 @@ configs:
           admin off
           auto_https off
           persist_config off
-          # Clients connect directly: never trust an inbound X-Forwarded-For.
+          servers {
+              trusted_proxies static private_ranges
+              trusted_proxies_strict
+          }
       }
 
       :47090 {
@@ -300,8 +340,7 @@ configs:
               health_fails 2
               health_passes 1
               # The sign-in rate limit keys on the last X-Forwarded-For entry: set it to the real client address.
-              header_up X-Forwarded-For {remote_host}
-              header_up X-Forwarded-Proto {scheme}
+              header_up X-Forwarded-For {client_ip}
               # Stream responses (SSE, NDJSON) without buffering.
               flush_interval -1
               transport http {

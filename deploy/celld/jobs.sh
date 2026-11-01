@@ -1,5 +1,6 @@
 #!/bin/bash
 # One-shot jobs of the baskule stack (run by docker compose):
+#   baskule-celld-job setup       generate first-start secrets and print the admin setup link
 #   baskule-celld-job bootstrap   create the fleet bucket on RustFS if missing (SigV4 via curl)
 #   baskule-celld-job deploy      `celld deploy` the app with vars generated from the environment, then ask
 #                                  every node to adopt it now (POST /reload on the internal listener)
@@ -7,6 +8,10 @@
 #      deploy: DEPLOY_APP (auto|platform|hello), CELLD_NODES_INTERNAL ("host:port host:port"), APP vars (see compose).
 set -euo pipefail
 log() { echo "[baskule-celld-job] $*" >&2; }
+# Generated defaults preserve explicit container environment values, including optional .env overrides.
+if [ -f "${BASKULE_SECRETS_DIR:-/run/baskule}/secrets" ]; then . "${BASKULE_SECRETS_DIR:-/run/baskule}/secrets"; fi
+export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-${S3_ACCESS_KEY:-${RUSTFS_ACCESS_KEY:-}}}
+export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-${S3_SECRET_KEY:-${RUSTFS_SECRET_KEY:-}}}
 sig="aws:amz:${AWS_REGION:-us-east-1}:s3"
 # RustFS requires the payload hash header (empty body).
 h="x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -41,13 +46,27 @@ wait_s3() {
 }
 
 case "${1:-}" in
-  init-env)
-    [ "${2:-}" = - ] || { log "usage: baskule-celld-job init-env - < env.example"; exit 2; }
-    template=/dev/stdin
-    random() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
-    sed -e "s/^RUSTFS_SECRET_KEY=$/RUSTFS_SECRET_KEY=$(random)/" \
-        -e "s/^COMPUTERD_TOKEN=$/COMPUTERD_TOKEN=$(random)/" \
-        -e "s/^OPENSHELL_VOLUMES_TOKEN=$/OPENSHELL_VOLUMES_TOKEN=$(random)/" "$template"
+  setup)
+    directory=${BASKULE_SECRETS_DIR:-/run/baskule}
+    mkdir -p "$directory"
+    if [ ! -f "$directory/secrets" ]; then
+      umask 077
+      temporary=$(mktemp "$directory/.secrets.XXXXXX")
+      trap 'rm -f "$temporary"' EXIT
+      for key in RUSTFS_ACCESS_KEY RUSTFS_SECRET_KEY COMPUTERD_TOKEN OPENSHELL_VOLUMES_TOKEN SETUP_TOKEN; do
+        value=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+        printf 'export %s=${%s:-%s}\n' "$key" "$key" "$value" >> "$temporary"
+      done
+      # All consumers mount this volume read-only; computerd runs as an unprivileged user.
+      chmod 444 "$temporary"
+      mv "$temporary" "$directory/secrets"
+    fi
+    . "$directory/secrets"
+    log "Create the first admin: ${PUBLIC_URL:-http://127.0.0.1:47090}/setup#token=$SETUP_TOKEN"
+    ;;
+  run)
+    shift
+    exec "$@"
     ;;
   backup)
     # Stop the entire project first. stdout is the archive, never log output.
@@ -81,11 +100,10 @@ case "${1:-}" in
       .env as $name | env[$name] | if type == "string" and length > 0 then . else error("Missing authentication environment reference") end
       else . end)')
     jq --arg PUBLIC_ORIGINS "${PUBLIC_ORIGINS:-}" --arg AUTH_CONFIG "$AUTH_CONFIG" \
-       --arg ADMIN_EMAIL "${ADMIN_EMAIL:-}" --arg ADMIN_PASSWORD "${ADMIN_PASSWORD:-}" --arg ADMIN_NAME "${ADMIN_NAME:-Admin}" \
+       --arg SETUP_TOKEN "${SETUP_TOKEN:-}" \
        --arg AUTH_SECRET "${AUTH_SECRET:-}" --arg COMPUTERD_URL "${COMPUTERD_URL:-}" --arg COMPUTERD_TOKEN "${COMPUTERD_TOKEN:-}" \
        --arg OTLP_TRACES_URL "${OTLP_TRACES_URL:-}" \
-       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, ADMIN_EMAIL:$ADMIN_EMAIL,
-          ADMIN_PASSWORD:$ADMIN_PASSWORD, ADMIN_NAME:$ADMIN_NAME, AUTH_SECRET:$AUTH_SECRET, COMPUTERD_URL:$COMPUTERD_URL,
+       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, AUTH_SECRET:$AUTH_SECRET, COMPUTERD_URL:$COMPUTERD_URL,
           COMPUTERD_TOKEN:$COMPUTERD_TOKEN, OTLP_TRACES_URL:$OTLP_TRACES_URL})' \
        "/src/$app/wrangler.json" > "$work/wrangler.json"
     unset AUTH_CONFIG
@@ -96,6 +114,7 @@ case "${1:-}" in
       curl -s -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
     log "deployed $app"
+    [ -z "${SETUP_TOKEN:-}" ] || log "Create the first admin: ${PUBLIC_URL:-http://127.0.0.1:47090}/setup#token=$SETUP_TOKEN"
     ;;
-  *) echo "usage: baskule-celld-job bootstrap|deploy|init-env -|backup|restore" >&2; exit 2 ;;
+  *) echo "usage: baskule-celld-job setup|run COMMAND|bootstrap|deploy|backup|restore" >&2; exit 2 ;;
 esac
