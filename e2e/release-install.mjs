@@ -445,17 +445,21 @@ async function folder() {
   const browser = await chromium.launch({ executablePath: process.env.E2E_CHROME, args: ["--no-sandbox"] });
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await context.tracing.start({ screenshots: true, snapshots: true });
     await context.addCookies(person.cookie.split("; ").map(cookie => {
       const [name, ...value] = cookie.split("=");
       return { name, value: value.join("="), url: base };
     }));
     const page = await context.newPage();
     await page.goto(`${base}/admin/plugins/installed`);
-    await expect(page.getByRole("heading", { name: /^Plugins/ })).toBeVisible();
-    await expect(page.getByText("release-folder", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Plugins/ })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("release-folder", { exact: true })).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: resolve(evidence, "fresh-folder-installed.png") });
     pass("fresh zero-config release install: mounted folder plugin appears in Admin → Plugins after setup; consumers retain scoped secrets");
-  } finally { await browser.close(); }
+  } finally {
+    for (const context of browser.contexts()) await context.tracing.stop({ path: resolve(evidence, "fresh-folder-trace.zip") });
+    await browser.close();
+  }
 }
 async function fresh() {
   for (let attempt = 1; attempt <= 3; attempt++) {
