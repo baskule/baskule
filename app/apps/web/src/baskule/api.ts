@@ -117,6 +117,16 @@ export interface Invitation {
   readonly spaces: ReadonlyArray<{ readonly id: string; readonly name: string | null }>;
 }
 
+/** Prints the one-time setup link on the server, in the installation's folder. */
+export const SETUP_LINK_COMMAND = "docker compose logs setup";
+
+export interface SetupStatus {
+  /** No administrator exists yet. */
+  readonly required: boolean;
+  /** Password sign-in is enabled. */
+  readonly password: boolean;
+}
+
 export interface Download {
   readonly id: string;
   readonly fileName: string;
@@ -141,8 +151,6 @@ export class BaskuleApiError extends Error {
     return this.status === 401;
   }
 }
-
-const NETWORK_ERROR_MESSAGE = "Can't reach the server. Check your connection and try again.";
 
 /** Readable text for the codes the platform returns (`{error: code, message?}`). */
 const CODE_MESSAGES: Record<string, string> = {
@@ -277,7 +285,11 @@ export async function request<T>(
       ...(body === undefined ? {} : { body: body instanceof Blob ? body : JSON.stringify(body) }),
     });
   } catch {
-    throw new BaskuleApiError(0, NETWORK_ERROR_MESSAGE, "network");
+    throw new BaskuleApiError(
+      0,
+      t("Can't reach the server. Check your connection and try again."),
+      "network",
+    );
   }
   const text = await response.text();
   let parsed: unknown = null;
@@ -502,6 +514,15 @@ export const baskuleApi = {
   transcribe: async (recording: Blob) =>
     (await request<BaskuleTranscriptionResult>("POST", "/api/baskule/transcriptions", recording))
       .text,
+
+  // First administrator of a new installation (public; the token travels in the link's fragment).
+  setupStatus: () => request<SetupStatus>("GET", "/api/baskule/setup"),
+  completeSetup: (input: {
+    readonly token: string;
+    readonly name: string;
+    readonly email: string;
+    readonly password?: string;
+  }) => request<unknown>("POST", "/api/baskule/setup", input),
 
   // Invitations (public; the token travels in the link's fragment).
   invitation: async (token: string): Promise<Invitation> => {

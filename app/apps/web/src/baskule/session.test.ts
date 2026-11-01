@@ -1,13 +1,21 @@
 // baskule: sign-in redirects and space ordering.
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { isBaskulePublicPath, loginPathFor, orderSpaces, safeNextPath } from "./session";
+import { BaskuleApiError, baskuleApi, type BaskuleMe } from "./api";
+import {
+  ensureSignedIn,
+  isBaskulePublicPath,
+  loginPathFor,
+  orderSpaces,
+  safeNextPath,
+} from "./session";
 
 describe("Baskule session helpers", () => {
   it("knows the pages that need no session", () => {
     expect(isBaskulePublicPath("/login")).toBe(true);
     expect(isBaskulePublicPath("/invite")).toBe(true);
     expect(isBaskulePublicPath("/reset-password")).toBe(true);
+    expect(isBaskulePublicPath("/setup")).toBe(true);
     expect(isBaskulePublicPath("/admin")).toBe(false);
   });
 
@@ -27,6 +35,22 @@ describe("Baskule session helpers", () => {
     expect(safeNextPath("/\n/evil.example")).toBe("/");
     expect(safeNextPath("/s/space/api")).toBe("/");
     expect(safeNextPath(null)).toBe("/");
+  });
+
+  it("signs in with the same credentials only when a request set no session", async () => {
+    const credentials = { email: "ada@example.com", password: "correct horse" };
+    const signedOut = new BaskuleApiError(401, "You are signed out.", null);
+    using me = vi.spyOn(baskuleApi, "me").mockResolvedValueOnce({} as BaskuleMe);
+    using signIn = vi.spyOn(baskuleApi, "signIn").mockResolvedValue({});
+    await expect(ensureSignedIn(credentials)).resolves.toBe(true);
+    expect(signIn).not.toHaveBeenCalled();
+
+    me.mockRejectedValue(signedOut);
+    await expect(ensureSignedIn(credentials)).resolves.toBe(true);
+    expect(signIn).toHaveBeenCalledWith(credentials);
+
+    signIn.mockRejectedValue(signedOut);
+    await expect(ensureSignedIn(credentials)).resolves.toBe(false);
   });
 
   it("puts the personal space first, then team spaces by name", () => {

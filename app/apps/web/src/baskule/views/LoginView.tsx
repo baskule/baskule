@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { StandalonePage } from "../../components/ui/standalone-page";
-import { BaskuleApiError, baskuleApi } from "../api";
+import { BaskuleApiError, SETUP_LINK_COMMAND, baskuleApi } from "../api";
 import { safeNextPath } from "../session";
 import { FormField, BaskuleWordmark, useApiResource } from "../ui";
 import { DesktopServerForm } from "./DesktopServerForm";
@@ -42,6 +42,7 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const config = useApiResource(baskuleApi.authConfig);
+  const setup = useApiResource(baskuleApi.setupStatus);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -69,6 +70,15 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
           </p>
         </div>
         <ReceiveConnectionDialog />
+        {setup.data?.required ? (
+          <Alert variant="info">
+            <AlertDescription>
+              {t("Finish setting up Baskule with the link printed by {{command}} on the server.", {
+                command: SETUP_LINK_COMMAND,
+              })}
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {server ? <DesktopServerForm currentServer={server} /> : null}
         {config.error ? (
           <Alert variant="error">
