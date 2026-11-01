@@ -8,15 +8,45 @@ import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { StandalonePage } from "../../components/ui/standalone-page";
 import { BaskuleApiError, SETUP_LINK_COMMAND, baskuleApi } from "../api";
-import { ensureSignedIn } from "../session";
+import { ensureSignedInAs } from "../session";
 import { errorText, FormField, BaskuleWordmark, useApiResource } from "../ui";
 import { CopyField } from "./AddPersonDialog";
-import { MIN_PASSWORD_LENGTH, passwordProblem } from "./InvitationView";
+import { MIN_PASSWORD_LENGTH, passwordProblem, tokenFromHash } from "./InvitationView";
 
 const MODELS_PATH = "/admin/ai/models";
 const SIGN_IN_AFTER_SETUP = `/login?next=${encodeURIComponent(MODELS_PATH)}`;
 
-export function SetupView({ token }: { readonly token: string | null }) {
+const removeFragment = () =>
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${window.location.search}`,
+  );
+
+/** The route: each link opened or pasted into the address bar starts over with its token. */
+export function SetupView() {
+  const [link, setLink] = useState(() => ({
+    token: tokenFromHash(window.location.hash),
+    arrival: 0,
+  }));
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Take each setup token that arrives in the address bar, then remove it from the address bar and history.
+  useEffect(() => {
+    const arrive = () => {
+      if (!window.location.hash) return;
+      const token = tokenFromHash(window.location.hash);
+      removeFragment();
+      setLink((current) => ({ token, arrival: current.arrival + 1 }));
+    };
+    removeFragment();
+    window.addEventListener("hashchange", arrive);
+    return () => window.removeEventListener("hashchange", arrive);
+  }, []);
+
+  return <SetupScreen key={link.arrival} token={link.token} />;
+}
+
+function SetupScreen({ token }: { readonly token: string | null }) {
   const t = useTranslation();
   const status = useApiResource(baskuleApi.setupStatus);
   const [outcome, setOutcome] = useState<"bad_token" | "already_set_up" | "created" | null>(null);
@@ -27,15 +57,6 @@ export function SetupView({ token }: { readonly token: string | null }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showProblems, setShowProblems] = useState(false);
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Remove the one-time setup token from the address bar and browser history.
-  useEffect(() => {
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${window.location.search}`,
-    );
-  }, []);
 
   const passwordMode = status.data?.password === true;
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -61,22 +82,23 @@ export function SetupView({ token }: { readonly token: string | null }) {
     setSubmitting(true);
     setError(null);
     const account = { name: name.trim(), email: email.trim() };
-    try {
-      await baskuleApi.completeSetup({ token, ...account, ...(passwordMode ? { password } : {}) });
-    } catch (cause) {
-      const refusal = cause instanceof BaskuleApiError ? cause.status : null;
-      if (refusal === 403) setOutcome("bad_token");
-      else if (refusal === 409) setOutcome("already_set_up");
-      else if (refusal === 429) setError(t("Too many attempts. Wait a minute and try again."));
-      else setError(errorText(cause, t("Setup failed. Try again.")));
-      setSubmitting(false);
-      return;
-    }
+    const created = await baskuleApi
+      .completeSetup({ token, ...account, ...(passwordMode ? { password } : {}) })
+      .catch((cause: unknown) => {
+        const refusal = cause instanceof BaskuleApiError ? cause.status : null;
+        if (refusal === 403) setOutcome("bad_token");
+        else if (refusal === 409) setOutcome("already_set_up");
+        else if (refusal === 429) setError(t("Too many attempts. Wait a minute and try again."));
+        else setError(errorText(cause, t("Setup failed. Try again.")));
+        setSubmitting(false);
+        return null;
+      });
+    if (created === null) return;
     if (!passwordMode) {
       setOutcome("created");
       return;
     }
-    const signedIn = await ensureSignedIn({ email: account.email, password });
+    const signedIn = await ensureSignedInAs(created.id, { email: account.email, password });
     // A full load starts every space connection with the new session.
     window.location.assign(signedIn ? MODELS_PATH : SIGN_IN_AFTER_SETUP);
   };

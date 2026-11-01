@@ -206,18 +206,22 @@ export async function adoptSessionUser(userId: string): Promise<"continue" | "re
   return "reloading";
 }
 
-/** Keeps the session a request just set, or signs in with the same credentials; false when that fails. */
-export function ensureSignedIn(credentials: {
-  readonly email: string;
-  readonly password: string;
-}): Promise<boolean> {
-  return baskuleApi.me().then(
+/**
+ * Keeps the session when it belongs to `userId`, otherwise signs in with the credentials; false when
+ * that fails. Another tab can replace the shared session cookie after a request set it.
+ */
+export async function ensureSignedInAs(
+  userId: string,
+  credentials: { readonly email: string; readonly password: string },
+): Promise<boolean> {
+  const current = await baskuleApi.me().then(
+    (me) => me.user.id,
+    () => null,
+  );
+  if (current === userId) return true;
+  return baskuleApi.signIn(credentials).then(
     () => true,
-    () =>
-      baskuleApi.signIn(credentials).then(
-        () => true,
-        () => false,
-      ),
+    () => false,
   );
 }
 

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { BaskuleApiError, baskuleApi, type BaskuleMe } from "./api";
 import {
-  ensureSignedIn,
+  ensureSignedInAs,
   isBaskulePublicPath,
   loginPathFor,
   orderSpaces,
@@ -37,20 +37,33 @@ describe("Baskule session helpers", () => {
     expect(safeNextPath(null)).toBe("/");
   });
 
-  it("signs in with the same credentials only when a request set no session", async () => {
+  it("keeps a session only when it belongs to the expected person, otherwise signs in", async () => {
     const credentials = { email: "ada@example.com", password: "correct horse" };
-    const signedOut = new BaskuleApiError(401, "You are signed out.", null);
-    using me = vi.spyOn(baskuleApi, "me").mockResolvedValueOnce({} as BaskuleMe);
+    const meAs = (id: string): BaskuleMe => ({
+      authentication: { mode: "authenticated", password: true, providers: [] },
+      user: { id, name: id, email: `${id}@example.com`, role: "admin" },
+      organizationName: null,
+      spaces: [],
+      canCreateSpaces: true,
+      voiceInput: false,
+    });
+    using me = vi.spyOn(baskuleApi, "me").mockResolvedValue(meAs("ada"));
     using signIn = vi.spyOn(baskuleApi, "signIn").mockResolvedValue({});
-    await expect(ensureSignedIn(credentials)).resolves.toBe(true);
+    await expect(ensureSignedInAs("ada", credentials)).resolves.toBe(true);
     expect(signIn).not.toHaveBeenCalled();
 
-    me.mockRejectedValue(signedOut);
-    await expect(ensureSignedIn(credentials)).resolves.toBe(true);
+    // Another tab replaced the session after the request set it.
+    me.mockResolvedValue(meAs("grace"));
+    await expect(ensureSignedInAs("ada", credentials)).resolves.toBe(true);
+    expect(signIn).toHaveBeenLastCalledWith(credentials);
+
+    me.mockRejectedValue(new BaskuleApiError(401, "You are signed out.", null));
+    signIn.mockClear();
+    await expect(ensureSignedInAs("ada", credentials)).resolves.toBe(true);
     expect(signIn).toHaveBeenCalledWith(credentials);
 
-    signIn.mockRejectedValue(signedOut);
-    await expect(ensureSignedIn(credentials)).resolves.toBe(false);
+    signIn.mockRejectedValue(new BaskuleApiError(401, "Invalid email or password.", null));
+    await expect(ensureSignedInAs("ada", credentials)).resolves.toBe(false);
   });
 
   it("puts the personal space first, then team spaces by name", () => {
