@@ -137,7 +137,12 @@ curl -fL "$ASSETS/cluster-edge.yml" -o docker-compose.yml
 curl -fL "$ASSETS/cluster-edge.env.example" -o .env
 ```
 
-## Roles and network
+Set `BASKULE_NODES_WORKER` to every private Worker address, separated by spaces, and `BASKULE_BIND` to loopback for
+a proxy on the same machine or to this machine's private address for a separate proxy. Run `docker compose up -d`.
+The edge serves plain HTTP, retries a failed node and checks node health; it obtains no certificates. Put your HTTPS
+reverse proxy in front of it and set `BASKULE_TRUSTED_PROXIES` as described in
+[your own reverse proxy](install.md#your-own-reverse-proxy). Without trusted proxies, set `PUBLIC_ORIGINS` in the
+platform nodes' `.env` to the public HTTPS origin.
 
 Open the setup link printed by `docker compose run --rm deploy` to create the first admin. The token becomes
 useless after setup. Configure **Admin → AI → Models** and invite people. For SSO, set `AUTH_CONFIG` or save the optional `config/auth.json` on the machine running the deploy job. Use

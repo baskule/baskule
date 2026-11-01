@@ -127,7 +127,7 @@ registration and submission configuration; the TestFlight build profile uses the
 - **Unit tests** (`vp test run --project unit src/baskule`): the API client (bearer from `set-auth-token`, error
   kinds, `credentials: "omit"`), URL helpers, the space registrations and the authenticated descriptor read.
   Client-runtime: a resolver test for `front-session` (header auth, descriptor with the bearer, no ticket).
-- **Integration test against a real Baskule server** (`platform/dev.sh`):
+- **Integration test against a real Baskule server**:
   `BASKULE_TEST_SERVER_URL=http://127.0.0.1:47800 BASKULE_TEST_EMAIL=... BASKULE_TEST_PASSWORD=... vp test run --project unit src/baskule/frontSession`.
   It signs in like the phone (no `Sec-Fetch-*` headers), reads `/me`, and for every space runs the shared resolver
   and opens the real RPC session (WebSocket upgrade with `Authorization`) up to the space's server config snapshot.

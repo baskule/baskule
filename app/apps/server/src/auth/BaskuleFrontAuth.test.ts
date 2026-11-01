@@ -1,4 +1,4 @@
-// baskule: BASKULE_AUTH_MODE=front (0.2, E7/E8).
+// baskule: BASKULE_AUTH_MODE=front.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthAccessReadScope, AuthSettingsWriteScope } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";

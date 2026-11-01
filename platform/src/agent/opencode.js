@@ -152,7 +152,7 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
     /** Creates a session in-process (the public HTTP schema strips `location.workspaceID`). */
     createSession: (input) => runPromise(host.sessions.create(input)),
     /**
-     * WP-F: OpenCode's HTTP MCP routes act on a bare `{directory}` location, but sessions live in
+     * OpenCode's HTTP MCP routes act on a bare `{directory}` location, but sessions live in
      * `{directory, workspaceID}` locations (the computer workspace), so a server added over HTTP is never seen by a
      * session. These run the same MCP service operations in-process on the workspace location.
      * @param {{ directory: string, workspaceID: string }} ref

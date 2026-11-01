@@ -622,6 +622,10 @@ const scenarios = {
     await signIn(bob.page, "bob");
     await bob.page.goto("/settings/plugins");
     await bob.page.getByText("Google Drive", { exact: true }).first().waitFor();
+    check(
+      (await bob.page.getByText("Sales", { exact: true }).count()) === 1,
+      `${device}: Bob sees his assigned Sales plugin`,
+    );
     // The mock keeps the accounts from the other device's run.
     const connectButton = bob.page.getByRole("button", {
       name: "Connect your Google Drive account",

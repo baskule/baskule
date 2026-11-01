@@ -18,15 +18,15 @@ for (const missing of [false, true]) test(`live suite and infra smoke ${missing 
     for (const container of ["baskule-computerd", "baskule-celld-a/storage"]) {
       mkdirSync(resolve(work, container), { recursive: true });
     }
-    writeFileSync(resolve(work, "baskule-computerd/secrets"), `export COMPUTERD_TOKEN=${missing ? "" : "generated-computer-token"}\n`);
-    writeFileSync(resolve(work, "baskule-celld-a/storage/secrets"), "export RUSTFS_ACCESS_KEY=generated-storage-id\nexport RUSTFS_SECRET_KEY=generated-storage-secret\n");
+    writeFileSync(resolve(work, "baskule-computerd/secrets"), missing ? "" : 'export COMPUTERD_TOKEN=${COMPUTERD_TOKEN:-generated-computer-token}\n');
+    writeFileSync(resolve(work, "baskule-celld-a/storage/secrets"), 'export RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:-generated-storage-id}\nexport RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:-generated-storage-secret}\n');
     writeFileSync(resolve(work, "docker"), `#!/usr/bin/env node
 const { spawnSync } = require("node:child_process");
 const { appendFileSync } = require("node:fs");
 const args = process.argv.slice(2);
 if (args[0] === "exec" && args[2] === "sh") {
   const command = args[4].replaceAll("/run/baskule", process.env.SECRET_FIXTURE + "/" + args[1]);
-  const result = spawnSync("sh", ["-ec", command], { encoding: "utf8" });
+  const result = spawnSync("sh", ["-ec", command], { encoding: "utf8", env: { PATH: process.env.PATH } });
   process.stdout.write(result.stdout);
   process.exit(result.status ?? 1);
 }
@@ -34,7 +34,7 @@ appendFileSync(process.env.SECRET_CALLS, JSON.stringify(args) + "\\n");
 console.log("{}");
 `, { mode: 0o755 });
     const env = { ...process.env, PATH: `${work}:${process.env.PATH}`, SECRET_FIXTURE: work, SECRET_CALLS: resolve(work, "calls"),
-      // These obsolete values must never be used, including a service environment override.
+      // Docker exec uses the container environment, so stale host values must stay on the host.
       COMPUTERD_TOKEN: "stale-env-token", RUSTFS_ACCESS_KEY: "stale-env-id", RUSTFS_SECRET_KEY: "stale-env-secret" };
     const live = spawnSync(process.execPath, ["--input-type=module", "-e", `
       import assert from "node:assert/strict";

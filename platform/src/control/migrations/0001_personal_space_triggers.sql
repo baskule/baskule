@@ -1,4 +1,4 @@
--- A personal space has exactly one possible member: its personal_user_id, as owner (review M7: enforced in the DB).
+-- A personal space has exactly one possible member: its personal_user_id, as owner (enforced in the DB).
 CREATE TRIGGER `space_member_personal_ins` BEFORE INSERT ON `space_member`
 WHEN EXISTS (SELECT 1 FROM `space` s WHERE s.`id` = NEW.`space_id` AND s.`kind` = 'personal'
              AND (s.`personal_user_id` IS NOT NEW.`user_id` OR NEW.`role` <> 'owner'))

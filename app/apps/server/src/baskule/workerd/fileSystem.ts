@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off globalDateInEffect:off globalRandom:off -- native workerd adapter implementing the platform boundary.
-// baskule: the Effect `FileSystem` of a space cell (architecture v3, E8).
+// baskule: the Effect `FileSystem` of a space cell.
 //
 // Mounts, by path prefix:
 // - `${baseDir}/**` (T3's home: settings, secrets, environment id, attachments, logs) lives in

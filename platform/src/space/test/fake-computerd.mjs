@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Fake computerd (E4 subset) for the SpaceCell tests: files GET/PUT and exec, per space, over a
+// Fake computerd for the SpaceCell tests: files GET/PUT and exec, per space, over a
 // host directory standing in for each computer's /sandbox. Also /v1/spaces/:id/computer(/stop).
 //   node fake-computerd.mjs --port 47552 --root <dir> [--token test-computerd-token]
 import http from "node:http";

@@ -1,4 +1,4 @@
-# The Baskule computer policy (architecture E5): general public internet, private networks unreachable,
+# The Baskule computer policy: general public internet, private networks unreachable,
 # TLS passed through (Chromium uses NSS and would reject OpenShell's MITM CA).
 # `public_internet` exists only in our vendored fork (vendor/openshell); an unpatched gateway rejects
 # this policy (fails closed).
