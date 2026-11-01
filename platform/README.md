@@ -46,7 +46,7 @@ See [worktree stack profiles](../stack/README.md) for state, admin credentials, 
 
 | Var | Meaning |
 |---|---|
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | first boot only: creates the admin when no admin exists. Remove the password from the deployment afterwards. |
+| `SETUP_TOKEN` | One-time `/api/baskule/setup` token for creating the first admin. Useless after setup. |
 | `AUTH_CONFIG` | resolved installation authentication JSON; see [installation settings](../docs/installation-settings.md) |
 | `PUBLIC_ORIGINS` | comma-separated exact origins accepted besides the request's own (e.g. `http://100.64.0.42:47090`) |
 | `AUTH_SECRET` | optional; when empty ControlCell generates one at first boot and keeps it in its SQLite (same trust boundary as the session table) |

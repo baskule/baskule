@@ -10,9 +10,9 @@ const backup = `${root}/.run/e2e-product-settings.json`;
 const headers = { "content-type": "application/json", origin: base };
 const config = (await (await fetch(`${base}/.well-known/baskule`)).json()).authentication;
 if (config.mode !== "anonymous") {
-  const login = await fetch(`${base}/auth/sign-in/email`, { method: "POST", headers, body: JSON.stringify({ email: env.ADMIN_EMAIL, password: process.env.E2E_ADMIN_PASSWORD || env.ADMIN_PASSWORD }) });
+  const login = await fetch(`${base}/auth/sign-in/email`, { method: "POST", headers, body: JSON.stringify({ email: process.env.E2E_LOGIN_EMAIL || env.E2E_LOGIN_EMAIL, password: process.env.E2E_LOGIN_PASSWORD || env.E2E_LOGIN_PASSWORD }) });
   const token = login.headers.get("set-auth-token");
-  if (!login.ok || !token) throw new Error("Live-suite settings require administrator credentials (E2E_ADMIN_PASSWORD)");
+  if (!login.ok || !token) throw new Error("Live-suite settings require administrator credentials (E2E_LOGIN_PASSWORD)");
   headers.authorization = `Bearer ${token}`;
 }
 const currentResponse = await fetch(`${base}/api/baskule/admin/settings`, { headers });

@@ -1,5 +1,7 @@
 # Developer-only overlay. deploy/lib.sh selects it for source-build commands.
 services:
+  setup:
+    image: baskule-celld:${BASKULE_TAG:-local}
   baskule-bootstrap:
     image: baskule-celld:${BASKULE_TAG:-local}
     container_name: baskule-bootstrap
@@ -69,6 +71,14 @@ networks:
   baskule-computers:
     name: baskule-computers
 volumes:
+  baskule-storage-secrets:
+    name: baskule-storage-secrets
+  baskule-platform-secrets:
+    name: baskule-platform-secrets
+  baskule-computerd-secrets:
+    name: baskule-computerd-secrets
+  baskule-openshell-secrets:
+    name: baskule-openshell-secrets
   baskule-rustfs:
     name: baskule-rustfs
   baskule-celld-a:

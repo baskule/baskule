@@ -1,6 +1,8 @@
 import { ConnectionCipher } from "./connection-crypto";
 // ControlService: all ControlCell logic (identity, spaces, invitations, admin, authorization, revocation).
 // Independent of the DO runtime so it runs under vitest with a fake `ctx.storage` (test/unit/fake-storage.ts).
+import { z } from "zod";
+import { timingSafeEqual } from "node:crypto";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import migrations from "./migrations/migrations.js";
@@ -110,6 +112,8 @@ export class ControlService {
   private pending = new Set<Promise<unknown>>();
   private nativeStarts = new Map<string, { until: number; count: number }>();
   private transcriptions = new Set<string>();
+  private setupInProgress = false;
+  private setupAttempts = new Map<string, { until: number; count: number }>();
   /** Log of revocations sent (for tests and debugging; bounded). */
   readonly revocationLog: { spaceId: string; body: RevokeRequest }[] = [];
 
@@ -138,7 +142,7 @@ export class ControlService {
   }
 
   // ---------------------------------------------------------------- boot
-  /** Runs in blockConcurrencyWhile: migrations, auth secret, organisation, first admin. */
+  /** Runs in blockConcurrencyWhile: migrations, auth secret, organisation. */
   async init(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await migrate(this.db as any, migrations);
@@ -176,7 +180,7 @@ export class ControlService {
         await this.onUserCreated({ id: "anonymous", name: "Anonymous", email: "anonymous@baskule.invalid" });
         this.run("update space set name='Shared' where personal_user_id='anonymous'");
       }
-    } else await this.bootstrapAdmin();
+    }
   }
 
   private productSettings(): ProductSettings {
@@ -282,18 +286,76 @@ export class ControlService {
     return response;
   }
 
-  /** First boot: create the admin from ADMIN_EMAIL / ADMIN_PASSWORD when no admin exists. Idempotent. */
-  async bootstrapAdmin(): Promise<"created" | "exists" | "missing-config"> {
-    if (this.one("select id from user where role = 'admin' limit 1")) return "exists";
-    const email = normEmail(this.env.ADMIN_EMAIL);
-    const password = this.env.ADMIN_PASSWORD ?? "";
-    if (!email || (this.installation.password && !password)) {
-      console.warn("ControlCell: no admin yet and ADMIN_EMAIL/ADMIN_PASSWORD are not set");
-      return "missing-config";
+  private signInCreatedUser(req: Request, email: string, password: string): Promise<Response> {
+    const headers = new Headers(req.headers);
+    for (const name of ["cookie", "authorization", "content-length"]) headers.delete(name);
+    // This internal sign-in follows the public route's origin and token checks, without ambient credentials.
+    headers.set("origin", new URL(req.url).origin);
+    return this.auth.handler(new Request(new URL("/auth/sign-in/email", req.url), {
+      method: "POST", headers, body: JSON.stringify({ email, password }),
+    }));
+  }
+
+  private setupRequired(): boolean {
+    return !this.one("select id from user where role = 'admin' limit 1");
+  }
+
+  private async setup(req: Request): Promise<Response> {
+    if (req.method === "GET") return json({ required: this.setupRequired(), password: publicAuthConfig(this.installation).password }, 200, { "cache-control": "no-store" });
+    if (req.method !== "POST") return notFound();
+    if (this.env.AUTH_RATE_LIMIT !== "0") {
+      const now = Date.now();
+      for (const [ip, limit] of this.setupAttempts) if (limit.until <= now) this.setupAttempts.delete(ip);
+      const ip = req.headers.get(CLIENT_IP_HEADER) ?? "unknown";
+      const limit = this.setupAttempts.get(ip) ?? { until: now + 60_000, count: 0 };
+      if (limit.count >= 10) throw new HttpError(429, "too_many_requests");
+      if (!this.setupAttempts.has(ip) && this.setupAttempts.size >= 1000) {
+        const oldest = this.setupAttempts.keys().next().value;
+        if (oldest !== undefined) this.setupAttempts.delete(oldest);
+      }
+      limit.count++; this.setupAttempts.set(ip, limit);
     }
-    await this.auth.api.createUser({ body: { email, ...(this.installation.password ? { password } : {}), name: this.env.ADMIN_NAME || "Admin", role: "admin" } });
-    console.log(`ControlCell: bootstrap admin ${email} created`);
-    return "created";
+    if (!this.setupRequired() || this.setupInProgress) throw new HttpError(409, "already_set_up");
+    const parsed = z.object({ token: z.string().optional(), name: z.string().trim().min(1).max(100),
+      email: z.string().trim().max(254), password: z.string().max(256).optional() }).safeParse(await readJson(req));
+    if (!parsed.success) {
+      const field = parsed.error.issues[0]?.path[0];
+      const message = field === "name" ? "Name is required and must be at most 100 characters."
+        : field === "email" ? "Enter an email address of at most 254 characters."
+        : field === "password" ? "Password must be between 8 and 256 characters."
+        : "Use the setup link and fill in your name and email.";
+      throw new HttpError(400, "invalid_field", message);
+    }
+    const body = parsed.data;
+    const expected = this.env.SETUP_TOKEN;
+    const supplied = typeof body.token === "string" ? body.token : "";
+    const [a, b] = await Promise.all([sha256Hex(expected ?? ""), sha256Hex(supplied)]);
+    if (!expected || !timingSafeEqual(enc.encode(a), enc.encode(b))) throw new HttpError(403, "bad_token");
+    const name = str(body.name, "name", 100);
+    const email = normEmail(body.email);
+    if (!EMAIL_RE.test(email) || email.length > 254) throw new HttpError(400, "invalid_email", "Enter a valid email address of at most 254 characters.");
+    const password = typeof body.password === "string" ? body.password : "";
+    if (this.installation.password && (password.length < 8 || password.length > 256)) throw new HttpError(400, "invalid_password", "Password must be between 8 and 256 characters.");
+    if (!this.installation.password && body.password !== undefined) throw new HttpError(400, "invalid_field", "Password sign-in is disabled. Omit the password and sign in through SSO.");
+    // Claim before awaiting Better Auth so concurrent submissions cannot create two first admins.
+    if (!this.setupRequired() || this.setupInProgress) throw new HttpError(409, "already_set_up");
+    this.setupInProgress = true;
+    try {
+      const created = await this.auth.api.createUser({ body: { email, name, role: "admin", ...(this.installation.password ? { password } : {}) } });
+      const headers = new Headers({ "cache-control": "no-store" });
+      if (this.installation.password) {
+        try {
+          const signIn = await this.signInCreatedUser(req, email, password);
+          if (signIn.ok) {
+            for (const cookie of signIn.headers.getSetCookie()) headers.append("set-cookie", cookie);
+            const bearer = signIn.headers.get("set-auth-token");
+            if (bearer) headers.set("set-auth-token", bearer);
+          }
+          await signIn.body?.cancel();
+        } catch { console.warn("Setup created the admin; automatic sign-in failed"); }
+      }
+      return json({ user: { id: created.user.id, email, name } }, 201, headers);
+    } finally { this.setupInProgress = false; }
   }
 
   // ---------------------------------------------------------------- hooks
@@ -513,6 +575,7 @@ export class ControlService {
     const m = req.method;
     let r: RegExpMatchArray | null;
 
+    if (p === "/setup") return this.setup(req);
     if (p === "/push/status" && m === "GET") { await this.requireSession(req); return json(this.push.status()); }
     if ((r = p.match(/^\/push\/devices\/([^/]+)$/)) && ["PUT", "DELETE"].includes(m)) {
       const s = await this.requireSession(req);
@@ -880,7 +943,7 @@ export class ControlService {
     const s = await this.requireAdmin(req);
     const body = await readJson<{ email?: string; role?: string; spaces?: { spaceId?: string; role?: string }[]; expiresInHours?: number }>(req);
     const email = normEmail(body.email);
-    if (!EMAIL_RE.test(email)) throw new HttpError(400, "invalid_email");
+    if (!EMAIL_RE.test(email)) throw new HttpError(400, "invalid_email", "Enter a valid email address.");
     if (this.one("select id from user where email = ?", email)) throw new HttpError(409, "user_exists", "this person already has an account: add them to spaces directly");
     const role = body.role === "admin" ? "admin" : "member";
     const spaces = (Array.isArray(body.spaces) ? body.spaces : []).map((x) => {
@@ -960,7 +1023,7 @@ export class ControlService {
     // Provision only: the provider must independently prove the invited identity before any session is issued.
     if (external) return json({ user: { id: userId, email, name } }, 201, { "referrer-policy": "no-referrer" });
     // Sign the new person in: forward Better Auth's cookie and bearer token.
-    const signIn = (await this.auth.api.signInEmail({ body: { email, password }, headers: req.headers, asResponse: true })) as Response;
+    const signIn = await this.signInCreatedUser(req, email, password);
     const headers = new Headers({ "referrer-policy": "no-referrer" });
     for (const c of signIn.headers.getSetCookie?.() ?? []) headers.append("set-cookie", c);
     const bearer = signIn.headers.get("set-auth-token");
@@ -1048,7 +1111,7 @@ export class ControlService {
   private async adminCreateUser(req: Request): Promise<Response> {
     const body = await readJson<{ email?: string; name?: string; password?: string; role?: string }>(req);
     const email = normEmail(body.email);
-    if (!EMAIL_RE.test(email)) throw new HttpError(400, "invalid_email");
+    if (!EMAIL_RE.test(email)) throw new HttpError(400, "invalid_email", "Enter a valid email address.");
     const name = str(body.name, "name", 100);
     const password = typeof body.password === "string" ? body.password : "";
     if (!this.installation.password && password) throw new HttpError(400, "password_disabled");
@@ -1096,7 +1159,7 @@ export class ControlService {
   /** Temporary password, only for an account that has never signed in (review M7: no takeover of a used account). */
   private async setInitialPassword(req: Request, userId: string): Promise<Response> {
     const { password } = await readJson<{ password?: string }>(req);
-    if (typeof password !== "string" || password.length < 8 || password.length > 256) throw new HttpError(400, "invalid_password");
+    if (typeof password !== "string" || password.length < 8 || password.length > 256) throw new HttpError(400, "invalid_password", "Password must be between 8 and 256 characters.");
     const prof = this.one("select first_sign_in_at from user_profile where user_id = ?", userId);
     if (prof?.first_sign_in_at) throw new HttpError(409, "already_signed_in", "this person has signed in: use a reset link (it signs them out everywhere)");
     const ctx = await this.auth.$context;

@@ -1,74 +1,102 @@
 # Install Baskule
 
-This guide runs Baskule on one Linux x86-64 machine with Docker Compose. You download released images and two
-configuration files. No checkout, compiler, or build container is needed. For several machines, use the
-[cluster guide](install-cluster.md).
-
-## Requirements
-
-- Docker Engine **25 or newer** with Compose **2.24.4 or newer**, and curl. Your account must be able to run Docker.
-- Start with **4 CPU cores, 24 GiB RAM, and 80 GB free disk**. Allow more disk for conversations and computer files.
-  The default memory caps total 15.75 GiB: two platform nodes at 3 GiB each, storage at 1 GiB, edge at 256 MiB,
-  computerd at 512 MiB, and all computers together at 8 GiB. The remaining memory is for Docker and the OS.
-  CPU caps total 10 cores but are limits, not reservations. Use more cores for concurrent work.
-- A private address or an HTTPS reverse proxy for team access.
-
-OpenShell runs a privileged container with its own Docker daemon. It does not mount the host Docker socket.
-Each computer is limited to 2 cores and 3 GiB by default, within the shared OpenShell cap. Use a dedicated machine
-for untrusted workloads. An AI connection is configured in the app after sign-in.
-
-## Download and configure
-
-Choose a version from [Releases](https://github.com/baskule/baskule/releases), then run:
+Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. Start with 4 CPU cores,
+24 GiB RAM, and 80 GB free disk. OpenShell runs a privileged container with its own Docker daemon.
+For several machines, use the [cluster guide](install-cluster.md).
 
 ```sh
-mkdir baskule && cd baskule
-mkdir config
-VERSION=0.5.0
-IMAGE_VERSION=$(printf '%s' "$VERSION" | tr '+' '_')
-ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
-curl -fLO "$ASSETS/docker-compose.yml"
-curl -fL "$ASSETS/baskule.env.example" -o .env.example
-umask 077
-docker run --rm -i --network none --entrypoint baskule-celld-job \
-  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$IMAGE_VERSION" init-env - < .env.example > .env
-chmod 600 .env
-```
-
-Edit `.env`. Set `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `PUBLIC_ORIGINS`, and `BASKULE_BIND`:
-
-- For this machine only, keep `BASKULE_BIND=127.0.0.1` and `PUBLIC_ORIGINS=http://127.0.0.1:47090`.
-- For a private network, bind its private address and set `PUBLIC_ORIGINS` to the exact URL people open.
-- For HTTPS, follow [the reverse proxy setup below](#https-and-reverse-proxies).
-
-The initializer generates the storage, computerd, and volume-helper secrets. Keep them and `.env` private.
-Passwords can be single-quoted in `.env` so Compose preserves special characters. Keep the same Compose project
-name and directory for later commands. `-p NAME` or `COMPOSE_PROJECT_NAME` selects an independent installation.
-
-## Start and sign in
-
-```sh
+curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
 docker compose up -d
-docker compose ps -a
-curl -fsS http://127.0.0.1:47090/version.json
+docker compose logs setup        # prints the one-time link that creates the first admin
 ```
 
-Use your configured bind address and port for curl. The bootstrap and deploy services finish with exit code 0;
-the two platform nodes and OpenShell become healthy. The edge waits for deployment before serving requests.
-The gateway loads the bundled computer, supervisor, and sandbox images into its private daemon on first start.
-This import can take several minutes; Compose waits for it.
+To change defaults, create `.env` next to the compose file, uncomment what you need, then `docker compose up -d`.
 
-Open `PUBLIC_ORIGINS` in a browser and sign in with the first administrator's email and password. In
-**Admin → AI → Models**, choose a provider and model. Configure the organization, invite people, and create team
-spaces in the admin area. See [installation settings](installation-settings.md) for the available settings.
+<!-- install-env:start -->
+```dotenv
+# Built-in HTTPS domain (unset by default); point DNS here and allow inbound TCP 80/443 and UDP 443 (HTTP/3).
+#BASKULE_DOMAIN=baskule.example.com
+# Edge listener: http or https (lowercase; default http). HTTPS requires BASKULE_DOMAIN and publishes on all IPv4/IPv6 interfaces.
+#BASKULE_EDGE=https
+# HTTP bind address (default 127.0.0.1); ignored by built-in HTTPS.
+# An HTTP bind of 0.0.0.0 must be reachable only by your proxy or trusted clients.
+# Rootless Docker hides client addresses; built-in HTTPS clients share one sign-in budget.
+# With your own proxy, enforce access and rate limits there.
+#BASKULE_BIND=127.0.0.1
+# HTTP port (default 47090).
+#BASKULE_PORT=47090
+# Trusted proxy addresses/CIDRs, space-separated (default empty: trust nobody).
+# Use private_ranges for a host-local proxy only with loopback HTTP and access restricted to trusted sources.
+# The proxy must replace X-Forwarded-For with the peer address (Caddy default); never append incoming XFF.
+# nginx: proxy_set_header X-Forwarded-For $remote_addr;
+# With private_ranges, private-address LAN/VPN clients share the proxy's sign-in budget.
+#BASKULE_TRUSTED_PROXIES=private_ranges
+# Additional allowed origins (unset by default); needed for SSO callbacks or an untrusted outer proxy.
+#PUBLIC_ORIGINS=https://baskule.example.com
+# SSO example: optional OIDC provider, password sign-in kept on; publicOrigin fixes callback URLs.
+#AUTH_CONFIG='{"version":1,"password":true,"publicOrigin":"https://baskule.example.com","providers":[{"id":"company","type":"oidc","name":"Company","options":{"clientId":"YOUR_CLIENT_ID","clientSecret":"YOUR_CLIENT_SECRET","discoveryUrl":"https://id.example.com/.well-known/openid-configuration"}}]}'
+# External S3 endpoint (default http://baskule-rustfs:47093); uncomment all five S3 settings together.
+#S3_ENDPOINT=https://s3.example.com
+# S3 region (default us-east-1).
+#S3_REGION=us-east-1
+# Shared bucket (default baskule).
+#CELLD_BUCKET_NAME=baskule
+# External S3 access key (default generated local RustFS key).
+#S3_ACCESS_KEY=YOUR_ACCESS_KEY
+# External S3 secret key (default generated local RustFS secret).
+#S3_SECRET_KEY=YOUR_SECRET_KEY
+# Memory cap for each of the two platform nodes (default 3g).
+#CELLD_MEMORY=3g
+# Memory cap for OpenShell and all computers together (default 8g).
+#OPENSHELL_MEMORY=8g
+# Memory cap per computer within OpenShell (default 3Gi).
+#COMPUTER_MEMORY=3Gi
+# Trace UI bind (default 127.0.0.1), independent of BASKULE_BIND; requires COMPOSE_PROFILES=traces.
+#BASKULE_TRACES_BIND=127.0.0.1
+```
+<!-- install-env:end -->
 
-Clear `ADMIN_PASSWORD` in `.env`, then run `docker compose up -d` again. This redeploys without the bootstrap
-password. Existing accounts and settings are stored in the bucket.
+You can download this commented example with
+`curl -fL https://github.com/baskule/baskule/releases/latest/download/baskule.env.example -o .env`.
+No value in it is required. Keep an edited `.env` private. Secrets are generated in separate storage, platform,
+computerd, and OpenShell volumes; explicit environment values override them. Keep the installation directory
+and Compose project name stable.
 
-## HTTPS and reverse proxies
+## Open it
 
-Terminate HTTPS at your reverse proxy and forward to `BASKULE_BIND:BASKULE_PORT`. Keep that port on loopback
-or a private interface. Forward WebSockets and streaming responses without buffering. With Caddy on the host:
+Open the link from `docker compose logs setup` and create the first admin. The link works once, then becomes
+useless. Initial image imports can take several minutes. In **Admin → AI → Models**, configure your provider and
+model, then invite people. Password sign-in is enabled by default.
+
+### Built-in HTTPS (recommended)
+
+Point your domain's DNS at the machine and allow inbound TCP ports 80 and 443, plus UDP 443 for HTTP/3. Set these two lines in `.env`:
+
+```dotenv
+BASKULE_DOMAIN=baskule.example.com
+BASKULE_EDGE=https
+```
+
+Run `docker compose up -d`, then read `docker compose logs setup`. The link uses `https://baskule.example.com`.
+Caddy obtains and renews certificates, redirects HTTP to HTTPS, and keeps certificates in the edge data volume.
+HTTPS publishes on all IPv4 and IPv6 interfaces, regardless of `BASKULE_BIND`.
+No `PUBLIC_ORIGINS` is needed for password sign-in. Under rootless Docker, all built-in HTTPS clients share one
+sign-in rate-limit budget because the edge cannot see their individual addresses. Browsers need HTTPS or localhost
+for microphone access.
+
+### Local access or SSH tunnel
+
+With the default HTTP listener, open `http://127.0.0.1:47090`. For a remote machine, tunnel the loopback port:
+
+```sh
+ssh -L 47090:127.0.0.1:47090 user@server
+```
+
+Open the setup link on your own machine while the tunnel runs.
+
+### Your own reverse proxy
+
+Keep the default loopback HTTP bind. With Caddy on the host:
 
 ```caddyfile
 baskule.example.com {
@@ -76,40 +104,68 @@ baskule.example.com {
 }
 ```
 
-Set `PUBLIC_ORIGINS=https://baskule.example.com` and add this line to `.env`, then run `docker compose up -d`:
+Set `BASKULE_TRUSTED_PROXIES=private_ranges` in `.env` for a host-local proxy. Keep HTTP bound to loopback and
+restrict access to trusted sources. Loopback binding alone is not an isolation boundary. Prefer exact proxy addresses
+when possible. For a separate proxy, bind HTTP to a private address, restrict access to the proxy, and set
+`BASKULE_TRUSTED_PROXIES` to its address or CIDR as seen by the edge. List multiple entries separated by spaces.
+Forward Host, X-Forwarded-Proto, client IP, WebSockets, and streaming responses without buffering.
 
-```dotenv
-AUTH_CONFIG='{"version":1,"password":true,"publicOrigin":"https://baskule.example.com"}'
-```
+The proxy must **replace** X-Forwarded-For with its peer's address, rather than append client-supplied values.
+Caddy does this by default. With nginx, use `proxy_set_header X-Forwarded-For $remote_addr;` instead of
+`$proxy_add_x_forwarded_for`. With `private_ranges`, private-address LAN/VPN clients share the proxy's sign-in
+rate-limit budget. Appending incoming X-Forwarded-For lets those clients spoof addresses and bypass that limit.
+Run `docker compose up -d` after edits.
 
-`publicOrigin` selects callback URLs and Secure cookies. `PUBLIC_ORIGINS` allows requests from that origin.
-Browsers require HTTPS or localhost for microphone access. Publish only your HTTPS proxy, never the platform,
-storage, computerd, or OpenShell ports.
+The edge trusts nobody by default. Explicit trust preserves the HTTPS scheme and host; no `PUBLIC_ORIGINS` is
+needed for password sign-in. Without trust, set `PUBLIC_ORIGINS=https://baskule.example.com` to permit that origin;
+all clients behind the proxy share its sign-in rate-limit bucket. Rootless Docker can hide client addresses;
+enforce access and rate limits at your outer proxy. With `BASKULE_BIND=0.0.0.0`, restrict the HTTP port to your
+proxy or trusted clients with a firewall. Only publish your HTTPS proxy.
 
-## Single sign-on
+To create the admin through your proxy, open `https://baskule.example.com/setup#token=` followed by the token from
+the setup log. Optional `PUBLIC_URL=https://baskule.example.com` changes the printed link.
 
-Password sign-in is the default when authentication configuration is absent. No `auth.json` is required.
-For SSO, put the authentication JSON in the single-quoted `AUTH_CONFIG` value in `.env`; it can refer to other
-`.env` secrets using `{"env":"NAME"}`. Follow [installation settings](installation-settings.md#authentication-file)
-for providers and callback addresses. Run `docker compose up -d` after changing it. An invalid configuration
-fails deployment. You can instead save it as `config/auth.json`; that optional file takes precedence over
-`AUTH_CONFIG`. The download step creates `config` with your account as its owner. Keep the file private and run
-`docker compose run --rm --no-deps baskule-deploy` after editing it. Back up before switching authentication modes,
-which requires a fresh bucket.
+## Optional settings
 
-## External storage
+The example above lists common settings. All settings are optional:
 
-Before the first start, set `COMPOSE_PROFILES=` to disable local storage. Set `S3_ENDPOINT`, `S3_REGION`,
-`S3_ACCESS_KEY`, `S3_SECRET_KEY`, and `CELLD_BUCKET_NAME` to a private S3-compatible bucket and its credentials.
-The bucket must support the conditional writes and consistency required by celld. The bootstrap job checks the
-bucket and creates it if absent; pre-create it when credentials do not permit bucket creation.
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `BASKULE_DOMAIN`, `BASKULE_EDGE` | unset, `http` | Edge accepts lowercase `http` or `https`; HTTPS requires a domain and publishes TCP 80/443 and UDP 443 on all IPv4/IPv6 interfaces |
+| `BASKULE_BIND`, `BASKULE_PORT` | `127.0.0.1`, `47090` | HTTP listener only; both settings are ignored by built-in HTTPS |
+| `BASKULE_TRUSTED_PROXIES` | empty | Proxy addresses/CIDRs trusted to forward scheme, host and client IP |
+| `PUBLIC_URL` | `https://<BASKULE_DOMAIN>` if set, otherwise `http://127.0.0.1:<BASKULE_PORT>` | Address printed in the setup link |
+| `PUBLIC_ORIGINS` | unset | Additional allowed origins; set for SSO or an untrusted outer proxy |
+| `AUTH_CONFIG` | password sign-in | Authentication JSON; `publicOrigin` fixes SSO callback URLs |
+| `S3_ENDPOINT`, `S3_REGION`, `CELLD_BUCKET_NAME` | local RustFS, `us-east-1`, `baskule` | Shared storage |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | generated local keys | External storage credentials |
+| `CELLD_MEMORY`, `OPENSHELL_MEMORY`, `COMPUTER_MEMORY` | `3g`, `8g`, `3Gi` | Memory caps |
+| `COMPOSE_PROFILES` | unset | Set `traces` to enable the trace collector |
+| `BASKULE_TRACES_BIND`, `BASKULE_TRACES_PORT` | `127.0.0.1`, `47098` | Trace UI listener, independent of the HTTP and HTTPS edge |
 
-The bucket contains accounts, organization settings, chats, attachments, and cell state. Changing buckets selects
-a different installation. Computers and gateway keys remain on this machine. External storage needs its own backup.
+The default memory caps total 15.75 GiB. Limits are not reservations. Each computer defaults to 2 CPU cores
+and 3 GiB within OpenShell's aggregate cap. See [installation settings](installation-settings.md) for app settings.
+
+## SSO
+
+Set `AUTH_CONFIG` in `.env`, with `publicOrigin` and `PUBLIC_ORIGINS` pointing to the public HTTPS URL. The example
+keeps passwords enabled alongside OIDC. Use `"password":false` for SSO only, then create the admin through the
+setup link without a password and sign in through SSO with that email. Use
+[installation settings](installation-settings.md#authentication-file) for providers and callbacks. Environment
+references such as `{"env":"OIDC_SECRET"}` resolve from the optional `.env`. Run `docker compose up -d` after edits.
+Changing between anonymous and authenticated modes requires wiping alpha data.
+
+## External S3
+
+Before first start, set all five storage values in the example. The local RustFS container stays idle while the
+platform uses the external endpoint. Bootstrap waits only for that configured endpoint; local RustFS health does
+not block external storage. The bucket must support celld's conditional writes and consistency. The
+bootstrap job creates it if absent; pre-create it if credentials forbid creation. Changing buckets selects another
+installation. Computer disks and gateway keys stay local. Back up the external bucket separately.
 
 ## Backup and restore
 
-Run from the installation directory. Stop all services before copying state:
+Stop services before copying state:
 
 ```sh
 docker compose down
@@ -117,65 +173,48 @@ umask 077
 docker compose run --rm -T backup > backup.tar.gz
 ```
 
-Copy the archive, `.env`, and any `config/auth.json` off the machine. The archive contains local RustFS, gateway state and keys, and the
-whole private Docker store, including computer disks and cached images. It can be large. Node caches are disposable.
-An external bucket is excluded; snapshot it separately while the stack is stopped. Protect backups like credentials.
+Save the archive, compose file, and optional `.env` off the machine. The archive includes generated secrets,
+local RustFS, gateway state and keys, and the private Docker store containing computer disks. Node caches are
+disposable. Snapshot external S3 separately while services are stopped. Protect backups like credentials.
 Start again with `docker compose up -d`.
 
-To restore, create an installation directory with `mkdir config`, then put the same release assets, the saved `.env`, and the optional
-`config/auth.json` in it. Its volumes must be **empty**.
-Restore an external bucket first if used, then run:
+To restore, place the saved compose file and optional `.env` in a directory whose destination volumes are empty.
+Restore external S3 first if used, then run:
 
 ```sh
 docker compose run --rm -T restore < backup.tar.gz
 docker compose up -d
 ```
 
-The restore job refuses nonempty destination volumes. Restored computers are recreated through OpenShell to
-re-admit their disks. Persistent files under `/sandbox/space` remain; other container files are temporary. Use the same release for restore before updating.
-Deleting volumes destroys the installation's local data; do so only after preserving a backup.
+Restore refuses nonempty volumes and re-admits restored computer disks. Files under `/sandbox/space` persist;
+other computer files are temporary. Restore the same release before updating.
 
-## Update and stop
+## Update
 
-Read the target release's notes for any required alpha data wipe. Back up first, and keep a copy of the current
-`docker-compose.yml` with the backup: a restore needs the same release assets. Download only the new assets;
-keep your existing `.env` and its secrets:
+Read release notes for alpha data wipes. Back up first and keep the old compose file with the backup.
 
 ```sh
-VERSION=0.5.0 # Set the target release.
-ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
-curl -fLO "$ASSETS/docker-compose.yml"
-curl -fL "$ASSETS/baskule.env.example" -o .env.example
-```
-
-Compare the new example for configuration changes. Edit `BASKULE_VERSION` in your existing `.env` to the target
-version, replacing any `+` with `_` for the image tag. Do not run the initializer again. Then run:
-
-```sh
-docker compose pull
+curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
 docker compose up -d
 ```
 
-The new platform bundle deploys to both nodes. OpenShell restarts computers; their persistent disks remain.
-Updates can interrupt chats, commands, and WebSockets. Reconnect after the services become healthy. Keep the saved
-assets and backup until you have checked `/version.json`, sign-in, and a computer command.
-
-`docker compose down` stops Baskule and keeps data. `docker compose up -d` starts it again.
-`docker compose down -v` deletes all Compose volumes, including local accounts, chats, and computer disks.
-It does not delete an external bucket. If release notes require a wipe, stop the stack, preserve the backup,
-remove those volumes, empty the external bucket if used, and start with the new assets and bootstrap admin values.
+The compose file selects the released version. Keep your optional `.env`; no version edit or secret regeneration
+is needed. Updates can interrupt chats and commands. Check sign-in and a computer command after reconnecting.
+`docker compose down` stops services and retains data. `docker compose down -v` deletes all local data and secrets;
+it does not delete external S3. For an authorized alpha wipe, preserve backups, remove volumes, empty external S3
+if used, and start the new release with a fresh setup link.
 
 ## Troubleshooting
 
 - `docker compose ps -a` shows health and one-shot exit status.
-- `docker compose logs baskule-bootstrap baskule-deploy` shows storage or deployment failures.
+- `docker compose logs setup baskule-bootstrap baskule-deploy` shows setup, storage, and deployment failures.
 - `docker compose logs baskule-celld-a baskule-celld-b` shows platform errors.
 - `docker compose logs baskule-computerd baskule-openshell` shows computer startup errors.
-- If the edge is not running, first check the deploy job and S3 credentials. A fresh node cannot be healthy before
-  its first app deployment.
-- A GHCR permission error means the release packages are not public or your Docker account cannot read them.
-- Check that the configured bind address exists and the port is free before changing it.
+- A new platform node cannot become healthy before the first deployment. Check the deploy job and S3 first.
+- A GHCR permission error means your account cannot read the release packages.
 
-Traces are optional. To use the bundled in-memory collector, set `COMPOSE_PROFILES=storage,traces` and enable the
-three exporters shown in `.env.example`. With external S3 use `COMPOSE_PROFILES=traces`. The trace UI is on the
-configured bind address at port 47098. A restart clears traces. You can instead point the exporters at your own collector.
+For optional traces, set `COMPOSE_PROFILES=traces`, `BASKULE_CELLD_OTEL=http://baskule-traces:4318`,
+`BASKULE_OTLP_TRACES_URL=http://baskule-traces:4318/v1/traces`, and
+`BASKULE_OPENSHELL_OTLP=http://baskule-traces:4317` in `.env`. The trace UI defaults to `127.0.0.1:47098`;
+`BASKULE_TRACES_BIND` and `BASKULE_TRACES_PORT` change it independently of the edge. Restarting it clears traces.
+Starting with `--profile '*'` is unsupported: it also starts the edge inheritance templates. Use named profiles such as `traces`.

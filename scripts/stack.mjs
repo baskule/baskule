@@ -299,7 +299,7 @@ async function build(s) {
     w.name = `osdev-${s.id}`;
     w.main = "worker.js"; w.assets.directory = "web";
     Object.assign(w.vars, {
-      PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, ADMIN_EMAIL: s.admin.email, ADMIN_PASSWORD: s.admin.password,
+      PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, SETUP_TOKEN: s.setupToken,
       AUTH_SECRET: s.authSecret, COMPUTERD_URL: s.ports.computerd ? `http://127.0.0.1:${s.ports.computerd}` : "http://127.0.0.1:1",
       COMPUTERD_TOKEN: s.computerdToken, ...Object.fromEntries(Object.keys({ ...s.definition.env, ...s.overrides }).map((key) => [key, env[key]])),
     });
@@ -341,6 +341,12 @@ async function startService(s, name) {
   persist(s);
 }
 async function login(s) {
+  const status = await http(`${s.urls.loopback}/api/baskule/setup`, { signal: AbortSignal.timeout(60_000) });
+  if ((await status.json()).required) {
+    const setup = await http(`${s.urls.loopback}/api/baskule/setup`, { method: "POST", headers: { "content-type": "application/json", origin: s.urls.loopback }, body: JSON.stringify({ token: s.setupToken, name: "Admin", ...s.admin }), signal: AbortSignal.timeout(60_000) });
+    if (setup.status !== 201) throw new Error(`Admin setup returned ${setup.status}: ${await setup.text()}`);
+    await setup.arrayBuffer();
+  }
   const r = await http(`${s.urls.loopback}/auth/sign-in/email`, { method: "POST", headers: { "content-type": "application/json", origin: s.urls.loopback }, body: JSON.stringify(s.admin), signal: AbortSignal.timeout(60_000) });
   if (!r.ok) throw new Error(`Admin sign-in returned ${r.status}: ${await r.text()}`);
   await r.arrayBuffer();
@@ -487,6 +493,7 @@ async function up() {
   const s = { id, worktree: ROOT, branch, profile: selected, definition, overrides: settings, ports,
     alias, aliasRegistered: false, urls: { front: proxy ? `https://${alias}.localhost` : `http://127.0.0.1:${ports.celld}`, loopback: `http://127.0.0.1:${ports.celld}` },
     admin: old && !args.includes("--clean") ? old.admin : { email: `admin@${id}.test`, password: randomBytes(24).toString("base64url") },
+    setupToken: old?.setupToken || randomBytes(32).toString("hex"),
     authSecret: old?.authSecret || randomBytes(32).toString("hex"), computerdToken: old?.computerdToken || randomBytes(24).toString("hex"),
     bucketPrefix: old && !args.includes("--clean") ? old.bucketPrefix : `${id}/${randomBytes(8).toString("hex")}`,
     volumes: old && !args.includes("--clean") ? old.volumes || [] : [],

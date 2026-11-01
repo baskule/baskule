@@ -2,7 +2,7 @@
 
 A cluster runs platform nodes on several machines and keeps their cell state in one external S3-compatible bucket.
 The computers run on one separate host. Use the [single-machine guide](install.md) for a smaller installation.
-All machines need Linux x86-64 and Docker Engine 25 or newer with Compose 2.24.4 or newer.
+All machines need Linux x86-64 and Docker Engine 25 or newer with Compose 2.24.4 or newer. The setup commands also use OpenSSL.
 No source checkout or build is needed.
 
 ## Roles and network
@@ -69,13 +69,12 @@ Create an installation directory on the computers machine and download its role 
 ```sh
 mkdir baskule-computers && cd baskule-computers
 VERSION=0.5.0
-IMAGE_VERSION=$(printf '%s' "$VERSION" | tr '+' '_')
 ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
 curl -fL "$ASSETS/cluster-computers.yml" -o docker-compose.yml
 curl -fL "$ASSETS/cluster-computers.env.example" -o .env.example
 umask 077
-docker run --rm -i --network none --entrypoint baskule-celld-job \
-  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$IMAGE_VERSION" init-env - < .env.example > .env
+sed '/^COMPUTERD_TOKEN=/d; /^OPENSHELL_VOLUMES_TOKEN=/d' .env.example > .env
+printf '\nCOMPUTERD_TOKEN=%s\nOPENSHELL_VOLUMES_TOKEN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" >> .env
 chmod 600 .env
 ```
 
@@ -113,7 +112,7 @@ peer port 47092 there, and advertises `<private-ip>:47092`. Fill the external S3
 
 In the configuration used for app deployment, set `CELLD_NODES_INTERNAL` to every platform node's private peer
 address, separated by spaces. Set `PUBLIC_ORIGINS` and `AUTH_CONFIG.publicOrigin` to the public HTTPS URL. Set the
-initial `ADMIN_EMAIL` and `ADMIN_PASSWORD`. Keep this app configuration consistent if several operators deploy.
+`SETUP_TOKEN` to a token generated with `openssl rand -hex 32`, and `PUBLIC_URL` to the public HTTPS URL. Keep this app configuration consistent if several operators deploy.
 
 Start the node on each machine, then deploy the app **once**, from one platform machine:
 
@@ -150,11 +149,21 @@ curl -fL "$ASSETS/cluster-edge.env.example" -o .env
 
 Set `BASKULE_NODES_WORKER` to every private Worker address, separated by spaces. Set `BASKULE_BIND` to loopback
 for a local HTTPS proxy or to a private address for a separate proxy. Run `docker compose up -d`.
-Place your HTTPS reverse proxy in front of it as described in the [single-machine guide](install.md#https-and-reverse-proxies).
-Caddy uses connection retries and active health checks. Its HTTP listener does not obtain certificates.
+Place your HTTPS reverse proxy in front of it as described in the [single-machine guide](install.md#your-own-reverse-proxy).
+The edge trusts nobody by default. Set `BASKULE_TRUSTED_PROXIES` to the load balancer address or CIDR as seen by
+Caddy when it forwards the original scheme, host, and client IP. List multiple entries separated by spaces.
+For a host-local proxy, set `BASKULE_TRUSTED_PROXIES=private_ranges`. Keep HTTP bound to loopback and restrict
+access to trusted sources. Loopback binding alone is not an isolation boundary. Prefer exact proxy addresses when possible.
+The proxy must replace X-Forwarded-For with its peer's address, rather than append client-supplied values. Caddy does
+this by default. With nginx, use `proxy_set_header X-Forwarded-For $remote_addr;` instead of `$proxy_add_x_forwarded_for`.
+With `private_ranges`, private-address LAN/VPN clients share the proxy's sign-in rate-limit budget. Appending incoming
+X-Forwarded-For lets those clients spoof addresses and bypass that limit.
+Without trust, set `PUBLIC_ORIGINS` to the public HTTPS origin in the node deployment configuration; clients behind
+the proxy share its sign-in rate-limit bucket. Rootless Docker can hide client addresses; enforce access and rate limits
+at your outer proxy. Caddy uses connection retries and active health checks. Its HTTP listener does not obtain certificates.
 
-Open the public HTTPS address and sign in. Configure **Admin → AI → Models** and invite people. Clear the bootstrap
-password in the deployment `.env`, then run `docker compose run --rm deploy` again. For SSO, set `AUTH_CONFIG` or save the optional `config/auth.json` on the machine running the deploy job. Use
+Open the setup link printed by `docker compose run --rm deploy` to create the first admin. The token becomes
+useless after setup. Configure **Admin → AI → Models** and invite people. For SSO, set `AUTH_CONFIG` or save the optional `config/auth.json` on the machine running the deploy job. Use
 [installation settings](installation-settings.md#authentication-file). Traces are off unless the optional OTLP
 variables in each role's env example point to a reachable collector.
 
@@ -208,5 +217,5 @@ Update the computers role and edge with `docker compose pull && docker compose u
 persistent disks; commands can be interrupted. Update the load balancer's node list if membership changed.
 
 If release notes require an alpha data wipe, stop all roles, preserve backups, remove their volumes with
-`docker compose down -v`, empty the external bucket, then start the new release with bootstrap admin values.
+`docker compose down -v`, empty the external bucket, then start the new release and create the first admin with the setup link.
 Do not use a rolling update for a release that requires a wipe. `docker compose down` alone keeps local state.

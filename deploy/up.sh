@@ -2,7 +2,6 @@
 # Bring the source stack up: build missing images, start OpenShell, start everything else, deploy the app. Idempotent. Options: --build (rebuild all images first).
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
-[ -f "$DEPLOY_DIR/.env" ] || { log "no .env: run ./init-env.sh (or cp .env.example .env) first"; exit 1; }
 # Prepare the mounted app before the source deploy job starts.
 [ -f "$ROOT/platform/dist/worker.js" ] || "$DEPLOY_DIR/build.sh" --no-deploy
 if [ "${1:-}" = --build ]; then "$DEPLOY_DIR/images.sh" --all >/dev/null; else "$DEPLOY_DIR/images.sh" --missing >/dev/null; fi

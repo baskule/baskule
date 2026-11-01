@@ -18,7 +18,9 @@ for a in "$@"; do case $a in --no-up) UP=0 ;; --down) DOWN=1 ;; *) echo "unknown
 # It kills a celld node and may start the stack: hold the shared stack lock like every live loop.
 export STACK_LOCK_OWNER=${STACK_LOCK_OWNER:-infra-smoke} STACK_LOCK_WAIT=${STACK_LOCK_WAIT:-600}
 stack_lock_acquire $$ "e2e/infra-smoke.sh $*" || exit 1
-for k in BASKULE_BIND BASKULE_PORT ADMIN_EMAIL ADMIN_PASSWORD COMPUTERD_TOKEN; do export "$k=$(env_get $k)"; done
+for k in BASKULE_BIND BASKULE_PORT COMPUTERD_TOKEN; do export "$k=$(env_get $k)"; done
+# Existing operator account, supplied by the caller after setup.
+export E2E_LOGIN_EMAIL E2E_LOGIN_PASSWORD
 EDGE="http://${BASKULE_BIND:-127.0.0.1}:${BASKULE_PORT:-47090}"
 PASS=0; FAIL=0; FAILED=()
 ok() { PASS=$((PASS + 1)); echo "PASS  $*"; }
@@ -66,9 +68,9 @@ else
   # Anonymous installations (auth.json) answer every request as the shared identity.
   if curl -s -m 10 "$EDGE/.well-known/baskule" | grep -q '"mode":"anonymous"'; then me=200; else me=401; fi
   check "edge: platform Worker answers /api/baskule/me with $me" bash -c "test \$(curl -s -m 10 -o /dev/null -w '%{http_code}' $EDGE/api/baskule/me) = $me"
-  if [ -n "${ADMIN_EMAIL:-}" ] && [ -n "${ADMIN_PASSWORD:-}" ]; then
+  if [ -n "${E2E_LOGIN_EMAIL:-}" ] && [ -n "${E2E_LOGIN_PASSWORD:-}" ]; then
     check "edge: admin sign-in through ControlCell (cell + bucket)" bash -c \
-      "curl -sf -m 30 -o /dev/null -H 'content-type: application/json' -H 'origin: $EDGE' -d \"\$(jq -n --arg e \"\$ADMIN_EMAIL\" --arg p \"\$ADMIN_PASSWORD\" '{email:\$e,password:\$p}')\" $EDGE/auth/sign-in/email"
+      "curl -sf -m 30 -o /dev/null -H 'content-type: application/json' -H 'origin: $EDGE' -d \"\$(jq -n --arg e \"\$E2E_LOGIN_EMAIL\" --arg p \"\$E2E_LOGIN_PASSWORD\" '{email:\$e,password:\$p}')\" $EDGE/auth/sign-in/email"
   fi
 fi
 [ "${BASKULE_BIND:-127.0.0.1}" = 127.0.0.1 ] ||
@@ -136,12 +138,12 @@ for i in $(seq 20); do
 done
 if [ "$fails" = 0 ]; then ok "failover: 20/20 Worker requests served through the edge with celld-$VICTIM dead"
 else ko "failover: $fails/20 Worker requests failed with celld-$VICTIM dead"; fi
-if ! echo "$app" | grep -q "hello from baskule" && [ -n "${ADMIN_PASSWORD:-}" ]; then
+if ! echo "$app" | grep -q "hello from baskule" && [ -n "${E2E_LOGIN_PASSWORD:-}" ]; then
   # A cell owned by the dead node moves after its lease expires.
   t1=$(date +%s)
   for _ in $(seq 90); do
     curl -sf -m 10 -o /dev/null -H 'content-type: application/json' -H "origin: $EDGE" \
-      -d "$(jq -n --arg e "$ADMIN_EMAIL" --arg p "$ADMIN_PASSWORD" '{email:$e,password:$p}')" "$EDGE/auth/sign-in/email" && break
+      -d "$(jq -n --arg e "$E2E_LOGIN_EMAIL" --arg p "$E2E_LOGIN_PASSWORD" '{email:$e,password:$p}')" "$EDGE/auth/sign-in/email" && break
     sleep 1
   done
   if [ $(( $(date +%s) - t1 )) -lt 90 ]; then ok "failover: ControlCell serves sign-in again after $(( $(date +%s) - t1 )) s"

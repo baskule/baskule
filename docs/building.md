@@ -42,13 +42,11 @@ For a source-build installation, clone the repository and configure its develope
 ```sh
 git clone https://github.com/baskule/baskule
 cd baskule
-deploy/init-env.sh
-$EDITOR deploy/.env
 ```
 
-Set the first admin and public address as in the [installation guide](install.md). `deploy/auth.json` is the
-source build's optional authentication file; `AUTH_CONFIG_FILE` selects another. The released installation uses
-`AUTH_CONFIG` in `.env` instead. Keep secrets outside Git and do not source `.env` as shell code.
+The optional `deploy/.env` overrides defaults. `deploy/auth.json` is the source build's optional
+authentication file; `AUTH_CONFIG_FILE` selects another. Releases use `AUTH_CONFIG` in `.env`.
+Keep secrets outside Git and do not source `.env` as shell code.
 
 Build and start from the Ubuntu build environment. For example, with the checkout and caches under `/opt/baskule`:
 
@@ -57,6 +55,13 @@ docker build --network=host -t baskule-build deploy/build-env
 docker run --rm --network=host --pid=host \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /opt/baskule:/opt/baskule -w /opt/baskule/src baskule-build
+```
+
+After startup, read the setup link and create the first admin:
+
+```sh
+docker compose --project-directory deploy \
+  -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml logs setup
 ```
 
 The build environment installs dependencies and runs `deploy/build.sh`. A cold native build can take 30–60 minutes.

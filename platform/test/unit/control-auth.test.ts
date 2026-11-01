@@ -13,7 +13,7 @@ describe("boot", () => {
     const h = await makeService();
     const users = h.storage.sql.exec("select email, role from user").toArray();
     expect(users).toEqual([{ email: ADMIN.email, role: "admin" }]);
-    expect(await h.svc.bootstrapAdmin()).toBe("exists");
+    expect((await call(h, "GET", "/api/baskule/setup")).body.required).toBe(false);
     await h.svc.init(); // a second boot (new instance on the same storage) is idempotent
     expect(h.storage.sql.exec("select count(*) as n from user").toArray()[0].n).toBe(1);
     expect(h.storage.sql.exec("select name from organization").toArray()).toEqual([{ name: "Baskule" }]);
@@ -23,8 +23,8 @@ describe("boot", () => {
     expect(admin.me.spaces[0]).toMatchObject({ kind: "personal", role: "owner" });
   });
 
-  it("skips the admin when ADMIN_EMAIL/ADMIN_PASSWORD are missing, and generates + keeps an auth secret", async () => {
-    const h = await makeService({ ADMIN_EMAIL: "", ADMIN_PASSWORD: "" });
+  it("waits for setup and generates + keeps an auth secret", async () => {
+    const h = await makeService({}, false);
     expect(h.storage.sql.exec("select count(*) as n from user").toArray()[0].n).toBe(0);
     const secret = h.storage.sql.exec("select value from kv where key='auth_secret'").toArray()[0].value as string;
     expect(secret.length).toBeGreaterThanOrEqual(40);

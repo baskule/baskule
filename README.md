@@ -66,31 +66,15 @@ Not yet: several models in one organization, computers spread across several hos
 
 ## Install
 
-Run released images on a Linux x86-64 machine with Docker Compose 2.24.4 or newer, 4 CPU cores, 24 GiB RAM and
-80 GB free disk. Choose a published version, generate secrets, set the public address and first admin in `.env`,
-then start. The [installation guide](docs/install.md) covers configuration, HTTPS, SSO, storage, backups and updates.
-
 ```sh
-mkdir baskule && cd baskule
-mkdir config
-VERSION=0.5.0
-IMAGE_VERSION=$(printf '%s' "$VERSION" | tr '+' '_')
-ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
-curl -fLO "$ASSETS/docker-compose.yml"
-curl -fL "$ASSETS/baskule.env.example" -o .env.example
-umask 077
-docker run --rm -i --network none --entrypoint baskule-celld-job \
-  "${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:$IMAGE_VERSION" init-env - < .env.example > .env
-$EDITOR .env
-# Optional: on baskule-deploy, add this read-only volume (standard files only):
-# volumes:
-#   - ./plugins:/plugins:ro
+curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
 docker compose up -d
+docker compose logs setup        # prints the one-time link that creates the first admin
 ```
 
-See [folder plugins](docs/plugins.md) for the layout and startup sync rules.
+Open the setup link to create the first admin; see [configuration and built-in HTTPS](docs/install.md), or the [cluster guide](docs/install-cluster.md) for several machines.
 
-For several platform machines with a separate computers host, follow the [cluster guide](docs/install-cluster.md).
+Optional: [sync plugins from a folder](docs/install.md#plugins-folder).
 
 ## Develop
 
