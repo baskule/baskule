@@ -1,7 +1,7 @@
 // baskule: compare cold bundle boots in fresh Node processes, without celld or a live stack.
 // node src/baskule/workerd/perf/bootBench.mjs [--runs 5] [--profile <dir>] <bundle.js>...
 // Each bundle gets a prepared database; reports import, cold/warm createSpaceServer and medians.
-// --profile writes CPU profiles; use the umbrella e2e/v2/perf harness for actual celld costs.
+// --profile writes CPU profiles; use the umbrella e2e/perf harness for actual celld costs.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

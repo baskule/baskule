@@ -36,8 +36,8 @@ VOLUMES_PID=$!
 # 5. Gateway, on the baked config rendered for this stack: image tags follow BASKULE_TAG (the tag compose and
 #    load-images.sh use), and OPENSHELL_OTLP_ENDPOINT (an OTLP/gRPC collector) adds trace export.
 CONFIG=/var/run/openshell-gateway.toml
-TAG=${BASKULE_TAG:-0.2}
-sed "s/\(baskule-[a-z-]*\):0\.2\"/\1:$TAG\"/" /etc/openshell/gateway.toml > "$CONFIG"
+TAG=${BASKULE_TAG:-local}
+sed "s/\(baskule-[a-z-]*\):local\"/\1:$TAG\"/" /etc/openshell/gateway.toml > "$CONFIG"
 if [ -n "${OPENSHELL_OTLP_ENDPOINT:-}" ]; then
   printf '\n[openshell.gateway.otlp]\nendpoint = "%s"\n' "$OPENSHELL_OTLP_ENDPOINT" >> "$CONFIG"
   log "trace export to $OPENSHELL_OTLP_ENDPOINT"

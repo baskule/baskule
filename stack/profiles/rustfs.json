@@ -23,7 +23,7 @@
     "computerd": {
       "command": "node",
       "args": [
-        "${ROOT}/computerd/v2/src/main.ts"
+        "${ROOT}/computerd/src/main.ts"
       ],
       "health": "http://127.0.0.1:${PORT_COMPUTERD}/healthz"
     },

@@ -1,4 +1,4 @@
-# baskule-openshell-gateway:0.2: the image of the `baskule-openshell` container.
+# baskule-openshell-gateway:local: the image of the `baskule-openshell` container.
 # One privileged container runs a PRIVATE dockerd (unix socket only, no bridge, no iptables) and the patched
 # OpenShell gateway (Docker compute driver) against it, plus a tiny token-protected volume helper (volumes.py)
 # that creates the per-space labelled volumes the gateway mounts at /sandbox/space.

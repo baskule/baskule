@@ -67,7 +67,7 @@ const control = (env: Env) => env.CONTROL.getByName(CONTROL_CELL_NAME);
 const PRE_WAKE_MAX = 4;
 
 /**
- * 0.2.1 pre-wake: the web/desktop/mobile clients fetch /api/baskule/me first thing after sign-in or at app load, before
+ * Pre-wake: the web/desktop/mobile clients fetch /api/baskule/me first thing after sign-in or at app load, before
  * they open the spaces' sockets. Booting the member's SpaceCells (T3, and only T3: never a computer) in the background
  * then overlaps T3's cold boot with the client's own start. /me is ControlCell's membership answer, so only spaces the
  * caller belongs to are woken.

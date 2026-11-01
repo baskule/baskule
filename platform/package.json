@@ -2,7 +2,7 @@
   "name": "baskule-platform",
   "private": true,
   "type": "module",
-  "description": "Baskule 0.2 celld app: Worker `baskule`, ControlCell, SpaceCell (T3 + embedded OpenCode)",
+  "description": "Baskule celld app: Worker `baskule`, ControlCell, SpaceCell (T3 + embedded OpenCode)",
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p .",

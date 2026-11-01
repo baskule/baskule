@@ -23,4 +23,4 @@ bounded history, failure status, app-owned delegation and completion delivery,
 scheduled tasks/webhook replay/rotation, and a real interactive MCP application. An interval schedule waking an
 asleep space is proven by the SpaceCell runner (`platform/src/space/test/run.mjs`), not repeated here.
 Individual check failures are reported rather than converted into a successful
-empty response. Browser UI acceptance remains part of `e2e/v2`.
+empty response. Browser UI acceptance remains part of `e2e`.

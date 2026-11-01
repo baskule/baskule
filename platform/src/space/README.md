@@ -9,7 +9,7 @@ through one shared SQL client. Contract: `platform/src/shared/contract.ts` and `
 The T3 bundle is a build artifact, not committed:
 
 ```sh
-T3_APP_DIR=<checkout of baskule/0.2> src/space/sync-bundle.sh   # → src/space/t3/space-cell.js (~16 MiB, gitignored)
+T3_APP_DIR=<path-to-app-checkout> src/space/sync-bundle.sh   # → src/space/t3/space-cell.js (~16 MiB, gitignored)
 pnpm run build                                                      # the Worker imports it (lazily, on first boot)
 ```
 
@@ -23,7 +23,7 @@ pnpm run build                                                      # the Worker
 node src/space/test/run.mjs [--sync] [--keep] [--only a,b] [--skip-schedule]   # ≈ 1.5 min, 12 checks, no Docker
 ```
 
-It starts the fake LLM (:47551), a fake computerd (`test/fake-computerd.mjs`, :47552, the computerd v2 files/exec
+It starts the fake LLM (:47551), a fake computerd (`test/fake-computerd.mjs`, :47552, the computerd files/exec
 subset over `test/.run/computers/<space>`) and `celld dev` on `test/harness/` (:47550, clean state; Worker
 `entry.ts` plays the front: it sets `x-baskule-base`, the test sets `x-baskule-identity`; the SpaceCell is the
 production class with its embedded OpenCode; `TestControlCell` supplies organization settings and answers the recheck). No Docker. Checks:

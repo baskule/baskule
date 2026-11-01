@@ -1,5 +1,5 @@
 ---
-paths: ["platform/src/space/**", "computerd/v2/**", "app/apps/web/src/components/chat/**", "app/apps/web/src/baskule/WorkspaceFileDownload.tsx"]
+paths: ["platform/src/space/**", "computerd/**", "app/apps/web/src/components/chat/**", "app/apps/web/src/baskule/WorkspaceFileDownload.tsx"]
 journeys: null
 profile: "full"
 checks: ["scripts/check space:files-and-attachments"]

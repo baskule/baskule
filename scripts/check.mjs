@@ -39,18 +39,18 @@ Component loops (local, no live stack; wait for a host lock, then check ports)
   agent     embedded agent runtime through the SpaceCell, real computerd + shared OpenShell gateway           ~2 min
   features  real platform app (wpf) + real computers: queue/steer, inbox, snooze, questions, delegation,
             webhook schedules, MCP app                                                                      ~6 min
-  computerd computerd v2 against the shared OpenShell gateway: exec, kill, files, CDP, idle, delete         ~40 s
+  computerd computerd against the shared OpenShell gateway: exec, kill, files, CDP, idle, delete         ~40 s
   web       hosted web client: unit tests, (build), mock stack page checks + screenshots                    ~1.5-3.5 min
   <loop>:<checks>   only some checks of worker, space, agent or features, e.g. worker:transcriptions
 
-Live end-to-end: the owner's deployed stack (deploy/v2). Only when the owner asks, or for a seam that exists only
+Live end-to-end: the owner's deployed stack (deploy). Only when the owner asks, or for a seam that exists only
 there (edge, two-node fleet, deploy config, computer image). Takes the stack lock, swaps in the fake LLM, tests the
 DEPLOYED build (BUILD=1 deploys first)
   e2e                      every non-@slow scenario (parallel phase)
   e2e:<tag>[,<tag>...]     one area, e.g. e2e:chat, e2e:security,files, e2e:lifecycle (tags: auth security chat
                            team files browser computer admin ui phone lifecycle slow real perf)
   infra                    deployed infrastructure smoke: fleet probes, computerd suite inside the stack network,
-                           computer network isolation probes, edge failover (e2e/v2/infra-smoke.sh --no-up, ~2-4 min)
+                           computer network isolation probes, edge failover (e2e/infra-smoke.sh --no-up, ~2-4 min)
 
 Areas (the component loops that own an area; --live also runs its live e2e tags)
   auth security chat team files browser computer agent schedules admin ui lifecycle
@@ -96,7 +96,7 @@ const LOOPS = {
       ["node", ["test/wpf/run.mjs", ...(only ? ["--only", only] : [])], "platform", { env: process.env.BASKULE_STACK_PROXY === "0" ? {} : { NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS || join(process.env.PORTLESS_STATE_DIR || join(homedir(), ".portless"), "ca.pem") }, always: ["bash", ["-c", 'mkdir -p .run/check/feature-stack; for log in .run/stack/*.log; do [ ! -f "$log" ] || cp "$log" .run/check/feature-stack/; done; scripts/stack down --purge'], "."] }],
     ],
   },
-  computerd: { ports: [47502], gateway: true, run: () => [["test/integration.sh", [], "computerd/v2", { env: { KEEP_DEV: "1" } }]] },
+  computerd: { ports: [47502], gateway: true, run: () => [["test/integration.sh", [], "computerd", { env: { KEEP_DEV: "1" } }]] },
   web: {
     ports: [47700, 47702, 47703],
     run: () => {
@@ -160,18 +160,18 @@ function plan(files, base) {
   if (has(/^platform\/src\/agent\//)) { loops.add("agent"); tags.add("chat").add("computer"); }
   if (has(/^platform\/src\/agent\/index\.ts$/)) tags.add("lifecycle");
   if (has(/^platform\/test\/wpf\/|^scripts\/stack(?:[.-]|$)|^stack\//)) loops.add("features");
-  if (has(/^computerd\/v2\/|^(?:package\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$/)) {
-    add("computerd: unit tests (fake gateway)", "pnpm", ["test"], "computerd/v2", { evidence: ev(COMPUTERD_IN, ["computerd-unit"], "computerd-unit") });
-    add("computerd: typecheck", "pnpm", ["exec", "tsc", "--noEmit"], "computerd/v2", { evidence: ev(COMPUTERD_IN, ["computerd-tsc"], "computerd-tsc") });
-    if (has(/^computerd\/v2\/src\//)) { loops.add("computerd"); tags.add("files").add("browser").add("computer"); }
+  if (has(/^computerd\/|^(?:package\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$/)) {
+    add("computerd: unit tests (fake gateway)", "pnpm", ["test"], "computerd", { evidence: ev(COMPUTERD_IN, ["computerd-unit"], "computerd-unit") });
+    add("computerd: typecheck", "pnpm", ["exec", "tsc", "--noEmit"], "computerd", { evidence: ev(COMPUTERD_IN, ["computerd-tsc"], "computerd-tsc") });
+    if (has(/^computerd\/src\//)) { loops.add("computerd"); tags.add("files").add("browser").add("computer"); }
   }
-  if (has(/^(computer\/v2|openshell)\//)) { loops.add("computerd"); tags.add("computer").add("browser"); }
+  if (has(/^(computer|openshell)\//)) { loops.add("computerd"); tags.add("computer").add("browser"); }
   if (has(/^desktop\/|^app\/apps\/desktop\//)) {
     add("desktop: connection and shell regression tests", "bash", ["desktop/check.sh"], ".", { evidence: ev(["app", "desktop"], ["desktop"], "desktop") });
   }
-  if (has(/^deploy\/v2\/runner\//)) add("deployment: privilege boundary", "python3", ["-B", "-m", "unittest", "discover", "-s", "deploy/v2/runner"], ".");
-  if (has(/^e2e\/v2\/|^(?:package\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$/)) add("e2e: typecheck (live run: the changed specs)", join(ROOT, "e2e/node_modules/.bin/tsc"), ["--noEmit", "-p", "tsconfig.json"], "e2e/v2", { evidence: ev(E2E_IN, ["e2e-tsc"], "e2e-tsc") });
-  for (const spec of pick(/^e2e\/v2\/tests\/.*\.spec\.ts$/).filter((f) => existsSync(join(ROOT, f)))) tags.add(`file:${spec.replace(/^e2e\/v2\//, "")}`);
+  if (has(/^deploy\/runner\//)) add("deployment: privilege boundary", "python3", ["-B", "-m", "unittest", "discover", "-s", "deploy/runner"], ".");
+  if (has(/^e2e\/|^(?:package\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$/)) add("e2e: typecheck (live run: the changed specs)", join(ROOT, "e2e/node_modules/.bin/tsc"), ["--noEmit", "-p", "tsconfig.json"], "e2e", { evidence: ev(E2E_IN, ["e2e-tsc"], "e2e-tsc") });
+  for (const spec of pick(/^e2e\/tests\/.*\.spec\.ts$/).filter((f) => existsSync(join(ROOT, f)))) tags.add(`file:${spec.replace(/^e2e\//, "")}`);
   // T3 fork: per package, the related unit tests; web and server get their typecheck (server: changed files only,
   // because its baseline carries Effect language-service diagnostics).
   const pkgs = new Set(pick(/^app\/(apps|packages)\/[^/]+\//).map((f) => f.split("/").slice(0, 3).join("/")));
@@ -197,9 +197,9 @@ function plan(files, base) {
   if (has(/^scripts\/worktree(?:[.-]|$)/)) add("worktree: setup regression tests", "node", ["--test", "scripts/worktree.test.mjs"], ".");
   if (has(/^scripts\/(?:check(?:[.-]|$)|stack(?:[.-]|$)|celld(?:[.-]|$)|lint(?:[.-]|$)|feature-map(?:[.-]|$)|run-feature\.mjs$|no-fixed-sleep\.mjs$)|^platform\/dev\/fake-llm\/|^\.oxlintrc\.json$/)) add("scripts/check: harness tests", "node", ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], ".");
   if (has(/^openshell\/dev-down\.sh$/)) add("stack: shared gateway teardown", "node", ["--test", "scripts/stack.test.mjs"], ".");
-  if (has(/^deploy\/v2\/docker-compose\.yml$/)) add("deploy/v2: compose config", "docker", ["compose", "-f", "deploy/v2/docker-compose.yml", "--project-directory", "deploy/v2", "config", "-q"], ".");
-  if (has(/^deploy\/v2\/(celld|docker-compose)/)) tags.add("lifecycle");
-  if (has(/^(deploy\/v2|openshell|computer\/v2)\//)) tags.add("infra");
+  if (has(/^deploy\/docker-compose\.yml$/)) add("deploy: compose config", "docker", ["compose", "-f", "deploy/docker-compose.yml", "--project-directory", "deploy", "config", "-q"], ".");
+  if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
+  if (has(/^(deploy|openshell|computer)\//)) tags.add("infra");
   const docs = files.filter((f) => /\.md$/.test(f)).filter((f) => existsSync(join(ROOT, f)) && !f.startsWith("vendor/") && !f.startsWith("app/"));
   if (docs.length) steps.push({ label: `docs: relative links in ${docs.length} changed file(s)`, fn: () => checkLinks(docs) });
   return { steps, loops: [...loops], tags: [...tags] };
@@ -211,7 +211,7 @@ function nextHint(p) {
   if (p.loops.length) lines.push(`next, if the change crosses a boundary: scripts/check ${p.loops.join(" ")}`);
   const f = p.tags.filter((x) => x.startsWith("file:")).map((x) => x.slice(5));
   if (f.length > 3) lines.push(`${f.length} specs changed: the live suite in the next release acceptance (scripts/check acceptance --live)`);
-  else if (f.length) lines.push(`changed specs, alone, against the deployed build: e2e/v2/run.sh ${f.join(" ")}`);
+  else if (f.length) lines.push(`changed specs, alone, against the deployed build: e2e/run.sh ${f.join(" ")}`);
   if (p.tags.includes("infra")) lines.push("deploy-only seam: after the owner agrees to a deploy, scripts/check infra");
   const t = p.tags.filter((x) => !x.startsWith("file:") && x !== "infra");
   if (t.length) lines.push(`live coverage of this area (only when the owner asks): scripts/check e2e:${t.join(",")}`);
@@ -244,10 +244,10 @@ function checkLinks(docs) {
 
 // ---- evidence: a pass is not re-run while its inputs are unchanged ---------------------------------------------------
 const WORKSPACE_IN = ["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml"];
-const COMPUTERD_IN = ["computerd/v2", ...WORKSPACE_IN];
+const COMPUTERD_IN = ["computerd", ...WORKSPACE_IN];
 const E2E_IN = ["e2e", ...WORKSPACE_IN];
 const PLATFORM_IN = ["platform", "app", ...WORKSPACE_IN]; // platform bundles T3's SpaceCell code from the fork
-const COMPUTER_IN = [...COMPUTERD_IN, "computer/v2", "openshell", "vendor/openshell"];
+const COMPUTER_IN = [...COMPUTERD_IN, "computer", "openshell", "vendor/openshell"];
 const LOOP_INPUTS = { worker: PLATFORM_IN, space: PLATFORM_IN, agent: [...PLATFORM_IN, ...COMPUTER_IN], features: [...PLATFORM_IN, ...COMPUTER_IN, "stack"], computerd: COMPUTER_IN, web: ["app"] };
 /** inputs: directories; check: ids whose pass covers this step; record: the id a pass of this step proves. */
 function ev(inputs, check, record = null) { return { inputs, check, record }; }
@@ -414,7 +414,7 @@ function runE2e(tags, { slow = true } = {}) {
   const real = tags.filter((t) => !t.startsWith("file:"));
   const args = [...files];
   if (real.length) args.push("--grep", real.map((t) => `@${t.replace(/^@/, "")}`).join("|"));
-  run({ label: `live e2e ${real.length ? real.map((t) => "@" + t).join(" ") : files.length ? files.join(" ") : "(all)"}`, cmd: "e2e/v2/run.sh", args, cwd: ".", env: slow ? {} : { E2E_SLOW: "0" } });
+  run({ label: `live e2e ${real.length ? real.map((t) => "@" + t).join(" ") : files.length ? files.join(" ") : "(all)"}`, cmd: "e2e/run.sh", args, cwd: ".", env: slow ? {} : { E2E_SLOW: "0" } });
 }
 
 function warnStaleDeploy() {
@@ -422,8 +422,8 @@ function warnStaleDeploy() {
   let v; try { v = JSON.parse(r.stdout); } catch { return; }
   const sha = String(v.umbrella ?? "").replace(/-dirty$/, "");
   if (!sha || !git(["cat-file", "-t", sha])) { console.log(`note: the stack runs umbrella ${v.umbrella}, not in this history; e2e tests that build (BUILD=1) or not is your call.`); return; }
-  const src = git(["diff", "--name-only", sha, "--", "platform/src", "computerd/v2/src", "computer/v2", "openshell", "deploy/v2", "app/apps", "app/packages"]).split("\n").filter((f) => f && !/(\/test\/|\.test\.)/.test(f));
-  if (src.length) console.log(`note: ${src.length} product file(s) changed since the deployed build ${v.umbrella}; the live suite tests the deployed build. Deploy first (BUILD=1 or deploy/v2/build.sh) if those changes are under test.`);
+  const src = git(["diff", "--name-only", sha, "--", "platform/src", "computerd/src", "computer", "openshell", "deploy", "app/apps", "app/packages"]).split("\n").filter((f) => f && !/(\/test\/|\.test\.)/.test(f));
+  if (src.length) console.log(`note: ${src.length} product file(s) changed since the deployed build ${v.umbrella}; the live suite tests the deployed build. Deploy first (BUILD=1 or deploy/build.sh) if those changes are under test.`);
 }
 
 /** Every unit suite and typecheck, no services. */
@@ -431,7 +431,7 @@ function unitSteps() {
   const vp = join(ROOT, "app/node_modules/.bin/vp");
   return [
     { label: "scripts/check: harness tests", cmd: "node", args: ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/worktree.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], cwd: "." },
-    ...plan(["platform/src/x.ts", "computerd/v2/src/x.ts", "desktop/x", "e2e/v2/x.ts", "deploy/v2/runner/x.py"], "HEAD").steps
+    ...plan(["platform/src/x.ts", "computerd/src/x.ts", "desktop/x", "e2e/x.ts", "deploy/runner/x.py"], "HEAD").steps
       .map((s) => (s.label.startsWith("platform: unit") ? { ...s, label: "platform: all unit tests", args: ["exec", "vitest", "run"], evidence: ev(PLATFORM_IN, ["platform-unit"], "platform-unit") } : s)),
     { label: "app/apps/server: Baskule unit tests", cmd: vp, args: ["test", "run", ...BASKULE_TESTS["app/apps/server"]], cwd: "app/apps/server", evidence: ev(["app"], ["server-baskule"], "server-baskule") },
     { label: "app/apps/web: Baskule unit tests", cmd: vp, args: ["test", "run", ...BASKULE_TESTS["app/apps/web"]], cwd: "app/apps/web", evidence: ev(["app"], ["web-baskule"], "web-baskule") },
@@ -530,7 +530,7 @@ for (const target of targets) {
     } else if (live) { warnStaleDeploy(); runE2e([]); }
     else console.log("\nlive suite not run (it tests the owner's deployed stack): add --live for a release candidate");
   } else if (target === "infra") {
-    run({ label: "live infrastructure smoke", cmd: "e2e/v2/infra-smoke.sh", args: ["--no-up"], cwd: "." });
+    run({ label: "live infrastructure smoke", cmd: "e2e/infra-smoke.sh", args: ["--no-up"], cwd: "." });
   } else if (target === "e2e") {
     warnStaleDeploy();
     runE2e([], { slow: false });

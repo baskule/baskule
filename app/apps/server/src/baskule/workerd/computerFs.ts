@@ -1,4 +1,4 @@
-// baskule: computerd v2 files under /v1/spaces/:id, using COMPUTERD_URL and COMPUTERD_TOKEN.
+// baskule: computerd files under /v1/spaces/:id, using COMPUTERD_URL and COMPUTERD_TOKEN.
 // GET /files?path=&stat=1 returns metadata; without stat it returns bytes (with Range) or entries.
 // PUT /files writes bytes (parents created); &type=dir creates a directory.
 // POST /exec takes argv/cwd/base64 stdin and returns NDJSON o/e/x/err frames; mkdir/rm/mv use sh.

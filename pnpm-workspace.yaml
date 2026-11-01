@@ -1,6 +1,6 @@
 packages:
   - platform
-  - computerd/v2
+  - computerd
   - e2e
 
 injectWorkspacePackages: true

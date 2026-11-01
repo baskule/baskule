@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { waitFor } from "../../space/test/rpc-client.mjs";
 // Embedded AgentRuntime checks, through the merged SpaceCell (harness /a/<space>/… → /_baskule/agent/…), on celld
-// dev + real computerd v2 + the shared private OpenShell gateway + fake LLM (devstack.sh).
+// dev + real computerd + the shared private OpenShell gateway + fake LLM (devstack.sh).
 //   node test/run.mjs [--only name,name] [--real-llm]
 // Each run uses fresh space ids (computers are deleted at the end). Requires `./devstack.sh start` (run.sh does it).
 import { execFileSync } from "node:child_process";
@@ -265,7 +265,7 @@ if (REAL) {
   });
 
   // A runtime MCP server added the way T3 adds its own (PUT /api/experimental/mcp/t3-code-…): its tools are offered at
-  // the first step of the next turn, without fixed sleeps (0.2.1).
+  // the first step of the next turn, without fixed sleeps.
   await check("empty-plugin-catalog-does-not-block-chat", async () => {
     const E = new Agent(space("empty"));
     const dir = chat("empty-plugin");

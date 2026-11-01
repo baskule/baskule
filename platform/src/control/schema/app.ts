@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, real, index, primaryKey, check } from "drizzle-orm/sqlite-core";
 import { user, session } from "./auth";
 
-/** One organisation per installation in 0.2; the model allows several. */
+/** One organisation per installation; the model allows several. */
 export const organization = sqliteTable("organization", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

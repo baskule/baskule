@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # Build the pinned OpenShell images from the vendored OpenShell fork (vendor/openshell):
-#   baskule-openshell-gateway:0.2     (the baskule-openshell container: private dockerd + gateway + volume helper)
-#   baskule-openshell-supervisor:0.2  (patched supervisor, public_internet egress)
-#   baskule-openshell-sandbox:0.2     (upstream v0.1.5 sandbox runtime, pinned by digest)
+#   baskule-openshell-gateway:local     (the baskule-openshell container: private dockerd + gateway + volume helper)
+#   baskule-openshell-supervisor:local  (patched supervisor, public_internet egress)
+#   baskule-openshell-sandbox:local     (upstream v0.1.5 sandbox runtime, pinned by digest)
 # Reuses the compiled binaries in vendor/openshell/target/release. Pass --cargo to rebuild them first
 # (niced; OPENSHELL_CARGO_JOBS parallel jobs, default 2: ~60 min cold, 3-5 min incremental; needs libz3, see docs/building.md).
 set -euo pipefail
 [ "$(. /etc/os-release; echo "$ID:$VERSION_ID")" = ubuntu:24.04 ] && [ "$(uname -m)" = x86_64 ] || {
-  echo 'Build OpenShell in deploy/v2/build-env (Ubuntu 24.04 amd64); other native targets need their own environment.' >&2
+  echo 'Build OpenShell in deploy/build-env (Ubuntu 24.04 amd64); other native targets need their own environment.' >&2
   exit 1
 }
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 FORK=${OPENSHELL_FORK:-$ROOT/vendor/openshell}
-TAG=${BASKULE_TAG:-0.2}
+TAG=${BASKULE_TAG:-local}
 BUILD=$HERE/.build
-TARGET=${CARGO_TARGET_DIR:?Build in deploy/v2/build-env with a target-specific CARGO_TARGET_DIR}
+TARGET=${CARGO_TARGET_DIR:?Build in deploy/build-env with a target-specific CARGO_TARGET_DIR}
 # If the default buildx activity directory is not writable, use a private CLI config directory.
-[ -w "$HOME/.docker/buildx/activity/default" ] 2>/dev/null || export DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.local/baskule02/docker-cli}
+[ -w "$HOME/.docker/buildx/activity/default" ] 2>/dev/null || export DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.local/baskule/docker-cli}
 
 rev=$(python3 "$ROOT/scripts/source-hash.py" "$FORK")
 if [ "${1:-}" = "--cargo" ] || [ "$(cat "$TARGET/baskule-source" 2>/dev/null)" != "$rev" ] || [ ! -x "$TARGET/release/openshell-gateway" ] || [ ! -x "$TARGET/release/openshell-supervisor" ] || [ ! -x "$TARGET/release/openshell" ]; then

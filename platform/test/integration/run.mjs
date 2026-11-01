@@ -294,7 +294,7 @@ async function phase1() {
 
   // 12. downloads + static
   const dl = await req("GET", "/api/baskule/downloads");
-  check("downloads listing", dl.status === 200 && dl.json.files[0]?.name === "Baskule-0.2.0-test.AppImage", JSON.stringify({ status: dl.status, body: dl.json ?? dl.text }));
+  check("downloads listing", dl.status === 200 && dl.json.files[0]?.name === "Baskule-test.AppImage", JSON.stringify({ status: dl.status, body: dl.json ?? dl.text }));
   const f = await fetch(B + dl.json.files[0].url);
   check("download served as attachment", f.status === 200 && (await f.text()) === "fake desktop artifact\n" && f.headers.get("content-disposition")?.includes("attachment"));
   const spa = await req("GET", "/some/client/route");

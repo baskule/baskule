@@ -1,5 +1,5 @@
 // OpenCode configuration of the embedded agent (OpenCode 2.1.3 schema): the agent runs in the SpaceCell, shell/file
-// tools run on the space's computer (OpenShell sandbox, computer/v2), the browser is T3's preview tools.
+// tools run on the space's computer (OpenShell sandbox, computer), the browser is T3's preview tools.
 
 import { BASKULE_AI_PROVIDERS } from "../../../app/packages/contracts/src/baskule";
 import type { SpacePlugins } from "../../../app/packages/contracts/src/baskule-plugins";

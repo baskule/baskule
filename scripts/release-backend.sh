@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI backend artifacts only. Deliberately does not source deploy/v2/lib.sh or any deployment environment.
+# CI backend artifacts only. Deliberately does not source deploy/lib.sh or any deployment environment.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
@@ -19,17 +19,17 @@ image_tag=${BASKULE_VERSION//+/_}
   echo 'Release version cannot form a Docker tag.' >&2
   exit 1
 }
-export BASKULE_TAG=0.2
+export BASKULE_TAG=local
 mkdir -p .run/release/backend .run/release/runtime
 platform/src/space/sync-bundle.sh --minify
 (cd platform && BASKULE_MINIFY=1 node scripts/build.mjs)
-DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker} computer/v2/build.sh
-docker build -t baskule-computerd:0.2 -f computerd/v2/Dockerfile .
-docker build -t baskule-celld:0.2 deploy/v2/celld
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker} computer/build.sh
+docker build -t baskule-computerd:local -f computerd/Dockerfile .
+docker build -t baskule-celld:local deploy/celld
 # The existing toolchain supplies Ubuntu, pinned Rust and libz3. Override its staging-only entry point.
-toolchain=$(sha256sum deploy/v2/build-env/Dockerfile | cut -c1-16)
+toolchain=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
 target="baskule-ci-native-x86-64-gnu-$toolchain"
-docker build --iidfile .run/release/build-env.id deploy/v2/build-env
+docker build --iidfile .run/release/build-env.id deploy/build-env
 docker run --rm --init --name "osdev-release-backend-${GITHUB_RUN_ID:-local}" \
   -v "$PWD:$PWD" -w "$PWD" \
   -v "${DOCKER_HOST#unix://}:/var/run/docker.sock" \
@@ -52,7 +52,7 @@ tar -czf .run/release/backend/platform-worker.tar.gz -C platform/dist worker.js
 tar -czf .run/release/backend/space-cell.tar.gz -C platform/src/space/t3 space-cell.js BUILT_FROM
 : > .run/release/runtime/images.txt
 for image in baskule-computer baskule-computerd baskule-celld baskule-openshell-gateway; do
-  docker tag "$image:0.2" "$image:$image_tag"
+  docker tag "$image:local" "$image:$image_tag"
   printf '%s %s\n' "$image:$image_tag" "$(docker image inspect --format '{{.Id}}' "$image:$image_tag")" >> .run/release/runtime/images.txt
   # The gateway already embeds the supervisor and sandbox images.
   archive=".run/release/backend/$image.tar.gz"

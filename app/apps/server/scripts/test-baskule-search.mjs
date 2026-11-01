@@ -1,5 +1,5 @@
 // Computer integration feedback loop: node scripts/test-baskule-search.mjs
-// Requires the locally built baskule-computer:0.2 image. No running stack needed.
+// Requires the locally built baskule-computer:local image. No running stack needed.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -35,7 +35,7 @@ try {
           "--cpus=0.5",
           "-v",
           `${fixture}:/sandbox:ro`,
-          "baskule-computer:0.2",
+          "baskule-computer:local",
           "node",
           "-e",
           COMPUTER_SEARCH_SCRIPT,

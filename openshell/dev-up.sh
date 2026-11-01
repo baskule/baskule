@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Development instance of baskule-openshell (for computerd integration tests), independent of the 0.2 stack:
+# Development instance of baskule-openshell (for computerd integration tests), independent of the stack:
 #   container osdev-openshell, network osdev-openshell-net, volumes osdev-openshell-{docker,state}
 #   gateway  -> 127.0.0.1:${DEV_GATEWAY_PORT:-47510}   volume helper -> 127.0.0.1:${DEV_VOLUMES_PORT:-47511}
 # Token for the volume helper: $OPENSHELL_VOLUMES_TOKEN (default "dev-volumes-token").
@@ -16,9 +16,9 @@ if ! docker container inspect "$C" >/dev/null 2>&1; then
   docker run -d --name "$C" --privileged --network osdev-openshell-net \
     --cpus "${DEV_CPUS:-2}" --memory "${DEV_MEMORY:-6g}" --pids-limit 8192 \
     -p 127.0.0.1:${DEV_GATEWAY_PORT:-47510}:47095 -p 127.0.0.1:${DEV_VOLUMES_PORT:-47511}:47096 \
-    -e OPENSHELL_VOLUMES_TOKEN="${OPENSHELL_VOLUMES_TOKEN:-dev-volumes-token}" -e BASKULE_TAG="${BASKULE_TAG:-0.2}" \
+    -e OPENSHELL_VOLUMES_TOKEN="${OPENSHELL_VOLUMES_TOKEN:-dev-volumes-token}" -e BASKULE_TAG="${BASKULE_TAG:-local}" \
     -v osdev-openshell-docker:/var/lib/docker -v osdev-openshell-state:/var/lib/openshell \
-    "baskule-openshell-gateway:${BASKULE_TAG:-0.2}" >/dev/null
+    "baskule-openshell-gateway:${BASKULE_TAG:-local}" >/dev/null
 else
   docker start "$C" >/dev/null
 fi
