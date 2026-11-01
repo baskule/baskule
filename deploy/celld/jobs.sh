@@ -166,7 +166,7 @@ case "${1:-}" in
       curl -s -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
     log "deployed $app"
-    [ -z "${SETUP_TOKEN:-}" ] || print_setup_link
+    if [ -n "${SETUP_STATUS_URL:-}" ] && [ -n "${SETUP_TOKEN:-}" ]; then print_setup_link; fi
     ;;
   *) echo "usage: baskule-celld-job setup|run COMMAND|bootstrap|deploy|backup|restore" >&2; exit 2 ;;
 esac

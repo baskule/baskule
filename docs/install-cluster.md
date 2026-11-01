@@ -150,8 +150,13 @@ curl -fL "$ASSETS/cluster-edge.env.example" -o .env
 Set `BASKULE_NODES_WORKER` to every private Worker address, separated by spaces. Set `BASKULE_BIND` to loopback
 for a local HTTPS proxy or to a private address for a separate proxy. Run `docker compose up -d`.
 Place your HTTPS reverse proxy in front of it as described in the [single-machine guide](install.md#open-it).
-The edge trusts no forwarded headers by default. Set `BASKULE_TRUSTED_PROXIES` to the load balancer address or CIDR
-when it forwards the original scheme, host, and client IP. Caddy uses connection retries and active health checks. Its HTTP listener does not obtain certificates.
+The edge trusts nobody by default. Set `BASKULE_TRUSTED_PROXIES` to the load balancer address or CIDR as seen by
+Caddy when it forwards the original scheme, host, and client IP. List multiple entries separated by spaces.
+For a host-local proxy, set `BASKULE_TRUSTED_PROXIES=private_ranges`. This is acceptable only with the HTTP port
+bound to loopback, because only host-local connections can reach it. Without trust, set `PUBLIC_ORIGINS` to the
+public HTTPS origin in the node deployment configuration; clients behind the proxy share its sign-in rate-limit
+bucket. Rootless Docker can hide client addresses; enforce access and rate limits at your outer proxy.
+Caddy uses connection retries and active health checks. Its HTTP listener does not obtain certificates.
 
 Open the setup link printed by `docker compose run --rm deploy` to create the first admin. The token becomes
 useless after setup. Configure **Admin → AI → Models** and invite people. For SSO, set `AUTH_CONFIG` or save the optional `config/auth.json` on the machine running the deploy job. Use

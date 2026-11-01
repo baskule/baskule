@@ -10,6 +10,7 @@ services:
     - source: edge
       target: /etc/caddy/Caddyfile
     environment:
+      BASKULE_TRUSTED_PROXIES: ${BASKULE_TRUSTED_PROXIES:-}
       BASKULE_NODES_WORKER: ${BASKULE_NODES_WORKER:?list all platform nodes as private-ip:47091}
     cpus: 1
     mem_limit: 256m
@@ -27,7 +28,7 @@ configs:
           auto_https off
           persist_config off
           servers {
-              trusted_proxies static ${BASKULE_TRUSTED_PROXIES:-}
+              trusted_proxies static {$$BASKULE_TRUSTED_PROXIES}
               trusted_proxies_strict
           }
       }

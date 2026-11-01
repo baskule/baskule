@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -94,5 +94,24 @@ for (const status of ["200", "307", "400", "403"]) test(`deploy readiness accept
     const result = spawnSync("bash", ["-c", 'source <(sed -n "/^wait_s3()/,/^}/p" deploy/celld/jobs.sh); wait_s3'], { encoding: "utf8", timeout: 10_000,
       env: { ...process.env, PATH: `${work}:${process.env.PATH}`, S3_ENDPOINT: "http://storage.test" } });
     assert.equal(result.status, 0, result.stderr);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+test("single-host deploy does not query setup status or print a setup link", () => {
+  const work = mkdtempSync(resolve(tmpdir(), "deploy-no-setup-test-"));
+  try {
+    const source = resolve(work, "source");
+    // Exercise the real deploy branch with a disposable app and offline tools.
+    mkdirSync(`${source}/hello`, { recursive: true });
+    writeFileSync(`${source}/hello/wrangler.json`, '{"vars":{}}');
+    writeFileSync(resolve(work, "jobs.sh"), readFileSync("deploy/celld/jobs.sh", "utf8").replaceAll("/src/", `${source}/`));
+    writeFileSync(resolve(work, "celld"), '#!/bin/bash\nexit 0\n', { mode: 0o755 });
+    writeFileSync(resolve(work, "curl"), '#!/bin/bash\nif [[ "$*" == *setup* ]]; then echo unexpected-setup-request >&2; exit 99; fi\necho 200\n', { mode: 0o755 });
+    const result = spawnSync("bash", [resolve(work, "jobs.sh"), "deploy"], { encoding: "utf8", timeout: 3_000,
+      env: { ...process.env, PATH: `${work}:${process.env.PATH}`, DEPLOY_APP: "hello", BASKULE_SECRETS_DIR: work,
+        S3_ENDPOINT: "http://storage.test", CELLD_BUCKET: "s3://test", SETUP_TOKEN: "test-token", SETUP_STATUS_URL: "", CELLD_NODES_INTERNAL: "" } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /deployed hello/);
+    assert.doesNotMatch(result.stderr, /setup|token=/);
   } finally { rmSync(work, { recursive: true, force: true }); }
 });

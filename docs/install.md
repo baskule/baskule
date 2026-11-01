@@ -14,12 +14,20 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 
 <!-- install-env:start -->
 ```dotenv
-# Bind address (default 127.0.0.1); 0.0.0.0 must be reachable only by the proxy or trusted clients.
+# Built-in HTTPS domain (unset by default); point DNS here and allow inbound ports 80 and 443.
+#BASKULE_DOMAIN=baskule.example.com
+# Edge listener (default http); use https with BASKULE_DOMAIN to publish ports 80/443 instead of BASKULE_PORT.
+#BASKULE_EDGE=https
+# Bind address (default 127.0.0.1 for HTTP, 0.0.0.0 for HTTPS).
+# An HTTP bind of 0.0.0.0 must be reachable only by your proxy or trusted clients.
 # Rootless Docker hides client addresses; enforce access and rate limits at your outer proxy.
 #BASKULE_BIND=127.0.0.1
 # HTTP port (default 47090).
 #BASKULE_PORT=47090
-# Public HTTPS origin (unset by default); only needed for SSO callbacks with a forwarding HTTPS proxy.
+# Trusted proxy addresses/CIDRs, space-separated (default empty: trust nobody).
+# A host-local proxy may use private_ranges only with the HTTP port bound to loopback.
+#BASKULE_TRUSTED_PROXIES=private_ranges
+# Additional allowed origins (unset by default); needed for SSO callbacks or an untrusted outer proxy.
 #PUBLIC_ORIGINS=https://baskule.example.com
 # SSO example: optional OIDC provider, password sign-in kept on; publicOrigin fixes callback URLs.
 #AUTH_CONFIG='{"version":1,"password":true,"publicOrigin":"https://baskule.example.com","providers":[{"id":"company","type":"oidc","name":"Company","options":{"clientId":"YOUR_CLIENT_ID","clientSecret":"YOUR_CLIENT_SECRET","discoveryUrl":"https://id.example.com/.well-known/openid-configuration"}}]}'
@@ -54,14 +62,32 @@ Open the link from `docker compose logs setup` and create the first admin. The l
 useless. Initial image imports can take several minutes. In **Admin → AI → Models**, configure your provider and
 model, then invite people. Password sign-in is enabled by default.
 
-Locally, use `http://127.0.0.1:47090`. For a remote machine, tunnel the loopback port:
+### Built-in HTTPS (recommended)
+
+Point your domain's DNS at the machine and allow inbound TCP ports 80 and 443. Set these two lines in `.env`:
+
+```dotenv
+BASKULE_DOMAIN=baskule.example.com
+BASKULE_EDGE=https
+```
+
+Run `docker compose up -d`, then read `docker compose logs setup`. The link uses `https://baskule.example.com`.
+Caddy obtains and renews certificates, redirects HTTP to HTTPS, and keeps certificates in the edge data volume.
+No `PUBLIC_ORIGINS` is needed for password sign-in. Browsers need HTTPS or localhost for microphone access.
+
+### Local access or SSH tunnel
+
+With the default HTTP listener, open `http://127.0.0.1:47090`. For a remote machine, tunnel the loopback port:
 
 ```sh
 ssh -L 47090:127.0.0.1:47090 user@server
 ```
 
-Open the setup link on your own machine while the tunnel runs. For HTTPS, put a proxy in front of port 47090.
-With Caddy on the host:
+Open the setup link on your own machine while the tunnel runs.
+
+### Your own reverse proxy
+
+Keep the default loopback HTTP bind. With Caddy on the host:
 
 ```caddyfile
 baskule.example.com {
@@ -69,13 +95,20 @@ baskule.example.com {
 }
 ```
 
-Forward Host, X-Forwarded-Proto, client IP, WebSockets, and streaming responses without buffering. The bundled edge
-trusts only the pinned Docker network gateway, `172.30.90.1`, where a host-local proxy appears through docker-proxy,
-and forwards the public scheme and host. Direct clients cannot supply forwarded addresses or hosts. No origin setting is needed for
-password sign-in. With `BASKULE_BIND=0.0.0.0`, restrict the port to your proxy or trusted clients with a firewall.
-Rootless Docker hides client addresses; enforce access and rate limits at the outer proxy. Only publish your HTTPS proxy. To create the admin through that proxy, open
-`https://baskule.example.com/setup#token=` followed by the token from the setup log. Optional `PUBLIC_URL` changes
-the printed link. Browsers need HTTPS or localhost for microphone access.
+Set `BASKULE_TRUSTED_PROXIES=private_ranges` in `.env` for this host-local proxy. This is acceptable only with the
+HTTP port bound to loopback, because only host-local connections can reach it. For a separate proxy, bind HTTP to
+a private address, restrict access to the proxy, and set `BASKULE_TRUSTED_PROXIES` to its address or CIDR as seen
+by the edge. List multiple entries separated by spaces. Forward Host, X-Forwarded-Proto, client IP, WebSockets,
+and streaming responses without buffering. Run `docker compose up -d` after edits.
+
+The edge trusts nobody by default. Explicit trust preserves the HTTPS scheme, host, and separate client rate limits;
+no `PUBLIC_ORIGINS` is needed for password sign-in. Without trust, set `PUBLIC_ORIGINS=https://baskule.example.com`
+to permit that origin; all clients behind the proxy share its sign-in rate-limit bucket. Rootless Docker can hide
+client addresses; enforce access and rate limits at your outer proxy. With `BASKULE_BIND=0.0.0.0`, restrict the HTTP
+port to your proxy or trusted clients with a firewall. Only publish your HTTPS proxy.
+
+To create the admin through your proxy, open `https://baskule.example.com/setup#token=` followed by the token from
+the setup log. Optional `PUBLIC_URL=https://baskule.example.com` changes the printed link.
 
 ## Optional settings
 
@@ -83,9 +116,11 @@ The example above lists common settings. All settings are optional:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `BASKULE_BIND`, `BASKULE_PORT` | `127.0.0.1`, `47090` | Published HTTP listener |
-| `PUBLIC_URL` | `http://127.0.0.1:<BASKULE_PORT>` | Address printed in the setup link |
-| `PUBLIC_ORIGINS` | unset | Additional allowed origins; set with SSO public URL |
+| `BASKULE_DOMAIN`, `BASKULE_EDGE` | unset, `http` | Set a domain and `https` to publish 80/443 with automatic certificates |
+| `BASKULE_BIND`, `BASKULE_PORT` | HTTP: `127.0.0.1`, `47090`; HTTPS bind: `0.0.0.0` | Published listener; port setting applies to HTTP only |
+| `BASKULE_TRUSTED_PROXIES` | empty | Proxy addresses/CIDRs trusted to forward scheme, host and client IP |
+| `PUBLIC_URL` | `https://<BASKULE_DOMAIN>` if set, otherwise `http://127.0.0.1:<BASKULE_PORT>` | Address printed in the setup link |
+| `PUBLIC_ORIGINS` | unset | Additional allowed origins; set for SSO or an untrusted outer proxy |
 | `AUTH_CONFIG` | password sign-in | Authentication JSON; `publicOrigin` fixes SSO callback URLs |
 | `S3_ENDPOINT`, `S3_REGION`, `CELLD_BUCKET_NAME` | local RustFS, `us-east-1`, `baskule` | Shared storage |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | generated local keys | External storage credentials |
@@ -141,11 +176,6 @@ other computer files are temporary. Restore the same release before updating.
 ## Update
 
 Read release notes for alpha data wipes. Back up first and keep the old compose file with the backup.
-For an installation using the earlier shared secret volume or an unpinned Docker network, run
-`docker compose down` with the old file before replacing it. Bootstrap creates the scoped secret volumes and
-regenerates defaults; explicit `.env` values still override them. Buckets and computer disks remain. The old
-`<project>_baskule-secrets` volume is unused and can be removed after verifying the update and preserving a backup.
-Then:
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml

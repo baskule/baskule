@@ -72,7 +72,7 @@ docker compose up -d
 docker compose logs setup        # prints the one-time link that creates the first admin
 ```
 
-Open the setup link to create the first admin; see [installation and configuration](docs/install.md), or the [cluster guide](docs/install-cluster.md) for several machines.
+Open the setup link to create the first admin; see [configuration and built-in HTTPS](docs/install.md), or the [cluster guide](docs/install-cluster.md) for several machines.
 
 ## Develop
 

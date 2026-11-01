@@ -10,7 +10,7 @@ import { createApi } from "./journeys/api.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const target = process.argv[2] ?? "all";
-if (!["all", "single", "cluster", "restore", "fresh", "proxy", "external"].includes(target)) throw new Error("Choose all, single, proxy, external, cluster, restore, or fresh");
+if (!["all", "single", "cluster", "restore", "fresh", "proxy", "https", "external"].includes(target)) throw new Error("Choose all, single, proxy, https, external, cluster, restore, or fresh");
 const version = process.env.BASKULE_INSTALL_VERSION ?? "local";
 const registry = process.env.BASKULE_INSTALL_REGISTRY ?? "ghcr.io/baskule";
 const computerImage = `${registry}/baskule-computerd:${version}`;
@@ -178,7 +178,7 @@ function directClient(w) {
   for (let n = 0; n < 10; n++) expect(post({ ...admin, password: "wrong" }, { "X-Forwarded-For": `203.0.114.${n}` })).toBe(401);
   expect(post(admin, { "X-Forwarded-For": "203.0.114.200" })).toBe(429);
   command(["rm", "-f", name]); containers.delete(name);
-  pass("direct private clients cannot spoof forwarded host, scheme or IP to bypass origin checks or sign-in limits");
+  pass("with default proxy trust, a direct bridge client cannot spoof forwarded host, scheme or IP");
 }
 async function external() {
   const p = await port();
@@ -207,64 +207,138 @@ async function external() {
   command(["rm", "-f", storage]); containers.delete(storage);
   stopWorld(w);
 }
-async function proxy() {
-  const p = await port();
-  const w = world("single-proxy", { BASKULE_PORT: p, SETUP_TOKEN: adminVars.SETUP_TOKEN, COMPUTERD_TOKEN: "computer-env-override", OPENSHELL_VOLUMES_TOKEN: "volume-env-override", RUSTFS_ACCESS_KEY: "rustfs-env-override", RUSTFS_SECRET_KEY: "rustfs-env-secret-override", E2E_LOGIN_EMAIL: "not-for-services@example.test", E2E_LOGIN_PASSWORD: "not-for-services" });
-  w.dc(["up", "-d"]);
-  const edge = `http://127.0.0.1:${p}`;
-  await ready(`${edge}/api/baskule/setup`);
+const caddyImage = "caddy:2@sha256:25cdc846626b62d05f6b633b9b40c2c9f6ef89b515dc76133cefd920f7dbe562";
+async function outerProxy(w, upstream) {
   const proxyPort = await port();
-  const proxyConfig = resolve(w.directory, "outer-proxy.Caddyfile");
-  writeFileSync(proxyConfig, `{
+  const config = resolve(w.directory, "outer-proxy.Caddyfile");
+  writeFileSync(config, `{
     admin off
     auto_https off
   }
   :${proxyPort} {
     bind 127.0.0.1
-    reverse_proxy ${edge} {
+    reverse_proxy ${upstream} {
       header_up Host proxy.baskule.test
       header_up X-Forwarded-Host proxy.baskule.test
       header_up X-Forwarded-Proto https
       header_up X-Forwarded-For {http.request.header.X-Test-Client-IP}
     }
   }`);
-  const proxyName = `${w.project}-outer-proxy`;
-  containers.set(proxyName, "proxy");
-  command(["run", "-d", "--name", proxyName, "--network", "host", "-v", `${proxyConfig}:/etc/caddy/Caddyfile:ro`,
-    "caddy:2@sha256:25cdc846626b62d05f6b633b9b40c2c9f6ef89b515dc76133cefd920f7dbe562"]);
+  const name = `${w.project}-outer-proxy`;
+  containers.set(name, "proxy");
+  command(["run", "-d", "--name", name, "--network", "host", "-v", `${config}:/etc/caddy/Caddyfile:ro`, caddyImage]);
   const base = `http://127.0.0.1:${proxyPort}`;
   await ready(`${base}/api/baskule/setup`);
-  const origin = "https://proxy.baskule.test";
-  const headers = { "X-Test-Client-IP": "203.0.113.17", Origin: origin, "Content-Type": "application/json" };
-  const setupLog = w.dc(["logs", "--no-color", "setup"]);
-  expect(setupLog.includes(`http://127.0.0.1:${p}/setup#token=`)).toBe(true);
-  const token = setupLog.match(/\/setup#token=([^\s]+)/)[1];
-  expect(token).toBe(adminVars.SETUP_TOKEN);
-  const post = async (path, body, extra = {}) => {
-    const result = spawnSync("curl", ["-sS", "-D", resolve(w.directory, "proxy-headers"), ...Object.entries({ ...headers, ...extra }).flatMap(([key,value]) => ["-H", `${key}: ${value}`]), "--data-binary", "@-", "-w", "\n%{http_code}", `${base}${path}`], { input: JSON.stringify(body), encoding: "utf8" });
-    expect(result.status).toBe(0);
+  return { name, post: curlPost(w, base, { Origin: "https://proxy.baskule.test", "X-Test-Client-IP": "203.0.113.17" }) };
+}
+function curlPost(w, base, headers = {}, options = []) {
+  return (path, body, extra = {}) => {
+    const result = spawnSync("curl", ["-sS", "--max-time", "20", ...options, "-D", resolve(w.directory, "response-headers"), "-c", resolve(w.directory, "response-cookies"),
+      ...Object.entries({ Origin: base, "Content-Type": "application/json", ...headers, ...extra }).flatMap(([key,value]) => ["-H", `${key}: ${value}`]),
+      "--data-binary", "@-", "-w", "\n%{http_code}", `${base}${path}`], { input: JSON.stringify(body), encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(0);
     return Number(result.stdout.trim().split("\n").at(-1));
   };
-  expect(await post("/api/baskule/setup", { token, name: "Proxy admin", ...admin }, { Origin: "https://foreign.test" })).toBe(403);
-  expect(await post("/api/baskule/setup", { token, name: "Proxy admin", ...admin })).toBe(201);
-  expect(/set-cookie: (?:__Secure-)?baskule\.session_token=.*; Secure(?:;|\r|$)/i.test(readFileSync(resolve(w.directory, "proxy-headers"), "utf8"))).toBe(true);
-  expect(await post("/auth/sign-in/email", admin)).toBe(200);
-  expect(await post("/auth/sign-in/email", admin, { Origin: "https://foreign.test" })).toBe(403);
-  // Distinct forwarded client addresses have independent sign-in budgets.
-  for (let n = 0; n < 10; n++) expect(await post("/auth/sign-in/email", { ...admin, password: "wrong" }, { "X-Test-Client-IP": "203.0.113.18" })).toBe(401);
-  expect(await post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.18" })).toBe(429);
-  expect(await post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.19" })).toBe(200);
-  pass("HTTPS proxy headers without PUBLIC_ORIGINS: setup, Secure session, sign-in, foreign Origin refusal and real-client rate limits");
-  scopedSecrets(w);
-  directClient(w);
-  const countLinks = service => (w.dc(["logs", "--no-color", service]).match(/setup#token=/g) ?? []).length;
-  const before = [countLinks("setup"), countLinks("baskule-deploy")];
+}
+function secureCookie(w) {
+  expect(/set-cookie: (?:__Secure-)?baskule\.session_token=.*; Secure(?:;|\r|$)/i.test(readFileSync(resolve(w.directory, "response-headers"), "utf8"))).toBe(true);
+}
+function proxyBudgets(post) {
+  for (let n = 0; n < 10; n++) expect(post("/auth/sign-in/email", { ...admin, password: "wrong" }, { "X-Test-Client-IP": "203.0.113.18" })).toBe(401);
+  expect(post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.18" })).toBe(429);
+  expect(post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.19" })).toBe(200);
+}
+async function proxy() {
+  for (const trusted of [false, true]) {
+    const p = await port();
+    const w = world(`single-proxy-${trusted ? "trusted" : "default"}`, { BASKULE_PORT: p, SETUP_TOKEN: adminVars.SETUP_TOKEN,
+      ...(trusted ? { BASKULE_TRUSTED_PROXIES: "private_ranges" } : {}), COMPUTERD_TOKEN: "computer-env-override",
+      OPENSHELL_VOLUMES_TOKEN: "volume-env-override", RUSTFS_ACCESS_KEY: "rustfs-env-override", RUSTFS_SECRET_KEY: "rustfs-env-secret-override",
+      E2E_LOGIN_EMAIL: "not-for-services@example.test", E2E_LOGIN_PASSWORD: "not-for-services" });
+    w.dc(["up", "-d"]);
+    const fixture = await outerProxy(w, `http://127.0.0.1:${p}`);
+    const { post } = fixture;
+    const setupLog = w.dc(["logs", "--no-color", "setup"]);
+    expect(setupLog.includes(`http://127.0.0.1:${p}/setup#token=`)).toBe(true);
+    const token = setupLog.match(/\/setup#token=([^\s]+)/)[1];
+    expect(token).toBe(adminVars.SETUP_TOKEN);
+    const body = { token, name: "Proxy admin", ...admin };
+    if (!trusted) {
+      expect(post("/api/baskule/setup", body)).toBe(403);
+      envFile(w.file, { PUBLIC_ORIGINS: "https://proxy.baskule.test" });
+      w.dc(["up", "-d"]);
+      await ready(`http://127.0.0.1:${p}/api/baskule/setup`);
+    }
+    expect(post("/api/baskule/setup", body, { Origin: "https://foreign.test" })).toBe(403);
+    expect(post("/api/baskule/setup", body)).toBe(201);
+    if (trusted) secureCookie(w);
+    expect(post("/auth/sign-in/email", admin)).toBe(200);
+    expect(post("/auth/sign-in/email", admin, { Origin: "https://foreign.test" })).toBe(403);
+    if (trusted) {
+      proxyBudgets(post);
+      pass("explicitly trusted host-local proxy: setup, Secure cookie, sign-in, foreign Origin refusal and separate client limits without PUBLIC_ORIGINS");
+    } else {
+      directClient(w);
+      // Changing a forwarded address does not create another rate-limit budget without trust.
+      for (let n = 0; n < 8; n++) expect(post("/auth/sign-in/email", { ...admin, password: "wrong" }, { "X-Test-Client-IP": `203.0.113.${n + 30}` })).toBe(401);
+      expect(post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.90" })).toBe(429);
+      pass("untrusted proxy: foreign origin refused until PUBLIC_ORIGINS is set, setup and sign-in work, clients share the proxy limit");
+    }
+    scopedSecrets(w);
+    const countLinks = service => (w.dc(["logs", "--no-color", service]).match(/setup#token=/g) ?? []).length;
+    expect(countLinks("baskule-deploy")).toBe(0);
+    const before = countLinks("setup");
+    w.dc(["up", "-d"]);
+    expect(countLinks("setup")).toBe(before);
+    expect(countLinks("baskule-deploy")).toBe(0);
+    pass("custom port setup link, silent single-host deploy and no new setup links after admin creation");
+    command(["rm", "-f", fixture.name]); containers.delete(fixture.name);
+    stopWorld(w);
+  }
+}
+async function https() {
+  const httpPort = await port(), tlsPort = await port();
+  const domain = "baskule.test";
+  const w = world("single-https", { BASKULE_DOMAIN: domain, BASKULE_EDGE: "https" });
+  const config = JSON.parse(w.dc(["config", "--format", "json"]));
+  expect(config.services["baskule-edge"].ports.map(p => p.target).sort((a, b) => a - b)).toEqual([80, 443]);
+  expect(config.services["baskule-edge"].environment.BASKULE_TRUSTED_PROXIES).toBe("");
+  // Test-only CA and random loopback ports; the release has public ACME and publishes 80/443.
+  const override = resolve(w.directory, "internal-ca.yml");
+  const caddy = config.configs.edge.content.replace("admin off", "admin off\n    local_certs");
+  writeFileSync(override, `services:\n  baskule-edge:\n    ports: !override ["127.0.0.1:${httpPort}:80", "127.0.0.1:${tlsPort}:443"]\nconfigs:\n  edge:\n    content: ${JSON.stringify(caddy)}\n`);
+  w.files.push("-f", override);
   w.dc(["up", "-d"]);
-  expect([countLinks("setup"), countLinks("baskule-deploy")]).toEqual(before);
-  pass("custom port setup link and no new links after setup is complete");
-  command(["rm", "-f", proxyName]); containers.delete(proxyName);
+  const edge = w.dc(["ps", "-q", "baskule-edge"]);
+  const ca = resolve(w.directory, "root.crt");
+  await expect.poll(() => command(["exec", edge, "sh", "-c", "test -f /data/caddy/pki/authorities/local/root.crt && echo ready"], { allowFailure: true }), { timeout: 30_000 }).toBe("ready");
+  command(["cp", `${edge}:/data/caddy/pki/authorities/local/root.crt`, ca]);
+  const base = `https://${domain}`;
+  const options = ["--noproxy", "*", "--cacert", ca, "--connect-to", `${domain}:443:127.0.0.1:${tlsPort}`];
+  await expect.poll(() => spawnSync("curl", ["-sS", "--max-time", "3", ...options, "-o", "/dev/null", "-w", "%{http_code}", `${base}/api/baskule/setup`], { encoding: "utf8" }).stdout, { timeout: 60_000 }).toBe("200");
+  const redirect = spawnSync("curl", ["-sS", "-I", "-H", `Host: ${domain}`, `http://127.0.0.1:${httpPort}`], { encoding: "utf8" });
+  expect(redirect.stdout).toContain(`Location: https://${domain}/`);
+  const logs = w.dc(["logs", "--no-color", "setup"]);
+  expect(logs).toContain(`${base}/setup#token=`);
+  const token = logs.match(/\/setup#token=([^\s]+)/)[1];
+  const post = curlPost(w, base, {}, options);
+  expect(post("/api/baskule/setup", { token, name: "HTTPS admin", ...admin })).toBe(201);
+  secureCookie(w);
+  const me = spawnSync("curl", ["-sS", ...options, "-b", resolve(w.directory, "response-cookies"), `${base}/api/baskule/me`], { encoding: "utf8" });
+  expect(me.status).toBe(0);
+  expect(JSON.parse(me.stdout).user.role).toBe("admin");
+  expect(post("/auth/sign-in/email", admin)).toBe(200);
+  secureCookie(w);
+  expect(post("/auth/sign-in/email", admin, { Origin: "https://foreign.test" })).toBe(403);
+  // The private HTTP listener remains available for computerd runtime settings.
+  expect(command(["exec", w.dc(["ps", "-q", "baskule-computerd"]), "sh", "-c",
+    '. /run/baskule/secrets; exec node -e \'fetch(process.env.PRODUCT_SETTINGS_URL,{headers:{Authorization:"Bearer "+process.env.COMPUTERD_TOKEN}}).then(r=>{console.log(r.status);if(!r.ok)process.exit(1)})\''])).toBe("200");
+  const originalCA = readFileSync(ca, "utf8");
+  w.dc(["up", "-d"]);
+  command(["cp", `${edge}:/data/caddy/pki/authorities/local/root.crt`, ca]);
+  expect(readFileSync(ca, "utf8")).toBe(originalCA);
+  pass("built-in HTTPS with test-only internal CA: verified TLS, HTTP redirect, domain setup URL, Secure cookies, sign-in, origin refusal, private settings and persistent CA without PUBLIC_ORIGINS");
   stopWorld(w);
-
 }
 async function exercise(w, base, endpoint) {
   await ready(`${base}/version.json`);
@@ -487,6 +561,16 @@ async function cluster() {
   const llm = await fake(computers, { network, address: modelHost });
   await completeSetup(a, base);
   const result = await exercise(computers, base, llm.endpoint);
+  envFile(edge.file, { BASKULE_TRUSTED_PROXIES: "private_ranges" });
+  edge.dc(["up", "-d"]);
+  const localProxy = await outerProxy(edge, base);
+  expect(localProxy.post("/auth/sign-in/email", admin)).toBe(200);
+  secureCookie(edge);
+  expect(localProxy.post("/auth/sign-in/email", admin, { Origin: "https://foreign.test" })).toBe(403);
+  proxyBudgets(localProxy.post);
+  pass("cluster edge with explicitly trusted host-local proxy preserves HTTPS, Secure cookies and separate client limits");
+  command(["rm", "-f", localProxy.name]); containers.delete(localProxy.name);
+
   // Kill the node owning the most cells; disable automatic restart for this drill.
   const owned = (w, ip) => JSON.parse(w.dc(["exec", "-T", "node", "curl", "-sf", `http://${ip}:47092/state`])).owned_cells ?? 0;
   const victim = owned(a, nodeA) >= owned(b, nodeB) ? a : b;
@@ -500,6 +584,7 @@ async function cluster() {
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
 }
 try {
+  if (target === "all" || target === "https") await https();
   if (target === "all" || target === "proxy") await proxy();
   if (target === "all" || target === "external") await external();
   if (target === "fresh") await fresh();

@@ -51,9 +51,8 @@ services:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     entrypoint: ["baskule-celld-job", "setup"]
     restart: "no"
-    env_file: *optional-env
     environment:
-      PUBLIC_URL: ${PUBLIC_URL:-http://127.0.0.1:${BASKULE_PORT:-47090}}
+      PUBLIC_URL: ${PUBLIC_URL:-${BASKULE_DOMAIN:+https://}${BASKULE_DOMAIN:-http://127.0.0.1:${BASKULE_PORT:-47090}}}
       SETUP_TOKEN: ${SETUP_TOKEN:-}
       SETUP_STATUS_URL: http://baskule-celld-a:47091/api/baskule/setup
     volumes:
@@ -135,8 +134,7 @@ services:
       CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
       DEPLOY_APP: platform
       CELLD_NODES_INTERNAL: baskule-celld-a:47092 baskule-celld-b:47092
-      PUBLIC_URL: ${PUBLIC_URL:-http://127.0.0.1:${BASKULE_PORT:-47090}}
-      SETUP_STATUS_URL: http://baskule-celld-a:47091/api/baskule/setup
+      SETUP_STATUS_URL: ""
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
       SETUP_TOKEN: ${SETUP_TOKEN:-}
       AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
@@ -159,16 +157,18 @@ services:
         condition: service_started
 
   baskule-edge:
-    image: caddy:2@sha256:25cdc846626b62d05f6b633b9b40c2c9f6ef89b515dc76133cefd920f7dbe562
+    extends:
+      service: edge-${BASKULE_EDGE:-http}
+    profiles: !reset []
+    image: &edge-image caddy:2@sha256:25cdc846626b62d05f6b633b9b40c2c9f6ef89b515dc76133cefd920f7dbe562
     restart: unless-stopped
-    ports:
-      - "${BASKULE_BIND:-127.0.0.1}:${BASKULE_PORT:-47090}:47090"
     volumes:
       - baskule-edge-data:/data
     configs:
       - source: edge
         target: /etc/caddy/Caddyfile
     environment:
+      BASKULE_TRUSTED_PROXIES: ${BASKULE_TRUSTED_PROXIES:-}
       BASKULE_NODES_WORKER: baskule-celld-a:47091 baskule-celld-b:47091
     networks: [baskule-net]
     depends_on:
@@ -182,6 +182,26 @@ services:
         condition: service_started
     cpus: 1
     mem_limit: 256m
+
+  # Inheritance templates select one edge; these services are never started by the normal profiles.
+  edge-http:
+    image: *edge-image
+    profiles: [edge-template]
+    ports:
+      - "${BASKULE_BIND:-127.0.0.1}:${BASKULE_PORT:-47090}:47090"
+    environment:
+      BASKULE_SITE: :47090
+      BASKULE_AUTO_HTTPS: auto_https off
+
+  edge-https:
+    image: *edge-image
+    profiles: [edge-template]
+    ports:
+      - "${BASKULE_BIND:-0.0.0.0}:80:80"
+      - "${BASKULE_BIND:-0.0.0.0}:443:443"
+    environment:
+      BASKULE_SITE: "${BASKULE_DOMAIN:-} :47090"
+      BASKULE_AUTO_HTTPS: ""
 
   baskule-computerd:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computerd:${BASKULE_VERSION:-0.5.0}
@@ -292,11 +312,7 @@ services:
       - baskule-openshell-docker:/backup/openshell-docker
 
 networks:
-  baskule-net:
-    ipam:
-      config:
-        - subnet: 172.30.90.0/24
-          gateway: 172.30.90.1
+  baskule-net: {}
   baskule-computers: {}
 
 volumes:
@@ -315,18 +331,18 @@ configs:
   edge:
     content: |
       # baskule-edge: the only published port of the stack. Load-balances the celld nodes (any node can serve any
-      # request: celld forwards to the owner of a cell). Plain HTTP behind the HTTPS reverse proxy.
+      # request: celld forwards to the owner of a cell). The selected edge serves local HTTP or automatic HTTPS.
       {
           admin off
-          auto_https off
+          {$$BASKULE_AUTO_HTTPS}
           persist_config off
           servers {
-              trusted_proxies static 172.30.90.1
+              trusted_proxies static {$$BASKULE_TRUSTED_PROXIES}
               trusted_proxies_strict
           }
       }
 
-      :47090 {
+      {$$BASKULE_SITE} {
           # Compress static and JSON responses only: streams (SSE text/event-stream, exec NDJSON) must never be buffered.
           encode {
               zstd

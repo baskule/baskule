@@ -325,9 +325,9 @@ export class ControlService {
     if (!expected || !timingSafeEqual(enc.encode(a), enc.encode(b))) throw new HttpError(403, "bad_token");
     const name = str(body.name, "name", 100);
     const email = normEmail(body.email);
-    if (!EMAIL_RE.test(email) || email.length > 254) throw new HttpError(400, "invalid_email");
+    if (!EMAIL_RE.test(email) || email.length > 254) throw new HttpError(400, "invalid_email", "Enter a valid email address of at most 254 characters.");
     const password = typeof body.password === "string" ? body.password : "";
-    if (this.installation.password && (password.length < 8 || password.length > 256)) throw new HttpError(400, "invalid_password");
+    if (this.installation.password && (password.length < 8 || password.length > 256)) throw new HttpError(400, "invalid_password", "Password must be between 8 and 256 characters.");
     if (!this.installation.password && body.password !== undefined) throw new HttpError(400, "invalid_field", "Password sign-in is disabled. Omit the password and sign in through SSO.");
     // Claim before awaiting Better Auth so concurrent submissions cannot create two first admins.
     if (!this.setupRequired() || this.setupInProgress) throw new HttpError(409, "already_set_up");
@@ -929,7 +929,7 @@ export class ControlService {
     const s = await this.requireAdmin(req);
     const body = await readJson<{ email?: string; role?: string; spaces?: { spaceId?: string; role?: string }[]; expiresInHours?: number }>(req);
     const email = normEmail(body.email);
-    if (!EMAIL_RE.test(email)) throw new HttpError(400, "invalid_email");
+    if (!EMAIL_RE.test(email)) throw new HttpError(400, "invalid_email", "Enter a valid email address.");
     if (this.one("select id from user where email = ?", email)) throw new HttpError(409, "user_exists", "this person already has an account: add them to spaces directly");
     const role = body.role === "admin" ? "admin" : "member";
     const spaces = (Array.isArray(body.spaces) ? body.spaces : []).map((x) => {
@@ -1095,7 +1095,7 @@ export class ControlService {
   private async adminCreateUser(req: Request): Promise<Response> {
     const body = await readJson<{ email?: string; name?: string; password?: string; role?: string }>(req);
     const email = normEmail(body.email);
-    if (!EMAIL_RE.test(email)) throw new HttpError(400, "invalid_email");
+    if (!EMAIL_RE.test(email)) throw new HttpError(400, "invalid_email", "Enter a valid email address.");
     const name = str(body.name, "name", 100);
     const password = typeof body.password === "string" ? body.password : "";
     if (!this.installation.password && password) throw new HttpError(400, "password_disabled");
@@ -1141,7 +1141,7 @@ export class ControlService {
   /** Temporary password, only for an account that has never signed in (review M7: no takeover of a used account). */
   private async setInitialPassword(req: Request, userId: string): Promise<Response> {
     const { password } = await readJson<{ password?: string }>(req);
-    if (typeof password !== "string" || password.length < 8 || password.length > 256) throw new HttpError(400, "invalid_password");
+    if (typeof password !== "string" || password.length < 8 || password.length > 256) throw new HttpError(400, "invalid_password", "Password must be between 8 and 256 characters.");
     const prof = this.one("select first_sign_in_at from user_profile where user_id = ?", userId);
     if (prof?.first_sign_in_at) throw new HttpError(409, "already_signed_in", "this person has signed in: use a reset link (it signs them out everywhere)");
     const ctx = await this.auth.$context;

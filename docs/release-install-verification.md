@@ -40,7 +40,8 @@ The driver removes its own containers, networks, and volumes in a `finally` bloc
 or the shared development gateway. Evidence, logs, the backup, and private generated configuration stay under
 `.run/`; treat them as private. The release factory runs the driver on its disposable runner before image publishing.
 
-Before submitting a change, also run `scripts/check plan`, its selected checks, `actionlint` on the release
+Before submitting a change, also run `BASKULE_CHECK_RECORD=0 scripts/check plan`, its selected checks with
+`BASKULE_CHECK_RECORD=0` to disable evidence-ref reads and pushes, `actionlint` on the release
 workflow, and Compose configuration checks for all roles and profiles. A verification-only factory run can prove
 the full packaging path. Anonymous GHCR pulls, public release downloads, and real multi-machine operation require
 separate owner-controlled verification after publication.
@@ -48,25 +49,36 @@ separate owner-controlled verification after publication.
 Pass `fresh` to run three cold installs into empty volumes, checking first startup, health, version, and
 admin sign-in each time. Set `BASKULE_INSTALL_EVIDENCE` to choose an evidence directory.
 
-Pass `single`, `proxy`, `external`, or `cluster` as the driver's last argument to rerun only that target after a classified failure.
+Pass `single`, `https`, `proxy`, `external`, or `cluster` as the driver's last argument to rerun only that target after a classified failure.
 
 The single-machine driver saves private account and thread references in `.run/<run>/single-proof.json`.
 To rerun only restoration against the retained archive, pass `restore .run/<run>/single-proof.json` to the driver.
 The proof file contains test credentials and is not an uploaded artifact.
 
-The `proxy` target runs a host-local forwarding proxy in front of the released edge, with a custom bind port and no
-`PUBLIC_ORIGINS`. It checks the printed link's port, HTTPS setup and Secure cookies, sign-in, foreign Origin refusal,
-and independent client rate limits. A separate direct client on the private Docker network must not be able to
-spoof forwarded host, scheme, or IP to bypass those checks. Runtime environment and mounted-volume assertions
-verify that RustFS, computerd, and OpenShell receive only their own generated secrets and no unrelated `.env` values.
-After the admin exists, another `up -d` must add no setup links to the setup or deploy logs.
+The `https` target selects the released built-in HTTPS edge with `BASKULE_DOMAIN` and `BASKULE_EDGE=https`.
+It replaces only the published ports with free loopback ports and adds Caddy's `local_certs` directive in a
+test-only Compose override under `.run/`. Curl verifies TLS using the generated internal CA root copied from
+Caddy's data volume and `--connect-to` to preserve the public domain, SNI, and origin. Checks cover the HTTP redirect,
+HTTPS setup link, setup, Secure cookies, sign-in, foreign Origin refusal, private computerd settings, and CA persistence.
+No `PUBLIC_ORIGINS` is set. This exercises TLS and certificate storage without obtaining a public ACME certificate;
+public DNS, ACME challenges, and renewal still need owner-controlled verification on a published domain.
+
+The `proxy` target runs a host-local forwarding proxy in front of the released HTTP edge. With default empty
+`BASKULE_TRUSTED_PROXIES`, setup rejects the forwarded HTTPS origin until `PUBLIC_ORIGINS` allows it. Setup and
+sign-in then work, and clients share the proxy's rate-limit bucket. A separate client on the Docker bridge must not
+be able to spoof forwarded host, scheme, or IP to bypass those checks. A second fresh installation explicitly trusts
+the host-local proxy using `private_ranges`, with the port bound to loopback and no `PUBLIC_ORIGINS`. It checks
+setup, Secure cookies, sign-in, foreign Origin refusal, and independent client rate limits. The cluster target also
+checks its bundled edge with an explicitly trusted host-local proxy and separate client limits.
+
+Runtime environment and mounted-volume assertions verify that RustFS, computerd, and OpenShell receive only their
+own generated secrets and no unrelated `.env` values. The proxy target checks the custom bind port in the printed
+link, no links from the single-host deploy job, and no additional setup links after admin creation and another `up -d`.
 
 The `external` target uses an independent S3 fixture while the bundled RustFS exits unsuccessfully. The platform
 must deploy, print a setup link, create an admin, and sign in without depending on local storage health.
-Both targets run as part of `all`; run them separately while iterating. Single-machine projects pin the platform
-network to `172.30.90.0/24`, so run these targets sequentially on a host without another installation on that subnet.
-Docker's gateway is the only trusted proxy on this network. Rootless Docker can hide client addresses and needs
-outer-proxy access controls and rate limits.
+All these targets run as part of `all`; use individual targets while iterating. Docker chooses the single-host
+network subnet. Rootless Docker can hide client addresses and needs outer-proxy access controls and rate limits.
 
 Setup unit checks cover invalid tokens, validation, SSO, duplicate and concurrent submissions, rate limiting, capacity
 eviction, and success when automatic sign-in fails. Jobs checks cover consumer secret scopes, idempotence, adding

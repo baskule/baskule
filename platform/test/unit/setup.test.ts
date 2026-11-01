@@ -9,8 +9,12 @@ describe("first admin setup", () => {
     expect((await call(h, "GET", "/api/baskule/setup")).body).toEqual({ required: true, password: true });
     expect(await call(h, "POST", "/api/baskule/setup", { body: { ...body, token: "wrong" } })).toMatchObject({ status: 403, body: { error: "bad_token" } });
     expect((await call(h, "POST", "/api/baskule/setup", { body: null })).status).toBe(400);
-    for (const invalid of [{ email: "bad" }, { name: "" }, { password: "short" }])
-      expect((await call(h, "POST", "/api/baskule/setup", { body: { ...body, ...invalid } })).status).toBe(400);
+    for (const invalid of [{ email: "bad" }, { name: "" }, { password: "short" }]) {
+      const response = await call(h, "POST", "/api/baskule/setup", { body: { ...body, ...invalid } });
+      expect(response.status).toBe(400);
+      expect(response.body.message).not.toBe(response.body.error);
+      expect(response.body.message).not.toContain("_");
+    }
     const created = await call(h, "POST", "/api/baskule/setup", { body, origin: null, headers: { cookie: "" } });
     expect(created.status).toBe(201);
     expect((await call(h, "GET", "/api/baskule/me", { creds: { cookie: cookieFrom(created) } })).body.user.role).toBe("admin");

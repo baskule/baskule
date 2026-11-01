@@ -182,6 +182,7 @@ function SetupScreen({ token }: { readonly token: string | null }) {
               label={t("Your name")}
               name="name"
               autoComplete="name"
+              maxLength={100}
               autoFocus
               required
               value={name}
@@ -193,6 +194,7 @@ function SetupScreen({ token }: { readonly token: string | null }) {
               type="email"
               name="email"
               autoComplete="username"
+              maxLength={254}
               required
               value={email}
               error={showProblems && !emailValid ? t("Enter a valid email address.") : null}
