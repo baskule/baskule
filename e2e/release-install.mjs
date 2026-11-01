@@ -452,7 +452,7 @@ async function folder() {
     }));
     const page = await context.newPage();
     await page.goto(`${base}/admin/plugins/installed`);
-    await expect(page.getByRole("heading", { name: /^Plugins/ })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /^Plugins/, level: 2 })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("release-folder", { exact: true })).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: resolve(evidence, "fresh-folder-installed.png") });
     pass("fresh zero-config release install: mounted folder plugin appears in Admin → Plugins after setup; consumers retain scoped secrets");
