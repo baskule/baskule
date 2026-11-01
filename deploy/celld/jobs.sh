@@ -57,6 +57,7 @@ generate_secrets() {
   ensure_secret .pending COMPUTERD_TOKEN platform computerd
   ensure_secret .pending OPENSHELL_VOLUMES_TOKEN computerd openshell
   ensure_secret .pending SETUP_TOKEN platform
+  ensure_secret .pending PLUGIN_SYNC_TOKEN platform
   for role in storage platform computerd openshell; do
     mv "$secrets_root/$role/.pending" "$secrets_root/$role/secrets"
   done
@@ -159,10 +160,10 @@ case "${1:-}" in
       .env as $name | env[$name] | if type == "string" and length > 0 then . else error("Missing authentication environment reference") end
       else . end)')
     jq --arg PUBLIC_ORIGINS "${PUBLIC_ORIGINS:-}" --arg AUTH_CONFIG "$AUTH_CONFIG" \
-       --arg SETUP_TOKEN "${SETUP_TOKEN:-}" \
+       --arg SETUP_TOKEN "${SETUP_TOKEN:-}" --arg PLUGIN_SYNC_TOKEN "${PLUGIN_SYNC_TOKEN:-}" \
        --arg AUTH_SECRET "${AUTH_SECRET:-}" --arg COMPUTERD_URL "${COMPUTERD_URL:-}" --arg COMPUTERD_TOKEN "${COMPUTERD_TOKEN:-}" \
        --arg OTLP_TRACES_URL "${OTLP_TRACES_URL:-}" \
-       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, AUTH_SECRET:$AUTH_SECRET, COMPUTERD_URL:$COMPUTERD_URL,
+       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, PLUGIN_SYNC_TOKEN:$PLUGIN_SYNC_TOKEN, AUTH_SECRET:$AUTH_SECRET, COMPUTERD_URL:$COMPUTERD_URL,
           COMPUTERD_TOKEN:$COMPUTERD_TOKEN, OTLP_TRACES_URL:$OTLP_TRACES_URL})' \
        "/src/$app/wrangler.json" > "$work/wrangler.json"
     unset AUTH_CONFIG
@@ -172,7 +173,7 @@ case "${1:-}" in
     for n in ${CELLD_NODES_INTERNAL:-}; do
       curl -s -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
-    if [ "$app" = platform ]; then
+    if [ "$app" = platform ] && { [ -n "${PLUGIN_SYNC_TOKEN:-}" ] || [ -e /plugins ]; }; then
       /usr/local/bin/baskule-sync-plugins /plugins "${PLUGIN_SYNC_URL:-http://baskule-celld-a:47091}"
     fi
     log "deployed $app"

@@ -290,10 +290,11 @@ describe("startup folder sync", () => {
   const sync = (h: Awaited<ReturnType<typeof makeService>>, entries: unknown[]) => call(h, "POST", `${API}/plugins/folder-sync`, { headers, body: { mounted: true, entries } });
 
   it("authenticates inventory, preserves UI config on updates, locks definitions and cascades removal", async () => {
-    const h = await makeService({ COMPUTERD_TOKEN: token }); const a = await asAdmin(h); const admin = { creds: a.creds };
+    const h = await makeService({ PLUGIN_SYNC_TOKEN: token, COMPUTERD_TOKEN: "computer-only" }); const a = await asAdmin(h); const admin = { creds: a.creds };
     const endpoint = `${API}/plugins/folder-sync`;
     expect((await call(h, "POST", endpoint, { ...admin, body: { mounted: true, entries: [] } })).status).toBe(401);
     expect((await call(h, "POST", endpoint, { headers: { authorization: "Bearer wrong" }, body: { mounted: false } })).status).toBe(401);
+    expect((await call(h, "POST", endpoint, { headers: { authorization: "Bearer computer-only" }, body: { mounted: false } })).status).toBe(401);
     expect((await sync(h, [{ path: "mcp/crm.json", archive: mcp() }])).body.folder.problems).toEqual([]);
     const listing = await call(h, "GET", `${API}/admin/plugins`, admin);
     expect(listing.body.folder).toEqual({ syncedAt: expect.any(Number), problems: [] });
@@ -331,7 +332,7 @@ describe("startup folder sync", () => {
   });
 
   it("reports invalid entries, retains their last valid definition, and reconciles the other entries", async () => {
-    const h = await makeService({ COMPUTERD_TOKEN: token });
+    const h = await makeService({ PLUGIN_SYNC_TOKEN: token, COMPUTERD_TOKEN: "computer-only" });
     const initial = { path: "mcp/valid.json", archive: mcp() };
     await sync(h, [initial]);
     const previous = h.svc.plugins.list()[0];
@@ -363,7 +364,7 @@ describe("startup folder sync", () => {
   it("preserves encrypted vendor setup and connected accounts across same-path definition updates", async () => {
     const oauth = await fakeOAuth(); oauth.state.dcr = false;
     try {
-      const h = await makeService({ COMPUTERD_TOKEN: token }); const a = await asAdmin(h); const admin = { creds: a.creds };
+      const h = await makeService({ PLUGIN_SYNC_TOKEN: token, COMPUTERD_TOKEN: "computer-only" }); const a = await asAdmin(h); const admin = { creds: a.creds };
       const entry = (description: string) => ({ path: "plugins/accounts", archive: archive({
         ".claude-plugin/plugin.json": JSON.stringify({ name: "Accounts", description }),
         ".mcp.json": JSON.stringify({ mcpServers: { remote: { url: oauth.resource, oauth: {} } } }),

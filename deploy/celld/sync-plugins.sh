@@ -1,5 +1,5 @@
 #!/bin/bash
-# Read a standard plugin tree once; send its full inventory without exposing the installation token.
+# Read a standard plugin tree once; send its full inventory without exposing the folder-sync token.
 set -euo pipefail
 umask 077
 root=${1:?plugin folder path required}
@@ -44,7 +44,7 @@ else
   jq -sc '{mounted:true,entries:.}' "$work/entries" > "$work/request.json"
 fi
 # curl's config keeps the token out of argv and logs. Tokens are generated installation secrets.
-printf 'header = "Authorization: Bearer %s"\n' "${COMPUTERD_TOKEN:?installation token required}" > "$work/curl.conf"
+printf 'header = "Authorization: Bearer %s"\n' "${PLUGIN_SYNC_TOKEN:?folder-sync token required}" > "$work/curl.conf"
 curl --fail --silent --show-error --config "$work/curl.conf" --connect-timeout 3 --max-time 90 \
   --retry 20 --retry-connrefused --retry-delay 1 --retry-max-time 60 \
   -H 'Content-Type: application/json' --data-binary @"$work/request.json" \

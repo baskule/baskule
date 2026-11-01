@@ -59,10 +59,12 @@ Without a mount, folder sync is off, the API reports `folder: null`, and existin
 folder plugins stay in the database. To deliberately remove all folder plugins, sync
 an empty mounted directory first. Removing the mount alone does not delete them.
 
-The deploy job uses the existing installation token (`COMPUTERD_TOKEN`) to call the
-Worker over the installation's private network. Do not expose that token in plugin
-files. For cluster deploy jobs, mount the tree on the one host that performs deployment
-and set `PLUGIN_SYNC_URL` to a reachable platform Worker address.
+The existing bootstrap job generates a dedicated folder-sync secret in the platform
+secret volume. The deploy job passes it to the Worker and uses it for sync over the
+private network; computerd, OpenShell and storage do not receive it. Do not put secrets
+in plugin files. For cluster deploy jobs, mount the tree on the one host that performs
+deployment, set a random `PLUGIN_SYNC_TOKEN` in its `.env`, and set `PLUGIN_SYNC_URL`
+to a reachable platform Worker address.
 
 For local development, `scripts/stack` reads `.run/plugins` on celld startup and
 restart. Set `BASKULE_PLUGINS_DIR` to use a different directory. Use the fake model
