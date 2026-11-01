@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
-import { setSessionCookie } from "better-auth/cookies";
+import { setSessionCookie, getCookies, createCookieGetter } from "better-auth/cookies";
 import { admin, bearer, genericOAuth } from "better-auth/plugins";
 import { socialProviders } from "better-auth/social-providers";
 import { refreshAccessToken, type OAuthRefreshContext } from "better-auth/oauth2";
@@ -166,11 +166,24 @@ export function createAuth(db: any, cfg: AuthConfig, hooks: AuthHooks) {
     },
     advanced: {
       cookiePrefix: "baskule",
+      // Without a fixed public origin, server API calls and HTTP requests must use the same cookie names.
+      useSecureCookies: !!cfg.installation.publicOrigin,
       // The Worker strips every inbound x-baskule-* and sets this from the connection (review L2).
       ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
     },
     telemetry: { enabled: false },
     plugins: [
+      {
+        id: "baskule-cookie-scheme",
+        onRequest: async (_request, context) => {
+          // Better Auth infers baseURL per request but leaves cookies at their boot-time defaults.
+          const options = { ...context.options, advanced: { ...context.options.advanced,
+            defaultCookieAttributes: { ...context.options.advanced?.defaultCookieAttributes,
+              secure: new URL(context.baseURL).protocol === "https:" } } };
+          context.authCookies = getCookies(options);
+          context.createAuthCookie = createCookieGetter(options);
+        },
+      },
       admin({ ac, roles, defaultRole: "member", adminRoles: ["admin"] }),
       bearer({ requireSignature: true }), // a raw DB token is not a login (review L1)
       connectCodes(),

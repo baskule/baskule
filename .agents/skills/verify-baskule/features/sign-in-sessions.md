@@ -1,5 +1,5 @@
 ---
-paths: ["platform/src/control/**", "platform/src/worker.ts", "app/apps/web/src/baskule/session.ts", "app/apps/web/src/baskule/connect.ts", "app/apps/web/src/baskule/views/LoginView.tsx", "app/apps/web/src/baskule/views/Connect*", "app/apps/web/src/baskule/views/BrowserSignInButton.tsx", "app/apps/web/src/routes/login.tsx", "app/apps/web/src/routes/reset-password.tsx", "app/apps/web/src/routes/link.tsx", "app/apps/web/src/routes/connect*"]
+paths: ["platform/src/control/**", "platform/src/worker.ts", "app/apps/web/src/baskule/session.ts", "app/apps/web/src/baskule/connect.ts", "app/apps/web/src/baskule/views/LoginView.tsx", "app/apps/web/src/baskule/views/Connect*", "app/apps/web/src/baskule/views/BrowserSignInButton.tsx", "app/apps/web/src/routes/login.tsx", "app/apps/web/src/routes/reset-password.tsx", "app/apps/web/src/routes/setup.tsx", "app/apps/web/src/baskule/views/SetupView*", "app/apps/web/src/routes/link.tsx", "app/apps/web/src/routes/connect*"]
 journeys: null
 profile: "full"
 checks: ["scripts/check worker web"]
@@ -8,7 +8,7 @@ checks: ["scripts/check worker web"]
 
 ## Sub-features
 
-Sign in, sign out, session revocation and password reset.
+First-admin setup, sign in, sign out, session revocation and password reset.
 
 ## How to get to it (user POV)
 

@@ -6,6 +6,7 @@ if [ "${1:-}" != "--inner" ]; then exec dind "$0" --inner; fi
 
 log() { echo "[baskule-openshell] $*" >&2; }
 mkdir -p /var/lib/openshell/state /var/run
+rm -f /var/run/baskule-ready
 
 # 1. Private dockerd: unix socket only, no bridge, no iptables (sandboxes run --network none, supervisors host-net).
 dockerd --host=unix:///var/run/docker.sock --bridge=none --iptables=false --ip6tables=false \
@@ -15,13 +16,29 @@ for _ in $(seq 120); do docker info >/dev/null 2>&1 && break; sleep 0.5; done
 docker info >/dev/null 2>&1 || { log "dockerd did not start"; exit 1; }
 log "dockerd $(docker version --format '{{.Server.Version}}') ready"
 
-# 2. Runtime images baked into this image (the gateway checks the supervisor image at startup).
+# 2. All workload images are bundled, including the computer. No host image loader is needed.
+REGISTRY=${BASKULE_REGISTRY:-}
+TAG=${BASKULE_VERSION:-${BASKULE_TAG:-local}}
 while read -r file created tag; do
   [ -n "$tag" ] || continue
-  if [ "$(docker image inspect --format '{{.Created}}' "$tag" 2>/dev/null)" != "$created" ]; then
+  name=${tag%:*}
+  current="${REGISTRY:+$REGISTRY/}$name:$TAG"
+  if [ "$(docker image inspect --format '{{.Created}}' "$current" 2>/dev/null)" != "$created" ]; then
     docker load -q -i "/usr/local/lib/baskule/images/$file" >/dev/null && log "loaded $tag"
+    docker tag "$tag" "$current"
   fi
 done < /usr/local/lib/baskule/images/images.txt
+
+# Untag previous releases, including the archive's build tags. Running workloads keep their image by ID.
+while read -r reference; do
+  repository=${reference%:*}
+  name=${repository##*/}
+  case "$name" in
+    baskule-*)
+      [ "$reference" = "${REGISTRY:+$REGISTRY/}$name:$TAG" ] || docker image rm --force "$reference" >/dev/null
+      ;;
+  esac
+done < <(docker image ls --format '{{.Repository}}:{{.Tag}}')
 
 # 3. Supervisor JWT keys (kept across restarts on the state volume).
 if [ ! -s /var/lib/openshell/tls/jwt/signing.pem ]; then
@@ -34,10 +51,9 @@ python3 /usr/local/lib/baskule/volumes.py &
 VOLUMES_PID=$!
 
 # 5. Gateway, on the baked config rendered for this stack: image tags follow BASKULE_TAG (the tag compose and
-#    load-images.sh use), and OPENSHELL_OTLP_ENDPOINT (an OTLP/gRPC collector) adds trace export.
+#    source builds use), and OPENSHELL_OTLP_ENDPOINT adds optional OTLP/gRPC trace export.
 CONFIG=/var/run/openshell-gateway.toml
-TAG=${BASKULE_TAG:-local}
-sed "s/\(baskule-[a-z-]*\):local\"/\1:$TAG\"/" /etc/openshell/gateway.toml > "$CONFIG"
+sed "s#\(baskule-[a-z-]*\):local\"#${REGISTRY:+$REGISTRY/}\1:$TAG\"#" /etc/openshell/gateway.toml > "$CONFIG"
 if [ -n "${OPENSHELL_OTLP_ENDPOINT:-}" ]; then
   printf '\n[openshell.gateway.otlp]\nendpoint = "%s"\n' "$OPENSHELL_OTLP_ENDPOINT" >> "$CONFIG"
   log "trace export to $OPENSHELL_OTLP_ENDPOINT"
@@ -54,6 +70,28 @@ term() {
   exit 0
 }
 trap term TERM INT
+# Updating the gateway also updates existing computers. Delete stale sandboxes through OpenShell so its
+# bookkeeping stays consistent; attachable space volumes survive and are reused on the next command.
+for _ in $(seq 120); do
+  curl -sf -o /dev/null http://127.0.0.1:47097/readyz && break
+  sleep 1
+done
+curl -sf -o /dev/null http://127.0.0.1:47097/readyz
+want=$(docker image inspect -f '{{.Id}}' "${REGISTRY:+$REGISTRY/}baskule-computer:$TAG")
+ids=$(docker ps -aq --filter label=baskule.managed=true --filter label=openshell.ai/isolation-role=sandbox)
+restored=0
+[ ! -f /var/lib/openshell/.baskule-restore ] || restored=1
+if [ -n "$ids" ]; then
+  names=$(docker inspect -f '{{.Image}} {{index .Config.Labels "openshell.ai/sandbox-name"}}' $ids |
+    awk -v want="$want" -v restored="$restored" '(restored || $1 != want) && $2 ~ /^os-/ {print $2}')
+  for name in $names; do
+    openshell --gateway-endpoint http://127.0.0.1:47095 sandbox delete "$name" >/dev/null
+    log "updated computer $name (disk kept)"
+  done
+fi
+rm -f /var/lib/openshell/.baskule-restore
+docker image prune -f >/dev/null
+touch /var/run/baskule-ready
 # Any child exiting takes the container down (compose restarts it).
 set +e
 wait -n "$DOCKERD_PID" "$GATEWAY_PID" "$VOLUMES_PID"

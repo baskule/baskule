@@ -197,7 +197,9 @@ function plan(files, base) {
   if (has(/^scripts\/worktree(?:[.-]|$)/)) add("worktree: setup regression tests", "node", ["--test", "scripts/worktree.test.mjs"], ".");
   if (has(/^scripts\/(?:check(?:[.-]|$)|stack(?:[.-]|$)|celld(?:[.-]|$)|lint(?:[.-]|$)|feature-map(?:[.-]|$)|run-feature\.mjs$|no-fixed-sleep\.mjs$)|^platform\/dev\/fake-llm\/|^\.oxlintrc\.json$/)) add("scripts/check: harness tests", "node", ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], ".");
   if (has(/^openshell\/dev-down\.sh$/)) add("stack: shared gateway teardown", "node", ["--test", "scripts/stack.test.mjs"], ".");
-  if (has(/^deploy\/docker-compose\.yml$/)) add("deploy: compose config", "docker", ["compose", "-f", "deploy/docker-compose.yml", "--project-directory", "deploy", "config", "-q"], ".");
+  if (has(/^deploy\/(?:docker-compose|cluster\/|\.env\.example)|^scripts\/check-compose\.sh$/)) add("deploy: compose config", "bash", ["scripts/check-compose.sh"], ".");
+  if (has(/^deploy\/celld\//)) add("deploy: S3 bootstrap retries", "node", ["--test", "deploy/celld/jobs.test.mjs"], ".");
+  if (has(/^scripts\/ci\/publish-images/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
   if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
   if (has(/^(deploy|openshell|computer)\//)) tags.add("infra");
   const docs = files.filter((f) => /\.md$/.test(f)).filter((f) => existsSync(join(ROOT, f)) && !f.startsWith("vendor/") && !f.startsWith("app/"));

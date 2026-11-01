@@ -45,10 +45,10 @@ nice -n 10 docker build --network host -q $label --build-arg CARGO_BUILD_JOBS="$
 # and sandbox runtime images into the gateway image; the entrypoint loads them when their IDs differ.
 mkdir -p "$BUILD/gateway/images"
 : > "$BUILD/gateway/images/images.txt"
-for img in "baskule-openshell-supervisor:$TAG" "baskule-openshell-sandbox:$TAG"; do
+for img in "baskule-openshell-supervisor:$TAG" "baskule-openshell-sandbox:$TAG" "baskule-computer:$TAG"; do
   f=$(echo "$img" | tr ':/' '__').tar
-  docker save -o "$BUILD/gateway/images/$f" "$img"
-  echo "$f $(docker image inspect --format '{{.Created}}' "$img") $img" >> "$BUILD/gateway/images/images.txt"
+  docker save "$img" | gzip -1 > "$BUILD/gateway/images/$f.gz"
+  echo "$f.gz $(docker image inspect --format '{{.Created}}' "$img") $img" >> "$BUILD/gateway/images/images.txt"
 done
 nice -n 10 docker build --network host -q $label -t "baskule-openshell-gateway:$TAG" "$BUILD/gateway"
 rm -rf "$BUILD"

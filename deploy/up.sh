@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Bring the stack up: build missing images, start OpenShell, load the computer image into its private dockerd,
-# start everything else, deploy the app. Idempotent. Options: --build (rebuild all images first).
+# Bring the source stack up: build missing images, start OpenShell, start everything else, deploy the app. Idempotent. Options: --build (rebuild all images first).
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
-[ -f "$DEPLOY_DIR/.env" ] || { log "no .env: run ./init-env.sh (or cp .env.example .env) first"; exit 1; }
+# Prepare the mounted app before the source deploy job starts.
+[ -f "$ROOT/platform/dist/worker.js" ] || "$DEPLOY_DIR/build.sh" --no-deploy
 if [ "${1:-}" = --build ]; then "$DEPLOY_DIR/images.sh" --all >/dev/null; else "$DEPLOY_DIR/images.sh" --missing >/dev/null; fi
 dc up -d --no-build baskule-openshell
-wait_healthy baskule-openshell 180
-"$ROOT/openshell/load-images.sh" baskule-openshell
+wait_healthy baskule-openshell 600
 dc up -d --no-build
 # The deploy job runs once per `up` (when its dependencies are healthy).
 for _ in $(seq 300); do

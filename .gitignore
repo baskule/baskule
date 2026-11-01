@@ -30,3 +30,6 @@ e2e/test-results/
 *.sqlite3
 .claude/settings.local.json
 .codex/
+
+# Optional source-stack installation authentication.
+/deploy/config/

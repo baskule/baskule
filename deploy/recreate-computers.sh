@@ -8,7 +8,6 @@ os() { docker exec baskule-openshell openshell --gateway-endpoint http://127.0.0
 name_of() { # same mapping as computerd/src/policy.ts namesFor()
   if [[ $1 =~ ^[a-z0-9]([a-z0-9-]{0,14}[a-z0-9])?$ ]]; then echo "os-$1"; else echo "os-$(printf %s "$1" | sha256sum | cut -c1-16)"; fi
 }
-"$ROOT/openshell/load-images.sh" baskule-openshell
 if [ "${1:-}" = --outdated ]; then
   # Compare within the private daemon, where container image IDs and the desired image ID share one store.
   want=$(docker exec baskule-openshell docker image inspect -f '{{.Id}}' "baskule-computer:$TAG")

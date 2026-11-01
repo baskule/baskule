@@ -23,7 +23,7 @@ else
   docker start "$C" >/dev/null
 fi
 ready() { docker exec "$C" curl -sf -o /dev/null http://127.0.0.1:47097/readyz; }
-for _ in $(seq 120); do ready && break; sleep 1; done
+for _ in $(seq 600); do ready && break; sleep 1; done
 ready || { docker logs --tail 50 "$C"; exit 1; }
 "$HERE/load-images.sh" "$C"
 echo "dev gateway on 127.0.0.1:${DEV_GATEWAY_PORT:-47510}"

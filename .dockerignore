@@ -15,5 +15,6 @@ app/.t3
 **/.env.*
 !**/.env.example
 deploy/backups
+deploy/config
 desktop/release
 app/release

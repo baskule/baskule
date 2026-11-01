@@ -7,7 +7,7 @@ import { type BaskuleMe, type BaskuleSpace, BaskuleApiError, baskuleApi } from "
 
 const REFRESH_INTERVAL_MS = 60_000;
 /** Paths that render without a session. */
-const PUBLIC_PATH_PATTERN = /^\/(login|invite|reset-password|link)\/?$/;
+const PUBLIC_PATH_PATTERN = /^\/(login|invite|reset-password|link|setup)\/?$/;
 
 type Listener = () => void;
 
@@ -204,6 +204,25 @@ export async function adoptSessionUser(userId: string): Promise<"continue" | "re
   if (previous === null) return "continue";
   window.location.reload();
   return "reloading";
+}
+
+/**
+ * Keeps the session when it belongs to `userId`, otherwise signs in with the credentials; false when
+ * that fails. Another tab can replace the shared session cookie after a request set it.
+ */
+export async function ensureSignedInAs(
+  userId: string,
+  credentials: { readonly email: string; readonly password: string },
+): Promise<boolean> {
+  const current = await baskuleApi.me().then(
+    (me) => me.user.id,
+    () => null,
+  );
+  if (current === userId) return true;
+  return baskuleApi.signIn(credentials).then(
+    () => true,
+    () => false,
+  );
 }
 
 export async function signOutBaskule() {

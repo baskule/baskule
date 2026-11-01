@@ -39,21 +39,22 @@ answers finish. Chats using a model no longer offered then run on the new defaul
 
 ## First installation
 
-1. Generate deployment secrets with `deploy/init-env.sh`; fill in the infrastructure settings and initial
-   `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env`. For SSO-only installations, `ADMIN_EMAIL` is sufficient.
-2. Configure `deploy/auth.json` (password login is the checked-in default), then build/deploy using the
-   deployment guide. `AUTH_CONFIG_FILE` selects another file, relative to `deploy` or absolute.
+1. Start Compose as described in the [installation guide](install.md). Open the one-time link from
+   `docker compose logs setup` to create the first admin. SSO-only installations omit the password.
+2. Password login is the default. For SSO, put your authentication JSON in the single-quoted `AUTH_CONFIG` value
+   in `.env`. For example: `AUTH_CONFIG='{"version":1,"password":true}'`. The source-build override can instead
+   mount `deploy/auth.json`, with `AUTH_CONFIG_FILE` selecting another file. Cluster deploy jobs can also read optional `config/auth.json`; it overrides `AUTH_CONFIG`.
 3. Sign in as the initial admin and configure **Admin → AI → Models**. Without an AI connection, administration and
    existing data remain accessible; chat generation requires a model and either a provider key or a keyless provider.
-4. Remove the bootstrap password and redeploy. The bootstrap variables never override an existing administrator.
+4. Invite people from the admin area. The setup token cannot create another admin after setup.
 
-Authentication configuration changes require a redeploy. The server rejects invalid files instead of silently
+Run `docker compose up -d` after authentication changes, or `docker compose run --rm deploy` for a cluster. The server rejects invalid files instead of silently
 falling back to password or anonymous access. Keep stable provider IDs: accounts are bound to those IDs.
 Switching between authenticated and anonymous modes requires a data wipe.
 
 ## Authentication file
 
-`auth.json` is version 1. It accepts `mode` (`authenticated` or `anonymous`), `publicOrigin` (an optional HTTPS origin), `password` (boolean), `providers`
+Authentication JSON is version 1. An optional `auth.json` uses the same format. It accepts `mode` (`authenticated` or `anonymous`), `publicOrigin` (an optional HTTPS origin), `password` (boolean), `providers`
 (array), and `trustedProviders` (array of configured provider IDs). At least one login method must be enabled.
 Provider `options` are Better Auth's JSON-compatible options for the selected integration; callbacks/functions
 and arbitrary plugin loading are not configuration-file features.
@@ -95,11 +96,12 @@ then enter the same domain in the admin setting after deployment. No data wipe i
 Existing accounts continue to sign in when signup is disabled or their domain is removed. Password accounts
 remain provisioned by admins or invitations.
 
-For a reusable configuration, select `deploy/auth.google-workspace.example.json` with `AUTH_CONFIG_FILE`.
+For a reusable source-build configuration, select `deploy/auth.google-workspace.example.json` with `AUTH_CONFIG_FILE`.
+Released installations put the same JSON in `AUTH_CONFIG` in `.env`.
 Set `AUTH_PUBLIC_ORIGIN`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` in the deployment's private `.env`.
 The deploy job resolves these references before validating the authentication configuration. An empty or missing
 value stops deployment. You can also put literal values in a private authentication file selected by
-`AUTH_CONFIG_FILE`. Keep a file containing client secrets outside version control and readable only by its owner.
+`AUTH_CONFIG_FILE` in a source build. Keep a file containing client secrets outside version control and readable only by its owner.
 
 Set `publicOrigin` to your installation's HTTPS origin, such as `https://baskule.example.com`, when a reverse proxy
 terminates TLS. The app uses that origin for authentication callbacks, account-connection callbacks, and links,
@@ -114,7 +116,7 @@ Select an **Internal** audience when the project belongs to the intended Workspa
 `openid`, `email`, and `profile` for login. Ordinary Google Sign-In clients require Google-side setup in the
 console; the similarly named `gcloud iam oauth-clients` commands manage Workforce Identity Federation clients.
 
-For a passwordless first administrator, set `password: false` and `ADMIN_EMAIL` before the first deployment.
+For a passwordless first administrator, set `password: false` before the first deployment, then create the admin with the setup link.
 After the administrator exists, you can enable `password: true` and redeploy without another data reset.
 The administrator signs in through Google, then uses **Admin → People → Copy a password reset link** to create a link and
 choose a local password. Other people still need an invitation or an account created by an administrator.
@@ -254,11 +256,11 @@ and password controls are unavailable. Use a separate installation with disposab
 ## Infrastructure stays in deployment configuration
 
 Listener/bind address, ports, public origins, TLS/proxy settings, storage credentials, internal service tokens,
-CPU/memory limits, celld heap/timeouts, and bootstrap admin details stay in `.env`/Compose. computerd reads the
+CPU/memory limits, celld heap/timeouts, and the setup token stay in `.env`/Compose. computerd reads the
 current idle policy through its authenticated runtime-settings endpoint. If that read fails, that idle check
 does not stop computers using a guessed policy.
 
 ## Upgrade
 
-Back up and update the installation using the [deployment upgrade procedure](../deploy/README.md#upgrade).
+Back up and update the installation using the [installation update procedure](install.md#update).
 Follow the release's data-wipe instructions when required, then configure the product in the admin area.

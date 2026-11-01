@@ -30,6 +30,6 @@ ENV OPENSHELL_TELEMETRY_ENABLED=false NO_COLOR=1 \
 VOLUME ["/var/lib/docker", "/var/lib/openshell"]
 EXPOSE 47095 47096
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --start-interval=1s --retries=3 \
-  CMD curl -sf -o /dev/null http://127.0.0.1:47097/healthz && curl -sf -o /dev/null http://127.0.0.1:47096/healthz || exit 1
+  CMD test -f /var/run/baskule-ready && curl -sf -o /dev/null http://127.0.0.1:47097/healthz && curl -sf -o /dev/null http://127.0.0.1:47096/healthz || exit 1
 LABEL org.opencontainers.image.title=baskule-openshell-gateway org.opencontainers.image.source=https://github.com/baskule/baskule
 ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/baskule-openshell-entrypoint"]
