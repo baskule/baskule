@@ -248,6 +248,15 @@ function proxyBudgets(post) {
   expect(post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.18" })).toBe(429);
   expect(post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.19" })).toBe(200);
 }
+function privateProxyBudget(post) {
+  // A replacing proxy prevents incoming XFF injection; private_ranges coalesces LAN/VPN peers.
+  for (let n = 0; n < 10; n++) expect(post("/auth/sign-in/email", { ...admin, password: "wrong" }, {
+    "X-Test-Client-IP": `10.1.0.${n + 1}`, "X-Forwarded-For": `203.0.114.${n + 1}`,
+  })).toBe(401);
+  expect(post("/auth/sign-in/email", admin, {
+    "X-Test-Client-IP": "10.1.0.200", "X-Forwarded-For": "203.0.114.200",
+  })).toBe(429);
+}
 async function proxy() {
   for (const trusted of [false, true]) {
     const p = await port();
@@ -276,7 +285,8 @@ async function proxy() {
     expect(post("/auth/sign-in/email", admin, { Origin: "https://foreign.test" })).toBe(403);
     if (trusted) {
       proxyBudgets(post);
-      pass("explicitly trusted host-local proxy: setup, Secure cookie, sign-in, foreign Origin refusal and separate client limits without PUBLIC_ORIGINS");
+      privateProxyBudget(post);
+      pass("explicitly trusted host-local proxy: setup, Secure cookie, sign-in, foreign Origin refusal and separate public-client limits plus a shared LAN/VPN budget without PUBLIC_ORIGINS");
     } else {
       directClient(w);
       // Changing a forwarded address does not create another rate-limit budget without trust.
@@ -299,17 +309,27 @@ async function proxy() {
 async function https() {
   const httpPort = await port(), tlsPort = await port();
   const domain = "baskule.test";
-  const w = world("single-https", { BASKULE_DOMAIN: domain, BASKULE_EDGE: "https" });
+  const w = world("single-https", { BASKULE_DOMAIN: domain, BASKULE_EDGE: "https", BASKULE_BIND: "127.0.0.1" });
   const config = JSON.parse(w.dc(["config", "--format", "json"]));
-  expect(config.services["baskule-edge"].ports.map(p => p.target).sort((a, b) => a - b)).toEqual([80, 443]);
+  expect(config.services["baskule-edge"].ports.map(p => [p.host_ip, p.target, p.protocol])).toEqual([
+    [undefined, 80, "tcp"], [undefined, 443, "tcp"], [undefined, 443, "udp"],
+  ]);
   expect(config.services["baskule-edge"].environment.BASKULE_TRUSTED_PROXIES).toBe("");
-  // Test-only CA and random loopback ports; the release has public ACME and publishes 80/443.
+  envFile(w.file, { BASKULE_DOMAIN: "" });
+  expect(() => w.dc(["run", "--rm", "--no-deps", "setup"])).toThrow("BASKULE_DOMAIN is required when BASKULE_EDGE=https");
+  envFile(w.file, { BASKULE_DOMAIN: domain });
+  pass("HTTPS without a domain fails setup with a clear configuration error");
+  // Test-only CA and random port numbers; retain all-interface TCP/UDP publishing.
   const override = resolve(w.directory, "internal-ca.yml");
   const caddy = config.configs.edge.content.replace("admin off", "admin off\n    local_certs");
-  writeFileSync(override, `services:\n  baskule-edge:\n    ports: !override ["127.0.0.1:${httpPort}:80", "127.0.0.1:${tlsPort}:443"]\nconfigs:\n  edge:\n    content: ${JSON.stringify(caddy)}\n`);
+  writeFileSync(override, `services:\n  baskule-edge:\n    ports: !override ["${httpPort}:80", "${tlsPort}:443", "${tlsPort}:443/udp"]\nconfigs:\n  edge:\n    content: ${JSON.stringify(caddy)}\n`);
   w.files.push("-f", override);
   w.dc(["up", "-d"]);
   const edge = w.dc(["ps", "-q", "baskule-edge"]);
+  const bindings = JSON.parse(command(["inspect", "-f", "{{json .NetworkSettings.Ports}}", edge]));
+  for (const listener of ["80/tcp", "443/tcp", "443/udp"]) {
+    expect(bindings[listener].map(p => p.HostIp).sort()).toEqual(["0.0.0.0", "::"]);
+  }
   const ca = resolve(w.directory, "root.crt");
   await expect.poll(() => command(["exec", edge, "sh", "-c", "test -f /data/caddy/pki/authorities/local/root.crt && echo ready"], { allowFailure: true }), { timeout: 30_000 }).toBe("ready");
   command(["cp", `${edge}:/data/caddy/pki/authorities/local/root.crt`, ca]);
@@ -333,11 +353,18 @@ async function https() {
   // The private HTTP listener remains available for computerd runtime settings.
   expect(command(["exec", w.dc(["ps", "-q", "baskule-computerd"]), "sh", "-c",
     '. /run/baskule/secrets; exec node -e \'fetch(process.env.PRODUCT_SETTINGS_URL,{headers:{Authorization:"Bearer "+process.env.COMPUTERD_TOKEN}}).then(r=>{console.log(r.status);if(!r.ok)process.exit(1)})\''])).toBe("200");
+  const ipv6 = spawnSync("curl", ["-sS", "--max-time", "10", ...options.slice(0, -1),
+    `${domain}:443:[::1]:${tlsPort}`, "-o", "/dev/null", "-w", "%{http_code}", `${base}/api/baskule/setup`], { encoding: "utf8" });
+  expect(ipv6.status, ipv6.stderr).toBe(0);
+  expect(ipv6.stdout).toBe("200");
   const originalCA = readFileSync(ca, "utf8");
-  w.dc(["up", "-d"]);
-  command(["cp", `${edge}:/data/caddy/pki/authorities/local/root.crt`, ca]);
+  w.dc(["up", "-d", "--no-deps", "--force-recreate", "baskule-edge"]);
+  const recreated = w.dc(["ps", "-q", "baskule-edge"]);
+  expect(recreated).not.toBe(edge);
+  await expect.poll(() => spawnSync("curl", ["-sS", "--max-time", "3", ...options, "-o", "/dev/null", "-w", "%{http_code}", `${base}/api/baskule/setup`], { encoding: "utf8" }).stdout, { timeout: 60_000 }).toBe("200");
+  command(["cp", `${recreated}:/data/caddy/pki/authorities/local/root.crt`, ca]);
   expect(readFileSync(ca, "utf8")).toBe(originalCA);
-  pass("built-in HTTPS with test-only internal CA: verified TLS, HTTP redirect, domain setup URL, Secure cookies, sign-in, origin refusal, private settings and persistent CA without PUBLIC_ORIGINS");
+  pass("built-in HTTPS with test-only internal CA: verified TLS, HTTP redirect, domain setup URL, Secure cookies, sign-in, origin refusal, private settings, IPv4/IPv6 TCP and UDP listeners, and CA retained across edge recreation without PUBLIC_ORIGINS");
   stopWorld(w);
 }
 async function exercise(w, base, endpoint) {
@@ -568,7 +595,7 @@ async function cluster() {
   secureCookie(edge);
   expect(localProxy.post("/auth/sign-in/email", admin, { Origin: "https://foreign.test" })).toBe(403);
   proxyBudgets(localProxy.post);
-  pass("cluster edge with explicitly trusted host-local proxy preserves HTTPS, Secure cookies and separate client limits");
+  pass("cluster edge with explicitly trusted host-local proxy preserves HTTPS, Secure cookies and separate public-client limits");
   command(["rm", "-f", localProxy.name]); containers.delete(localProxy.name);
 
   // Kill the node owning the most cells; disable automatic restart for this drill.

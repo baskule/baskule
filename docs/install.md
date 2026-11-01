@@ -14,18 +14,22 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 
 <!-- install-env:start -->
 ```dotenv
-# Built-in HTTPS domain (unset by default); point DNS here and allow inbound ports 80 and 443.
+# Built-in HTTPS domain (unset by default); point DNS here and allow inbound TCP 80/443 and UDP 443 (HTTP/3).
 #BASKULE_DOMAIN=baskule.example.com
-# Edge listener (default http); use https with BASKULE_DOMAIN to publish ports 80/443 instead of BASKULE_PORT.
+# Edge listener: http or https (lowercase; default http). HTTPS requires BASKULE_DOMAIN and publishes on all IPv4/IPv6 interfaces.
 #BASKULE_EDGE=https
-# Bind address (default 127.0.0.1 for HTTP, 0.0.0.0 for HTTPS).
+# HTTP bind address (default 127.0.0.1); ignored by built-in HTTPS.
 # An HTTP bind of 0.0.0.0 must be reachable only by your proxy or trusted clients.
-# Rootless Docker hides client addresses; enforce access and rate limits at your outer proxy.
+# Rootless Docker hides client addresses; built-in HTTPS clients share one sign-in budget.
+# With your own proxy, enforce access and rate limits there.
 #BASKULE_BIND=127.0.0.1
 # HTTP port (default 47090).
 #BASKULE_PORT=47090
 # Trusted proxy addresses/CIDRs, space-separated (default empty: trust nobody).
-# A host-local proxy may use private_ranges only with the HTTP port bound to loopback.
+# Use private_ranges for a host-local proxy only with loopback HTTP and access restricted to trusted sources.
+# The proxy must replace X-Forwarded-For with the peer address (Caddy default); never append incoming XFF.
+# nginx: proxy_set_header X-Forwarded-For $remote_addr;
+# With private_ranges, private-address LAN/VPN clients share the proxy's sign-in budget.
 #BASKULE_TRUSTED_PROXIES=private_ranges
 # Additional allowed origins (unset by default); needed for SSO callbacks or an untrusted outer proxy.
 #PUBLIC_ORIGINS=https://baskule.example.com
@@ -47,6 +51,8 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 #OPENSHELL_MEMORY=8g
 # Memory cap per computer within OpenShell (default 3Gi).
 #COMPUTER_MEMORY=3Gi
+# Trace UI bind (default 127.0.0.1), independent of BASKULE_BIND; requires COMPOSE_PROFILES=traces.
+#BASKULE_TRACES_BIND=127.0.0.1
 ```
 <!-- install-env:end -->
 
@@ -64,7 +70,7 @@ model, then invite people. Password sign-in is enabled by default.
 
 ### Built-in HTTPS (recommended)
 
-Point your domain's DNS at the machine and allow inbound TCP ports 80 and 443. Set these two lines in `.env`:
+Point your domain's DNS at the machine and allow inbound TCP ports 80 and 443, plus UDP 443 for HTTP/3. Set these two lines in `.env`:
 
 ```dotenv
 BASKULE_DOMAIN=baskule.example.com
@@ -73,7 +79,10 @@ BASKULE_EDGE=https
 
 Run `docker compose up -d`, then read `docker compose logs setup`. The link uses `https://baskule.example.com`.
 Caddy obtains and renews certificates, redirects HTTP to HTTPS, and keeps certificates in the edge data volume.
-No `PUBLIC_ORIGINS` is needed for password sign-in. Browsers need HTTPS or localhost for microphone access.
+HTTPS publishes on all IPv4 and IPv6 interfaces, regardless of `BASKULE_BIND`.
+No `PUBLIC_ORIGINS` is needed for password sign-in. Under rootless Docker, all built-in HTTPS clients share one
+sign-in rate-limit budget because the edge cannot see their individual addresses. Browsers need HTTPS or localhost
+for microphone access.
 
 ### Local access or SSH tunnel
 
@@ -95,17 +104,23 @@ baskule.example.com {
 }
 ```
 
-Set `BASKULE_TRUSTED_PROXIES=private_ranges` in `.env` for this host-local proxy. This is acceptable only with the
-HTTP port bound to loopback, because only host-local connections can reach it. For a separate proxy, bind HTTP to
-a private address, restrict access to the proxy, and set `BASKULE_TRUSTED_PROXIES` to its address or CIDR as seen
-by the edge. List multiple entries separated by spaces. Forward Host, X-Forwarded-Proto, client IP, WebSockets,
-and streaming responses without buffering. Run `docker compose up -d` after edits.
+Set `BASKULE_TRUSTED_PROXIES=private_ranges` in `.env` for a host-local proxy. Keep HTTP bound to loopback and
+restrict access to trusted sources. Loopback binding alone is not an isolation boundary. Prefer exact proxy addresses
+when possible. For a separate proxy, bind HTTP to a private address, restrict access to the proxy, and set
+`BASKULE_TRUSTED_PROXIES` to its address or CIDR as seen by the edge. List multiple entries separated by spaces.
+Forward Host, X-Forwarded-Proto, client IP, WebSockets, and streaming responses without buffering.
 
-The edge trusts nobody by default. Explicit trust preserves the HTTPS scheme, host, and separate client rate limits;
-no `PUBLIC_ORIGINS` is needed for password sign-in. Without trust, set `PUBLIC_ORIGINS=https://baskule.example.com`
-to permit that origin; all clients behind the proxy share its sign-in rate-limit bucket. Rootless Docker can hide
-client addresses; enforce access and rate limits at your outer proxy. With `BASKULE_BIND=0.0.0.0`, restrict the HTTP
-port to your proxy or trusted clients with a firewall. Only publish your HTTPS proxy.
+The proxy must **replace** X-Forwarded-For with its peer's address, rather than append client-supplied values.
+Caddy does this by default. With nginx, use `proxy_set_header X-Forwarded-For $remote_addr;` instead of
+`$proxy_add_x_forwarded_for`. With `private_ranges`, private-address LAN/VPN clients share the proxy's sign-in
+rate-limit budget. Appending incoming X-Forwarded-For lets those clients spoof addresses and bypass that limit.
+Run `docker compose up -d` after edits.
+
+The edge trusts nobody by default. Explicit trust preserves the HTTPS scheme and host; no `PUBLIC_ORIGINS` is
+needed for password sign-in. Without trust, set `PUBLIC_ORIGINS=https://baskule.example.com` to permit that origin;
+all clients behind the proxy share its sign-in rate-limit bucket. Rootless Docker can hide client addresses;
+enforce access and rate limits at your outer proxy. With `BASKULE_BIND=0.0.0.0`, restrict the HTTP port to your
+proxy or trusted clients with a firewall. Only publish your HTTPS proxy.
 
 To create the admin through your proxy, open `https://baskule.example.com/setup#token=` followed by the token from
 the setup log. Optional `PUBLIC_URL=https://baskule.example.com` changes the printed link.
@@ -116,8 +131,8 @@ The example above lists common settings. All settings are optional:
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `BASKULE_DOMAIN`, `BASKULE_EDGE` | unset, `http` | Set a domain and `https` to publish 80/443 with automatic certificates |
-| `BASKULE_BIND`, `BASKULE_PORT` | HTTP: `127.0.0.1`, `47090`; HTTPS bind: `0.0.0.0` | Published listener; port setting applies to HTTP only |
+| `BASKULE_DOMAIN`, `BASKULE_EDGE` | unset, `http` | Edge accepts lowercase `http` or `https`; HTTPS requires a domain and publishes TCP 80/443 and UDP 443 on all IPv4/IPv6 interfaces |
+| `BASKULE_BIND`, `BASKULE_PORT` | `127.0.0.1`, `47090` | HTTP listener only; both settings are ignored by built-in HTTPS |
 | `BASKULE_TRUSTED_PROXIES` | empty | Proxy addresses/CIDRs trusted to forward scheme, host and client IP |
 | `PUBLIC_URL` | `https://<BASKULE_DOMAIN>` if set, otherwise `http://127.0.0.1:<BASKULE_PORT>` | Address printed in the setup link |
 | `PUBLIC_ORIGINS` | unset | Additional allowed origins; set for SSO or an untrusted outer proxy |
@@ -126,6 +141,7 @@ The example above lists common settings. All settings are optional:
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | generated local keys | External storage credentials |
 | `CELLD_MEMORY`, `OPENSHELL_MEMORY`, `COMPUTER_MEMORY` | `3g`, `8g`, `3Gi` | Memory caps |
 | `COMPOSE_PROFILES` | unset | Set `traces` to enable the trace collector |
+| `BASKULE_TRACES_BIND`, `BASKULE_TRACES_PORT` | `127.0.0.1`, `47098` | Trace UI listener, independent of the HTTP and HTTPS edge |
 
 The default memory caps total 15.75 GiB. Limits are not reservations. Each computer defaults to 2 CPU cores
 and 3 GiB within OpenShell's aggregate cap. See [installation settings](installation-settings.md) for app settings.
@@ -199,5 +215,6 @@ if used, and start the new release with a fresh setup link.
 
 For optional traces, set `COMPOSE_PROFILES=traces`, `BASKULE_CELLD_OTEL=http://baskule-traces:4318`,
 `BASKULE_OTLP_TRACES_URL=http://baskule-traces:4318/v1/traces`, and
-`BASKULE_OPENSHELL_OTLP=http://baskule-traces:4317` in `.env`. The trace UI listens on the bind address at
-port 47098. Restarting it clears traces.
+`BASKULE_OPENSHELL_OTLP=http://baskule-traces:4317` in `.env`. The trace UI defaults to `127.0.0.1:47098`;
+`BASKULE_TRACES_BIND` and `BASKULE_TRACES_PORT` change it independently of the edge. Restarting it clears traces.
+Starting with `--profile '*'` is unsupported: it also starts the edge inheritance templates. Use named profiles such as `traces`.

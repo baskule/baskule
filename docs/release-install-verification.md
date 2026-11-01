@@ -42,7 +42,8 @@ or the shared development gateway. Evidence, logs, the backup, and private gener
 
 Before submitting a change, also run `BASKULE_CHECK_RECORD=0 scripts/check plan`, its selected checks with
 `BASKULE_CHECK_RECORD=0` to disable evidence-ref reads and pushes, `actionlint` on the release
-workflow, and Compose configuration checks for all roles and profiles. A verification-only factory run can prove
+workflow, and Compose configuration checks for all roles and profiles. Config validation may use `--profile '*'`;
+starting every profile is unsupported because it includes the edge inheritance templates. A verification-only factory run can prove
 the full packaging path. Anonymous GHCR pulls, public release downloads, and real multi-machine operation require
 separate owner-controlled verification after publication.
 
@@ -56,10 +57,11 @@ To rerun only restoration against the retained archive, pass `restore .run/<run>
 The proof file contains test credentials and is not an uploaded artifact.
 
 The `https` target selects the released built-in HTTPS edge with `BASKULE_DOMAIN` and `BASKULE_EDGE=https`.
-It replaces only the published ports with free loopback ports and adds Caddy's `local_certs` directive in a
-test-only Compose override under `.run/`. Curl verifies TLS using the generated internal CA root copied from
+It replaces only the published port numbers with free ports on all IPv4/IPv6 interfaces. A test-only Compose
+override under `.run/` adds Caddy's `local_certs` directive. Curl verifies TLS using the generated internal CA root copied from
 Caddy's data volume and `--connect-to` to preserve the public domain, SNI, and origin. Checks cover the HTTP redirect,
-HTTPS setup link, setup, Secure cookies, sign-in, foreign Origin refusal, private computerd settings, and CA persistence.
+HTTPS setup link, setup, Secure cookies, sign-in, foreign Origin refusal, private computerd settings, UDP 443 publication,
+IPv4/IPv6 listeners, and CA persistence after forcing edge recreation and resolving the new container ID.
 No `PUBLIC_ORIGINS` is set. This exercises TLS and certificate storage without obtaining a public ACME certificate;
 public DNS, ACME challenges, and renewal still need owner-controlled verification on a published domain.
 
@@ -68,8 +70,10 @@ The `proxy` target runs a host-local forwarding proxy in front of the released H
 sign-in then work, and clients share the proxy's rate-limit bucket. A separate client on the Docker bridge must not
 be able to spoof forwarded host, scheme, or IP to bypass those checks. A second fresh installation explicitly trusts
 the host-local proxy using `private_ranges`, with the port bound to loopback and no `PUBLIC_ORIGINS`. It checks
-setup, Secure cookies, sign-in, foreign Origin refusal, and independent client rate limits. The cluster target also
-checks its bundled edge with an explicitly trusted host-local proxy and separate client limits.
+setup, Secure cookies, sign-in, foreign Origin refusal, and independent public-client rate limits. The fixture replaces
+incoming X-Forwarded-For with its simulated peer address. With `private_ranges`, private-address LAN/VPN clients
+share a budget, as the installation guide explains. The proxy target checks that incoming XFF cannot rotate that budget.
+The cluster target also checks its bundled edge with an explicitly trusted host-local proxy.
 
 Runtime environment and mounted-volume assertions verify that RustFS, computerd, and OpenShell receive only their
 own generated secrets and no unrelated `.env` values. The proxy target checks the custom bind port in the printed

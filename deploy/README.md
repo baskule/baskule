@@ -19,8 +19,9 @@ Third-party storage, edge, and trace images are pinned by digest in Compose. The
 workload images, so its private daemon needs no registry access or host image loader.
 
 The single-machine stack has separate platform and computer networks. Only computerd joins both; the optional
-trace collector also receives from both. Only edge HTTP and the optional trace UI are published. Cluster roles
-bind Worker, peer, and computerd listeners on explicitly configured private addresses. Computer egress policy
+trace collector also receives from both. The edge publishes HTTP on loopback by default, or TCP 80/443 and UDP 443
+on all IPv4/IPv6 interfaces in HTTPS mode. The optional trace UI has its own loopback-default bind
+(`BASKULE_TRACES_BIND`). Cluster roles bind Worker, peer, and computerd listeners on explicitly configured private addresses. Computer egress policy
 continues to deny private destinations.
 
 Default memory caps total 15.75 GiB: two nodes at 3 GiB each, RustFS at 1 GiB, edge at 256 MiB, computerd at
@@ -37,3 +38,6 @@ The bootstrap job generates per-consumer secrets in separate named volumes. Afte
 `setup` service prints `/setup#token=…` only when the API reports that setup is required.
 Create the first admin through that link. Cluster deployments supply a shared `SETUP_TOKEN`; the deploy job prints
 the link using `PUBLIC_URL`. Once an admin exists, the token cannot create another.
+
+Start only named profiles such as `traces`; `docker compose --profile '*' up` is unsupported because it also starts
+the edge inheritance templates. `BASKULE_EDGE` accepts lowercase `http` or `https`; HTTPS requires `BASKULE_DOMAIN`.

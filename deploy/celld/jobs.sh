@@ -112,6 +112,13 @@ wait_s3() {
 
 case "${1:-}" in
   setup)
+    case "${BASKULE_EDGE:-http}" in
+      http) ;;
+      https)
+        [ -n "${BASKULE_DOMAIN:-}" ] || { log "BASKULE_DOMAIN is required when BASKULE_EDGE=https"; exit 1; }
+        ;;
+      *) log "BASKULE_EDGE must be http or https (lowercase)"; exit 1 ;;
+    esac
     print_setup_link
     ;;
   run)

@@ -175,6 +175,11 @@ describe("a refused password-mode setup", () => {
       alert: "Can't reach the server.",
     },
     {
+      refusal: new BaskuleApiError(403, "bad origin", "bad_origin"),
+      heading: "Set up Baskule",
+      alert: "Setup was blocked by the origin check. Configure BASKULE_TRUSTED_PROXIES or PUBLIC_ORIGINS. Reverse proxy configuration",
+    },
+    {
       refusal: new BaskuleApiError(403, "bad token", "bad_token"),
       heading: "Setup link unavailable",
       alert: "This setup link is not valid. Use the latest link from the setup logs.",
@@ -201,5 +206,11 @@ describe("a refused password-mode setup", () => {
     });
     await expect.element(screen.getByRole("heading", { name: heading })).toBeVisible();
     if (alert) await expect.element(screen.getByRole("alert")).toHaveTextContent(alert);
+    if (refusal.code === "bad_origin") {
+      await expect.element(screen.getByRole("link", { name: "Reverse proxy configuration" })).toHaveAttribute(
+        "href",
+        "https://github.com/baskule/baskule/blob/main/docs/install.md#your-own-reverse-proxy",
+      );
+    }
   });
 });

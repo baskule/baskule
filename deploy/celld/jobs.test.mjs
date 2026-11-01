@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -84,6 +84,23 @@ for (const required of [true, false]) test(`setup prints a link only when the de
     assert.equal(result.status, 0, result.stderr);
     if (required) assert.match(result.stderr, /http:\/\/127.0.0.1:48090\/setup#token=test-token/);
     else assert.doesNotMatch(result.stderr, /token=/);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+for (const [edge, domain, message] of [
+  ["https", "", "BASKULE_DOMAIN is required when BASKULE_EDGE=https"],
+  ["HTTPS", "baskule.test", "BASKULE_EDGE must be http or https (lowercase)"],
+]) test(`setup rejects invalid edge configuration: ${edge}/${domain}`, () => {
+  const work = mkdtempSync(resolve(tmpdir(), "setup-edge-test-"));
+  try {
+    writeFileSync(resolve(work, "curl"), '#!/bin/bash\necho unexpected-status-query > "$MOCK_LOG"\nexit 99\n', { mode: 0o755 });
+    const result = spawnSync("bash", ["deploy/celld/jobs.sh", "setup"], { encoding: "utf8", timeout: 3_000,
+      env: { ...process.env, PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: work,
+        BASKULE_EDGE: edge, BASKULE_DOMAIN: domain, SETUP_STATUS_URL: "http://node/api/baskule/setup",
+        MOCK_LOG: resolve(work, "requests") } });
+    assert.equal(result.status, 1, result.stderr);
+    assert.ok(result.stderr.includes(message), result.stderr);
+    assert.equal(existsSync(resolve(work, "requests")), false, "reject settings before querying the platform");
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 

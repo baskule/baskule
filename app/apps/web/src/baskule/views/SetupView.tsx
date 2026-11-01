@@ -49,7 +49,9 @@ export function SetupView() {
 function SetupScreen({ token }: { readonly token: string | null }) {
   const t = useTranslation();
   const status = useApiResource(baskuleApi.setupStatus);
-  const [outcome, setOutcome] = useState<"bad_token" | "already_set_up" | "created" | null>(null);
+  const [outcome, setOutcome] = useState<
+    "bad_token" | "bad_origin" | "already_set_up" | "created" | null
+  >(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -81,12 +83,18 @@ function SetupScreen({ token }: { readonly token: string | null }) {
     if (submitting || !token || !name.trim() || !emailValid || problem !== null || mismatch) return;
     setSubmitting(true);
     setError(null);
+    setOutcome(null);
     const account = { name: name.trim(), email: email.trim() };
     const created = await baskuleApi
       .completeSetup({ token, ...account, ...(passwordMode ? { password } : {}) })
       .catch((cause: unknown) => {
         const refusal = cause instanceof BaskuleApiError ? cause.status : null;
-        if (refusal === 403) setOutcome("bad_token");
+        if (cause instanceof BaskuleApiError && cause.code === "bad_origin") {
+          setOutcome("bad_origin");
+          setError(
+            t("Setup was blocked by the origin check. Configure BASKULE_TRUSTED_PROXIES or PUBLIC_ORIGINS."),
+          );
+        } else if (refusal === 403) setOutcome("bad_token");
         else if (refusal === 409) setOutcome("already_set_up");
         else if (refusal === 429) setError(t("Too many attempts. Wait a minute and try again."));
         else setError(errorText(cause, t("Setup failed. Try again.")));
@@ -233,7 +241,20 @@ function SetupScreen({ token }: { readonly token: string | null }) {
             ) : null}
             {error ? (
               <Alert variant="error" role="alert">
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>
+                  {error}
+                  {outcome === "bad_origin" ? (
+                    <>
+                      {" "}
+                      <a
+                        href="https://github.com/baskule/baskule/blob/main/docs/install.md#your-own-reverse-proxy"
+                        className="underline underline-offset-4"
+                      >
+                        {t("Reverse proxy configuration")}
+                      </a>
+                    </>
+                  ) : null}
+                </AlertDescription>
               </Alert>
             ) : null}
             <Button type="submit" disabled={submitting}>
