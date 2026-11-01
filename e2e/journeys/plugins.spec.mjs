@@ -44,7 +44,7 @@ test("assigned skills are ready without activation and leave a team when its con
       return { name, value: value.join("="), url: stack.urls.front };
     }));
     await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
-    await adminPage.getByRole("link", { name: "Add your own", exact: true }).click();
+    await adminPage.getByRole("link", { name: "Add your own", exact: true }).first().click();
     await adminPage.getByLabel("Plugin file", { exact: true }).setInputFiles({ name: "portable-skills.zip", mimeType: "application/zip", buffer: skillsArchive() });
     await adminPage.getByRole("button", { name: "Review plugin", exact: true }).click();
     await adminPage.getByLabel("Name", { exact: true }).fill(name);
