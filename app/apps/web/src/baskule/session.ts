@@ -7,7 +7,7 @@ import { type BaskuleMe, type BaskuleSpace, BaskuleApiError, baskuleApi } from "
 
 const REFRESH_INTERVAL_MS = 60_000;
 /** Paths that render without a session. */
-const PUBLIC_PATH_PATTERN = /^\/(login|invite|reset-password|link)\/?$/;
+const PUBLIC_PATH_PATTERN = /^\/(login|invite|reset-password|link|setup)\/?$/;
 
 type Listener = () => void;
 
@@ -204,6 +204,21 @@ export async function adoptSessionUser(userId: string): Promise<"continue" | "re
   if (previous === null) return "continue";
   window.location.reload();
   return "reloading";
+}
+
+/** Keeps the session a request just set, or signs in with the same credentials; false when that fails. */
+export function ensureSignedIn(credentials: {
+  readonly email: string;
+  readonly password: string;
+}): Promise<boolean> {
+  return baskuleApi.me().then(
+    () => true,
+    () =>
+      baskuleApi.signIn(credentials).then(
+        () => true,
+        () => false,
+      ),
+  );
 }
 
 export async function signOutBaskule() {

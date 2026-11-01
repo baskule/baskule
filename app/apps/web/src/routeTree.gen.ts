@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as SetupRouteImport } from './routes/setup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as LoginRouteImport } from './routes/login'
@@ -66,6 +67,11 @@ import { Route as ChatAdminSectionPageItemRouteImport } from './routes/_chat.adm
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
   path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -344,6 +350,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/pair': typeof PairRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/setup': typeof SetupRoute
   '/welcome': typeof WelcomeRoute
   '/admin': typeof ChatAdminRouteWithChildren
   '/new': typeof ChatNewRoute
@@ -397,6 +404,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/pair': typeof PairRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/setup': typeof SetupRoute
   '/welcome': typeof WelcomeRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
@@ -452,6 +460,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/pair': typeof PairRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/setup': typeof SetupRoute
   '/welcome': typeof WelcomeRoute
   '/_chat/admin': typeof ChatAdminRouteWithChildren
   '/_chat/new': typeof ChatNewRoute
@@ -509,6 +518,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/pair'
     | '/reset-password'
+    | '/setup'
     | '/welcome'
     | '/admin'
     | '/new'
@@ -562,6 +572,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/pair'
     | '/reset-password'
+    | '/setup'
     | '/welcome'
     | '/new'
     | '/pull-requests'
@@ -616,6 +627,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/pair'
     | '/reset-password'
+    | '/setup'
     | '/welcome'
     | '/_chat/admin'
     | '/_chat/new'
@@ -672,6 +684,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PairRoute: typeof PairRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  SetupRoute: typeof SetupRoute
   WelcomeRoute: typeof WelcomeRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
 }
@@ -683,6 +696,13 @@ declare module '@tanstack/react-router' {
       path: '/welcome'
       fullPath: '/welcome'
       preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -1174,6 +1194,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PairRoute: PairRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  SetupRoute: SetupRoute,
   WelcomeRoute: WelcomeRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
 }
