@@ -2,7 +2,7 @@
 
 A cluster runs platform nodes on several machines and keeps their cell state in one external S3-compatible bucket.
 The computers run on one separate host. Use the [single-machine guide](install.md) for a smaller installation.
-All machines need Linux x86-64 and Docker Engine 25 or newer with Compose 2.24.4 or newer.
+All machines need Linux x86-64 and Docker Engine 25 or newer with Compose 2.24.4 or newer. The setup commands also use OpenSSL.
 No source checkout or build is needed.
 
 ## Roles and network
@@ -73,7 +73,7 @@ ASSETS=https://github.com/baskule/baskule/releases/download/v$VERSION
 curl -fL "$ASSETS/cluster-computers.yml" -o docker-compose.yml
 curl -fL "$ASSETS/cluster-computers.env.example" -o .env.example
 umask 077
-cp .env.example .env
+sed '/^COMPUTERD_TOKEN=/d; /^OPENSHELL_VOLUMES_TOKEN=/d' .env.example > .env
 printf '\nCOMPUTERD_TOKEN=%s\nOPENSHELL_VOLUMES_TOKEN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" >> .env
 chmod 600 .env
 ```
@@ -150,7 +150,8 @@ curl -fL "$ASSETS/cluster-edge.env.example" -o .env
 Set `BASKULE_NODES_WORKER` to every private Worker address, separated by spaces. Set `BASKULE_BIND` to loopback
 for a local HTTPS proxy or to a private address for a separate proxy. Run `docker compose up -d`.
 Place your HTTPS reverse proxy in front of it as described in the [single-machine guide](install.md#open-it).
-Caddy uses connection retries and active health checks. Its HTTP listener does not obtain certificates.
+The edge trusts no forwarded headers by default. Set `BASKULE_TRUSTED_PROXIES` to the load balancer address or CIDR
+when it forwards the original scheme, host, and client IP. Caddy uses connection retries and active health checks. Its HTTP listener does not obtain certificates.
 
 Open the setup link printed by `docker compose run --rm deploy` to create the first admin. The token becomes
 useless after setup. Configure **Admin → AI → Models** and invite people. For SSO, set `AUTH_CONFIG` or save the optional `config/auth.json` on the machine running the deploy job. Use

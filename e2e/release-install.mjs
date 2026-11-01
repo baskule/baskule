@@ -10,7 +10,7 @@ import { createApi } from "./journeys/api.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const target = process.argv[2] ?? "all";
-if (!["all", "single", "cluster", "restore", "fresh", "proxy"].includes(target)) throw new Error("Choose all, single, cluster, restore, or fresh");
+if (!["all", "single", "cluster", "restore", "fresh", "proxy", "external"].includes(target)) throw new Error("Choose all, single, proxy, external, cluster, restore, or fresh");
 const version = process.env.BASKULE_INSTALL_VERSION ?? "local";
 const registry = process.env.BASKULE_INSTALL_REGISTRY ?? "ghcr.io/baskule";
 const computerImage = `${registry}/baskule-computerd:${version}`;
@@ -127,7 +127,7 @@ async function fake(w, lan) {
   return { endpoint, name };
 }
 function secretHash(w) {
-  return w.dc(["run", "--rm", "--no-deps", "--entrypoint", "sha256sum", "setup", "/run/baskule/secrets"]);
+  return w.dc(["run", "--rm", "--no-deps", "--entrypoint", "sh", "baskule-bootstrap", "-c", "sha256sum /run/baskule/*/secrets"]);
 }
 async function completeSetup(w, base) {
   const status = await (await fetch(`${base}/api/baskule/setup`)).json();
@@ -143,9 +143,73 @@ async function completeSetup(w, base) {
   expect(JSON.parse(me.stdout).user.role).toBe("admin");
   pass("logs setup link creates the first admin through curl and its browser session cookie works");
 }
+function stopWorld(w) {
+  const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
+  if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);
+  w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
+}
+function scopedSecrets(w) {
+  for (const [service, role, keys] of [
+    ["baskule-rustfs", "storage", ["RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"]],
+    ["baskule-computerd", "computerd", ["COMPUTERD_TOKEN", "OPENSHELL_VOLUMES_TOKEN"]],
+    ["baskule-openshell", "openshell", ["OPENSHELL_VOLUMES_TOKEN"]],
+  ]) {
+    const container = w.dc(["ps", "-q", service]);
+    const names = command(["exec", container, "sh", "-c", 'tr "\\0" "\\n" < /proc/1/environ | cut -d= -f1']).split("\n");
+    expect(names.filter(name => /^(RUSTFS_(?:ACCESS_KEY|SECRET_KEY)|AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY)|S3_(?:ACCESS_KEY|SECRET_KEY)|SETUP_TOKEN|COMPUTERD_TOKEN|OPENSHELL_VOLUMES_TOKEN|E2E_LOGIN_.*)$/.test(name)).sort()).toEqual(keys.sort());
+    const mounts = JSON.parse(command(["inspect", "-f", "{{json .Mounts}}", container]));
+    expect(mounts.filter(mount => mount.Name?.endsWith("-secrets")).map(mount => mount.Name)).toEqual([`${w.project}_baskule-${role}-secrets`]);
+  }
+  pass("RustFS, computerd and OpenShell expose only consumer secrets and no unrelated .env values");
+}
+function directClient(w) {
+  const name = `${w.project}-direct-client`;
+  containers.set(name, "proxy");
+  command(["run", "-d", "--name", name, "--network", `${w.project}_baskule-net`, "--entrypoint", "sh",
+    `${registry}/baskule-celld:${version}`, "-c", "exec tail -f /dev/null"]);
+  const post = (body, extra = {}) => {
+    const headers = { Host: "direct.baskule.test", Origin: "http://direct.baskule.test", "Content-Type": "application/json", ...extra };
+    const result = command(["exec", "-i", name, "curl", "-sS", "--max-time", "20", "-o", "/dev/null", "-w", "%{http_code}",
+      ...Object.entries(headers).flatMap(([key,value]) => ["-H", `${key}: ${value}`]), "--data-binary", "@-", "http://baskule-edge:47090/auth/sign-in/email"], { input: JSON.stringify(body) });
+    return Number(result);
+  };
+  expect(post(admin, { "X-Forwarded-Host": "spoof.baskule.test", Origin: "http://spoof.baskule.test" })).toBe(403);
+  expect(post(admin, { "X-Forwarded-Proto": "https", Origin: "https://direct.baskule.test" })).toBe(403);
+  for (let n = 0; n < 10; n++) expect(post({ ...admin, password: "wrong" }, { "X-Forwarded-For": `203.0.114.${n}` })).toBe(401);
+  expect(post(admin, { "X-Forwarded-For": "203.0.114.200" })).toBe(429);
+  command(["rm", "-f", name]); containers.delete(name);
+  pass("direct private clients cannot spoof forwarded host, scheme or IP to bypass origin checks or sign-in limits");
+}
+async function external() {
+  const p = await port();
+  const key = randomBytes(32).toString("hex");
+  const w = world("single-external", { BASKULE_PORT: p, S3_ENDPOINT: "http://external-storage:47093",
+    S3_ACCESS_KEY: "external-test", S3_SECRET_KEY: key });
+  const override = resolve(w.directory, "broken-local-storage.yml");
+  writeFileSync(override, 'services:\n  baskule-rustfs:\n    entrypoint: ["/bin/sh", "-c", "exit 1"]\n    restart: "no"\n');
+  w.files.push("-f", override);
+  w.dc(["create", "baskule-rustfs"]);
+  const storage = `${w.project}-external-storage`;
+  const volume = `${storage}-data`;
+  containers.set(storage, "storage"); fixtureVolumes.add(volume);
+  command(["run", "-d", "--name", storage, "--network", `${w.project}_baskule-net`, "--network-alias", "external-storage",
+    "-e", "RUSTFS_ADDRESS=0.0.0.0:47093", "-e", "RUSTFS_CONSOLE_ENABLE=false", "-e", "RUSTFS_ACCESS_KEY=external-test",
+    "-e", `RUSTFS_SECRET_KEY=${key}`, "-v", `${volume}:/data`,
+    "rustfs/rustfs@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b", "rustfs", "/data"]);
+  w.dc(["up", "-d", "baskule-rustfs", "setup", "baskule-edge"]);
+  const base = `http://127.0.0.1:${p}`;
+  await ready(`${base}/api/baskule/setup`);
+  await completeSetup(w, base);
+  await createApi({ urls: { loopback: base, front: base }, admin }).adminSession();
+  expect(command(["inspect", "-f", "{{.State.ExitCode}}", w.dc(["ps", "-aq", "baskule-rustfs"])])).toBe("1");
+  pass("external S3 deploys, completes setup and signs in while local RustFS has failed");
+  w.dc(["stop"]);
+  command(["rm", "-f", storage]); containers.delete(storage);
+  stopWorld(w);
+}
 async function proxy() {
   const p = await port();
-  const w = world("single-proxy", { BASKULE_PORT: p, SETUP_TOKEN: adminVars.SETUP_TOKEN, COMPUTERD_TOKEN: "computer-env-override", OPENSHELL_VOLUMES_TOKEN: "volume-env-override", RUSTFS_ACCESS_KEY: "rustfs-env-override", RUSTFS_SECRET_KEY: "rustfs-env-secret-override" });
+  const w = world("single-proxy", { BASKULE_PORT: p, SETUP_TOKEN: adminVars.SETUP_TOKEN, COMPUTERD_TOKEN: "computer-env-override", OPENSHELL_VOLUMES_TOKEN: "volume-env-override", RUSTFS_ACCESS_KEY: "rustfs-env-override", RUSTFS_SECRET_KEY: "rustfs-env-secret-override", E2E_LOGIN_EMAIL: "not-for-services@example.test", E2E_LOGIN_PASSWORD: "not-for-services" });
   w.dc(["up", "-d"]);
   const edge = `http://127.0.0.1:${p}`;
   await ready(`${edge}/api/baskule/setup`);
@@ -172,7 +236,9 @@ async function proxy() {
   await ready(`${base}/api/baskule/setup`);
   const origin = "https://proxy.baskule.test";
   const headers = { "X-Test-Client-IP": "203.0.113.17", Origin: origin, "Content-Type": "application/json" };
-  const token = w.dc(["logs", "--no-color", "setup"]).match(/\/setup#token=([^\s]+)/)[1];
+  const setupLog = w.dc(["logs", "--no-color", "setup"]);
+  expect(setupLog.includes(`http://127.0.0.1:${p}/setup#token=`)).toBe(true);
+  const token = setupLog.match(/\/setup#token=([^\s]+)/)[1];
   expect(token).toBe(adminVars.SETUP_TOKEN);
   const post = async (path, body, extra = {}) => {
     const result = spawnSync("curl", ["-sS", "-D", resolve(w.directory, "proxy-headers"), ...Object.entries({ ...headers, ...extra }).flatMap(([key,value]) => ["-H", `${key}: ${value}`]), "--data-binary", "@-", "-w", "\n%{http_code}", `${base}${path}`], { input: JSON.stringify(body), encoding: "utf8" });
@@ -189,6 +255,16 @@ async function proxy() {
   expect(await post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.18" })).toBe(429);
   expect(await post("/auth/sign-in/email", admin, { "X-Test-Client-IP": "203.0.113.19" })).toBe(200);
   pass("HTTPS proxy headers without PUBLIC_ORIGINS: setup, Secure session, sign-in, foreign Origin refusal and real-client rate limits");
+  scopedSecrets(w);
+  directClient(w);
+  const countLinks = service => (w.dc(["logs", "--no-color", service]).match(/setup#token=/g) ?? []).length;
+  const before = [countLinks("setup"), countLinks("baskule-deploy")];
+  w.dc(["up", "-d"]);
+  expect([countLinks("setup"), countLinks("baskule-deploy")]).toEqual(before);
+  pass("custom port setup link and no new links after setup is complete");
+  command(["rm", "-f", proxyName]); containers.delete(proxyName);
+  stopWorld(w);
+
 }
 async function exercise(w, base, endpoint) {
   await ready(`${base}/version.json`);
@@ -332,6 +408,7 @@ async function single() {
   expect(secretHash(w)).toBe(secrets);
   pass("restored secrets match the original volume");
   pass("single-machine backup restores chat, computer disk, user/trusted xattrs, numeric ownership and modes into empty volumes");
+  stopWorld(w);
 }
 async function restoreOnly() {
   if (!process.argv[3]) throw new Error("Pass the private single-proof.json path");
@@ -374,7 +451,8 @@ async function cluster() {
   const base = `http://${edgeHost}:47090`;
   const shared = { ...adminVars, S3_ENDPOINT: `http://${storageHost}:47093`, S3_REGION: "us-east-1",
     S3_ACCESS_KEY: "release-test", S3_SECRET_KEY: key, CELLD_BUCKET_NAME: "baskule", COMPUTERD_TOKEN: token,
-    COMPUTERD_URL: `http://${computerHost}:47094`, CELLD_NODES_INTERNAL: `${nodeA}:47092 ${nodeB}:47092`, PUBLIC_ORIGINS: base };
+    COMPUTERD_URL: `http://${computerHost}:47094`, CELLD_NODES_INTERNAL: `${nodeA}:47092 ${nodeB}:47092`,
+    AUTH_CONFIG: "", PUBLIC_URL: base, PUBLIC_ORIGINS: base };
   const a = world("node-a", { ...shared, BASKULE_PRIVATE_IP: nodeA, CELLD_NODE: `${id}-a` });
   const b = world("node-b", { ...shared, BASKULE_PRIVATE_IP: nodeB, CELLD_NODE: `${id}-b` });
   const computers = world("computers", { BASKULE_PRIVATE_IP: computerHost, COMPUTERD_TOKEN: token, PLATFORM_URL: base });
@@ -422,7 +500,8 @@ async function cluster() {
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
 }
 try {
-  if (target === "proxy") await proxy();
+  if (target === "all" || target === "proxy") await proxy();
+  if (target === "all" || target === "external") await external();
   if (target === "fresh") await fresh();
   if (target === "restore") await restoreOnly();
   if (target === "all" || target === "single") await single();

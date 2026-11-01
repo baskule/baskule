@@ -27,7 +27,7 @@ configs:
           auto_https off
           persist_config off
           servers {
-              trusted_proxies static private_ranges
+              trusted_proxies static ${BASKULE_TRUSTED_PROXIES:-}
               trusted_proxies_strict
           }
       }

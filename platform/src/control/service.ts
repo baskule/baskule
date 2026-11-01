@@ -300,13 +300,24 @@ export class ControlService {
       for (const [ip, limit] of this.setupAttempts) if (limit.until <= now) this.setupAttempts.delete(ip);
       const ip = req.headers.get(CLIENT_IP_HEADER) ?? "unknown";
       const limit = this.setupAttempts.get(ip) ?? { until: now + 60_000, count: 0 };
-      if (limit.count >= 10 || (!this.setupAttempts.has(ip) && this.setupAttempts.size >= 1000)) throw new HttpError(429, "too_many_requests");
+      if (limit.count >= 10) throw new HttpError(429, "too_many_requests");
+      if (!this.setupAttempts.has(ip) && this.setupAttempts.size >= 1000) {
+        const oldest = this.setupAttempts.keys().next().value;
+        if (oldest !== undefined) this.setupAttempts.delete(oldest);
+      }
       limit.count++; this.setupAttempts.set(ip, limit);
     }
     if (!this.setupRequired() || this.setupInProgress) throw new HttpError(409, "already_set_up");
     const parsed = z.object({ token: z.string().optional(), name: z.string().trim().min(1).max(100),
       email: z.string().trim().max(254), password: z.string().max(256).optional() }).safeParse(await readJson(req));
-    if (!parsed.success) throw new HttpError(400, "invalid_setup");
+    if (!parsed.success) {
+      const field = parsed.error.issues[0]?.path[0];
+      const message = field === "name" ? "Name is required and must be at most 100 characters."
+        : field === "email" ? "Enter an email address of at most 254 characters."
+        : field === "password" ? "Password must be between 8 and 256 characters."
+        : "Use the setup link and fill in your name and email.";
+      throw new HttpError(400, "invalid_field", message);
+    }
     const body = parsed.data;
     const expected = this.env.SETUP_TOKEN;
     const supplied = typeof body.token === "string" ? body.token : "";
@@ -317,7 +328,7 @@ export class ControlService {
     if (!EMAIL_RE.test(email) || email.length > 254) throw new HttpError(400, "invalid_email");
     const password = typeof body.password === "string" ? body.password : "";
     if (this.installation.password && (password.length < 8 || password.length > 256)) throw new HttpError(400, "invalid_password");
-    if (!this.installation.password && body.password !== undefined) throw new HttpError(400, "password_disabled");
+    if (!this.installation.password && body.password !== undefined) throw new HttpError(400, "invalid_field", "Password sign-in is disabled. Omit the password and sign in through SSO.");
     // Claim before awaiting Better Auth so concurrent submissions cannot create two first admins.
     if (!this.setupRequired() || this.setupInProgress) throw new HttpError(409, "already_set_up");
     this.setupInProgress = true;
@@ -325,12 +336,15 @@ export class ControlService {
       const created = await this.auth.api.createUser({ body: { email, name, role: "admin", ...(this.installation.password ? { password } : {}) } });
       const headers = new Headers({ "cache-control": "no-store" });
       if (this.installation.password) {
-        const signIn = await this.signInCreatedUser(req, email, password);
-        if (!signIn.ok) return signIn;
-        for (const cookie of signIn.headers.getSetCookie()) headers.append("set-cookie", cookie);
-        const bearer = signIn.headers.get("set-auth-token");
-        if (bearer) headers.set("set-auth-token", bearer);
-        await signIn.body?.cancel();
+        try {
+          const signIn = await this.signInCreatedUser(req, email, password);
+          if (signIn.ok) {
+            for (const cookie of signIn.headers.getSetCookie()) headers.append("set-cookie", cookie);
+            const bearer = signIn.headers.get("set-auth-token");
+            if (bearer) headers.set("set-auth-token", bearer);
+          }
+          await signIn.body?.cancel();
+        } catch { console.warn("Setup created the admin; automatic sign-in failed"); }
       }
       return json({ user: { id: created.user.id, email, name } }, 201, headers);
     } finally { this.setupInProgress = false; }

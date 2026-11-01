@@ -1,17 +1,82 @@
 #!/bin/bash
 # One-shot jobs of the baskule stack (run by docker compose):
-#   baskule-celld-job setup       generate first-start secrets and print the admin setup link
-#   baskule-celld-job bootstrap   create the fleet bucket on RustFS if missing (SigV4 via curl)
+#   baskule-celld-job setup       print the admin setup link only while setup is required
+#   baskule-celld-job bootstrap   generate consumer secrets, then create the fleet bucket on RustFS if missing (SigV4 via curl)
 #   baskule-celld-job deploy      `celld deploy` the app with vars generated from the environment, then ask
 #                                  every node to adopt it now (POST /reload on the internal listener)
 # Env: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_ENDPOINT, CELLD_BUCKET_NAME, CELLD_BUCKET (s3://name[/prefix])
 #      deploy: DEPLOY_APP (auto|platform|hello), CELLD_NODES_INTERNAL ("host:port host:port"), APP vars (see compose).
 set -euo pipefail
 log() { echo "[baskule-celld-job] $*" >&2; }
-# Generated defaults preserve explicit container environment values, including optional .env overrides.
-if [ -f "${BASKULE_SECRETS_DIR:-/run/baskule}/secrets" ]; then . "${BASKULE_SECRETS_DIR:-/run/baskule}/secrets"; fi
-export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-${S3_ACCESS_KEY:-${RUSTFS_ACCESS_KEY:-}}}
-export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-${S3_SECRET_KEY:-${RUSTFS_SECRET_KEY:-}}}
+secrets_root=${BASKULE_SECRETS_DIR:-/run/baskule}
+load_secrets() {
+  for role in storage platform; do
+    [ ! -f "$secrets_root/$role/secrets" ] || . "$secrets_root/$role/secrets"
+  done
+  export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-${S3_ACCESS_KEY:-${RUSTFS_ACCESS_KEY:-}}}
+  export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-${S3_SECRET_KEY:-${RUSTFS_SECRET_KEY:-}}}
+}
+load_secrets
+
+# A key can be shared by consumers, but their mounted volumes expose only their own keys.
+ensure_secret() {
+  local filename=$1 key=$2 role value= file
+  shift 2
+  for role in "$@"; do
+    file="$secrets_root/$role/$filename"
+    if [ -f "$file" ] && grep -q "^export $key=" "$file"; then
+      value=$(unset "$key"; . "$file"; printf '%s' "${!key}")
+      break
+    fi
+  done
+  [ -n "$value" ] || value=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+  for role in "$@"; do
+    file="$secrets_root/$role/$filename"
+    mkdir -p "$secrets_root/$role"
+    chmod 755 "$secrets_root/$role"
+    if [ ! -f "$file" ] || ! grep -q "^export $key=" "$file"; then
+      printf 'export %s=${%s:-%s}\n' "$key" "$key" "$value" >> "$file"
+    fi
+    chmod 444 "$file"
+  done
+}
+generate_secrets() {
+  local role
+  umask 077
+  for role in storage platform computerd openshell; do
+    mkdir -p "$secrets_root/$role"
+    chmod 755 "$secrets_root/$role"
+    if [ -f "$secrets_root/$role/secrets" ]; then
+      cp "$secrets_root/$role/secrets" "$secrets_root/$role/.pending"
+    else
+      : > "$secrets_root/$role/.pending"
+    fi
+  done
+  ensure_secret .pending RUSTFS_ACCESS_KEY storage
+  ensure_secret .pending RUSTFS_SECRET_KEY storage
+  ensure_secret .pending COMPUTERD_TOKEN platform computerd
+  ensure_secret .pending OPENSHELL_VOLUMES_TOKEN computerd openshell
+  ensure_secret .pending SETUP_TOKEN platform
+  for role in storage platform computerd openshell; do
+    mv "$secrets_root/$role/.pending" "$secrets_root/$role/secrets"
+  done
+}
+
+print_setup_link() {
+  local deadline=$((SECONDS + 90)) status
+  while (( SECONDS < deadline )); do
+    status=$(curl -fsS --connect-timeout 2 --max-time 10 "$SETUP_STATUS_URL" 2>/dev/null) || status=
+    if printf '%s' "$status" | jq -e '(.required | type) == "boolean"' >/dev/null 2>&1; then
+      if printf '%s' "$status" | jq -e '.required' >/dev/null; then
+        log "Create the first admin: ${PUBLIC_URL:-http://127.0.0.1:47090}/setup#token=$SETUP_TOKEN"
+      fi
+      return 0
+    fi
+    (( SECONDS >= deadline )) || sleep 0.5
+  done
+  log "setup status timed out at $SETUP_STATUS_URL"
+  return 1
+}
 sig="aws:amz:${AWS_REGION:-us-east-1}:s3"
 # RustFS requires the payload hash header (empty body).
 h="x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -47,22 +112,7 @@ wait_s3() {
 
 case "${1:-}" in
   setup)
-    directory=${BASKULE_SECRETS_DIR:-/run/baskule}
-    mkdir -p "$directory"
-    if [ ! -f "$directory/secrets" ]; then
-      umask 077
-      temporary=$(mktemp "$directory/.secrets.XXXXXX")
-      trap 'rm -f "$temporary"' EXIT
-      for key in RUSTFS_ACCESS_KEY RUSTFS_SECRET_KEY COMPUTERD_TOKEN OPENSHELL_VOLUMES_TOKEN SETUP_TOKEN; do
-        value=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
-        printf 'export %s=${%s:-%s}\n' "$key" "$key" "$value" >> "$temporary"
-      done
-      # All consumers mount this volume read-only; computerd runs as an unprivileged user.
-      chmod 444 "$temporary"
-      mv "$temporary" "$directory/secrets"
-    fi
-    . "$directory/secrets"
-    log "Create the first admin: ${PUBLIC_URL:-http://127.0.0.1:47090}/setup#token=$SETUP_TOKEN"
+    print_setup_link
     ;;
   run)
     shift
@@ -82,6 +132,8 @@ case "${1:-}" in
     touch /backup/openshell-state/.baskule-restore
     ;;
   bootstrap)
+    generate_secrets
+    load_secrets
     wait_s3 bucket
     ;;
   deploy)
@@ -114,7 +166,7 @@ case "${1:-}" in
       curl -s -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
     log "deployed $app"
-    [ -z "${SETUP_TOKEN:-}" ] || log "Create the first admin: ${PUBLIC_URL:-http://127.0.0.1:47090}/setup#token=$SETUP_TOKEN"
+    [ -z "${SETUP_TOKEN:-}" ] || print_setup_link
     ;;
   *) echo "usage: baskule-celld-job setup|run COMMAND|bootstrap|deploy|backup|restore" >&2; exit 2 ;;
 esac

@@ -33,6 +33,7 @@ Docker store containing computer disks.
 developer path. Operators need only the release files and Docker Compose. Release assembly uses
 `scripts/release-install-assets.sh`; CI and publishing are documented in [Hosted checks and artifact builds](../docs/ci.md).
 
-The one-shot `setup` service generates secrets in a named volume and prints `/setup#token=…`.
+The bootstrap job generates per-consumer secrets in separate named volumes. After deployment, the one-shot
+`setup` service prints `/setup#token=…` only when the API reports that setup is required.
 Create the first admin through that link. Cluster deployments supply a shared `SETUP_TOKEN`; the deploy job prints
 the link using `PUBLIC_URL`. Once an admin exists, the token cannot create another.

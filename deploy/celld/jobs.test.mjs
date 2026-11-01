@@ -22,7 +22,7 @@ case $n in 0|1) echo 503 ;; 2) echo 404 ;; 3|4) echo 200 ;; *) exit 99 ;; esac
     writeFileSync(resolve(work, "celld"), '#!/bin/bash\necho \"Unexpected fleet diagnostic before nodes start\" >&2\nexit 99\n', { mode: 0o755 });
     const result = spawnSync("bash", ["deploy/celld/jobs.sh", "bootstrap"], { encoding: "utf8", timeout: 10_000,
       env: { ...process.env, PATH: `${work}:${process.env.PATH}`, MOCK_COUNT: resolve(work, "count"), MOCK_LOG: resolve(work, "requests"),
-        MOCK_EXISTING: existing ? "yes" : "no", AWS_ACCESS_KEY_ID: "test", AWS_SECRET_ACCESS_KEY: "test", S3_ENDPOINT: "http://storage.test", CELLD_BUCKET_NAME: "test", CELLD_BUCKET: "s3://test" } });
+        BASKULE_SECRETS_DIR: resolve(work, "secrets"), MOCK_EXISTING: existing ? "yes" : "no", AWS_ACCESS_KEY_ID: "test", AWS_SECRET_ACCESS_KEY: "test", S3_ENDPOINT: "http://storage.test", CELLD_BUCKET_NAME: "test", CELLD_BUCKET: "s3://test" } });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stderr, /bucket test ready/);
     const calls = readFileSync(resolve(work, "requests"), "utf8").trim().split("\n");
@@ -34,23 +34,56 @@ case $n in 0|1) echo 503 ;; 2) echo 404 ;; 3|4) echo 200 ;; *) exit 99 ;; esac
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 
-test("setup generates secrets once, preserves overrides, and prints the effective setup link", () => {
+test("consumer secrets preserve each existing key, fill missing keys, and honor overrides", () => {
   const work = mkdtempSync(resolve(tmpdir(), "setup-test-"));
   try {
-    const env = { ...process.env, BASKULE_SECRETS_DIR: work };
-    const first = spawnSync("bash", ["deploy/celld/jobs.sh", "setup"], { env, encoding: "utf8" });
-    assert.equal(first.status, 0, first.stderr);
-    const secrets = readFileSync(resolve(work, "secrets"), "utf8");
-    assert.equal(secrets.trim().split("\n").length, 5);
-    assert.match(first.stderr, /http:\/\/127.0.0.1:47090\/setup#token=[a-f0-9]{64}/);
-    const second = spawnSync("bash", ["deploy/celld/jobs.sh", "setup"], { env: { ...env, SETUP_TOKEN: "override", PUBLIC_URL: "https://example.test" }, encoding: "utf8" });
-    assert.equal(second.status, 0, second.stderr);
-    assert.equal(readFileSync(resolve(work, "secrets"), "utf8"), secrets);
-    assert.match(second.stderr, /https:\/\/example.test\/setup#token=override/);
-    const override = spawnSync("bash", ["deploy/celld/jobs.sh", "run", "bash", "-c", 'printf "%s\n" "$COMPUTERD_TOKEN" "$OPENSHELL_VOLUMES_TOKEN" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY"'], {
-      env: { ...env, COMPUTERD_TOKEN: "computer override", OPENSHELL_VOLUMES_TOKEN: "volume override", S3_ACCESS_KEY: "external key", S3_SECRET_KEY: "external secret" }, encoding: "utf8" });
+    writeFileSync(resolve(work, "curl"), '#!/bin/bash\necho 200\n', { mode: 0o755 });
+    const env = { ...process.env, PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: resolve(work, "volumes"),
+      S3_ENDPOINT: "http://storage.test", CELLD_BUCKET_NAME: "test" };
+    const run = (command, extra = {}) => spawnSync("bash", ["deploy/celld/jobs.sh", ...command], { env: { ...env, ...extra }, encoding: "utf8" });
+    const generate = () => {
+      const result = run(["bootstrap"]);
+      assert.equal(result.status, 0, result.stderr);
+    };
+    generate();
+    const roles = { storage: ["RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"], platform: ["COMPUTERD_TOKEN", "SETUP_TOKEN"],
+      computerd: ["COMPUTERD_TOKEN", "OPENSHELL_VOLUMES_TOKEN"], openshell: ["OPENSHELL_VOLUMES_TOKEN"] };
+    const file = role => resolve(env.BASKULE_SECRETS_DIR, role, "secrets");
+    const original = Object.fromEntries(Object.keys(roles).map(role => [role, readFileSync(file(role), "utf8")]));
+    for (const [role, keys] of Object.entries(roles)) {
+      assert.deepEqual(original[role].trim().split("\n").map(line => line.match(/^export ([A-Z_]+)=/)[1]), keys);
+    }
+    generate();
+    for (const role of Object.keys(roles)) assert.equal(readFileSync(file(role), "utf8"), original[role]);
+    // A later version's key can be added without replacing any existing default.
+    const future = spawnSync("bash", ["-c", "source <(sed '/^case /,$d' deploy/celld/jobs.sh); ensure_secret secrets FUTURE_TOKEN platform"], { env, encoding: "utf8" });
+    assert.equal(future.status, 0, future.stderr);
+    const extended = readFileSync(file("platform"), "utf8");
+    assert.ok(extended.startsWith(original.platform));
+    assert.match(extended, /export FUTURE_TOKEN=/);
+    // A missing consumer copy recovers the shared key from another role's volume.
+    writeFileSync(file("computerd"), original.computerd.split("\n").filter(line => !line.startsWith("export COMPUTERD_TOKEN=")).join("\n"));
+    generate();
+    const value = (text, key) => text.match(new RegExp(`^export ${key}=.*$`, "m"))[0];
+    assert.equal(value(readFileSync(file("computerd"), "utf8"), "COMPUTERD_TOKEN"), value(original.platform, "COMPUTERD_TOKEN"));
+    assert.equal(readFileSync(file("platform"), "utf8"), extended);
+    const override = run(["run", "bash", "-c", 'printf "%s\n" "$COMPUTERD_TOKEN" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY"'], {
+      COMPUTERD_TOKEN: "computer override", S3_ACCESS_KEY: "external key", S3_SECRET_KEY: "external secret" });
     assert.equal(override.status, 0, override.stderr);
-    assert.equal(override.stdout, "computer override\nvolume override\nexternal key\nexternal secret\n");
+    assert.equal(override.stdout, "computer override\nexternal key\nexternal secret\n");
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+for (const required of [true, false]) test(`setup prints a link only when the deployed API reports required=${required}`, () => {
+  const work = mkdtempSync(resolve(tmpdir(), "setup-link-test-"));
+  try {
+    writeFileSync(resolve(work, "curl"), `#!/bin/bash\nprintf '%s' '{"required":${required},"password":true}'\n`, { mode: 0o755 });
+    const result = spawnSync("bash", ["deploy/celld/jobs.sh", "setup"], { encoding: "utf8", env: { ...process.env,
+      PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: work, SETUP_TOKEN: "test-token",
+      SETUP_STATUS_URL: "http://node/api/baskule/setup", PUBLIC_URL: "http://127.0.0.1:48090" } });
+    assert.equal(result.status, 0, result.stderr);
+    if (required) assert.match(result.stderr, /http:\/\/127.0.0.1:48090\/setup#token=test-token/);
+    else assert.doesNotMatch(result.stderr, /token=/);
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 

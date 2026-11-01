@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { CLIENT_IP_HEADER } from "../../src/shared/contract";
 import { ADMIN, call, cookieFrom, makeService, signIn } from "../support/harness";
 
 const body = { token: "setup-test-token", name: "First admin", ...ADMIN };
@@ -37,9 +38,50 @@ describe("first admin setup", () => {
     expect((await signIn(h, ADMIN.email, ADMIN.password)).status).toBe(200);
   });
 
+  it("returns creation success even when automatic sign-in is rate-limited", async () => {
+    const h = await makeService({ SETUP_TOKEN: body.token, AUTH_RATE_LIMIT: "1" }, false);
+    for (let n = 0; n < 10; n++) expect((await call(h, "POST", "/auth/sign-in/email", { headers: { [CLIENT_IP_HEADER]: "operator" }, body: ADMIN })).status).toBe(401);
+    const created = await call(h, "POST", "/api/baskule/setup", { headers: { [CLIENT_IP_HEADER]: "operator" }, body });
+    expect(created.status).toBe(201);
+    expect(created.body.user.email).toBe(ADMIN.email);
+    expect(cookieFrom(created)).toBe("");
+    expect((await call(h, "GET", "/api/baskule/setup")).body.required).toBe(false);
+    expect((await call(h, "POST", "/api/baskule/setup", { body })).status).toBe(409);
+  });
+
+  it("returns creation success if automatic sign-in throws", async () => {
+    const h = await makeService({ SETUP_TOKEN: body.token }, false);
+    const handler = vi.spyOn(h.svc.auth, "handler").mockRejectedValueOnce(new Error("sign-in unavailable"));
+    const created = await call(h, "POST", "/api/baskule/setup", { body });
+    expect(created.status).toBe(201);
+    expect(cookieFrom(created)).toBe("");
+    handler.mockRestore();
+    expect((await signIn(h, ADMIN.email, ADMIN.password)).status).toBe(200);
+  });
+
+  it("keeps setup available to a new operator after 1000 other client addresses", async () => {
+    const h = await makeService({ SETUP_TOKEN: body.token, AUTH_RATE_LIMIT: "1" }, false);
+    for (let n = 0; n < 1000; n++)
+      expect((await call(h, "POST", "/api/baskule/setup", { headers: { [CLIENT_IP_HEADER]: `client-${n}` }, body: { ...body, token: "wrong" } })).status).toBe(403);
+    expect((await call(h, "POST", "/api/baskule/setup", { headers: { [CLIENT_IP_HEADER]: "operator" }, body })).status).toBe(201);
+  });
+
+  it("returns readable validation errors for the name and email limits", async () => {
+    const h = await makeService({ SETUP_TOKEN: body.token }, false);
+    for (const [invalid, message] of [[{ name: "n".repeat(101) }, /Name.*100/], [{ email: "e".repeat(255) }, /email.*254/]] as const) {
+      const result = await call(h, "POST", "/api/baskule/setup", { body: { ...body, ...invalid } });
+      expect(result.status).toBe(400);
+      expect(result.body.error).toBe("invalid_field");
+      expect(result.body.message).toMatch(message);
+    }
+  });
+
   it("creates an SSO admin without a password or session", async () => {
     const h = await makeService({ SETUP_TOKEN: body.token, AUTH_CONFIG: JSON.stringify({ version: 1, password: false, providers: [{ type: "oidc", id: "company", name: "Company", options: { clientId: "test", clientSecret: "test", discoveryUrl: "https://id.example/.well-known/openid-configuration" } }] }) }, false);
     expect((await call(h, "GET", "/api/baskule/setup")).body).toEqual({ required: true, password: false });
+    const invalid = await call(h, "POST", "/api/baskule/setup", { body });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.message).toContain("Password sign-in is disabled");
     const { password: _password, ...sso } = body;
     const created = await call(h, "POST", "/api/baskule/setup", { body: sso });
     expect(created.status).toBe(201);

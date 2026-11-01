@@ -14,7 +14,8 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 
 <!-- install-env:start -->
 ```dotenv
-# Bind address (default 127.0.0.1); use 0.0.0.0 for all interfaces.
+# Bind address (default 127.0.0.1); 0.0.0.0 must be reachable only by the proxy or trusted clients.
+# Rootless Docker hides client addresses; enforce access and rate limits at your outer proxy.
 #BASKULE_BIND=127.0.0.1
 # HTTP port (default 47090).
 #BASKULE_PORT=47090
@@ -43,8 +44,9 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 
 You can download this commented example with
 `curl -fL https://github.com/baskule/baskule/releases/latest/download/baskule.env.example -o .env`.
-No value in it is required. Keep an edited `.env` private. Secrets are generated once in the `baskule-secrets`
-volume; explicit environment values override them. Keep the installation directory and Compose project name stable.
+No value in it is required. Keep an edited `.env` private. Secrets are generated in separate storage, platform,
+computerd, and OpenShell volumes; explicit environment values override them. Keep the installation directory
+and Compose project name stable.
 
 ## Open it
 
@@ -68,8 +70,10 @@ baskule.example.com {
 ```
 
 Forward Host, X-Forwarded-Proto, client IP, WebSockets, and streaming responses without buffering. The bundled edge
-trusts proxies on private networks and forwards the public scheme and host. No origin setting is needed for
-password sign-in. Only publish your HTTPS proxy. To create the admin through that proxy, open
+trusts only the pinned Docker network gateway, `172.30.90.1`, where a host-local proxy appears through docker-proxy,
+and forwards the public scheme and host. Direct clients cannot supply forwarded addresses or hosts. No origin setting is needed for
+password sign-in. With `BASKULE_BIND=0.0.0.0`, restrict the port to your proxy or trusted clients with a firewall.
+Rootless Docker hides client addresses; enforce access and rate limits at the outer proxy. Only publish your HTTPS proxy. To create the admin through that proxy, open
 `https://baskule.example.com/setup#token=` followed by the token from the setup log. Optional `PUBLIC_URL` changes
 the printed link. Browsers need HTTPS or localhost for microphone access.
 
@@ -80,7 +84,7 @@ The example above lists common settings. All settings are optional:
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `BASKULE_BIND`, `BASKULE_PORT` | `127.0.0.1`, `47090` | Published HTTP listener |
-| `PUBLIC_URL` | `http://127.0.0.1:47090` | Address printed in the setup link |
+| `PUBLIC_URL` | `http://127.0.0.1:<BASKULE_PORT>` | Address printed in the setup link |
 | `PUBLIC_ORIGINS` | unset | Additional allowed origins; set with SSO public URL |
 | `AUTH_CONFIG` | password sign-in | Authentication JSON; `publicOrigin` fixes SSO callback URLs |
 | `S3_ENDPOINT`, `S3_REGION`, `CELLD_BUCKET_NAME` | local RustFS, `us-east-1`, `baskule` | Shared storage |
@@ -103,7 +107,8 @@ Changing between anonymous and authenticated modes requires wiping alpha data.
 ## External S3
 
 Before first start, set all five storage values in the example. The local RustFS container stays idle while the
-platform uses the external endpoint. The bucket must support celld's conditional writes and consistency. The
+platform uses the external endpoint. Bootstrap waits only for that configured endpoint; local RustFS health does
+not block external storage. The bucket must support celld's conditional writes and consistency. The
 bootstrap job creates it if absent; pre-create it if credentials forbid creation. Changing buckets selects another
 installation. Computer disks and gateway keys stay local. Back up the external bucket separately.
 
@@ -135,7 +140,12 @@ other computer files are temporary. Restore the same release before updating.
 
 ## Update
 
-Read release notes for alpha data wipes. Back up first and keep the old compose file with the backup. Then:
+Read release notes for alpha data wipes. Back up first and keep the old compose file with the backup.
+For an installation using the earlier shared secret volume or an unpinned Docker network, run
+`docker compose down` with the old file before replacing it. Bootstrap creates the scoped secret volumes and
+regenerates defaults; explicit `.env` values still override them. Buckets and computer disks remain. The old
+`<project>_baskule-secrets` volume is unused and can be removed after verifying the update and preserving a backup.
+Then:
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml

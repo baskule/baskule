@@ -71,8 +71,14 @@ networks:
   baskule-computers:
     name: baskule-computers
 volumes:
-  baskule-secrets:
-    name: baskule-secrets
+  baskule-storage-secrets:
+    name: baskule-storage-secrets
+  baskule-platform-secrets:
+    name: baskule-platform-secrets
+  baskule-computerd-secrets:
+    name: baskule-computerd-secrets
+  baskule-openshell-secrets:
+    name: baskule-openshell-secrets
   baskule-rustfs:
     name: baskule-rustfs
   baskule-celld-a:

@@ -44,8 +44,14 @@ git clone https://github.com/baskule/baskule
 cd baskule
 ```
 
-After startup, read `docker compose logs setup` using the source Compose files and open the setup link to create
-the first admin. The optional `deploy/.env` overrides defaults. `deploy/auth.json` is the source build's optional
+After startup, read the setup link and create the first admin:
+
+```sh
+docker compose --project-directory deploy \
+  -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml logs setup
+```
+
+The optional `deploy/.env` overrides defaults. `deploy/auth.json` is the source build's optional
 authentication file; `AUTH_CONFIG_FILE` selects another. Releases use `AUTH_CONFIG` in `.env`.
 Keep secrets outside Git and do not source `.env` as shell code.
 
