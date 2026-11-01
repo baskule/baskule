@@ -1,7 +1,7 @@
 // baskule: one installed plugin: paused or not, who may use it, and what is left to set up (a vendor app,
-// organization keys) as numbered steps; then what the service needs, the tools it allows and its skills.
-// Addresses, sign-in methods and its source wait under Technical details. A plugin an admin brought opens
-// in the plugin editor and downloads as a package; skills from the catalog or GitHub change through a copy.
+// organization keys) as numbered steps; then the service's needs, its tools and skills, and Technical details.
+// An admin's own plugin opens in the editor; catalog or GitHub skills change through a copy. A plugin from
+// the plugins folder opens read-only: the folder defines it, and only its setup changes here.
 import { catalogService, catalogVendor } from "@t3tools/contracts/baskule-catalog";
 import type {
   Group,
@@ -15,6 +15,7 @@ import { Link, Navigate, useNavigate } from "@tanstack/react-router";
 import {
   CopyIcon,
   DownloadIcon,
+  EyeIcon,
   PauseIcon,
   PencilIcon,
   PlayIcon,
@@ -120,6 +121,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   const ownAccounts = plugin.servers.filter((server) => server.credential === "user-oauth");
   const source = plugin.source;
   const fromCatalog = source.type === "catalog";
+  const fromFolder = source.type === "folder";
   const pinned = source.type === "catalog" || source.type === "github";
   const savedKeys = new Set(
     plugin.servers
@@ -229,13 +231,18 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
               className="size-10 [&_svg]:size-5"
             />
           }
-          title={t("Edit {{name}}", { name: plugin.name })}
-          description={sourceLabel(plugin.source)}
+          title={fromFolder ? plugin.name : t("Edit {{name}}", { name: plugin.name })}
+          description={
+            fromFolder
+              ? t("Edit this plugin in the plugins folder, then restart Baskule.")
+              : sourceLabel(plugin.source)
+          }
         />
         <PluginEditor
           initial={editing.input}
           fixes={[]}
           omitted={plugin.omitted}
+          readOnly={fromFolder}
           target={{ type: "edit", id: plugin.id, savedKeys, versions: editing.versions }}
           onCancel={() => setEditing(null)}
           onSaved={({ name }) => {
@@ -276,6 +283,11 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
             {plugin.description ? (
               <p className="pt-1 text-sm text-foreground/80">{plugin.description}</p>
             ) : null}
+            {source.type === "folder" ? (
+              <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                {t("From the plugins folder")} · <span className="font-mono">{source.path}</span>
+              </p>
+            ) : null}
           </PageHeading>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 px-3 sm:px-4">
@@ -283,12 +295,16 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
             <Button
               size="sm"
               variant="outline"
-              aria-label={t("Edit {{name}}", { name: plugin.name })}
+              aria-label={
+                fromFolder
+                  ? t("View {{name}}", { name: plugin.name })
+                  : t("Edit {{name}}", { name: plugin.name })
+              }
               disabled={busy !== null}
               onClick={() => open(false)}
             >
-              {busy === "edit" ? <Spinner size="sm" /> : <PencilIcon />}
-              {t("Edit")}
+              {busy === "edit" ? <Spinner size="sm" /> : fromFolder ? <EyeIcon /> : <PencilIcon />}
+              {fromFolder ? t("View") : t("Edit")}
             </Button>
           )}
           <Button
@@ -549,7 +565,9 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         </PageRow>
       </PageDisclosure>
 
-      <PageSection title={fromCatalog ? t("Remove") : t("Download or remove")}>
+      <PageSection
+        title={fromCatalog ? t("Remove") : fromFolder ? t("Download") : t("Download or remove")}
+      >
         {fromCatalog ? null : (
           <PageRow
             trailing={
@@ -565,47 +583,59 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
             </span>
           </PageRow>
         )}
-        <PageRow
-          trailing={
-            <Button
-              variant="destructive-outline"
-              size="sm"
-              disabled={busy !== null}
-              onClick={() =>
-                void confirmAction(
-                  t(
-                    "Remove {{name}}?\nNo one can use it any more. Its keys and the choice of groups are deleted.",
-                    { name: plugin.name },
-                  ),
-                  "destructive",
-                ).then(async (confirmed) => {
-                  if (!confirmed) return;
-                  setBusy("remove");
-                  try {
-                    await pluginsApi.remove(plugin.id);
-                    notifySuccess(t("{{name}} was removed", { name: plugin.name }));
-                    void navigate({
-                      to: "/admin/$section/$page",
-                      params: { section: "plugins", page: "installed" },
-                    });
-                  } catch (cause) {
-                    setBusy(null);
-                    notifyPluginError(t("Could not remove {{name}}", { name: plugin.name }), cause);
-                  }
-                })
-              }
-            >
-              {t("Remove plugin…")}
-            </Button>
-          }
-        >
-          <span className="text-sm text-foreground">{t("Remove this plugin")}</span>
-          <span className="text-xs text-muted-foreground">
-            {fromCatalog
-              ? t("You can add it again later from the catalog.")
-              : t("To keep a copy, download it first.")}
-          </span>
-        </PageRow>
+        {fromFolder ? (
+          <PageRow>
+            <span className="text-sm text-foreground">{t("Remove this plugin")}</span>
+            <span className="text-xs text-muted-foreground">
+              {t("Delete its folder from the plugins folder, then restart Baskule.")}
+            </span>
+          </PageRow>
+        ) : (
+          <PageRow
+            trailing={
+              <Button
+                variant="destructive-outline"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() =>
+                  void confirmAction(
+                    t(
+                      "Remove {{name}}?\nNo one can use it any more. Its keys and the choice of groups are deleted.",
+                      { name: plugin.name },
+                    ),
+                    "destructive",
+                  ).then(async (confirmed) => {
+                    if (!confirmed) return;
+                    setBusy("remove");
+                    try {
+                      await pluginsApi.remove(plugin.id);
+                      notifySuccess(t("{{name}} was removed", { name: plugin.name }));
+                      void navigate({
+                        to: "/admin/$section/$page",
+                        params: { section: "plugins", page: "installed" },
+                      });
+                    } catch (cause) {
+                      setBusy(null);
+                      notifyPluginError(
+                        t("Could not remove {{name}}", { name: plugin.name }),
+                        cause,
+                      );
+                    }
+                  })
+                }
+              >
+                {t("Remove plugin…")}
+              </Button>
+            }
+          >
+            <span className="text-sm text-foreground">{t("Remove this plugin")}</span>
+            <span className="text-xs text-muted-foreground">
+              {fromCatalog
+                ? t("You can add it again later from the catalog.")
+                : t("To keep a copy, download it first.")}
+            </span>
+          </PageRow>
+        )}
       </PageSection>
     </>
   );

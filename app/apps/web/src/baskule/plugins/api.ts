@@ -1,6 +1,6 @@
 import {
   PLUGIN_ERROR_CODES,
-  type AdminPlugin,
+  type AdminPluginList,
   type Group,
   type GroupInput,
   type MemberPlugin,
@@ -32,8 +32,9 @@ export interface VendorClient {
 }
 
 export const pluginsApi = {
-  installed: async () =>
-    (await request<{ plugins: AdminPlugin[] }>("GET", `${root}/admin/plugins`)).plugins,
+  /** Installed plugins, and the mounted plugins folder as last read at startup. */
+  inventory: () => request<AdminPluginList>("GET", `${root}/admin/plugins`),
+  installed: async () => (await pluginsApi.inventory()).plugins,
   /** Reads a package or GitHub link into a draft for review. Saves nothing. */
   inspect: (input: PluginInspect) =>
     request<PluginDraft>("POST", `${root}/admin/plugins/inspect`, input),

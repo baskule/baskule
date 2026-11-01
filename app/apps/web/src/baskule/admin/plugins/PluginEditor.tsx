@@ -176,6 +176,7 @@ export function PluginEditor({
   omitted,
   target,
   initialView = "form",
+  readOnly = false,
   onCancel,
   onSaved,
   onReverted,
@@ -186,6 +187,8 @@ export function PluginEditor({
   readonly omitted: ReadonlyArray<Omission>;
   readonly target: EditorTarget;
   readonly initialView?: "form" | "json";
+  /** Shows a plugin defined elsewhere, such as the plugins folder, without a way to change it. */
+  readonly readOnly?: boolean;
   readonly onCancel: () => void;
   /** `count` plugins were saved; `id` and `name` are the last one's. */
   readonly onSaved: (saved: {
@@ -269,7 +272,7 @@ export function PluginEditor({
   const onlySkill =
     target.type === "create" && rows.length === 0 && skills.length === 1 ? skills[0]!.skill : null;
   const reverting = reverted !== null && "done" in reverted && !reverted.done;
-  const canAddSkill = skillsEditable && !split;
+  const canAddSkill = skillsEditable && !split && !readOnly;
 
   const prior = (row: ServerRow) => initial.servers.find((server) => server.name === row.origin);
   /** Switches left as they were loaded aren't sent, so the save keeps any changed since. */
@@ -646,7 +649,7 @@ export function PluginEditor({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        void save();
+        if (!readOnly) void save();
       }}
     >
       {canSplit ? (
@@ -700,6 +703,7 @@ export function PluginEditor({
               placeholder={onlySkill?.name || t("Shown to people in their plugins")}
               error={attempted && !input.name ? t("Give it a name.") : null}
               hint={onlySkill ? t("Leave empty to use the skill's name and description.") : null}
+              disabled={readOnly}
               onChange={(event) => setName(event.currentTarget.value)}
             />
             <div className="flex flex-col gap-1.5">
@@ -709,6 +713,7 @@ export function PluginEditor({
                 size="sm"
                 value={description}
                 placeholder={t("What it helps with, in one or two sentences")}
+                disabled={readOnly}
                 onChange={(event) => setDescription(event.currentTarget.value)}
               />
             </div>
@@ -720,6 +725,7 @@ export function PluginEditor({
                 inputMode="url"
                 placeholder="https://example.com/icon.png"
                 value={icon}
+                disabled={readOnly}
                 onChange={(event) => setIcon(event.currentTarget.value)}
               />
             </div>
@@ -760,7 +766,7 @@ export function PluginEditor({
               placeholder={JSON_EXAMPLE}
               value={json}
               disabled={saving}
-              readOnly={frozen}
+              readOnly={frozen || readOnly}
               onChange={(event) => editJson(event.currentTarget.value)}
             />
             <p
@@ -773,9 +779,11 @@ export function PluginEditor({
             >
               {jsonInvalid
                 ? t("This JSON could not be read. Use an mcpServers or servers object.")
-                : t(
-                    "Paste the server settings from Claude, Cursor, VS Code or a .mcp.json file. Keys in it move to encrypted fields.",
-                  )}
+                : readOnly
+                  ? t("The server settings in the standard mcpServers format.")
+                  : t(
+                      "Paste the server settings from Claude, Cursor, VS Code or a .mcp.json file. Keys in it move to encrypted fields.",
+                    )}
             </p>
           </div>
         ) : (
@@ -797,8 +805,9 @@ export function PluginEditor({
                   }
                   showErrors={attempted || row.checked}
                   nameTaken={nameTaken(index)}
-                  disabled={saving || done.has(row.key)}
-                  removable={!frozen && (rows.length > 1 || skills.length > 0)}
+                  disabled={saving || readOnly || done.has(row.key)}
+                  readOnly={readOnly}
+                  removable={!frozen && !readOnly && (rows.length > 1 || skills.length > 0)}
                   testing={shown !== null && shown.outcome === null}
                   outcome={shown?.outcome ?? null}
                   onChange={(change) => updateRow(row.key, change)}
@@ -812,15 +821,15 @@ export function PluginEditor({
           </>
         )}
         {skills.map((row) =>
-          skillsEditable ? (
+          skillsEditable || readOnly ? (
             <SkillEditor
               key={row.key}
               skill={row.skill}
               otherNames={otherNames(row.key)}
               open={openSkills.has(row.key)}
               showErrors={attempted}
-              disabled={saving || reverting || readingFiles}
-              removable={!frozen && (rows.length > 0 || skills.length > 1)}
+              disabled={saving || reverting || readingFiles || readOnly}
+              removable={!frozen && !readOnly && (rows.length > 0 || skills.length > 1)}
               onToggle={() => toggleSkill(row.key)}
               onChange={(change) => updateSkill(row.key, change)}
               onAddFiles={(files) => addFiles(row.key, files)}
@@ -845,7 +854,7 @@ export function PluginEditor({
             </PageRow>
           ),
         )}
-        {!skillsEditable && skills.length > 0 ? (
+        {!skillsEditable && !readOnly && skills.length > 0 ? (
           <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
             {t(
               "These skills stay as published. To change them, make your own copy from the plugin's page.",
@@ -855,7 +864,7 @@ export function PluginEditor({
         {view === "form" && rows.length === 0 && skills.length === 0 ? (
           <PageMessage>{t("Nothing usable was found in this plugin.")}</PageMessage>
         ) : null}
-        {frozen || (view === "json" && !canAddSkill) ? null : (
+        {frozen || readOnly || (view === "json" && !canAddSkill) ? null : (
           <div className="flex flex-wrap gap-2 px-3 py-2.5 sm:px-4">
             {view === "form" ? (
               <Button
@@ -893,7 +902,7 @@ export function PluginEditor({
         )}
       </PageSection>
 
-      {target.type === "edit" && skillsEditable && versions.length > 0 ? (
+      {target.type === "edit" && skillsEditable && !readOnly && versions.length > 0 ? (
         <SkillVersions
           versions={versions}
           state={reverted}
@@ -973,21 +982,23 @@ export function PluginEditor({
             disabled={saving}
             onClick={() => (createdIds.length > 0 ? finishLater() : onCancel())}
           >
-            {createdIds.length > 0 ? t("Finish later") : t("Cancel")}
+            {createdIds.length > 0 ? t("Finish later") : readOnly ? t("Close") : t("Cancel")}
           </Button>
-          <Button
-            type="submit"
-            disabled={
-              saving ||
-              testing ||
-              reverting ||
-              readingFiles ||
-              (target.type === "create" && !target.groups)
-            }
-          >
-            {saving ? <Spinner size="sm" /> : null}
-            {split ? t("Save plugins") : t("Save plugin")}
-          </Button>
+          {readOnly ? null : (
+            <Button
+              type="submit"
+              disabled={
+                saving ||
+                testing ||
+                reverting ||
+                readingFiles ||
+                (target.type === "create" && !target.groups)
+              }
+            >
+              {saving ? <Spinner size="sm" /> : null}
+              {split ? t("Save plugins") : t("Save plugin")}
+            </Button>
+          )}
         </div>
       </div>
     </form>
@@ -1006,6 +1017,7 @@ function ServerFields({
   showErrors,
   nameTaken,
   disabled,
+  readOnly,
   removable,
   testing,
   outcome,
@@ -1026,6 +1038,8 @@ function ServerFields({
   readonly showErrors: boolean;
   readonly nameTaken: boolean;
   readonly disabled: boolean;
+  /** Keys and tool switches are set on the plugin's page instead. */
+  readonly readOnly: boolean;
   readonly removable: boolean;
   readonly testing: boolean;
   /** The last test's result, only while it still matches the settings. */
@@ -1140,7 +1154,7 @@ function ServerFields({
           </RadioGroup>
         </div>
 
-        {server.credential === "organization"
+        {server.credential === "organization" && !readOnly
           ? keys.map((entry, at) => (
               <FormField
                 // oxlint-disable-next-line react/no-array-index-key -- controlled fields, one per header in order.
@@ -1247,48 +1261,50 @@ function ServerFields({
           </div>
         </details>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={disabled || testing}
-              onClick={onTest}
-            >
-              {testing ? <Spinner size="sm" /> : null}
-              {testing ? t("Testing…") : t("Test connection")}
-            </Button>
-            {outcome === null && !testing ? (
-              <span className="text-xs text-muted-foreground">
-                {t("Optional: see its tools and switch off any you don't want.")}
-              </span>
-            ) : null}
-          </div>
-          {outcome === null ? null : "tools" in outcome ? (
-            <ServerTools
-              tools={outcome.tools}
-              disabledTools={server.disabledTools ?? []}
-              disabled={disabled}
-              onAllowed={setAllowed}
-            />
-          ) : "signIn" in outcome ? (
-            <div role="status" className="flex flex-col gap-1 text-xs text-muted-foreground">
-              <p>{t("People connect their own account after this plugin is saved.")}</p>
-              {outcome.staticClient ? (
-                <p>
-                  {t(
-                    "Your administrator needs to register this service before people can connect.",
-                  )}
-                </p>
+        {readOnly ? null : (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={disabled || testing}
+                onClick={onTest}
+              >
+                {testing ? <Spinner size="sm" /> : null}
+                {testing ? t("Testing…") : t("Test connection")}
+              </Button>
+              {outcome === null && !testing ? (
+                <span className="text-xs text-muted-foreground">
+                  {t("Optional: see its tools and switch off any you don't want.")}
+                </span>
               ) : null}
             </div>
-          ) : (
-            <p role="alert" className="text-xs text-destructive-foreground">
-              {outcome.error}
-            </p>
-          )}
-        </div>
+            {outcome === null ? null : "tools" in outcome ? (
+              <ServerTools
+                tools={outcome.tools}
+                disabledTools={server.disabledTools ?? []}
+                disabled={disabled}
+                onAllowed={setAllowed}
+              />
+            ) : "signIn" in outcome ? (
+              <div role="status" className="flex flex-col gap-1 text-xs text-muted-foreground">
+                <p>{t("People connect their own account after this plugin is saved.")}</p>
+                {outcome.staticClient ? (
+                  <p>
+                    {t(
+                      "Your administrator needs to register this service before people can connect.",
+                    )}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p role="alert" className="text-xs text-destructive-foreground">
+                {outcome.error}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

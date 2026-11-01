@@ -16,6 +16,7 @@ import { toastManager } from "../../components/ui/toast";
 import { BaskuleApiError } from "../api";
 import { AddOwnPage } from "../admin/plugins/AddOwnPage";
 import { CatalogPage } from "../admin/plugins/CatalogPage";
+import { InstalledPage } from "../admin/plugins/InstalledPage";
 import { PluginEditor } from "../admin/plugins/PluginEditor";
 import { PluginDetailPage } from "../admin/plugins/PluginDetailPage";
 import { pluginErrorText, pluginsApi } from "./api";
@@ -2405,6 +2406,189 @@ describe("writing skills", () => {
       }),
     );
     expect(control.calls.some((call) => call.route.startsWith("PATCH "))).toBe(false);
+  });
+});
+
+describe("plugins from the plugins folder", () => {
+  const acme = plugin({
+    name: "Acme Sales",
+    source: { type: "folder", path: "plugins/acme-sales" },
+    servers: [
+      {
+        name: "crm",
+        url: "https://crm.example.com/mcp",
+        credential: "organization",
+        disabledTools: [],
+      },
+    ],
+    skills: [{ name: "call-prep", description: "Prepare a call." }],
+    setup: [{ server: "crm", done: true }],
+  });
+  const skill = {
+    name: "call-prep",
+    description: "Prepare a call.",
+    instructions: "Use the CRM.",
+    files: [],
+  };
+
+  const folderControl = () => {
+    let current = acme;
+    return fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [current],
+        folder: { syncedAt: 0, problems: [] },
+      }),
+      "GET /api/baskule/admin/groups": () => ({
+        groups: [{ ...groups[0]!, plugins: ["p1"] }, groups[1]!],
+      }),
+      "GET /api/baskule/admin/plugins/p1/skills": () => ({
+        skills: [skill],
+        editable: false,
+        versions: [],
+      }),
+      "PATCH /api/baskule/admin/plugins/p1": (body) => {
+        current = { ...current, ...(body as { enabled: boolean }) };
+        return current;
+      },
+    });
+  };
+
+  it("replaces its definition's controls with where it comes from, and keeps its setup usable", async () => {
+    const control = folderControl();
+    using _fetch = control.stub;
+    await using screen = await render(<PluginDetailPage id="p1" />);
+
+    await expect
+      .element(screen.getByText("From the plugins folder · plugins/acme-sales").first())
+      .toBeVisible();
+    expect(screen.getByRole("button", { name: "Edit Acme Sales" }).query()).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove plugin…" }).query()).toBeNull();
+    await expect
+      .element(screen.getByText("Delete its folder from the plugins folder, then restart Baskule."))
+      .toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Download as zip" })).toBeEnabled();
+    await expect.element(screen.getByRole("button", { name: "Replace key" })).toBeEnabled();
+    await expect
+      .element(screen.getByRole("switch", { name: "Sales can use Acme Sales" }))
+      .toBeEnabled();
+    await press(screen.getByRole("button", { name: "Pause Acme Sales" }));
+    await expect
+      .element(screen.getByText("Paused. No one can use it until you resume it."))
+      .toBeVisible();
+    expect(
+      control.calls.filter((call) => !call.route.startsWith("GET ")).map((call) => call.body),
+    ).toEqual([{ enabled: false }]);
+  });
+
+  it("opens its servers and skills read-only", async () => {
+    const control = folderControl();
+    using _fetch = control.stub;
+    await using screen = await render(<PluginDetailPage id="p1" />);
+
+    await press(screen.getByRole("button", { name: "View Acme Sales" }));
+    await expect
+      .element(screen.getByText("Edit this plugin in the plugins folder, then restart Baskule."))
+      .toBeVisible();
+    await expect.element(screen.getByRole("textbox", { name: "Name" })).toBeDisabled();
+    await expect.element(screen.getByRole("textbox", { name: "Address" })).toBeDisabled();
+    expect(screen.getByLabelText("Key", { exact: true }).query()).toBeNull();
+    expect(screen.getByRole("button", { name: "Test connection" }).query()).toBeNull();
+    expect(screen.getByRole("button", { name: "Save plugin" }).query()).toBeNull();
+    expect(screen.getByRole("button", { name: "Add a server" }).query()).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove skill" }).query()).toBeNull();
+    await press(screen.getByRole("button", { name: /call-prep/ }));
+    await expect.element(screen.getByRole("textbox", { name: "Skill name" })).toBeDisabled();
+    await press(screen.getByRole("button", { name: "JSON", exact: true }));
+    const json = screen.getByRole("textbox", { name: "Server settings as JSON" });
+    await expect.element(json).toHaveValue(expect.stringContaining("https://crm.example.com/mcp"));
+    await expect.element(json).toHaveAttribute("readonly");
+
+    await press(screen.getByRole("button", { name: "Close" }));
+    await expect.element(screen.getByRole("button", { name: "View Acme Sales" })).toBeVisible();
+    expect(control.calls.filter((call) => !call.route.startsWith("GET "))).toEqual([]);
+  });
+
+  it("says a newly read plugin is given to no one yet, and gives it to a group", async () => {
+    let sales = groups[1]!;
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [acme],
+        folder: { syncedAt: 0, problems: [] },
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups: [groups[0]!, sales] }),
+      "PATCH /api/baskule/admin/groups/sales": (body) => {
+        sales = { ...sales, ...(body as Partial<Group>) };
+        return sales;
+      },
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<InstalledPage />);
+    await expect.element(screen.getByText("No group can use it yet")).toBeVisible();
+    await expect
+      .element(screen.getByText("Tools and skills · From the plugins folder", { exact: false }))
+      .toBeVisible();
+
+    await using detail = await render(<PluginDetailPage id="p1" />);
+    await expect
+      .element(detail.getByText("No group can use it yet. Choose who can use it below."))
+      .toBeVisible();
+    await press(detail.getByRole("switch", { name: "Sales can use Acme Sales" }));
+    await expect
+      .element(detail.getByRole("switch", { name: "Sales can use Acme Sales" }))
+      .toBeChecked();
+    expect(
+      control.calls.find((call) => call.route === "PATCH /api/baskule/admin/groups/sales")?.body,
+    ).toEqual({ plugins: ["p1"] });
+    await expect
+      .element(detail.getByText("No group can use it yet. Choose who can use it below."))
+      .not.toBeInTheDocument();
+  });
+
+  it("lists what the folder couldn't use above the plugins", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [acme],
+        folder: {
+          syncedAt: 0,
+          problems: [
+            { path: "mcp/notes.json", message: "This file isn't valid JSON." },
+            { path: "skills/brief", message: "It has no SKILL.md file." },
+          ],
+        },
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<InstalledPage />);
+
+    const notice = screen.getByRole("alert");
+    await expect.element(notice.getByText(/^Some of the plugins folder couldn/)).toBeVisible();
+    const problems = notice.getByRole("listitem");
+    await expect
+      .element(problems.nth(0))
+      .toHaveTextContent("mcp/notes.json · This file isn't valid JSON.");
+    await expect
+      .element(problems.nth(1))
+      .toHaveTextContent("skills/brief · It has no SKILL.md file.");
+    await expect
+      .element(notice.getByText("Fix them in the folder, then restart Baskule."))
+      .toBeVisible();
+  });
+
+  it("shows nothing about a folder when none is mounted", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [plugin({ name: "Wiki" })],
+        folder: null,
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<InstalledPage />);
+
+    await expect.element(screen.getByRole("link", { name: "Wiki" })).toBeVisible();
+    expect(screen.getByRole("alert").query()).toBeNull();
+    expect(screen.getByText("From the plugins folder", { exact: false }).query()).toBeNull();
   });
 });
 

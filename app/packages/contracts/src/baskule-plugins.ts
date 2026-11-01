@@ -42,6 +42,11 @@ export interface AdminPlugin extends Plugin {
   setup: { server: string; done: boolean }[];
   vendorConfigured: boolean;
 }
+/** `GET /admin/plugins`; `folder` is null when no plugins folder is mounted. */
+export interface AdminPluginList {
+  plugins: AdminPlugin[];
+  folder: PluginFolder | null;
+}
 export interface Group {
   id: string;
   name: string;
