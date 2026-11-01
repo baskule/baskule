@@ -2464,7 +2464,7 @@ describe("plugins from the plugins folder", () => {
     expect(screen.getByRole("button", { name: "Edit Acme Sales" }).query()).toBeNull();
     expect(screen.getByRole("button", { name: "Remove plugin…" }).query()).toBeNull();
     await expect
-      .element(screen.getByText("Delete its folder from the plugins folder, then restart Baskule."))
+      .element(screen.getByText("Delete it from the plugins folder, then restart Baskule."))
       .toBeVisible();
     await expect.element(screen.getByRole("button", { name: "Download as zip" })).toBeEnabled();
     await expect.element(screen.getByRole("button", { name: "Replace key" })).toBeEnabled();
@@ -2512,7 +2512,7 @@ describe("plugins from the plugins folder", () => {
     let sales = groups[1]!;
     const control = fakeControl({
       "GET /api/baskule/admin/plugins": () => ({
-        plugins: [acme],
+        plugins: [{ ...acme, setup: [{ server: "crm", done: false }] }],
         folder: { syncedAt: 0, problems: [] },
       }),
       "GET /api/baskule/admin/groups": () => ({ groups: [groups[0]!, sales] }),
@@ -2525,7 +2525,7 @@ describe("plugins from the plugins folder", () => {
     await using screen = await render(<InstalledPage />);
     await expect.element(screen.getByText("No group can use it yet")).toBeVisible();
     await expect
-      .element(screen.getByText("Tools and skills · From the plugins folder", { exact: false }))
+      .element(screen.getByText("From the plugins folder · plugins/acme-sales"))
       .toBeVisible();
 
     await using detail = await render(<PluginDetailPage id="p1" />);

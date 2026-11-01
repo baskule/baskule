@@ -1550,7 +1550,7 @@
   "Delete inactive rotated log files after this many days. Current logs are kept.": "Delete inactive rotated log files after this many days. Current logs are kept.",
   "Delete inactive worktrees": "Delete inactive worktrees",
   "Delete instance {{instanceId}}": "Delete instance {{instanceId}}",
-  "Delete its folder from the plugins folder, then restart Baskule.": "Delete its folder from the plugins folder, then restart Baskule.",
+  "Delete it from the plugins folder, then restart Baskule.": "Delete it from the plugins folder, then restart Baskule.",
   "Delete merged worktrees": "Delete merged worktrees",
   "Delete now": "Delete now",
   "Delete old browser artifacts": "Delete old browser artifacts",

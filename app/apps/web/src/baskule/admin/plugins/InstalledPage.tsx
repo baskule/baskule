@@ -98,17 +98,22 @@ export function InstalledPage() {
               <span className="truncate text-xs text-muted-foreground">
                 {!plugin.enabled ? (
                   t("Paused")
-                ) : plugin.setup.some((entry) => !entry.done) ? (
-                  <span className="text-warning-foreground">{t("Needs setup")}</span>
                 ) : allowed.length === 0 ? (
                   <span className="text-warning-foreground">{t("No group can use it yet")}</span>
+                ) : plugin.setup.some((entry) => !entry.done) ? (
+                  <span className="text-warning-foreground">{t("Needs setup")}</span>
                 ) : (
                   allowed.map(groupName).join(", ")
                 )}
                 {" · "}
                 {contentsLabel(contentsKind(plugin))}
-                {plugin.source.type === "folder" ? ` · ${t("From the plugins folder")}` : null}
               </span>
+              {plugin.source.type === "folder" ? (
+                <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                  {t("From the plugins folder")} ·{" "}
+                  <span className="font-mono">{plugin.source.path}</span>
+                </span>
+              ) : null}
             </PageRow>
           );
         })}

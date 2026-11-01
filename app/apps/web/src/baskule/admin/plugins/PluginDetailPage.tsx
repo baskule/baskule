@@ -587,7 +587,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
           <PageRow>
             <span className="text-sm text-foreground">{t("Remove this plugin")}</span>
             <span className="text-xs text-muted-foreground">
-              {t("Delete its folder from the plugins folder, then restart Baskule.")}
+              {t("Delete it from the plugins folder, then restart Baskule.")}
             </span>
           </PageRow>
         ) : (
