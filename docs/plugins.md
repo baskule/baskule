@@ -42,7 +42,9 @@ UI, where they are encrypted in the database. Export remains available.
 Adding or editing an entry changes its definition on the next sync. Its relative path
 is its identity: `plugins/acme-sales`, `skills/brand-voice`, or
 `mcp/internal-crm.json`. UI configuration survives updates at the same path, including
-server switches and keys associated with the same server name. Removing an entry
+server switches and keys associated with the same server name. For a retained server
+name, saved keys and accounts continue to be used if its address changes; the
+administrator editing the mounted files controls those addresses. Removing an entry
 removes its plugin and stored configuration. Renaming a path removes the old plugin
 and adds an unassigned plugin. Definitions and deletion are locked in the UI.
 
@@ -50,16 +52,19 @@ Invalid entries do not prevent other entries from syncing or the stack from star
 Admin plugin responses include the last sync time and per-path problems. An invalid
 update keeps the last valid definition until it is corrected or removed. An unreadable
 inventory or failed sync request fails the startup job instead of treating the mount
-as empty.
+as empty. In Compose, the edge waits for the deploy job to succeed, so an inventory
+or sync failure also prevents the web entry point from starting.
 
 Without a mount, folder sync is off, the API reports `folder: null`, and existing
 folder plugins stay in the database. To deliberately remove all folder plugins, sync
 an empty mounted directory first. Removing the mount alone does not delete them.
 
-The deploy job uses the existing installation token (`COMPUTERD_TOKEN`) to call the
-Worker over the installation's private network. Do not expose that token in plugin
-files. For cluster deploy jobs, mount the tree on the one host that performs deployment
-and set `PLUGIN_SYNC_URL` to a reachable platform Worker address.
+The existing bootstrap job generates a dedicated folder-sync secret in the platform
+secret volume. The deploy job passes it to the Worker and uses it for sync over the
+private network; computerd, OpenShell and storage do not receive it. Do not put secrets
+in plugin files. For cluster deploy jobs, mount the tree on the one host that performs
+deployment, set a random `PLUGIN_SYNC_TOKEN` in its `.env`, and set `PLUGIN_SYNC_URL`
+to a reachable platform Worker address.
 
 For local development, `scripts/stack` reads `.run/plugins` on celld startup and
 restart. Set `BASKULE_PLUGINS_DIR` to use a different directory. Use the fake model

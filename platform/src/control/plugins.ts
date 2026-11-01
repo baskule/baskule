@@ -417,7 +417,7 @@ export class Plugins {
     }
     if (req.method === "PATCH") {
       const data = await body(req, IMPORT_LIMITS.stored * 2);
-      if (plugin.source.type === "folder" && z.object({ plugin: z.unknown() }).passthrough().safeParse(data).success) throw pluginError(409, "plugin_from_folder");
+      if (plugin.source.type === "folder" && typeof data === "object" && data !== null && "plugin" in data) throw pluginError(409, "plugin_from_folder");
       const patch: PluginUpdate = parse(patchSchema, data);
       const current = this.get(plugin.id);
       if (!current) return notFound();

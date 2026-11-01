@@ -1,4 +1,7 @@
 import { zipSync } from "fflate";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Group, Plugin } from "../../../app/packages/contracts/src/baskule-plugins";
 import { asAdmin, call, createUser, makeService, personalSpaceOf, signIn } from "../support/harness";
@@ -272,15 +275,26 @@ describe("assignment and member status", () => {
 describe("startup folder sync", () => {
   const token = "local-installation-token";
   const headers = { authorization: `Bearer ${token}` };
-  const archive = (files: Record<string, string>) => base64(zipSync(Object.fromEntries(Object.entries(files).map(([path, text]) => [path, new TextEncoder().encode(text)]))));
+  const archive = (files: Record<string, string>, format: "zip" | "tar" = "zip") => {
+    if (format === "zip") return base64(zipSync(Object.fromEntries(Object.entries(files).map(([path, text]) => [path, new TextEncoder().encode(text)]))));
+    mkdirSync(".run", { recursive: true });
+    const root = mkdtempSync(".run/plugin-tar-");
+    try {
+      for (const [path, text] of Object.entries(files)) {
+        const file = join(root, path); mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, text);
+      }
+      return base64(execFileSync("tar", ["-cz", "-C", root, "."]));
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  };
   const mcp = (url = "https://example.test/mcp") => archive({ ".mcp.json": JSON.stringify({ mcpServers: { remote: { url, headers: { Authorization: "${API_KEY}" } } } }) });
   const sync = (h: Awaited<ReturnType<typeof makeService>>, entries: unknown[]) => call(h, "POST", `${API}/plugins/folder-sync`, { headers, body: { mounted: true, entries } });
 
   it("authenticates inventory, preserves UI config on updates, locks definitions and cascades removal", async () => {
-    const h = await makeService({ COMPUTERD_TOKEN: token }); const a = await asAdmin(h); const admin = { creds: a.creds };
+    const h = await makeService({ PLUGIN_SYNC_TOKEN: token, COMPUTERD_TOKEN: "computer-only" }); const a = await asAdmin(h); const admin = { creds: a.creds };
     const endpoint = `${API}/plugins/folder-sync`;
     expect((await call(h, "POST", endpoint, { ...admin, body: { mounted: true, entries: [] } })).status).toBe(401);
     expect((await call(h, "POST", endpoint, { headers: { authorization: "Bearer wrong" }, body: { mounted: false } })).status).toBe(401);
+    expect((await call(h, "POST", endpoint, { headers: { authorization: "Bearer computer-only" }, body: { mounted: false } })).status).toBe(401);
     expect((await sync(h, [{ path: "mcp/crm.json", archive: mcp() }])).body.folder.problems).toEqual([]);
     const listing = await call(h, "GET", `${API}/admin/plugins`, admin);
     expect(listing.body.folder).toEqual({ syncedAt: expect.any(Number), problems: [] });
@@ -318,7 +332,7 @@ describe("startup folder sync", () => {
   });
 
   it("reports invalid entries, retains their last valid definition, and reconciles the other entries", async () => {
-    const h = await makeService({ COMPUTERD_TOKEN: token });
+    const h = await makeService({ PLUGIN_SYNC_TOKEN: token, COMPUTERD_TOKEN: "computer-only" });
     const initial = { path: "mcp/valid.json", archive: mcp() };
     await sync(h, [initial]);
     const previous = h.svc.plugins.list()[0];
@@ -328,8 +342,8 @@ describe("startup folder sync", () => {
       { path: "plugins/link", problem: "plugin_links_unsupported" },
       { path: "mcp/.json", archive: mcp() },
       { path: `mcp/${"a".repeat(101)}.json`, archive: mcp() },
-      { path: "skills/voice", archive: archive({ "SKILL.md": "---\nname: voice\ndescription: Brand voice\n---\nWrite clearly.", "reference.txt": "Style notes" }) },
-      { path: "plugins/full", archive: archive({ ".codex-plugin/plugin.json": '{"name":"Full","description":"Standard package"}', ".mcp.json": '{"servers":{"public":{"url":"https://public.test/mcp"}}}' }) },
+      { path: "skills/voice", archive: archive({ "SKILL.md": "---\nname: voice\ndescription: Brand voice\n---\nWrite clearly.", "reference.txt": "Style notes" }, "tar") },
+      { path: "plugins/full", archive: archive({ ".codex-plugin/plugin.json": '{"name":"Full","description":"Standard package"}', ".mcp.json": '{"servers":{"public":{"url":"https://public.test/mcp"}}}' }, "tar") },
     ]);
     expect(result.status).toBe(200);
     expect(result.body.folder.problems).toEqual([
@@ -350,7 +364,7 @@ describe("startup folder sync", () => {
   it("preserves encrypted vendor setup and connected accounts across same-path definition updates", async () => {
     const oauth = await fakeOAuth(); oauth.state.dcr = false;
     try {
-      const h = await makeService({ COMPUTERD_TOKEN: token }); const a = await asAdmin(h); const admin = { creds: a.creds };
+      const h = await makeService({ PLUGIN_SYNC_TOKEN: token, COMPUTERD_TOKEN: "computer-only" }); const a = await asAdmin(h); const admin = { creds: a.creds };
       const entry = (description: string) => ({ path: "plugins/accounts", archive: archive({
         ".claude-plugin/plugin.json": JSON.stringify({ name: "Accounts", description }),
         ".mcp.json": JSON.stringify({ mcpServers: { remote: { url: oauth.resource, oauth: {} } } }),

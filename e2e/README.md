@@ -6,6 +6,10 @@ real computers, the browser UI on real cells); lower loops prove the rest. **Whi
 [development workflow](../docs/development-workflow.md)**. These checks change deployment state: run them only when
 the owner asks, and then one area (`scripts/check e2e:<tag>`), not the whole suite.
 
+Complete the one-time setup first. For owner-authorized deployed checks, supply an existing admin account through
+`E2E_LOGIN_EMAIL` and `E2E_LOGIN_PASSWORD`. These are test credentials, not first-boot installation settings.
+The worktree and release-install harnesses generate their own setup tokens and create the admin through the API.
+
 | Loop | Command | Time |
 |---|---|---|
 | One area | `scripts/check e2e:chat` (= `e2e/run.sh --grep @chat`) | 0.5–3 min |
@@ -58,7 +62,7 @@ restore them. Tags select areas (`--grep @files`); `@slow` specs form the serial
 
 | File | Tags | Scope item |
 |---|---|---|
-| `01-admin-onboarding` | `@auth @admin` | (a) admin bootstrap sign-in, Alice with a temporary password, Bob by invitation (single use), team space Acme with both (its own people) |
+| `01-admin-onboarding` | `@auth @admin` | (a) admin sign-in after setup, Alice with a temporary password, Bob by invitation (single use), team space Acme with both (its own people) |
 | `03-tool-files` | `@files @computer`, `@browser` | (c) a shell task starts the computer; output file in the files panel, download byte-identical; the agent's browser reads example.com |
 | `04-team-live-queue` | `@chat @team` | (d) Bob watches Alice's run stream live with her name; his message during the run is queued (visible to both) and answered next |
 | `05-security` | `@security @auth` | (e) 52 checks through the deployed edge: other personal space (HTTP, WS, API, UI), admin cannot read personal spaces, no enumeration, forged identity headers, unsigned bearer, cross-origin WS/POST/sign-in, `Origin: null`, internal `_baskule` routes in 5 encodings, path and static traversal, closed Better Auth admin/sign-up routes, member vs admin actions, RPC confinement (T3 home, `..`, other space's chats, terminal, settings writes), no secrets in the server config. It creates its own positive-control chat when Alice has none |
@@ -99,4 +103,4 @@ attaching, or type without replacing the editor contents afterward.
 without a computer wake; (c) records cold/warm timings (`--project perf`). `perf/run.sh <label> 5` records repeated
 sign-in timings and node memory; compare host load and cell counts alongside medians.
 
-`18-direct-provider` checks a greeting followed by DOCX/PDF creation in the same chat against the configured real provider. Restore the normal endpoint with `llm/llm.sh restore`, hold the stack lock, and invoke Playwright directly with `E2E_DIRECT_REAL=1` and a fresh `E2E_RUN`/`E2E_WORLD_FILE` (do not use `run.sh`, which enables the fake router). Supply the admin password privately through `E2E_ADMIN_PASSWORD`. The test rejects an active `.run/e2e-product-settings.json` settings backup, verifies no computer for the greeting, then validates the actual DOCX ZIP/XML and PDF signature produced by the model. Remove only the fixture accounts/spaces afterward.
+`18-direct-provider` checks a greeting followed by DOCX/PDF creation in the same chat against the configured real provider. Restore the normal endpoint with `llm/llm.sh restore`, hold the stack lock, and invoke Playwright directly with `E2E_DIRECT_REAL=1` and a fresh `E2E_RUN`/`E2E_WORLD_FILE` (do not use `run.sh`, which enables the fake router). Supply the admin password privately through `E2E_LOGIN_PASSWORD`. The test rejects an active `.run/e2e-product-settings.json` settings backup, verifies no computer for the greeting, then validates the actual DOCX ZIP/XML and PDF signature produced by the model. Remove only the fixture accounts/spaces afterward.

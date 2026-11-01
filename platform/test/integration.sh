@@ -28,9 +28,7 @@ node -e '
   w.vars.PUBLIC_ORIGINS="http://allowed.test:47090"; w.vars.AUTH_RATE_LIMIT="0";
   fs.writeFileSync(process.argv[1]+"/wrangler.json", JSON.stringify(w,null,2));' "$APP"
 cat > "$APP/.dev.vars" <<VARS
-ADMIN_EMAIL=admin@it.test
-ADMIN_PASSWORD=it-admin-password-1
-ADMIN_NAME=Root Admin
+SETUP_TOKEN=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
 VARS
 
 PID=
@@ -49,22 +47,22 @@ trap stop EXIT
 : > "$D/test/.run/celld.log"
 start --clean
 if [ -n "$ONLY" ]; then
-  node test/integration/run.mjs "http://127.0.0.1:$PORT" phase1 --only "$ONLY"
+  SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase1 --only "$ONLY"
   stop
   [ "${KEEP:-0}" = 1 ] || rm -rf "$APP/.celld"
   echo "integration ($ONLY): OK"
   exit 0
 fi
-node test/integration/run.mjs "http://127.0.0.1:$PORT" phase1
+SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase1
 stop
 start
-node test/integration/run.mjs "http://127.0.0.1:$PORT" phase2
+SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase2
 stop
 node test/integration/oidc.mjs "$APP" "http://127.0.0.1:$PORT" "$CELLD_BIN"
 sed -i '/^AUTH_CONFIG=/d' "$APP/.dev.vars"
 printf '\nAUTH_CONFIG={"mode":"anonymous"}\n' >> "$APP/.dev.vars"
 start --clean
-node test/integration/run.mjs "http://127.0.0.1:$PORT" anonymous
+SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" anonymous
 stop
 [ "${KEEP:-0}" = 1 ] || rm -rf "$APP/.celld"
 echo "integration: OK"

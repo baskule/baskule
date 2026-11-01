@@ -10,9 +10,7 @@ export COMPOSE_BAKE=false
 # Source builds use local images and fixed developer resource names. External S3 disables local storage.
 dc() {
   local f=(-f "$DEPLOY_DIR/docker-compose.yml" -f "$DEPLOY_DIR/docker-compose.build.yml")
-  local profiles=storage,traces
-  [ -z "$(env_get S3_ENDPOINT 2>/dev/null)" ] || profiles=traces
-  COMPOSE_PROFILES=${COMPOSE_PROFILES:-$profiles} docker compose --project-directory "$DEPLOY_DIR" "${f[@]}" "$@"
+  COMPOSE_PROFILES=${COMPOSE_PROFILES:-traces} docker compose --project-directory "$DEPLOY_DIR" "${f[@]}" "$@"
 }
 log() { echo "[baskule] $*" >&2; }
 wait_healthy() { # wait_healthy <container> [seconds]
@@ -26,7 +24,7 @@ wait_healthy() { # wait_healthy <container> [seconds]
 }
 # Read one value from .env literally (never `source` it: values such as JSON would be mangled by the shell and
 # would then override compose's own .env parsing).
-env_get() { sed -n "s/^$1=//p" "$DEPLOY_DIR/.env" | tail -1; }
+env_get() { [ -f "$DEPLOY_DIR/.env" ] || return 0; sed -n "s/^$1=//p" "$DEPLOY_DIR/.env" | tail -1; }
 # Stack lock (deploy/.stack-lock, gitignored): whoever runs tests against the shared stack holds it, so others do
 # not redeploy or take the stack down meanwhile. Content: "owner=<who> pid=<pid> host=<host> since=<UTC> note=<text>".
 # A lock older than 3 h, or whose pid is gone, is stale. STACK_LOCK_OWNER identifies you (default: $USER-<script>).

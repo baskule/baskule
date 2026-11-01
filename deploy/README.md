@@ -19,16 +19,25 @@ Third-party storage, edge, and trace images are pinned by digest in Compose. The
 workload images, so its private daemon needs no registry access or host image loader.
 
 The single-machine stack has separate platform and computer networks. Only computerd joins both; the optional
-trace collector also receives from both. Only edge HTTP and the optional trace UI are published. Cluster roles
-bind Worker, peer, and computerd listeners on explicitly configured private addresses. Computer egress policy
+trace collector also receives from both. The edge publishes HTTP on loopback by default, or TCP 80/443 and UDP 443
+on all IPv4/IPv6 interfaces in HTTPS mode. The optional trace UI has its own loopback-default bind
+(`BASKULE_TRACES_BIND`). Cluster roles bind Worker, peer, and computerd listeners on explicitly configured private addresses. Computer egress policy
 continues to deny private destinations.
 
 Default memory caps total 15.75 GiB: two nodes at 3 GiB each, RustFS at 1 GiB, edge at 256 MiB, computerd at
 512 MiB, and OpenShell at 8 GiB. The optional trace collector adds 1 GiB. CPU caps are 2 per node, 1 for storage,
 edge and computerd, and 3 for OpenShell. Each computer defaults to 2 CPU and 3 GiB within OpenShell's aggregate
-cap. These limits are not reservations. Persistent volumes hold the bucket, node caches, gateway state, and private
+cap. These limits are not reservations. Persistent volumes hold generated secrets, the bucket, node caches, gateway state, and private
 Docker store containing computer disks.
 
-`init-env.sh`, `up.sh`, `deploy.sh`, `down.sh`, `backup.sh`, and `recreate-computers.sh` serve the checkout-based
+`up.sh`, `deploy.sh`, `down.sh`, `backup.sh`, and `recreate-computers.sh` serve the checkout-based
 developer path. Operators need only the release files and Docker Compose. Release assembly uses
 `scripts/release-install-assets.sh`; CI and publishing are documented in [Hosted checks and artifact builds](../docs/ci.md).
+
+The bootstrap job generates per-consumer secrets in separate named volumes. After deployment, the one-shot
+`setup` service prints `/setup#token=…` only when the API reports that setup is required.
+Create the first admin through that link. Cluster deployments supply a shared `SETUP_TOKEN`; the deploy job prints
+the link using `PUBLIC_URL`. Once an admin exists, the token cannot create another.
+
+Start only named profiles such as `traces`; `docker compose --profile '*' up` is unsupported because it also starts
+the edge inheritance templates. `BASKULE_EDGE` accepts lowercase `http` or `https`; HTTPS requires `BASKULE_DOMAIN`.

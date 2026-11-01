@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } from "node
 import { resolve } from "node:path";
 
 const run = (root, url) => new Promise((yes, no) => {
-  const child = spawn("bash", ["deploy/celld/sync-plugins.sh", root, url], { env: { ...process.env, COMPUTERD_TOKEN: "test-installation-token" } });
+  const child = spawn("bash", ["deploy/celld/sync-plugins.sh", root, url], { env: { ...process.env, COMPUTERD_TOKEN: "wrong-computer-token", PLUGIN_SYNC_TOKEN: "test-folder-token" } });
   let stderr = "";
   child.stderr.on("data", data => { stderr += data; });
   child.once("error", no);
@@ -43,7 +43,7 @@ test("collector sends all three standard entry kinds in one authenticated reques
     assert.equal(result.code, 0, result.stderr);
     assert.equal(requests.length, 3);
     assert.equal(requests[2].path, "/api/baskule/plugins/folder-sync");
-    assert.equal(requests[2].auth, "Bearer test-installation-token");
+    assert.equal(requests[2].auth, "Bearer test-folder-token");
     const entries = requests[2].body.entries;
     assert.deepEqual(entries.map(e => e.path), ["plugins/full", "plugins/link", "skills/voice", "mcp/crm.json"]);
     assert.equal(entries[1].problem, "plugin_links_unsupported");

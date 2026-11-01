@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 out=${1:?output directory required}
 : "${BASKULE_VERSION:?release version required}"
+node "$ROOT/scripts/install-env-docs.mjs" --check
 tag=${BASKULE_VERSION//+/_}
 mkdir -p "$out"
 cp "$ROOT/deploy/docker-compose.yml" "$out/docker-compose.yml"
