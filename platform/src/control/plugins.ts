@@ -320,13 +320,13 @@ export class Plugins {
           const source = { type: "folder", path: entry.path } as const;
           const draft = inspectPackage(unpackArchive(fromBase64(entry.archive)), { source });
           const { source: _source, ...definition } = draft.plugin;
+          if (entry.path.startsWith("mcp/")) definition.name = entry.path.slice(4, -5);
           const input = parse(inputSchema.omit({ source: true }), definition);
           // inspectPackage understands packages and bare skills; MCP files are packed as .mcp.json.
           const next = this.validate({ ...input, source });
           const current = existing.get(entry.path);
           const pluginId = current?.id ?? crypto.randomUUID();
           const plugin: Plugin = { ...input, source, id: pluginId, vendor: current?.vendor ?? pluginId,
-            name: entry.path.startsWith("mcp/") ? entry.path.slice(4, -5) : input.name,
             enabled: current?.enabled ?? true, createdAt: current?.createdAt ?? new Date().toISOString(),
             skills: next.skills.map(s => ({ name: s.name, description: s.description })),
             servers: next.servers.map(server => {

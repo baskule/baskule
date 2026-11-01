@@ -20,17 +20,18 @@ else
       path="$kind/${entry##*/}"
       case "$kind" in mcp) [[ "$entry" = *.json ]] || continue ;; esac
       problem=''
+      rm -f "$work/archive"
       if [ -L "$entry" ]; then
         problem=plugin_links_unsupported
       elif [ "$kind" = mcp ] && [ -f "$entry" ]; then
-        if ! tar -cz -C "$root/mcp" --transform='s|.*|.mcp.json|' -- "${entry##*/}" | head -c 10485761 > "$work/archive"; then problem=plugin_too_large; fi
+        if ! tar -cz -C "$root/mcp" --transform='s|.*|.mcp.json|' -- "${entry##*/}" | head -c 10485761 > "$work/archive"; then problem=plugin_source_unavailable; fi
       elif [ "$kind" != mcp ] && [ -d "$entry" ]; then
         # Cap compressed input at the same 10 MiB limit as uploads.
-        if ! tar -cz -C "$entry" . | head -c 10485761 > "$work/archive"; then problem=plugin_too_large; fi
+        if ! tar -cz -C "$entry" . | head -c 10485761 > "$work/archive"; then problem=plugin_source_unavailable; fi
       else
         problem=invalid_plugin_input
       fi
-      if [ -z "$problem" ] && [ "$(wc -c < "$work/archive")" -gt 10485760 ]; then problem=plugin_too_large; fi
+      if [ -f "$work/archive" ] && [ "$(wc -c < "$work/archive")" -gt 10485760 ]; then problem=plugin_too_large; fi
       if [ -n "$problem" ]; then
         jq -cn --arg path "$path" --arg problem "$problem" '{path:$path,problem:$problem}' >> "$work/entries"
       else

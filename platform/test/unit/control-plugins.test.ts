@@ -326,6 +326,8 @@ describe("startup folder sync", () => {
       { path: initial.path, archive: "broken" },
       { path: "plugins/bad", archive: archive({ ".claude-plugin/plugin.json": "bad" }) },
       { path: "plugins/link", problem: "plugin_links_unsupported" },
+      { path: "mcp/.json", archive: mcp() },
+      { path: `mcp/${"a".repeat(101)}.json`, archive: mcp() },
       { path: "skills/voice", archive: archive({ "SKILL.md": "---\nname: voice\ndescription: Brand voice\n---\nWrite clearly.", "reference.txt": "Style notes" }) },
       { path: "plugins/full", archive: archive({ ".codex-plugin/plugin.json": '{"name":"Full","description":"Standard package"}', ".mcp.json": '{"servers":{"public":{"url":"https://public.test/mcp"}}}' }) },
     ]);
@@ -334,6 +336,8 @@ describe("startup folder sync", () => {
       { path: initial.path, message: "invalid_archive" },
       { path: "plugins/bad", message: "invalid_plugin_manifest" },
       { path: "plugins/link", message: "plugin_links_unsupported" },
+      { path: "mcp/.json", message: "invalid_plugin_input" },
+      { path: `mcp/${"a".repeat(101)}.json`, message: "invalid_plugin_input" },
     ]);
     expect(h.svc.plugins.get(previous.id)).toEqual(previous);
     expect(h.svc.plugins.list().map(p => p.name).sort()).toEqual(["Full", "valid", "voice"]);

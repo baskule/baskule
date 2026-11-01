@@ -35,7 +35,7 @@ test("folder entry is configured in the UI, survives restart, and disappears aft
     await expect(page.getByRole("button", { name: "Replace key", exact: true })).toBeVisible();
     await page.getByRole("switch", { name: /Everyone/ }).click();
     await expect(page.getByRole("switch", { name: /Everyone/ })).toBeChecked();
-    await page.getByRole("button", { name: "Show tools", exact: true }).click();
+    await page.getByRole("button", { name: "Show tools of crm", exact: true }).click();
     await expect(page.getByRole("switch", { name: "Allow fixture_write", exact: true })).toBeChecked();
     await page.getByRole("switch", { name: "Allow fixture_write", exact: true }).click();
     await expect(page.getByRole("switch", { name: "Allow fixture_write", exact: true })).not.toBeChecked();
