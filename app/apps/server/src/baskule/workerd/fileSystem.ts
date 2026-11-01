@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off globalDateInEffect:off globalRandom:off -- native workerd adapter implementing the platform boundary.
-// baskule: the Effect `FileSystem` of a space cell (architecture v3, E8).
+// baskule: the Effect `FileSystem` of a space cell.
 //
 // Mounts, by path prefix:
 // - `${baseDir}/**` (T3's home: settings, secrets, environment id, attachments, logs) lives in
@@ -7,7 +7,7 @@
 // - `${chatsRoot}` and the chat folders directly under it are records in DO SQLite. T3 stats a
 //   chat's cwd on every turn, so answering from DO SQLite keeps chatting from waking the
 //   computer. A folder is created on the computer lazily: the first write under it (or the
-//   agent's spawner, WP-D) materializes it;
+//   agent's spawner) materializes it;
 // - everything else under `${sandboxRoot}` is the space computer, through computerd;
 // - `/tmp/**` is per-cell memory;
 // - any other path fails with PermissionDenied.

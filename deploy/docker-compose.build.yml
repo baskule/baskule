@@ -31,12 +31,10 @@ services:
     image: baskule-celld:${BASKULE_TAG:-local}
     container_name: baskule-deploy
     environment:
-      DEPLOY_APP: ${DEPLOY_APP:-platform}
       OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
     volumes:
       - ${AUTH_CONFIG_FILE:-./auth.json}:/src/auth.json:ro
       - ${BASKULE_PLATFORM_DIR:-../platform}:/src/platform:ro
-      - ./hello:/src/hello:ro
   baskule-computerd:
     image: baskule-computerd:${BASKULE_TAG:-local}
     container_name: baskule-computerd

@@ -1,7 +1,6 @@
 // baskule: an in-memory stand-in for Durable Object `ctx.storage` (SQL + transaction + alarm),
 // on node:sqlite, with the limits DO SQLite enforces in celld 0.6.3 (see doSqlClient.ts).
 // @effect-diagnostics nodeBuiltinImport:off
-import * as NodeFS from "node:fs";
 import * as NodeSqlite from "node:sqlite";
 
 import { MAX_BOUND_PARAMETERS, MAX_COMPOUND_TERMS, type DoSqlCursor } from "../doSqlClient.ts";
@@ -68,9 +67,8 @@ export interface FakeDoStorage {
   readonly db: NodeSqlite.DatabaseSync;
 }
 
-/** `path`: a SQLite file to keep the space across processes (perf/bootBench.mjs); in memory by default. */
-export const makeFakeDoStorage = (path = ":memory:"): FakeDoStorage => {
-  let db = new NodeSqlite.DatabaseSync(path);
+export const makeFakeDoStorage = (): FakeDoStorage => {
+  let db = new NodeSqlite.DatabaseSync(":memory:");
   let depth = 0;
   let gate: Promise<unknown> = Promise.resolve();
   let alarm: number | null = null;
@@ -156,8 +154,7 @@ export const makeFakeDoStorage = (path = ":memory:"): FakeDoStorage => {
     },
     deleteAll: async () => {
       db.close();
-      if (path !== ":memory:") NodeFS.rmSync(path, { force: true });
-      db = new NodeSqlite.DatabaseSync(path);
+      db = new NodeSqlite.DatabaseSync(":memory:");
       alarm = null;
     },
     get db() {

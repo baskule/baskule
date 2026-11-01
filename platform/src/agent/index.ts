@@ -179,7 +179,7 @@ export class AgentRuntime {
       this.log("boot phase: key");
       await this.loadKey();
       this.log("boot phase: module");
-      // WP-F: T3's task and preview tools (and the bundled MCP apps) are served by this space's SpaceCell (space-bridge.ts).
+      // T3's task and preview tools (and the bundled MCP apps) are served by this space's SpaceCell (space-bridge.ts).
       registerSpaceBridge(this.spaceId, this.space);
       // OpenCode (~20 MB of JS) is evaluated on the first boot in an isolate, not when the Worker starts.
       const { bootOpenCode } = await import("./opencode.js");
@@ -516,7 +516,7 @@ export class AgentRuntime {
   }
 
   /**
-   * WP-F: T3 adds its MCP server (its agent tools, over space-bridge.ts) to a session's location with
+   * T3 adds its MCP server (its agent tools, over space-bridge.ts) to a session's location with
    * `PUT /api/experimental/mcp/<t3-code-…>?location[directory]=<chat folder>`. Over HTTP that targets a bare
    * `{directory}` location, while sessions run in `{directory, workspaceID}` locations: apply it there in-process.
    */

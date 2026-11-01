@@ -39,8 +39,7 @@ desktop app only.
 
 Product settings are stored in the existing ControlCell database. The AI key is write-only in the API/UI and is
 returned only on the private ControlCell-to-SpaceCell settings call. Keyless providers need no stored key,
-report `apiKeyConfigured: true`, and use OpenCode's `public` bearer token. This replaces computerd's key endpoint;
-backups of ControlCell contain the key, just as they contain the authentication secret. No product settings are
+report `apiKeyConfigured: true`, and use OpenCode's `public` bearer token. Backups of ControlCell contain the key, just as they contain the authentication secret. No product settings are
 read from deployment environment variables. AI updates reload idle spaces; an active space reloads after its
 answers finish. Chats using a model no longer offered then run on the new default.
 
@@ -222,9 +221,8 @@ Initial Connect failures also return to Settings → Plugins with a plain error.
 Better Auth's `account.encryptOAuthTokens: true` encrypts access and refresh tokens with the installation secret;
 login ID tokens are discarded after validation. Organization keys, plugin tokens, refresh data, pending PKCE verifiers and admin OAuth
 client secrets use AES-256-GCM with a domain-separated HKDF key derived from the same secret and authenticated row
-identity. Backups containing both the database and its generated secret remain sensitive. Keep `AUTH_SECRET` stable;
-changing it invalidates sessions and encrypted credentials. Deploying this configuration layout requires the data wipe below;
-there is no conversion of plaintext tokens or a plaintext read path in plugin connection storage.
+identity. Backups containing both the database and its generated secret remain sensitive. ControlCell generates and persists the installation secret in its database;
+losing it invalidates sessions and encrypted credentials.
 
 ## Invitations and native clients
 
@@ -252,6 +250,8 @@ workspace, including administration access. No per-browser anonymous accounts, p
 sessions are created. Native connections send no authentication headers or socket tickets. People, invitations
 and password controls are unavailable. Use a separate installation with disposable data for this mode.
 
+See [background push integration](background-push-integration.md) to configure mobile notifications.
+
 ## Infrastructure stays in deployment configuration
 
 Listener/bind address, ports, public origins, TLS/proxy settings, storage credentials, internal service tokens,
@@ -259,45 +259,6 @@ CPU/memory limits, celld heap/timeouts, and the setup token stay in `.env`/Compo
 current idle policy through its authenticated runtime-settings endpoint. If that read fails, that idle check
 does not stop computers using a guessed policy.
 
-## Launch reset for the plugins revamp
-
-Deploy the completed plugin stack together. Do not deploy its intermediate pull requests to an existing
-installation. This is an alpha reset, with no conversion of earlier plugin data. Obtain the installation
-owner's authorization before deploying or resetting their installation. This runbook documents the operation;
-it does not authorize or execute it.
-
-The stack's ControlCell schema changes recreate encrypted plugin-key and account storage, replace per-server
-OAuth clients with vendor setup, drop member activation preferences, and delete installed plugins. Plugin
-history is new and belongs to its plugin. The combined reset removes:
-
-- Every installed plugin and its earlier skill versions.
-- Plugin group assignments and per-space disabled-plugin lists.
-- Organization keys, static vendor OAuth clients, connected plugin accounts and pending plugin consent.
-- Managed skill files on space computers, when each space next boots or reloads and replaces its managed tree.
-
-It keeps users, groups and memberships, spaces and their setting for allowing members' own accounts,
-Better Auth accounts and sessions, chats, computers, organization and AI settings, and the installation secret.
-The reset does not revoke tokens at vendors or erase plugin results already present in chats. Keep the
-installation secret stable so retained sessions and other encrypted settings remain usable.
-
-After the owner authorizes the operation:
-
-1. Retain any plugin packages and setup information that must be re-entered in private storage. Back up the
-   installation if the owner needs a recovery point; do not put keys or account tokens in source control.
-2. Deploy the complete stack through the installation's existing deployment workflow. Confirm that the
-   ControlCell schema changes applied, including the installed-plugin reset. Do not purge the installation's
-   volumes: that would also remove the users, spaces and chats this reset keeps.
-3. Open one personal space and one team space. Confirm their managed `/sandbox/space/plugins` tree is empty or absent
-   and their model lists no plugin skills. Other computers lose managed plugin files when their spaces next
-   boot or reload; unrelated files remain.
-4. Reinstall catalog plugins or reviewed custom packages, assign groups, and re-enter organization keys and
-   vendor sign-in clients. Finish shared setup before asking people to connect.
-5. Ask members to reconnect their plugin accounts and choose their defaults. Check readiness in Settings →
-   Plugins and verify the required personal/team access with the installation's approved test accounts.
-
-Existing development databases that contain plugins saved by an intermediate branch must reinstall those
-plugins against the final input shape or use a separately authorized disposable-data reset. No compatibility
-reader or data conversion is provided.
 ## Upgrade
 
 Back up and update the installation using the [installation update procedure](install.md#update).

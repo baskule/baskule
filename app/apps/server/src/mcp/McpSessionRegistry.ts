@@ -85,7 +85,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
   const state = yield* SynchronizedRef.make<RegistryState>({ records: new Map() });
   const currentTimeMillis = options.now ? Effect.sync(options.now) : Clock.currentTimeMillis;
   const livenessWindowMs = options.livenessWindowMs ?? DEFAULT_LIVENESS_WINDOW_MS;
-  // baskule: in a space cell the provider (OpenCode in the AgentCell) reaches this server through
+  // baskule: in a space cell the provider (the embedded OpenCode in this SpaceCell) reaches this server through
   // the platform's internal bridge (BASKULE_MCP_ENDPOINT), not through a listening socket.
   const baskuleEndpoint = yield* Config.String("BASKULE_MCP_ENDPOINT").pipe(
     Config.option,

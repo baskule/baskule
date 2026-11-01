@@ -78,20 +78,6 @@ export function Avatar({
   );
 }
 
-export function formatRelativeDate(iso: string | null, now = Date.now()): string {
-  if (!iso) return "Never";
-  const time = Date.parse(iso);
-  if (Number.isNaN(time)) return "Unknown";
-  const minutes = Math.round((now - time) / 60_000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days} d ago`;
-  return new Date(time).toLocaleDateString();
-}
-
 export function formatBytes(bytes: number | null): string | null {
   if (bytes === null) return null;
   if (bytes < 1024) return `${bytes} B`;

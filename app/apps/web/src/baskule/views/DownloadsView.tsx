@@ -1,6 +1,6 @@
 import { t, useTranslation } from "../../i18n";
 
-// baskule: Settings → Desktop app: the apps published with the installation (E10), connecting a
+// baskule: Settings → Desktop app: the apps published with the installation, connecting a
 // device, and in the desktop app the server it uses.
 import { DownloadIcon } from "lucide-react";
 

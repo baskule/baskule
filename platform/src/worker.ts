@@ -1,4 +1,4 @@
-// Worker `baskule` (E7): the stateless front on every celld node. One origin:
+// Worker `baskule`: the stateless front on every celld node. One origin:
 //   /auth/*            → Better Auth (ControlCell)
 //   /api/baskule/*    → me, people, spaces, members, invitations, admin (ControlCell); downloads listing (here)
 //   /s/<spaceId>/*     → Origin check + session + membership on EVERY request and upgrade → SpaceCell(<spaceId>)

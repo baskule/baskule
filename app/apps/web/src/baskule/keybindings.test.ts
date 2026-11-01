@@ -1,5 +1,5 @@
-// baskule: the Baskule UI ignores shortcuts for hidden features (review M1). Runs with the flag
-// on; the rest of the unit suite runs with it off (review M6).
+// baskule: the Baskule UI ignores shortcuts for hidden features. Runs with the flag
+// on; the rest of the unit suite runs with it off.
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 async function loadWithFlag(value: string) {

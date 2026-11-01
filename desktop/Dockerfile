@@ -1,5 +1,5 @@
-# CI-only native desktop toolchain. The rootless runner builds and runs this image;
-# it contains no deploy tooling, credentials, Docker socket, or live-stack configuration.
+# Native desktop toolchain.
+# Contains no deploy tooling, credentials, Docker socket, or live-stack configuration.
 FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS node
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

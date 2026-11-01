@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// SpaceCell cell-level test runner (WP-B feedback loop). One command:
+// SpaceCell cell-level test runner. One command:
 //   node src/space/test/run.mjs [--sync] [--keep] [--only a,b] [--skip-schedule]
-// It starts the fake LLM (WP-C's, :47551), a fake computerd (:47552) and `celld dev` on the test
+// It starts the fake LLM (the platform's, :47551), a fake computerd (:47552) and `celld dev` on the test
 // harness (:47550, clean state), then drives spaces the way the Worker and the web client do.
 // --sync rebuilds the T3 bundle first (sync-bundle.sh; T3_APP_DIR selects the fork checkout).
 // Everything it started is stopped at the end, unless --keep.

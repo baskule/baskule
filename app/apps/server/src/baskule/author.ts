@@ -1,4 +1,4 @@
-// baskule: authorship in shared spaces (E8). The server stamps who sent a command from the
+// baskule: authorship in shared spaces. The server stamps who sent a command from the
 // Baskule identity of the socket, at the RPC boundary; a client-supplied author is dropped.
 // Field shape: `OrchestrationV2Author {id, name}` on the creation fields (shared with the web).
 import type {

@@ -1,8 +1,8 @@
 import { t } from "../i18n";
 
-// baskule: typed client for the Baskule front (Worker + ControlCell, architecture E6/E7).
+// baskule: typed client for the Baskule front (Worker + ControlCell).
 // Same origin, cookie session (Better Auth at `/auth/*`); our API at `/api/baskule/*`.
-// Wire shapes: platform/README.md ("/api/baskule") and platform/src/control/service.ts (WP-C).
+// Wire shapes: platform/README.md ("/api/baskule") and platform/src/control/service.ts.
 // The views use the small view models below; mapping from the wire happens here only.
 import type {
   BaskuleAIConnectionCheck,
@@ -725,7 +725,7 @@ export const baskuleApi = {
     ).files.map(describeDownload),
 };
 
-/** `<origin><base>/`: where a space's T3 environment is served (E7). */
+/** `<origin><base>/`: where a space's T3 environment is served. */
 export function spaceBaseUrl(origin: string, base: string): string {
   return `${origin.replace(/\/+$/, "")}/${base.replace(/^\/+|\/+$/g, "")}/`;
 }

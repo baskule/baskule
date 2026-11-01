@@ -63,8 +63,7 @@ The existing bootstrap job generates a dedicated folder-sync secret in the platf
 secret volume. The deploy job passes it to the Worker and uses it for sync over the
 private network; computerd, OpenShell and storage do not receive it. Do not put secrets
 in plugin files. For cluster deploy jobs, mount the tree on the one host that performs
-deployment, set a random `PLUGIN_SYNC_TOKEN` in its `.env`, and set `PLUGIN_SYNC_URL`
-to a reachable platform Worker address.
+deployment, and set a random `PLUGIN_SYNC_TOKEN` in its `.env`.
 
 For local development, `scripts/stack` reads `.run/plugins` on celld startup and
 restart. Set `BASKULE_PLUGINS_DIR` to use a different directory. Use the fake model

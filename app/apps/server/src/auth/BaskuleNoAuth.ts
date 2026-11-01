@@ -87,7 +87,7 @@ export const baskuleNoAuthSessionRow = (issuedAt: DateTime.Utc) => ({
 
 /**
  * An owner row from an older build (wider scopes) or one revoked through the access API would
- * otherwise persist across restarts; every start puts it back to the current shape (review M5).
+ * otherwise persist across restarts; every start puts it back to the current shape.
  */
 const encodeScopesJson = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 export const resetBaskuleNoAuthSession = Effect.gen(function* () {

@@ -23,7 +23,7 @@ describe("admin", () => {
     if (s1.status !== 200) throw new Error("sign-in");
     const s2 = await signIn(h, "bob@os.test", "temp-pass-22");
     if (s2.status !== 200) throw new Error("sign-in");
-    // now that Bob has signed in, the admin can no longer set his password (review M7)
+    // now that Bob has signed in, the admin can no longer set his password
     expect((await call(h, "POST", `/api/baskule/admin/users/${bob.id}/password`, { creds: a.creds, body: { password: "admin-chosen-1" } })).status).toBe(409);
 
     const link = await call(h, "POST", `/api/baskule/admin/users/${bob.id}/reset-link`, { creds: a.creds });

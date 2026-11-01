@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# baskule: WP-E dev loop. Starts the mock LLM (47702), OpenCode 2 (47703), optionally Vite (47701,
-# MOCK_WEB=dev) and the mock Baskule front (47700). State and logs in baskule/.run/wp-e.
+# baskule: hosted web mock loop. Starts the mock LLM (47702), OpenCode 2 (47703), optionally Vite (47701,
+# MOCK_WEB=dev) and the mock Baskule front (47700). State and logs in baskule/.run/web-mock.
 #   MOCK_WEB=dist ./up.sh   serve apps/web/dist (build it first with VITE_BASKULE_HOSTED=1)
 #   MOCK_WEB=dev  ./up.sh   Vite dev server with HMR behind the mock
 #   MOCK_BACKENDS=none      front-only manual checks; scripted sign-in journeys require t3
@@ -9,7 +9,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 WEB=$(cd "$HERE/.." && pwd)
 ROOT=$(cd "$WEB/../../.." && pwd)   # the umbrella checkout (app/ is vendored in it)
 source "$ROOT/scripts/env.sh"
-STATE=${MOCK_STATE_DIR:-$ROOT/.run/wp-e}
+STATE=${MOCK_STATE_DIR:-$ROOT/.run/web-mock}
 mkdir -p "$STATE"/{logs,oc/xdg/config/opencode,oc/xdg/data,oc/xdg/state,oc/xdg/cache,oc/work}
 export MOCK_STATE_DIR=$STATE MOCK_WEB=${MOCK_WEB:-dist} MOCK_BACKENDS=${MOCK_BACKENDS:-t3}
 

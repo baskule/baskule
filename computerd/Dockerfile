@@ -1,4 +1,4 @@
-# baskule-computerd:local: stateless HTTP bridge from the cells to OpenShell (architecture E4). See README.md.
+# baskule-computerd:local: stateless HTTP bridge from the cells to OpenShell. See README.md.
 FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS dependencies
 RUN corepack enable pnpm
 WORKDIR /workspace

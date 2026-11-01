@@ -5,7 +5,7 @@
 #   baskule-celld-job deploy      `celld deploy` the app with vars generated from the environment, then ask
 #                                  every node to adopt it now (POST /reload on the internal listener)
 # Env: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_ENDPOINT, CELLD_BUCKET_NAME, CELLD_BUCKET (s3://name[/prefix])
-#      deploy: DEPLOY_APP (auto|platform|hello), CELLD_NODES_INTERNAL ("host:port host:port"), APP vars (see compose).
+#      deploy: CELLD_NODES_INTERNAL ("host:port host:port"), APP vars (see compose).
 set -euo pipefail
 log() { echo "[baskule-celld-job] $*" >&2; }
 secrets_root=${BASKULE_SECRETS_DIR:-/run/baskule}
@@ -145,13 +145,9 @@ case "${1:-}" in
     wait_s3 bucket
     ;;
   deploy)
-    app=${DEPLOY_APP:-auto}
-    if [ "$app" = auto ]; then
-      if [ -f /src/platform/dist/worker.js ] && [ -f /src/platform/wrangler.json ]; then app=platform; else app=hello; fi
-    fi
     work=$(mktemp -d)
     trap 'rm -rf "$work"' EXIT
-    cp -r "/src/$app/." "$work/"
+    cp -r "/src/platform/." "$work/"
     # Resolve {"env":"NAME"} leaves without evaluating shell syntax. Never print the result.
     auth=${AUTH_CONFIG:-'{"version":1,"mode":"authenticated","password":true}'}
     if [ -f /src/config/auth.json ]; then auth=$(cat /src/config/auth.json); fi
@@ -161,22 +157,22 @@ case "${1:-}" in
       else . end)')
     jq --arg PUBLIC_ORIGINS "${PUBLIC_ORIGINS:-}" --arg AUTH_CONFIG "$AUTH_CONFIG" \
        --arg SETUP_TOKEN "${SETUP_TOKEN:-}" --arg PLUGIN_SYNC_TOKEN "${PLUGIN_SYNC_TOKEN:-}" \
-       --arg AUTH_SECRET "${AUTH_SECRET:-}" --arg COMPUTERD_URL "${COMPUTERD_URL:-}" --arg COMPUTERD_TOKEN "${COMPUTERD_TOKEN:-}" \
+       --arg COMPUTERD_URL "${COMPUTERD_URL:-}" --arg COMPUTERD_TOKEN "${COMPUTERD_TOKEN:-}" \
        --arg OTLP_TRACES_URL "${OTLP_TRACES_URL:-}" \
-       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, PLUGIN_SYNC_TOKEN:$PLUGIN_SYNC_TOKEN, AUTH_SECRET:$AUTH_SECRET, COMPUTERD_URL:$COMPUTERD_URL,
+       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, PLUGIN_SYNC_TOKEN:$PLUGIN_SYNC_TOKEN, COMPUTERD_URL:$COMPUTERD_URL,
           COMPUTERD_TOKEN:$COMPUTERD_TOKEN, OTLP_TRACES_URL:$OTLP_TRACES_URL})' \
-       "/src/$app/wrangler.json" > "$work/wrangler.json"
+       "/src/platform/wrangler.json" > "$work/wrangler.json"
     unset AUTH_CONFIG
     wait_s3
-    log "deploying $app"
+    log "deploying platform"
     celld deploy "$work/wrangler.json" --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT"
     for n in ${CELLD_NODES_INTERNAL:-}; do
       curl -s -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
-    if [ "$app" = platform ] && { [ -n "${PLUGIN_SYNC_TOKEN:-}" ] || [ -e /plugins ]; }; then
+    if [ -n "${PLUGIN_SYNC_TOKEN:-}" ] || [ -e /plugins ]; then
       /usr/local/bin/baskule-sync-plugins /plugins "${PLUGIN_SYNC_URL:-http://baskule-celld-a:47091}"
     fi
-    log "deployed $app"
+    log "deployed platform"
     if [ -n "${SETUP_STATUS_URL:-}" ] && [ -n "${SETUP_TOKEN:-}" ]; then print_setup_link; fi
     ;;
   *) echo "usage: baskule-celld-job setup|run COMMAND|bootstrap|deploy|backup|restore" >&2; exit 2 ;;

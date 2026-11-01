@@ -1,5 +1,5 @@
-// Helpers of the WP-F feature runner: a signed-in client of the real platform app (Worker + ControlCell + SpaceCell with T3 and
-// OpenCode) on the WP-F dev stack, the way the web client talks to it (cookie session, Origin, /s/<id>/ws RPC).
+// Helpers of the Platform feature runner: a signed-in client of the real platform app (Worker + ControlCell + SpaceCell with T3 and
+// OpenCode) on the worktree stack, the way the web client talks to it (cookie session, Origin, /s/<id>/ws RPC).
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

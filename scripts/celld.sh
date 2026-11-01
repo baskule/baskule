@@ -2,7 +2,7 @@
 # Shared native celld launcher for local dev/test loops. CELLD_BIN overrides this launcher in callers.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-# Celld's asset-cache buckets inherit their first writer's ownership; root and rootless CI must not share them.
+# Keep celld's asset-cache buckets local to this worktree.
 export TMPDIR="$ROOT/.run/celld-tmp"
 mkdir -p "$TMPDIR"
 if [ -x "$ROOT/.tools/bin/celld" ]; then

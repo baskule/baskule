@@ -1,4 +1,4 @@
-// baskule: an in-process stand-in for computerd's files and exec endpoints (E4), backed by a
+// baskule: an in-process stand-in for computerd's files and exec endpoints, backed by a
 // host directory that plays the role of the computer's `/sandbox`.
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";

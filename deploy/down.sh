@@ -7,7 +7,7 @@ docker rm -f baskule-e2e-llm >/dev/null 2>&1 || true  # the e2e LLM router (e2e/
 if [ "${1:-}" = --purge ]; then
   read -r -p "Delete ALL baskule data (bucket, computers)? type 'purge': " a; [ "$a" = purge ] || exit 1
   dc down -v --remove-orphans
-  # An external bucket (dedicated-host.md) holds the cells' data outside the volumes: empty it too.
+  # An external bucket (docs/install.md#external-s3) holds the cells' data outside the volumes: empty it too.
   if [ -n "$(env_get S3_ENDPOINT)" ]; then
     docker run --rm -e AWS_ACCESS_KEY_ID="$(env_get S3_ACCESS_KEY)" -e AWS_SECRET_ACCESS_KEY="$(env_get S3_SECRET_KEY)" \
       -e AWS_DEFAULT_REGION="$(env_get S3_REGION)" \

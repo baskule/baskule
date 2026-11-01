@@ -1,4 +1,4 @@
-// Better Auth 1.7.12 configuration for ControlCell (E6). Pinned exactly in package.json: minors have breaking cutovers.
+// Better Auth 1.7.12 configuration for ControlCell. Pinned exactly in package.json: minors have breaking cutovers.
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
@@ -14,7 +14,7 @@ import * as authSchema from "./schema/auth";
 import { hashPassword, verifyPassword } from "./password";
 import { CLIENT_IP_HEADER } from "../shared/contract";
 
-/** The admin plugin's roles. `admin` has no impersonation and no set-password/set-email/update (review M7):
+/** The admin plugin's roles. `admin` has no impersonation and no set-password/set-email/update:
  *  temporary passwords for never-signed-in accounts are set by our own code (ControlService.setInitialPassword). */
 export const ac = createAccessControl(defaultStatements);
 export const roles = {
@@ -125,7 +125,7 @@ export function createAuth(db: any, cfg: AuthConfig, hooks: AuthHooks) {
       resetPasswordTokenExpiresIn: 60 * 60,
     },
     session: {
-      // Never cache sessions in cookies: revocation must be immediate (auth-and-libraries §1, review H5).
+      // Never cache sessions in cookies: revocation must be immediate.
       cookieCache: { enabled: false },
     },
     rateLimit: {
@@ -144,7 +144,7 @@ export function createAuth(db: any, cfg: AuthConfig, hooks: AuthHooks) {
       cookiePrefix: "baskule",
       // Without a fixed public origin, server API calls and HTTP requests must use the same cookie names.
       useSecureCookies: !!cfg.installation.publicOrigin,
-      // The Worker strips every inbound x-baskule-* and sets this from the connection (review L2).
+      // The Worker strips every inbound x-baskule-* and sets this from the connection.
       ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
     },
     telemetry: { enabled: false },
@@ -161,7 +161,7 @@ export function createAuth(db: any, cfg: AuthConfig, hooks: AuthHooks) {
         },
       },
       admin({ ac, roles, defaultRole: "member", adminRoles: ["admin"] }),
-      bearer({ requireSignature: true }), // a raw DB token is not a login (review L1)
+      bearer({ requireSignature: true }), // a raw DB token is not a login
       connectCodes(),
       genericOAuth({ config: cfg.installation.providers.filter(p => p.type === "oidc").map(p => ({
         ...p.options, providerId: p.id, name: p.name,

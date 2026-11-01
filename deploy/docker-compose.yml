@@ -134,12 +134,10 @@ services:
       <<: *s3
       # `celld deploy` checks asset sizes too (desktop artifacts under /downloads).
       CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
-      DEPLOY_APP: platform
       CELLD_NODES_INTERNAL: baskule-celld-a:47092 baskule-celld-b:47092
       SETUP_STATUS_URL: ""
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
       SETUP_TOKEN: ${SETUP_TOKEN:-}
-      AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       COMPUTERD_URL: ${COMPUTERD_URL:-http://baskule-computerd:47094}
       COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:-}
       # T3's spans inside each SpaceCell (orchestration, provider turns, browser operations).

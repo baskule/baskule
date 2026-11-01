@@ -960,7 +960,7 @@ export class ControlService {
       "insert into invitation(id, token_hash, email, role, spaces, created_by, created_at, expires_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
       id, await sha256Hex(token), email, role, JSON.stringify(spaces), s.user.id, now, expiresAt,
     );
-    // The token travels in the fragment: never sent to the server by the browser, never in a Referer (review H7).
+    // The token travels in the fragment: never sent to the server by the browser, never in a Referer.
     return json({ id, email, role, spaces, expiresAt, token, url: `${url.origin}/invite#token=${token}` }, 201);
   }
 
@@ -1156,7 +1156,7 @@ export class ControlService {
     return json({ ok: true });
   }
 
-  /** Temporary password, only for an account that has never signed in (review M7: no takeover of a used account). */
+  /** Temporary password, only for an account that has never signed in (no takeover of a used account). */
   private async setInitialPassword(req: Request, userId: string): Promise<Response> {
     const { password } = await readJson<{ password?: string }>(req);
     if (typeof password !== "string" || password.length < 8 || password.length > 256) throw new HttpError(400, "invalid_password", "Password must be between 8 and 256 characters.");

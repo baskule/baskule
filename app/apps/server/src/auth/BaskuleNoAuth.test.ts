@@ -1,4 +1,4 @@
-// baskule: BASKULE_AUTH_MODE=none behaviour (D7).
+// baskule: BASKULE_AUTH_MODE=none behaviour.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthAccessWriteScope, AuthTerminalOperateScope } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";

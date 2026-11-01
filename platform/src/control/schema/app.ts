@@ -1,4 +1,4 @@
-// Baskule-owned tables in ControlCell (E6). Better Auth's own tables are in ./auth.ts.
+// Baskule-owned tables in ControlCell. Better Auth's own tables are in ./auth.ts.
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, real, index, uniqueIndex, primaryKey, check } from "drizzle-orm/sqlite-core";
 import { user, session } from "./auth";
@@ -13,7 +13,7 @@ export const organization = sqliteTable("organization", {
 /** Per-user Baskule state that Better Auth does not model. */
 export const userProfile = sqliteTable("user_profile", {
   userId: text("user_id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
-  /** Set on the first session ever created; admin set-password is refused afterwards (review M7). */
+  /** Set on the first session ever created; admin set-password is refused afterwards. */
   firstSignInAt: integer("first_sign_in_at", { mode: "timestamp_ms" }),
 });
 
@@ -51,7 +51,7 @@ export const spaceMember = sqliteTable(
   ],
 );
 
-/** Admin invitations (review H7): 256-bit token stored as SHA-256 hex, single use, email-bound, expiring. */
+/** Admin invitations: 256-bit token stored as SHA-256 hex, single use, email-bound, expiring. */
 export const invitation = sqliteTable(
   "invitation",
   {

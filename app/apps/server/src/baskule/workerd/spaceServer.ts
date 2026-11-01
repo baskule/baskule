@@ -81,7 +81,7 @@ export const AGENT_ORIGIN = "http://agent";
 
 // Some T3 code paths (title generation, provider refresh, effects resumed in another runtime) reach OpenCode with
 // the isolate's global fetch instead of the Fetch service provided below. Spaces share an isolate, so the agent URL
-// carries the space id (`http://agent/<spaceId>/oc/...`) and one isolate-wide router sends it to the right AgentCell.
+// carries the space id (`http://agent/<spaceId>/oc/...`) and one isolate-wide router sends it to the embedded OpenCode in the right SpaceCell.
 const agentRoutes = new Map<string, (request: Request) => Promise<Response>>();
 let globalFetchRouted = false;
 const routeAgentRequest = (request: Request): Promise<Response> | undefined => {
@@ -112,7 +112,7 @@ export interface SpaceServerConfig {
   readonly storage: DoSql.DoSqlStorage;
   /** Shared with embedded OpenCode: one SQLite connection must have one transaction gate. */
   readonly database?: DoSql.DoSqlClient;
-  /** Requests for `http://agent/...` (T3's OpenCode provider) go here: the AgentCell stub. */
+  /** Requests for `http://agent/...` (T3's OpenCode provider) go here: the embedded OpenCode in this SpaceCell. */
   readonly agentFetch: (request: Request) => Promise<Response>;
   readonly computerdUrl?: string | undefined;
   readonly computerdToken?: string | undefined;
@@ -344,7 +344,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     // Public webhook URLs: `<origin>/hooks/<spaceId>/<taskId>/<token>` (the Worker forwards them
     // to `/api/hooks/…`). Relative to the app origin, which the cell does not know.
     BASKULE_WEBHOOK_BASE: `${config.publicOrigin ?? ""}/hooks/${config.spaceId}`,
-    // T3's MCP server (its task tools) as the space's agent reaches it: the AgentCell routes this
+    // T3's MCP server (its task tools) as the space's agent reaches it: the embedded OpenCode routes this
     // reserved host to this space's cell (platform/src/agent/space-bridge.ts).
     BASKULE_MCP_ENDPOINT: `http://baskule-space.internal/${encodeURIComponent(config.spaceId)}/mcp`,
     T3CODE_TELEMETRY_ENABLED: "false",
@@ -381,7 +381,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     // T3's MCP tools are described on the agent's first /mcp request, not at boot.
     McpDeferredRegistrations.layer,
     Layer.succeed(FetchHttpClient.Fetch, agentFetch),
-    // AgentCell embeds this runtime; a transient discovery error must never select legacy v1.
+    // SpaceCell embeds both runtimes; a transient discovery error must never select legacy v1.
     Layer.succeed(ManagedOpenCodeRuntime, { version: "2.1.3" }),
     Layer.succeed(HostFileSystem, hostFileSystem),
     sqlLayer,

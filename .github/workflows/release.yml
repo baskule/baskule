@@ -180,7 +180,7 @@ jobs:
             .run/evidence/release-install/
             !.run/evidence/release-install/*.tar.gz
             .run/check/
-            .run/wp-e/artifacts/
+            .run/web-mock/artifacts/
             e2e/test-results/
             .run/journeys/results/**/test-failed-*.png
             .run/journeys/results/**/error-context.md
@@ -248,8 +248,8 @@ jobs:
           path: |
             .run/evidence/release/
             .run/desktop-verification/
-            .run/wp-e/artifacts/
-            .run/wp-e-build.log
+            .run/web-mock/artifacts/
+            .run/web-mock-build.log
           if-no-files-found: warn
           retention-days: 1
 

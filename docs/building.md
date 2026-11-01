@@ -52,9 +52,13 @@ Build and start from the Ubuntu build environment. For example, with the checkou
 
 ```sh
 docker build --network=host -t baskule-build deploy/build-env
+build_key=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
 docker run --rm --network=host --pid=host \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /opt/baskule:/opt/baskule -w /opt/baskule/src baskule-build
+  -v /opt/baskule:/opt/baskule -w /opt/baskule/src \
+  -e CARGO_HOME=/opt/baskule/cache/cargo \
+  -e CARGO_TARGET_DIR=/opt/baskule/cache/openshell-target-ubuntu24-$build_key \
+  baskule-build bash -c 'scripts/worktree setup && deploy/build.sh'
 ```
 
 After startup, read the setup link and create the first admin:
@@ -64,10 +68,10 @@ docker compose --project-directory deploy \
   -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml logs setup
 ```
 
-The build environment installs dependencies and runs `deploy/build.sh`. A cold native build can take 30–60 minutes.
+The explicit command installs dependencies and runs `deploy/build.sh`. A cold native build can take 30–60 minutes.
 For a linked worktree, also mount its Git common directory and pinned-tool directory at their original paths.
 Use this only for an installation you are authorized to operate. To build without starting or replacing services,
-override the entry point and set a target-specific native cache:
+pass `--no-deploy` and set a target-specific native cache:
 
 ```sh
 build_key=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
@@ -76,7 +80,7 @@ docker run --rm --network=host \
   -v /opt/baskule:/opt/baskule -w /opt/baskule/src \
   -e CARGO_HOME=/opt/baskule/cache/cargo \
   -e CARGO_TARGET_DIR=/opt/baskule/cache/openshell-target-ubuntu24-$build_key \
-  baskule-build bash deploy/build.sh --no-deploy
+  baskule-build bash -c 'scripts/worktree setup && deploy/build.sh --no-deploy'
 ```
 
 `deploy/build.sh` builds the hosted web app, SpaceCell, downloads when available, and platform Worker, then packages

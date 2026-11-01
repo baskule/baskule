@@ -7,7 +7,7 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { ARTIFACTS, Api, BASE, envGet, until, wsPath, newDevice, personApi, rawGet, shot, signInBrowser, spaceRpc, upgradeStatus, waitComposer, world } from "./lib";
+import { ARTIFACTS, Api, BASE, generatedSecret, until, wsPath, newDevice, personApi, rawGet, shot, signInBrowser, spaceRpc, upgradeStatus, waitComposer, world } from "./lib";
 
 const S = "05-security";
 const results: Array<{ check: string; ok: boolean; detail: string }> = [];
@@ -123,8 +123,8 @@ test("(e) isolation and front security checks", { tag: ["@security", "@auth"] },
   const settingsWrite = await spaceRpc(bob, acme, "server.updateSettings", { patch: {} }).catch((e) => ({ _tag: "Failure", e: String(e) }));
   check("RPC: settings writes are refused (installation-managed)", settingsWrite._tag === "Failure", JSON.stringify(settingsWrite).slice(0, 160));
   const config = JSON.stringify(await spaceRpc(bob, acme, "server.getConfig", {}).catch((e) => String(e)));
-  const secrets = [envGet("COMPUTERD_TOKEN"), envGet("BASKULE_LLM_API_KEY"), envGet("BETTER_AUTH_SECRET"), envGet("RUSTFS_SECRET_KEY")].filter((s) => s.length > 8);
-  check("server config sent to members holds no secret (computerd token, LLM key, auth secret)", !secrets.some((s) => config.includes(s)), "");
+  const secrets = [generatedSecret("COMPUTERD_TOKEN"), generatedSecret("RUSTFS_ACCESS_KEY"), generatedSecret("RUSTFS_SECRET_KEY")];
+  check("server config sent to members holds no secret (computerd token, storage credentials)", !secrets.some((s) => config.includes(s)), "");
   // A WebSocket opened with Bob's cookie but a forged Alice identity speaks as Bob in Acme (author stamping).
   check("RPC over a forged-identity socket still authenticates as the cookie's owner", (await spaceRpc(bob, acme, "server.getConfig", {}, { "x-baskule-identity": aliceIdentity }).then(() => true, () => false)), "");
 

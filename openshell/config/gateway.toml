@@ -1,4 +1,4 @@
-# OpenShell gateway config for the baskule-openshell container (Baskule, architecture E5).
+# OpenShell gateway config for the baskule-openshell container.
 # Baked into baskule-openshell-gateway:local at /etc/openshell/gateway.toml.
 #
 # - Docker compute driver against the PRIVATE dockerd of this container (unix socket only).

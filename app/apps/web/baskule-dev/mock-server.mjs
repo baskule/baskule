@@ -145,14 +145,11 @@ const VITE_PORT = Number(process.env.MOCK_VITE_PORT ?? 47701);
 const T3_PORT_BASE = Number(process.env.MOCK_T3_PORT_BASE ?? 47710);
 const OPENCODE_URL = process.env.MOCK_OPENCODE_URL ?? "http://127.0.0.1:47703";
 const STATE_DIR = NodePath.resolve(
-  process.env.MOCK_STATE_DIR ?? NodePath.join(REPO_ROOT, "../.run/wp-e"),
+  process.env.MOCK_STATE_DIR ?? NodePath.join(REPO_ROOT, "../.run/web-mock"),
 );
 const BACKENDS = process.env.MOCK_BACKENDS ?? "t3";
 const INJECT_AUTHOR = process.env.MOCK_INJECT_AUTHOR !== "0";
 const DIST = NodePath.join(WEB_ROOT, "dist");
-/** MOCK_CONTROL=http://127.0.0.1:47600 (platform/dev.sh): real auth and API, T3 spaces from here. */
-const CONTROL = process.env.MOCK_CONTROL?.replace(/\/+$/, "") ?? "";
-
 // data (shapes: platform/README.md)
 
 const now = () => Date.now();
@@ -297,7 +294,7 @@ function adminUsage(fromParam, toParam) {
     turns: Math.round(totals.turns * part),
     chats: Math.round(totals.chats * part),
   });
-  const bySpace = spaces.values().map((space, index, all) => ({
+  const bySpace = spaces.values().toArray().map((space, index, all) => ({
     spaceId: space.id,
     name: space.name,
     ...share(1 / all.length),
@@ -445,6 +442,7 @@ const membersOf = (space) =>
 const spacesOf = (userId) =>
   spaces
     .values()
+    .toArray()
     .filter((space) => memberRole(space, userId) !== null)
     .sort((a, b) =>
       a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "personal" ? -1 : 1,
@@ -536,7 +534,7 @@ function endSessionsOf(userId) {
   for (const socket of liveSockets) if (socket.userId === userId) socket.destroy();
 }
 
-// API (in memory, like WP-C's ControlCell)
+// API (in memory, like the platform's ControlCell)
 
 async function handleApi(req, res, url) {
   const method = req.method ?? "GET";
@@ -985,7 +983,7 @@ async function handleApi(req, res, url) {
       const live = url.searchParams.get("status") === "live";
       if (a === "/spaces" && method === "GET") {
         return send(res, 200, {
-          spaces: spaces.values().map((space) => ({
+          spaces: spaces.values().toArray().map((space) => ({
             id: space.id,
             name: space.name,
             kind: space.kind,
@@ -1141,24 +1139,6 @@ function stopBackend(spaceId) {
 }
 
 /** Resolves the space of a `/s/<id>/...` request after the front's checks; null = answered. */
-/** MOCK_CONTROL mode: who is calling, and their spaces, according to the real ControlCell. */
-async function callerFromControl(req) {
-  const response = await fetch(`${CONTROL}/api/baskule/me`, {
-    headers: { cookie: req.headers.cookie ?? "", host: req.headers.host ?? "" },
-  }).catch(() => null);
-  if (!response?.ok) return null;
-  const me = await response.json();
-  return {
-    user: { ...me.user },
-    spaces: me.spaces.map((space) => ({
-      id: space.id,
-      name: space.name,
-      kind: space.kind,
-      members: [{ userId: me.user.id, role: space.role }],
-    })),
-  };
-}
-
 async function authorizeSpaceRequest(req, res, url) {
   const match = /^\/s\/([^/]+)(\/.*)?$/.exec(url.pathname);
   if (!match) return null;
@@ -1168,13 +1148,12 @@ async function authorizeSpaceRequest(req, res, url) {
     fail(res, 404, "not_found");
     return null;
   }
-  const caller = CONTROL ? await callerFromControl(req) : null;
-  const user = CONTROL ? caller?.user : currentUser(req);
+  const user = currentUser(req);
   if (!user) {
     fail(res, 401, "unauthenticated");
     return null;
   }
-  const space = CONTROL ? caller.spaces.find((entry) => entry.id === spaceId) : spaces.get(spaceId);
+  const space = spaces.get(spaceId);
   if (!space || memberRole(space, user.id) === null) {
     fail(res, 404, "not_found");
     return null;
@@ -1317,7 +1296,7 @@ function encodeTextFrame(text) {
 }
 
 /**
- * Stands in for WP-B's server-side authorship: user-created messages and turn items get the
+ * Stands in for T3's server-side authorship: user-created messages and turn items get the
  * author of their space (a fixed cast, so shared chats show several names).
  */
 const AUTHOR_CAST = [
@@ -1466,29 +1445,6 @@ function proxyVite(req, res) {
 
 export const server = NodeHttp.createServer((req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-  if (
-    CONTROL &&
-    (url.pathname.startsWith("/auth/") ||
-      url.pathname.startsWith("/api/baskule/") ||
-      url.pathname.startsWith("/downloads"))
-  ) {
-    const target = new URL(CONTROL);
-    const upstream = NodeHttp.request(
-      {
-        host: target.hostname,
-        port: target.port,
-        method: req.method,
-        path: req.url,
-        headers: req.headers,
-      },
-      (r) => {
-        res.writeHead(r.statusCode ?? 502, r.headers);
-        r.pipe(res);
-      },
-    );
-    upstream.on("error", () => fail(res, 502, "no_control", `platform not running at ${CONTROL}`));
-    return void req.pipe(upstream);
-  }
   if (url.pathname === "/.well-known/baskule") {
     return send(res, 200, {
       product: "baskule",

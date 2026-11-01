@@ -6,8 +6,8 @@ See [building from source](../docs/building.md) for the build environment.
 
 | Path | What |
 |---|---|
-| `build.sh` | builds the three images below from the compiled binaries in `CARGO_TARGET_DIR/release`; `--cargo` rebuilds them first inside the pinned build environment (niced; staging uses eight jobs) |
-| `images/gateway/` | `baskule-openshell-gateway:local`: Ubuntu 24.04 (matching the staging build environment) + static Docker 29 engine + `openshell-gateway` + `openshell` CLI + `volumes.py`; entrypoint runs a private `dockerd` (unix socket only, `--bridge=none --iptables=false`), loads the baked supervisor/sandbox images, generates the supervisor JWT keys on first start, runs the volume helper and the gateway |
+| `build.sh` | builds the three images below from the compiled binaries in `CARGO_TARGET_DIR/release`; `--cargo` rebuilds them first inside the pinned build environment (niced; `OPENSHELL_CARGO_JOBS` sets parallelism) |
+| `images/gateway/` | `baskule-openshell-gateway:local`: Ubuntu 24.04 (matching the native build environment) + static Docker 29 engine + `openshell-gateway` + `openshell` CLI + `volumes.py`; entrypoint runs a private `dockerd` (unix socket only, `--bridge=none --iptables=false`), loads the baked supervisor/sandbox images, generates the supervisor JWT keys on first start, runs the volume helper and the gateway |
 | `images/supervisor/` | `baskule-openshell-supervisor:local`: the patched supervisor (+ `ca-certificates`, needed for TLS passthrough) |
 | `images/sandbox/` | `baskule-openshell-sandbox:local`: the static `openshell-sandbox` runtime compiled from the fork (Alpine/musl stage, build context = the fork). It enforces the boundary stream limit, which the fork raises (160 streams: 128 network relays + 32 for exec and control) |
 | `config/gateway.toml` | gateway config baked into the image (Docker driver on the private daemon, plaintext + unauthenticated on the internal network, telemetry off, `allow_driver_config` with the default resource-admission labels, bind mounts off) |
@@ -61,6 +61,6 @@ Recreating `baskule-openshell` stops its computers; they restart with their volu
 Compile the gateway, supervisor and CLI inside `deploy/build-env` (Ubuntu 24.04 amd64), matching their runtime
 images. The environment installs the checksum-pinned official Z3 5.1.0 glibc-2.39 release; Noble's system Z3 4.8
 is older than z3-sys 0.13's minimum 4.13.3. The gateway image receives the same `libz3.so` used to link it.
-`CARGO_TARGET_DIR` selects the matching native cache; staging uses `/opt/baskule/cache/openshell-target-ubuntu24-<toolchain hash>`.
+`CARGO_TARGET_DIR` selects the matching native cache.
 The build-environment Dockerfile participates in the OpenShell image key. Additional targets need matching
 compiler, glibc/Z3 runtime and separate native caches; outputs from a newer host cannot be reused on older Linux.

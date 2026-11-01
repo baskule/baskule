@@ -1,8 +1,6 @@
 .git
 **/.git
 .tools
-.vendor
-.scratch
 .run
 **/.run
 **/node_modules
@@ -14,7 +12,5 @@ app/.t3
 **/.env
 **/.env.*
 !**/.env.example
-deploy/backups
-deploy/config
 desktop/release
 app/release

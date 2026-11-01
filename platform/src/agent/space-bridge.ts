@@ -1,4 +1,4 @@
-// The agent's way back to its own space (WP-F): T3 (in the SpaceCell) offers its agent tools (delegation, other chats,
+// The agent's way back to its own space: T3 (in the SpaceCell) offers its agent tools (delegation, other chats,
 // scheduled work, secret requests, inline HTML, the shared browser) as an MCP server, and adds it to the space's OpenCode sessions with the URL
 // `http://baskule-space.internal/<spaceId>/mcp` (fork: BASKULE_MCP_ENDPOINT). OpenCode's remote MCP client uses
 // globalThis.fetch: this module routes that reserved host to the SpaceCell of the same space through its DO stub
@@ -28,8 +28,6 @@ function patchFetch() {
     return forward(new Request(new URL(path + url.search, "http://space"), req));
   }) as typeof fetch;
 }
-
-export const spaceMcpUrl = (spaceId: string, path = "/mcp") => `http://${SPACE_HOST}/${encodeURIComponent(spaceId)}${path}`;
 
 /** Registers this isolate's route from `spaceId`'s OpenCode to `spaceId`'s SpaceCell. */
 export function registerSpaceBridge(spaceId: string, space: { fetch(req: Request): Promise<Response> }) {

@@ -4,15 +4,10 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 source scripts/env.sh
-if [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted && ${RUNNER_OS:-} == Linux ]]; then
-  # Only the disposable GitHub VM may use its stock rootful daemon. Deployment
-  # runners still have to supply their isolated rootless socket below.
-  export DOCKER_HOST=unix:///var/run/docker.sock
-else
-  : "${DOCKER_HOST:?use the isolated rootless CI daemon}"
-  [[ $(docker info --format '{{json .SecurityOptions}}') == *name=rootless* ]] || { echo 'release backend requires rootless Docker outside GitHub-hosted VMs' >&2; exit 1; }
-fi
-[[ $DOCKER_HOST == unix://* ]] || { echo 'release backend requires a local Unix Docker socket' >&2; exit 1; }
+[[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted && ${RUNNER_OS:-} == Linux ]] || {
+  echo 'release backend requires a disposable GitHub-hosted Linux VM' >&2; exit 1;
+}
+export DOCKER_HOST=unix:///var/run/docker.sock
 : "${BASKULE_VERSION:?set the release version}"
 image_tag=${BASKULE_VERSION//+/_}
 [[ ${#image_tag} -le 128 && $image_tag =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] || {
@@ -33,7 +28,7 @@ jq -n --arg version "$BASKULE_VERSION" --arg umbrella "$(git rev-parse HEAD)" \
 DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker} computer/build.sh
 docker build -t baskule-computerd:local -f computerd/Dockerfile .
 docker build -t baskule-celld:local -f deploy/celld/Dockerfile .
-# The existing toolchain supplies Ubuntu, pinned Rust and libz3. Override its staging-only entry point.
+# The build environment supplies Ubuntu, pinned Rust and libz3.
 toolchain=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
 target="baskule-ci-native-x86-64-gnu-$toolchain"
 docker build --iidfile .run/release/build-env.id deploy/build-env
@@ -49,10 +44,8 @@ docker run --rm --init --name "osdev-release-backend-${GITHUB_RUN_ID:-local}" \
 
 # Rust's native target and BuildKit's separate musl target can exceed the entire
 # Actions cache quota. Keep them job-local; free them before saving large images.
-if [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted ]]; then
-  docker volume rm "$target" "baskule-ci-cargo-$toolchain"
-  docker builder prune --all --force
-fi
+docker volume rm "$target" "baskule-ci-cargo-$toolchain"
+docker builder prune --all --force
 
 # Keep the Worker independently downloadable as well as bundled in the celld image.
 tar -czf .run/release/backend/platform-worker.tar.gz -C platform/dist worker.js

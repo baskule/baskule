@@ -51,6 +51,6 @@ checks. [Hosted workflows](../docs/ci.md) run this check and build Windows/macOS
 This Linux check does not build or verify those other packages.
 
 `deploy/build.sh` stages `desktop/release/` as `/downloads/` when downloads are enabled. Build the AppImage first;
-ordinary staging deployments do not package desktop releases. Replace old AppImage/tar.gz files when publishing,
+source-stack builds do not package desktop releases. Replace old AppImage/tar.gz files when publishing,
 and retain Android artifacts only at their actual version. The old standalone Electron shell and its package,
 connection page, locale copies, and build/verification scripts have been removed.

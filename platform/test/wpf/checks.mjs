@@ -1,4 +1,4 @@
-// WP-F checks, in order. Each: {name, capability, fn(ctx) → detail string}. ctx.state carries people/spaces.
+// Platform feature checks, in order. Each: {name, capability, fn(ctx) → detail string}. ctx.state carries people/spaces.
 import { launch, waitFor, watchShell, watchThread, world } from "./lib.mjs";
 import { chatChecks } from "./cap1-chat.mjs";
 import { delegationChecks } from "./cap4-delegation.mjs";
