@@ -2,13 +2,13 @@
 
 One celld app (`wrangler.json`, Worker `baskule`):
 
-| Part | Code | Owner |
-|---|---|---|
-| Worker `baskule` (front: static bundle, auth, routing) | `src/worker.ts` | WP-C |
-| `ControlCell` (singleton DO `control`: Better Auth + spaces, members, invitations, plugins and groups) | `src/control/` | WP-C |
-| `SpaceCell` (one active DO per space: T3 + embedded OpenCode, shared SQLite client and alarms) | `src/space/`, `src/agent/` | WP-B / WP-D |
-| Shared contract, identity codec, 60 s recheck helper | `src/shared/` | WP-C (contract changes: orchestrator) |
-| Fake LLM | `dev/fake-llm/server.mjs` | WP-C |
+| Part | Code |
+|---|---|
+| Worker `baskule` (front: static bundle, auth, routing) | `src/worker.ts` |
+| `ControlCell` (singleton DO `control`: Better Auth + spaces, members, invitations, plugins and groups) | `src/control/` |
+| `SpaceCell` (one active DO per space: T3 + embedded OpenCode, shared SQLite client and alarms) | `src/space/`, `src/agent/` |
+| Shared contract, identity codec, 60 s recheck helper | `src/shared/` |
+| Fake LLM | `dev/fake-llm/server.mjs` |
 
 T3 requests enter the same SpaceCell through its private `/_baskule/agent/*` route before invoking the embedded
 runtime. This fresh request boundary keeps native I/O alive on stock celld; it does not allocate a second cell. The
@@ -24,10 +24,10 @@ From the repository root, `scripts/check` picks these for a diff (`scripts/check
 ```sh
 pnpm install --frozen-lockfile
 pnpm run build                 # dist/worker.js (esbuild) + dist/web (+ dist/web/downloads)
-pnpm test                      # vitest: ControlCell, Worker security, recheck, SpaceCell lifecycle, agent runtime/migration (63 tests, ≈20 s)
-pnpm run test:integration      # test/integration.sh: real celld dev on :47620, 76 checks, then stops (≈30 s)
-node src/space/test/run.mjs   # SpaceCell runner: merged cell + fake computerd + fake LLM, 12 checks (≈1.5 min)
-src/agent/test/run.sh         # embedded agent runner: real computerd + shared OpenShell gateway, 12 checks (≈2 min)
+pnpm test                      # vitest: ControlCell, Worker security, recheck, SpaceCell lifecycle, agent runtime/migration
+pnpm run test:integration      # test/integration.sh: real celld dev on :47620, then stops
+node src/space/test/run.mjs   # SpaceCell runner: merged cell + fake computerd + fake LLM
+src/agent/test/run.sh         # embedded agent runner: real computerd + shared OpenShell gateway
 ../scripts/check features     # real hosted app + fake model + real computers
 pnpm run typecheck
 ../scripts/stack up           # isolated real app; --profile light or rustfs
@@ -49,7 +49,6 @@ See [worktree stack profiles](../stack/README.md) for state, admin credentials, 
 | `SETUP_TOKEN` | One-time `/api/baskule/setup` token for creating the first admin. Useless after setup. |
 | `AUTH_CONFIG` | resolved installation authentication JSON; see [installation settings](../docs/installation-settings.md) |
 | `PUBLIC_ORIGINS` | comma-separated exact origins accepted besides the request's own (e.g. `http://100.64.0.42:47090`) |
-| `AUTH_SECRET` | optional; when empty ControlCell generates one at first boot and keeps it in its SQLite (same trust boundary as the session table) |
 | `AUTH_RATE_LIMIT` | `0` disables Better Auth rate limiting (tests only) |
 | `COMPUTERD_URL`, `COMPUTERD_TOKEN` | connection to computerd |
 
@@ -78,7 +77,7 @@ space creation; `/me` exposes the resolved capability. Plugin/group contracts ar
 | `/downloads/`, `/downloads/<file>` | Worker (static files from `BASKULE_DOWNLOADS_DIR`) | public |
 | anything else | static web bundle, SPA fallback to `index.html` | public |
 
-### Sessions (for WP-E, WP-G)
+### Sessions
 
 - Sign in: `POST /auth/sign-in/email {email, password}`. Response: cookie `baskule.session_token` (HttpOnly,
   SameSite=Lax) **and** header `set-auth-token: <signed token>` (the bearer plugin, `requireSignature: true`).
@@ -86,7 +85,7 @@ space creation; `/me` exposes the resolved capability. Plugin/group contracts ar
 - Sign out: `POST /auth/sign-out` (also sends `Clear-Site-Data: "cache","storage"`, honoured on HTTPS/localhost only:
   the web client should clear its own caches too). Change password: `POST /auth/change-password
   {currentPassword, newPassword, revokeOtherSessions}`. Reset: `POST /auth/reset-password {token, newPassword}`.
-- **Origin rule** (review H4), for POST/PUT/PATCH/DELETE and every WebSocket upgrade: an `Origin` header must equal the
+- **Origin rule**, for POST/PUT/PATCH/DELETE and every WebSocket upgrade: an `Origin` header must equal the
   request's own origin or one of `PUBLIC_ORIGINS` (`null` refused). Without `Origin`, only requests that carry no
   `baskule.*` cookie are accepted (bearer clients).
 - **Connecting a device** (no server is built into the clients): a signed-in person calls `POST /auth/connect/code`
@@ -121,7 +120,7 @@ one per user and eight globally in flight, and users blocked by usage limits rec
 |---|---|---|
 | `GET /me` | any | `{user{id,name,email,role,canCreateSpaces}, session{id}, organization{id,name}, spaces[{id,name,kind,role,base}], voiceInput}` — `base` = `/s/<id>`, personal first; `voiceInput` requires enabled transcription and a saved key |
 | `POST /transcriptions` | any | supported raw audio body, ≤25 MiB; forwards multipart to the configured `/audio/transcriptions` without redirects, with one 120 s deadline covering the upload and the provider; returns `{text}`; 404 disabled, 400 invalid or stalled audio, 413 too large, 429 usage or concurrency limit or provider rate limit, 502 `transcription_key_rejected` when the provider refuses the key, else `transcription_failed` |
-| `GET /plugins/:id/connect`, `GET /plugins/oauth/callback` | signed-in user | per-person OAuth for a plugin server; [installation setup](../docs/installation-settings.md#plugin-account-connections-040) |
+| `GET /plugins/:id/connect`, `GET /plugins/oauth/callback` | signed-in user | per-person OAuth for a plugin server; [installation setup](../docs/installation-settings.md#plugin-account-connections) |
 | `PATCH /plugins/:id/accounts/:accountId`, `DELETE /plugins/:id/accounts/:accountId` | signed-in user | rename or choose a default account; disconnect requires `?default=OTHER_ID` when removing a default with other accounts remaining |
 | `PUT /admin/vendors/:vendor` | admin | encrypted, write-only OAuth client setup, shared by the vendor's plugins |
 | `GET /people` | any | `{people[{id,name,email}]}` (active accounts, to add members) |
@@ -182,8 +181,7 @@ Constants and the codec: `src/shared/contract.ts`,
 - **Better Auth 1.7.12** (exact pin) with the Drizzle adapter on DO SQLite (`drizzle-orm/durable-sqlite` 0.45.4),
   `transaction: false` (Drizzle's DO transactions are sync). Passwords: `@noble/hashes` scrypt in Better Auth's format
   (`src/control/password.ts`), because celld lacks `node:crypto` scrypt. Plugins: `admin` (roles `admin` without
-  impersonate/set-password/set-email/update, and `member`) and `bearer` (`requireSignature`). No organization plugin
-  (review H7): our own `organization` table; one org.
+  impersonate/set-password/set-email/update, and `member`) and `bearer` (`requireSignature`). No organization plugin: our own `organization` table; one org.
 - **Schema**: Better Auth tables generated by `auth generate` (`scripts/auth-gen/auth-cli.ts`) into
   `src/control/schema/auth.ts`; ours in `src/control/schema/app.ts`. Migrations: `pnpm run db:generate` (drizzle-kit,
   `durable-sqlite` driver) into `src/control/migrations/`, plus the custom `0001_personal_space_triggers.sql`

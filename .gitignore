@@ -1,9 +1,6 @@
 # Source lives in app/ and vendor/; local build caches stay ignored.
-.vendor/
 .tools/
-.scratch/
 .run/
-spikes/**/node_modules
 node_modules/
 e2e/artifacts/
 **/.env
@@ -30,6 +27,3 @@ e2e/test-results/
 *.sqlite3
 .claude/settings.local.json
 .codex/
-
-# Optional source-stack installation authentication.
-/deploy/config/

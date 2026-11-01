@@ -1,4 +1,4 @@
-// baskule: composer copy for the Baskule UI (review M3).
+// baskule: composer copy for the Baskule UI.
 import { BASKULE_UI } from "./flags";
 
 /**

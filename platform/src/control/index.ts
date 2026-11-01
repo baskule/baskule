@@ -1,4 +1,4 @@
-// ControlCell: the singleton DO (name "control") holding identity, spaces, invitations (E6).
+// ControlCell: the singleton DO (name "control") holding identity, spaces, invitations.
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../env";
 import { ControlService } from "./service";

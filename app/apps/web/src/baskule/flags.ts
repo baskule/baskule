@@ -16,7 +16,7 @@ export const BASKULE_HOSTED = BASKULE_UI && env.VITE_BASKULE_HOSTED === "1";
 
 /** Individual switches; all derive from the master switch for now. */
 export const baskule = {
-  /** First-run wizard is never shown (B7). */
+  /** First-run wizard is never shown. */
   skipFirstRun: BASKULE_UI,
   /** Sidebar: chat rows (pinned first, drag to reorder), New → scratch project, no settle/PR/branch. */
   flatChatSidebar: BASKULE_UI,

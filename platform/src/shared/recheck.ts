@@ -1,4 +1,4 @@
-// The 60 s socket recheck (review H5 backstop), for SpaceCell (WP-B). Push revocation (`/_baskule/revoke`) is the
+// The 60 s socket recheck, for SpaceCell. Push revocation (`/_baskule/revoke`) is the
 // primary path; this catches what pushes cannot: session expiry, a lost revoke call, a cell that was asleep.
 //
 // Contract: every RECHECK_INTERVAL_MS (60 s) while the space has open client sockets, the SpaceCell sends

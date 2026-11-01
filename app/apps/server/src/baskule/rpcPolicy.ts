@@ -52,7 +52,7 @@ export const BASKULE_ALLOWED_METHODS: ReadonlySet<string> = new Set<string>([
   W.scheduledTasksListWebhookDeliveries,
   W.scheduledTasksGetWebhookDelivery,
   W.secretsAnswerRequest,
-  // 6. Shared browser sessions (the computer side is WP-F).
+  // 6. Shared browser sessions.
   W.previewOpen,
   W.previewResize,
   W.previewAdjust,

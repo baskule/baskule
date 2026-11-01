@@ -1,4 +1,4 @@
-// computerd HTTP API (architecture E4). Bearer COMPUTERD_TOKEN on everything under /v1.
+// computerd HTTP API. Bearer COMPUTERD_TOKEN on everything under /v1.
 //   GET  /healthz
 //   POST /v1/spaces/:id/computer/ensure   {"keep"?: boolean}
 //   POST /v1/spaces/:id/computer/stop

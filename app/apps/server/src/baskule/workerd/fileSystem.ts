@@ -7,7 +7,7 @@
 // - `${chatsRoot}` and the chat folders directly under it are records in DO SQLite. T3 stats a
 //   chat's cwd on every turn, so answering from DO SQLite keeps chatting from waking the
 //   computer. A folder is created on the computer lazily: the first write under it (or the
-//   agent's spawner, WP-D) materializes it;
+//   agent's spawner) materializes it;
 // - everything else under `${sandboxRoot}` is the space computer, through computerd;
 // - `/tmp/**` is per-cell memory;
 // - any other path fails with PermissionDenied.

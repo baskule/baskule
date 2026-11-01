@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// WP-C integration checks against a running celld dev (see test/integration.sh). Node >= 22 (fetch, WebSocket).
+// Platform integration checks against a running celld dev (see test/integration.sh). Node >= 22 (fetch, WebSocket).
 //   node test/integration/run.mjs http://127.0.0.1:47620 phase1|phase2
 //   node test/integration/run.mjs http://127.0.0.1:47620 phase1 --only transcriptions
 import { waitFor } from "../../src/space/test/rpc-client.mjs";

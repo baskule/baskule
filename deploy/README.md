@@ -12,7 +12,6 @@ Developers use [Build Baskule](../docs/building.md). These files describe the cu
 | `docker-compose.build.yml` | Source-build override, selected by `lib.sh` |
 | `celld/` | Shared node/job image containing Worker, web app, downloads, and deployment utilities |
 | `build-env/` | Ubuntu 24.04 native build environment |
-| `runner/` | Optional operator-managed runner tools |
 
 Released images use `ghcr.io/baskule/baskule-{celld,computerd,openshell-gateway}:VERSION`.
 Third-party storage, edge, and trace images are pinned by digest in Compose. The gateway embeds the computer, supervisor, and sandbox
@@ -30,8 +29,9 @@ edge and computerd, and 3 for OpenShell. Each computer defaults to 2 CPU and 3 G
 cap. These limits are not reservations. Persistent volumes hold generated secrets, the bucket, node caches, gateway state, and private
 Docker store containing computer disks.
 
-`up.sh`, `deploy.sh`, `down.sh`, `backup.sh`, and `recreate-computers.sh` serve the checkout-based
-developer path. Operators need only the release files and Docker Compose. Release assembly uses
+`up.sh`, `deploy.sh`, `down.sh`, and `recreate-computers.sh` serve the checkout-based
+developer path. For a source-stack backup, source `deploy/lib.sh` and run
+`dc --profile backup run --rm -T backup > backup.tar.gz` with the stack stopped. Operators need only the release files and Docker Compose. Release assembly uses
 `scripts/release-install-assets.sh`; CI and publishing are documented in [Hosted checks and artifact builds](../docs/ci.md).
 
 The bootstrap job generates per-consumer secrets in separate named volumes. After deployment, the one-shot

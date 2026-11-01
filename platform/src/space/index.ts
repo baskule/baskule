@@ -321,7 +321,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
     const server = this.server;
     if (server) {
       await server.drainPushEffects();
-      // WP-F: a snoozed chat returns to everyone's inbox when due, even with no client connected.
+      // a snoozed chat returns to everyone's inbox when due, even with no client connected.
       await server.wakeDueSnoozes().catch((e) => console.warn(`snooze wake: ${e}`));
       await this.recheck();
       const idle =
@@ -387,7 +387,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       }
     }
     if (url.pathname.startsWith("/_baskule/")) return json({ error: "not_found" }, 404);
-    // WP-F: T3's MCP credentials live in its memory, so none is valid while T3 is not running: answer the agent's
+    // T3's MCP credentials live in its memory, so none is valid while T3 is not running: answer the agent's
     // late calls (session teardown, a stale connection) without booting T3, so they cannot keep the space awake.
     if (url.pathname === "/mcp" && !this.server && !this.booting) {
       return json({ error: "invalid_mcp_credential", message: "The space is asleep; MCP credentials expired." }, 401);

@@ -1,5 +1,5 @@
 /**
- * Registers one T3 environment per Baskule space of the signed-in person (architecture E9/E10),
+ * Registers one T3 environment per Baskule space of the signed-in person,
  * like the web client's `apps/web/src/baskule/spaces.ts`, but with the session token instead of a
  * cookie (`front-session` profiles, see ./registrations.ts).
  */

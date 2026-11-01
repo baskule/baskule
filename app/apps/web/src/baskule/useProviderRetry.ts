@@ -1,4 +1,4 @@
-// baskule: review M3. OpenCode's provider snapshot is not refreshed on an interval upstream, so a
+// baskule: OpenCode's provider snapshot is not refreshed on an interval upstream, so a
 // probe that failed while the computer was down or waking would leave the composer disabled for
 // good. While it is unavailable, ask the server to probe again every few seconds.
 import type { EnvironmentId } from "@t3tools/contracts";

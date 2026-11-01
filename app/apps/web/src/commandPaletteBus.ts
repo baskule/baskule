@@ -15,7 +15,7 @@ export interface CommandPaletteOpenDetail {
 }
 
 export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void {
-  if (BASKULE_UI) return; // baskule: no command palette (Add project, settings…), review M1
+  if (BASKULE_UI) return; // baskule: no command palette (Add project, settings…)
   // With no palette on screen (e.g. /pair) the request is dropped; kept in the
   // store, it would pop a stale palette once the app shell mounts.
   if (!isCommandPaletteMounted()) return;

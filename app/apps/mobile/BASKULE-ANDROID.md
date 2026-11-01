@@ -16,7 +16,7 @@ the Baskule scope. Connect to a server first: its authentication configuration d
 
 The app uses the name "Baskule", package `dev.baskule.app`, and schemes `baskule*`. It has no T3 services (EAS, OTA, Clerk,
 relay), the feature flags (no PR tab, terminal, git, previews, voice, extended settings, project picker), Chats +
-Settings bottom navigation, cleartext HTTP allowed (Tailscale alpha).
+Settings bottom navigation, cleartext HTTP allowed for private networks.
 
 **Cookies:** every Baskule account call uses `credentials: "omit"` (React Native → OkHttp `NO_COOKIES`), so the session
 cookie the server also sets never enters the shared cookie jar. That matters: React Native's WebSocket module sends
@@ -30,7 +30,7 @@ If your administrator has published an Android build, download it from your inst
 
 ### Install on the phone
 
-1. Install **Tailscale** from the Play Store and log in to the same tailnet as the server.
+1. Reach the server over HTTPS or your private network (for example, Tailscale).
 2. Download the APK on the phone from your installation's **Apps** page, or copy it
    over USB, or `adb install -r Baskule-<version>-android.apk`.
 3. Allow "Install unknown apps" for the browser or file manager when Android asks.
@@ -40,13 +40,13 @@ An APK signed with another key (an earlier debug build) must be uninstalled firs
 
 ## What to test on the phone
 
-1. **Sign-in:** wrong password shows "Wrong email or password."; with Tailscale off, "Cannot reach the server…";
+1. **Sign-in:** wrong password shows "Wrong email or password."; while disconnected, "Cannot reach the server…";
    the right password opens the chat list.
 2. **Spaces:** Settings → Account → Spaces lists Personal and every team space. New chat → the space picker under
    the composer lists them; a chat started in a team space appears for the other members (web).
 3. **Live chat:** send a message, watch the answer stream; open the same chat on the web and send from one side.
-4. **Persistence:** kill the app and reopen: still signed in, chats there. With Tailscale off, the cached chats
-   show; turning Tailscale on reconnects on return to the app.
+4. **Persistence:** kill the app and reopen: still signed in, chats there. While offline, the cached chats
+   show; restoring the connection reconnects on return to the app.
 5. **Revocation:** from the web admin, "Sign out everywhere" for this person: within a minute (or on return to the
    app) the phone goes back to the sign-in screen with a notice.
 6. **Sign out:** Settings → Account → Sign out → the sign-in screen; signing in as someone else shows only their spaces.
@@ -57,7 +57,7 @@ An APK signed with another key (an earlier debug build) must be uninstalled firs
 
 ### Toolchain (user-local, no root, no services)
 
-What the build host used (2026-10-23), all under `baskule/.tools/`:
+Install these tools under `baskule/.tools/`:
 
 ```sh
 T=baskule/.tools
@@ -79,7 +79,7 @@ React Native 0.88 pins compileSdk 37, build-tools 37.0.0 and NDK 27.1.12297006
 (`node_modules/react-native/gradle/libs.versions.toml`). The SDK takes about 2.8 GB, Gradle's cache several more
 (`GRADLE_USER_HOME=baskule/.tools/gradle-home` keeps it out of `~/.gradle`).
 
-Node and pnpm as for the rest of the fork: `source baskule/scripts/env.sh` (Node 24, pnpm 11), then `CI=1 pnpm install`
+Node and pnpm as for the rest of the fork: `source baskule/scripts/env.sh` (Node 26.12.1, pnpm 12.14.0), then `CI=1 pnpm install`
 at the fork's root.
 
 ### Release signing key (required)

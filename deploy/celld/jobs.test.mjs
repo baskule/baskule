@@ -114,13 +114,13 @@ for (const status of ["200", "307", "400", "403"]) test(`deploy readiness accept
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 
-for (const app of ["hello", "platform"]) test(`single-host ${app} deploy passes its scoped sync secret without querying setup or printing a link`, () => {
+test(`single-host platform deploy passes its scoped sync secret without querying setup or printing a link`, () => {
   const work = mkdtempSync(resolve(tmpdir(), "deploy-no-setup-test-"));
   try {
     const source = resolve(work, "source");
     // Exercise the real deploy branch with a disposable app and offline tools.
-    mkdirSync(`${source}/${app}`, { recursive: true });
-    writeFileSync(`${source}/${app}/wrangler.json`, '{"vars":{}}');
+    mkdirSync(`${source}/platform`, { recursive: true });
+    writeFileSync(`${source}/platform/wrangler.json`, '{"vars":{}}');
     writeFileSync(resolve(work, "jobs.sh"), readFileSync("deploy/celld/jobs.sh", "utf8").replaceAll("/src/", `${source}/`).replaceAll("/usr/local/bin/baskule-sync-plugins", resolve(work, "sync")));
     writeFileSync(resolve(work, "celld"), '#!/bin/bash\ncp "$2" "$MOCK_WRANGLER"\n', { mode: 0o755 });
     writeFileSync(resolve(work, "sync"), '#!/bin/bash\n[[ "$PLUGIN_SYNC_TOKEN" == generated-folder-secret ]]\n', { mode: 0o755 });
@@ -128,10 +128,10 @@ for (const app of ["hello", "platform"]) test(`single-host ${app} deploy passes 
     writeFileSync(resolve(work, "platform/secrets"), 'export PLUGIN_SYNC_TOKEN=generated-folder-secret\n');
     writeFileSync(resolve(work, "curl"), '#!/bin/bash\nif [[ "$*" == *setup* ]]; then echo unexpected-setup-request >&2; exit 99; fi\necho 200\n', { mode: 0o755 });
     const result = spawnSync("bash", [resolve(work, "jobs.sh"), "deploy"], { encoding: "utf8", timeout: 3_000,
-      env: { ...process.env, PATH: `${work}:${process.env.PATH}`, DEPLOY_APP: app, BASKULE_SECRETS_DIR: work, MOCK_WRANGLER: resolve(work, "deployed.json"),
+      env: { ...process.env, PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: work, MOCK_WRANGLER: resolve(work, "deployed.json"),
         S3_ENDPOINT: "http://storage.test", CELLD_BUCKET: "s3://test", SETUP_TOKEN: "test-token", SETUP_STATUS_URL: "", CELLD_NODES_INTERNAL: "" } });
     assert.equal(result.status, 0, result.stderr);
-    assert.ok(result.stderr.includes(`deployed ${app}`));
+    assert.ok(result.stderr.includes(`deployed platform`));
     assert.equal(JSON.parse(readFileSync(resolve(work, "deployed.json"), "utf8")).vars.PLUGIN_SYNC_TOKEN, "generated-folder-secret");
     assert.doesNotMatch(result.stderr, /setup|token=/);
   } finally { rmSync(work, { recursive: true, force: true }); }

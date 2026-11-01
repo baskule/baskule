@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Baskule infrastructure smoke test (WP-A). No LLM spend.
-#   1. stack up (deploy/up.sh), both celld nodes healthy, the edge serves the Worker on the Tailscale port;
+# Baskule infrastructure smoke test. No LLM spend.
+#   1. stack up (deploy/up.sh), both celld nodes healthy, the edge serves the Worker on its configured address;
 #   2. computerd: the full computerd integration suite run INSIDE the stack network (ensure, exec uname/python/
 #      node, stdin, kill, files, stdio, Playwright MCP, CDP, persistence across stop/start, idle stop with a short
 #      organization idle policy), plus the authenticated runtime-policy endpoint;
@@ -18,7 +18,7 @@ for a in "$@"; do case $a in --no-up) UP=0 ;; --down) DOWN=1 ;; *) echo "unknown
 # It kills a celld node and may start the stack: hold the shared stack lock like every live loop.
 export STACK_LOCK_OWNER=${STACK_LOCK_OWNER:-infra-smoke} STACK_LOCK_WAIT=${STACK_LOCK_WAIT:-600}
 stack_lock_acquire $$ "e2e/infra-smoke.sh $*" || exit 1
-for k in BASKULE_BIND BASKULE_PORT COMPUTERD_TOKEN; do export "$k=$(env_get $k)"; done
+for k in BASKULE_BIND BASKULE_PORT; do export "$k=$(env_get $k)"; done
 # Existing operator account, supplied by the caller after setup.
 export E2E_LOGIN_EMAIL E2E_LOGIN_PASSWORD
 EDGE="http://${BASKULE_BIND:-127.0.0.1}:${BASKULE_PORT:-47090}"
@@ -43,7 +43,7 @@ trap cleanup EXIT
 
 # ------------------------------------------------------------------------------------------- 1. stack
 if [ "$UP" = 1 ]; then "$DEPLOY_DIR/up.sh" >/dev/null 2>&1 || { echo "deploy/up.sh failed"; exit 1; }; fi
-# An external bucket (S3_ENDPOINT, dedicated-host.md) replaces RustFS.
+# An external bucket (S3_ENDPOINT, docs/install.md#external-s3) replaces RustFS.
 S3=$(env_get S3_ENDPOINT)
 for c in $([ -z "$S3" ] && echo baskule-rustfs) baskule-celld-a baskule-celld-b baskule-computerd baskule-openshell; do
   check "container $c healthy" wait_healthy "$c" 120
@@ -52,26 +52,30 @@ check "edge running" test "$(docker inspect -f '{{.State.Running}}' baskule-edge
 for n in a b; do
   check "celld-$n health route" docker exec "baskule-celld-$n" curl -sf -m 5 -o /dev/null http://127.0.0.1:47091/.well-known/celld/health
 done
+# Read generated values from the consumer volumes, after startup. Fail rather than probing without credentials.
+secret_get() {
+  docker exec "$1" sh -ec ". $2; test -n \"\$$3\"; printf %s \"\$$3\""
+}
+export COMPUTERD_TOKEN
+COMPUTERD_TOKEN=$(secret_get baskule-computerd /run/baskule/secrets COMPUTERD_TOKEN) || exit 1
 s3_region=$(env_get S3_REGION)
 if [ -n "$S3" ]; then s3_id=$(env_get S3_ACCESS_KEY) s3_secret=$(env_get S3_SECRET_KEY) s3_url=$S3
-else s3_id=$(env_get RUSTFS_ACCESS_KEY) s3_secret=$(env_get RUSTFS_SECRET_KEY) s3_url=http://baskule-rustfs:47093; fi
+else s3_id=$(secret_get baskule-celld-a /run/baskule/storage/secrets RUSTFS_ACCESS_KEY) || exit 1
+  s3_secret=$(secret_get baskule-celld-a /run/baskule/storage/secrets RUSTFS_SECRET_KEY) || exit 1
+  s3_url=http://baskule-rustfs:47093
+fi
 fleet=$(docker run --rm --network baskule-net -e AWS_ACCESS_KEY_ID="$s3_id" -e AWS_SECRET_ACCESS_KEY="$s3_secret" \
   -e AWS_REGION="${s3_region:-us-east-1}" "baskule-celld:$TAG" diagnose --read-only --json \
   --bucket "s3://$(env_get CELLD_BUCKET_NAME)" --endpoint "$s3_url" 2>/dev/null)
 check "fleet: two node leases on the one bucket" bash -c "echo '$fleet' | grep -q '\"detail\":\"2 node lease'"
 check "fleet: both peers answer a signed probe" bash -c "test \$(echo '$fleet' | grep -c '\"check\":\"peer baskule-[ab].*\"verdict\":\"ok\"') = 2"
 check "edge: GET / -> 200" bash -c "curl -sf -m 10 -o /dev/null $EDGE/"
-app=$(curl -s -m 10 "$EDGE/" | head -c 200)
-if echo "$app" | grep -q "hello from baskule"; then
-  check "edge: hello Worker DO counter (cell + bucket)" bash -c "curl -sf -m 20 $EDGE/count/smoke | grep -q '\"n\"'"
-else
-  # Anonymous installations (auth.json) answer every request as the shared identity.
-  if curl -s -m 10 "$EDGE/.well-known/baskule" | grep -q '"mode":"anonymous"'; then me=200; else me=401; fi
-  check "edge: platform Worker answers /api/baskule/me with $me" bash -c "test \$(curl -s -m 10 -o /dev/null -w '%{http_code}' $EDGE/api/baskule/me) = $me"
-  if [ -n "${E2E_LOGIN_EMAIL:-}" ] && [ -n "${E2E_LOGIN_PASSWORD:-}" ]; then
-    check "edge: admin sign-in through ControlCell (cell + bucket)" bash -c \
-      "curl -sf -m 30 -o /dev/null -H 'content-type: application/json' -H 'origin: $EDGE' -d \"\$(jq -n --arg e \"\$E2E_LOGIN_EMAIL\" --arg p \"\$E2E_LOGIN_PASSWORD\" '{email:\$e,password:\$p}')\" $EDGE/auth/sign-in/email"
-  fi
+# Anonymous installations (auth.json) answer every request as the shared identity.
+if curl -s -m 10 "$EDGE/.well-known/baskule" | grep -q '"mode":"anonymous"'; then me=200; else me=401; fi
+check "edge: platform Worker answers /api/baskule/me with $me" bash -c "test \$(curl -s -m 10 -o /dev/null -w '%{http_code}' $EDGE/api/baskule/me) = $me"
+if [ -n "${E2E_LOGIN_EMAIL:-}" ] && [ -n "${E2E_LOGIN_PASSWORD:-}" ]; then
+  check "edge: admin sign-in through ControlCell (cell + bucket)" bash -c \
+    "curl -sf -m 30 -o /dev/null -H 'content-type: application/json' -H 'origin: $EDGE' -d \"\$(jq -n --arg e \"\$E2E_LOGIN_EMAIL\" --arg p \"\$E2E_LOGIN_PASSWORD\" '{email:\$e,password:\$p}')\" $EDGE/auth/sign-in/email"
 fi
 [ "${BASKULE_BIND:-127.0.0.1}" = 127.0.0.1 ] ||
   check "edge is not published on other addresses" bash -c "! curl -s -m 3 -o /dev/null http://127.0.0.1:${BASKULE_PORT:-47090}/"
@@ -138,7 +142,7 @@ for i in $(seq 20); do
 done
 if [ "$fails" = 0 ]; then ok "failover: 20/20 Worker requests served through the edge with celld-$VICTIM dead"
 else ko "failover: $fails/20 Worker requests failed with celld-$VICTIM dead"; fi
-if ! echo "$app" | grep -q "hello from baskule" && [ -n "${E2E_LOGIN_PASSWORD:-}" ]; then
+if [ -n "${E2E_LOGIN_PASSWORD:-}" ]; then
   # A cell owned by the dead node moves after its lease expires.
   t1=$(date +%s)
   for _ in $(seq 90); do

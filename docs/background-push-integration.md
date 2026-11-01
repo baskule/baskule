@@ -2,7 +2,7 @@
 
 Baskule can notify signed-in people about approval requests, input requests, completed tasks, and failures. Personal background notifications require authenticated accounts. Mobile **Settings > Notifications** registers the device and selects alert types.
 
-An administrator configures providers under **Administration > Organization > Mobile notifications**. Credentials are write-only. Reads expose configured app IDs and availability. Removing a provider stops new sends through that provider.
+An administrator configures providers under **Admin → General → Organization → Mobile notifications**. Credentials are write-only. Reads expose configured app IDs and availability. Removing a provider stops new sends through that provider.
 
 - APNs requires the signed app's bundle ID, Apple team ID, key ID, private key, and permitted sandbox or production environments.
 - FCM requires the signed app's application ID and a Firebase service account with messaging permission.

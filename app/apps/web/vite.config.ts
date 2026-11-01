@@ -82,7 +82,7 @@ const unitTestProject = {
   extends: true,
   test: {
     name: "unit",
-    // baskule: upstream suites test the upstream UI (review M6); src/baskule tests opt in.
+    // baskule: upstream suites test the upstream UI; src/baskule tests opt in.
     env: { VITE_BASKULE_UI: process.env.VITE_BASKULE_UI ?? "0" },
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["src/**/*.browser.test.{ts,tsx}"],
@@ -126,7 +126,7 @@ const browserTestProject = {
   },
   test: {
     name: "browser",
-    env: { VITE_BASKULE_UI: process.env.VITE_BASKULE_UI ?? "0" }, // baskule: review M6
+    env: { VITE_BASKULE_UI: process.env.VITE_BASKULE_UI ?? "0" }, // baskule: upstream UI by default
     include: ["src/**/*.browser.test.{ts,tsx}"],
     hookTimeout: 15_000,
     testTimeout: 15_000,

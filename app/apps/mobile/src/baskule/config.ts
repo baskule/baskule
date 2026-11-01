@@ -1,5 +1,5 @@
 /**
- * Baskule server addresses, connection links and URL helpers (architecture E10).
+ * Baskule server addresses, connection links and URL helpers.
  *
  * The app signs in to one Baskule server (one organisation) at a time. No server is built in: the person scans or
  * pastes a connection link (`https://<server>/link#code=…`, issued by the web app's "Connect a device"), opens an

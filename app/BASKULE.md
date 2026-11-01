@@ -53,11 +53,10 @@ are tracked in the umbrella history under `app/`.
 
 | Patch                                                                                        | Files                                                                                                                                                                                                                                                                                                                                                                                           |
 | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@opencode/client\|protocol\|schema` 2.0.28 -> **2.1.2** (D2/B2: 2.1 compaction wire format) | `packages/provider-opencode/package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`; test `v2/OpenCode2Client.compaction.test.ts`                                                                                                                                                                                                                                                                |
-| `BASKULE_AUTH_MODE=none` (D7/B5)                                                             | new `apps/server/src/auth/BaskuleNoAuth.ts` (+ test); hooks in `SessionStore.ts`, `EnvironmentAuth.ts`                                                                                                                                                                                                                                                                                          |
+| `@opencode/client\|protocol\|schema` 2.0.28 -> **2.1.2** (2.1 compaction wire format) | `packages/provider-opencode/package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`; test `v2/OpenCode2Client.compaction.test.ts`                                                                                                                                                                                                                                                                |
+| `BASKULE_AUTH_MODE=none`                                                             | new `apps/server/src/auth/BaskuleNoAuth.ts` (+ test); hooks in `SessionStore.ts`, `EnvironmentAuth.ts`                                                                                                                                                                                                                                                                                          |
 | Telemetry defaults off when `BASKULE=1` or `BASKULE_AUTH_MODE` is set                        | new `apps/server/src/telemetry/BaskuleTelemetry.ts` (+ test); one line in `AnalyticsService.ts`                                                                                                                                                                                                                                                                                                 |
-| Headless settings template (B3)                                                              | `baskule/settings.template.json`                                                                                                                                                                                                                                                                                                                                                                |
-| Files out (review M7): any workspace file as a download                                      | `packages/contracts/src/assets.ts` (`disposition: "attachment"` on `workspace-file`/`draft-workspace-file`); `apps/server/src/assets/AssetAccess.ts` (claim `workspace-file-download`: any type, path-confined like `workspace-file-exact`, `Content-Disposition: attachment`, `application/octet-stream`); `apps/server/src/http.ts` (downloads answer `Range`); test in `AssetAccess.test.ts` |
+| Files out: any workspace file as a download                                      | `packages/contracts/src/assets.ts` (`disposition: "attachment"` on `workspace-file`/`draft-workspace-file`); `apps/server/src/assets/AssetAccess.ts` (claim `workspace-file-download`: any type, path-confined like `workspace-file-exact`, `Content-Disposition: attachment`, `application/octet-stream`); `apps/server/src/http.ts` (downloads answer `Range`); test in `AssetAccess.test.ts` |
 | Word-level streaming (E2E UX)                                                                | new `apps/server/src/orchestration-v2/BaskuleStreaming.ts` (+ test); hooks in `assistantStreaming.ts` (split function parameter) and `RunExecutionService.ts`. On when `BASKULE=1` or `BASKULE_AUTH_MODE` is set; `BASKULE_STREAMING=paragraph` restores upstream                                                                                                                               |
 
 The 2.1.2 bump needed no source changes (the provider typechecks clean); only compaction lost the required `recent` field.
@@ -66,8 +65,8 @@ The 2.1.2 bump needed no source changes (the provider typechecks clean); only co
 
 - At startup the server persists (or reuses) one owner session, id `baskule-no-auth-owner`, expiry 9999, with
   `BASKULE_NO_AUTH_SCOPES` = standard client scopes **minus** terminal, source-control write, preview, relay, access
-  write, providers manage and environment maintain (review M1: a terminal here is a shell in the server container).
-  Every start resets the row's scopes and clears `revoked_at`, and `verify` ignores revocation for it (review M5), so
+  write, providers manage and environment maintain (a terminal here is a shell in the server container).
+  Every start resets the row's scopes and clears `revoked_at`, and `verify` ignores revocation for it, so
   no client can lock every device out. No-auth bootstrap grants get the same reduced scopes. It logs a loud `WARN` with the bound host. `0.0.0.0` is allowed (Docker); bind the published port
   to the Tailscale IP only.
 - Any HTTP request or WebSocket upgrade whose credential is missing **or unusable** (stale cookie, expired bearer) is
@@ -84,12 +83,6 @@ cd ../.run/authtest-cwd && BASKULE_AUTH_MODE=none node ../../app/apps/server/dis
 curl -s http://127.0.0.1:47310/api/auth/session      # {"authenticated":true,...} with no cookie
 ```
 
-Verified 2026-10-22: `/`, `/api/auth/session`, `/api/projects`, `/api/auth/websocket-ticket` -> 200
-without credentials; cross-origin -> 401; `/oauth/token` with `subject_token=dummy` -> Bearer token that authenticates;
-headless Chrome with no pairing token gets an authenticated session and an open `/ws` (environment "Connected").
-The first-run wizard still shows in this baseline (that is the UI patch). Restart reuses the
-session row.
-
 ## Telemetry
 
 PostHog telemetry (`AnalyticsService`) is on by default upstream. In this fork it defaults **off** when `BASKULE=1` or
@@ -97,40 +90,9 @@ PostHog telemetry (`AnalyticsService`) is on by default upstream. In this fork i
 `T3CODE_TELEMETRY_ENABLED=false` (belt and braces; it also disables relay tracing, `isRelayTracingEnabled`, which reads
 only that variable). The web's onboarding text about anonymous usage data is static copy.
 
-## Headless settings (`baskule/settings.template.json`, B3)
-
-Render to `<baseDir>/userdata/settings.json` before start (`${VAR}` placeholders). Keys, verified against
-`packages/contracts/src/settings.ts` and a real start:
-
-- `providerInstances.opencode = { driver: "opencode", enabled: true, config: { serverUrl, serverPassword } }`
-  (`packages/provider-opencode/src/settings.ts`). Only OpenCode 2 is registered, and its instances are disabled until configured. On load the server moves a plaintext `serverPassword` into `userdata/secrets/` and rewrites the file
-  with a redacted marker, so re-rendering on every start is fine and keeps the secret in sync.
-- `defaultModelSelection` and `textGenerationModelSelection` = `{ instanceId: "opencode", model: "<providerID>/<modelID>" }`
-  (an OpenCode model slug). Options can be
-  omitted; OpenCode reasoning variants use option id `variant`.
-- Variables: `BASKULE_OPENCODE_URL` (e.g. `http://baskule-computerd:4096`), `BASKULE_OPENCODE_PASSWORD`,
-  `BASKULE_LLM_PROVIDER_ID` (provider key in the computer's `opencode.jsonc`), `BASKULE_LLM_MODEL`.
-- **Catalog restriction:** T3 lists every model OpenCode's `model.list` returns (`openCode2Catalog.ts`); restricting in
-  OpenCode suffices. OpenCode 2.1.2 config: `"policies": [{"action":"provider.use","resource":"*","effect":"deny"},
-  {"action":"provider.use","resource":"<providerID>","effect":"allow"}]` (V1 `enabled_providers: ["<providerID>"]` is
-  normalized to exactly that, `core/src/config/normalize.ts`); denied providers are removed from the catalog
-  (`core/src/config/plugin/policy.ts`). Verified in source, not yet by running.
-- **Auth to OpenCode:** the external-server driver sends `Authorization: Basic base64("opencode:<password>")` (UTF-8) as a
-  **header** on every request, including `GET /api/event` (`v2/OpenCode2Client.ts`), never a query parameter, so a reverse
-  proxy forwards it unchanged.
-
-## Tests after the patches (2026-10-22)
-
-| Suite                                                    | Result                                                  |
-| -------------------------------------------------------- | ------------------------------------------------------- |
-| packages/provider-opencode                               | 17 files passed, 2 skipped; 230 tests passed, 2 skipped |
-| packages/contracts                                       | 39 files passed; 695 tests passed                       |
-| apps/server subset `src/auth src/provider src/telemetry` | 77 files passed; 1106 tests passed                      |
-| typecheck `packages/provider-opencode`, `apps/server`    | clean                                                   |
-
 ## T3 in a celld SpaceCell (`apps/server/src/baskule/workerd/`)
 
-The server runs as one Durable Object per space (architecture v3 E2/E8). `createSpaceServer` (spaceServer.ts) builds
+The server runs as one Durable Object per space. `createSpaceServer` (spaceServer.ts) builds
 T3's runtime from `server.ts`'s exported layers with workerd edges; the platform's `SpaceCell`
 (`../platform/src/space`) owns the cell lifecycle.
 
@@ -254,8 +216,7 @@ all three with the pinned `vp fmt --stdin-filepath <path>` before `git merge-fil
 Keep upstream-deleted files deleted; keep Baskule-deleted old files and new files under retired
 provider/feature directories deleted. Review add/add, modify/delete and binary changes explicitly;
 copy modes from the target for retained upstream executables. Save every conflicted hunk and its
-reason before editing. The previous character/token merge and resolution scripts were one-off
-heuristics and are not a reusable merge policy. Regenerate lockfiles from the reviewed manifests.
+reason before editing. Regenerate lockfiles from the reviewed manifests.
 
 ### Migration boundary
 
@@ -299,7 +260,7 @@ upgrade requires no new wipe for an already OpenCode-only Baskule installation.
 - Never set `VITE_HTTP_URL`/`VITE_WS_URL` (bakes origins into the bundle).
 - Pairing token is single-use; browsers keep a session cookie.
 
-## UI patches (branch `baskule/ui`, D13 / B7)
+## UI patches
 
 All web UI reductions go through **`apps/web/src/baskule/flags.ts`** (`baskule.skipFirstRun`, `flatChatSidebar`,
 `plainChat`, `hideSettings`, `hiddenFileTreeEntries`). Build with `VITE_BASKULE_UI=0` to get the upstream T3 Code UI
@@ -309,31 +270,23 @@ deleted. New code only lives in `apps/web/src/baskule/`.
 | Area                                       | Patch (file)                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | First-run wizard never shown               | `routes/__root.tsx` (FirstRunGate `enabled=false`); `/welcome`, `/usage` and T3's settings pages redirect to `/` (`routes/welcome.tsx`, `usage.tsx`, `settings.tsx`); `/settings` holds Baskule's own sections (`baskule/settingsPages.ts`)                                                                                                                                                                                                                                        |
-| `/` = new chat                             | `routes/_chat.index.tsx` -> `baskule/BaskuleIndexLanding.tsx` (draft in the scratch project; shows progress, retries a failed start with backoff, "Try again", review M4). After the first send the URL moves from `/draft/<id>` to `/<env>/<thread>` (upstream promotion; it lands shortly after the message renders)                                                                                                                                                             |
+| `/` = new chat                             | `routes/_chat.index.tsx` -> `baskule/BaskuleIndexLanding.tsx` (draft in the scratch project; shows progress, retries a failed start with backoff, "Try again"). After the first send the URL moves from `/draft/<id>` to `/<env>/<thread>` (upstream promotion; it lands shortly after the message renders)                                                                                                                                                             |
 | New chat -> scratch ("No project") project | `baskule/useBaskuleNewChat.ts` (`openScratch` = server `ensureScratchProject`, then `useNewThreadHandler`); used by the sidebar button                                                                                                                                                                                                                                                                                                                                             |
 | Chat list                                  | `components/Sidebar.tsx`: slim rows, pinned chats first then the rest most-recent-first, drag to pin/unpin/reorder, Snoozed shelf; no favicon/PR/terminal/hover card; no Settled shelf when the space advertises no `threadSettlement` (`ServerEnvironment.ts`); status glyph (`baskule/BaskuleChatStatus.tsx`) and a `...` button opening the chat menu                                                                                                                           |
 | Chat menu = Rename / Archive / Delete      | `baskule/threadMenu.ts`, applied once inside `components/threadActionMenu.logic.ts` (`buildThreadActionMenuItems`), so the sidebar, header and every other caller get it                                                                                                                                                                                                                                                                                                           |
 | Sidebar header/footer                      | `sidebar/SidebarThreadHeader.tsx` is a 3-line wrapper rendering `baskule/BaskuleSidebarHeader.tsx` ("New chat" + "Search chats"); `sidebar/SidebarChrome.tsx` ("Baskule" text brand; footer = the account menu (Settings, Admin, Sign out); no PRs/usage/update pills); `AppSidebarLayout.tsx` keeps the chat list on `/settings/archived`                                                                                                                                         |
-| Composer                                   | `chat/ChatComposer.tsx`: no model/provider/runtime-mode/plan controls (chats use the installation's one model); slash menu = the agent's configured commands and skills (`/plan` needs the hidden plan-mode setting); placeholder "Message Baskule"; provider-down copy "The assistant's computer is unavailable, retrying…" and a re-probe every 8 s while down (M3; `baskule/composer.ts`, `baskule/useProviderRetry.ts`); `chat/DraftHeroHeadline.tsx`: "What can I help with?" |
+| Composer                                   | `chat/ChatComposer.tsx`: no model/provider/runtime-mode/plan controls (chats use the installation's one model); slash menu = the agent's configured commands and skills (`/plan` needs the hidden plan-mode setting); placeholder "Message Baskule"; provider-down copy "The assistant's computer is unavailable, retrying…" and a re-probe every 8 s while down (`baskule/composer.ts`, `baskule/useProviderRetry.ts`); `chat/DraftHeroHeadline.tsx`: "What can I help with?" |
 | Chat header                                | `chat/ChatHeader.tsx` (no project breadcrumb); `chat/PanelLayoutControls.tsx` (no terminal toggle); `chat/ThreadDetailsPanel.tsx`: the thread-details panel shows the chat's automations and forks/merge-back only (no machine/"Open in"/scripts/git); `ChatView.tsx` (right panel opens straight on Files); `RightPanelTabs.tsx` (action lists filtered to Files by `baskule/rightPanel.ts`); `ChatView.logic.ts` (draft title "New chat")                                        |
 | Files                                      | `files/useDirectoryEntries.ts` hides `.playwright-mcp`; `files/FilePreviewPanel.tsx`: **Download file** for every previewed file and a "can't be previewed — Download" body for binary files (`baskule/WorkspaceFileDownload.tsx`, signed `/api/assets` URL with `disposition: "attachment"`, see below); no empty "Open in" picker; on a phone the tree starts collapsed when a file is open                                                                                      |
 | Archived view                              | `settings/SettingsPanels.tsx` (group titled "Archived chats", no project icon), `settings/settingsLayout.tsx` (no scope sentence), `routes/settings.tsx` (header "Archived chats")                                                                                                                                                                                                                                                                                                 |
-| Keyboard / palette (M1)                    | `keybindings.ts` ignores bindings outside `baskule/keybindings.ts` (new chat, sidebar, right panel, thread details, find, stop, thread nav/jump, queue, stash): no terminal, diff, preview, palette, model picker, pin/settle, editors. `commandPaletteBus.ts`: the palette never opens (no "Add project")                                                                                                                                                                         |
+| Keyboard / palette                    | `keybindings.ts` ignores bindings outside `baskule/keybindings.ts` (new chat, sidebar, right panel, thread details, find, stop, thread nav/jump, queue, stash): no terminal, diff, preview, palette, model picker, pin/settle, editors. `commandPaletteBus.ts`: the palette never opens (no "Add project")                                                                                                                                                                         |
 | "chat" copy                                | `baskule/copy.ts` rewrites thread→chat in confirm dialogs (`confirmDialog.ts`), toasts (`components/ui/toast.tsx`) and the sidebar/archived empty states                                                                                                                                                                                                                                                                                                                           |
 | Rebrand                                    | `branding.ts` (`APP_BASE_NAME` = Baskule, stage "Alpha"); static, not flag-driven: `index.html` (title, text splash instead of the T3 logo), `public/manifest.webmanifest`, `lib/bootError.ts`. `branding.test.ts` follows `APP_BASE_NAME`.                                                                                                                                                                                                                                        |
 
 Kept as upstream: streamed messages + tool-call timeline, user-input question forms, approvals, files panel /
 preview / download, search, rename, phone drawer sidebar.
 
-Verification (2026-10-22): `tsc-rs --noEmit` clean in `apps/web`; `vp test run --project unit` on Sidebar*, threadActionMenu,
-ChatView.logic, ChatHeader, branding, `components/sidebar`, `components/files`, `hooks`, `routes`: 43 files / 774 tests pass.
-Browser (`*.browser.test.tsx`) suites were not run.
-
-Dev loop used: server `--base-dir baskule/.run/ui-<n>` with `GIT_CEILING_DIRECTORIES=baskule/.run` (otherwise the base dir
-sits inside the umbrella git work tree and T3 refuses scratch projects, cf. D5), opencode provider pointed at a dead URL
-(no LLM call; sends create the thread and fail), web rebuilt with `vp build` and copied into `apps/server/dist/client`.
-
-Tests (review M6): the web vitest projects run with `VITE_BASKULE_UI=0` unless the variable is set (`apps/web/vite.config.ts`),
+Tests: the web vitest projects run with `VITE_BASKULE_UI=0` unless the variable is set (`apps/web/vite.config.ts`),
 so upstream suites test upstream behavior; `src/baskule/*.test.ts` stub the flag on (`vi.stubEnv` + `vi.resetModules`).
 
 Known gaps: provider error banners are upstream's; mobile strings still say "thread"
@@ -343,9 +296,8 @@ Known gaps: provider error banners are upstream's; mobile strings still say "thr
 
 OpenCode 2 compacts on its own (`compaction.auto` defaults to on): before each model step it summarizes the
 conversation once the context reaches the model's window minus max(15 %, 16k) tokens, and once more if the provider
-rejects a request as too long; the turn then continues. The window is `BASKULE_LLM_CONTEXT_LIMIT`
-(`platform/src/agent/config.ts`, default 200k): set it to the model's real window, or compaction only happens after a
-rejection. The OpenCode 2 adapter maps `session.compaction.*` to a `compaction` turn item, which web and mobile draw
+rejects a request as too long; the turn then continues. Set each model's context window to its real limit in **Admin → AI → Models**; an incorrect limit can delay compaction until a
+provider rejection. The OpenCode 2 adapter maps `session.compaction.*` to a `compaction` turn item, which web and mobile draw
 as a "Context compacted" divider in the turn (fixture `testkit/fixtures/opencode2_compaction`).
 
 Compaction is automatic. There is no manual `/compact` action, provider compaction hook, or idle compaction worker.
@@ -360,7 +312,7 @@ Dev loop: `apps/web/baskule-dev/` (`./check.sh`).
 | Base path (upstreamable, root behaviour unchanged)  | `client-runtime/environment/endpoint.ts`: `environmentEndpointUrl` joins under the base path, `environmentSocketUrl` (`<base>/ws`), `resolveEnvironmentRelativeUrl` (server URLs under the base path unless already prefixed); used by `authorization/remote.ts`, `connection/resolver.ts`, `connection/presentation.ts` (`/mcp`), `rpc/http.ts` (API base keeps the path), `state/assets.ts` (`resolveAssetUrl`), `webhookAddress.ts`; `shared/remote.ts` and `shared/advertisedEndpoint.ts` keep a base path (a pairing link's directory is the backend); `onboarding.ts` bearer ids include a non-root path |
 | Hosted mode                                         | `hostedPairing.ts` (`isHostedStaticApp` true); `connection/platform.ts` uses `baskule/spaces.ts` as the platform source: one `PrimaryConnectionRegistration` per space at `<origin>/s/<id>/` (same-origin cookie auth, no pairing), labels = space names, Personal first (= the app's primary environment), re-read on focus / every 60 s / after space changes                                                                                                                                                                                                                                                |
 | Sign-in gate                                        | `routes/__root.tsx` → `baskule/root.tsx` (`GET /api/baskule/me`; 401 → `/login?next=`; bare `/login`, `/invite`, `/reset-password`, `/setup`); local storage cleared on sign-out and when another person signs in on the browser (`baskule/session.ts`)                                                                                                                                                                                                                                                                                                                                                                  |
-| New views                                           | routes `login`, `invite` (`#token=`), `reset-password`, `setup` (first admin, `#token=`), `admin` (people + invitations, spaces, health), `apps` (desktop downloads; `/downloads/` is the front's file listing); `baskule/SpaceManagementDialog.tsx` (team space members/roles/rename/delete, new team space); `baskule/BaskuleUserMenu.tsx` in the sidebar footer (spaces you manage, admin, desktop app, change password, sign out); API client `baskule/api.ts` against WP-C's `/api/baskule`                                                                                                                                                 |
-| Authorship                                          | contracts `OrchestrationV2Author` (optional `author` on creation fields, as spike path-c); `session-logic.ts`, `types.ts`; `MessagesTimeline.tsx` names other people's messages (`baskule/authorship.ts`)                                                                                                                                                                                                                                                                                                                                                                                                      |
+| New views                                           | routes `login`, `invite` (`#token=`), `reset-password`, `setup` (first admin, `#token=`), `admin` (people + invitations, spaces, health), `apps` (desktop downloads; `/downloads/` is the front's file listing); `baskule/SpaceManagementDialog.tsx` (team space members/roles/rename/delete, new team space); `baskule/BaskuleUserMenu.tsx` in the sidebar footer (spaces you manage, admin, desktop app, change password, sign out); API client `baskule/api.ts` against the platform's `/api/baskule`                                                                                                                                                 |
+| Authorship                                          | contracts `OrchestrationV2Author` (optional `author` on creation fields); `session-logic.ts`, `types.ts`; `MessagesTimeline.tsx` names other people's messages (`baskule/authorship.ts`)                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Spaces in the UI                                    | `Sidebar.tsx` row label (`baskule/BaskuleSpaceLabel.tsx`, shown with 2+ spaces); the composer's "Run on" picker lists the spaces (upstream); connection banners say "Acme did not answer" (`baskule/copy.ts`, `ConnectionDiagnosisDetails.tsx`)                                                                                                                                                                                                                                                                                                                                                                |
 | Controls available in hosted mode | chat menu: Pin, Snooze, Mark unread (`baskule/threadMenu.ts`); sidebar: pinned first, snoozed last, unread dot and weight (`Sidebar.tsx`, `BaskuleChatStatus.tsx`); `/settings/scheduled-tasks` + footer link (`baskule/settingsPages.ts`, `routes/settings.tsx`, `SidebarChrome.tsx`); shared Browser surface in the right panel (`baskule/rightPanel.ts`)                                                                                                                                                                                                                                                    |

@@ -1,4 +1,4 @@
-# e2e — Baskule end-to-end feedback loops (WP-H)
+# e2e — Baskule end-to-end feedback loops
 
 The deployed checks run against the **real stack** (`deploy`, `http://127.0.0.1:47090`), signed in, with
 system Chrome. No LLM spend by default. These loops own the seams only the deployed stack has (edge, two-node fleet,
@@ -16,10 +16,10 @@ The worktree and release-install harnesses generate their own setup tokens and c
 | One spec | `e2e/run.sh tests/05-security.spec.ts` (any spec runs alone) | 0.5–2 min |
 | Parallel phase only | `scripts/check e2e` (= `E2E_SLOW=0 e2e/run.sh`) | see the workflow doc |
 | Acceptance (both phases) | `e2e/run.sh` | see the workflow doc |
-| Infrastructure smoke (WP-A) | `scripts/check infra` (= `e2e/infra-smoke.sh --no-up`) | 2–4 min |
+| Infrastructure smoke | `scripts/check infra` (= `e2e/infra-smoke.sh --no-up`) | 2–4 min |
 | Real model | `E2E_REAL=1 e2e/run.sh --grep @real` | ≈ 1 min, ≈ $0.002 |
 | Build + deploy + suite | `BUILD=1 [T3_APP_DIR=…] e2e/run.sh` | + build |
-| Performance samples | `e2e/run.sh --project perf` (17c), `e2e/perf/run.sh <label> 5` | minutes |
+| Performance samples | `e2e/run.sh --project perf`, `e2e/perf/run.sh <label> 5` | minutes |
 | UX journeys (for the reviewer) | `e2e/ux/run.sh [journey…]`, then a reviewer agent with `ux/BRIEF.md` | ≈ 5 min |
 
 `run.sh` takes the stack lock (`deploy/.stack-lock`), changes the organization AI endpoint to the LLM router through the admin API and shortens the idle policy (`E2E_IDLE_MINUTES`, default 1.5), runs Playwright in two
@@ -41,7 +41,7 @@ The router connection uses `custom/<model ID>` and has its own credential slot, 
 untouched when settings are restored.
 
 `llm/router.mjs` runs as container `baskule-e2e-llm` on `baskule-net` (`llm/llm.sh router|restore|usage|status`):
-- every chat completion goes to WP-C's fake LLM (`platform/dev/fake-llm`, markers `[[fake:text …]]`,
+- every chat completion goes to the platform fake LLM (`platform/dev/fake-llm`, markers `[[fake:text …]]`,
   `[[fake:tool <name> <json>]]`, `[[fake:long N]]`, `[[fake:delay ms]]`, `[[fake:describe]]`);
 - a request whose last user message contains **`[[real]]`** goes to Mistral (mistral-large-4) with the caller's key (the
   embedded agent's, from ControlCell), the marker stripped; usage is metered per request; a budget (default $0.25 per
@@ -52,7 +52,7 @@ OpenCode's tool names for fake tool calls: `shell {command}`, `read`, `glob`, `g
 `*preview_open {url}`, … (the `*` resolves the dynamic T3 MCP prefix) The exact tool set depends on the thread’s registered MCP servers and enabled skills; inspect the captured
 request’s `tools` list rather than assuming a fixed count.
 
-Chat and conversation lifecycle now run on the worktree stack: `scripts/check feature:personal-chat`, `feature:team-chat`, and `feature:conversation-controls`.
+Chat and conversation lifecycle run on the worktree stack: `scripts/check feature:personal-chat`, `feature:team-chat`, and `feature:conversation-controls`.
 
 ## Scenarios (`tests/`)
 
@@ -87,7 +87,7 @@ cookie, `tests/lib.ts` `personApi`/`signInBrowser`). Timeouts allow for a loaded
 
 `ux/journeys.mjs` drives six journeys (admin onboarding, member first chat, team collaboration, file round-trip,
 schedule setup, phone layout) and saves per step a screenshot and the visible text + accessibility snapshot in
-`artifacts/ux/<journey>/`. A reviewer sub-agent follows `ux/BRIEF.md` and writes `ux-findings.md` (severity
+`artifacts/ux/<journey>/`. A reviewer sub-agent follows `ux/BRIEF.md` and writes `artifacts/ux/findings.md` (severity
 high/medium/low). Fix high/medium findings in the active task branch, then rerun the affected journeys.
 
 Partial runs reuse fixtures only when `E2E_RUN` matches the saved world. `E2E_WORLD_FILE=/absolute/path.json`

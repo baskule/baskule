@@ -781,7 +781,7 @@ const make = Effect.gen(function* () {
         if (Option.isNone(row)) {
           return yield* new UnknownSessionTokenError({ sessionId: fixedAuth.sessionId });
         }
-        // baskule: the shared no-auth session cannot be revoked (review M5).
+        // baskule: the shared no-auth session cannot be revoked.
         if (row.value.revokedAt !== null && fixedAuth !== noAuth) {
           return yield* new SessionTokenRevokedError({
             sessionId: fixedAuth.sessionId,

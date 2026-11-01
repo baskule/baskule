@@ -13,39 +13,29 @@ clients → HTTPS load balancer → platform nodes → external S3 bucket
                                     └→ computerd → OpenShell → computers
 ```
 
-Each platform machine runs one celld node using the same release image. Nodes discover the fleet through the bucket
-and reach each other's advertised private address. Any node can serve a Worker request and forward a cell request
-to its owner. The app deploy job uses the same bucket and lists every node's internal address.
+Each platform machine runs one celld node from the same release image. Nodes find each other through the bucket,
+and any node can serve a request by forwarding it to the node that owns the cell. One computers host runs computerd
+and OpenShell. Computers are sandboxed and cannot reach private addresses.
 
-Use your own HTTPS load balancer in front of every Worker port, or the bundled Caddy edge behind an HTTPS proxy.
-Caddy distributes requests and checks node health. The computers host runs computerd and OpenShell on separate Docker
-networks. Only computerd joins both. Computers never share a network with platform nodes, storage, or the edge;
-their egress policy denies private destinations.
+**Put all machines on one private network**, such as a cloud VPC or a VLAN. If they can only reach each other over
+the internet, connect them with WireGuard or Tailscale first and use those addresses below. Traffic between the
+roles, including the computerd token, is plain HTTP and must stay on that network. Each role listens only on the
+private address you set as `BASKULE_PRIVATE_IP`; only your HTTPS load balancer faces clients.
 
-Node↔computerd requests and responses use **plain HTTP**, including `COMPUTERD_TOKEN`, command execution,
-and file streams in both directions. That token controls every computer. Computerd also reads platform settings
-over HTTP. Use a trusted private network or an encrypted overlay such as WireGuard for these connections.
-A private IP address alone does not encrypt traffic.
+| Port | Listener | Reached by |
+| --- | --- | --- |
+| 443 | Your HTTPS load balancer | Clients |
+| 47090 | Bundled edge (optional) | Your HTTPS proxy |
+| 47091 | Worker on each platform node | Load balancer or edge; computers host |
+| 47092 | Peer port on each platform node | Platform nodes only |
+| 47094 | computerd on the computers host | Platform nodes |
+| S3 endpoint | Your bucket | Platform nodes only |
 
-| Port | Access |
-| --- | --- |
-| 443 | Clients to your HTTPS load balancer |
-| 47090 | Bundled edge HTTP; only your HTTPS proxy or private clients |
-| 47091 | Worker on each platform node; load balancer and private computerd settings requests |
-| 47092 | Node peers and app deploy job only; unauthenticated operator API, strictly private |
-| 47094 | computerd on the computers host; platform nodes only, bearer token required |
-| 47095, 47096 | OpenShell and volume helper, inside the computers Docker network only |
-| S3 endpoint | Platform nodes and deploy job to external storage |
+Then add two firewall rules:
 
-Bind node listeners to a private IPv4 interface, never `0.0.0.0` on an internet-facing machine. Platform nodes
-use Linux host networking so their advertised address is also reachable from the node itself. Other roles use
-separate Docker networks. Apply host or network firewalls to node ports, and Docker forwarding rules to published
-ports. Allow port 47092 only between platform nodes, including the machine
-running the deploy job. Allow access to the S3 endpoint only from platform nodes. Explicitly exclude the computers
-host from both rules; a broad private-subnet allow rule would admit it. The computers host shares the private
-network with the nodes, so Docker network separation alone cannot prevent this access. With these restrictions,
-OpenShell's egress policy remains the barrier against computers reaching other private destinations.
-OpenShell is privileged and has no host Docker socket mount or published port.
+- [ ] Port 47092 on every platform node accepts only the platform nodes. It is an unauthenticated operator API.
+- [ ] The computers host cannot reach port 47092 on any node, nor the S3 endpoint. A rule that allows the whole
+      private subnet would let it.
 
 Allow platform nodes 2 cores and 3 GiB RAM each, plus OS memory and cache disk. The computers host's default cap
 is 3 cores and 8 GiB for OpenShell plus 1 core and 512 MiB for computerd. Start that host with at least 4 cores,
@@ -147,20 +137,7 @@ curl -fL "$ASSETS/cluster-edge.yml" -o docker-compose.yml
 curl -fL "$ASSETS/cluster-edge.env.example" -o .env
 ```
 
-Set `BASKULE_NODES_WORKER` to every private Worker address, separated by spaces. Set `BASKULE_BIND` to loopback
-for a local HTTPS proxy or to a private address for a separate proxy. Run `docker compose up -d`.
-Place your HTTPS reverse proxy in front of it as described in the [single-machine guide](install.md#your-own-reverse-proxy).
-The edge trusts nobody by default. Set `BASKULE_TRUSTED_PROXIES` to the load balancer address or CIDR as seen by
-Caddy when it forwards the original scheme, host, and client IP. List multiple entries separated by spaces.
-For a host-local proxy, set `BASKULE_TRUSTED_PROXIES=private_ranges`. Keep HTTP bound to loopback and restrict
-access to trusted sources. Loopback binding alone is not an isolation boundary. Prefer exact proxy addresses when possible.
-The proxy must replace X-Forwarded-For with its peer's address, rather than append client-supplied values. Caddy does
-this by default. With nginx, use `proxy_set_header X-Forwarded-For $remote_addr;` instead of `$proxy_add_x_forwarded_for`.
-With `private_ranges`, private-address LAN/VPN clients share the proxy's sign-in rate-limit budget. Appending incoming
-X-Forwarded-For lets those clients spoof addresses and bypass that limit.
-Without trust, set `PUBLIC_ORIGINS` to the public HTTPS origin in the node deployment configuration; clients behind
-the proxy share its sign-in rate-limit bucket. Rootless Docker can hide client addresses; enforce access and rate limits
-at your outer proxy. Caddy uses connection retries and active health checks. Its HTTP listener does not obtain certificates.
+## Roles and network
 
 Open the setup link printed by `docker compose run --rm deploy` to create the first admin. The token becomes
 useless after setup. Configure **Admin → AI → Models** and invite people. For SSO, set `AUTH_CONFIG` or save the optional `config/auth.json` on the machine running the deploy job. Use

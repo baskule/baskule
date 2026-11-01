@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration test on celld dev (WP-C): real Worker + ControlCell + echo SpaceCell, ports 47620-47629.
+# Integration test on celld dev: real Worker + ControlCell + echo SpaceCell, ports 47620-47629.
 #   bash test/integration.sh            (CELLD_BIN to override the celld binary; KEEP=1 keeps state for debugging)
 #   bash test/integration.sh --only transcriptions   (only the raw-audio multipart/cap check)
 # Builds test/.run/app (bundle of test/integration/entry.ts + the web placeholder + a downloads fixture),

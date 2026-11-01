@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// WP-F feature runner: the thin-server capabilities (docs/development-workflow.md)
+// Platform feature runner: the thin-server capabilities (docs/development-workflow.md)
 // end to end on the real platform app (scripts/stack: celld dev + real computers + fake LLM).
 //   node test/wpf/run.mjs [--only a,b] [--list]
 // Every check prints PASS/FAIL with evidence; the summary is written to test/wpf/.run/results.json.

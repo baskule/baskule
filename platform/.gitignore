@@ -4,5 +4,4 @@ dist/
 .dev.vars
 test/.run/
 dev/.run/
-.wrangler.dev-rustfs.json
 test/wpf/.run/

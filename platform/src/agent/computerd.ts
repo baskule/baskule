@@ -1,4 +1,4 @@
-// Thin client of computerd (architecture E4; contract: computerd/README.md) for one space.
+// Thin client of computerd (contract: computerd/README.md) for one space.
 export interface ExecSpec {
   argv: string[];
   cwd?: string;

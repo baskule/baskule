@@ -50,7 +50,7 @@ export interface SpaceServer {
   drainPushEffects(): Promise<void>;
   nextWakeAt(): number | null;
   stopActiveRuns(reason: string): Promise<number>;
-  /** WP-F: unsnoozes (and marks unread) the chats whose snooze is due; returns how many. */
+  /** unsnoozes (and marks unread) the chats whose snooze is due; returns how many. */
   wakeDueSnoozes(): Promise<number>;
   dispose(): Promise<void>;
 }

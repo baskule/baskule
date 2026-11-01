@@ -37,7 +37,7 @@ findings.
 
 ## Output
 
-Write `e2e/ux-findings.md` (overwrite the round's section, keep earlier rounds), one table row per finding:
+Write `e2e/artifacts/ux/findings.md` (overwrite the round's section, keep earlier rounds), one table row per finding:
 
 | # | Severity | Journey / step (screenshot) | Finding | Suggested fix | Where (best guess) |
 

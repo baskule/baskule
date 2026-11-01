@@ -1,6 +1,6 @@
 # computerd
 
-Stateless HTTP bridge from the celld cells to OpenShell (architecture E4), with organization policy read from the platform.
+Stateless HTTP bridge from the celld cells to OpenShell, with organization policy read from the platform.
 Node 24 + TypeScript (run directly by Node's type stripping), `@grpc/grpc-js` + `@grpc/proto-loader` with the
 OpenShell protos vendored from our fork (`proto/`, `scripts/vendor-protos.sh`), `ws` for WebSockets.
 

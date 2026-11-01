@@ -37,9 +37,16 @@ export function sh(cmd: string, args: string[], opts: { timeoutMs?: number; inpu
   });
 }
 
-/** computerd API from inside the stack network (bearer from .env, never printed). */
+/** Read generated credentials from their consumer volume; a missing credential fails the check. */
+export function generatedSecret(key: "COMPUTERD_TOKEN" | "RUSTFS_ACCESS_KEY" | "RUSTFS_SECRET_KEY"): string {
+  const container = key === "COMPUTERD_TOKEN" ? "baskule-computerd" : "baskule-celld-a";
+  const file = key === "COMPUTERD_TOKEN" ? "/run/baskule/secrets" : "/run/baskule/storage/secrets";
+  return sh("docker", ["exec", container, "sh", "-ec", `. ${file}; test -n "$${key}"; printf %s "$${key}"`]);
+}
+
+/** computerd API from inside the stack network (bearer from the consumer secrets volume, never printed). */
 export function computerd(pathname: string, method: "GET" | "POST" = "GET", body?: unknown): any {
-  const args = ["exec", "baskule-celld-a", "curl", "-s", "-m", "60", "-X", method, "-H", `Authorization: Bearer ${envGet("COMPUTERD_TOKEN")}`];
+  const args = ["exec", "baskule-celld-a", "curl", "-s", "-m", "60", "-X", method, "-H", `Authorization: Bearer ${generatedSecret("COMPUTERD_TOKEN")}`];
   if (body !== undefined) args.push("-H", "content-type: application/json", "--data", JSON.stringify(body));
   args.push(`http://baskule-computerd:47094/v1${pathname}`);
   const out = sh("docker", args, { timeoutMs: 90_000 });
@@ -58,7 +65,7 @@ export function computerStatus(spaceId: string): { phase: string; running: boole
 /** Runs a bash script on the space computer (starts it). Returns stdout+stderr; throws on a non-zero exit. */
 export function cx(spaceId: string, script: string): string {
   return sh("docker", [
-    "run", "--rm", "--network", "baskule-net", "-e", `COMPUTERD_TOKEN=${envGet("COMPUTERD_TOKEN")}`,
+    "run", "--rm", "--network", "baskule-net", "-e", `COMPUTERD_TOKEN=${generatedSecret("COMPUTERD_TOKEN")}`,
     "-v", `${ROOT}/e2e/infra:/infra:ro`, "--entrypoint", "/infra/cx.sh", "baskule-celld:local", spaceId, script,
   ], { timeoutMs: 180_000 });
 }

@@ -1,4 +1,4 @@
-// baskule: keyboard shortcuts allowed in the Baskule UI (review M1). Every other command (terminal,
+// baskule: keyboard shortcuts allowed in the Baskule UI. Every other command (terminal,
 // diff, preview, command palette, model picker, pin/settle, editors, …) would reach a hidden or
 // out-of-scope feature, so its binding is ignored. Applied where the web resolves a key event.
 import { THREAD_JUMP_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";

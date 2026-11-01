@@ -1,4 +1,4 @@
-// baskule: the deny-by-default surface of a space (E8) and message authorship.
+// baskule: the deny-by-default surface of a space and message authorship.
 import { WS_METHODS, WsRpcGroup } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 

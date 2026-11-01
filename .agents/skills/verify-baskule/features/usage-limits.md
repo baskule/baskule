@@ -1,5 +1,5 @@
 ---
-paths: ["platform/src/control/**", "platform/src/space/**", "app/apps/web/src/baskule/usage/**", "app/apps/web/src/baskule/admin/ai/**", "app/apps/web/src/routes/usage.tsx", "app/apps/web/src/routes/settings.usage.tsx"]
+paths: ["platform/src/control/**", "platform/src/space/**", "app/apps/web/src/baskule/usage/**", "app/apps/web/src/baskule/admin/ai/**", "app/apps/web/src/routes/_chat.usage.tsx", "app/apps/web/src/routes/_chat.settings.usage.tsx"]
 journeys: null
 profile: "full"
 checks: ["scripts/check space:usage-and-limits web"]

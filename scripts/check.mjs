@@ -64,7 +64,7 @@ Options
 
 Evidence: a step that passed is not run again while its inputs are unchanged. Its key is the committed tree of
 its input directories (Markdown excluded, except the feature map) and scripts/; a pass is recorded as the ref refs/evidence/<id>/<key> on
-origin, so passes on the CI runner count locally and the other way round. Inputs with uncommitted changes are
+origin. Inputs with uncommitted changes are
 always run and never recorded. Inputs changed during a run are not recorded either.
 `;
 
@@ -169,8 +169,8 @@ function plan(files, base) {
   if (has(/^desktop\/|^app\/apps\/desktop\//)) {
     add("desktop: connection and shell regression tests", "bash", ["desktop/check.sh"], ".", { evidence: ev(["app", "desktop"], ["desktop"], "desktop") });
   }
-  if (has(/^deploy\/runner\//)) add("deployment: privilege boundary", "python3", ["-B", "-m", "unittest", "discover", "-s", "deploy/runner"], ".");
   if (has(/^e2e\/|^(?:package\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$/)) add("e2e: typecheck (live run: the changed specs)", join(ROOT, "e2e/node_modules/.bin/tsc"), ["--noEmit", "-p", "tsconfig.json"], "e2e", { evidence: ev(E2E_IN, ["e2e-tsc"], "e2e-tsc") });
+  if (has(/^e2e\/(?:secrets\.test\.mjs|tests\/(?:lib\.ts|05-security\.spec\.ts)|infra-smoke\.sh)$/)) add("e2e: generated consumer secrets", "node", ["--test", "e2e/secrets.test.mjs"], ".");
   for (const spec of pick(/^e2e\/tests\/.*\.spec\.ts$/).filter((f) => existsSync(join(ROOT, f)))) tags.add(`file:${spec.replace(/^e2e\//, "")}`);
   // T3 fork: per package, the related unit tests; web and server get their typecheck (server: changed files only,
   // because its baseline carries Effect language-service diagnostics).
@@ -199,7 +199,6 @@ function plan(files, base) {
   if (has(/^openshell\/dev-down\.sh$/)) add("stack: shared gateway teardown", "node", ["--test", "scripts/stack.test.mjs"], ".");
   if (has(/^deploy\/(?:docker-compose|cluster\/|\.env\.example)|^scripts\/check-compose\.sh$/)) add("deploy: compose config", "bash", ["scripts/check-compose.sh"], ".");
   if (has(/^deploy\/celld\//)) add("deploy: startup jobs", "node", ["--test", "deploy/celld/jobs.test.mjs", "deploy/celld/sync-plugins.test.mjs"], ".");
-  if (has(/^deploy\/(?:images\.sh|celld\/|runner\/test_image_reuse\.py$)/)) add("deploy: source image reuse", "python3", ["-m", "unittest", "discover", "-s", "deploy/runner", "-p", "test_image_reuse.py"], ".");
   if (has(/^scripts\/ci\/publish-images/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
   if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
   if (has(/^(deploy|openshell|computer)\//)) tags.add("infra");
@@ -434,7 +433,7 @@ function unitSteps() {
   const vp = join(ROOT, "app/node_modules/.bin/vp");
   return [
     { label: "scripts/check: harness tests", cmd: "node", args: ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/worktree.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], cwd: "." },
-    ...plan(["platform/src/x.ts", "computerd/src/x.ts", "desktop/x", "e2e/x.ts", "deploy/runner/x.py"], "HEAD").steps
+    ...plan(["platform/src/x.ts", "computerd/src/x.ts", "desktop/x", "e2e/x.ts"], "HEAD").steps
       .map((s) => (s.label.startsWith("platform: unit") ? { ...s, label: "platform: all unit tests", args: ["exec", "vitest", "run"], evidence: ev(PLATFORM_IN, ["platform-unit"], "platform-unit") } : s)),
     { label: "app/apps/server: Baskule unit tests", cmd: vp, args: ["test", "run", ...BASKULE_TESTS["app/apps/server"]], cwd: "app/apps/server", evidence: ev(["app"], ["server-baskule"], "server-baskule") },
     { label: "app/apps/web: Baskule unit tests", cmd: vp, args: ["test", "run", ...BASKULE_TESTS["app/apps/web"]], cwd: "app/apps/web", evidence: ev(["app"], ["web-baskule"], "web-baskule") },

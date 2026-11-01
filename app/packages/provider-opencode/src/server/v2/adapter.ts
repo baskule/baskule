@@ -706,8 +706,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
   const fileSystem = yield* FileSystem.FileSystem;
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
   const crypto = yield* Crypto.Crypto;
-  // baskule: an Baskule space reaches its OpenCode server (the AgentCell) through the platform, which
-  // also bridges T3's MCP endpoint back to the space (BASKULE_MCP_ENDPOINT), so that external server
+  // baskule: a Baskule space reaches the embedded OpenCode in its SpaceCell through the platform, which
+  // also bridges T3's MCP endpoint back to the space (BASKULE_MCP_ENDPOINT), so the embedded OpenCode
   // can use T3's MCP tools.
   const mcpBridged = Option.isSome(
     yield* Config.String("BASKULE_MCP_ENDPOINT").pipe(Config.option, Effect.orDie),
@@ -3064,7 +3064,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     });
 
     // baskule: in a space cell (BASKULE=1) T3's attachment store is the cell's own storage, which neither
-    // OpenCode (the space's AgentCell) nor the agent's computer can read. Images go to the model inline as data
+    // the embedded OpenCode in this SpaceCell nor the agent's computer can read. Images go to the model inline as data
     // URLs (PDFs too, with no computer needed); any other file is copied into the chat folder's `uploads/` on the computer and the
     // prompt names that path.
     const baskuleCell = process.env.BASKULE === "1";

@@ -24,6 +24,8 @@ gh workflow run ci.yml --repo baskule/baskule --ref main
 
 ## Verify the complete factory
 
+For local role and installation checks, use [released installation verification](release-install-verification.md).
+
 Run `Release factory` manually to build and check a candidate without publishing a GitHub release:
 
 ```sh

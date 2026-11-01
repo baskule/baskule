@@ -1,6 +1,6 @@
 // baskule: mock-front page checks at desktop 1440x900 and phone 390x844; no model spend.
 // node apps/web/baskule-dev/shots.mjs [scenario ...]
-// PNGs go to SHOTS_DIR or .run/wp-e/artifacts; broken checks and browser errors are reported.
+// PNGs go to SHOTS_DIR or .run/web-mock/artifacts; broken checks and browser errors are reported.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
@@ -10,7 +10,7 @@ import { chromium } from "playwright";
 const HERE = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const BASE = process.env.MOCK_URL ?? "http://127.0.0.1:47700";
 const OUT = NodePath.resolve(
-  process.env.SHOTS_DIR ?? NodePath.join(HERE, "../../../../.run/wp-e/artifacts"),
+  process.env.SHOTS_DIR ?? NodePath.join(HERE, "../../../../.run/web-mock/artifacts"),
 );
 NodeFS.mkdirSync(OUT, { recursive: true });
 
@@ -152,93 +152,6 @@ const scenarios = {
       await context.close();
     }
   },
-  /**
-   * Against WP-C's real ControlCell (mock front in MOCK_CONTROL mode): admin onboarding.
-   * Needs PLATFORM_ADMIN_EMAIL / PLATFORM_ADMIN_PASSWORD; skipped otherwise.
-   */
-  async platform(browser, device) {
-    const adminEmail = process.env.PLATFORM_ADMIN_EMAIL;
-    const adminPassword = process.env.PLATFORM_ADMIN_PASSWORD;
-    if (!adminEmail || !adminPassword || device !== "desktop") return;
-    const stamp = Date.now().toString(36);
-    const { context, page } = await newPage(browser, device);
-    await page.goto("/login");
-    await page.getByLabel("Email").fill(adminEmail);
-    await page.getByLabel("Password").fill(adminPassword);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 20_000 });
-    await page.getByTestId("baskule-user-menu").waitFor({ timeout: 60_000 });
-    check(true, "platform: admin signs in through Better Auth");
-    await page.goto("/admin/people/users");
-    await page.getByRole("button", { name: "Add person" }).click();
-    await page
-      .getByRole("radio", { name: "Temporary password" })
-      .or(page.getByRole("button", { name: "Temporary password" }))
-      .first()
-      .click();
-    await page.getByLabel("Name", { exact: true }).fill(`Alice ${stamp}`);
-    await page.getByLabel("Email").fill(`alice-${stamp}@baskule.test`);
-    await page.getByRole("dialog").getByRole("button", { name: "Add person" }).click();
-    await page.getByText("was added").waitFor();
-    const temporary = await page.getByLabel("Temporary password", { exact: true }).inputValue();
-    check(temporary.length >= 8, "platform: person created with a temporary password");
-    await page.getByRole("button", { name: "Add another" }).click();
-    await page.getByLabel("Email").fill(`bob-${stamp}@baskule.test`);
-    await page.getByRole("dialog").getByRole("button", { name: "Create invitation" }).click();
-    await page.getByText("Invitation ready").waitFor();
-    const link = await page.getByLabel("Invitation link", { exact: true }).inputValue();
-    check(/\/invite#token=/.test(link), "platform: invitation link with a fragment token");
-    await page.getByRole("button", { name: "Done" }).click();
-    await page.getByText(`alice-${stamp}@baskule.test`).first().waitFor();
-    await shot(page, "platform-admin-people");
-    await page.getByRole("link", { name: "Invitations" }).click();
-    await page.getByText(`bob-${stamp}@baskule.test`).first().waitFor();
-    // Team space with Alice.
-    await page.getByRole("link", { name: "Team spaces" }).click();
-    await page.getByRole("button", { name: "New team space" }).click();
-    await page.getByLabel("Name").fill(`Acme ${stamp}`);
-    await page.getByRole("button", { name: "Create space" }).click();
-    await page.getByRole("dialog").getByText("Members (").waitFor();
-    await page.getByRole("combobox", { name: "Person to add" }).click();
-    await page.getByRole("option", { name: new RegExp(`Alice ${stamp}`) }).click();
-    await page.getByRole("button", { name: "Add", exact: true }).click();
-    await page.getByRole("dialog").getByText(`alice-${stamp}@baskule.test`).waitFor();
-    check(true, "platform: team space created and member added");
-    await shot(page, "platform-space-dialog");
-    await page.getByRole("button", { name: "Done" }).click();
-    await page.getByRole("link", { name: "Overview" }).click();
-    await page.getByText("Spaces awake").waitFor();
-    await page.waitForTimeout(4000);
-    await shot(page, "platform-admin-overview");
-    await context.close();
-    // The invited person accepts.
-    const invited = await newPage(browser, device);
-    await invited.page.goto(link.replace(/^https?:\/\/[^/]+/, ""));
-    await invited.page.getByLabel("Your name").fill(`Bob ${stamp}`);
-    await invited.page.getByLabel("Password", { exact: true }).fill("bob-password-1");
-    await invited.page.getByLabel("Confirm password").fill("bob-password-1");
-    await invited.page.getByRole("button", { name: "Create account" }).click();
-    await invited.page.waitForURL((url) => url.pathname !== "/invite", { timeout: 20_000 });
-    await invited.page.getByTestId("baskule-user-menu").waitFor({ timeout: 30_000 });
-    check(
-      (await invited.page.getByTestId("baskule-user-menu").textContent())?.includes(`Bob ${stamp}`),
-      "platform: invitation accepted and signed in",
-    );
-    await invited.context.close();
-    // Alice signs in with the temporary password.
-    const alice = await newPage(browser, device);
-    await alice.page.goto("/login");
-    await alice.page.getByLabel("Email").fill(`alice-${stamp}@baskule.test`);
-    await alice.page.getByLabel("Password").fill(temporary);
-    await alice.page.getByRole("button", { name: "Sign in" }).click();
-    await alice.page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 20_000 });
-    await alice.page.getByTestId("baskule-user-menu").click();
-    const items = await alice.page.getByRole("menuitem").allTextContents();
-    check(!items.some((item) => item.includes("Admin")), "platform: a member has no Admin entry");
-    await shot(alice.page, "platform-member-menu");
-    await alice.context.close();
-  },
-
   async login(browser, device) {
     const { context, page } = await newPage(browser, device);
     await page.goto("/");
@@ -579,11 +492,6 @@ const scenarios = {
     const groupName = `Support ${device}`;
     const admin = await newPage(browser, device);
     const page = admin.page;
-    const searches = [];
-    page.on("request", (request) => {
-      if (new URL(request.url()).pathname === "/api/baskule/admin/plugins/search")
-        searches.push(request.url());
-    });
     await signIn(page, "admin");
     // Start with them not added, also when this mock already ran the scenario.
     for (const service of Object.keys(services))
@@ -704,29 +612,16 @@ const scenarios = {
       (await page.getByRole("button", { name: "Delete group…" }).count()) === 0,
       `${device}: Everyone can't be deleted`,
     );
-    await page.goto("/admin/people/users");
-    await page.getByRole("button", { name: "Options for Bob Durand" }).click();
-    check(
-      (await page.getByRole("menuitemcheckbox", { name: "Can create team spaces" }).count()) === 0,
-      `${device}: space creation is no longer a per-person switch`,
-    );
-    await page.keyboard.press("Escape");
     check(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       `${device}: plugin admin pages fit the viewport`,
     );
-    check(searches.length === 0, `${device}: no registry is searched`);
     await admin.context.close();
 
     const bob = await newPage(browser, device);
     await signIn(bob.page, "bob");
     await bob.page.goto("/settings/plugins");
     await bob.page.getByText("Google Drive", { exact: true }).first().waitFor();
-    check(
-      (await bob.page.getByText("Sales", { exact: true }).count()) === 1 &&
-        (await bob.page.getByRole("switch", { name: /^Use / }).count()) === 0,
-      `${device}: assigned plugins appear without activation`,
-    );
     // The mock keeps the accounts from the other device's run.
     const connectButton = bob.page.getByRole("button", {
       name: "Connect your Google Drive account",

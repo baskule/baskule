@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-// The computer's OpenShell policy (architecture E5), as a SandboxPolicy proto object.
+// The computer's OpenShell policy, as a SandboxPolicy proto object.
 // Mirror of openshell/policies/computer.yaml (a unit test checks they agree).
 export function computerPolicy() {
   return {

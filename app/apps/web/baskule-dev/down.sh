@@ -3,7 +3,7 @@
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../../.." && pwd)
-STATE=${MOCK_STATE_DIR:-$ROOT/.run/wp-e}
+STATE=${MOCK_STATE_DIR:-$ROOT/.run/web-mock}
 for name in mock vite opencode mock-llm; do
   pidfile=$STATE/$name.pid
   [[ -f $pidfile ]] || continue
