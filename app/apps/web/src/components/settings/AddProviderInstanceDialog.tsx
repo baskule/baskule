@@ -1,3 +1,4 @@
+import { t, useTranslation } from "../../i18n";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { CheckIcon } from "lucide-react";
@@ -10,7 +11,7 @@ import { RadioGroup } from "../ui/radio-group";
 import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import { SettingsGroup } from "./SettingsGroup";
 import { SettingsRow } from "./settingsLayout";
-import { t, useTranslation } from "../../i18n";
+
 import { useState } from "react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {

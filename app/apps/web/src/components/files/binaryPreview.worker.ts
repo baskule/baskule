@@ -1,6 +1,8 @@
+import { t } from "../../i18n";
+
 import type { Database } from "sql.js";
 
-import { boundedZip } from "./boundedZip";
+import { boundedZip } from "@t3tools/client-runtime/zip/bounded-zip";
 import {
   ARCHIVE_ENTRY_MAX_BYTES,
   ARCHIVE_MAX_ENTRIES,
@@ -243,7 +245,7 @@ self.addEventListener("message", (event: MessageEvent<BinaryWorkerRequest>) => {
   void handle(event.data).catch((cause: unknown) =>
     reply({
       type: "error",
-      message: cause instanceof Error ? cause.message : "Could not preview this file.",
+      message: cause instanceof Error ? cause.message : t("Could not preview this file."),
     }),
   );
 });

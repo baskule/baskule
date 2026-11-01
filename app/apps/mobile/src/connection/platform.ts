@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 import { ClientCapabilities, Persistence } from "@t3tools/client-runtime/platform";
 import {
   ConnectionBlockedError,
@@ -116,7 +117,7 @@ const networkPathChanges = Stream.callback<"network-changed">((queue) =>
 const layerWakeups = Wakeups.layer({
   changes: Stream.mergeAll(
     [
-      Stream.callback<"application-active-probe" | "application-active-reconnect">((queue) =>
+      Stream.callback<"application-active-probe" | "application-active-long">((queue) =>
         Effect.acquireRelease(
           Effect.sync(() => {
             let backgroundedAtMs = AppState.currentState === "background" ? Date.now() : null;

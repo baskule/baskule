@@ -1,4 +1,5 @@
-/* oxlint-disable react/no-array-index-key -- Notebook cells and outputs retain their saved source order. */
+import { useTranslation } from "../../i18n";
+
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { useEffect, useRef, useState } from "react";
 import type { Root, RootContent } from "mdast";
@@ -45,6 +46,7 @@ export default function NotebookPreview(props: {
   readonly notebook: Extract<OfficeWorkerResult, { type: "notebook" }>;
   readonly sizeBytes?: number | undefined;
 }) {
+  const t = useTranslation();
   const [visible, setVisible] = useState(20);
   const scroll = useRef<HTMLDivElement>(null);
   const [outputView, setOutputView] = useState(() => ({
@@ -57,7 +59,7 @@ export default function NotebookPreview(props: {
       (count, cell) => count + cell.outputs.filter((output) => output.kind === "html").length,
       0,
     );
-  // oxlint-disable-next-line t3code/react-effect-budget -- Observe output visibility and measure departing outputs to bound iframe lifetimes while preserving scroll height.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Observe output visibility and measure departing outputs to bound iframe lifetimes while preserving scroll height.
   useEffect(() => {
     const root = scroll.current;
     if (!root || !outputCount) return;
@@ -103,13 +105,14 @@ export default function NotebookPreview(props: {
           ? ` · ${props.sizeBytes === 0 ? "0 bytes" : formatAttachmentSize(props.sizeBytes)}`
           : ""}
       </div>
-      <FileSurfaceNotice>Saved outputs only. Code is never executed.</FileSurfaceNotice>
+      <FileSurfaceNotice>{t("Saved outputs only. Code is never executed.")}</FileSurfaceNotice>
       <div ref={scroll} className="scrollbar-gutter-both min-h-0 flex-1 overflow-auto">
         <div className="mx-auto max-w-4xl space-y-5 px-5 py-6">
           {props.notebook.cells.slice(0, visible).map((cell, index) => (
             <section
+              // oxlint-disable-next-line react/no-array-index-key -- Immutable document coordinates identify this row or cell for the mounted file.
               key={index}
-              aria-label={`Cell ${index + 1}`}
+              aria-label={t("Cell {{value1}}", { value1: index + 1 })}
               className="min-w-0 overflow-hidden rounded-md border border-border/60"
             >
               <div className="border-b border-border/60 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
@@ -131,6 +134,7 @@ export default function NotebookPreview(props: {
               ) : null}
               {cell.outputs.map((output, outputIndex) => (
                 <div
+                  // oxlint-disable-next-line react/no-array-index-key -- Output ordinals identify immutable outputs in this mounted notebook cell.
                   key={outputIndex}
                   data-notebook-output={
                     output.kind === "html" ? `${index}-${outputIndex}` : undefined
@@ -168,11 +172,12 @@ export default function NotebookPreview(props: {
             </section>
           ))}
           {props.notebook.cells.length === 0 ? (
-            <p className="text-sm text-muted-foreground">This notebook is empty.</p>
+            <p className="text-sm text-muted-foreground">{t("This notebook is empty.")}</p>
           ) : null}
           {visible < props.notebook.cells.length ? (
             <Button variant="outline" size="sm" onClick={() => setVisible((count) => count + 20)}>
-              Show more cells ({props.notebook.cells.length - visible} remaining)
+              {t("Show more cells (")}
+              {props.notebook.cells.length - visible} remaining)
             </Button>
           ) : null}
         </div>

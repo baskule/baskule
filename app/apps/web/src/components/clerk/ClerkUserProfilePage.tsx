@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 
 import type { ReactNode } from "react";

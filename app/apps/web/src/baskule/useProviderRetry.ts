@@ -19,6 +19,7 @@ export function useBaskuleProviderRetry(environmentId: EnvironmentId, unavailabl
   const retry = useEffectEvent(() => {
     void refreshProviders({ environmentId, input: {} });
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the provider-discovery retry timer while the active connection needs it.
   useEffect(() => {
     if (!active) return;
     const timer = setInterval(retry, RETRY_MS);

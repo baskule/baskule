@@ -4,7 +4,7 @@
   "env": { "IDLE_MINUTES": "3", "AUTH_RATE_LIMIT": "0", "BASKULE_AGENT_IDLE_S": "60", "BASKULE_LOG_LEVEL": "Warn" },
   "services": {
     "fake-llm": { "command": "node", "args": ["${ROOT}/platform/dev/fake-llm/server.mjs", "--port", "${PORT_FAKE_LLM}"], "health": "http://127.0.0.1:${PORT_FAKE_LLM}/_fake/requests" },
-    "computerd": { "command": "node", "args": ["${ROOT}/computerd/v2/src/main.ts"], "health": "http://127.0.0.1:${PORT_COMPUTERD}/healthz" },
+    "computerd": { "command": "node", "args": ["${ROOT}/computerd/src/main.ts"], "health": "http://127.0.0.1:${PORT_COMPUTERD}/healthz" },
     "celld": { "health": "${LOOPBACK_URL}/" }
   }
 }

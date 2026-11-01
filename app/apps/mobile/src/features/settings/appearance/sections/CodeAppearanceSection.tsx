@@ -1,5 +1,4 @@
 import { useTranslation } from "../../../../i18n";
-import { useCallback } from "react";
 
 import {
   CODE_FONT_SIZE_STEP,
@@ -20,12 +19,9 @@ export function CodeAppearanceSection() {
   const { isReady, appearance, setCodeFontSize, setCodeWordBreak } = useAppearancePreferences();
   const custom = appearance.isCodeFontSizeCustom;
 
-  const handleToggleCustom = useCallback(
-    (enabled: boolean) => {
-      setCodeFontSize(enabled ? appearance.codeFontSize : null);
-    },
-    [appearance.codeFontSize, setCodeFontSize],
-  );
+  const handleToggleCustom = (enabled: boolean) => {
+    setCodeFontSize(enabled ? appearance.codeFontSize : null);
+  };
 
   return (
     <SettingsSection title={t("Code & Diffs")}>

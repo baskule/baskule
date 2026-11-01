@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { useNavigation } from "@react-navigation/native";
 import { SettingsRow } from "./components/SettingsRow";
 import { AuthSettingsWriteScope } from "@t3tools/contracts";
@@ -26,7 +27,7 @@ import {
 } from "./components/SettingsEnvironmentFilterHeader";
 import { BranchNamingSettings } from "./components/BranchNamingSettings";
 import { DatabaseStorageNotice } from "./components/DatabaseStorageNotice";
-import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
+import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { SettingsProjectOverridesSection } from "./components/SettingsProjectOverridesSection";
@@ -312,19 +313,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
       setPendingWrites((count) => count - 1);
     });
   };
-  const supportsProjectOverrides = targets.every(
-    (target) =>
-      target.environment.serverConfig.environment.capabilities.projectSettingsOverrides === true,
-  );
-  const disabled =
-    !canWriteSettings ||
-    pendingWrites > 0 ||
-    !hasConnectedSelection ||
-    (projectSelected && !supportsProjectOverrides);
-  const supportsContinuation = targets.every(
-    (target) =>
-      target.environment.serverConfig.environment.capabilities.threadRestartContinuation === true,
-  );
+  const disabled = !canWriteSettings || pendingWrites > 0 || !hasConnectedSelection;
   const disabledFor = (key: string) =>
     disabled ||
     (projectSelected &&
@@ -360,7 +349,6 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                   hasOverrides={targets.some((target) =>
                     PAGE_PROJECT_KEYS[props.page].some((key) => target.sources[key] === "project"),
                   )}
-                  supportsOverrides={supportsProjectOverrides}
                   pending={pendingWrites > 0}
                   disabled={!canWriteSettings}
                   onClear={clearProjectOverrides}
@@ -572,15 +560,9 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                       <SettingsSwitchRow
                         icon="arrow.uturn.forward"
                         label={t("Continue after restart")}
-                        subtitle={
-                          supportsContinuation
-                            ? t("Resume interrupted threads after an update or restart.")
-                            : t("Update older servers to control restart continuation.")
-                        }
+                        subtitle={t("Resume interrupted threads after an update or restart.")}
                         value={uniform("continueThreadsAfterServerUpdate")}
-                        disabled={
-                          disabledFor("continueThreadsAfterServerUpdate") || !supportsContinuation
-                        }
+                        disabled={disabledFor("continueThreadsAfterServerUpdate")}
                         onValueChange={(value) =>
                           write({ continueThreadsAfterServerUpdate: value })
                         }

@@ -1,3 +1,4 @@
+import { useTranslation } from "../i18n";
 import type { BaskuleAuthConfig } from "@t3tools/contracts/baskule";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Linking from "expo-linking";
@@ -5,7 +6,6 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useTranslation } from "../i18n";
 import { LanguageSetting } from "../features/settings/LanguageSetting";
 
 import { BaskuleWordmark } from "../components/BaskuleBrand";
@@ -57,7 +57,7 @@ export function BaskuleLoginScreen(props: {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanHandled = useRef(false);
   const requestRevision = useRef(0);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Unmount cancels the in-flight native sign-in operation.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Unmount cancels the in-flight native sign-in operation.
   useEffect(
     () => () => {
       requestRevision.current++;
@@ -110,14 +110,14 @@ export function BaskuleLoginScreen(props: {
   };
 
   const receiveOpenedLink = useEffectEvent(handleLink);
-  // oxlint-disable-next-line t3code/react-effect-budget -- The parent forwards native connection links after the screen mounts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- The parent forwards native connection links after the screen mounts.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- A native link starts a new server lookup and confirmation on this already-mounted screen.
     if (props.openedUrl) receiveOpenedLink(props.openedUrl);
   }, [props.openedUrl]);
 
   const connected = useEffectEvent(() => props.onConnected?.());
-  // oxlint-disable-next-line t3code/react-effect-budget -- Browser sign-in completes asynchronously through the server polling endpoint.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Browser sign-in completes asynchronously through the server polling endpoint.
   useEffect(() => {
     if (!pending) return;
     let cancelled = false;

@@ -16,6 +16,8 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import { ServerActivation } from "../serverActivation.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 
+const taskActor = { id: "alice", name: "Alice" };
+
 afterEach(() => vi.unstubAllEnvs());
 
 const dependencies = Layer.mergeAll(
@@ -83,22 +85,22 @@ it.effect.each([
     yield* Effect.gen(function* () {
       const service = yield* ScheduledTaskService.ScheduledTaskService;
       const decoded = yield* decodeInput({ ...input, schedule: { type: "interval", everyMs } });
-      const created = yield* service.upsert(decoded);
+      const created = yield* service.upsert(decoded, taskActor);
       expect(created.task.nextRunAt).toBe(expected);
-      expect((yield* service.list()).tasks[0]?.nextRunAt).toBe(expected);
+      expect((yield* service.list(taskActor)).tasks[0]?.nextRunAt).toBe(expected);
 
-      const paused = yield* service.setEnabled({ id: created.task.id, enabled: false });
+      const paused = yield* service.setEnabled({ id: created.task.id, enabled: false }, taskActor);
       expect(paused.task.nextRunAt).toBeNull();
-      const resumed = yield* service.setEnabled({ id: created.task.id, enabled: true });
+      const resumed = yield* service.setEnabled({ id: created.task.id, enabled: true }, taskActor);
       expect(resumed.task.nextRunAt).toBe(expected);
 
       // Exercise completion rescheduling without starting any provider process.
-      const completed = yield* service.runNow({ id: created.task.id });
+      const completed = yield* service.runNow({ id: created.task.id }, taskActor);
       expect(completed.task.lastRunStatus).toBe("failed");
       expect(completed.threadId).toBeNull();
       expect(completed.task.runCount).toBe(1);
       expect(completed.task.nextRunAt).toBe(expected);
-      expect((yield* service.list()).tasks[0]?.nextRunAt).toBe(expected);
+      expect((yield* service.list(taskActor)).tasks[0]?.nextRunAt).toBe(expected);
     }).pipe(Effect.provide(serviceLayer));
   }).pipe(
     // Keep the real scheduler parked while exercising finite service actions.
@@ -120,9 +122,9 @@ it.effect.each([
         ...input,
         schedule: { type: "fixed_time", timeOfDay: "09:00" },
       });
-      const created = yield* service.upsert(decoded);
+      const created = yield* service.upsert(decoded, taskActor);
       expect(created.task.nextRunAt).toBe(expected);
-      expect((yield* service.list()).tasks[0]?.nextRunAt).toBe(expected);
+      expect((yield* service.list(taskActor)).tasks[0]?.nextRunAt).toBe(expected);
     }).pipe(Effect.provide(serviceLayer));
   }).pipe(
     Effect.provideService(ServerActivation, Effect.never),

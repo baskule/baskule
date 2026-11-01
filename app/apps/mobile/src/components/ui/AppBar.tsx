@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { Toolbar } from "./Toolbar";
 import { AppActivityIndicator } from "./AppActivityIndicator";
 import type { HeaderBarButtonMailSearchToolbarItem } from "react-native-screens";

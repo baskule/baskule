@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { lazy, memo, Suspense } from "react";
 
 import { RenderErrorBoundary } from "../RenderErrorBoundary";

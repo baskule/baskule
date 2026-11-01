@@ -157,7 +157,7 @@ function ThreadLineageGroup(props: {
             className={cn(
               THREAD_DETAILS_PANEL_CHEVRON_CLASS,
               "transition-transform",
-              !expanded && "rotate-180 redesign:-rotate-90",
+              !expanded && "-rotate-90",
             )}
           />
         </ThreadDetailsControl>

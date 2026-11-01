@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 import { Component, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 

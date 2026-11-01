@@ -1,5 +1,5 @@
 import * as Alchemy from "alchemy";
-import * as Axiom from "alchemy/Axiom";
+import * as Axiom from "@alchemy.run/axiom";
 import * as Output from "alchemy/Output";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -40,14 +40,6 @@ export const RelayObservability = Effect.gen(function* () {
     })),
   });
 
-  const mobileIngestToken = yield* Axiom.ApiToken("RelayMobileAxiomIngestToken", {
-    name: relayResourceNameForStage("t3-code-mobile-otel-ingest", stage),
-    description: "Owned by Alchemy. Scoped OTLP ingest token for T3 Code mobile spans.",
-    datasetCapabilities: Output.map(traces.name, (dataset) => ({
-      [dataset]: { ingest: ["create" as const] },
-    })),
-  });
-
   const clientIngestToken = yield* Axiom.ApiToken("RelayClientAxiomIngestToken", {
     name: relayResourceNameForStage("t3-code-relay-client-otel-ingest", stage),
     description: "Owned by Alchemy. Scoped OTLP ingest token for first-party relay client spans.",
@@ -65,7 +57,7 @@ export const RelayObservability = Effect.gen(function* () {
 
   yield* RelayMonitoring(traces);
 
-  return { traces, workerIngestToken, mobileIngestToken, clientIngestToken } as const;
+  return { traces, workerIngestToken, clientIngestToken } as const;
 });
 
 export const withSpanAttributes =

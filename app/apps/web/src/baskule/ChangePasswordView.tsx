@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 // baskule: Settings → Change password (Better Auth /auth/change-password). Other devices are
 // signed out, as after a temporary password is replaced.
 import { useState, type FormEvent } from "react";

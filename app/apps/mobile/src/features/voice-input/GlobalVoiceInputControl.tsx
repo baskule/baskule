@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { useState, type ReactNode } from "react";
 import { Linking, Platform, Pressable, useWindowDimensions, View } from "react-native";

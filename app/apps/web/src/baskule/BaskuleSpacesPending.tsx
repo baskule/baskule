@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 // baskule: shown while none of the person's spaces has answered yet (cells waking up), and
 // when the server can't be reached at all.
 import { useEffect, useState } from "react";
@@ -15,6 +16,7 @@ const SLOW_AFTER_MS = 15_000;
 export function BaskuleSpacesPending() {
   const t = useTranslation();
   const [slow, setSlow] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the slow-loading notification timer while waiting for the space connection.
   useEffect(() => {
     const timer = window.setTimeout(() => setSlow(true), SLOW_AFTER_MS);
     return () => window.clearTimeout(timer);

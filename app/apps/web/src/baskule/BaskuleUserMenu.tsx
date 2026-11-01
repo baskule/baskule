@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 // baskule: the signed-in person in the sidebar footer: their Settings, the admin area for admins,
 // and sign out.
 import { useNavigate } from "@tanstack/react-router";

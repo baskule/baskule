@@ -1,5 +1,5 @@
 // An Effect ChildProcessSpawner whose processes run on the space's computer, through computerd's exec route
-// (architecture E4, computerd/v2/README.md "Exec"). It is the `spawner` of OpenCode's WorkspaceDriver, so the built-in
+// (architecture E4, computerd/README.md "Exec"). It is the `spawner` of OpenCode's WorkspaceDriver, so the built-in
 // shell/read/write/edit/patch/glob/grep tools (file ops = OpenCode's exec defaults: sh + GNU coreutils) all run there.
 //
 //   POST /v1/spaces/:id/exec  {argv, cwd, env, stdin(base64), id}  →  NDJSON {"t":"o"|"e","d":b64} … {"t":"x","code":N}

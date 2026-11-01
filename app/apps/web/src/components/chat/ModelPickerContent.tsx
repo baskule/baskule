@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import {
   type ProviderInstanceId,
   type EnvironmentId,
@@ -41,6 +42,7 @@ import {
 } from "../ui/combobox";
 import { ModelEsque } from "./providerIconUtils";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
+import { registerModelPickerContent } from "../../modelPickerVisibility";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import {
   modelPickerJumpCommandForIndex,
@@ -49,7 +51,6 @@ import {
   shortcutLabelForCommand,
 } from "../../keybindings";
 import {
-  useClientSettings,
   useEnvironmentModelPreferences,
   useToggleEnvironmentModelFavorite,
 } from "~/hooks/useSettings";
@@ -151,7 +152,7 @@ const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
 const MODEL_LIST_ESTIMATED_ITEM_SIZE = 52;
 // Rendered heights in `--spacing` units. Chrome is the search box and list padding, plus a 1px border.
 const ONE_LINE_ROW_UNITS = 8;
-const TWO_LINE_ROW_UNITS = { classic: 11.25, redesign: 12 };
+const TWO_LINE_ROW_UNITS = 12;
 const ROW_SEPARATOR_UNITS = 0.5;
 const LIST_CHROME_UNITS = 15.5;
 
@@ -272,6 +273,7 @@ function ModelPickerList({
     setShowBottomScrollFade(itemKeys.length > 5);
   }
   const measureScrollFades = useEffectEvent(updateScrollFades);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the list scroller in animation frames after a new list lays out to set scroll fades
   useLayoutEffect(() => {
     let nestedFrame = 0;
     const frame = window.requestAnimationFrame(() => {
@@ -322,6 +324,7 @@ function ModelPickerList({
 // Capture gives picker shortcuts priority over the composer.
 function WindowKeyDownListener({ onKeyDown }: { onKeyDown: (event: KeyboardEvent) => void }) {
   const handleKeyDown = useEffectEvent(onKeyDown);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes a capture-phase window keydown listener for the picker's lifetime
   useEffect(() => {
     const listener = (event: KeyboardEvent) => handleKeyDown(event);
     window.addEventListener("keydown", listener, true);
@@ -366,6 +369,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const [searchQuery, setSearchQuery] = useState("");
   const modelListRef = useRef<LegendListRef | null>(null);
   const pickerContentRef = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes this picker's mount to global keydown handlers
+  useLayoutEffect(() => registerModelPickerContent(), []);
   const highlightedModelKeyRef = useRef<string | null>(null);
   const { favorites } = useEnvironmentModelPreferences(props.environmentId);
   const activeEntry = props.instanceEntries.find(
@@ -564,15 +569,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const isLocked = lockedProvider !== null;
   const isSearching = searchQuery.trim().length > 0;
   // Inside one provider's tab the provider line repeats the selected rail icon on every row.
-  const redesign = useClientSettings((s) => s.redesignEnabled);
-  const rowsMixProviders = !redesign || isSearching || selectedInstanceId === "favorites";
+  const rowsMixProviders = isSearching || selectedInstanceId === "favorites";
   // Fit the tallest tab so switching tabs never resizes the popup and moves the rail under the cursor.
   const tallestTabUnits = (() => {
     const unitsByTab = new Map<ProviderInstanceId | "favorites", number>();
     const addRow = (tab: ProviderInstanceId | "favorites", twoLine: boolean) => {
-      const rowUnits = twoLine
-        ? TWO_LINE_ROW_UNITS[redesign ? "redesign" : "classic"]
-        : ONE_LINE_ROW_UNITS;
+      const rowUnits = twoLine ? TWO_LINE_ROW_UNITS : ONE_LINE_ROW_UNITS;
       const previous = unitsByTab.get(tab);
       unitsByTab.set(
         tab,
@@ -587,7 +589,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (model.isLegacy && !isFavorite) {
         tabsWithLegacyRow.add(model.instanceId);
       } else {
-        addRow(model.instanceId, !redesign || Boolean(model.subProvider));
+        addRow(model.instanceId, Boolean(model.subProvider));
       }
     }
     for (const instanceId of tabsWithLegacyRow) addRow(instanceId, true);
@@ -964,10 +966,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       className="group w-full cursor-pointer"
                     >
                       <div className="min-w-0 flex-1 text-left">
-                        <div className="text-xs font-medium leading-snug redesign:text-sm redesign:font-normal">
-                          {t("Legacy models")}
-                        </div>
-                        <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground/70 redesign:text-muted-foreground">
+                        <div className="text-sm font-normal leading-snug">{t("Legacy models")}</div>
+                        <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground">
                           {legacySection.legacyModels.length} {t("models")}
                         </div>
                       </div>
@@ -992,7 +992,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     index={index}
                     slug={model.slug}
                     name={model.name}
-                    shortName={model.shortName}
                     subProvider={model.subProvider}
                     instanceId={model.instanceId}
                     driverKind={model.driverKind}
@@ -1005,10 +1004,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                         ? selectedModelKeySet.has(modelKey)
                         : modelKey === activeModelKey
                     }
-                    showSelection={selectedModelKeys !== undefined || redesign}
                     showProvider={rowsMixProviders || Boolean(model.subProvider)}
-                    preferShortName={!isLocked}
-                    useTriggerLabel={false}
                     showNewBadge={model.badge === "new"}
                     unavailable={model.isUnavailable === true}
                     jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}

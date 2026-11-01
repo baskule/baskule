@@ -1,9 +1,10 @@
+import { languageNames, locales, useTranslation } from "../../i18n";
 import { setLanguagePreference, useLanguagePreference } from "../../languagePreferences";
 import { useState } from "react";
 import { SettingsSection } from "./components/SettingsSection";
-import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
+import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
-import { languageNames, locales, useTranslation } from "../../i18n";
+
 import type { LanguagePreference } from "@t3tools/shared/localization";
 import { isLanguagePreference } from "@t3tools/shared/localization";
 import { Menu } from "../../components/ui/Menu";

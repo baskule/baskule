@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { lazy, Suspense, useSyncExternalStore } from "react";
 
 import { useTheme } from "../../hooks/useTheme";

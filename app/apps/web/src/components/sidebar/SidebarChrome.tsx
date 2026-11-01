@@ -1,9 +1,9 @@
 import { useTranslation } from "../../i18n";
+
 import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
@@ -32,7 +32,7 @@ import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
-import { baskule } from "~/baskule/flags"; // baskule:
+import { baskule } from "~/baskule/flags";
 import { BaskuleUserMenu } from "~/baskule/BaskuleUserMenu"; // baskule:
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
@@ -45,7 +45,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const backdropVariant = baskule.hideSettings
     ? null
-    : resolveSidebarStageBackdropVariant(stageLabel, environmentIdentificationMode === "artwork");
+    : resolveSidebarStageBackdropVariant(stageLabel, environmentIdentificationMode);
   const pillLabel =
     environmentIdentificationMode === "pill"
       ? resolveEnvironmentIdentificationPillLabel(stageLabel)
@@ -249,7 +249,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<PullRequestGlyph.pullRequest />}
-              label="Pull requests"
+              label={t("Pull requests")}
               onClick={handlePullRequestsClick}
             />
           ) : null}
@@ -260,19 +260,15 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
         </>
       )}
+      <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
     </SidebarMenu>
   );
 });
 
-export const SidebarChromeFooter = memo(function SidebarChromeFooter({
-  showUndoNotice = false,
-}: {
-  showUndoNotice?: boolean;
-}) {
+export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
     <SidebarFooter>
-      {showUndoNotice ? <SidebarThreadUndoNotice /> : null}
       {baskule.hideSettings ? null : <SidebarProviderUpdatePill />}
       {baskule.hideSettings ? null : <SidebarUpdateArchitectureWarning />}
       <SidebarUtilityMenu />

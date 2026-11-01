@@ -1,12 +1,14 @@
+import { useTranslation } from "../../i18n";
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
-import { useTranslation } from "../../i18n";
+
 import { DesktopServerForm } from "./DesktopServerForm";
 
 /** A one-time OS connection link is shown for approval before changing installations. */
 export function BaskuleDesktopLinks() {
   const t = useTranslation();
   const [link, setLink] = useState<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Register desktop deep-link delivery and release readiness when the handler unmounts.
   useEffect(() => {
     const links = window.desktopBridge?.webLinks;
     if (!links) return;

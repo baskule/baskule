@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n";
 // baskule: AI → Voice input: whether people can dictate messages, and the speech-to-text model.
 import { useId, useState, type FormEvent } from "react";
 import {
@@ -5,7 +6,6 @@ import {
   type BaskuleTranscriptionProviderId,
 } from "@t3tools/contracts/baskule";
 
-import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";

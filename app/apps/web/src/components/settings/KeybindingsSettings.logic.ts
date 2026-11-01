@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import {
   STATIC_KEYBINDING_COMMANDS,
   type KeybindingCommand,
@@ -401,6 +402,8 @@ export function buildKeybindingCommandOptions(
 }
 
 export function commandLabel(command: KeybindingCommand): string {
+  if (command === "workspace.focusNext") return "Focus Next Workspace Area";
+  if (command === "workspace.focusPrevious") return "Focus Previous Workspace Area";
   if (command === "composer.sendAlternate") return t("Composer: Opposite Queue or Steer Action");
   if (command === "composer.sendBackground") return t("Composer: Start in Background");
   if (command === "composer.sendAndNewThread") return t("Composer: Send and Start New Thread");

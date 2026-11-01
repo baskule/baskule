@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../../i18n";
+
 import {
   BASE_FONT_SIZE_STEP,
   MAX_BASE_FONT_SIZE,

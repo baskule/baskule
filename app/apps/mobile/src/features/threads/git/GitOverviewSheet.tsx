@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../i18n";
+
 import * as Dialog from "../../../components/ui/Dialog";
 import { SheetHeader } from "../../../components/ui/SheetHeader";
 import { useOpenPullRequest } from "../../../native/useOpenPullRequest";
@@ -19,7 +20,6 @@ import {
 import { SymbolView } from "../../../components/ui/AppSymbol";
 import { useEffect, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
-
 import { ScreenStack } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeInspectorContent } from "../../../native/NativeInspectorContent";
@@ -44,7 +44,6 @@ import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
-import { resolveGitOverviewReviewNavigationAction } from "./git-overview-navigation";
 import { menuItemIconName, statusSummary } from "./gitSheetComponents";
 import {
   LinkedPullRequestRow,
@@ -67,6 +66,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
   const navigation = useNavigation();
   const { environmentId, threadId } = props.route.params;
   const isBlankLink = environmentId.trim().length === 0 || threadId.trim().length === 0;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pops the navigator when the route link names a blank environment or thread
   useEffect(() => {
     if (isBlankLink) navigation.goBack();
   }, [isBlankLink, navigation]);
@@ -290,7 +290,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
           onPress={() => {
             const params = { environmentId, threadId };
             navigation.dispatch(
-              resolveGitOverviewReviewNavigationAction(presentation) === "replace"
+              presentation === "sheet"
                 ? StackActions.replace("ThreadReview", params)
                 : CommonActions.navigate("ThreadReview", params),
             );
@@ -400,7 +400,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       actions={[
         {
           id: "refresh",
-          title: "Refresh repository status",
+          title: t("Refresh repository status"),
           attributes: { disabled: busy || isRefreshing },
         },
       ]}
@@ -486,7 +486,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
               ? undefined
               : [
                   {
-                    accessibilityLabel: "Refresh repository status",
+                    accessibilityLabel: t("Refresh repository status"),
                     disabled: busy,
                     icon: "arrow.clockwise",
                     onPress: () => void gitActions.refreshSelectedThreadGitStatus(),

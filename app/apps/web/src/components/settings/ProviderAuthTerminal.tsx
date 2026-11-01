@@ -1,4 +1,5 @@
 import { useTranslation, t as translate } from "../../i18n";
+
 import type { ProviderAuthResponse } from "@t3tools/contracts";
 import { useEffect, useRef, useState } from "react";
 import { GhosttyTerminalSurface } from "../../terminal/ghostty/surface";
@@ -22,6 +23,7 @@ export default function ProviderAuthTerminal({
   // The surface captures its callbacks once at creation.
   const respond = useStableCallback(onResponse);
   const offset = outputOffset ?? output.length;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes new auth output into the imperative Ghostty terminal surface
   useEffect(() => {
     if (!surface) return;
     const delta = offset - written.current;

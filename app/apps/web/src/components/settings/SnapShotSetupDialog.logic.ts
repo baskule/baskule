@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type { DesktopSnapShotState } from "@t3tools/contracts";
 
 export type CaptureSetupStep = "access" | "shortcut";

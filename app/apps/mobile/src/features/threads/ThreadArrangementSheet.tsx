@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { SheetHeader } from "../../components/ui/SheetHeader";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { useAtomValue } from "@effect/atom-react";
@@ -11,7 +12,6 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-g
 import Reanimated, { ReduceMotion, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { threadDragGapOffset } from "./threadDragGap";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -37,6 +37,7 @@ import {
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
   threadListInboxReturns,
 } from "./threadListV2";
+import { useThreadListNow } from "./use-thread-list-now";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
 
 const ROW_HEIGHT = 56;
@@ -134,8 +135,8 @@ function DragHandle(props: {
         accessibilityState={{ disabled: props.disabled }}
         accessibilityActions={[
           ...props.sectionActions,
-          ...(props.canMoveUp ? [{ name: "decrement", label: "Move up" }] : []),
-          ...(props.canMoveDown ? [{ name: "increment", label: "Move down" }] : []),
+          ...(props.canMoveUp ? [{ name: "decrement", label: t("Move up") }] : []),
+          ...(props.canMoveDown ? [{ name: "increment", label: t("Move down") }] : []),
         ]}
         onAccessibilityAction={({ nativeEvent }) => {
           if (props.disabled) return;
@@ -164,7 +165,7 @@ function DragHandle(props: {
   );
 }
 
-export function ThreadArrangementSheet(props: { onClose: () => void }) {
+function ThreadArrangementSheet(props: { onClose: () => void }) {
   const t = useTranslation();
   const threads = useAtomValue(environmentThreadShells.navigationThreadShellsAtom);
   const configs = useAtomValue(environmentServerConfigsAtom);
@@ -173,7 +174,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
   const dropBusy = useAtomValue(threadDropBusyAtom);
   const { moveThread } = useThreadListActions();
   const { workingShelfEnabled } = useThreadListV2ShelfPreferences();
-  const [now, setNow] = useState(() => new Date().toISOString());
+  const now = useThreadListNow(threads);
   const [expanded, setExpanded] = useState({ snoozed: false, settled: false });
   const [settledVisibleCount, setSettledVisibleCount] = useState(
     THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
@@ -184,36 +185,14 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
     expanded: expanded.settled,
     visibleCount: settledVisibleCount,
   });
-  useEffect(() => {
-    const wakeAt = Math.min(
-      ...threads.flatMap((thread) => {
-        const at = Date.parse(thread.snoozedUntil ?? "");
-        return at > Date.parse(now) ? [at] : [];
-      }),
-    );
-    if (!Number.isFinite(wakeAt)) return;
-    const timer = setTimeout(
-      () => setNow(new Date().toISOString()),
-      Math.min(Math.max(0, wakeAt - Date.now()) + 1, 2_147_483_647),
-    );
-    return () => clearTimeout(timer);
-  }, [threads, now]);
   const sections = useMemo(() => {
     const shared = {
       threads,
       now,
       queuedThreadKeys,
       pendingOrder,
-      settlementEnvironmentIds: new Set(
-        [...configs].flatMap(([id, config]) =>
-          config.environment.capabilities.threadSettlement ? [id] : [],
-        ),
-      ),
-      snoozeEnvironmentIds: new Set(
-        [...configs].flatMap(([id, config]) =>
-          config.environment.capabilities.threadSnooze ? [id] : [],
-        ),
-      ),
+      settlementEnvironmentIds: new Set(configs.keys()),
+      snoozeEnvironmentIds: new Set(configs.keys()),
     };
     const pinned = getThreadListV2OrderedSection({ ...shared, section: "pinned" });
     const active = getThreadListV2OrderedSection({ ...shared, section: "active" });
@@ -241,15 +220,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
         allThreads: threads,
         section,
         reorderableEnvironmentIds: new Set(
-          [...configs].flatMap(([id, config]) =>
-            (
-              section === "pinned"
-                ? config.environment.capabilities.threadPinReorder
-                : !workingShelfEnabled && config.environment.capabilities.threadActiveReorder
-            )
-              ? [id]
-              : [],
-          ),
+          section === "pinned" || !workingShelfEnabled ? configs.keys() : [],
         ),
       });
     return { pinned: planner("pinned"), active: planner("active") };
@@ -292,10 +263,12 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
   const orderVersion = rows
     .map((row) => `${row.key}:${row.thread?.pinOrderKey}:${row.thread?.activeOrderKey}`)
     .join("|");
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- cancels the in-progress drag gesture when the thread order changes underneath it
   useEffect(() => {
     // oxlint-disable-next-line react/exhaustive-effect-dependencies, react/set-state-in-effect -- A changed thread order cancels the in-progress drag and clears its preview; stop only touches refs and state setters.
     stop();
   }, [orderVersion]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- cancels the pending drag animation frame on unmount
   useEffect(
     () => () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
@@ -328,10 +301,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
           !target.thread || contentY < target.offset + target.height / 2 ? "before" : "after",
       };
       if (target.section === "settled") {
-        if (
-          current.sourceSection !== "settled" &&
-          configs.get(current.thread.environmentId)?.environment.capabilities.threadSettlement
-        )
+        if (current.sourceSection !== "settled" && configs.has(current.thread.environmentId))
           destination = { section: "settled", targetId: null, placement: "before" };
       } else if (latest.current.planners[target.section](keyOf(current.thread), candidate) !== null)
         destination = candidate;
@@ -451,8 +421,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
                       item.section === "pinned" || item.section === "active"
                         ? planners[item.section]
                         : null;
-                    const capabilities =
-                      thread && configs.get(thread.environmentId)?.environment.capabilities;
+                    const configLoaded = thread ? configs.has(thread.environmentId) : false;
                     const sectionActions = thread
                       ? (["pinned", "active", "settled"] as const).flatMap<{
                           name: "pinned" | "active" | "settled";
@@ -462,16 +431,11 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
                           const label = threadDragAction(item.section, section);
                           if (!label) return [];
                           if (section === "settled")
-                            return capabilities?.threadSettlement ? [{ name: section, label }] : [];
+                            return configLoaded ? [{ name: section, label }] : [];
                           if (
-                            ((section === "pinned" || thread.pinnedAt != null) &&
-                              !capabilities?.threadPinning) ||
-                            (section === "active" &&
-                              item.section === "settled" &&
-                              !capabilities?.threadSettlement) ||
-                            (section === "active" &&
-                              item.section === "snoozed" &&
-                              !capabilities?.threadSnooze)
+                            ((section === "pinned" || thread.pinnedAt != null) && !configLoaded) ||
+                            (section === "active" && item.section === "settled" && !configLoaded) ||
+                            (section === "active" && item.section === "snoozed" && !configLoaded)
                           )
                             return [];
                           return planners[section](item.key, {
@@ -509,12 +473,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
                               disabled={
                                 dropBusy ||
                                 pendingOrder !== null ||
-                                !(
-                                  configs.get(thread.environmentId)?.environment.capabilities
-                                    .threadPinReorder ||
-                                  configs.get(thread.environmentId)?.environment.capabilities
-                                    .threadActiveReorder
-                                )
+                                !configs.has(thread.environmentId)
                               }
                               sectionActions={sectionActions}
                               onSectionMove={(section) => {
@@ -557,10 +516,12 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
                           >
                             <Text className="text-sm text-foreground-muted">
                               {olderSettledShelf.loading
-                                ? "Loading"
+                                ? t("Loading")
                                 : olderSettledShelf.failed
-                                  ? "Could not load older threads. Retry"
-                                  : `Show more (${settledCount - visibleSettled.length} settled hidden)`}
+                                  ? t("Could not load older threads. Retry")
+                                  : t("Show more ({{value1}} settled hidden)", {
+                                      value1: settledCount - visibleSettled.length,
+                                    })}
                             </Text>
                           </Pressable>
                         ) : (

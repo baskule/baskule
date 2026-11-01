@@ -63,8 +63,10 @@ it("generates distinct one-time QR links, keeps paste available, and retires the
     getBaskuleServer: () => "https://installation.example",
   });
   await using screen = await render(<ConnectDeviceSection />);
-  using _clock = fakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-  const expiresAt = Date.now() + 600_000;
+  using _clock = fakeTimers();
+  const now = new Date("2026-10-30T00:00:00Z");
+  vi.setSystemTime(now);
+  const expiresAt = now.getTime() + 600_000;
   using create = vi
     .spyOn(baskuleApi, "createConnectCode")
     .mockResolvedValueOnce({ code: "first", expiresAt })

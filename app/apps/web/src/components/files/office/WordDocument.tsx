@@ -1,5 +1,5 @@
-/* oxlint-disable react/no-array-index-key -- Text spans retain their order within an immutable page. */
-/* oxlint-disable react/no-unstable-nested-components -- These callbacks return overlays, and are invoked as render functions. */
+import { useTranslation } from "../../../i18n";
+
 import { Tooltip, TooltipTrigger, TooltipPopup } from "~/components/ui/tooltip";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { FileSurfaceLoading } from "../fileSurfaceChrome";
@@ -25,10 +25,11 @@ export default function WordDocument(props: {
   onDetails: (text: string) => void;
   onError: (cause: unknown) => void;
 }) {
+  const t = useTranslation();
   const { onError, bytes, onDetails } = props;
   const [opened, setOpened] = useState<Opened>();
   const scroll = useRef<((index: number, y?: number) => void) | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Own the document worker and cancel its layout and painting requests when the document changes or unmounts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the document worker and cancel its layout and painting requests when the document changes or unmounts.
   useEffect(() => {
     const controller = new AbortController();
     const worker = new Worker(new URL("./document.worker.ts", import.meta.url), { type: "module" });
@@ -98,10 +99,10 @@ export default function WordDocument(props: {
     <OfficePages
       pages={opened.pages}
       paint={opened.paint}
-      label="Page"
+      label={t("Page")}
       scrollRef={scroll}
       onError={onError}
-      overlay={(index) => (
+      renderOverlay={(index) => (
         <WordTextLayer
           engine={opened.engine}
           index={index}
@@ -121,7 +122,7 @@ function WordTextLayer(props: {
 }) {
   const { engine, index, page, follow } = props;
   const [spans, setSpans] = useState<readonly WordSpan[]>([]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Request selectable text from the document worker and cancel the request when its page leaves the viewport.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Request selectable text from the document worker and cancel the request when its page leaves the viewport.
   useEffect(() => {
     if (!page) return;
     const controller = new AbortController();
@@ -166,6 +167,7 @@ function WordTextLayer(props: {
           </span>
         );
         return (
+          // oxlint-disable-next-line react/no-array-index-key -- Immutable document coordinates identify this row or cell for the mounted file.
           <Fragment key={index}>
             {span.title ? (
               <Tooltip>

@@ -11,7 +11,7 @@ import type { EnvironmentOption } from "../components/BranchToolbar.logic";
 import {
   deriveLogicalProjectKeyFromSettings,
   selectProjectGroupingSettings,
-} from "../logicalProject";
+} from "@t3tools/client-runtime/state/project-grouping";
 import { useProjects } from "../state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 // baskule: hosted space order comes from membership, not the first connected primary target.

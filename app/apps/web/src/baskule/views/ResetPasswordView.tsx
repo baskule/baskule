@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 // baskule: a password reset link from an admin (`/reset-password#token=…`). Using it signs the
 // person out on every device, then they sign in with the new password.
 import { useState, type FormEvent } from "react";
@@ -42,7 +43,7 @@ export function ResetPasswordView({ token }: { readonly token: string | null }) 
   };
 
   return (
-    <StandalonePage tone="brand">
+    <StandalonePage>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <BaskuleWordmark className="text-base" />

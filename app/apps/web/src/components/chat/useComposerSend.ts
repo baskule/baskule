@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { t } from "../../i18n";
+
 import {
   mergeDirectPreviewAnnotation,
   resolveBackgroundDraftWorkspaceOptions,
@@ -186,7 +187,6 @@ interface ComposerSendInput {
   readonly composerFilesRef: { current: ComposerFileAttachment[] };
   readonly composerTerminalContextsRef: { current: TerminalContextDraft[] };
   readonly queuedRunEdit: ReturnType<typeof useQueuedRunEdit>;
-  readonly isConnecting: boolean;
   readonly isRevertingCheckpoint: boolean;
   readonly threadDetailLoading: boolean;
   readonly activeEnvironmentUnavailable: boolean;
@@ -241,7 +241,6 @@ interface ComposerSendInput {
  * when it fails.
  */
 export function useComposerSend(input: ComposerSendInput) {
-  const t = useTranslation();
   const {
     environmentId,
     routeThreadKey,
@@ -272,7 +271,6 @@ export function useComposerSend(input: ComposerSendInput) {
     composerFilesRef,
     composerTerminalContextsRef,
     queuedRunEdit,
-    isConnecting,
     isRevertingCheckpoint,
     threadDetailLoading,
     activeEnvironmentUnavailable,
@@ -347,7 +345,6 @@ export function useComposerSend(input: ComposerSendInput) {
     activeProposedPlan,
     isServerThread,
     isSendBusy,
-    isConnecting,
     composerRef,
     beginLocalDispatch,
     resetLocalDispatch,
@@ -364,6 +361,7 @@ export function useComposerSend(input: ComposerSendInput) {
   // A send awaits uploads before it declines, so it reads the approvals pending by then.
   const pendingApprovalsRef = useRef(pendingApprovals);
   const respondingRequestIdsRef = useRef(respondingRequestIds);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors approvals into refs that an async send reads after awaiting uploads
   useLayoutEffect(() => {
     pendingApprovalsRef.current = pendingApprovals;
     respondingRequestIdsRef.current = respondingRequestIds;
@@ -411,7 +409,6 @@ export function useComposerSend(input: ComposerSendInput) {
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
       !activeThread ||
       (isSendBusy && !sendQueuesBehindSetup) ||
-      isConnecting ||
       isRevertingCheckpoint ||
       !clientSettingsHydrated ||
       threadDetailLoading ||
@@ -746,8 +743,7 @@ export function useComposerSend(input: ComposerSendInput) {
 
     const readLiveAttachmentCapabilities = () => {
       const config = appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId) ?? null;
-      const liveSupportsAttachmentUploads =
-        config?.environment.capabilities.attachmentUploads === true;
+      const liveSupportsAttachmentUploads = config !== null;
       return {
         supportsAttachmentUploads: liveSupportsAttachmentUploads,
         fileBlockReason: fileAttachmentCapabilityBlockReason({
@@ -787,8 +783,7 @@ export function useComposerSend(input: ComposerSendInput) {
     const turnUsesAttachmentUploads =
       composerFilesSnapshot.length > 0
         ? attachmentCapabilitiesBeforeUpload.supportsAttachmentUploads
-        : readEnvironmentPresentation(environmentId)?.serverConfig?.environment.capabilities
-            .attachmentUploads === true;
+        : (readEnvironmentPresentation(environmentId)?.serverConfig ?? null) !== null;
     if (turnUsesAttachmentUploads && composerAttachmentsSnapshot.length > 0) {
       for (const attachment of composerAttachmentsSnapshot) {
         const upload =
@@ -975,7 +970,7 @@ export function useComposerSend(input: ComposerSendInput) {
           toastManager.add({
             type: "info",
             title: notice,
-            description: "Send again when it's ready.",
+            description: t("Send again when it's ready."),
           });
         }
         return;
@@ -1164,11 +1159,6 @@ export function useComposerSend(input: ComposerSendInput) {
               context: buildOutgoingMessageContext(
                 boundAttachmentIds(turnAttachmentsResult.value, composerAttachmentsSnapshot),
               ),
-              // Read at dispatch time: the upload and persistence awaits above can
-              // span a server reconnect that changes it.
-              supportsInlineMessageContext:
-                appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment
-                  .capabilities.inlineMessageContext === true,
             }),
           },
           modelSelection: ctxSelectedModelSelection,
@@ -1299,9 +1289,9 @@ export function useComposerSend(input: ComposerSendInput) {
               type: "error",
               title:
                 submissionIntent === "background"
-                  ? "Background task failed"
-                  : "Could not start thread",
-              description: error instanceof Error ? error.message : "Failed to send message.",
+                  ? t("Background task failed")
+                  : t("Could not start thread"),
+              description: error instanceof Error ? error.message : t("Failed to send message."),
               actionProps: {
                 children: "Open draft",
                 onClick: () => {

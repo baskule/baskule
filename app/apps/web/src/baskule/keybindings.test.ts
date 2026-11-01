@@ -29,11 +29,11 @@ describe("Baskule keybinding allowlist", () => {
     expect(resolveShortcutCommand(ctrl("d"), keybindings, options)).toBeNull();
     expect(resolveShortcutCommand(ctrl("n"), keybindings, options)).toBe("chat.new");
     expect(resolveShortcutCommand(ctrl("b"), keybindings, options)).toBe("sidebar.toggle");
-  }, 60_000);
+  });
 
   it("keeps upstream shortcuts with the flag off", async () => {
     const { resolveShortcutCommand, keybindings } = await loadWithFlag("0");
     expect(resolveShortcutCommand(ctrl("j"), keybindings, options)).toBe("terminal.toggle");
     expect(resolveShortcutCommand(ctrl("k"), keybindings, options)).toBe("commandPalette.toggle");
-  }, 60_000);
+  });
 });

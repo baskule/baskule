@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 export interface UpdatesLogEntryLike {
   readonly timestamp: number;
   readonly message: string;

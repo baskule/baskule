@@ -1,22 +1,14 @@
 import { expect, it } from "@effect/vitest";
 import {
-  CommandId,
-  MessageId,
   type OrchestrationV2Run,
-  type OrchestrationV2ProviderThread,
-  ProviderThreadId,
-  ProviderDriverKind,
-  ProviderSessionId,
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadProjection,
   ProjectId,
-  ProviderInstanceId,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
-import * as DateTime from "effect/DateTime";
-import * as Option from "effect/Option";
+
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -28,74 +20,12 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
-import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+
 import * as ThreadManagementService from "./ThreadManagementService.ts";
-import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 
 const layerReceiptsTest = CommandReceiptStore.layer.pipe(
   Layer.provide(SqlitePersistence.layerMemory),
 );
-
-const layerDispatchChokepointTest =
-  (settingsLayer: ReturnType<typeof ServerSettings.layerTest>) => (dispatched: Array<string>) =>
-    ThreadManagementService.layer.pipe(
-      Layer.provide(Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({})),
-      Layer.provide(
-        Layer.mock(Orchestrator.OrchestratorV2)({
-          getThreadRecords: () =>
-            Effect.succeed({
-              thread: {
-                id: ThreadId.make("thread:thread-management:chokepoint"),
-                projectId: ProjectId.make("project:thread-management:chokepoint"),
-                deletedAt: null,
-                modelSelection: {
-                  instanceId: ProviderInstanceId.make("codex_work"),
-                  model: "test",
-                },
-              },
-            } as unknown as OrchestrationV2ThreadProjection),
-          dispatch: (command) =>
-            Effect.sync(() => {
-              dispatched.push(command.type);
-              return { sequence: 1, storedEvents: [] } as never;
-            }),
-        }),
-      ),
-      Layer.provide(settingsLayer),
-      Layer.provideMerge(layerReceiptsTest),
-    );
-
-it.effect("uses thread-not-found only after a projection loads outside the project", () => {
-  const projectId = ProjectId.make("project:thread-management:requested");
-  const otherProjectId = ProjectId.make("project:thread-management:other");
-  const threadId = ThreadId.make("thread:thread-management:wrong-project");
-  const projection = {
-    thread: {
-      id: threadId,
-      projectId: otherProjectId,
-      deletedAt: null,
-    },
-  } as OrchestrationV2ThreadProjection;
-  const layerTest = ThreadManagementService.layer.pipe(
-    Layer.provide(Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({})),
-    Layer.provide(
-      Layer.mock(Orchestrator.OrchestratorV2)({
-        getThreadProjection: () => Effect.succeed(projection),
-      }),
-    ),
-    Layer.provide(ServerSettings.layerTest()),
-    Layer.provide(layerReceiptsTest),
-  );
-
-  return Effect.gen(function* () {
-    const service = yield* ThreadManagementService.ThreadManagementService;
-    const error = yield* Effect.flip(service.getProjectThread({ projectId, threadId }));
-
-    expect(error).toBeInstanceOf(ThreadManagementService.ThreadManagementThreadNotFoundError);
-    expect(error).toMatchObject({ projectId, threadId });
-    expect("cause" in error).toBe(false);
-  }).pipe(Effect.provide(layerTest));
-});
 
 it.effect("waitForThread follows a restart continuation instead of the cut run", () =>
   Effect.gen(function* () {

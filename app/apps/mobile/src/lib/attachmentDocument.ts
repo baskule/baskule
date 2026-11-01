@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -55,6 +56,7 @@ export function useAttachmentDocument(input: {
   const kind = filePreviewKind(input, { richDocuments: false });
   const delimiter = filePreviewDelimiter(input);
   const shareController = useRef<AbortController | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- aborts the in-flight attachment share download when the component unmounts
   useEffect(() => () => shareController.current?.abort(), []);
   const resource = {
     _tag: "attachment" as const,

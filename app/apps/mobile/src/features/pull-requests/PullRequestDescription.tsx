@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { splitPullRequestBody } from "@t3tools/client-runtime/pull-request-markdown";
 import {
   PullRequestImageAttachment,
@@ -42,18 +43,14 @@ export function PullRequestDescription(props: {
       attachments: content.attachments.filter((attachment) => !isBotBadgeImage(attachment.uri)),
     };
   }, [props.markdown]);
-  const gallery = useMemo<FilePreviewItem[]>(
-    () =>
-      content.attachments
-        .filter((attachment) => attachment.kind === "image")
-        .map((attachment) => {
-          return {
-            ...pullRequestImageSource(attachment.uri, mediaContext),
-            name: new URL(attachment.uri).pathname.split("/").pop() || "Image",
-          };
-        }),
-    [content, mediaContext],
-  );
+  const gallery: FilePreviewItem[] = content.attachments
+    .filter((attachment) => attachment.kind === "image")
+    .map((attachment) => {
+      return {
+        ...pullRequestImageSource(attachment.uri, mediaContext),
+        name: new URL(attachment.uri).pathname.split("/").pop() || "Image",
+      };
+    });
   const canCollapse = bodyHeight > COLLAPSED_HEIGHT;
   const collapsed = canCollapse && !expanded;
   return (

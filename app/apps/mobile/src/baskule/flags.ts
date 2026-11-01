@@ -1,5 +1,5 @@
 /**
- * Baskule feature flags (Alpha 0.1, kept in 0.2) for the mobile client (architecture D12/D13).
+ * Baskule feature flags for the mobile client (architecture D12/D13).
  *
  * The app keeps T3 Code's code paths; these flags only hide entry points that are outside the alpha's
  * scope (a ChatGPT-like chat app: chat list with new/archive/delete, thread view, files). Flip a flag to
@@ -25,8 +25,7 @@ export const BASKULE_FLAGS = {
 export function isMobileRouteEnabled(name: string): boolean {
   if (name.startsWith("PullRequest") || name === "ThreadPullRequests")
     return BASKULE_FLAGS.pullRequests;
-  if (name.startsWith("Git") || name.startsWith("ThreadReview"))
-    return BASKULE_FLAGS.sourceControl;
+  if (name.startsWith("Git") || name.startsWith("ThreadReview")) return BASKULE_FLAGS.sourceControl;
   if (name === "ThreadTerminal") return BASKULE_FLAGS.terminal;
   if (name === "ThreadDevicePreview") return BASKULE_FLAGS.devicePreviews;
   if (name === "ThreadBrowserPreview") return BASKULE_FLAGS.browser;

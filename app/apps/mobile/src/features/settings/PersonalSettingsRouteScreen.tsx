@@ -1,9 +1,10 @@
+import { useTranslation } from "../../i18n";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
-import { useTranslation } from "../../i18n";
+
 import { DEFAULT_MOBILE_THEME_ID } from "../../lib/mobileTheme";
 import { useAppearancePreferences } from "./appearance/AppearancePreferencesProvider";
-import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
+import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { LanguageSetting } from "./LanguageSetting";

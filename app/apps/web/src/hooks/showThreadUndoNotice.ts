@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
@@ -10,7 +12,7 @@ import { shortcutLabelForCommand } from "../keybindings";
 import { announce, cancelAnnouncement } from "../lib/announce";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import * as ThreadUndo from "./threadUndo";
+import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 
 type UndoOptions = {
   action: "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Discarded";
@@ -28,7 +30,7 @@ type UndoNotice = {
 
 export const useThreadUndoNotice = create<{ notice: UndoNotice | null }>(() => ({ notice: null }));
 
-export function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
+function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
   const noun = notice.action === "Discarded" ? "draft" : "thread";
   return `${notice.action} ${notice.count} ${noun}${notice.count === 1 ? "" : "s"}`;
 }
@@ -94,7 +96,7 @@ function refreshNotice() {
               stackedThreadToast({
                 type: "error",
                 title: failureTitle,
-                description: error instanceof Error ? error.message : "An error occurred.",
+                description: error instanceof Error ? error.message : t("An error occurred."),
               }),
             );
           };

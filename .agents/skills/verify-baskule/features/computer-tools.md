@@ -1,5 +1,5 @@
 ---
-paths: ["computerd/v2/**", "platform/src/agent/**"]
+paths: ["computerd/**", "platform/src/agent/**"]
 journeys: null
 profile: "full"
 checks: ["scripts/check agent"]

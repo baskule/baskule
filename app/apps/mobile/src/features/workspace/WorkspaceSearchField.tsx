@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { Ref } from "react";
 import { Keyboard, Pressable, TextInput, View, type TextInputInstance } from "react-native";
 import { useResolveClassNames } from "uniwind";

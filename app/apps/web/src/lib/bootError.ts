@@ -1,4 +1,5 @@
-import { t } from "../i18n";
+import { t } from "@t3tools/shared/localization";
+
 import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
 
 const LAST_FAILURE_KEY = "t3code:boot-failed-at";
@@ -93,7 +94,7 @@ export function buildErrorReport(error: unknown, environment: BootErrorEnvironme
 
 function clientPlatform(bridge: DesktopBridge | undefined) {
   try {
-    return bridge?.getClientPlatform?.() ?? navigator.platform;
+    return bridge?.getClientPlatform() ?? navigator.platform;
   } catch {
     return navigator.platform;
   }

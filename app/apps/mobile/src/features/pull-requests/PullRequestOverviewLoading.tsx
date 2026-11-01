@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { Chip } from "../../components/ui/Chip";
 import { PullRequestSectionHeading } from "./PullRequestSectionHeading";
 import type { PullRequestListEntry } from "@t3tools/contracts";

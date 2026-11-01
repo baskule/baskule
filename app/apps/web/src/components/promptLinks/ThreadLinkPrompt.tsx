@@ -1,4 +1,5 @@
-import { t } from "../../i18n";
+import { useTranslation } from "../../i18n";
+
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { parseThreadLinkPrompt, withoutPromptLinkParams } from "@t3tools/shared/promptLinks";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -11,6 +12,7 @@ import { placeLinkedPrompt } from "./linkedPrompt";
 const handledLinkKeys = new Set<string>();
 
 export function ThreadLinkPrompt({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  const t = useTranslation();
   const navigate = useNavigate();
   const location = useLocation({
     select: (current) => ({
@@ -21,6 +23,7 @@ export function ThreadLinkPrompt({ threadRef }: { readonly threadRef: ScopedThre
     structuralSharing: true,
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- places a ?prompt link into the composer once per location and strips it from the URL via the router
   useEffect(() => {
     // A pending navigation shows the next location while the params still name this thread.
     if (!isThreadRoutePathname(location.pathname, threadRef)) return;
@@ -44,7 +47,7 @@ export function ThreadLinkPrompt({ threadRef }: { readonly threadRef: ScopedThre
       href: `${location.pathname}${withoutPromptLinkParams(location.search)}`,
       replace: true,
     });
-  }, [location, navigate, threadRef]);
+  }, [location, navigate, threadRef, t]);
 
   return null;
 }

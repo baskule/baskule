@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type {
   BackgroundActivityProfile,
   BackgroundActivitySettings,
@@ -182,7 +183,6 @@ export function resolveBackgroundActivityProfileOption(
       providerHealthRefreshInterval: resolved.providerHealthRefreshInterval,
       hostPowerMonitorActiveInterval: resolved.hostPowerMonitorActiveInterval,
       hostPowerMonitorIdleInterval: resolved.hostPowerMonitorIdleInterval,
-      idleClientTtl: resolved.idleClientTtl,
       pauseWhenHostLocked: resolved.pauseWhenHostLocked,
       pauseWhenHostLowPower: resolved.pauseWhenHostLowPower,
       pauseWhenClientLowPower: resolved.pauseWhenClientLowPower,
@@ -253,7 +253,6 @@ export function backgroundActivityOverrideSettings(
     providerHealthRefreshInterval: resolved.providerHealthRefreshInterval,
     hostPowerMonitorActiveInterval: resolved.hostPowerMonitorActiveInterval,
     hostPowerMonitorIdleInterval: resolved.hostPowerMonitorIdleInterval,
-    idleClientTtl: resolved.idleClientTtl,
     pauseWhenHostLocked: resolved.pauseWhenHostLocked,
     pauseWhenHostLowPower: resolved.pauseWhenHostLowPower,
     pauseWhenClientLowPower: resolved.pauseWhenClientLowPower,

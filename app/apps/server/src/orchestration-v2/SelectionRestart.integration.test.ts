@@ -47,12 +47,7 @@ const seedSelection = {
   instanceId: providerInstanceId,
   model: "seed-model",
 } satisfies ModelSelection;
-const handoffDriver = ProviderDriverKind.make("claudeAgent");
-const handoffProviderInstanceId = ProviderInstanceId.make("claude-handoff-test");
-const handoffSelection = {
-  instanceId: handoffProviderInstanceId,
-  model: "handoff-model",
-} satisfies ModelSelection;
+
 const pooledCapabilities: OrchestrationV2ProviderCapabilities = FULL_TEST_PROVIDER_CAPABILITIES;
 const exclusiveCapabilities: OrchestrationV2ProviderCapabilities = {
   ...FULL_TEST_PROVIDER_CAPABILITIES,

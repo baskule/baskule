@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import {
   ArrowLeft,
@@ -15,7 +16,6 @@ import {
   type RefObject,
   useState,
 } from "react";
-
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -177,6 +177,8 @@ export function PreviewChromeRow({
                     }
                   }}
                   placeholder={t("Search or enter URL")}
+                  aria-label={t("Search or enter URL")}
+                  data-workspace-focus-default
                   spellCheck={false}
                   disabled={inputDisabled}
                   data-preview-url-input

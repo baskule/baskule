@@ -1,8 +1,8 @@
+import { useTranslation } from "../../../i18n";
 // baskule: People → Invitations: links not used yet, and revoking them.
 import { MailIcon, UserPlusIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { baskuleApi } from "../../api";

@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { ChevronDownIcon } from "lucide-react";
 import * as Option from "effect/Option";
@@ -74,13 +75,13 @@ function isVcsNotReady(item: VcsDiscoveryItem | SourceControlProviderDiscoveryIt
 
 function authPresentation(auth: SourceControlProviderAuth): {
   readonly label: string;
-  readonly badge: "warning" | null;
+  readonly badge: "secondary" | null;
 } {
   if (auth.status === "authenticated") {
     return { label: t("Authenticated"), badge: null };
   }
   if (auth.status === "unauthenticated") {
-    return { label: t("Not authenticated"), badge: "warning" };
+    return { label: t("Not authenticated"), badge: "secondary" };
   }
   return { label: t("Status unknown"), badge: null };
 }
@@ -98,8 +99,12 @@ function RedactedAccount(props: { readonly account: string | null }) {
 
 function itemStatusDot(item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem): string {
   if (isVcsNotReady(item)) return "bg-muted-foreground/35";
+  if (isProviderDiscoveryItem(item)) {
+    return item.status === "available" && item.auth.status === "authenticated"
+      ? "bg-success"
+      : "bg-muted-foreground/35";
+  }
   if (item.status !== "available") return "bg-warning";
-  if (isProviderDiscoveryItem(item) && item.auth.status !== "authenticated") return "bg-warning";
   return "bg-success";
 }
 

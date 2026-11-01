@@ -1,4 +1,5 @@
 import { t } from "./i18n";
+
 import type { ProjectIconColor } from "@t3tools/contracts";
 
 export const PROJECT_ICON_COLORS: ReadonlyArray<{

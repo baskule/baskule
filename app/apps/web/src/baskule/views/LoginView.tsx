@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 // baskule: sign-in methods come from the installation's Better Auth configuration.
 import { useState, type FormEvent } from "react";
 
@@ -58,7 +59,7 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
   };
 
   return (
-    <StandalonePage tone="brand">
+    <StandalonePage>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <BaskuleWordmark className="text-base" />

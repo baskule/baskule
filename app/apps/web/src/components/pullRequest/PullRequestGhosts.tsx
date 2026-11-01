@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import type { PullRequestListEntry, PullRequestSummary } from "@t3tools/contracts";
 import {
   ArrowLeftIcon,
@@ -71,9 +72,7 @@ export function PullRequestListGhost({ rows = 7, caption }: { rows?: number; cap
     <div role="status" aria-label={caption ?? t("Loading pull requests")} className="space-y-0.5">
       {/* Outside the pulse so the explanation stays readable. */}
       {caption ? (
-        <p className="px-3 pb-1 text-xs font-medium text-muted-foreground/70 redesign:text-muted-foreground">
-          {caption}
-        </p>
+        <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">{caption}</p>
       ) : null}
       <div className="motion-safe:animate-skeleton space-y-0.5">
         {Array.from({ length: rows }, (_, index) => (

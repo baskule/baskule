@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 // baskule: admin adds a person, with a temporary password or an invitation link to share.
 import { CheckIcon, CopyIcon, RefreshCwIcon } from "lucide-react";
 import { useState, type FormEvent } from "react";

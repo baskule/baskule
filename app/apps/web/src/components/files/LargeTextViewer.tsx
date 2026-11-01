@@ -1,3 +1,5 @@
+import { useTranslation } from "../../i18n";
+
 import { useEffect, useImperativeHandle, useRef, useState, type RefObject } from "react";
 import { parseDelimitedPreview } from "@t3tools/shared/delimitedPreview";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
@@ -36,7 +38,10 @@ export default function LargeTextViewer(props: {
   readonly delimiter: "," | "\t" | null;
   readonly revealLine?: number | null;
   readonly revealRequestId?: number;
+  /** A preview's own wrap toggle; omitted follows the word wrap setting. */
+  readonly wordWrap?: boolean;
 }) {
+  const t = useTranslation();
   const [meta, setMeta] = useState<Extract<TextPreviewResult, { type: "meta" }> | null>(null);
   const [pages, setPages] = useState(new Map<number, string[][]>());
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +51,9 @@ export default function LargeTextViewer(props: {
     reject: (cause: Error) => void;
   } | null>(null);
   const pending = useRef(new Set<number>());
-  const wordWrap = useClientSettings((settings) => settings.wordWrap);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Own the prefix fetch and indexing worker, cancelling requests and pending copies when the source changes or unmounts.
+  const defaultWordWrap = useClientSettings((settings) => settings.wordWrap);
+  const wordWrap = props.wordWrap ?? defaultWordWrap;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the prefix fetch and indexing worker, cancelling requests and pending copies when the source changes or unmounts.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- A replacement source must discard the previous worker's error and pages.
     setError(null);
@@ -218,16 +224,16 @@ export default function LargeTextViewer(props: {
         {props.delimiter ? ` · ${meta.count ? meta.columns.toLocaleString() : 0} columns` : ""}
         {meta.complete && meta.sizeBytes !== undefined
           ? ` · ${meta.sizeBytes === 0 ? "0 bytes" : formatAttachmentSize(meta.sizeBytes)}`
-          : " · Indexing…"}
+          : t(" · Indexing…")}
       </div>
       {!meta.complete ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
-          <FileSurfaceNotice>Loading the rest of the file…</FileSurfaceNotice>
+          <FileSurfaceNotice>{t("Loading the rest of the file…")}</FileSurfaceNotice>
         </div>
       ) : null}
       {meta.columns === 1024 ? (
         <FileSurfaceNotice>
-          Showing the first 1,024 columns. Source and Save retain every column.
+          {t("Showing the first 1,024 columns. Source and Save retain every column.")}
         </FileSurfaceNotice>
       ) : null}
       {meta.count > 0 ? (
@@ -249,7 +255,7 @@ export default function LargeTextViewer(props: {
         />
       ) : (
         <div className="flex flex-1 items-center justify-center p-6 text-xs text-muted-foreground">
-          This file is empty.
+          {t("This file is empty.")}
         </div>
       )}
     </div>

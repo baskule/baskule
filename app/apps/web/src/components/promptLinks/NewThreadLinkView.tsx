@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { getCloneDestinationPath } from "@t3tools/client-runtime/operations/projects";
 import {
@@ -22,7 +23,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
-
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { isElectron } from "~/env";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
@@ -36,7 +36,6 @@ import { allReachableShellsLiveAtom, environmentShell } from "~/state/shell";
 import { sourceControlEnvironment } from "~/state/sourceControl";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
-
 import { usePullRequestHandoffs } from "../pullRequest/usePullRequestActions";
 import { sortScopedProjectsForSidebar } from "../Sidebar.logic";
 import { Button } from "../ui/button";
@@ -176,8 +175,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
   };
 
   const openScratchDraft = async () => {
-    const environmentId =
-      scratchEnvironmentId(lastActiveEnvironmentId()) ?? scratchEnvironmentId(null);
+    const environmentId = scratchEnvironmentId(lastActiveEnvironmentId());
     const project = environmentId === null ? null : await openScratchProject(environmentId);
     if (project === null) {
       setState({
@@ -201,11 +199,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
     const environmentId = lastActiveEnvironmentId();
     const environment = environments.find((entry) => entry.environmentId === environmentId);
     const newProjectsRoot = environment?.serverConfig?.newProjectsRoot ?? null;
-    if (
-      environmentId === null ||
-      newProjectsRoot === null ||
-      environment?.serverConfig?.environment.capabilities.projectCloneTracking !== true
-    ) {
+    if (environmentId === null || newProjectsRoot === null) {
       setState({
         status: "failed",
         message: t(
@@ -233,7 +227,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
           stackedThreadToast({
             type: "error",
             title: t("Clone failed"),
-            description: error instanceof Error ? error.message : "An error occurred.",
+            description: error instanceof Error ? error.message : t("An error occurred."),
           }),
         );
       }
@@ -331,6 +325,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
     }
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs each launch decision once: navigates to the thread or opens a draft
   useEffect(() => {
     if (launch === null || launchedRef.current === launch) return;
     launchedRef.current = launch;
@@ -401,6 +396,7 @@ function PullRequestLinkCheckout({
     },
   });
   const warnedRef = useRef(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- shows the hidden-characters warning toast once per linked prompt
   useEffect(() => {
     if (warnedRef.current || link.prompt === null) return;
     warnedRef.current = true;

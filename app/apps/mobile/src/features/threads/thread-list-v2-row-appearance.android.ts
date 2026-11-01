@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type { ViewStyle } from "react-native";
 import type { MobileThemeVariables } from "../../lib/mobileTheme";
 

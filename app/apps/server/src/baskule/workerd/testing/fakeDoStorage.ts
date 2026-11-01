@@ -1,8 +1,8 @@
 // baskule: an in-memory stand-in for Durable Object `ctx.storage` (SQL + transaction + alarm),
 // on node:sqlite, with the limits DO SQLite enforces in celld 0.6.3 (see doSqlClient.ts).
 // @effect-diagnostics nodeBuiltinImport:off
-import { rmSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import * as NodeFS from "node:fs";
+import * as NodeSqlite from "node:sqlite";
 
 import { MAX_BOUND_PARAMETERS, MAX_COMPOUND_TERMS, type DoSqlCursor } from "../doSqlClient.ts";
 
@@ -65,12 +65,12 @@ export interface FakeDoStorage {
   setAlarm(time: number | Date): Promise<void>;
   deleteAlarm(): Promise<void>;
   deleteAll(): Promise<void>;
-  readonly db: DatabaseSync;
+  readonly db: NodeSqlite.DatabaseSync;
 }
 
 /** `path`: a SQLite file to keep the space across processes (perf/bootBench.mjs); in memory by default. */
 export const makeFakeDoStorage = (path = ":memory:"): FakeDoStorage => {
-  let db = new DatabaseSync(path);
+  let db = new NodeSqlite.DatabaseSync(path);
   let depth = 0;
   let gate: Promise<unknown> = Promise.resolve();
   let alarm: number | null = null;
@@ -156,8 +156,8 @@ export const makeFakeDoStorage = (path = ":memory:"): FakeDoStorage => {
     },
     deleteAll: async () => {
       db.close();
-      if (path !== ":memory:") rmSync(path, { force: true });
-      db = new DatabaseSync(path);
+      if (path !== ":memory:") NodeFS.rmSync(path, { force: true });
+      db = new NodeSqlite.DatabaseSync(path);
       alarm = null;
     },
     get db() {

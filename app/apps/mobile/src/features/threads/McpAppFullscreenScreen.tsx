@@ -1,10 +1,11 @@
 import { useTranslation } from "../../i18n";
+
 import { useIsFocused, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
 import { mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -30,13 +31,9 @@ function useConversationThreadId(
   requested: string | undefined,
 ): ThreadId {
   const shells = useThreadShells();
-  return useMemo(
-    () =>
-      requested !== undefined && descendsFrom(shells, environmentId, requested, threadId)
-        ? ThreadId.make(requested)
-        : threadId,
-    [shells, environmentId, threadId, requested],
-  );
+  return requested !== undefined && descendsFrom(shells, environmentId, requested, threadId)
+    ? ThreadId.make(requested)
+    : threadId;
 }
 
 function descendsFrom(
@@ -108,6 +105,7 @@ export function McpAppFullscreenScreen({ route }: McpAppFullscreenScreenProps) {
   const awaitingUser =
     conversation?.hasPendingApprovals === true || conversation?.hasPendingUserInput === true;
   // A request for the user is server state with no local handler to react in.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes the focused screen through the navigator when the server asks the user for input or approval
   useEffect(() => {
     if (awaitingUser && focused && !exitPending.current) navigation.goBack();
   }, [awaitingUser, focused, navigation]);

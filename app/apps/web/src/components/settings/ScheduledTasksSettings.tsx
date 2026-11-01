@@ -1,8 +1,10 @@
+import { useBaskuleMe } from "~/baskule/session";
+import { useSpaceForEnvironment } from "~/baskule/spaces";
 import { t, useTranslation } from "../../i18n";
+
 import { baskule } from "../../baskule/flags";
 import { useAtomValue } from "@effect/atom-react";
 import { connectionStatusTitle } from "@t3tools/client-runtime/connection";
-import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import {
   Clock3Icon,
@@ -50,11 +52,7 @@ import {
 import { formatRelativeTime } from "../../timestampFormat";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
-import {
-  applyProviderInstanceSettings,
-  deriveProviderInstanceEntries,
-  sortProviderInstanceEntries,
-} from "../../providerInstances";
+import { providerInstanceEntriesFor } from "../../providerInstances";
 import { usePrimaryCloudLinkState } from "../../cloud/primaryCloudLinkState";
 import { requestConfirmDialog } from "../../confirmDialog";
 import { webhookAddress } from "@t3tools/client-runtime/webhook-address";
@@ -401,7 +399,14 @@ export function ScheduledTasksSettings(target: {
   if (target.taskId === undefined && openedLinkTaskId !== undefined) {
     setOpenedLinkTaskId(undefined);
   }
-  if (linkedTask && linkedEnvironmentId !== undefined && openedLinkTaskId !== target.taskId) {
+  const me = useBaskuleMe();
+  if (
+    linkedTask &&
+    linkedTask.author?.id === me?.user.id &&
+    me !== null &&
+    linkedEnvironmentId !== undefined &&
+    openedLinkTaskId !== target.taskId
+  ) {
     setOpenedLinkTaskId(target.taskId);
     if (editor === null) setEditor({ environmentId: linkedEnvironmentId, task: linkedTask });
   }
@@ -467,7 +472,6 @@ export function ScheduledTasksSettings(target: {
               <ScheduledTaskEnvironmentSection
                 key={entry.environmentId}
                 environment={entry}
-                showEnvironmentHeading={environments.length > 1}
                 taskId={linkedEnvironmentId === entry.environmentId ? target.taskId : undefined}
                 onEdit={openForEdit}
               />
@@ -511,7 +515,7 @@ function ScheduledTaskEnvironmentList({
   const states = environments.map((environment) => {
     const index = connectedIds.indexOf(environment.environmentId);
     const query = index < 0 ? null : queries[index]!;
-    const data = query === null ? null : Option.getOrNull(AsyncResult.value(query));
+    const data = query === null ? null : AsyncResult.getOrElse(query, () => null);
     return {
       environment,
       connected: index >= 0,
@@ -623,12 +627,10 @@ function ScheduledTaskEnvironmentList({
 
 function ScheduledTaskEnvironmentSection({
   environment,
-  showEnvironmentHeading,
   taskId,
   onEdit,
 }: {
   readonly environment: EnvironmentPresentation;
-  readonly showEnvironmentHeading: boolean;
   readonly taskId?: ScheduledTaskId | undefined;
   readonly onEdit: (environmentId: EnvironmentId, task: ScheduledTask) => void;
 }) {
@@ -651,7 +653,7 @@ function ScheduledTaskEnvironmentSection({
   return (
     <SettingsSection
       title={environment.label}
-      hideTitle={!showEnvironmentHeading}
+      hideTitle
       icon={
         <EnvironmentMachineIcon
           kind={resolveEnvironmentMachineKind(environment.serverConfig)}
@@ -715,6 +717,11 @@ function ScheduledTaskRow({
   const canOperate = useAtomValue(
     serverEnvironment.upsertScheduledTask.permissionAtom(environmentId),
   );
+  const me = useBaskuleMe();
+  const space = useSpaceForEnvironment(environmentId);
+  const isAuthor = Boolean(me && task.author?.id && task.author.id === me.user.id);
+  const canEdit = canOperate && isAuthor;
+  const canStop = canOperate && (isAuthor || me?.user.role === "admin" || space?.role === "owner");
   const [busy, setBusy] = useState(false);
   const [deliveriesOpen, setDeliveriesOpen] = useState(false);
   const isWebhook = task.schedule.type === "webhook";
@@ -784,7 +791,7 @@ function ScheduledTaskRow({
         <div className="flex items-center gap-2">
           <Switch
             checked={task.enabled}
-            disabled={busy || !canOperate}
+            disabled={busy || !(isAuthor ? canEdit : task.enabled && canStop)}
             aria-label={t("Enable {{title}}", { title: task.title })}
             onCheckedChange={() => void act("toggle")}
           />
@@ -794,7 +801,7 @@ function ScheduledTaskRow({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  disabled={busy || !canOperate}
+                  disabled={busy || !(canEdit || canStop)}
                   aria-label={t("Actions for {{title}}", { title: task.title })}
                 />
               }
@@ -802,26 +809,30 @@ function ScheduledTaskRow({
               <MoreHorizontalIcon className="size-4" />
             </MenuTrigger>
             <MenuPopup align="end">
-              <MenuItem onClick={onEdit}>
-                <PencilIcon />
-                {t("Edit")}
-              </MenuItem>
-              {isWebhook ? (
+              {canEdit ? (
+                <MenuItem onClick={onEdit}>
+                  <PencilIcon />
+                  {t("Edit")}
+                </MenuItem>
+              ) : null}
+              {isWebhook && canEdit ? (
                 <MenuItem onClick={() => setDeliveriesOpen(true)}>
                   <InboxIcon />
                   {t("Deliveries")}
                 </MenuItem>
-              ) : (
+              ) : !isWebhook && canEdit ? (
                 <MenuItem onClick={() => void act("run")}>
                   <PlayIcon />
                   {t("Run now")}
                 </MenuItem>
-              )}
-              <MenuSeparator />
-              <MenuItem onClick={() => void act("delete")}>
-                <Trash2Icon />
-                {t("Delete")}
-              </MenuItem>
+              ) : null}
+              {canStop ? <MenuSeparator /> : null}
+              {canStop ? (
+                <MenuItem onClick={() => void act("delete")}>
+                  <Trash2Icon />
+                  {t("Delete")}
+                </MenuItem>
+              ) : null}
             </MenuPopup>
           </Menu>
           {deliveriesOpen ? (
@@ -1172,6 +1183,8 @@ function ScheduledTaskEditorForm({
   const canOperate = useAtomValue(
     serverEnvironment.upsertScheduledTask.permissionAtom(environmentId),
   );
+  const me = useBaskuleMe();
+  const canEdit = task === null || Boolean(me && task.author?.id && task.author.id === me.user.id);
   const upsertTask = useAtomCommand(serverEnvironment.upsertScheduledTask, {
     label: t("scheduled task upsert"),
   });
@@ -1188,12 +1201,10 @@ function ScheduledTaskEditorForm({
     : task;
   const selectedProjectId = draft.projectId || projects[0]?.id || "";
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
-  const instanceEntries = sortProviderInstanceEntries(
-    applyProviderInstanceSettings(
-      deriveProviderInstanceEntries(providers),
-      settings,
-      selectedProject?.id ?? null,
-    ),
+  const instanceEntries = providerInstanceEntriesFor(
+    providers,
+    settings,
+    selectedProject?.id ?? null,
   );
 
   const firstInstance = instanceEntries[0];
@@ -1584,9 +1595,9 @@ function ScheduledTaskEditorForm({
               <div className="space-y-4">
                 <WebhookEndpointField environmentId={environmentId} task={liveTask} />
                 <p className="text-xs text-muted-foreground">
-                  {
-                    "Each request runs the prompt. Use {{body.path}}, {{headers.name}}, {{query.name}}, {{body}} or {{request}} in the prompt; only what it names reaches the agent."
-                  }
+                  {t(
+                    "Each request runs the prompt. Use {{body.path}}, {{headers.name}}, {{query.name}}, {{body}} or {{request}} in the prompt; only what it names reaches the agent.",
+                  )}
                 </p>
                 <Field
                   label={t("Skip requests older than")}
@@ -1833,7 +1844,14 @@ function ScheduledTaskEditorForm({
         </DialogClose>
         <Button
           size="sm"
-          disabled={!canOperate || saving || editingTaskMissing || !connected || !tasksQuery.data}
+          disabled={
+            !canOperate ||
+            !canEdit ||
+            saving ||
+            editingTaskMissing ||
+            !connected ||
+            !tasksQuery.data
+          }
           onClick={() => void submit()}
         >
           {draft.editingId ? t("Save task") : t("Create task")}

@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   isModifierPairShortcut,
@@ -11,7 +12,6 @@ import { PlayIcon } from "lucide-react";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import * as Cause from "effect/Cause";
 import { useContext, useRef, useState } from "react";
-
 import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
 import { getDesktopSnapShotBridge } from "../../lib/desktopSnapShot";
 import {
@@ -156,7 +156,7 @@ export function SnapShotSettings() {
         : t("Click");
 
   const setup = async (action: DesktopSnapShotSetupAction) => {
-    if (!bridge?.setupSnapShot || setupBusy) return;
+    if (!bridge || setupBusy) return;
     setSetupBusy(true);
     setSetupError(null);
     const result = await settlePromise(async () => {
@@ -168,7 +168,7 @@ export function SnapShotSettings() {
         // macOS can quit the app from its permission prompt.
         saveSnapShotSetupResume(wizard.wasEnabled);
       }
-      await bridge.setupSnapShot!(action);
+      await bridge.setupSnapShot(action);
       await refreshState();
     });
     if (result._tag === "Failure") {
@@ -229,7 +229,7 @@ export function SnapShotSettings() {
         savedShortcut,
         availability: {
           available: false,
-          message: error instanceof Error ? error.message : "Could not check this shortcut.",
+          message: error instanceof Error ? error.message : t("Could not check this shortcut."),
         },
       });
     }
@@ -310,8 +310,7 @@ export function SnapShotSettings() {
     const verified = await settlePromise(async () => {
       if (state?.macPermissions) {
         saveSnapShotSetupResume(wizard?.wasEnabled ?? settings.snapShotEnabled);
-        if (!bridge?.setupSnapShot) throw new Error("Restart T3 Code to finish capture setup.");
-        await bridge.setupSnapShot("test-mac-capture");
+        await bridge?.setupSnapShot("test-mac-capture");
       }
       if (state?.mode === "direct")
         await bridge?.requestSnapShotPermissions(settings.snapShotIncludeAccessibility);

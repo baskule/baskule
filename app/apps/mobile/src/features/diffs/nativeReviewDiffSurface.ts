@@ -1,3 +1,5 @@
+import { useTranslation } from "../../i18n";
+
 import {
   createElement,
   useCallback,
@@ -10,7 +12,6 @@ import {
 } from "react";
 import { View, type NativeSyntheticEvent, type ViewProps } from "react-native";
 import { requireNativeView } from "expo";
-
 import { EmptyState } from "../../components/ui/EmptyState";
 import { NativeViewResolutionError } from "../../native/nativeViewResolutionError";
 
@@ -200,6 +201,7 @@ function useNativeReviewDiffPayload(
   onFailure?: () => void,
   onDelivered?: (payload: string) => void,
 ) {
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sends the payload to the native diff view's imperative method, retrying per frame until it mounts
   useEffect(() => {
     if (payload === undefined) {
       return;
@@ -274,6 +276,7 @@ function getExpoViewConfig(moduleName: string) {
 }
 
 function NativeReviewDiffView(props: NativeReviewDiffViewProps) {
+  const t = useTranslation();
   const [failedRowsJson, setFailedRowsJson] = useState<string | null>(null);
   const onRowsFailure = useCallback(() => setFailedRowsJson(props.rowsJson), [props.rowsJson]);
   if (failedRowsJson !== null && failedRowsJson !== props.rowsJson) setFailedRowsJson(null);
@@ -292,10 +295,10 @@ function NativeReviewDiffView(props: NativeReviewDiffViewProps) {
         ],
       },
       createElement(EmptyState, {
-        title: "Could not display diff",
-        detail: "Try loading the diff view again.",
+        title: t("Could not display diff"),
+        detail: t("Try loading the diff view again."),
         variant: "plain",
-        actionLabel: "Retry diff",
+        actionLabel: t("Retry diff"),
         onAction: () => {
           props.onDebug?.({
             nativeEvent: { message: "surface-retry" },
@@ -330,10 +333,12 @@ function NativeReviewDiffContent(
   );
   useNativeReviewDiffPayload(nativeRef, "setTokensJson", tokensJson);
   const onDebugRef = useRef(onDebug);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest onDebug for callbacks the native diff view fires outside render
   useEffect(() => {
     onDebugRef.current = onDebug;
   }, [onDebug]);
   const reportedMountRef = useRef(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reports the native surface mount to the debug callback once per mount
   useEffect(() => {
     // Effect replay keeps the same native content; only a new mount loses tokens.
     if (reportedMountRef.current) return;

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 // baskule: plain-language figures for usage and limits, shared by the user page, the composer
 // and the admin dashboard.
 import { BASKULE_AI_PROVIDERS, type BaskuleAIProviderId } from "@t3tools/contracts/baskule";
@@ -7,7 +8,6 @@ import type { DailyTotals } from "@t3tools/shared/usageMerge";
 
 import { getLocale } from "@t3tools/shared/localization";
 
-import { t } from "../../i18n";
 import { PROVIDER_PRESENTATION } from "../../components/usage/usageProviders";
 import type { UsageDaily, UsageWindow, UsageWindowStatus } from "./api";
 

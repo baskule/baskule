@@ -1,18 +1,18 @@
-# OpenShell gateway config for the baskule-openshell container (Baskule Alpha 0.2, architecture E5).
-# Baked into baskule-openshell-gateway:0.2 at /etc/openshell/gateway.toml.
+# OpenShell gateway config for the baskule-openshell container (Baskule, architecture E5).
+# Baked into baskule-openshell-gateway:local at /etc/openshell/gateway.toml.
 #
 # - Docker compute driver against the PRIVATE dockerd of this container (unix socket only).
 # - Plaintext + unauthenticated user API: the port is only reachable on the internal compose network
-#   `baskule02-computers` (computerd). Computers cannot reach it (fork policy: private addresses are never
-#   admitted, tested by e2e/v2/infra-smoke.sh). mTLS from computerd is the planned hardening.
+#   `baskule-computers` (computerd). Computers cannot reach it (fork policy: private addresses are never
+#   admitted, tested by e2e/infra-smoke.sh). mTLS from computerd is the planned hardening.
 # - Telemetry off: OPENSHELL_TELEMETRY_ENABLED=false in the image env (propagates to supervisors).
 # - There is no gateway-wide default network policy in OpenShell: the policy travels with each CreateSandbox.
-#   computerd sends ours (openshell/policies/computer.yaml, mirrored in computerd/v2/src/policy.ts).
+#   computerd sends ours (openshell/policies/computer.yaml, mirrored in computerd/src/policy.ts).
 [openshell]
 version = 2
 
 [openshell.gateway]
-name = "baskule02"
+name = "baskule"
 bind_address = "0.0.0.0:47095"
 # Health (GET /healthz, /readyz) on loopback only; used by the container healthcheck.
 health_bind_address = "127.0.0.1:47097"
@@ -28,17 +28,17 @@ allow_unauthenticated_users = true
 signing_key_path = "/var/lib/openshell/tls/jwt/signing.pem"
 public_key_path  = "/var/lib/openshell/tls/jwt/public.pem"
 kid_path         = "/var/lib/openshell/tls/jwt/kid"
-gateway_id       = "baskule02"
+gateway_id       = "baskule"
 
 [openshell.drivers.docker]
 socket_path = "/var/run/docker.sock"
 # Supervisors run host-networked = in this container's netns, so they reach the gateway on loopback.
 grpc_endpoint = "http://127.0.0.1:47095"
-sandbox_label = "baskule02"
-default_image = "baskule-computer:0.2"
+sandbox_label = "baskule"
+default_image = "baskule-computer:local"
 image_pull_policy = "if_not_present"
-supervisor_image = "baskule-openshell-supervisor:0.2"
-sandbox_runtime_image = "baskule-openshell-sandbox:0.2"
+supervisor_image = "baskule-openshell-supervisor:local"
+sandbox_runtime_image = "baskule-openshell-sandbox:local"
 app_armor_profile = "Unconfined"
 # Per-space persistent volume mounted at /sandbox/space through template.driver_config. Volumes are created by
 # volumes.py with the default admission labels (openshell.ai/sandbox-attachable=true,

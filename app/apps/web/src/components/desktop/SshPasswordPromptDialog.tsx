@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import type { DesktopSshPasswordPromptRequest } from "@t3tools/contracts";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -49,7 +50,7 @@ function setPromptQueue(next: readonly DesktopSshPasswordPromptRequest[]) {
  */
 export function startSshPasswordPromptQueue(): () => void {
   return (
-    window.desktopBridge?.onSshPasswordPrompt?.((request) => {
+    window.desktopBridge?.onSshPasswordPrompt((request) => {
       setPromptQueue([...promptQueue, request]);
     }) ?? (() => undefined)
   );

@@ -14,12 +14,12 @@ node shots.mjs [scenario…]  # login invite voice admin usage passwords apps pl
 ./down.sh                   # PURGE=1 also deletes baskule/.run/wp-e
 ```
 
-| Port   | What                                                                                                                      |
-| ------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Port   | What                                                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------------------------------------ |
 | 47700  | mock front (open this): `/auth/*`, `/api/baskule/*`, `/s/<space>/*`, `/downloads/*`, the web app                         |
-| 47701  | Vite dev server (`MOCK_WEB=dev`)                                                                                          |
-| 47702  | mock OpenAI-compatible model                                                                                              |
-| 47703  | OpenCode 2.1.2 CLI (shared by every mock space)                                                                           |
+| 47701  | Vite dev server (`MOCK_WEB=dev`)                                                                                         |
+| 47702  | mock OpenAI-compatible model                                                                                             |
+| 47703  | OpenCode 2.1.2 CLI (shared by every mock space)                                                                          |
 | 47710+ | one real T3 server per space, started on the first request like a waking cell (`BASKULE_AUTH_MODE=none` behind the mock) |
 
 - **Accounts** (mock mode): `admin@baskule.test` / `baskule-admin`, `alice@baskule.test` /

@@ -5,9 +5,7 @@ import type {
 } from "@t3tools/client-runtime/connection";
 import type { DeviceHubAccess } from "@t3tools/client-runtime/device/hub-access";
 
-export function baskulePreviewStreamAccess(
-  connection: PreparedConnection,
-): DeviceHubAccess | null {
+export function baskulePreviewStreamAccess(connection: PreparedConnection): DeviceHubAccess | null {
   if (
     !connection.socketHeaders &&
     !/^\/s\/[^/]+\/?$/.test(new URL(connection.httpBaseUrl).pathname)
@@ -31,20 +29,3 @@ export interface SavedRemoteConnection {
 }
 
 export type RemoteClientConnectionState = EnvironmentConnectionPhase;
-
-export function isRelayManagedConnection(
-  connection: Pick<SavedRemoteConnection, "authenticationMethod" | "relayManaged">,
-): boolean {
-  return connection.relayManaged === true || connection.authenticationMethod === "dpop";
-}
-
-export function toStableSavedRemoteConnection(
-  connection: SavedRemoteConnection,
-): SavedRemoteConnection {
-  if (!isRelayManagedConnection(connection) || !connection.dpopAccessToken) {
-    return connection;
-  }
-
-  const { dpopAccessToken: _, ...stableConnection } = connection;
-  return stableConnection;
-}

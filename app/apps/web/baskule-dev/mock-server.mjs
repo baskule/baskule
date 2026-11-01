@@ -1,16 +1,7 @@
-// baskule: mock Baskule front for web UI development (WP-E). Plays the Worker + ControlCell:
-//   /auth/*            Better Auth-shaped sign-in / sign-out (cookie session, in memory)
-//   /api/baskule/*    me, spaces, members, people (admin), invitations, health, downloads,
-//                      plugins and groups (mock-plugins.mjs), transcriptions (a fixed transcript)
-//   /s/<spaceId>/*     membership check, then proxied (HTTP + WebSocket) to a real T3 server per
-//                      space, started lazily like a waking cell (BASKULE_AUTH_MODE=none behind us)
-//   /downloads/*       fake app files
-//   everything else    the web app: `apps/web/dist` (MOCK_WEB=dist) or a Vite dev server (MOCK_WEB=dev)
-// No LLM spend: the T3 servers talk to one OpenCode 2 CLI backed by a mock OpenAI-compatible model.
-//
-// Env: MOCK_PORT (47700), MOCK_WEB (dist|dev), MOCK_VITE_PORT (47701), MOCK_T3_PORT_BASE (47710),
-//      MOCK_OPENCODE_URL (http://127.0.0.1:47703), MOCK_STATE_DIR, MOCK_BACKENDS (t3|none),
-//      MOCK_INJECT_AUTHOR (1: stamp `author` on user messages, standing in for WP-B's server).
+// baskule: mock front with in-memory Better Auth-shaped /auth and /api/baskule routes.
+// /s/:space proxies real T3 servers; /downloads serves fake apps; other routes serve Vite or dist.
+// T3 uses one OpenCode CLI backed by the fake LLM. MOCK_PORT/WEB/VITE_PORT/T3_PORT_BASE/OPENCODE_URL
+// choose listeners; MOCK_STATE_DIR holds state; MOCK_BACKENDS disables T3; MOCK_INJECT_AUTHOR stamps messages.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -306,7 +297,7 @@ function adminUsage(fromParam, toParam) {
     turns: Math.round(totals.turns * part),
     chats: Math.round(totals.chats * part),
   });
-  const bySpace = [...spaces.values()].map((space, index, all) => ({
+  const bySpace = spaces.values().map((space, index, all) => ({
     spaceId: space.id,
     name: space.name,
     ...share(1 / all.length),
@@ -452,7 +443,8 @@ const membersOf = (space) =>
     return user ? [{ userId: user.id, name: user.name, email: user.email, role: m.role }] : [];
   });
 const spacesOf = (userId) =>
-  [...spaces.values()]
+  spaces
+    .values()
     .filter((space) => memberRole(space, userId) !== null)
     .sort((a, b) =>
       a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "personal" ? -1 : 1,
@@ -957,7 +949,7 @@ async function handleApi(req, res, url) {
           if (user.id === me.id) return fail(res, 409, "self");
           endSessionsOf(user.id);
           users.delete(user.id);
-          for (const space of [...spaces.values()]) {
+          for (const space of spaces.values()) {
             if (space.personalUserId === user.id) spaces.delete(space.id);
             else space.members = space.members.filter((m) => m.userId !== user.id);
           }
@@ -993,7 +985,7 @@ async function handleApi(req, res, url) {
       const live = url.searchParams.get("status") === "live";
       if (a === "/spaces" && method === "GET") {
         return send(res, 200, {
-          spaces: [...spaces.values()].map((space) => ({
+          spaces: spaces.values().map((space) => ({
             id: space.id,
             name: space.name,
             kind: space.kind,
@@ -1548,7 +1540,7 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 const shutdown = () => {
-  for (const id of [...backends.keys()]) stopBackend(id);
+  for (const id of backends.keys()) stopBackend(id);
   server.close();
   setTimeout(() => process.exit(0), 500);
 };

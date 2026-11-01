@@ -71,9 +71,17 @@ environment's time zone, which may differ from your phone's.
 Deleting a thread also deletes tasks that post into that thread. Tasks that start
 a new thread on each run survive deletion of their previous threads.
 
-You can edit, pause, resume, run immediately, or delete a task from the list.
+A task runs as its author, using that person's connected accounts. Only the author
+can edit, enable, run immediately, or manage its webhook URL and signing secret.
+Space owners and administrators can pause or delete another person's task as a
+safety stop; only its author can resume it. Create your own task to run copied
+instructions with your accounts. Tasks without author attribution cannot be edited or run; owners and administrators can still
+pause or delete them. A scheduled run's queued message cannot be edited;
+change the task for future runs. Only its author can steer scheduled or delegated
+work, answer its questions and approvals, or supply its requested secrets. Other
+people can queue separate turns that run with their own accounts.
 Webhook tasks only run when their URL is called, so they can't be run
-immediately.
+immediately. Their URL and delivery details are visible only to their author.
 Leaving an edited form asks before discarding unsaved changes.
 
 ## Webhook automations
@@ -84,6 +92,8 @@ GitHub on a new pull request or a CI job that failed. A public URL needs a
 [T3 Connect](remote-access.md) managed tunnel; after you save the task, copy
 its URL from the editor. Without one, the editor shows only the URL's path.
 **Rotate** replaces the URL and the old one stops working.
+After upgrading from a version that showed webhook URLs to other space members,
+rotate existing URLs and update the services that call them.
 
 The prompt decides what the agent sees. Placeholders pull values out of the
 request: `{{body.path}}` for a JSON or form field, `{{headers.name}}`,

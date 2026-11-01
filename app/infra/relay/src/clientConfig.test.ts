@@ -55,9 +55,6 @@ const { test } = Test.make({
 
 const clientConfig = (token: string) => ({
   url: "https://relay.example.com",
-  mobileTracingUrl: "https://axiom.example.com/v1/traces",
-  mobileTracingDataset: "relay-traces",
-  mobileTracingToken: Redacted.make(`mobile-${token}`),
   clientTracingUrl: "https://axiom.example.com/v1/traces",
   clientTracingDataset: "relay-traces",
   clientTracingToken: Redacted.make(`client-${token}`),
@@ -83,7 +80,6 @@ describe("PublishClientConfig", () => {
       expect(first).toContain("KEEP=yes\n");
       expect(first).toContain("T3CODE_RELAY_URL=https://relay.example.com\n");
       expect(first).toContain("T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN=client-v1\n");
-      expect(first).toContain("T3CODE_MOBILE_OTLP_TRACES_TOKEN=mobile-v1\n");
 
       yield* fs.writeFileString(target, `${first}MANUAL=1\n`);
       yield* stack.deploy(PublishClientConfig(clientConfig("v1"))).pipe(configured);

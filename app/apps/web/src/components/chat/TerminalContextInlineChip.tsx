@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { TerminalIcon } from "lucide-react";
 
 import type { ContextPresentationCapability } from "../contextPresentationRegistry";

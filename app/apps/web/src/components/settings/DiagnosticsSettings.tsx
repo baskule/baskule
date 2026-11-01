@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { ProcessSignalActions } from "./ProcessSignalActions";
 import { resolveUsageAccess } from "@t3tools/client-runtime/state/usage-access";
 import { environmentSession } from "../../state/session";
@@ -738,7 +739,6 @@ function DiagnosticsRefreshButton({
 }
 
 export function DiagnosticsSettingsPanel() {
-  const t = useTranslation();
   const { environment } = useSettingsScope();
   // Signals and pending UI state belong to one environment, so a scope switch starts fresh.
   return <DiagnosticsSettingsBody key={environment?.environmentId ?? ""} />;

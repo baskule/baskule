@@ -230,9 +230,7 @@ describe("ConnectionResolver", () => {
         authorization: "front-session",
       });
       const layerBroker = yield* makeDependencies({
-        credentials: [
-          ["baskule:acme", new BearerConnectionCredential({ token: "session-token" })],
-        ],
+        credentials: [["baskule:acme", new BearerConnectionCredential({ token: "session-token" })]],
         authorizeBearer: () => Effect.die("a front-session environment must not exchange tokens"),
         descriptorAuthorizations,
       });

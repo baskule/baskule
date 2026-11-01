@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { ReactNode } from "react";
 import { Smartphone } from "lucide-react";
 

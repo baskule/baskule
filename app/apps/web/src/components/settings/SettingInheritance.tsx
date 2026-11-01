@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import {
   DEFAULT_SERVER_SETTINGS,
   PROJECT_FILE_BACKED_SETTINGS,

@@ -167,7 +167,7 @@ export const getTelemetryIdentity = Effect.flatMap(
 );
 
 export const getServerOwnersForHome = Effect.fn("getServerOwnersForHome")(function* (
-  homeDirectory: string,
+  _homeDirectory: string,
 ) {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const connectUser = yield* secrets.get(CLOUD_LINKED_USER_ID).pipe(

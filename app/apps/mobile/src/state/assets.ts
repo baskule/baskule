@@ -16,8 +16,7 @@ import {
   type AssetResource,
   type EnvironmentId,
 } from "@t3tools/contracts";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { assetExportResource, assetReadScope } from "../lib/mediaActionsSource";
@@ -71,7 +70,7 @@ export function useAssetConnectionLifetime(
 ) {
   const origin = useTransferOrigin(environmentId);
   const invalidate = useEffectEvent(onInvalidated);
-  // oxlint-disable-next-line t3code/react-effect-budget -- The viewer subscribes to account and authorization revocation for its mounted lifetime.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- The viewer subscribes to account and authorization revocation for its mounted lifetime.
   useEffect(() => {
     if (environmentId === null || origin === null) return;
     const controller = new AbortController();
@@ -102,7 +101,7 @@ export function useManagedAssetUri(input: {
   );
   const [failed, setFailed] = useState<{ url: string; origin: TransferOrigin } | null>(null);
   const { environmentId, url, name, scope } = input;
-  // oxlint-disable-next-line t3code/react-effect-budget -- Downloaded native previews retain a revocable file lease until the viewer unmounts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Downloaded native previews retain a revocable file lease until the viewer unmounts.
   useEffect(() => {
     if (!origin || environmentId === null || url === null) return;
     const controller = new AbortController();
@@ -206,7 +205,7 @@ export function useRefreshAssetUrl(
   if (JSON.stringify(stableResource) !== JSON.stringify(resource)) setStableResource(resource);
   const files = useRef(new Set<AttachmentPreviewFile>());
   const controller = useRef(new AbortController());
-  // oxlint-disable-next-line t3code/react-effect-budget -- Native export leases are disposed with the owning mounted viewer.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Native export leases are disposed with the owning mounted viewer.
   useEffect(() => {
     controller.current = new AbortController();
     const currentFiles = files.current;
@@ -220,7 +219,7 @@ export function useRefreshAssetUrl(
     refresh: true,
     reportFailure: false,
   });
-  return useCallback(async () => {
+  return async () => {
     const resource = stableResource;
     if (environmentId === null || resource === null || httpBaseUrl === null) return null;
     if (origin === null) return null;
@@ -241,7 +240,7 @@ export function useRefreshAssetUrl(
     if (!file) return null;
     files.current.add(file);
     return file.uri;
-  }, [createUrl, environmentId, httpBaseUrl, stableResource, disposition, origin]);
+  };
 }
 
 /** {@link useRefreshAssetUrl} for async tasks that resolve several resources at once. */

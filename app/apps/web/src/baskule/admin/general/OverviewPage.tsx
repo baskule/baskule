@@ -1,8 +1,8 @@
+import { t, useTranslation } from "../../../i18n";
 // baskule: General → Overview: live health of every space and its computer, and the usage summary.
 import { RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 
-import { t, useTranslation } from "../../../i18n";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";

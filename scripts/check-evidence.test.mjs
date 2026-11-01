@@ -89,9 +89,9 @@ test("nested feature checks can keep the earlier pass from this invocation", (t)
 
 test("a mapped custom check can acquire the parent's released gateway lock", (t) => {
   const f = fixture(t);
-  mkdirSync(join(f.repo, "computerd/v2/test"), { recursive: true });
+  mkdirSync(join(f.repo, "computerd/test"), { recursive: true });
   mkdirSync(join(f.repo, "fake-bin"));
-  writeFileSync(join(f.repo, "computerd/v2/test/integration.sh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  writeFileSync(join(f.repo, "computerd/test/integration.sh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   writeFileSync(join(f.repo, "fake-bin/docker"), "#!/bin/sh\nprintf true\n", { mode: 0o755 });
   writeFileSync(join(f.map, "first.md"), '---\npaths: ["platform/**"]\njourneys: null\nprofile: "full"\nchecks: ["flock --nonblock .run/locks/gateway.lock true"]\n---\n');
   f.git("add", "."); f.git("commit", "-qm", "gateway handoff");

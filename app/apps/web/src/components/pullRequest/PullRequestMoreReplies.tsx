@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { PullRequestReplyAvailability } from "./pullRequestDetail.logic";
 
 export function PullRequestMoreReplies({

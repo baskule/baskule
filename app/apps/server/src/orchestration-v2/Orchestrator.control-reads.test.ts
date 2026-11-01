@@ -15,6 +15,7 @@ import {
   RunAttemptId,
   RunId,
   RuntimeRequestId,
+  ScheduledTaskId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -82,10 +83,25 @@ it.effect(
         runtimeMode: "full-access",
         interactionMode: "default",
         branch: null,
-        worktreePath: null,
+        worktreePath: process.cwd(),
         createdBy: "user",
         creationSource: "web",
       });
+      const author = { id: "bob", name: "Bob" };
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("scheduled-approval-start"),
+        threadId,
+        messageId: MessageId.make("scheduled-approval-input"),
+        text: "Scheduled work",
+        attachments: [],
+        author,
+        scheduledTaskId: ScheduledTaskId.make("scheduled-task:approval"),
+        createdBy: "user",
+        creationSource: "web",
+        dispatchMode: { type: "start_immediately" },
+      });
+      const run = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
       yield* projections.apply({
         id: EventId.make("session:approval-feedback"),
         type: "provider-session.attached",
@@ -105,6 +121,32 @@ it.effect(
         },
       });
       for (const name of ["child", "other"]) {
+        const nodeId = NodeId.make(`node:${name}`);
+        yield* projections.apply({
+          id: EventId.make(`node:${name}`),
+          type: "node.updated",
+          threadId,
+          runId: run.id,
+          nodeId,
+          occurredAt: now,
+          payload: {
+            id: nodeId,
+            threadId,
+            runId: run.id,
+            parentNodeId: run.rootNodeId,
+            rootNodeId: run.rootNodeId!,
+            kind: "approval_request",
+            status: "waiting",
+            countsForRun: false,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            runtimeRequestId: RuntimeRequestId.make(name),
+            checkpointScopeId: null,
+            startedAt: now,
+            completedAt: null,
+          },
+        });
         yield* projections.apply({
           id: EventId.make(`request:${name}`),
           type: "runtime-request.updated",
@@ -127,6 +169,24 @@ it.effect(
           },
         });
       }
+      for (const actor of [{ id: "alice", name: "Alice" }, undefined]) {
+        for (const decision of ["accept", "decline"] as const) {
+          const deniedId = CommandId.make(`denied:${actor?.id}:${decision}`);
+          const refused = yield* orchestrator
+            .dispatch({
+              type: "runtime-request.respond",
+              commandId: deniedId,
+              threadId,
+              requestId: RuntimeRequestId.make("child"),
+              decision,
+              ...(decision === "decline" ? { feedback: "Attacker feedback" } : {}),
+              ...(actor === undefined ? {} : { author: actor }),
+            })
+            .pipe(Effect.flip);
+          assert.include(String(refused.cause), "Only the run's author");
+          assert.deepEqual(yield* outbox.listByCommandId(deniedId), []);
+        }
+      }
       const commandId = CommandId.make("respond:approval-feedback");
       const feedback = "Run it in a safer manner.";
       for (const [index, invalid] of [
@@ -138,6 +198,7 @@ it.effect(
         const rejected = yield* orchestrator
           .dispatch({
             type: "runtime-request.respond",
+            author,
             commandId: rejectedId,
             threadId,
             ...invalid,
@@ -148,6 +209,7 @@ it.effect(
       }
       yield* orchestrator.dispatch({
         type: "runtime-request.respond",
+        author,
         commandId,
         threadId,
         requestId: RuntimeRequestId.make("child"),
@@ -182,7 +244,7 @@ it.effect(
             item.text === feedback,
         ),
       );
-      assert.equal(projection.runs.length, 0);
+      assert.equal(projection.runs.length, 1);
       assert.deepEqual(
         (yield* outbox.listByCommandId(commandId)).map((effect) => effect.request),
         [

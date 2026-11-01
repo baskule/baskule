@@ -24,6 +24,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as MutableList from "effect/MutableList";
 import * as Stream from "effect/Stream";
 import type { BrowserContext, Page } from "playwright-core";
 import { beforeEach, expect, vi } from "vite-plus/test";
@@ -279,6 +280,8 @@ const desktopRenders = (tabId: string) => {
   return desktopTabs.has(tabId);
 };
 const releasedDesktopTabs: Array<string> = [];
+let desktopReleased = Promise.withResolvers<void>();
+let detachSubscribed = Promise.withResolvers<void>();
 const desktopTurns = new NodeEvents.EventEmitter();
 const desktopConnections: Array<{ endpoint: string; context: ReturnType<typeof makeContext> }> = [];
 const testThread = {
@@ -318,6 +321,7 @@ const dependencies = Layer.mergeAll(
           const onDetach = (key: { threadId: string; tabId: string }) =>
             Queue.offerUnsafe(queue, key);
           desktopDetaches.on("detach", onDetach);
+          detachSubscribed.resolve();
           return onDetach;
         }),
         (onDetach) => Effect.sync(() => desktopDetaches.off("detach", onDetach)),
@@ -337,7 +341,10 @@ const dependencies = Layer.mergeAll(
     isAttached: (key) => Effect.sync(() => desktopRenders(key.tabId)),
     endpoint: (key) =>
       Effect.acquireRelease(Effect.succeed(`ws://desktop/${key.tabId}`), () =>
-        Effect.sync(() => releasedDesktopTabs.push(key.tabId)),
+        Effect.sync(() => {
+          releasedDesktopTabs.push(key.tabId);
+          desktopReleased.resolve();
+        }),
       ),
     pointer: () => Effect.void,
     turn: (threadId, active) => Effect.sync(() => desktopTurns.emit("turn", threadId, active)),
@@ -389,6 +396,8 @@ beforeEach(() => {
   desktopTabs.clear();
   desktopRendersNext = false;
   releasedDesktopTabs.length = 0;
+  desktopReleased = Promise.withResolvers<void>();
+  detachSubscribed = Promise.withResolvers<void>();
   desktopConnections.length = 0;
 });
 
@@ -479,6 +488,27 @@ it.live.each(["desktop" as const, undefined])(
         expect(reused.tabId).toBe(tabId);
       }),
     ).pipe(Effect.provide(layer)),
+);
+
+it.effect("a tab the desktop does not draw is marked headless, so the desktop streams it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { broker, tabId } = yield* ready;
+      const manager = yield* Manager.PreviewManager;
+      desktopRendersNext = true;
+      const desktopTab = yield* broker.invoke<PreviewAutomationStatus>({
+        scope,
+        operation: "open",
+        input: { reuseExistingTab: false, show: false },
+      });
+      const { sessions } = yield* manager.list({ threadId: scope.thread.threadId });
+      const headlessOf = (id: string | null) =>
+        sessions.find((session) => session.tabId === id)?.headless;
+
+      expect(headlessOf(tabId)).toBe(true);
+      expect(headlessOf(desktopTab.tabId)).toBeUndefined();
+    }),
+  ).pipe(Effect.provide(layer)),
 );
 
 it.live.each([
@@ -1147,7 +1177,11 @@ it.live("a file picker replaces a stalled viewer backlog instead of being droppe
       yield* Queue.clear(viewer.output);
       stallViewer(viewer, { _tag: "viewport", width: 1, height: 1 });
       accept.resolve(".csv");
-      yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+      yield* Effect.promise(() =>
+        expect
+          .poll(() => MutableList.toArray(viewer.output.messages))
+          .toEqual([expect.objectContaining({ _tag: "fileChooser", accept: ".csv" })]),
+      );
       expect(yield* Queue.clear(viewer.output)).toEqual([
         expect.objectContaining({ _tag: "fileChooser", accept: ".csv" }),
       ]);
@@ -1275,9 +1309,10 @@ it.live("an agent answers the page's file picker or sets files on a file input",
         _tag: "PreviewAutomationExecutionError",
       });
       const setFiles = vi.fn(async (_files: unknown) => {});
+      const accept = Promise.withResolvers<string>();
       page.emit("filechooser", {
         isMultiple: () => false,
-        element: () => ({ getAttribute: async () => ".csv" }),
+        element: () => ({ getAttribute: () => accept.promise }),
         setFiles,
       });
       const status = broker.invoke<PreviewAutomationStatus>({
@@ -1286,11 +1321,9 @@ it.live("an agent answers the page's file picker or sets files on a file input",
         operation: "status",
         input: {},
       });
-      let opened = yield* status;
-      while (!opened.fileChooser) {
-        yield* Effect.sleep("5 millis");
-        opened = yield* status;
-      }
+      accept.resolve(".csv");
+      yield* Effect.promise(() => accept.promise);
+      const opened = yield* status;
       expect(opened.fileChooser).toEqual({ multiple: false, accept: ".csv" });
       yield* Effect.flip(upload({ paths: ["/tmp/a.csv", "/tmp/b.csv"] }));
       yield* upload({ paths: ["/tmp/a.csv"] });
@@ -1358,7 +1391,7 @@ it.live("drives the desktop's own page for a tab the desktop renders", () =>
       });
       expect(evaluated).toMatchObject({ tabId: opened.tabId });
       yield* manager.close({ threadId: scope.thread.threadId, tabId: opened.tabId });
-      while (releasedDesktopTabs.length === 0) yield* Effect.yieldNow;
+      yield* Effect.promise(() => desktopReleased.promise);
       expect(releasedDesktopTabs).toEqual([opened.tabId]);
       expect(page.close).not.toHaveBeenCalled();
     }),
@@ -1444,7 +1477,7 @@ it.live("a desktop page the desktop takes back reconnects instead of closing", (
       const opened = yield* manager.open({ threadId: scope.thread.threadId, runtime: "server" });
       const viewer = yield* browser.attachViewer(viewerInput(opened.tabId, false));
       // The server's listener subscribes in its own fiber; detach once it is there.
-      while (desktopDetaches.listenerCount("detach") === 0) yield* Effect.yieldNow;
+      yield* Effect.promise(() => detachSubscribed.promise);
       desktopDetaches.emit("detach", { threadId: scope.thread.threadId, tabId: opened.tabId });
       let end = yield* Queue.take(viewer.output);
       while (end._tag !== "reconnect" && end._tag !== "gone")

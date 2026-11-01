@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { BookmarkIcon } from "lucide-react";
 import { memo } from "react";
 

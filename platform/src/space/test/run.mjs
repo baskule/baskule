@@ -259,10 +259,11 @@ async function main() {
     assert(settings._tag === "Failure" && failureText(settings).includes("unsupported in Baskule"), "server.updateSettings must be refused (installation-managed)");
     const settle = await c.call("orchestration.dispatchCommand", { type: "thread.settle", commandId: crypto.randomUUID(), threadId: firstThreadId });
     assert(settle._tag === "Failure" && failureText(settle).includes("unsupported in Baskule"), `thread.settle → ${failureText(settle).slice(0, 300)}`);
-    const config = JSON.stringify(await c.ok("server.getConfig", {}));
+    const settingsRead = await c.ok("server.getConfig", {});
+    const config = JSON.stringify(settingsRead);
     assert(config.includes('"threadSettlement":false') && config.includes('"threadPinReorder":true'), `capabilities: settlement must be off, pin reorder on`);
-    const settingsRead = await c.ok("server.getSettings", {});
-    const instance = settingsRead.providerInstances?.opencode ?? settingsRead.settings?.providerInstances?.opencode;
+    assert(settingsRead.environment.capabilities.threadProjectFromScratch === false, "hosted mobile must hide Turn into project");
+    const instance = settingsRead.settings.providerInstances.opencode;
     assert(JSON.stringify(settingsRead).includes("http://agent/sp1/oc"), `managed OpenCode instance missing: ${JSON.stringify(instance ?? settingsRead).slice(0, 300)}`);
     return "terminal, settings writes and settle refused; settlement advertised off";
   });
@@ -322,7 +323,7 @@ async function main() {
     const closed = await Promise.race([bobSocket.closed, sleep(5000).then(() => null)]);
     assert(closed && closed.code === 4401, `Bob's socket not closed with 4401: ${JSON.stringify(closed)} (${JSON.stringify(r)})`);
     // Alice is untouched.
-    await alicePrimary.ok("server.getSettings", {});
+    await alicePrimary.ok("server.getConfig", {});
     // The 60 s recheck closes a socket whose session ControlCell no longer vouches for.
     const bob2 = { ...bob, sessionId: "ba-bob-2" };
     const again = await RpcClient.open(BASE, "sp1", bob2);
@@ -330,7 +331,7 @@ async function main() {
     const rc = await (await http("/control/sp1/_baskule/recheck", { method: "POST" })).json();
     const closed2 = await Promise.race([again.closed, sleep(5000).then(() => null)]);
     assert(closed2?.code === 4401 && rc.closed === 1, `recheck did not close Bob's socket: ${JSON.stringify(rc)} ${JSON.stringify(closed2)}`);
-    await alicePrimary.ok("server.getSettings", {});
+    await alicePrimary.ok("server.getConfig", {});
     return `push revoke closed=${r.closed} revoked=${r.revoked}; recheck checked=${rc.checked} closed=${rc.closed}`;
   });
 
@@ -381,11 +382,10 @@ async function main() {
     log(`  schedule due in ${Math.round(dueIn / 1000)} s; space asleep`);
     await waitFor("alarm woke the space", async () => (await (await http("/control/sp1/_baskule/status")).json()).awake, dueIn + 30_000, 1000);
     const c2 = await RpcClient.open(BASE, "sp1", alice);
-    const ran = await waitFor("scheduled run recorded", async () => {
-      const list = await c2.ok("scheduledTasks.list", {});
-      const t = list.tasks.find((x) => x.id === task.id);
-      return t && t.runCount > 0 ? t : null;
-    }, 30_000, 1000);
+    let scheduledTasks = [];
+    const unsubscribe = c2.stream("scheduledTasks.subscribe", {}, (list) => { scheduledTasks = list.tasks; });
+    const ran = await waitFor("scheduled run recorded", () => scheduledTasks.find((t) => t.id === task.id && t.runCount > 0), 30_000);
+    unsubscribe();
     await c2.ok("scheduledTasks.setEnabled", { id: task.id, enabled: false });
     c2.close();
     return `ran ${ran.runCount}x (${ran.lastRunStatus}) after an alarm wake`;
@@ -412,6 +412,107 @@ async function main() {
     thread.stop();
     c.close();
     return "environmentId, history, rename and chat folder intact; follow-up turn answered";
+  });
+
+  await check("long-thread-history", async () => {
+    const c = await RpcClient.open(BASE, "sphistory", alice);
+    const pid = (await c.ok("projects.ensureScratch", {})).projectId;
+    const tid = await launch(c, pid, "History turn 0 [[fake:text answer 0]]", "Long history");
+    const thread = watchThread(c, tid);
+    const get = async (suffix) => {
+      const r = await http(`/s/sphistory/api/orchestration/threads/${tid}${suffix}`, { headers: { ...as(alice), "x-t3-orchestration-protocol": "2" } });
+      assert(r.ok, `history HTTP ${r.status}: ${await r.clone().text()}`);
+      return r.json();
+    };
+    try {
+      await waitFor("first history turn", () => thread.settled(), 60_000);
+      for (let turn = 1; turn < 12; turn++) {
+        await dispatch(c, { type: "message.dispatch", createdBy: "user", creationSource: "web", threadId: tid, messageId: `message:history:${turn}`, text: `History turn ${turn} [[fake:text answer ${turn}]]`, attachments: [], dispatchMode: { type: "queue_after_active" } });
+        await waitFor(`history turn ${turn}`, () => thread.runs.size === turn + 1 && thread.settled(), 60_000);
+      }
+      // A work group over the 150-item inline ceiling exercises deferred-work SQL in a real DO.
+      const tools = Array.from({ length: 151 }, () => "[[fake:tool *list_scheduled_tasks {}]]").join(" ");
+      await dispatch(c, { type: "message.dispatch", createdBy: "user", creationSource: "web", threadId: tid, messageId: "message:history:work", text: `Inspect schedules ${tools} [[fake:delay 0]]`, attachments: [], dispatchMode: { type: "queue_after_active" } });
+      await waitFor("long work turn", () => thread.runs.size === 13 && thread.settled(), 300_000);
+      const full = (await get("")).projection;
+      const bounded = await get("/bounded?deferWork=1");
+      assert(bounded.hasMoreHistory && bounded.historyCursor, "long thread needs a bounded snapshot and cursor");
+      const rows = [...bounded.projection.visibleTurnItems];
+      let cursor = bounded.historyCursor;
+      let pages = 0;
+      while (cursor) {
+        assert(++pages <= 20, "history cursor did not terminate");
+        const page = await get(`/history?deferWork=1&cursor=${encodeURIComponent(cursor)}`);
+        rows.unshift(...page.items);
+        cursor = page.nextCursor;
+      }
+      const ids = rows.map((row) => row.item.id);
+      assert(new Set(ids).size === ids.length, "history repeats item ids across pages");
+      const all = new Set(ids);
+      let deferred = 0;
+      for (const row of rows) {
+        if (!row.item.deferredWork) continue;
+        deferred++;
+        // Expanding work replaces its collapsed first item; the work page includes that anchor.
+        all.delete(row.item.id);
+        let expanded = 0;
+        let workCursor = row.item.deferredWork.cursor;
+        while (workCursor) {
+          const page = await get(`/history?view=work&cursor=${encodeURIComponent(workCursor)}&throughEntryId=${encodeURIComponent(row.sourceItemId)}`);
+          for (const work of page.items) {
+            assert(!all.has(work.item.id), `duplicate deferred item ${work.item.id}`);
+            all.add(work.item.id);
+            expanded++;
+          }
+          workCursor = page.nextCursor;
+        }
+        assert(expanded === row.item.deferredWork.itemCount, `deferred group omitted work: ${expanded}/${row.item.deferredWork.itemCount}`);
+      }
+      assert(deferred > 0, "no deferred work group exercised");
+      assert(full.turnItems.every((item) => all.has(item.id)), `history omitted ${full.turnItems.filter((item) => !all.has(item.id)).length} persisted items`);
+      return `${pages} cursor pages, ${deferred} deferred groups, ${all.size} unique items; every persisted item covered`;
+    } finally { thread.stop(); c.close(); }
+  });
+
+  await check("question-across-restart", async () => {
+    let c = await RpcClient.open(BASE, "spquestion", alice);
+    const pid = (await c.ok("projects.ensureScratch", {})).projectId;
+    const question = { questions: [{ question: "Pick a color", header: "Color", options: [{ label: "Blue", description: "cool" }, { label: "Red", description: "warm" }] }] };
+    const tid = await launch(c, pid, `Ask [[fake:tool question ${JSON.stringify(question)}]]`, "Restart question");
+    const projection = async () => {
+      const p = await c.ok("orchestration.getThreadProjection", { threadId: tid });
+      return p.projection ?? p;
+    };
+    try {
+      const request = await waitFor("pending question with persisted form", async () => {
+        const p = await projection();
+        const request = p.runtimeRequests.find((r) => r.kind === "user_input" && r.status === "pending");
+        return request && p.turnItems.some((item) => item.type === "user_input_request" && item.requestId === request.id && item.questions.length > 0) ? request : null;
+      }, 60_000);
+      c.close();
+      await c.closed;
+      await stop("celld");
+      await startCelld({ clean: false });
+      c = await RpcClient.open(BASE, "spquestion", alice);
+      const recovered = await waitFor("recover persisted question", async () => (await projection()).runtimeRequests.find((r) => r.id === request.id && r.status === "pending" && r.responseCapability.type === "message"), 30_000);
+      const priorMessageIds = new Set((await projection()).messages.map((message) => message.id));
+      await dispatch(c, { type: "runtime-request.respond", threadId: tid, requestId: recovered.id, answers: { q0: "Blue" } });
+      const answered = await waitFor("recovered answer completed", async () => {
+        const p = await projection();
+        return p.runtimeRequests.find((r) => r.id === request.id)?.status === "resolved" && p.messages.some((m) => m.role === "assistant" && m.text.includes("Blue")) && p.runs.every((r) => ["completed", "cancelled", "interrupted", "failed"].includes(r.status)) ? p : null;
+      }, 60_000);
+      const responses = answered.messages.filter((m) => m.role === "user" && !priorMessageIds.has(m.id) && m.text.includes("Blue"));
+      assert(responses.length === 1, `recovered answer sent ${responses.length} times`);
+      const modelRequests = await (await fetch(`http://127.0.0.1:${LLM_PORT}/_fake/requests`)).json();
+      const answerRequests = modelRequests.filter((body) => {
+        const user = body.messages.findLast((message) => message.role === "user");
+        const text = typeof user?.content === "string" ? user.content : JSON.stringify(user?.content);
+        return text?.includes(responses[0].text) && !text.includes("Return JSON with keys title and needsRefinement");
+      });
+      assert(answerRequests.length === 1, `recovered answer reached the model ${answerRequests.length} times`);
+      assert(answered.runtimeRequests.filter((r) => r.id === request.id).length === 1, "question duplicated after restart");
+      return "pending question survived cell reboot; one answer message and one completed response";
+    } finally { c.close(); }
   });
 
   await check("space-isolation-and-delete", async () => {

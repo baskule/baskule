@@ -1,10 +1,10 @@
+import { useLocale, useTranslation } from "../../../i18n";
 // baskule: AI → Usage & limits, the organization's usage: totals, a daily chart and who, which
 // model and which space it went to. Each table sorts and exports what it shows.
 import { formatCount, formatUsd } from "@t3tools/shared/usageFormat";
 import { DownloadIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { useLocale, useTranslation } from "../../../i18n";
 import { Button } from "../../../components/ui/button";
 import {
   Select,

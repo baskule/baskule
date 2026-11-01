@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { Platform, Pressable, View } from "react-native";
 

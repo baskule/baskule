@@ -1,5 +1,5 @@
 ---
-paths: ["computerd/v2/**", "app/apps/web/src/baskule/**"]
+paths: ["computerd/**", "app/apps/web/src/baskule/**"]
 journeys: null
 profile: "full"
 checks: ["scripts/check computerd"]

@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -11,14 +12,7 @@ import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 import type { ReviewSectionItem } from "./reviewModel";
 import { useReviewHeaderPresentation } from "./useReviewHeaderPresentation";
 import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-screens";
-import {
-  type Ref,
-  type ReactElement,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react";
+import { type Ref, type ReactElement, useImperativeHandle, useRef, useState } from "react";
 import {
   FlatList,
   Platform,
@@ -32,7 +26,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { NativeInspectorContent } from "../../native/NativeInspectorContent";
-
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
@@ -81,6 +74,7 @@ function ReviewHeader(
     readonly onReturnToThread: () => void;
   },
 ) {
+  const t = useTranslation();
   const { panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
   const presentation = useReviewHeaderPresentation(props);
   const sectionAction = (section: ReviewSectionItem | null, title: string): AppBarMenuItem => ({
@@ -99,14 +93,14 @@ function ReviewHeader(
       onBack={props.onReturnToThread}
       hideBottomBorder
       options={{ headerTintColor: props.iconColor, headerTitle: props.title }}
-      backInSplitView={{ accessibilityLabel: "Back to chat", icon: "chevron.left" }}
+      backInSplitView={{ accessibilityLabel: t("Back to chat"), icon: "chevron.left" }}
       actions={
         props.showChangedFilesToggle
           ? [
               {
                 accessibilityLabel: panes.auxiliaryPaneVisible
-                  ? "Hide changed files"
-                  : "Show changed files",
+                  ? t("Hide changed files")
+                  : t("Show changed files"),
                 icon: "sidebar.right",
                 selected: panes.auxiliaryPaneVisible,
                 onPress: toggleAuxiliaryPane,
@@ -119,7 +113,7 @@ function ReviewHeader(
         ...(props.showSectionToolbar
           ? [
               {
-                title: "Select diff",
+                title: t("Select diff"),
                 icon: presentation.menuIcon,
                 items: [
                   {
@@ -135,7 +129,7 @@ function ReviewHeader(
                     ? [
                         {
                           id: "turns",
-                          title: "Turn",
+                          title: t("Turn"),
                           items: props.sectionMenu.turns.map((section) => ({
                             id: `section:${section.id}`,
                             title: section.title,
@@ -438,7 +432,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const t = useTranslation();
   const { nativeReviewDiffStyle } = useAppearanceCodeSurface();
   useAdaptiveWorkspacePaneRole("inspector");
-  const { panes, showAuxiliaryPane } = useAdaptiveWorkspaceLayout();
+  const { panes } = useAdaptiveWorkspaceLayout();
   const navigation = useNavigation();
   const selectDetail = useSelectWorkspaceDetail();
   const insets = useSafeAreaInsets();
@@ -457,10 +451,6 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const bottomContentInset =
     Platform.OS === "ios" ? safeArea.bottom + 8 : Math.max(insets.bottom, 18) + 18;
 
-  useEffect(() => {
-    showAuxiliaryPane("inspector");
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Opening review for another thread reselects its inspector pane.
-  }, [environmentId, showAuxiliaryPane, threadId]);
   const {
     error,
     reviewSections,

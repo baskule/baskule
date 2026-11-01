@@ -11,5 +11,6 @@ export const usageApi = {
     return request<AdminUsage>("GET", `/api/baskule/admin/usage?${q}`);
   },
   limits: () => request<UsageLimitSettings>("GET", "/api/baskule/admin/usage/limits"),
-  setLimits: (settings: UsageLimitSettings) => request<UsageLimitSettings>("PUT", "/api/baskule/admin/usage/limits", settings),
+  setLimits: (settings: UsageLimitSettings) =>
+    request<UsageLimitSettings>("PUT", "/api/baskule/admin/usage/limits", settings),
 };

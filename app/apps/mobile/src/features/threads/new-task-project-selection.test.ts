@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { HomeProjectScope } from "../home/homeThreadList";
 import {
+  getProjectScopeSelectionTarget,
   newTaskDestination,
   resolveDraftProjectSelection,
   resolveEnvironmentProjectMatch,
@@ -53,6 +54,26 @@ function makeScope(projects: ReadonlyArray<EnvironmentProject>): HomeProjectScop
   };
 }
 
+describe("getProjectScopeSelectionTarget", () => {
+  it("prefers a connected copy of a project that spans environments", () => {
+    const mac = makeProject("t3code", "mac");
+    const server = makeProject("t3code", "server");
+    const target = (connected: ReadonlyArray<string>, preferred: string | null = null) =>
+      getProjectScopeSelectionTarget(
+        makeScope([mac, server]),
+        preferred === null ? null : EnvironmentId.make(preferred),
+        new Set(connected.map((id) => EnvironmentId.make(id))),
+      );
+    expect(target(["server"])).toBe(server);
+    expect(target(["server"], "mac")).toBe(server);
+    expect(target(["mac", "server"], "server")).toBe(server);
+    expect(target(["mac", "server"])).toBe(mac);
+    // With nothing connected, the usual order still applies.
+    expect(target([], "server")).toBe(server);
+    expect(target([])).toBe(mac);
+  });
+});
+
 describe("resolveEnvironmentProjectMatch", () => {
   it("follows the same repository onto the target machine", () => {
     const selected = makeProject("t3code", "mac", { repositoryKey: "github.com/t3tools/t3code" });
@@ -98,20 +119,33 @@ describe("resolveDraftProjectSelection", () => {
   it("preserves an explicit project selection", () => {
     const project = makeProject("t3code");
     expect(
-      resolveDraftProjectSelection("environment:t3code", [project], [makeScope([project])]),
+      resolveDraftProjectSelection("environment:t3code", [project], [makeScope([project])], {
+        incomingShareId: undefined,
+        pickerClosed: false,
+      }),
     ).toEqual({ kind: "preserve" });
   });
 
   it("waits for the Personal scratch flow even when a team is the only loaded project", () => {
     const project = makeProject("t3code");
-    expect(resolveDraftProjectSelection(null, [project], [makeScope([project])])).toEqual({
+    expect(
+      resolveDraftProjectSelection(null, [project], [makeScope([project])], {
+        incomingShareId: undefined,
+        pickerClosed: false,
+      }),
+    ).toEqual({
       kind: "pick",
     });
   });
 
   it("does not automatically target a sole logical team project", () => {
     const projects = [makeProject("t3code"), makeProject("t3code-2"), makeProject("t3code-3")];
-    expect(resolveDraftProjectSelection(null, projects, [makeScope(projects)])).toEqual({
+    expect(
+      resolveDraftProjectSelection(null, projects, [makeScope(projects)], {
+        incomingShareId: undefined,
+        pickerClosed: false,
+      }),
+    ).toEqual({
       kind: "pick",
     });
   });
@@ -119,7 +153,10 @@ describe("resolveDraftProjectSelection", () => {
   it("preserves an explicit project while its catalog entry is unavailable", () => {
     const project = makeProject("t3code");
     expect(
-      resolveDraftProjectSelection("environment:removed", [project], [makeScope([project])]),
+      resolveDraftProjectSelection("environment:removed", [project], [makeScope([project])], {
+        incomingShareId: undefined,
+        pickerClosed: false,
+      }),
     ).toEqual({
       kind: "preserve",
     });
@@ -127,26 +164,89 @@ describe("resolveDraftProjectSelection", () => {
 });
 
 describe("newTaskDestination", () => {
-  it("opens the current thread's project directly in split view", () => {
-    const projects = [makeProject("first"), makeProject("current", "other-environment")];
-    expect(newTaskDestination(true, projects, projects[1], "request")).toEqual({
+  const picker = { draft: { requestId: "request" } };
+
+  function destination(options: {
+    readonly useLastProject: boolean | undefined;
+    readonly projects: ReadonlyArray<EnvironmentProject>;
+    readonly current?: EnvironmentProject;
+    readonly last?: { readonly environmentId: string; readonly projectId: string };
+  }) {
+    return newTaskDestination({
+      projects: options.projects,
+      requestId: "request",
+      useLastProject: options.useLastProject,
+      currentProject: options.current && {
+        environmentId: options.current.environmentId,
+        projectId: options.current.id,
+      },
+      lastProject: options.last,
+    });
+  }
+
+  it("starts in the current thread's project ahead of the remembered one", () => {
+    const projects = [makeProject("remembered"), makeProject("current", "other-environment")];
+    expect(
+      destination({
+        useLastProject: true,
+        projects,
+        current: projects[1],
+        last: { environmentId: "environment", projectId: "remembered" },
+      }),
+    ).toEqual({
       draft: { requestId: "request", environmentId: "other-environment", projectId: "current" },
     });
   });
-  it("uses an available project when split view has no current project", () => {
-    expect(newTaskDestination(true, [makeProject("first")], undefined, "request")).toEqual({
-      draft: { requestId: "request", environmentId: "environment", projectId: "first" },
-    });
-  });
-  it("keeps the picker when there are no projects", () => {
-    expect(newTaskDestination(true, [], undefined, "request")).toEqual({
-      draft: { requestId: "request" },
-    });
-  });
-  it("opens the same draft route in compact view", () => {
-    const project = makeProject("current");
-    expect(newTaskDestination(false, [project], project, "request")).toEqual({
+
+  it("treats an unset preference as on", () => {
+    const projects = [makeProject("first"), makeProject("current")];
+    expect(destination({ useLastProject: undefined, projects, current: projects[1] })).toEqual({
       draft: { requestId: "request", environmentId: "environment", projectId: "current" },
     });
+  });
+
+  it("starts in the remembered project of its own environment when there is no current one", () => {
+    const projects = [makeProject("chosen"), makeProject("chosen", "other-environment")];
+    expect(
+      destination({
+        useLastProject: true,
+        projects,
+        last: { environmentId: "other-environment", projectId: "chosen" },
+      }),
+    ).toEqual({
+      draft: { requestId: "request", environmentId: "other-environment", projectId: "chosen" },
+    });
+  });
+
+  it("ignores a remembered project id from another environment", () => {
+    expect(
+      destination({
+        useLastProject: true,
+        projects: [makeProject("chosen")],
+        last: { environmentId: "removed-environment", projectId: "chosen" },
+      }),
+    ).toEqual(picker);
+  });
+
+  it("opens the picker rather than the first project when nothing matches", () => {
+    expect(
+      destination({
+        useLastProject: true,
+        projects: [makeProject("first"), makeProject("second")],
+        current: makeProject("removed"),
+      }),
+    ).toEqual(picker);
+  });
+
+  it("always opens the picker when the preference is off", () => {
+    const only = makeProject("only");
+    expect(
+      destination({
+        useLastProject: false,
+        projects: [only],
+        current: only,
+        last: { environmentId: "environment", projectId: "only" },
+      }),
+    ).toEqual(picker);
   });
 });

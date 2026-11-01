@@ -1,10 +1,10 @@
 import { t, useTranslation } from "../i18n";
+
 import { WorkerPoolContext, useWorkerPool } from "@pierre/diffs/react";
 import { WorkerPoolManager } from "@pierre/diffs/worker";
 import DiffsWorker from "@pierre/diffs/worker/worker.js?worker";
 import * as Schema from "effect/Schema";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { subscribeClientSettings } from "../hooks/useSettings";
 import { getRenderedAppearance, subscribeRenderedAppearance } from "../hooks/useTheme";
 import { resolveDiffThemeName } from "../lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "../lib/syntaxHighlighting";
@@ -12,7 +12,7 @@ import { baskule } from "../baskule/flags";
 
 export class DiffWorkerError extends Schema.TaggedError<DiffWorkerError>()("DiffWorkerError", {
   operation: Schema.Literals(["create-worker", "get-render-options", "set-render-options"]),
-  themeName: Schema.Literals(["pierre-light", "pierre-dark", "t3-light"]),
+  themeName: Schema.Literals(["pierre-dark", "t3-light"]),
   cause: Schema.Defect(),
 }) {
   override get message(): string {
@@ -78,12 +78,7 @@ function createDiffWorkerPool(poolSize: number) {
   );
   return {
     pool,
-    unsubscribeTheme: (() => {
-      const apply = () => applyDiffWorkerTheme(pool);
-      // The New design picks the light syntax palette, so a settings change can switch it too.
-      const unsubscribes = [subscribeRenderedAppearance(apply), subscribeClientSettings(apply)];
-      return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
-    })(),
+    unsubscribeTheme: subscribeRenderedAppearance(() => applyDiffWorkerTheme(pool)),
     consumers: 0,
     idleTimer: undefined,
   };
@@ -106,6 +101,7 @@ function DiffWorkerReady({ children }: { children?: ReactNode }) {
     ? readyPool === workerPool || workerPool.isInitialized() || !workerPool.isWorkingPool()
     : typeof window === "undefined";
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- initializes the diff worker pool and marks it ready when its async startup settles
   useEffect(() => {
     if (ready || !workerPool) return;
 

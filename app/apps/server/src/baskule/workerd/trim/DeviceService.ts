@@ -53,9 +53,11 @@ export const layer = Layer.effect(
     // Never published to: subscribers see the initial state only.
     const changes = yield* PubSub.unbounded<DeviceServiceState>();
     const service: Service = {
-      agentCli: fail("agentCli"),
       testHost: () => fail("testHost"),
       easAccount: () => fail("easAccount") as never,
+      agentLauncher: () => fail("agentLauncher"),
+      locateDevice: () => Effect.succeedNone,
+      locateSession: () => Effect.succeedNone,
       agentTarget: () => fail("agentTarget"),
       state: Effect.succeed(DISABLED),
       subscribe: PubSub.subscribe(changes),

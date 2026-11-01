@@ -49,8 +49,6 @@ const SECONDARY_MODEL_SELECTION = {
   model: "anthropic/claude-sonnet-4-6",
 };
 
-const threadId = ThreadId.make("thread:provider-switch");
-
 const PRIMARY_DRIVER = ProviderDriverKind.make("opencode");
 const SECONDARY_DRIVER = ProviderDriverKind.make("opencode");
 
@@ -95,6 +93,8 @@ function makeTestAdapter(input: {
   readonly failedRunOrdinals?: ReadonlySet<number>;
   readonly interruptedRunOrdinals?: ReadonlySet<number>;
   readonly holdRunOrdinal?: number;
+  readonly pendingBackgroundWork?: Ref.Ref<boolean>;
+  readonly subagentOnlyBackgroundWork?: boolean;
   readonly holdFirstTurn?: Deferred.Deferred<void>;
   readonly releaseFirstTurn?: Deferred.Deferred<void>;
 }): ProviderAdapter.ProviderAdapterV2["Service"] {
@@ -126,6 +126,14 @@ function makeTestAdapter(input: {
           providerSessionId: sessionInput.providerSessionId,
           providerSession,
           events: Stream.fromPubSub(events),
+          ...(input.pendingBackgroundWork === undefined
+            ? {}
+            : {
+                hasPendingBackgroundWorkForThread: (_thread, options) =>
+                  input.subagentOnlyBackgroundWork && options?.includeSubagents !== true
+                    ? Effect.succeed(false)
+                    : Ref.get(input.pendingBackgroundWork!),
+              }),
           ...(input.getModelContextWindow === undefined
             ? {}
             : { getModelContextWindow: input.getModelContextWindow }),
@@ -372,6 +380,8 @@ const waitForIdle = Effect.fn("ProviderSwitchTest.waitForIdle")(function* (
   }
   return idle;
 });
+
+// Same tag as the adapter's unexported error raised when Claude never answers setMcpServers.
 
 describe("orchestration v2 provider switching", () => {
   const importedFailureScenario = (queueBeforeFailure: boolean) =>

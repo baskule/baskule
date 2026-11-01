@@ -1,18 +1,16 @@
 // @effect-diagnostics nodeBuiltinImport:off -- fake systemd binaries live in a temp dir.
+
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, describe, expect, it } from "@effect/vitest";
-import { AgentScope } from "@t3tools/shared/AgentScope";
+import { describe, expect, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
-
+import { ChildProcessSpawner } from "effect/process";
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { classifyScope, make, ownedAgentSlice, type ScopeState } from "./agentScope.ts";
@@ -187,6 +185,23 @@ describe("AgentScope service", () => {
         }
         units.set(unitOf(live), { activeState: "failed", result: "oom-kill" });
         expect(yield* scope.oomKilled("live")).toBe(true);
+      }),
+    ),
+  );
+
+  it.effect("delegates every agent scope so rootless containers can manage their cgroups", () =>
+    withFakeSystemd(({ scope }) =>
+      Effect.gen(function* () {
+        const agent = yield* scope.wrap({ command: "agent", args: [], name: "t", threadId: "a" });
+        const terminal = yield* scope.wrap({
+          command: "agent",
+          args: [],
+          name: "terminal",
+          survivesRestart: true,
+        });
+        for (const launch of [agent, terminal]) {
+          expect(launch.args).toContain("--property=Delegate=yes");
+        }
       }),
     ),
   );

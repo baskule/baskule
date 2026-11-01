@@ -3,9 +3,9 @@
 #   47650  celld dev, harness app (test/harness: the merged SpaceCell with its embedded AgentRuntime + a routing
 #          Worker), state in test/.run/app/.celld
 #   47651  fake LLM (platform/dev/fake-llm, requires the bearer key "fake-llm-key": proves the key path)
-#   47652  computerd v2 from source (computerd/v2/src/main.ts), the real API, IDLE_MINUTES=${IDLE_MINUTES:-3}
+#   47652  computerd from source (computerd/src/main.ts), the real API, IDLE_MINUTES=${IDLE_MINUTES:-3}
 #   47510  the shared private OpenShell gateway of the component loops (openshell/dev-up.sh: container
-#   47511  osdev-openshell, real baskule-computer:0.2 sandboxes; also used by wpf and computerd)
+#   47511  osdev-openshell, real baskule-computer:local sandboxes; also used by wpf and computerd)
 #
 #   ./devstack.sh start [--clean]   build the harness, start everything (the gateway is reused if running)
 #   ./devstack.sh restart-celld     restart celld only (persistence checks; same state dir)
@@ -76,7 +76,7 @@ case "${1:-}" in
     fi
     env COMPUTERD_INSTANCE=loop-agent COMPUTERD_TOKEN=$CD_TOKEN COMPUTERD_PORT=47652 COMPUTERD_HOST=127.0.0.1 OPENSHELL_GATEWAY=127.0.0.1:${DEV_GATEWAY_PORT:-47510} \
       OPENSHELL_VOLUMES_URL=http://127.0.0.1:${DEV_VOLUMES_PORT:-47511} OPENSHELL_VOLUMES_TOKEN=$VOL_TOKEN IDLE_MINUTES=${IDLE_MINUTES:-3} LOG_LEVEL=info \
-      setsid node "$ROOT/computerd/v2/src/main.ts" >> "$RUN/computerd.log" 2>&1 < /dev/null & echo $! > "$RUN/computerd.pid"
+      setsid node "$ROOT/computerd/src/main.ts" >> "$RUN/computerd.log" 2>&1 < /dev/null & echo $! > "$RUN/computerd.pid"
     wait_http http://127.0.0.1:47652/healthz 30
     build_harness
     unset KEY MISTRAL_API_KEY

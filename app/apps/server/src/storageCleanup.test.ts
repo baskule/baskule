@@ -1,7 +1,3 @@
-import { EventId } from "@t3tools/contracts";
-import { ProviderDriverKind } from "@t3tools/contracts";
-import { ProviderSessionId } from "@t3tools/contracts";
-import { type OrchestrationV2ProviderSession } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
@@ -470,27 +466,7 @@ const pausedMeasurementFixture = (storageCleanup?: StorageCleanupSettings) =>
     measuredPath = yield* fs.realPath(fixture.worktree);
     return { ...fixture, measuring, resume };
   });
-const sessionUpdated = (
-  index: number,
-  status: OrchestrationV2ProviderSession["status"],
-): OrchestrationV2DomainEvent => ({
-  id: EventId.make(`event-${index}`),
-  type: "provider-session.updated",
-  threadId: ThreadId.make("thread-1"),
-  occurredAt: at(0),
-  payload: {
-    id: ProviderSessionId.make(`session-${index}`),
-    driver: ProviderDriverKind.make("codex"),
-    providerInstanceId: ProviderInstanceId.make("codex"),
-    status,
-    cwd: "/elsewhere",
-    model: null,
-    capabilities: FULL_TEST_PROVIDER_CAPABILITIES,
-    createdAt: at(0),
-    updatedAt: at(0),
-    lastError: null,
-  },
-});
+
 const cleanupTestLayer = GitVcsDriver.layer.pipe(
   Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "storage-cleanup-" })),
   Layer.provideMerge(NodeServices.layer),

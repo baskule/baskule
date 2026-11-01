@@ -58,9 +58,7 @@ describe("fetchMe", () => {
 describe("connecting with a link", () => {
   it("checks the discovery document", async () => {
     const authentication = { mode: "authenticated", password: true, providers: [] };
-    const ok = fakeFetch(() =>
-      Response.json({ product: "baskule", name: "Acme", authentication }),
-    );
+    const ok = fakeFetch(() => Response.json({ product: "baskule", name: "Acme", authentication }));
     await expect(fetchInstance(SERVER, ok.fetchFn)).resolves.toEqual({
       name: "Acme",
       authentication,

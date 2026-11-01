@@ -45,7 +45,12 @@ export const startup = Promise.resolve().then(() => globalThis.onStarted(Shared(
       publicDir: NodeURL.fileURLToPath(new URL("../public", import.meta.url)),
       logLevel: "silent",
       resolve: {
-        alias: { react: NodePath.dirname(NodeURL.fileURLToPath(import.meta.resolve("react"))) },
+        alias: {
+          react: NodePath.dirname(NodeURL.fileURLToPath(import.meta.resolve("react"))),
+          "@t3tools/shared/localization": NodeURL.fileURLToPath(
+            new URL("../../../packages/shared/src/localization.ts", import.meta.url),
+          ),
+        },
       },
       experimental: { bundledDev: true },
       plugins: [

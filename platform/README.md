@@ -1,4 +1,4 @@
-# platform/ — the Baskule 0.2.1 celld app
+# platform/ — the Baskule celld app
 
 One celld app (`wrangler.json`, Worker `baskule`):
 

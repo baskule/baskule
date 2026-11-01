@@ -1,6 +1,6 @@
+import { useTranslation } from "../../i18n";
 import { useEffect, useState } from "react";
 
-import { useTranslation } from "../../i18n";
 import { Button } from "../../components/ui/button";
 import { baskuleApi } from "../api";
 
@@ -15,6 +15,7 @@ export function BrowserSignInButton({
   const t = useTranslation();
   const [pending, setPending] = useState<{ id: string; secret: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Poll the pending browser sign-in exchange only until the exchange or mounted view ends.
   useEffect(() => {
     if (!pending) return;
     let cancelled = false,
@@ -44,7 +45,7 @@ export function BrowserSignInButton({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [pending, next, onError]);
+  }, [pending, next, onError, t]);
   return (
     <div className="flex flex-col gap-3">
       <Button

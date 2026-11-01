@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { Button } from "../../components/ui/Button";
 import { AuthSettingsWriteScope, type ServerSettingsPatch } from "@t3tools/contracts";
 import { useEnvironmentsWithScope } from "../../state/session";
@@ -8,7 +9,6 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 import { supportsSharedSettingsSync } from "@t3tools/client-runtime/state/shared-settings";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -96,12 +96,7 @@ export function AutoSettleSettingsRows(props: {
     })),
   );
 
-  const supportsProjectOverrides = displayTargets.every(
-    (target) =>
-      target.environment.serverConfig.environment.capabilities.projectSettingsOverrides === true,
-  );
-  const disabled =
-    !canWriteSettings || props.pending || (projectSelected && !supportsProjectOverrides);
+  const disabled = !canWriteSettings || props.pending;
   const afterDays = referenceSettings.sidebarAutoSettleAfterDays;
 
   return (
@@ -198,6 +193,26 @@ export function WorkingSectionSettings() {
         )}
       </Text>
     </View>
+  );
+}
+
+export function NewThreadSettingsSection() {
+  const t = useTranslation();
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const useLastProject =
+    AsyncResult.isSuccess(preferences) && preferences.value.useLastProjectForNewThreads !== false;
+
+  return (
+    <SettingsSection title={t("New threads")}>
+      <SettingsSwitchRow
+        icon="square.and.pencil"
+        label={t("Use last project")}
+        subtitle={t("Start new threads in the last project you used on this device.")}
+        value={useLastProject}
+        onValueChange={(value) => savePreferences({ useLastProjectForNewThreads: value })}
+      />
+    </SettingsSection>
   );
 }
 

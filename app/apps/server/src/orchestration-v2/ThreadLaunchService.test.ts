@@ -64,6 +64,8 @@ import * as ThreadTitleRegeneration from "./ThreadTitleRegenerationService.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
+const taskActor = { id: "alice", name: "Alice" };
+
 const projectId = ProjectId.make("project:launch-test");
 const otherProjectId = ProjectId.make("project:launch-other");
 const encodeThreadProjection = Schema.encodeEffect(OrchestrationV2ThreadProjectionJson);
@@ -344,22 +346,25 @@ it.effect.each(
               launchInput({ command: "command:existing", thread: "thread:existing" }),
             )
           : null;
-      const { task } = yield* tasks.upsert({
-        id: ScheduledTaskId.make("scheduled-task:attribution"),
-        title: "Daily audit",
-        prompt: "Audit performance and crashes.",
-        enabled: false,
-        schedule: { type: "interval", everyMs: 60_000 },
-        projectId,
-        threadId: existing?.threadId ?? null,
-        workspaceStrategy: { type: "root" },
-        modelSelection,
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        createdBy,
-        creationSource: createdBy === "agent" ? "mcp" : "web",
-      });
-      const result = yield* tasks.runNow({ id: task.id });
+      const { task } = yield* tasks.upsert(
+        {
+          id: ScheduledTaskId.make("scheduled-task:attribution"),
+          title: "Daily audit",
+          prompt: "Audit performance and crashes.",
+          enabled: false,
+          schedule: { type: "interval", everyMs: 60_000 },
+          projectId,
+          threadId: existing?.threadId ?? null,
+          workspaceStrategy: { type: "root" },
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdBy,
+          creationSource: createdBy === "agent" ? "mcp" : "web",
+        },
+        taskActor,
+      );
+      const result = yield* tasks.runNow({ id: task.id }, taskActor);
       assert.equal(result.task.lastRunStatus, "succeeded");
       const projectThreads = yield* threads.listProjectThreads({
         projectId,
@@ -402,21 +407,24 @@ it.effect(
     return Effect.gen(function* () {
       const tasks = yield* ScheduledTasks.ScheduledTaskService;
       const threadId = ThreadId.make("thread:missing");
-      const { task } = yield* tasks.upsert({
-        title: "Daily audit",
-        prompt: "Audit performance and crashes.",
-        enabled: false,
-        schedule: { type: "interval", everyMs: 60_000 },
-        projectId,
-        threadId,
-        workspaceStrategy: { type: "root" },
-        modelSelection,
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        createdBy: "user",
-        creationSource: "web",
-      });
-      const result = yield* tasks.runNow({ id: task.id });
+      const { task } = yield* tasks.upsert(
+        {
+          title: "Daily audit",
+          prompt: "Audit performance and crashes.",
+          enabled: false,
+          schedule: { type: "interval", everyMs: 60_000 },
+          projectId,
+          threadId,
+          workspaceStrategy: { type: "root" },
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdBy: "user",
+          creationSource: "web",
+        },
+        taskActor,
+      );
+      const result = yield* tasks.runNow({ id: task.id }, taskActor);
       assert.equal(result.task.lastRunStatus, "failed");
       assert.isNull(result.threadId);
       assert.equal(result.task.threadId, threadId);
@@ -443,21 +451,24 @@ it.effect("runs a thread-bound automation on the provider the thread uses now", 
     const launched = yield* launches.launch(
       launchInput({ command: "command:switched", thread: "thread:switched" }),
     );
-    const { task } = yield* tasks.upsert({
-      id: ScheduledTaskId.make("scheduled-task:switched"),
-      title: "Hourly check",
-      prompt: "Check on the delegated workers.",
-      enabled: false,
-      schedule: { type: "interval", everyMs: 3_600_000 },
-      projectId,
-      threadId: launched.threadId,
-      workspaceStrategy: { type: "root" },
-      modelSelection,
-      runtimeMode: "full-access",
-      interactionMode: "default",
-      createdBy: "agent",
-      creationSource: "mcp",
-    });
+    const { task } = yield* tasks.upsert(
+      {
+        id: ScheduledTaskId.make("scheduled-task:switched"),
+        title: "Hourly check",
+        prompt: "Check on the delegated workers.",
+        enabled: false,
+        schedule: { type: "interval", everyMs: 3_600_000 },
+        projectId,
+        threadId: launched.threadId,
+        workspaceStrategy: { type: "root" },
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdBy: "agent",
+        creationSource: "mcp",
+      },
+      taskActor,
+    );
     yield* threads.dispatch({
       type: "thread.model-selection.set",
       commandId: CommandId.make("command:switch-selection"),
@@ -465,7 +476,7 @@ it.effect("runs a thread-bound automation on the provider the thread uses now", 
       modelSelection: claudeModelSelection,
     });
 
-    const result = yield* tasks.runNow({ id: task.id });
+    const result = yield* tasks.runNow({ id: task.id }, taskActor);
     assert.equal(result.task.lastRunStatus, "succeeded");
     const projection = yield* threads.getThreadProjection(launched.threadId);
     const message = projection.messages.find((item) => item.scheduledTaskId === task.id);
@@ -677,10 +688,7 @@ it.effect("keeps native maintenance commands out of steering and restart message
           continue;
         }
         const failure = yield* dispatch.pipe(Effect.flip);
-        assert.include(
-          String(failure.cause).toLowerCase(),
-          "sign",
-        );
+        assert.include(String(failure.cause).toLowerCase(), "sign");
         const after = yield* threads.getThreadProjection(launched.threadId);
         assert.deepEqual(after.messages, before.messages);
         assert.deepEqual(after.thread.titleRegeneration, before.thread.titleRegeneration);
@@ -975,10 +983,12 @@ it.effect("stores a Scratch scheduled task at the root and keeps worktrees elsew
     const tasks = yield* ScheduledTasks.ScheduledTaskService;
     const scratch = yield* tasks.upsert(
       scheduledTaskInput("scheduled-task:scratch-upsert", projectId),
+      taskActor,
     );
     assert.deepEqual(scratch.task.workspaceStrategy, { type: "root" });
     const git = yield* tasks.upsert(
       scheduledTaskInput("scheduled-task:git-upsert", otherProjectId),
+      taskActor,
     );
     assert.deepEqual(git.task.workspaceStrategy, worktreeStrategy);
   }).pipe(Effect.provide(harness.layer));
@@ -992,6 +1002,7 @@ it.effect("runs a Scratch scheduled task saved with a worktree in its own folder
     const sql = yield* SqlClient.SqlClient;
     const { task } = yield* tasks.upsert(
       scheduledTaskInput("scheduled-task:scratch-stored", projectId),
+      taskActor,
     );
     // Tasks saved before Scratch was coerced still hold a worktree strategy.
     yield* sql`
@@ -999,7 +1010,7 @@ it.effect("runs a Scratch scheduled task saved with a worktree in its own folder
       SET workspace_strategy_json = ${JSON.stringify(worktreeStrategy)}
       WHERE task_id = ${task.id}
     `;
-    const ran = yield* tasks.runNow({ id: task.id });
+    const ran = yield* tasks.runNow({ id: task.id }, taskActor);
     assert.equal(ran.task.lastRunStatus, "succeeded");
     const [thread] = yield* threads.listProjectThreads({ projectId, includeSubagents: false });
     assert.isDefined(thread);
@@ -1314,6 +1325,21 @@ it.effect.each(["failed", "interrupted"] as const)(
         createdBy: "user",
         creationSource: "web",
       });
+      yield* threads.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`command:launch:late-queued-follow-up-${ending}:wake`),
+        threadId: launched.threadId,
+        messageId: MessageId.make(`message:launch:late-queued-follow-up-${ending}:wake`),
+        text: "Background task completed.",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "provider",
+      });
+      const wake = (yield* threads.getThreadProjection(launched.threadId)).runs.at(-1)!;
+      assert.equal(wake.status, "queued");
+      assert.isTrue(wake.queueHeld);
+
       // Nor does the next one, though the run that message started is now the
       // latest and carries no workspace preparation.
       yield* threads.sendToThread({
@@ -1359,6 +1385,9 @@ it.effect("replays a server-allocated launch", () =>
       assert.equal(first.threadId, retry.threadId);
       assert.isFalse(first.resumed);
       assert.isTrue(retry.resumed);
+      // Clients drop their pending copy once the thread reaches the message's commit.
+      assert.isNumber(first.sequence);
+      assert.equal(retry.sequence, first.sequence);
       assert.equal(harness.runSetup.mock.calls.length, 1);
       assert.equal(retry.projection.messages.length, 1);
       assert.equal(retry.projection.runs.length, 1);
@@ -1417,6 +1446,40 @@ it.effect("replays an accepted launch after the project disables the instance", 
     if (fresh._tag !== "ThreadManagementProviderInstanceDisabledError") {
       assert.fail(`expected ThreadManagementProviderInstanceDisabledError, got ${fresh._tag}`);
     }
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("an agent's launch never starts work above the modes it asks for", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    // The first launch, at full access, creates the thread without a message.
+    const created = yield* launches.launch(
+      launchInput({ command: "command:launch:narrowed-retry", thread: "thread:narrowed" }),
+    );
+    // The same key comes back from a narrower agent, now carrying a message,
+    // as a retry or a concurrent launch that lost the create would.
+    const failed = yield* launches
+      .launch({
+        ...launchInput({
+          command: "command:launch:narrowed-retry",
+          thread: "thread:narrowed",
+          message: "Run this",
+        }),
+        runtimeMode: "approval-required",
+        interactionMode: "plan",
+        createdBy: "agent",
+        creationSource: "mcp",
+      })
+      .pipe(Effect.flip);
+    if (failed._tag !== "ThreadLaunchError") {
+      assert.fail(`expected ThreadLaunchError, got ${failed._tag}`);
+    }
+    assert.equal(failed.operation, "dispatch-message");
+    const projection = yield* threads.getThreadProjection(created.threadId);
+    assert.equal(projection.runs.length, 0);
+    assert.equal(projection.messages.length, 0);
   }).pipe(Effect.provide(harness.layer));
 });
 

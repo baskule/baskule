@@ -1,10 +1,5 @@
-// baskule: single switchboard for the Baskule Alpha 0.1 UI patches.
-// Every upstream file touched by Baskule carries an `// baskule:` comment and
-// consults this module, so the whole UI reduction can be reviewed (grep
-// "baskule:") and reverted (flip BASKULE_UI to false) in one place.
-// Strategy: configuration first, prune later — upstream code is hidden, never deleted.
-
-/** Master switch. Build with VITE_BASKULE_UI=0 to get the upstream T3 Code UI back. */
+// baskule: shared product flags for the Alpha UI and hosted front-session build.
+// Upstream integration points use these flags; product behavior lives under baskule/.
 export const BASKULE_UI =
   (import.meta.env as unknown as Record<string, string | undefined>).VITE_BASKULE_UI !== "0";
 
@@ -13,7 +8,7 @@ export const BASKULE_APP_NAME = "Baskule";
 const env = import.meta.env as unknown as Record<string, string | undefined>;
 
 /**
- * Alpha 0.2 multi-user build (VITE_BASKULE_HOSTED=1): the bundle is served by the Baskule
+ * Hosted multi-user build (VITE_BASKULE_HOSTED=1): the bundle is served by the Baskule
  * front, signs in with Better Auth and connects to one environment per space at `/s/<id>/`.
  * There is no primary environment (T3's "hosted" mode).
  */

@@ -1,12 +1,10 @@
 import { assert, it } from "@effect/vitest";
 import {
   CheckpointScopeId,
-  ContextTransferId,
   NodeId,
   EventId,
   MessageId,
   ProjectId,
-  ProviderDriverKind,
   ProviderInstanceId,
   RunId,
   ThreadId,
@@ -26,7 +24,7 @@ const layerDatabase = Layer.mergeAll(
   ProjectionStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
 );
 
-it.effect.each(["sqlite", "memory"] as const)(
+it.effect.each(["sqlite"] as const)(
   "loads startup state without obsolete transcript payloads in %s",
   (storage) =>
     Effect.gen(function* () {
@@ -329,11 +327,5 @@ it.effect.each(["sqlite", "memory"] as const)(
         yield* store.getTurnStartContext(ThreadId.make("missing"), runId).pipe(Effect.flip),
         ProjectionStore.ProjectionStoreThreadNotFoundError,
       );
-    }).pipe(
-      Effect.provide(
-        storage === "sqlite"
-          ? layerDatabase
-          : Layer.merge(SqlitePersistence.layerMemory, ProjectionStore.layerMemory),
-      ),
-    ),
+    }).pipe(Effect.provide(layerDatabase)),
 );

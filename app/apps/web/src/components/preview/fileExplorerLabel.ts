@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type { ExecutionEnvironmentPlatformOs, FileManagerRevealKind } from "@t3tools/contracts";
 
 export function revealInFileExplorerLabel(platform: string): string {

@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { t } from "../../i18n";
+
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { type EnvironmentId } from "@t3tools/contracts";
 import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
@@ -33,7 +34,6 @@ import {
   resolveServerConfigVersionMismatch,
   resolveServerSelfUpdateCapability,
   supportsDesktopAppUpdate,
-  supportsServerUpdateThreadContinuation,
 } from "../../versionSkew";
 
 export type EnvironmentUnavailableState = {
@@ -58,7 +58,6 @@ interface SystemComposerBannersInput {
  * a server update, and auto-balanced machines that need one.
  */
 export function useSystemComposerBanners(input: SystemComposerBannersInput) {
-  const t = useTranslation();
   const {
     activeEnvironment,
     activeEnvironmentUnavailable,
@@ -94,7 +93,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         stackedThreadToast({
           type: "error",
           title: t("Could not reconnect environment"),
-          description: error instanceof Error ? error.message : "Failed to reconnect.",
+          description: error instanceof Error ? error.message : t("Failed to reconnect."),
         }),
       );
     }
@@ -122,7 +121,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
           stackedThreadToast({
             type: "error",
             title: t("Could not disconnect server"),
-            description: error instanceof Error ? error.message : "Failed to disconnect.",
+            description: error instanceof Error ? error.message : t("Failed to disconnect."),
           }),
         );
       }
@@ -143,7 +142,6 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
   const versionMismatchSelfUpdate = resolveServerSelfUpdateCapability(serverConfig);
   const versionMismatchInstallation = serverConfig?.environment.capabilities.serverInstallation;
   const versionMismatchDesktopAppUpdate = supportsDesktopAppUpdate(serverConfig);
-  const versionMismatchThreadContinuation = supportsServerUpdateThreadContinuation(serverConfig);
   const serverUpdateState = useAtomValue(
     serverEnvironment.updateStateAtom(serverUpdateEnvironmentId),
   );
@@ -163,7 +161,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
           size="xs"
           variant="ghost"
           disabled={disconnectingEnvironment}
-          title="Hide this server's threads. Switch it on again in Environments."
+          title={t("Hide this server's threads. Switch it on again in Environments.")}
           onClick={() =>
             void handleDisconnectActiveEnvironmentStable(
               activeEnvironmentUnavailableState.environmentId,
@@ -230,7 +228,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         variant: updateFailed ? "error" : "default",
         group: "environment",
         icon: <ComposerServerUpdateIcon status={serverUpdateState.status} />,
-        title: `${updateFailed ? "Could not update" : "Updating"} ${versionMismatchServerLabel}`,
+        title: `${updateFailed ? t("Could not update") : t("Updating")} ${versionMismatchServerLabel}`,
         description:
           serverUpdateState.status === "failed"
             ? serverUpdateState.message
@@ -246,7 +244,6 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
             selfUpdate={versionMismatchSelfUpdate}
             installation={versionMismatchInstallation}
             desktopAppUpdate={versionMismatchDesktopAppUpdate}
-            threadContinuation={versionMismatchThreadContinuation}
             targetVersion={versionMismatch.clientVersion}
             label={t("Retry")}
             variant="ghost"

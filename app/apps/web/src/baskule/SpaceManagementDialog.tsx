@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../i18n";
+
 // baskule: manage one team space (name, members, roles, plugins, deletion). Opened from the admin
 // spaces list and, for space owners, from the user menu. "New team space" uses the same dialog.
 import { EllipsisIcon, UserPlusIcon } from "lucide-react";
@@ -184,6 +185,7 @@ function ManageSpaceContent({
     role: "member",
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Ignore the space HTTP response after the dialog closes or changes space.
   useEffect(() => {
     let cancelled = false;
     baskuleApi.space(spaceId).then(

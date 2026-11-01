@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useNavigation } from "@react-navigation/native";
 import { useAtomValue } from "@effect/atom-react";

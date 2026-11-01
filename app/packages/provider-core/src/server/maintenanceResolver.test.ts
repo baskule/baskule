@@ -406,14 +406,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       isCommandPath: isNativeTestCommandPath("/.local/bin/claude"),
     },
   };
-  const otherProviderUpdate = {
-    provider: driver("nativePackageTool"),
-    npmPackageName: "@example/native-package-tool",
-    nativeUpdate: {
-      args: ["update"],
-      isCommandPath: isNativeTestCommandPath("/.local/bin/native-package-tool"),
-    },
-  };
+
   const resolveInstall = (input: {
     readonly definition: PackageManagedProviderMaintenanceDefinition;
     readonly resolved: string;

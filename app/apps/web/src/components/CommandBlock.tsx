@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+
 import { Check, Copy } from "lucide";
 
 import { MorphIcon } from "~/components/MorphIcon";

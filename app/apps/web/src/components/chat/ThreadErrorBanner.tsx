@@ -1,5 +1,6 @@
-import { ExpandableText } from "../settings/ExpandableText";
 import { useTranslation } from "../../i18n";
+import { ExpandableText } from "../settings/ExpandableText";
+
 import type { OrchestrationV2ProviderFailureClass } from "@t3tools/contracts";
 import { memo } from "react";
 

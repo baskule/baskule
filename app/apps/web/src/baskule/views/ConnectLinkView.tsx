@@ -1,8 +1,7 @@
+import { useTranslation } from "../../i18n";
 // baskule: opening a connection link (`/link#code=…`) signs this browser or desktop window in.
 import { useEffect, useRef, useState } from "react";
 import type { BaskuleManagementDestination } from "@t3tools/contracts/baskule";
-
-import { useTranslation } from "../../i18n";
 
 import { Button } from "../../components/ui/button";
 import { StandalonePage } from "../../components/ui/standalone-page";
@@ -24,6 +23,7 @@ export function ConnectLinkView({
   const submitting = useRef(false);
   const mounted = useRef(true);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Remove the pairing secret from browser history and cancel continuations when this view unmounts.
   useEffect(() => {
     mounted.current = true;
     window.history.replaceState(
@@ -57,7 +57,7 @@ export function ConnectLinkView({
   };
 
   return (
-    <StandalonePage tone="brand">
+    <StandalonePage>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <BaskuleWordmark className="text-base" />

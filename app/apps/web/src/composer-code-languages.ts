@@ -1,4 +1,5 @@
 import { t } from "./i18n";
+
 export const CODE_BLOCK_LANGUAGES = [
   {
     id: "",

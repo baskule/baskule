@@ -9,7 +9,7 @@ import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { EnvironmentPresentation } from "../connection/presentation.ts";
-import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
+
 import { refreshUsage, refreshUsageLimits } from "./usage.ts";
 
 const input = {

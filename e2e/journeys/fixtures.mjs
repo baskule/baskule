@@ -85,7 +85,7 @@ export async function navigateApp(page, navigate) {
 }
 export const composer = (page) => page.locator('[contenteditable="true"]').first();
 export async function closeSidebar(page) {
-  const drawer = page.getByRole("dialog", { name: "Sidebar", exact: true });
+  const drawer = page.getByRole("dialog", { name: "Threads", exact: true });
   if (await drawer.isVisible()) {
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);

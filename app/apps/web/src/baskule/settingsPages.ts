@@ -1,3 +1,4 @@
+import { msg } from "../i18n";
 // baskule: the sections of the person's Settings modal, in nav order. The settings route, its nav
 // and each page's heading all read this list. T3's own settings pages stay unreachable.
 import {
@@ -12,7 +13,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { msg } from "../i18n";
 import type { BaskuleMe } from "./api";
 import { BASKULE_HOSTED } from "./flags";
 

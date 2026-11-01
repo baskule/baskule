@@ -145,11 +145,11 @@ it.effect(
       assert.equal(rows.length, 1);
       assert.equal(rows[0]?.effect_id, "push:completion:push-run");
       assert.equal(JSON.parse(rows[0]!.payload_json).notification.userId, "alice");
-      const next = yield* outbox.claimNext({ workerId: "worker1", leaseDurationMs: 1000 });
+      const next = yield* outbox.claimNext({ workerId: "worker1" });
       assert.isTrue(Option.isSome(next));
       const recovery = yield* outbox.reconcileAfterProcessLoss;
       assert.equal(recovery.requeued, 1);
-      const recovered = yield* outbox.claimNext({ workerId: "worker2", leaseDurationMs: 1000 });
+      const recovered = yield* outbox.claimNext({ workerId: "worker2" });
       assert.isTrue(Option.isSome(recovered));
       const id = Option.getOrThrow(recovered).id;
       yield* outbox.retry({
@@ -163,13 +163,9 @@ it.effect(
         DateTime.toEpochMillis(Option.getOrThrow(wake)),
         (yield* DateTime.now).epochMilliseconds + 5000,
       );
-      assert.isTrue(
-        Option.isNone(yield* outbox.claimNext({ workerId: "worker3", leaseDurationMs: 1000 })),
-      );
+      assert.isTrue(Option.isNone(yield* outbox.claimNext({ workerId: "worker3" })));
       yield* TestClock.adjust("5 seconds");
-      assert.isTrue(
-        Option.isSome(yield* outbox.claimNext({ workerId: "worker3", leaseDurationMs: 1000 })),
-      );
+      assert.isTrue(Option.isSome(yield* outbox.claimNext({ workerId: "worker3" })));
     }).pipe(Effect.provide(testLayer)),
 );
 

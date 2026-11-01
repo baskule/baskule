@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
+
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { useNavigation } from "@react-navigation/native";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -10,7 +12,7 @@ import {
   type HtmlRenderReference,
   type HtmlRenderTheme,
 } from "@t3tools/shared/htmlRender";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Platform, Pressable, View, type ColorValue } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
@@ -32,17 +34,13 @@ export function htmlRenderRowHeight(frameHeight: number) {
 function useHtmlRenderTheme() {
   const { themeId, themeAppearance, themeVariables, systemColorsActive } =
     useAppearancePreferences();
-  return useMemo(
-    () =>
-      mobileHtmlRenderTheme({
-        themeId,
-        appearance: themeAppearance,
-        variables: themeVariables,
-        systemColors: systemColorsActive,
-        platform: Platform.OS,
-      }),
-    [themeId, themeAppearance, themeVariables, systemColorsActive],
-  );
+  return mobileHtmlRenderTheme({
+    themeId,
+    appearance: themeAppearance,
+    variables: themeVariables,
+    systemColors: systemColorsActive,
+    platform: Platform.OS,
+  });
 }
 
 function postTheme(view: WebView<object> | null, theme: HtmlRenderTheme) {
@@ -102,10 +100,11 @@ export function HtmlRenderWebView(props: {
     [html.document, initialTheme],
   );
   const onDocumentError = useEffectEvent(() => props.onLoadError?.());
-  // oxlint-disable-next-line t3code/react-effect-budget -- Report failures from the asynchronously prepared protected document.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Report failures from the asynchronously prepared protected document.
   useEffect(() => {
     if (html.failed) onDocumentError();
   }, [html.failed]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Synchronize the native WebView theme with the selected app theme.
   useEffect(() => {
     if (shownTheme.current === null || shownTheme.current === theme) return;
     shownTheme.current = theme;
@@ -151,7 +150,7 @@ export function HtmlRenderWebView(props: {
           accessibilityLabel={props.title}
           style={{ flex: 1, backgroundColor: "transparent" }}
           allowsInlineMediaPlayback
-          automaticallyAdjustContentInsets={!props.nested}
+          contentInsetAdjustmentBehavior={props.nested ? "never" : "automatic"}
           bounces={!props.nested}
           showsVerticalScrollIndicator={!props.nested}
           showsHorizontalScrollIndicator={!props.nested}
@@ -209,16 +208,13 @@ export function ThreadHtmlRender(props: {
   const { attachmentId, title } = props.render;
   const height = htmlRenderFrameHeight(props.render, props.frameWidth);
   const fileName = htmlRenderFileName(title);
-  const resource = useMemo(
-    () => ({
-      _tag: "attachment" as const,
-      attachmentId,
-      fileName,
-      mimeType: "text/html",
-      disposition: "inline" as const,
-    }),
-    [attachmentId, fileName],
-  );
+  const resource = {
+    _tag: "attachment" as const,
+    attachmentId,
+    fileName,
+    mimeType: "text/html",
+    disposition: "inline" as const,
+  };
   const asset = useAssetUrlState(props.environmentId, resource);
   const refresh = useRefreshAssetUrl(props.environmentId, resource);
   // Signed URLs are re-minted periodically; following them would reload the page.

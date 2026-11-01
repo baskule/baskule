@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { t } from "../../i18n";
+
 import { AuthSettingsWriteScope } from "@t3tools/contracts";
 import { useEnvironmentsWithScope } from "../../state/session";
 import {
@@ -14,7 +15,6 @@ import {
   type ServerSettings,
   type UnifiedSettings,
 } from "@t3tools/contracts";
-
 import { persistClientSettingsPatch, useMergedSettings } from "../../hooks/useSettings";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -49,15 +49,15 @@ export function useScopedSettingSource(keys: readonly (keyof ServerSettings)[]) 
 }
 
 function useRunScopedPlan() {
-  const t = useTranslation();
   const persistServer = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
-  return (plan: ReturnType<typeof planScopedSettingsPatch>) => {
+  return (plan: ReturnType<typeof planScopedSettingsPatch>, onFailed?: () => void) => {
     if (plan.unavailableReason) {
       toastManager.add({
         type: "warning",
         title: t("Setting not saved"),
         description: plan.unavailableReason,
       });
+      onFailed?.();
       return;
     }
     void persistScopedSettingsPatch(
@@ -80,10 +80,13 @@ function useRunScopedPlan() {
       persistClientSettingsPatch,
     ).then(({ failedEnvironments, savedEnvironments, savedEnvironmentCount }) => {
       if (failedEnvironments.length === 0) return;
+      onFailed?.();
       toastManager.add({
         type: "error",
         title:
-          savedEnvironmentCount > 0 ? "Setting saved on some environments" : "Setting not saved",
+          savedEnvironmentCount > 0
+            ? t("Setting saved on some environments")
+            : t("Setting not saved"),
         description: [
           ...failedEnvironments.map(
             ({ label, message }) => `Could not save on ${label}: ${message}`,
@@ -100,7 +103,9 @@ function useRunScopedPlan() {
 export function useUpdateScopedSettings() {
   const { scope, environments } = useSettingsScope();
   const run = useRunScopedPlan();
-  return (patch: ScopedSettingsPatch) => run(planScopedSettingsPatch(scope, environments, patch));
+  /** `onFailed` runs when any target rejects or drops the patch, so a draft can fall back. */
+  return (patch: ScopedSettingsPatch, options?: { readonly onFailed?: () => void }) =>
+    run(planScopedSettingsPatch(scope, environments, patch), options?.onFailed);
 }
 
 export function useClearScopedSettings() {

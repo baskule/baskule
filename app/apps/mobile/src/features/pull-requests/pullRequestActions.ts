@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import {
   sourceControlClients,
   type ChangeRequestTerminology,
@@ -99,20 +100,6 @@ export const PR_ACTION_ICONS = {
   "approve-workflows": "checkmark",
 } as const satisfies Record<PullRequestAction, AppSymbolName>;
 
-export const ALL_PR_ACTIONS: readonly PullRequestAction[] = [
-  "merge",
-  "ready",
-  "draft",
-  "update-branch",
-  "enable-auto-merge",
-  "disable-auto-merge",
-  "approve-workflows",
-  "close",
-  "reopen",
-  "revert",
-  "delete-branch",
-];
-
 export function allowedMergeMethods(pr: ActionDetail) {
   return pr.capabilities.mergeMethods.filter((method) => pr.mergeCapabilities[method]);
 }
@@ -170,24 +157,6 @@ export function mergeUnavailableReason(
   if (pr.mergeability === "conflicting") return MERGE_CONFLICT_REASON;
   if (!allowedMergeMethods(pr).length) return t("This repository has no available merge methods.");
   return null;
-}
-
-export function mergeSummary(
-  pr: ActionDetail & Pick<PullRequestDetail, "autoMergeMethod">,
-  connectionAllowsWrites: boolean,
-  terminology: ChangeRequestTerminology,
-) {
-  if (pr.state === "merged") return t("Merged");
-  if (pr.state === "closed") return t("Closed");
-  if (pr.isDraft) return t("Draft");
-  if (pr.mergeability === "conflicting") return t("Has conflicts");
-  if (!connectionAllowsWrites) return t("Read-only connection");
-  const allowed = allowedMergeMethods(pr);
-  const method = pr.autoMergeMethod ?? (allowed.includes("squash") ? "squash" : allowed[0]);
-  const methodLabel = method ? `${method[0]?.toUpperCase()}${method.slice(1)}` : "Merge";
-  if (pr.autoMergeEnabled) return `${methodLabel} · auto-merge on`;
-  if (mergeUnavailableReason(pr, connectionAllowsWrites, terminology)) return t("Unavailable");
-  return `${methodLabel}${pr.autoMergeEnabled === false ? " · auto-merge off" : ""}`;
 }
 
 export const openOnProviderLabel = (provider: SourceControlProviderKind) =>

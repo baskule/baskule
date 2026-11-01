@@ -1,3 +1,4 @@
+import { threadLinkFor } from "../../McpInvocationContext.ts";
 import {
   type CommandId,
   type RuntimeRequestId,
@@ -9,7 +10,6 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { modelSelectionCommandType } from "@t3tools/shared/model";
-import { formatThreadLink } from "@t3tools/shared/threadLinks";
 
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { BaskuleRpcPolicy } from "../../../baskule/rpcPolicy.ts"; // baskule:
@@ -17,6 +17,7 @@ import {
   dispatchFailure,
   newCommandId,
   readCaller,
+  readCallerAuthor,
   readThread,
   unavailable,
 } from "../../threadAccess.ts";
@@ -95,15 +96,15 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   run_scheduled_task_now: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const scheduler = yield* ScheduledTasks.ScheduledTaskService;
-      const { tasks } = yield* scheduler.list().pipe(Effect.mapError(unavailable));
-      if (!tasks.some((task) => task.id === input.taskId))
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message: "The scheduled task was not found.",
-        });
+      const actor = yield* readCallerAuthor();
       const { task, threadId } = yield* scheduler
-        .runNow({ id: input.taskId })
-        .pipe(Effect.mapError(unavailable));
+        .runNow({ id: input.taskId }, actor)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+          ),
+        );
       return {
         taskId: task.id,
         threadId,
@@ -115,7 +116,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
   ),
   t3_thread_search: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
-      const { caller } = yield* readCaller();
+      const { caller, scope } = yield* readCaller();
       const threadSearch = yield* ThreadSearch.ThreadSearch;
       const { matches } = yield* threadSearch
         .searchThreads({ ...input, projectId: input.projectId ?? caller?.projectId })
@@ -123,7 +124,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       return {
         matches: matches.map((match) => ({
           ...match,
-          link: formatThreadLink(match.threadId, match.title),
+          link: threadLinkFor(scope, match.threadId),
         })),
       };
     }),
@@ -240,9 +241,11 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
           threadId: input.threadId,
           requestId,
         });
+        const author = yield* readCallerAuthor();
         const result = yield* threads
           .dispatch({
             type: "runtime-request.respond",
+            ...(author === undefined ? {} : { author }),
             threadId: projection.thread.id,
             commandId: yield* newCommandId(),
             requestId,

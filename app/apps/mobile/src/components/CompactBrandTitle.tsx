@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../i18n";
+
 import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
 import Constants from "expo-constants";
 import type { NativeStackNavigationOptions } from "@react-navigation/native-stack";
@@ -10,6 +11,8 @@ import { BaskuleWordmark } from "./BaskuleBrand";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
+
+const BRAND_MAX_FONT_SCALE = 1.4;
 
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
@@ -62,6 +65,7 @@ export function CompactBrandTitle(
         >
           <Text
             allowFontScaling={props.allowFontScaling}
+            maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
             className="font-t3-bold text-foreground-muted uppercase"
             style={{ fontSize: 9 * scale, letterSpacing: 0.9 * scale }}
           >
@@ -84,7 +88,7 @@ export function CompactBrandTitle(
   );
 }
 
-export function renderCompactBrandTitle() {
+function renderCompactBrandTitle() {
   return <CompactBrandTitle allowFontScaling={Platform.OS === "ios"} />;
 }
 

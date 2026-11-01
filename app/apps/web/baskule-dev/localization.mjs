@@ -1,15 +1,20 @@
 // The localization seam: browser detection, explicit override, live updates, persistence and layout.
 import { chromium } from "playwright";
-import { readFile, mkdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeURL from "node:url";
+import * as NodePath from "node:path";
 
-const root = fileURLToPath(new URL("../../../../", import.meta.url));
+const root = NodeURL.fileURLToPath(new URL("../../../../", import.meta.url));
 const baseURL = process.env.MOCK_URL ?? "http://127.0.0.1:47850";
-const out = join(root, ".run/localization/screenshots");
+const out = NodePath.join(root, ".run/localization/screenshots");
 const catalog = async (locale) =>
-  JSON.parse(await readFile(join(root, `app/packages/shared/src/locales/${locale}.json`), "utf8"));
-await mkdir(out, { recursive: true });
+  JSON.parse(
+    await NodeFSP.readFile(
+      NodePath.join(root, `app/packages/shared/src/locales/${locale}.json`),
+      "utf8",
+    ),
+  );
+await NodeFSP.mkdir(out, { recursive: true });
 const deadline = Date.now() + 30_000;
 while (true) {
   try {
@@ -63,7 +68,7 @@ try {
       .getByRole("combobox", { name: "Language", exact: true })
       .getByText("Use system language", { exact: true })
       .waitFor();
-    await page.screenshot({ path: join(out, "english-desktop.png") });
+    await page.screenshot({ path: NodePath.join(out, "english-desktop.png") });
     await page.getByLabel("Email", { exact: true }).fill("draft@baskule.test");
     await page.getByLabel("Password", { exact: true }).fill("draft-password");
     await page.getByRole("combobox", { name: "Language", exact: true }).click();
@@ -78,18 +83,18 @@ try {
       throw new Error("Language switch lost the password draft");
     await page.getByLabel(french.Email, { exact: true }).fill("");
     await page.getByLabel(french.Password, { exact: true }).fill("");
-    await page.screenshot({ path: join(out, "french-desktop.png") });
+    await page.screenshot({ path: NodePath.join(out, "french-desktop.png") });
     await page.reload();
     await page.getByRole("heading", { name: french["Sign in"], exact: true }).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: join(out, "french-phone.png") });
+    await page.screenshot({ path: NodePath.join(out, "french-phone.png") });
     if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth))
       throw new Error("French phone layout overflows");
     await page.getByRole("combobox", { name: french.Language, exact: true }).click();
     await page.getByRole("option", { name: "Deutsch", exact: true }).click();
     const german = await catalog("de");
     await page.getByRole("heading", { name: german["Sign in"], exact: true }).waitFor();
-    await page.screenshot({ path: join(out, "german-phone.png") });
+    await page.screenshot({ path: NodePath.join(out, "german-phone.png") });
     if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth))
       throw new Error("German phone layout overflows");
     await page.evaluate(() => window.dispatchEvent(new Event("languagechange")));

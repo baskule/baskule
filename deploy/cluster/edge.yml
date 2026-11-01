@@ -1,0 +1,82 @@
+# Released cluster role. See docs/install-cluster.md.
+name: baskule-edge
+services:
+  edge:
+    image: caddy:2@sha256:25cdc846626b62d05f6b633b9b40c2c9f6ef89b515dc76133cefd920f7dbe562
+    restart: unless-stopped
+    volumes:
+    - baskule-edge-data:/data
+    configs:
+    - source: edge
+      target: /etc/caddy/Caddyfile
+    environment:
+      BASKULE_NODES_WORKER: ${BASKULE_NODES_WORKER:?list all platform nodes as private-ip:47091}
+    cpus: 1
+    mem_limit: 256m
+    ports:
+    - ${BASKULE_BIND:-127.0.0.1}:${BASKULE_PORT:-47090}:47090
+volumes:
+  baskule-edge-data: {}
+configs:
+  edge:
+    content: |
+      # baskule-edge: the only published port of the stack. Load-balances the celld nodes (any node can serve any
+      # request: celld forwards to the owner of a cell). Plain HTTP behind the HTTPS reverse proxy.
+      {
+          admin off
+          auto_https off
+          persist_config off
+          # Clients connect directly: never trust an inbound X-Forwarded-For.
+      }
+
+      :47090 {
+          # Compress static and JSON responses only: streams (SSE text/event-stream, exec NDJSON) must never be buffered.
+          encode {
+              zstd
+              gzip 6
+              minimum_length 1024
+              match {
+                  header Content-Type text/html*
+                  header Content-Type text/css*
+                  header Content-Type text/javascript*
+                  header Content-Type application/javascript*
+                  header Content-Type application/json*
+                  header Content-Type image/svg+xml*
+                  header Content-Type application/wasm*
+                  header Content-Type model/gltf-binary*
+              }
+          }
+          # Vite assets are content-hashed: cache them for good (the HTML still revalidates).
+          @assets path /assets/*
+          header @assets >Cache-Control "public, max-age=31536000, immutable"
+          reverse_proxy {$$BASKULE_NODES_WORKER} {
+              lb_policy round_robin
+              # Retry another node when a dial fails (node down, before the active check notices).
+              lb_retries 2
+              lb_try_duration 10s
+              lb_try_interval 250ms
+              fail_duration 10s
+              health_uri /.well-known/celld/health
+              health_interval 2s
+              health_timeout 2s
+              health_fails 2
+              health_passes 1
+              # The sign-in rate limit keys on the last X-Forwarded-For entry: set it to the real client address.
+              header_up X-Forwarded-For {remote_host}
+              header_up X-Forwarded-Proto {scheme}
+              # Stream responses (SSE, NDJSON) without buffering.
+              flush_interval -1
+              transport http {
+                  dial_timeout 3s
+                  keepalive 60s
+              }
+          }
+          request_body {
+              max_size 1GB
+          }
+          log {
+              output stdout
+              format console
+              level WARN
+          }
+      }

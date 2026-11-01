@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import {
   AuthSettingsWriteScope,
   ENVIRONMENT_MACHINE_KINDS,
@@ -27,9 +28,6 @@ export function resolveEnvironmentIconPickerLock(input: {
 }): string | null {
   if (input.serverConfig === null) {
     return t("Connect to this environment to change its icon.");
-  }
-  if (input.serverConfig.environment.capabilities.environmentIcon !== true) {
-    return t("This environment's server is too old to keep an icon. Update it to choose one.");
   }
   if (input.operateAccess !== "granted") {
     return t("Your session on this environment cannot change its settings.");

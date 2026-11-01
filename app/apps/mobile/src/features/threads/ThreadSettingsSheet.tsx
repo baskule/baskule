@@ -1,5 +1,6 @@
 import { useTranslation } from "../../i18n";
-import { BASKULE_FLAGS } from "../../baskule/flags"; // baskule:
+
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { getTraitSelectChange } from "@t3tools/client-runtime/model-traits";
 import { SheetHeader } from "../../components/ui/SheetHeader";
 import { Toolbar } from "../../components/ui/Toolbar";
@@ -350,6 +351,7 @@ function ThreadSettingsSessionProvider(
     favorites: legacyFavorites,
   }).favorites;
   const saveSettings = useAtomCommand(serverEnvironment.updateSettings, "model favorites update");
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the one-time legacy model favorites migration to server settings once per connection
   useEffect(() => {
     if (
       !props.environmentId ||
@@ -1241,7 +1243,7 @@ function ThreadSettingsModelsScreen() {
           }
           onCancel={presentation.onClose}
           title={t("Thread settings")}
-          confirm={session.pendingModel ? { label: "Save", onPress: commitAndClose } : undefined}
+          confirm={session.pendingModel ? { label: t("Save"), onPress: commitAndClose } : undefined}
         />
       ) : null}
       <NativeStackScreenOptions
@@ -1300,7 +1302,7 @@ function ThreadSettingsModelsScreen() {
           onCancel={presentation.onClose}
           accessibilityLabel={t("Cancel thread settings")}
           confirm={{
-            label: session.pendingModel ? "Save thread settings" : "Done",
+            label: session.pendingModel ? t("Save thread settings") : t("Done"),
             onPress: commitAndClose,
           }}
         />

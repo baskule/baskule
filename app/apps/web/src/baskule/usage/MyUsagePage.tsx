@@ -1,7 +1,7 @@
+import { useLocale, useTranslation } from "../../i18n";
 // baskule: Settings → Usage: what the signed-in person used, in every space, and their limits.
 import { formatUsd } from "@t3tools/shared/usageFormat";
 
-import { useLocale, useTranslation } from "../../i18n";
 import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";

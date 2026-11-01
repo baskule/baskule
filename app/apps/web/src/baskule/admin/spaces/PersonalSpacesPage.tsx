@@ -1,5 +1,6 @@
-// baskule: Spaces → Personal spaces: one per person, private; the admin can only delete them.
 import { useTranslation } from "../../../i18n";
+// baskule: Spaces → Personal spaces: one per person, private; the admin can only delete them.
+
 import { Button } from "../../../components/ui/button";
 import { baskuleApi } from "../../api";
 import { Avatar, confirmAction, notifyError, notifySuccess, useApiResource } from "../../ui";

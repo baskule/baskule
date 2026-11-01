@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { t } from "../../i18n";
+
 import { useAtomValue } from "@effect/atom-react";
 import {
   makeQueuedRunEditStore,
@@ -69,7 +70,7 @@ const queuedRunEdits = makeQueuedRunEditStore<EditingQueuedRun>({
   label: "web-queued-run-edits",
 });
 
-export interface QueuedRunEditContent {
+interface QueuedRunEditContent {
   readonly prompt: string;
   readonly images: ReadonlyArray<ComposerImageAttachment>;
   readonly files: ReadonlyArray<ComposerFileAttachment>;
@@ -99,7 +100,7 @@ async function submitQueuedRunEdit(input: {
       const reason = fileAttachmentCapabilityBlockReason({
         files,
         attachmentUploadsCapabilityKnown: config !== null,
-        supportsAttachmentUploads: config?.environment.capabilities.attachmentUploads === true,
+        supportsAttachmentUploads: config !== null,
         maxFileAttachmentBytes:
           config?.environment.capabilities.fileAttachments?.maxUploadBytes ?? null,
       });
@@ -181,7 +182,6 @@ export function useQueuedRunEdit(input: {
   readonly promptRef: { current: string };
   readonly composerRef: RefObject<ChatComposerHandle | null>;
 }) {
-  const t = useTranslation();
   const {
     environmentId,
     routeThreadRef,
@@ -272,8 +272,8 @@ export function useQueuedRunEdit(input: {
               title: t("Queued message is no longer queued"),
               description:
                 recovery === "kept"
-                  ? `Your unsaved edit${where} was kept in the composer.`
-                  : `Your unsaved edit${where} was discarded.`,
+                  ? t("Your unsaved edit{{value1}} was kept in the composer.", { value1: where })
+                  : t("Your unsaved edit{{value1}} was discarded.", { value1: where }),
             }),
           );
         },

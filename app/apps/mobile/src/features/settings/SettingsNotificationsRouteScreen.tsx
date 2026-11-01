@@ -1,9 +1,10 @@
+import { useTranslation } from "../../i18n";
 import * as Dialog from "../../components/ui/Dialog";
 import { useState, useSyncExternalStore } from "react";
 import * as Notifications from "expo-notifications";
 import type { PushPreferences } from "@t3tools/contracts/baskulePush";
 import { Linking } from "react-native";
-import { useTranslation } from "../../i18n";
+
 import { useBaskuleSession } from "../../baskule/session";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";

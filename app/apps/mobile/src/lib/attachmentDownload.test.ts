@@ -127,6 +127,8 @@ import {
   downloadAttachmentForPreview,
   shareLocalAttachment,
   shareGeneratedAttachment,
+  writeGeneratedAttachmentFile,
+  managedAttachmentOwner,
 } from "./attachmentDownload";
 import { isForegroundHandoffActive } from "./foreground-handoff";
 
@@ -678,5 +680,25 @@ it("keeps generated app exports revocable without changing their bytes", async (
   mocks.connection = null;
   for (const listener of mocks.listeners) listener();
   expect([...mocks.directories].filter((uri) => uri !== CACHE)).toEqual([]);
+  expect(mocks.listeners.size).toBe(0);
+});
+
+it("revokes a generated ZIP entry with its originating environment", async () => {
+  const transfer = protectedTransfer();
+  const bytes = Uint8Array.of(80, 75, 1, 2);
+  const file = await writeGeneratedAttachmentFile({
+    bytes,
+    attachment: input.attachment,
+    transfer,
+  });
+  const owner = managedAttachmentOwner(file.uri);
+  expect(owner?.transfer).toBe(transfer);
+  expect(mocks.write).toHaveBeenCalledWith(bytes);
+  mocks.connection = null;
+  for (const listener of mocks.listeners) listener();
+  expect(owner?.signal.aborted).toBe(true);
+  expect(managedAttachmentOwner(file.uri)).toBeNull();
+  expect([...mocks.directories].filter((uri) => uri !== CACHE)).toEqual([]);
+  file.dispose();
   expect(mocks.listeners.size).toBe(0);
 });

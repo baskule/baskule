@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type { PreviewSessionSnapshot } from "@t3tools/contracts";
 
 export function latestBrowserTab(tabs: ReadonlyArray<PreviewSessionSnapshot>) {

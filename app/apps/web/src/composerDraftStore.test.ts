@@ -672,7 +672,7 @@ describe("composerDraftStore context persistence", () => {
       threadId: threadRef.threadId,
     };
     const store = useComposerDraftStore.getState();
-    store.addTerminalContext(threadRef, terminal);
+    store.addTerminalContexts(threadRef, [terminal]);
     store.addPreviewAnnotation(threadRef, annotation);
     const terminalLink = formatTerminalContextReference(terminal);
     const prompt = `Inspect ${terminalLink}. Apply [Retry note](t3-context://v1/preview-annotation/preview-annotation_retry-note). Compare ${terminalLink} again.`;
@@ -1605,6 +1605,7 @@ describe("composerDraftStore modelSelection", () => {
     );
 
     store.setProviderModelOptions(threadRef, OPENCODE_DRIVER, toSelections({ thinking: false }), {
+      instanceId: WORK_INSTANCE,
       persistSticky: true,
     });
 

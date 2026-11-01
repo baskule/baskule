@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { useState } from "react";
 import type { NativeSyntheticEvent } from "react-native";
 import { useNavigation } from "@react-navigation/native";

@@ -1,7 +1,7 @@
+import { useTranslation } from "../../i18n";
+
 import { useEffect, useState } from "react";
-
 import { useTheme } from "~/hooks/useTheme";
-
 import { FileSurfaceLoading } from "./fileSurfaceChrome";
 
 const MAX_FONT_BYTES = 10 * 1024 * 1024;
@@ -39,10 +39,11 @@ async function readFont(src: string, signal: AbortSignal) {
 }
 
 export default function FontViewer(props: { readonly src: string; readonly name: string }) {
+  const t = useTranslation();
   const { resolvedTheme } = useTheme();
   const [data, setData] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Load the font from its URL and abort the request and timeout when the source changes or unmounts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Load the font from its URL and abort the request and timeout when the source changes or unmounts.
   useEffect(() => {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
@@ -69,9 +70,9 @@ export default function FontViewer(props: { readonly src: string; readonly name:
         role="alert"
         className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center"
       >
-        <p className="text-sm font-medium">No preview for this file</p>
+        <p className="text-sm font-medium">{t("No preview for this file")}</p>
         <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-          {error} Save it to open in another app.
+          {error} {t("Save it to open in another app.")}
         </p>
       </div>
     );

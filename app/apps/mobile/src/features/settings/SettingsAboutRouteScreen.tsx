@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import * as Dialog from "../../components/ui/Dialog";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import Constants from "expo-constants";

@@ -1,6 +1,7 @@
-import { assetImageCachePolicy } from "../../lib/assetImageSource";
 import { useTranslation } from "../../i18n";
-import { createContext, useContext, useMemo, useState } from "react";
+import { assetImageCachePolicy } from "../../lib/assetImageSource";
+
+import { createContext, useContext, useState } from "react";
 import { pullRequestMediaSource, pullRequestImageSource } from "./pullRequestMediaSource";
 import { useFilePreviewGallery } from "../../components/FilePreviewGallery";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -34,13 +35,10 @@ export const PullRequestMediaContext = createContext<{
 export function usePullRequestMediaUrl(url: string) {
   const context = useContext(PullRequestMediaContext);
   const fetchUrl = sourceControlClients.mediaUrl(url)?.fetchUrl;
-  const resource = useMemo<AssetResource | null>(
-    () =>
-      context && fetchUrl
-        ? { _tag: SOURCE_CONTROL_MEDIA_ASSET, cwd: context.cwd, url: fetchUrl }
-        : null,
-    [context, fetchUrl],
-  );
+  const resource: AssetResource | null =
+    context && fetchUrl
+      ? { _tag: SOURCE_CONTROL_MEDIA_ASSET, cwd: context.cwd, url: fetchUrl }
+      : null;
   const asset = useAssetUrlState(context?.environmentId ?? null, resource);
   const refresh = useRefreshAssetUrl(context?.environmentId ?? null, resource);
   return {

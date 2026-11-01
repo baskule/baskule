@@ -4,8 +4,7 @@ import {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
-
-import { filterSharedServerPatch, pickSharedServerSettings } from "./sharedSettings.ts";
+import { filterSharedServerPatch } from "./sharedSettings.ts";
 
 const OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
 // Every default provider is disabled until configured; these tests share selections between
@@ -17,9 +16,14 @@ const SETTINGS = {
     [ProviderInstanceId.make("opencode_work")]: { driver: OPENCODE_DRIVER, enabled: true },
   },
 };
-const restartCapabilities = { threadRestartContinuation: true };
 
 describe("filterSharedServerPatch", () => {
+  it("holds the restart preference until the target's config loads", () => {
+    const patch = { continueThreadsAfterServerUpdate: true, sidebarAutoSettleAfterDays: 7 };
+    expect(filterSharedServerPatch(patch, undefined)).toEqual({ sidebarAutoSettleAfterDays: 7 });
+    expect(filterSharedServerPatch(patch, DEFAULT_SERVER_SETTINGS)).toEqual(patch);
+  });
+
   it.each([true, false])(
     "resets a disabled default provider only on the originating environment (%s)",
     (targetIsSource) => {
@@ -39,14 +43,13 @@ describe("filterSharedServerPatch", () => {
         continueThreadsAfterServerUpdate: true,
         sidebarAutoSettleAfterDays: 7,
       };
-      expect(filterSharedServerPatch(patch, undefined, settings, settings, targetIsSource)).toEqual(
-        {
-          ...(targetIsSource
-            ? { textGenerationModelSelection: SETTINGS.textGenerationModelSelection }
-            : {}),
-          sidebarAutoSettleAfterDays: 7,
-        },
-      );
+      expect(filterSharedServerPatch(patch, settings, settings, targetIsSource)).toEqual({
+        ...(targetIsSource
+          ? { textGenerationModelSelection: SETTINGS.textGenerationModelSelection }
+          : {}),
+        continueThreadsAfterServerUpdate: true,
+        sidebarAutoSettleAfterDays: 7,
+      });
     },
   );
 
@@ -76,23 +79,8 @@ describe("filterSharedServerPatch", () => {
           [instanceId]: { ...instance, driver: OPENCODE_DRIVER, enabled: true },
         },
       };
-      expect(filterSharedServerPatch(patch, restartCapabilities, settings, sourceSettings)).toEqual(
+      expect(filterSharedServerPatch(patch, settings, sourceSettings)).toEqual(
         availability === "enabled" ? patch : { sidebarAutoSettleAfterDays: 7 },
-      );
-    },
-  );
-
-  it.each([undefined, {}, { threadRestartContinuation: false }])(
-    "omits only the unsupported restart preference with capabilities %j",
-    (capabilities) => {
-      expect(
-        filterSharedServerPatch(
-          { continueThreadsAfterServerUpdate: true, sidebarAutoSettleAfterDays: 7 },
-          capabilities,
-        ),
-      ).toEqual({ sidebarAutoSettleAfterDays: 7 });
-      expect(pickSharedServerSettings(SETTINGS, capabilities)).not.toHaveProperty(
-        "continueThreadsAfterServerUpdate",
       );
     },
   );

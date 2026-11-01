@@ -11,11 +11,15 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
+  CommonActions,
+  createPathConfigForStaticNavigation,
   createStaticNavigation,
   getActionFromState,
   getStateFromPath,
+  type NavigationAction,
   type NavigationState,
 } from "@react-navigation/native";
+import { pipe } from "effect/Function";
 
 import { RegistryContext } from "@effect/atom-react";
 import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
@@ -23,12 +27,26 @@ import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet
 import * as Dialog from "./components/ui/Dialog";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
-import { IncomingShareProvider } from "./features/sharing/IncomingShareProvider";
+import { installShowcaseCapture } from "./features/showcase/ShowcaseCaptureCoordinator";
+import {
+  presentPendingIncomingShare,
+  pruneIncomingShareImports,
+  startIncomingShareInbox,
+} from "./features/sharing/IncomingShareProvider";
+import {
+  installAgentNotificationNavigation,
+  setAgentNotificationPathname,
+} from "./features/agent-awareness/notificationNavigation";
+import {
+  installAppShortcuts,
+  recordAppShortcutNavigationState,
+} from "./features/shortcuts/appShortcutsRuntime";
 import {
   AppearancePreferencesProvider,
+  installAppearanceRuntime,
   useAppearancePreferences,
 } from "./features/settings/appearance/AppearancePreferencesProvider";
-import { RootStack } from "./Stack";
+import { RootStack, rootPathnameFromState, workspaceLocationFromState } from "./Stack";
 import { appAtomRegistry } from "./state/atom-registry";
 import { subscribeComposerDraftModelReconciliation } from "./state/use-composer-drafts";
 import { environmentThreadShells } from "./state/threads";
@@ -37,6 +55,19 @@ import { OverlayPortalHost } from "./components/ui/OverlayPortal";
 import { isConnectAppLink, shouldHandleAppLink, restoreDraftLinkState } from "./lib/appLinking";
 import { hasCloudPublicConfig } from "./features/cloud/publicConfig";
 import { takeScheduledTaskNewLink } from "./features/settings/scheduled-task-editor-state";
+import {
+  pairingFormLinkAction,
+  startDevAutoConnect,
+  withoutPairingTarget,
+} from "./features/connection/devAutoConnect";
+import {
+  resolvePendingNewTaskPromptLink,
+  takeNewTaskPromptLink,
+} from "./features/prompt-links/newTaskPromptLink";
+import {
+  resolvePendingThreadPromptLink,
+  takeThreadPromptLink,
+} from "./features/prompt-links/threadPromptLink";
 import {
   disposeOnFoundationReplace,
   type FoundationHotModule,
@@ -53,7 +84,13 @@ import {
 } from "./features/workspace/workspace-selection-store";
 import { workspaceDetailLinkAction } from "./features/workspace/workspace-detail-selection";
 import { NativeLayoutMetricsProvider } from "./native/native-layout-metrics";
-import { attachRootNavigation, rootNavigationRef } from "./lib/rootNavigation";
+import {
+  attachRootNavigation,
+  flushRootNavigationQueue,
+  linkToRootPath,
+  rootNavigationRef,
+} from "./lib/rootNavigation";
+import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
 import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
 import { BaskuleLoginScreen } from "./baskule/BaskuleLoginScreen";
 import {
@@ -66,6 +103,8 @@ import {
   setBaskulePushSession,
   startBaskulePushRegistration,
 } from "./features/agent-awareness/baskuleRegistration";
+import { installAppUpdateChecks } from "./features/updates/app-updates";
+
 import "../global.css";
 // baskule: sign-in gate (Better Auth bearer); the spaces become environments once signed in.
 
@@ -76,6 +115,24 @@ if (process.env.EXPO_PUBLIC_SHOWCASE === "1") {
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 void hydrateWorkspaceSelections();
 void loadBaskuleSession();
+
+const linkingConfig = {
+  initialRouteName: "Home",
+  screens: createPathConfigForStaticNavigation(RootStack, { initialRouteName: "Home" }) ?? {},
+} as const;
+
+function getAppStateFromPath(path: string, options: Parameters<typeof getStateFromPath>[1]) {
+  return pipe(
+    getStateFromPath(path, options),
+    (state) => restoreDraftLinkState(state, path),
+    (state) => restoreSettingsLinkState(state, settingsLinkPage()),
+    takeThreadPromptLink,
+    takeNewTaskPromptLink,
+    withoutPairingTarget,
+    startDevAutoConnect,
+    takeScheduledTaskNewLink,
+  );
+}
 
 const appLinking = {
   prefixes: [
@@ -96,25 +153,42 @@ const appLinking = {
   ): ReturnType<typeof getActionFromState> =>
     // Our router handles the selection; React Navigation's type only lists its own actions.
     (workspaceDetailLinkAction(state) as ReturnType<typeof getActionFromState>) ??
+    pairingFormLinkAction(
+      state,
+      rootNavigationRef.isReady() ? rootNavigationRef.getRootState() : undefined,
+    ) ??
     getActionFromState(state, options),
-  getStateFromPath: (path: string, options: Parameters<typeof getStateFromPath>[1]) =>
-    takeScheduledTaskNewLink(
-      restoreSettingsLinkState(
-        restoreDraftLinkState(getStateFromPath(path, options), path),
-        settingsLinkPage(),
-      ),
-    ),
+  getStateFromPath: getAppStateFromPath,
 };
+
+function appLinkAction(href: string): NavigationAction {
+  const state = getAppStateFromPath(href, linkingConfig);
+  if (!state) throw new Error(`Failed to parse the href to a navigation state (${href}).`);
+  return appLinking.getActionFromState(state, linkingConfig) ?? CommonActions.reset(state);
+}
+
+function linkToAppPath(href: string): void {
+  linkToRootPath(href, appLinkAction);
+}
 
 const Navigation = createStaticNavigation(RootStack);
 
 function handleNavigationStateChange(state: NavigationState | undefined): void {
   recordWorkspaceSelections(state);
-  if (state) pruneNewTaskBranchCheckouts(state);
+  presentPendingIncomingShare();
+  resolvePendingNewTaskPromptLink(state);
+  resolvePendingThreadPromptLink(state);
+  if (!state) return;
+  setAgentNotificationPathname(workspaceLocationFromState(state).pathname);
+  recordAppShortcutNavigationState(state);
+  pruneNewTaskFlowStates(state);
+  pruneNewTaskBranchCheckouts(state);
+  pruneIncomingShareImports(state);
 }
 
 function handleNavigationReady(): void {
   handleNavigationStateChange(rootNavigationRef.getRootState());
+  flushRootNavigationQueue();
 }
 
 declare const module: { readonly hot?: FoundationHotModule } | undefined;
@@ -134,10 +208,16 @@ const appServiceDisposers = [
     threadRefsAtom: environmentThreadShells.threadRefsAtom,
     shellStateAtom: environmentShell.stateAtom,
   }),
+  installAppearanceRuntime(),
   installLanguageRefresh(),
   installPermissionUpdateNotice(),
   installThreadOutboxDelivery(),
   installComposerAttachmentUploads(),
+  startIncomingShareInbox(),
+  installAgentNotificationNavigation(linkToAppPath),
+  installAppShortcuts(linkToAppPath),
+  installAppUpdateChecks(),
+  installShowcaseCapture(rootPathnameFromState),
 ];
 disposeOnFoundationReplace(typeof module === "undefined" ? undefined : module.hot, () => {
   for (const dispose of appServiceDisposers) dispose();
@@ -146,6 +226,7 @@ disposeOnFoundationReplace(typeof module === "undefined" ? undefined : module.ho
 function SplashScreenCoordinator() {
   const { isReady } = useAppearancePreferences();
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hides the native splash screen once appearance preferences have loaded
   useEffect(() => {
     if (isReady) void languageReady.then(() => SplashScreen.hide());
   }, [isReady]);
@@ -170,6 +251,7 @@ export default function App() {
 function AppContent() {
   const { themeAppearance } = useAppearancePreferences();
   const session = useBaskuleSession();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Register native push handlers and synchronize their credentials with the active account.
   useEffect(() => {
     const stop = startBaskulePushRegistration();
     const sync = () => {
@@ -190,7 +272,7 @@ function AppContent() {
   const [connectionRequest, setConnectionRequest] = useState<{ url: string; id: number } | null>(
     null,
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- Connection URLs arrive from the native Linking subscription.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Connection URLs arrive from the native Linking subscription.
   useEffect(() => {
     let active = true;
     let received = false;
@@ -239,16 +321,14 @@ function AppContent() {
             <GlobalVoiceInputControl>
               <NativeLayoutMetricsProvider>
                 {session.status === "signed-in" ? (
-                  <IncomingShareProvider>
-                    <Navigation
-                      key={`${session.serverUrl} ${session.me.user.id}`}
-                      ref={attachRootNavigation}
-                      linking={appLinking}
-                      onReady={handleNavigationReady}
-                      theme={navigationTheme}
-                      onStateChange={handleNavigationStateChange}
-                    />
-                  </IncomingShareProvider>
+                  <Navigation
+                    key={`${session.serverUrl} ${session.me.user.id}`}
+                    ref={attachRootNavigation}
+                    linking={appLinking}
+                    onReady={handleNavigationReady}
+                    theme={navigationTheme}
+                    onStateChange={handleNavigationStateChange}
+                  />
                 ) : (
                   !connectionRequest && connectionScreen
                 )}

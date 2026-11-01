@@ -1,4 +1,5 @@
 import { useTranslation } from "../../../i18n";
+
 import type { EnvironmentId, PullRequestRef, PullRequestReviewGuide } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
@@ -88,6 +89,7 @@ export function GuideTour({
     event.preventDefault();
     step(event.key === "j" ? 1 : -1);
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- document keydown listener for j/k tour stepping while the guide is active
   useEffect(() => {
     if (!active) return;
     const onKeyDown = (event: KeyboardEvent) => stepFromKey(event);

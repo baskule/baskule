@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import {
   collectLimitAccounts,
   collectExternalUsageLinks,
@@ -257,6 +258,7 @@ function ActiveSegmentPopover({
   // The trigger is gone, so the popup has nothing to anchor to: an exit transition would
   // slide it to the viewport origin. Unmount it outright, which also clears Base UI's
   // active-trigger bookkeeping so the segment can open again when it comes back.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes the popover handle and unmounts the Base UI popup before paint when its trigger is gone
   useLayoutEffect(() => {
     if (available) return;
     handle.close();
@@ -419,15 +421,12 @@ function SegmentTriggers({
               className="min-w-0 truncate font-medium text-foreground"
             />
           ) : null}
-          <span
-            className={cn(
-              "shrink-0 font-semibold text-foreground tabular-nums",
-              // A single-account bar repeats the headline percentage.
-              !showAccountName && "redesign:hidden",
-            )}
-          >
-            {remaining}%
-          </span>
+          {/* A single-account bar repeats the headline percentage. */}
+          {showAccountName ? (
+            <span className="shrink-0 font-semibold text-foreground tabular-nums">
+              {remaining}%
+            </span>
+          ) : null}
           {resetsIn || credits ? (
             <span className="ms-auto flex min-w-0 items-center gap-1.5 overflow-hidden rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs whitespace-nowrap text-foreground tabular-nums">
               {resetsIn?.replace("resets in ", "↻ ") ?? ""}
@@ -636,8 +635,8 @@ export function UsageLimitsPooled({
   const externalLinks = collectExternalUsageLinks(presentations);
   const cursorPromptAt =
     Math.max(
-      pools.findIndex((pool) => false),
-      pools.findIndex((pool) => false),
+      pools.findIndex((_pool) => false),
+      pools.findIndex((_pool) => false),
     ) + 1;
   return (
     <div className="flex flex-col gap-8">

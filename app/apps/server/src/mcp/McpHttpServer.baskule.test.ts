@@ -38,9 +38,7 @@ it.effect("registers only the tools the space policy allows", () =>
   Effect.gen(function* () {
     const names = yield* toolNames;
     expect(names).toEqual(["preview_act", "preview_status"]);
-  }).pipe(
-    Effect.provide(layerFor(new Set(["preview_status", "preview_act", "t3_thread_launch"]))),
-  ),
+  }).pipe(Effect.provide(layerFor(new Set(["preview_status", "preview_act", "t3_thread_launch"])))),
 );
 
 it.effect("registers every tool without a policy (upstream behaviour)", () =>

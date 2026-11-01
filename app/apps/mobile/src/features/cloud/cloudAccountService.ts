@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+
 import type { getClerkInstance } from "@clerk/expo";
 import {
   createCloudAccountService,

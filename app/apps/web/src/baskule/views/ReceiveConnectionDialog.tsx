@@ -1,9 +1,10 @@
+import { useTranslation } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import { CameraIcon, QrCodeIcon } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
-import { useTranslation } from "../../i18n";
+
 import { connectionTargetLink, parseConnectionTarget, type ConnectionTarget } from "../connect";
 import { decodeQrImage, startQrCamera } from "../qrReceive";
 import { clearLocalAppData } from "../session";
@@ -72,6 +73,7 @@ export function ReceiveConnectionPanel({
   const [error, setError] = useState<string | null>(null);
   const operation = useRef(0);
   const submitting = useRef(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Invalidate pending pairing operations when the dialog closes.
   useEffect(
     () => () => {
       operation.current += 1;
@@ -264,9 +266,11 @@ function ConnectionCamera({
   const t = useTranslation();
   const video = useRef<HTMLVideoElement>(null);
   const callbacks = useRef({ onResult, onError });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Synchronize the camera callbacks with the current pairing dialog.
   useEffect(() => {
     callbacks.current = { onResult, onError };
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the QR camera stream until the scanner unmounts.
   useEffect(() => {
     const controller = new AbortController();
     if (video.current)

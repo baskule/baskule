@@ -1,9 +1,16 @@
 import { useTranslation, useLocale } from "../../i18n";
+
 import { useOtherAuthor } from "../../baskule/authorship";
 import { InlineAudioPreview } from "../files/InlineAudioPreview";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { findRevealRef } from "./markdownFindContext";
-import { type MessageId, type ServerProviderSkill, ThreadId } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type MessageId,
+  type ScheduledTaskId,
+  type ServerProviderSkill,
+  ThreadId,
+} from "@t3tools/contracts";
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { Link } from "@tanstack/react-router";
 import { useQuietThreadShell } from "../../state/entities";
@@ -77,6 +84,9 @@ import {
 import { UserMessageContextReferenceChip } from "./UserMessageContextChips";
 import { resolvePreviewAnnotationImage } from "./TimelineUserMessageRow.logic";
 
+const BUBBLE_CHIP_CLASS_NAME =
+  "[&_[data-slot=context-chip]]:[--context-chip-ink:var(--context-chip-message,var(--context-chip-accent))]";
+
 function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
   const ctx = use(TimelineRowCtx);
   // Row updates rebuild attachment objects, so the asset follows only the
@@ -143,16 +153,10 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   const [expanded, setExpanded] = useState(false);
   const revealRef = findRevealRef(() => setExpanded(true));
   const { text, scheduledTaskId } = resolveUserMessagePresentation(row.message);
-  const tasksQuery = useEnvironmentQuery(
-    scheduledTaskId
-      ? serverEnvironment.scheduledTasksLive({
-          environmentId: ctx.activeThreadEnvironmentId,
-          input: {},
-        })
-      : null,
-  );
-  const taskTitle = tasksQuery.data?.tasks.find((task) => task.id === scheduledTaskId)?.title;
-  const summary = taskTitle ?? text.trim().split(/\r?\n/, 1)[0] ?? "";
+  const summary =
+    useScheduledTaskTitle(ctx.activeThreadEnvironmentId, scheduledTaskId) ??
+    text.trim().split(/\r?\n/, 1)[0] ??
+    "";
 
   const revertTurnCount = row.revertTurnCount;
   const promptLink = promptLinkFor(text);
@@ -168,13 +172,14 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
       <div
         className={cn(
           "min-w-0 max-w-[80%] rounded-2xl bg-message text-message-foreground",
+          BUBBLE_CHIP_CLASS_NAME,
           expanded && "w-full",
         )}
       >
-        <MessageAuthorHeading>Automation</MessageAuthorHeading>
+        <MessageAuthorHeading>{t("Automation")}</MessageAuthorHeading>
         <FoldedMessageHeader
           icon={CalendarClockIcon}
-          label="Automation"
+          label={t("Automation")}
           summary={summary}
           expanded={expanded}
           onToggle={() => setExpanded((value) => !value)}
@@ -201,7 +206,7 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
                 search={{ environmentId: ctx.activeThreadEnvironmentId, taskId: scheduledTaskId }}
                 className="rounded-sm text-xs text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
               >
-                Open automation
+                {t("Open automation")}
               </Link>
             ) : null}
             <TimelineRowTimestamp
@@ -230,7 +235,17 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   );
 }
 
-function FoldedMessageHeader(props: {
+export function useScheduledTaskTitle(
+  environmentId: EnvironmentId,
+  scheduledTaskId: ScheduledTaskId | undefined,
+): string | undefined {
+  const tasksQuery = useEnvironmentQuery(
+    scheduledTaskId ? serverEnvironment.scheduledTasksLive({ environmentId, input: {} }) : null,
+  );
+  return tasksQuery.data?.tasks.find((task) => task.id === scheduledTaskId)?.title;
+}
+
+export function FoldedMessageHeader(props: {
   icon: LucideIcon;
   label: string;
   summary: string;
@@ -278,8 +293,8 @@ function UserMessageProjectedStatus({ row }: { row: Extract<TimelineRow, { kind:
 }
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  const uiLocale = useLocale();
   const t = useTranslation();
+  const uiLocale = useLocale();
   const ctx = use(TimelineRowCtx);
   const { onImageExpand, onFileOpen } = ctx;
   const senderThreadId = row.message.senderThreadId;
@@ -465,6 +480,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       <div
         className={cn(
           "relative min-w-0 max-w-[80%] rounded-2xl text-message-foreground",
+          BUBBLE_CHIP_CLASS_NAME,
           userMessage.attribution === "guest" ? guestBubbleClassName(false) : "bg-message",
           !folded && "p-3",
           folded && expanded && "w-full",
@@ -520,6 +536,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                           ctx.onImageExpand(preview);
                         }}
                       >
+                        {/* Isolate the thumbnail raster from nearby activity repaints in Chromium. */}
                         <AttachmentImage
                           name={image.name}
                           mimeType={image.mimeType}
@@ -527,7 +544,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                           alt={image.name}
                           decoding="async"
                           loading="lazy"
-                          className="block size-full object-cover"
+                          className="block size-full transform-gpu object-cover"
                         />
                       </button>
                     ) : (
@@ -646,7 +663,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           <div className="flex shrink-0 items-center gap-2">
             {folded && senderThreadId ? (
               <InlineButton onClick={() => ctx.onOpenThread(senderThreadId)} tone="muted">
-                Open thread
+                {t("Open thread")}
               </InlineButton>
             ) : null}
             <Tooltip>
@@ -760,7 +777,6 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
   skills: ReadonlyArray<ServerProviderSkill>;
   markdownCwd: string | undefined;
   collapsible?: boolean;
-  footer?: ReactNode;
 }) {
   const t = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -801,14 +817,8 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
           />
         </div>
       ) : null}
-      {showCollapseControl || props.footer ? (
-        <div
-          className={cn(
-            "mt-1.5 flex items-center gap-2",
-            showCollapseControl && props.footer ? "justify-between" : "justify-end",
-          )}
-          data-user-message-footer="true"
-        >
+      {showCollapseControl ? (
+        <div className="mt-1.5 flex items-center justify-end gap-2" data-user-message-footer="true">
           {showCollapseControl ? (
             <Button
               type="button"
@@ -821,9 +831,6 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
             >
               {expanded ? t("Show less") : t("Show full message")}
             </Button>
-          ) : null}
-          {props.footer ? (
-            <div className="ml-auto flex items-center gap-2">{props.footer}</div>
           ) : null}
         </div>
       ) : null}

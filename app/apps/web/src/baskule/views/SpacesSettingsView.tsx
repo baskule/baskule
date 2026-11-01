@@ -1,6 +1,7 @@
+import { useTranslation } from "../../i18n";
 import { Button } from "../../components/ui/button";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
-import { useTranslation } from "../../i18n";
+
 import { openCreateSpace, openSpaceManagement } from "../SpaceManagementDialog";
 import { useBaskuleMe } from "../session";
 import { PageRow, PageSection } from "./BaskulePage";

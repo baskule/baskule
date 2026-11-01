@@ -1,7 +1,7 @@
+import { useTranslation } from "../../../i18n";
 // baskule: General → Organization: the organization's name and the computer idle timeout.
 import { useState, type FormEvent } from "react";
 
-import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";

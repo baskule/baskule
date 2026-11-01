@@ -94,8 +94,7 @@ export async function baskuleConnection(
       const target = parseServerAddress(address);
       const discovery = await request(`${target.origin}/.well-known/baskule`);
       const instance = discovery.ok ? ((await discovery.json()) as { product?: string }) : null;
-      if (instance?.product !== "baskule")
-        throw new Error("This address is not a Baskule server.");
+      if (instance?.product !== "baskule") throw new Error("This address is not a Baskule server.");
       if (target.code) {
         const redeemed = await request(`${target.origin}/auth/connect/redeem`, {
           method: "POST",
@@ -119,7 +118,7 @@ export async function baskuleConnection(
       if (!isBaskuleApiPath(url.pathname)) return null;
       if (!origin) return Response.json({ error: "server_not_configured" }, { status: 503 });
       const headers = new Headers(incoming.headers);
-      for (const key of [...headers.keys()]) {
+      for (const key of headers.keys()) {
         if (
           ["host", "content-length", "connection", "accept-encoding"].includes(key) ||
           key.startsWith("sec-")

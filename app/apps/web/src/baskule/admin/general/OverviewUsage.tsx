@@ -1,9 +1,9 @@
+import { useTranslation } from "../../../i18n";
 // baskule: General → Overview: this month's usage at a glance, with a link to the dashboard.
 import { Link } from "@tanstack/react-router";
 import { formatCount, formatUsd } from "@t3tools/shared/usageFormat";
 import { ChevronRightIcon } from "lucide-react";
 
-import { useTranslation } from "../../../i18n";
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";
 import { useApiResource } from "../../ui";

@@ -1,0 +1,10 @@
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!computerd/
+!computerd/package.json
+!computerd/src/
+!computerd/src/**
+!computerd/proto/
+!computerd/proto/**

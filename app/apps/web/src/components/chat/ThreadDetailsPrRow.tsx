@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { resolvePullRequestDetailChecks } from "@t3tools/client-runtime/pull-request-checks";
 import {
   capitalizeTerm,
@@ -20,7 +21,6 @@ import {
 } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
-
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
 import { usePullRequestChecksRefresh } from "~/hooks/usePullRequestChecksRefresh";
 import { cn } from "~/lib/utils";
@@ -32,7 +32,6 @@ import {
   useEnvironmentQueryRefresh,
   useEnvironmentQuerySelector,
 } from "~/state/query";
-
 import {
   buildFixFindingsHandoff,
   buildResolveConflictsPrompt,
@@ -109,8 +108,7 @@ export function ThreadDetailsPrRow({
 }) {
   const t = useTranslation();
   const serverConfigs = useServerConfigs();
-  const supportsPullRequests =
-    serverConfigs.get(environmentId)?.environment.capabilities.pullRequests === true;
+  const supportsPullRequests = serverConfigs.get(environmentId) !== undefined;
   const repository = sourceControlClients.repositorySelector(project?.repositoryIdentity);
   const reference: PullRequestRef | null =
     supportsPullRequests && project !== null
@@ -338,7 +336,9 @@ export function ThreadDetailsPrRow({
             pending: actionPending,
             destructive: false,
             suffix: null,
-            tooltip: `Mark this ${terminology.singular} as ready for review`,
+            tooltip: t("Mark this {{value1}} as ready for review", {
+              value1: terminology.singular,
+            }),
             onClick: () => void perform("ready"),
           }
         : rowAction === "fix"
@@ -358,7 +358,10 @@ export function ThreadDetailsPrRow({
                 pending: actionPending,
                 destructive: false,
                 suffix: null,
-                tooltip: `Merge this ${terminology.singular} (${selectedMergeMethod})`,
+                tooltip: t("Merge this {{value1}} ({{value2}})", {
+                  value1: terminology.singular,
+                  value2: selectedMergeMethod,
+                }),
                 onClick: () => setConfirmingMerge(true),
               }
             : null;
@@ -442,7 +445,7 @@ export function ThreadDetailsPrRow({
       {detail !== null && (showChecks || trailingAction !== null || watching) ? (
         <div className="pb-1.5">
           {openRow(detail.title, "row", true)}
-          <div className="flex h-5 min-w-0 items-center gap-0.5 ps-9 pe-1 text-xs text-muted-foreground redesign:pe-2.5">
+          <div className="flex h-5 min-w-0 items-center gap-0.5 ps-9 pe-2.5 text-xs text-muted-foreground">
             <span className="me-1 shrink-0 tabular-nums">#{number}</span>
             {showChecks && checksRollup !== null ? (
               <PullRequestChecksPopover

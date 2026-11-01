@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
 import { SymbolView, type AppSymbolName } from "./ui/AppSymbol";
 
@@ -12,7 +13,7 @@ export const ENVIRONMENT_MACHINE_SYMBOLS = {
   "mac-studio": "macstudio",
 } as const satisfies Record<EnvironmentMachineKind, AppSymbolName>;
 
-export const ENVIRONMENT_MACHINE_KIND_LABELS: Record<EnvironmentMachineKind, string> = {
+const ENVIRONMENT_MACHINE_KIND_LABELS: Record<EnvironmentMachineKind, string> = {
   get server() {
     return t("Server");
   },

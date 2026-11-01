@@ -20,9 +20,7 @@ const layerAuth = EnvironmentAuth.layer.pipe(
   Layer.provide(ServerSecretStore.layer),
   Layer.provide(ServerEnvironment.layerIdentity),
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-baskule-front-auth-test-" })),
-  Layer.provide(
-    ConfigProvider.layer(ConfigProvider.fromEnvRecord({ BASKULE_AUTH_MODE: "front" })),
-  ),
+  Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ BASKULE_AUTH_MODE: "front" }))),
 );
 
 const alice: BaskuleIdentity = {

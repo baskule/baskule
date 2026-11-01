@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+
 import * as Dialog from "../../components/ui/Dialog";
 import {
   AuthTerminalReadScope,
@@ -21,7 +22,6 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { TerminalContextSheet } from "./TerminalContextSheet";
 import { hasNativeTerminalSurface, supportsNativeTerminalOutput } from "./nativeTerminalModule";
 import * as Clipboard from "expo-clipboard";
-import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import {
@@ -68,7 +68,6 @@ import { useSelectedThreadProjection } from "../../state/use-thread-detail";
 import { EnvironmentConnectionNotice } from "../connection/EnvironmentConnectionNotice";
 import { TerminalSurface, type TerminalSurfaceHandle } from "./NativeTerminalSurface";
 import { getMobileTerminalTheme } from "./terminalTheme";
-import { terminalDebugLog } from "./terminalDebugLog";
 import { useTerminalExitNavigation } from "./useTerminalExitNavigation";
 import {
   useInitialTerminalLaunchLocation,
@@ -115,32 +114,42 @@ function TerminalHeader(props: {
       subtitle={props.subtitle}
       onBack={props.onCloseTerminal}
       backInSplitView={{
-        accessibilityLabel: "Back to chat",
+        accessibilityLabel: t("Back to chat"),
         icon: "chevron.left",
       }}
       menus={
         props.isEnvironmentReady
           ? [
               {
-                title: "Terminal options",
+                title: t("Terminal options"),
                 icon: "terminal",
                 status: getTerminalStatusLabel(props.status),
                 items: [
                   {
                     id: "text-size",
-                    title: "Text size",
+                    title: t("Text size"),
                     icon: "textformat.size",
                     inline: true,
                     items: [
                       {
                         id: "font-decrease",
-                        title: `A- ${Math.max(MIN_TERMINAL_FONT_SIZE, props.fontSize - TERMINAL_FONT_SIZE_STEP).toFixed(1)} pt`,
+                        title: t("A- {{value1}} pt", {
+                          value1: Math.max(
+                            MIN_TERMINAL_FONT_SIZE,
+                            props.fontSize - TERMINAL_FONT_SIZE_STEP,
+                          ).toFixed(1),
+                        }),
                         disabled: props.fontSize <= MIN_TERMINAL_FONT_SIZE,
                         onPress: props.onDecreaseFontSize,
                       },
                       {
                         id: "font-increase",
-                        title: `A+ ${Math.min(MAX_TERMINAL_FONT_SIZE, props.fontSize + TERMINAL_FONT_SIZE_STEP).toFixed(1)} pt`,
+                        title: t("A+ {{value1}} pt", {
+                          value1: Math.min(
+                            MAX_TERMINAL_FONT_SIZE,
+                            props.fontSize + TERMINAL_FONT_SIZE_STEP,
+                          ).toFixed(1),
+                        }),
                         disabled: props.fontSize >= MAX_TERMINAL_FONT_SIZE,
                         onPress: props.onIncreaseFontSize,
                       },
@@ -165,9 +174,11 @@ function TerminalHeader(props: {
                   {
                     id: "terminal-new",
                     disabled: !props.canOperateTerminal,
-                    title: "Open new terminal",
+                    title: t("Open new terminal"),
                     icon: "plus",
-                    subtitle: `Start another shell in ${basename(props.workspaceRoot) ?? "this workspace"}`,
+                    subtitle: t("Start another shell in {{value1}}", {
+                      value1: basename(props.workspaceRoot) ?? "this workspace",
+                    }),
                     onPress: props.onOpenNewTerminal,
                   },
                 ],
@@ -346,7 +357,7 @@ function readLiveTerminalSessions(
 ): ReadonlyArray<TerminalMenuSession> {
   if (!readEnvironmentScope(environmentId, AuthTerminalReadScope)) return [];
   const result = appAtomRegistry.get(terminalEnvironment.metadata({ environmentId, input: null }));
-  const summaries = Option.getOrElse(AsyncResult.value(result), () => []);
+  const summaries = AsyncResult.getOrElse(result, () => []);
   return summaries
     .filter((summary) => summary.threadId === threadId)
     .map((summary) => ({
@@ -434,10 +445,8 @@ function ThreadTerminal(props: {
   } = useAppearancePreferences();
   const fontSize = appearance.terminalFontSize;
   const terminalKey = `${selectedThread.environmentId}:${selectedThread.id}:${terminalId}`;
-  const activeKnownSession = useMemo(
-    () => knownSessions?.find((session) => session.target.terminalId === terminalId) ?? null,
-    [knownSessions, terminalId],
-  );
+  const activeKnownSession =
+    knownSessions?.find((session) => session.target.terminalId === terminalId) ?? null;
   const hasTerminalTarget = props.hasExplicitTerminalId || activeKnownSession !== null;
   const [pendingLaunch] = useState<PendingTerminalLaunch | null>(() =>
     takePendingTerminalLaunch({
@@ -482,7 +491,6 @@ function ThreadTerminal(props: {
         if (live) exitNavigation.restarted();
         pasteSession.reset(live);
       },
-      debugLog: terminalDebugLog,
     }),
   );
   const surfaceRef = useRef<TerminalSurfaceHandle>(null);
@@ -619,31 +627,18 @@ function ThreadTerminal(props: {
     (keyboardState.isVisible ? keyboardState.height : 0) +
     (isAccessoryVisible ? TERMINAL_ACCESSORY_HEIGHT : 0);
 
-  const terminalMenuSessions = useMemo<ReadonlyArray<TerminalMenuSession>>(
-    () =>
-      buildTerminalMenuSessions({
-        knownSessions: knownSessions ?? [],
-        workspaceRoot: selectedThreadProject?.workspaceRoot ?? null,
-        currentSession: {
-          terminalId,
-          cwd: cwd ?? null,
-          status: terminal.status,
-          hasRunningSubprocess: terminal.hasRunningSubprocess,
-          displayLabel: resolveTerminalSessionLabel(terminalId, terminal.summary),
-          updatedAt: terminal.updatedAt,
-        },
-      }),
-    [
-      cwd,
-      knownSessions,
-      selectedThreadProject?.workspaceRoot,
-      terminal.hasRunningSubprocess,
-      terminal.summary,
-      terminal.status,
-      terminal.updatedAt,
+  const terminalMenuSessions: ReadonlyArray<TerminalMenuSession> = buildTerminalMenuSessions({
+    knownSessions: knownSessions ?? [],
+    workspaceRoot: selectedThreadProject?.workspaceRoot ?? null,
+    currentSession: {
       terminalId,
-    ],
-  );
+      cwd: cwd ?? null,
+      status: terminal.status,
+      hasRunningSubprocess: terminal.hasRunningSubprocess,
+      displayLabel: resolveTerminalSessionLabel(terminalId, terminal.summary),
+      updatedAt: terminal.updatedAt,
+    },
+  });
 
   const writeInput = async (data: string): Promise<boolean> => {
     if (
@@ -702,11 +697,6 @@ function ThreadTerminal(props: {
   };
 
   const handleResize = (size: { readonly cols: number; readonly rows: number }) => {
-    terminalDebugLog("native:onResize", {
-      cols: size.cols,
-      rows: size.rows,
-      terminalKey,
-    });
     if (routeEnvironmentId && routeThreadId) {
       cacheTerminalGridSize(
         {
@@ -975,6 +965,7 @@ function ThreadTerminal(props: {
                   buffer={terminal.version === 0 ? null : terminal.buffer}
                   output={terminal.version === 0 ? null : terminal.output}
                   fontSize={fontSize}
+                  grid={terminal.grid}
                   isRunning={isRunning}
                   keyboardFocusRequest={keyboardFocusRequest}
                   captureRequest={captureRequest}

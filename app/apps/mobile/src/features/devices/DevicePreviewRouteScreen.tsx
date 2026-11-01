@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { SheetCloseButton } from "../../components/ui/SheetHeader";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
@@ -16,7 +17,6 @@ import { Accelerometer } from "expo-sensors";
 import { Pressable, StatusBar, View } from "react-native";
 import Animated, { FadeIn, FadeOut, ReduceMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppText } from "../../components/ui/AppText";
@@ -59,6 +59,7 @@ export function DevicePreviewRouteScreen({ route }: DevicePreviewRouteScreenProp
   const onClose = () => navigation.goBack();
   const { environmentId, threadId } = route.params;
   const isBlankLink = environmentId.trim().length === 0 || threadId.trim().length === 0;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pops a deep-linked route with a blank environment or thread off the navigator
   useEffect(() => {
     if (isBlankLink) onClose();
   }, [isBlankLink, onClose]);
@@ -109,9 +110,11 @@ export function DevicePreviewScreen({
     setInputConnected(connected);
     if (connected && !embedded) setControlsVisible(false);
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes the focused route through the navigator once the thread has no device previews
   useEffect(() => {
     if (focused && state.data !== null && previews.length === 0) onClose();
   }, [focused, state.data, previews.length, onClose]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the Accelerometer while focused to toggle controls on a shake
   useEffect(() => {
     if (!focused || !foreground || embedded) return;
     const shaken = createShakeDetector();
@@ -234,7 +237,7 @@ export function DevicePreviewScreen({
       : []),
     {
       id: "shutdown",
-      title: shuttingDown ? "Shutting down…" : "Shut down device",
+      title: shuttingDown ? t("Shutting down…") : t("Shut down device"),
       icon: "power",
       disabled: !preview || shuttingDown,
       onPress: () => void shutDownDevice(),

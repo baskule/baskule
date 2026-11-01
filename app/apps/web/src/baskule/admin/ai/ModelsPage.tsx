@@ -1,3 +1,4 @@
+import { useTranslation } from "../../../i18n";
 // baskule: AI → Models: the provider, its key and the one model everyone uses. Saving needs a passed
 // connection check for the current provider, endpoint, key and model; the ControlCell checks again.
 import { CheckCircle2Icon, CheckIcon, CircleAlertIcon, TriangleAlertIcon } from "lucide-react";
@@ -10,7 +11,6 @@ import {
   type BaskuleAvailableModel,
 } from "@t3tools/contracts/baskule";
 
-import { useTranslation } from "../../../i18n";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import {
@@ -110,7 +110,7 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
   const checkId = checkInput ? JSON.stringify(checkInput) : null;
   const currentCheck = check !== null && check.id === checkId ? check : null;
   const checkDue = dirty && checkId !== null && currentCheck === null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- asks the provider once typing pauses
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- asks the provider once typing pauses
   useEffect(() => {
     if (!checkDue || checkId === null) return;
     const input = JSON.parse(checkId) as BaskuleAIConnectionCheck & { readonly modelId: string };

@@ -1,8 +1,8 @@
+import { msg, useLocale, useTranslation } from "../../../i18n";
 // baskule: the model's prices, which turn tokens into the costs people see and cost limits count.
 // Built-in providers' prices come from Baskule's catalog and are read-only; custom endpoints enter theirs.
 import type { BaskuleAIModel } from "@t3tools/contracts/baskule";
 
-import { msg, useLocale, useTranslation } from "../../../i18n";
 import { Input } from "../../../components/ui/input";
 
 export interface PriceDraft {

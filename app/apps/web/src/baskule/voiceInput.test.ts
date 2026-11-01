@@ -37,7 +37,9 @@ describe("voice input state machine", () => {
     ]);
     const sending = voiceInputReducer(inserting, { type: "stop", after: "send", mode: "queue" });
     expect(sending).toEqual({ phase: "transcribing", after: "send", mode: "queue" });
-    expect(voiceInputReducer(sending, { type: "stop", after: "send", mode: "steer" })).toBe(sending);
+    expect(voiceInputReducer(sending, { type: "stop", after: "send", mode: "steer" })).toBe(
+      sending,
+    );
     expect(voiceInputReducer(sending, { type: "stop", after: "insert" })).toBe(sending);
   });
 
@@ -82,8 +84,9 @@ describe("voice input helpers", () => {
 
   it("responds to low and high voices equally at the same volume", () => {
     const tone = (cycles: number) =>
-      Float32Array.from({ length: 1024 }, (_, index) =>
-        0.05 * Math.sin((2 * Math.PI * cycles * index) / 1024),
+      Float32Array.from(
+        { length: 1024 },
+        (_, index) => 0.05 * Math.sin((2 * Math.PI * cycles * index) / 1024),
       );
     expect(recordingLevel(tone(4))).toBeCloseTo(recordingLevel(tone(32)), 5);
   });

@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import type { ReactNode } from "react";
 
 import { Spinner } from "~/components/ui/spinner";

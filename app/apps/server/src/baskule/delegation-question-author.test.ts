@@ -8,6 +8,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RuntimeRequestId,
+  ScheduledTaskId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -69,6 +70,7 @@ it.effect.each(["parent wake", "queued child answer"] as const)(
         threadId: parentId,
         messageId: MessageId.make("parent-input"),
         text: "Delegate",
+        scheduledTaskId: ScheduledTaskId.make("scheduled-task:parent"),
         attachments: [],
         dispatchMode: { type: "start_immediately" },
         author: alice,
@@ -93,6 +95,29 @@ it.effect.each(["parent wake", "queued child answer"] as const)(
       const task = (yield* orchestrator.getThreadProjection(parentId)).subagents[0]!;
       const childId = task.childThreadId!;
       const childRun = (yield* orchestrator.getThreadProjection(childId)).runs[0]!;
+      const childBefore = yield* orchestrator.getThreadProjection(childId);
+      for (const actor of [{ id: "bob", name: "Bob" }, undefined]) {
+        const rejected = yield* orchestrator
+          .dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make(`steer-child:${actor?.id}`),
+            threadId: childId,
+            messageId: MessageId.make(`steer-child:${actor?.id}`),
+            text: "Use Alice's accounts",
+            attachments: [],
+            ...(actor === undefined ? {} : { author: actor }),
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "steer_active", targetRunId: childRun.id },
+          })
+          .pipe(Effect.flip);
+        assert.include(String(rejected.cause), "Only the run's author");
+        assert.deepEqual(
+          (yield* orchestrator.getThreadProjection(childId)).messages,
+          childBefore.messages,
+        );
+      }
+
       for (const id of [parentId, childId]) {
         yield* orchestrator.dispatch({
           type: "message.dispatch",
@@ -196,8 +221,28 @@ it.effect.each(["parent wake", "queued child answer"] as const)(
         assert.isDefined(wake);
         assert.deepEqual(wake?.author, alice);
       } else {
+        for (const actor of [{ id: "bob", name: "Bob" }, undefined]) {
+          const refused = yield* orchestrator
+            .dispatch({
+              type: "runtime-request.respond",
+              commandId: CommandId.make(`refused-answer:${actor?.id}`),
+              threadId: childId,
+              requestId,
+              answers: { color: "Attacker instructions" },
+              ...(actor === undefined ? {} : { author: actor }),
+            })
+            .pipe(Effect.flip);
+          assert.include(String(refused.cause), "Only the run's author");
+          assert.equal(
+            (yield* orchestrator.getThreadProjection(childId)).runtimeRequests.find(
+              (request) => request.id === requestId,
+            )?.status,
+            "pending",
+          );
+        }
         yield* orchestrator.dispatch({
           type: "runtime-request.respond",
+          author: alice,
           commandId: CommandId.make("answer"),
           threadId: childId,
           requestId,
@@ -210,6 +255,17 @@ it.effect.each(["parent wake", "queued child answer"] as const)(
         assert.isDefined(answer);
         assert.deepEqual(answer?.author, alice);
         assert.equal(child.runs.find((r) => r.userMessageId === answer?.id)?.status, "queued");
+        const queuedAnswer = child.runs.find((run) => run.userMessageId === answer?.id)!;
+        const refusedEdit = yield* orchestrator
+          .dispatch({
+            type: "queued-run.edit",
+            commandId: CommandId.make("edit-generated-answer"),
+            threadId: childId,
+            runId: queuedAnswer.id,
+            text: "Overwrite the author's answer",
+          })
+          .pipe(Effect.flip);
+        assert.include(String(refusedEdit.cause), "cannot be edited");
       }
     }).pipe(Effect.provide(DelegatedTaskQuestionReactor.layer.pipe(Layer.provideMerge(layerTest)))),
 );

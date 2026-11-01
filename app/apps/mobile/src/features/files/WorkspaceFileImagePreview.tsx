@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+
 import { useId, useState } from "react";
 import { Image, Pressable, View } from "react-native";
 import { nativeAssetImageSource } from "../../lib/assetImageSource";

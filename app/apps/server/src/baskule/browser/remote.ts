@@ -1,3 +1,5 @@
+import * as Schema from "effect/Schema";
+import { PreviewSessionSnapshot } from "@t3tools/contracts";
 // @effect-diagnostics globalFetch:off preferSchemaOverJson:off abortControllerInEffect:off - This boundary uses workerd native fetch and a JSON bridge.
 // Fetch-only edge of the computer-side browser. Merely subscribing or listing never wakes a computer.
 import * as Context from "effect/Context";
@@ -157,12 +159,25 @@ export const makeManager = Effect.gen(function* () {
       catch: () =>
         new PreviewSessionLookupError({ threadId: input.threadId ?? "", tabId: input.tabId ?? "" }),
     });
+  const snapshot = <A extends { readonly threadId?: string; readonly tabId?: string }>(
+    method: string,
+    input: A,
+  ) =>
+    run(method, input).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(PreviewSessionSnapshot)),
+      Effect.mapError(
+        () =>
+          new PreviewSessionLookupError({
+            threadId: input.threadId ?? "",
+            tabId: input.tabId ?? "",
+          }),
+      ),
+    );
   return {
-    open: (input) => run("open", { ...input, beforePublish: undefined, runtime: "server" }),
-    navigate: (input) => run("navigate", input),
-    resize: (input) => run("resize", input),
-    adjust: (input) => run("adjust", input),
-    refresh: (input) => run("refresh", input),
+    open: (input) => snapshot("open", { ...input, beforePublish: undefined, runtime: "server" }),
+    markHeadless: (input) => run("markHeadless", input).pipe(Effect.asVoid),
+    resize: (input) => snapshot("resize", input),
+    adjust: (input) => snapshot("adjust", input),
     // Closing the tabs of a browser that is not running has nothing to do: deleting a chat (ResourceCleanupService)
     // must never create or start the space's computer. A running browser holding this chat's tabs is found by
     // `inspect`, which never wakes it.
@@ -170,13 +185,15 @@ export const makeManager = Effect.gen(function* () {
       Effect.promise(
         async () =>
           state.active() || (await state.inspect({ threadId: input.threadId })).sessions.length > 0,
-      ).pipe(Effect.flatMap((live) => (live ? run("close", input) : Effect.void))),
-    reportStatus: (input) => run("reportStatus", input),
-    requestReveal: (input) => run("requestReveal", input),
+      ).pipe(
+        Effect.flatMap((live) => (live ? run("close", input).pipe(Effect.asVoid) : Effect.void)),
+      ),
+    reportStatus: (input) => run("reportStatus", input).pipe(Effect.asVoid),
+    requestReveal: (input) => run("requestReveal", input).pipe(Effect.asVoid),
     list: (input) => Effect.promise(() => state.inspect(input)),
     events: Stream.fromPubSub(state.events),
     subscribeEvents: PubSub.subscribe(state.events),
-  } as PreviewManager["Service"];
+  } satisfies PreviewManager["Service"];
 });
 
 export const makeBrowser = Effect.gen(function* () {

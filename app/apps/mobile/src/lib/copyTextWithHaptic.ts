@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+
 import * as Schema from "effect/Schema";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
