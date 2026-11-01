@@ -1,4 +1,7 @@
 import { zipSync } from "fflate";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Group, Plugin } from "../../../app/packages/contracts/src/baskule-plugins";
 import { asAdmin, call, createUser, makeService, personalSpaceOf, signIn } from "../support/harness";
@@ -272,7 +275,17 @@ describe("assignment and member status", () => {
 describe("startup folder sync", () => {
   const token = "local-installation-token";
   const headers = { authorization: `Bearer ${token}` };
-  const archive = (files: Record<string, string>) => base64(zipSync(Object.fromEntries(Object.entries(files).map(([path, text]) => [path, new TextEncoder().encode(text)]))));
+  const archive = (files: Record<string, string>, format: "zip" | "tar" = "zip") => {
+    if (format === "zip") return base64(zipSync(Object.fromEntries(Object.entries(files).map(([path, text]) => [path, new TextEncoder().encode(text)]))));
+    mkdirSync(".run", { recursive: true });
+    const root = mkdtempSync(".run/plugin-tar-");
+    try {
+      for (const [path, text] of Object.entries(files)) {
+        const file = join(root, path); mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, text);
+      }
+      return base64(execFileSync("tar", ["-cz", "-C", root, "."]));
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  };
   const mcp = (url = "https://example.test/mcp") => archive({ ".mcp.json": JSON.stringify({ mcpServers: { remote: { url, headers: { Authorization: "${API_KEY}" } } } }) });
   const sync = (h: Awaited<ReturnType<typeof makeService>>, entries: unknown[]) => call(h, "POST", `${API}/plugins/folder-sync`, { headers, body: { mounted: true, entries } });
 
@@ -328,8 +341,8 @@ describe("startup folder sync", () => {
       { path: "plugins/link", problem: "plugin_links_unsupported" },
       { path: "mcp/.json", archive: mcp() },
       { path: `mcp/${"a".repeat(101)}.json`, archive: mcp() },
-      { path: "skills/voice", archive: archive({ "SKILL.md": "---\nname: voice\ndescription: Brand voice\n---\nWrite clearly.", "reference.txt": "Style notes" }) },
-      { path: "plugins/full", archive: archive({ ".codex-plugin/plugin.json": '{"name":"Full","description":"Standard package"}', ".mcp.json": '{"servers":{"public":{"url":"https://public.test/mcp"}}}' }) },
+      { path: "skills/voice", archive: archive({ "SKILL.md": "---\nname: voice\ndescription: Brand voice\n---\nWrite clearly.", "reference.txt": "Style notes" }, "tar") },
+      { path: "plugins/full", archive: archive({ ".codex-plugin/plugin.json": '{"name":"Full","description":"Standard package"}', ".mcp.json": '{"servers":{"public":{"url":"https://public.test/mcp"}}}' }, "tar") },
     ]);
     expect(result.status).toBe(200);
     expect(result.body.folder.problems).toEqual([

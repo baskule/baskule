@@ -17,7 +17,8 @@ class ImageReuseTests(unittest.TestCase):
             root.mkdir()
             for name in ('deploy/images.sh', 'deploy/lib.sh', 'scripts/source-hash.py',
                          'deploy/build-env/Dockerfile', 'computer/input', 'openshell/input',
-                         'vendor/openshell/input', 'deploy/celld/input', 'computerd/input',
+                         'vendor/openshell/input', 'deploy/celld/Dockerfile', 'deploy/celld/jobs.sh',
+                         'deploy/celld/sync-plugins.sh', 'computerd/input',
                          'app/browser-source', 'app/unrelated-ui', 'platform/dist/worker.js',
                          'platform/dist/web/version.json', 'platform/wrangler.json', 'deploy/.env.example'):
                 path = root / name
@@ -77,8 +78,14 @@ p.write_text(json.dumps(s))
             changed = changed + ['baskule-openshell-gateway:local']
             self.assertEqual(images(), changed)
             (root / 'platform/dist/worker.js').write_text('a new app bundle')
+            self.assertEqual(images(), changed, 'source nodes mount bundles without rebuilding their image')
+            collector = root / 'deploy/celld/sync-plugins.sh'
+            previous = collector.read_bytes()
+            collector.write_text('a changed startup collector')
             changed = changed + ['baskule-celld:local']
-            self.assertEqual(images(), changed, 'bundle changes must rebuild the deploy image')
+            self.assertEqual(images(), changed, 'collector changes must rebuild the source image')
+            collector.write_bytes(previous)
+            self.assertEqual(images(), changed, 'reverting the collector must reuse the original image')
             environment['BASKULE_TAG'] = 'validation'
             self.assertEqual(images(), changed + ['baskule-openshell-gateway:validation'],
                              'the embedded image tags are gateway build inputs')

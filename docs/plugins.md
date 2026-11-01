@@ -42,7 +42,9 @@ UI, where they are encrypted in the database. Export remains available.
 Adding or editing an entry changes its definition on the next sync. Its relative path
 is its identity: `plugins/acme-sales`, `skills/brand-voice`, or
 `mcp/internal-crm.json`. UI configuration survives updates at the same path, including
-server switches and keys associated with the same server name. Removing an entry
+server switches and keys associated with the same server name. For a retained server
+name, saved keys and accounts continue to be used if its address changes; the
+administrator editing the mounted files controls those addresses. Removing an entry
 removes its plugin and stored configuration. Renaming a path removes the old plugin
 and adds an unassigned plugin. Definitions and deletion are locked in the UI.
 
@@ -50,7 +52,8 @@ Invalid entries do not prevent other entries from syncing or the stack from star
 Admin plugin responses include the last sync time and per-path problems. An invalid
 update keeps the last valid definition until it is corrected or removed. An unreadable
 inventory or failed sync request fails the startup job instead of treating the mount
-as empty.
+as empty. In Compose, the edge waits for the deploy job to succeed, so an inventory
+or sync failure also prevents the web entry point from starting.
 
 Without a mount, folder sync is off, the API reports `folder: null`, and existing
 folder plugins stay in the database. To deliberately remove all folder plugins, sync
