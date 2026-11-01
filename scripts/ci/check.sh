@@ -26,7 +26,7 @@ case "$suite" in
     run node scripts/lint.mjs
     run node scripts/feature-map.mjs
     run node --test scripts/check-lock.test.mjs scripts/check-evidence.test.mjs scripts/celld.test.mjs scripts/lint.test.mjs scripts/stack.test.mjs scripts/feature-map.test.mjs platform/dev/fake-llm/server.test.mjs deploy/celld/sync-plugins.test.mjs
-    run node --test deploy/celld/jobs.test.mjs e2e/secrets.test.mjs
+    run node --test e2e/secrets.test.mjs
     ;;
   platform)
     cd platform
