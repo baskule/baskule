@@ -294,7 +294,7 @@ function adminUsage(fromParam, toParam) {
     turns: Math.round(totals.turns * part),
     chats: Math.round(totals.chats * part),
   });
-  const bySpace = spaces.values().map((space, index, all) => ({
+  const bySpace = spaces.values().toArray().map((space, index, all) => ({
     spaceId: space.id,
     name: space.name,
     ...share(1 / all.length),
@@ -442,6 +442,7 @@ const membersOf = (space) =>
 const spacesOf = (userId) =>
   spaces
     .values()
+    .toArray()
     .filter((space) => memberRole(space, userId) !== null)
     .sort((a, b) =>
       a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "personal" ? -1 : 1,
@@ -982,7 +983,7 @@ async function handleApi(req, res, url) {
       const live = url.searchParams.get("status") === "live";
       if (a === "/spaces" && method === "GET") {
         return send(res, 200, {
-          spaces: spaces.values().map((space) => ({
+          spaces: spaces.values().toArray().map((space) => ({
             id: space.id,
             name: space.name,
             kind: space.kind,

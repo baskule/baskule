@@ -792,7 +792,7 @@ const scenarios = {
 const wanted = process.argv.slice(2);
 const devices = (process.env.SHOTS_DEVICES ?? "desktop,phone").split(",");
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME ?? "/usr/bin/google-chrome",
+  executablePath: process.env.CHROME,
   headless: true,
   // A generated tone instead of a real microphone, granted without a prompt (voice scenario).
   args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
