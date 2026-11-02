@@ -51,7 +51,7 @@ case "$phase" in
         rm -rf /cache/target/release/deps /cache/target/release/build /cache/target/release/incremental
       '
 
-    # Retain the registry and final native binaries across runs. Full Rust deps/build targets
+    # Retain only final native binaries across runs. Full Rust deps/build targets
     # exceed the repository cache quota; sandbox compilation is cached as a BuildKit layer.
     # A changed source key compiles afresh rather than restoring a stale source marker.
 
