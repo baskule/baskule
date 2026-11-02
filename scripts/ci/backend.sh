@@ -9,10 +9,12 @@ cd "$ROOT"
 }
 source scripts/env.sh
 mkdir -p .run/evidence/release
+bundled_images_container=
 suite=${1:?build, components, journeys, or install}
 shift
 cleanup() {
   status=$?
+  [[ -z $bundled_images_container ]] || docker rm -v "$bundled_images_container" || true
   if [[ $suite != build ]]; then
     scripts/stack down --purge || true
     openshell/dev-down.sh || true
@@ -35,6 +37,16 @@ while read -r image expected; do
   [[ $(docker image inspect --format '{{.Id}}' "$image") == "$expected" ]]
   docker tag "$image" "$name:local"
 done < .run/release/backend/images.txt
+# The developer harness compares its computer image with the one inside the
+# gateway. Recover that exact bundled archive instead of rebuilding the computer.
+if [[ $suite != install ]]; then
+  bundled_images_container=$(docker create baskule-openshell-gateway:local)
+  docker cp "$bundled_images_container:/usr/local/lib/baskule/images/baskule-computer_local.tar.gz" .run/release/computer.tar.gz
+  docker rm -v "$bundled_images_container"
+  bundled_images_container=
+  docker load -i .run/release/computer.tar.gz
+  rm .run/release/computer.tar.gz
+fi
 mkdir -p platform/src/space/t3
 tar -xzf .run/release/backend/space-cell.tar.gz -C platform/src/space/t3
 export BASKULE_STACK_PROXY=0

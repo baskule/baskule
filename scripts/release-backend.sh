@@ -42,7 +42,11 @@ docker run --rm --init --name "osdev-release-backend-${GITHUB_RUN_ID:-local}" \
   -e BASKULE_TAG \
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e "GIT_CONFIG_VALUE_0=$PWD" \
   -e DOCKER_HOST=unix:///var/run/docker.sock -e DOCKER_CONFIG=/root/.docker \
-  "$(cat .run/release/build-env.id)" bash openshell/build.sh
+  "$(cat .run/release/build-env.id)" bash -c '
+    bash openshell/build.sh
+    rm -rf /cache/target/release/deps /cache/target/release/build /cache/target/release/incremental
+  '
+
 
 # Retain the registry and final native binaries across runs. Full Rust deps/build targets
 # exceed the repository cache quota; sandbox compilation is cached as a BuildKit layer.
