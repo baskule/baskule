@@ -1,5 +1,7 @@
 # Release backend verification
 
+Computer, computerd and OpenShell build in `backend-runtime` after version and source-CI validation, alongside Linux packaging. They need no translated catalogs or Linux artifacts. Final `backend-build` waits for both paths because celld embeds the verified hosted web bundle and AppImage downloads. It copies the runtime image archives byte for byte and adds celld. The build critical path is the longer of runtime images and Linux apps, followed by celld packaging and the slowest verification shard.
+
 The release factory builds `backend-<version>` once, then downloads the same archive artifact into isolated GitHub-hosted runners. Each consumer checks `SHA256SUMS`, loads the three published image archives, checks their IDs against `images.txt`, and restores the packaged SpaceCell bundle. Install checks use the packaged Compose assets through `BASKULE_INSTALL_ASSETS`, without checkout mounts or regenerated operator files.
 
 The `backend` job gates publishing and the manual factory status. It requires the build, every component, journey and install shard, upstream server and web suites, and `CI required` on the exact source SHA. A failed, skipped or cancelled dependency fails the gate. Run ordinary CI before dispatching a factory for a temporary source commit.

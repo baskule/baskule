@@ -28,7 +28,6 @@ Tiers
                     unit tests and scoped typechecks; docs → link check; shell → syntax. Seconds to ~1 min. No services.
   unit              every Baskule unit suite and typecheck (no services, ~2-3 min)
   release           unit + every component loop + desktop; fresh, fake LLM only, no deployed stack
-  release:components worker/space + computerd/agent + platform feature contracts (parallel lanes)
   release:journeys   feature journeys and uncovered custom checks; requires release components + Linux apps
                     --shard N/M partitions this plan across disposable runners
   upstream[:server|web] T3's own unit suites in the fork (server ~2 200 tests, web): before a public release only
@@ -517,8 +516,7 @@ for (const target of targets) {
     run({ label: target, cmd: "pnpm", args, cwd: "e2e" });
   } else if (target === "unit") {
     for (const s of unitSteps()) run(s);
-  } else if (target === "release:components") {
-    await runLanes([["worker", "space"], ["computerd", "agent", "features"]]);
+
   } else if (target === "release:journeys") {
     for (const feature of releaseFeatures(features(), shard)) runFeature(feature.name, releaseCoverage);
   } else if (["upstream", "upstream:server", "upstream:web"].includes(target)) {

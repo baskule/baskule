@@ -10,12 +10,12 @@ cd "$ROOT"
 source scripts/env.sh
 mkdir -p .run/evidence/release
 bundled_images_container=
-suite=${1:?build, components, journeys, or install}
+suite=${1:?runtime, package, components, journeys, or install}
 shift
 cleanup() {
   status=$?
   [[ -z $bundled_images_container ]] || docker rm -v "$bundled_images_container" || true
-  if [[ $suite != build ]]; then
+  if [[ $suite != runtime && $suite != package ]]; then
     scripts/stack down --purge || true
     openshell/dev-down.sh || true
   fi
@@ -24,9 +24,9 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-if [[ $suite == build ]]; then
-  scripts/release-backend.sh 2>&1 | tee .run/evidence/release/backend-build.log
-  scripts/ci/artifacts.sh .run/release/backend backend
+if [[ $suite == runtime || $suite == package ]]; then
+  scripts/release-backend.sh "$suite" 2>&1 | tee .run/evidence/release/backend-build.log
+  if [[ $suite == package ]]; then scripts/ci/artifacts.sh .run/release/backend backend; fi
   exit
 fi
 (cd .run/release/backend && sha256sum -c SHA256SUMS)
