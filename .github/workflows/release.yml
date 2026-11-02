@@ -124,12 +124,12 @@ jobs:
           git push --force origin "HEAD:refs/heads/$branch"
           echo "[Review translations and create a PR]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$branch?expand=1)" >> "$GITHUB_STEP_SUMMARY"
 
-  backend:
-    needs: [version, translate, linux-apps]
+  backend-build:
+    needs: [version, translate, linux-apps, source-ci]
     permissions:
       contents: read
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 60
     env:
       BASKULE_VERSION: ${{ needs.version.outputs.version }}
       BASKULE_STACK_PROXY: '0'
@@ -155,13 +155,49 @@ jobs:
           df -h .
           # These are unrelated preinstalled SDKs on this disposable VM.
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-          docker system prune --all --force
           df -h .
           available=$(df --output=avail -B1 . | tail -1)
           (( available >= 35000000000 )) || { echo 'Need 35 GB free for the cold backend build.' >&2; exit 1; }
+      - id: buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Export BuildKit cache credentials
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL']) {
+              core.exportVariable(key, process.env[key]);
+              core.setSecret(process.env[key]);
+            }
       - uses: ./.github/actions/setup
-      - name: Build backend and run fake-model release checks
-        run: scripts/ci/backend.sh
+      - name: Restore OpenShell native binaries and Cargo registry
+        id: rust-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .run/cache/openshell/cargo/registry
+            .run/cache/openshell/cargo/git
+            .run/cache/openshell/target/baskule-source
+            .run/cache/openshell/target/release/openshell
+            .run/cache/openshell/target/release/openshell-gateway
+            .run/cache/openshell/target/release/openshell-supervisor
+          key: openshell-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deploy/build-env/Dockerfile', 'vendor/openshell/**', 'openshell/build.sh') }}
+      - name: Build backend archives once
+        env:
+          BASKULE_DOCKER_CACHE: '1'
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: scripts/ci/backend.sh build
+      - name: Save OpenShell native binaries and Cargo registry
+        if: steps.rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .run/cache/openshell/cargo/registry
+            .run/cache/openshell/cargo/git
+            .run/cache/openshell/target/baskule-source
+            .run/cache/openshell/target/release/openshell
+            .run/cache/openshell/target/release/openshell-gateway
+            .run/cache/openshell/target/release/openshell-supervisor
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
       - name: Upload backend artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -174,7 +210,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: backend-evidence-${{ needs.version.outputs.version }}
+          name: backend-build-evidence-${{ needs.version.outputs.version }}
           path: |
             .run/evidence/release/
             .run/evidence/release-install/
@@ -186,6 +222,149 @@ jobs:
             .run/journeys/results/**/error-context.md
           if-no-files-found: warn
           retention-days: 1
+
+  source-ci:
+    runs-on: ubuntu-24.04
+    permissions:
+      checks: read
+    steps:
+      - name: Require ordinary CI for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            --jq '.check_runs[] | select(.name == "CI required" and .app.slug == "github-actions" and .conclusion == "success") | .id' > passed
+          test -s passed || { echo 'Run CI on this exact source commit before releasing.' >&2; exit 1; }
+
+  upstream:
+    needs: translate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [server, web]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: translations
+          path: app
+      - uses: ./.github/actions/setup
+      - name: Run upstream unit suite
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: |
+          mkdir -p .run/evidence/release
+          scripts/check "upstream:$SUITE" --fresh 2>&1 | tee .run/evidence/release/upstream.log
+      - name: Preserve upstream evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-upstream-${{ matrix.suite }}-evidence
+          path: .run/evidence/release/
+          retention-days: 1
+
+  backend-checks:
+    needs: [version, backend-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: worker-space
+            suite: components
+            selection: worker space
+          - name: gateway
+            suite: components
+            selection: computerd agent
+          - name: contracts
+            suite: components
+            selection: features
+          - name: journeys-1
+            suite: journeys
+            selection: 1/4
+          - name: journeys-2
+            suite: journeys
+            selection: 2/4
+          - name: journeys-3
+            suite: journeys
+            selection: 3/4
+          - name: journeys-4
+            suite: journeys
+            selection: 4/4
+          - name: install-single
+            suite: install
+            selection: single
+          - name: install-folder
+            suite: install
+            selection: folder
+          - name: install-cluster
+            suite: install
+            selection: cluster
+          - name: install-proxy
+            suite: install
+            selection: proxy
+          - name: install-https
+            suite: install
+            selection: https
+          - name: install-external
+            suite: install
+            selection: external
+    env:
+      BASKULE_VERSION: ${{ needs.version.outputs.version }}
+      BASKULE_STACK_PROXY: '0'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: translations
+          path: app
+      - uses: ./.github/actions/setup
+      - name: Download the archives that will be published
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-${{ needs.version.outputs.version }}
+          path: .run/release/backend
+      - name: Run isolated fake-model checks
+        env:
+          SUITE: ${{ matrix.suite }}
+          SELECTION: ${{ matrix.selection }}
+        run: |
+          read -ra selection <<< "$SELECTION"
+          scripts/ci/backend.sh "$SUITE" "${selection[@]}"
+      - name: Preserve backend evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-evidence-${{ needs.version.outputs.version }}-${{ matrix.name }}
+          path: |
+            .run/evidence/release/
+            .run/evidence/release-install/
+            !.run/evidence/release-install/*.tar.gz
+            .run/check/
+            e2e/test-results/
+            .run/journeys/results/
+          if-no-files-found: warn
+          retention-days: 1
+
+  # Preserve the publication dependency: archives exist earlier, but are usable only
+  # after every consumer and the exact source commit's ordinary CI have passed.
+  backend:
+    needs: [source-ci, backend-build, backend-checks, upstream]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every backend verification job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
 
   linux-apps:
     needs: [version, translate]

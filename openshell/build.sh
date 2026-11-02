@@ -38,9 +38,9 @@ cp -r "$HERE/images/supervisor" "$BUILD/supervisor"
 cp "$TARGET/release/openshell-supervisor" "$BUILD/supervisor/"
 
 label="--label baskule.openshell.fork-rev=$rev"
-nice -n 10 docker build --network host -q $label -t "baskule-openshell-supervisor:$TAG" "$BUILD/supervisor"
+nice -n 10 "$ROOT/scripts/docker-build.sh" openshell-supervisor --network host -q $label -t "baskule-openshell-supervisor:$TAG" "$BUILD/supervisor"
 # The sandbox runtime is compiled from the fork inside the image build (static musl, cached cargo target).
-nice -n 10 docker build --network host -q $label --build-arg CARGO_BUILD_JOBS="${OPENSHELL_CARGO_JOBS:-2}" -t "baskule-openshell-sandbox:$TAG" -f "$HERE/images/sandbox/Dockerfile" "$FORK"
+nice -n 10 "$ROOT/scripts/docker-build.sh" openshell-sandbox --network host -q $label --build-arg CARGO_BUILD_JOBS="${OPENSHELL_CARGO_JOBS:-2}" -t "baskule-openshell-sandbox:$TAG" -f "$HERE/images/sandbox/Dockerfile" "$FORK"
 # The gateway refuses to start unless the supervisor image is present in its private dockerd: bake the supervisor
 # and sandbox runtime images into the gateway image; the entrypoint loads them when their IDs differ.
 mkdir -p "$BUILD/gateway/images"
@@ -50,6 +50,6 @@ for img in "baskule-openshell-supervisor:$TAG" "baskule-openshell-sandbox:$TAG" 
   docker save "$img" | gzip -1 > "$BUILD/gateway/images/$f.gz"
   echo "$f.gz $(docker image inspect --format '{{.Created}}' "$img") $img" >> "$BUILD/gateway/images/images.txt"
 done
-nice -n 10 docker build --network host -q $label -t "baskule-openshell-gateway:$TAG" "$BUILD/gateway"
+nice -n 10 "$ROOT/scripts/docker-build.sh" openshell-gateway --network host -q $label -t "baskule-openshell-gateway:$TAG" "$BUILD/gateway"
 rm -rf "$BUILD"
 echo "built baskule-openshell-{gateway,supervisor,sandbox}:$TAG from fork $rev"

@@ -26,26 +26,27 @@ platform/src/space/sync-bundle.sh --minify
 jq -n --arg version "$BASKULE_VERSION" --arg umbrella "$(git rev-parse HEAD)" \
   --arg builtAt "$(date -u +%FT%TZ)" '{version:$version,umbrella:$umbrella,builtAt:$builtAt}' > platform/dist/web/version.json
 DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker} computer/build.sh
-docker build -t baskule-computerd:local -f computerd/Dockerfile .
-docker build -t baskule-celld:local -f deploy/celld/Dockerfile .
+scripts/docker-build.sh computerd -t baskule-computerd:local -f computerd/Dockerfile .
+scripts/docker-build.sh celld -t baskule-celld:local -f deploy/celld/Dockerfile .
 # The build environment supplies Ubuntu, pinned Rust and libz3.
-toolchain=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
-target="baskule-ci-native-x86-64-gnu-$toolchain"
-docker build --iidfile .run/release/build-env.id deploy/build-env
+cache="$PWD/.run/cache/openshell"
+mkdir -p "$cache/cargo" "$cache/target"
+scripts/docker-build.sh build-env --iidfile .run/release/build-env.id deploy/build-env
 docker run --rm --init --name "osdev-release-backend-${GITHUB_RUN_ID:-local}" \
   -v "$PWD:$PWD" -w "$PWD" \
   -v "${DOCKER_HOST#unix://}:/var/run/docker.sock" \
-  -v "baskule-ci-cargo-$toolchain:/cache/cargo" -v "$target:/cache/target" \
-  -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target -e OPENSHELL_CARGO_JOBS=2 \
+  -v "$cache/cargo:/cache/cargo" -v "$cache/target:/cache/target" \
+  -v "$HOME/.docker:/root/.docker" \
+  -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target -e "OPENSHELL_CARGO_JOBS=$(nproc)" \
+  -e BASKULE_DOCKER_CACHE -e BUILDX_BUILDER -e ACTIONS_RUNTIME_TOKEN -e ACTIONS_RESULTS_URL \
   -e BASKULE_TAG \
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e "GIT_CONFIG_VALUE_0=$PWD" \
-  -e DOCKER_HOST=unix:///var/run/docker.sock -e DOCKER_CONFIG=/tmp/docker \
+  -e DOCKER_HOST=unix:///var/run/docker.sock -e DOCKER_CONFIG=/root/.docker \
   "$(cat .run/release/build-env.id)" bash openshell/build.sh
 
-# Rust's native target and BuildKit's separate musl target can exceed the entire
-# Actions cache quota. Keep them job-local; free them before saving large images.
-docker volume rm "$target" "baskule-ci-cargo-$toolchain"
-docker builder prune --all --force
+# Retain the registry and final native binaries across runs. Full Rust deps/build targets
+# exceed the repository cache quota; sandbox compilation is cached as a BuildKit layer.
+# A changed source key compiles afresh rather than restoring a stale source marker.
 
 # Keep the Worker independently downloadable as well as bundled in the celld image.
 tar -czf .run/release/backend/platform-worker.tar.gz -C platform/dist worker.js

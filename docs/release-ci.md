@@ -1,0 +1,13 @@
+# Release backend verification
+
+The release factory builds `backend-<version>` once, then downloads the same archive artifact into isolated GitHub-hosted runners. Each consumer checks `SHA256SUMS`, loads the three published image archives, checks their IDs against `images.txt`, and restores the packaged SpaceCell bundle. Install checks use the packaged Compose assets through `BASKULE_INSTALL_ASSETS`, without checkout mounts or regenerated operator files.
+
+The `backend` job gates publishing and the manual factory status. It requires the build, every component, journey and install shard, upstream server and web suites, and `CI required` on the exact source SHA. A failed, skipped or cancelled dependency fails the gate. Run ordinary CI before dispatching a factory for a temporary source commit.
+
+Ordinary CI already covers lint, feature-map coverage, harness tests, Baskule unit tests and typechecks in `Checks`, `Tests` and `Mobile tests`. The Linux apps job covers the hosted web component and desktop checks and verifies their packaged output. Release retains Worker, SpaceCell, computerd, agent and platform feature contracts once each. Upstream server and web suites run on separate runners while packaging runs.
+
+`scripts/check release:journeys --shard N/M` partitions local features with journeys or uncovered custom commands. The planner removes only declared component commands covered by the release jobs and desktop checks covered by Linux apps. Full components cover named selections. Unknown commands remain in the plan, and owner-run deployed checks remain excluded. Normal `feature:<name>` checks still run all their declared checks. Local `release` still runs its unit and component tiers, then uses the same deduplicated feature plan.
+
+BuildKit exports image layers to Actions cache with separate scopes for computer, computerd, celld, build environment, supervisor, sandbox and gateway. Native Cargo uses every runner core. The native cache contains its registry and final release binaries with a source marker, keyed by all vendored source, lockfile, toolchain environment and build script inputs. Full native dependency targets exceed the repository cache quota and stay job-local. A native source change requires a cold compile; unchanged source can reuse verified build outputs. No cache is a verification result. Every release still exercises the resulting archives.
+
+The first run populates caches and may exceed the 15–20 minute backend target. Image export, transfer and Docker-in-Docker startup remain on the critical path after a warm build. GitHub runner availability can also delay matrix jobs. No deployment or data wipe is required.

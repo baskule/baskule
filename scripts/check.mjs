@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { features, touchedFeatures } from "./feature-map.mjs";
+import { releaseCoverage, releaseFeatures } from "./release-plan.mjs";
 import { acquireHostLock } from "./check-lock.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,7 +28,10 @@ Tiers
                     unit tests and scoped typechecks; docs → link check; shell → syntax. Seconds to ~1 min. No services.
   unit              every Baskule unit suite and typecheck (no services, ~2-3 min)
   release           unit + every component loop + desktop; fresh, fake LLM only, no deployed stack
-  upstream          T3's own unit suites in the fork (server ~2 200 tests, web): before a public release only
+  release:components worker/space + computerd/agent + platform feature contracts (parallel lanes)
+  release:journeys   feature journeys and uncovered custom checks; requires release components + Linux apps
+                    --shard N/M partitions this plan across disposable runners
+  upstream[:server|web] T3's own unit suites in the fork (server ~2 200 tests, web): before a public release only
   plan              print what fast runs and which component loop(s) the diff needs next (runs nothing)
   acceptance        wide local verification: unit + every component loop, in two parallel lanes (~10 min);
                     --live adds the full live suite incl. @slow (release candidates, when the owner asks)
@@ -195,7 +199,7 @@ function plan(files, base) {
   const mjs = pick(/\.mjs$/).filter((f) => existsSync(join(ROOT, f)) && !f.startsWith("vendor/") && !f.startsWith("app/") && !f.startsWith("platform/"));
   if (mjs.length) add("scripts: syntax", "bash", ["-c", mjs.map((f) => `node --check '${f}'`).join(" && ")], ".");
   if (has(/^scripts\/worktree(?:[.-]|$)/)) add("worktree: setup regression tests", "node", ["--test", "scripts/worktree.test.mjs"], ".");
-  if (has(/^scripts\/(?:check(?:[.-]|$)|stack(?:[.-]|$)|celld(?:[.-]|$)|lint(?:[.-]|$)|feature-map(?:[.-]|$)|run-feature\.mjs$|no-fixed-sleep\.mjs$)|^platform\/dev\/fake-llm\/|^\.oxlintrc\.json$/)) add("scripts/check: harness tests", "node", ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], ".");
+  if (has(/^scripts\/(?:check(?:[.-]|$)|stack(?:[.-]|$)|celld(?:[.-]|$)|lint(?:[.-]|$)|feature-map(?:[.-]|$)|run-feature\.mjs$|release-plan(?:[.-]|$)|no-fixed-sleep\.mjs$)|^platform\/dev\/fake-llm\/|^\.oxlintrc\.json$/)) add("scripts/check: harness tests", "node", ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/release-plan.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], ".");
   if (has(/^openshell\/dev-down\.sh$/)) add("stack: shared gateway teardown", "node", ["--test", "scripts/stack.test.mjs"], ".");
   if (has(/^deploy\/(?:docker-compose|cluster\/|\.env\.example)|^scripts\/check-compose\.sh$/)) add("deploy: compose config", "bash", ["scripts/check-compose.sh"], ".");
   if (has(/^deploy\/celld\//)) add("deploy: startup jobs", "node", ["--test", "deploy/celld/jobs.test.mjs", "deploy/celld/sync-plugins.test.mjs"], ".");
@@ -432,7 +436,7 @@ function warnStaleDeploy() {
 function unitSteps() {
   const vp = join(ROOT, "app/node_modules/.bin/vp");
   return [
-    { label: "scripts/check: harness tests", cmd: "node", args: ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/worktree.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], cwd: "." },
+    { label: "scripts/check: harness tests", cmd: "node", args: ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/release-plan.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/worktree.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], cwd: "." },
     ...plan(["platform/src/x.ts", "computerd/src/x.ts", "desktop/x", "e2e/x.ts"], "HEAD").steps
       .map((s) => (s.label.startsWith("platform: unit") ? { ...s, label: "platform: all unit tests", args: ["exec", "vitest", "run"], evidence: ev(PLATFORM_IN, ["platform-unit"], "platform-unit") } : s)),
     { label: "app/apps/server: Baskule unit tests", cmd: vp, args: ["test", "run", ...BASKULE_TESTS["app/apps/server"]], cwd: "app/apps/server", evidence: ev(["app"], ["server-baskule"], "server-baskule") },
@@ -452,12 +456,12 @@ function unitSteps() {
 function upstreamSteps() {
   const vp = join(ROOT, "app/node_modules/.bin/vp");
   return [
-    { label: "app/apps/server: every unit test (upstream T3 included)", cmd: vp, args: ["test", "run"], cwd: "app/apps/server", evidence: ev(["app"], ["upstream-server"], "upstream-server") },
-    { label: "app/apps/web: every unit test (upstream T3 included)", cmd: vp, args: ["test", "run", "--project", "unit"], cwd: "app/apps/web", evidence: ev(["app"], ["upstream-web"], "upstream-web") },
+    { label: "app/apps/server: every unit test (upstream T3 included)", cmd: vp, args: ["test", "run", "--maxWorkers", "4"], cwd: "app/apps/server", evidence: ev(["app"], ["upstream-server"], "upstream-server") },
+    { label: "app/apps/web: every unit test (upstream T3 included)", cmd: vp, args: ["test", "run", "--maxWorkers", "4", "--project", "unit"], cwd: "app/apps/web", evidence: ev(["app"], ["upstream-web"], "upstream-web") },
   ];
 }
 
-function runFeature(name) {
+function runFeature(name, covered = []) {
   // Custom checks may nest this CLI: share completed evidence and hand off its gateway lock first.
   pushEvidence();
   releaseGatewayLock?.();
@@ -466,7 +470,7 @@ function runFeature(name) {
   const feature = features().find((f) => f.name === name);
   if (!feature) throw new Error(`Unknown feature ${target}`);
   const evidence = ev(["platform", "app", "computerd", "computer", "openshell", "vendor/openshell", "desktop", "deploy", "stack", "e2e", ".agents/skills/verify-baskule", ...WORKSPACE_IN], [target.replace(":", "-")], target.replace(":", "-"));
-  run({ label: target, cmd: "node", args: ["scripts/run-feature.mjs", feature.name, ...(live ? ["--live"] : [])], cwd: ".", evidence });
+  run({ label: target, cmd: "node", args: ["scripts/run-feature.mjs", feature.name, ...(live ? ["--live"] : []), ...(covered.length ? [`--covered=${covered.join(",")}`] : [])], cwd: ".", evidence: covered.length ? undefined : evidence });
 }
 
 // ---- main -------------------------------------------------------------------------------------------------------
@@ -474,6 +478,7 @@ const argv = process.argv.slice(2);
 const opt = (n) => { const i = argv.indexOf(n); if (i < 0) return null; const v = argv[i + 1]; argv.splice(i, 2); return v; };
 const flag = (n) => { const i = argv.indexOf(n); if (i < 0) return false; argv.splice(i, 1); return true; };
 const baseArg = opt("--base");
+const shard = opt("--shard") ?? "1/1";
 const live = flag("--live"), keepGateway = flag("--keep-gateway");
 DRY = flag("--dry-run");
 FRESH = flag("--fresh");
@@ -512,8 +517,12 @@ for (const target of targets) {
     run({ label: target, cmd: "pnpm", args, cwd: "e2e" });
   } else if (target === "unit") {
     for (const s of unitSteps()) run(s);
-  } else if (target === "upstream") {
-    for (const s of upstreamSteps()) run(s);
+  } else if (target === "release:components") {
+    await runLanes([["worker", "space"], ["computerd", "agent", "features"]]);
+  } else if (target === "release:journeys") {
+    for (const feature of releaseFeatures(features(), shard)) runFeature(feature.name, releaseCoverage);
+  } else if (["upstream", "upstream:server", "upstream:web"].includes(target)) {
+    for (const s of upstreamSteps().filter((step) => target === "upstream" || step.cwd === `app/apps/${target.split(":")[1]}`)) run(s);
   } else if (target === "acceptance" || target === "release") {
     const before = results.length;
     for (const s of unitSteps()) run(s);
@@ -522,9 +531,8 @@ for (const target of targets) {
     await runLanes([["worker", "space", "web"], ["computerd", "agent", "features"]]);
     if (target === "release") {
       if (results.slice(before).some((r) => !r.ok)) break;
-      for (const feature of features()) {
-        if (feature.ownerRun) continue;
-        try { runFeature(feature.name); }
+      for (const feature of releaseFeatures(features())) {
+        try { runFeature(feature.name, releaseCoverage); }
         finally {
           run({ label: `release stack cleanup: ${feature.name}`, cmd: "scripts/stack", args: ["down", "--purge"], cwd: "." });
         }
