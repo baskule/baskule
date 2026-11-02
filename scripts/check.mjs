@@ -28,7 +28,7 @@ Tiers
                     unit tests and scoped typechecks; docs → link check; shell → syntax. Seconds to ~1 min. No services.
   unit              every Baskule unit suite and typecheck (no services, ~2-3 min)
   release           unit + every component loop + desktop; fresh, fake LLM only, no deployed stack
-  release:journeys   feature journeys and uncovered custom checks; requires release components + Linux apps
+  release:journeys   feature journeys and uncovered custom checks; requires release components + hosted web + Linux apps
                     --shard N/M partitions this plan across disposable runners
   upstream[:server|web] T3's own unit suites in the fork (server ~2 200 tests, web): before a public release only
   plan              print what fast runs and which component loop(s) the diff needs next (runs nothing)

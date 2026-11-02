@@ -2,16 +2,14 @@
 # One command that builds the whole stack from source and deploys it on the running (or started) stack:
 #   1. the hosted web bundle        T3 fork worktree, apps/web, VITE_BASKULE_HOSTED=1   (skipped if the fork is unchanged)
 #   2. the T3 space-cell bundle     platform/src/space/sync-bundle.sh --minify, T3_APP_DIR  (skipped if the fork is unchanged)
-#   3. the platform bundle          platform/: scripts/build.mjs, minified (worker + web + downloads) + dist/web/version.json
+#   3. the platform bundle          platform/: scripts/build.mjs, minified (worker + web) + dist/web/version.json
 #   4. the images                   images.sh: computer, openshell, celld, computerd when their sources changed
-#   5. desktop artifacts            desktop/release/*.AppImage, *.tar.gz, *.apk → /downloads/ (if present; DOWNLOADS=0 skips)
-#   6. up.sh (start what is not running) + deploy.sh (celld deploy of platform/, nodes reload)
+#   5. up.sh (start what is not running) + deploy.sh (celld deploy of platform/, nodes reload)
 #
 # Usage: deploy/build.sh [--no-deploy] [--force]
 #   T3_APP_DIR   fork checkout to build (default: <root>/app)
 #   --force      rebuild the web and space bundles even if the fork did not change
 #   --no-deploy  build only
-#   DOWNLOADS=0  do not publish desktop artifacts (faster deploys: they are ~200 MB of assets)
 #   MINIFY=0     unminified space and platform bundles (debugging; default 1: minified, names kept)
 # AI and organization settings are configured in the app; authentication comes from auth.json.
 # Version: GET /version.json on the stack (umbrella and fork SHAs, dirty flags, build time, image ids).
@@ -57,22 +55,10 @@ if [ $FORCE = 1 ] || [ "$(cat "$STAMPS/space.key" 2>/dev/null)" != "$space_key" 
   echo "$space_key" >"$STAMPS/space.key"
 else step "space-cell bundle unchanged"; fi
 
-# ---------------------------------------------------------------------------------------------- 5. downloads (staged first)
-DL=$STAMPS/downloads
-rm -rf "$DL"; mkdir -p "$DL"
-if [ "${DOWNLOADS:-1}" = 1 ]; then
-  ARTIFACT_DIR=${BASKULE_ARTIFACT_DIR:-$ROOT/desktop/release}
-  for f in "$ARTIFACT_DIR"/*.AppImage "$ARTIFACT_DIR"/*.tar.gz "$ARTIFACT_DIR"/*.apk; do
-    [ -f "$f" ] || continue
-    ln -f "$f" "$DL/" 2>/dev/null || cp "$f" "$DL/"
-  done
-fi
-step "downloads: $(ls "$DL" | wc -l) file(s)"
-
 # ---------------------------------------------------------------------------------------------- 3. platform bundle
 [ -d "$PLATFORM/node_modules" ] || (cd "$ROOT" && nice -n 10 pnpm install --frozen-lockfile --prefer-offline >/dev/null)
 step "platform bundle"
-(cd "$PLATFORM" && BASKULE_MINIFY=$MINIFY BASKULE_WEB_DIR="$APP/apps/web/dist" BASKULE_DOWNLOADS_DIR="$DL" nice -n 10 node scripts/build.mjs 2>&1 | tail -3 >&2)
+(cd "$PLATFORM" && BASKULE_MINIFY=$MINIFY BASKULE_WEB_DIR="$APP/apps/web/dist" nice -n 10 node scripts/build.mjs 2>&1 | tail -3 >&2)
 
 # ---------------------------------------------------------------------------------------------- 4. images
 step "images"
@@ -81,18 +67,18 @@ rebuilt=$("$DEPLOY_DIR/images.sh")
 
 # Version stamp, served as a static file by the Worker.
 img_id() { docker image inspect -f '{{.Id}}' "$1" 2>/dev/null | cut -c8-19; }
-jq -n --arg umbrella "$(desc "$ROOT")" --arg fork "$fork_key" --arg forkBranch "$(git -C "$APP" rev-parse --abbrev-ref HEAD)" \
+jq -n --arg version "${BASKULE_VERSION:-$(<"$ROOT/VERSION")}" --arg umbrella "$(desc "$ROOT")" --arg fork "$fork_key" --arg forkBranch "$(git -C "$APP" rev-parse --abbrev-ref HEAD)" \
   --arg spaceBundle "$(cat "$PLATFORM/src/space/t3/BUILT_FROM" 2>/dev/null | cut -d' ' -f1)" \
   --arg builtAt "$(date -u +%FT%TZ)" --arg computer "$(img_id "baskule-computer:$TAG")" \
   --arg computerd "$(img_id "baskule-computerd:$TAG")" \
   --arg openshell "$(img_id "baskule-openshell-gateway:$TAG")" \
-  '{umbrella:$umbrella, fork:$fork, forkBranch:$forkBranch, spaceBundle:$spaceBundle, builtAt:$builtAt,
+  '{version:$version, umbrella:$umbrella, fork:$fork, forkBranch:$forkBranch, spaceBundle:$spaceBundle, builtAt:$builtAt,
     images:{computer:$computer, computerd:$computerd, openshell:$openshell}}' >"$PLATFORM/dist/web/version.json"
 step "version: $(jq -c '{umbrella, fork}' "$PLATFORM/dist/web/version.json")"
 
 [ $DEPLOY = 1 ] || { step "built (no deploy)"; exit 0; }
 
-# ---------------------------------------------------------------------------------------------- 6. up + deploy
+# ---------------------------------------------------------------------------------------------- 5. up + deploy
 stack_lock_check
 was_up=0
 [ "$(docker inspect -f '{{.State.Running}}' baskule-celld-a 2>/dev/null)" = true ] && was_up=1

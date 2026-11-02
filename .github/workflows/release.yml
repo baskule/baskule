@@ -210,7 +210,7 @@ jobs:
           retention-days: 1
 
   backend-build:
-    needs: [version, translate, linux-apps, backend-runtime]
+    needs: [version, translate, hosted-web, backend-runtime]
     permissions:
       contents: read
     runs-on: ubuntu-24.04
@@ -227,11 +227,11 @@ jobs:
         with:
           name: translations
           path: app
-      - name: Download verified web and desktop downloads
+      - name: Download the verified hosted web bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: linux-apps-${{ needs.version.outputs.version }}
-          path: .run/release/linux-apps
+          name: hosted-web-${{ needs.version.outputs.version }}
+          path: .run/release/hosted-web
       - name: Download runtime image archives
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -248,7 +248,7 @@ jobs:
               core.setSecret(process.env[key]);
             }
       - uses: ./.github/actions/setup
-      - name: Package celld with verified Linux apps and retained runtime archives
+      - name: Package celld with verified web and retained runtime archives
         env:
           BASKULE_DOCKER_CACHE: '1'
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
@@ -431,8 +431,53 @@ jobs:
         run: |
           jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
 
-  linux-apps:
+  hosted-web:
     needs: [version, translate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASKULE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: translations
+          path: app
+      - uses: ./.github/actions/setup
+      - name: Build and verify hosted web
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/env.sh
+          mkdir -p .run/evidence/release .run/release/hosted-web
+          (cd e2e && pnpm exec playwright install --with-deps chromium)
+          (cd app/apps/web && pnpm exec playwright install chromium)
+          scripts/check web --fresh 2>&1 | tee .run/evidence/release/web.log
+          tar -czf .run/release/hosted-web/hosted-web.tar.gz -C app/apps/web/dist .
+          (cd .run/release/hosted-web && sha256sum hosted-web.tar.gz > SHA256SUMS)
+      - name: Upload verified hosted web
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hosted-web-${{ needs.version.outputs.version }}
+          path: .run/release/hosted-web/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve hosted web evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hosted-web-evidence-${{ needs.version.outputs.version }}
+          path: |
+            .run/evidence/release/
+            .run/web-mock/artifacts/
+            .run/web-mock-build.log
+          if-no-files-found: warn
+          retention-days: 1
+
+  linux-apps:
+    needs: [version, translate, hosted-web]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -456,16 +501,13 @@ jobs:
           sudo locale-gen en_US.UTF-8
           rustup toolchain install 1.95.0 --profile minimal
           rustup override set 1.95.0
-      - name: Build and verify hosted web
-        shell: bash
-        run: |
-          set -euo pipefail
-          source scripts/env.sh
-          mkdir -p .run/evidence/release .run/release/linux-apps
-          (cd e2e && pnpm exec playwright install --with-deps chromium)
-          (cd app/apps/web && pnpm exec playwright install chromium)
-          scripts/check web --fresh 2>&1 | tee .run/evidence/release/web.log
-          tar -czf .run/release/linux-apps/hosted-web.tar.gz -C app/apps/web/dist .
+      - name: Download the verified hosted web bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: hosted-web-${{ needs.version.outputs.version }}
+          path: .run/release/linux-apps
+      - name: Verify hosted web transfer
+        run: cd .run/release/linux-apps && sha256sum -c SHA256SUMS
       - name: Build and verify packaged Linux desktop
         shell: bash
         run: |
@@ -627,4 +669,4 @@ jobs:
         run: |
           gh release create "v$VERSION" release/* --draft --target "$SOURCE_COMMIT" \
             --title "Baskule $VERSION" \
-            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes single-machine and cluster Compose assets, three versioned GHCR images, Worker, SpaceCell, hosted web and a Linux x64 AppImage. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'
+            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes single-machine and cluster Compose assets, three versioned GHCR images, Worker, SpaceCell, hosted web and a Linux x64 AppImage. The web app links to versioned GitHub release assets; app installers are not embedded in celld. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'

@@ -63,14 +63,12 @@ case "$phase" in
     ;;
   package)
     (cd .run/release/runtime && sha256sum -c SHA256SUMS)
-    (cd .run/release/linux-apps && sha256sum -c SHA256SUMS)
-    # Use the web bundle and native downloads already verified by the Linux apps job.
-    mkdir -p .run/release/web .run/release/downloads
-    tar -xzf .run/release/linux-apps/hosted-web.tar.gz -C .run/release/web
-    cp .run/release/linux-apps/*.AppImage .run/release/downloads/
+    (cd .run/release/hosted-web && sha256sum -c SHA256SUMS)
+    # Use the web bundle already verified by the hosted-web job.
+    mkdir -p .run/release/web
+    tar -xzf .run/release/hosted-web/hosted-web.tar.gz -C .run/release/web
     platform/src/space/sync-bundle.sh --minify
-    (cd platform && BASKULE_MINIFY=1 BASKULE_WEB_DIR="$ROOT/.run/release/web" \
-      BASKULE_DOWNLOADS_DIR="$ROOT/.run/release/downloads" node scripts/build.mjs)
+    (cd platform && BASKULE_MINIFY=1 BASKULE_WEB_DIR="$ROOT/.run/release/web" node scripts/build.mjs)
     jq -n --arg version "$BASKULE_VERSION" --arg umbrella "$(git rev-parse HEAD)" \
       --arg builtAt "$(date -u +%FT%TZ)" '{version:$version,umbrella:$umbrella,builtAt:$builtAt}' > platform/dist/web/version.json
     scripts/docker-build.sh celld -t baskule-celld:local -f deploy/celld/Dockerfile .
