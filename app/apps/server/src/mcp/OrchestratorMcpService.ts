@@ -2545,6 +2545,7 @@ const make = Effect.gen(function* () {
           );
         }
         const parentNodeId = parentRun.rootNodeId;
+        const author = yield* resolveTaskOwner(parent, loadProjection);
         const providers = yield* loadProviders;
         const key = yield* requestKey(input.clientRequestId);
         const created = yield* Effect.forEach(
@@ -2636,6 +2637,7 @@ const make = Effect.gen(function* () {
                       index,
                     }),
                     threadId,
+                    ...(author === undefined ? {} : { author }),
                     senderThreadId: scope.thread.threadId,
                     messageId: stableMessageId({
                       scope,

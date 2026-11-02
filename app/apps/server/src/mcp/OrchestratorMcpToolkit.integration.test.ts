@@ -502,6 +502,7 @@ describe("orchestrator MCP toolkit", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const cwd = yield* checkpointWorkspace("orchestrator-mcp-toolkit");
+          const author = { id: "alice", name: "Alice" };
           const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
           const steerReceivedGates = new Map<string, Deferred.Deferred<void>>();
           const parentTerminalGates = new Map<ThreadId, Deferred.Deferred<void>>();
@@ -756,6 +757,7 @@ describe("orchestrator MCP toolkit", () => {
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make("command:mcp-parent:start"),
+              author,
               threadId: parentThreadId,
               messageId: MessageId.make("message:mcp-parent:start"),
               text: parentPrompt,
@@ -1343,6 +1345,7 @@ describe("orchestrator MCP toolkit", () => {
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make("command:mcp-parent:steer-race:user"),
+              author,
               threadId: parentThreadId,
               messageId: steerMessageId,
               text: "Steer the active parent after receiving the result.",
@@ -1381,6 +1384,7 @@ describe("orchestrator MCP toolkit", () => {
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make("command:mcp-parent:restart-race:user"),
+              author,
               threadId: parentThreadId,
               messageId: restartMessageId,
               text: "Restart the active parent after receiving the result.",
@@ -1972,6 +1976,7 @@ describe("orchestrator MCP toolkit", () => {
                   createdBy: "agent",
                   creationSource: "server",
                   commandId: CommandId.make(`command:mcp-child:${name}`),
+                  author,
                   threadId: child.childThreadId,
                   messageId,
                   text: cancellationPrompt,
@@ -2000,6 +2005,7 @@ describe("orchestrator MCP toolkit", () => {
                   mode: "steer",
                   clientRequestId: `${name}-steer`,
                 });
+                expect(sendCall.isError).toBe(false);
                 const sent = yield* decodeThreadSendResult(sendCall.structuredContent).pipe(
                   Effect.orDie,
                 );
@@ -2687,6 +2693,9 @@ describe("orchestrator MCP toolkit", () => {
                 projection.providerTurns.some((turn) => turn.status === "running"),
             );
             const activeRun = activeProjection.runs[0]!;
+            expect(
+              activeProjection.messages.find((message) => message.id === activeRun.userMessageId),
+            ).toMatchObject({ author });
             const activeTimeoutCall = yield* invoke("t3_thread_wait", {
               threadId: activeThread.threadId,
               runId: activeRun.id,
