@@ -453,7 +453,8 @@ export class ControlService {
     } catch (e) {
       res = errorResponse(e);
     }
-    await this.flush();
+    // Space callbacks must finish before the reload/revocation waiting on them can finish.
+    if (req.headers.get(INTERNAL_HEADER) !== "1") await this.flush();
     return res;
   }
 
