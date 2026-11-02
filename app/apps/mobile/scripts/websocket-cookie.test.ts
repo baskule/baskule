@@ -19,6 +19,7 @@ beforeAll(() => {
     iosPath,
     "ReactAndroid/src/main/java/com/facebook/react/modules/fresco/ReactNetworkImageRequest.kt",
     "Libraries/Image/RCTImageLoader.mm",
+    "ReactAndroid/hermes-engine/build.gradle.kts",
   ]) {
     const destination = NodePath.join(directory, path);
     NodeFS.mkdirSync(NodePath.dirname(destination), { recursive: true });
