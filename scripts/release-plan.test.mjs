@@ -15,6 +15,7 @@ test("release shards cover all local journeys and uncovered custom checks exactl
   const whole = releaseFeatures(map);
   const shards = [1, 2, 3, 4].flatMap((n) => releaseFeatures(map, `${n}/4`));
   assert.deepEqual(shards.map((f) => f.name).sort(), whole.map((f) => f.name).sort());
+  assert.deepEqual(releaseFeatures([...map].reverse(), "2/4").map((f) => f.name), releaseFeatures(map, "2/4").map((f) => f.name));
   assert.equal(new Set(shards.map((f) => f.name)).size, whole.length);
   assert.ok(whole.every((f) => !f.ownerRun));
   for (const feature of map.filter((f) => !f.ownerRun)) {

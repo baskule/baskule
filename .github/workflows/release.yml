@@ -254,6 +254,7 @@ jobs:
           path: app
       - uses: ./.github/actions/setup
       - name: Run upstream unit suite
+        shell: bash
         env:
           SUITE: ${{ matrix.suite }}
         run: |
