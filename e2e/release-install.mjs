@@ -567,6 +567,8 @@ async function cluster() {
   const network = `${id}-lan`;
   fixtureNetworks.add(network); command(["network", "create", network]);
   const [{ Subnet: subnet }] = JSON.parse(command(["network", "inspect", "-f", "{{json .IPAM.Config}}", network]));
+  command(["network", "rm", network]);
+  command(["network", "create", "--subnet", subnet, network]);
   const [baseAddress, bits] = subnet.split("/");
   if (Number(bits) > 28) throw new Error("The private test LAN needs at least eight addresses");
   const octets = baseAddress.split(".").map(Number);
