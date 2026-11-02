@@ -110,6 +110,8 @@ export class ControlService {
   connections!: Connections;
   /** In-flight revocation calls; every request waits for them before answering (immediate revocation). */
   private pending = new Set<Promise<unknown>>();
+  /** In-flight space reloads; only public requests wait for them, since a reloading space calls back in. */
+  private reloads = new Set<Promise<unknown>>();
   private nativeStarts = new Map<string, { until: number; count: number }>();
   private transcriptions = new Set<string>();
   private setupInProgress = false;
@@ -276,8 +278,8 @@ export class ControlService {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       } catch { console.warn(`Plugin settings saved; space ${id} will reload on its next boot`); }
     }));
-    this.pending.add(work);
-    void work.finally(() => this.pending.delete(work));
+    this.reloads.add(work);
+    void work.finally(() => this.reloads.delete(work));
   }
 
   private async pluginChange(req: Request, action: Promise<Response>, spaceId?: string): Promise<Response> {
@@ -404,9 +406,10 @@ export class ControlService {
     }
   }
 
-  async flush(): Promise<void> {
+  async flush(reloads = true): Promise<void> {
     this.usage.prune();
-    while (this.pending.size) await Promise.allSettled([...this.pending]);
+    while (this.pending.size || (reloads && this.reloads.size))
+      await Promise.allSettled([...this.pending, ...(reloads ? this.reloads : [])]);
   }
 
   // ---------------------------------------------------------------- sessions
@@ -453,8 +456,7 @@ export class ControlService {
     } catch (e) {
       res = errorResponse(e);
     }
-    // Space callbacks must finish before the reload/revocation waiting on them can finish.
-    if (req.headers.get(INTERNAL_HEADER) !== "1") await this.flush();
+    await this.flush(req.headers.get(INTERNAL_HEADER) !== "1");
     return res;
   }
 
