@@ -83,6 +83,80 @@ describe("ControlCell plugins and groups", () => {
     } finally { await change; }
   }, 10000);
 
+  it("keeps unrelated requests out of another request's plugin reloads", async () => {
+    const h = await makeService(); const a = await asAdmin(h);
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    let release!: () => void;
+    const released = new Promise<void>(resolve => { release = resolve; });
+    const svc = new ControlService(h.storage, h.env, async (_spaceId, path) => {
+      if (path === "/_baskule/reconfigure") {
+        markStarted();
+        await released;
+      }
+      return Response.json({ ok: true });
+    });
+    await svc.init();
+    const change = call({ ...h, svc }, "POST", `${API}/admin/plugins`, {
+      creds: a.creds, body: { groups: [], plugin: input },
+    });
+    await started;
+    try {
+      const reads = Promise.all(Array.from({ length: 64 }, () =>
+        call({ ...h, svc }, "GET", `${API}/me`, { creds: a.creds }),
+      ));
+      // The reload's owning request stays open; these requests must finish without releasing it.
+      expect(await Promise.race([reads.then(() => "reads"), change.then(() => "change")])).toBe("reads");
+      expect((await reads).every(response => response.status === 200)).toBe(true);
+    } finally {
+      release();
+      expect((await change).status).toBe(201);
+    }
+  });
+
+  it("cancels a stalled reload when its deadline expires", async () => {
+    const h = await makeService(); const a = await asAdmin(h);
+    let active = false;
+    let release = () => {};
+    const svc = new ControlService(h.storage, h.env, async (_spaceId, path, init) => {
+      if (path !== "/_baskule/reconfigure") return Response.json({ ok: true });
+      active = true;
+      return new Promise<Response>((resolve, reject) => {
+        release = () => { active = false; resolve(Response.json({ ok: true })); };
+        const signal = init?.signal;
+        signal?.addEventListener("abort", () => { active = false; reject(signal.reason); }, { once: true });
+      });
+    });
+    await svc.init();
+    try {
+      expect((await call({ ...h, svc }, "POST", `${API}/admin/plugins`, {
+        creds: a.creds, body: { groups: [], plugin: input },
+      })).status).toBe(201);
+      expect(active).toBe(false);
+    } finally { release(); }
+  });
+
+  it("starts member revocation before waiting for the space's plugin reload", async () => {
+    const h = await makeService(); const a = await asAdmin(h);
+    const bob = await createUser(h, a.creds, "removed@os.test", "Removed");
+    const team = await call(h, "POST", `${API}/spaces`, { creds: a.creds, body: { name: "Team", members: [{ userId: bob.id }] } });
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    let release!: () => void;
+    const released = new Promise<void>(resolve => { release = resolve; });
+    let revoked = false;
+    const svc = new ControlService(h.storage, h.env, async (_spaceId, path) => {
+      if (path === "/_baskule/revoke") revoked = true;
+      if (path === "/_baskule/reconfigure") { markStarted(); await released; }
+      return Response.json({ ok: true });
+    });
+    await svc.init();
+    const removal = call({ ...h, svc }, "DELETE", `${API}/spaces/${team.body.space.id}/members/${bob.id}`, { creds: a.creds });
+    await started;
+    try { expect(revoked).toBe(true); }
+    finally { release(); expect((await removal).status).toBe(200); }
+  });
+
   it("starts empty, derives space creation from groups, and protects Everyone", async () => {
     const h = await makeService(); const a = await asAdmin(h);
     const bob = await createUser(h, a.creds, "bob@os.test", "Bob");

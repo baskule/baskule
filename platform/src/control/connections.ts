@@ -30,7 +30,7 @@ type Refusal = Extract<PluginCredential, { error: unknown }>;
 type Credential = Omit<Extract<PluginCredential, { headers: unknown }>, "expiresAt"> | Refusal;
 
 export class Connections {
-  onChange?: (userId: string | undefined) => void;
+  onChange?: (userId: string | undefined) => Promise<void>;
   private refreshes = new Map<string, Promise<Credential>>();
   constructor(private storage: StorageLike, private plugins: Plugins, private installation: InstallationAuth, private cipher: ConnectionCipher, private fetcher: Fetcher = fetch) {}
   private rows(q: string, ...p: unknown[]) { return this.storage.sql.exec(q, ...p).toArray(); }
@@ -62,7 +62,7 @@ export class Connections {
           target.id, userId, pluginId, server, target.label, userId, pluginId, server, data, Date.now());
       }
     });
-    this.onChange?.(userId);
+    await this.onChange?.(userId);
   }
   private async pending(pending: Pending): Promise<string> {
     const state = randomSecret();
@@ -135,7 +135,7 @@ export class Connections {
         this.rows("delete from plugin_oauth_state where plugin_id=?", p.id);
       }
     });
-    this.onChange?.(undefined);
+    await this.onChange?.(undefined);
     return json({ ok: true, configured: !!client });
   }
   async user(req: Request, path: string, user: User, sessionId: string): Promise<Response> {
@@ -170,7 +170,7 @@ export class Connections {
           this.rows("update plugin_connection set is_default=1 where id=?", row.id);
         }
       });
-      if (parsed.data.default) this.onChange?.(user.id);
+      if (parsed.data.default) await this.onChange?.(user.id);
     } else {
       this.storage.transactionSync(() => {
         const accounts = this.records(user.id, plugin.id, row.server);
@@ -183,7 +183,7 @@ export class Connections {
           this.rows("update plugin_connection set is_default=1 where id=?", replacement.id);
         } else this.rows("delete from plugin_connection where id=?", row.id);
       });
-      this.onChange?.(user.id);
+      await this.onChange?.(user.id);
     }
     return json({ ok: true });
   }

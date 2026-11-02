@@ -31,9 +31,6 @@ const loadBundle = () => import("./t3/space-cell.js");
 export const SPACE_STOP_PATH = "/_baskule/stop";
 /** Runs the 60 s socket recheck now (ops and tests; internal like every /_baskule path). */
 export const SPACE_RECHECK_PATH = "/_baskule/recheck";
-/** Boots T3 ahead of the first view (Pre-wake: the Worker calls it when a member's app loads). Never wakes the
- *  computer; the idle check disposes T3 again after IDLE_DISPOSE_MS if nobody connects. */
-export const SPACE_WAKE_PATH = "/_baskule/wake";
 /** Idle time (no request, no socket, no active run) after which T3 is disposed. */
 export const IDLE_DISPOSE_MS = 5 * 60_000;
 /** Alarm cadence while runs are active, so the cell is not evicted mid-turn. */
@@ -245,18 +242,19 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
         await server.dispose().catch((e) => console.warn(`space dispose: ${e}`));
       }
     } finally {
-      release?.();
-      await this.agentStarting?.catch(() => null);
-      const reporter = this.agent?.usage;
-      if (this.agent) { await this.agent.dispose("space disposed"); this.agent = null; }
-      // Drain receipt writes before a replacement can allocate its shared SQL client.
-      await reporter?.flush();
-      await reporter?.capture();
-      const pendingUsage = await reporter?.hasPending();
-      if (pendingUsage) await this.alarms.set("agent", Date.now() + 5_000);
-      else await this.alarms.clear("agent");
-      this.database = null;
-      this.settings = null;
+      try {
+        await this.agentStarting?.catch(() => null);
+        const reporter = this.agent?.usage;
+        if (this.agent) { await this.agent.dispose("space disposed"); this.agent = null; }
+        // Drain receipt writes before a replacement can allocate its shared SQL client.
+        await reporter?.flush();
+        await reporter?.capture();
+        const pendingUsage = await reporter?.hasPending();
+        if (pendingUsage) await this.alarms.set("agent", Date.now() + 5_000);
+        else await this.alarms.clear("agent");
+        this.database = null;
+        this.settings = null;
+      } finally { release?.(); }
     }
   }
 
@@ -377,14 +375,6 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       case SPACE_RECHECK_PATH:
         if (req.method !== "POST") break;
         return json(await this.recheck());
-      case SPACE_WAKE_PATH: {
-        if (req.method !== "POST") break;
-        const wasAwake = this.server !== null;
-        this.touch();
-        const server = await this.boot(await this.spaceId(req));
-        await this.scheduleAlarm();
-        return json({ awake: true, booted: !wasAwake, bootMs: wasAwake ? 0 : server.bootMs });
-      }
     }
     if (url.pathname.startsWith("/_baskule/")) return json({ error: "not_found" }, 404);
     // T3's MCP credentials live in its memory, so none is valid while T3 is not running: answer the agent's

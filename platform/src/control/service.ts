@@ -110,8 +110,6 @@ export class ControlService {
   connections!: Connections;
   /** In-flight revocation calls; every request waits for them before answering (immediate revocation). */
   private pending = new Set<Promise<unknown>>();
-  /** In-flight space reloads; only public requests wait for them, since a reloading space calls back in. */
-  private reloads = new Set<Promise<unknown>>();
   private nativeStarts = new Map<string, { until: number; count: number }>();
   private transcriptions = new Set<string>();
   private setupInProgress = false;
@@ -261,7 +259,7 @@ export class ControlService {
     let reloadPending = false;
     if (reload) await Promise.all(this.all("select id from space").map(async row => {
       try {
-        const r = await withTimeout(this.callSpace(row.id as string, "/_baskule/reconfigure", { method: "POST" }), REVOKE_TIMEOUT_MS);
+        const r = await withTimeout(this.callSpace(row.id as string, "/_baskule/reconfigure", { method: "POST", signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS) }), REVOKE_TIMEOUT_MS);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         await r.body?.cancel();
       } catch { reloadPending = true; console.warn(`Settings saved; space ${row.id} will pick them up on its next boot`); }
@@ -269,22 +267,21 @@ export class ControlService {
     return json({ ...this.settingsView(), reloadPending });
   }
 
-  private reloadSpaces(spaceIds: string[] | "all"): void {
+  /** Keep reload I/O in the changing request; unrelated requests and space callbacks must stay independent. */
+  private async reloadSpaces(spaceIds: string[] | "all"): Promise<void> {
     const ids = spaceIds === "all" ? this.all("select id from space").map(row => row.id as string) : spaceIds;
-    const work = Promise.all(ids.map(async id => {
+    await Promise.all(ids.map(async id => {
       try {
-        const response = await withTimeout(this.callSpace(id, "/_baskule/reconfigure", { method: "POST" }), REVOKE_TIMEOUT_MS);
+        const response = await withTimeout(this.callSpace(id, "/_baskule/reconfigure", { method: "POST", signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS) }), REVOKE_TIMEOUT_MS);
         await response.body?.cancel();
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       } catch { console.warn(`Plugin settings saved; space ${id} will reload on its next boot`); }
     }));
-    this.reloads.add(work);
-    void work.finally(() => this.reloads.delete(work));
   }
 
   private async pluginChange(req: Request, action: Promise<Response>, spaceId?: string): Promise<Response> {
     const response = await action;
-    if (req.method !== "GET" && response.ok) this.reloadSpaces(spaceId ? [spaceId] : "all");
+    if (req.method !== "GET" && response.ok) await this.reloadSpaces(spaceId ? [spaceId] : "all");
     return response;
   }
 
@@ -398,6 +395,7 @@ export class ControlService {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
+          signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS),
         }).then((r) => r.body?.cancel()),
         REVOKE_TIMEOUT_MS,
       ).catch((e) => console.warn(`revoke ${spaceId} failed: ${e}`));
@@ -406,10 +404,9 @@ export class ControlService {
     }
   }
 
-  async flush(reloads = true): Promise<void> {
+  async flush(): Promise<void> {
     this.usage.prune();
-    while (this.pending.size || (reloads && this.reloads.size))
-      await Promise.allSettled([...this.pending, ...(reloads ? this.reloads : [])]);
+    while (this.pending.size) await Promise.allSettled([...this.pending]);
   }
 
   // ---------------------------------------------------------------- sessions
@@ -456,7 +453,7 @@ export class ControlService {
     } catch (e) {
       res = errorResponse(e);
     }
-    await this.flush(req.headers.get(INTERNAL_HEADER) !== "1");
+    await this.flush();
     return res;
   }
 
@@ -853,7 +850,7 @@ export class ControlService {
     const role = this.spaceRoleOf(body.role);
     if (this.memberRole(id, userId)) throw new HttpError(409, "already_member");
     this.run("insert into space_member(space_id, user_id, role, created_at) values (?, ?, ?, ?)", id, userId, role, Date.now());
-    this.reloadSpaces([id]);
+    await this.reloadSpaces([id]);
     return json({ members: this.members(id) }, 201);
   }
 
@@ -882,8 +879,8 @@ export class ControlService {
     if (space.kind !== "team") throw new HttpError(409, "personal_space");
     if (cur === "owner" && this.ownerCount(id) <= 1) throw new HttpError(409, "last_owner", "a team space keeps at least one owner");
     this.run("delete from space_member where space_id = ? and user_id = ?", id, userId);
-    this.reloadSpaces([id]);
     this.revoke([id], { userId });
+    await this.reloadSpaces([id]);
     return json({ ok: true });
   }
 
@@ -1069,12 +1066,12 @@ export class ControlService {
         case "deactivate":
           if (userId === s.user.id) throw new HttpError(409, "self", "you cannot deactivate yourself");
           await this.auth.api.banUser({ body: { userId, banReason: "deactivated" }, headers: req.headers });
-          this.reloadSpaces(this.memberSpaceIds(userId));
           this.revoke(this.memberSpaceIds(userId), { userId });
+          await this.reloadSpaces(this.memberSpaceIds(userId));
           return json({ ok: true });
         case "activate":
           await this.auth.api.unbanUser({ body: { userId }, headers: req.headers });
-          this.reloadSpaces(this.memberSpaceIds(userId));
+          await this.reloadSpaces(this.memberSpaceIds(userId));
           return json({ ok: true });
         case "sign-out-everywhere":
           await this.auth.api.revokeUserSessions({ body: { userId }, headers: req.headers });
@@ -1155,7 +1152,7 @@ export class ControlService {
       this.run("delete from space_member where user_id = ?", userId);
       this.run("delete from user_profile where user_id = ?", userId);
     });
-    this.reloadSpaces(affected);
+    await this.reloadSpaces(affected);
     return json({ ok: true });
   }
 

@@ -63,8 +63,11 @@ describe("SpaceCell boot/dispose overlap", () => {
     vi.useFakeTimers();
     const flushing = deferred(), started = deferred();
     createServer.mockResolvedValueOnce(server()).mockResolvedValueOnce(server());
-    const c = cell();
+    const lifetimes: Promise<unknown>[] = [];
+    const c = cell(undefined, undefined, promise => { lifetimes.push(promise); });
     await c.boot("space");
+    let bootEnded = false;
+    void lifetimes[0]!.then(() => { bootEnded = true; });
     const database = c.database;
     c.agent = { dispose: async () => {}, usage: {
       flush: () => { started.resolve(); return flushing.promise; },
@@ -72,6 +75,7 @@ describe("SpaceCell boot/dispose overlap", () => {
     } };
     const closing = c.dispose();
     await started.promise;
+    expect(bootEnded).toBe(false);
     const replacement = c.boot("space");
     await Promise.resolve();
     expect(c.database).toBe(database);
