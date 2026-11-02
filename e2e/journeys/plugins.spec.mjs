@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { test, expect, signIn, startChat, assistant, phoneOptions } from "./fixtures.mjs";
+import { test, expect, signIn, startChat, assistant, phoneOptions, navigateApp } from "./fixtures.mjs";
 
 import { fakeMcp } from "../../platform/test/fixtures/mcp.mjs";
 import { fakeOAuth } from "../../platform/test/fixtures/oauth.mjs";
@@ -358,8 +358,9 @@ test("MCP JSON lifts keys, tests tools and enforces a switched-off tool during a
     await context.addCookies(api.admin.cookie.split("; ").map(cookie => {
       const [name, ...value] = cookie.split("="); return { name, value: value.join("="), url: stack.urls.front };
     }));
-    await page.goto(`${stack.urls.front}/admin/plugins/add`);
-    await page.getByRole("button", { name: "Paste JSON", exact: true }).click();
+    const paste = page.getByRole("button", { name: "Paste JSON", exact: true });
+    await navigateApp(page, () => page.goto(`${stack.urls.front}/admin/plugins/add`), paste);
+    await paste.click();
     const json = page.getByRole("textbox", { name: "Server settings as JSON", exact: true });
     await json.fill(JSON.stringify({ servers: {
       notes: { type: "http", url: fixture.resource, headers: { Authorization: "Bearer local-mcp-key" } },

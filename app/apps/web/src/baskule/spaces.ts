@@ -156,7 +156,7 @@ export function activeSpaceWasRemoved(
   );
 }
 
-export const buildRegistrations = Effect.gen(function* () {
+const buildRegistrations = Effect.gen(function* () {
   const me = readBaskuleMe();
   if (me === null) {
     publish([]);
@@ -177,8 +177,7 @@ export const buildRegistrations = Effect.gen(function* () {
       resolveEnvironmentId(origin, space).pipe(
         Effect.map(Option.map((environmentId) => ({ space, environmentId }))),
       ),
-    // Keep other HTTP/1.1 connections available for app requests.
-    { concurrency: 2 },
+    { concurrency: "unbounded" },
   );
   const reachable = resolved.flatMap((entry) => (Option.isSome(entry) ? [entry.value] : []));
   publish(reachable);

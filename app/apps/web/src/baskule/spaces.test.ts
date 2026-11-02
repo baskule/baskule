@@ -1,11 +1,7 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it, vi } from "vite-plus/test";
-import * as Effect from "effect/Effect";
-import * as environment from "@t3tools/client-runtime/environment";
-import { __setBaskuleMeForTests, readBaskuleMe } from "./session";
+import { describe, expect, it } from "vite-plus/test";
 import {
   activeSpaceWasRemoved,
-  buildRegistrations,
   groupThreadsBySpace,
   orderEnvironmentsBySpace,
   primarySpaceEnvironmentId,
@@ -131,64 +127,4 @@ it("keeps desktop HTTP on the bundled scheme and sockets on the hosted installat
     spaceRegistration("https://cloud.example", team, EnvironmentId.make("team-env")).target
       .wsBaseUrl,
   ).toBe("wss://cloud.example/s/team/");
-});
-
-it("keeps space discovery within two requests while other requests are stalled", async () => {
-  const previousMe = readBaskuleMe();
-  const spaces = Array.from({ length: 4 }, (_, index) => ({
-    ...team,
-    id: `discovery-${index}`,
-    base: `/s/discovery-${index}`,
-  }));
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  let markStarted!: () => void;
-  const started = new Promise<void>((resolve) => {
-    markStarted = resolve;
-  });
-  let active = 0,
-    peak = 0;
-  using _descriptor = vi
-    .spyOn(environment, "fetchRemoteEnvironmentDescriptor")
-    .mockImplementation(({ httpBaseUrl }) =>
-      Effect.promise(async () => {
-        active++;
-        peak = Math.max(peak, active);
-        if (active === 2) markStarted();
-        await gate;
-        active--;
-        return {
-          environmentId: EnvironmentId.make(httpBaseUrl),
-          label: "Test",
-          serverVersion: "test",
-          platform: { os: "linux", arch: "x64" },
-          capabilities: { repositoryIdentity: false },
-        };
-      }),
-    );
-  vi.stubGlobal("window", { location: { origin: "http://spaces.test", pathname: "/" } });
-  __setBaskuleMeForTests({
-    authentication: { mode: "authenticated", password: true, providers: [] },
-    user: { id: "person", name: "Person", email: "person@example.test", role: "member" },
-    organizationName: null,
-    spaces,
-    canCreateSpaces: false,
-    voiceInput: false,
-  });
-  const registrations = Effect.runPromise(buildRegistrations);
-  try {
-    await started;
-    release();
-    expect(await registrations).toHaveLength(spaces.length);
-    expect(peak).toBe(2);
-  } finally {
-    release();
-    await registrations;
-    __setBaskuleMeForTests(null);
-    await Effect.runPromise(buildRegistrations);
-    __setBaskuleMeForTests(previousMe);
-    vi.unstubAllGlobals();
-  }
 });

@@ -114,28 +114,6 @@ describe("ControlCell plugins and groups", () => {
     }
   });
 
-  it("cancels a stalled reload when its deadline expires", async () => {
-    const h = await makeService(); const a = await asAdmin(h);
-    let active = false;
-    let release = () => {};
-    const svc = new ControlService(h.storage, h.env, async (_spaceId, path, init) => {
-      if (path !== "/_baskule/reconfigure") return Response.json({ ok: true });
-      active = true;
-      return new Promise<Response>((resolve, reject) => {
-        release = () => { active = false; resolve(Response.json({ ok: true })); };
-        const signal = init?.signal;
-        signal?.addEventListener("abort", () => { active = false; reject(signal.reason); }, { once: true });
-      });
-    });
-    await svc.init();
-    try {
-      expect((await call({ ...h, svc }, "POST", `${API}/admin/plugins`, {
-        creds: a.creds, body: { groups: [], plugin: input },
-      })).status).toBe(201);
-      expect(active).toBe(false);
-    } finally { release(); }
-  });
-
   it("starts member revocation before waiting for the space's plugin reload", async () => {
     const h = await makeService(); const a = await asAdmin(h);
     const bob = await createUser(h, a.creds, "removed@os.test", "Removed");

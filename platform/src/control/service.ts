@@ -259,7 +259,7 @@ export class ControlService {
     let reloadPending = false;
     if (reload) await Promise.all(this.all("select id from space").map(async row => {
       try {
-        const r = await withTimeout(this.callSpace(row.id as string, "/_baskule/reconfigure", { method: "POST", signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS) }), REVOKE_TIMEOUT_MS);
+        const r = await withTimeout(this.callSpace(row.id as string, "/_baskule/reconfigure", { method: "POST" }), REVOKE_TIMEOUT_MS);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         await r.body?.cancel();
       } catch { reloadPending = true; console.warn(`Settings saved; space ${row.id} will pick them up on its next boot`); }
@@ -272,7 +272,7 @@ export class ControlService {
     const ids = spaceIds === "all" ? this.all("select id from space").map(row => row.id as string) : spaceIds;
     await Promise.all(ids.map(async id => {
       try {
-        const response = await withTimeout(this.callSpace(id, "/_baskule/reconfigure", { method: "POST", signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS) }), REVOKE_TIMEOUT_MS);
+        const response = await withTimeout(this.callSpace(id, "/_baskule/reconfigure", { method: "POST" }), REVOKE_TIMEOUT_MS);
         await response.body?.cancel();
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       } catch { console.warn(`Plugin settings saved; space ${id} will reload on its next boot`); }
@@ -395,7 +395,6 @@ export class ControlService {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS),
         }).then((r) => r.body?.cancel()),
         REVOKE_TIMEOUT_MS,
       ).catch((e) => console.warn(`revoke ${spaceId} failed: ${e}`));
