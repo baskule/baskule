@@ -314,7 +314,7 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Install Chromium for upstream browser tests
         if: matrix.suite == 'server'
-        run: cd app/apps/server && pnpm exec playwright install --with-deps chromium
+        run: cd app/apps/server && pnpm exec playwright-core install --with-deps chromium
       - name: Run upstream unit suite
         shell: bash
         env:
