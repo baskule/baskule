@@ -26,8 +26,9 @@ test("release shards cover all local journeys and uncovered custom checks exactl
 });
 
 test("release CLI schedules journeys without redundant component checks", () => {
-  const result = spawnSync(process.execPath, ["scripts/check.mjs", "release:journeys", "--fresh", "--dry-run"], { encoding: "utf8", env: { ...process.env, BASKULE_CHECK_RECORD: "0" } });
+  const result = spawnSync(process.execPath, ["scripts/check.mjs", "release:journeys", "--shard", "2/4", "--fresh", "--dry-run"], { encoding: "utf8", env: { ...process.env, BASKULE_CHECK_RECORD: "0" } });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /--covered=worker,space,agent,computerd,features,web,desktop/);
+  assert.match(result.stdout, /--shard 2\/4 --fully-parallel --workers 1/);
+  for (const feature of features().filter((f) => !f.ownerRun && f.journeys)) assert.ok(result.stdout.includes(feature.journeys));
   assert.doesNotMatch(result.stdout, /release stack cleanup|feature:deployed-seams|feature:groups/);
 });

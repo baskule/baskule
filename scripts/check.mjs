@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { features, touchedFeatures } from "./feature-map.mjs";
-import { releaseCoverage, releaseFeatures } from "./release-plan.mjs";
+import { releaseCoverage, releaseFeatures, remainingFeatureChecks } from "./release-plan.mjs";
 import { acquireHostLock } from "./check-lock.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -518,7 +518,17 @@ for (const target of targets) {
     for (const s of unitSteps()) run(s);
 
   } else if (target === "release:journeys") {
-    for (const feature of releaseFeatures(features(), shard)) runFeature(feature.name, releaseCoverage);
+    const map = releaseFeatures(features());
+    // Playwright partitions individual tests, so one large feature cannot dominate a runner.
+    for (const profile of new Set(map.filter((f) => f.journeys).map((f) => f.profile))) {
+      const tags = map.filter((f) => f.journeys && f.profile === profile).map((f) => f.journeys);
+      run({ label: `release journeys: ${profile} ${shard}`, cmd: "pnpm", args: ["exec", "playwright", "test", "-c", "journeys/playwright.config.ts", "--grep", `(?:^| )(?:${tags.join("|")})(?: |$)`, "--shard", shard, "--fully-parallel", "--workers", "1", "--pass-with-no-tests"], cwd: "e2e", env: { JOURNEY_PROFILE: profile } });
+    }
+    for (const feature of releaseFeatures(map, shard)) {
+      for (const command of remainingFeatureChecks(feature, releaseCoverage)) {
+        run({ label: `feature:${feature.name}: ${command}`, cmd: "bash", args: ["-c", command], cwd: ".", env: { JOURNEY_PROFILE: feature.profile } });
+      }
+    }
   } else if (["upstream", "upstream:server", "upstream:web"].includes(target)) {
     for (const s of upstreamSteps().filter((step) => target === "upstream" || step.cwd === `app/apps/${target.split(":")[1]}`)) run(s);
   } else if (target === "acceptance" || target === "release") {
