@@ -210,7 +210,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: backend-build-evidence-${{ needs.version.outputs.version }}
+          name: backend-evidence-${{ needs.version.outputs.version }}
           path: |
             .run/evidence/release/
             .run/evidence/release-install/
