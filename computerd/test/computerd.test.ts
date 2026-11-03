@@ -539,6 +539,21 @@ test("shared browser: metadata headers reach the cell before any heartbeat", asy
   } finally { clearTimeout(timer); controller.abort(); }
 });
 
+test("Kubernetes lifecycle uses driver-owned PVC storage without the Docker helper", async () => {
+  const kube = new Computers(gw, { ...cfg, computeDriver: "kubernetes", volumesUrl: "http://invalid.invalid" });
+  const before = volumeCalls.length;
+  const result = await kube.ensure("kube-storage");
+  assert.equal(result.created, true);
+  const create = fake.calls.find(x => x.method === "CreateSandbox" && x.req.name === result.sandbox)!.req;
+  assert.equal(create.spec.template.driver_config, null);
+  await kube.stop("kube-storage", "test");
+  assert.equal((await kube.ensure("kube-storage")).started, true);
+  assert.equal((await kube.delete("kube-storage")).sandboxDeleted, true);
+  assert.equal((await kube.delete("kube-storage")).sandboxDeleted, false);
+  assert.equal(volumeCalls.length, before);
+  assert.throws(() => loadConfig({ COMPUTERD_TOKEN: TOKEN, OPENSHELL_COMPUTE_DRIVER: "other" }), /OPENSHELL_COMPUTE_DRIVER/);
+});
+
 test("instance config: optional, valid label values only", () => {
   assert.equal(loadConfig({ COMPUTERD_TOKEN: TOKEN }).instance, "");
   for (const instance of ["", "a", "osdev-u2a", "worktree_1.dev"]) {
