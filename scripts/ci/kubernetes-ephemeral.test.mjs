@@ -22,10 +22,13 @@ function exercise(mode = "existing") {
   const lock = join(common, `baskule-gke-${project}.lock`);
   const prefix = `https://www.googleapis.com/compute/v1/projects/${project}`;
   try {
-    const created = new Date(Date.now() - (mode === "sweep-old" ? 121 : 5) * 60_000).toISOString();
+    const created = new Date(Date.now() - (mode.includes("old") ? 121 : 5) * 60_000).toISOString();
     const labels = { "baskule-ephemeral": "true", "baskule-run": "another-run" };
     writeFileSync(join(fixture, "clusters.json"), JSON.stringify(sweeping ? (mode.includes("cluster") ? [{ name: "other-test", location: "europe-west1-b", resourceLabels: labels, createTime: created }] : []) : (malformed || iam) ? [] : [{ name: "other-test", location: "europe-west1-b", resourceLabels: labels }]));
-    writeFileSync(join(fixture, "repositories.json"), JSON.stringify(sweeping && !mode.includes("cluster") ? [{ name: "other-repo", labels, createTime: created }] : []));
+    writeFileSync(join(fixture, "repositories.json"), JSON.stringify(sweeping && !mode.includes("cluster") && !mode.includes("bucket") ? [{ name: "other-repo", labels, createTime: created }] : []));
+    const bucket = "baskule-ephemeral-1234-abcd";
+    writeFileSync(join(fixture, "buckets.json"), JSON.stringify(mode.includes("bucket") ? [{ Name: bucket, CreationDate: created }, { Name: "unrelated-bucket", CreationDate: created }] : []));
+    writeFileSync(join(fixture, "bucket.json"), JSON.stringify({ Tags: [{ Key: "baskule-ephemeral", Value: "true" }, { Key: "baskule-run", Value: bucket }] }));
     writeFileSync(join(fixture, "instances.json"), JSON.stringify([{ name: "unrelated-vm", selfLink: `${prefix}/zones/europe-west1-b/instances/unrelated-vm`, zone: "europe-west1-b" }]));
     writeFileSync(join(fixture, "accounts.json"), JSON.stringify([{ name: `projects/${project}/serviceAccounts/default`, email: `default@${project}.iam.gserviceaccount.com`, displayName: "Compute Engine default service account" }]));
     writeFileSync(join(fixture, "iam.json"), JSON.stringify({ bindings: iam ? [{ role: "roles/container.defaultNodeServiceAccount", members: [`deleted:serviceAccount:${email}?uid=1`, `serviceAccount:other-${email}`] }] : [] }));
@@ -56,7 +59,22 @@ function exercise(mode = "existing") {
           *) return 99 ;;
         esac
       }
-      export -f gcloud
+      scw() {
+        printf '%s\\n' "scw $*" >> "$BASKULE_TEST_FIXTURE/calls"
+        case "$*" in
+          'object bucket list '*) cat "$BASKULE_TEST_FIXTURE/buckets.json" ;;
+          'object bucket get baskule-ephemeral-1234-abcd '*) cat "$BASKULE_TEST_FIXTURE/bucket.json" ;;
+          'object bucket delete baskule-ephemeral-1234-abcd '*) printf '[]\\n' > "$BASKULE_TEST_FIXTURE/buckets.json" ;;
+          *) return 99 ;;
+        esac
+      }
+      python3() {
+        if [[ $* == '- baskule-ephemeral-1234-abcd fr-par' ]]; then
+          cat >/dev/null
+          printf 'empty owned bucket\\n' >> "$BASKULE_TEST_FIXTURE/calls"
+        else command python3 "$@"; fi
+      }
+      export -f gcloud scw python3
       if [[ "$BASKULE_TEST_MODE" == live ]]; then
         flock "$BASKULE_TEST_LOCK" bash "$BASKULE_TEST_DRIVER" sweep
       else
@@ -66,7 +84,7 @@ function exercise(mode = "existing") {
           bash "$BASKULE_TEST_DRIVER" "$BASKULE_TEST_ACTION"
         fi
       fi
-    `], { cwd: root, encoding: "utf8", timeout: 15_000, env: { ...process.env, BASKULE_GKE_PROJECT: project, BASKULE_TEST_LOCK: lock, BASKULE_TEST_MODE: mode, BASKULE_TEST_MALFORMED: malformed ? "1" : "0", BASKULE_TEST_ACTION: mode === "iam" || sweeping ? "sweep" : "run", BASKULE_TEST_FIXTURE: fixture, BASKULE_TEST_DRIVER: join(root, "e2e/kubernetes-ephemeral.sh") } });
+    `], { cwd: root, encoding: "utf8", timeout: 15_000, env: { ...process.env, SCW_DEFAULT_PROJECT_ID: "fixture", SCW_ACCESS_KEY: "fixture", SCW_SECRET_KEY: "fixture", BASKULE_GKE_PROJECT: project, BASKULE_TEST_LOCK: lock, BASKULE_TEST_MODE: mode, BASKULE_TEST_MALFORMED: malformed ? "1" : "0", BASKULE_TEST_ACTION: mode === "iam" || sweeping ? "sweep" : "run", BASKULE_TEST_FIXTURE: fixture, BASKULE_TEST_DRIVER: join(root, "e2e/kubernetes-ephemeral.sh") } });
     return { result, policy: JSON.parse(readFileSync(join(fixture, "iam.json"), "utf8")), email, calls: readFileSync(join(fixture, "calls"), "utf8") };
   } finally { rmSync(fixture, { recursive: true, force: true }); for (const name of readdirSync(stateRoot).filter(name => name.startsWith("gke."))) {
       const state = join(stateRoot, name);
@@ -166,7 +184,7 @@ test("ownership uses labels with forwarding-rule recovery and run IDs for unlabe
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 
-for (const mode of ["sweep-young-cluster", "sweep-young-repo"]) test(`cloud guard refuses ${mode} without mutation`, () => {
+for (const mode of ["sweep-young-cluster", "sweep-young-repo", "sweep-young-bucket"]) test(`cloud guard refuses ${mode} without mutation`, () => {
   const { result, calls } = exercise(mode);
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /younger than 120 minutes/);
@@ -192,4 +210,20 @@ test("unlabelled forwarding rules recover by owned IP or known run description",
   const result = spawnSync("jq", ["--arg", "kind", "forwarding-rules", "--arg", "marker", "baskule-ephemeral", "--argjson", "runs", JSON.stringify([[run]]), "--argjson", "links", "[[]]", "--argjson", "accounts", "[[]]", "--argjson", "addresses", JSON.stringify([[{ address: "192.0.2.1", labels: { "baskule-ephemeral": "true", "baskule-run": run } }, { address: "192.0.2.2", labels: { owner: "unrelated" } }]]), `${filter} [.[] | select(selected) | .name]`], { encoding: "utf8", input: JSON.stringify(rules) });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), ["ip-match", "description-match"]);
+});
+
+test("a tagged Scaleway bucket refuses a new run without deleting it", () => {
+  const { result, calls } = exercise("bucket-refuse");
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /buckets: 1 owned resources/);
+  assert.doesNotMatch(calls, /bucket delete|empty owned bucket/);
+  assert.doesNotMatch(calls, /bucket get unrelated-bucket/);
+});
+
+test("expired Scaleway sweep empties and deletes only a tagged run bucket", () => {
+  const { result, calls } = exercise("sweep-old-bucket");
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(calls, /empty owned bucket\nscw object bucket delete baskule-ephemeral-1234-abcd/);
+  assert.doesNotMatch(calls, /bucket (get|delete) unrelated-bucket/);
+  assert.match(result.stdout, /buckets: 0 owned resources/);
 });

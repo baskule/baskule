@@ -6,18 +6,24 @@ source scripts/env.sh
 export PATH="$HOME/.local/bin:$PATH"
 helm dependency build deploy/helm/baskule >/dev/null
 if [[ ${1:-} == lint ]]; then
-  helm lint deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false
-  helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false >/dev/null
-  helm template baskule deploy/helm/baskule --set s3.endpoint=https://s3.example.test --set s3.existingSecret=bucket --set existingSecret=platform --set publicUrl=https://baskule.example.test --set exposure.mode=ingress --set openshell.agentSandbox.preflight.enabled=false >/dev/null
-  helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set publicUrl=https://baskule.example.test --set exposure.mode=gateway --set exposure.gateway.name=edge --set openshell.agentSandbox.preflight.enabled=false >/dev/null
-  for invalid in typo=true s3.typo=true global.image.typo=true exposure.mode=ingress exposure.mode=gateway; do
-    if helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false --set exposure.gateway.name=edge --set "$invalid" >/dev/null 2>&1; then
+  s3=(--set s3.endpoint=https://s3.example.test --set s3.bucket=test --set s3.existingSecret=bucket)
+  base=(--set openshell.agentSandbox.preflight.enabled=false)
+  helm lint deploy/helm/baskule "${base[@]}" "${s3[@]}"
+  helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" >/dev/null
+  helm template baskule deploy/helm/baskule "${base[@]}" --set s3.endpoint=https://s3.example.test --set s3.bucket=test --set s3.accessKeyId=test --set s3.secretAccessKey=test >/dev/null
+  helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" --set existingSecret=platform --set publicUrl=https://baskule.example.test --set exposure.mode=ingress >/dev/null
+  helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" --set publicUrl=https://baskule.example.test --set exposure.mode=gateway --set exposure.gateway.name=edge >/dev/null
+  for invalid in typo=true rustfs.enabled=true s3.typo=true global.image.typo=true exposure.mode=ingress exposure.mode=gateway s3.endpoint= s3.bucket= s3.existingSecret=; do
+    if helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" --set exposure.gateway.name=edge --set "$invalid" >/dev/null 2>&1; then
       echo "Expected chart schema to reject $invalid" >&2; exit 1
     fi
   done
+  if helm template baskule deploy/helm/baskule "${base[@]}" >/dev/null 2>&1; then
+    echo 'Expected chart rendering to reject missing S3 configuration' >&2; exit 1
+  fi
   for invalid_url in http://0.0.0.0 http://[::] http://LOCALHOST; do
     for mode in ingress gateway; do
-      if helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false --set exposure.gateway.name=edge --set exposure.mode="$mode" --set-string publicUrl="$invalid_url" >/dev/null 2>&1; then
+      if helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" --set exposure.gateway.name=edge --set exposure.mode="$mode" --set-string publicUrl="$invalid_url" >/dev/null 2>&1; then
         echo "Expected chart schema to reject $invalid_url for $mode" >&2; exit 1
       fi
     done
@@ -65,4 +71,22 @@ if [[ -z ${BASKULE_K8S_VALUES:-} ]]; then
   export BASKULE_K8S_VALUES="$BASKULE_K8S_EVIDENCE/values.yaml"
   printf 'computer:\n  cpu: "1"\n  memory: 1Gi\n' > "$BASKULE_K8S_VALUES"
 fi
+# Test-only S3 fixture. It is never part of the Helm chart/package.
+kubectl create namespace baskule >/dev/null
+kubectl -n baskule apply -f e2e/kubernetes-rustfs.yaml >/dev/null
+kubectl -n baskule rollout status deployment/rustfs-fixture --timeout=180s
+kubectl -n baskule run fixture-bucket --restart=Never --image="$registry/baskule-celld:$BASKULE_K8S_TAG" \
+  --env=AWS_ACCESS_KEY_ID=baskule-kind-test --env=AWS_SECRET_ACCESS_KEY=baskule-kind-test-secret \
+  --env=AWS_REGION=us-east-1 --env=S3_ENDPOINT=http://rustfs-fixture:3900 \
+  --env=CELLD_BUCKET_NAME=baskule-test --labels=app.kubernetes.io/instance=baskule,app.kubernetes.io/component=deploy \
+  --command -- baskule-celld-job bootstrap >/dev/null
+kubectl -n baskule wait --for=jsonpath='{.status.phase}'=Succeeded pod/fixture-bucket --timeout=120s
+cat >> "$BASKULE_K8S_VALUES" <<'YAML'
+s3:
+  endpoint: http://rustfs-fixture:3900
+  region: us-east-1
+  bucket: baskule-test
+  existingSecret: rustfs-fixture
+YAML
+export BASKULE_K8S_S3_FIXTURE=rustfs-fixture
 bash e2e/kubernetes-install.sh

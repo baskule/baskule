@@ -6,6 +6,9 @@ cd "$root"
 export PATH="$HOME/.local/bin:$PATH"
 project=${BASKULE_GKE_PROJECT:?set the owner-authorized project}
 [[ $project == "$(gcloud config get-value project 2>/dev/null)" ]] || { echo 'Authorized project must match the active project' >&2; exit 1; }
+scw_project=${SCW_DEFAULT_PROJECT_ID:?set the owner-authorized Scaleway project}
+: "${SCW_ACCESS_KEY:?set privately}" "${SCW_SECRET_KEY:?set privately}"
+scw_region=fr-par
 region=europe-west1
 zone=$region-b
 marker=baskule-ephemeral
@@ -26,6 +29,45 @@ for previous in "$state_root"/gke.*; do
   mv "$state/accounts.next" "$state/known-accounts.private.json"
 done
 gc() { gcloud --project="$project" --quiet "$@"; }
+scw_bucket() { scw object bucket "$@" project-id="$scw_project" region="$scw_region" -o json; }
+bucket_inventory() {
+  scw_bucket list > "$state/bucket-list.private.json" || return
+  jq -e 'type == "array" and all(.[]; .Name | type == "string")' "$state/bucket-list.private.json" >/dev/null || return
+  printf '[]' > "$state/buckets.private.json"
+  local name
+  while read -r name; do
+    scw_bucket get "$name" > "$state/bucket.private.json" || return
+    jq --arg name "$name" --slurpfile info "$state/bucket.private.json" --slurpfile listed "$state/bucket-list.private.json" '
+      . + [{name: $name, location: "fr-par",
+        labels: (reduce ($info[0].Tags // [])[] as $tag ({}; .[$tag.Key] = $tag.Value)),
+        createTime: ($listed[0][] | select(.Name == $name) | .CreationDate)}]
+    ' "$state/buckets.private.json" > "$state/buckets.next" || return
+    mv "$state/buckets.next" "$state/buckets.private.json"
+  done < <(jq -r '.[] | .Name | select(test("^baskule-ephemeral-[0-9]+-[a-f0-9]{4}$"))' "$state/bucket-list.private.json")
+}
+empty_bucket() {
+  # The CLI delete command does not empty buckets. Use the S3 API, with no
+  # credentials in argv or output. These fixtures never enable versioning.
+  python3 - "$1" "$scw_region" <<'PYBUCKET'
+import os, re, sys
+import boto3
+name, region = sys.argv[1:]
+assert re.fullmatch(r'baskule-ephemeral-[0-9]+-[a-f0-9]{4}', name)
+s3 = boto3.client('s3', endpoint_url=f'https://s3.{region}.scw.cloud', region_name=region,
+    aws_access_key_id=os.environ['SCW_ACCESS_KEY'], aws_secret_access_key=os.environ['SCW_SECRET_KEY'])
+tags = {t['Key']: t['Value'] for t in s3.get_bucket_tagging(Bucket=name)['TagSet']}
+assert tags.get('baskule-ephemeral') == 'true' and tags.get('baskule-run') == name
+assert s3.get_bucket_versioning(Bucket=name).get('Status') is None
+for page in s3.get_paginator('list_objects_v2').paginate(Bucket=name):
+    objects = [{'Key': o['Key']} for o in page.get('Contents', [])]
+    if objects:
+        result = s3.delete_objects(Bucket=name, Delete={'Objects': objects, 'Quiet': True})
+        assert not result.get('Errors'), 'S3 object deletion failed'
+for page in s3.get_paginator('list_multipart_uploads').paginate(Bucket=name):
+    for upload in page.get('Uploads', []):
+        s3.abort_multipart_upload(Bucket=name, Key=upload['Key'], UploadId=upload['UploadId'])
+PYBUCKET
+}
 # IAM cleanup is idempotent. Retry quota responses without hiding other failures.
 iam_gc() {
   (cd e2e && node --input-type=module - "$project" "$@" <<'JS'
@@ -63,7 +105,7 @@ owned_filter='def label_match:
 def description_match:
   (.description // "") as $text | any($runs[0][]; . as $run | $text | contains($run));
 def labelled:
-  ["clusters", "repositories", "instances", "disks", "forwarding-rules", "addresses"] | index($kind) != null;
+  ["clusters", "repositories", "buckets", "instances", "disks", "forwarding-rules", "addresses"] | index($kind) != null;
 def unlabelled_lb:
   ["target-http-proxies", "target-https-proxies", "url-maps", "backend-services", "target-pools", "health-checks", "http-health-checks", "https-health-checks", "network-endpoint-groups"] | index($kind) != null;
 def marked:
@@ -86,9 +128,10 @@ inventory() {
   jq -e 'type == "array"' "$state/owned-links.private.json" >/dev/null || return
   gc container clusters list --format=json > "$state/clusters.private.json" || return
   gc artifacts repositories list --location=all --format=json > "$state/repositories.private.json" || return
+  bucket_inventory || return
   if [[ $protect_young_runs == true ]]; then guard_recent_runs || return; fi
   gc iam service-accounts list --format=json > "$state/accounts.private.json" || return
-  local kind inputs=("$state/clusters.private.json" "$state/repositories.private.json" "$state/accounts.private.json")
+  local kind inputs=("$state/clusters.private.json" "$state/repositories.private.json" "$state/accounts.private.json" "$state/buckets.private.json")
   for kind in "${kinds[@]}"; do
     if [[ $kind == instances ]]; then
       gc compute "$kind" list --format='json(name,zone,labels,selfLink)' > "$state/$kind.private.json" || return
@@ -106,7 +149,7 @@ inventory() {
   ' "${inputs[@]}" > "$state/runs.private.json" || return
   # Follow only references rooted in labelled resources or saved run ownership.
   # Labelled kinds use labels; forwarding rules also recover through their owned IP or run description.
-  for kind in clusters repositories accounts "${kinds[@]}"; do
+  for kind in clusters repositories buckets accounts "${kinds[@]}"; do
     jq --arg marker "${resource_scope:-$marker}" --arg kind "$kind" --arg project "$project" \
       --slurpfile accounts "$state/known-accounts.private.json" --slurpfile runs "$state/runs.private.json" \
       --slurpfile links "$state/owned-links.private.json" --slurpfile addresses "$state/addresses.private.json" "$owned_filter"'
@@ -123,7 +166,7 @@ owned() {
 audit() {
   inventory || return
   local kind count remaining=0
-  for kind in clusters repositories accounts "${kinds[@]}"; do
+  for kind in clusters repositories buckets accounts "${kinds[@]}"; do
     count=$(owned < "$state/$kind.private.json" | wc -l) || return
     printf '%s: %s owned resources\n' "$kind" "$count"
     remaining=$((remaining + count))
@@ -163,6 +206,10 @@ sweep() {
     done < <(owned < "$state/$kind.private.json")
   done
   while read -r name; do gc artifacts repositories delete "$name" --location="$region" || true; done < <(kind=repositories owned < "$state/repositories.private.json" | cut -f1 | sed 's|.*/||')
+  while read -r name location; do
+    empty_bucket "$name" || return
+    scw_bucket delete "$name" >/dev/null || return
+  done < <(kind=buckets owned < "$state/buckets.private.json")
   if [[ $(jq length "$state/known-accounts.private.json") != 0 ]]; then
     iam_gc projects get-iam-policy "$project" --format=json > "$state/iam.private.json" || return
     project_bindings > "$state/iam-bindings.private.tsv" || return
@@ -177,7 +224,7 @@ sweep() {
   audit
 }
 guard_recent_runs() {
-  python3 - "$state/clusters.private.json" "$state/repositories.private.json" <<'PYGUARD'
+  python3 - "$state/clusters.private.json" "$state/repositories.private.json" "$state/buckets.private.json" <<'PYGUARD'
 import json, sys
 from datetime import datetime, timezone
 now = datetime.now(timezone.utc)
@@ -191,7 +238,7 @@ for filename in sys.argv[1:]:
         except (KeyError, ValueError, TypeError):
             age = -1  # Unknown age cannot establish that the run has expired.
         if age < 120 * 60:
-            sys.exit('Refuse global sweep: a labelled cluster or repository is younger than 120 minutes or has unknown age; use --force only for deliberate recovery')
+            sys.exit('Refuse global sweep: a labelled cluster, repository or bucket is younger than 120 minutes or has unknown age; use --force only for deliberate recovery')
 PYGUARD
 }
 case "${1:-}" in
@@ -316,6 +363,8 @@ cp "$state/"*.private.json "$state/before/"
 BASKULE_VERSION=0.0.0-ephemeral scripts/helm-package.sh "$BASKULE_K8S_EVIDENCE" > "$BASKULE_K8S_EVIDENCE/chart-package.log"
 export BASKULE_K8S_CHART="$BASKULE_K8S_EVIDENCE/baskule-0.0.0-ephemeral.tgz"
 command -v docker-credential-gcloud >/dev/null
+python3 -c 'import boto3'
+scw_bucket create "$run_id" "tags.0=$marker=true" "tags.1=baskule-run=$run_id" >/dev/null
 # Both clients renew credentials through the existing SDK identity. Do not cache
 # a possibly near-expiry access token for the whole 90-minute run.
 jq -n --arg host "$region-docker.pkg.dev" '{credHelpers:{($host):"gcloud"}}' > "$HELM_REGISTRY_CONFIG"
@@ -404,7 +453,11 @@ allowVolumeExpansion: true
 YAML
 export BASKULE_K8S_VALUES="$state/values.private.yaml"
 cat > "$BASKULE_K8S_VALUES" <<YAML
-rustfs: {storageClass: baskule-ephemeral}
+s3:
+  endpoint: https://s3.$scw_region.scw.cloud
+  region: $scw_region
+  bucket: $run_id
+  existingSecret: baskule-bucket
 openshell:
   server: {dataStorageClass: baskule-ephemeral, workspaceStorageClass: baskule-ephemeral}
 exposure:
@@ -417,5 +470,13 @@ exposure:
       kubernetes.io/ingress.class: gce
       kubernetes.io/ingress.global-static-ip-name: $run_id
 YAML
+# Pipe the private keys directly into kubectl, outside Helm values and evidence.
+python3 - <<'PYSECRET' | kubectl --request-timeout=30s -n "$run_id" apply -f - >/dev/null
+import base64, json, os
+print(json.dumps({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'baskule-bucket'},
+    'data': {target: base64.b64encode(os.environ[source].encode()).decode() for target, source in
+        [('AWS_ACCESS_KEY_ID', 'SCW_ACCESS_KEY'), ('AWS_SECRET_ACCESS_KEY', 'SCW_SECRET_KEY')]}}))
+PYSECRET
+printf 'compute_region=europe-west1\nstorage_region=fr-par\ncross_provider_latency_included=true\n' > "$BASKULE_K8S_EVIDENCE/storage-location.txt"
 export BASKULE_K8S_CROSS_NODE=1 BASKULE_K8S_CHECK_INGRESS=1
 bash e2e/kubernetes-install.sh > "$BASKULE_K8S_EVIDENCE/install.log" 2>&1
