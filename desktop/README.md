@@ -50,7 +50,6 @@ login after restart. This is functional headless verification; visual acceptance
 checks. [Hosted workflows](../docs/ci.md) run this check and build Windows/macOS packages on their native runners.
 This Linux check does not build or verify those other packages.
 
-`deploy/build.sh` stages `desktop/release/` as `/downloads/` when downloads are enabled. Build the AppImage first;
-source-stack builds do not package desktop releases. Replace old AppImage/tar.gz files when publishing,
-and retain Android artifacts only at their actual version. The old standalone Electron shell and its package,
-connection page, locale copies, and build/verification scripts have been removed.
+Settings → Desktop app links to the Linux x64 AppImage on the GitHub release matching the running installation's
+version. The release factory publishes that AppImage separately; server images do not embed app installers.
+Add other platforms to the web client's download list when their installable release assets are available.

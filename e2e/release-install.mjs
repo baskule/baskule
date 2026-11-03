@@ -19,8 +19,8 @@ const run = resolve(root, ".run", id);
 const evidence = resolve(root, process.env.BASKULE_INSTALL_EVIDENCE ?? ".run/evidence/release-install");
 mkdirSync(run, { recursive: true });
 mkdirSync(evidence, { recursive: true });
-const assets = resolve(run, "assets");
-execFileSync(resolve(root, "scripts/release-install-assets.sh"), [assets], {
+const assets = process.env.BASKULE_INSTALL_ASSETS ? resolve(process.env.BASKULE_INSTALL_ASSETS) : resolve(run, "assets");
+if (!process.env.BASKULE_INSTALL_ASSETS) execFileSync(resolve(root, "scripts/release-install-assets.sh"), [assets], {
   env: { ...process.env, BASKULE_VERSION: version },
 });
 const projects = [];
@@ -572,6 +572,8 @@ async function cluster() {
   const network = `${id}-lan`;
   fixtureNetworks.add(network); command(["network", "create", network]);
   const [{ Subnet: subnet }] = JSON.parse(command(["network", "inspect", "-f", "{{json .IPAM.Config}}", network]));
+  command(["network", "rm", network]);
+  command(["network", "create", "--subnet", subnet, network]);
   const [baseAddress, bits] = subnet.split("/");
   if (Number(bits) > 28) throw new Error("The private test LAN needs at least eight addresses");
   const octets = baseAddress.split(".").map(Number);

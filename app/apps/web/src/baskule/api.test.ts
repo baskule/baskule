@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   computerStateFrom,
-  describeDownload,
+  releaseDownloads,
   meFromWire,
   messageFromBody,
   baskuleApi,
@@ -89,20 +89,16 @@ describe("Baskule API mapping", () => {
     });
   });
 
-  it("describes published app files", () => {
-    expect(
-      describeDownload({ name: "Baskule-0.2.0-x86_64.AppImage", size: 10, url: "/downloads/a" }),
-    ).toMatchObject({
-      platform: "linux",
-      format: "AppImage",
-      version: "0.2.0",
-      sizeBytes: 10,
-    });
-    expect(describeDownload({ name: "baskule-0.2.0-linux-x64.tar.gz", url: "/d" })).toMatchObject({
-      platform: "linux",
-      format: "tar.gz",
-    });
-    expect(describeDownload({ name: "Baskule-0.2.0.apk", url: "/d" }).platform).toBe("android");
+  it("links apps to the running release, including prerelease versions", () => {
+    expect(releaseDownloads("0.5.0")).toMatchObject([{
+      platform: "linux", format: "AppImage", version: "0.5.0",
+      fileName: "Baskule-0.5.0-x64.AppImage",
+      url: "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
+    }]);
+    expect(releaseDownloads("1.2.3-rc.4+test")[0]?.url).toBe(
+      "https://github.com/baskule/baskule/releases/download/v1.2.3-rc.4%2Btest/Baskule-1.2.3-rc.4%2Btest-x64.AppImage",
+    );
+    for (const version of [undefined, null, "", "latest", "../../other"]) expect(releaseDownloads(version)).toEqual([]);
   });
 
   it("turns error codes into sentences", () => {

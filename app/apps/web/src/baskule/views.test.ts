@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { otherAuthor } from "./authorship";
-import { describeDownload } from "./api";
+import { type Download, releaseDownloads } from "./api";
 import { healthSummary } from "./admin/general/OverviewPage";
 import { orderDownloads, visitorPlatform } from "./views/DownloadsView";
 import { passwordProblem, tokenFromHash } from "./views/InvitationView";
@@ -32,9 +32,9 @@ describe("Baskule views", () => {
   it("offers the visitor's platform first", () => {
     expect(visitorPlatform("Mozilla/5.0 (X11; Linux x86_64)")).toBe("linux");
     expect(visitorPlatform("Mozilla/5.0 (Linux; Android 15)")).toBe("android");
-    const files = [
-      describeDownload({ name: "Baskule-0.2.0.apk", url: "/a" }),
-      describeDownload({ name: "Baskule-0.2.0-x86_64.AppImage", url: "/b" }),
+    const files: ReadonlyArray<Download> = [
+      { id: "android", platform: "android", fileName: "Baskule.apk", label: "Android", format: "apk", url: "/a", version: "0.5.0" },
+      ...releaseDownloads("0.5.0"),
     ];
     expect(orderDownloads(files, "android")[0]?.platform).toBe("android");
     expect(orderDownloads(files, null)[0]?.platform).toBe("linux");

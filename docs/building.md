@@ -83,7 +83,7 @@ docker run --rm --network=host \
   baskule-build bash -c 'scripts/worktree setup && deploy/build.sh --no-deploy'
 ```
 
-`deploy/build.sh` builds the hosted web app, SpaceCell, downloads when available, and platform Worker, then packages
+`deploy/build.sh` builds the hosted web app, SpaceCell and platform Worker, then packages
 computer, OpenShell, celld, and computerd images. The source celld image contains deployment tools; the deploy
 job mounts `../platform`. Release images bake in the bundle. The gateway contains
 compressed computer, supervisor, and sandbox images for its private daemon. Source hashes reuse matching images;
@@ -97,8 +97,8 @@ names. `deploy/up.sh` builds missing images and starts this source stack; `deplo
 released installations load their images inside Compose. `scripts/stack` and `scripts/check` keep their worktree-local
 app path. Do not point them at another operator's installation.
 
-`deploy/build.sh --force` rebuilds web and SpaceCell. `DOWNLOADS=0` omits native downloads. Set
-`BASKULE_ARTIFACT_DIR` to a directory of packaged clients to include under `/downloads/`. Image and bundle build
+`deploy/build.sh --force` rebuilds web and SpaceCell. App downloads link to GitHub release assets for the
+running version; they are not bundled in the images. Image and bundle build
 logs stay in `.run/build/`. Deployment scripts honor `deploy/.stack-lock` while checks use the source stack.
 
 Generated bundles, dependencies, downloaded packages, and local evidence stay ignored. Builds use checked-in source and lockfiles. `source-provenance.json` records the imported upstream snapshots; `/version.json` and generated `BUILT_FROM` files identify built inputs.

@@ -16,7 +16,6 @@ x-celld-env: &celld-env
   CELLD_V8_HEAP_LIMIT_MB: ${CELLD_V8_HEAP_LIMIT_MB:-1024}
   # Outbound fetches include LLM streams and computerd exec streams: allow long ones.
   CELLD_FETCH_TIMEOUT_S: ${CELLD_FETCH_TIMEOUT_S:-3600}
-  # The desktop AppImage is served as a static asset under /downloads: >= 200 MiB.
   CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
   # Traces of every request, cell turn and storage operation go to baskule-traces ("0": off).
   CELLD_OTEL: ${BASKULE_CELLD_OTEL:-0}
@@ -132,7 +131,6 @@ services:
     restart: "no"
     environment:
       <<: *s3
-      # `celld deploy` checks asset sizes too (desktop artifacts under /downloads).
       CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}
       CELLD_NODES_INTERNAL: baskule-celld-a:47092 baskule-celld-b:47092
       SETUP_STATUS_URL: ""

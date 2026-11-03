@@ -16,7 +16,7 @@ node shots.mjs [scenario…]  # login invite voice admin usage passwords apps
 
 | Port   | What                                                                                                                     |
 | ------ | ------------------------------------------------------------------------------------------------------------------------ |
-| 47700  | mock front (open this): `/auth/*`, `/api/baskule/*`, `/s/<space>/*`, `/downloads/*`, the web app                         |
+| 47700  | mock front (open this): `/auth/*`, `/api/baskule/*`, `/s/<space>/*`, `/version.json`, the web app                         |
 | 47701  | Vite dev server (`MOCK_WEB=dev`)                                                                                         |
 | 47702  | mock OpenAI-compatible model                                                                                             |
 | 47703  | OpenCode 2.1.2 CLI (shared by every mock space)                                                                          |

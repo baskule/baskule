@@ -22,7 +22,7 @@ function fixture(t, recordEvidence = "1") {
   git("config", "user.name", "Evidence test");
   git("config", "user.email", "evidence@test.invalid");
   git("remote", "add", "origin", origin);
-  for (const name of ["check.mjs", "check-lock.mjs", "feature-map.mjs", "run-feature.mjs"]) cpSync(join(scripts, name), join(repo, "scripts", name));
+  for (const name of ["check.mjs", "check-lock.mjs", "feature-map.mjs", "run-feature.mjs", "release-plan.mjs"]) cpSync(join(scripts, name), join(repo, "scripts", name));
   const map = join(repo, ".agents/skills/verify-baskule/features");
   mkdirSync(map, { recursive: true });
   for (const [name, command] of [["first", "mkdir -p .run && printf x >> .run/hits"], ["mutator", "printf changed > platform/input.txt && git add platform/input.txt && git commit -qm changed"]]) {

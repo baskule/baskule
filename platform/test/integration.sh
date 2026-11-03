@@ -2,7 +2,7 @@
 # Integration test on celld dev: real Worker + ControlCell + echo SpaceCell, ports 47620-47629.
 #   bash test/integration.sh            (CELLD_BIN to override the celld binary; KEEP=1 keeps state for debugging)
 #   bash test/integration.sh --only transcriptions   (only the raw-audio multipart/cap check)
-# Builds test/.run/app (bundle of test/integration/entry.ts + the web placeholder + a downloads fixture),
+# Builds test/.run/app (bundle of test/integration/entry.ts + the web placeholder),
 # starts `celld dev` on :47620 with a fresh state, runs test/integration/run.mjs, restarts celld (persistence check),
 # and stops everything.
 set -euo pipefail
@@ -20,9 +20,8 @@ CELLD_BIN=${CELLD_BIN:-$D/../scripts/celld.sh}
 PORT=${PORT:-47620}
 APP=$D/test/.run/app
 export CELLD_ESBUILD=${CELLD_ESBUILD:-$D/node_modules/.bin/esbuild} CELLD_OTEL=0 DO_NOT_TRACK=1
-rm -rf "$APP" && mkdir -p "$APP/dl"
-printf 'fake desktop artifact\n' > "$APP/dl/Baskule-test.AppImage"
-BASKULE_ENTRY=test/integration/entry.ts BASKULE_OUT=test/.run/app/dist BASKULE_DOWNLOADS_DIR=test/.run/app/dl nice -n 10 node scripts/build.mjs
+rm -rf "$APP" && mkdir -p "$APP"
+BASKULE_ENTRY=test/integration/entry.ts BASKULE_OUT=test/.run/app/dist nice -n 10 node scripts/build.mjs
 node -e '
   const fs=require("fs"); const w=JSON.parse(fs.readFileSync("wrangler.json","utf8"));
   w.vars.PUBLIC_ORIGINS="http://allowed.test:47090"; w.vars.AUTH_RATE_LIMIT="0";

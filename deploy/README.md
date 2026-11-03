@@ -10,7 +10,7 @@ Developers use [Build Baskule](../docs/building.md). These files describe the cu
 | `cluster/computers.yml`, `cluster/computers.env.example` | One computers host, plus offline backup and restore jobs |
 | `cluster/edge.yml`, `cluster/edge.env.example` | Optional HTTP edge for a node list |
 | `docker-compose.build.yml` | Source-build override, selected by `lib.sh` |
-| `celld/` | Shared node/job image containing Worker, web app, downloads, and deployment utilities |
+| `celld/` | Shared node/job image containing Worker, web app and deployment utilities |
 | `build-env/` | Ubuntu 24.04 native build environment |
 
 Released images use `ghcr.io/baskule/baskule-{celld,computerd,openshell-gateway}:VERSION`.
