@@ -227,3 +227,49 @@ test("expired Scaleway sweep empties and deletes only a tagged run bucket", () =
   assert.doesNotMatch(calls, /bucket (get|delete) unrelated-bucket/);
   assert.match(result.stdout, /buckets: 0 owned resources/);
 });
+
+for (const versioning of ["unset", "Suspended", "Enabled"]) test(`S3 cleanup handles ${versioning} versioning without touching other buckets`, () => {
+  const driver = readFileSync(join(root, "e2e/kubernetes-ephemeral.sh"), "utf8");
+  const python = driver.split("<<'PYBUCKET'\n")[1].split("\nPYBUCKET")[0];
+  const prelude = `
+import json, sys, types
+calls = []
+class Store:
+    def get_bucket_tagging(self, **kw):
+        assert kw == {'Bucket': 'baskule-ephemeral-1234-abcd'}
+        return {'TagSet': [{'Key':'baskule-ephemeral','Value':'true'}, {'Key':'baskule-run','Value':'baskule-ephemeral-1234-abcd'}]}
+    def get_bucket_versioning(self, **kw):
+        return {} if versioning == 'unset' else {'Status': versioning}
+    def get_paginator(self, operation):
+        self.operation = operation
+        return self
+    def paginate(self, **kw):
+        assert kw == {'Bucket': 'baskule-ephemeral-1234-abcd'}
+        return [{'Versions':[{'Key':'lease','VersionId':'null'},{'Key':'data','VersionId':'old'}], 'DeleteMarkers':[{'Key':'removed','VersionId':'marker'}]}] if self.operation == 'list_object_versions' else [{'Uploads':[{'Key':'partial','UploadId':'upload'}]}]
+    def delete_objects(self, **kw):
+        calls.append(['delete', kw])
+        return {}
+    def abort_multipart_upload(self, **kw):
+        calls.append(['abort', kw])
+def client(*args, **kw):
+    assert kw['endpoint_url'] == 'https://s3.fr-par.scw.cloud'
+    return Store()
+sys.modules['boto3'] = types.SimpleNamespace(client=client)
+versioning = sys.argv.pop()
+`;
+  // The fixture supplies only the S3 boundary. Execute the real cleanup body.
+  const result = spawnSync("python3", ["-", "baskule-ephemeral-1234-abcd", "fr-par", versioning], {
+    input: prelude + python + "\nprint(json.dumps(calls))\n",
+    encoding: "utf8", env: { ...process.env, SCW_ACCESS_KEY: "fixture", SCW_SECRET_KEY: "fixture" },
+  });
+  if (versioning === "Enabled") {
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, "");
+  } else {
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [
+      ["delete", { Bucket: "baskule-ephemeral-1234-abcd", Delete: { Objects: [{ Key: "lease", VersionId: "null" }, { Key: "data", VersionId: "old" }, { Key: "removed", VersionId: "marker" }], Quiet: true } }],
+      ["abort", { Bucket: "baskule-ephemeral-1234-abcd", Key: "partial", UploadId: "upload" }],
+    ]);
+  }
+});
