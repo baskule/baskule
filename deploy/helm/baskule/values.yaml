@@ -78,3 +78,7 @@ openshell:
   resources:
     requests: {cpu: 100m, memory: 256Mi}
     limits: {memory: 1Gi}
+
+# Cache the computer image on each schedulable node before the first launch.
+computers:
+  prePull: true

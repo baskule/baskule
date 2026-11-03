@@ -1,0 +1,36 @@
+{{- if .Values.computers.prePull }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Release.Name }}-computer-prepull
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: computer-prepull}
+  template:
+    metadata:
+      labels:
+        {{- include "baskule.labels" . | nindent 8 }}
+        app.kubernetes.io/component: computer-prepull
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: computer
+          image: {{ include "baskule.image" (dict "root" . "name" "computer") }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          command: [sleep, infinity]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 1m, memory: 8Mi}
+            limits: {memory: 32Mi}
+{{- end }}

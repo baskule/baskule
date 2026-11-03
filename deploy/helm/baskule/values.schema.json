@@ -68,6 +68,7 @@
         }
       }
     },
+    "computers": {"type": "object", "additionalProperties": false, "properties": {"prePull": {"type": "boolean"}}},
     "computer": {
       "type": "object",
       "additionalProperties": false,
