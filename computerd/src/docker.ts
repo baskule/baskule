@@ -24,8 +24,8 @@ export class DockerBackend implements Backend {
   private guardPending: Promise<void> | undefined;
   private guardVerified: { subnets: string[]; at: number } | undefined;
   private async requireGuard(): Promise<void> {
-    if (this.guardPending) await this.guardPending;
-    if (!this.guardVerified) throw new Error("Computer guard has not been verified; refusing create/start");
+    if (this.guardPending) await this.guardPending.catch(() => {});
+    if (!this.guardVerified) await this.verifyGuard();
   }
   private readonly guardTimer: ReturnType<typeof setInterval>;
   private verifyGuard(): Promise<void> {
