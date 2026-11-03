@@ -31,17 +31,17 @@ done
 gc() { gcloud --project="$project" --quiet "$@"; }
 scw_bucket() { scw object bucket "$@" project-id="$scw_project" region="$scw_region" -o json; }
 bucket_inventory() {
-  scw_bucket list > "$state/bucket-list.private.json" || return
-  jq -e 'type == "array" and all(.[]; .Name | type == "string")' "$state/bucket-list.private.json" >/dev/null || return
+  scw_bucket list > "$state/bucket-list.private.json" || return 1
+  jq -e 'type == "array" and all(.[]; .Name | type == "string")' "$state/bucket-list.private.json" >/dev/null || return 1
   printf '[]' > "$state/buckets.private.json"
   local name
   while read -r name; do
-    scw_bucket get "$name" > "$state/bucket.private.json" || return
+    scw_bucket get "$name" > "$state/bucket.private.json" || return 1
     jq --arg name "$name" --slurpfile info "$state/bucket.private.json" --slurpfile listed "$state/bucket-list.private.json" '
       . + [{name: $name, location: "fr-par",
         labels: (reduce ($info[0].Tags // [])[] as $tag ({}; .[$tag.Key] = $tag.Value)),
         createTime: ($listed[0][] | select(.Name == $name) | .CreationDate)}]
-    ' "$state/buckets.private.json" > "$state/buckets.next" || return
+    ' "$state/buckets.private.json" > "$state/buckets.next" || return 1
     mv "$state/buckets.next" "$state/buckets.private.json"
   done < <(jq -r '.[] | .Name | select(test("^baskule-ephemeral-[0-9]+-[a-f0-9]{4}$"))' "$state/bucket-list.private.json")
 }
@@ -129,18 +129,18 @@ def selected:
 
 kinds=(instances disks forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks addresses network-endpoint-groups firewall-rules)
 inventory() {
-  jq -e 'type == "array"' "$state/owned-links.private.json" >/dev/null || return
-  gc container clusters list --format=json > "$state/clusters.private.json" || return
-  gc artifacts repositories list --location=all --format=json > "$state/repositories.private.json" || return
-  bucket_inventory || return
-  if [[ $protect_young_runs == true ]]; then guard_recent_runs || return; fi
-  gc iam service-accounts list --format=json > "$state/accounts.private.json" || return
+  jq -e 'type == "array"' "$state/owned-links.private.json" >/dev/null || return 1
+  gc container clusters list --format=json > "$state/clusters.private.json" || return 1
+  gc artifacts repositories list --location=all --format=json > "$state/repositories.private.json" || return 1
+  bucket_inventory || return 1
+  if [[ $protect_young_runs == true ]]; then guard_recent_runs || return 1; fi
+  gc iam service-accounts list --format=json > "$state/accounts.private.json" || return 1
   local kind inputs=("$state/clusters.private.json" "$state/repositories.private.json" "$state/accounts.private.json" "$state/buckets.private.json")
   for kind in "${kinds[@]}"; do
     if [[ $kind == instances ]]; then
-      gc compute "$kind" list --format='json(name,zone,labels,selfLink)' > "$state/$kind.private.json" || return
+      gc compute "$kind" list --format='json(name,zone,labels,selfLink)' > "$state/$kind.private.json" || return 1
     else
-      gc compute "$kind" list --format=json > "$state/$kind.private.json" || return
+      gc compute "$kind" list --format=json > "$state/$kind.private.json" || return 1
     fi
     inputs+=("$state/$kind.private.json")
   done
@@ -150,7 +150,7 @@ inventory() {
      [$accounts[0][] | capture("^bk-(?<id>[0-9]+-[a-f0-9]{4})@").id | "baskule-ephemeral-" + .]) |
     map(select(type == "string" and test("^baskule-ephemeral-[0-9]+-[a-f0-9]{4}$"))) |
     unique | if $marker == "baskule-ephemeral" then . else map(select(. == $marker)) end
-  ' "${inputs[@]}" > "$state/runs.private.json" || return
+  ' "${inputs[@]}" > "$state/runs.private.json" || return 1
   # Follow only references rooted in labelled resources or saved run ownership.
   # Labelled kinds use labels; forwarding rules also recover through their owned IP or run description.
   for kind in clusters repositories buckets accounts "${kinds[@]}"; do
@@ -158,7 +158,7 @@ inventory() {
       --slurpfile accounts "$state/known-accounts.private.json" --slurpfile runs "$state/runs.private.json" \
       --slurpfile links "$state/owned-links.private.json" --slurpfile addresses "$state/addresses.private.json" "$owned_filter"'
       [.[] | select(selected) | .. | strings | select(contains("/projects/" + $project + "/"))] + $links[0] | unique
-    ' "$state/$kind.private.json" > "$state/links.next" || return
+    ' "$state/$kind.private.json" > "$state/links.next" || return 1
     mv "$state/links.next" "$state/owned-links.private.json"
   done
 }
@@ -168,34 +168,34 @@ owned() {
     --slurpfile links "$state/owned-links.private.json" --slurpfile addresses "$state/addresses.private.json" "$owned_filter"'.[] | select(selected) | [.name, (.location // .zone // .region // "global" | split("/") | last)] | @tsv'
 }
 audit() {
-  inventory || return
+  inventory || return 1
   local kind count remaining=0
   for kind in clusters repositories buckets accounts "${kinds[@]}"; do
-    count=$(owned < "$state/$kind.private.json" | wc -l) || return
+    count=$(owned < "$state/$kind.private.json" | wc -l) || return 1
     printf '%s: %s owned resources\n' "$kind" "$count"
     remaining=$((remaining + count))
   done
   # Surface unlabelled LB/PVC orphans added since this run's baseline as well.
   if [[ -d $state/before ]]; then
     for kind in disks forwarding-rules addresses target-pools backend-services health-checks http-health-checks https-health-checks; do
-      count=$(jq -s '.[0] as $before | [.[1][] | . as $resource | select(any($before[]; .selfLink == $resource.selfLink) | not)] | length' "$state/before/$kind.private.json" "$state/$kind.private.json") || return
+      count=$(jq -s '.[0] as $before | [.[1][] | . as $resource | select(any($before[]; .selfLink == $resource.selfLink) | not)] | length' "$state/before/$kind.private.json" "$state/$kind.private.json") || return 1
       printf '%s: %s resources added since baseline\n' "$kind" "$count"
       remaining=$((remaining + count))
     done
   fi
   if [[ $(jq length "$state/known-accounts.private.json") != 0 ]]; then
-    iam_gc projects get-iam-policy "$project" --format=json > "$state/iam.private.json" || return
-    count=$(project_bindings | wc -l) || return
+    iam_gc projects get-iam-policy "$project" --format=json > "$state/iam.private.json" || return 1
+    count=$(project_bindings | wc -l) || return 1
     printf 'iam-bindings: %s owned references (including deleted accounts)\n' "$count"
     remaining=$((remaining + count))
   fi
   (( remaining == 0 ))
 }
 sweep() {
-  inventory || return
+  inventory || return 1
   local name location kind flag email role member
   while read -r name location; do gc container clusters delete "$name" --zone="$location" || true; done < <(kind=clusters owned < "$state/clusters.private.json")
-  inventory || return
+  inventory || return 1
   # Delete dependants first. Never delete an unrelated resource on an audit guess.
   for kind in forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks network-endpoint-groups instances disks addresses firewall-rules; do
     while read -r name location; do
@@ -211,14 +211,14 @@ sweep() {
   done
   while read -r name; do gc artifacts repositories delete "$name" --location="$region" || true; done < <(kind=repositories owned < "$state/repositories.private.json" | cut -f1 | sed 's|.*/||')
   while read -r name location; do
-    empty_bucket "$name" || return
-    scw_bucket delete "$name" >/dev/null || return
+    empty_bucket "$name" || return 1
+    scw_bucket delete "$name" >/dev/null || return 1
   done < <(kind=buckets owned < "$state/buckets.private.json")
   if [[ $(jq length "$state/known-accounts.private.json") != 0 ]]; then
-    iam_gc projects get-iam-policy "$project" --format=json > "$state/iam.private.json" || return
-    project_bindings > "$state/iam-bindings.private.tsv" || return
+    iam_gc projects get-iam-policy "$project" --format=json > "$state/iam.private.json" || return 1
+    project_bindings > "$state/iam-bindings.private.tsv" || return 1
     while read -r role member; do
-      iam_gc projects remove-iam-policy-binding "$project" --member="$member" --role="$role" --condition=None >/dev/null || return
+      iam_gc projects remove-iam-policy-binding "$project" --member="$member" --role="$role" --condition=None >/dev/null || return 1
     done < "$state/iam-bindings.private.tsv"
   fi
   # Do not delete an identity while removing its project grant is unconfirmed.

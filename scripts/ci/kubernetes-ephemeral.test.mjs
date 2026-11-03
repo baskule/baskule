@@ -273,3 +273,25 @@ versioning = sys.argv.pop()
     ]);
   }
 });
+
+test("an inventory failure in the real EXIT-trap sweep cannot report cleanup success", () => {
+  const work = mkdtempSync(join(root, ".run/gke-exit-cleanup-"));
+  try {
+    const driver = readFileSync(join(root, "e2e/kubernetes-ephemeral.sh"), "utf8");
+    const sweep = driver.slice(driver.indexOf("sweep() {"), driver.indexOf("guard_recent_runs() {"));
+    const cleanup = driver.slice(driver.indexOf("cleanup() {"), driver.indexOf("if ! audit >"));
+    const result = spawnSync("bash", ["-c", `
+      set -euo pipefail
+      run_id=baskule-ephemeral-1-abcd; project=fixture; region=europe-west1; zone=europe-west1-b
+      state=$1; BASKULE_K8S_EVIDENCE=$1; KUBECONFIG=$1/missing; DOCKER_CONFIG=$1/docker
+      started=$(date +%s); nodes_started=0
+      inventory() { return 1; }; owned() { :; }; gc() { printf '[]'; }; python3() { :; }
+      ${sweep}
+      ${cleanup}
+      trap cleanup EXIT
+      true
+    `, "bash", work], { encoding: "utf8", timeout: 3000 });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(readFileSync(join(work, "cost.txt"), "utf8"), /cleanup_status=1/);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
