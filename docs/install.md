@@ -181,7 +181,9 @@ docker compose run --rm -T backup > backup.tar.gz
 ```
 
 Save the archive, compose file, and optional `.env` off the machine. The archive includes generated secrets,
-local RustFS, gateway state and keys, and the private Docker store containing computer disks. Node caches are
+local RustFS and every host `baskule-space-*` disk labelled `baskule.managed=true` and
+`baskule.instance=$COMPUTERD_INSTANCE`. Compose defaults the instance to its project name;
+keep that name (or an explicit `COMPUTERD_INSTANCE`) unchanged on restore. Node caches are
 disposable. Snapshot external S3 separately while services are stopped. Protect backups like credentials.
 Start again with `docker compose up -d`.
 
@@ -193,7 +195,14 @@ docker compose run --rm -T restore < backup.tar.gz
 docker compose up -d
 ```
 
-Restore refuses nonempty volumes and re-admits restored computer disks. Files under `/sandbox/space` persist;
+Restore refuses nonempty platform volumes and any existing destination disk name. It recreates
+disks with their original names and labels and preserves numeric owners, modes and symlinks.
+Stop computer containers as well as Compose services before backup; they are managed outside Compose.
+Backup and restore mount the Docker socket read-only, which still grants Docker API administration.
+They use temporary network-disabled containers, removed on exit, and temporary local archive space
+large enough for all disks. Only standard local Docker volumes are supported for restore.
+Legacy unlabelled disks must first be migrated by the installation’s computerd; retired OpenShell
+stores are not included. This archive format requires the matching release’s restore command. Files under `/sandbox/space` persist;
 other computer files are temporary. Restore the same release before updating.
 
 ## Update

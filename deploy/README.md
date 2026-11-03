@@ -33,3 +33,13 @@ Create the first admin through that link. Once an admin exists, the token cannot
 
 Start only named profiles such as `traces`; `docker compose --profile '*' up` is unsupported because it also starts
 the edge inheritance templates. `BASKULE_EDGE` accepts lowercase `http` or `https`; HTTPS requires `BASKULE_DOMAIN`.
+
+Backup/restore use `celld/backup.sh` through the real job entrypoint. They retain platform secrets
+and RustFS, and discover host computer disks by `baskule.managed=true` plus `baskule.instance`.
+Compose passes `COMPUTERD_INSTANCE` (default: project name) to computerd and both jobs;
+new and migrated disks already receive these labels from computerd. Preserve that identity
+on restore. Stop both the stack and its independently managed computers for a consistent copy.
+The read-only socket bind still permits Docker API writes: temporary containers mount selected
+disks with networking disabled, and are deleted on exit. Archives preserve disk names, all labels,
+numeric owners, modes and symlinks. Restore requires absent disk names and empty platform volumes.
+Retired OpenShell stores are excluded. See the install guide for archive storage requirements.

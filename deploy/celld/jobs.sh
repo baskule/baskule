@@ -125,18 +125,8 @@ case "${1:-}" in
     shift
     exec "$@"
     ;;
-  backup)
-    # Stop the entire project first. stdout is the archive, never log output.
-    tar --xattrs --xattrs-include='*' --numeric-owner -C /backup -cf - . | gzip -1
-    ;;
-  restore)
-    # Restore into empty volumes only; never merge two installations' state.
-    for directory in /backup/*; do
-      [ -z "$(ls -A "$directory")" ] || { log "restore requires empty volumes"; exit 1; }
-    done
-    tar --xattrs --xattrs-include='*' --numeric-owner -C /backup -xzf -
-    # Restored disks need fresh OpenShell admission records, while their data and keys stay intact.
-    if [ -d /backup/openshell-state ]; then touch /backup/openshell-state/.baskule-restore; fi
+  backup|restore)
+    exec /usr/local/bin/baskule-backup "$1"
     ;;
   bootstrap)
     generate_secrets

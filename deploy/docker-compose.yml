@@ -216,6 +216,7 @@ services:
       COMPUTERD_PORT: "47094"
       COMPUTER_BACKEND: docker
       COMPUTER_LEGACY_VOLUME: ${COMPOSE_PROJECT_NAME}_baskule-openshell-docker
+      COMPUTERD_INSTANCE: ${COMPUTERD_INSTANCE:-${COMPOSE_PROJECT_NAME}}
       COMPUTER_NETWORK: ${COMPUTER_NETWORK:-baskule-computers}
       COMPUTER_GUARD_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computerd:${BASKULE_VERSION:-0.5.0}
       COMPUTER_DNS: ${COMPUTER_DNS:-1.1.1.1,8.8.8.8}
@@ -252,11 +253,13 @@ services:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     entrypoint: [baskule-celld-job, backup]
     network_mode: none
-    # Preserve trusted overlay filesystem attributes in the private Docker store.
-    cap_add: [SYS_ADMIN]
+    environment:
+      COMPUTERD_INSTANCE: ${COMPUTERD_INSTANCE:-${COMPOSE_PROJECT_NAME}}
+      BACKUP_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     logging:
       driver: none
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - baskule-storage-secrets:/backup/storage-secrets:ro
       - baskule-platform-secrets:/backup/platform-secrets:ro
       - baskule-computerd-secrets:/backup/computerd-secrets:ro
@@ -267,11 +270,13 @@ services:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     entrypoint: [baskule-celld-job, restore]
     network_mode: none
-    # Preserve trusted overlay filesystem attributes in the private Docker store.
-    cap_add: [SYS_ADMIN]
+    environment:
+      COMPUTERD_INSTANCE: ${COMPUTERD_INSTANCE:-${COMPOSE_PROJECT_NAME}}
+      BACKUP_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     logging:
       driver: none
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - baskule-storage-secrets:/backup/storage-secrets
       - baskule-platform-secrets:/backup/platform-secrets
       - baskule-computerd-secrets:/backup/computerd-secrets
