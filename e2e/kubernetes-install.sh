@@ -18,10 +18,13 @@ kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/downl
 kubectl -n agent-sandbox-system rollout status deployment/agent-sandbox-controller --timeout=180s
 chart=${BASKULE_K8S_CHART:-deploy/helm/baskule}
 if [[ -d $chart ]]; then helm dependency build "$chart" >/dev/null; fi
+chart_args=()
+if [[ -n ${BASKULE_K8S_CHART_VERSION:-} ]]; then chart_args=(--version "$BASKULE_K8S_CHART_VERSION"); fi
 values_args=()
 if [[ -n ${BASKULE_K8S_VALUES:-} ]]; then values_args=(--values "$BASKULE_K8S_VALUES"); fi
 # NOTES contains the private setup link. Keep Helm's output out of evidence.
 helm upgrade --install "$BASKULE_K8S_RELEASE" "$chart" \
+  "${chart_args[@]}" \
   --namespace "$BASKULE_K8S_NAMESPACE" --create-namespace --timeout 10m \
   --set rustfs.enabled=true --set-string publicUrl="$BASKULE_K8S_PUBLIC_URL" \
   --set-string global.image.registry="$registry" --set-string global.image.tag="$tag" \
@@ -59,7 +62,7 @@ kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status deployment/fake-llm --timeout
 node e2e/kubernetes-journey.mjs | tee "$BASKULE_K8S_EVIDENCE/journey.log"
 # Real lookup must retain token bytes on an upgrade. Compare hashes, never dump Secrets.
 before=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" -o jsonpath='{.data}' | sha256sum)
-helm upgrade "$BASKULE_K8S_RELEASE" "$chart" --namespace "$BASKULE_K8S_NAMESPACE" --reuse-values --timeout 10m --wait > /dev/null
+helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" --reuse-values --timeout 10m --wait > /dev/null
 after=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" -o jsonpath='{.data}' | sha256sum)
 [[ $before == "$after" ]]
 echo 'PASS Helm upgrade preserves generated tokens' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"

@@ -205,6 +205,7 @@ function plan(files, base) {
   if (has(/^deploy\/celld\//)) add("deploy: startup jobs", "node", ["--test", "deploy/celld/jobs.test.mjs", "deploy/celld/sync-plugins.test.mjs"], ".");
   if (has(/^deploy\/helm\/|^scripts\/helm-package\.sh$/)) add("Kubernetes: chart rendering", "bash", ["e2e/kubernetes-local.sh", "lint"], ".");
   if (has(/^scripts\/ci\/publish-images/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
+  if (has(/^e2e\/kubernetes-ephemeral\.sh$|^scripts\/ci\/kubernetes-ephemeral\.test\.mjs$/)) add("Kubernetes: ephemeral cleanup guard", "node", ["--test", "scripts/ci/kubernetes-ephemeral.test.mjs"], ".");
   if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
   if (has(/^(deploy|openshell|computer)\//)) tags.add("infra");
   const docs = files.filter((f) => /\.md$/.test(f)).filter((f) => existsSync(join(ROOT, f)) && !f.startsWith("vendor/") && !f.startsWith("app/"));

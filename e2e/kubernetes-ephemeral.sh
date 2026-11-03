@@ -9,6 +9,7 @@ project=${BASKULE_GKE_PROJECT:?set the owner-authorized project}
 region=europe-west1
 zone=$region-b
 marker=baskule-ephemeral
+resource_scope=
 state_root="$root/.run/kubernetes-ephemeral"
 mkdir -p "$state_root"
 umask 077
@@ -16,6 +17,14 @@ state=$(mktemp -d "$state_root/gke.XXXXXX")
 printf '%s' "$project" > "$state/project.private"
 printf '[]' > "$state/owned-links.private.json"
 gc() { gcloud --project="$project" --quiet "$@"; }
+owned_filter='def marked:
+  (.labels // .resourceLabels // {}) as $labels |
+  ($labels["baskule-run"] == $marker) or
+  ($marker == "baskule-ephemeral" and $labels["baskule-ephemeral"] == "true") or
+  ([$labels["baskule-run"] // "", $labels["goog-k8s-cluster-name"] // "",
+    .description // "", .displayName // "",
+    (if .email then "" else (.name // "" | split("/") | last) end)] | any(contains($marker)));
+'
 kinds=(instances disks forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks addresses network-endpoint-groups firewall-rules)
 inventory() {
   gc container clusters list --format=json > "$state/clusters.private.json" || return
@@ -25,10 +34,10 @@ inventory() {
   for kind in "${kinds[@]}"; do gc compute "$kind" list --format=json > "$state/$kind.private.json" || return; done
   # Persist references before controllers remove their parent objects, so sweep
   # can still identify a leftover health check/NEG after an interrupted deletion.
-  jq -s --arg marker "${scope:-$marker}" --arg project "$project" --slurpfile saved "$state/owned-links.private.json" '
+  jq -s --arg marker "${resource_scope:-$marker}" --arg project "$project" --slurpfile saved "$state/owned-links.private.json" "$owned_filter"'
     flatten | map(select(type == "object")) as $resources |
     def expand($links): ($links + [$resources[] |
-      select((tojson | contains($marker)) or (.selfLink as $url | $links | index($url))) |
+      select(marked or (.selfLink as $url | $links | index($url))) |
       .. | strings | select(contains("/projects/" + $project + "/"))]) | unique;
     $saved[0] | until(expand(.) == .; expand(.))
   ' "$state/"*.private.json > "$state/links.next"
@@ -36,7 +45,7 @@ inventory() {
 }
 owned() {
   # LB objects without a labels API carry the unique namespace in descriptions.
-  jq -r --arg marker "${scope:-$marker}" --slurpfile links "$state/owned-links.private.json" '.[] | select((tojson | contains($marker)) or (.selfLink as $url | $links[0] | index($url))) | [.name, (.zone // .region // "global" | split("/") | last)] | @tsv'
+  jq -r --arg marker "${resource_scope:-$marker}" --slurpfile links "$state/owned-links.private.json" "$owned_filter"'.[] | select(marked or (.selfLink as $url | $links[0] | index($url))) | [.name, (.zone // .region // "global" | split("/") | last)] | @tsv'
 }
 audit() {
   inventory || return
@@ -59,7 +68,7 @@ audit() {
 sweep() {
   inventory || return
   local name location kind flag email
-  while read -r name location; do gc container clusters delete "$name" --zone="$location" || true; done < <(jq -r --arg marker "${scope:-$marker}" '.[] | select(tojson | contains($marker)) | [.name,.location] | @tsv' "$state/clusters.private.json")
+  while read -r name location; do gc container clusters delete "$name" --zone="$location" || true; done < <(jq -r --arg marker "${resource_scope:-$marker}" "$owned_filter"'.[] | select(marked) | [.name,.location] | @tsv' "$state/clusters.private.json")
   inventory || return
   # Delete dependants first. Never delete an unrelated resource on an audit guess.
   for kind in forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks network-endpoint-groups instances disks addresses firewall-rules; do
@@ -78,7 +87,7 @@ sweep() {
   while read -r email; do
     gc projects remove-iam-policy-binding "$project" --member="serviceAccount:$email" --role=roles/container.defaultNodeServiceAccount --condition=None >/dev/null || true
     gc iam service-accounts delete "$email" || true
-  done < <(jq -r --arg marker "${scope:-$marker}" '.[] | select(tojson | contains($marker)) | .email' "$state/accounts.private.json")
+  done < <(jq -r --arg marker "${resource_scope:-$marker}" "$owned_filter"'.[] | select(marked) | .email' "$state/accounts.private.json")
   audit
 }
 case "${1:-}" in
@@ -99,6 +108,7 @@ run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]
 labels="$marker=true,baskule-run=$run_id"
 export BASKULE_K8S_EVIDENCE="$root/.run/evidence/$run_id"
 export KUBECONFIG="$state/kubeconfig.private" DOCKER_CONFIG="$state/docker.private"
+export HELM_REGISTRY_CONFIG="$DOCKER_CONFIG/helm-registry.json"
 export BASKULE_K8S_NAMESPACE="$run_id" BASKULE_K8S_RELEASE=baskule
 mkdir -p "$BASKULE_K8S_EVIDENCE" "$DOCKER_CONFIG"
 started=$(date +%s)
@@ -142,7 +152,7 @@ PY
   # Attempt known resource deletion even if an inventory API was unavailable.
   gc container clusters delete "$run_id" --zone="$zone" >/dev/null 2>&1
   gc artifacts repositories delete "$run_id" --location="$region" >/dev/null 2>&1
-  scope=$run_id sweep > "$BASKULE_K8S_EVIDENCE/cleanup-audit.txt" 2>&1
+  sweep > "$BASKULE_K8S_EVIDENCE/cleanup-audit.txt" 2>&1
   cleanup_status=$?
   elapsed=$(( $(date +%s) - started ))
   seconds=0
@@ -170,10 +180,16 @@ PY
   (( cleanup_status == 0 )) || status=1
   exit "$status"
 }
+if ! audit > "$BASKULE_K8S_EVIDENCE/before-audit.txt"; then
+  cat "$BASKULE_K8S_EVIDENCE/before-audit.txt" >&2
+  exit 1
+fi
+# Nothing exists for this run before preflight succeeds. Never install a cleanup
+# trap with another run's ownership references from that global audit.
+resource_scope=$run_id
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-audit > "$BASKULE_K8S_EVIDENCE/before-audit.txt"
 mkdir "$state/before"
 cp "$state/"*.private.json "$state/before/"
 BASKULE_VERSION=0.0.0-ephemeral scripts/helm-package.sh "$BASKULE_K8S_EVIDENCE" > "$BASKULE_K8S_EVIDENCE/chart-package.log"
@@ -181,6 +197,10 @@ export BASKULE_K8S_CHART="$BASKULE_K8S_EVIDENCE/baskule-0.0.0-ephemeral.tgz"
 gc artifacts repositories create "$run_id" --location="$region" --repository-format=docker --labels="$labels" > "$BASKULE_K8S_EVIDENCE/registry-create.log" 2>&1
 export BASKULE_K8S_REGISTRY="$region-docker.pkg.dev/$project/$run_id"
 gc auth print-access-token | docker login "$region-docker.pkg.dev" -u oauth2accesstoken --password-stdin >/dev/null
+gc auth print-access-token | helm registry login "$region-docker.pkg.dev" --username oauth2accesstoken --password-stdin >/dev/null
+helm push "$BASKULE_K8S_CHART" "oci://$BASKULE_K8S_REGISTRY" > "$BASKULE_K8S_EVIDENCE/chart-push.log" 2>&1
+export BASKULE_K8S_CHART="oci://$BASKULE_K8S_REGISTRY/baskule"
+export BASKULE_K8S_CHART_VERSION=0.0.0-ephemeral
 export BASKULE_K8S_TAG=${BASKULE_K8S_TAG:-kubernetes}
 for name in celld computerd openshell-kubernetes computer openshell-supervisor openshell-sandbox; do
   docker tag "baskule-$name:$BASKULE_K8S_TAG" "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG"

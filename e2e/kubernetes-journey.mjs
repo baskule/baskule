@@ -30,9 +30,11 @@ async function forward(resource, remotePort, localPort = 0) {
   });
 }
 async function rpc(person, space) {
-  let result, error;
-  person.rpc(space).then(value => { result = value; }, value => { error = value; });
-  await expect.poll(() => { if (error) throw error; return Boolean(result); }, { timeout: 60_000 }).toBe(true);
+  let result;
+  await expect.poll(async () => {
+    try { result = await person.rpc(space); return true; }
+    catch { return false; }
+  }, { timeout: 120_000, message: "space RPC becomes available after startup or lease recovery" }).toBe(true);
   return result;
 }
 async function ingressSession(signIn) {
@@ -126,7 +128,7 @@ try {
     ai: { providerId: "custom", baseUrl: "http://fake-llm:47601/v1", model: { id: "fake-model", name: "fake-model", image: true, pdf: true, limit: { context: 200_000, output: 16_000 }, settings: {} } },
   });
   const selection = process.env.BASKULE_K8S_JOURNEY ?? "full";
-  assert.ok(["full", "ingress"].includes(selection), "journey selection: full or ingress");
+  assert.ok(["full", "ingress", "failover"].includes(selection), "journey selection: full, ingress or failover");
   if (selection === "ingress") {
     await checkIngress(publicUrl);
     writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), selection, ingress: true }));
@@ -157,45 +159,47 @@ try {
         input: Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString() + "\n", encoding: "utf8", timeout: 190_000,
       });
     }
-    computer("stop");
-    computer("ensure");
-    assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
-    pass("per-space PVC preserves file bytes after computer stop/start");
-    const sandbox = objects("get", "sandboxes", `default--${namesFor(space, release).sandbox}`);
-    const workloadSelector = `openshell.ai/boundary-role=workload,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`;
-    const pods = objects("get", "pods", "-l", workloadSelector).items;
-    assert.equal(pods.length, 1);
-    const pod = pods[0];
-    const pvcBefore = objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort();
-    if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("cordon", pod.spec.nodeName);
-    try {
-      kube("delete", "pod", pod.metadata.name, "--wait=true");
-      await expect.poll(() => {
-        // The next use wakes a Sandbox suspended after its workload pod vanished.
-        try { computer("ensure"); } catch { return false; }
-        const replacement = objects("get", "pods", "-l", workloadSelector).items[0];
-        return Boolean(replacement && replacement.metadata.uid !== pod.metadata.uid && replacement.status.conditions?.some(c => c.type === "Ready" && c.status === "True"));
-      }, { timeout: 240_000 }).toBe(true);
-      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
-        assert.notEqual(objects("get", "pods", "-l", workloadSelector).items[0].spec.nodeName, pod.spec.nodeName);
-      }
+    if (selection === "full") {
+      computer("stop");
       computer("ensure");
       assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
-      assert.deepEqual(objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort(), pvcBefore);
-      pass("replacement computer pod mounts the same PVC and preserves file bytes");
-    } finally {
-      if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("uncordon", pod.spec.nodeName);
+      pass("per-space PVC preserves file bytes after computer stop/start");
+      const sandbox = objects("get", "sandboxes", `default--${namesFor(space, release).sandbox}`);
+      const workloadSelector = `openshell.ai/boundary-role=workload,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`;
+      const pods = objects("get", "pods", "-l", workloadSelector).items;
+      assert.equal(pods.length, 1);
+      const pod = pods[0];
+      const pvcBefore = objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort();
+      if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("cordon", pod.spec.nodeName);
+      try {
+        kube("delete", "pod", pod.metadata.name, "--wait=true");
+        await expect.poll(() => {
+          // The next use wakes a Sandbox suspended after its workload pod vanished.
+          try { computer("ensure"); } catch { return false; }
+          const replacement = objects("get", "pods", "-l", workloadSelector).items[0];
+          return Boolean(replacement && replacement.metadata.uid !== pod.metadata.uid && replacement.status.conditions?.some(c => c.type === "Ready" && c.status === "True"));
+        }, { timeout: 240_000 }).toBe(true);
+        if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
+          assert.notEqual(objects("get", "pods", "-l", workloadSelector).items[0].spec.nodeName, pod.spec.nodeName);
+        }
+        computer("ensure");
+        assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
+        assert.deepEqual(objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort(), pvcBefore);
+        pass("replacement computer pod mounts the same PVC and preserves file bytes");
+      } finally {
+        if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("uncordon", pod.spec.nodeName);
+      }
+      // A network-policy-enforced workload cannot dial any peer, S3 or private IP.
+      const workload = objects("get", "pods", "-l", workloadSelector).items[0];
+      const probe = 'const net=require("net");const s=net.connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>process.exit(1));s.on("error",()=>process.exit(0));s.setTimeout(3000,()=>{s.destroy();process.exit(0)});';
+      for (const [host, port] of [
+        [objects("get", "pod", celldPod).status.podIP, "47092"],
+        [objects("get", "svc", `${release}-rustfs`).spec.clusterIP, "3900"],
+        ["169.254.169.254", "80"],
+      ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
+      pass("NetworkPolicy blocks direct computer access to peer, S3 and metadata IPs");
+      if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
     }
-    // A network-policy-enforced workload cannot dial any peer, S3 or private IP.
-    const workload = objects("get", "pods", "-l", workloadSelector).items[0];
-    const probe = 'const net=require("net");const s=net.connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>process.exit(1));s.on("error",()=>process.exit(0));s.setTimeout(3000,()=>{s.destroy();process.exit(0)});';
-    for (const [host, port] of [
-      [objects("get", "pod", celldPod).status.podIP, "47092"],
-      [objects("get", "svc", `${release}-rustfs`).spec.clusterIP, "3900"],
-      ["169.254.169.254", "80"],
-    ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
-    pass("NetworkPolicy blocks direct computer access to peer, S3 and metadata IPs");
-    if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
     // Keep the killed ordinal unavailable until another celld owns its cells.
     const victim = `${release}-celld-1`;
     const peer = async name => {
