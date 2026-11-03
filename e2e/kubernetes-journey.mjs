@@ -269,6 +269,10 @@ try {
         [objects("get", "pod", celldPod).status.podIP, "47092"],
         [objects("get", "svc", `${release}-rustfs`).spec.clusterIP, "3900"],
         ["169.254.169.254", "80"],
+        ["metadata.google.internal", "80"],
+        [objects("get", "svc", release).spec.clusterIP, "80"],
+        [objects("get", "svc", `${release}-computerd`).spec.clusterIP, "47094"],
+        [workload.status.hostIP, "10250"],
       ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
       pass("NetworkPolicy blocks direct computer access to peer, S3 and metadata IPs");
       if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
