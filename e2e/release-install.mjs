@@ -32,9 +32,12 @@ function command(args, { cwd = root, input, inputFile, output, allowFailure = fa
   appendFileSync(resolve(evidence, "commands.log"), `docker ${args.map(a => a.startsWith("RUSTFS_SECRET_KEY=") ? "RUSTFS_SECRET_KEY=<redacted>" : a).join(" ")}\n`);
   const source = inputFile ? openSync(inputFile, "r") : undefined;
   const destination = output ? openSync(output, "w", 0o600) : undefined;
+  const env = { ...process.env, BASKULE_REGISTRY: registry };
+  // CI sets this for packaging; installed versions must come from the downloaded Compose file.
+  delete env.BASKULE_VERSION;
   let result;
   try {
-    result = spawnSync("docker", args, { cwd, input, env: { ...process.env, BASKULE_REGISTRY: registry }, encoding: "utf8", timeout: 900_000,
+    result = spawnSync("docker", args, { cwd, input, env, encoding: "utf8", timeout: 900_000,
       stdio: [source ?? "pipe", destination ?? "pipe", "pipe"], maxBuffer: 20 * 1024 * 1024 });
   } finally {
     if (source !== undefined) closeSync(source);
@@ -478,7 +481,7 @@ async function fresh() {
     w.dc(["down", "-v"]);
   }
 }
-function imageCleanup(w) {
+async function imageCleanup(w) {
   const gateway = w.dc(["ps", "-q", "baskule-openshell"]);
   // A distinct obsolete image proves that pruning frees an image, beyond just removing aliases.
   const old = command(["exec", gateway, "sh", "-c",
@@ -493,6 +496,8 @@ function imageCleanup(w) {
   writeFileSync(composeFile, readFileSync(composeFile, "utf8").replaceAll(`BASKULE_VERSION:-${version}`, `BASKULE_VERSION:-${next}`));
   w.dc(["up", "-d"]);
   const updated = w.dc(["ps", "-q", "baskule-openshell"]);
+  expect(updated).not.toBe(gateway);
+  await health(w, ["baskule-openshell"]);
   const references = command(["exec", updated, "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"]);
   expect(references.split("\n").sort()).toEqual(["computer", "openshell-supervisor", "openshell-sandbox"].map(name => `${registry}/baskule-${name}:${next}`).sort());
   expect(command(["exec", updated, "docker", "image", "ls", "-aq"])).not.toContain(old.replace("sha256:", "").slice(0, 12));
@@ -523,7 +528,7 @@ async function single() {
   w.dc(["up", "-d"]);
   expect(secretHash(w)).toBe(secrets);
   pass("second up preserves generated secrets");
-  imageCleanup(w);
+  await imageCleanup(w);
   expect(secretHash(w)).toBe(secrets);
   pass("downloaded compose version update preserves generated secrets");
   await persisted(base, result);
