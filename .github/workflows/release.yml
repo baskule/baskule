@@ -144,7 +144,9 @@ jobs:
           [[ $RUNNER_ENVIRONMENT == github-hosted ]]
           df -h .
           # These are unrelated preinstalled SDKs on this disposable VM.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          if (( $(df --output=avail -B1 . | tail -1) < 35000000000 )); then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          fi
           df -h .
           available=$(df --output=avail -B1 . | tail -1)
           (( available >= 35000000000 )) || { echo 'Need 35 GB free for the cold backend build.' >&2; exit 1; }
@@ -384,7 +386,9 @@ jobs:
         shell: bash
         run: |
           [[ $RUNNER_ENVIRONMENT == github-hosted ]]
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          if (( $(df --output=avail -B1 . | tail -1) < 35000000000 )); then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          fi
           df -h .
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
