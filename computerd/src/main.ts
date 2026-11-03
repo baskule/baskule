@@ -1,24 +1,25 @@
 // baskule-computerd entry point. See README.md.
 import { loadConfig } from "./config.ts";
-import { Gateway } from "./gateway.ts";
+import { DockerBackend } from "./docker.ts";
 import { Computers } from "./computers.ts";
 import { createServer } from "./server.ts";
 import { log } from "./log.ts";
 
 const cfg = loadConfig();
-const gw = new Gateway(cfg.gateway);
-const computers = new Computers(gw, cfg);
-const server = createServer({ cfg, gw, computers });
+if (cfg.backend === "kubernetes") throw new Error("Kubernetes backend not built in yet");
+const backend = new DockerBackend(cfg.dockerHost, cfg.network);
+const computers = new Computers(backend, cfg);
+const server = createServer({ cfg, backend, computers });
 
 server.listen(cfg.port, cfg.host, () => {
   log.info("computerd listening", {
     port: cfg.port,
-    gateway: cfg.gateway,
+    backend: cfg.backend,
     image: cfg.image,
     idleMinutes: cfg.idleMs / 60_000,
   });
 });
-computers.adopt().catch((e) => log.warn("initial adopt failed (gateway not up yet?)", { err: String(e?.message ?? e) }));
+computers.adopt().catch((e) => log.warn("initial adopt failed (backend not up yet?)", { err: String(e?.message ?? e) }));
 computers.startIdleLoop();
 
 function shutdown(sig: string) {
@@ -26,7 +27,7 @@ function shutdown(sig: string) {
   computers.stopIdleLoop();
   server.close();
   server.closeAllConnections();
-  gw.close();
+  backend.close();
   setTimeout(() => process.exit(0), 500).unref();
 }
 process.on("SIGTERM", () => shutdown("SIGTERM"));

@@ -1,8 +1,8 @@
 // Exec inside a computer: argv only (no shell strings built from caller input), a `setsid` wrapper that records
-// the process group so it can be killed (OpenShell has no kill RPC and cancelling a stream leaks the process),
-// an environment allowlist, and stdin streamed in < 1 MiB gRPC messages.
+// the process group so it can be killed independently of the exec stream),
+// an environment allowlist, and streaming stdin.
 import { randomUUID } from "node:crypto";
-import type { ExecEvent, Gateway } from "./gateway.ts";
+import type { ExecEvent, Backend } from "./backend.ts";
 
 export const EXEC_ID = /^[A-Za-z0-9_-]{1,64}$/;
 export const SIGNALS = new Set(["TERM", "KILL", "INT", "HUP", "QUIT", "USR1", "USR2"]);
@@ -96,10 +96,10 @@ export interface RunningExec {
   cancel(): void;
 }
 
-export function startExec(gw: Gateway, root: string, o: ExecOptions): RunningExec {
+export function startExec(backend: Backend, root: string, o: ExecOptions): RunningExec {
   const id = o.id ?? randomUUID();
-  const h = gw.exec({
-    sandbox: o.sandbox,
+  const h = backend.exec({
+    machine: o.sandbox,
     command: o.raw ? o.argv : wrapArgv(id, o.argv),
     workdir: o.cwd,
     environment: { ...baseEnv(root), ...(o.env ?? {}) },
@@ -120,12 +120,12 @@ export function startExec(gw: Gateway, root: string, o: ExecOptions): RunningExe
 
 /** Run to completion and collect output (internal helpers: mkdir, kill, stat...). */
 export async function runCollect(
-  gw: Gateway,
+  backend: Backend,
   root: string,
   o: ExecOptions,
   maxBytes = 64 * 1024 * 1024,
 ): Promise<{ code: number; stdout: Buffer; stderr: Buffer }> {
-  const x = startExec(gw, root, o);
+  const x = startExec(backend, root, o);
   const out: Buffer[] = [];
   const err: Buffer[] = [];
   let n = 0;
@@ -146,7 +146,7 @@ export async function runCollect(
 }
 
 /** Signal every process of the exec's process group. false = no such (running) exec. */
-export async function killExec(gw: Gateway, root: string, sandbox: string, id: string, signal: string): Promise<boolean> {
-  const r = await runCollect(gw, root, { sandbox, argv: killArgv(id, signal, signal === "KILL"), raw: true });
+export async function killExec(backend: Backend, root: string, sandbox: string, id: string, signal: string): Promise<boolean> {
+  const r = await runCollect(backend, root, { sandbox, argv: killArgv(id, signal, signal === "KILL"), raw: true });
   return r.code === 0;
 }

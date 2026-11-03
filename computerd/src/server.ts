@@ -15,7 +15,7 @@ import { timingSafeEqual, randomUUID } from "node:crypto";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, WebSocket } from "ws";
 import type { Config } from "./config.ts";
-import type { Gateway, ExecEvent } from "./gateway.ts";
+import type { Backend, ExecEvent } from "./backend.ts";
 import { Computers, TooManyStreams } from "./computers.ts";
 import { EXEC_ID, SIGNALS, filterEnv, killExec, runCollect, startExec, type RunningExec } from "./exec.ts";
 import {
@@ -89,11 +89,11 @@ function validCwd(cwd: unknown): string | undefined {
 
 export interface ServerDeps {
   cfg: Config;
-  gw: Gateway;
+  backend: Backend;
   computers: Computers;
 }
 
-export function createServer({ cfg, gw, computers }: ServerDeps) {
+export function createServer({ cfg, backend, computers }: ServerDeps) {
   const tokenBuf = Buffer.from(`Bearer ${cfg.token}`);
   const authorized = (req: http.IncomingMessage) => {
     const h = Buffer.from(String(req.headers.authorization ?? ""));
@@ -124,9 +124,9 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
   /** Kill the process group: TERM now, then KILL after the grace period (harmless if already gone). */
   function terminate(spaceId: string, id: string, graceMs = KILL_GRACE_MS) {
     const sandbox = sandboxOf(spaceId);
-    killExec(gw, cfg.sandboxRoot, sandbox, id, "TERM").catch(() => {});
+    killExec(backend, cfg.sandboxRoot, sandbox, id, "TERM").catch(() => {});
     if (graceMs > 0)
-      setTimeout(() => killExec(gw, cfg.sandboxRoot, sandbox, id, "KILL").catch(() => {}), graceMs).unref();
+      setTimeout(() => killExec(backend, cfg.sandboxRoot, sandbox, id, "KILL").catch(() => {}), graceMs).unref();
   }
 
   // ---------------------------------------------------------------------------------------------- exec
@@ -162,7 +162,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     let x: RunningExec;
     try {
       await ensureFor(spaceId);
-      x = startExec(gw, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv, cwd, env, stdin, id });
+      x = startExec(backend, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv, cwd, env, stdin, id });
     } catch (e) {
       release();
       throw e;
@@ -217,9 +217,9 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     if (!Number.isFinite(graceMs) || graceMs < 0 || graceMs > 600_000) throw new HttpError(400, "graceMs must be 0..600000");
     const st = await computers.status(spaceId);
     if (!st.running) return json(res, 200, { id, killed: false, reason: "computer not running" });
-    const killed = await killExec(gw, cfg.sandboxRoot, sandboxOf(spaceId), id, signal);
+    const killed = await killExec(backend, cfg.sandboxRoot, sandboxOf(spaceId), id, signal);
     if (killed && signal === "TERM" && graceMs > 0)
-      setTimeout(() => killExec(gw, cfg.sandboxRoot, sandboxOf(spaceId), id, "KILL").catch(() => {}), graceMs).unref();
+      setTimeout(() => killExec(backend, cfg.sandboxRoot, sandboxOf(spaceId), id, "KILL").catch(() => {}), graceMs).unref();
     json(res, 200, { id, killed });
   }
 
@@ -235,7 +235,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     const release = acquire(spaceId);
     try {
       await ensureFor(spaceId);
-      const x = startExec(gw, cfg.sandboxRoot, {
+      const x = startExec(backend, cfg.sandboxRoot, {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", GET_SCRIPT, statOnly ? "stat" : "auto", path, start, count, suffix, cfg.sandboxRoot],
         raw: true,
@@ -340,7 +340,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
               yield c as Buffer;
             }
           })();
-      const r = await runCollect(gw, cfg.sandboxRoot, {
+      const r = await runCollect(backend, cfg.sandboxRoot, {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", PUT_SCRIPT, isDir ? "dir" : "file", path, cfg.sandboxRoot, isDir ? "" : (len ?? "")],
         stdin: body,
@@ -365,7 +365,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
       pending = (async () => {
         await ensureFor(spaceId);
         const result = await traced("browser.bridge.ensure", {}, () =>
-          runCollect(gw, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv: ["baskule-browser-bridge", "ensure"], env: { BASKULE_BROWSER_PORT: String(browserPort) }, raw: true }));
+          runCollect(backend, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv: ["baskule-browser-bridge", "ensure"], env: { BASKULE_BROWSER_PORT: String(browserPort) }, raw: true }));
         if (result.code !== 0) throw new HttpError(502, `browser bridge did not start: ${result.stderr.toString().slice(-400)}`);
       })();
       browserStarts.set(spaceId, pending);
@@ -383,7 +383,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
       } else await ensureBrowserBridge(spaceId);
       const upstream = http.request({ host: "127.0.0.1", port: browserPort, path, method: req.method,
         headers: { "content-type": req.headers["content-type"] ?? "application/json" },
-        createConnection: () => gw.forwardTcp(sandboxOf(spaceId), browserPort) as any,
+        createConnection: () => backend.connect(sandboxOf(spaceId), browserPort) as any,
       }, response => {
         res.writeHead(response.statusCode ?? 502, { "content-type": response.headers["content-type"] ?? "application/json", "cache-control": "no-store", ...(response.headers["content-disposition"] ? { "content-disposition": response.headers["content-disposition"] } : {}) });
         if (metadata) res.flushHeaders();
@@ -484,7 +484,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
 
   // ------------------------------------------------------------------------------- cdp (browser)
   async function browserEnsure(spaceId: string): Promise<any> {
-    const r = await traced("browser.cdp.ensure", {}, () => runCollect(gw, cfg.sandboxRoot, {
+    const r = await traced("browser.cdp.ensure", {}, () => runCollect(backend, cfg.sandboxRoot, {
       sandbox: sandboxOf(spaceId),
       argv: ["baskule-browser", "ensure"],
       env: { BASKULE_CDP_PORT: String(cfg.cdpPort) },
@@ -507,7 +507,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
           path,
           method: "GET",
           headers: { connection: "close" },
-          createConnection: () => gw.forwardTcp(sandboxOf(spaceId), cfg.cdpPort) as any,
+          createConnection: () => backend.connect(sandboxOf(spaceId), cfg.cdpPort) as any,
         },
         async (r) => {
           const chunks: Buffer[] = [];
@@ -588,13 +588,13 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     }
     const sandbox = sandboxOf(spaceId);
     const upstream = new WebSocket(`ws://127.0.0.1:${port}${path}`, {
-      createConnection: () => gw.forwardTcp(sandbox, port) as any,
+      createConnection: () => backend.connect(sandbox, port) as any,
       perMessageDeflate: false,
       maxPayload: 256 * 1024 * 1024,
       handshakeTimeout: 15_000,
     });
     await new Promise<void>((resolve, reject) => {
-      upstream.once("open", () => resolve());
+      upstream.once("open", () => { upstream.pause(); resolve(); });
       upstream.once("error", (e) => reject(new HttpError(502, `DevTools connection failed: ${e.message}`)));
       upstream.once("unexpected-response", (_r, resp) => reject(new HttpError(resp.statusCode === 404 ? 404 : 502, `DevTools answered ${resp.statusCode}`)));
     });
@@ -621,6 +621,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
       ws.on("error", () => done());
       upstream.on("close", done);
       upstream.on("error", () => done());
+      upstream.resume();
     });
   }
 

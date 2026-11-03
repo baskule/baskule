@@ -1,36 +1,31 @@
-// Unit tests: computerd against a fake gateway (test/fake-gateway.ts). Run: pnpm test
+// Unit tests: computerd against a fake gateway (test/fake-backend.ts). Run: pnpm test
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { WebSocketServer } from "ws";
-import { FakeGateway } from "./fake-gateway.ts";
+import { FakeBackend } from "./fake-backend.ts";
 import { Client, wsExchange } from "./client.ts";
 import { loadConfig, type Config } from "../src/config.ts";
-import { Gateway } from "../src/gateway.ts";
+import type { Backend, MachineSpec } from "../src/backend.ts";
 import { Computers } from "../src/computers.ts";
 import { createServer } from "../src/server.ts";
-import { computerPolicy, namesFor } from "../src/policy.ts";
+import { namesFor } from "../src/policy.ts";
 import { filterEnv } from "../src/exec.ts";
 import { normalizePath, parseRange, PathError } from "../src/files.ts";
 
 const TOKEN = "unit-test-token-0123456789";
-let fake: FakeGateway;
+let fake: FakeBackend;
 let root: string;
-let volumes: http.Server;
-let volumeCalls: string[] = [];
-const volumeSet = new Set<string>();
-let volumeBusy = 0; // answer 409 that many times to DELETE
 let cdp: WebSocketServer;
 let cdpPort: number;
 let bridge: http.Server;
 let bridgeWs: WebSocketServer;
 let cfg: Config;
-let gw: Gateway;
+let backend: Backend;
 let computers: Computers;
 let server: http.Server;
 let c: Client;
@@ -77,41 +72,18 @@ before(async () => {
     ws.on("message", data => ws.send(JSON.stringify({ path: req.url, data: data.toString() })));
   });
   await new Promise<void>(r => bridge.listen(0, "127.0.0.1", r));
-  volumes = http.createServer((req, res) => {
-    volumeCalls.push(`${req.method} ${req.url} ${req.headers.authorization}`);
-    const name = String(req.url).replace("/volumes/", "");
-    if (req.method === "PUT") {
-      const created = !volumeSet.has(name);
-      volumeSet.add(name);
-      return res.end(JSON.stringify({ name, created }));
-    }
-    if (req.method === "DELETE") {
-      if (volumeBusy > 0) {
-        volumeBusy--;
-        res.statusCode = 409;
-        return res.end('{"error":"volume is in use"}');
-      }
-      return res.end(JSON.stringify({ name, deleted: volumeSet.delete(name) }));
-    }
-    res.end("{}");
-  });
-  await new Promise<void>((r) => volumes.listen(0, "127.0.0.1", () => r()));
-  fake = new FakeGateway();
-  const port = await fake.start();
+  fake = new FakeBackend();
   cfg = loadConfig({
     COMPUTERD_TOKEN: TOKEN,
-    OPENSHELL_GATEWAY: `127.0.0.1:${port}`,
-    OPENSHELL_VOLUMES_URL: `http://127.0.0.1:${(volumes.address() as any).port}`,
-    OPENSHELL_VOLUMES_TOKEN: "vol-token",
     SANDBOX_ROOT: root,
     BASKULE_CDP_PORT: String(cdpPort),
     BASKULE_BROWSER_PORT: String((bridge.address() as any).port),
     MAX_STREAMS_PER_COMPUTER: "3",
     IDLE_MINUTES: "10",
   });
-  gw = new Gateway(cfg.gateway);
-  computers = new Computers(gw, cfg);
-  server = createServer({ cfg, gw, computers });
+  backend = fake;
+  computers = new Computers(backend, cfg);
+  server = createServer({ cfg, backend, computers });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
   c = new Client(`http://127.0.0.1:${(server.address() as any).port}`, TOKEN);
 });
@@ -119,11 +91,9 @@ before(async () => {
 after(() => {
   server.closeAllConnections();
   server.close();
-  volumes.close();
   cdp.close();
   bridgeWs.close(); bridge.closeAllConnections(); bridge.close();
-  gw.close();
-  fake.stop();
+  backend.close();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -171,18 +141,7 @@ test("filterEnv keeps the allowlist only", () => {
   assert.deepEqual(dropped.sort(), ["A;rm", "AWS_SECRET_ACCESS_KEY", "BAD-KEY", "LD_PRELOAD", "OPENSHELL_SANDBOX", "PATH"]);
 });
 
-test("policy.ts mirrors openshell/policies/computer.yaml", () => {
-  const yaml = readFileSync(fileURLToPath(new URL("../../openshell/policies/computer.yaml", import.meta.url)), "utf8");
-  const p = computerPolicy();
-  const list = (key: string) =>
-    (new RegExp(`${key}: \\[([^\\]]*)\\]`).exec(yaml)?.[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  assert.deepEqual(list("read_only"), p.filesystem.read_only);
-  assert.deepEqual(list("read_write"), p.filesystem.read_write);
-  assert.deepEqual(list("ports").map(Number), p.network_policies.internet.endpoints[0].ports);
-  assert.match(yaml, /public_internet: true/);
-  assert.match(yaml, /tls: skip/);
-  assert.match(yaml, /run_as_user: "1000"/);
-});
+
 
 // ------------------------------------------------------------------------------------------------ HTTP API
 test("auth and health", async () => {
@@ -194,53 +153,30 @@ test("auth and health", async () => {
 });
 
 
-test("ensure: creates os-<id> with volume, policy, resources; idempotent", async () => {
-  volumeCalls = [];
+test("ensure: creates os-<id> with disk and resources; idempotent", async () => {
   const r = await c.json("POST", "/v1/spaces/s1/computer/ensure", {});
   assert.equal(r.phase, "ready");
   assert.equal(r.created, true);
-  assert.deepEqual(volumeCalls, ["PUT /volumes/baskule-space-s1 Bearer vol-token"]);
-  const create = fake.calls.find((x) => x.method === "CreateSandbox")!.req;
+  const create = fake.calls.find((x) => x.method === "create")!.req as MachineSpec;
   assert.equal(create.name, "os-s1");
-  assert.equal(create.workspace_scope.workspace, "default");
-  assert.equal(create.labels["baskule.managed"], "true");
-  assert.equal(create.annotations["baskule.space"], "s1");
-  assert.deepEqual(create.spec.command, ["sleep", "infinity"]);
-  assert.equal(create.spec.template.image, "baskule-computer:local");
-  const ep = create.spec.policy.network_policies.internet.endpoints[0];
-  assert.equal(ep.public_internet, true);
-  assert.equal(ep.tls, "NETWORK_TLS_MODE_SKIP");
-  assert.deepEqual(ep.ports, [80, 443, 22]);
-  const dc = create.spec.template.driver_config.fields.docker.structValue.fields.mounts.listValue.values[0].structValue.fields;
-  assert.equal(dc.source.stringValue, "baskule-space-s1");
-  assert.equal(dc.target.stringValue, `${root}/space`);
-  assert.equal(dc.read_only.boolValue, false);
-  const lim = create.spec.template.resources.fields.limits.structValue.fields;
-  assert.equal(lim.cpu.stringValue, "2");
-  assert.equal(lim.memory.stringValue, "3Gi");
+  assert.equal(create.disk, "baskule-space-s1");
+  assert.equal(create.image, "baskule-computer:local");
+  assert.equal(create.cpus, "2");
+  assert.equal(create.memory, "3Gi");
   // first exec prepared home + chats
   assert.deepEqual(fake.execs.at(-1)!.command, ["mkdir", "-p", "--", `${root}/space/home`, `${root}/space/chats`]);
   const again = await c.json("POST", "/v1/spaces/s1/computer/ensure", {});
   assert.equal(again.created, false);
-  assert.equal(fake.calls.filter((x) => x.method === "CreateSandbox").length, 1);
+  assert.equal(fake.calls.filter((x) => x.method === "create").length, 1);
 });
 
 test("ensure: concurrent calls share one creation", async () => {
-  const before = fake.calls.filter((x) => x.method === "CreateSandbox").length;
+  const before = fake.calls.filter((x) => x.method === "create").length;
   await Promise.all([1, 2, 3, 4].map(() => c.json("POST", "/v1/spaces/conc/computer/ensure", {})));
-  assert.equal(fake.calls.filter((x) => x.method === "CreateSandbox").length, before + 1);
+  assert.equal(fake.calls.filter((x) => x.method === "create").length, before + 1);
 });
 
-test("ensure: Error after start is recovered by stop + start", async () => {
-  await c.json("POST", "/v1/spaces/err1/computer/ensure", {});
-  await c.json("POST", "/v1/spaces/err1/computer/stop");
-  fake.nextStartPhases = ["SANDBOX_PHASE_ERROR"];
-  const stopsBefore = fake.calls.filter((x) => x.method === "StopSandbox").length;
-  const r = await c.json("POST", "/v1/spaces/err1/computer/ensure", {});
-  assert.equal(r.phase, "ready");
-  assert.equal(r.started, true);
-  assert.equal(fake.calls.filter((x) => x.method === "StopSandbox").length, stopsBefore + 1);
-});
+
 
 test("stop then status", async () => {
   await c.json("POST", "/v1/spaces/st1/computer/ensure", {});
@@ -272,12 +208,10 @@ test("exec: validation errors", async () => {
   assert.equal((await c.req("POST", "/v1/spaces/s1/exec", { argv: ["x".repeat(300 * 1024)] })).status, 413);
 });
 
-test("exec: stdin is chunked below 1 MiB per gRPC message", async () => {
+test("exec: large stdin reaches the process intact", async () => {
   const big = randomBytes(2 * 1024 * 1024 + 3);
   const r = await c.exec("s1", { argv: ["wc", "-c"], stdin: big.toString("base64") });
   assert.equal(r.stdout.trim(), String(big.length));
-  const chunks = fake.execs.at(-1)!.stdinChunks;
-  assert.ok(chunks.length >= 9 && Math.max(...chunks) <= 256 * 1024, JSON.stringify(chunks));
   // octet-stream variant with metadata in a header
   const meta = Buffer.from(JSON.stringify({ argv: ["wc", "-c"] })).toString("base64url");
   const res = await c.req("POST", "/v1/spaces/s1/exec", big, { "content-type": "application/octet-stream", "x-baskule-exec": meta });
@@ -384,7 +318,7 @@ test("cdp: tunnel reaches the browser endpoint (and ?target=)", async () => {
 test("idle stop: only after IDLE with no streams and no keep", async () => {
   await c.json("POST", "/v1/spaces/idle1/computer/ensure", {});
   await c.json("POST", "/v1/spaces/idle2/computer/ensure", { keep: true });
-  const stops = () => fake.calls.filter((x) => x.method === "StopSandbox").map((x) => x.req.name);
+  const stops = () => fake.calls.filter((x) => x.method === "stop").map((x) => x.req.name);
   const before = stops().length;
   await computers.idleTick(Date.now() + 5 * 60_000); // not idle long enough
   assert.equal(stops().length, before);
@@ -443,27 +377,25 @@ test("idle policy follows organization settings and skips stopping when the cont
 });
 
 test("adopt: running managed computers unknown to this process get idle-stopped", async () => {
-  const fresh = new Computers(gw, { ...cfg, idleMs: 1000 });
+  const fresh = new Computers(backend, { ...cfg, idleMs: 1000 });
   await fresh.adopt();
   await fresh.idleTick(Date.now() + 2000);
-  const ready = [...fake.sandboxes.values()].filter((s) => s.phase === "SANDBOX_PHASE_READY" || s.phase === "SANDBOX_PHASE_STOPPING");
-  assert.ok(ready.every((s) => s.phase !== "SANDBOX_PHASE_READY"), ready.map((s) => `${s.name}:${s.phase}`).join(","));
+  const ready = [...fake.sandboxes.values()].filter((s) => s.phase === "ready" || s.phase === "stopping");
+  assert.ok(ready.every((s) => s.phase !== "ready"), ready.map((s) => `${s.name}:${s.phase}`).join(","));
 });
 
 test("delete: needs {confirm: <spaceId>}, removes sandbox and volume, idempotent", async () => {
   await c.json("POST", "/v1/spaces/del1/computer/ensure", {});
   assert.ok(fake.sandboxes.has("os-del1"));
-  assert.ok(volumeSet.has("baskule-space-del1"));
+  assert.ok(fake.disks.has("baskule-space-del1"));
   for (const body of [undefined, {}, { confirm: "other" }, { confirm: true }]) {
     assert.equal((await c.req("POST", "/v1/spaces/del1/computer/delete", body)).status, 400, JSON.stringify(body));
   }
   assert.ok(fake.sandboxes.has("os-del1"), "nothing deleted without confirmation");
-  volumeBusy = 2; // the volume is briefly in use while the container goes away: retried
   const r = await c.json("POST", "/v1/spaces/del1/computer/delete", { confirm: "del1" });
   assert.deepEqual(r, { spaceId: "del1", sandbox: "os-del1", sandboxDeleted: true, volumeDeleted: true });
   assert.ok(!fake.sandboxes.has("os-del1"));
-  assert.ok(!volumeSet.has("baskule-space-del1"));
-  assert.ok(volumeCalls.includes("DELETE /volumes/baskule-space-del1 Bearer vol-token"));
+  assert.ok(!fake.disks.has("baskule-space-del1"));
   assert.equal((await c.json("GET", "/v1/spaces/del1/computer")).phase, "absent");
   const again = await c.json("POST", "/v1/spaces/del1/computer/delete", { confirm: "del1" });
   assert.deepEqual([again.sandboxDeleted, again.volumeDeleted], [false, false]);
@@ -479,7 +411,7 @@ test("delete: long space ids use the hashed names", async () => {
   await c.json("POST", `/v1/spaces/${id}/computer/ensure`, {});
   const r = await c.json("POST", `/v1/spaces/${id}/computer/delete`, { confirm: id });
   assert.equal(r.sandbox, n.sandbox);
-  assert.ok(!fake.sandboxes.has(n.sandbox) && !volumeSet.has(n.volume));
+  assert.ok(!fake.sandboxes.has(n.sandbox) && !fake.disks.has(n.volume));
 });
 
 
@@ -539,20 +471,7 @@ test("shared browser: metadata headers reach the cell before any heartbeat", asy
   } finally { clearTimeout(timer); controller.abort(); }
 });
 
-test("Kubernetes lifecycle uses driver-owned PVC storage without the Docker helper", async () => {
-  const kube = new Computers(gw, { ...cfg, computeDriver: "kubernetes", volumesUrl: "http://invalid.invalid" });
-  const before = volumeCalls.length;
-  const result = await kube.ensure("kube-storage");
-  assert.equal(result.created, true);
-  const create = fake.calls.find(x => x.method === "CreateSandbox" && x.req.name === result.sandbox)!.req;
-  assert.equal(create.spec.template.driver_config, null);
-  await kube.stop("kube-storage", "test");
-  assert.equal((await kube.ensure("kube-storage")).started, true);
-  assert.deepEqual(await kube.delete("kube-storage"), { spaceId: "kube-storage", sandbox: result.sandbox, sandboxDeleted: true, volumeDeleted: false });
-  assert.equal((await kube.delete("kube-storage")).sandboxDeleted, false);
-  assert.equal(volumeCalls.length, before);
-  assert.throws(() => loadConfig({ COMPUTERD_TOKEN: TOKEN, OPENSHELL_COMPUTE_DRIVER: "other" }), /OPENSHELL_COMPUTE_DRIVER/);
-});
+
 
 test("instance config: optional, valid label values only", () => {
   assert.equal(loadConfig({ COMPUTERD_TOKEN: TOKEN }).instance, "");
@@ -584,8 +503,8 @@ test("instance names: the same space has distinct sandbox and volume names", () 
 test("instance scoping: two computerds create, adopt and idle only their own sandboxes", async () => {
   const configA = { ...cfg, instance: loadConfig({ COMPUTERD_TOKEN: TOKEN, COMPUTERD_INSTANCE: "osdev-a" }).instance, idleMs: 1000 };
   const configB = { ...configA, instance: "osdev-b" };
-  const a = new Computers(gw, configA);
-  const b = new Computers(gw, configB);
+  const a = new Computers(backend, configA);
+  const b = new Computers(backend, configB);
   const namesA = namesFor("sp1", configA.instance);
   const namesB = namesFor("sp1", configB.instance);
   const foreign = namesFor("foreign", configA.instance);
@@ -597,52 +516,69 @@ test("instance scoping: two computerds create, adopt and idle only their own san
     assert.ok(fake.sandboxes.has(resultA.sandbox));
     assert.ok(fake.sandboxes.has(resultB.sandbox));
     assert.notEqual(namesA.volume, namesB.volume);
-    assert.ok(volumeSet.has(namesA.volume));
-    assert.ok(volumeSet.has(namesB.volume));
+    assert.ok(fake.disks.has(namesA.volume));
+    assert.ok(fake.disks.has(namesB.volume));
     await computers.ensure("scoped-legacy");
     // Same instance label on an unmanaged sandbox must not make it eligible for adoption.
     fake.sandboxes.set("os-unmanaged", { name: "os-unmanaged", labels: { "baskule.instance": "osdev-a" },
-      phase: "SANDBOX_PHASE_READY", spec: {}, pending: [] });
-    const restartedA = new Computers(gw, configA);
-    const restartedB = new Computers(gw, configB);
+      phase: "ready", image: "", error: null });
+    const restartedA = new Computers(backend, configA);
+    const restartedB = new Computers(backend, configB);
     await restartedA.adopt();
     await restartedB.adopt();
     await restartedA.idleTick(Date.now() + 2000);
-    assert.equal((await gw.get(resultA.sandbox))?.phase, "SANDBOX_PHASE_STOPPED");
-    assert.equal((await gw.get(resultB.sandbox))?.phase, "SANDBOX_PHASE_READY");
-    assert.equal((await gw.get("os-scoped-legacy"))?.phase, "SANDBOX_PHASE_READY");
-    assert.equal((await gw.get("os-unmanaged"))?.phase, "SANDBOX_PHASE_READY");
+    assert.equal((await backend.get(resultA.sandbox))?.phase, "stopped");
+    assert.equal((await backend.get(resultB.sandbox))?.phase, "ready");
+    assert.equal((await backend.get("os-scoped-legacy"))?.phase, "ready");
+    assert.equal((await backend.get("os-unmanaged"))?.phase, "ready");
     await restartedB.idleTick(Date.now() + 2000);
-    assert.equal((await gw.get(resultB.sandbox))?.phase, "SANDBOX_PHASE_STOPPED");
-    assert.equal((await gw.get("os-scoped-legacy"))?.phase, "SANDBOX_PHASE_READY");
+    assert.equal((await backend.get(resultB.sandbox))?.phase, "stopped");
+    assert.equal((await backend.get("os-scoped-legacy"))?.phase, "ready");
     for (const [name, instance] of [[resultA.sandbox, "osdev-a"], [resultB.sandbox, "osdev-b"]]) {
       const sandbox = fake.sandboxes.get(name)!;
       assert.deepEqual(sandbox.labels, { "baskule.managed": "true", "baskule.instance": instance });
-      assert.deepEqual(sandbox.spec.template.labels, sandbox.labels);
     }
     assert.deepEqual(fake.sandboxes.get("os-scoped-legacy")!.labels, { "baskule.managed": "true" });
     fake.sandboxes.set(foreign.sandbox, { name: foreign.sandbox, labels: { "baskule.managed": "true", "baskule.instance": "osdev-b" },
-      phase: "SANDBOX_PHASE_READY", spec: {}, pending: [] });
+      phase: "ready", image: "", error: null });
     fake.sandboxes.set(legacy.sandbox, { name: legacy.sandbox, labels: { "baskule.managed": "true" },
-      phase: "SANDBOX_PHASE_READY", spec: {}, pending: [] });
-    const before = volumeCalls.length;
+      phase: "ready", image: "", error: null });
     for (const space of ["foreign", "scoped-legacy"]) {
       await assert.rejects(a.ensure(space), /does not belong/);
       await assert.rejects(a.stop(space, "manual"), /does not belong/);
       await assert.rejects(a.delete(space), /does not belong/);
     }
-    assert.equal(volumeCalls.length, before, "foreign lifecycle requests must not touch volumes");
     assert.ok(fake.sandboxes.has(foreign.sandbox));
     assert.ok(fake.sandboxes.has(legacy.sandbox));
     await a.delete("sp1");
-    assert.ok(!volumeSet.has(namesA.volume));
-    assert.ok(volumeSet.has(namesB.volume), "deleting A must preserve B's volume");
+    assert.ok(!fake.disks.has(namesA.volume));
+    assert.ok(fake.disks.has(namesB.volume), "deleting A must preserve B's volume");
     assert.ok(fake.sandboxes.has(resultB.sandbox), "deleting A must preserve B's sandbox");
   } finally {
     for (const name of [namesA.sandbox, namesB.sandbox, foreign.sandbox, legacy.sandbox, "os-scoped-legacy", "os-unmanaged"]) {
-      await gw.remove(name);
+      await backend.remove(name, "");
     }
-    volumeSet.delete(namesA.volume);
-    volumeSet.delete(namesB.volume);
+    fake.disks.delete(namesA.volume);
+    fake.disks.delete(namesB.volume);
   }
+});
+
+
+test("backend config defaults to Docker and validates the selection", () => {
+  const config = loadConfig({ COMPUTERD_TOKEN: TOKEN });
+  assert.equal(config.backend, "docker");
+  assert.equal(config.dockerHost, "unix:///var/run/docker.sock");
+  assert.equal(config.network, "baskule-computers");
+  assert.throws(() => loadConfig({ COMPUTERD_TOKEN: TOKEN, COMPUTER_BACKEND: "other" }), /COMPUTER_BACKEND/);
+});
+
+test("ensure reports backend errors without restarting the machine", async () => {
+  await computers.ensure("backend-error");
+  const machine = fake.sandboxes.get(namesFor("backend-error").sandbox)!;
+  machine.phase = "error";
+  machine.error = "machine failed";
+  const before = fake.calls.length;
+  assert.equal((await c.req("POST", "/v1/spaces/backend-error/computer/ensure", {})).status, 503);
+  assert.equal((await c.json("GET", "/v1/spaces/backend-error/computer")).error, "machine failed");
+  assert.equal(fake.calls.length, before);
 });

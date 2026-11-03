@@ -5,10 +5,9 @@ export interface Config {
   port: number;
   host: string;
   token: string;
-  gateway: string; // host:port of the OpenShell gateway (plaintext gRPC, internal network only)
-  computeDriver: "docker" | "kubernetes";
-  volumesUrl: string; // baskule-openshell volume helper, e.g. http://baskule-openshell:47096
-  volumesToken: string;
+  backend: "docker" | "kubernetes";
+  dockerHost: string;
+  network: string;
   image: string;
   cpuLimit: string;
   memoryLimit: string;
@@ -40,19 +39,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const idleMinutes = num(env, "IDLE_MINUTES", 10);
   const idleMs = Math.round(idleMinutes * 60_000);
-  const computeDriver = env.OPENSHELL_COMPUTE_DRIVER ?? "docker";
-  if (computeDriver !== "docker" && computeDriver !== "kubernetes") {
-    throw new Error("OPENSHELL_COMPUTE_DRIVER must be docker or kubernetes");
+  const backend = env.COMPUTER_BACKEND ?? "docker";
+  if (backend !== "docker" && backend !== "kubernetes") {
+    throw new Error("COMPUTER_BACKEND must be docker or kubernetes");
   }
   return {
     instance,
     port: num(env, "COMPUTERD_PORT", 47094),
     host: env.COMPUTERD_HOST ?? "0.0.0.0",
     token,
-    gateway: env.OPENSHELL_GATEWAY ?? "baskule-openshell:47095",
-    computeDriver,
-    volumesUrl: (env.OPENSHELL_VOLUMES_URL ?? "http://baskule-openshell:47096").replace(/\/$/, ""),
-    volumesToken: env.OPENSHELL_VOLUMES_TOKEN ?? "",
+    backend,
+    dockerHost: env.DOCKER_HOST ?? "unix:///var/run/docker.sock",
+    network: env.COMPUTER_NETWORK ?? "baskule-computers",
     image: env.COMPUTER_IMAGE ?? "baskule-computer:local",
     cpuLimit: env.COMPUTER_CPUS ?? "2",
     memoryLimit: env.COMPUTER_MEMORY ?? "3Gi",

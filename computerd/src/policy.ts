@@ -1,34 +1,5 @@
 import { createHash } from "node:crypto";
 
-// The computer's OpenShell policy, as a SandboxPolicy proto object.
-// Mirror of openshell/policies/computer.yaml (a unit test checks they agree).
-export function computerPolicy() {
-  return {
-    version: 1,
-    filesystem: {
-      include_workdir: true,
-      read_only: ["/bin", "/sbin", "/usr", "/lib", "/lib64", "/etc", "/opt", "/proc", "/sys", "/dev/urandom", "/var/log", "/var/lib"],
-      read_write: ["/tmp", "/var/tmp", "/dev/null", "/dev/shm"],
-    },
-    landlock: { compatibility: "best_effort" },
-    process: { run_as_user: "1000", run_as_group: "1000" },
-    network_policies: {
-      internet: {
-        name: "internet",
-        endpoints: [
-          {
-            // Field 28, only in our fork: any globally routable public unicast address, private ranges never.
-            public_internet: true,
-            ports: [80, 443, 22],
-            tls: "NETWORK_TLS_MODE_SKIP",
-          },
-        ],
-        binaries: [{ path: "/**" }],
-      },
-    },
-  };
-}
-
 /** Space IDs accepted by the API. */
 export const SPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
