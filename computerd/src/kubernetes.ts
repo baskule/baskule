@@ -137,7 +137,7 @@ export class KubernetesBackend implements Backend {
           automountServiceAccountToken: false, enableServiceLinks: false, terminationGracePeriodSeconds: 1,
           securityContext: { runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, runAsNonRoot: true, seccompProfile: { type: 'RuntimeDefault' } },
           runtimeClassName: this.options.runtimeClassName, nodeSelector: this.options.nodeSelector, tolerations: this.options.tolerations, imagePullSecrets: this.options.imagePullSecrets,
-          containers: [{ name: 'computer', image: spec.image, command: ['sleep', 'infinity'], resources: { requests: resources, limits: resources },
+          containers: [{ name: 'computer', image: spec.image, command: ['/usr/bin/tini', '--', 'sleep', 'infinity'], resources: { requests: resources, limits: resources },
             securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } }, volumeMounts: [{ name: spec.disk, mountPath: '/sandbox/space' }] }],
         } },
       },

@@ -84,6 +84,7 @@ ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 TZ=Etc/UTC \
     CHROME_PATH=/usr/local/bin/chromium-baskule \
     PATH=/sandbox/space/home/.local/bin:/sandbox/space/home/.local/share/pnpm:/sandbox/space/home/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LABEL org.opencontainers.image.title=baskule-computer
+RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
 WORKDIR /sandbox
 USER 1000:1000
 ENTRYPOINT []
