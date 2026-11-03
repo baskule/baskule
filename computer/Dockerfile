@@ -1,8 +1,8 @@
-# baskule-computer:local: the agent's computer as an OpenShell sandbox image.
+# baskule-computer:local: the agent's computer as a Docker image.
 # Build:  docker build --network host -t baskule-computer:local computer/   (or computer/build.sh)
-# No OpenCode, no entrypoint: OpenShell replaces ENTRYPOINT/CMD with its own runtime and launches the sandbox
+# No OpenCode, no entrypoint: computerd launches the computer
 # command (computerd uses `sleep infinity`); everything else runs through exec.
-# Layout: WORKDIR /sandbox (OpenShell workspace), /sandbox/space = per-space persistent volume,
+# Layout: WORKDIR /sandbox (workspace), /sandbox/space = per-space persistent volume,
 # HOME=/sandbox/space/home (so pip --user, npm prefix, bun, browser profile all persist).
 
 ARG NODE_VERSION=24.22.1

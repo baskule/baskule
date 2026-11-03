@@ -61,7 +61,7 @@ an empty mounted directory first. Removing the mount alone does not delete them.
 
 The existing bootstrap job generates a dedicated folder-sync secret in the platform
 secret volume. The deploy job passes it to the Worker and uses it for sync over the
-private network; computerd, OpenShell and storage do not receive it. Do not put secrets
+private network; computerd, Docker and storage do not receive it. Do not put secrets
 in plugin files.
 
 For local development, `scripts/stack` reads `.run/plugins` on celld startup and

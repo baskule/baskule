@@ -10,7 +10,6 @@ e2e/test-results/
 
 # Local cache symlinks are ignored as well as directories.
 /.tools
-/vendor/openshell/target
 
 # Machine state, credentials and signing material stay local.
 .env.*

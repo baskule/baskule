@@ -116,7 +116,7 @@ function profile(name) {
   for (const [name, service] of Object.entries(p.services)) {
     if (!/^[a-z][a-z0-9-]*$/.test(name) || (name !== "celld" && typeof service.command !== "string")) throw new Error(`Invalid service ${name} in ${path}.`);
   }
-  for (const service of p.shared || []) if (!["gateway", "rustfs"].includes(service)) throw new Error(`Unknown shared service ${service} in ${path}.`);
+  for (const service of p.shared || []) if (!["rustfs"].includes(service)) throw new Error(`Unknown shared service ${service} in ${path}.`);
   return p;
 }
 function overrides() {
@@ -234,10 +234,6 @@ function trustBrowserCA() {
 }
 async function sharedServices(s) {
   for (const service of s.definition.shared || []) {
-    if (service === "gateway") {
-      run(join(ROOT, "openshell/dev-up.sh"), [], { env: environment(s), stdio: ["ignore", 2, 2] });
-      continue;
-    }
     const release = await lock(`stack-shared-${service}`);
     try {
       if (service === "rustfs") {
@@ -420,10 +416,6 @@ function portOwner(port, p) {
 async function doctor(s) {
   const checks = [];
   for (const service of s.definition.shared || []) {
-    if (service === "gateway") {
-      const r = spawnSync("docker", ["exec", "osdev-openshell", "curl", "-sf", "--max-time", "5", "http://127.0.0.1:47097/readyz"], { stdio: "ignore" });
-      checks.push({ name: "shared OpenShell gateway", ok: r.status === 0 });
-    }
     if (service === "rustfs") checks.push({ name: "shared RustFS", ok: await probe("http://127.0.0.1:47490/health/ready").catch(() => false) });
   }
   for (const name of Object.keys(s.definition.services)) {

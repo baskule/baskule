@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 export const SPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
- * OpenShell sandbox names are DNS-1123 labels of at most 19 characters. `os-<spaceId>` when it fits,
+ * Stable computer names are DNS-1123 labels of at most 19 characters. `os-<spaceId>` when it fits,
  * otherwise `os-` + 16 hex chars of sha256(spaceId). Scoped names hash the encoded instance/space pair
  * to avoid ambiguous separators and fit both name limits. The per-space volume uses the same suffix.
  */

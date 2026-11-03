@@ -19,10 +19,10 @@ The guard helper uses the computerd image with NET_ADMIN in the host network nam
 Docker must provide the iptables DOCKER-USER chain. It denies private and host destinations.
 `COMPUTER_DNS` optionally selects comma-separated public DNS IPs.
 Each computer defaults to 2 CPUs and 3 GiB. The computer and computerd images must
-already be available on the host. There is no OpenShell service.
-The old `baskule-openshell-docker` volume declaration is retained for the upcoming data migration.
+already be available on the host.
+The old `baskule-openshell-docker` volume declaration is retained for the 0.5.0 forward data migration.
 
-`up.sh`, `deploy.sh`, `down.sh`, and `recreate-computers.sh` serve the checkout-based
+`up.sh`, `deploy.sh`, and `down.sh` serve the checkout-based
 developer path. For a source-stack backup, source `deploy/lib.sh` and run
 `dc --profile backup run --rm -T backup > backup.tar.gz` with the stack stopped. Operators need only the release files and Docker Compose. Release assembly uses
 `scripts/release-install-assets.sh`; CI and publishing are documented in [Hosted checks and artifact builds](../docs/ci.md).
@@ -42,4 +42,4 @@ on restore. Stop both the stack and its independently managed computers for a co
 The read-only socket bind still permits Docker API writes: temporary containers mount selected
 disks with networking disabled, and are deleted on exit. Archives preserve disk names, all labels,
 numeric owners, modes and symlinks. Restore requires absent disk names and empty platform volumes.
-Retired OpenShell stores are excluded. See the install guide for archive storage requirements.
+Retired legacy stores are excluded. See the install guide for archive storage requirements.

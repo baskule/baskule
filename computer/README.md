@@ -1,4 +1,4 @@
-# baskule-computer:local — the agent's computer (an OpenShell sandbox image)
+# baskule-computer:local — the agent's computer (a Docker image)
 
 `./build.sh` builds the image (`docker build --network host -t baskule-computer:local computer` from the repository root).
 
@@ -8,11 +8,11 @@
 | Tools | bash, coreutils, findutils, grep, sed, gawk, util-linux (`setsid`), procps (`pgrep`), psmisc, curl, wget, git, jq, ripgrep, zip/unzip, xz, bzip2, make, ssh client, Python 3.13 + pip + venv (`python` → `python3`), uv 0.13.5, Node 24.22.1 + npm/npx/corepack, pnpm 12.15.0 (`/opt/pnpm`), Bun 1.3.14 (baseline build), locales en_US/fr_FR, ca-certificates |
 | Documents and media | LibreOffice headless (writer, calc, impress: `soffice --headless --convert-to`), pandoc, poppler-utils, qpdf, ffmpeg; Python libraries pinned in `python-requirements.txt`, installed system-wide (python-docx, openpyxl, python-pptx, pypdf, reportlab, pandas, matplotlib, xlsxwriter) |
 | Browser | Chromium (Debian, 156 at build time) + fonts; `@playwright/mcp@0.0.83` in `/opt/playwright-mcp`; uBlock Origin Lite (pinned, sha256-checked, pruned to 8 lists by `prune-ublock-lite.py`) in `/opt/baskule-browser/ublock-lite`, settings in `chromium-policies/` |
-| No | OpenCode, sudo, tini, entrypoint (OpenShell replaces ENTRYPOINT/CMD; computerd launches `sleep infinity`) |
+| No | OpenCode, sudo, tini, entrypoint (computerd launches `sleep infinity`) |
 
 Wrappers in `/usr/local/bin` (`bin/`):
-- `chromium-baskule`: Chromium with `--no-sandbox --no-zygote --in-process-gpu --disable-dev-shm-usage --disable-quic`
-  (Chromium's own sandbox cannot start inside OpenShell: no user namespaces, seccomp; QUIC/UDP is not mediated). With
+- `chromium-baskule`: Chromium with `--no-sandbox --no-zygote --in-process-gpu --disable-dev-shm-usage`
+  (Docker with dropped capabilities and default seccomp denies user namespace creation; verified with `unshare -Ur true`). QUIC is enabled because Docker supports UDP. With
   `--load-extension`, it adds `DisableLoadExtensionCommandLineSwitch` to the caller's `--disable-features` list
   (Chromium ignores the switch otherwise; a second `--disable-features` would replace Playwright's list).
 - `baskule-browser-bridge`: starts T3's browser bridge (the browser members watch and the agent drives) with uBlock
@@ -31,7 +31,7 @@ The image is ~2.4 GB, stored once per Docker daemon and shared by every computer
 not depend on it.
 
 Persistence: `/sandbox/space` is the per-space volume (home, chats). The rest of the filesystem is the container
-layer: it survives stop/start, not a recreate (`deploy/recreate-computers.sh` after an image upgrade).
+layer: it survives stop/start, not a recreate.
 Docker applies the image `ENV` to exec processes; computerd supplies only allowlisted caller overrides.
 
 Tests: `computerd/test/integration.sh` and `e2e/infra-smoke.sh` (toolchain, pip/npm/git/Chromium over the

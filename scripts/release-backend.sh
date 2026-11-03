@@ -20,7 +20,7 @@ phase=${1:?runtime or package}
 save_image() {
   local image=$1 out=$2 archive bytes config_id
   docker tag "$image:local" "ghcr.io/baskule/$image:$image_tag"
-  # Kubernetes pulls workload images directly; Compose still bundles them in its gateway.
+  # Retain each runtime image as a separately loadable archive.
   archive="$out/$image.tar.gz"
   docker save "ghcr.io/baskule/$image:$image_tag" | gzip -1 > "$archive"
   config_id=$(bash scripts/ci/image-config-id.sh "$archive")
@@ -33,31 +33,8 @@ case "$phase" in
   runtime)
     DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker} computer/build.sh
     scripts/docker-build.sh computerd -t baskule-computerd:local -f computerd/Dockerfile .
-    # The build environment supplies Ubuntu, pinned Rust and libz3.
-    cache="$PWD/.run/cache/openshell"
-    mkdir -p "$cache/cargo" "$cache/target"
-    scripts/docker-build.sh build-env --iidfile .run/release/build-env.id deploy/build-env
-    docker run --rm --init --name "osdev-release-backend-${GITHUB_RUN_ID:-local}" \
-      -v "$PWD:$PWD" -w "$PWD" \
-      -v "${DOCKER_HOST#unix://}:/var/run/docker.sock" \
-      -v "$cache/cargo:/cache/cargo" -v "$cache/target:/cache/target" \
-      -v "$HOME/.docker:/root/.docker" \
-      -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target -e "OPENSHELL_CARGO_JOBS=$(nproc)" \
-      -e BASKULE_DOCKER_CACHE -e BUILDX_BUILDER -e ACTIONS_RUNTIME_TOKEN -e ACTIONS_RESULTS_URL \
-      -e BASKULE_TAG \
-      -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e "GIT_CONFIG_VALUE_0=$PWD" \
-      -e DOCKER_HOST=unix:///var/run/docker.sock -e DOCKER_CONFIG=/root/.docker \
-      "$(cat .run/release/build-env.id)" bash -ec '
-        bash openshell/build.sh
-        rm -rf /cache/target/release/deps /cache/target/release/build /cache/target/release/incremental
-      '
-
-    # Retain only final native binaries across runs. Full Rust deps/build targets
-    # exceed the repository cache quota; sandbox compilation is cached as a BuildKit layer.
-    # A changed source key compiles afresh rather than restoring a stale source marker.
-
     : > .run/release/runtime/images.txt
-    for image in baskule-computerd baskule-openshell-gateway baskule-openshell-kubernetes baskule-openshell-supervisor baskule-openshell-sandbox baskule-computer; do
+    for image in baskule-computerd baskule-computer; do
       save_image "$image" .run/release/runtime
     done
     (cd .run/release/runtime && sha256sum *.tar.gz images.txt > SHA256SUMS)

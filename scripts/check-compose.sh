@@ -21,6 +21,7 @@ const config = (env = {}, profiles = []) => JSON.parse(execFileSync("docker", ["
 }));
 writeFileSync(join(directory, ".env"), "E2E_LOGIN_PASSWORD=must-not-reach-setup\n");
 const http = config();
+assert.equal(http.services["baskule-computerd"].environment.COMPUTER_BACKEND, "docker");
 assert.equal(http.networks["baskule-net"].ipam?.config, undefined, "let Docker choose a non-overlapping network");
 assert.equal(http.services["baskule-edge"].environment.BASKULE_TRUSTED_PROXIES, "");
 assert.deepEqual(http.services["baskule-edge"].ports.map(p => [p.host_ip, p.published, p.target]), [["127.0.0.1", "47090", 47090]]);

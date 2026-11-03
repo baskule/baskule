@@ -12,8 +12,8 @@ const ENV_EXACT = new Set([
   "EDITOR", "VISUAL", "TMPDIR", "NODE_ENV", "NODE_OPTIONS", "DEBIAN_FRONTEND", "USER", "SHELL", "VIRTUAL_ENV",
 ]);
 const ENV_PREFIXES = ["LC_", "PYTHON", "PIP_", "NPM_CONFIG_", "npm_config_", "BUN_", "GIT_", "OPENCODE", "BASKULE_", "UV_"];
-// Never overridable: the supervisor's CA wiring and OpenShell's own markers.
-const ENV_DENY_PREFIXES = ["OPENSHELL_", "LD_"];
+// Never allow dynamic loader overrides.
+const ENV_DENY_PREFIXES = ["LD_"];
 
 /** Keep allowlisted keys only (silently drops the rest); returns the dropped keys for the caller's information. */
 export function filterEnv(env: Record<string, unknown> | undefined): { env: Record<string, string>; dropped: string[] } {

@@ -64,7 +64,7 @@ case $1 in
   save) name=\${2##*/}; name=\${name%%:*}; gzip -dc "$MOCK_WORK/$name.tar.gz" ;;
   push)
     count=$(cat "$MOCK_WORK/count" 2>/dev/null || echo 0); count=$((count+1)); echo "$count" > "$MOCK_WORK/count"
-    if [[ $MOCK_SCENARIO == partial && $count == 4 && ! -f $MOCK_WORK/failed ]]; then touch "$MOCK_WORK/failed"; exit 1; fi
+    if [[ $MOCK_SCENARIO == partial && $count == 2 && ! -f $MOCK_WORK/failed ]]; then touch "$MOCK_WORK/failed"; exit 1; fi
     jq --arg ref "$2" --slurpfile expected "$MOCK_WORK/expected.json" '.[$ref]={config:{digest:$expected[0][$ref]}}' "$MOCK_WORK/remote.json" > "$MOCK_WORK/next"
     mv "$MOCK_WORK/next" "$MOCK_WORK/remote.json" ;;
 esac
@@ -103,7 +103,7 @@ for (const scenario of ["new", "partial", "chart-failure", "matching index"]) te
     const second = f.run();
     assert.equal(second.status, 0, second.stderr);
     const newCalls = f.calls().slice(before);
-    assert.equal(newCalls.filter(line => line.startsWith("push ")).length, scenario === "partial" ? 4 : 0);
+    assert.equal(newCalls.filter(line => line.startsWith("push ")).length, scenario === "partial" ? 2 : 0);
     assert.equal(newCalls.filter(line => line.startsWith("helm push ")).length, scenario === "partial" || scenario === "chart-failure" ? 1 : 0);
     assert.equal(f.run().status, 0);
     const count = f.calls().length;

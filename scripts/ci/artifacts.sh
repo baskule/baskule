@@ -11,8 +11,6 @@ cp source-provenance.json "$directory/"
 mkdir -p "$directory/licenses"
 cp LICENSE THIRD_PARTY_NOTICES.md "$directory/licenses/"
 cp app/LICENSE "$directory/licenses/T3-LICENSE"
-cp vendor/openshell/LICENSE "$directory/licenses/OpenShell-LICENSE"
-cp vendor/openshell/THIRD-PARTY-NOTICES "$directory/licenses/OpenShell-THIRD-PARTY-NOTICES"
 python3 - "$directory" "$kind" <<'PY'
 import json
 import os

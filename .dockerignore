@@ -4,7 +4,6 @@
 .run
 **/.run
 **/node_modules
-vendor/openshell/target
 **/.gradle
 **/.cache
 .t3

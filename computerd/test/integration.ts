@@ -30,9 +30,9 @@ test("ensure creates the computer", async () => {
 
 test("exec: argv, cwd, env allowlist, exit code, toolchain", async () => {
   const r = await c.exec(space, {
-    argv: ["sh", "-c", 'uname -a; python3 --version; node --version; bun --version; git --version; echo "H=$HOME P=$(pwd) L=$LANG F=${FOO:-none} O=${OPENSHELL_X:-none}"; id -u; exit 5'],
+    argv: ["sh", "-c", 'uname -a; python3 --version; node --version; bun --version; git --version; echo "H=$HOME P=$(pwd) L=$LANG F=${FOO:-none} O=${UNTRUSTED_MARKER:-none}"; id -u; exit 5'],
     cwd: "/sandbox/space",
-    env: { LANG: "C.UTF-8", FOO: "dropped", OPENSHELL_X: "dropped" },
+    env: { LANG: "C.UTF-8", FOO: "dropped", UNTRUSTED_MARKER: "dropped" },
   });
   assert.equal(r.code, 5, r.stderr);
   assert.match(r.stdout, /Linux/);

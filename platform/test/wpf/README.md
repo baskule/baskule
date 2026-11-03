@@ -1,7 +1,7 @@
 # Extended feature feedback loop
 
 This runs against the real Worker, ControlCell, SpaceCell with T3 and embedded OpenCode, the hosted web
-client, shared development OpenShell computers and a deterministic fake model. No real model tokens are spent.
+client, Docker computers and a deterministic fake model. No real model tokens are spent.
 
 ```sh
 source scripts/env.sh

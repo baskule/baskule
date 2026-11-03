@@ -10,7 +10,7 @@ export BASKULE_INSTALL_REGISTRY=ghcr.io/baskule
 export BASKULE_INSTALL_VERSION=local
 docker build --network host --target release -f deploy/celld/Dockerfile \
   -t "$BASKULE_INSTALL_REGISTRY/baskule-celld:$BASKULE_INSTALL_VERSION" .
-for name in computerd openshell-gateway; do
+for name in computerd computer; do
   docker tag "baskule-$name:local" "$BASKULE_INSTALL_REGISTRY/baskule-$name:$BASKULE_INSTALL_VERSION"
 done
 node e2e/release-install.mjs
@@ -73,7 +73,7 @@ setup, Secure cookies, sign-in, foreign Origin refusal, and independent public-c
 incoming X-Forwarded-For with its simulated peer address. With `private_ranges`, private-address LAN/VPN clients
 share a budget, as the installation guide explains. The proxy target checks that incoming XFF cannot rotate that budget.
 
-Runtime environment and mounted-volume assertions verify that RustFS, computerd, and OpenShell receive only their
+Runtime environment and mounted-volume assertions verify that RustFS and computerd receive only their
 own generated secrets and no unrelated `.env` values. The proxy target checks the custom bind port in the printed
 link, no links from the single-host deploy job, and no additional setup links after admin creation and another `up -d`.
 

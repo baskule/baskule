@@ -39,11 +39,12 @@ Component loops (local, no live stack; wait for a host lock, then check ports)
   worker    Worker + ControlCell on celld dev, stub SpaceCell: auth, sessions, origin, routing, revocation   ~30 s
   space     merged SpaceCell + embedded OpenCode, fake computerd + fake LLM: files, webhook,
             schedule alarm, restart persistence, isolation                                                  ~1.5 min
-  agent     embedded agent runtime through the SpaceCell, real computerd + shared OpenShell gateway           ~2 min
+  agent     embedded agent runtime through the SpaceCell, real computerd + Docker computers           ~2 min
   features  real platform app (wpf) + real computers: queue/steer, inbox, snooze, questions, delegation,
             webhook schedules, MCP app                                                                      ~6 min
+  migration forward computer-volume migration
   kubernetes disposable kind cluster: Helm install, RustFS, fake chat, computers, PVCs and celld takeover
-  computerd computerd against the shared OpenShell gateway: exec, kill, files, CDP, idle, delete         ~40 s
+  computerd computerd against the Docker computers: exec, kill, files, CDP, idle, delete         ~40 s
   web       hosted web client: unit tests, (build), mock stack page checks + screenshots                    ~1.5-3.5 min
   <loop>:<checks>   only some checks of worker, space, agent or features, e.g. worker:transcriptions
 
@@ -62,7 +63,6 @@ Areas (the component loops that own an area; --live also runs its live e2e tags)
 Options
   --base <ref>   diff base for fast/plan (default: merge-base with main)
   --live         areas and acceptance: also run the live e2e selection
-  --keep-gateway leave the shared OpenShell gateway running for the next loop
   --fresh        run every step even when a pass for the same inputs is on record (see "Evidence" below)
   --dry-run      print the steps without running them
 
@@ -92,7 +92,7 @@ const AREAS = {
 const LOOPS = {
   worker: { ports: [47620], run: (only) => [["bash", ["test/integration.sh", ...(only ? ["--only", only] : [])], "platform"]] },
   space: { ports: [47550, 47551, 47552], run: (only) => [["node", ["src/space/test/run.mjs", ...(only ? ["--only", only] : [])], "platform"]] },
-  agent: { ports: [47650, 47651, 47652], gateway: true, run: (only) => [["src/agent/test/run.sh", ["--keep", ...(only ? ["--", "--only", only] : [])], "platform"]] },
+  agent: { ports: [47650, 47651, 47652], run: (only) => [["src/agent/test/run.sh", ["--keep", ...(only ? ["--", "--only", only] : [])], "platform"]] },
   features: {
     ports: [], isolated: true,
     run: (only) => [
@@ -100,7 +100,8 @@ const LOOPS = {
       ["node", ["test/wpf/run.mjs", ...(only ? ["--only", only] : [])], "platform", { env: process.env.BASKULE_STACK_PROXY === "0" ? {} : { NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS || join(process.env.PORTLESS_STATE_DIR || join(homedir(), ".portless"), "ca.pem") }, always: ["bash", ["-c", 'mkdir -p .run/check/feature-stack; for log in .run/stack/*.log; do [ ! -f "$log" ] || cp "$log" .run/check/feature-stack/; done; scripts/stack down --purge'], "."] }],
     ],
   },
-  computerd: { ports: [47502], gateway: true, run: () => [["test/integration.sh", [], "computerd", { env: { KEEP_DEV: "1" } }]] },
+  migration: { ports: [], run: () => [["test/migration.sh", [], "computerd"]] },
+  computerd: { ports: [], run: () => [["test/integration.sh", [], "computerd", { env: { KEEP_DEV: "1" } }]] },
   web: {
     ports: [47700, 47702, 47703],
     run: () => {
@@ -165,11 +166,11 @@ function plan(files, base) {
   if (has(/^platform\/src\/agent\/index\.ts$/)) tags.add("lifecycle");
   if (has(/^platform\/test\/wpf\/|^scripts\/stack(?:[.-]|$)|^stack\//)) loops.add("features");
   if (has(/^computerd\/|^(?:package\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$/)) {
-    add("computerd: unit tests (fake gateway)", "pnpm", ["test"], "computerd", { evidence: ev(COMPUTERD_IN, ["computerd-unit"], "computerd-unit") });
+    add("computerd: unit tests (fake backend)", "pnpm", ["test"], "computerd", { evidence: ev(COMPUTERD_IN, ["computerd-unit"], "computerd-unit") });
     add("computerd: typecheck", "pnpm", ["exec", "tsc", "--noEmit"], "computerd", { evidence: ev(COMPUTERD_IN, ["computerd-tsc"], "computerd-tsc") });
     if (has(/^computerd\/src\//)) { loops.add("computerd"); tags.add("files").add("browser").add("computer"); }
   }
-  if (has(/^(computer|openshell)\//)) { loops.add("computerd"); tags.add("computer").add("browser"); }
+  if (has(/^(computer|computerd)\//)) { loops.add("migration"); loops.add("computerd"); tags.add("computer").add("browser"); }
   if (has(/^desktop\/|^app\/apps\/desktop\//)) {
     add("desktop: connection and shell regression tests", "bash", ["desktop/check.sh"], ".", { evidence: ev(["app", "desktop"], ["desktop"], "desktop") });
   }
@@ -200,14 +201,13 @@ function plan(files, base) {
   if (mjs.length) add("scripts: syntax", "bash", ["-c", mjs.map((f) => `node --check '${f}'`).join(" && ")], ".");
   if (has(/^scripts\/worktree(?:[.-]|$)/)) add("worktree: setup regression tests", "node", ["--test", "scripts/worktree.test.mjs"], ".");
   if (has(/^scripts\/(?:check(?:[.-]|$)|stack(?:[.-]|$)|celld(?:[.-]|$)|lint(?:[.-]|$)|feature-map(?:[.-]|$)|run-feature\.mjs$|release-plan(?:[.-]|$)|no-fixed-sleep\.mjs$)|^platform\/dev\/fake-llm\/|^\.oxlintrc\.json$/)) add("scripts/check: harness tests", "node", ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/release-plan.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], ".");
-  if (has(/^openshell\/dev-down\.sh$/)) add("stack: shared gateway teardown", "node", ["--test", "scripts/stack.test.mjs"], ".");
   if (has(/^deploy\/(?:docker-compose|\.env\.example)|^scripts\/check-compose\.sh$/)) add("deploy: compose config", "bash", ["scripts/check-compose.sh"], ".");
   if (has(/^deploy\/celld\//)) add("deploy: startup jobs", "node", ["--test", "deploy/celld/jobs.test.mjs", "deploy/celld/sync-plugins.test.mjs"], ".");
   if (has(/^deploy\/helm\/|^scripts\/helm-package\.sh$/)) add("Kubernetes: chart rendering", "bash", ["e2e/kubernetes-local.sh", "lint"], ".");
   if (has(/^scripts\/ci\/(publish-images|check-public-images|image-config-id)|^scripts\/release-backend\.sh$/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
   if (has(/^e2e\/kubernetes-ephemeral\.sh$|^scripts\/ci\/kubernetes-ephemeral\.test\.mjs$/)) add("Kubernetes: ephemeral cleanup guard", "node", ["--test", "scripts/ci/kubernetes-ephemeral.test.mjs"], ".");
   if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
-  if (has(/^(deploy|openshell|computer)\//)) tags.add("infra");
+  if (has(/^(deploy|computer)\//)) tags.add("infra");
   const docs = files.filter((f) => /\.md$/.test(f)).filter((f) => existsSync(join(ROOT, f)) && !f.startsWith("vendor/") && !f.startsWith("app/"));
   if (docs.length) steps.push({ label: `docs: relative links in ${docs.length} changed file(s)`, fn: () => checkLinks(docs) });
   return { steps, loops: [...loops], tags: [...tags] };
@@ -255,8 +255,8 @@ const WORKSPACE_IN = ["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml"];
 const COMPUTERD_IN = ["computerd", ...WORKSPACE_IN];
 const E2E_IN = ["e2e", ...WORKSPACE_IN];
 const PLATFORM_IN = ["platform", "app", ...WORKSPACE_IN]; // platform bundles T3's SpaceCell code from the fork
-const COMPUTER_IN = [...COMPUTERD_IN, "computer", "openshell", "vendor/openshell"];
-const LOOP_INPUTS = { worker: PLATFORM_IN, space: PLATFORM_IN, agent: [...PLATFORM_IN, ...COMPUTER_IN], features: [...PLATFORM_IN, ...COMPUTER_IN, "stack"], computerd: COMPUTER_IN, web: ["app"] };
+const COMPUTER_IN = [...COMPUTERD_IN, "computer"];
+const LOOP_INPUTS = { worker: PLATFORM_IN, space: PLATFORM_IN, agent: [...PLATFORM_IN, ...COMPUTER_IN], features: [...PLATFORM_IN, ...COMPUTER_IN, "stack"], computerd: COMPUTER_IN, migration: COMPUTER_IN, web: ["app"] };
 /** inputs: directories; check: ids whose pass covers this step; record: the id a pass of this step proves. */
 function ev(inputs, check, record = null) { return { inputs, check, record }; }
 let FRESH = false;
@@ -345,11 +345,6 @@ function portBusy(port) {
   });
 }
 
-let gatewayUsed = false;
-const gatewayWasUp = () => spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", "osdev-openshell"], { encoding: "utf8" }).stdout.trim() === "true";
-let gatewayInitiallyUp = null;
-let releaseGatewayLock = null;
-
 async function runLoop(spec, exec = async (step) => run(step), checks = null) {
   const [name, only] = LOOP_ONLY[spec] ?? [spec, checks];
   const loop = LOOPS[name];
@@ -360,8 +355,7 @@ async function runLoop(spec, exec = async (step) => run(step), checks = null) {
   let releaseLock;
   if (!DRY && !loop.isolated) {
     try {
-      if (loop.gateway) releaseGatewayLock ??= await acquireHostLock("gateway");
-      else releaseLock = await acquireHostLock(name);
+      releaseLock = await acquireHostLock(name);
     } catch (error) {
       console.error(error.message);
       return results.push({ label: `${spec} (host lock failed)`, ok: false, ms: 0 });
@@ -374,7 +368,6 @@ async function runLoop(spec, exec = async (step) => run(step), checks = null) {
       console.log(`\n\x1b[1m▶ ${spec}\x1b[0m: ports ${busy.join(", ")} are in use (another loop or agent?). Stop it first; not run.`);
       return results.push({ label: `${spec} (ports busy)`, ok: false, ms: 0 });
     }
-    if (loop.gateway) { gatewayUsed = true; if (gatewayInitiallyUp === null) gatewayInitiallyUp = gatewayWasUp(); }
     const before = results.length;
     for (const [cmd, args, cwd, opts = {}] of loop.run(only)) await exec({ label: `${spec}: ${[cmd, ...args].join(" ")}`, cmd, args, cwd, ...opts });
     if (!DRY && results.length > before && results.slice(before).every((r) => r.ok)) record(e);
@@ -430,7 +423,7 @@ function warnStaleDeploy() {
   let v; try { v = JSON.parse(r.stdout); } catch { return; }
   const sha = String(v.umbrella ?? "").replace(/-dirty$/, "");
   if (!sha || !git(["cat-file", "-t", sha])) { console.log(`note: the stack runs umbrella ${v.umbrella}, not in this history; e2e tests that build (BUILD=1) or not is your call.`); return; }
-  const src = git(["diff", "--name-only", sha, "--", "platform/src", "computerd/src", "computer", "openshell", "deploy", "app/apps", "app/packages"]).split("\n").filter((f) => f && !/(\/test\/|\.test\.)/.test(f));
+  const src = git(["diff", "--name-only", sha, "--", "platform/src", "computerd/src", "computer", "deploy", "app/apps", "app/packages"]).split("\n").filter((f) => f && !/(\/test\/|\.test\.)/.test(f));
   if (src.length) console.log(`note: ${src.length} product file(s) changed since the deployed build ${v.umbrella}; the live suite tests the deployed build. Deploy first (BUILD=1 or deploy/build.sh) if those changes are under test.`);
 }
 
@@ -464,14 +457,12 @@ function upstreamSteps() {
 }
 
 function runFeature(name, covered = []) {
-  // Custom checks may nest this CLI: share completed evidence and hand off its gateway lock first.
+  // Custom checks may nest this CLI: share completed evidence.
   pushEvidence();
-  releaseGatewayLock?.();
-  releaseGatewayLock = null;
   const target = `feature:${name}`;
   const feature = features().find((f) => f.name === name);
   if (!feature) throw new Error(`Unknown feature ${target}`);
-  const evidence = ev(["platform", "app", "computerd", "computer", "openshell", "vendor/openshell", "desktop", "deploy", "stack", "e2e", ".agents/skills/verify-baskule", ...WORKSPACE_IN], [target.replace(":", "-")], target.replace(":", "-"));
+  const evidence = ev(["platform", "app", "computerd", "computer", "desktop", "deploy", "stack", "e2e", ".agents/skills/verify-baskule", ...WORKSPACE_IN], [target.replace(":", "-")], target.replace(":", "-"));
   run({ label: target, cmd: "node", args: ["scripts/run-feature.mjs", feature.name, ...(live ? ["--live"] : []), ...(covered.length ? [`--covered=${covered.join(",")}`] : [])], cwd: ".", evidence: covered.length ? undefined : evidence });
 }
 
@@ -481,7 +472,7 @@ const opt = (n) => { const i = argv.indexOf(n); if (i < 0) return null; const v 
 const flag = (n) => { const i = argv.indexOf(n); if (i < 0) return false; argv.splice(i, 1); return true; };
 const baseArg = opt("--base");
 const shard = opt("--shard") ?? "1/1";
-const live = flag("--live"), keepGateway = flag("--keep-gateway");
+const live = flag("--live");
 DRY = flag("--dry-run");
 FRESH = flag("--fresh");
 if (argv.includes("release")) {
@@ -539,7 +530,7 @@ for (const target of targets) {
     const before = results.length;
     for (const s of unitSteps()) run(s);
     if (results.slice(before).some((r) => !r.ok)) { console.log("\nunit tier failed: fix it before spending the acceptance run"); break; }
-    // No-Docker loops in one lane, the loops on the shared OpenShell gateway in the other.
+    // No-Docker loops in one lane, the loops on the Docker computers in the other.
     await runLanes([["worker", "space", "web"], ["computerd", "agent", "features"]]);
     if (target === "release") {
       if (results.slice(before).some((r) => !r.ok)) break;
@@ -576,12 +567,6 @@ for (const target of targets) {
   }
 }
 
-if (gatewayUsed && !keepGateway && gatewayInitiallyUp === false && !DRY) {
-  releaseGatewayLock ??= await acquireHostLock("gateway");
-  console.log("\nremoving the shared OpenShell gateway this run started (--keep-gateway keeps it)");
-  spawnSync(join(ROOT, "openshell/dev-down.sh"), [], { stdio: "inherit" });
-}
-releaseGatewayLock?.();
 if (results.length) {
   console.log(`\n\x1b[1msummary\x1b[0m (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
   for (const r of results) console.log(`  ${r.dry ? "-   " : r.kept ? "kept" : r.ok ? "ok  " : "FAIL"}  ${(r.ms / 1000).toFixed(1).padStart(6)} s  ${r.label}`);

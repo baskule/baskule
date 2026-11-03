@@ -230,7 +230,7 @@ services:
     depends_on:
       baskule-bootstrap:
         condition: service_completed_successfully
-      # Traces of the whole stack (celld, the T3 server in each cell, the OpenShell gateway): Jaeger, in memory. The UI
+      # Traces of the whole stack (celld, the T3 server in each cell): Jaeger, in memory. The UI
   # has its own loopback-default bind, independent of the edge.
   baskule-traces:
     profiles: [traces]

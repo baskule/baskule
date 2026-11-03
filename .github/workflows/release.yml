@@ -161,31 +161,11 @@ jobs:
               core.setSecret(process.env[key]);
             }
       - uses: ./.github/actions/setup
-      - name: Restore OpenShell native binaries
-        id: rust-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            .run/cache/openshell/target/baskule-source
-            .run/cache/openshell/target/release/openshell
-            .run/cache/openshell/target/release/openshell-gateway
-            .run/cache/openshell/target/release/openshell-supervisor
-          key: openshell-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deploy/build-env/Dockerfile', 'vendor/openshell/**', 'openshell/build.sh') }}
       - name: Build backend archives once
         env:
           BASKULE_DOCKER_CACHE: '1'
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         run: scripts/ci/backend.sh runtime
-      - name: Save OpenShell native binaries
-        if: steps.rust-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            .run/cache/openshell/target/baskule-source
-            .run/cache/openshell/target/release/openshell
-            .run/cache/openshell/target/release/openshell-gateway
-            .run/cache/openshell/target/release/openshell-supervisor
-          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
       - name: Upload backend artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

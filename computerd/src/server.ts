@@ -42,7 +42,7 @@ class HttpError extends Error {
 }
 
 const MAX_JSON = 128 * 1024 * 1024;
-const MAX_ARGV_BYTES = 200 * 1024; // OpenShell caps the assembled command at 256 KiB
+const MAX_ARGV_BYTES = 200 * 1024; // Bound request size before spawning a command.
 const KILL_GRACE_MS = 3000;
 
 function json(res: http.ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}) {

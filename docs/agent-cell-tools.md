@@ -35,4 +35,4 @@ scripts/check agent:plain-chat-no-computer,runtime-mcp-at-first-step
 scripts/check agent:large-tool-output-readable-on-computer,restart-mid-chat-keeps-toolset
 ```
 
-The discovery checks inspect the model prompt and call a fake MCP tool. They do not establish external search availability. Computer-backed checks require the matching local computer and OpenShell images.
+The discovery checks inspect the model prompt and call a fake MCP tool. They do not establish external search availability. Computer-backed checks require the matching local computer and Docker images.

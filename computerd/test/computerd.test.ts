@@ -136,10 +136,10 @@ test("parseRange", () => {
 test("filterEnv keeps the allowlist only", () => {
   const { env, dropped } = filterEnv({
     LANG: "C", LC_ALL: "C", PYTHONPATH: "/x", GIT_AUTHOR_NAME: "a", BASKULE_BROWSER: "isolated",
-    OPENSHELL_SANDBOX: "0", LD_PRELOAD: "/x.so", AWS_SECRET_ACCESS_KEY: "s", "BAD-KEY": "x", "A;rm": "x", PATH: 3 as any,
+    UNTRUSTED_MARKER: "0", LD_PRELOAD: "/x.so", AWS_SECRET_ACCESS_KEY: "s", "BAD-KEY": "x", "A;rm": "x", PATH: 3 as any,
   });
   assert.deepEqual(Object.keys(env).sort(), ["BASKULE_BROWSER", "GIT_AUTHOR_NAME", "LANG", "LC_ALL", "PYTHONPATH"]);
-  assert.deepEqual(dropped.sort(), ["A;rm", "AWS_SECRET_ACCESS_KEY", "BAD-KEY", "LD_PRELOAD", "OPENSHELL_SANDBOX", "PATH"]);
+  assert.deepEqual(dropped.sort(), ["A;rm", "AWS_SECRET_ACCESS_KEY", "BAD-KEY", "LD_PRELOAD", "PATH", "UNTRUSTED_MARKER"]);
 });
 
 

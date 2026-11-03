@@ -1,5 +1,5 @@
 ---
-paths: ["deploy/helm/**", "e2e/kubernetes*", "openshell/images/gateway-kubernetes/**", "scripts/helm-package.sh"]
+paths: ["deploy/helm/**", "e2e/kubernetes*", "scripts/helm-package.sh"]
 profile: "custom"
 checks: ["scripts/check kubernetes"]
 ---

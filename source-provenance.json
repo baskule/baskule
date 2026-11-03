@@ -20,15 +20,6 @@
       "excluded": [
         ".repos/"
       ]
-    },
-    {
-      "path": "vendor/openshell",
-      "commit": "e83c6a3a10ef2f2a075ae8161c5e4c3cceaed8e0",
-      "commitKind": "Fork snapshot; not asserted to be an upstream commit",
-      "upstream": "https://github.com/NVIDIA/OpenShell",
-      "license": "vendor/openshell/LICENSE",
-      "notices": "vendor/openshell/THIRD-PARTY-NOTICES",
-      "excluded": []
     }
   ],
   "notes": [

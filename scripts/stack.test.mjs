@@ -6,38 +6,6 @@ import { join } from "node:path";
 import test from "node:test";
 import { environment, stackIdentity, portlessEnvironment } from "./stack.mjs";
 
-function teardown(t, { entry, node = true, flock = true } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "osdev-gateway-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const bin = join(root, "bin"), registry = join(root, "run/stacks"), calls = join(root, "docker-calls");
-  mkdirSync(bin); mkdirSync(registry, { recursive: true });
-  const checkout = join(root, "checkout");
-  mkdirSync(join(checkout, "openshell"), { recursive: true });
-  mkdirSync(join(checkout, "scripts"));
-  cpSync("openshell/dev-down.sh", join(checkout, "openshell/dev-down.sh"));
-  cpSync("scripts/env.sh", join(checkout, "scripts/env.sh"));
-  for (const [name, target] of Object.entries({ bash: "/bin/bash", dirname: "/usr/bin/dirname", mkdir: "/bin/mkdir", ...(node ? { node: process.execPath } : {}), ...(flock ? { flock: "/usr/bin/flock" } : {}) })) symlinkSync(target, join(bin, name));
-  if (!flock) writeFileSync(join(bin, "flock"), "#!/bin/bash\nexit 1\n", { mode: 0o755 });
-  writeFileSync(join(bin, "docker"), '#!/bin/bash\necho "$*" >> "$CALLS"\nif [ "$1" = ps ]; then echo fake-gateway; fi\n', { mode: 0o755 });
-  if (entry !== undefined) writeFileSync(join(registry, "stack.json"), entry);
-  const result = spawnSync("/bin/bash", [join(checkout, "openshell/dev-down.sh")], { encoding: "utf8", env: { ...process.env, BASKULE_SHARED: root, PATH: bin, CALLS: calls } });
-  return { ...result, calls: existsSync(calls) ? readFileSync(calls, "utf8") : "" };
-}
-
-test("empty registry permits gateway teardown", (t) => {
-  const r = teardown(t); assert.equal(r.status, 0, r.stderr); assert.match(r.calls, /rm -f osdev-openshell/);
-});
-test("registered stacks protect gateway even after their worktree disappears", (t) => {
-  const r = teardown(t, { entry: JSON.stringify({ definition: { shared: ["gateway"] }, worktree: "/does-not-exist" }) });
-  assert.equal(r.status, 0, r.stderr); assert.equal(r.calls, ""); assert.match(r.stdout, /kept/);
-});
-for (const [name, options] of Object.entries({ "malformed registry": { entry: "{" }, "invalid registry": { entry: "{}" }, "missing Node": { node: false }, "failed lock": { flock: false } })) {
-  test(`${name} cannot tear down shared gateway`, (t) => {
-    const r = teardown(t, options); assert.notEqual(r.status, 0); assert.equal(r.calls, "");
-    if (name === "missing Node") assert.match(r.stderr, /node: command not found/);
-  });
-}
-
 const stack = { id: "test-instance", ports: { "fake-llm": 12345 }, urls: { loopback: "http://127.0.0.1:12346", front: "https://test.baskule.localhost" }, definition: { env: { FIRST: "${PORT_FAKE_LLM}", SECOND: "${FIRST}" } }, overrides: { THIRD: "${SECOND}", COMPUTERD_INSTANCE: "other" } };
 test("profile and --set values resolve runtime ports and references", () => {
   const env = environment(stack);

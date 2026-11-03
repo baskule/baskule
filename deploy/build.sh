@@ -3,7 +3,7 @@
 #   1. the hosted web bundle        T3 fork worktree, apps/web, VITE_BASKULE_HOSTED=1   (skipped if the fork is unchanged)
 #   2. the T3 space-cell bundle     platform/src/space/sync-bundle.sh --minify, T3_APP_DIR  (skipped if the fork is unchanged)
 #   3. the platform bundle          platform/: scripts/build.mjs, minified (worker + web) + dist/web/version.json
-#   4. the images                   images.sh: computer, openshell, celld, computerd when their sources changed
+#   4. the images                   images.sh: computer, celld, computerd when their sources changed
 #   5. up.sh (start what is not running) + deploy.sh (celld deploy of platform/, nodes reload)
 #
 # Usage: deploy/build.sh [--no-deploy] [--force]
@@ -71,9 +71,8 @@ jq -n --arg version "${BASKULE_VERSION:-$(<"$ROOT/VERSION")}" --arg umbrella "$(
   --arg spaceBundle "$(cat "$PLATFORM/src/space/t3/BUILT_FROM" 2>/dev/null | cut -d' ' -f1)" \
   --arg builtAt "$(date -u +%FT%TZ)" --arg computer "$(img_id "baskule-computer:$TAG")" \
   --arg computerd "$(img_id "baskule-computerd:$TAG")" \
-  --arg openshell "$(img_id "baskule-openshell-gateway:$TAG")" \
   '{version:$version, umbrella:$umbrella, fork:$fork, forkBranch:$forkBranch, spaceBundle:$spaceBundle, builtAt:$builtAt,
-    images:{computer:$computer, computerd:$computerd, openshell:$openshell}}' >"$PLATFORM/dist/web/version.json"
+    images:{computer:$computer, computerd:$computerd}}' >"$PLATFORM/dist/web/version.json"
 step "version: $(jq -c '{umbrella, fork}' "$PLATFORM/dist/web/version.json")"
 
 [ $DEPLOY = 1 ] || { step "built (no deploy)"; exit 0; }
@@ -85,17 +84,13 @@ was_up=0
 if [ $was_up = 1 ]; then
   # Running stack: recreate only services whose image changed (compose compares image ids), then deploy once.
   step "refresh running services"
-  dc up -d --no-build baskule-openshell baskule-traces baskule-edge baskule-computerd baskule-celld-a baskule-celld-b >&2
-  wait_healthy baskule-openshell 600
+  dc up -d --no-build baskule-traces baskule-edge baskule-computerd baskule-celld-a baskule-celld-b >&2
   step "deploy.sh"
   "$DEPLOY_DIR/deploy.sh" 2>&1 | tail -2 >&2
 else
   step "up.sh"
   "$DEPLOY_DIR/up.sh"
 fi
-# Reconcile actual workloads: a previous build or interrupted deployment may already have retagged the host image.
-step "reconcile computer images"
-"$DEPLOY_DIR/recreate-computers.sh" --outdated
 b=$(env_get BASKULE_BIND); p=$(env_get BASKULE_PORT); url=http://${b:-127.0.0.1}:${p:-47090}
 for _ in $(seq 60); do
   v=$(curl -s -m 5 "$url/version.json" | jq -r .builtAt 2>/dev/null || true)
