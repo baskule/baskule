@@ -108,6 +108,9 @@ Other RuntimeClasses require a successful computer journey before use.
 
 ## Scaleway Kapsule
 
+This provider path is not yet verified end to end on a running Kapsule cluster.
+The local kind journey is verified.
+
 With your Scaleway CLI credentials configured privately:
 
 ```sh

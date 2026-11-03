@@ -46,17 +46,17 @@ inventory() {
 sweep() {
   local marker=${1:-$marker}
   inventory || return 1
-  while read -r id; do scw k8s cluster delete "$id" with-additional-resources=true --wait >/dev/null; done < <(marked_ids < "$state/clusters.private.json")
-  while read -r id; do scw registry namespace delete "$id" >/dev/null; done < <(jq -r --arg prefix "$marker" '.[] | select(.name == $prefix or (.name | startswith($prefix + "-"))) | .id' "$state/registries.private.json")
+  while read -r id; do scw k8s cluster delete "$id" with-additional-resources=true --wait >/dev/null || true; done < <(marked_ids < "$state/clusters.private.json")
+  while read -r id; do scw registry namespace delete "$id" >/dev/null || true; done < <(jq -r --arg prefix "$marker" '.[] | select(.name == $prefix or (.name | startswith($prefix + "-"))) | .id' "$state/registries.private.json")
   inventory || return 1
   # Only leftovers explicitly tagged by the run can be deleted here.
-  while read -r id zone; do scw instance server delete "$id" "zone=$zone" with-volumes=all with-ip=true force-shutdown=true --wait >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/instances.private.json")
-  while read -r id zone; do scw lb lb delete "$id" "zone=$zone" release-ip=true >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/lbs.private.json")
-  while read -r id zone; do scw instance volume delete "$id" "zone=$zone" >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/legacy-volumes.private.json")
-  while read -r id zone; do scw block volume delete "$id" "zone=$zone" >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/volumes.private.json")
-  while read -r id zone; do scw instance ip delete "$id" "zone=$zone" >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/ips.private.json")
-  while read -r id zone; do scw lb ip release "$id" "zone=$zone" >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/lb-ips.private.json")
-  while read -r id; do scw vpc private-network delete "$id" >/dev/null; done < <(marked_ids < "$state/networks.private.json")
+  while read -r id zone; do scw instance server delete "$id" "zone=$zone" with-volumes=all with-ip=true force-shutdown=true --wait >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/instances.private.json")
+  while read -r id zone; do scw lb lb delete "$id" "zone=$zone" release-ip=true >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/lbs.private.json")
+  while read -r id zone; do scw instance volume delete "$id" "zone=$zone" >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/legacy-volumes.private.json")
+  while read -r id zone; do scw block volume delete "$id" "zone=$zone" >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/volumes.private.json")
+  while read -r id zone; do scw instance ip delete "$id" "zone=$zone" >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/ips.private.json")
+  while read -r id zone; do scw lb ip release "$id" "zone=$zone" >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/lb-ips.private.json")
+  while read -r id; do scw vpc private-network delete "$id" >/dev/null || true; done < <(marked_ids < "$state/networks.private.json")
   audit
 }
 audit() {
@@ -137,7 +137,10 @@ printf '%s' "$SCW_SECRET_KEY" | docker login "${BASKULE_K8S_REGISTRY%%/*}" -u no
 export BASKULE_K8S_TAG=${BASKULE_K8S_TAG:-kubernetes}
 for name in celld computerd openshell-kubernetes computer openshell-supervisor openshell-sandbox; do
   docker tag "baskule-$name:$BASKULE_K8S_TAG" "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG"
-  docker push "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG" > "$BASKULE_K8S_EVIDENCE/push-$name.log" 2>&1
+  for attempt in 1 2 3; do
+    if docker push "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG" >> "$BASKULE_K8S_EVIDENCE/push-$name.log" 2>&1; then break; fi
+    if [[ $attempt == 3 ]]; then exit 1; fi
+  done
 done
 # 2 x 4 vCPU/8 GiB: enough allocatable CPU for a 2-CPU computer and control pods,
 # with a second node for the actual cross-node CSI reattachment drill.
