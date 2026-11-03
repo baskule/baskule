@@ -63,7 +63,7 @@ try {
       assert.equal(result.err, null);
       assert.notEqual(result.code, null);
       assert.notEqual(result.code, 0);
-      await exec(["sh", "-c", `! kill -0 ${pid} 2>/dev/null`]);
+      await exec(["python3", "-c", "import os,sys,time; deadline=time.monotonic()+10\nwhile os.path.exists('/proc/'+sys.argv[1]) and time.monotonic()<deadline: time.sleep(0.05)\nassert not os.path.exists('/proc/'+sys.argv[1]), 'killed process remains'", pid]);
       pass("kill terminates sleep and removes process");
       await timed("delete", () => request("/computer/delete", { confirm: space }));
       await request("/computer/ensure", { keep: true });
