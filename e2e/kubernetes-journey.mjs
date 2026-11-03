@@ -240,7 +240,9 @@ try {
       const pods = computerPods();
       assert.equal(pods.length, 1);
       const pod = pods[0];
-      const pvcBefore = objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort();
+      const computerPvcs = () => objects("get", "pvc").items.filter(pvc => pvc.metadata.ownerReferences?.some(owner => owner.uid === sandbox.metadata.uid)).map(pvc => pvc.metadata.uid).sort();
+      const pvcBefore = computerPvcs();
+      assert.ok(pvcBefore.length > 0);
       if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("cordon", pod.spec.nodeName);
       try {
         kube("delete", "pod", pod.metadata.name, "--wait=true");
@@ -255,7 +257,7 @@ try {
         }
         computer("ensure");
         assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
-        assert.deepEqual(objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort(), pvcBefore);
+        assert.deepEqual(computerPvcs(), pvcBefore);
         pass("replacement computer pod mounts the same PVC and preserves file bytes");
       } finally {
         if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("uncordon", pod.spec.nodeName);
