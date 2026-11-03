@@ -114,6 +114,10 @@ cleanup() {
     done < <(jq -r '.items[].metadata.name' "$state/pods.private.json")
   fi
   inventory
+  while read -r name location; do
+    gc logging read "resource.type=\"http_load_balancer\" AND resource.labels.forwarding_rule_name=\"$name\" AND httpRequest.status>=500" \
+      --limit=20 --freshness=2h --format=json > "$state/$name.lb-errors.private.json"
+  done < <(owned < "$state/forwarding-rules.private.json")
   # The CLI's labels flag uses the gated alpha API; use the stable setLabels API.
   python3 - "$project" "$run_id" "$state/forwarding-rules.private.json" <<'PY'
 import json, subprocess, sys, urllib.request
@@ -216,6 +220,7 @@ kind: BackendConfig
 metadata: {name: baskule}
 spec:
   timeoutSec: 3600
+  logging: {enable: true, sampleRate: 1}
   healthCheck: {type: HTTP, port: 47091, requestPath: /.well-known/celld/health}
 ---
 apiVersion: storage.k8s.io/v1

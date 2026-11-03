@@ -320,6 +320,8 @@ Other GKE-managed resources carry the unique run name in their names or descript
 The cleanup audit also detects disks and load-balancer resources added since the run's
 baseline. Run `e2e/kubernetes-ephemeral.sh sweep` after an interrupted host session,
 then `audit`. Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
+To repeat only public Ingress and Helm-upgrade verification after the core journey
+passes on the same chart and images, set `BASKULE_K8S_JOURNEY=ingress` for the run.
 
 ## Limits
 

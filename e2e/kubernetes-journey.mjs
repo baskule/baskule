@@ -35,6 +35,59 @@ async function rpc(person, space) {
   await expect.poll(() => { if (error) throw error; return Boolean(result); }, { timeout: 60_000 }).toBe(true);
   return result;
 }
+async function ingressSession(signIn) {
+  let session;
+  await expect.poll(async () => {
+    try { session = await signIn(); return true; }
+    catch (error) {
+      // GFE can still be converging after NEG registration. Refuse auth and
+      // application errors; only retry load-balancer availability failures.
+      if (!/: 50[234] /.test(String(error))) throw error;
+      return false;
+    }
+  }, { timeout: 180_000 }).toBe(true);
+  return session;
+}
+async function checkIngress(publicUrl) {
+  await expect.poll(async () => {
+    try { return (await fetch(`${publicUrl}/api/baskule/setup`, { signal: AbortSignal.timeout(10_000) })).status; }
+    catch { return 0; }
+  }, { timeout: 600_000 }).toBe(200);
+  const externalApi = createApi({ urls: { loopback: publicUrl, front: publicUrl }, admin });
+  await ingressSession(() => externalApi.adminSession());
+  const externalPerson = await externalApi.person("Ingress", randomBytes(4).toString("hex"));
+  const externalClient = await rpc(externalPerson, externalApi.personalSpace(externalPerson));
+  try {
+    const externalProject = (await externalClient.ok("projects.ensureScratch", {})).projectId;
+    const externalThread = await externalApi.launch(externalClient, externalProject, "[[fake:text LOAD_BALANCER_STREAM_OK alpha beta gamma delta epsilon]][[fake:delay 200]]");
+    const externalState = externalApi.watchThread(externalClient, externalThread);
+    try {
+      await externalApi.waitFor("load balancer text before completion", () => !externalState.settled() && externalState.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 60_000);
+      await externalApi.waitFor("load balancer streamed chat", () => externalState.settled() && externalState.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 180_000);
+      assert.ok([...externalState.runs.values()].every(run => run.status === "completed"));
+      assert.ok(externalState.assistantUpdates >= 2, "incremental updates must traverse the public load balancer");
+    } finally { externalState.stop(); }
+    pass("real Ingress load balancer serves sign-in and incremental fake chat over WebSocket");
+    if (process.env.BASKULE_K8S_JOURNEY === "ingress") {
+      externalClient.close(); await externalClient.closed;
+      const oldPod = objects("get", "pod", `${release}-celld-1`);
+      kube("delete", "pod", `${release}-celld-1`, "--grace-period=0", "--force", "--wait=true");
+      await expect.poll(() => {
+        const replacement = objects("get", "pods", "-l", select("celld")).items.find(p => p.metadata.name === oldPod.metadata.name);
+        return Boolean(replacement && replacement.metadata.uid !== oldPod.metadata.uid && replacement.status.conditions?.some(c => c.type === "Ready" && c.status === "True"));
+      }, { timeout: 240_000 }).toBe(true);
+      const signedIn = await ingressSession(() => externalApi.Person.signIn(externalPerson.email, externalPerson.password));
+      const reconnected = await rpc(signedIn, externalApi.personalSpace(externalPerson));
+      try {
+        const recovered = externalApi.watchThread(reconnected, externalThread);
+        try {
+          await externalApi.waitFor("load balancer chat after celld replacement", () => recovered.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 120_000);
+        } finally { recovered.stop(); }
+        pass("public Ingress sign-in and persisted chat recover after celld pod replacement");
+      } finally { reconnected.close(); await reconnected.closed; }
+    }
+  } finally { externalClient.close(); await externalClient.closed; }
+}
 const select = component => `app.kubernetes.io/instance=${release},app.kubernetes.io/component=${component}`;
 // Keep retry credentials outside uploaded evidence; never print them.
 const privateDirectory = resolve(".run/kubernetes-journey");
@@ -72,123 +125,110 @@ try {
     ...settings, apiKey: "fake-llm-key",
     ai: { providerId: "custom", baseUrl: "http://fake-llm:47601/v1", model: { id: "fake-model", name: "fake-model", image: true, pdf: true, limit: { context: 200_000, output: 16_000 }, settings: {} } },
   });
-  const chatting = await api.person("Kubernetes", randomBytes(4).toString("hex"));
-  const space = api.personalSpace(chatting);
-  client = await rpc(chatting, space);
-  const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
-  const thread = await api.launch(client, projectId, "[[fake:text KUBERNETES_STREAM_OK alpha beta gamma delta epsilon]][[fake:delay 200]]");
-  const state = api.watchThread(client, thread);
-  await api.waitFor("streamed fake chat", () => state.settled() && state.assistantText().includes("KUBERNETES_STREAM_OK"), 180_000);
-  assert.ok([...state.runs.values()].every(run => run.status === "completed"));
-  assert.ok(state.assistantUpdates >= 2, "multiple assistant updates prove incremental streaming");
-  state.stop();
-  pass("fake chat streams through the platform WebSocket");
-  const toolThread = await api.launch(client, projectId, '[[fake:tool shell {"command":"printf KUBERNETES_DISK_OK > /sandbox/space/kubernetes-proof.txt; cat /sandbox/space/kubernetes-proof.txt"}]]');
-  const tool = api.watchThread(client, toolThread);
-  await api.waitFor("computer exec", () => tool.settled() && tool.assistantText().includes("KUBERNETES_DISK_OK"), 300_000);
-  tool.stop();
-  const files = () => client.ok("projects.readFile", { cwd: "/sandbox/space", relativePath: "kubernetes-proof.txt" });
-  assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
-  pass("platform invokes computerd and writes verified file bytes on a Kubernetes computer");
-  const computerdPod = objects("get", "pods", "-l", select("computerd")).items[0].metadata.name;
-  // Run through the actual HTTP API from the celld trust domain. No extra public service.
-  const celldPod = `${release}-celld-0`;
-  function computer(action) {
-    return execFileSync("kubectl", ["-n", namespace, "exec", "-i", celldPod, "--", "sh", "-ec", 'read -r token; curl -fsS --max-time 180 -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{}" "http://$1-computerd:47094/v1/spaces/$2/computer/$3"', "sh", release, space, action], {
-      input: Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString() + "\n", encoding: "utf8", timeout: 190_000,
-    });
-  }
-  computer("stop");
-  computer("ensure");
-  assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
-  pass("per-space PVC preserves file bytes after computer stop/start");
-  const sandbox = objects("get", "sandboxes", `default--${namesFor(space, release).sandbox}`);
-  const workloadSelector = `openshell.ai/boundary-role=workload,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`;
-  const pods = objects("get", "pods", "-l", workloadSelector).items;
-  assert.equal(pods.length, 1);
-  const pod = pods[0];
-  const pvcBefore = objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort();
-  if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("cordon", pod.spec.nodeName);
-  try {
-    kube("delete", "pod", pod.metadata.name, "--wait=true");
-    await expect.poll(() => {
-      // The next use wakes a Sandbox suspended after its workload pod vanished.
-      try { computer("ensure"); } catch { return false; }
-      const replacement = objects("get", "pods", "-l", workloadSelector).items[0];
-      return Boolean(replacement && replacement.metadata.uid !== pod.metadata.uid && replacement.status.conditions?.some(c => c.type === "Ready" && c.status === "True"));
-    }, { timeout: 240_000 }).toBe(true);
-    if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
-      assert.notEqual(objects("get", "pods", "-l", workloadSelector).items[0].spec.nodeName, pod.spec.nodeName);
+  const selection = process.env.BASKULE_K8S_JOURNEY ?? "full";
+  assert.ok(["full", "ingress"].includes(selection), "journey selection: full or ingress");
+  if (selection === "ingress") {
+    await checkIngress(publicUrl);
+    writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), selection, ingress: true }));
+  } else {
+    const chatting = await api.person("Kubernetes", randomBytes(4).toString("hex"));
+    const space = api.personalSpace(chatting);
+    client = await rpc(chatting, space);
+    const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
+    const thread = await api.launch(client, projectId, "[[fake:text KUBERNETES_STREAM_OK alpha beta gamma delta epsilon]][[fake:delay 200]]");
+    const state = api.watchThread(client, thread);
+    await api.waitFor("streamed fake chat", () => state.settled() && state.assistantText().includes("KUBERNETES_STREAM_OK"), 180_000);
+    assert.ok([...state.runs.values()].every(run => run.status === "completed"));
+    assert.ok(state.assistantUpdates >= 2, "multiple assistant updates prove incremental streaming");
+    state.stop();
+    pass("fake chat streams through the platform WebSocket");
+    const toolThread = await api.launch(client, projectId, '[[fake:tool shell {"command":"printf KUBERNETES_DISK_OK > /sandbox/space/kubernetes-proof.txt; cat /sandbox/space/kubernetes-proof.txt"}]]');
+    const tool = api.watchThread(client, toolThread);
+    await api.waitFor("computer exec", () => tool.settled() && tool.assistantText().includes("KUBERNETES_DISK_OK"), 300_000);
+    tool.stop();
+    const files = () => client.ok("projects.readFile", { cwd: "/sandbox/space", relativePath: "kubernetes-proof.txt" });
+    assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
+    pass("platform invokes computerd and writes verified file bytes on a Kubernetes computer");
+    const computerdPod = objects("get", "pods", "-l", select("computerd")).items[0].metadata.name;
+    // Run through the actual HTTP API from the celld trust domain. No extra public service.
+    const celldPod = `${release}-celld-0`;
+    function computer(action) {
+      return execFileSync("kubectl", ["-n", namespace, "exec", "-i", celldPod, "--", "sh", "-ec", 'read -r token; curl -fsS --max-time 180 -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{}" "http://$1-computerd:47094/v1/spaces/$2/computer/$3"', "sh", release, space, action], {
+        input: Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString() + "\n", encoding: "utf8", timeout: 190_000,
+      });
     }
+    computer("stop");
     computer("ensure");
     assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
-    assert.deepEqual(objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort(), pvcBefore);
-    pass("replacement computer pod mounts the same PVC and preserves file bytes");
-  } finally {
-    if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("uncordon", pod.spec.nodeName);
-  }
-  // A network-policy-enforced workload cannot dial any peer, S3 or private IP.
-  const workload = objects("get", "pods", "-l", workloadSelector).items[0];
-  const probe = 'const net=require("net");const s=net.connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>process.exit(1));s.on("error",()=>process.exit(0));s.setTimeout(3000,()=>{s.destroy();process.exit(0)});';
-  for (const [host, port] of [
-    [objects("get", "pod", celldPod).status.podIP, "47092"],
-    [objects("get", "svc", `${release}-rustfs`).spec.clusterIP, "3900"],
-    ["169.254.169.254", "80"],
-  ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
-  pass("NetworkPolicy blocks direct computer access to peer, S3 and metadata IPs");
-  // Keep the killed ordinal unavailable until another celld owns its cells.
-  const victim = `${release}-celld-1`;
-  const peer = async name => {
-    const url = await forward(`pod/${name}`, 47092);
-    return await (await fetch(`${url}/state`)).json();
-  };
-  const before = await peer(victim);
-  writeFileSync(resolve(evidence, "celld-before.json"), JSON.stringify(before));
-  assert.ok(before.owned_cells > 0, "the killed pod must own cells for this drill");
-  kube("patch", "statefulset", `${release}-celld`, "--type=merge", "-p", JSON.stringify({ spec: { template: { spec: { nodeSelector: { "baskule.test/unavailable": "true" } } } } }));
-  kube("delete", "pod", victim, "--grace-period=0", "--force", "--wait=false");
-  client.close(); await client.closed;
-  const initialForward = forwards[0];
-  if (initialForward.exitCode === null) {
-    const exited = new Promise(done => initialForward.once("exit", done));
-    initialForward.kill("SIGTERM");
-    await exited;
-  }
-  await forward(`pod/${celldPod}`, 47091, localPort);
-  client = await rpc(chatting, space);
-  const recovered = api.watchThread(client, thread);
-  await api.waitFor("chat after owner loss", () => recovered.assistantText().includes("KUBERNETES_STREAM_OK"), 120_000);
-  recovered.stop();
-  assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
-  const after = await peer(celldPod);
-  writeFileSync(resolve(evidence, "celld-after.json"), JSON.stringify(after));
-  assert.ok(before.residents.some(cell => after.residents.includes(cell)), "a cell resident on the killed peer is now resident on the survivor");
-  pass("killed celld owner stays unavailable while another pod serves persisted chat and computer files");
-  kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
-  kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");
-  kube("rollout", "status", `statefulset/${release}-celld`, "--timeout=180s");
-  if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") {
-    await expect.poll(async () => {
-      try { return (await fetch(`${publicUrl}/api/baskule/setup`, { signal: AbortSignal.timeout(10_000) })).status; }
-      catch { return 0; }
-    }, { timeout: 600_000 }).toBe(200);
-    const externalApi = createApi({ urls: { loopback: publicUrl, front: publicUrl }, admin });
-    await externalApi.adminSession();
-    const externalPerson = await externalApi.person("Ingress", randomBytes(4).toString("hex"));
-    const externalClient = await rpc(externalPerson, externalApi.personalSpace(externalPerson));
+    pass("per-space PVC preserves file bytes after computer stop/start");
+    const sandbox = objects("get", "sandboxes", `default--${namesFor(space, release).sandbox}`);
+    const workloadSelector = `openshell.ai/boundary-role=workload,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`;
+    const pods = objects("get", "pods", "-l", workloadSelector).items;
+    assert.equal(pods.length, 1);
+    const pod = pods[0];
+    const pvcBefore = objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort();
+    if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("cordon", pod.spec.nodeName);
     try {
-      const externalProject = (await externalClient.ok("projects.ensureScratch", {})).projectId;
-      const externalThread = await externalApi.launch(externalClient, externalProject, "[[fake:text LOAD_BALANCER_STREAM_OK alpha beta gamma delta epsilon]][[fake:delay 200]]");
-      const externalState = externalApi.watchThread(externalClient, externalThread);
-      try {
-        await externalApi.waitFor("load balancer streamed chat", () => externalState.settled() && externalState.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 180_000);
-        assert.ok([...externalState.runs.values()].every(run => run.status === "completed"));
-        assert.ok(externalState.assistantUpdates >= 2, "incremental updates must traverse the public load balancer");
-      } finally { externalState.stop(); }
-      pass("real Ingress load balancer serves sign-in and incremental fake chat over WebSocket");
-    } finally { externalClient.close(); await externalClient.closed; }
+      kube("delete", "pod", pod.metadata.name, "--wait=true");
+      await expect.poll(() => {
+        // The next use wakes a Sandbox suspended after its workload pod vanished.
+        try { computer("ensure"); } catch { return false; }
+        const replacement = objects("get", "pods", "-l", workloadSelector).items[0];
+        return Boolean(replacement && replacement.metadata.uid !== pod.metadata.uid && replacement.status.conditions?.some(c => c.type === "Ready" && c.status === "True"));
+      }, { timeout: 240_000 }).toBe(true);
+      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
+        assert.notEqual(objects("get", "pods", "-l", workloadSelector).items[0].spec.nodeName, pod.spec.nodeName);
+      }
+      computer("ensure");
+      assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
+      assert.deepEqual(objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort(), pvcBefore);
+      pass("replacement computer pod mounts the same PVC and preserves file bytes");
+    } finally {
+      if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("uncordon", pod.spec.nodeName);
+    }
+    // A network-policy-enforced workload cannot dial any peer, S3 or private IP.
+    const workload = objects("get", "pods", "-l", workloadSelector).items[0];
+    const probe = 'const net=require("net");const s=net.connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>process.exit(1));s.on("error",()=>process.exit(0));s.setTimeout(3000,()=>{s.destroy();process.exit(0)});';
+    for (const [host, port] of [
+      [objects("get", "pod", celldPod).status.podIP, "47092"],
+      [objects("get", "svc", `${release}-rustfs`).spec.clusterIP, "3900"],
+      ["169.254.169.254", "80"],
+    ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
+    pass("NetworkPolicy blocks direct computer access to peer, S3 and metadata IPs");
+    if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
+    // Keep the killed ordinal unavailable until another celld owns its cells.
+    const victim = `${release}-celld-1`;
+    const peer = async name => {
+      const url = await forward(`pod/${name}`, 47092);
+      return await (await fetch(`${url}/state`)).json();
+    };
+    const before = await peer(victim);
+    writeFileSync(resolve(evidence, "celld-before.json"), JSON.stringify(before));
+    assert.ok(before.owned_cells > 0, "the killed pod must own cells for this drill");
+    kube("patch", "statefulset", `${release}-celld`, "--type=merge", "-p", JSON.stringify({ spec: { template: { spec: { nodeSelector: { "baskule.test/unavailable": "true" } } } } }));
+    kube("delete", "pod", victim, "--grace-period=0", "--force", "--wait=false");
+    client.close(); await client.closed;
+    const initialForward = forwards[0];
+    if (initialForward.exitCode === null) {
+      const exited = new Promise(done => initialForward.once("exit", done));
+      initialForward.kill("SIGTERM");
+      await exited;
+    }
+    await forward(`pod/${celldPod}`, 47091, localPort);
+    client = await rpc(chatting, space);
+    const recovered = api.watchThread(client, thread);
+    await api.waitFor("chat after owner loss", () => recovered.assistantText().includes("KUBERNETES_STREAM_OK"), 120_000);
+    recovered.stop();
+    assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
+    const after = await peer(celldPod);
+    writeFileSync(resolve(evidence, "celld-after.json"), JSON.stringify(after));
+    assert.ok(before.residents.some(cell => after.residents.includes(cell)), "a cell resident on the killed peer is now resident on the survivor");
+    pass("killed celld owner stays unavailable while another pod serves persisted chat and computer files");
+    kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
+    kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");
+    kube("rollout", "status", `statefulset/${release}-celld`, "--timeout=180s");
+    writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), computerPodReplaced: true, crossNode: process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
   }
-  writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), computerPodReplaced: true, crossNode: process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
 } finally {
   if (client) { client.close(); await client.closed; }
   for (const child of forwards) child.kill("SIGTERM");
