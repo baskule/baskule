@@ -48,7 +48,7 @@ targets=$(printf '%s' "$targets" | sed 's/ host=127\.[0-9.]*/ /g')
 $(cat e2e/infra/probe.sh)
 probe_isolation '$targets' '$gateway' '$gateway'
 probe_internet" | tee "$EVIDENCE/probes.log"
-! grep -E '^(OPEN|BROKEN) ' "$EVIDENCE/probes.log"
+if grep -E '^(OPEN|BROKEN) ' "$EVIDENCE/probes.log"; then exit 1; fi
 test "$(grep -c '^DENIED ' "$EVIDENCE/probes.log")" -ge 30
 test "$(grep -c '^WORKS ' "$EVIDENCE/probes.log")" -ge 11
 subnet=$(docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "$network")
