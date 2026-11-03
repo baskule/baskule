@@ -99,7 +99,6 @@ services:
       - baskule-storage-secrets:/run/baskule/storage
       - baskule-platform-secrets:/run/baskule/platform
       - baskule-computerd-secrets:/run/baskule/computerd
-      - baskule-openshell-secrets:/run/baskule/openshell
     networks: [baskule-net]
 
   baskule-celld-a:
@@ -210,55 +209,26 @@ services:
     entrypoint: ["/bin/sh", "-c", ". /run/baskule/secrets; exec node --disable-warning=ExperimentalWarning src/main.ts"]
     volumes:
       - baskule-computerd-secrets:/run/baskule:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add: ["${DOCKER_GID:-999}"]
     environment:
       COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:-}
       COMPUTERD_PORT: "47094"
-      OPENSHELL_GATEWAY: baskule-openshell:47095
-      OPENSHELL_VOLUMES_URL: http://baskule-openshell:47096
-      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN:-}
+      COMPUTER_BACKEND: docker
+      COMPUTER_NETWORK: ${COMPUTER_NETWORK:-baskule-computers}
+      COMPUTER_GUARD_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computerd:${BASKULE_VERSION:-0.5.0}
+      COMPUTER_DNS: ${COMPUTER_DNS:-1.1.1.1,8.8.8.8}
       COMPUTER_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computer:${BASKULE_VERSION:-0.5.0}
       COMPUTER_CPUS: ${COMPUTER_CPUS:-2}
       COMPUTER_MEMORY: ${COMPUTER_MEMORY:-3Gi}
       PRODUCT_SETTINGS_URL: http://baskule-edge:47090/api/baskule/runtime-settings
       LOG_LEVEL: ${COMPUTERD_LOG_LEVEL:-info}
       OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL:-}
-    networks: [baskule-net, baskule-computers]
+    networks: [baskule-net]
     depends_on:
       baskule-bootstrap:
         condition: service_completed_successfully
-      baskule-openshell:
-        condition: service_healthy
-    cpus: 1
-    mem_limit: 512m
-
-  baskule-openshell:
-    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-openshell-gateway:${BASKULE_VERSION:-0.5.0}
-    restart: unless-stopped
-    # First start imports the bundled computer into the private daemon.
-    healthcheck:
-      start_period: 10m
-    # Privileged: it runs its own dockerd (unix socket only, no bridge, no iptables). The computers run inside it.
-    privileged: true
-    entrypoint: ["/bin/sh", "-c", ". /run/baskule/secrets; exec /usr/bin/tini -g -- /usr/local/bin/baskule-openshell-entrypoint"]
-    depends_on:
-      baskule-bootstrap:
-        condition: service_completed_successfully
-    environment:
-      OPENSHELL_VOLUMES_TOKEN: ${OPENSHELL_VOLUMES_TOKEN:-}
-      OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP:-}
-      BASKULE_REGISTRY: ${BASKULE_REGISTRY:-ghcr.io/baskule}
-      BASKULE_VERSION: ${BASKULE_VERSION:-0.5.0}
-    volumes:
-      - baskule-openshell-docker:/var/lib/docker
-      - baskule-openshell-state:/var/lib/openshell
-      - baskule-openshell-secrets:/run/baskule:ro
-    networks: [baskule-computers]
-    stop_grace_period: 60s
-    cpus: ${OPENSHELL_CPUS:-3}
-    mem_limit: ${OPENSHELL_MEMORY:-8g}
-    pids_limit: 16384
-
-  # Traces of the whole stack (celld, the T3 server in each cell, the OpenShell gateway): Jaeger, in memory. The UI
+      # Traces of the whole stack (celld, the T3 server in each cell, the OpenShell gateway): Jaeger, in memory. The UI
   # has its own loopback-default bind, independent of the edge.
   baskule-traces:
     profiles: [traces]
@@ -272,7 +242,7 @@ services:
         target: /etc/jaeger/config.yaml
     ports:
       - "${BASKULE_TRACES_BIND:-127.0.0.1}:${BASKULE_TRACES_PORT:-47098}:16686"
-    networks: [baskule-net, baskule-computers]
+    networks: [baskule-net]
     cpus: 1
     mem_limit: ${BASKULE_TRACES_MEMORY:-1g}
 
@@ -289,10 +259,7 @@ services:
       - baskule-storage-secrets:/backup/storage-secrets:ro
       - baskule-platform-secrets:/backup/platform-secrets:ro
       - baskule-computerd-secrets:/backup/computerd-secrets:ro
-      - baskule-openshell-secrets:/backup/openshell-secrets:ro
       - baskule-rustfs:/backup/rustfs:ro
-      - baskule-openshell-state:/backup/openshell-state:ro
-      - baskule-openshell-docker:/backup/openshell-docker:ro
 
   restore:
     profiles: [backup]
@@ -307,26 +274,20 @@ services:
       - baskule-storage-secrets:/backup/storage-secrets
       - baskule-platform-secrets:/backup/platform-secrets
       - baskule-computerd-secrets:/backup/computerd-secrets
-      - baskule-openshell-secrets:/backup/openshell-secrets
       - baskule-rustfs:/backup/rustfs
-      - baskule-openshell-state:/backup/openshell-state
-      - baskule-openshell-docker:/backup/openshell-docker
 
 networks:
   baskule-net: {}
-  baskule-computers: {}
 
 volumes:
   baskule-storage-secrets: {}
   baskule-platform-secrets: {}
   baskule-computerd-secrets: {}
-  baskule-openshell-secrets: {}
   baskule-rustfs: {}
   baskule-celld-a: {}
   baskule-celld-b: {}
   baskule-edge-data: {}
   baskule-openshell-docker: {}
-  baskule-openshell-state: {}
 
 configs:
   edge:

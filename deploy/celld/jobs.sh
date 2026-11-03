@@ -43,7 +43,7 @@ ensure_secret() {
 generate_secrets() {
   local role
   umask 077
-  for role in storage platform computerd openshell; do
+  for role in storage platform computerd; do
     mkdir -p "$secrets_root/$role"
     chmod 755 "$secrets_root/$role"
     if [ -f "$secrets_root/$role/secrets" ]; then
@@ -55,10 +55,9 @@ generate_secrets() {
   ensure_secret .pending RUSTFS_ACCESS_KEY storage
   ensure_secret .pending RUSTFS_SECRET_KEY storage
   ensure_secret .pending COMPUTERD_TOKEN platform computerd
-  ensure_secret .pending OPENSHELL_VOLUMES_TOKEN computerd openshell
   ensure_secret .pending SETUP_TOKEN platform
   ensure_secret .pending PLUGIN_SYNC_TOKEN platform
-  for role in storage platform computerd openshell; do
+  for role in storage platform computerd; do
     mv "$secrets_root/$role/.pending" "$secrets_root/$role/secrets"
   done
 }

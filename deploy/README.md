@@ -11,21 +11,16 @@ Developers use [Build Baskule](../docs/building.md). The Helm chart is the only 
 | `celld/` | Shared node/job image containing Worker, web app and deployment utilities |
 | `build-env/` | Ubuntu 24.04 native build environment |
 
-Released images use `ghcr.io/baskule/baskule-{celld,computerd,openshell-gateway}:VERSION`.
-Third-party storage, edge, and trace images are pinned by digest in Compose. The gateway embeds the computer, supervisor, and sandbox
-workload images, so its private daemon needs no registry access or host image loader.
-
-The single-machine stack has separate platform and computer networks. Only computerd joins both; the optional
-trace collector also receives from both. The edge publishes HTTP on loopback by default, or TCP 80/443 and UDP 443
-on all IPv4/IPv6 interfaces in HTTPS mode. The optional trace UI has its own loopback-default bind
-(`BASKULE_TRACES_BIND`). Computer egress policy
-continues to deny private destinations.
-
-Default memory caps total 15.75 GiB: two nodes at 3 GiB each, RustFS at 1 GiB, edge at 256 MiB, computerd at
-512 MiB, and OpenShell at 8 GiB. The optional trace collector adds 1 GiB. CPU caps are 2 per node, 1 for storage,
-edge and computerd, and 3 for OpenShell. Each computer defaults to 2 CPU and 3 GiB within OpenShell's aggregate
-cap. These limits are not reservations. Persistent volumes hold generated secrets, the bucket, node caches, gateway state, and private
-Docker store containing computer disks.
+Compose runs computerd against the host Docker socket, as user `node`. Set `DOCKER_GID`
+to `stat -c %g /var/run/docker.sock` (default 999) so it can access the socket.
+This grants Docker administration privileges. Computers use the separate
+`COMPUTER_NETWORK` bridge (default `baskule-computers`), created by computerd.
+The guard helper uses the computerd image with NET_ADMIN in the host network namespace;
+Docker must provide the iptables DOCKER-USER chain. It denies private and host destinations.
+`COMPUTER_DNS` optionally selects comma-separated public DNS IPs.
+Each computer defaults to 2 CPUs and 3 GiB. The computer and computerd images must
+already be available on the host. There is no OpenShell service.
+The old `baskule-openshell-docker` volume declaration is retained for the upcoming data migration.
 
 `up.sh`, `deploy.sh`, `down.sh`, and `recreate-computers.sh` serve the checkout-based
 developer path. For a source-stack backup, source `deploy/lib.sh` and run
