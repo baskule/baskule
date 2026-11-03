@@ -73,7 +73,7 @@ export class KubernetesBackend implements Backend {
     if (!selector) return null;
     const query = new URLSearchParams({ labelSelector: selector });
     const pods = await this.api<{ items: Resource[] }>(`${this.core}/pods?${query}`);
-    return pods.items.find(p => !p.metadata.deletionTimestamp) ?? null;
+    return pods.items[0] ?? null;
   }
   private async machine(s: Resource): Promise<Machine> {
     const p = await this.pod(s);
@@ -149,7 +149,7 @@ export class KubernetesBackend implements Backend {
   async stop(name: string) {
     const s = await this.resource(`${this.sandboxes}/${encode(name)}`); if (!s) return;
     await this.api(`${this.sandboxes}/${encode(name)}`, 'PATCH', { spec: { operatingMode: 'Suspended' } });
-    const podName = s.metadata.annotations?.['agents.x-k8s.io/pod-name'];
+    const podName = (await this.pod(s))?.metadata.name;
     if (podName) await this.wait(`${this.core}/pods`, podName, async p => !p);
     await this.wait(this.sandboxes, name, async current => !current || (await this.machine(current)).phase === 'stopped');
   }
