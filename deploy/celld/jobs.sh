@@ -136,7 +136,7 @@ case "${1:-}" in
     done
     tar --xattrs --xattrs-include='*' --numeric-owner -C /backup -xzf -
     # Restored disks need fresh OpenShell admission records, while their data and keys stay intact.
-    touch /backup/openshell-state/.baskule-restore
+    if [ -d /backup/openshell-state ]; then touch /backup/openshell-state/.baskule-restore; fi
     ;;
   bootstrap)
     generate_secrets

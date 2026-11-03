@@ -42,15 +42,9 @@ services:
       context: ..
       dockerfile: computerd/Dockerfile
     environment:
+      COMPUTER_GUARD_IMAGE: baskule-computerd:${BASKULE_TAG:-local}
       COMPUTER_IMAGE: baskule-computer:${BASKULE_TAG:-local}
       OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
-  baskule-openshell:
-    image: baskule-openshell-gateway:${BASKULE_TAG:-local}
-    container_name: baskule-openshell
-    environment:
-      OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP-http://baskule-traces:4317}
-      BASKULE_REGISTRY: ""
-      BASKULE_VERSION: ${BASKULE_TAG:-local}
   baskule-rustfs:
     container_name: baskule-rustfs
   baskule-edge:
@@ -66,8 +60,6 @@ services:
 networks:
   baskule-net:
     name: baskule-net
-  baskule-computers:
-    name: baskule-computers
 volumes:
   baskule-storage-secrets:
     name: baskule-storage-secrets
@@ -75,8 +67,6 @@ volumes:
     name: baskule-platform-secrets
   baskule-computerd-secrets:
     name: baskule-computerd-secrets
-  baskule-openshell-secrets:
-    name: baskule-openshell-secrets
   baskule-rustfs:
     name: baskule-rustfs
   baskule-celld-a:
@@ -87,5 +77,3 @@ volumes:
     name: baskule-edge-data
   baskule-openshell-docker:
     name: baskule-openshell-docker
-  baskule-openshell-state:
-    name: baskule-openshell-state
