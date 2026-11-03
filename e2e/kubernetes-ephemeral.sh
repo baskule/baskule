@@ -420,3 +420,10 @@ exposure:
 YAML
 export BASKULE_K8S_CROSS_NODE=1 BASKULE_K8S_CHECK_INGRESS=1
 bash e2e/kubernetes-install.sh > "$BASKULE_K8S_EVIDENCE/install.log" 2>&1
+pod=$(kubectl -n "$run_id" get pod -l app.kubernetes.io/component=computerd -o jsonpath='{.items[0].metadata.name}')
+kubectl -n "$run_id" exec "$pod" -- sh -c 'mkdir -p /tmp/baskule-tests; ln -sfn /app/node_modules /tmp/baskule-tests/node_modules'
+for file in integration.ts client.ts; do
+  kubectl -n "$run_id" exec -i "$pod" -- sh -c "cat > /tmp/baskule-tests/$file" < "computerd/test/$file"
+done
+kubectl -n "$run_id" exec "$pod" -- env COMPUTERD_URL=http://127.0.0.1:47094 node --test /tmp/baskule-tests/integration.ts > "$BASKULE_K8S_EVIDENCE/integration.log" 2>&1
+BENCH_RUNS=3 BENCH_OUT="$BASKULE_K8S_EVIDENCE/bench.json" bash computerd/test/bench-kubernetes.sh > "$BASKULE_K8S_EVIDENCE/bench.log" 2>&1
