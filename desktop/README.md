@@ -72,6 +72,11 @@ merged arm64/x64 YAML; real updates require Developer ID signing and notarizatio
 signing, with the publisher identity supplied by `AZURE_TRUSTED_SIGNING_PUBLISHER_NAME`. No signing identity or
 credential is hardcoded. Unsigned native CI builds prove packaging only.
 
-The factory still creates draft releases. **An owner must publish the release before clients can update.** Whether
-to publish automatically is an open owner decision. Installers remain per-platform GitHub release-asset links and
+The factory creates draft releases. **An owner must publish the release before clients can update.** The owner
+keeps publication manual after verification. Installers remain per-platform GitHub release-asset links and
 are never embedded in celld images. Mobile store apps cannot self-update; compatible store-update guidance is follow-up work.
+
+Build the first published beta through this pipeline; do not publish a pre-change draft. Update an alpha installation
+before connecting a beta desktop: pre-beta servers are outside the declared window and lack `minClient`. If a
+published release lacks `compatibility.json`, its owner must attach an index from reviewed release history before
+running the next release factory. The factory refuses to silently discard that history.

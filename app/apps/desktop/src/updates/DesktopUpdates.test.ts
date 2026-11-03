@@ -22,7 +22,7 @@ import { flushCallbacks, makeHarness } from "./updatesTestHarness.ts";
 
 describe("DesktopUpdates", () => {
   it.effect(
-    "uses the compatible release feed and discards an installer on installation changes",
+    "follows index redirects, uses the compatible feed and discards an installer on installation changes",
     () => {
       const harness = makeHarness();
       return Effect.scoped(

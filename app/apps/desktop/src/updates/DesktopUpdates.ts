@@ -345,7 +345,10 @@ function isArm64HostRunningIntelBuild(runtimeInfo: DesktopRuntimeInfo): boolean 
 /** @public */
 export const make = Effect.gen(function* () {
   const scope = yield* Effect.scope;
-  const http = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk);
+  const http = (yield* HttpClient.HttpClient).pipe(
+    HttpClient.followRedirects(),
+    HttpClient.filterStatusOk,
+  );
   const config = yield* DesktopConfig.DesktopConfig;
   const installation = yield* Ref.make<ExecutionEnvironmentDescriptor | null>(null);
   const installationRevision = yield* Ref.make(0);

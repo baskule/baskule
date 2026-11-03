@@ -281,17 +281,26 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     Layer.provide(
       Layer.succeed(
         HttpClient.HttpClient,
-        HttpClient.make((request) =>
+        HttpClient.make((request, url) =>
           Effect.succeed(
             HttpClientResponse.fromWeb(
               request,
-              Response.json(
-                options.compatibilityIndex ?? [
-                  { version: "1.2.4", minServer: "1.2.3", minClient: "1.2.3" },
-                  { version: "1.2.5", minServer: "1.2.3", minClient: "1.2.3" },
-                  { version: "1.2.6-nightly.20261103.1", minServer: "1.2.3", minClient: "1.2.3" },
-                ],
-              ),
+              url.pathname === "/compatibility.json"
+                ? new Response(null, {
+                    status: 302,
+                    headers: { location: "/published/compatibility.json" },
+                  })
+                : Response.json(
+                    options.compatibilityIndex ?? [
+                      { version: "1.2.4", minServer: "1.2.3", minClient: "1.2.3" },
+                      { version: "1.2.5", minServer: "1.2.3", minClient: "1.2.3" },
+                      {
+                        version: "1.2.6-nightly.20261103.1",
+                        minServer: "1.2.3",
+                        minClient: "1.2.3",
+                      },
+                    ],
+                  ),
             ),
           ),
         ),
