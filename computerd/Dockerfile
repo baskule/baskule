@@ -1,11 +1,10 @@
-# baskule-computerd:local: stateless HTTP bridge from the cells to OpenShell. See README.md.
+# baskule-computerd:local: stateless HTTP bridge from the cells to the computers (Docker or Kubernetes). See README.md.
 FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS dependencies
 RUN corepack enable pnpm
 WORKDIR /workspace
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY computerd/package.json computerd/package.json
 RUN pnpm --filter baskule-computerd install --prod --frozen-lockfile
-COPY computerd/proto computerd/proto
 COPY computerd/src computerd/src
 RUN pnpm --filter baskule-computerd deploy --prod /out
 
