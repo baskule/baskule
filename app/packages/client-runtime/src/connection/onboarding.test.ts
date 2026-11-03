@@ -83,7 +83,8 @@ function layerPairingHttp(
             os: "linux",
             arch: "x64",
           },
-          serverVersion: "0.0.0-test",
+          serverVersion: "0.5.0",
+          minClient: "0.0.0",
           orchestrationProtocolVersion: options?.protocolVersion ?? ORCHESTRATION_PROTOCOL_VERSION,
           capabilities: {
             repositoryIdentity: true,
@@ -371,44 +372,40 @@ describe("connection onboarding", () => {
     }).pipe(Effect.provide(layerPairingOnboarding())),
   );
 
-  it.effect(
-    "re-pairs an outdated self-updatable environment so its connection can be rechecked",
-    () =>
-      Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        const onboarding = yield* Onboarding.ConnectionOnboarding;
-        yield* registerSwitchedOffEnvironment;
-        yield* registry.setCompatibility(
-          PAIRED_ENVIRONMENT_ID,
-          new ConnectionBlockedError({
-            reason: "unsupported",
-            detail: "The saved server needs an update.",
-            serverUpdateRequired: true,
-          }),
-        );
-        expect(
-          (yield* SubscriptionRef.get(registry.entries)).get(PAIRED_ENVIRONMENT_ID),
-        ).toMatchObject({
-          enabled: false,
+  it.effect("refuses an incompatible environment even when it advertises server updates", () =>
+    Effect.gen(function* () {
+      const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+      const onboarding = yield* Onboarding.ConnectionOnboarding;
+      yield* registerSwitchedOffEnvironment;
+      yield* registry.setCompatibility(
+        PAIRED_ENVIRONMENT_ID,
+        new ConnectionBlockedError({
+          reason: "unsupported",
+          detail: "The saved server needs an update.",
           serverUpdateRequired: true,
-        });
+        }),
+      );
+      expect(
+        (yield* SubscriptionRef.get(registry.entries)).get(PAIRED_ENVIRONMENT_ID),
+      ).toMatchObject({
+        enabled: false,
+        serverUpdateRequired: true,
+      });
 
-        const environmentId = yield* onboarding.registerPairing(PAIRING_INPUT);
-
-        expect(environmentId).toBe(PAIRED_ENVIRONMENT_ID);
-        const entry = (yield* SubscriptionRef.get(registry.entries)).get(environmentId);
-        expect(entry?.enabled).toBe(true);
-        expect(entry?.unsupportedReason).toBeUndefined();
-        expect(entry?.serverUpdateRequired).toBeUndefined();
-        expect(entry?.profile).toEqual(Option.some(PAIRED_PROFILE));
-      }).pipe(
-        Effect.provide(
-          layerPairingOnboarding({
-            protocolVersion: ORCHESTRATION_PROTOCOL_VERSION - 1,
-            selfUpdate: true,
-          }),
-        ),
+      const error = yield* Effect.flip(onboarding.registerPairing(PAIRING_INPUT));
+      expect(error).toMatchObject({ reason: "unsupported" });
+      expect(error).not.toHaveProperty("serverUpdateRequired");
+      const entry = (yield* SubscriptionRef.get(registry.entries)).get(PAIRED_ENVIRONMENT_ID);
+      expect(entry?.enabled).toBe(false);
+      expect(Option.getOrNull(entry?.profile ?? Option.none())?.label).toBe("Old label");
+    }).pipe(
+      Effect.provide(
+        layerPairingOnboarding({
+          protocolVersion: ORCHESTRATION_PROTOCOL_VERSION - 1,
+          selfUpdate: true,
+        }),
       ),
+    ),
   );
 
   it.effect.each([

@@ -12,6 +12,7 @@ VERSION=${BASKULE_VERSION:-$(<"$ROOT/VERSION")}
 pnpm exec vp run dist:desktop:artifact --platform linux --target AppImage --arch x64 --build-version "$VERSION" --output-dir "$ROOT/.run/desktop-package" "$@"
 # Publish only the new desktop output. Android has its own release cadence.
 mkdir -p "$ROOT/desktop/release"
-find "$ROOT/desktop/release" -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.tar.gz' \) -delete
-cp "$ROOT"/.run/desktop-package/*.AppImage "$ROOT/desktop/release/"
-(cd "$ROOT/desktop/release" && sha256sum *.AppImage > SHA256SUMS)
+find "$ROOT/desktop/release" -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.yml' -o -name '*.blockmap' \) -delete
+shopt -s nullglob
+cp "$ROOT"/.run/desktop-package/Baskule-"$VERSION"-*.AppImage "$ROOT"/.run/desktop-package/{latest,nightly}*.yml "$ROOT"/.run/desktop-package/*.blockmap "$ROOT/desktop/release/"
+(cd "$ROOT/desktop/release" && sha256sum *.AppImage *.yml > SHA256SUMS)

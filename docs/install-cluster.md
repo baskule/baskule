@@ -198,6 +198,7 @@ run the new image, run `docker compose run --rm deploy` once to publish its bund
 Update the computers role and edge with `docker compose pull && docker compose up -d`. Computers restart with
 persistent disks; commands can be interrupted. Update the load balancer's node list if membership changed.
 
-If release notes require an alpha data wipe, stop all roles, preserve backups, remove their volumes with
+Updates ship forward migrations. If a change cannot be migrated, obtain the owner's explicit approval and follow
+the documented deployment steps. Only for an explicitly approved wipe, stop all roles, preserve backups, remove their volumes with
 `docker compose down -v`, empty the external bucket, then start the new release and create the first admin with the setup link.
 Do not use a rolling update for a release that requires a wipe. `docker compose down` alone keeps local state.

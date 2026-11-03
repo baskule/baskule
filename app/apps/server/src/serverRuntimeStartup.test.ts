@@ -153,6 +153,7 @@ it.effect.each([
             label: "Test environment",
             platform: { os: "linux", arch: "x64" },
             serverVersion: "0.0.0-test",
+            minClient: "0.0.0",
             capabilities: { repositoryIdentity: true },
           }),
         }),

@@ -581,6 +581,7 @@ it.effect(
             label: "Config test",
             platform: { os: "linux", arch: "x64" },
             serverVersion: "0.0.0",
+            minClient: "0.0.0",
             capabilities: { repositoryIdentity: false },
           }),
         }),

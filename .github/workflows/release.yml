@@ -512,6 +512,25 @@ jobs:
           path: .run/release/linux-apps
       - name: Verify hosted web transfer
         run: cd .run/release/linux-apps && sha256sum -c SHA256SUMS
+      - name: Generate cumulative release compatibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p .run/compatibility
+          if gh api --include "repos/$GH_REPO/releases/latest" > .run/compatibility/previous-response; then
+            sed '1,/^\r\?$/d' .run/compatibility/previous-response > .run/compatibility/previous-release.json
+            previous=$(jq -er .tag_name .run/compatibility/previous-release.json)
+            gh release download "$previous" --pattern compatibility.json --dir .run/compatibility
+          elif head -1 .run/compatibility/previous-response | grep -q ' 404'; then
+            printf '[]\n' > .run/compatibility/compatibility.json
+          else
+            echo 'Could not read previous published release' >&2
+            exit 1
+          fi
+          node app/scripts/generate-compatibility.ts generate .run/compatibility/compatibility.json "$VERSION" .run/release/linux-apps/compatibility.json
       - name: Build and verify packaged Linux desktop
         shell: bash
         run: |
@@ -521,7 +540,7 @@ jobs:
           desktop/check.sh 2>&1 | tee .run/evidence/release/desktop-check.log
           desktop/build.sh 2>&1 | tee .run/evidence/release/desktop-build.log
           dbus-run-session -- xvfb-run -a node desktop/verify.mjs 2>&1 | tee .run/evidence/release/desktop-package.log
-          cp desktop/release/*.AppImage .run/release/linux-apps/
+          cp desktop/release/*.AppImage desktop/release/*.yml .run/release/linux-apps/
           scripts/ci/artifacts.sh .run/release/linux-apps linux-apps
       - name: Upload Linux app artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -621,6 +640,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: backend-${{ needs.version.outputs.version }}
@@ -646,7 +669,7 @@ jobs:
             (cd "$directory" && sha256sum -c SHA256SUMS)
             tar -czf "release/$kind-$VERSION-metadata.tar.gz" --exclude='*.tar.gz' --exclude='*.AppImage' -C "$directory" .
           done
-          cp artifacts/backend/*.tar.gz artifacts/linux-apps/*.tar.gz artifacts/linux-apps/*.AppImage release/
+          cp artifacts/backend/*.tar.gz artifacts/linux-apps/*.tar.gz artifacts/linux-apps/*.AppImage artifacts/linux-apps/*.yml artifacts/linux-apps/compatibility.json release/
           cp artifacts/backend/*.yml artifacts/backend/*.env.example release/
           if [[ -d artifacts/native ]]; then
             for directory in artifacts/native/*; do
@@ -654,12 +677,20 @@ jobs:
               tar -czf "release/$(basename "$directory")-metadata.tar.gz" \
                 --exclude='*.apk' --exclude='*.dmg' --exclude='*.exe' --exclude='*.zip' -C "$directory" .
               while IFS= read -r -d '' package; do
+                if [[ $package == */latest-mac.yml || $package == */nightly-mac.yml ]]; then continue; fi
                 destination="release/$(basename "$package")"
                 [[ ! -e $destination ]] || { echo "Duplicate release asset: $destination" >&2; exit 1; }
                 cp "$package" "$destination"
-              done < <(find "$directory" -type f \( -name '*.apk' -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' \) -print0)
+              done < <(find "$directory" -type f \( -name '*.apk' -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' -o -name '*.blockmap' -o -name '*.yml' \) -print0)
             done
           fi
+          for channel in latest nightly; do
+            if [[ -f artifacts/native/native-desktop-mac-arm64-$VERSION/$channel-mac.yml ]]; then
+              node app/scripts/merge-update-manifests.ts --platform mac \
+                "artifacts/native/native-desktop-mac-arm64-$VERSION/$channel-mac.yml" \
+                "artifacts/native/native-desktop-mac-x64-$VERSION/$channel-mac.yml" "release/$channel-mac.yml"
+            fi
+          done
           (cd release && sha256sum * > SHA256SUMS)
           find release -type f -size +2147483647c -print -quit | while read -r oversized; do
             echo "Release asset exceeds GitHub's 2 GiB limit: $oversized" >&2

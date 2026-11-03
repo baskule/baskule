@@ -49,6 +49,7 @@ const responses = {
     label: target.label,
     platform: { os: "linux", arch: "x64" },
     serverVersion: "0.0.0-test",
+    minClient: "0.0.0",
     capabilities: { repositoryIdentity: true },
   },
   "/api/auth/websocket-ticket": { ticket: "test-ticket", expiresAt: timestamp },

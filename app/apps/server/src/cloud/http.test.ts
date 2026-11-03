@@ -89,6 +89,7 @@ const layerLinkProofRoutes = HttpApiBuilder.layer(LinkProofTestApi).pipe(
         label: "WSL",
         platform: { os: "linux", arch: "x64" },
         serverVersion: "0.0.0-test",
+        minClient: "0.0.0",
         capabilities: { repositoryIdentity: false },
       }),
     }),

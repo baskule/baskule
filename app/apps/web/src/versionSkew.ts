@@ -10,6 +10,7 @@ import type { ServerUpdateState } from "@t3tools/client-runtime/state/server";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import * as Schema from "effect/Schema";
 
+import { BASKULE_UI } from "./baskule/flags";
 import { APP_VERSION } from "./branding";
 import { getLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
 
@@ -82,7 +83,8 @@ export function resolveVersionMismatch(
 export function resolveServerConfigVersionMismatch(
   serverConfig: Pick<ServerConfig, "environment"> | null | undefined,
 ): VersionMismatch | null {
-  return resolveVersionMismatch(serverConfig?.environment.serverVersion);
+  // Baskule negotiates the declared window before connecting.
+  return BASKULE_UI ? null : resolveVersionMismatch(serverConfig?.environment.serverVersion);
 }
 
 export function resolveServerSelfUpdateCapability(

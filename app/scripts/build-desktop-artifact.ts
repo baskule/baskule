@@ -2761,7 +2761,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const buildConfig: Record<string, unknown> = {
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "Baskule-${version}-${arch}.${ext}",
+    artifactName:
+      platform === "linux" && arch === "x64"
+        ? "Baskule-${version}-x64.${ext}"
+        : "Baskule-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [
       ...DESKTOP_FILE_EXCLUSIONS,
@@ -2787,8 +2790,18 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     ],
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
-  // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
-  buildConfig.publish = null;
+  buildConfig.publish = isDesktopPreviewVersion(version)
+    ? null
+    : {
+        provider: "generic",
+        url: `https://github.com/baskule/baskule/releases/download/v${version}/`,
+      };
+  if (mockUpdates) {
+    buildConfig.publish = {
+      provider: "generic",
+      url: resolveMockUpdateServerUrl(mockUpdateServerPort),
+    };
+  }
 
   if (platform === "mac") {
     const path = yield* Path.Path;

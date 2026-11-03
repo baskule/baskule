@@ -91,6 +91,7 @@ const testDescriptor = {
   label: "pair-test",
   platform: { os: "linux", arch: "x64" },
   serverVersion: "0.0.1",
+  minClient: "0.0.0",
   orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION,
   capabilities: { repositoryIdentity: true },
 };

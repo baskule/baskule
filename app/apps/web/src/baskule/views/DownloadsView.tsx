@@ -4,6 +4,7 @@ import { t, useTranslation } from "../../i18n";
 // device, and in the desktop app the server it uses.
 import { DownloadIcon } from "lucide-react";
 
+import { AboutVersionSection } from "../../components/settings/SettingsPanels";
 import { Button } from "../../components/ui/button";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
 import { Spinner } from "../../components/ui/spinner";
@@ -64,6 +65,11 @@ export function DownloadsView() {
   return (
     <SettingsPageContainer>
       <DesktopServerSection />
+      {window.desktopBridge ? (
+        <PageSection title={t("Updates")}>
+          <AboutVersionSection />
+        </PageSection>
+      ) : null}
       <PageSection
         title={version ? t("Apps · version {{version}}", { version: version }) : t("Apps")}
         description={t("The desktop app keeps you signed in and opens Baskule in its own window.")}

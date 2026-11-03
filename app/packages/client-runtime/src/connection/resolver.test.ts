@@ -138,7 +138,8 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
           environmentId: ENVIRONMENT_ID,
           label: "Compatible environment",
           platform: { os: "linux", arch: "x64" },
-          serverVersion: "0.0.0-test",
+          serverVersion: "0.5.0",
+          minClient: "0.0.0",
           ...(options?.descriptorProtocolVersion === undefined
             ? { orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION }
             : options.descriptorProtocolVersion === null
@@ -187,7 +188,7 @@ describe("ConnectionResolver", () => {
       const error = yield* Effect.flip(broker.prepare(catalogEntry(target)));
 
       expect(error).toMatchObject({ reason: "unsupported" });
-      expect(error.message).toContain("Update T3 Code on Compatible environment");
+      expect(error.message).toContain("This installation needs an update");
     }),
   );
 

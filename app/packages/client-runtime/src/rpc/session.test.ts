@@ -124,6 +124,7 @@ const SERVER_CONFIG: ServerConfigType = {
       arch: "arm64",
     },
     serverVersion: "0.0.0-test",
+    minClient: "0.0.0",
     capabilities: {
       repositoryIdentity: true,
       connectionProbe: true,

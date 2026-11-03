@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { DESKTOP_UPDATE_RESTART_MARKER_FILE } from "@t3tools/contracts";
+import { EnvironmentId, DESKTOP_UPDATE_RESTART_MARKER_FILE } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -21,6 +21,61 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
 import { flushCallbacks, makeHarness } from "./updatesTestHarness.ts";
 
 describe("DesktopUpdates", () => {
+  it.effect(
+    "uses the compatible release feed and discards an installer on installation changes",
+    () => {
+      const harness = makeHarness();
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const updates = yield* DesktopUpdates.DesktopUpdates;
+          yield* updates.configure;
+          yield* updates.check("manual");
+          assert.deepEqual(harness.feedUrls().at(-1), {
+            provider: "generic",
+            url: "http://localhost:4141/v1.2.5/",
+          });
+          harness.emit("update-downloaded", { version: "1.2.5" });
+          yield* flushCallbacks;
+          yield* updates.setInstallation(null);
+          assert.isNull((yield* updates.getState).downloadedVersion);
+          assert.isFalse((yield* updates.install).accepted);
+          assert.equal(harness.quitAndInstalls(), 0);
+        }),
+      ).pipe(Effect.provide(harness.layer));
+    },
+  );
+
+  it.effect(
+    "refuses a release above the server window and reports a required client update",
+    () => {
+      const harness = makeHarness({
+        installation: {
+          environmentId: EnvironmentId.make("old"),
+          label: "Old",
+          platform: { os: "linux", arch: "x64" },
+          serverVersion: "1.2.3",
+          minClient: "1.2.4",
+          capabilities: { repositoryIdentity: true },
+        },
+        compatibilityIndex: [{ version: "1.2.4", minServer: "1.2.4", minClient: "1.2.4" }],
+      });
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const updates = yield* DesktopUpdates.DesktopUpdates;
+          yield* updates.configure;
+          const result = yield* updates.check("manual");
+          assert.isNull(result.state.availableVersion);
+          assert.include(result.state.message ?? "", "must update Baskule");
+          assert.equal(harness.checkCount(), 0);
+          harness.emit("update-downloaded", { version: "1.2.4" });
+          yield* flushCallbacks;
+          assert.isFalse((yield* updates.install).accepted);
+          assert.equal(harness.quitAndInstalls(), 0);
+        }),
+      ).pipe(Effect.provide(harness.layer));
+    },
+  );
+
   it.effect("updates Linux .deb installs and leaves other non-AppImage installs off", () =>
     Effect.gen(function* () {
       const linuxState = (packageType: string | undefined) =>

@@ -2,7 +2,11 @@
 // baskule: native transport for the bundled T3 renderer. No local HTTP server.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import { ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import type { Session } from "electron";
+
+const isDescriptor = Schema.is(ExecutionEnvironmentDescriptor);
 
 export function parseServerAddress(value: string): { origin: string; code: string | null } {
   const text = value.trim();
@@ -60,6 +64,9 @@ export function isAppFrame(url: string, appOrigin: string): boolean {
 export async function baskuleConnection(
   stateDir: string,
   session: Pick<Session, "fetch" | "cookies">,
+  onDescriptor: (
+    descriptor: ExecutionEnvironmentDescriptor | null,
+  ) => Promise<void> = async () => {},
 ) {
   const settingsPath = NodePath.join(stateDir, "baskule-server.json");
   let origin: string | null = null;
@@ -112,6 +119,7 @@ export async function baskuleConnection(
       await NodeFSP.rename(`${settingsPath}.tmp`, settingsPath);
       await session.cookies.flushStore();
       origin = target.origin;
+      await onDescriptor(null);
     },
     async proxy(incoming: Request): Promise<Response | null> {
       const url = new URL(incoming.url);
@@ -125,7 +133,8 @@ export async function baskuleConnection(
         )
           headers.delete(key);
       }
-      const response = await request(`${origin}${url.pathname}${url.search}`, {
+      const requestOrigin = origin;
+      const response = await request(`${requestOrigin}${url.pathname}${url.search}`, {
         method: incoming.method,
         headers,
         ...(incoming.method === "GET" || incoming.method === "HEAD"
@@ -140,6 +149,14 @@ export async function baskuleConnection(
       ) {
         await response.body?.cancel();
         return Response.json({ error: "unexpected_server_response" }, { status: 502 });
+      }
+      if (
+        response.ok &&
+        url.pathname.endsWith("/.well-known/t3/environment") &&
+        origin === requestOrigin
+      ) {
+        const descriptor: unknown = await response.clone().json();
+        if (isDescriptor(descriptor) && origin === requestOrigin) await onDescriptor(descriptor);
       }
       const outgoing = new Headers(response.headers);
       outgoing.delete("set-cookie");

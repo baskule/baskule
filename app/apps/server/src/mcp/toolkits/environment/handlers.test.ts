@@ -55,6 +55,7 @@ it.effect("refuses a preferences update when the caller's turn ends while it wai
           label: "Test",
           platform: { os: "linux", arch: "x64" },
           serverVersion: "0.0.0",
+          minClient: "0.0.0",
           capabilities: { repositoryIdentity: false },
         }),
       }),

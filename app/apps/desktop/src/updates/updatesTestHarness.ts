@@ -1,5 +1,10 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import type { DesktopUpdateState } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type DesktopUpdateState,
+  type ExecutionEnvironmentDescriptor,
+} from "@t3tools/contracts";
+import { HttpClient, HttpClientResponse } from "effect/http";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as PlatformError from "effect/PlatformError";
@@ -18,6 +23,8 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
 export const flushCallbacks = Effect.yieldNow;
 
 export interface UpdatesHarnessOptions {
+  readonly compatibilityIndex?: unknown;
+  readonly installation?: ExecutionEnvironmentDescriptor | null;
   readonly checkForUpdates?: Effect.Effect<
     void,
     ElectronUpdater.ElectronUpdaterCheckForUpdatesError
@@ -249,7 +256,47 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
       }),
   });
 
-  const layer = DesktopUpdates.layer.pipe(
+  const layer = Layer.effect(
+    DesktopUpdates.DesktopUpdates,
+    DesktopUpdates.make.pipe(
+      Effect.map((updates) => ({
+        ...updates,
+        configure: updates
+          .setInstallation(
+            options.installation === undefined
+              ? {
+                  environmentId: EnvironmentId.make("test"),
+                  label: "Test",
+                  platform: { os: "linux", arch: "x64" },
+                  serverVersion: "1.2.3",
+                  minClient: "1.2.3",
+                  capabilities: { repositoryIdentity: true },
+                }
+              : options.installation,
+          )
+          .pipe(Effect.andThen(updates.configure)),
+      })),
+    ),
+  ).pipe(
+    Layer.provide(
+      Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json(
+                options.compatibilityIndex ?? [
+                  { version: "1.2.4", minServer: "1.2.3", minClient: "1.2.3" },
+                  { version: "1.2.5", minServer: "1.2.3", minClient: "1.2.3" },
+                  { version: "1.2.6-nightly.20261103.1", minServer: "1.2.3", minClient: "1.2.3" },
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
     Layer.provide(layerFileSystem),
     Layer.provideMerge(layerUpdater),
     Layer.provideMerge(layerWindow),

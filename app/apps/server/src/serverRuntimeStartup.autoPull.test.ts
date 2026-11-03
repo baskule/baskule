@@ -133,6 +133,7 @@ it.effect("parks automatic pull until activation without delaying command readin
             label: "Test environment",
             platform: { os: "darwin", arch: "arm64" },
             serverVersion: "0.0.0-test",
+            minClient: "0.0.0",
             capabilities: { repositoryIdentity: true },
           }),
         }),

@@ -176,8 +176,12 @@ const bootstrap = Effect.gen(function* () {
   // baskule: reuse T3's bundled scheme and lifecycle, with the native cookie jar
   // for the hosted account and spaces. Preview guests have their own partitions.
   const appOrigin = ElectronProtocol.getDesktopUrl(environment.isDevelopment).slice(0, -1);
+  const updates = yield* DesktopUpdates.DesktopUpdates;
+  const updateContext = yield* Effect.context<never>();
   const connection = yield* Effect.promise(() =>
-    baskuleConnection(environment.stateDir, NativeElectron.session.defaultSession),
+    baskuleConnection(environment.stateDir, NativeElectron.session.defaultSession, (descriptor) =>
+      Effect.runPromiseWith(updateContext)(updates.setInstallation(descriptor)),
+    ),
   );
   yield* Effect.acquireRelease(
     Effect.sync(() => {
