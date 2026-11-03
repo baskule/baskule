@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+source scripts/env.sh
+space="mig-$(openssl rand -hex 5)"
+disk="baskule-space-$space"
+legacy="$space-legacy"
+network="$space-network"
+image="${MIGRATION_IMAGE:-baskule-computer:release-install-verify}"
+cleanup() {
+  docker rm -f "$disk-migration" >/dev/null 2>&1 || true
+  docker volume rm "$disk" "$legacy" >/dev/null
+  docker network rm "$network" >/dev/null
+  echo "Cleanup complete: $space"
+}
+docker volume create "$legacy" >/dev/null
+docker volume create "$disk" >/dev/null
+docker network create "$network" >/dev/null
+trap cleanup EXIT
+run() { docker run --rm --network none --user 0:0 --entrypoint /bin/sh "$@"; }
+run -v "$legacy:/legacy" "$image" -ec '
+p=/legacy/volumes/'"$disk"'/_data
+mkdir -p "$p/home/nested"
+dd if=/dev/urandom of="$p/home/blob" bs=1M count=1024 status=none
+i=0; while [ "$i" -lt 5000 ]; do echo "$i" > "$p/home/nested/$i"; i=$((i+1)); done
+echo "#!/bin/sh" > "$p/home/executable"
+chmod 751 "$p/home/executable"
+ln "$p/home/blob" "$p/home/hardlink"
+ln -s nested/42 "$p/home/symlink"
+chown -R 1000:1000 "$p"
+'
+driver() { node computerd/test/migration-driver.ts "$space" "$legacy" "$image" "$network"; }
+manifest() {
+  run -v "$1:/data:ro" "$image" -ec '
+cd "/data/$1"
+find . ! -name .baskule-migrated -printf "%P %y %m %U %G %n %l\n" | sort
+find . -type f ! -name .baskule-migrated -exec sha256sum {} + | sort
+' sh "$2"
+}
+mkdir -p .run/evidence/migration
+manifest "$legacy" "volumes/$disk/_data" > .run/evidence/migration/source
+start=$SECONDS
+driver
+echo "1 GiB + 5000 small files migration: $((SECONDS-start)) seconds"
+manifest "$disk" "" > .run/evidence/migration/target
+diff -u .run/evidence/migration/source .run/evidence/migration/target
+run -v "$disk:/data" "$image" -ec 'echo retained > /data/home/after'
+driver
+run -v "$disk:/data" "$image" -ec 'test "$(cat /data/home/after)" = retained; rm /data/.baskule-migrated'
+driver &
+pid=$!
+deadline=$((SECONDS+60))
+until docker exec "$disk-migration" sh -ec 'for f in /target/home/blob /target/home/hardlink; do n=$(stat -c %s "$f" 2>/dev/null || echo 0); if [ "$n" -gt 0 ] && [ "$n" -lt 1073741824 ]; then exit 0; fi; done; exit 1' 2>/dev/null; do
+  kill -0 "$pid"
+  [ "$SECONDS" -lt "$deadline" ]
+done
+docker kill "$disk-migration" >/dev/null
+if wait "$pid"; then echo "Expected interrupted migration failure"; exit 1; fi
+driver
+manifest "$disk" "" > .run/evidence/migration/target
+diff -u .run/evidence/migration/source .run/evidence/migration/target
+echo "PASS: metadata, hashes, hardlinks, no-copy retry, killed-copy recovery"

@@ -21,6 +21,7 @@ export class DockerBackend implements Backend {
   private readonly network: string;
   private readonly guardImage: string;
   private readonly dns: string[];
+  private readonly legacyVolume: string;
   private guardPending: Promise<void> | undefined;
   private guardVerified: { subnets: string[]; at: number } | undefined;
   private async requireGuard(): Promise<void> {
@@ -55,7 +56,8 @@ export class DockerBackend implements Backend {
       this.guardVerified = { subnets: network.IPAM.Config.map(config => config.Subnet), at: Date.now() };
     } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
   }
-  constructor(host = "unix:///var/run/docker.sock", network = "baskule-computers", guardImage = "baskule-computerd:local", dns = ["1.1.1.1", "8.8.8.8"]) {
+  constructor(host = "unix:///var/run/docker.sock", network = "baskule-computers", guardImage = "baskule-computerd:local", dns = ["1.1.1.1", "8.8.8.8"], legacyVolume = "") {
+    this.legacyVolume = legacyVolume;
     this.network = network;
     this.guardImage = guardImage;
     this.dns = dns;
@@ -65,7 +67,7 @@ export class DockerBackend implements Backend {
     if (!this.socketPath.startsWith("/")) throw new Error("DOCKER_HOST must be an absolute Unix socket path");
     void this.verifyGuard().catch(error => log.error("Computer guard reconciliation failed", { error: String(error) }));
   }
-  private request<T>(method: string, path: string, body?: object): Promise<T> {
+  private request<T>(method: string, path: string, body?: object, decode: (text: string) => T = JSON.parse): Promise<T> {
     return new Promise((resolve, reject) => {
       const data = body === undefined ? undefined : JSON.stringify(body);
       const req = http.request({ socketPath: this.socketPath, path, method,
@@ -76,7 +78,7 @@ export class DockerBackend implements Backend {
           for await (const chunk of res) chunks.push(Buffer.from(chunk));
           const text = Buffer.concat(chunks).toString();
           if ((res.statusCode ?? 500) >= 400) throw new DockerError(res.statusCode!, text);
-          resolve(text ? JSON.parse(text) : undefined);
+          resolve(text ? decode(text) : JSON.parse("null"));
         } catch (error) { reject(error); }
       });
       req.setTimeout(180_000, () => req.destroy(new Error("Docker request timed out")));
@@ -104,7 +106,7 @@ export class DockerBackend implements Backend {
     if (!memory) throw new Error(`Unsupported memory quantity: ${spec.memory}`);
     const unit = memory[2] ?? "";
     const bytes = Number(memory[1]) * (unit ? (unit.endsWith("i") ? 1024 : 1000) ** ("KMGT".indexOf(unit[0]) + 1) : 1);
-    await this.request("POST", "/volumes/create", { Name: spec.disk, Labels: spec.labels });
+    await this.ensureDisk(spec);
     try {
       await this.request("POST", `/containers/create?name=${key(spec.name)}`, {
         Image: spec.image, Cmd: ["sleep", "infinity"], User: "1000:1000", Labels: { ...spec.annotations, ...spec.labels },
@@ -114,6 +116,46 @@ export class DockerBackend implements Backend {
       });
     } catch (e) { if (!(e instanceof DockerError && e.status === 409)) throw e; }
     return this.start(spec.name);
+  }
+  async ensureDisk(spec: Pick<MachineSpec, "disk" | "labels" | "image">): Promise<void> {
+    if (!/^baskule-space-[a-zA-Z0-9_-]+$/.test(spec.disk)) throw new Error("Invalid disk name");
+    if (this.legacyVolume) {
+      try { await this.request("GET", `/volumes/${key(this.legacyVolume)}`); }
+      catch (error) {
+        if (!(error instanceof DockerError && error.status === 404)) throw error;
+        await this.request("POST", "/volumes/create", { Name: spec.disk, Labels: spec.labels });
+        return;
+      }
+    }
+    await this.request("POST", "/volumes/create", { Name: spec.disk, Labels: spec.labels });
+    if (!this.legacyVolume) return;
+    const helperName = spec.disk + "-migration";
+    const previous = await this.get(helperName);
+    if (previous) {
+      if (previous.labels["baskule.migration-source"] !== this.legacyVolume || previous.phase === "ready") {
+        throw new Error(`Migration helper already exists: ${helperName}`);
+      }
+      await this.request("DELETE", `/containers/${key(helperName)}`);
+    }
+    const started = Date.now();
+    const helper = await this.request<{ Id: string }>("POST", `/containers/create?name=${key(spec.disk + "-migration")}`, {
+      Image: spec.image, Labels: { "baskule.migration-source": this.legacyVolume }, User: "0:0", Tty: true, Entrypoint: ["/bin/sh", "-ec", migrationScript, "migration", spec.disk],
+      HostConfig: { NetworkMode: "none", CapDrop: ["ALL"], CapAdd: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID"],
+        SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true,
+        Mounts: [
+          { Type: "volume", Source: this.legacyVolume, Target: "/legacy", ReadOnly: true },
+          { Type: "volume", Source: spec.disk, Target: "/target", VolumeOptions: { NoCopy: true } },
+        ] },
+    });
+    try {
+      log.info("Disk migration check started", { disk: spec.disk });
+      await this.request("POST", `/containers/${helper.Id}/start`);
+      const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`);
+      const output = await this.request<string>("GET", `/containers/${helper.Id}/logs?stdout=true&stderr=true`, undefined, text => text);
+      log.info("Disk migration helper", { disk: spec.disk, output });
+      if (result.StatusCode !== 0) throw new Error(`Disk migration failed: ${spec.disk} (exit ${result.StatusCode})`);
+      log.info("Disk migration check finished", { disk: spec.disk, ms: Date.now() - started });
+    } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
   }
   async start(name: string): Promise<Machine> {
     await this.requireGuard();
@@ -197,3 +239,18 @@ export class DockerBackend implements Backend {
   }
   close() { clearInterval(this.guardTimer); }
 }
+
+
+// The marker sits beside home/, outside the user's home directory.
+export const migrationScript = `
+source=/legacy/volumes/$1/_data
+[ -d "$source" ] || exit 0
+[ ! -e /target/.baskule-migrated ] || exit 0
+echo "migration start bytes=$(du -sb "$source" | cut -f1)"
+find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+cp -a "$source/." /target/
+sync
+touch /target/.baskule-migrated
+sync
+echo "migration complete"
+`;

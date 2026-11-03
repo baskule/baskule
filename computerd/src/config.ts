@@ -9,6 +9,7 @@ export interface Config {
   token: string;
   backend: "docker" | "kubernetes";
   kubernetes?: KubernetesOptions;
+  legacyVolume?: string;
   dockerHost: string;
   network: string;
   guardImage: string;
@@ -67,6 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         return { name: value.name };
       }),
     },
+    legacyVolume: env.COMPUTER_LEGACY_VOLUME ?? "",
     dockerHost: env.DOCKER_HOST ?? "unix:///var/run/docker.sock",
     network: env.COMPUTER_NETWORK ?? "baskule-computers",
     guardImage: env.COMPUTER_GUARD_IMAGE ?? "baskule-computerd:local",
