@@ -18,6 +18,8 @@ export function guardScript(subnets: string[]): string {
       `DOCKER-USER -s ${subnet} -m addrtype --dst-type LOCAL -m comment --comment ${tag} -j DROP`,
       ...(family === 4 ? privateRanges : ["fc00::/7", "fe80::/10", "::1/128", "ff00::/8"]).map(range => `DOCKER-USER -s ${subnet} -d ${range} -m comment --comment ${tag} -j DROP`),
     ];
+    // Host VPN chains can accept forwarding before Docker reaches DOCKER-USER.
+    rules.push(...rules.filter(rule => rule.startsWith("DOCKER-USER ")).map(rule => rule.replace("DOCKER-USER ", "FORWARD ")));
     for (const rule of rules) lines.push(`${tool} -w -C ${rule} 2>/dev/null || ${tool} -w -I ${rule}`, `${tool} -w -C ${rule}`);
   }
   return lines.join("\n");
