@@ -112,7 +112,7 @@ run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]
 labels="$marker=true,baskule-run=$run_id"
 export BASKULE_K8S_EVIDENCE="$root/.run/evidence/$run_id"
 export KUBECONFIG="$state/kubeconfig.private" DOCKER_CONFIG="$state/docker.private"
-export HELM_REGISTRY_CONFIG="$DOCKER_CONFIG/helm-registry.json"
+export HELM_REGISTRY_CONFIG="$DOCKER_CONFIG/config.json"
 export BASKULE_K8S_NAMESPACE="$run_id" BASKULE_K8S_RELEASE=baskule
 mkdir -p "$BASKULE_K8S_EVIDENCE" "$DOCKER_CONFIG"
 started=$(date +%s)
@@ -198,10 +198,12 @@ mkdir "$state/before"
 cp "$state/"*.private.json "$state/before/"
 BASKULE_VERSION=0.0.0-ephemeral scripts/helm-package.sh "$BASKULE_K8S_EVIDENCE" > "$BASKULE_K8S_EVIDENCE/chart-package.log"
 export BASKULE_K8S_CHART="$BASKULE_K8S_EVIDENCE/baskule-0.0.0-ephemeral.tgz"
+command -v docker-credential-gcloud >/dev/null
+# Both clients renew credentials through the existing SDK identity. Do not cache
+# a possibly near-expiry access token for the whole 90-minute run.
+jq -n --arg host "$region-docker.pkg.dev" '{credHelpers:{($host):"gcloud"}}' > "$HELM_REGISTRY_CONFIG"
 gc artifacts repositories create "$run_id" --location="$region" --repository-format=docker --labels="$labels" > "$BASKULE_K8S_EVIDENCE/registry-create.log" 2>&1
 export BASKULE_K8S_REGISTRY="$region-docker.pkg.dev/$project/$run_id"
-gc auth print-access-token | docker login "$region-docker.pkg.dev" -u oauth2accesstoken --password-stdin >/dev/null
-gc auth print-access-token | helm registry login "$region-docker.pkg.dev" --username oauth2accesstoken --password-stdin >/dev/null
 helm push "$BASKULE_K8S_CHART" "oci://$BASKULE_K8S_REGISTRY" > "$BASKULE_K8S_EVIDENCE/chart-push.log" 2>&1
 export BASKULE_K8S_CHART="oci://$BASKULE_K8S_REGISTRY/baskule"
 export BASKULE_K8S_CHART_VERSION=0.0.0-ephemeral

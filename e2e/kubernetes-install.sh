@@ -66,7 +66,9 @@ if [[ ${BASKULE_K8S_CHECK_INGRESS:-} == 1 ]]; then
   kubectl -n "$BASKULE_K8S_NAMESPACE" patch ingress "$BASKULE_K8S_RELEASE" --type=json \
     -p '[{"op":"add","path":"/spec/rules/0/http/paths/-","value":{"path":"/v1/chat/completions","pathType":"Exact","backend":{"service":{"name":"fake-llm","port":{"number":47601}}}}}]' >/dev/null
 fi
-node e2e/kubernetes-journey.mjs | tee "$BASKULE_K8S_EVIDENCE/journey.log"
+if [[ ${BASKULE_K8S_JOURNEY:-full} != upgrade ]]; then
+  node e2e/kubernetes-journey.mjs | tee "$BASKULE_K8S_EVIDENCE/journey.log"
+fi
 # Server-side rendering must apply newly supplied external credentials even when
 # the old evaluation Secret exists. No bucket or credential mutation is performed.
 render=$(mktemp "$root/.run/s3-upgrade.XXXXXX.private.json")
@@ -85,9 +87,9 @@ try {
 JS
 echo 'PASS server-side upgrade rendering applies changed external S3 credentials' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
 # Real lookup must retain token bytes on an upgrade. Compare hashes, never dump Secrets.
-before=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" -o jsonpath='{.data}' | sha256sum)
+before=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" "$BASKULE_K8S_RELEASE-s3" -o json | jq -c '[.items[] | {name:.metadata.name,data}] | sort_by(.name)' | sha256sum)
 helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" --reuse-values --timeout 10m --wait > /dev/null
-after=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" -o jsonpath='{.data}' | sha256sum)
+after=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" "$BASKULE_K8S_RELEASE-s3" -o json | jq -c '[.items[] | {name:.metadata.name,data}] | sort_by(.name)' | sha256sum)
 [[ $before == "$after" ]]
-echo 'PASS Helm upgrade preserves generated tokens' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
+echo 'PASS Helm upgrade preserves generated platform tokens and RustFS keys' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
 kubectl -n "$BASKULE_K8S_NAMESPACE" get pods,pvc,networkpolicy > "$BASKULE_K8S_EVIDENCE/resources.txt"

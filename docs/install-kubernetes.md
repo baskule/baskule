@@ -379,7 +379,10 @@ passes on the same chart and images, set `BASKULE_K8S_JOURNEY=ingress` for the r
 Use `BASKULE_K8S_JOURNEY=failover` after reschedule/isolation checks pass on the
 same images. It prepares chat and file data, repeats configured public exposure,
 celld takeover, space/PVC deletion and the Helm upgrade, and skips the earlier
-reschedule/isolation/CDP selection.
+reschedule/isolation/CDP selection. Set `BASKULE_K8S_JOURNEY=upgrade` to repeat
+only install, server-side credential rendering and same-version upgrade checks.
+The GKE runner requires the SDK's `docker-credential-gcloud` helper and uses a private
+shared Docker/Helm helper configuration so long runs can renew registry credentials.
 
 ## Limits
 

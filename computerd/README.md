@@ -144,4 +144,6 @@ MCP initialize + tools/list 2.5–4.5 s cold; delete (sandbox + volume) 0.7–0.
 On Kubernetes, set `OPENSHELL_COMPUTE_DRIVER=kubernetes`. The OpenShell driver owns
 the per-space workspace PVC at `/sandbox` and preserves it through stop/start and
 pod replacement. computerd does not call the Docker volume helper on this path.
+Deletion confirms Sandbox disappearance; `volumeDeleted` stays false because this
+service does not observe the driver's asynchronous PVC/CSI deletion.
 See [the Kubernetes installation guide](../docs/install-kubernetes.md).
