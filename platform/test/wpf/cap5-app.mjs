@@ -1,4 +1,4 @@
-import {fakeRequests,assert,launch,projection,send,waitFor,watchThread,world} from './lib.mjs';
+import {fakeRequests,assert,launch,projection,send,spaceStatus,waitFor,watchThread,world} from './lib.mjs';
 export const appChecks=[{name:'mcp-decision-app',capability:'5-mcp-app',fn:async(ctx)=>{
  const s=await world(ctx);const id=await launch(s.ca,s.projectId,'Show decision [[fake:tool decision_decision {"question":"Choose the next step"}]]','Decision app');
  const t=watchThread(s.ca,id);await waitFor('app turn',()=>t.settled(),90000);
@@ -10,5 +10,6 @@ export const appChecks=[{name:'mcp-decision-app',capability:'5-mcp-app',fn:async
  const choice=await s.cb.ok('mcpApps.callTool',{...base,name:'choose',arguments:{choice:'Proceed'}});assert(!choice.isError,'choice failed');
  await s.cb.ok('mcpApps.updateModelContext',{...base,conversationThreadId:id,content:choice.content});
  await send(s.ca,id,'What did I choose?');await waitFor('next model turn',async()=>(await fakeRequests()).some(r=>JSON.stringify(r.messages).includes('User selected: Proceed')),60000);
+ await waitFor('app follow-up finished before reconfiguring plugins',async()=>(await spaceStatus(s.team)).activeRuns===0,90000);
  t.stop();return 'A real MCP tool produced a durable app reference; another member loaded it, called choose, updated model context, and the next turn received the choice';
 }}];
