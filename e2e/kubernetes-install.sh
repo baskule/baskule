@@ -141,7 +141,7 @@ kubectl -n "$BASKULE_K8S_NAMESPACE" get pods,pvc,networkpolicy > "$BASKULE_K8S_E
     mv "$work/helpers" "$fixture/templates/_helpers.tpl"
     # The rendering check uses the exact packaged Baskule defaults/helper.
     printf 'apiVersion: v1\nkind: ConfigMap\nmetadata: {name: {{ .Release.Name }}}\ndata:\n  image: {{ include "baskule.image" (dict "root" . "name" "celld") | quote }}\n' > "$fixture/templates/image.yaml"
-    sed -i '/^dependencies:/,$d' "$fixture/Chart.yaml"
+    printf 'apiVersion: v2\nname: baskule\nversion: %s\nappVersion: "%s"\n' "$version" "$version" > "$fixture/Chart.yaml"
     helm package "$fixture" --destination "$work/$version" >/dev/null
   done
   helm install "$proof" "$work/1.0.0/baskule-1.0.0.tgz" --namespace "$BASKULE_K8S_NAMESPACE" --set rustfs.enabled=true >/dev/null
