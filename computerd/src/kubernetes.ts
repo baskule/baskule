@@ -134,7 +134,7 @@ export class KubernetesBackend implements Backend {
       spec: { operatingMode: 'Running',
         volumeClaimTemplates: [{ metadata: { name: spec.disk }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: this.options.storageClass, resources: { requests: { storage: this.options.storageSize ?? '10Gi' } } } }],
         podTemplate: { metadata: { labels: { ...spec.labels, 'baskule.computer': 'true' }, annotations: spec.annotations }, spec: {
-          automountServiceAccountToken: false, enableServiceLinks: false,
+          automountServiceAccountToken: false, enableServiceLinks: false, terminationGracePeriodSeconds: 1,
           securityContext: { runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, runAsNonRoot: true, seccompProfile: { type: 'RuntimeDefault' } },
           runtimeClassName: this.options.runtimeClassName, nodeSelector: this.options.nodeSelector, tolerations: this.options.tolerations, imagePullSecrets: this.options.imagePullSecrets,
           containers: [{ name: 'computer', image: spec.image, command: ['sleep', 'infinity'], resources: { requests: resources, limits: resources },
