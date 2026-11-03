@@ -28,6 +28,46 @@ const cell = (put = vi.fn(async () => {}), tables = ["session"], waitUntil: (pro
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("SpaceCell boot/dispose overlap", () => {
+  it("finishes the agent alarm before reconfigure retires its shared database", async () => {
+    const started = deferred(), release = deferred(), disposing = deferred();
+    const order: string[] = [];
+    const c = cell();
+    c.alarms = { due: async () => ["agent"], complete: async () => {}, sync: async () => {}, clear: async () => {} };
+    c.spaceAlarm = async () => {};
+    c.agent = {
+      alarm: async () => { started.resolve(); await release.promise; order.push("alarm completed"); },
+      dispose: async () => { order.push("disposed"); },
+    };
+    const disposeCurrent = c.disposeCurrent.bind(c);
+    c.disposeCurrent = async () => { disposing.resolve(); await disposeCurrent(); };
+    const alarm = c.alarm();
+    await started.promise;
+    const reload = c.fetch(new Request("http://space/_baskule/reconfigure", { method: "POST" }));
+    await disposing.promise;
+    await Promise.resolve();
+    release.resolve();
+    await Promise.all([alarm, reload]);
+    expect(order).toEqual(["alarm completed", "disposed"]);
+  });
+
+  it("runs a newly delivered agent alarm after an in-flight reconfigure finishes", async () => {
+    const started = deferred(), release = deferred(), delivered = deferred();
+    const order: string[] = [];
+    const c = cell();
+    c.alarms = { due: async () => { delivered.resolve(); return ["agent"]; }, complete: async () => {}, sync: async () => {}, clear: async () => {} };
+    c.spaceAlarm = async () => {};
+    c.agent = { dispose: async () => { started.resolve(); await release.promise; order.push("disposed"); } };
+    c.localAgent = async () => ({ alarm: async () => { order.push("alarm completed"); } });
+    const reload = c.fetch(new Request("http://space/_baskule/reconfigure", { method: "POST" }));
+    await started.promise;
+    const alarm = c.alarm();
+    await delivered.promise;
+    await Promise.resolve();
+    release.resolve();
+    await Promise.all([reload, alarm]);
+    expect(order).toEqual(["disposed", "alarm completed"]);
+  });
+
   it("a replacement waits for the shared runtime to close and keeps its own timer", async () => {
     vi.useFakeTimers();
     const closing = deferred();

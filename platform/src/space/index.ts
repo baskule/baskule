@@ -61,6 +61,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
   private agent: AgentRuntime | null = null;
   private database: Promise<SpaceDatabase> | null = null;
   private agentStarting: Promise<AgentRuntime> | null = null;
+  private agentAlarm: Promise<void> | null = null;
   private closing: Promise<void> | null = null;
   private settings: Promise<ProductSettings & { apiKey: string; usageLimits?: UsageLimitSettings; plugins: SpacePlugins }> | null = null;
   private alarms = new SpaceAlarms(this.ctx.storage);
@@ -234,6 +235,8 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
   }
 
   private async disposeCurrent(): Promise<void> {
+    // An alarm can still boot OpenCode after its usage flush; drain it before retiring the shared client.
+    await this.agentAlarm?.catch(() => {});
     const server = this.server ?? (this.booting ? await this.booting.catch(() => null) : null);
     // Keep this generation's #258 event driver through cleanup; closing holds replacement boots.
     const release = this.releaseBootKeepAlive;
@@ -301,7 +304,13 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
     const due = await this.alarms.due();
     try {
       // The space's own checks run on every alarm; they reschedule themselves (scheduleAlarm).
-      if (due.includes("agent")) await (await this.localAgent()).alarm();
+      if (due.includes("agent")) {
+        while (this.closing) await this.closing;
+        const pending = this.localAgent().then(agent => agent.alarm());
+        this.agentAlarm = pending;
+        try { await pending; }
+        finally { this.agentAlarm = null; }
+      }
       await this.spaceAlarm();
       await this.alarms.complete(due);
     } catch (error) {
