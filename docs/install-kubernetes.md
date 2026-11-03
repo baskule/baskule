@@ -6,6 +6,9 @@ The [single-machine Compose install](install.md) remains available.
 
 ## Create a cluster and install
 
+Install kubectl and Helm **3.14 or newer**; the upgrade commands require
+`--reset-then-reuse-values`.
+
 Use Linux amd64 worker nodes with a NetworkPolicy-enforcing CNI and a default,
 block-backed StorageClass. Use RFC 1918 Pod and Service CIDRs; privately used public
 ranges need operator egress denial (see GKE below). Start with two nodes with 4 vCPU and 8 GiB each. A computer
@@ -23,6 +26,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/downl
 kubectl -n agent-sandbox-system rollout status deployment/agent-sandbox-controller --timeout=180s
 ```
 
+The chart is available **from the next release**; release 0.5.0 has no chart.
 For an evaluation with bundled RustFS:
 
 ```sh
@@ -405,8 +409,11 @@ baseline. Run `e2e/kubernetes-ephemeral.sh sweep` after an interrupted host sess
 or a lifetime/cleanup timeout, then `audit`. Kubernetes cleanup is bounded to eight
 minutes, each API request is bounded, and cluster deletion is attempted even if that
 phase times out. Teardown ignores repeated interrupts and gets up to 30 additional
-minutes before a hard kill. A global sweep refuses while a live worker holds the
-project lock; `sweep --force` bypasses that guard only for deliberate recovery.
+minutes before a hard kill. A Git-common-directory lock is shared across worktrees of this repository: global
+sweep refuses while a worker holds that project lock. It also refuses if any labelled
+cluster or Artifact Registry repository is younger than 120 minutes, or its creation
+time is unknown. This age guard covers other checkouts/machines; it is not a live
+process detector. `sweep --force` bypasses both guards only for deliberate recovery.
 Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
 To repeat only public Ingress and Helm-upgrade verification after the core journey
 passes on the same chart and images, set `BASKULE_K8S_JOURNEY=ingress` for the run.

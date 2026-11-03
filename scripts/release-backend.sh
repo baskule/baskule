@@ -18,12 +18,13 @@ export BASKULE_TAG=local
 mkdir -p .run/release/backend .run/release/runtime
 phase=${1:?runtime or package}
 save_image() {
-  local image=$1 out=$2 archive bytes
+  local image=$1 out=$2 archive bytes config_id
   docker tag "$image:local" "ghcr.io/baskule/$image:$image_tag"
-  printf '%s %s\n' "ghcr.io/baskule/$image:$image_tag" "$(docker image inspect --format '{{.Id}}' "ghcr.io/baskule/$image:$image_tag")" >> "$out/images.txt"
   # Kubernetes pulls workload images directly; Compose still bundles them in its gateway.
   archive="$out/$image.tar.gz"
   docker save "ghcr.io/baskule/$image:$image_tag" | gzip -1 > "$archive"
+  config_id=$(bash scripts/ci/image-config-id.sh "$archive")
+  printf '%s %s\n' "ghcr.io/baskule/$image:$image_tag" "$config_id" >> "$out/images.txt"
   bytes=$(stat -c %s "$archive")
   echo "$archive: $bytes bytes"
   (( bytes < 2147483648 )) || { echo "Release asset exceeds GitHub's 2 GiB limit: $archive" >&2; exit 1; }

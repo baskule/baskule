@@ -30,11 +30,12 @@ if [[ $suite == runtime || $suite == package ]]; then
   exit
 fi
 (cd .run/release/backend && sha256sum -c SHA256SUMS)
-# Every downloaded image must match the ID recorded by the builder. No pull/rebuild.
+# Every downloaded image must match the config digest recorded by the builder. No pull/rebuild.
 while read -r image expected; do
   name=${image##*/}; name=${name%%:*}
   docker load -i ".run/release/backend/$name.tar.gz"
-  [[ $(docker image inspect --format '{{.Id}}' "$image") == "$expected" ]]
+  actual=$(docker save "$image" | bash scripts/ci/image-config-id.sh)
+  [[ $actual == "$expected" ]]
   docker tag "$image" "$name:local"
 done < .run/release/backend/images.txt
 # The developer harness compares its computer image with the one inside the

@@ -10,7 +10,9 @@ region=europe-west1
 zone=$region-b
 marker=baskule-ephemeral
 resource_scope=
+protect_young_runs=false
 state_root="$root/.run/kubernetes-ephemeral"
+lock_root=$(git rev-parse --path-format=absolute --git-common-dir)
 mkdir -p "$state_root"
 umask 077
 state=$(mktemp -d "$state_root/gke.XXXXXX")
@@ -53,16 +55,19 @@ project_bindings() {
     ($member | split("serviceAccount:")[1] | split("?")[0]) as $email |
     select($known[0] | index($email)) | [$role, $member] | @tsv' "$state/iam.private.json"
 }
-owned_filter='def labelled:
+owned_filter='def label_match:
+  (.labels // .resourceLabels // {}) as $labels |
+  if $marker == "baskule-ephemeral" then
+    $labels["baskule-ephemeral"] == "true" and ($labels["baskule-run"] // "") != ""
+  else $labels["baskule-run"] == $marker end;
+def description_match:
+  (.description // "") as $text | any($runs[0][]; . as $run | $text | contains($run));
+def labelled:
   ["clusters", "repositories", "instances", "disks", "forwarding-rules", "addresses"] | index($kind) != null;
 def unlabelled_lb:
   ["target-http-proxies", "target-https-proxies", "url-maps", "backend-services", "target-pools", "health-checks", "http-health-checks", "https-health-checks", "network-endpoint-groups"] | index($kind) != null;
 def marked:
-  (.labels // .resourceLabels // {}) as $labels |
-  if labelled then
-    if $marker == "baskule-ephemeral" then
-      $labels["baskule-ephemeral"] == "true" and ($labels["baskule-run"] // "") != ""
-    else $labels["baskule-run"] == $marker end
+  if labelled then label_match
   elif $kind == "accounts" then
     (.email as $email | $accounts[0] | index($email)) != null
   elif unlabelled_lb then
@@ -70,7 +75,10 @@ def marked:
     any($runs[0][]; . as $run | $text | contains($run))
   else false end;
 def selected:
-  marked or (unlabelled_lb and (.selfLink as $url | $links[0] | index($url)) != null);
+  marked or
+  ($kind == "forwarding-rules" and
+    (description_match or ((.IPAddress // "") as $ip | $ip != "" and any($addresses[0][] | select(label_match); .address == $ip)))) or
+  (unlabelled_lb and (.selfLink as $url | $links[0] | index($url)) != null);
 '
 
 kinds=(instances disks forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks addresses network-endpoint-groups firewall-rules)
@@ -78,10 +86,15 @@ inventory() {
   jq -e 'type == "array"' "$state/owned-links.private.json" >/dev/null || return
   gc container clusters list --format=json > "$state/clusters.private.json" || return
   gc artifacts repositories list --location=all --format=json > "$state/repositories.private.json" || return
+  if [[ $protect_young_runs == true ]]; then guard_recent_runs || return; fi
   gc iam service-accounts list --format=json > "$state/accounts.private.json" || return
   local kind inputs=("$state/clusters.private.json" "$state/repositories.private.json" "$state/accounts.private.json")
   for kind in "${kinds[@]}"; do
-    gc compute "$kind" list --format=json > "$state/$kind.private.json" || return
+    if [[ $kind == instances ]]; then
+      gc compute "$kind" list --format='json(name,zone,labels,selfLink)' > "$state/$kind.private.json" || return
+    else
+      gc compute "$kind" list --format=json > "$state/$kind.private.json" || return
+    fi
     inputs+=("$state/$kind.private.json")
   done
   jq -s --arg marker "${resource_scope:-$marker}" --slurpfile accounts "$state/known-accounts.private.json" '
@@ -92,11 +105,11 @@ inventory() {
     unique | if $marker == "baskule-ephemeral" then . else map(select(. == $marker)) end
   ' "${inputs[@]}" > "$state/runs.private.json" || return
   # Follow only references rooted in labelled resources or saved run ownership.
-  # Resource kinds with labels are always selected by labels, never by names/links.
+  # Labelled kinds use labels; forwarding rules also recover through their owned IP or run description.
   for kind in clusters repositories accounts "${kinds[@]}"; do
     jq --arg marker "${resource_scope:-$marker}" --arg kind "$kind" --arg project "$project" \
       --slurpfile accounts "$state/known-accounts.private.json" --slurpfile runs "$state/runs.private.json" \
-      --slurpfile links "$state/owned-links.private.json" "$owned_filter"'
+      --slurpfile links "$state/owned-links.private.json" --slurpfile addresses "$state/addresses.private.json" "$owned_filter"'
       [.[] | select(selected) | .. | strings | select(contains("/projects/" + $project + "/"))] + $links[0] | unique
     ' "$state/$kind.private.json" > "$state/links.next" || return
     mv "$state/links.next" "$state/owned-links.private.json"
@@ -105,7 +118,7 @@ inventory() {
 owned() {
   jq -r --arg marker "${resource_scope:-$marker}" --arg kind "$kind" \
     --slurpfile accounts "$state/known-accounts.private.json" --slurpfile runs "$state/runs.private.json" \
-    --slurpfile links "$state/owned-links.private.json" "$owned_filter"'.[] | select(selected) | [.name, (.location // .zone // .region // "global" | split("/") | last)] | @tsv'
+    --slurpfile links "$state/owned-links.private.json" --slurpfile addresses "$state/addresses.private.json" "$owned_filter"'.[] | select(selected) | [.name, (.location // .zone // .region // "global" | split("/") | last)] | @tsv'
 }
 audit() {
   inventory || return
@@ -163,11 +176,30 @@ sweep() {
   done < <(jq -r --slurpfile known "$state/known-accounts.private.json" '.[] | .email as $email | select($known[0] | index($email)) | $email' "$state/accounts.private.json")
   audit
 }
+guard_recent_runs() {
+  python3 - "$state/clusters.private.json" "$state/repositories.private.json" <<'PYGUARD'
+import json, sys
+from datetime import datetime, timezone
+now = datetime.now(timezone.utc)
+for filename in sys.argv[1:]:
+    for resource in json.load(open(filename)):
+        labels = resource.get('resourceLabels') or resource.get('labels', {})
+        if labels.get('baskule-ephemeral') != 'true':
+            continue
+        try:
+            age = (now - datetime.fromisoformat(resource['createTime'].replace('Z', '+00:00'))).total_seconds()
+        except (KeyError, ValueError, TypeError):
+            age = -1  # Unknown age cannot establish that the run has expired.
+        if age < 120 * 60:
+            sys.exit('Refuse global sweep: a labelled cluster or repository is younger than 120 minutes or has unknown age; use --force only for deliberate recovery')
+PYGUARD
+}
 case "${1:-}" in
   sweep|audit)
     if [[ $1 == sweep && ${2:-} != --force ]]; then
-      exec 9> "$state_root/$project.lock"
-      flock -n 9 || { echo 'Live run exists; refuse global sweep (use --force only to interrupt it)' >&2; exit 1; }
+      exec 9> "$lock_root/baskule-gke-$project.lock"
+      flock -n 9 || { echo 'Live run exists in this repository; refuse global sweep (use --force only to interrupt it)' >&2; exit 1; }
+      protect_young_runs=true
     fi
     # Recover saved ownership from interrupted runs, confined to this project.
     for previous in "$state_root"/gke.*; do
@@ -180,7 +212,7 @@ case "${1:-}" in
   # Snapshot into bash's input string so edits cannot change an in-flight run.
   run) exec timeout --signal=TERM --kill-after=30m 90m bash -c "$(cat "$0")" "$0" worker ;;
   worker)
-    exec 9> "$state_root/$project.lock"
+    exec 9> "$lock_root/baskule-gke-$project.lock"
     flock -n 9 || { echo 'Live run exists; refuse another worker' >&2; exit 1; }
     ;;
   *) echo "Usage: $0 run|sweep [--force]|audit" >&2; exit 2 ;;
@@ -239,6 +271,7 @@ PY
   # Attempt known resource deletion even if an inventory API was unavailable.
   gc container clusters delete "$run_id" --zone="$zone" >/dev/null 2>&1
   gc artifacts repositories delete "$run_id" --location="$region" >/dev/null 2>&1
+  gc compute addresses delete "$run_id" --global >/dev/null 2>&1
   sweep > "$BASKULE_K8S_EVIDENCE/cleanup-audit.txt" 2>&1
   cleanup_status=$?
   elapsed=$(( $(date +%s) - started ))

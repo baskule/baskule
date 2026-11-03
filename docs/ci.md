@@ -87,9 +87,23 @@ package's settings: `baskule-celld`, `baskule-computerd`, `baskule-openshell-gat
 `baskule-openshell-kubernetes`, `baskule-computer`, `baskule-openshell-supervisor`,
 `baskule-openshell-sandbox`, and the OCI chart `charts/baskule`. The workflow links
 their source to this repository. The separate `public-packages` job checks anonymous
-pulls and can be rerun after changing visibility; it never republishes artifacts.
+pulls and can be rerun after changing visibility **within 24 hours**, while the
+backend Actions artifact is retained; it never republishes artifacts.
 A visibility failure does not block draft creation. Do not publish the draft until
 this job passes. To check downloaded backend artifacts manually, run
 `bash scripts/ci/check-public-images.sh artifacts/backend`. Check the draft's Compose assets and image tags before publishing the draft.
 Version tags identify one release; do not replace a published tag with different image contents. A verification-only
 run checks builds and local behavior without proving GHCR visibility or anonymous downloads.
+
+After that 24-hour window, download the draft release's
+`backend-<v>-metadata.tar.gz` and release `SHA256SUMS` with an authenticated account.
+Verify the metadata archive against that checksum list, then extract it to a private
+scratch directory. It contains `images.txt` and the chart, so run the same
+`check-public-images.sh` command against that extracted directory. No image archives
+or republishing are needed for this visibility check.
+
+`images.txt` records each saved image's config digest, independent of Docker's image
+store (`docker inspect .Id` can be an OCI index digest). Publication follows the
+linux/amd64 manifest in an index, skips existing matching config/chart-layer digests,
+and refuses differing artifacts before pushing. Rerun a failed publish job to resume
+a partial push without replacing published contents.
