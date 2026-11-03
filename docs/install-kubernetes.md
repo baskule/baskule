@@ -44,6 +44,9 @@ With `networkPolicy.enabled`, computer pods have no ingress and can send DNS to
 kube-dns and traffic to `0.0.0.0/0` except private, link-local, CGNAT and reserved
 ranges plus `computers.blockedCidrs`. Include any publicly addressed cluster, service,
 node or organization networks in that list. Optional IPv6 follows `computers.ipv6`.
+Clusters with a node-local DNS cache (for example GKE) answer DNS from an address
+that is not a kube-dns pod: set `computers.dnsServerCidrs` to the resolver addresses
+in a computer's `/etc/resolv.conf`, as `/32` CIDRs. This allows only port 53 there.
 The CNI must enforce these policies. Plugin MCP servers are reached from celld,
 not computers, and therefore are outside this computer policy.
 
