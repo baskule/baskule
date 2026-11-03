@@ -21,7 +21,7 @@ produce documents instead of only answering. You choose the model.
   </picture>
 </p>
 
-From the next release, clusters can use the [recommended Kubernetes installation](docs/install-kubernetes.md).
+Use the [Kubernetes installation](docs/install-kubernetes.md) for clusters. Compose supports single-machine installs.
 
 ## How it works
 
@@ -74,7 +74,7 @@ docker compose up -d
 docker compose logs setup        # prints the one-time link that creates the first admin
 ```
 
-Open the setup link to create the first admin; see [configuration and built-in HTTPS](docs/install.md), or the [cluster guide](docs/install-cluster.md) for several machines.
+Open the setup link to create the first admin; see [configuration and built-in HTTPS](docs/install.md), or the [Kubernetes guide](docs/install-kubernetes.md) for several machines.
 
 Optional: [sync plugins from a folder](docs/install.md#plugins-folder).
 
