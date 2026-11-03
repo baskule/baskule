@@ -16,7 +16,7 @@ type Resource = {
   metadata: { name: string; resourceVersion?: string; generation?: number; deletionTimestamp?: string;
     labels?: Record<string, string>; annotations?: Record<string, string> };
   spec?: { operatingMode?: string; podTemplate?: { spec?: { containers?: { image: string }[] } } };
-  status?: { phase?: string; message?: string; conditions?: { type: string; status: string; reason?: string; message?: string; observedGeneration?: number }[] };
+  status?: { selector?: string; phase?: string; message?: string; conditions?: { type: string; status: string; reason?: string; message?: string; observedGeneration?: number }[] };
 };
 class ApiError extends Error {
   code: number;
@@ -69,8 +69,11 @@ export class KubernetesBackend implements Backend {
     try { return await this.api<Resource>(path); } catch (e) { if (e instanceof ApiError && e.code === 404) return null; throw e; }
   }
   private async pod(sandbox: Resource): Promise<Resource | null> {
-    const name = sandbox.metadata.annotations?.['agents.x-k8s.io/pod-name'];
-    return name ? this.resource(`${this.core}/pods/${encode(name)}`) : null;
+    const selector = sandbox.status?.selector;
+    if (!selector) return null;
+    const query = new URLSearchParams({ labelSelector: selector });
+    const pods = await this.api<{ items: Resource[] }>(`${this.core}/pods?${query}`);
+    return pods.items.find(p => !p.metadata.deletionTimestamp) ?? null;
   }
   private async machine(s: Resource): Promise<Machine> {
     const p = await this.pod(s);
@@ -164,7 +167,7 @@ export class KubernetesBackend implements Backend {
   }
   private async socket(name: string, action: string, query: URLSearchParams, protocols: string[]): Promise<WebSocket> {
     const s = await this.resource(`${this.sandboxes}/${encode(name)}`);
-    const pod = s?.metadata.annotations?.['agents.x-k8s.io/pod-name'];
+    const pod = s ? (await this.pod(s))?.metadata.name : undefined;
     if (!pod) throw new Error(`No pod for ${name}`);
     const url = new URL(`${this.core}/pods/${encode(pod)}/${action}?${query}`, this.base); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     return new Promise((resolve, reject) => {

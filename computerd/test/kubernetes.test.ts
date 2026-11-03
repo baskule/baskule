@@ -35,7 +35,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
       assert.deepEqual(template.spec.containers[0].securityContext, { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } });
       assert.deepEqual(template.spec.containers[0].resources, { requests: { cpu: '2', memory: '3Gi' }, limits: { cpu: '2', memory: '3Gi' } });
       assert.deepEqual(template.spec.containers[0].volumeMounts, [{ name: 'space', mountPath: '/sandbox/space' }]);
-      sandbox = data; sandbox.metadata.annotations['agents.x-k8s.io/pod-name'] = 'pod'; disk = true; send(sandbox); return;
+      sandbox = data; disk = true; send(sandbox); return;
     }
     if (req.method === 'PATCH') {
       assert.equal(req.headers['content-type'], 'application/merge-patch+json');
@@ -51,7 +51,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     }
     if (url.searchParams.has('watch')) {
       watches++; assert.ok(url.searchParams.get('resourceVersion'));
-      sandbox.status = { conditions: [{ type: 'Ready', status: 'True' }] };
+      sandbox.status = { selector: 'agents.x-k8s.io/sandbox-name-hash=test', conditions: [{ type: 'Ready', status: 'True' }] };
       pod = { metadata: { name: 'pod' }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }] } };
       sandbox.metadata.resourceVersion = String(++version);
       res.end(JSON.stringify({ type: 'MODIFIED', object: sandbox }) + '\n'); return;
