@@ -177,7 +177,7 @@ test("delete: sandbox and volume removed (confirmation required), idempotent", a
   assert.deepEqual([again.sandboxDeleted, again.volumeDeleted], [false, false]);
 });
 
-test("Docker computers cannot connect to another space", async (t) => {
+test("Docker computers cannot connect to another space", { skip: !process.env.COMPUTER_NETWORK }, async (t) => {
   const other = space + "peer";
   const target = "/v1/spaces/" + other;
   try {
