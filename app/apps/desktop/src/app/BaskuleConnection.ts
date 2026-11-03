@@ -44,7 +44,7 @@ export function isBaskuleApiPath(path: string): boolean {
     path.startsWith("/auth/") ||
     path.startsWith("/api/baskule/") ||
     /^\/s\/[^/]+\/(api\/|\.well-known\/)/.test(path) ||
-    path.startsWith("/downloads/")
+    path === "/version.json"
   );
 }
 

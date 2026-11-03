@@ -24,14 +24,14 @@ the jar's cookies, and the front refuses an upgrade that carries a `baskule.*` c
 
 ## Prebuilt APK
 
-If your administrator has published an Android build, download it from your installation's **Apps** page or
-`/downloads/`. Build artifacts are not included in this repository. Publishing instructions are in the umbrella
+Release builds attach the Android package to the version's [GitHub release](https://github.com/baskule/baskule/releases).
+Build artifacts are not included in this repository. Publishing instructions are in the umbrella
 [desktop guide](../../../desktop/README.md).
 
 ### Install on the phone
 
 1. Reach the server over HTTPS or your private network (for example, Tailscale).
-2. Download the APK on the phone from your installation's **Apps** page, or copy it
+2. Download the APK on the phone from the GitHub release, or copy it
    over USB, or `adb install -r Baskule-<version>-android.apk`.
 3. Allow "Install unknown apps" for the browser or file manager when Android asks.
 4. Open **Baskule**, enter your server address and sign in with the account your administrator created.

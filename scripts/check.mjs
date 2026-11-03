@@ -516,7 +516,6 @@ for (const target of targets) {
     run({ label: target, cmd: "pnpm", args, cwd: "e2e" });
   } else if (target === "unit") {
     for (const s of unitSteps()) run(s);
-
   } else if (target === "release:journeys") {
     const map = releaseFeatures(features());
     // Playwright partitions individual tests, so one large feature cannot dominate a runner.

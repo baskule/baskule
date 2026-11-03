@@ -62,6 +62,7 @@ describe("Baskule bundled desktop connection", () => {
     );
     expect(s.fetch).not.toHaveBeenCalled();
     expect(isBaskuleApiPath("/s/a/_baskule/wipe")).toBe(false);
+    expect(isBaskuleApiPath("/version.json")).toBe(true);
   });
 
   it("discovers and redeems before saving, persists only the origin, and reconnects", async () => {

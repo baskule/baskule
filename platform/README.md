@@ -196,7 +196,8 @@ Constants and the codec: `src/shared/contract.ts`,
 - **Settings reloads**: plugin, group, membership, and account changes await their own space reloads. Unrelated public
   requests and internal SpaceCell callbacks do not wait for those reloads. Revocation keeps its separate barrier.
 - **#258**: ControlCell only makes outbound calls inside the request that causes them (no long-lived continuations),
-  so it needs no keepalive.
+  so it needs no keepalive. On celld 0.6.3, aborting a cross-cell or same-cell fetch strands the callee at its next
+  await: bound waits with `withTimeout`, never an abort signal.
 - `src/dev/stub-cells.ts`: isolated echo SpaceCell for the Worker integration test (`test/integration/entry.ts`);
   a test fixture, not a production implementation.
 

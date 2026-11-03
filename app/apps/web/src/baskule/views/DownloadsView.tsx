@@ -60,7 +60,7 @@ export function DownloadsView() {
   const info = useApiResource(baskuleApi.downloads);
   const platform = visitorPlatform(navigator.userAgent);
   const downloads = orderDownloads(info.data ?? [], platform);
-  const version = downloads.find((download) => download.version !== null)?.version ?? null;
+  const version = downloads[0]?.version ?? null;
   return (
     <SettingsPageContainer>
       <DesktopServerSection />

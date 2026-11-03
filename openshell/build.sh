@@ -34,6 +34,11 @@ cp -r "$HERE/images/gateway" "$BUILD/gateway"
 cp "$HERE/config/gateway.toml" "$BUILD/gateway/"
 cp "$TARGET/release/openshell-gateway" "$TARGET/release/openshell" "$BUILD/gateway/"
 cp /usr/local/lib/libz3.so "$BUILD/gateway/"
+# Shipped binaries carry their licences and notices.
+mkdir -p "$BUILD/gateway/licenses"
+cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$BUILD/gateway/licenses/"
+cp "$FORK/LICENSE" "$BUILD/gateway/licenses/OPENSHELL-LICENSE"
+cp "$FORK/THIRD-PARTY-NOTICES" "$BUILD/gateway/licenses/OPENSHELL-THIRD-PARTY-NOTICES"
 cp -r "$HERE/images/supervisor" "$BUILD/supervisor"
 cp "$TARGET/release/openshell-supervisor" "$BUILD/supervisor/"
 

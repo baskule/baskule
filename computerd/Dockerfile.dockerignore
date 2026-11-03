@@ -8,3 +8,5 @@
 !computerd/src/**
 !computerd/proto/
 !computerd/proto/**
+!LICENSE
+!THIRD_PARTY_NOTICES.md

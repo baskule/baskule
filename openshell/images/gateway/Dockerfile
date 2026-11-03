@@ -19,6 +19,7 @@ COPY --chmod=0555 openshell-gateway openshell /usr/local/bin/
 COPY --chmod=0555 libz3.so /usr/local/lib/libz3.so
 RUN ldconfig
 COPY gateway.toml /etc/openshell/gateway.toml
+COPY licenses/ /usr/share/licenses/baskule/
 COPY --chmod=0555 entrypoint.sh /usr/local/bin/baskule-openshell-entrypoint
 COPY --chmod=0444 volumes.py /usr/local/lib/baskule/volumes.py
 # Supervisor + sandbox runtime image tarballs (added by build.sh), loaded into the private dockerd at start.
@@ -31,5 +32,6 @@ VOLUME ["/var/lib/docker", "/var/lib/openshell"]
 EXPOSE 47095 47096
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --start-interval=1s --retries=3 \
   CMD test -f /var/run/baskule-ready && curl -sf -o /dev/null http://127.0.0.1:47097/healthz && curl -sf -o /dev/null http://127.0.0.1:47096/healthz || exit 1
-LABEL org.opencontainers.image.title=baskule-openshell-gateway org.opencontainers.image.source=https://github.com/baskule/baskule
+LABEL org.opencontainers.image.title=baskule-openshell-gateway org.opencontainers.image.source=https://github.com/baskule/baskule \
+      org.opencontainers.image.licenses="MIT AND Apache-2.0"
 ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/baskule-openshell-entrypoint"]

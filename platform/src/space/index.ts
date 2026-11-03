@@ -387,7 +387,6 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       case SPACE_RECHECK_PATH:
         if (req.method !== "POST") break;
         return json(await this.recheck());
-
     }
     if (url.pathname.startsWith("/_baskule/")) return json({ error: "not_found" }, 404);
     // T3's MCP credentials live in its memory, so none is valid while T3 is not running: answer the agent's
