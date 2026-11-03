@@ -40,8 +40,8 @@ if [[ ${BASKULE_K8S_JOURNEY:-full} == full ]]; then
     --show-only templates/deploy.yaml --set rustfs.enabled=true \
     --set-string publicUrl="$BASKULE_K8S_PUBLIC_URL" --set-string global.image.registry="$registry" \
     --set-string global.image.tag="$tag" "${values_args[@]}" | \
-    kubectl create --dry-run=client -f - -o json | \
-    jq '.metadata.name += "-log-proof" | del(.metadata.annotations)' | kubectl create -f - >/dev/null
+    kubectl -n "$BASKULE_K8S_NAMESPACE" create --dry-run=client -f - -o json | \
+    jq '.metadata.name += "-log-proof" | del(.metadata.annotations)' | kubectl -n "$BASKULE_K8S_NAMESPACE" create -f - >/dev/null
   kubectl -n "$BASKULE_K8S_NAMESPACE" wait --for=condition=Complete "job/$BASKULE_K8S_RELEASE-deploy-log-proof" --timeout=240s
   node --input-type=module <<'JS'
 import { execFileSync } from "node:child_process";
