@@ -228,7 +228,7 @@ artwork or brand colour.
 
 - Copy and app names keep "Baskule" (the owner's decision).
 - Upstream T3 Code artwork that Baskule does not ship stays: `app/assets/{dev,nightly,prod}`,
-  `app/apps/mobile/assets/android-icon-*`, the marketing site, and the unused upstream exporters
+  `app/apps/mobile/assets/android-icon-*`, and the unused upstream exporters
   `export-brand-icons.ts` and `export-android-icons.ts`.
 - Functional colours stay: error, warning, success, info, the guest fuchsia, diff colours, terminal colours, the
   named themes, the user-selectable "Teal" project colour, the boot script's unused splash accent and the desktop

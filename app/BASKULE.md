@@ -143,6 +143,11 @@ Use the next upgrade's base tag, target tag and starting Baskule commit.
 
 ### Deliberately stripped upstream features
 
+Baskule does not include the upstream marketing site or its Vercel release jobs. Native packaging stages
+the generic runtime dependencies; retired Cursor and Claude SDK staging stays deleted.
+Source-control adapters remain registered on Node. Web and mobile consume their shared definitions
+even when the hosted driver registry is empty.
+
 | Feature                            | Removed surfaces                                                                                                                                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Linked environments                | `apps/server/src/peer/`, peer-link contracts and RPCs, environment linking MCP tools and tool routing parameters, remote delegation, linked-machine mentions and thread chips, and web/mobile linked-environment sections |

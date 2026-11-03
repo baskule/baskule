@@ -257,7 +257,6 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
       "--exclude-standard",
       "--",
       ":(glob)**/.generated/**",
-      ":(glob)**/.astro/**",
       ":(glob)**/*.d.ts",
       ":(glob)**/.env*",
       ":(exclude,glob)**/node_modules/**",
