@@ -2,7 +2,17 @@
 
 Kubernetes is the recommended way to run Baskule across machines. The Helm chart runs
 celld as a StatefulSet and computers through the vendored OpenShell Kubernetes driver.
-The [single-machine Compose install](install.md) remains available.
+Kubernetes is the only cluster install. The [single-machine Compose install](install.md) remains available.
+
+The former multi-host Compose cluster is removed. Existing Compose-cluster operators must
+create a Kubernetes installation using this guide; there is no migration or Compose-cluster
+upgrade path. Before retiring the old installation, stop writes and back up its S3 bucket
+(platform databases, accounts, sessions, credentials, chats and settings), OpenShell state
+and computer disks, and deployment secrets. These backups do not have a supported restore
+path into the chart. A fresh installation starts with new accounts, credentials, settings,
+chats and computers. Alpha data may be wiped: deleting the old bucket and host volumes
+removes those platform records, secrets, gateway identity and computer files. Only the
+installation owner may authorize stopping the old installation or deleting that data.
 
 ## Create a cluster and install
 
