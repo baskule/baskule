@@ -18,5 +18,5 @@ cp "$root/vendor/openshell/THIRD-PARTY-NOTICES" "$work/baskule/OPENSHELL-THIRD-P
 # The dependency retains its upstream version; select matching Baskule images.
 image_tag=${version//+/_}
 sed -i "s/tag: \"0.0.0\"/tag: \"$image_tag\"/g" "$work/baskule/values.yaml"
-helm lint "$work/baskule" --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false
+helm lint "$work/baskule" --set s3.endpoint=https://s3.example.test --set s3.bucket=lint --set s3.existingSecret=bucket --set openshell.agentSandbox.preflight.enabled=false
 helm package "$work/baskule" --version "$version" --app-version "$image_tag" --destination "$out"
