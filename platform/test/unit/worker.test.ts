@@ -45,8 +45,7 @@ function fakeEnv(extra: Partial<Env> = {}) {
     ASSETS: {
       fetch: async (req: Request) => {
         const p = new URL(req.url).pathname;
-        if (p === "/downloads/index.json") return Response.json({ files: [{ name: "Baskule.AppImage", size: 10, sha256: "ab", modified: "x" }] });
-        if (p === "/downloads/Baskule.AppImage") return new Response("BIN");
+        if (p === "/version.json") return Response.json({ version: "0.5.0" });
         return new Response("<html>spa</html>", { headers: { "content-type": "text/html" } });
       },
     },
@@ -124,6 +123,16 @@ describe("path handling", () => {
 });
 
 describe("Worker routing", () => {
+  it("reads memberships without waking spaces", async () => {
+    const spaces = [{ id: "acme" }, { id: "other" }];
+    const { env, spaceCalls } = fakeEnv({
+      CONTROL: { getByName: () => ({ fetch: async () => Response.json({ spaces }) }) } as unknown as Env["CONTROL"],
+    });
+    const response = await worker.fetch(req("/api/baskule/me", { headers: aliceCookie }), env);
+    expect(await response.json()).toEqual({ spaces });
+    expect(spaceCalls).toEqual([]);
+  });
+
   it("forwards a 25 MiB audio body unchanged to the ControlCell stub", async () => {
     const { env, controlCalls } = fakeEnv();
     const bytes = new Uint8Array(BASKULE_TRANSCRIPTION_MAX_BYTES).fill(42);
@@ -132,7 +141,7 @@ describe("Worker routing", () => {
     const response = await worker.fetch(req("/api/baskule/transcriptions", {
       method: "POST", body: bytes,
       headers: { origin: O, ...aliceCookie, "content-type": "audio/webm;codecs=opus", "content-length": String(bytes.length) },
-    }), env, { waitUntil() {} });
+    }), env);
     expect(response.status).toBe(200);
     expect(controlCalls).toHaveLength(1);
     expect(controlCalls[0].headers.get("content-type")).toBe("audio/webm;codecs=opus");
@@ -208,15 +217,9 @@ describe("Worker routing", () => {
     expect(spaceCalls).toHaveLength(1);
   });
 
-  it("downloads: manifest, listing, attachment-only files, SPA fallback elsewhere", async () => {
+  it("serves the running version and falls back to the SPA for client routes", async () => {
     const { env } = fakeEnv();
-    const m = await (await worker.fetch(req("/api/baskule/downloads"), env)).json();
-    expect(m).toEqual({ files: [{ name: "Baskule.AppImage", size: 10, sha256: "ab", modified: "x", url: "/downloads/Baskule.AppImage" }] });
-    expect(await (await worker.fetch(req("/downloads/"), env)).text()).toContain("Baskule.AppImage");
-    const f = await worker.fetch(req("/downloads/Baskule.AppImage"), env);
-    expect(f.headers.get("content-disposition")).toContain("attachment");
-    expect(await f.text()).toBe("BIN");
-    expect((await worker.fetch(req("/downloads/index.html"), env)).status).toBe(404);
+    expect(await (await worker.fetch(req("/version.json"), env)).json()).toEqual({ version: "0.5.0" });
     expect(await (await worker.fetch(req("/some/spa/route"), env)).text()).toContain("spa");
   });
 });

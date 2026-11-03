@@ -742,6 +742,10 @@ const scenarios = {
     await signIn(page, "bob");
     await page.goto("/settings/desktop");
     await page.getByText("Baskule for Linux").first().waitFor();
+    const download = page.getByRole("link", { name: "Download", exact: true });
+    check(await download.getAttribute("href") === "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
+      `${device}: app download points to the running version's GitHub release asset`);
+    check(await page.getByText("Apps · version 0.5.0", { exact: true }).isVisible(), `${device}: apps show the running version`);
     await shot(page, `${device}-apps`);
     await page.getByRole("button", { name: "Show QR for another device", exact: true }).click();
     const link = await page

@@ -31,9 +31,6 @@ const loadBundle = () => import("./t3/space-cell.js");
 export const SPACE_STOP_PATH = "/_baskule/stop";
 /** Runs the 60 s socket recheck now (ops and tests; internal like every /_baskule path). */
 export const SPACE_RECHECK_PATH = "/_baskule/recheck";
-/** Boots T3 ahead of the first view (Pre-wake: the Worker calls it when a member's app loads). Never wakes the
- *  computer; the idle check disposes T3 again after IDLE_DISPOSE_MS if nobody connects. */
-export const SPACE_WAKE_PATH = "/_baskule/wake";
 /** Idle time (no request, no socket, no active run) after which T3 is disposed. */
 export const IDLE_DISPOSE_MS = 5 * 60_000;
 /** Alarm cadence while runs are active, so the cell is not evicted mid-turn. */
@@ -200,7 +197,10 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       agentFetch: (request) => {
         const url = new URL(request.url);
         url.pathname = "/_baskule/agent" + url.pathname;
-        return this.env.SPACE.getByName(spaceId).fetch(new Request(url, request));
+        // A retiring T3 scope must not abort the receiving celld handler.
+        return this.env.SPACE.getByName(spaceId).fetch(
+          new Request(new Request(url, request), { signal: new AbortController().signal }),
+        );
       },
       computerdUrl: this.env.COMPUTERD_URL,
       computerdToken: this.env.COMPUTERD_TOKEN,
@@ -226,15 +226,16 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
   }
 
   private dispose(): Promise<void> {
-    if (this.closing) return this.closing;
-    this.closing = this.disposeCurrent().finally(() => { this.closing = null; });
-    return this.closing;
+    const previous = this.closing;
+    const closing = (async () => { await previous; await this.disposeCurrent(); })()
+      .finally(() => { if (this.closing === closing) this.closing = null; });
+    this.closing = closing;
+    return closing;
   }
 
   private async disposeCurrent(): Promise<void> {
     const server = this.server ?? (this.booting ? await this.booting.catch(() => null) : null);
-    // Detach this generation's timer before yielding. A request may boot a replacement while
-    // the old server closes; that replacement must keep its own #258 event driver alive.
+    // Keep this generation's #258 event driver through cleanup; closing holds replacement boots.
     const release = this.releaseBootKeepAlive;
     this.releaseBootKeepAlive = null;
     this.server = null;
@@ -245,18 +246,19 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
         await server.dispose().catch((e) => console.warn(`space dispose: ${e}`));
       }
     } finally {
-      release?.();
-      await this.agentStarting?.catch(() => null);
-      const reporter = this.agent?.usage;
-      if (this.agent) { await this.agent.dispose("space disposed"); this.agent = null; }
-      // Drain receipt writes before a replacement can allocate its shared SQL client.
-      await reporter?.flush();
-      await reporter?.capture();
-      const pendingUsage = await reporter?.hasPending();
-      if (pendingUsage) await this.alarms.set("agent", Date.now() + 5_000);
-      else await this.alarms.clear("agent");
-      this.database = null;
-      this.settings = null;
+      try {
+        await this.agentStarting?.catch(() => null);
+        const reporter = this.agent?.usage;
+        if (this.agent) { await this.agent.dispose("space disposed"); this.agent = null; }
+        // Drain receipt writes before a replacement can allocate its shared SQL client.
+        await reporter?.flush();
+        await reporter?.capture();
+        const pendingUsage = await reporter?.hasPending();
+        if (pendingUsage) await this.alarms.set("agent", Date.now() + 5_000);
+        else await this.alarms.clear("agent");
+        this.database = null;
+        this.settings = null;
+      } finally { release?.(); }
     }
   }
 
@@ -339,6 +341,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       // T3 reaches its agent only after a boot stored the space id; a direct internal caller (the agent test
       // harness) names the space with x-baskule-base like the Worker does. A stored id always wins.
       await this.spaceId(req);
+      if (this.closing && !this.booting) return json({ error: "space_restarting" }, 503);
       url.pathname = url.pathname.slice("/_baskule/agent".length);
       return (await this.localAgent()).fetch(new Request(url, req));
     }
@@ -348,13 +351,20 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
         this.agent?.usage?.invalidate(await req.json() as UsageLimitSettings);
         this.settings = null;
         return json({ ok: true });
-      case "/_baskule/reconfigure":
+      case "/_baskule/reconfigure": {
         if (req.method !== "POST") break;
-        if (this.booting) await this.booting.catch(() => null);
-        await this.ctx.storage.put("baskule:settingsChanged", true);
-        if (!this.server?.activeRuns()) { await this.dispose(); await this.refreshComputerSkills(); }
-        else await this.scheduleAlarm();
+        const previous = this.closing;
+        const reconfigured = (async () => {
+          await previous;
+          if (this.booting) await this.booting.catch(() => null);
+          await this.ctx.storage.put("baskule:settingsChanged", true);
+          if (!this.server?.activeRuns()) { await this.disposeCurrent(); await this.refreshComputerSkills(); }
+          else await this.scheduleAlarm();
+        })().finally(() => { if (this.closing === reconfigured) this.closing = null; });
+        this.closing = reconfigured;
+        await reconfigured;
         return json({ ok: true });
+      }
       case "/_baskule/push/schedule":
         await this.scheduleAlarm();
         return json({ ok: true });
@@ -377,14 +387,6 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       case SPACE_RECHECK_PATH:
         if (req.method !== "POST") break;
         return json(await this.recheck());
-      case SPACE_WAKE_PATH: {
-        if (req.method !== "POST") break;
-        const wasAwake = this.server !== null;
-        this.touch();
-        const server = await this.boot(await this.spaceId(req));
-        await this.scheduleAlarm();
-        return json({ awake: true, booted: !wasAwake, bootMs: wasAwake ? 0 : server.bootMs });
-      }
     }
     if (url.pathname.startsWith("/_baskule/")) return json({ error: "not_found" }, 404);
     // T3's MCP credentials live in its memory, so none is valid while T3 is not running: answer the agent's

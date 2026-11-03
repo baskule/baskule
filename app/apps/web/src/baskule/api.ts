@@ -131,11 +131,10 @@ export interface Download {
   readonly id: string;
   readonly fileName: string;
   readonly label: string;
-  readonly platform: "linux" | "windows" | "macos" | "android" | "other";
+  readonly platform: "linux" | "windows" | "macos" | "android" | "ios";
   readonly format: string;
   readonly url: string;
-  readonly sizeBytes: number | null;
-  readonly version: string | null;
+  readonly version: string;
 }
 
 export class BaskuleApiError extends Error {
@@ -380,46 +379,25 @@ export function statusFromWire(status: unknown): SpaceStatusView | null {
   };
 }
 
-/** Platform and format of a published file, from its name (`Baskule-0.2.0-x86_64.AppImage`). */
-export function describeDownload(file: {
-  readonly name: string;
-  readonly size?: number;
-  readonly url: string;
-}): Download {
-  const name = file.name;
-  const lower = name.toLowerCase();
-  const format = lower.endsWith(".tar.gz")
-    ? "tar.gz"
-    : lower.endsWith(".appimage")
-      ? "AppImage"
-      : (name.split(".").at(-1) ?? "file");
-  const platform: Download["platform"] = lower.endsWith(".apk")
-    ? "android"
-    : /\.(exe|msi)$/.test(lower) || lower.includes("win")
-      ? "windows"
-      : /\.(dmg|pkg)$/.test(lower) || lower.includes("mac") || lower.includes("darwin")
-        ? "macos"
-        : /appimage|linux|\.deb$|\.rpm$|\.tar\.gz$/.test(lower)
-          ? "linux"
-          : "other";
-  const version = /(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)[0-9.]*)?)/i.exec(name)?.[1] ?? null;
-  const labels: Record<Download["platform"], string> = {
-    linux: t("Baskule for Linux"),
-    windows: t("Baskule for Windows"),
-    macos: t("Baskule for macOS"),
-    android: t("Baskule for Android"),
-    other: name,
-  };
-  return {
-    id: name,
-    fileName: name,
-    label: labels[platform],
-    platform,
-    format,
-    url: file.url,
-    sizeBytes: typeof file.size === "number" ? file.size : null,
+export function releaseDownloads(version: unknown): ReadonlyArray<Download> {
+  if (
+    typeof version !== "string" ||
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)
+  ) return [];
+  const apps: ReadonlyArray<Omit<Download, "id" | "url" | "version">> = [
+    {
+      platform: "linux",
+      label: t("Baskule for Linux"),
+      format: "AppImage",
+      fileName: `Baskule-${version}-x64.AppImage`,
+    },
+  ];
+  return apps.map((app) => ({
+    ...app,
+    id: app.fileName,
     version,
-  };
+    url: `https://github.com/baskule/baskule/releases/download/v${encodeURIComponent(version)}/${encodeURIComponent(app.fileName)}`,
+  }));
 }
 
 interface WireMe {
@@ -714,15 +692,7 @@ export const baskuleApi = {
     request<unknown>("POST", `/api/baskule/admin/spaces/${enc(spaceId)}/stop`, {}),
 
   downloads: async (): Promise<ReadonlyArray<Download>> =>
-    (
-      await request<{
-        readonly files: ReadonlyArray<{
-          readonly name: string;
-          readonly size?: number;
-          readonly url: string;
-        }>;
-      }>("GET", "/api/baskule/downloads")
-    ).files.map(describeDownload),
+    releaseDownloads((await request<{ readonly version: unknown }>("GET", "/version.json")).version),
 };
 
 /** `<origin><base>/`: where a space's T3 environment is served. */

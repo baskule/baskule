@@ -294,11 +294,9 @@ async function phase1() {
   check("webhook forwarded without user auth to /api/hooks/*", wh.status === 200 && wh.json.path === "/api/hooks/task-1/secret-token" && wh.json.search === "?src=gh" && wh.json.identity === null && wh.json.baskuleHeaders["x-baskule-webhook"] === "1");
   check("webhook to unknown space → 404", (await req("POST", `/hooks/0123456789abcdef/task-1/x`, { body: {}, origin: null })).status === 404);
 
-  // 12. downloads + static
-  const dl = await req("GET", "/api/baskule/downloads");
-  check("downloads listing", dl.status === 200 && dl.json.files[0]?.name === "Baskule-test.AppImage", JSON.stringify({ status: dl.status, body: dl.json ?? dl.text }));
-  const f = await fetch(B + dl.json.files[0].url);
-  check("download served as attachment", f.status === 200 && (await f.text()) === "fake desktop artifact\n" && f.headers.get("content-disposition")?.includes("attachment"));
+  // 12. static assets
+  const version = await req("GET", "/version.json");
+  check("running version is available to the web client", version.status === 200 && typeof version.json.version === "string");
   const spa = await req("GET", "/some/client/route");
   check("SPA fallback serves the web bundle", spa.status === 200 && spa.text.includes("<title>Baskule</title>"));
   check("unknown /api path → 404 JSON", (await req("GET", "/api/nope")).status === 404);

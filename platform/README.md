@@ -23,7 +23,7 @@ From the repository root, `scripts/check` picks these for a diff (`scripts/check
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm run build                 # dist/worker.js (esbuild) + dist/web (+ dist/web/downloads)
+pnpm run build                 # dist/worker.js (esbuild) + dist/web
 pnpm test                      # vitest: ControlCell, Worker security, recheck, SpaceCell lifecycle, agent runtime/migration
 pnpm run test:integration      # test/integration.sh: real celld dev on :47620, then stops
 node src/space/test/run.mjs   # SpaceCell runner: merged cell + fake computerd + fake LLM
@@ -37,8 +37,9 @@ node dev/fake-llm/server.mjs --port 47601
 ```
 
 `CELLD_BIN` overrides the celld binary (default `.tools/bin/celld` at the repository root, then `celld` on PATH; stock 0.6.3). Run `../scripts/worktree host-init` to extract the pinned official binary first. The build takes
-`BASKULE_WEB_DIR` (the web bundle to serve; default `web-placeholder/`), `BASKULE_DOWNLOADS_DIR` (files published
-under `/downloads/`) and `BASKULE_ENTRY`/`BASKULE_OUT` (used by the integration test).
+`BASKULE_WEB_DIR` (the web bundle to serve; default `web-placeholder/`) and
+`BASKULE_ENTRY`/`BASKULE_OUT` (used by the integration test). `/version.json` identifies the running version;
+the web client links to matching GitHub release assets instead of serving app installers from the platform.
 
 See [worktree stack profiles](../stack/README.md) for state, admin credentials, ports and teardown.
 
@@ -70,11 +71,9 @@ space creation; `/me` exposes the resolved capability. Plugin/group contracts ar
 |---|---|---|
 | `/auth/*` | Better Auth in ControlCell (`basePath: /auth`) | Better Auth; Origin check on state-changing calls. `/auth/admin/*` and `/auth/sign-up/*` answer 404. |
 | `/api/baskule/*` | ControlCell (`src/control/service.ts`) | session (cookie or `Authorization: Bearer`) |
-| `/api/baskule/downloads` | Worker | public |
 | `/.well-known/baskule` | ControlCell | public: `{product: "baskule", name}` (the organisation), so a client can check an address before connecting |
 | `/s/<spaceId>/*` | SpaceCell `<spaceId>` | Origin + session + membership on **every** request and upgrade |
 | `/hooks/<spaceId>/*` | SpaceCell `<spaceId>` at `/api/hooks/*` | public (the hook's own token, checked by T3) |
-| `/downloads/`, `/downloads/<file>` | Worker (static files from `BASKULE_DOWNLOADS_DIR`) | public |
 | anything else | static web bundle, SPA fallback to `index.html` | public |
 
 ### Sessions
@@ -194,8 +193,11 @@ Constants and the codec: `src/shared/contract.ts`,
 - **Revocation** is pushed from Better Auth's `session.delete` database hook (sign-out, password change/reset, ban,
   sign-out-everywhere, user deletion) and from our member/role changes; each request waits for its revocation calls
   (5 s timeout) before answering. The 60 s recheck covers expiry and lost pushes.
+- **Settings reloads**: plugin, group, membership, and account changes await their own space reloads. Unrelated public
+  requests and internal SpaceCell callbacks do not wait for those reloads. Revocation keeps its separate barrier.
 - **#258**: ControlCell only makes outbound calls inside the request that causes them (no long-lived continuations),
-  so it needs no keepalive.
+  so it needs no keepalive. On celld 0.6.3, aborting a cross-cell or same-cell fetch strands the callee at its next
+  await: bound waits with `withTimeout`, never an abort signal.
 - `src/dev/stub-cells.ts`: isolated echo SpaceCell for the Worker integration test (`test/integration/entry.ts`);
   a test fixture, not a production implementation.
 

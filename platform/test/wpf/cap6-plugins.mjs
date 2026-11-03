@@ -1,3 +1,4 @@
+import { rejects } from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
 import { zipSync } from "fflate";
@@ -65,10 +66,12 @@ export const pluginChecks = [{ name: "plugin-runtime", capability: "6-plugins", 
       author: { id: s.bob.me.user.id, name: "Forged Bob" } };
     const { task } = await s.ca.ok("scheduledTasks.upsert", taskInput);
     assert(task.author.id === s.alice.me.user.id, "task owner was not stamped from the socket");
-    const edited = await s.cb.ok("scheduledTasks.upsert", { ...taskInput, id: task.id, title: "Edited by Bob" });
+    await rejects(s.cb.ok("scheduledTasks.upsert", { ...taskInput, id: task.id, title: "Edited by Bob" }), /Only the task's author can change or run it/);
+    await rejects(s.cb.ok("scheduledTasks.runNow", { id: task.id }), /Only the task's author can change or run it/);
+    const edited = await s.ca.ok("scheduledTasks.upsert", { ...taskInput, id: task.id, title: "Edited by Alice" });
     assert(edited.task.author.id === s.alice.me.user.id, "editing transferred task ownership");
-    await s.cb.ok("scheduledTasks.runNow", { id: task.id });
-    await waitFor("task uses Alice even when Bob triggers it", () => calls.length === 2, 90000);
+    await s.ca.ok("scheduledTasks.runNow", { id: task.id });
+    await waitFor("author-triggered task uses Alice", () => calls.length === 2, 90000);
     await waitFor("bound task settled", async () => (await projection(s.ca, id)).runs.every(r => ["completed", "failed", "cancelled", "interrupted"].includes(r.status)), 90000);
     await s.ca.ok("scheduledTasks.delete", { id: task.id });
     const { task: hook } = await s.ca.ok("scheduledTasks.upsert", { ...taskInput, threadId: null, schedule: { type: "webhook" } });
@@ -94,7 +97,7 @@ export const pluginChecks = [{ name: "plugin-runtime", capability: "6-plugins", 
     const c = watchThread(s.ca, removed); await waitFor("skill removal", () => c.settled(), 90_000); c.stop();
     const disk = await cx(s.team, ["find", "/sandbox/space/plugins", "-type", "f"]);
     assert(disk.code === 0 && !disk.out.trim(), `retired skill remains: ${disk.out}`);
-    return "organization key injected only in cell; Alice allowed, Bob refused in team space; task owner survives edits/triggers and fresh webhook threads; account label; skill catalog, remote skill asset listed to the model, read-only files and removal";
+    return "organization key injected only in cell; Alice allowed, Bob refused in team space; non-author task edits/triggers refused; task owner survives author edits/triggers and fresh webhook threads; account label; skill catalog, remote skill asset listed to the model, read-only files and removal";
   } finally {
     if (plugin) await admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`).catch(() => {});
     if (group) await admin.json("DELETE", `/api/baskule/admin/groups/${group.id}`).catch(() => {});

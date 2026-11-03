@@ -13,6 +13,8 @@ FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e05
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=dependencies /out ./
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/baskule/
+LABEL org.opencontainers.image.source=https://github.com/baskule/baskule org.opencontainers.image.licenses=MIT
 USER node
 ENV COMPUTERD_PORT=47094
 EXPOSE 47094

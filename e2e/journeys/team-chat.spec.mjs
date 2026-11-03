@@ -16,7 +16,10 @@ test("team chat streams author-stamped messages and catches up after every devic
     await row(phone, id).click();
     await phone.keyboard.press("Escape");
     await expect(assistant(phone)).toContainText("word1", { timeout: 60_000 });
-    await expect(phone.locator("[data-user-message-author]").first()).toContainText("Alice");
+    const author = phone.locator(`[data-message-author="${people.alice.me.user.id}"]`);
+    await expect(author).toBeVisible();
+    await expect(author).toHaveText("Alice");
+    await phone.screenshot({ path: test.info().outputPath("author-stamped.png") });
     await expect.poll(async () => {
       const overview = await api.admin.json("GET", "/api/baskule/admin/spaces?status=live");
       return overview.spaces.find((s) => s.id === people.team)?.status?.activeRuns;

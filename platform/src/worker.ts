@@ -1,9 +1,8 @@
 // Worker `baskule`: the stateless front on every celld node. One origin:
 //   /auth/*            → Better Auth (ControlCell)
-//   /api/baskule/*    → me, people, spaces, members, invitations, admin (ControlCell); downloads listing (here)
+//   /api/baskule/*    → me, people, spaces, members, invitations, admin (ControlCell)
 //   /s/<spaceId>/*     → Origin check + session + membership on EVERY request and upgrade → SpaceCell(<spaceId>)
 //   /hooks/<spaceId>/* → public T3 webhooks → SpaceCell(<spaceId>) at /api/hooks/* (T3 checks the hook's own token)
-//   /downloads/*       → published desktop artifacts
 //   /.well-known/baskule → the instance's discovery document (ControlCell)
 //   anything else      → the static web bundle (SPA fallback)
 import type { Env } from "./env";
@@ -19,7 +18,7 @@ const AUTH_COOKIE_PREFIX = /^(?:__Secure-)?baskule\./;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export default {
-  async fetch(req: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
+  async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const p = url.pathname;
     try {
@@ -38,21 +37,14 @@ export default {
         return new Response(r.body, { status: r.status, headers: h });
       }
       if (p === WELL_KNOWN_PATH) return await control(env).fetch(toControl(req, url));
-      if (p === "/api/baskule/downloads" && req.method === "GET") return downloadsManifest(env, url);
       if (p.startsWith("/api/baskule/")) {
         const o = checkOrigin(req, env);
         if (o) return o;
-        const r = await control(env).fetch(toControl(req, url));
-        if (p !== "/api/baskule/me" || req.method !== "GET" || !r.ok) return r;
-        // celld cannot clone a streaming response: read the (small) body once, answer it and pre-wake from it.
-        const body = await r.text();
-        preWake(env, ctx, body);
-        return new Response(body, { status: r.status, statusText: r.statusText, headers: r.headers });
+        return await control(env).fetch(toControl(req, url));
       }
       if (p === "/api" || p.startsWith("/api/")) return notFound();
       if (p === "/s" || p.startsWith("/s/")) return await spaceRoute(req, env, url);
       if (p.startsWith("/hooks/")) return await webhookRoute(req, env, url);
-      if (p === "/downloads" || p.startsWith("/downloads/")) return await downloads(req, env, url);
       return env.ASSETS.fetch(req);
     } catch (e) {
       console.error("worker error", e);
@@ -62,31 +54,6 @@ export default {
 };
 
 const control = (env: Env) => env.CONTROL.getByName(CONTROL_CELL_NAME);
-
-/** Spaces woken per app load (personal first, as /me lists them). */
-const PRE_WAKE_MAX = 4;
-
-/**
- * Pre-wake: the web/desktop/mobile clients fetch /api/baskule/me first thing after sign-in or at app load, before
- * they open the spaces' sockets. Booting the member's SpaceCells (T3, and only T3: never a computer) in the background
- * then overlaps T3's cold boot with the client's own start. /me is ControlCell's membership answer, so only spaces the
- * caller belongs to are woken.
- */
-function preWake(env: Env, ctx: { waitUntil(p: Promise<unknown>): void } | undefined, me: string): void {
-  const work = (async () => {
-    const body = JSON.parse(me) as { spaces?: { id: string }[] };
-    const ids = (body.spaces ?? []).map((s) => s.id).filter((id) => SPACE_ID_RE.test(id)).slice(0, PRE_WAKE_MAX);
-    await Promise.all(
-      ids.map((id) =>
-        env.SPACE.getByName(id)
-          .fetch(new Request("http://space/_baskule/wake", { method: "POST", headers: { [BASE_HEADER]: spaceBase(id) } }))
-          .then((r) => r.body?.cancel())
-          .catch((e) => console.warn(`pre-wake ${id}: ${e}`)),
-      ),
-    );
-  })().catch((e) => console.warn(`pre-wake: ${e}`));
-  ctx?.waitUntil(work);
-}
 
 /** Copies headers without any x-baskule-* (clients can never set them). */
 export function stripBaskuleHeaders(h: Headers): Headers {
@@ -237,50 +204,4 @@ async function webhookRoute(req: Request, env: Env, url: URL): Promise<Response>
   headers.set(BASE_HEADER, spaceBase(parts.spaceId));
   headers.set(WEBHOOK_HEADER, "1");
   return forward(req, env, parts.spaceId, "/api/hooks" + parts.rest + url.search, url, headers);
-}
-
-// ------------------------------------------------------------------ downloads
-interface Manifest {
-  files: { name: string; size: number; sha256: string; modified: string }[];
-}
-
-async function manifest(env: Env, url: URL): Promise<Manifest> {
-  const r = await env.ASSETS.fetch(new Request(new URL("/downloads/index.json", url.origin)));
-  if (!r.ok) return { files: [] };
-  try {
-    const m = (await r.json()) as Manifest;
-    return Array.isArray(m?.files) ? m : { files: [] };
-  } catch {
-    return { files: [] };
-  }
-}
-
-async function downloadsManifest(env: Env, url: URL): Promise<Response> {
-  const m = await manifest(env, url);
-  return json({ files: m.files.map((f) => ({ ...f, url: `/downloads/${encodeURIComponent(f.name)}` })) });
-}
-
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-
-async function downloads(req: Request, env: Env, url: URL): Promise<Response> {
-  if (!SAFE_METHODS.has(req.method)) return json({ error: "method_not_allowed" }, 405);
-  const m = await manifest(env, url);
-  const name = safeDecode(url.pathname.replace(/^\/downloads\/?/, ""));
-  if (!name) {
-    const rows = m.files
-      .map((f) => `<li><a href="/downloads/${encodeURIComponent(f.name)}">${esc(f.name)}</a> (${(f.size / 1048576).toFixed(1)} MB, sha256 <code>${f.sha256}</code>)</li>`)
-      .join("");
-    return new Response(
-      `<!doctype html><meta charset="utf-8"><title>Baskule downloads</title><h1>Baskule downloads</h1>${rows ? `<ul>${rows}</ul>` : "<p>No downloads published yet.</p>"}`,
-      { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" } },
-    );
-  }
-  const f = m.files.find((x) => x.name === name);
-  if (!f) return notFound();
-  const r = await env.ASSETS.fetch(new Request(new URL(`/downloads/${encodeURIComponent(f.name)}`, url.origin), { method: req.method }));
-  const h = new Headers(r.headers);
-  h.set("content-type", "application/octet-stream");
-  h.set("content-disposition", `attachment; filename="${f.name.replace(/["\\]/g, "_")}"`);
-  h.set("x-content-type-options", "nosniff");
-  return new Response(r.body, { status: r.status, headers: h });
 }

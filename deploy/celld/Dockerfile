@@ -14,4 +14,5 @@ ENV CELLD_ESBUILD=/usr/local/bin/esbuild CELLD_OTEL=0 DO_NOT_TRACK=1 CELLD_WATCH
 FROM source AS release
 COPY platform/wrangler.json /src/platform/wrangler.json
 COPY platform/dist/ /src/platform/dist/
-LABEL org.opencontainers.image.source=https://github.com/baskule/baskule
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/baskule/
+LABEL org.opencontainers.image.source=https://github.com/baskule/baskule org.opencontainers.image.licenses="MIT AND Apache-2.0"

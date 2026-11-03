@@ -1,5 +1,5 @@
 // baskule: mock front with in-memory Better Auth-shaped /auth and /api/baskule routes.
-// /s/:space proxies real T3 servers; /downloads serves fake apps; other routes serve Vite or dist.
+// /s/:space proxies real T3 servers; other routes serve Vite or dist.
 // T3 uses one OpenCode CLI backed by the fake LLM. MOCK_PORT/WEB/VITE_PORT/T3_PORT_BASE/OPENCODE_URL
 // choose listeners; MOCK_STATE_DIR holds state; MOCK_BACKENDS disables T3; MOCK_INJECT_AUTHOR stamps messages.
 import * as NodeChildProcess from "node:child_process";
@@ -616,27 +616,6 @@ async function handleApi(req, res, url) {
     endSessionsOf(userId);
     return send(res, 200, { status: true });
   }
-  if (p === "/api/baskule/downloads") {
-    return send(res, 200, {
-      files: [
-        {
-          name: "Baskule-0.2.0-x86_64.AppImage",
-          size: 118_000_000,
-          sha256: "0".repeat(64),
-          modified: new Date().toISOString(),
-          url: "/downloads/Baskule-0.2.0-x86_64.AppImage",
-        },
-        {
-          name: "Baskule-0.2.0-linux-x64.tar.gz",
-          size: 112_400_000,
-          sha256: "1".repeat(64),
-          modified: new Date().toISOString(),
-          url: "/downloads/Baskule-0.2.0-linux-x64.tar.gz",
-        },
-      ],
-    });
-  }
-
   // Public invitations.
   if (p === "/api/baskule/invitations/lookup" && method === "POST") {
     const inv = validInvitation((await readBody(req)).token);
@@ -1457,18 +1436,7 @@ export const server = NodeHttp.createServer((req, res) => {
     return;
   }
   if (url.pathname.startsWith("/s/")) return void proxySpaceHttp(req, res, url);
-  if (url.pathname === "/downloads/") {
-    // Like the Worker: the folder itself is a listing page, its files are attachments.
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    return res.end("<!doctype html><title>Downloads</title><h1>Downloads</h1>");
-  }
-  if (url.pathname.startsWith("/downloads/")) {
-    res.writeHead(200, {
-      "content-type": "application/octet-stream",
-      "content-disposition": `attachment; filename="${NodePath.basename(url.pathname)}"`,
-    });
-    return res.end("mock app file\n");
-  }
+  if (url.pathname === "/version.json") return send(res, 200, { version: "0.5.0" });
   if (WEB_MODE === "dev") return proxyVite(req, res);
   return serveDist(req, res, url);
 });

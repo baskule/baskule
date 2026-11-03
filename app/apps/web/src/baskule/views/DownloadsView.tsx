@@ -1,6 +1,6 @@
 import { t, useTranslation } from "../../i18n";
 
-// baskule: Settings → Desktop app: the apps published with the installation, connecting a
+// baskule: Settings → Desktop app: apps for the running release, connecting a
 // device, and in the desktop app the server it uses.
 import { DownloadIcon } from "lucide-react";
 
@@ -8,7 +8,7 @@ import { Button } from "../../components/ui/button";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
 import { Spinner } from "../../components/ui/spinner";
 import { type Download, baskuleApi } from "../api";
-import { formatBytes, useApiResource } from "../ui";
+import { useApiResource } from "../ui";
 import { ConnectDeviceSection } from "./ConnectDeviceSection";
 import { PageMessage, PageRow, PageSection } from "./BaskulePage";
 
@@ -23,12 +23,11 @@ const PLATFORM_LABELS: Record<Download["platform"], string> = {
   get android() {
     return t("Android");
   },
-  get other() {
-    return t("File");
-  },
+  ios: "iOS",
 };
 
 export function visitorPlatform(userAgent: string): Download["platform"] | null {
+  if (/iphone|ipad|ipod/i.test(userAgent)) return "ios";
   if (/android/i.test(userAgent)) return "android";
   if (/windows/i.test(userAgent)) return "windows";
   if (/mac os x|macintosh/i.test(userAgent)) return "macos";
@@ -46,7 +45,7 @@ export function orderDownloads(
     "windows",
     "macos",
     "android",
-    "other",
+    "ios",
   ];
   return [...downloads].toSorted((left, right) => {
     if (platform !== null && (left.platform === platform) !== (right.platform === platform)) {
@@ -61,7 +60,7 @@ export function DownloadsView() {
   const info = useApiResource(baskuleApi.downloads);
   const platform = visitorPlatform(navigator.userAgent);
   const downloads = orderDownloads(info.data ?? [], platform);
-  const version = downloads.find((download) => download.version !== null)?.version ?? null;
+  const version = downloads[0]?.version ?? null;
   return (
     <SettingsPageContainer>
       <DesktopServerSection />
@@ -82,7 +81,6 @@ export function DownloadsView() {
           <PageMessage>{t("No app was published with this installation yet.")}</PageMessage>
         ) : null}
         {downloads.map((download, index) => {
-          const size = formatBytes(download.sizeBytes);
           const primary = index === 0 && download.platform === platform;
           return (
             <PageRow
@@ -91,7 +89,7 @@ export function DownloadsView() {
                 <Button
                   size="sm"
                   variant={primary ? "default" : "outline"}
-                  render={<a href={download.url} download />}
+                  render={<a href={download.url} target="_blank" rel="noreferrer" />}
                 >
                   <DownloadIcon />
                   {t("Download")}
@@ -106,7 +104,6 @@ export function DownloadsView() {
               </span>
               <span className="truncate text-xs text-muted-foreground">
                 {PLATFORM_LABELS[download.platform]} · {download.format}
-                {size ? ` · ${size}` : ""}
                 <span className="max-sm:hidden"> · {download.fileName}</span>
               </span>
             </PageRow>

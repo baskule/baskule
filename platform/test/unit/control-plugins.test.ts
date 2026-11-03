@@ -4,7 +4,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Group, Plugin } from "../../../app/packages/contracts/src/baskule-plugins";
-import { asAdmin, call, createUser, makeService, personalSpaceOf, signIn } from "../support/harness";
+import { asAdmin, call, createUser, makeService, personalSpaceOf, request, signIn } from "../support/harness";
+import { ControlService } from "../../src/control/service";
 import { INTERNAL_HEADER } from "../../src/shared/contract";
 import { pluginStatus, worstStatus, canUse, type PluginPolicy, Plugins } from "../../src/control/plugins";
 import { ConnectionCipher } from "../../src/control/connection-crypto";
@@ -59,6 +60,81 @@ describe("pure plugin policy", () => {
 });
 
 describe("ControlCell plugins and groups", () => {
+  it("answers internal settings callbacks before waiting for plugin reloads", async () => {
+    const h = await makeService(); const a = await asAdmin(h);
+    let reloaded = false;
+    const svc = new ControlService(h.storage, h.env, async (spaceId, path): Promise<Response> => {
+      if (path === "/_baskule/reconfigure") {
+        const settings = await svc.handle(request("POST", "/_baskule/settings", {
+          headers: { [INTERNAL_HEADER]: "1" }, body: { spaceId },
+        }));
+        expect(settings.status).toBe(200);
+        reloaded = true;
+      }
+      return Response.json({ ok: true });
+    });
+    await svc.init();
+    const change = call({ ...h, svc }, "POST", `${API}/admin/plugins`, {
+      creds: a.creds, body: { groups: [], plugin: input },
+    });
+    try {
+      await expect.poll(() => reloaded, { timeout: 1000 }).toBe(true);
+      expect((await change).status).toBe(201);
+    } finally { await change; }
+  }, 10000);
+
+  it("keeps unrelated requests out of another request's plugin reloads", async () => {
+    const h = await makeService(); const a = await asAdmin(h);
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    let release!: () => void;
+    const released = new Promise<void>(resolve => { release = resolve; });
+    const svc = new ControlService(h.storage, h.env, async (_spaceId, path) => {
+      if (path === "/_baskule/reconfigure") {
+        markStarted();
+        await released;
+      }
+      return Response.json({ ok: true });
+    });
+    await svc.init();
+    const change = call({ ...h, svc }, "POST", `${API}/admin/plugins`, {
+      creds: a.creds, body: { groups: [], plugin: input },
+    });
+    await started;
+    try {
+      const reads = Promise.all(Array.from({ length: 64 }, () =>
+        call({ ...h, svc }, "GET", `${API}/me`, { creds: a.creds }),
+      ));
+      // The reload's owning request stays open; these requests must finish without releasing it.
+      expect(await Promise.race([reads.then(() => "reads"), change.then(() => "change")])).toBe("reads");
+      expect((await reads).every(response => response.status === 200)).toBe(true);
+    } finally {
+      release();
+      expect((await change).status).toBe(201);
+    }
+  });
+
+  it("starts member revocation before waiting for the space's plugin reload", async () => {
+    const h = await makeService(); const a = await asAdmin(h);
+    const bob = await createUser(h, a.creds, "removed@os.test", "Removed");
+    const team = await call(h, "POST", `${API}/spaces`, { creds: a.creds, body: { name: "Team", members: [{ userId: bob.id }] } });
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    let release!: () => void;
+    const released = new Promise<void>(resolve => { release = resolve; });
+    let revoked = false;
+    const svc = new ControlService(h.storage, h.env, async (_spaceId, path) => {
+      if (path === "/_baskule/revoke") revoked = true;
+      if (path === "/_baskule/reconfigure") { markStarted(); await released; }
+      return Response.json({ ok: true });
+    });
+    await svc.init();
+    const removal = call({ ...h, svc }, "DELETE", `${API}/spaces/${team.body.space.id}/members/${bob.id}`, { creds: a.creds });
+    await started;
+    try { expect(revoked).toBe(true); }
+    finally { release(); expect((await removal).status).toBe(200); }
+  });
+
   it("starts empty, derives space creation from groups, and protects Everyone", async () => {
     const h = await makeService(); const a = await asAdmin(h);
     const bob = await createUser(h, a.creds, "bob@os.test", "Bob");

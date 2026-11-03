@@ -59,12 +59,91 @@ describe("SpaceCell boot/dispose overlap", () => {
     expect(replacementEnded).toBe(true);
   });
 
+  it("holds new requests behind a reconfigure that is waiting for the current boot", async () => {
+    vi.useFakeTimers();
+    const booting = deferred(), started = deferred(), closing = deferred(), disposing = deferred();
+    const oldFetch = vi.fn(async () => new Response("old settings"));
+    createServer.mockImplementationOnce(async () => {
+      started.resolve();
+      await booting.promise;
+      return { ...server(vi.fn(async () => { disposing.resolve(); await closing.promise; })), fetch: oldFetch };
+    }).mockResolvedValueOnce({ ...server(), fetch: async () => new Response("new settings") });
+    const c = cell();
+    const firstBoot = c.boot("space");
+    await started.promise;
+    const reload = c.fetch(new Request("http://space/_baskule/reconfigure", { method: "POST" }));
+    const request = c.fetch(new Request("http://space/ws", { headers: { "x-baskule-base": "/s/space" } }));
+    booting.resolve();
+    try {
+      await disposing.promise;
+      expect(oldFetch).not.toHaveBeenCalled();
+      closing.resolve();
+      await reload;
+      expect(await (await request).text()).toBe("new settings");
+    } finally {
+      booting.resolve(); closing.resolve();
+      await Promise.all([firstBoot, reload, request]);
+      await c.dispose();
+      createServer.mockReset();
+    }
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("still disposes when a pending reconfigure keeps an active run alive", async () => {
+    vi.useFakeTimers();
+    const scheduling = deferred(), scheduled = deferred();
+    const close = vi.fn(async () => {});
+    createServer.mockResolvedValueOnce({ ...server(close), activeRuns: () => 1 });
+    const c = cell();
+    await c.boot("space");
+    c.scheduleAlarm = async () => { scheduling.resolve(); await scheduled.promise; };
+    const reload = c.fetch(new Request("http://space/_baskule/reconfigure", { method: "POST" }));
+    await scheduling.promise;
+    const disposed = c.dispose();
+    scheduled.resolve();
+    try {
+      await Promise.all([reload, disposed]);
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      await c.dispose();
+      createServer.mockReset();
+    }
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects late agent requests while the retired runtime's usage writes are draining", async () => {
+    vi.useFakeTimers();
+    const flushing = deferred(), started = deferred();
+    createServer.mockResolvedValueOnce(server());
+    const c = cell();
+    await c.boot("space");
+    c.agent = { dispose: async () => {}, usage: {
+      flush: () => { started.resolve(); return flushing.promise; },
+      capture: async () => {}, hasPending: async () => false,
+    } };
+    const createAgent = vi.fn(async () => ({ fetch: async () => Response.json({ ok: true }) }));
+    c.createLocalAgent = createAgent;
+    const closing = c.dispose();
+    await started.promise;
+    try {
+      const response = await c.fetch(new Request("http://space/_baskule/agent/oc/api/info", {
+        headers: { "x-baskule-base": "/s/space" },
+      }));
+      expect(response.status).toBe(503);
+      expect(createAgent).not.toHaveBeenCalled();
+    } finally { flushing.resolve(); await closing; }
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("waits for an in-flight usage flush before replacing the shared SQL client", async () => {
     vi.useFakeTimers();
     const flushing = deferred(), started = deferred();
     createServer.mockResolvedValueOnce(server()).mockResolvedValueOnce(server());
-    const c = cell();
+    const lifetimes: Promise<unknown>[] = [];
+    const c = cell(undefined, undefined, promise => { lifetimes.push(promise); });
     await c.boot("space");
+    let bootEnded = false;
+    void lifetimes[0]!.then(() => { bootEnded = true; });
     const database = c.database;
     c.agent = { dispose: async () => {}, usage: {
       flush: () => { started.resolve(); return flushing.promise; },
@@ -72,6 +151,7 @@ describe("SpaceCell boot/dispose overlap", () => {
     } };
     const closing = c.dispose();
     await started.promise;
+    expect(bootEnded).toBe(false);
     const replacement = c.boot("space");
     await Promise.resolve();
     expect(c.database).toBe(database);
@@ -139,6 +219,31 @@ it("enters the same cell through a live request before invoking the embedded age
   expect(await response.json()).toEqual({ ok: true });
   expect(c.agent).toBeNull();
   await c.dispose();
+});
+
+
+it("forwards the agent request body independently of the caller's abort signal", async () => {
+  const fetchAgent = vi.fn(async (_request: Request) => Response.json({ ok: true }));
+  const c = cell();
+  c.env.SPACE = { getByName: () => ({ fetch: fetchAgent }) };
+  createServer.mockResolvedValueOnce(server());
+  await c.boot("space-cancellation");
+  try {
+    const controller = new AbortController();
+    const { agentFetch } = createServer.mock.calls[0]![0];
+    const response = agentFetch(new Request("http://agent/oc/api/session?probe=1", {
+      method: "POST", headers: { "content-type": "application/json", "x-test": "kept" },
+      body: JSON.stringify({ prompt: "kept" }), signal: controller.signal,
+    }));
+    controller.abort();
+    const forwarded = fetchAgent.mock.calls[0]![0];
+    expect(forwarded.signal.aborted).toBe(false);
+    expect(forwarded.method).toBe("POST");
+    expect(forwarded.url).toBe("http://agent/_baskule/agent/oc/api/session?probe=1");
+    expect(forwarded.headers.get("x-test")).toBe("kept");
+    expect(await forwarded.json()).toEqual({ prompt: "kept" });
+    expect(await (await response).json()).toEqual({ ok: true });
+  } finally { await c.dispose(); }
 });
 
 

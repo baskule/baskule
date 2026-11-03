@@ -28,6 +28,9 @@ sign-in, a streamed fake chat, and a shell command through the platform's comput
 computer-file persistence after a compose-file version update and down/up, then backs up and restores into empty
 volumes. Hashes of every consumer secrets file must match across restart, update, and restore.
 The gateway update also checks removal of old workload tags and pruning of a distinct obsolete image.
+The driver excludes CI's packaging variable `BASKULE_VERSION` from Docker commands so the downloaded
+Compose file selects the version. Retagged host images keep their image IDs; the gateway's changed
+`BASKULE_VERSION` must still recreate it and finish image cleanup before assertions run.
 
 The cluster simulation gives each role its own network namespace on an isolated Docker LAN. Test-only Compose
 network overrides model machine interfaces and avoid the host firewall's bridge-to-host rules. The release node

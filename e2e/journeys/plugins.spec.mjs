@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { test, expect, signIn, startChat, assistant, phoneOptions } from "./fixtures.mjs";
+import { test, expect, signIn, startChat, assistant, phoneOptions, navigateApp } from "./fixtures.mjs";
 
 import { fakeMcp } from "../../platform/test/fixtures/mcp.mjs";
 import { fakeOAuth } from "../../platform/test/fixtures/oauth.mjs";
@@ -28,6 +28,12 @@ async function computerOutput(stack, spaceId, argv) {
 
 const filesOnComputer = (stack, spaceId) => computerOutput(stack, spaceId, ["find", "/sandbox/space/plugins", "-type", "f"]);
 
+async function saveNewPlugin(page) {
+  const previous = page.url();
+  await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+  await page.waitForURL(url => url.href !== previous && /^\/admin\/plugins\/installed\/[^/]+$/.test(url.pathname));
+}
+
 test("assigned skills are ready without activation and leave a team when its contributor is deactivated", { tag: ["@feature:plugins"] }, async ({ browser, stack, people, api, fakeLlm }) => {
   const options = test.info().project.name === "phone" ? phoneOptions : { viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true };
   const adminContext = await browser.newContext(options);
@@ -49,7 +55,7 @@ test("assigned skills are ready without activation and leave a team when its con
     await adminPage.getByRole("button", { name: "Review plugin", exact: true }).click();
     await adminPage.getByLabel("Name", { exact: true }).fill(name);
     await expect(adminPage.getByRole("checkbox", { name: /Everyone/ })).toBeChecked();
-    await adminPage.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await saveNewPlugin(adminPage);
     await expect(adminPage.getByRole("heading", { name, exact: true })).toBeVisible();
     plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
     expect(plugin.enabled).toBe(true);
@@ -83,6 +89,7 @@ test("assigned skills are ready without activation and leave a team when its con
     await api.admin.json("POST", `/api/baskule/admin/users/${people.alice.me.user.id}/deactivate`, {});
     await expect.poll(() => filesOnComputer(stack, team), { message: "the deactivated contributor's skills leave the managed tree", timeout: 90_000 }).not.toContain(`${plugin.id}/hello/`);
   } finally {
+    if (!plugin) plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
     if (plugin) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${plugin.id}`);
     if (group) await api.admin.json("DELETE", `/api/baskule/admin/groups/${group.id}`);
     if (team) await api.admin.json("POST", `/api/baskule/admin/spaces/${team}/stop`, {});
@@ -307,7 +314,7 @@ test("an imported package is reviewed and repaired before save and exports for a
     await page.getByRole("radio", { name: /No sign-in needed/ }).last().check();
     await expect(page.getByRole("checkbox", { name: /Everyone/ })).toBeChecked();
     await page.screenshot({ path: test.info().outputPath("plugin-review-ready.png"), fullPage: true });
-    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await saveNewPlugin(page);
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
     expect(plugin.servers[0].url).toBe("https://workspace.example.com/mcp");
@@ -351,8 +358,9 @@ test("MCP JSON lifts keys, tests tools and enforces a switched-off tool during a
     await context.addCookies(api.admin.cookie.split("; ").map(cookie => {
       const [name, ...value] = cookie.split("="); return { name, value: value.join("="), url: stack.urls.front };
     }));
-    await page.goto(`${stack.urls.front}/admin/plugins/add`);
-    await page.getByRole("button", { name: "Paste JSON", exact: true }).click();
+    const paste = page.getByRole("button", { name: "Paste JSON", exact: true });
+    await navigateApp(page, () => page.goto(`${stack.urls.front}/admin/plugins/add`), paste);
+    await paste.click();
     const json = page.getByRole("textbox", { name: "Server settings as JSON", exact: true });
     await json.fill(JSON.stringify({ servers: {
       notes: { type: "http", url: fixture.resource, headers: { Authorization: "Bearer local-mcp-key" } },
@@ -371,7 +379,7 @@ test("MCP JSON lifts keys, tests tools and enforces a switched-off tool during a
     await expect(page.getByText("Change the team's notes", { exact: true })).toBeVisible();
     await page.getByRole("switch", { name: /fixture_write/ }).uncheck();
     await page.screenshot({ path: test.info().outputPath("mcp-tested-tools.png"), fullPage: true });
-    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await saveNewPlugin(page);
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
     expect(plugin.servers[0].disabledTools).toEqual(["fixture_write"]);
@@ -446,7 +454,7 @@ test("skills can be written, versioned and reverted on the computer, and pinned 
     await page.screenshot({ path: test.info().outputPath("skill-files-and-warning.png"), fullPage: true });
     await page.getByRole("button", { name: "Add a server", exact: true }).click();
     await page.getByLabel("Address", { exact: true }).fill(fixture.resource);
-    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await saveNewPlugin(page);
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     plugin = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === name);
     expect(plugin.servers[0].url).toBe(fixture.resource);
@@ -508,7 +516,7 @@ test("skills can be written, versioned and reverted on the computer, and pinned 
     await expect(page.getByLabel("Path of file 1", { exact: true })).toHaveValue("LICENSE");
     await page.getByLabel("Instructions", { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: test.info().outputPath("skill-copy-editor.png"), fullPage: true });
-    await page.getByRole("button", { name: "Save plugin", exact: true }).click();
+    await saveNewPlugin(page);
     await expect(page.getByRole("heading", { name: `${name} copy`, exact: true })).toBeVisible();
     copy = (await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.find(p => p.name === `${name} copy`);
     expect(copy.source.type).toBe("custom"); expect(copy.servers).toEqual([]);
