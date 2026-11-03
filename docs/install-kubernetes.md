@@ -517,8 +517,9 @@ Worker source isolation.
 Existing chart installs that used `rustfs.enabled` must be reinstalled with a cloud
 bucket; the retired values are rejected. There is no migration. Back up first, stop
 traffic, uninstall the release, provision a new bucket and credentials, then reinstall
-with the new values. A fresh bucket starts with no prior accounts, chats, files stored
-in celld, or settings. Retained RustFS PVCs/Secrets are not read by the new install;
+in a fresh namespace with the new values, Secrets and PVCs. A fresh bucket starts
+with no prior accounts, chats, files stored
+in celld, or settings. Retained PVCs/Secrets in the old namespace are not read by the new install;
 delete them only after deciding to discard their data. Existing computer workspace
 PVCs alone do not restore the lost celld/OpenShell mappings.
 
