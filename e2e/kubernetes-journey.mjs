@@ -27,7 +27,7 @@ async function forward(resource, remotePort, localPort = 0) {
       const port = chunk.toString().match(/127\.0\.0\.1:(\d+)/)?.[1];
       if (port) { clearTimeout(timer); done(`http://127.0.0.1:${port}`); }
     });
-    child.stderr.on("data", () => {});
+    child.stderr.on("data", chunk => appendFileSync(resolve(privateDirectory, `${namespace}.port-forward.private.log`), chunk));
   });
 }
 async function rpc(person, space) {
@@ -77,6 +77,40 @@ async function checkIngress(publicUrl) {
     } finally { externalState.stop(); }
     writeFileSync(resolve(evidence, "ingress-stream.json"), JSON.stringify({ elapsedMs: Date.now() - started, updates: externalState.assistantUpdates, visibleBeforeCompletion: true, deliveredAfter65Seconds: true }));
     pass("real Ingress load balancer keeps WebSocket and incremental chat streaming beyond 65 seconds");
+    // Independent HTTP/SSE probe on the same Ingress, reusing its fake-LLM backend.
+    const streamUrl = `${publicUrl}/v1/chat/completions`;
+    const request = (text, stream) => fetch(streamUrl, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "fake-model", stream, messages: [{ role: "user", content: text }] }),
+      signal: AbortSignal.timeout(150_000),
+    });
+    await expect.poll(async () => {
+      try {
+        const response = await request("[[fake:text HTTP_STREAM_ROUTE_READY]]", false);
+        return response.ok && (await response.json()).choices?.[0]?.message?.content === "HTTP_STREAM_ROUTE_READY";
+      } catch { return false; }
+    }, { timeout: 600_000, message: "GCE registers the fake-LLM streaming probe backend" }).toBe(true);
+    const httpStarted = Date.now();
+    const response = await request(`[[fake:text HTTP_STREAM_OK ${words}]][[fake:delay 200]]`, true);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/event-stream/);
+    let text = "", firstContentMs, lateContent = false, contentChunks = 0;
+    const decoder = new TextDecoder();
+    for await (const chunk of response.body) {
+      const part = decoder.decode(chunk, { stream: true });
+      text += part;
+      const elapsed = Date.now() - httpStarted;
+      if (firstContentMs === undefined && text.includes("HTTP_STREAM_OK")) firstContentMs = elapsed;
+      if (part.includes('"content"')) {
+        contentChunks++;
+        if (elapsed >= 65_000) lateContent = true;
+      }
+    }
+    assert.ok(firstContentMs < 30_000, "HTTP content must arrive before the complete response can be buffered");
+    assert.ok(lateContent && contentChunks >= 20, "HTTP content continues incrementally beyond 65 seconds");
+    assert.match(text, /data: \[DONE\]/);
+    writeFileSync(resolve(evidence, "ingress-http-stream.json"), JSON.stringify({ elapsedMs: Date.now() - httpStarted, firstContentMs, contentChunks, lateContent }));
+    pass("same public Ingress delivers unbuffered HTTP SSE content before completion and beyond 65 seconds");
     if (process.env.BASKULE_K8S_JOURNEY === "ingress") {
       externalClient.close(); await externalClient.closed;
       const oldPod = objects("get", "pod", `${release}-celld-1`);
@@ -183,11 +217,10 @@ try {
     pass("platform invokes computerd and writes verified file bytes on a Kubernetes computer");
     const computerdPod = objects("get", "pods", "-l", select("computerd")).items[0].metadata.name;
     const ready = kube("logs", computerdPod).split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line)).find(line => line.msg === "computer ready" && line.spaceId === space);
-    assert.ok(ready && ready.ms > 0, "record actual computer startup duration");
-    writeFileSync(resolve(evidence, "computer-startup.json"), JSON.stringify({ coldNode: cold, readyMs: ready.ms, timeoutMs: 180_000 }));
+    assert.ok(ready && ready.created && ready.ms > 0, "record the first creating ensure, not a later retry");
+    writeFileSync(resolve(evidence, "computer-startup.json"), JSON.stringify({ coldNode: cold, firstEnsureCreated: ready.created, readyMs: ready.ms, timeoutMs: 180_000 }));
     assert.ok(ready.ms < 144_000, "cold start must leave at least 20% of the 180-second readiness budget");
     pass(`computer startup took ${ready.ms} ms (cold node: ${cold})`);
-    const computerApi = new Client(await forward(`service/${release}-computerd`, 47094), Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString());
     // Run through the actual HTTP API from the celld trust domain. No extra public service.
     const celldPod = `${release}-celld-0`;
     function computer(action) {
@@ -240,6 +273,7 @@ try {
       }
       // Unlike kubectl exec above, computerd exec enters the sandbox's seccomp
       // broker and trusted supervisor: assert application-policy denial as well.
+      const computerApi = new Client(await forward(`service/${release}-computerd`, 47094), Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString());
       const publicControl = await computerApi.exec(space, { argv: ["curl", "-fsS", "--max-time", "20", "https://example.com/"] });
       assert.equal(publicControl.code, 0, publicControl.stderr);
       const apiService = JSON.parse(execFileSync("kubectl", ["-n", "default", "get", "service", "kubernetes", "-o", "json"], { encoding: "utf8" })).spec.clusterIP;

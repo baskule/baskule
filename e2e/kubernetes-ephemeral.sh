@@ -266,6 +266,14 @@ spec:
   logging: {enable: true, sampleRate: 1}
   healthCheck: {type: HTTP, port: 47091, requestPath: /.well-known/celld/health}
 ---
+# Reuse the existing fake LLM for an independent HTTP streaming transport probe.
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata: {name: stream-probe}
+spec:
+  timeoutSec: 3600
+  healthCheck: {type: HTTP, port: 47601, requestPath: /health}
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata: {name: baskule-ephemeral}
