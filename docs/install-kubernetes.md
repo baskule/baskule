@@ -82,11 +82,12 @@ Gateway API CRDs, the controller, certificates, and DNS remain operator-owned.
 ## GKE Standard
 
 These commands follow Google's [zonal cluster guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/creating-a-zonal-cluster).
-This path has not yet been run on GKE. No GCP resources were created for this change.
+The source verification runner exercises this path on a disposable zonal cluster.
 
 ```sh
 gcloud container clusters create baskule \
-  --zone europe-west1-b --num-nodes 2 --machine-type e2-standard-4 \
+  --zone europe-west1-b --node-locations europe-west1-b \
+  --num-nodes 2 --machine-type e2-custom-4-8192 \
   --image-type UBUNTU_CONTAINERD --enable-dataplane-v2
 gcloud container clusters get-credentials baskule --zone europe-west1-b
 ```
@@ -94,6 +95,39 @@ gcloud container clusters get-credentials baskule --zone europe-west1-b
 Install Agent Sandbox, then run either Helm install command above. Dataplane V2 provides
 NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass.
 For a private cluster, provide outbound image-registry and model-provider access.
+
+For Google's managed Ingress, create a `BackendConfig` in the Baskule namespace:
+
+```yaml
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: baskule
+spec:
+  timeoutSec: 3600
+  healthCheck:
+    type: HTTP
+    port: 47091
+    requestPath: /.well-known/celld/health
+```
+
+Set these chart values and provide a DNS record for `publicUrl`:
+
+```yaml
+exposure:
+  mode: ingress
+  serviceAnnotations:
+    cloud.google.com/neg: '{"ingress":true}'
+    cloud.google.com/backend-config: '{"default":"baskule"}'
+  ingress:
+    annotations:
+      kubernetes.io/ingress.class: gce
+```
+
+GKE reconciles its load balancer asynchronously. Wait for the Ingress address and
+healthy backends before opening the setup link. Google's
+[Ingress configuration guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration)
+describes backend health checks, timeouts and optional reserved addresses.
 
 Target Standard, with a native containerd runtime. Autopilot is not an accepted target
 for this release because the required nested seccomp/Landlock behavior has not been
@@ -108,8 +142,7 @@ Other RuntimeClasses require a successful computer journey before use.
 
 ## Scaleway Kapsule
 
-This provider path is not yet verified end to end on a running Kapsule cluster.
-The local kind journey is verified.
+This provider path has not been run on a Kapsule cluster.
 
 With your Scaleway CLI credentials configured privately:
 
@@ -123,8 +156,6 @@ Install Agent Sandbox and then the chart, as above. Kapsule provides the
 [Block Storage CSI driver and a default StorageClass](https://www.scaleway.com/en/docs/kubernetes/api-cli/managing-storage/).
 Keep nodes eligible to attach the same zonal volumes. Use Calico or another enforcing
 CNI. Native containerd is the intended runtime; no gVisor installation is required.
-The ephemeral verification script uses two DEV1-L nodes to exercise cross-node volume
-reattachment without allocating a cloud load balancer.
 
 ## Isolation and network rules
 
@@ -173,6 +204,7 @@ The main settings are:
 | `rustfs.enabled` | `false` | Single-node evaluation S3 store |
 | `existingSecret` | generated once | `COMPUTERD_TOKEN`, `SETUP_TOKEN`, `PLUGIN_SYNC_TOKEN` |
 | `exposure.mode` | `none` | `none`, `ingress`, or `gateway` |
+| `exposure.serviceAnnotations` | `{}` | Worker Service annotations for the selected controller |
 | `computer.cpu`, `memory` | `2`, `3Gi` | Per-computer resource limits |
 | `openshell.server.workspaceDefaultStorageSize` | `10Gi` | New per-space PVC capacity |
 | `openshell.server.workspaceStorageClass` | cluster default | New per-space PVC StorageClass |
@@ -272,13 +304,22 @@ isolation, celld takeover, and a token-preserving Helm upgrade. kind's default l
 PVCs stay on one node. The cloud check additionally forces a computer onto another
 node with the same block volume.
 
-Only with the installation owner's authorization, export private `SCW_*` credentials
-and run `e2e/kubernetes-ephemeral.sh run`. It uses the same journey, records node-type
-hours under `.run/evidence/`, and enforces a 90-minute lifetime plus teardown time.
-Its EXIT/INT/TERM trap deletes the tagged cluster, pools, volumes and registry. Run
-`e2e/kubernetes-ephemeral.sh sweep` after an interrupted host session, then `audit`.
-Registry namespaces have no tag API; their names and descriptions carry the marker
-and run ID. Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
+Only with the installation owner's authorization, authenticate gcloud and set
+`BASKULE_GKE_PROJECT` to the authorized active project. Run
+`e2e/kubernetes-ephemeral.sh run`. Every gcloud operation selects that project
+explicitly; the script does not change the account or project configuration.
+It creates two Spot `e2-custom-4-8192` nodes in `europe-west1-b`, an ephemeral Artifact
+Registry repository, a disposable node service account, and a real GKE Ingress.
+It checks cross-node PD reattachment and incremental chat over the public load balancer.
+
+The script records node-hours under `.run/evidence/` and enforces a 90-minute lifetime
+plus teardown time. Its EXIT/INT/TERM trap deletes the cluster, repository, node identity
+and remaining owned disks or load-balancer resources. Resources carry
+`baskule-ephemeral=true` and `baskule-run=<run-id>` where their APIs support labels.
+Other GKE-managed resources carry the unique run name in their names or descriptions.
+The cleanup audit also detects disks and load-balancer resources added since the run's
+baseline. Run `e2e/kubernetes-ephemeral.sh sweep` after an interrupted host session,
+then `audit`. Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
 
 ## Limits
 
@@ -287,5 +328,5 @@ no data in an existing install. Gateway HA, controller installation, model-provi
 credentials, TLS automation, and multi-zone storage failover are outside this chart.
 Volumes can move only where the selected StorageClass permits. OpenShell persists
 all of `/sandbox`, including `/sandbox/space`; existing workspace image contents are
-not automatically refreshed when the computer image changes. EKS, AKS, GKE, alternative
+not automatically refreshed when the computer image changes. EKS, AKS, Kapsule, alternative
 Ingress/Gateway controllers, and full disaster recovery need their own verification.

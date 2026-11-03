@@ -11,5 +11,7 @@ PVC persistence and celld takeover. It removes the cluster on exit and keeps evi
 under `.run/evidence/kubernetes/`. Build images as described in
 [the Kubernetes guide](../../../../docs/install-kubernetes.md) first.
 
-`e2e/kubernetes-ephemeral.sh run` repeats the journey on Scaleway. It requires the owner's
-explicit authorization and private credentials. It is never selected by ordinary checks.
+`e2e/kubernetes-ephemeral.sh run` repeats the journey on zonal GKE Standard, including
+cross-node PD reattachment and WebSocket streaming through GKE Ingress. It requires
+the owner's explicit authorization, authenticated gcloud and `BASKULE_GKE_PROJECT`
+matching the active project. It is never selected by ordinary checks.

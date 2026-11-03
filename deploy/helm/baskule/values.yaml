@@ -34,6 +34,7 @@ computer:
 exposure:
   # none (port-forward), ingress, or gateway. Controller installed separately.
   mode: none
+  serviceAnnotations: {}
   ingress:
     className: ""
     annotations: {}

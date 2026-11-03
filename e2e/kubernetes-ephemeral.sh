@@ -1,122 +1,166 @@
 #!/usr/bin/env bash
-# Requires the owner's authorization and SCW_* credentials in the environment.
-# No GCP access, production context, bucket, or cloud LoadBalancer is used.
+# Owner-authorized GKE Standard verification. Never changes gcloud configuration.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 export PATH="$HOME/.local/bin:$PATH"
-: "${SCW_ACCESS_KEY:?}" "${SCW_SECRET_KEY:?}" "${SCW_DEFAULT_PROJECT_ID:?}"
-export SCW_DEFAULT_REGION=fr-par SCW_DEFAULT_ZONE=fr-par-1
+project=${BASKULE_GKE_PROJECT:?set the owner-authorized project}
+[[ $project == "$(gcloud config get-value project 2>/dev/null)" ]] || { echo 'Authorized project must match the active project' >&2; exit 1; }
+region=europe-west1
+zone=$region-b
 marker=baskule-ephemeral
 state_root="$root/.run/kubernetes-ephemeral"
 mkdir -p "$state_root"
 umask 077
-state=$(mktemp -d "$state_root/manager.XXXXXX")
-scw_json() { scw "$@" -o json; }
-# Preserve provider lifecycle tags when adding our ownership markers.
-tag_resource() {
-  local api=$1 resource=$2 id=$3 marker_tag=$4 run_tag=$5 data tag index=0
-  local args=("$id")
-  data=$(scw_json "$api" "$resource" get "$id") || return 1
-  while read -r tag; do
-    args+=("tags.$index=$tag")
-    index=$((index + 1))
-  done < <(jq -r --arg marker "$marker_tag" --arg run "$run_tag" '((.tags // []) + [$marker, $run]) | unique[]' <<< "$data")
-  scw "$api" "$resource" update "${args[@]}" >/dev/null
-}
-export -f scw_json tag_resource
-
-# Every selector below is limited to this tool's explicit marker or name prefix.
-marked_ids() { jq -r --arg marker "$marker" '.[] | select((.tags // [] | index($marker)) != null) | .id'; }
+state=$(mktemp -d "$state_root/gke.XXXXXX")
+printf '%s' "$project" > "$state/project.private"
+printf '[]' > "$state/owned-links.private.json"
+gc() { gcloud --project="$project" --quiet "$@"; }
+kinds=(instances disks forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks addresses network-endpoint-groups firewall-rules)
 inventory() {
-  scw_json k8s cluster list > "$state/clusters.private.json"
-  local pools="$state/pools.private.ndjson"
-  : > "$pools"
-  while read -r id; do scw_json k8s pool list "cluster-id=$id" | jq -c '.[]' >> "$pools"; done < <(jq -r '.[].id' "$state/clusters.private.json")
-  jq -s . "$pools" > "$state/pools.private.json"
-  scw_json registry namespace list > "$state/registries.private.json"
-  scw_json vpc private-network list > "$state/networks.private.json"
-  scw_json lb lb list zone=all > "$state/lbs.private.json"
-  scw_json block volume list zone=all > "$state/volumes.private.json"
-  scw_json instance volume list zone=all > "$state/legacy-volumes.private.json"
-  scw_json instance ip list zone=all > "$state/ips.private.json"
-  scw_json instance server list zone=all > "$state/instances.private.json"
-  scw_json lb ip list zone=all > "$state/lb-ips.private.json"
+  gc container clusters list --format=json > "$state/clusters.private.json" || return
+  gc artifacts repositories list --location=all --format=json > "$state/repositories.private.json" || return
+  gc iam service-accounts list --format=json > "$state/accounts.private.json" || return
+  local kind
+  for kind in "${kinds[@]}"; do gc compute "$kind" list --format=json > "$state/$kind.private.json" || return; done
+  # Persist references before controllers remove their parent objects, so sweep
+  # can still identify a leftover health check/NEG after an interrupted deletion.
+  jq -s --arg marker "${scope:-$marker}" --arg project "$project" --slurpfile saved "$state/owned-links.private.json" '
+    flatten | map(select(type == "object")) as $resources |
+    def expand($links): ($links + [$resources[] |
+      select((tojson | contains($marker)) or (.selfLink as $url | $links | index($url))) |
+      .. | strings | select(contains("/projects/" + $project + "/"))]) | unique;
+    $saved[0] | until(expand(.) == .; expand(.))
+  ' "$state/"*.private.json > "$state/links.next"
+  mv "$state/links.next" "$state/owned-links.private.json"
 }
-sweep() {
-  local marker=${1:-$marker}
-  inventory || return 1
-  while read -r id; do scw k8s cluster delete "$id" with-additional-resources=true --wait >/dev/null || true; done < <(marked_ids < "$state/clusters.private.json")
-  while read -r id; do scw registry namespace delete "$id" >/dev/null || true; done < <(jq -r --arg prefix "$marker" '.[] | select(.name == $prefix or (.name | startswith($prefix + "-"))) | .id' "$state/registries.private.json")
-  inventory || return 1
-  # Only leftovers explicitly tagged by the run can be deleted here.
-  while read -r id zone; do scw instance server delete "$id" "zone=$zone" with-volumes=all with-ip=true force-shutdown=true --wait >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/instances.private.json")
-  while read -r id zone; do scw lb lb delete "$id" "zone=$zone" release-ip=true >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/lbs.private.json")
-  while read -r id zone; do scw instance volume delete "$id" "zone=$zone" >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/legacy-volumes.private.json")
-  while read -r id zone; do scw block volume delete "$id" "zone=$zone" >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/volumes.private.json")
-  while read -r id zone; do scw instance ip delete "$id" "zone=$zone" >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/ips.private.json")
-  while read -r id zone; do scw lb ip release "$id" "zone=$zone" >/dev/null || true; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/lb-ips.private.json")
-  while read -r id; do scw vpc private-network delete "$id" >/dev/null || true; done < <(marked_ids < "$state/networks.private.json")
-  audit
+owned() {
+  # LB objects without a labels API carry the unique namespace in descriptions.
+  jq -r --arg marker "${scope:-$marker}" --slurpfile links "$state/owned-links.private.json" '.[] | select((tojson | contains($marker)) or (.selfLink as $url | $links[0] | index($url))) | [.name, (.zone // .region // "global" | split("/") | last)] | @tsv'
 }
 audit() {
-  inventory || return 1
-  local remaining=0 count
-  for kind in clusters pools instances networks lbs volumes legacy-volumes ips lb-ips; do
-    count=$(marked_ids < "$state/$kind.private.json" | wc -l)
-    printf '%s: %s tagged resources\n' "$kind" "$count"
+  inventory || return
+  local kind count remaining=0
+  for kind in clusters repositories accounts "${kinds[@]}"; do
+    count=$(owned < "$state/$kind.private.json" | wc -l)
+    printf '%s: %s owned resources\n' "$kind" "$count"
     remaining=$((remaining + count))
   done
-  count=$(jq --arg prefix "$marker" '[.[] | select(.name == $prefix or (.name | startswith($prefix + "-")))] | length' "$state/registries.private.json")
-  printf 'registries: %s matching namespaces\n' "$count"
-  (( remaining + count == 0 ))
+  # Surface unlabelled LB/PVC orphans added since this run's baseline as well.
+  if [[ -d $state/before ]]; then
+    for kind in disks forwarding-rules addresses target-pools backend-services health-checks http-health-checks https-health-checks; do
+      count=$(jq -s '.[0] as $before | [.[1][] | . as $resource | select(any($before[]; .selfLink == $resource.selfLink) | not)] | length' "$state/before/$kind.private.json" "$state/$kind.private.json")
+      printf '%s: %s resources added since baseline\n' "$kind" "$count"
+      remaining=$((remaining + count))
+    done
+  fi
+  (( remaining == 0 ))
+}
+sweep() {
+  inventory || return
+  local name location kind flag email
+  while read -r name location; do gc container clusters delete "$name" --zone="$location" || true; done < <(jq -r --arg marker "${scope:-$marker}" '.[] | select(tojson | contains($marker)) | [.name,.location] | @tsv' "$state/clusters.private.json")
+  inventory || return
+  # Delete dependants first. Never delete an unrelated resource on an audit guess.
+  for kind in forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks network-endpoint-groups instances disks addresses firewall-rules; do
+    while read -r name location; do
+      case $kind in
+        instances|network-endpoint-groups) flag=zone ;;
+        firewall-rules|http-health-checks|https-health-checks) flag= ;;
+        *) if [[ $location == global ]]; then flag=global; elif [[ $location =~ -[a-z]$ ]]; then flag=zone; else flag=region; fi ;;
+      esac
+      args=("$name")
+      if [[ $flag == global ]]; then args+=(--global); elif [[ -n $flag ]]; then args+=("--$flag=$location"); fi
+      gc compute "$kind" delete "${args[@]}" || true
+    done < <(owned < "$state/$kind.private.json")
+  done
+  while read -r name; do gc artifacts repositories delete "$name" --location="$region" || true; done < <(owned < "$state/repositories.private.json" | cut -f1 | sed 's|.*/||')
+  while read -r email; do
+    gc projects remove-iam-policy-binding "$project" --member="serviceAccount:$email" --role=roles/container.defaultNodeServiceAccount --condition=None >/dev/null || true
+    gc iam service-accounts delete "$email" || true
+  done < <(jq -r --arg marker "${scope:-$marker}" '.[] | select(tojson | contains($marker)) | .email' "$state/accounts.private.json")
+  audit
 }
 case "${1:-}" in
-  sweep) sweep; exit ;;
-  audit) audit; exit ;;
-  run)
-    # timeout is the independent lifetime limit. TERM runs the worker's EXIT trap.
-    exec timeout --signal=TERM --kill-after=10m 90m bash "$0" worker ;;
+  sweep|audit)
+    # Recover saved ownership from interrupted runs, confined to this project.
+    for previous in "$state_root"/gke.*; do
+      [[ -f $previous/project.private && $(cat "$previous/project.private") == "$project" && -f $previous/owned-links.private.json ]] || continue
+      jq -s 'add | unique' "$state/owned-links.private.json" "$previous/owned-links.private.json" > "$state/links.next"
+      mv "$state/links.next" "$state/owned-links.private.json"
+    done
+    "$1"; exit ;;
+  # Snapshot into bash's input string so edits cannot change an in-flight run.
+  run) exec timeout --signal=TERM --kill-after=10m 90m bash -c "$(cat "$0")" "$0" worker ;;
   worker) ;;
   *) echo "Usage: $0 run|sweep|audit" >&2; exit 2 ;;
 esac
-run_id="$marker-$(date -u +%Y%m%d%H%M%S)-$(od -An -N3 -tx1 /dev/urandom | tr -d '[:space:]')"
+run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]')"
+labels="$marker=true,baskule-run=$run_id"
 export BASKULE_K8S_EVIDENCE="$root/.run/evidence/$run_id"
-mkdir -p "$BASKULE_K8S_EVIDENCE"
-export KUBECONFIG="$state/$run_id.kubeconfig.private"
-export DOCKER_CONFIG="$state/$run_id.docker.private"
-mkdir -p "$DOCKER_CONFIG"
+export KUBECONFIG="$state/kubeconfig.private" DOCKER_CONFIG="$state/docker.private"
+export BASKULE_K8S_NAMESPACE="$run_id" BASKULE_K8S_RELEASE=baskule
+mkdir -p "$BASKULE_K8S_EVIDENCE" "$DOCKER_CONFIG"
 started=$(date +%s)
-cluster_id= registry_id= volume_watcher=
 nodes_started=0
 cleanup() {
   status=$?
   trap - EXIT INT TERM
   set +e
-  [[ -z $volume_watcher ]] || kill -TERM -- "-$volume_watcher" 2>/dev/null
-  # Capture CSI volume identities and tag them before deleting any Kubernetes state.
   if [[ -f $KUBECONFIG ]]; then
-    kubectl get pv -o json > "$state/$run_id.pv.private.json"
-    while read -r handle; do
-      id=${handle##*/}
-      tag_resource block volume "$id" "$marker" "$run_id"
-    done < <(jq -r '.items[].spec.csi.volumeHandle // empty' "$state/$run_id.pv.private.json")
-    kubectl -n baskule get events --sort-by=.lastTimestamp > "$BASKULE_K8S_EVIDENCE/events.txt"
-    kubectl -n baskule delete sandboxes --all --wait=true --timeout=120s > /dev/null
-    helm uninstall baskule -n baskule --wait --timeout 120s > /dev/null
-    kubectl -n baskule delete pvc --all --wait=true --timeout=120s > /dev/null
+    kubectl -n "$run_id" get pods -o json > "$state/pods.private.json"
+    while read -r pod; do
+      kubectl -n "$run_id" logs "$pod" --all-containers --request-timeout=20s > "$state/$pod.private.log" 2>&1
+    done < <(jq -r '.items[].metadata.name' "$state/pods.private.json")
   fi
-  # Also finds a cluster created just before interruption, before its ID was saved.
-  if [[ -n $cluster_id ]]; then scw k8s cluster delete "$cluster_id" with-additional-resources=true --wait > /dev/null; fi
-  if [[ -n $registry_id ]]; then scw registry namespace delete "$registry_id" > /dev/null; fi
-  sweep "$run_id" > "$BASKULE_K8S_EVIDENCE/cleanup-audit.txt" 2>&1
+  inventory
+  # The CLI's labels flag uses the gated alpha API; use the stable setLabels API.
+  python3 - "$project" "$run_id" "$state/forwarding-rules.private.json" <<'PY'
+import json, subprocess, sys, urllib.request
+project, run, inventory = sys.argv[1:]
+rules = [r for r in json.load(open(inventory)) if run in json.dumps(r)]
+if rules:
+    token = subprocess.check_output(['gcloud', '--project=' + project, 'auth', 'print-access-token'], text=True).strip()
+    for rule in rules:
+        url = rule['selfLink'] + '/setLabels'
+        assert '/projects/' + project + '/' in url
+        body = {'labels': {**rule.get('labels', {}), 'baskule-ephemeral': 'true', 'baskule-run': run}, 'labelFingerprint': rule.get('labelFingerprint', '')}
+        request = urllib.request.Request(url, data=json.dumps(body).encode(), headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}, method='POST')
+        with urllib.request.urlopen(request, timeout=30) as response: response.read()
+PY
+  if [[ -f $KUBECONFIG ]]; then
+    kubectl -n "$run_id" get events --sort-by=.lastTimestamp > "$BASKULE_K8S_EVIDENCE/events.txt" 2>/dev/null
+    kubectl -n "$run_id" delete ingress --all --timeout=180s >/dev/null
+    kubectl -n "$run_id" delete sandboxes --all --timeout=120s >/dev/null
+    helm uninstall baskule -n "$run_id" --wait --timeout 120s >/dev/null
+    kubectl -n "$run_id" delete pvc --all --timeout=120s >/dev/null
+  fi
+  # Attempt known resource deletion even if an inventory API was unavailable.
+  gc container clusters delete "$run_id" --zone="$zone" >/dev/null 2>&1
+  gc artifacts repositories delete "$run_id" --location="$region" >/dev/null 2>&1
+  scope=$run_id sweep > "$BASKULE_K8S_EVIDENCE/cleanup-audit.txt" 2>&1
   cleanup_status=$?
-  finished=$(date +%s)
-  elapsed=$(( finished - started ))
-  node_seconds=0
-  (( nodes_started == 0 )) || node_seconds=$(( finished - nodes_started ))
-  printf 'elapsed_seconds=%s\nnode_type=DEV1-L\nnode_count=2\nmaximum_node_type_hours=%s\ncleanup_status=%s\n' \
-    "$elapsed" "$(awk -v s="$node_seconds" 'BEGIN {printf "%.4f", 2*s/3600}')" "$cleanup_status" > "$BASKULE_K8S_EVIDENCE/cost.txt"
+  elapsed=$(( $(date +%s) - started ))
+  seconds=0
+  (( nodes_started == 0 )) || seconds=$(( $(date +%s) - nodes_started ))
+  printf 'elapsed_seconds=%s\nnode_type=e2-custom-4-8192\nspot=true\nnode_count=2\nmaximum_node_hours=%s\ncleanup_status=%s\n' \
+    "$elapsed" "$(awk -v s="$seconds" 'BEGIN {printf "%.4f", 2*s/3600}')" "$cleanup_status" > "$BASKULE_K8S_EVIDENCE/cost.txt"
+  gc compute operations list --filter='operationType=delete' --format=json > "$state/deletes.private.json"
+  python3 - "$BASKULE_K8S_EVIDENCE" "$state/deletes.private.json" "$elapsed" <<'PY'
+import json, sys
+from datetime import datetime
+from pathlib import Path
+evidence, operations, elapsed = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
+nodes_file = evidence / 'node-times.json'
+if nodes_file.exists():
+    nodes = json.loads(nodes_file.read_text())
+    ends = {o['targetLink']: o['endTime'] for o in json.loads(operations.read_text()) if o.get('endTime')}
+    if nodes and all(n['selfLink'] in ends for n in nodes):
+        hours = sum((datetime.fromisoformat(ends[n['selfLink']]) - datetime.fromisoformat(n['creationTimestamp'])).total_seconds() / 3600 for n in nodes)
+        # Conservative estimate: $0.07/Spot node-hour plus $0.16/run-hour for
+        # control plane, LB, IPs, disks and registry. Excludes data transfer.
+        (evidence / 'cost.json').write_text(json.dumps({'observedNodeHours': round(hours, 4), 'estimatedUsd': round(hours * .07 + elapsed / 3600 * .16, 3), 'dataTransferIncluded': False}, indent=2) + '\n')
+PY
   rm -f "$KUBECONFIG"
   rm -rf "$DOCKER_CONFIG"
   (( cleanup_status == 0 )) || status=1
@@ -125,15 +169,14 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-# Refuse a new run when a previous tagged installation still needs cleanup.
 audit > "$BASKULE_K8S_EVIDENCE/before-audit.txt"
+mkdir "$state/before"
+cp "$state/"*.private.json "$state/before/"
 BASKULE_VERSION=0.0.0-ephemeral scripts/helm-package.sh "$BASKULE_K8S_EVIDENCE" > "$BASKULE_K8S_EVIDENCE/chart-package.log"
 export BASKULE_K8S_CHART="$BASKULE_K8S_EVIDENCE/baskule-0.0.0-ephemeral.tgz"
-scw_json registry namespace create "name=$run_id" "description=$marker $run_id" is-public=true > "$state/$run_id.registry.private.json"
-registry_id=$(jq -er .id "$state/$run_id.registry.private.json")
-export BASKULE_K8S_REGISTRY
-BASKULE_K8S_REGISTRY=$(jq -er .endpoint "$state/$run_id.registry.private.json")
-printf '%s' "$SCW_SECRET_KEY" | docker login "${BASKULE_K8S_REGISTRY%%/*}" -u nologin --password-stdin > /dev/null
+gc artifacts repositories create "$run_id" --location="$region" --repository-format=docker --labels="$labels" > "$BASKULE_K8S_EVIDENCE/registry-create.log" 2>&1
+export BASKULE_K8S_REGISTRY="$region-docker.pkg.dev/$project/$run_id"
+gc auth print-access-token | docker login "$region-docker.pkg.dev" -u oauth2accesstoken --password-stdin >/dev/null
 export BASKULE_K8S_TAG=${BASKULE_K8S_TAG:-kubernetes}
 for name in celld computerd openshell-kubernetes computer openshell-supervisor openshell-sandbox; do
   docker tag "baskule-$name:$BASKULE_K8S_TAG" "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG"
@@ -142,36 +185,62 @@ for name in celld computerd openshell-kubernetes computer openshell-supervisor o
     if [[ $attempt == 3 ]]; then exit 1; fi
   done
 done
-# 2 x 4 vCPU/8 GiB: enough allocatable CPU for a 2-CPU computer and control pods,
-# with a second node for the actual cross-node CSI reattachment drill.
+# Disposable node identity; no grants to an existing service account.
+account="bk-${run_id#baskule-ephemeral-}"
+email="$account@$project.iam.gserviceaccount.com"
+gc iam service-accounts create "$account" --display-name="$run_id" --description="$labels" >/dev/null
+gc projects add-iam-policy-binding "$project" --member="serviceAccount:$email" --role=roles/container.defaultNodeServiceAccount --condition=None >/dev/null
+gc artifacts repositories add-iam-policy-binding "$run_id" --location="$region" --member="serviceAccount:$email" --role=roles/artifactregistry.reader >/dev/null
+# Two 4-vCPU/8-GiB Spot nodes fit a 2-CPU computer plus platform services and
+# allow zonal PD reattachment onto a different node. No regional x3 pool.
 nodes_started=$(date +%s)
-scw_json k8s cluster create "name=$run_id" "version=${BASKULE_K8S_VERSION:-1.35.9}" cni=calico "tags.0=$marker" "tags.1=$run_id" \
-  pools.0.name=computers pools.0.zone=fr-par-1 pools.0.node-type=DEV1-L pools.0.size=2 pools.0.root-volume-size=40GB \
-  "pools.0.tags.0=$marker" "pools.0.tags.1=$run_id" --wait > "$state/$run_id.cluster.private.json"
-cluster_id=$(jq -er .id "$state/$run_id.cluster.private.json")
-private_network_id=$(jq -r '.private_network_id // empty' "$state/$run_id.cluster.private.json")
-if [[ -n $private_network_id ]]; then tag_resource vpc private-network "$private_network_id" "$marker" "$run_id"; fi
-scw k8s kubeconfig install "$cluster_id" auth-method=copy-cli-token >/dev/null
+gc container clusters create "$run_id" --zone="$zone" --node-locations="$zone" \
+  --num-nodes=2 --machine-type=e2-custom-4-8192 --spot --image-type=UBUNTU_CONTAINERD \
+  --disk-type=pd-standard --disk-size=40 --enable-dataplane-v2 --enable-ip-alias \
+  --labels="$labels" --node-labels="$labels" --service-account="$email" \
+  --scopes=cloud-platform --logging=NONE --monitoring=NONE --no-enable-managed-prometheus \
+  > "$BASKULE_K8S_EVIDENCE/cluster-create.log" 2>&1
+gc container clusters get-credentials "$run_id" --zone="$zone" >/dev/null
 kubectl wait --for=condition=Ready nodes --all --timeout=600s
-# Tag node IPs explicitly; namespaces in Container Registry have no tags API.
-kubectl get nodes -o json | jq '[.items[].spec.providerID | split("/") | last]' > "$state/$run_id.nodes.private.json"
-scw_json instance ip list | jq -r --slurpfile nodes "$state/$run_id.nodes.private.json" '.[] | . as $ip | select($nodes[0] | index($ip.server.id)) | .id' | while read -r id; do
-  tag_resource instance ip "$id" "$marker" "$run_id"
-done
-# Pool tags should propagate; explicitly mark nodes and their boot volumes as well.
-while read -r id; do
-  tag_resource instance server "$id" "$marker" "$run_id"
-  scw_json instance server get "$id" > "$state/$id.node.private.json"
-  while read -r volume; do
-    tag_resource block volume "$volume" "$marker" "$run_id" 2>/dev/null || tag_resource instance volume "$volume" "$marker" "$run_id"
-  done < <(jq -r '.volumes[]?.id // empty' "$state/$id.node.private.json")
-done < <(jq -r '.[]' "$state/$run_id.nodes.private.json")
-# Tag PVC block volumes as soon as CSI creates the PV. No polling or sleeps.
-setsid bash -c '
-  kubectl get pv --watch --output-watch-events -o json | jq --unbuffered -r ".object.spec.csi.volumeHandle // empty" | while read -r handle; do
-    tag_resource block volume "${handle##*/}" "$1" "$2"
-  done
-' bash "$marker" "$run_id" > "$state/$run_id.volume-tags.private.log" 2>&1 &
-volume_watcher=$!
-export BASKULE_K8S_CROSS_NODE=1
+kubectl get nodes -o json > "$state/nodes.private.json"
+gc compute instances list --filter="labels.baskule-run=$run_id" --format=json > "$BASKULE_K8S_EVIDENCE/node-times.json"
+gc compute addresses create "$run_id" --global --ip-version=IPV4 >/dev/null
+gc compute addresses update "$run_id" --global --update-labels="$labels" >/dev/null
+address=$(gc compute addresses describe "$run_id" --global --format='value(address)')
+export BASKULE_K8S_PUBLIC_URL="http://$address.sslip.io"
+kubectl create namespace "$run_id" >/dev/null
+kubectl label namespace "$run_id" "$marker=true" "baskule-run=$run_id" >/dev/null
+cat <<YAML | kubectl -n "$run_id" apply -f - >/dev/null
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata: {name: baskule}
+spec:
+  timeoutSec: 3600
+  healthCheck: {type: HTTP, port: 47091, requestPath: /.well-known/celld/health}
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: {name: baskule-ephemeral}
+provisioner: pd.csi.storage.gke.io
+parameters: {type: pd-balanced, labels: "$labels"}
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+YAML
+export BASKULE_K8S_VALUES="$state/values.private.yaml"
+cat > "$BASKULE_K8S_VALUES" <<YAML
+rustfs: {storageClass: baskule-ephemeral}
+openshell:
+  server: {dataStorageClass: baskule-ephemeral, workspaceStorageClass: baskule-ephemeral}
+exposure:
+  mode: ingress
+  serviceAnnotations:
+    cloud.google.com/neg: '{"ingress":true}'
+    cloud.google.com/backend-config: '{"default":"baskule"}'
+  ingress:
+    annotations:
+      kubernetes.io/ingress.class: gce
+      kubernetes.io/ingress.global-static-ip-name: $run_id
+YAML
+export BASKULE_K8S_CROSS_NODE=1 BASKULE_K8S_CHECK_INGRESS=1
 bash e2e/kubernetes-install.sh > "$BASKULE_K8S_EVIDENCE/install.log" 2>&1

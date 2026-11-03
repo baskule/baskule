@@ -50,8 +50,8 @@ try {
   pass("celld diagnose verifies RustFS conditional writes and the two-node fleet");
   const publicUrl = process.env.BASKULE_K8S_PUBLIC_URL ?? "http://127.0.0.1:47090";
   // Route initial cell activations to the ordinal used by the later crash drill.
-  const localPort = Number(new URL(publicUrl).port);
-  const base = await forward(`pod/${release}-celld-1`, 47091, localPort);
+  const base = await forward(`pod/${release}-celld-1`, 47091, Number(new URL(publicUrl).port));
+  const localPort = Number(new URL(base).port);
   const secretName = process.env.BASKULE_K8S_SECRET ?? `${release}-secrets`;
   const secret = objects("get", "secret", secretName).data;
   const token = Buffer.from(secret.SETUP_TOKEN, "base64").toString();
@@ -167,6 +167,27 @@ try {
   kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
   kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");
   kube("rollout", "status", `statefulset/${release}-celld`, "--timeout=180s");
+  if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") {
+    await expect.poll(async () => {
+      try { return (await fetch(`${publicUrl}/api/baskule/setup`, { signal: AbortSignal.timeout(10_000) })).status; }
+      catch { return 0; }
+    }, { timeout: 600_000 }).toBe(200);
+    const externalApi = createApi({ urls: { loopback: publicUrl, front: publicUrl }, admin });
+    await externalApi.adminSession();
+    const externalPerson = await externalApi.person("Ingress", randomBytes(4).toString("hex"));
+    const externalClient = await rpc(externalPerson, externalApi.personalSpace(externalPerson));
+    try {
+      const externalProject = (await externalClient.ok("projects.ensureScratch", {})).projectId;
+      const externalThread = await externalApi.launch(externalClient, externalProject, "[[fake:text LOAD_BALANCER_STREAM_OK alpha beta gamma delta epsilon]][[fake:delay 200]]");
+      const externalState = externalApi.watchThread(externalClient, externalThread);
+      try {
+        await externalApi.waitFor("load balancer streamed chat", () => externalState.settled() && externalState.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 180_000);
+        assert.ok([...externalState.runs.values()].every(run => run.status === "completed"));
+        assert.ok(externalState.assistantUpdates >= 2, "incremental updates must traverse the public load balancer");
+      } finally { externalState.stop(); }
+      pass("real Ingress load balancer serves sign-in and incremental fake chat over WebSocket");
+    } finally { externalClient.close(); await externalClient.closed; }
+  }
   writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), computerPodReplaced: true, crossNode: process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
 } finally {
   if (client) { client.close(); await client.closed; }
