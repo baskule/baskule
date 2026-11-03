@@ -60,7 +60,7 @@ test("folder entry is configured in the UI, survives restart, and disappears aft
     expect((await api.admin.json("GET", "/api/baskule/admin/plugins")).plugins.some(p => p.id === plugin.id)).toBe(false);
     expect((await api.admin.json("GET", "/api/baskule/admin/groups")).groups.find(g => g.id === "everyone").plugins).not.toContain(plugin.id);
     await page.goto(`${stack.urls.front}/admin/plugins/installed`);
-    await expect(page.getByRole("heading", { name: /^Plugins/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Plugins/, level: 2 })).toBeVisible();
     await expect(page.getByText(name, { exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("folder-removed.png") });
   } finally {

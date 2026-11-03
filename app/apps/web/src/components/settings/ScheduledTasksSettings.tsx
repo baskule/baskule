@@ -1689,7 +1689,8 @@ function ScheduledTaskEditorForm({
                 <WebhookEndpointField environmentId={environmentId} task={liveTask} />
                 <p className="text-xs text-muted-foreground">
                   {t(
-                    "Each request runs the prompt. Use {{body.path}}, {{headers.name}}, {{query.name}}, {{body}} or {{request}} in the prompt; only what it names reaches the agent.",
+                    "Each request runs the prompt. Use {{bodyField}}, {{headerField}}, {{queryField}}, {{body}} or {{request}} in the prompt; only what it names reaches the agent.",
+                    { bodyField: "{{body.path}}", headerField: "{{headers.name}}", queryField: "{{query.name}}", body: "{{body}}", request: "{{request}}" },
                   )}
                 </p>
                 <Field

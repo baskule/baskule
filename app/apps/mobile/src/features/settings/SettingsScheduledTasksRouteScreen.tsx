@@ -1268,7 +1268,8 @@ function WebhookScheduleDetails({
     <View className="gap-2 border-t border-border-subtle px-4 py-3">
       <Text className="text-sm text-foreground-muted">
         {t(
-          "The prompt can use {{body.a.b}}, {{headers.name}}, {{query.name}}, {{body}} and {{request}}. The filled-in prompt is all the agent sees.",
+          "The prompt can use {{bodyField}}, {{headerField}}, {{queryField}}, {{body}} and {{request}}. The filled-in prompt is all the agent sees.",
+          { bodyField: "{{body.a.b}}", headerField: "{{headers.name}}", queryField: "{{query.name}}", body: "{{body}}", request: "{{request}}" },
         )}
       </Text>
       {task === null || resolved === null ? (
