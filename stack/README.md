@@ -4,7 +4,7 @@ Run `scripts/worktree setup` to prepare the pinned toolchain and dependencies. `
 same command to refresh dependencies and the embedded bundle, with unchanged inputs skipped.
 Stacks run as root on the development host, using its single portless proxy.
 Install `portless` globally and `libnss3-tools` on the host. Profiles with computers also require the existing
-OpenShell gateway and computer images.
+Docker socket access and local `baskule-computerd:local` (guard) and `baskule-computer:local` images.
 
 ```sh
 scripts/stack up                         # real hosted app, fake model, real computers
@@ -27,9 +27,11 @@ the parent of `.tools`, or `${XDG_CACHE_HOME:-~/.cache}/baskule` when `.tools` i
 `BASKULE_SHARED` overrides this location. `BASKULE_MAX_STACKS` defaults to six; capacity reservations include stacks
 still building. A killed startup is reclaimed by `gc` or the next `up`.
 
-`full` is the default, `light` omits computers and the gateway, and `rustfs` runs production-mode celld against
-the shared development RustFS bucket with an instance-specific prefix. Shared services stay up after `down`. The development gateway uses 127.0.0.1:47510 and its volume helper
-uses 127.0.0.1:47511.
+`full` is the default, `light` omits computers, and `rustfs` runs production-mode celld against
+the shared development RustFS bucket with an instance-specific prefix. Full stacks use the Docker backend and a worktree-scoped computer bridge; no OpenShell service starts.
+The guard requires Docker's iptables DOCKER-USER chain. `--set COMPUTER_GUARD_IMAGE=...`
+and `--set COMPUTER_IMAGE=...` select locally available images; `COMPUTER_DNS` accepts public DNS IPs.
+`down` stops owned computers and retains disks; `down --purge` deletes owned containers and disks.
 Node clients of the HTTPS front use `NODE_EXTRA_CA_CERTS=~/.portless/ca.pem`; `portless trust` installs the CA
 for curl. Stack startup also imports the CA idempotently into Chromium's NSS shared database, choosing
 `~/.pki/nssdb` when it exists, otherwise `${XDG_DATA_HOME:-~/.local/share}/pki/nssdb` (Chrome M146+). `portless list` shows the host proxy routes.

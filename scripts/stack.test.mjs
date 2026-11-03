@@ -93,23 +93,12 @@ for (const command of [["reload"], ["restart", "celld"]]) test(`${command.join("
   assert(!existsSync(join(root, "shared/run/stacks")));
 });
 
-test("runner stack uses the same gateway ports as the component loops", (t) => {
-  const previous = { DEV_GATEWAY_PORT: process.env.DEV_GATEWAY_PORT, DEV_VOLUMES_PORT: process.env.DEV_VOLUMES_PORT };
-  t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
-  process.env.DEV_GATEWAY_PORT = "47520";
-  process.env.DEV_VOLUMES_PORT = "47521";
+test("full stack uses Docker with a scoped network and accepts image overrides", () => {
   const env = environment(stack);
-  assert.equal(env.DEV_GATEWAY_PORT, "47520"); assert.equal(env.DEV_VOLUMES_PORT, "47521");
-  assert.equal(env.OPENSHELL_GATEWAY, "127.0.0.1:47520");
-  assert.equal(env.OPENSHELL_VOLUMES_URL, "http://127.0.0.1:47521");
-});
-
-test("--set gateway ports are used by both the gateway and computerd", () => {
-  const env = environment({ ...stack, overrides: { DEV_GATEWAY_PORT: "47530", DEV_VOLUMES_PORT: "47531" } });
-  assert.equal(env.DEV_GATEWAY_PORT, "47530");
-  assert.equal(env.DEV_VOLUMES_PORT, "47531");
-  assert.equal(env.OPENSHELL_GATEWAY, "127.0.0.1:47530");
-  assert.equal(env.OPENSHELL_VOLUMES_URL, "http://127.0.0.1:47531");
+  assert.equal(env.COMPUTER_BACKEND, "docker");
+  assert.equal(env.COMPUTER_NETWORK, `baskule-computers-${stack.id}`);
+  assert.equal(environment({ ...stack, overrides: { COMPUTER_GUARD_IMAGE: "test:guard" } }).COMPUTER_GUARD_IMAGE, "test:guard");
+  assert.deepEqual(JSON.parse(readFileSync("stack/profiles/full.json")).shared, []);
 });
 
 test("Portless does not inherit package-runner installation flags", () => {

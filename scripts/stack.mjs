@@ -134,14 +134,14 @@ export function environment(s) {
   const base = { ...process.env, ROOT, RUN, ...ports,
     LOOPBACK_URL: s.urls.loopback, STACK_URL: s.urls.front, COMPUTERD_INSTANCE: s.id,
     COMPUTERD_TOKEN: s.computerdToken, COMPUTERD_PORT: String(s.ports.computerd), COMPUTERD_HOST: "127.0.0.1",
-    DEV_GATEWAY_PORT: process.env.DEV_GATEWAY_PORT || "47510", DEV_VOLUMES_PORT: process.env.DEV_VOLUMES_PORT || "47511",
-    OPENSHELL_VOLUMES_TOKEN: process.env.OPENSHELL_VOLUMES_TOKEN || "dev-volumes-token",
+    COMPUTER_BACKEND: "docker", COMPUTER_NETWORK: `baskule-computers-${s.id}`,
+    COMPUTER_GUARD_IMAGE: process.env.COMPUTER_GUARD_IMAGE || "baskule-computerd:local",
     FAKE_LLM_KEY: "fake-llm-key", CELLD_ESBUILD: join(ROOT, "platform/node_modules/.bin/esbuild"),
     ...(s.definition.mode === "dev" ? { CELLD_TTL_MS: process.env.CELLD_TTL_MS || "60000" } : {}),
     CELLD_OTEL: "0", DO_NOT_TRACK: "1", CELLD_FETCH_TIMEOUT_S: "3600", CELLD_V8_HEAP_LIMIT_MB: "1024",
     AWS_ACCESS_KEY_ID: "osdev", AWS_SECRET_ACCESS_KEY: "osdev-only-secret", AWS_REGION: "us-east-1",
   };
-  const pending = { OPENSHELL_GATEWAY: "127.0.0.1:${DEV_GATEWAY_PORT}", OPENSHELL_VOLUMES_URL: "http://127.0.0.1:${DEV_VOLUMES_PORT}", ...s.definition.env, ...s.overrides };
+  const pending = { ...s.definition.env, ...s.overrides };
   const resolving = new Set();
   const resolveValue = (key) => {
     if (resolving.has(key)) throw new Error(`Profile environment has a cycle at ${key}.`);
@@ -353,35 +353,15 @@ async function login(s) {
   return r;
 }
 async function cleanupComputers(s, purge) {
-  if (!s.definition.shared?.includes("gateway")) return;
-  const running = run("docker", ["ps", "-q", "--filter", "name=^/osdev-openshell$"]);
-  if (!running) {
-    if (!s.volumes?.length && !run("docker", ["ps", "-aq", "--filter", "name=^/osdev-openshell$"])) return;
-    run(join(ROOT, "openshell/dev-up.sh"), [], { env: environment(s), stdio: ["ignore", 2, 2] });
+  if (!s.definition.services.computerd) return;
+  const ids = run("docker", ["ps", "-aq", "--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${s.id}`]).split(/\s+/).filter(Boolean);
+  for (const id of ids) {
+    if (purge) run("docker", ["rm", "-f", id]);
+    else run("docker", ["stop", id]);
   }
-  const { Gateway } = await import("../computerd/src/gateway.ts");
-  const env = environment(s);
-  const gw = new Gateway(env.OPENSHELL_GATEWAY);
-  try {
-    const computers = await gw.list(`baskule.managed=true,baskule.instance=${s.id}`);
-    for (const computer of computers) {
-      if (computer.labels["baskule.instance"] !== s.id || !/^os-[a-f0-9]{16}$/.test(computer.name)) throw new Error(`Cannot establish ownership of ${computer.name}.`);
-      // U2a's namesFor gives the sandbox and volume the same instance/space hash.
-      s.volumes = [...new Set([...(s.volumes || []), `baskule-space-${computer.name.slice(3)}`])];
-      persist(s);
-      await gw.remove(computer.name);
-      await until(`${computer.name} removal`, async () => !(await gw.get(computer.name)), 150_000);
-    }
-  } finally { gw.close(); }
-  if (purge) for (const volume of [...(s.volumes || [])]) {
-    await until(`${volume} removal`, async () => {
-      const response = await http(`${env.OPENSHELL_VOLUMES_URL}/volumes/${volume}`, { method: "DELETE", headers: { authorization: `Bearer ${env.OPENSHELL_VOLUMES_TOKEN}` } });
-      if (response.status === 409) { await response.arrayBuffer(); return false; }
-      if (!response.ok) throw new Error(`Volume cleanup ${volume}: ${response.status} ${await response.text()}`);
-      await response.arrayBuffer(); return true;
-    }, 90_000);
-    s.volumes = s.volumes.filter((name) => name !== volume);
-    persist(s);
+  if (purge) {
+    const volumes = run("docker", ["volume", "ls", "-q", "--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${s.id}`]).split(/\s+/).filter(Boolean);
+    for (const volume of volumes) run("docker", ["volume", "rm", volume]);
   }
 }
 function purgeBucket(s) {
