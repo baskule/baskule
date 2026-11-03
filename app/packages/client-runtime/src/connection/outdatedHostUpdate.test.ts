@@ -333,7 +333,7 @@ describe("updateOutdatedHost", () => {
   it.effect("resumes an outdated host update after progress transport loss", () =>
     Effect.gen(function* () {
       const blocked = orchestrationProtocolCompatibilityError(descriptor(undefined, "0.0.45"));
-      expect(blocked).toMatchObject({ serverUpdateRequired: true });
+      expect(blocked).not.toHaveProperty("serverUpdateRequired");
 
       const sockets: Array<OutdatedHostSocket> = [];
       let served: ExecutionEnvironmentDescriptor = {
@@ -394,7 +394,7 @@ describe("updateOutdatedHost", () => {
       const stages: Array<string> = [];
       const result = yield* updateOutdatedHost(
         TARGET.environmentId,
-        { targetVersion: "0.0.46" },
+        { targetVersion: "0.5.0" },
         (stage) =>
           Effect.sync(() => {
             stages.push(stage);
@@ -418,7 +418,7 @@ describe("updateOutdatedHost", () => {
             Layer.succeed(HttpClient.HttpClient, httpClient),
             Layer.succeed(Socket.WebSocketConstructor, (url) => {
               const socket = new OutdatedHostSocket(url, () => {
-                served = descriptor(ORCHESTRATION_PROTOCOL_VERSION, "0.0.46");
+                served = descriptor(ORCHESTRATION_PROTOCOL_VERSION, "0.5.0");
               });
               sockets.push(socket);
               return socket as unknown as globalThis.WebSocket;
@@ -432,7 +432,7 @@ describe("updateOutdatedHost", () => {
         WS_METHODS.serverUpdateServerWithProgress,
       ]);
       expect(stages).toEqual(["downloading", "resuming"]);
-      expect(result.targetVersion).toBe("0.0.46");
+      expect(result.targetVersion).toBe("0.5.0");
       expect(calls).toEqual(["compatibility:clear", "enabled:true"]);
     }),
   );
