@@ -10,12 +10,8 @@ import {
   inlineCodeFilePathCandidate,
 } from "@t3tools/shared/markdownLinks";
 import { isHostPath, resolveWorkspaceFilePath } from "@t3tools/shared/path";
-import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
-import {
-  AuthFilesystemReadScope,
-  AuthOrchestrationOperateScope,
-  SOURCE_CONTROL_MEDIA_ASSET,
-} from "@t3tools/contracts";
+
+import { AuthFilesystemReadScope, AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import {
   CHAT_MARKDOWN_REMARK_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
@@ -41,7 +37,6 @@ import {
   type ServerConfig,
   type ScopedThreadRef,
   type ServerProviderSkill,
-  type ThreadPullRequestKey,
 } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
@@ -136,7 +131,7 @@ import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
 import { resolveRemoteOpenState, useRemoteOpenResolution } from "../remoteOpen";
 import { useRightPanelStore } from "../rightPanelStore";
-import { readThreadShell, useProjects } from "../state/entities";
+import { useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { shellEnvironment } from "../state/shell";
 import { assetEnvironment } from "../state/assets";
@@ -158,10 +153,7 @@ import {
   stripRepeatedWorkspacePrefix,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
 } from "@t3tools/client-runtime/workspace-basename-lookup";
-import { resolvePullRequestPreviewTarget } from "@t3tools/client-runtime/change-request-links";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { useOpenChangeRequestLink } from "~/lib/openPullRequestLink";
-import { useOpenLink } from "../browser/useOpenLink";
+
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isPreviewAvailableFor } from "../browser/previewRuntime";
 import {
@@ -173,7 +165,7 @@ import {
 } from "../browser/openFileInPreview";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { baskule } from "../baskule/flags";
-import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
+
 import { MarkdownCodeBlock, SuspenseShikiCodeBlock } from "./chat/MarkdownCodeBlock";
 import { createMarkdownRenderer } from "./chat/markdownRenderer";
 import { splitMarkdownBlocks } from "./chat/markdownStreamBlocks";
@@ -214,7 +206,6 @@ interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   threadRef?: ScopedThreadRef | undefined;
-  pullRequestPanelRef?: ScopedThreadRef | undefined;
   environmentId?: EnvironmentId | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
@@ -230,9 +221,6 @@ interface ChatMarkdownProps {
   /** Keep one list per configuration (a module constant): it keys the shared parse cache. */
   extraRemarkPlugins?: NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
   renderContextReference?: ((reference: ChatMarkdownContextReference) => ReactNode) | undefined;
-  /** Loads media a source control host keeps behind a credential through the server, which holds
-      `cwd`'s; without it a private repository's uploads load unauthenticated and 404. */
-  sourceControlMedia?: boolean | undefined;
   headingLevelOffset?: number | undefined;
 }
 
@@ -352,7 +340,6 @@ type MarkdownServerConfigFields = ReturnType<typeof markdownServerConfigFields>;
 
 function markdownServerConfigFields(config: ServerConfig | null) {
   return {
-    pullRequestsEnabled: config !== null,
     availableEditors: config?.availableEditors ?? NO_MARKDOWN_EDITORS,
     revealInFileManagerLabel:
       config?.shellRevealInFileManager === true && config.availableEditors.includes("file-manager")
@@ -368,7 +355,6 @@ function markdownServerConfigFieldsEqual(
   next: MarkdownServerConfigFields,
 ): boolean {
   return (
-    previous.pullRequestsEnabled === next.pullRequestsEnabled &&
     previous.revealInFileManagerLabel === next.revealInFileManagerLabel &&
     previous.availableEditors.length === next.availableEditors.length &&
     previous.availableEditors.every((editor, index) => editor === next.availableEditors[index])
@@ -427,7 +413,6 @@ function useChatMarkdownState({
   inline = false,
   cwd,
   threadRef,
-  pullRequestPanelRef,
   environmentId: explicitEnvironmentId,
   onTaskListChange,
   isStreaming = false,
@@ -439,7 +424,6 @@ function useChatMarkdownState({
   onImageExpand,
   renderContextReference,
   headingLevelOffset = 0,
-  sourceControlMedia = false,
 }: ChatMarkdownProps) {
   const t = useTranslation();
   const resolvedTheme = useRenderedAppearance();
@@ -490,7 +474,6 @@ function useChatMarkdownState({
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
-  const pullRequestLinking = usePullRequestLinking(threadRef?.environmentId);
   const environmentId = threadRef?.environmentId ?? explicitEnvironmentId ?? null;
   const canOperateHost = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperatePreview = useEnvironmentScope(environmentId, AuthPreviewOperateScope);
@@ -566,7 +549,7 @@ function useChatMarkdownState({
       },
     );
   };
-  const { pullRequestsEnabled, availableEditors, revealInFileManagerLabel } = useAtomValue(
+  const { availableEditors, revealInFileManagerLabel } = useAtomValue(
     markdownServerConfigFieldsAtom(environmentId),
   );
   const projects = useProjects();
@@ -612,8 +595,6 @@ function useChatMarkdownState({
         : payload.html,
     );
   };
-  const openChangeRequestLink = useOpenChangeRequestLink(threadRef, pullRequestPanelRef);
-  const openDeferredMarkdownLink = useOpenLink(threadRef);
   // Subscribe so hydrated settings apply before the anchor synchronously decides whether to intercept _blank.
   const linkTargetPreference = useClientSettings((settings) => settings.browserLinkTarget);
   const mathEnabled = useClientSettings((settings) => settings.mathRenderingEnabled);
@@ -623,29 +604,6 @@ function useChatMarkdownState({
   const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir)}`;
   const { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath } =
     resolveFileLinkSources(fileLinksKey, cwd, imageBaseDir);
-  const resolveThreadPullRequest = (
-    href: string,
-  ): (ThreadPullRequestKey & { readonly url: string }) | null => {
-    if (
-      threadRef === undefined ||
-      readThreadShell(threadRef) === null ||
-      !pullRequestLinking.canLink(href)
-    )
-      return null;
-    const parsed = sourceControlClients.parseChangeRequestUrl(href)?.link;
-    return parsed === undefined ? null : { ...parsed, url: href };
-  };
-  const linkedThreadPullRequestFor = (href: string) => {
-    if (threadRef === undefined || !pullRequestLinking.isLinked(readThreadShell(threadRef), href))
-      return null;
-    const parsed = sourceControlClients.parseChangeRequestUrl(href)?.link;
-    return parsed === undefined ? null : { ...parsed, url: href };
-  };
-  const updateThreadPullRequestLink = async (href: string, linked: boolean) => {
-    if (threadRef === undefined || (!linked && linkedThreadPullRequestFor(href) === null)) return;
-    if (!readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)) return;
-    await pullRequestLinking.changeLink(threadRef, href, linked);
-  };
   const openExternalLinkInPreview = (url: string) => {
     if (!threadRef || !canOperatePreview) {
       return Promise.resolve(
@@ -843,7 +801,6 @@ function useChatMarkdownState({
     environmentId,
     expandMedia,
     fileLinkChip,
-    sourceControlMedia,
     renderContextReference,
     headingLevelOffset,
     imageBaseDir,
@@ -857,18 +814,12 @@ function useChatMarkdownState({
     onTaskListChange,
 
     onRunShellCommand,
-    openChangeRequestLink,
-    openDeferredMarkdownLink,
     openExternalLinkInPreview,
     openMarkdownMedia,
     projects,
-    linkedThreadPullRequestFor,
-    resolveThreadPullRequest,
     resolvedTheme,
-    pullRequestsEnabled,
     skills,
     threadRef,
-    updateThreadPullRequestLink,
   };
   return {
     componentState,
@@ -996,9 +947,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   a: function MarkdownAnchor({ node, href, children, title: _title, ...props }) {
-    const t = useTranslation();
     const {
-      canOperateHost,
       canOperatePreview,
       cwd,
       environmentId,
@@ -1006,15 +955,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
       markdownFileLinkMetaByHref,
       threadRef,
       openMarkdownMedia,
-      openChangeRequestLink,
-      openDeferredMarkdownLink,
       linkTargetPreference,
       openExternalLinkInPreview,
-      projects,
-      linkedThreadPullRequestFor,
-      resolveThreadPullRequest,
-      pullRequestsEnabled,
-      updateThreadPullRequestLink,
       fileLinkChip,
       renderContextReference,
     } = use(ChatMarkdownRendererContext);
@@ -1047,29 +989,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
     if (!fileLinkMeta) {
       const faviconHost = resolveExternalWebLinkHost(href);
       const hasText = hastHasText(node);
-      const pullRequestAutolink = String(
-        (props as Record<string, unknown>)["data-pull-request-autolink"] ?? "",
-      );
-      const pullRequestCopy =
-        pullRequestAutolink === "commit"
-          ? /\/commit\/([0-9a-f]{7,40})$/iu.exec(href ?? "")?.[1]
-          : pullRequestAutolink === "reference" || pullRequestAutolink === "mention"
-            ? plainHastText(node)
-            : undefined;
-      const isPullRequestAutolink = pullRequestCopy !== undefined;
-      const confirmBeforeOpen = pullRequestAutolink === "reference";
-      const pullRequestCandidateUrl =
-        confirmBeforeOpen && href
-          ? sourceControlClients.changeRequestUrlFromReferenceAutolink(href)
-          : href;
-      const pullRequestPreviewTarget = pullRequestCandidateUrl
-        ? resolvePullRequestPreviewTarget({
-            environmentId,
-            projects,
-            pullRequestsEnabled,
-            url: pullRequestCandidateUrl,
-          })
-        : null;
       const isSameDocumentLink = href?.startsWith("#") ?? false;
       const onClick = props.onClick;
       const canOpenInPreview =
@@ -1078,8 +997,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const link = (
         <a
           {...props}
-          className={cn(props.className, pullRequestAutolink === "commit" && "font-mono")}
-          data-markdown-copy={pullRequestCopy}
+          className={props.className}
           data-markdown-image-link={!hasText || undefined}
           href={href}
           target={isSameDocumentLink ? undefined : "_blank"}
@@ -1112,12 +1030,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
               );
               return;
             }
-            if (
-              !href ||
-              openChangeRequestLink(event, href, undefined, environmentId ?? undefined)
-            ) {
-              return;
-            }
+            if (!href) return;
             if (event.defaultPrevented) return;
             if (
               resolveLinkTarget({
@@ -1160,17 +1073,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
             event.stopPropagation();
             const api = readLocalApi();
             if (!api) return;
-            const threadLinkAction = !canOperateHost
-              ? undefined
-              : linkedThreadPullRequestFor(href) !== null
-                ? "unlink-from-thread"
-                : resolveThreadPullRequest(href) === null
-                  ? undefined
-                  : "link-to-thread";
             void showExternalLinkContextMenu({
               href,
               canOpenInPreview,
-              threadLinkAction,
               position: { x: event.clientX, y: event.clientY },
               showContextMenu: (items, position) => api.contextMenu.show(items, position),
               openInPreview: async (target) => {
@@ -1184,30 +1089,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
               },
               openExternal: (target) => api.shell.openExternal(target),
               copyLink: (target) => writeTextToClipboard(target, "link"),
-              updateThreadLink: updateThreadPullRequestLink,
               reportFailure: (operation, cause) => {
                 reportMarkdownActionFailure({ operation, target: href }, cause);
-                if (
-                  operation === "link-pull-request-to-thread" ||
-                  operation === "unlink-pull-request-from-thread"
-                ) {
-                  toastManager.add(
-                    stackedThreadToast({
-                      type: "error",
-                      title:
-                        operation === "link-pull-request-to-thread"
-                          ? t("Unable to link pull request")
-                          : t("Unable to unlink pull request"),
-                      description:
-                        cause instanceof Error ? cause.message : t("The request failed."),
-                    }),
-                  );
-                }
               },
             });
           }}
         >
-          {faviconHost && hasText && !isPullRequestAutolink ? (
+          {faviconHost && hasText ? (
             <MarkdownExternalLinkContent host={faviconHost} plainText={plainHastText(node)}>
               {linkChildren}
             </MarkdownExternalLinkContent>
@@ -1218,30 +1106,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
       );
       if (!faviconHost || !href) {
         return link;
-      }
-      if (pullRequestPreviewTarget !== null) {
-        return (
-          <PullRequestLinkPreview
-            link={link}
-            originalUrl={href}
-            target={pullRequestPreviewTarget}
-            confirmBeforeOpen={confirmBeforeOpen}
-            onOpenPullRequest={(targetUrl) =>
-              openChangeRequestLink(
-                {
-                  metaKey: false,
-                  ctrlKey: false,
-                  preventDefault: () => undefined,
-                  stopPropagation: () => undefined,
-                },
-                targetUrl,
-                undefined,
-                environmentId ?? undefined,
-              )
-            }
-            onOpenFallback={openDeferredMarkdownLink}
-          />
-        );
       }
       return (
         <Tooltip>
@@ -1310,8 +1174,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const {
       expandMedia,
       cwd,
-      environmentId,
-      sourceControlMedia,
       imageBaseDir,
       threadRef,
       workspaceMutationId,
@@ -1378,38 +1240,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
       if (fileLinkMeta) return fileLinkChip(fileLinkMeta, copyMarkdown, srcString);
     }
     const kind = mediaKind ?? "image";
-    const directUri = imageSource._tag === "Direct" ? imageSource.uri : null;
-    const hostMediaUrl =
-      directUri === null
-        ? null
-        : (sourceControlClients.mediaUrl(resolveProtocolRelativeMediaUrl(directUri))?.fetchUrl ??
-          null);
-    if (
-      sourceControlMedia &&
-      cwd !== undefined &&
-      environmentId !== null &&
-      directUri !== null &&
-      hostMediaUrl !== null
-    ) {
-      return (
-        <ChatMarkdownAssetImage
-          environmentId={environmentId}
-          resource={{ _tag: SOURCE_CONTROL_MEDIA_ASSET, cwd, url: hostMediaUrl }}
-          alt={altText}
-          kind={kind}
-          copyMarkdown={copyMarkdown}
-          standalone={standalone}
-          className={className}
-          style={authoredSizeStyle}
-          imageProps={imageProps}
-          srcFragment={markdownImageSourceFragment(classifiedSrc)}
-          originalUrl={resolveProtocolRelativeMediaUrl(directUri)}
-          framed={false}
-          fallbackSrc={hostMediaUrl}
-          onImageExpand={imageExpand}
-        />
-      );
-    }
     if (imageSource._tag === "Direct") {
       const mediaSrc = resolveProtocolRelativeMediaUrl(imageSource.uri);
       const originalUrl =

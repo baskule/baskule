@@ -8,7 +8,7 @@ import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import type { ThreadInspectorMode } from "./thread-inspector-content-stack";
 import { useThreadHeaderOptions } from "./useThreadHeaderOptions";
 import { useWorkspaceBackNavigation } from "../workspace/useAndroidWorkspaceNavigation";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+
 // baskule: header actions follow the alpha scope (files and merge-back, no terminal or git).
 import { BASKULE_FLAGS } from "../../baskule/flags";
 
@@ -64,7 +64,7 @@ export function ThreadHeader(
     if (onMergeBack) {
       actions.push({
         accessibilityLabel: t("Merge back to source"),
-        icon: PullRequestGlyph.merged,
+        icon: "arrow.triangle.merge",
         onPress: onMergeBack,
       });
     }

@@ -15,7 +15,7 @@ import { cn } from "../../lib/utils";
 import type { EnvironmentPresentation } from "../../state/environments";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { resolveEnvModeLabel, WORKTREE_SUBMODULES_LABELS } from "../BranchToolbar.logic";
-import { PULL_REQUEST_MERGE_METHOD_LABELS } from "../pullRequest/pullRequestDetail.logic";
+
 import { Button, InlineButton } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -54,19 +54,15 @@ const BACKGROUND_ACTIVITY_PROFILE_LABELS: Record<string, string> = {
 
 function formatValue(key: keyof ServerSettings, value: unknown): string {
   if (value === null || value === undefined) {
-    return key === "pullRequestMergeMethod"
-      ? t("Last selected")
-      : key === "sidebarAutoSettleAfterDays"
-        ? "Never"
-        : key === "defaultModelSelection"
-          ? "Automatic"
-          : key === "sourceControlWriterModelSelection"
-            ? t("Text generation model")
-            : key === "reviewGuideModelSelection"
-              ? t("Source control writer model")
-              : key === "defaultThreadEnvMode" || key === "worktreeSubmodules"
-                ? "Inherit"
-                : t("Not set");
+    return key === "sidebarAutoSettleAfterDays"
+      ? "Never"
+      : key === "defaultModelSelection"
+        ? "Automatic"
+        : key === "sourceControlWriterModelSelection"
+          ? t("Text generation model")
+          : key === "defaultThreadEnvMode" || key === "worktreeSubmodules"
+            ? "Inherit"
+            : t("Not set");
   }
   if (typeof value === "boolean") return value ? t("On") : t("Off");
   if (typeof value === "number") {
@@ -80,11 +76,6 @@ function formatValue(key: keyof ServerSettings, value: unknown): string {
     }
     if (key === "worktreeSubmodules" && value in WORKTREE_SUBMODULES_LABELS) {
       return WORKTREE_SUBMODULES_LABELS[value as WorktreeSubmodules];
-    }
-    if (key === "pullRequestMergeMethod" && value in PULL_REQUEST_MERGE_METHOD_LABELS) {
-      return PULL_REQUEST_MERGE_METHOD_LABELS[
-        value as keyof typeof PULL_REQUEST_MERGE_METHOD_LABELS
-      ];
     }
     return value === "" ? "Empty" : value;
   }

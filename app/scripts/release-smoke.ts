@@ -31,15 +31,6 @@ const workspaceFiles = [
   "packages/provider-core/package.json",
   "packages/provider-testing/package.json",
   "packages/provider-opencode/package.json",
-  "packages/source-control-azure-devops/package.json",
-  "packages/source-control-bitbucket/package.json",
-  "packages/source-control-core/package.json",
-  "packages/source-control-definitions/package.json",
-  "packages/source-control-forgejo/package.json",
-  "packages/source-control-gitcafe/package.json",
-  "packages/source-control-github/package.json",
-  "packages/source-control-gitlab/package.json",
-  "packages/source-control-testing/package.json",
   "scripts/package.json",
 ] as const;
 

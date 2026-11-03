@@ -1,11 +1,5 @@
 import { EasDeviceHostConfig, type ServerSettings, secretSettingsFields } from "@t3tools/contracts";
 import { openCodeClient } from "@t3tools/provider-opencode/client";
-import {
-  readSecretFieldValues,
-  SOURCE_CONTROL_HOST_SECRET_FIELDS,
-  sourceControlHostSecretName,
-  writeSecretFieldValues,
-} from "./sourceControl/sourceControlHostSecrets.ts";
 
 export const SECRET_REDACTED = "\u2022\u2022\u2022\u2022\u2022\u2022";
 
@@ -103,7 +97,7 @@ export function mapSettingsSecrets(
   const sourceControlHosts = Object.fromEntries(
     Object.entries(settings.sourceControlHosts).map(([kind, fields]) => [
       kind,
-      mapFields(fields, SOURCE_CONTROL_HOST_SECRET_FIELDS.get(kind) ?? [], (field, serverHost) =>
+      mapFields(fields, legacySourceControlSecretFields.get(kind) ?? [], (field, serverHost) =>
         sourceControlHostSecretName({ kind, field, serverHost }),
       ),
     ]),
@@ -121,4 +115,43 @@ export function mapSettingsSecrets(
   );
 
   return { ...settings, providerInstances, sourceControlHosts, easDeviceHosts };
+}
+
+// Released settings and secret references must remain redacted after integrations retire.
+const legacySourceControlSecretFields: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
+  ["github", ["tokens"]],
+  ["bitbucket", ["accessToken", "apiToken"]],
+  ["gitcafe", ["token"]],
+]);
+
+export interface SourceControlHostSecretSlot {
+  readonly kind: string;
+  readonly field: string;
+  readonly serverHost: string | null;
+}
+
+/** The secret store entry for one slot; names stay stable across releases. */
+export function sourceControlHostSecretName(slot: SourceControlHostSecretSlot): string {
+  const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
+  return slot.serverHost === null
+    ? `source-control-${encode(slot.kind)}-${encode(slot.field)}`
+    : `source-control-${encode(slot.kind)}-${encode(slot.field)}-${encode(slot.serverHost.trim().toLowerCase())}`;
+}
+
+export function readSecretFieldValues(
+  value: unknown,
+): ReadonlyArray<readonly [serverHost: string | null, value: string]> {
+  if (typeof value === "string") return [[null, value]];
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.entries(value).flatMap(([serverHost, entry]) =>
+    typeof entry === "string" ? [[serverHost.trim().toLowerCase(), entry] as const] : [],
+  );
+}
+
+export function writeSecretFieldValues(
+  original: unknown,
+  values: ReadonlyArray<readonly [serverHost: string | null, value: string]>,
+): unknown {
+  if (typeof original === "string") return values[0]?.[1] ?? "";
+  return Object.fromEntries(values.map(([serverHost, value]) => [serverHost ?? "", value]));
 }

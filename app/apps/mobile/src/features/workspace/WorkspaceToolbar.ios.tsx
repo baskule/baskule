@@ -25,9 +25,6 @@ const SEARCH_LABELS = {
   get threads() {
     return t("Search threads");
   },
-  get pullRequests() {
-    return t("Search pull requests");
-  },
   get settings() {
     return t("Search settings");
   },

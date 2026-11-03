@@ -5,7 +5,6 @@ import {
   ThreadId,
   type AuthEnvironmentScope,
   type EditorId,
-  type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
@@ -17,14 +16,11 @@ const state = vi.hoisted(() => ({
   allowed: true,
   listeners: new Set<() => void>(),
   openEditor: vi.fn(),
-  link: vi.fn(),
-  unlink: vi.fn(),
   search: vi.fn(),
   choose: vi.fn(),
   openFile: vi.fn(),
   openExternal: vi.fn(),
   copy: vi.fn(),
-  pullRequests: [] as ThreadPullRequestLink[],
 }));
 
 vi.mock(import("../state/use-atom-query-runner"), async (original) => ({
@@ -32,15 +28,9 @@ vi.mock(import("../state/use-atom-query-runner"), async (original) => ({
   useAtomQueryRunner: (() => state.search) as never,
 }));
 vi.mock(import("../state/use-atom-command"), async (original) => {
-  const { threadEnvironment } = await import("../state/threads");
   return {
     ...(await original()),
-    useAtomCommand: ((command: unknown) =>
-      command === threadEnvironment.linkPullRequest
-        ? state.link
-        : command === threadEnvironment.unlinkPullRequest
-          ? state.unlink
-          : state.openEditor) as never,
+    useAtomCommand: (() => state.openEditor) as never,
   };
 });
 vi.mock(import("../state/session"), async (original) => {
@@ -75,7 +65,7 @@ vi.mock(import("../state/server"), async (original) => {
 });
 vi.mock(import("../state/entities"), async (original) => ({
   ...(await original()),
-  readThreadShell: (() => ({ pullRequests: state.pullRequests })) as never,
+
   useProjects: (() => [{ id: projectId, environmentId: threadRef.environmentId }]) as never,
 }));
 vi.mock(import("../remoteOpen"), async (original) => ({
@@ -95,11 +85,6 @@ vi.mock(import("../localApi"), async (original) => ({
       shell: { openExternal: state.openExternal },
     }) as never,
 }));
-vi.mock(import("@t3tools/client-runtime/change-request-links"), async (original) => ({
-  ...(await original()),
-  resolvePullRequestPreviewTarget: () => null,
-  findProjectForChangeRequest: ((projects: readonly { id: ProjectId }[]) => projects[0]) as never,
-}));
 
 import ChatMarkdown from "./ChatMarkdown";
 
@@ -108,16 +93,6 @@ const threadRef = {
   threadId: ThreadId.make("thread"),
 };
 const projectId = ProjectId.make("project");
-const linkedPullRequest: ThreadPullRequestLink = {
-  host: "github.com",
-  repository: "example/repo",
-  number: 42,
-  url: "https://github.com/example/repo/pull/42",
-  source: "manual",
-  linkedAt: "2026-09-08T00:00:00.000Z",
-  snapshot: null,
-  stack: null,
-};
 const serverConfig = {
   availableEditors: ["vscode", "file-manager"] as readonly EditorId[],
   shellRevealInFileManager: true,
@@ -129,10 +104,7 @@ function setup() {
   using stack = new DisposableStack();
   state.allowed = true;
   state.listeners.clear();
-  state.pullRequests = [];
   state.openEditor.mockReset().mockResolvedValue(AsyncResult.success(undefined));
-  state.link.mockReset().mockResolvedValue(AsyncResult.success(undefined));
-  state.unlink.mockReset().mockResolvedValue(AsyncResult.success(undefined));
   state.search.mockReset().mockResolvedValue(AsyncResult.success({ entries: [] }));
   state.choose.mockReset().mockResolvedValue(null);
   state.openFile.mockReset();
@@ -238,43 +210,3 @@ it("does not reveal a file after revocation during its workspace lookup", async 
   });
   expect(state.openEditor).not.toHaveBeenCalled();
 });
-
-it.each(["link-to-thread", "unlink-from-thread"])(
-  "rechecks %s after a native context menu returns",
-  async (action) => {
-    using _setup = setup();
-    state.pullRequests = action === "unlink-from-thread" ? [linkedPullRequest] : [];
-    const command = action === "link-to-thread" ? state.link : state.unlink;
-    let choose: (action: string) => void = () => {
-      throw new Error("Menu not opened");
-    };
-    state.choose.mockImplementationOnce(
-      () =>
-        new Promise<string>((resolve) => {
-          choose = resolve;
-        }),
-    );
-    await using screen = await renderMarkdown(`[Review](${linkedPullRequest.url})`);
-    await screen.openContextMenu();
-    expect(offeredActions()).toContain(action);
-    await act(async () => {
-      state.allowed = false;
-      choose(action);
-    });
-    expect(command).not.toHaveBeenCalled();
-
-    await setAllowed(true);
-    state.choose.mockResolvedValue(action);
-    await screen.openContextMenu();
-    await vi.waitFor(() =>
-      expect(command).toHaveBeenCalledExactlyOnceWith({
-        environmentId: threadRef.environmentId,
-        input: expect.objectContaining({
-          threadId: threadRef.threadId,
-          repository: "example/repo",
-          number: 42,
-        }),
-      }),
-    );
-  },
-);

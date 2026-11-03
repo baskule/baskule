@@ -1,9 +1,6 @@
 import type { WorkspaceTab } from "../workspace/workspace-tabs-state";
 import { createContext, use, type ReactNode } from "react";
-import type {
-  WorkspaceDetail,
-  WorkspaceDetailSheet,
-} from "../workspace/workspace-detail-selection";
+import type { WorkspaceDetail } from "../workspace/workspace-detail-selection";
 import {
   deriveFileInspectorPaneLayout,
   deriveLayout,
@@ -21,7 +18,7 @@ interface AdaptiveWorkspaceContextValue {
   readonly primarySidebarSearchQuery: string;
   readonly startNewTask: () => void;
   /** Use `useSelectWorkspaceDetail`, which also works outside the layout. */
-  readonly selectDetail?: (detail: WorkspaceDetail, sheet?: WorkspaceDetailSheet) => void;
+  readonly selectDetail?: (detail: WorkspaceDetail) => void;
   readonly activateAuxiliaryPaneRole: (role: WorkspaceAuxiliaryPaneRole) => () => void;
   readonly registerWorkspaceInspector: (render: () => ReactNode) => () => void;
   readonly setPrimarySidebarSearchQuery: (query: string) => void;

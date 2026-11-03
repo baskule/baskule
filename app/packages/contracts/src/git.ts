@@ -1,4 +1,3 @@
-import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
   ForwardCompatibleOptional,
@@ -25,16 +24,6 @@ export const GitStackedAction = Schema.Literals([
 export type GitStackedAction = typeof GitStackedAction.Type;
 export const GitActionProgressPhase = Schema.Literals(["branch", "commit", "push", "pr"]);
 export type GitActionProgressPhase = typeof GitActionProgressPhase.Type;
-export const GitActionProgressKind = Schema.Literals([
-  "action_started",
-  "phase_started",
-  "hook_started",
-  "hook_output",
-  "hook_finished",
-  "action_finished",
-  "action_failed",
-]);
-export type GitActionProgressKind = typeof GitActionProgressKind.Type;
 export const GitActionProgressStream = Schema.Literals(["stdout", "stderr"]);
 export type GitActionProgressStream = typeof GitActionProgressStream.Type;
 const GitCommitStepStatus = Schema.Literals([
@@ -50,9 +39,6 @@ const GitPushStepStatus = Schema.Literals([
 const GitBranchStepStatus = Schema.Literals(["created", "skipped_not_requested"]);
 const GitPrStepStatus = Schema.Literals(["created", "opened_existing", "skipped_not_requested"]);
 const VcsStatusChangeRequestState = Schema.Literals(["open", "closed", "merged"]);
-const GitPullRequestReference = TrimmedNonEmptyStringSchema;
-const GitPullRequestState = Schema.Literals(["open", "closed", "merged"]);
-const GitPreparePullRequestThreadMode = Schema.Literals(["local", "worktree"]);
 export const GitRunStackedActionToastRunAction = Schema.Struct({
   kind: GitStackedAction,
 });
@@ -96,15 +82,6 @@ const VcsWorktree = Schema.Struct({
   path: TrimmedNonEmptyStringSchema,
   refName: TrimmedNonEmptyStringSchema,
 });
-const GitResolvedPullRequest = Schema.Struct({
-  number: PositiveInt,
-  title: TrimmedNonEmptyStringSchema,
-  url: Schema.String,
-  baseBranch: TrimmedNonEmptyStringSchema,
-  headBranch: TrimmedNonEmptyStringSchema,
-  state: GitPullRequestState,
-});
-export type GitResolvedPullRequest = typeof GitResolvedPullRequest.Type;
 
 export const VcsStatusInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
@@ -156,20 +133,6 @@ export const VcsCreateWorktreeInput = Schema.Struct({
   path: Schema.NullOr(TrimmedNonEmptyStringSchema),
 });
 export type VcsCreateWorktreeInput = typeof VcsCreateWorktreeInput.Type;
-
-export const GitPullRequestRefInput = Schema.Struct({
-  cwd: TrimmedNonEmptyStringSchema,
-  reference: GitPullRequestReference,
-});
-export type GitPullRequestRefInput = typeof GitPullRequestRefInput.Type;
-
-export const GitPreparePullRequestThreadInput = Schema.Struct({
-  cwd: TrimmedNonEmptyStringSchema,
-  reference: GitPullRequestReference,
-  mode: GitPreparePullRequestThreadMode,
-  threadId: Schema.optional(ThreadId),
-});
-export type GitPreparePullRequestThreadInput = typeof GitPreparePullRequestThreadInput.Type;
 
 export const VcsRemoveWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
@@ -291,20 +254,6 @@ export const VcsCreateWorktreeResult = Schema.Struct({
   worktree: VcsWorktree,
 });
 export type VcsCreateWorktreeResult = typeof VcsCreateWorktreeResult.Type;
-
-export const GitResolvePullRequestResult = Schema.Struct({
-  pullRequest: GitResolvedPullRequest,
-});
-export type GitResolvePullRequestResult = typeof GitResolvePullRequestResult.Type;
-
-export const GitPreparePullRequestThreadResult = Schema.Struct({
-  pullRequest: GitResolvedPullRequest,
-  branch: TrimmedNonEmptyStringSchema,
-  worktreePath: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),
-  /** False when local commits or edits prevented a reused worktree from reaching the PR head. */
-  isOnPullRequestHead: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
-});
-export type GitPreparePullRequestThreadResult = typeof GitPreparePullRequestThreadResult.Type;
 
 export const VcsSwitchRefResult = Schema.Struct({
   refName: Schema.NullOr(TrimmedNonEmptyStringSchema),

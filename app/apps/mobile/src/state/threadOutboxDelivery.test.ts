@@ -91,8 +91,6 @@ vi.mock("./server", async () => {
   return { serverEnvironment: { configValueAtom: Atom.family(() => Atom.make(null)) } };
 });
 
-vi.mock("./git", () => ({ gitEnvironment: {} }));
-
 vi.mock("./threads", async () => {
   const { Atom } = await import("effect/reactivity");
   const Option = await import("effect/Option");

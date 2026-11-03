@@ -6,10 +6,7 @@ import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/uti
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import {
-  sourceControlClients,
-  type SourceControlDefinition,
-} from "@t3tools/client-runtime/source-control-clients";
+
 import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import * as Schema from "effect/Schema";
 import { TYPOGRAPHY_ADVANCED_STORAGE_KEY } from "../../appearanceFonts";
@@ -100,7 +97,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
     return t("Chat");
   },
   get "/settings/diffs"() {
-    return t("Diffs & pull requests");
+    return t("Diffs");
   },
   get "/settings/keybindings"() {
     return t("Keybindings");
@@ -216,47 +213,6 @@ const KEYBINDING_SEARCH_ITEMS = STATIC_KEYBINDING_COMMANDS.toSorted((left, right
     ...(defaultKeys.length === 0 ? { targetId: "keybindings" } : {}),
   };
 });
-
-export function sourceControlHostSettingsSearchId(kind: string) {
-  return `source-control-host-${kind}` as const;
-}
-
-/** Each host's own settings: its accounts and token, or the fields of its settings form. */
-export function sourceControlHostSearchItems(
-  definitions: ReadonlyArray<SourceControlDefinition>,
-): ReadonlyArray<
-  SettingsSearchItem & { readonly id: ReturnType<typeof sourceControlHostSettingsSearchId> }
-> {
-  return definitions.flatMap((definition) => {
-    if (!definition.settings) return [];
-    const names = [definition.label, ...(definition.searchKeywords ?? [])].join(" ");
-    const { credentials } = definition;
-    return [
-      {
-        id: sourceControlHostSettingsSearchId(definition.kind),
-        title: credentials
-          ? t("{{label}} accounts and token", { label: definition.label })
-          : t("{{label}} credentials", { label: definition.label }),
-        to: "/settings/source-control" as const,
-        searchTerms: [
-          credentials
-            ? `${names} ${credentials.cliName} account login user host switch multiple accounts disable sign in token personal access token pat api key credential`
-            : `${names} ${Object.keys(definition.settings.fields).join(" ")} token credentials sign in`,
-        ],
-        environmentOnly: true,
-        scope: "environment-defaults" as const,
-      },
-    ];
-  });
-}
-
-/** For settings that apply to every host. */
-const SOURCE_CONTROL_HOST_LABELS = sourceControlClients.definitions
-  .map((definition) => definition.label)
-  .join(" ");
-const SOURCE_CONTROL_HOST_TERMS = sourceControlClients.definitions
-  .flatMap((definition) => [definition.label, ...(definition.searchKeywords ?? [])])
-  .join(" ");
 
 export const SETTINGS_SEARCH_ITEMS = [
   {
@@ -580,27 +536,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "project-defaults",
   },
   {
-    id: "auto-settle-merged-threads",
-    get title() {
-      return t("Auto-settle merged threads");
-    },
-    to: "/settings/threads",
-    searchTerms: ["pull request merge closed automatically sidebar"],
-    requiresThreadAutoSettlement: true,
-    scope: "project-defaults",
-  },
-  {
-    id: "keep-threads-with-pull-requests",
-    get title() {
-      return t("Keep threads with a PR");
-    },
-    to: "/settings/threads",
-    targetId: "auto-settle-inactive-threads",
-    searchTerms: ["pull request inactivity auto-settle merge close sidebar"],
-    requiresThreadAutoSettlement: true,
-    scope: "project-defaults",
-  },
-  {
     id: "days-before-auto-settle",
     get title() {
       return t("Days of inactivity before auto-settle");
@@ -674,7 +609,7 @@ export const SETTINGS_SEARCH_ITEMS = [
       return t("Proactive panels");
     },
     to: "/settings/diffs",
-    searchTerms: ["automatically open diff pull request pr right panel agent completion"],
+    searchTerms: ["automatically open diff right panel agent completion"],
   },
   {
     id: "skills-in-slash-menu",
@@ -1112,16 +1047,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["address bar duckduckgo google bing brave kagi ecosia custom"],
   },
   {
-    id: "pull-request-links-open-in-app",
-    get title() {
-      return t("Open pull requests in T3 Code");
-    },
-    to: "/settings/diffs",
-    searchTerms: [
-      `pr commit links ${SOURCE_CONTROL_HOST_LABELS} browser external click default pull request view panel`,
-    ],
-  },
-  {
     id: "browser-auto-show-floating-preview",
     get title() {
       return t("Auto-show floating preview");
@@ -1139,35 +1064,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["auto pull default branch current checkout fast forward upstream"],
   },
   {
-    id: "remove-agent-credits-on-merge",
-    get title() {
-      return t("Remove agent credits when merging");
-    },
-    to: "/settings/source-control",
-    scope: "project-defaults",
-    searchTerms: [
-      `pull request ${SOURCE_CONTROL_HOST_LABELS} squash co-authored-by attribution generated`,
-    ],
-  },
-  {
-    id: "pull-request-merge-method",
-    get title() {
-      return t("Default merge method");
-    },
-    to: "/settings/source-control",
-    scope: "project-defaults",
-    searchTerms: ["pull request merge squash rebase last selected"],
-  },
-  {
     id: "source-control",
     get title() {
       return t("Source control");
     },
     to: "/settings/source-control",
     scope: "environment-defaults",
-    searchTerms: [
-      `version control git ${SOURCE_CONTROL_HOST_TERMS} hosting integrations credentials scan server environment`,
-    ],
+    searchTerms: [`version control git hosting integrations credentials scan server environment`],
   },
   {
     id: "git-fetch-interval",
@@ -1192,7 +1095,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     environmentOnly: true,
     scope: "project-defaults",
   },
-  ...sourceControlHostSearchItems(sourceControlClients.definitions),
   {
     id: "source-control-writing-style",
     get title() {
@@ -1205,15 +1107,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     environmentOnly: true,
   },
   {
-    id: "follow-change-request-templates",
-    get title() {
-      return t("Follow change request templates");
-    },
-    to: "/settings/source-control",
-    searchTerms: ["repository pr pull request description structure"],
-    environmentOnly: true,
-  },
-  {
     id: "source-control-writer-model",
     get title() {
       return t("Source control writer model");
@@ -1222,38 +1115,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [
       "override generated commit change request pr titles descriptions branch bookmark",
     ],
-    environmentOnly: true,
-    scope: "project-defaults",
-  },
-  {
-    id: "review-guides",
-    get title() {
-      return t("Review guides (beta)");
-    },
-    to: "/settings/source-control",
-    searchTerms: ["pull request pr guided review guide tour beta experimental"],
-    environmentOnly: true,
-  },
-  {
-    id: "review-guide-model",
-    get title() {
-      return t("Review guide model");
-    },
-    to: "/settings/source-control",
-    // Hidden until review guides are on, so a search lands on the switch that shows it.
-    targetId: "review-guides",
-    searchTerms: ["pull request pr guided review guide brief maintainer"],
-    environmentOnly: true,
-    scope: "project-defaults",
-  },
-  {
-    id: "review-guide-instructions",
-    get title() {
-      return t("Review guide instructions");
-    },
-    to: "/settings/source-control",
-    targetId: "review-guides",
-    searchTerms: ["pull request pr guided review guide preferences taste prompt custom"],
     environmentOnly: true,
     scope: "project-defaults",
   },
@@ -1379,16 +1240,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/connections",
     searchTerms: [
       "automatic machine environment resources cpu memory capacity preference weight shared projects",
-    ],
-  },
-  {
-    id: "pull-request-routing",
-    get title() {
-      return t("Pull request sharing");
-    },
-    to: "/settings/connections",
-    searchTerms: [
-      `pull request routing trusted environments shared credentials permissions read actions source control ${SOURCE_CONTROL_HOST_LABELS}`,
     ],
   },
   {

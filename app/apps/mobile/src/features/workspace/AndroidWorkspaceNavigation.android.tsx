@@ -135,7 +135,6 @@ export function AndroidWorkspaceNavigation(props: {
         labels={{
           threads: t("Chats"),
           settings: t("Settings"),
-          pullRequests: t("Pull requests"),
           usage: t("Usage"),
           newChat: t("New chat"),
           closeRail: t("Close navigation rail"),

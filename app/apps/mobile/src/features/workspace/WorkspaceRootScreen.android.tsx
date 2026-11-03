@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import { useAndroidFloatingTabs } from "../settings/appearance/AppearancePreferencesProvider";
 import { WorkspaceNoTabs } from "./WorkspaceNoTabs";
 import { useEnabledNavigationTabs } from "./navigation-tabs";
@@ -8,13 +6,10 @@ import { WorkspaceExtraTab } from "./WorkspaceExtraTab";
 import { useWindowDimensions, View } from "react-native";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
-import { EmptyState } from "../../components/ui/EmptyState";
-import { ScreenContent } from "../../components/ui/ScreenContent";
+
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { HomeRouteScreen } from "../home/HomeRouteScreen";
-import { PullRequestsScreen } from "../pull-requests/PullRequestsScreen";
-import { PullRequestToolbar } from "../pull-requests/PullRequestToolbar.android";
+
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { AndroidWorkspaceNavigation, FloatingWorkspaceTabs } from "./AndroidWorkspaceNavigation";
 import { FLOATING_TABS, floatingTabsMetrics } from "./floating-workspace-tabs";
@@ -79,32 +74,7 @@ export function WorkspaceRootScreen() {
               tabs={TABS}
               selected={tab}
               renderTab={(tab) =>
-                tab === "threads" ? (
-                  <HomeRouteScreen />
-                ) : tab !== "pullRequests" ? (
-                  <WorkspaceExtraTab tab={tab} />
-                ) : layout.usesSplitView ? (
-                  <>
-                    <NativeStackScreenOptions options={{ headerShown: false }} />
-                    <AndroidScreenHeader title={t("Pull requests")} />
-                    <View className="flex-1 items-center justify-center px-10">
-                      <EmptyState
-                        title={t("Select a pull request")}
-                        detail="Choose a pull request from the sidebar to review it."
-                        variant="plain"
-                      />
-                    </View>
-                  </>
-                ) : (
-                  <PullRequestsScreen
-                    renderFrame={(filters, list) => (
-                      <>
-                        <PullRequestToolbar filters={filters} />
-                        <ScreenContent>{list}</ScreenContent>
-                      </>
-                    )}
-                  />
-                )
+                tab === "threads" ? <HomeRouteScreen /> : <WorkspaceExtraTab tab={tab} />
               }
             />
           )}

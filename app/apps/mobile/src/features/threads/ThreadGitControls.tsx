@@ -3,7 +3,7 @@ import { BASKULE_FLAGS } from "../../baskule/flags";
 
 import { Toolbar } from "../../components/ui/Toolbar";
 import * as Dialog from "../../components/ui/Dialog";
-import { useOpenPullRequest } from "../../native/useOpenPullRequest";
+
 import { createNativeHeaderMenu } from "../../components/ui/nativeHeaderMenu.ios";
 import type { AppBarMenu } from "../../components/ui/AppBar.types";
 import {
@@ -20,10 +20,9 @@ import {
   resolveQuickAction,
 } from "@t3tools/client-runtime/state/vcs";
 import { useNavigation } from "@react-navigation/native";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 
 import { useEnvironmentScope } from "../../state/session";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+
 import {
   basename,
   getTerminalStatusLabel,
@@ -65,12 +64,6 @@ function compactMenuStatus(gitStatus: VcsStatusResult | null): string {
   }
   if (gitStatus.behindCount > 0) {
     parts.push(`${gitStatus.behindCount} behind`);
-  }
-  if (gitStatus.pr?.state === "open") {
-    const { shortLabel } = sourceControlClients.get(
-      gitStatus.sourceControlProvider?.kind,
-    ).changeRequest;
-    parts.push(`${shortLabel} #${gitStatus.pr.number}`);
   }
 
   return parts.join(" · ");
@@ -123,7 +116,6 @@ type ThreadGitControlsProps = ThreadGitMenuProps & {
 function useThreadGitControlModel(props: ThreadGitMenuProps) {
   const t = useTranslation();
   const navigation = useNavigation();
-  const openPullRequest = useOpenPullRequest();
   const environmentId = props.environmentId;
   const canWriteSourceControl = useEnvironmentScope(
     environmentId ? EnvironmentId.make(String(environmentId)) : null,
@@ -163,7 +155,6 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
 
   const quickActionIcon: QuickActionIcon = (() => {
     if (quickAction.kind === "run_pull") return "arrow.down.circle";
-    if (quickAction.kind === "open_pr") return "arrow.up.right.circle";
     if (quickAction.kind === "run_action") {
       if (quickAction.action === "commit") return "checkmark.circle";
       if (quickAction.action === "push" || quickAction.action === "commit_push")
@@ -172,27 +163,10 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
     return "arrow.up.right.circle";
   })();
 
-  const openExistingPr = async () => {
-    const { shortLabel, singular } = sourceControlClients.get(
-      gitStatus?.sourceControlProvider?.kind,
-    ).changeRequest;
-    const prUrl = gitStatus?.pr?.state === "open" ? gitStatus.pr.url : null;
-    if (!prUrl) {
-      Dialog.alert(`No open ${shortLabel}`, `This branch does not have an open ${singular}.`);
-      return;
-    }
-    if (!(await openPullRequest(prUrl))) {
-      Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
-    }
-  };
-
   const runActionWithPrompt = async (input: GitActionRequestInput) => {
     if (!canWriteSourceControl) return;
     const confirmableAction =
-      input.action === "push" ||
-      input.action === "create_pr" ||
-      input.action === "commit_push" ||
-      input.action === "commit_push_pr"
+      input.action === "push" || input.action === "commit_push" || input.action === "commit_push_pr"
         ? input.action
         : null;
     const branchName = gitStatus?.refName;
@@ -214,7 +188,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
         threadId: String(threadId),
         confirmAction: confirmableAction,
         branchName,
-        includesCommit: String(input.action === "commit_push" || input.action === "commit_push_pr"),
+        includesCommit: String(input.action === "commit_push"),
       });
       return;
     }
@@ -224,10 +198,6 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
 
   const runQuickAction = async () => {
     if (quickAction.disabled) return;
-    if (quickAction.kind === "open_pr") {
-      await openExistingPr();
-      return;
-    }
     if (quickAction.kind === "run_pull") {
       await onPull();
       return;
@@ -394,7 +364,7 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
             ? [
                 {
                   description: t("Bring this thread's latest turn into its source"),
-                  icon: { name: PullRequestGlyph.merged, type: "sfSymbol" as const },
+                  icon: { name: "arrow.triangle.merge", type: "sfSymbol" as const },
                   label: t("Merge back to source"),
                   onPress: props.onMergeBack,
                   type: "action" as const,

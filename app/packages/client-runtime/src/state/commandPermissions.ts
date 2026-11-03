@@ -18,7 +18,7 @@ function makeCommandPermissions<R, E>(
   method: string,
 ) {
   const sessions = createEnvironmentSessionAtoms(runtime);
-  const requiredScopes = (input?: unknown) => clientRpcRequiredScopes(method, input);
+  const requiredScopes = () => clientRpcRequiredScopes(method);
   const atomsByEnvironment = Atom.family((environmentId: EnvironmentId | null) =>
     Atom.family((scopeKey: string) =>
       Atom.make((get) => {
@@ -35,15 +35,15 @@ function makeCommandPermissions<R, E>(
       }),
     ),
   );
-  const permissionAtom = (environmentId: EnvironmentId | null, input?: unknown) =>
-    atomsByEnvironment(environmentId)(requiredScopes(input).join(","));
+  const permissionAtom = (environmentId: EnvironmentId | null, _input?: unknown) =>
+    atomsByEnvironment(environmentId)(requiredScopes().join(","));
   const authorize = (
     registry: AtomRegistry.AtomRegistry,
     environmentId: EnvironmentId,
-    input?: unknown,
+    _input?: unknown,
   ) =>
     Effect.suspend(() => {
-      const scopes = requiredScopes(input);
+      const scopes = requiredScopes();
       if (scopes.length === 0) return Effect.void;
       const atom = sessions.sessionStateAtom(environmentId);
       return Effect.scoped(

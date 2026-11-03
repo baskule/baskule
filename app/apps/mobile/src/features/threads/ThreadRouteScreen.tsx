@@ -1,8 +1,9 @@
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useTranslation } from "../../i18n";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { useRememberThreadProject } from "./useRememberThreadProject";
-import { useOpenPullRequest } from "../../native/useOpenPullRequest";
+
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 import { buildProjectThreadStartTurnInput } from "../../lib/projectThreadStartTurn";
 import { useWorktreeSetup } from "./use-worktree-setup";
@@ -423,7 +424,7 @@ function ThreadRouteContent(
   })();
   const navigation = useNavigation();
   const selectDetail = useSelectWorkspaceDetail();
-  const openPullRequest = useOpenPullRequest();
+  const openPullRequest = (url: string) => tryOpenExternalUrl(url, "markdown-link");
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack, "merge thread back");
   const mergeBackTargetThreadId = resolveMergeBackTargetThreadId(selectedThreadDetail);
   const mergeBackRun =

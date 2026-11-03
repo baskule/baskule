@@ -1,5 +1,4 @@
 import {
-  SOURCE_CONTROL_MEDIA_ASSET,
   type AssetResource,
   type ChatFileAttachment,
   type EnvironmentId,
@@ -23,11 +22,7 @@ export type MediaVideoPreviewSource = {
       readonly resource: Extract<
         AssetResource,
         {
-          readonly _tag:
-            | "attachment"
-            | "media-file"
-            | "draft-workspace-file"
-            | typeof SOURCE_CONTROL_MEDIA_ASSET;
+          readonly _tag: "attachment" | "media-file" | "draft-workspace-file";
         }
       >;
     }
@@ -56,22 +51,14 @@ export function mediaVideoThumbnailKey(source: MediaVideoPreviewSource): string 
               source.resource.path,
               source.srcFragment ?? "",
             ]
-          : source.resource._tag === SOURCE_CONTROL_MEDIA_ASSET
-            ? [
-                "media-video",
-                SOURCE_CONTROL_MEDIA_ASSET,
-                source.environmentId,
-                source.resource.cwd,
-                source.resource.url,
-              ]
-            : [
-                "media-video",
-                "draft-workspace-file",
-                source.environmentId,
-                source.resource.cwd,
-                source.resource.path,
-                source.srcFragment ?? "",
-              ],
+          : [
+              "media-video",
+              "draft-workspace-file",
+              source.environmentId,
+              source.resource.cwd,
+              source.resource.path,
+              source.srcFragment ?? "",
+            ],
   );
 }
 

@@ -1,4 +1,3 @@
-import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as NodePath from "@effect/platform-node/NodePath";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -9,16 +8,11 @@ import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/process";
 
-import {
-  GitCommandError,
-  SourceControlProviderError,
-  type SourceControlCloneRepositoryInput,
-} from "@t3tools/contracts";
+import { GitCommandError, type SourceControlCloneRepositoryInput } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import type * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
-import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
+
 import * as SourceControlRepositoryService from "./SourceControlRepositoryService.ts";
 
 const CLONE_URLS = {
@@ -26,28 +20,6 @@ const CLONE_URLS = {
   url: "https://github.com/octocat/t3code",
   sshUrl: "git@github.com:octocat/t3code.git",
 };
-
-function makeProvider(
-  overrides: Partial<SourceControlProvider.SourceControlProvider["Service"]> = {},
-): SourceControlProvider.SourceControlProvider["Service"] {
-  const unsupported = (operation: string) =>
-    Effect.die(`unexpected provider operation ${operation}`) as Effect.Effect<
-      never,
-      SourceControlProviderError
-    >;
-
-  return {
-    kind: SourceControlProviderKind.make("github"),
-    listChangeRequests: () => unsupported("listChangeRequests"),
-    getChangeRequest: () => unsupported("getChangeRequest"),
-    createChangeRequest: () => unsupported("createChangeRequest"),
-    getRepositoryCloneUrls: () => Effect.succeed(CLONE_URLS),
-    createRepository: () => Effect.succeed(CLONE_URLS),
-    getDefaultBranch: () => Effect.succeed(null),
-    checkoutChangeRequest: () => unsupported("checkoutChangeRequest"),
-    ...overrides,
-  };
-}
 
 function processOutput(): GitVcsDriver.ExecuteGitResult {
   return {
@@ -60,21 +32,13 @@ function processOutput(): GitVcsDriver.ExecuteGitResult {
 }
 
 function layer(input: {
-  readonly provider?: SourceControlProvider.SourceControlProvider["Service"];
   readonly git?: Partial<GitVcsDriver.GitVcsDriver["Service"]>;
   readonly fileSystem?: FileSystem.FileSystem;
 }) {
   const layerService = SourceControlRepositoryService.layer.pipe(
     Layer.provide(
-      Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-        resolveLink: () => undefined,
-        get: () => Effect.succeed(input.provider ?? makeProvider()),
-      }),
-    ),
-    Layer.provide(
       Layer.mock(GitVcsDriver.GitVcsDriver)({
         execute: () => Effect.succeed(processOutput()),
-        ensureRemote: () => Effect.succeed("origin"),
         pushCurrentBranch: () =>
           Effect.succeed({
             status: "pushed" as const,
@@ -101,52 +65,7 @@ function layer(input: {
     : layerService.pipe(Layer.provideMerge(NodeServices.layer));
 }
 
-const lookupFailingWith = (cause: unknown, detail: string) =>
-  Effect.gen(function* () {
-    const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
-    return yield* service
-      .lookupRepository({ provider: SourceControlProviderKind.make("bitbucket"), repository: "x" })
-      .pipe(Effect.flip);
-  }).pipe(
-    Effect.provide(
-      layer({
-        provider: makeProvider({
-          getRepositoryCloneUrls: (input) =>
-            Effect.fail(
-              new SourceControlProviderError({
-                provider: SourceControlProviderKind.make("bitbucket"),
-                operation: "getRepositoryCloneUrls",
-                cwd: input.cwd,
-                detail,
-                cause,
-              }),
-            ),
-        }),
-      }),
-    ),
-  );
-
-it.effect("tells the user a host's fixed explanation of a failed repository lookup", () =>
-  Effect.gen(function* () {
-    const error = yield* lookupFailingWith(
-      { userFacingDetail: "Repositories are named workspace/repository." },
-      "Repositories are named workspace/repository.",
-    );
-    assert.strictEqual(error.detail, "Repositories are named workspace/repository.");
-  }),
-);
-
-it.effect("keeps a host's raw response text out of a failed repository lookup", () =>
-  Effect.gen(function* () {
-    const error = yield* lookupFailingWith(
-      new Error("upstream"),
-      "<html>internal token=abc</html>",
-    );
-    assert.strictEqual(error.detail, "The source control operation could not be completed.");
-  }),
-);
-
-it.effect("clones a looked-up repository after creating missing parent directories", () =>
+it.effect("clones a URL after creating missing parent directories", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -160,8 +79,7 @@ it.effect("clones a looked-up repository after creating missing parent directori
     yield* Effect.gen(function* () {
       const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
       const result = yield* service.cloneRepository({
-        provider: SourceControlProviderKind.make("github"),
-        repository: "octocat/t3code",
+        remoteUrl: CLONE_URLS.url,
         destinationPath,
         protocol: "https",
       });
@@ -169,7 +87,7 @@ it.effect("clones a looked-up repository after creating missing parent directori
       assert.deepStrictEqual(result, {
         cwd: destinationPath,
         remoteUrl: CLONE_URLS.url,
-        repository: { provider: SourceControlProviderKind.make("github"), ...CLONE_URLS },
+        repository: null,
       });
       assert.deepStrictEqual(cloneCalls, [
         {
@@ -549,167 +467,6 @@ it.effect("preserves destination probe failures instead of treating them as miss
           exists: () => Effect.fail(fileSystemCause),
           makeDirectory: () => Effect.void,
         }),
-      }),
-    ),
-  );
-});
-
-it.effect("publishes to the remote name returned by ensureRemote", () => {
-  const pushCalls: Array<{ cwd: string; remoteName: string | null | undefined }> = [];
-
-  return Effect.gen(function* () {
-    const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
-    const result = yield* service.publishRepository({
-      cwd: "/workspace",
-      provider: SourceControlProviderKind.make("github"),
-      repository: "octocat/t3code",
-      visibility: "private",
-      remoteName: "origin",
-      protocol: "ssh",
-    });
-
-    assert.equal(result.remoteName, "origin-1");
-    assert.deepStrictEqual(pushCalls, [{ cwd: "/workspace", remoteName: "origin-1" }]);
-  }).pipe(
-    Effect.provide(
-      layer({
-        git: {
-          ensureRemote: () => Effect.succeed("origin-1"),
-          pushCurrentBranch: (cwd, _fallbackBranch, options) =>
-            Effect.sync(() => {
-              pushCalls.push({ cwd, remoteName: options?.remoteName });
-              return {
-                status: "pushed" as const,
-                branch: "feature/remote-v1",
-                upstreamBranch: `${options?.remoteName ?? "missing"}/feature/remote-v1`,
-                setUpstream: true,
-              };
-            }),
-        },
-      }),
-    ),
-  );
-});
-
-function failingPush(reason?: GitCommandError["reason"]) {
-  return {
-    pushCurrentBranch: (cwd: string) =>
-      Effect.fail(
-        new GitCommandError({
-          operation: "GitVcsDriver.pushCurrentBranch.pushWithRequestedRemote",
-          command: "git",
-          cwd,
-          ...(reason === undefined ? {} : { reason }),
-          detail: "Git command exited with a non-zero status.",
-        }),
-      ),
-  } satisfies Partial<GitVcsDriver.GitVcsDriver["Service"]>;
-}
-
-it.effect("explains a rejected SSH push after creating the repository", () =>
-  Effect.gen(function* () {
-    const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
-    const error = yield* Effect.flip(
-      service.publishRepository({
-        cwd: "/workspace",
-        provider: SourceControlProviderKind.make("github"),
-        repository: "octocat/t3code",
-        visibility: "private",
-        protocol: "ssh",
-      }),
-    );
-
-    assert.strictEqual(error.operation, "publishRepository");
-    assert.strictEqual(
-      error.detail,
-      'Created octocat/t3code and added it as remote "origin", but the push failed because SSH authentication was rejected. Add an SSH key to your account, or switch the remote to HTTPS with "git remote set-url origin https://github.com/octocat/t3code", then push again.',
-    );
-    assert.instanceOf(error.cause, GitCommandError);
-  }).pipe(Effect.provide(layer({ git: failingPush("authentication_failed") }))),
-);
-
-// regression: #19219 publishing did not explain why the first push failed
-it.effect("says the repository exists when an unclassified publish push fails", () =>
-  Effect.gen(function* () {
-    const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
-    const error = yield* Effect.flip(
-      service.publishRepository({
-        cwd: "/workspace",
-        provider: SourceControlProviderKind.make("github"),
-        repository: "octocat/t3code",
-        visibility: "private",
-        protocol: "https",
-      }),
-    );
-
-    assert.strictEqual(
-      error.detail,
-      'Created octocat/t3code and added it as remote "origin", but the push failed. Fix the problem, then push again.',
-    );
-  }).pipe(Effect.provide(layer({ git: failingPush() }))),
-);
-
-it.effect("publish succeeds with status remote_added when the local repo has no commits", () => {
-  let pushCalls = 0;
-  return Effect.gen(function* () {
-    const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
-    const result = yield* service.publishRepository({
-      cwd: "/workspace",
-      provider: SourceControlProviderKind.make("github"),
-      repository: "octocat/t3code",
-      visibility: "private",
-      remoteName: "origin",
-      protocol: "ssh",
-    });
-
-    assert.deepStrictEqual(result, {
-      repository: { provider: SourceControlProviderKind.make("github"), ...CLONE_URLS },
-      remoteName: "origin",
-      remoteUrl: CLONE_URLS.sshUrl,
-      branch: "main",
-      status: "remote_added",
-    });
-    assert.strictEqual(pushCalls, 0);
-  }).pipe(
-    Effect.provide(
-      layer({
-        git: {
-          execute: (input) =>
-            input.args[0] === "rev-parse"
-              ? Effect.fail(
-                  new GitCommandError({
-                    operation: input.operation,
-                    command: "git rev-parse --verify HEAD",
-                    cwd: input.cwd,
-                    detail: "fatal: Needed a single revision",
-                  }),
-                )
-              : Effect.succeed(processOutput()),
-          statusDetails: () =>
-            Effect.succeed({
-              isRepo: true,
-              hasOriginRemote: true,
-              isDefaultBranch: true,
-              branch: "main",
-              upstreamRef: null,
-              hasWorkingTreeChanges: false,
-              workingTree: { files: [], insertions: 0, deletions: 0 },
-              hasUpstream: false,
-              aheadCount: 0,
-              behindCount: 0,
-              aheadOfDefaultCount: 0,
-            }),
-          pushCurrentBranch: () =>
-            Effect.sync(() => {
-              pushCalls += 1;
-              return {
-                status: "pushed" as const,
-                branch: "main",
-                upstreamBranch: "origin/main",
-                setUpstream: true,
-              };
-            }),
-        },
       }),
     ),
   );

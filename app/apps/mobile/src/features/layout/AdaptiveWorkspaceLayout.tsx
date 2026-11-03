@@ -76,7 +76,6 @@ import { AndroidWorkspaceSidebar } from "../workspace/AndroidWorkspaceSidebar";
 import {
   selectWorkspaceDetail,
   type WorkspaceDetail,
-  type WorkspaceDetailSheet,
 } from "../workspace/workspace-detail-selection";
 import { startOpeningDetail } from "../workspace/useSelectWorkspaceDetail";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
@@ -84,7 +83,7 @@ import { HomeListOptionsProvider } from "../home/home-list-options";
 import { newTaskDestination } from "../threads/new-task-project-selection";
 import { usePendingTaskListActions } from "../home/usePendingTaskListActions";
 import { ThreadNavigationSidebar } from "../threads/ThreadNavigationSidebar";
-import { useOpenThreadPullRequests } from "../threads/use-open-thread-pull-requests";
+
 import { RenderErrorBoundary, RenderFailureView } from "../../components/RenderErrorBoundary";
 import { WORKSPACE_PANE_TIMING } from "./workspace-pane-animation";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
@@ -189,7 +188,6 @@ export function AdaptiveWorkspaceLayout(props: {
   readonly workspaceRouteKey: string | undefined;
   readonly workspaceRouteName: string | undefined;
   readonly workspaceRouteKeys: ReadonlyArray<string>;
-  readonly selectedPullRequestKey?: string | null;
 }) {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   if (!AsyncResult.isSuccess(preferencesResult)) {
@@ -217,7 +215,6 @@ function AdaptiveWorkspaceLayoutContent(
     readonly workspaceRouteKey: string | undefined;
     readonly workspaceRouteName: string | undefined;
     readonly workspaceRouteKeys: ReadonlyArray<string>;
-    readonly selectedPullRequestKey?: string | null;
   } & {
     readonly projectGroupingMode: SidebarProjectGroupingMode;
     readonly savedThreadListFilters?: ThreadListFilters | undefined;
@@ -577,17 +574,17 @@ function AdaptiveWorkspaceLayoutContent(
   const handleOpenSettings = () => openWorkspaceTab("settings");
 
   /** The one way to show a page in the detail column; see `selectWorkspaceDetail`. */
-  function handleSelectDetail(detail: WorkspaceDetail, sheet?: WorkspaceDetailSheet) {
+  function handleSelectDetail(detail: WorkspaceDetail) {
     threadSelectionDeferral.run(() => {
       if (Platform.OS === "android") Keyboard.dismiss();
       setFileInspectorPreferredVisible(false);
       if (layout.primarySidebarOverlaysContent) setPrimarySidebarVisible(false);
       workspace?.dispatch({
         type: "select",
-        tab: detail.name === "Thread" ? "threads" : "pullRequests",
+        tab: "threads",
       });
       startOpeningDetail(detail);
-      navigation.dispatch(selectWorkspaceDetail(detail, sheet));
+      navigation.dispatch(selectWorkspaceDetail(detail));
     });
   }
   const handleSelectThreadRoute = (params: ReactNavigation.RootParamList["Thread"]) =>
@@ -643,8 +640,6 @@ function AdaptiveWorkspaceLayoutContent(
   const handleOpenEnvironmentSettings = () => {
     openSettings(navigation, "SettingsEnvironments");
   };
-
-  const handleOpenThreadPullRequests = useOpenThreadPullRequests();
   const { openPendingTask: handleOpenPendingTask } =
     usePendingTaskListActions(handleSelectThreadRoute);
 
@@ -932,10 +927,7 @@ function AdaptiveWorkspaceLayoutContent(
                 />
               )}
             >
-              <AndroidWorkspaceSidebar
-                onRequestVisibility={revealPrimarySidebar}
-                selectedPullRequestKey={props.selectedPullRequestKey ?? null}
-              >
+              <AndroidWorkspaceSidebar>
                 <AndroidHomeFabLayout
                   sidebar
                   disabled={workspacePage}
@@ -953,7 +945,6 @@ function AdaptiveWorkspaceLayoutContent(
                     onNewThreadOnBranch={handleNewThreadOnBranch}
                     onOpenPendingTask={handleOpenPendingTask}
                     onSelectThread={handleSelectThread}
-                    onOpenThreadPullRequests={handleOpenThreadPullRequests}
                     onSearchQueryChange={setPrimarySidebarSearchQuery}
                     searchQuery={primarySidebarSearchQuery}
                   />

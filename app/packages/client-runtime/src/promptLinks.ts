@@ -1,22 +1,12 @@
 import {
   repositoryGroupingKeyOf,
-  type EnvironmentId,
   type ModelSelection,
-  type PullRequestLinkedThreadsResult,
   type RepositoryIdentity,
   type ServerProvider,
-  type ThreadLinkedPullRequest,
-  type ThreadId,
-  type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import { resolveSelectableModel, type SelectableModelOption } from "@t3tools/shared/model";
-import type { AsyncResult } from "effect/reactivity";
-import type { PromptLinkPullRequest, PromptLinkRepository } from "@t3tools/shared/promptLinks";
-import {
-  threadPullRequestKeyOf,
-  threadPullRequestsOf,
-  visibleThreadPullRequests,
-} from "./threadPullRequests.ts";
+
+import type { PromptLinkRepository } from "@t3tools/shared/promptLinks";
 
 // A link's `owner/name` is GitHub's. GitCafe syncs a repository two-way with GitHub under the
 // same path, so a checkout cloned from git.cafe counts as the linked repository.
@@ -36,53 +26,6 @@ export function findPromptLinkProjects<
       project.repositoryIdentity != null &&
       keys.has(repositoryGroupingKeyOf(project.repositoryIdentity).toLowerCase()),
   );
-}
-
-export function findPromptLinkPullRequestThread<
-  T extends {
-    readonly updatedAt: string;
-    readonly pullRequests?: ReadonlyArray<ThreadPullRequestLink> | undefined;
-    readonly linkedPullRequest?: ThreadLinkedPullRequest | null | undefined;
-    readonly lineage?: { readonly sideChat?: boolean | undefined } | undefined;
-  },
->(threads: ReadonlyArray<T>, pullRequest: PromptLinkPullRequest): T | undefined {
-  const key = threadPullRequestKeyOf({
-    host: "github.com",
-    repository: `${pullRequest.owner}/${pullRequest.name}`,
-    number: pullRequest.number,
-  });
-  let latest: T | undefined;
-  for (const thread of threads) {
-    if (latest !== undefined && thread.updatedAt <= latest.updatedAt) continue;
-    // Side chats inherit their parent's links but stay hidden.
-    if (thread.lineage?.sideChat === true) continue;
-    const linked = visibleThreadPullRequests(threadPullRequestsOf(thread)).some(
-      (link) => threadPullRequestKeyOf(link) === key,
-    );
-    if (linked) latest = thread;
-  }
-  return latest;
-}
-
-/**
- * The first open thread from per-environment pull request lookups, in the order given, once
- * every lookup before it has answered. `null` when none has one; `undefined` until then.
- */
-export function pickPromptLinkPullRequestThread(
-  lookups: ReadonlyArray<{
-    readonly environmentId: EnvironmentId;
-    readonly result: AsyncResult.AsyncResult<PullRequestLinkedThreadsResult, unknown>;
-  }>,
-): { readonly environmentId: EnvironmentId; readonly id: ThreadId } | null | undefined {
-  for (const { environmentId, result } of lookups) {
-    if (result._tag === "Initial" || result.waiting) return undefined;
-    const thread =
-      result._tag === "Success"
-        ? result.value.threads.find((candidate) => candidate.archivedAt === null)
-        : undefined;
-    if (thread !== undefined) return { environmentId, id: thread.id };
-  }
-  return null;
 }
 
 const PROVIDER_ALIASES: Record<string, string> = { claude: "claudeagent" };

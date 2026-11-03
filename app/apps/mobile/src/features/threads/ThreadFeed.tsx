@@ -1,8 +1,9 @@
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { t, useTranslation } from "../../i18n";
 
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
-import { useOpenPullRequest } from "../../native/useOpenPullRequest";
+
 import { useWorkspaceSettledContentWidth } from "../layout/workspace-content-width";
 import { ThreadMarkdownVideo, ThreadMediaVisibleContext } from "./ThreadMarkdownVideo";
 import { useMarkdownImageSource } from "../../native/useMarkdownImageSource";
@@ -2463,7 +2464,7 @@ export const ThreadFeed = memo(function ThreadFeed({
   const guestShare = useThreadGuestShare(props.detailRef);
   const deviceType = useDeviceType();
   const duoColumns = useNativeWorkspaceColumnsSupported() && isDuoDevice(deviceType);
-  const openPullRequest = useOpenPullRequest();
+  const openPullRequest = (url: string) => tryOpenExternalUrl(url, "markdown-link");
   const navigation = useNavigation();
   const openLinkedThread = useOpenLinkedThread();
   const onOpenTurnDiff = useCallback(

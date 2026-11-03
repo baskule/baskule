@@ -56,18 +56,14 @@ function harness() {
 describe("environment summary subscriptions", () => {
   it("tracks loaded configs across environments, config loss and removal", () => {
     const h = harness();
-    const stop = h.registry.subscribe(h.pullRequestsSupportedAtom, () => {});
+    const stop = h.registry.subscribe(h.environmentsAtom, () => {});
     try {
       h.registry.set(h.configs(FIRST), null);
       h.registry.set(h.configs(SECOND), null);
-      expect(h.registry.get(h.pullRequestsSupportedAtom)).toBe(false);
       h.registry.set(h.configs(FIRST), config());
-      expect(h.registry.get(h.pullRequestsSupportedAtom)).toBe(true);
       h.registry.set(h.configs(SECOND), config());
       h.registry.set(h.configs(FIRST), null);
-      expect(h.registry.get(h.pullRequestsSupportedAtom)).toBe(true);
       h.registry.set(h.catalog, { isReady: true, entries: new Map([[FIRST, entry(FIRST)]]) });
-      expect(h.registry.get(h.pullRequestsSupportedAtom)).toBe(false);
       expect(h.registry.get(h.environmentIdsAtom)).toEqual([FIRST]);
       expect(h.registry.get(h.identitiesAtom)).toEqual([{ environmentId: FIRST, label: "first" }]);
       h.registry.set(h.catalog, {
@@ -78,9 +74,7 @@ describe("environment summary subscriptions", () => {
         ]),
       });
       expect(h.registry.get(h.environmentIdsAtom)).toEqual([SECOND, FIRST]);
-      expect(h.registry.get(h.pullRequestsSupportedAtom)).toBe(true);
       h.registry.set(h.configs(SECOND), null);
-      expect(h.registry.get(h.pullRequestsSupportedAtom)).toBe(false);
       h.registry.set(h.catalog, { isReady: true, entries: new Map() });
       expect(h.registry.get(h.environmentIdsAtom)).toEqual([]);
       expect(h.registry.get(h.identitiesAtom)).toEqual([]);

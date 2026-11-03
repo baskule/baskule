@@ -8,42 +8,29 @@ import * as Schema from "effect/Schema";
 
 import {
   GitCommandError,
-  SourceControlProviderError,
   SourceControlRepositoryError,
-  type GitCommandFailureReason,
   type SourceControlCloneRepositoryInput,
   type SourceControlCloneRepositoryResult,
-  type SourceControlCloneProtocol,
   SourceControlProviderKind,
-  type SourceControlPublishRepositoryInput,
-  type SourceControlPublishRepositoryResult,
-  type SourceControlRepositoryCloneUrls,
   type SourceControlRepositoryInfo,
-  type SourceControlRepositoryLookupInput,
 } from "@t3tools/contracts";
 
-import * as ServerConfig from "../config.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
-import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
+
 import {
   parseGitCloneProgressLine,
   type GitCloneProgressLine,
 } from "../project/gitCloneProgress.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
-import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
+
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { cloneUrlForProtocol, cloneUrlProtocol } from "@t3tools/shared/cloneUrl";
 const isSourceControlRepositoryError = Schema.is(SourceControlRepositoryError);
-const isSourceControlProviderError = Schema.is(SourceControlProviderError);
 const isGitCommandError = Schema.is(GitCommandError);
 
 export class SourceControlRepositoryService extends Context.Service<
   SourceControlRepositoryService,
   {
-    readonly lookupRepository: (
-      input: SourceControlRepositoryLookupInput,
-    ) => Effect.Effect<SourceControlRepositoryInfo, SourceControlRepositoryError>;
     readonly prepareClone: (
       input: SourceControlCloneRepositoryInput,
     ) => Effect.Effect<SourceControlPreparedClone, SourceControlRepositoryError>;
@@ -54,9 +41,6 @@ export class SourceControlRepositoryService extends Context.Service<
     readonly discardClone: (
       destinationPath: string,
     ) => Effect.Effect<void, SourceControlRepositoryError>;
-    readonly publishRepository: (
-      input: SourceControlPublishRepositoryInput,
-    ) => Effect.Effect<SourceControlPublishRepositoryResult, SourceControlRepositoryError>;
   }
 >()("t3/sourceControl/SourceControlRepositoryService") {}
 
@@ -89,25 +73,10 @@ function mapRepositoryError(operation: string, provider: SourceControlProviderKi
       : new SourceControlRepositoryError({
           operation,
           provider,
-          detail:
-            (isSourceControlProviderError(cause)
-              ? SourceControlProvider.userFacingSourceControlDetail(cause.cause)
-              : undefined) ?? "The source control operation could not be completed.",
+          detail: "The Git operation could not be completed.",
           cause,
         }),
   );
-}
-
-function toRepositoryInfo(
-  provider: SourceControlProviderKind,
-  urls: SourceControlRepositoryCloneUrls,
-): SourceControlRepositoryInfo {
-  return {
-    provider,
-    nameWithOwner: urls.nameWithOwner,
-    url: urls.url,
-    sshUrl: urls.sshUrl,
-  };
 }
 
 // Redact credentials from client clone snapshots; git still receives the credentials.
@@ -140,29 +109,6 @@ function redactUrlCredentials(text: string): string {
     .replace(URL_WITH_USERINFO, "$1");
 }
 
-// The remote already exists after push failure; advise fixing access and pushing.
-// Use fixed text and provider URLs because git stderr can expose credentials.
-function publishPushFailureDetail(input: {
-  readonly urls: SourceControlRepositoryCloneUrls;
-  readonly remoteName: string;
-  readonly remoteUrl: string;
-  readonly reason: GitCommandFailureReason | undefined;
-}): string {
-  const created = `Created ${input.urls.nameWithOwner} and added it as remote "${input.remoteName}", but the push failed`;
-  const switchToHttps = `git remote set-url ${input.remoteName} ${input.urls.url}`;
-  const usesSsh = input.remoteUrl === input.urls.sshUrl;
-  switch (input.reason) {
-    case "authentication_failed":
-      return usesSsh
-        ? `${created} because SSH authentication was rejected. Add an SSH key to your account, or switch the remote to HTTPS with "${switchToHttps}", then push again.`
-        : `${created} because Git could not authenticate. Check your Git credentials, then push again.`;
-    case "host_key_unverified":
-      return `${created} because the host's SSH key is not trusted yet. Verify it by connecting once with ssh, or switch the remote to HTTPS with "${switchToHttps}", then push again.`;
-    default:
-      return `${created}. Fix the problem, then push again.`;
-  }
-}
-
 /**
  * SSH rejection can be retried over HTTPS when the host's credential helper is available.
  * Explicit SSH requests must not fall back; unknown URL shapes must not be guessed.
@@ -180,61 +126,11 @@ const isSshRejection = (error: SourceControlRepositoryError) =>
   isGitCommandError(error.cause) &&
   (error.cause.reason === "authentication_failed" || error.cause.reason === "host_key_unverified");
 
-function selectRemoteUrl(
-  urls: SourceControlRepositoryCloneUrls,
-  protocol: SourceControlCloneProtocol | undefined,
-): string {
-  switch (protocol ?? "auto") {
-    case "https":
-      return urls.url;
-    case "ssh":
-    case "auto":
-      return urls.sshUrl;
-  }
-}
-
 /** @public */
 export const make = Effect.gen(function* () {
-  const config = yield* ServerConfig.ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const path = yield* Path.Path;
-  const providers = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
-
-  const ensureConcreteProvider = (input: {
-    readonly operation: string;
-    readonly provider: SourceControlProviderKind;
-  }) => {
-    if (input.provider !== "unknown") {
-      return Effect.succeed(input.provider);
-    }
-
-    return Effect.fail(
-      new SourceControlRepositoryError({
-        operation: input.operation,
-        provider: input.provider,
-        detail: "Choose a source control provider before continuing.",
-      }),
-    );
-  };
-
-  const lookupRepository = Effect.fn("SourceControlRepositoryService.lookupRepository")(
-    function* (input: SourceControlRepositoryLookupInput) {
-      const providerKind = yield* ensureConcreteProvider({
-        operation: "lookupRepository",
-        provider: input.provider,
-      });
-      const provider = yield* providers.get(providerKind);
-      const urls = yield* provider.getRepositoryCloneUrls({
-        cwd: input.cwd ?? config.cwd,
-        repository: input.repository.trim(),
-      });
-      return toRepositoryInfo(providerKind, urls);
-    },
-    // Someone adding or cloning a repository is waiting, so a background rate-limit pause must not
-    // refuse the lookup.
-    Effect.provideService(SourceControlRateLimit.Interactive, true),
-  );
 
   const normalizeDestinationPath = Effect.fn("SourceControlRepositoryService.normalizeDestination")(
     function* (destinationPath: string) {
@@ -295,20 +191,10 @@ export const make = Effect.gen(function* () {
     input: SourceControlCloneRepositoryInput,
   ) {
     const preparedDestination = yield* prepareDestination(input.destinationPath);
-    let repository: SourceControlRepositoryInfo | null = null;
+    const repository = null;
     let remoteUrl = input.remoteUrl?.trim() ?? null;
     let provider: SourceControlProviderKind =
       input.provider ?? SourceControlProviderKind.make("unknown");
-
-    if (input.provider && input.repository) {
-      repository = yield* lookupRepository({
-        provider: input.provider,
-        repository: input.repository,
-        cwd: preparedDestination.parentPath,
-      });
-      remoteUrl = selectRemoteUrl(repository, input.protocol);
-      provider = input.provider;
-    }
 
     if (!remoteUrl) {
       return yield* new SourceControlRepositoryError({
@@ -460,81 +346,8 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const publishRepository = Effect.fn("SourceControlRepositoryService.publishRepository")(
-    function* (input: SourceControlPublishRepositoryInput) {
-      const providerKind = yield* ensureConcreteProvider({
-        operation: "publishRepository",
-        provider: input.provider,
-      });
-      const provider = yield* providers.get(providerKind);
-      const urls = yield* provider.createRepository({
-        cwd: input.cwd,
-        repository: input.repository.trim(),
-        visibility: input.visibility,
-      });
-      const remoteUrl = selectRemoteUrl(urls, input.protocol);
-      const remoteName = yield* git.ensureRemote({
-        cwd: input.cwd,
-        preferredName: input.remoteName?.trim() || "origin",
-        url: remoteUrl,
-      });
-
-      // Empty repos cannot push HEAD; report partial success because the remote already exists.
-      const hasCommits = yield* git
-        .execute({
-          operation: "SourceControlRepositoryService.publishRepository.headCheck",
-          cwd: input.cwd,
-          args: ["rev-parse", "--verify", "HEAD"],
-        })
-        .pipe(
-          Effect.map(() => true),
-          Effect.orElseSucceed(() => false),
-        );
-      if (!hasCommits) {
-        const details = yield* git.statusDetails(input.cwd).pipe(Effect.orElseSucceed(() => null));
-        return {
-          repository: toRepositoryInfo(providerKind, urls),
-          remoteName,
-          remoteUrl,
-          branch: details?.branch ?? "main",
-          status: "remote_added" as const,
-        };
-      }
-
-      const pushResult = yield* git.pushCurrentBranch(input.cwd, null, { remoteName }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SourceControlRepositoryError({
-              operation: "publishRepository",
-              provider: providerKind,
-              detail: publishPushFailureDetail({
-                urls,
-                remoteName,
-                remoteUrl,
-                reason: cause.reason,
-              }),
-              cause,
-            }),
-        ),
-      );
-
-      return {
-        repository: toRepositoryInfo(providerKind, urls),
-        remoteName,
-        remoteUrl,
-        branch: pushResult.branch,
-        status: "pushed" as const,
-      };
-    },
-  );
-
   // Forwarders retain the underlying operation spans.
   return SourceControlRepositoryService.of({
-    lookupRepository: Effect.fnUntraced(function* (input) {
-      return yield* lookupRepository(input).pipe(
-        mapRepositoryError("lookupRepository", input.provider),
-      );
-    }),
     prepareClone: Effect.fnUntraced(function* (input) {
       return yield* prepareClone(input).pipe(
         mapRepositoryError(
@@ -554,11 +367,6 @@ export const make = Effect.gen(function* () {
     discardClone: Effect.fnUntraced(function* (destinationPath) {
       return yield* discardClone(destinationPath).pipe(
         mapRepositoryError("discardClone", SourceControlProviderKind.make("unknown")),
-      );
-    }),
-    publishRepository: Effect.fnUntraced(function* (input) {
-      return yield* publishRepository(input).pipe(
-        mapRepositoryError("publishRepository", input.provider),
       );
     }),
   });

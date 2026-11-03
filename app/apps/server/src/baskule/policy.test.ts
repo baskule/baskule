@@ -47,7 +47,7 @@ describe("Baskule RPC policy", () => {
       WS_METHODS.vcsPull,
       WS_METHODS.serverUpdateSettings,
       WS_METHODS.filesystemBrowse,
-      WS_METHODS.pullRequestsList,
+      "pullRequests.list",
       WS_METHODS.deviceOpen,
       WS_METHODS.serverSignalProcess,
     ]) {

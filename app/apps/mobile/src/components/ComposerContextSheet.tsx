@@ -1,8 +1,10 @@
+import { tryOpenExternalUrl } from "../lib/openExternalUrl";
+
 import { useTranslation } from "../i18n";
 
 import { Button } from "./ui/Button";
 import * as Dialog from "./ui/Dialog";
-import { useOpenPullRequest } from "../native/useOpenPullRequest";
+
 import { SourceFileSurface } from "../features/files/SourceFileSurface";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
 import type {
@@ -13,7 +15,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+
 import { videoMimeType } from "@t3tools/shared/video";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -94,12 +96,7 @@ export function ComposerContextSheet(props: {
   readonly attachments?: ReadonlyArray<DraftComposerAttachment>;
 }) {
   const t = useTranslation();
-  const openPullRequest = useOpenPullRequest({
-    context:
-      props.environmentId && props.projectId
-        ? { environmentId: props.environmentId, projectId: props.projectId }
-        : undefined,
-  });
+  const openPullRequest = (url: string) => tryOpenExternalUrl(url, "markdown-link");
   const reviewColors = useReviewCommentColors();
   const insets = useSafeAreaInsets();
   const { themeId, themeAppearance } = useAppearancePreferences();
@@ -187,10 +184,6 @@ export function ComposerContextSheet(props: {
     record?.kind === "review-comment" && "pullRequest" in record
       ? record.pullRequest?.url
       : undefined;
-  const changeRequestTerm = (
-    (pullRequestUrl ? sourceControlClients.findByChangeRequestUrl(pullRequestUrl) : undefined) ??
-    sourceControlClients.get(undefined)
-  ).changeRequest.singular;
   const terminal = record?.kind === "terminal" && !("payload" in record) ? record : null;
   return (
     <Sheet title={terminal?.terminalLabel ?? props.label} onClose={props.onClose}>
@@ -373,13 +366,13 @@ export function ComposerContextSheet(props: {
             onPress={() => {
               props.onClose();
               void openPullRequest(pullRequestUrl).catch(() =>
-                Dialog.alert(`Could not open ${changeRequestTerm}`, "Try again when connected."),
+                Dialog.alert(`Could not open ${"saved pull request"}`, "Try again when connected."),
               );
             }}
             className="rounded-xl bg-subtle p-4"
           >
             <Text className="text-foreground">
-              {t("Open {{changeRequest}}", { changeRequest: changeRequestTerm })}
+              {t("Open {{changeRequest}}", { changeRequest: "saved pull request" })}
             </Text>
           </Pressable>
         ) : null}
@@ -393,7 +386,7 @@ export function ComposerContextSheet(props: {
         ) : null}
         {props.onOpenPullRequest && !pullRequestUrl ? (
           <Button
-            label={t("Open {{changeRequest}}", { changeRequest: changeRequestTerm })}
+            label={t("Open {{changeRequest}}", { changeRequest: "saved pull request" })}
             tone="secondary"
             onPress={props.onOpenPullRequest}
             fullWidth

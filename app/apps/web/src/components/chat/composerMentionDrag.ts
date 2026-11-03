@@ -1,15 +1,6 @@
-import { PullRequestContextMetadata } from "@t3tools/contracts";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
-import { Option, Schema } from "effect";
 
 export const COMPOSER_MENTION_DRAG_TYPE = "application/x-t3code-composer-mention";
-
-export const COMPOSER_PULL_REQUEST_DRAG_TYPE = "application/x-t3code-pull-request";
-
-const PullRequestDragPayload = Schema.fromJsonString(PullRequestContextMetadata);
-const decodePullRequestPayload = Schema.decodeUnknownOption(PullRequestDragPayload);
-
-export const encodePullRequestDragPayload = Schema.encodeSync(PullRequestDragPayload);
 
 export function composerMentionFromTreePath(treePath: string): string | null {
   const relativePath = treePath.replace(/\/+$/, "");
@@ -20,9 +11,7 @@ export function composerMentionFromTreePath(treePath: string): string | null {
 }
 
 export function dataTransferHasComposerMention(types: ReadonlyArray<string>): boolean {
-  return (
-    types.includes(COMPOSER_MENTION_DRAG_TYPE) || types.includes(COMPOSER_PULL_REQUEST_DRAG_TYPE)
-  );
+  return types.includes(COMPOSER_MENTION_DRAG_TYPE);
 }
 
 interface ComposerMentionDragTransfer {
@@ -41,7 +30,6 @@ interface ComposerMentionDragEvent {
 /** Insertion focuses next frame; synchronous focus would overwrite the unreconciled mention. */
 export interface ComposerMentionDropHost {
   insertMentionAtEnd(text: string): boolean;
-  insertPullRequestAtEnd(pullRequest: PullRequestContextMetadata): boolean;
   setDragActive(active: boolean): void;
   onInsertRejected(): void;
 }
@@ -84,15 +72,6 @@ export function makeComposerMentionDragHandlers(
         return;
       }
       host.setDragActive(false);
-      if (event.dataTransfer.types.includes(COMPOSER_PULL_REQUEST_DRAG_TYPE)) {
-        const pullRequest = decodePullRequestPayload(
-          event.dataTransfer.getData(COMPOSER_PULL_REQUEST_DRAG_TYPE),
-        );
-        if (Option.isSome(pullRequest) && !host.insertPullRequestAtEnd(pullRequest.value)) {
-          host.onInsertRejected();
-        }
-        return;
-      }
       const mention = event.dataTransfer.getData(COMPOSER_MENTION_DRAG_TYPE);
       if (mention.length === 0) {
         return;

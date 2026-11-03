@@ -3,9 +3,7 @@ import { isMobileRouteEnabled } from "./baskule/flags";
 
 import { isDraftThreadRoute } from "./features/threads/thread-route-state";
 import { ComponentCatalogScreen } from "./features/development/ComponentCatalogScreen";
-import { PullRequestGuideStopScreen } from "./features/pull-requests/guide/PullRequestGuideScreen";
-import { PullRequestInlineCommentScreen } from "./features/pull-requests/PullRequestInlineCommentScreen";
-import { PullRequestDiscussionScreen } from "./features/pull-requests/PullRequestDiscussionScreen";
+
 import { createWorkspaceStackNavigator } from "./features/layout/createWorkspaceStackNavigator";
 import {
   createPathConfigForStaticNavigation,
@@ -33,16 +31,7 @@ import {
   recordHomeTransitionStart,
 } from "./features/home/home-route-visibility";
 import { AndroidWorkspaceTabsProvider } from "./features/workspace/AndroidWorkspaceTabsProvider";
-import {
-  PullRequestRouteScreen,
-  PullRequestFileRouteScreen,
-} from "./features/pull-requests/PullRequestRouteScreen";
-import { PullRequestFilesSheet } from "./features/pull-requests/PullRequestFiles";
-import { PullRequestReviewSheet } from "./features/pull-requests/PullRequestReviewSheet";
-import { PullRequestReviewersScreen } from "./features/pull-requests/PullRequestReviewersScreen";
-import { PullRequestLabelsScreen } from "./features/pull-requests/PullRequestLabelsScreen";
-import { PullRequestEditScreen } from "./features/pull-requests/PullRequestEditScreen";
-import { PullRequestFilterSearchScreen } from "./features/pull-requests/PullRequestFilterSearchScreen";
+
 import {
   RenderErrorBoundary,
   RenderFailureView,
@@ -53,7 +42,7 @@ import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboarding
 import { AttachmentFileScreen } from "./features/files/AttachmentFileScreen";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
-import { selectedPullRequestKey } from "./features/pull-requests/pullRequestSelection";
+
 import {
   HardwareKeyboardCommandOverlay,
   HardwareKeyboardCommandProvider,
@@ -67,7 +56,7 @@ import { GitBranchesSheet } from "./features/threads/git/GitBranchesSheet";
 import { GitCommitSheet } from "./features/threads/git/GitCommitSheet";
 import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
 import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
-import { ThreadPullRequestsSheet } from "./features/threads/ThreadPullRequestsSheet";
+
 import { ThreadAgentsSheet } from "./features/threads/ThreadAgentsSheet";
 import { ThreadBackgroundWorkSheet } from "./features/threads/ThreadBackgroundWorkSheet";
 import { ThreadQueueSheet } from "./features/threads/ThreadQueueControl";
@@ -657,7 +646,6 @@ function RootStackLayout(props: {
                 workspaceRouteKey={workspaceLocation.routeKey}
                 workspaceRouteName={workspaceLocation.routeName}
                 workspaceRouteKeys={workspaceLocation.routeKeys}
-                selectedPullRequestKey={selectedPullRequestKey(props.state)}
               >
                 {props.children}
                 <HardwareKeyboardCommandOverlay />
@@ -748,112 +736,6 @@ const RootStackConfig = createWorkspaceStackNavigator({
         contentStyle: { backgroundColor: "transparent" },
         headerBackVisible: false,
         ...getCompactBrandHeaderOptions(),
-      },
-    }),
-    PullRequest: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("PullRequest"),
-      screen: PullRequestRouteScreen,
-      linking: {
-        path: "pull-requests/:environmentId/:projectId/:repository/:number",
-        parse: { number: Number },
-      },
-      options: { ...DETAIL_HEADER_OPTIONS, ...FIXED_DUO_HEADER },
-    }),
-    PullRequestGuideStop: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("PullRequestGuideStop"),
-      screen: PullRequestGuideStopScreen,
-      options: DETAIL_HEADER_OPTIONS,
-    }),
-    PullRequestFile: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("PullRequestFile"),
-      screen: PullRequestFileRouteScreen,
-      options: DETAIL_HEADER_OPTIONS,
-    }),
-    PullRequestFiles: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("PullRequestFiles"),
-      screen: PullRequestFilesSheet,
-      options: {
-        ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
-        ...HORIZONTAL_FORM_SHEET_OPTIONS,
-        sheetAllowedDetents: formSheetDetents(0.6),
-        sheetGrabberVisible: true,
-        sheetCornerRadius: Platform.OS === "android" ? 28 : undefined,
-      },
-    }),
-    PullRequestReviewers: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("PullRequestReviewers"),
-      screen: PullRequestReviewersScreen,
-      options: {
-        ...DETAIL_HEADER_OPTIONS,
-        ...FIXED_DUO_HEADER,
-        ...HORIZONTAL_FORM_SHEET_OPTIONS,
-        sheetAllowedDetents: formSheetDetents(0.75),
-        sheetGrabberVisible: true,
-        headerBackVisible: false,
-      },
-    }),
-    PullRequestLabels: createNativeStackScreen({
-      screen: PullRequestLabelsScreen,
-      // Presented like PullRequestFilterSearch, whose search sheet it shares.
-      options:
-        Platform.OS === "android"
-          ? { presentation: "card", headerShown: false }
-          : {
-              ...DETAIL_HEADER_OPTIONS,
-              ...HORIZONTAL_FORM_SHEET_OPTIONS,
-              sheetAllowedDetents: formSheetDetents(0.75),
-              sheetGrabberVisible: true,
-              headerBackVisible: false,
-            },
-    }),
-    PullRequestFilterSearch: createNativeStackScreen({
-      screen: PullRequestFilterSearchScreen,
-      // Android pushes it like the branch picker; a formSheet there leaves the list's header
-      // peeking above it once the keyboard opens.
-      options:
-        Platform.OS === "android"
-          ? { presentation: "card", headerShown: false }
-          : {
-              ...DETAIL_HEADER_OPTIONS,
-              ...HORIZONTAL_FORM_SHEET_OPTIONS,
-              sheetAllowedDetents: formSheetDetents(0.75),
-              sheetGrabberVisible: true,
-              headerBackVisible: false,
-            },
-    }),
-    PullRequestDiscussion: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("PullRequestDiscussion"),
-      screen: PullRequestDiscussionScreen,
-      options: DETAIL_HEADER_OPTIONS,
-    }),
-    PullRequestInlineComment: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("PullRequestInlineComment"),
-      screen: PullRequestInlineCommentScreen,
-      options: {
-        ...(Platform.OS === "android"
-          ? { presentation: "fullScreenModal" as const }
-          : { ...SHEET_GLASS_HEADER_OPTIONS, ...HORIZONTAL_FORM_SHEET_OPTIONS }),
-        sheetAllowedDetents: Platform.OS === "android" ? undefined : formSheetDetents(0.75),
-        sheetGrabberVisible: Platform.OS !== "android",
-      },
-    }),
-    PullRequestReview: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("PullRequestReview"),
-      screen: PullRequestReviewSheet,
-      options: {
-        ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
-        ...HORIZONTAL_FORM_SHEET_OPTIONS,
-        sheetAllowedDetents: formSheetDetents(0.75),
-        sheetGrabberVisible: true,
-      },
-    }),
-    PullRequestEdit: createNativeStackScreen({
-      screen: PullRequestEditScreen,
-      options: {
-        ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
-        ...HORIZONTAL_FORM_SHEET_OPTIONS,
-        sheetAllowedDetents: formSheetDetents(0.75),
-        sheetGrabberVisible: true,
       },
     }),
     Thread: createNativeStackScreen({
@@ -1073,17 +955,6 @@ const RootStackConfig = createWorkspaceStackNavigator({
       if: () => isMobileRouteEnabled("GitOverview"),
       screen: GitOverviewSheet,
       linking: `${THREAD_LINKING_PREFIX}/git`,
-      options: {
-        ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
-        ...HORIZONTAL_FORM_SHEET_OPTIONS,
-        sheetAllowedDetents: formSheetDetents(0.55),
-        sheetGrabberVisible: true,
-      },
-    }),
-    ThreadPullRequests: createNativeStackScreen({
-      if: () => isMobileRouteEnabled("ThreadPullRequests"),
-      screen: ThreadPullRequestsSheet,
-      linking: `${THREAD_LINKING_PREFIX}/pull-requests`,
       options: {
         ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
         ...HORIZONTAL_FORM_SHEET_OPTIONS,

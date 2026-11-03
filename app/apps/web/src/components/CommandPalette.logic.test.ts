@@ -7,7 +7,6 @@ import {
   buildNestedSearchItems,
   resolveCommandPaletteProject,
   buildThreadActionItems,
-  buildLinkedThreadActionItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
   reduceCommandPaletteUiState,
@@ -17,78 +16,7 @@ import {
   type CommandPaletteUiState,
 } from "./CommandPalette.logic";
 
-describe("linked pull request thread navigation", () => {
-  it("keeps archived relations searchable and routes them through the PR environment", async () => {
-    const environmentId = EnvironmentId.make("remote");
-    const id = ThreadId.make("archived-thread");
-    const runThread = vi.fn(async () => {});
-    const query = "https://github.com/acme/web/pull/42";
-    const linkedThreads = {
-      environmentId,
-      threads: [
-        {
-          id,
-          projectId: ProjectId.make("project"),
-          title: "Completed work",
-          archivedAt: "2026-09-01T00:00:00.000Z",
-        },
-      ],
-    };
-    const state = reduceCommandPaletteUiState(
-      { open: false, mode: "command", openIntent: null, session: 0 },
-      {
-        _tag: "OpenSearch",
-        query,
-        linkedThreads,
-      },
-    );
-    expect(state.openIntent).toEqual({ kind: "search", query, linkedThreads });
-    const items = buildLinkedThreadActionItems({ ...linkedThreads, query, icon: null, runThread });
-    const groups = filterCommandPaletteGroups({
-      activeGroups: [],
-      query,
-      isInSubmenu: false,
-      projectSearchItems: [],
-      settingsSearchItems: [],
-      threadSearchItems: items,
-    });
-    expect(groups.flatMap((group) => group.items)).toEqual(items);
-    expect(items[0]?.description).toBe("Archived thread");
-    await items[0]?.run();
-    expect(runThread).toHaveBeenCalledWith({ environmentId, id });
-  });
-});
-
 describe("reduceCommandPaletteUiState", () => {
-  it("opens PR search from another overlay and replaces an earlier search", () => {
-    const first = reduceCommandPaletteUiState(
-      { open: true, mode: "files", openIntent: null, session: 0 },
-      {
-        _tag: "OpenSearch",
-        query: "https://github.com/acme/web/pull/7",
-      },
-    );
-    expect(first).toEqual({
-      open: true,
-      mode: "command",
-      openIntent: { kind: "search", query: "https://github.com/acme/web/pull/7" },
-      session: 1,
-    });
-    const second = reduceCommandPaletteUiState(first, {
-      _tag: "OpenSearch",
-      query: "https://github.com/acme/web/pull/8",
-    });
-    expect(second.openIntent).toEqual({
-      kind: "search",
-      query: "https://github.com/acme/web/pull/8",
-    });
-    // The second intent starts a new session, so the open palette starts over from it.
-    expect(second.session).toBe(2);
-    expect(
-      reduceCommandPaletteUiState(second, { _tag: "SetOpen", open: false }).openIntent,
-    ).toBeNull();
-  });
-
   it("keeps the session across mode switches so only intents start the palette over", () => {
     let state: CommandPaletteUiState = {
       open: false,
@@ -881,36 +809,18 @@ describe("returning from file and content search", () => {
     openIntent: null,
     session: 0,
   };
-  const query = "https://github.com/acme/web/pull/7";
+  const query = "search text";
   const context = {
     query,
-    linkedThreadSearch: {
-      kind: "search" as const,
-      query,
-      linkedThreads: {
-        environmentId: EnvironmentId.make("remote"),
-        threads: [
-          {
-            id: ThreadId.make("linked-thread"),
-            projectId: ProjectId.make("project"),
-            title: "Completed work",
-            archivedAt: "2026-09-01T00:00:00.000Z",
-          },
-        ],
-      },
-    },
   };
 
-  it.each(["files", "content"] as const)(
-    "Escape from %s restores the query and linked-thread results",
-    (mode) => {
-      const child = reduceCommandPaletteUiState(root, { _tag: "OpenChildSearch", mode, context });
-      expect(child.mode).toBe(mode);
-      const returned = reduceCommandPaletteUiState(child, { _tag: "BackToCommand" });
-      expect(returned).toEqual({ ...root, restoredSearch: context });
-      expect(reduceCommandPaletteUiState(returned, { _tag: "BackToCommand" })).toEqual(returned);
-    },
-  );
+  it.each(["files", "content"] as const)("Escape from %s restores the query", (mode) => {
+    const child = reduceCommandPaletteUiState(root, { _tag: "OpenChildSearch", mode, context });
+    expect(child.mode).toBe(mode);
+    const returned = reduceCommandPaletteUiState(child, { _tag: "BackToCommand" });
+    expect(returned).toEqual({ ...root, restoredSearch: context });
+    expect(reduceCommandPaletteUiState(returned, { _tag: "BackToCommand" })).toEqual(returned);
+  });
 
   it("closing a child search discards its return context before reopening", () => {
     const child: CommandPaletteUiState = { ...root, mode: "files", parentSearch: context };

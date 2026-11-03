@@ -5,7 +5,6 @@ import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import {
   AuthOrchestrationOperateScope,
   AuthSourceControlWriteScope,
-  SourceControlProviderKind,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import {
@@ -15,18 +14,13 @@ import {
 import type {
   GitRunStackedActionResult,
   GitStackedAction,
-  SourceControlCloneProtocol,
-  SourceControlProviderDiscoveryItem,
-  SourceControlPublishRepositoryResult,
-  SourceControlRepositoryVisibility,
   VcsStatusResult,
 } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
-import * as Option from "effect/Option";
+
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useDeadlinePassed } from "../hooks/useDeadline";
 import { useNowSecond } from "../hooks/useNowSecond";
-import { flushSync } from "react-dom";
+
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -36,13 +30,10 @@ import {
   GitBranchPlusIcon,
   GitCommitIcon,
   InfoIcon,
-  LockIcon,
-  GlobeIcon,
 } from "lucide-react";
-import { Radio as RadioPrimitive } from "@base-ui/react/radio";
-import { RadioGroup } from "~/components/ui/radio-group";
+
 import { Spinner } from "~/components/ui/spinner";
-import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
+
 import { cn } from "~/lib/utils";
 import {
   buildMenuItems,
@@ -63,7 +54,7 @@ import {
   resolveQuickAction,
   resolveThreadBranchUpdate,
 } from "./GitActionsControl.logic";
-import { WizardPopup, WizardHeader, WizardSteps, WizardPanel, WizardFooter } from "./ui/wizard";
+
 import { StartTruncatedPath } from "./StartTruncatedPath";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -76,7 +67,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { Input } from "~/components/ui/input";
+
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -87,7 +78,6 @@ import { useOpenInPreferredEditor } from "~/editorPreferences";
 import {
   useGitStackedAction,
   useSourceControlActionRunning,
-  useSourceControlPublishRepositoryAction,
   useVcsInitAction,
   useVcsPullAction,
 } from "../state/sourceControlActions";
@@ -95,7 +85,7 @@ import { useQuietThreadProjection, useQuietThreadShell } from "~/state/entities"
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
-import { sourceControlEnvironment } from "~/state/sourceControl";
+
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsActionManager, vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
@@ -109,10 +99,8 @@ import {
   THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS,
   THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS,
 } from "./chat/threadDetailsPanelStyles";
-import { getSourceControlPresentation, sourceControlIcon } from "~/sourceControlPresentation";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
-import { useOpenLink } from "~/browser/useOpenLink";
 
 interface GitActionsControlProps {
   gitCwd: string | null;
@@ -167,50 +155,7 @@ function requestVcsStatusRefresh(
   }
   void refresh({ environmentId, input: { cwd } });
 }
-const RUNNING_SOURCE_CONTROL_ACTIONS = ["runStackedAction", "pull", "publishRepository"] as const;
-
-const PUBLISH_PROVIDER_OPTIONS = sourceControlClients.definitions.map((definition) => ({
-  value: definition.kind,
-  label: definition.pickerLabel,
-  description: definition.publishDescription,
-  pathPlaceholder: definition.repositoryPathHint,
-  definition,
-  Icon: sourceControlIcon(definition),
-}));
-
-function publishProviderOption(provider: SourceControlProviderKind) {
-  return (
-    PUBLISH_PROVIDER_OPTIONS.find((option) => option.value === provider) ??
-    PUBLISH_PROVIDER_OPTIONS[0]!
-  );
-}
-
-function getPublishProviderReadiness(input: {
-  provider: SourceControlProviderKind;
-  sourceControlProviders: ReadonlyArray<SourceControlProviderDiscoveryItem>;
-}): { readonly ready: boolean; readonly hint: string | null } {
-  const discovered = input.sourceControlProviders.find(
-    (provider) => provider.kind === input.provider,
-  );
-  if (!discovered) {
-    return {
-      ready: false,
-      hint: "Provider status unavailable. Open Settings -> Source control and rescan.",
-    };
-  }
-  if (discovered.status !== "available") {
-    return { ready: false, hint: discovered.installHint };
-  }
-  if (discovered.auth.status === "unauthenticated") {
-    return {
-      ready: false,
-      hint:
-        Option.getOrNull(discovered.auth.detail) ??
-        `${discovered.label} is not authenticated. Open Settings -> Source control for setup guidance.`,
-    };
-  }
-  return { ready: true, hint: null };
-}
+const RUNNING_SOURCE_CONTROL_ACTIONS = ["runStackedAction", "pull"] as const;
 
 function getMenuActionDisabledReason({
   item,
@@ -231,7 +176,6 @@ function getMenuActionDisabledReason({
   const hasChanges = gitStatus.hasWorkingTreeChanges;
   const isAhead = gitStatus.aheadCount > 0;
   const isBehind = gitStatus.behindCount > 0;
-  const terminology = getSourceControlPresentation(gitStatus.sourceControlProvider).terminology;
 
   if (item.id === "commit") {
     if (!hasChanges) {
@@ -259,25 +203,7 @@ function getMenuActionDisabledReason({
     return t("Push is currently unavailable.");
   }
 
-  if (!hasBranch) {
-    return t("Detached HEAD: check out a branch before creating a {{singular}}.", {
-      singular: terminology.singular,
-    });
-  }
-  if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
-    return t('Add an "origin" remote before creating a {{singular}}.', {
-      singular: terminology.singular,
-    });
-  }
-  if ((gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) <= 0) {
-    return t("No local commits to include in a {{singular}}.", { singular: terminology.singular });
-  }
-  if (isBehind) {
-    return t("Branch is behind upstream. Pull/rebase before creating a {{singular}}.", {
-      singular: terminology.singular,
-    });
-  }
-  return t("Create {{singular}} is currently unavailable.", { singular: terminology.singular });
+  return null;
 }
 
 const COMMIT_DIALOG_TITLE = t("Commit changes");
@@ -285,35 +211,26 @@ const COMMIT_DIALOG_DESCRIPTION = t(
   "Review and confirm your commit. Leave the message blank to auto-generate one.",
 );
 
-function GitActionItemIcon({
-  icon,
-  SourceControlIcon,
-}: {
-  icon: GitActionIconName;
-  SourceControlIcon: ReturnType<typeof getSourceControlPresentation>["Icon"];
-}) {
+function GitActionItemIcon({ icon }: { icon: GitActionIconName }) {
   if (icon === "commit") return <GitCommitIcon />;
   if (icon === "push") return <CloudUploadIcon />;
-  return <SourceControlIcon />;
+  return <CloudUploadIcon />;
 }
 
 function GitQuickActionIcon({
   quickAction,
-  SourceControlIcon,
   className = "size-3.5",
 }: {
   quickAction: GitQuickAction;
   className?: string;
-  SourceControlIcon: ReturnType<typeof getSourceControlPresentation>["Icon"];
 }) {
-  if (quickAction.kind === "open_publish") return <CloudUploadIcon className={className} />;
   if (quickAction.kind === "run_pull") return <CloudDownloadIcon className={className} />;
   if (quickAction.kind === "run_action") {
     if (quickAction.action === "commit") return <GitCommitIcon className={className} />;
     if (quickAction.action === "push" || quickAction.action === "commit_push") {
       return <CloudUploadIcon className={className} />;
     }
-    return <SourceControlIcon className={className} />;
+    return <InfoIcon className={className} />;
   }
   if (quickAction.label === "Commit") return <GitCommitIcon className={className} />;
   if (quickAction.label === "Push") return <CloudUploadIcon className={className} />;
@@ -428,517 +345,6 @@ function GitActionSuccessButtonContent({ success }: { success: InlineGitActionSu
   );
 }
 
-interface PublishRepositoryDialogProps {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly environmentId: ScopedThreadRef["environmentId"] | null;
-  readonly threadRef: ScopedThreadRef | null;
-  readonly gitCwd: string;
-}
-
-function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
-  const t = useTranslation();
-  const openLink = useOpenLink(props.threadRef);
-  const navigate = useNavigate();
-  const sourceControlDiscovery = useEnvironmentQuery(
-    props.environmentId === null
-      ? null
-      : sourceControlEnvironment.discovery({
-          environmentId: props.environmentId,
-          input: {},
-        }),
-  );
-  const [selectedPublishProvider, setSelectedPublishProvider] =
-    useState<SourceControlProviderKind | null>(null);
-  const [publishRepositoryOverride, setPublishRepositoryOverride] = useState<string | null>(null);
-  const [publishVisibility, setPublishVisibility] =
-    useState<SourceControlRepositoryVisibility>("private");
-  const [publishRemoteName, setPublishRemoteName] = useState("origin");
-  const [publishProtocol, setPublishProtocol] = useState<SourceControlCloneProtocol>("ssh");
-  const [publishWizardStep, setPublishWizardStep] = useState(0);
-  const [publishAdvancedOpen, setPublishAdvancedOpen] = useState(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
-  const [publishResult, setPublishResult] = useState<SourceControlPublishRepositoryResult | null>(
-    null,
-  );
-  const sourceControlScope = {
-    environmentId: props.environmentId,
-    cwd: props.gitCwd,
-  };
-  const publishRepositoryAction = useSourceControlPublishRepositoryAction(sourceControlScope);
-  const publishAccountByProvider = new Map<string, string | null>();
-  for (const provider of sourceControlDiscovery.data?.sourceControlProviders ?? []) {
-    publishAccountByProvider.set(provider.kind, Option.getOrNull(provider.auth.account));
-  }
-  const publishSourceControlProviders = sourceControlDiscovery.data?.sourceControlProviders ?? [];
-  const publishReadinessByProvider = new Map(
-    PUBLISH_PROVIDER_OPTIONS.map((option) => [
-      option.value,
-      getPublishProviderReadiness({
-        provider: option.value,
-        sourceControlProviders: publishSourceControlProviders,
-      }),
-    ]),
-  );
-  const publishProviderReadiness = (provider: SourceControlProviderKind) =>
-    publishReadinessByProvider.get(provider) ?? { ready: false, hint: null };
-  const hasReadyPublishProvider = PUBLISH_PROVIDER_OPTIONS.some(
-    (option) => publishProviderReadiness(option.value).ready,
-  );
-  const sortedPublishProviderOptions = PUBLISH_PROVIDER_OPTIONS.toSorted((left, right) => {
-    const leftReady = publishProviderReadiness(left.value).ready;
-    const rightReady = publishProviderReadiness(right.value).ready;
-    if (leftReady !== rightReady) {
-      return leftReady ? -1 : 1;
-    }
-    return left.label.localeCompare(right.label);
-  });
-  const firstReadyPublishProvider = sortedPublishProviderOptions.find(
-    (option) => publishProviderReadiness(option.value).ready,
-  )?.value;
-  const publishProvider =
-    selectedPublishProvider !== null && publishProviderReadiness(selectedPublishProvider).ready
-      ? selectedPublishProvider
-      : (firstReadyPublishProvider ??
-        selectedPublishProvider ??
-        sourceControlClients.get(undefined).kind);
-  const selectedPublishProviderReadiness = publishProviderReadiness(publishProvider);
-  const publishAccount = publishAccountByProvider.get(publishProvider) ?? null;
-  const publishRepositoryPrefill = publishAccount ? `${publishAccount}/` : "";
-  const publishRepository = publishRepositoryOverride ?? publishRepositoryPrefill;
-  const currentPublishProvider = publishProviderOption(publishProvider);
-  const publishHost = currentPublishProvider.definition.publishHost(
-    Option.getOrNull(
-      sourceControlDiscovery.data?.sourceControlProviders.find(
-        (provider) => provider.kind === publishProvider,
-      )?.auth.host ?? Option.none(),
-    ),
-  );
-  const publishPathPlaceholder = currentPublishProvider.pathPlaceholder;
-  const publishProviderLabel = currentPublishProvider.label;
-  const publishWizardSteps = [t("Provider"), t("Repository"), t("Summary")] as const;
-  const publishWizardStepSummaries = [
-    publishProviderLabel,
-    publishResult?.repository.nameWithOwner ?? null,
-    null,
-  ] as const;
-
-  const publishRepositoryParts = publishRepository.trim().split("/");
-  const publishRepositoryOwner = publishRepositoryParts[0]?.trim() ?? "";
-  const publishRepositoryName = publishRepositoryParts.slice(1).join("/").trim();
-  const canSubmitPublishRepository =
-    publishRepositoryAction.isAllowed &&
-    selectedPublishProviderReadiness.ready &&
-    !publishRepositoryAction.isPending &&
-    publishRepositoryOwner.length > 0 &&
-    publishRepositoryName.length > 0;
-
-  const submitPublishRepository = () => {
-    if (!canSubmitPublishRepository) {
-      return;
-    }
-
-    setPublishError(null);
-
-    void (async () => {
-      const result = await publishRepositoryAction.run({
-        provider: publishProvider,
-        repository: publishRepository.trim(),
-        visibility: publishVisibility,
-        remoteName: publishRemoteName.trim() || "origin",
-        protocol: publishProtocol,
-      });
-
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          setPublishError(error instanceof Error ? error.message : t("An error occurred."));
-        }
-        return;
-      }
-
-      flushSync(() => {
-        setPublishResult(result.value);
-        setPublishWizardStep(2);
-      });
-    })();
-  };
-
-  const resetState = () => {
-    setPublishRemoteName("origin");
-    setPublishRepositoryOverride(null);
-    setPublishWizardStep(0);
-    setPublishAdvancedOpen(false);
-    setPublishError(null);
-    setPublishResult(null);
-  };
-
-  const handleOpenChange = (open: boolean) => {
-    props.onOpenChange(open);
-    if (!open) {
-      resetState();
-    }
-  };
-
-  const openSourceControlSettings = () => {
-    handleOpenChange(false);
-    void navigate({ to: "/settings/source-control" });
-  };
-
-  return (
-    <Dialog open={props.open} onOpenChange={handleOpenChange}>
-      <WizardPopup>
-        <WizardHeader
-          title={t("Publish repository")}
-          description={t("Pick where to host it, then point us at a repo to push to.")}
-        >
-          <WizardSteps
-            steps={publishWizardSteps}
-            currentStep={publishWizardStep}
-            summaries={publishWizardStepSummaries}
-            showSummaries
-            isStepDisabled={(index) =>
-              publishWizardStep === 2 ||
-              index >= publishWizardSteps.length - 1 ||
-              index > publishWizardStep
-            }
-            onStepChange={setPublishWizardStep}
-          />
-        </WizardHeader>
-
-        <WizardPanel>
-          <div className={cn("space-y-2", publishWizardStep !== 0 && "hidden")}>
-            <span id="publish-provider-cards-label" className="text-xs font-medium text-foreground">
-              {t("Provider")}
-            </span>
-            <RadioGroup
-              value={publishProvider}
-              onValueChange={(value) => {
-                setSelectedPublishProvider(value as SourceControlProviderKind);
-                setPublishRepositoryOverride(null);
-              }}
-              aria-labelledby="publish-provider-cards-label"
-              className="grid grid-cols-2"
-            >
-              {sortedPublishProviderOptions.map((option) => {
-                const readiness = publishProviderReadiness(option.value);
-                const isSelected = publishProvider === option.value && readiness.ready;
-                if (!readiness.ready) {
-                  return (
-                    <div
-                      key={option.value}
-                      className="relative flex cursor-not-allowed items-center gap-3 rounded-lg border border-border bg-background px-3 py-3 text-left opacity-64 dark:border-transparent dark:bg-white/[0.035]"
-                    >
-                      <option.Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                        {option.label}
-                      </span>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              variant="warning-outline"
-                              size="micro"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                openSourceControlSettings();
-                              }}
-                            >
-                              {t("Setup Required")}
-                            </Button>
-                          }
-                        />
-                        <TooltipPopup side="top" align="end">
-                          {readiness.hint ??
-                            "Open Settings -> Source control to configure this provider."}
-                        </TooltipPopup>
-                      </Tooltip>
-                    </div>
-                  );
-                }
-
-                return (
-                  <RadioPrimitive.Root
-                    key={option.value}
-                    value={option.value}
-                    className={cn(
-                      "relative flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-left outline-none transition-[background-color,border-color,box-shadow]",
-                      "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-                      isSelected
-                        ? "border-primary bg-background shadow-sm ring-2 ring-inset ring-primary/35 dark:border-transparent dark:bg-primary/10 dark:shadow-none dark:ring-1 dark:ring-primary/30"
-                        : "border-border bg-background hover:border-foreground/20 hover:bg-muted/50 dark:border-transparent dark:bg-white/[0.035] dark:hover:bg-accent",
-                    )}
-                  >
-                    <option.Icon className="size-5 shrink-0" aria-hidden />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                      {option.label}
-                    </span>
-                  </RadioPrimitive.Root>
-                );
-              })}
-            </RadioGroup>
-          </div>
-
-          <div className={cn("space-y-5", publishWizardStep !== 1 && "hidden")}>
-            <div className="space-y-2">
-              <label
-                htmlFor="publish-repository-path"
-                className="text-xs font-medium text-foreground"
-              >
-                {t("Repository")}
-              </label>
-              <div className="flex items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-ring">
-                <span className="flex shrink-0 items-center gap-1.5 border-r border-input bg-muted/50 px-2.5 font-mono text-xs text-muted-foreground">
-                  <currentPublishProvider.Icon className="size-3.5" />
-                  {publishHost}/
-                </span>
-                <input
-                  id="publish-repository-path"
-                  name="publish-repository-path"
-                  value={publishRepository}
-                  onChange={(event) => {
-                    setPublishRepositoryOverride(event.target.value);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      submitPublishRepository();
-                    }
-                  }}
-                  placeholder={publishPathPlaceholder}
-                  disabled={publishRepositoryAction.isPending}
-                  className="w-full bg-transparent px-3 py-2 font-mono text-sm placeholder:text-muted-foreground/60 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <span
-                id="publish-visibility-cards-label"
-                className="text-xs font-medium text-foreground"
-              >
-                {t("Visibility")}
-              </span>
-              <RadioGroup
-                value={publishVisibility}
-                onValueChange={(value) =>
-                  setPublishVisibility(value as SourceControlRepositoryVisibility)
-                }
-                aria-labelledby="publish-visibility-cards-label"
-                disabled={publishRepositoryAction.isPending}
-                className="grid grid-cols-2"
-              >
-                {[
-                  {
-                    value: "private" as const,
-                    label: t("Private"),
-                    description: t("Only invited people"),
-                    Icon: LockIcon,
-                  },
-                  {
-                    value: "public" as const,
-                    label: t("Public"),
-                    description: t("Anyone on the web"),
-                    Icon: GlobeIcon,
-                  },
-                ].map((option) => {
-                  const isSelected = publishVisibility === option.value;
-                  return (
-                    <RadioPrimitive.Root
-                      key={option.value}
-                      value={option.value}
-                      className={cn(
-                        "relative flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left outline-none transition-[background-color,border-color,box-shadow]",
-                        "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-                        isSelected
-                          ? "border-primary bg-background shadow-sm ring-2 ring-inset ring-primary/35 dark:border-transparent dark:bg-primary/10 dark:shadow-none dark:ring-1 dark:ring-primary/30"
-                          : "border-border bg-background hover:border-foreground/20 hover:bg-muted/50 dark:border-transparent dark:bg-white/[0.035] dark:hover:bg-accent",
-                      )}
-                    >
-                      <option.Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-foreground">
-                          {option.label}
-                        </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {option.description}
-                        </span>
-                      </span>
-                    </RadioPrimitive.Root>
-                  );
-                })}
-              </RadioGroup>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => setPublishAdvancedOpen((prev) => !prev)}
-                aria-expanded={publishAdvancedOpen}
-                className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <ChevronDownIcon
-                  className={cn(
-                    "size-3.5 transition-transform",
-                    publishAdvancedOpen ? "" : "-rotate-90",
-                  )}
-                />
-                {t("Advanced")}
-              </button>
-              {publishAdvancedOpen ? (
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <label className="space-y-1.5" htmlFor="publish-remote-name">
-                    <span className="text-xs font-medium text-foreground">{t("Remote")}</span>
-                    <Input
-                      id="publish-remote-name"
-                      value={publishRemoteName}
-                      onChange={(event) => setPublishRemoteName(event.target.value)}
-                      placeholder={t("origin")}
-                      disabled={publishRepositoryAction.isPending}
-                    />
-                  </label>
-                  <div className="space-y-1.5">
-                    <span
-                      id="publish-protocol-label"
-                      className="text-xs font-medium text-foreground"
-                    >
-                      {t("Protocol")}
-                    </span>
-                    <ToggleGroup
-                      value={[publishProtocol]}
-                      onValueChange={(next) => {
-                        const protocol = next[0];
-                        if (protocol === "ssh" || protocol === "https") {
-                          setPublishProtocol(protocol);
-                        }
-                      }}
-                      aria-labelledby="publish-protocol-label"
-                      disabled={publishRepositoryAction.isPending}
-                    >
-                      <Toggle value="ssh">{t("SSH")}</Toggle>
-                      <Toggle value="https">{t("HTTPS")}</Toggle>
-                    </ToggleGroup>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            {publishRepositoryAction.isPending ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-xs text-muted-foreground dark:border-transparent dark:bg-white/[0.035]"
-              >
-                <Spinner size="sm" aria-hidden />
-                {t("Publishing repository to")} {publishProviderLabel}...
-              </div>
-            ) : null}
-            {publishError && !publishRepositoryAction.isPending ? (
-              <div
-                role="alert"
-                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-              >
-                <p className="font-medium">{t("Publish failed")}</p>
-                <p className="mt-0.5 text-destructive/90">{publishError}</p>
-              </div>
-            ) : null}
-          </div>
-
-          <div className={cn("space-y-4", publishWizardStep !== 2 && "hidden")}>
-            {publishResult ? (
-              <>
-                <div className="flex flex-col items-center gap-2 py-1 text-center">
-                  <span className="grid size-8 place-items-center rounded-full bg-success/15 text-success">
-                    <CheckIcon className="size-4" aria-hidden />
-                  </span>
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {publishResult.status === "pushed"
-                      ? t("Repository published")
-                      : t("Repository created")}
-                  </h3>
-                  <p className="max-w-xs text-pretty text-xs text-muted-foreground">
-                    {publishResult.status === "pushed"
-                      ? t("{{branch}} is now live on {{publishProviderLabel}}.", {
-                          branch: publishResult.branch,
-                          publishProviderLabel: publishProviderLabel,
-                        })
-                      : t(
-                          'Remote "{{remoteName}}" is set up. Make a commit and push it to share your code.',
-                          { remoteName: publishResult.remoteName },
-                        )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 rounded-lg border border-input bg-muted/40 px-3 py-2 dark:border-transparent dark:bg-white/[0.035]">
-                  <currentPublishProvider.Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
-                    {publishResult.repository.nameWithOwner}
-                  </span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    void openLink(publishResult.repository.url).catch(() => undefined);
-                  }}
-                >
-                  {t("Open on")} {publishProviderLabel}
-                </Button>
-              </>
-            ) : (
-              <div className="rounded-md border border-input bg-background px-3 py-2 text-xs text-muted-foreground dark:border-transparent dark:bg-white/[0.035]">
-                {t("Publish result unavailable.")}
-              </div>
-            )}
-          </div>
-        </WizardPanel>
-
-        <WizardFooter>
-          {publishWizardStep === 2 ? (
-            <Button onClick={() => handleOpenChange(false)}>{t("Done")}</Button>
-          ) : (
-            <>
-              <Button
-                variant="outline"
-                disabled={publishRepositoryAction.isPending}
-                onClick={() => {
-                  if (publishWizardStep === 0) {
-                    handleOpenChange(false);
-                    return;
-                  }
-                  setPublishWizardStep((step) => Math.max(0, step - 1));
-                }}
-              >
-                {publishWizardStep === 0 ? t("Cancel") : t("Back")}
-              </Button>
-              {publishWizardStep < 1 ? (
-                <Button
-                  disabled={!hasReadyPublishProvider || !selectedPublishProviderReadiness.ready}
-                  onClick={() => setPublishWizardStep((step) => Math.min(1, step + 1))}
-                >
-                  {t("Next")}
-                </Button>
-              ) : (
-                <Button disabled={!canSubmitPublishRepository} onClick={submitPublishRepository}>
-                  {publishRepositoryAction.isPending ? (
-                    <>
-                      <Spinner size="sm" aria-hidden />
-                      {t("Publishing...")}
-                    </>
-                  ) : (
-                    t("Publish")
-                  )}
-                </Button>
-              )}
-            </>
-          )}
-        </WizardFooter>
-      </WizardPopup>
-    </Dialog>
-  );
-}
-
 export default function GitActionsControl({
   gitCwd,
   activeThreadRef,
@@ -987,7 +393,6 @@ export default function GitActionsControl({
   const [dialogCommitMessage, setDialogCommitMessage] = useState("");
   const [excludedFiles, setExcludedFiles] = useState<ReadonlySet<string>>(new Set());
   const [isEditingFiles, setIsEditingFiles] = useState(false);
-  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [inlineSuccess, setInlineSuccess] = useState<InlineGitActionSuccess | null>(null);
   const [pendingDefaultBranchAction, setPendingDefaultBranchAction] =
     useState<PendingDefaultBranchAction | null>(null);
@@ -1059,9 +464,6 @@ export default function GitActionsControl({
     reportFailure: false,
   });
   const { data: gitStatus, error: gitStatusError } = gitStatusQuery;
-  const sourceControlPresentation = getSourceControlPresentation(gitStatus?.sourceControlProvider);
-  const changeRequestTerminology = sourceControlPresentation.terminology;
-  const SourceControlIcon = sourceControlPresentation.Icon;
   const isRepo = gitStatus?.isRepo ?? true;
   const hasPrimaryRemote = gitStatus?.hasPrimaryRemote ?? false;
   const gitStatusForActions = gitStatus;
@@ -1142,7 +544,6 @@ export default function GitActionsControl({
         action: pendingDefaultBranchAction.action,
         branchName: pendingDefaultBranchAction.branchName,
         includesCommit: pendingDefaultBranchAction.includesCommit,
-        terminology: changeRequestTerminology,
       })
     : null;
   // Keep enabled until live status loads; the server rejects stale requests.
@@ -1181,8 +582,7 @@ export default function GitActionsControl({
     const actionStatus = statusOverride ?? gitStatusForActions;
     const actionBranch = actionStatus?.refName ?? null;
     const actionIsDefaultBranch = featureBranch ? false : isDefaultRef;
-    const actionCanCommit =
-      action === "commit" || action === "commit_push" || action === "commit_push_pr";
+    const actionCanCommit = action === "commit" || action === "commit_push";
     const includesCommit =
       actionCanCommit &&
       (action === "commit" || !!actionStatus?.hasWorkingTreeChanges || featureBranch);
@@ -1191,12 +591,7 @@ export default function GitActionsControl({
       requiresDefaultBranchConfirmation(action, actionIsDefaultBranch) &&
       actionBranch
     ) {
-      if (
-        action !== "push" &&
-        action !== "create_pr" &&
-        action !== "commit_push" &&
-        action !== "commit_push_pr"
-      ) {
+      if (action !== "push" && action !== "commit_push") {
         return;
       }
       setPendingDefaultBranchAction({
@@ -1246,12 +641,9 @@ export default function GitActionsControl({
 
     const actionResult = result.value;
     syncThreadBranchAfterGitAction(actionResult);
-    const createdPullRequest = actionResult.pr.status === "created";
     setInlineSuccess({
-      title: createdPullRequest
-        ? t("Created {{shortLabel}}", { shortLabel: changeRequestTerminology.shortLabel })
-        : actionResult.toast.title,
-      description: createdPullRequest ? null : (actionResult.toast.description ?? null),
+      title: actionResult.toast.title,
+      description: actionResult.toast.description ?? null,
       scopeKey: successScopeKey,
       expiresAtMs: inlineSuccessExpiresAt(),
     });
@@ -1292,10 +684,6 @@ export default function GitActionsControl({
   };
 
   const runQuickAction = () => {
-    if (quickAction.kind === "open_publish") {
-      setIsPublishDialogOpen(true);
-      return;
-    }
     if (quickAction.kind === "run_pull") {
       void (async () => {
         setInlineSuccess(null);
@@ -1356,10 +744,6 @@ export default function GitActionsControl({
       void runGitActionWithToast({ action: "push" });
       return;
     }
-    if (item.dialogAction === "create_pr") {
-      void runGitActionWithToast({ action: "create_pr" });
-      return;
-    }
     setExcludedFiles(new Set());
     setIsEditingFiles(false);
     setIsCommitDialogOpen(true);
@@ -1406,9 +790,6 @@ export default function GitActionsControl({
     })();
   };
 
-  const canPublishRepository =
-    canWriteSourceControl && isRepo && gitStatusForActions !== null && !hasPrimaryRemote;
-
   const initializeGit = () => {
     void (async () => {
       const result = await initAction.run();
@@ -1444,7 +825,7 @@ export default function GitActionsControl({
                 render={<span className="block w-full cursor-not-allowed" />}
               >
                 <MenuItem className="w-full" disabled>
-                  <GitActionItemIcon icon={item.icon} SourceControlIcon={SourceControlIcon} />
+                  <GitActionItemIcon icon={item.icon} />
                   <MenuItemLabel>{item.label}</MenuItemLabel>
                 </MenuItem>
               </PopoverTrigger>
@@ -1463,28 +844,15 @@ export default function GitActionsControl({
               openDialogForMenuItem(item);
             }}
           >
-            <GitActionItemIcon icon={item.icon} SourceControlIcon={SourceControlIcon} />
+            <GitActionItemIcon icon={item.icon} />
             <MenuItemLabel>{item.label}</MenuItemLabel>
           </MenuItem>
         );
       })}
-      {canPublishRepository ? (
-        <MenuItem
-          disabled={isGitActionRunning}
-          onClick={() => {
-            setIsPublishDialogOpen(true);
-          }}
-        >
-          <CloudUploadIcon />
-          <MenuItemLabel>{t("Publish repository...")}</MenuItemLabel>
-        </MenuItem>
-      ) : null}
+
       {gitStatusForActions?.refName === null && (
         <p className="px-2 py-1.5 text-xs text-warning">
-          {t(
-            "Detached HEAD: create and check out a branch to enable push and {{singular}} actions.",
-            { singular: changeRequestTerminology.singular },
-          )}
+          {t("Detached HEAD: create and check out a branch to enable push actions.")}
         </p>
       )}
       {gitStatusForActions &&
@@ -1568,7 +936,6 @@ export default function GitActionsControl({
               >
                 <GitQuickActionIcon
                   quickAction={quickAction}
-                  SourceControlIcon={SourceControlIcon}
                   className={THREAD_DETAILS_PANEL_ICON_CLASS}
                 />
                 <span
@@ -1595,7 +962,6 @@ export default function GitActionsControl({
             >
               <GitQuickActionIcon
                 quickAction={quickAction}
-                SourceControlIcon={SourceControlIcon}
                 className={THREAD_DETAILS_PANEL_ICON_CLASS}
               />
               <span
@@ -1860,17 +1226,6 @@ export default function GitActionsControl({
           </DialogFooter>
         </DialogPopup>
       </Dialog>
-
-      {/* Its discovery query should stop when the Git actions row that opens it is hidden. */}
-      {showActions ? (
-        <PublishRepositoryDialog
-          open={isPublishDialogOpen}
-          onOpenChange={setIsPublishDialogOpen}
-          environmentId={activeEnvironmentId}
-          threadRef={activeThreadRef}
-          gitCwd={gitCwd}
-        />
-      ) : null}
 
       <Dialog
         open={pendingDefaultBranchAction !== null}

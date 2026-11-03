@@ -1,3 +1,4 @@
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useTranslation } from "../../i18n";
 
 import { Button } from "../../components/ui/Button";
@@ -23,7 +24,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { cn } from "../../lib/cn";
 import { SelectableMarkdownText } from "../../native/SelectableMarkdownText";
-import { useOpenPullRequest } from "../../native/useOpenPullRequest";
+
 import { useMarkdownPreviewStyles } from "../files/FileMarkdownPreview";
 import {
   isPendingUserInputOptionSelected,
@@ -63,7 +64,7 @@ const EXPANDED_CARD_IS_OVERLAY = Platform.OS === "ios";
 
 function QuestionText(props: { readonly markdown: string }) {
   const styles = useMarkdownPreviewStyles();
-  const openLink = useOpenPullRequest();
+  const openLink = (url: string) => tryOpenExternalUrl(url, "markdown-link");
   return (
     <SelectableMarkdownText
       markdown={props.markdown}

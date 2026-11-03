@@ -41,7 +41,6 @@ import {
   type ScopedThreadRef,
   type ThreadContextRecord,
   type ThreadId,
-  type ThreadLinkedPullRequest,
   type RunId,
   type WorktreeSetupSnapshot,
 } from "@t3tools/contracts";
@@ -155,13 +154,6 @@ export function shouldRenderPreviewMiniPlayer(
   );
 }
 
-export function shouldOpenProactivePullRequest(
-  previousTargetKey: string | null | undefined,
-  targetKey: string | null,
-): boolean {
-  return targetKey !== null && targetKey !== previousTargetKey;
-}
-
 interface ProactivePanelObservation {
   threadKey: string;
   runningTurnId: RunId | null | undefined;
@@ -185,23 +177,6 @@ export function observeProactivePanelUserChoice(
     userActionRevision:
       !sameThread || newTurn ? input.userActionRevision : previous.userActionRevision,
   };
-}
-
-export function shouldRetargetThreadPullRequestPanel(
-  previous: ThreadLinkedPullRequest | null,
-  current: ThreadLinkedPullRequest | null,
-  surface: RightPanelSurface | null,
-): boolean {
-  if (previous === null || current === null || surface?.kind !== "pull-request") return false;
-  const previousRepository = previous.repository.toLowerCase();
-  return (
-    (previous.projectId !== current.projectId ||
-      previousRepository !== current.repository.toLowerCase() ||
-      previous.number !== current.number) &&
-    surface.projectId === previous.projectId &&
-    surface.repository.toLowerCase() === previousRepository &&
-    surface.number === previous.number
-  );
 }
 
 export function shouldOpenProactiveTurnDiff(input: {

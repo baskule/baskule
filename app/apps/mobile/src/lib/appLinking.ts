@@ -15,7 +15,7 @@ export function shouldHandleAppLink(value: string, cloudConfigured = false): boo
     const path = `${url.hostname}/${url.pathname}`.replace(/\/+/g, "/");
     if (path.includes("expo-development-client") || path.includes("expo-sharing")) return false;
     if (/^\/*$/.test(path)) return false;
-    if (!BASKULE_FLAGS.pullRequests && /(^|\/)pull-requests(\/|$)/.test(path)) return false;
+    if (/(^|\/)pull-requests(\/|$)/.test(path)) return false;
     if (!BASKULE_FLAGS.terminal && /^threads\/[^/]+\/[^/]+\/terminal(?:\/|$)/.test(path))
       return false;
     if (

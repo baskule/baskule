@@ -6,8 +6,6 @@
  * bring an upstream feature back without touching the call sites.
  */
 export const BASKULE_FLAGS = {
-  /** Pull requests tab, PR sheets and PR links. */
-  pullRequests: false,
   /** Git branch/commit/worktree controls and diffs/review. */
   sourceControl: false,
   /** Thread terminal. */
@@ -23,8 +21,6 @@ export const BASKULE_FLAGS = {
 } as const;
 
 export function isMobileRouteEnabled(name: string): boolean {
-  if (name.startsWith("PullRequest") || name === "ThreadPullRequests")
-    return BASKULE_FLAGS.pullRequests;
   if (name.startsWith("Git") || name.startsWith("ThreadReview")) return BASKULE_FLAGS.sourceControl;
   if (name === "ThreadTerminal") return BASKULE_FLAGS.terminal;
   if (name === "ThreadDevicePreview") return BASKULE_FLAGS.devicePreviews;

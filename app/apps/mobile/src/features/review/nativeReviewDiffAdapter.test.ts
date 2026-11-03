@@ -1,17 +1,12 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { diffWordsWithSpace } from "diff";
-import { AsyncResult } from "effect/reactivity";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { EnvironmentId, ProjectId, type PullRequestDiffResult } from "@t3tools/contracts";
 
-import { combinePullRequestDiffPages } from "../pull-requests/pullRequestDiffPages";
-import { createPullRequestDiffHighlightFiles } from "../pull-requests/pullRequestDiffHighlightFiles";
 import {
   buildNativeReviewDiffData,
   getCachedNativeReviewDiffData,
 } from "./nativeReviewDiffAdapter";
 import type { ReviewInlineComment } from "./reviewCommentSelection";
-import { buildReviewParsedDiff, type ReviewParsedDiff } from "./reviewModel";
+import { buildReviewParsedDiff } from "./reviewModel";
 
 vi.mock("diff", { spy: true });
 
@@ -83,97 +78,6 @@ describe("buildNativeReviewDiffData languages", () => {
 });
 
 describe("getCachedNativeReviewDiffData", () => {
-  it("keeps compact identities aligned through page append, filtering, comments, and source lookup", async () => {
-    const scope = JSON.stringify({ remote: 'long-target\\"'.repeat(100) });
-    const cache = new WeakMap<PullRequestDiffResult, ReviewParsedDiff>();
-    const firstPage = {
-      cursor: null,
-      result: {
-        patch: filesPatch(["example.ts", "hidden.test.ts"]),
-        truncated: false,
-        nextCursor: "next",
-      },
-    };
-    const terminology = sourceControlClients.get("github").changeRequest;
-    const first = combinePullRequestDiffPages([firstPage], cache, scope, terminology);
-    if (first.kind !== "files") throw new Error("Expected parsed first page");
-    const before = getCachedNativeReviewDiffData({ parsedDiff: first });
-    const selectedRowId = before.rows.find((row) => row.kind === "line")!.id;
-    const combined = combinePullRequestDiffPages(
-      [
-        firstPage,
-        {
-          cursor: "next",
-          result: { patch: filesPatch(["last.ts"]), truncated: false, nextCursor: null },
-        },
-      ],
-      cache,
-      scope,
-      terminology,
-    );
-    if (combined.kind !== "files") throw new Error("Expected parsed appended pages");
-    expect(combined.files[0]).toBe(first.files[0]);
-    const filtered = {
-      ...combined,
-      files: combined.files.filter((file) => !file.path.includes(".test.")),
-    };
-    const input = { parsedDiff: filtered, comments: [makeComment("Feedback")] };
-    const data = getCachedNativeReviewDiffData(input);
-    expect(getCachedNativeReviewDiffData(input)).toBe(data);
-    expect(new Set(data.rows.map((row) => row.id)).size).toBe(data.rows.length);
-    expect(data.rows.find((row) => row.id === selectedRowId)).toBe(
-      before.rows.find((row) => row.id === selectedRowId),
-    );
-    // IDs used by native initialFileId/collapse and parsed source lookup share one namespace.
-    expect(data.files.map((file) => file.id)).toEqual(filtered.files.map((file) => file.id));
-    for (const file of filtered.files) {
-      const header = data.rows.find((row) => row.kind === "file" && row.fileId === file.id)!;
-      expect(header.filePath).toBe(file.path);
-      const lines = file.rows.filter((row) => row.kind === "line");
-      for (const [lineIndex, line] of lines.entries()) {
-        const nativeId = data.rowIdByCommentLineId.get(line.id)!;
-        const row = data.rows.find((row) => row.id === nativeId)!;
-        expect(row.fileId).toBe(file.id);
-        expect(row.content).toBe(line.content);
-        expect(nativeId.length).toBeLessThan(64);
-        const target = data.commentTargetsByRowId.get(nativeId)!;
-        expect(target.filePath).toBe(file.path);
-        expect(target.lines[lineIndex]).toBe(line);
-        expect(target.lineIndex).toBe(lineIndex);
-        expect(row.wordDiffRanges?.length).toBeGreaterThan(0);
-        expect(
-          row.wordDiffRanges?.map((range) => row.content!.slice(range.start, range.end)),
-        ).toEqual([line.change === "delete" ? "before" : "after"]);
-      }
-    }
-    const commentIndex = data.rows.findIndex((row) => row.id === "comment-1");
-    expect(data.rows[commentIndex - 1]!.id).toBe(selectedRowId);
-    expect(data.rows[commentIndex]!.fileId).toBe(first.files[0]!.id);
-
-    const target = {
-      environmentId: EnvironmentId.make("remote"),
-      input: {
-        projectId: ProjectId.make("project"),
-        repository: "org/repo",
-        number: 23,
-      },
-    };
-    const contents = { oldContents: "old source", newContents: "new source" };
-    const fetch = vi.fn(async () => AsyncResult.success(contents));
-    const highlightFiles = createPullRequestDiffHighlightFiles(
-      { target },
-      filtered,
-      data.files,
-      fetch,
-    );
-    expect(await highlightFiles[1]!.loadContents!()).toBe(contents);
-    expect(fetch).toHaveBeenCalledExactlyOnceWith({
-      ...target,
-      input: { ...target.input, changeType: "change", oldPath: "last.ts", newPath: "last.ts" },
-    });
-    expect(JSON.stringify(data.rows).length).toBeLessThan(5000);
-  });
-
   it("keeps Pierre's matching lines in the GitHub credential pinning excerpt", () => {
     const parsed = buildReviewParsedDiff(
       [
