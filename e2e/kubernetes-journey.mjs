@@ -334,7 +334,8 @@ try {
     client.close(); await client.closed; client = undefined;
     await person.json("DELETE", `/api/baskule/spaces/${space}`);
     await expect.poll(() => objects("get", "pvc").items.some(pvc => pvc.metadata.uid === workspace.metadata.uid), { timeout: 180_000 }).toBe(false);
-    pass("deleting a space removes its actual workspace PVC");
+    await expect.poll(() => objects("get", "sandboxes").items.some(sandbox => sandbox.metadata.name === sandboxName), { timeout: 180_000 }).toBe(false);
+    pass("deleting a space removes its Sandbox and actual workspace PVC");
     writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), selection, spacePvcDeleted: true, computerPodReplaced: selection === "full", crossNode: selection === "full" && process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
   }
 } finally {
