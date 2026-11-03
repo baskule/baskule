@@ -11,11 +11,9 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"; docker logout ghcr.io >/dev/null 2>&1 || true; helm registry logout ghcr.io >/dev/null 2>&1 || true' EXIT
 # Preflight image and chart tags before any publication.
 cp "$artifacts/images.txt" "$work/refs"
-for chart in "$artifacts"/baskule-*.tgz; do
-  [[ -f $chart ]] || continue
-  version=${chart##*/baskule-}; version=${version%.tgz}
-  printf 'ghcr.io/baskule/charts/baskule:%s chart\n' "${version//+/_}" >> "$work/refs"
-done
+chart=${charts[0]}
+version=${chart##*/baskule-}; version=${version%.tgz}
+printf 'ghcr.io/baskule/charts/baskule:%s chart\n' "${version//+/_}" >> "$work/refs"
 # Authentication and transport errors fail closed.
 while read -r image _; do
   repository=${image%:*}
@@ -43,21 +41,5 @@ while read -r image _; do
 done < "$artifacts/images.txt"
 printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 while read -r image _; do docker push "$image"; done < "$artifacts/images.txt"
-for chart in "$artifacts"/baskule-*.tgz; do
-  [[ -f $chart ]] || continue
-  printf '%s' "$GH_TOKEN" | helm registry login ghcr.io -u "$GH_ACTOR" --password-stdin
-  helm push "$chart" oci://ghcr.io/baskule/charts
-done
-# New GHCR packages can default to private. Check public delivery without the
-# publishing identity, including the chart; release operators must set visibility.
-while read -r image _; do
-  repository=${image%:*}; repository=${repository#ghcr.io/}; tag=${image##*:}
-  curl --connect-timeout 10 --max-time 30 -fsS --get \
-    --data-urlencode service=ghcr.io --data-urlencode "scope=repository:$repository:pull" \
-    https://ghcr.io/token > "$work/anonymous.json"
-  token=$(jq -er '.token // .access_token' "$work/anonymous.json")
-  curl --connect-timeout 10 --max-time 30 -fsS --head \
-    -H "Authorization: Bearer $token" \
-    -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
-    "https://ghcr.io/v2/$repository/manifests/$tag" > /dev/null
-done < "$work/refs"
+printf '%s' "$GH_TOKEN" | helm registry login ghcr.io -u "$GH_ACTOR" --password-stdin
+helm push "$chart" oci://ghcr.io/baskule/charts

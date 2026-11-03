@@ -15,6 +15,13 @@ if [[ ${1:-} == lint ]]; then
       echo "Expected chart schema to reject $invalid" >&2; exit 1
     fi
   done
+  for invalid_url in http://0.0.0.0 http://[::] http://LOCALHOST; do
+    for mode in ingress gateway; do
+      if helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false --set exposure.gateway.name=edge --set exposure.mode="$mode" --set-string publicUrl="$invalid_url" >/dev/null 2>&1; then
+        echo "Expected chart schema to reject $invalid_url for $mode" >&2; exit 1
+      fi
+    done
+  done
   exit
 fi
 export BASKULE_K8S_EVIDENCE="$root/.run/evidence/kubernetes/$(date -u +%Y%m%dT%H%M%SZ)"

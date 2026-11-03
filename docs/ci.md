@@ -82,7 +82,14 @@ Use a run's job logs and artifacts to inspect failures, checksums, package statu
 ## First image release
 
 The owner must enable Actions package publishing and allow `GITHUB_TOKEN` to write packages for this repository.
-After the first publishing run, make the three host-image GHCR packages public and verify anonymous pulls. The workflow
-links their source to this repository. Check the draft's Compose assets and image tags before publishing the draft.
+After the first publishing run, make these GHCR packages public once in each
+package's settings: `baskule-celld`, `baskule-computerd`, `baskule-openshell-gateway`,
+`baskule-openshell-kubernetes`, `baskule-computer`, `baskule-openshell-supervisor`,
+`baskule-openshell-sandbox`, and the OCI chart `charts/baskule`. The workflow links
+their source to this repository. The separate `public-packages` job checks anonymous
+pulls and can be rerun after changing visibility; it never republishes artifacts.
+A visibility failure does not block draft creation. Do not publish the draft until
+this job passes. To check downloaded backend artifacts manually, run
+`bash scripts/ci/check-public-images.sh artifacts/backend`. Check the draft's Compose assets and image tags before publishing the draft.
 Version tags identify one release; do not replace a published tag with different image contents. A verification-only
 run checks builds and local behavior without proving GHCR visibility or anonymous downloads.

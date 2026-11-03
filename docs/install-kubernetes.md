@@ -67,7 +67,8 @@ helm install baskule oci://ghcr.io/baskule/charts/baskule --version X \
 ```
 
 Install your Gateway/Ingress controller, DNS record, and TLS certificate separately.
-Use Gateway API or the managed GKE Ingress example below for production.
+The GKE Ingress and Gateway recipes below are evaluation-only until Baskule has
+verified per-client client-IP handling. Do not use these recipes for production.
 [ingress-nginx retired in March 2026](https://kubernetes.io/blog/2025/11/11/ingress-nginx-retirement/)
 and is not recommended for new installations. For existing installations, the chart's
 nginx annotations allow 1 GiB bodies, disable request/response buffering, and set
@@ -79,6 +80,7 @@ To use an existing Gateway instead, set `exposure.mode: gateway` and
 an HTTPRoute with one-hour request/backend timeouts. The Gateway listener must permit
 routes from the Baskule namespace and support WebSockets and unbuffered responses.
 Gateway API CRDs, the controller, certificates, and DNS remain operator-owned.
+The Gateway example is unverified on GKE, including its client-IP behavior.
 
 ## GKE Standard
 
@@ -94,7 +96,7 @@ A measured cold first computer start took 71.7 seconds against the 180-second
 readiness timeout. TLS and snapshot restore remain unverified.
 
 Prerequisites: a Google Cloud project with billing enabled, an authenticated Google
-Cloud CLI, `gke-gcloud-auth-plugin`, kubectl, and Helm 3.8 or newer (OCI support).
+Cloud CLI, `gke-gcloud-auth-plugin`, kubectl, and Helm 3.14 or newer (`--reset-then-reuse-values` support).
 Use your own project explicitly; these commands do not change gcloud configuration.
 Enable the Kubernetes Engine API in that project:
 
@@ -109,6 +111,12 @@ gcloud --project="$GKE_PROJECT" container clusters create baskule \
 gcloud --project="$GKE_PROJECT" container clusters get-credentials baskule --zone europe-west1-b
 ```
 
+The ephemeral verification command additionally used Spot VMs, a disposable node
+service account with node and registry-reader roles, 40-GB `pd-standard` boot disks,
+and disabled workload/system logging, monitoring and managed Prometheus. The command
+above uses on-demand nodes, the project default node identity, and GKE's disk and
+observability defaults. It needs an identity with the required node permissions.
+
 Install Agent Sandbox, then run either Helm install command above. Dataplane V2 provides
 NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass.
 Choose non-overlapping RFC 1918 Pod and Service ranges before creating the cluster.
@@ -119,7 +127,7 @@ ranges on any provider. Supporting such ranges requires operator egress denial;
 configurable cluster-CIDR exclusions in the supervisor remain an open item.
 For a private cluster, provide outbound image-registry and model-provider access.
 
-For Google's managed Ingress, create a `BackendConfig` in the Baskule namespace:
+For an evaluation using Google's managed Ingress, create a `BackendConfig` in the Baskule namespace:
 
 ```yaml
 apiVersion: cloud.google.com/v1
@@ -157,10 +165,14 @@ describes backend health checks, timeouts and optional reserved addresses.
 
 Client-IP limit: Google's load balancer [appends the client and forwarding-rule IPs
 to X-Forwarded-For](https://docs.cloud.google.com/load-balancing/docs/https#x-forwarded-for_header).
-Baskule currently takes the last entry, so GKE Ingress shares a sign-in rate-limit
-bucket across clients behind that forwarding rule. Forged earlier entries do not
-bypass it, but one client's failures can throttle others. Configure operator-owned
-edge rate limits before production; per-client GKE header handling is not claimed.
+Baskule currently takes the last entry, which is the load balancer IP. Better Auth
+counts every request, including successful sign-ins: the entire installation shares
+**10 `/sign-in/email` requests per 60 seconds** and **200 requests per minute across
+auth routes** behind that forwarding rule. The 11th sign-in within a minute returns
+429 for everyone. Forged earlier entries do not bypass this bucket. Additional edge
+rate limits do not fix the shared application bucket. **GKE Ingress and Gateway are
+evaluation-only until per-client client-IP handling is implemented and verified.**
+Gateway client-IP behavior has not been tested on GKE.
 
 Target Standard, with a native containerd runtime. Autopilot is not an accepted target
 for this release because the required nested seccomp/Landlock behavior has not been
@@ -274,8 +286,14 @@ Back up first, then upgrade the chart with your saved values:
 
 ```sh
 helm upgrade baskule oci://ghcr.io/baskule/charts/baskule --version X \
-  --namespace baskule --reuse-values --values values.yaml --wait --timeout 10m
+  --namespace baskule --reset-then-reuse-values --values values.yaml --wait --timeout 10m
 ```
+
+`--reset-then-reuse-values` merges your saved overrides onto the new chart defaults,
+so a default image tag advances with the chart. An explicitly pinned
+`global.image.tag` remains pinned; remove it or update it deliberately. Plain
+`--reuse-values` retains the previous release's default tag and must not be used for
+a version upgrade. Keep evaluation `rustfs.enabled=true` in saved values.
 
 The hook deploys the Worker and asks every configured celld node to reload it. celld
 pods update one at a time and have 50 seconds to hand off cells. App deployment is not
@@ -283,7 +301,7 @@ an atomic rollback of bucket state: `helm rollback` alone cannot undo a deployed
 
 ```sh
 helm upgrade baskule oci://ghcr.io/baskule/charts/baskule --version X \
-  --namespace baskule --reuse-values --values values.yaml --set replicas=3 --wait --timeout 10m
+  --namespace baskule --reset-then-reuse-values --values values.yaml --set replicas=3 --wait --timeout 10m
 ```
 
 Use Helm for scaling so the reload target list tracks the replica count. Persist that
@@ -362,8 +380,11 @@ Public checks exercise product WebSocket chat and a separate HTTP/SSE transport
 probe that reuses the fake LLM behind the same Ingress. kind's default local
 PVCs stay on one node. The cloud check additionally forces a computer onto another
 node with the same block volume. The upgrade step re-applies the same chart/images
-and asserts generated token stability and hook success. It does not prove an upgrade
-from a previous release, schema migration, or snapshot restoration.
+and asserts generated token stability and hook success. A separate two-version
+rendering fixture packages the real defaults/image helper at 1.0.0 and 2.0.0, then
+verifies the documented merge selects tag 2.0.0 without launching those fictitious
+images. This does not prove application behavior across releases, schema migration,
+or snapshot restoration.
 
 Only with the installation owner's authorization, authenticate gcloud and set
 `BASKULE_GKE_PROJECT` to the authorized active project. Run
@@ -381,7 +402,12 @@ and remaining owned disks or load-balancer resources. Resources carry
 Other GKE-managed resources carry the unique run name in their names or descriptions.
 The cleanup audit also detects disks and load-balancer resources added since the run's
 baseline. Run `e2e/kubernetes-ephemeral.sh sweep` after an interrupted host session,
-then `audit`. Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
+or a lifetime/cleanup timeout, then `audit`. Kubernetes cleanup is bounded to eight
+minutes, each API request is bounded, and cluster deletion is attempted even if that
+phase times out. Teardown ignores repeated interrupts and gets up to 30 additional
+minutes before a hard kill. A global sweep refuses while a live worker holds the
+project lock; `sweep --force` bypasses that guard only for deliberate recovery.
+Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
 To repeat only public Ingress and Helm-upgrade verification after the core journey
 passes on the same chart and images, set `BASKULE_K8S_JOURNEY=ingress` for the run.
 Use `BASKULE_K8S_JOURNEY=failover` after reschedule/isolation checks pass on the
@@ -393,6 +419,14 @@ The GKE runner requires the SDK's `docker-credential-gcloud` helper and uses a p
 shared Docker/Helm helper configuration so long runs can renew registry credentials.
 
 ## Limits
+
+The celld Worker port 47091 currently accepts ingress from all sources allowed by
+the cluster network. Only the peer port has source restrictions. Restricting Worker
+ingress to trusted controller/load-balancer sources and computerd remains open:
+source identities and health-check ranges vary between controllers, and GKE can
+rewrite source addresses. Operators must add controller-specific NetworkPolicy or
+firewall rules after verifying the observed sources. This chart does not claim
+Worker source isolation.
 
 This is alpha software. The chart does not migrate a Compose installation and changes
 no data in an existing install. Gateway HA, controller installation, model-provider

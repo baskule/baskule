@@ -171,9 +171,9 @@ case "${1:-}" in
     done
     if [ -n "${PLUGIN_SYNC_TOKEN:-}" ] || [ -e /plugins ]; then
       # A cold Worker may not serve requests immediately after peer reload.
-      if [ -n "${SETUP_STATUS_URL:-}" ]; then
+      if [ -n "${PLATFORM_READY_URL:-}" ]; then
         curl -fsS --retry 60 --retry-all-errors --retry-delay 2 --retry-max-time 180 --max-time 5 \
-          -o /dev/null "$SETUP_STATUS_URL"
+          -o /dev/null "$PLATFORM_READY_URL"
       fi
       /usr/local/bin/baskule-sync-plugins /plugins "${PLUGIN_SYNC_URL:-http://baskule-celld-a:47091}"
     fi

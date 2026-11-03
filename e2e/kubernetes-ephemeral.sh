@@ -53,13 +53,26 @@ project_bindings() {
     ($member | split("serviceAccount:")[1] | split("?")[0]) as $email |
     select($known[0] | index($email)) | [$role, $member] | @tsv' "$state/iam.private.json"
 }
-owned_filter='def marked:
+owned_filter='def labelled:
+  ["clusters", "repositories", "instances", "disks", "forwarding-rules", "addresses"] | index($kind) != null;
+def unlabelled_lb:
+  ["target-http-proxies", "target-https-proxies", "url-maps", "backend-services", "target-pools", "health-checks", "http-health-checks", "https-health-checks", "network-endpoint-groups"] | index($kind) != null;
+def marked:
   (.labels // .resourceLabels // {}) as $labels |
-  ($labels["baskule-run"] == $marker) or
-  ($marker == "baskule-ephemeral" and $labels["baskule-ephemeral"] == "true") or
-  ([$labels["baskule-run"], $labels["goog-k8s-cluster-name"], .description, .displayName,
-    (if .email then null else (.name // "" | split("/") | last) end)] | any(.[] | strings; contains($marker)));
+  if labelled then
+    if $marker == "baskule-ephemeral" then
+      $labels["baskule-ephemeral"] == "true" and ($labels["baskule-run"] // "") != ""
+    else $labels["baskule-run"] == $marker end
+  elif $kind == "accounts" then
+    (.email as $email | $accounts[0] | index($email)) != null
+  elif unlabelled_lb then
+    ([.description, .name] | map(select(type == "string")) | join(" ")) as $text |
+    any($runs[0][]; . as $run | $text | contains($run))
+  else false end;
+def selected:
+  marked or (unlabelled_lb and (.selfLink as $url | $links[0] | index($url)) != null);
 '
+
 kinds=(instances disks forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks addresses network-endpoint-groups firewall-rules)
 inventory() {
   jq -e 'type == "array"' "$state/owned-links.private.json" >/dev/null || return
@@ -71,20 +84,28 @@ inventory() {
     gc compute "$kind" list --format=json > "$state/$kind.private.json" || return
     inputs+=("$state/$kind.private.json")
   done
-  # Persist references before controllers remove their parent objects, so sweep
-  # can still identify a leftover health check/NEG after an interrupted deletion.
-  jq -s --arg marker "${resource_scope:-$marker}" --arg project "$project" --slurpfile saved "$state/owned-links.private.json" "$owned_filter"'
+  jq -s --arg marker "${resource_scope:-$marker}" --slurpfile accounts "$state/known-accounts.private.json" '
     (if all(.[]; type == "array") then flatten else error("Resource inventory must contain arrays") end) as $resources |
-    def expand($links): ($links + [$resources[] |
-      select(marked or (.selfLink as $url | $links | index($url))) |
-      .. | strings | select(contains("/projects/" + $project + "/"))]) | unique;
-    $saved[0] | until(expand(.) == .; expand(.))
-  ' "${inputs[@]}" > "$state/links.next" || return
-  mv "$state/links.next" "$state/owned-links.private.json"
+    ([$resources[] | (.labels // .resourceLabels // {}) | select(.["baskule-ephemeral"] == "true") | .["baskule-run"]] +
+     [$accounts[0][] | capture("^bk-(?<id>[0-9]+-[a-f0-9]{4})@").id | "baskule-ephemeral-" + .]) |
+    map(select(type == "string" and test("^baskule-ephemeral-[0-9]+-[a-f0-9]{4}$"))) |
+    unique | if $marker == "baskule-ephemeral" then . else map(select(. == $marker)) end
+  ' "${inputs[@]}" > "$state/runs.private.json" || return
+  # Follow only references rooted in labelled resources or saved run ownership.
+  # Resource kinds with labels are always selected by labels, never by names/links.
+  for kind in clusters repositories accounts "${kinds[@]}"; do
+    jq --arg marker "${resource_scope:-$marker}" --arg kind "$kind" --arg project "$project" \
+      --slurpfile accounts "$state/known-accounts.private.json" --slurpfile runs "$state/runs.private.json" \
+      --slurpfile links "$state/owned-links.private.json" "$owned_filter"'
+      [.[] | select(selected) | .. | strings | select(contains("/projects/" + $project + "/"))] + $links[0] | unique
+    ' "$state/$kind.private.json" > "$state/links.next" || return
+    mv "$state/links.next" "$state/owned-links.private.json"
+  done
 }
 owned() {
-  # LB objects without a labels API carry the unique namespace in descriptions.
-  jq -r --arg marker "${resource_scope:-$marker}" --slurpfile links "$state/owned-links.private.json" "$owned_filter"'.[] | select(marked or (.selfLink as $url | $links[0] | index($url))) | [.name, (.zone // .region // "global" | split("/") | last)] | @tsv'
+  jq -r --arg marker "${resource_scope:-$marker}" --arg kind "$kind" \
+    --slurpfile accounts "$state/known-accounts.private.json" --slurpfile runs "$state/runs.private.json" \
+    --slurpfile links "$state/owned-links.private.json" "$owned_filter"'.[] | select(selected) | [.name, (.location // .zone // .region // "global" | split("/") | last)] | @tsv'
 }
 audit() {
   inventory || return
@@ -113,7 +134,7 @@ audit() {
 sweep() {
   inventory || return
   local name location kind flag email role member
-  while read -r name location; do gc container clusters delete "$name" --zone="$location" || true; done < <(jq -r --arg marker "${resource_scope:-$marker}" "$owned_filter"'.[] | select(marked) | [.name,.location] | @tsv' "$state/clusters.private.json")
+  while read -r name location; do gc container clusters delete "$name" --zone="$location" || true; done < <(kind=clusters owned < "$state/clusters.private.json")
   inventory || return
   # Delete dependants first. Never delete an unrelated resource on an audit guess.
   for kind in forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks network-endpoint-groups instances disks addresses firewall-rules; do
@@ -128,7 +149,7 @@ sweep() {
       gc compute "$kind" delete "${args[@]}" || true
     done < <(owned < "$state/$kind.private.json")
   done
-  while read -r name; do gc artifacts repositories delete "$name" --location="$region" || true; done < <(owned < "$state/repositories.private.json" | cut -f1 | sed 's|.*/||')
+  while read -r name; do gc artifacts repositories delete "$name" --location="$region" || true; done < <(kind=repositories owned < "$state/repositories.private.json" | cut -f1 | sed 's|.*/||')
   if [[ $(jq length "$state/known-accounts.private.json") != 0 ]]; then
     iam_gc projects get-iam-policy "$project" --format=json > "$state/iam.private.json" || return
     project_bindings > "$state/iam-bindings.private.tsv" || return
@@ -139,11 +160,15 @@ sweep() {
   # Do not delete an identity while removing its project grant is unconfirmed.
   while read -r email; do
     gc iam service-accounts delete "$email" || true
-  done < <(jq -r --arg marker "${resource_scope:-$marker}" "$owned_filter"'.[] | select(marked) | .email' "$state/accounts.private.json")
+  done < <(jq -r --slurpfile known "$state/known-accounts.private.json" '.[] | .email as $email | select($known[0] | index($email)) | $email' "$state/accounts.private.json")
   audit
 }
 case "${1:-}" in
   sweep|audit)
+    if [[ $1 == sweep && ${2:-} != --force ]]; then
+      exec 9> "$state_root/$project.lock"
+      flock -n 9 || { echo 'Live run exists; refuse global sweep (use --force only to interrupt it)' >&2; exit 1; }
+    fi
     # Recover saved ownership from interrupted runs, confined to this project.
     for previous in "$state_root"/gke.*; do
       [[ -f $previous/project.private && $(cat "$previous/project.private") == "$project" && -f $previous/owned-links.private.json ]] || continue
@@ -153,9 +178,12 @@ case "${1:-}" in
     done
     "$1"; exit ;;
   # Snapshot into bash's input string so edits cannot change an in-flight run.
-  run) exec timeout --signal=TERM --kill-after=10m 90m bash -c "$(cat "$0")" "$0" worker ;;
-  worker) ;;
-  *) echo "Usage: $0 run|sweep|audit" >&2; exit 2 ;;
+  run) exec timeout --signal=TERM --kill-after=30m 90m bash -c "$(cat "$0")" "$0" worker ;;
+  worker)
+    exec 9> "$state_root/$project.lock"
+    flock -n 9 || { echo 'Live run exists; refuse another worker' >&2; exit 1; }
+    ;;
+  *) echo "Usage: $0 run|sweep [--force]|audit" >&2; exit 2 ;;
 esac
 run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]')"
 labels="$marker=true,baskule-run=$run_id"
@@ -168,24 +196,21 @@ started=$(date +%s)
 nodes_started=0
 cleanup() {
   status=$?
-  trap - EXIT INT TERM
+  trap - EXIT
+  trap '' INT TERM HUP
   set +e
-  if [[ -f $KUBECONFIG ]]; then
-    kubectl -n "$run_id" get pods -o json > "$state/pods.private.json"
-    while read -r pod; do
-      kubectl -n "$run_id" logs "$pod" --all-containers --request-timeout=20s > "$state/$pod.private.log" 2>&1
-    done < <(jq -r '.items[].metadata.name' "$state/pods.private.json")
-  fi
   inventory
   while read -r name location; do
     gc logging read "resource.type=\"http_load_balancer\" AND resource.labels.forwarding_rule_name=\"$name\" AND httpRequest.status>=500" \
       --limit=20 --freshness=2h --format=json > "$state/$name.lb-errors.private.json"
-  done < <(owned < "$state/forwarding-rules.private.json")
+  done < <(kind=forwarding-rules owned < "$state/forwarding-rules.private.json")
   # The CLI's labels flag uses the gated alpha API; use the stable setLabels API.
-  python3 - "$project" "$run_id" "$state/forwarding-rules.private.json" <<'PY'
+  python3 - "$project" "$run_id" "$state/forwarding-rules.private.json" "$state/addresses.private.json" <<'PY'
 import json, subprocess, sys, urllib.request
-project, run, inventory = sys.argv[1:]
-rules = [r for r in json.load(open(inventory)) if run in json.dumps(r)]
+project, run, inventory, addresses = sys.argv[1:]
+# Match the exact reserved address owned by this run, never a name substring.
+owned_ips = {a['address'] for a in json.load(open(addresses)) if a.get('labels', {}).get('baskule-run') == run}
+rules = [r for r in json.load(open(inventory)) if r.get('IPAddress') in owned_ips]
 if rules:
     token = subprocess.check_output(['gcloud', '--project=' + project, 'auth', 'print-access-token'], text=True).strip()
     for rule in rules:
@@ -196,11 +221,20 @@ if rules:
         with urllib.request.urlopen(request, timeout=30) as response: response.read()
 PY
   if [[ -f $KUBECONFIG ]]; then
-    kubectl -n "$run_id" get events --sort-by=.lastTimestamp > "$BASKULE_K8S_EVIDENCE/events.txt" 2>/dev/null
-    kubectl -n "$run_id" delete ingress --all --timeout=180s >/dev/null
-    kubectl -n "$run_id" delete sandboxes --all --timeout=120s >/dev/null
-    helm uninstall baskule -n "$run_id" --wait --timeout 120s >/dev/null
-    kubectl -n "$run_id" delete pvc --all --timeout=120s >/dev/null
+    # Bound the entire Kubernetes phase; cluster deletion below is unconditional.
+    timeout --signal=TERM --kill-after=30s 8m bash -c '
+      trap - INT TERM HUP
+      run_id=$1; state=$2; evidence=$3
+      kubectl --request-timeout=20s -n "$run_id" get pods -o json > "$state/pods.private.json"
+      while read -r pod; do
+        kubectl --request-timeout=20s -n "$run_id" logs "$pod" --all-containers > "$state/$pod.private.log" 2>&1
+      done < <(jq -r ".items[].metadata.name" "$state/pods.private.json")
+      kubectl --request-timeout=20s -n "$run_id" get events --sort-by=.lastTimestamp > "$evidence/events.txt" 2>/dev/null
+      kubectl --request-timeout=20s -n "$run_id" delete ingress --all --timeout=120s >/dev/null
+      kubectl --request-timeout=20s -n "$run_id" delete sandboxes --all --timeout=90s >/dev/null
+      helm uninstall baskule -n "$run_id" --wait --timeout 90s >/dev/null
+      kubectl --request-timeout=20s -n "$run_id" delete pvc --all --timeout=90s >/dev/null
+    ' bash "$run_id" "$state" "$BASKULE_K8S_EVIDENCE" || echo 'Kubernetes cleanup incomplete; continuing cluster deletion. Run sweep after timeout.' >&2
   fi
   # Attempt known resource deletion even if an inventory API was unavailable.
   gc container clusters delete "$run_id" --zone="$zone" >/dev/null 2>&1
@@ -300,16 +334,16 @@ gc container clusters create "$run_id" --zone="$zone" --node-locations="$zone" \
   --scopes=cloud-platform --logging=NONE --monitoring=NONE --no-enable-managed-prometheus \
   > "$BASKULE_K8S_EVIDENCE/cluster-create.log" 2>&1
 gc container clusters get-credentials "$run_id" --zone="$zone" >/dev/null
-kubectl wait --for=condition=Ready nodes --all --timeout=600s
-kubectl get nodes -o json > "$state/nodes.private.json"
-gc compute instances list --filter="labels.baskule-run=$run_id" --format=json > "$BASKULE_K8S_EVIDENCE/node-times.json"
+kubectl --request-timeout=30s wait --for=condition=Ready nodes --all --timeout=600s
+kubectl --request-timeout=30s get nodes -o json > "$state/nodes.private.json"
+gc compute instances list --filter="labels.baskule-run=$run_id" --format='json(selfLink,creationTimestamp)' > "$BASKULE_K8S_EVIDENCE/node-times.json"
 gc compute addresses create "$run_id" --global --ip-version=IPV4 >/dev/null
 gc compute addresses update "$run_id" --global --update-labels="$labels" >/dev/null
 address=$(gc compute addresses describe "$run_id" --global --format='value(address)')
 export BASKULE_K8S_PUBLIC_URL="http://$address.sslip.io"
-kubectl create namespace "$run_id" >/dev/null
-kubectl label namespace "$run_id" "$marker=true" "baskule-run=$run_id" >/dev/null
-cat <<YAML | kubectl -n "$run_id" apply -f - >/dev/null
+kubectl --request-timeout=30s create namespace "$run_id" >/dev/null
+kubectl --request-timeout=30s label namespace "$run_id" "$marker=true" "baskule-run=$run_id" >/dev/null
+cat <<YAML | kubectl --request-timeout=30s -n "$run_id" apply -f - >/dev/null
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata: {name: baskule}

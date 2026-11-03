@@ -654,6 +654,23 @@ jobs:
           GH_ACTOR: ${{ github.actor }}
         run: scripts/ci/publish-images.sh artifacts/backend
 
+  public-packages:
+    needs: [version, publish]
+    if: always() && needs.publish.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-${{ needs.version.outputs.version }}
+          path: artifacts/backend
+      - name: Check anonymous package access (rerun after making packages public)
+        run: bash scripts/ci/check-public-images.sh artifacts/backend
+
   draft-release:
     needs: [version, backend, linux-apps, native, publish]
     if: >-

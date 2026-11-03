@@ -32,7 +32,18 @@ for (const [name, status, success] of [
     assert.equal(calls.split("\n").filter(line => line.startsWith("push ")).length, success ? 3 : 0);
     assert.equal(calls.split("\n").filter(line => line.startsWith("load ")).length, success ? 3 : 0);
     assert.equal(calls.split("\n").filter(line => line.startsWith("helm push ")).length, success ? 1 : 0);
-    if (success) assert.equal(calls.split("\n").filter(line => line.startsWith("curl ") && line.includes(":pull ") && !line.includes("--user")).length, 4);
+    if (success) {
+      // Visibility can fail on first publication, then be rerun independently.
+      writeFileSync(resolve(work, "curl"), '#!/bin/bash\necho "visibility $*" >> "$MOCK_LOG"\nif [[ "$*" == *ghcr.io/token* ]]; then echo \'{"token":"anonymous"}\'; else exit "${MOCK_PRIVATE:-0}"; fi\n', { mode: 0o755 });
+      for (const privatePackage of ["1", "0"]) {
+        const visibility = spawnSync("bash", ["scripts/ci/check-public-images.sh", work], { encoding: "utf8", env: { ...process.env, PATH: `${work}:${process.env.PATH}`, MOCK_LOG: log, MOCK_PRIVATE: privatePackage } });
+        assert.equal(visibility.status, Number(privatePackage), visibility.stderr);
+      }
+      const after = readFileSync(log, "utf8");
+      assert.equal(after.split("\n").filter(line => line.startsWith("push ")).length, 3);
+      assert.equal(after.split("\n").filter(line => line.startsWith("helm push ")).length, 1);
+      assert.equal(after.split("\n").filter(line => line.startsWith("visibility ") && line.includes(":pull ") && !line.includes("--user")).length, 5);
+    }
     if (status === "missing-chart" || status === "two-charts") assert.match(result.stderr, /exactly one Baskule chart/);
     if (status === "200" || status === "chart-exists") assert.match(result.stderr, /Refusing to overwrite/);
   } finally { rmSync(work, { recursive: true, force: true }); }

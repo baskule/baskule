@@ -124,5 +124,5 @@
     "openshell": {"type": "object"}
   },
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "allOf": [{"if": {"properties": {"exposure": {"properties": {"mode": {"enum": ["ingress", "gateway"]}}}}}, "then": {"properties": {"publicUrl": {"not": {"pattern": "^https?://(localhost|127\\.[0-9.]+|\\[::1\\])(:|$)"}}}}}]
+  "allOf": [{"if": {"properties": {"exposure": {"properties": {"mode": {"enum": ["ingress", "gateway"]}}}}}, "then": {"properties": {"publicUrl": {"not": {"pattern": "^https?://([lL][oO][cC][aA][lL][hH][oO][sS][tT]|0\\.0\\.0\\.0|127\\.[0-9.]+|\\[::(1)?\\])(:|$)"}}}}}]
 }

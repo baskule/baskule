@@ -21,7 +21,7 @@ produce documents instead of only answering. You choose the model.
   </picture>
 </p>
 
-For clusters, use the [recommended Kubernetes installation](docs/install-kubernetes.md).
+From the next release, clusters can use the [recommended Kubernetes installation](docs/install-kubernetes.md).
 
 ## How it works
 

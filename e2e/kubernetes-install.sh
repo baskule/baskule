@@ -31,6 +31,32 @@ helm upgrade --install "$BASKULE_K8S_RELEASE" "$chart" \
   "${values_args[@]}" > /dev/null
 kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status statefulset/"$BASKULE_K8S_RELEASE-celld" --timeout=240s
 kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status statefulset/"$BASKULE_K8S_RELEASE-openshell" --timeout=180s
+if [[ ${BASKULE_K8S_JOURNEY:-full} == full ]]; then
+  # Run the actual deployment command with setup still required, retaining this
+  # test Job long enough to assert its logs without writing them to evidence.
+  kubectl -n "$BASKULE_K8S_NAMESPACE" exec "$BASKULE_K8S_RELEASE-celld-0" -- \
+    curl -fsS "http://$BASKULE_K8S_RELEASE/api/baskule/setup" | jq -e '.required == true' >/dev/null
+  helm template "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" \
+    --show-only templates/deploy.yaml --set rustfs.enabled=true \
+    --set-string publicUrl="$BASKULE_K8S_PUBLIC_URL" --set-string global.image.registry="$registry" \
+    --set-string global.image.tag="$tag" "${values_args[@]}" | \
+    kubectl create --dry-run=client -f - -o json | \
+    jq '.metadata.name += "-log-proof" | del(.metadata.annotations)' | kubectl create -f - >/dev/null
+  kubectl -n "$BASKULE_K8S_NAMESPACE" wait --for=condition=Complete "job/$BASKULE_K8S_RELEASE-deploy-log-proof" --timeout=240s
+  node --input-type=module <<'JS'
+import { execFileSync } from "node:child_process";
+import assert from "node:assert/strict";
+const namespace = process.env.BASKULE_K8S_NAMESPACE;
+const release = process.env.BASKULE_K8S_RELEASE;
+const secret = JSON.parse(execFileSync("kubectl", ["-n", namespace, "get", "secret", `${release}-secrets`, "-o", "json"], { encoding: "utf8" }));
+const token = Buffer.from(secret.data.SETUP_TOKEN, "base64").toString();
+const logs = execFileSync("kubectl", ["-n", namespace, "logs", `job/${release}-deploy-log-proof`], { encoding: "utf8" });
+assert.ok(token.length > 0);
+assert.equal(logs.includes(token) || logs.includes("token="), false, "deployment logs must not contain the setup token/link");
+console.log("PASS required=true deployment logs contain no setup token");
+JS
+  kubectl -n "$BASKULE_K8S_NAMESPACE" delete job "$BASKULE_K8S_RELEASE-deploy-log-proof" --timeout=60s >/dev/null
+fi
 kubectl -n "$BASKULE_K8S_NAMESPACE" create configmap fake-llm --from-file=server.mjs=platform/dev/fake-llm/server.mjs --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 cat <<YAML | kubectl -n "$BASKULE_K8S_NAMESPACE" apply -f - >/dev/null
 apiVersion: apps/v1
@@ -73,7 +99,7 @@ fi
 # the old evaluation Secret exists. No bucket or credential mutation is performed.
 render=$(mktemp "$root/.run/s3-upgrade.XXXXXX.private.json")
 helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" \
-  --reuse-values --dry-run=server --output json --set rustfs.enabled=false \
+  --reset-then-reuse-values --dry-run=server --output json --set rustfs.enabled=false \
   --set s3.endpoint=https://s3.example.test --set s3.accessKeyId=review-access --set s3.secretAccessKey=review-secret > "$render"
 node --input-type=module - "$render" "$BASKULE_K8S_RELEASE" <<'JS'
 import { readFileSync, unlinkSync } from "node:fs";
@@ -88,8 +114,39 @@ JS
 echo 'PASS server-side upgrade rendering applies changed external S3 credentials' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
 # Real lookup must retain token bytes on an upgrade. Compare hashes, never dump Secrets.
 before=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" "$BASKULE_K8S_RELEASE-s3" -o json | jq -c '[.items[] | {name:.metadata.name,data}] | sort_by(.name)' | sha256sum)
-helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" --reuse-values --timeout 10m --wait > /dev/null
+helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" --reset-then-reuse-values --timeout 10m --wait > /dev/null
 after=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" "$BASKULE_K8S_RELEASE-s3" -o json | jq -c '[.items[] | {name:.metadata.name,data}] | sort_by(.name)' | sha256sum)
 [[ $before == "$after" ]]
 echo 'PASS Helm upgrade preserves generated platform tokens and RustFS keys' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
 kubectl -n "$BASKULE_K8S_NAMESPACE" get pods,pvc,networkpolicy > "$BASKULE_K8S_EVIDENCE/resources.txt"
+
+# Exercise Helm's cross-version default merge without pulling fictitious images.
+# Keep each packaged chart's real defaults and image helper; render only a ConfigMap.
+(
+  work=$(mktemp -d "$root/.run/helm-upgrade.XXXXXX")
+  proof="$BASKULE_K8S_RELEASE-tag-proof"
+  cleanup_tags() {
+    helm uninstall "$proof" -n "$BASKULE_K8S_NAMESPACE" --no-hooks >/dev/null 2>&1 || true
+    rm -rf "$work"
+  }
+  trap cleanup_tags EXIT
+  for version in 1.0.0 2.0.0; do
+    BASKULE_VERSION=$version scripts/helm-package.sh "$work" >/dev/null
+    mkdir "$work/$version"
+    tar -xzf "$work/baskule-$version.tgz" -C "$work/$version"
+    fixture="$work/$version/baskule"
+    cp "$fixture/templates/_helpers.tpl" "$work/helpers"
+    rm -rf "$fixture/templates" "$fixture/charts"
+    mkdir "$fixture/templates"
+    mv "$work/helpers" "$fixture/templates/_helpers.tpl"
+    # The rendering check uses the exact packaged Baskule defaults/helper.
+    printf 'apiVersion: v1\nkind: ConfigMap\nmetadata: {name: {{ .Release.Name }}}\ndata:\n  image: {{ include "baskule.image" (dict "root" . "name" "celld") | quote }}\n' > "$fixture/templates/image.yaml"
+    sed -i '/^dependencies:/,$d' "$fixture/Chart.yaml"
+    helm package "$fixture" --destination "$work/$version" >/dev/null
+  done
+  helm install "$proof" "$work/1.0.0/baskule-1.0.0.tgz" --namespace "$BASKULE_K8S_NAMESPACE" --set rustfs.enabled=true >/dev/null
+  helm upgrade "$proof" "$work/2.0.0/baskule-2.0.0.tgz" --namespace "$BASKULE_K8S_NAMESPACE" --reset-then-reuse-values >/dev/null
+  image=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get configmap "$proof" -o jsonpath='{.data.image}')
+  [[ $image == ghcr.io/baskule/baskule-celld:2.0.0 ]]
+  echo 'PASS packaged 1.0.0 -> 2.0.0 upgrade selects the new default image tag' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
+)

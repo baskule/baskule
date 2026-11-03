@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -48,10 +48,18 @@ function exercise(mode = "existing") {
         esac
       }
       export -f gcloud
-      bash "$BASKULE_TEST_DRIVER" "$BASKULE_TEST_ACTION"
-    `], { cwd: root, encoding: "utf8", timeout: 15_000, env: { ...process.env, BASKULE_GKE_PROJECT: project, BASKULE_TEST_MALFORMED: malformed ? "1" : "0", BASKULE_TEST_ACTION: mode === "iam" ? "sweep" : "run", BASKULE_TEST_FIXTURE: fixture, BASKULE_TEST_DRIVER: join(root, "e2e/kubernetes-ephemeral.sh") } });
+      if [[ "$BASKULE_TEST_MODE" == live ]]; then
+        flock "$BASKULE_TEST_STATE_ROOT/$BASKULE_GKE_PROJECT.lock" bash "$BASKULE_TEST_DRIVER" sweep
+      else
+        bash "$BASKULE_TEST_DRIVER" "$BASKULE_TEST_ACTION"
+      fi
+    `], { cwd: root, encoding: "utf8", timeout: 15_000, env: { ...process.env, BASKULE_GKE_PROJECT: project, BASKULE_TEST_STATE_ROOT: stateRoot, BASKULE_TEST_MODE: mode, BASKULE_TEST_MALFORMED: malformed ? "1" : "0", BASKULE_TEST_ACTION: mode === "iam" ? "sweep" : "run", BASKULE_TEST_FIXTURE: fixture, BASKULE_TEST_DRIVER: join(root, "e2e/kubernetes-ephemeral.sh") } });
     return { result, policy: JSON.parse(readFileSync(join(fixture, "iam.json"), "utf8")), email, calls: readFileSync(join(fixture, "calls"), "utf8") };
-  } finally { rmSync(fixture, { recursive: true, force: true }); rmSync(ownedState, { recursive: true, force: true }); }
+  } finally { rmSync(fixture, { recursive: true, force: true }); for (const name of readdirSync(stateRoot).filter(name => name.startsWith("gke."))) {
+      const state = join(stateRoot, name);
+      if (existsSync(join(state, "project.private")) && readFileSync(join(state, "project.private"), "utf8") === project) rmSync(state, { recursive: true, force: true });
+    }
+    rmSync(join(stateRoot, `${project}.lock`), { force: true }); }
 }
 
 test("an existing ephemeral installation refuses a run without deleting resources", () => {
@@ -87,4 +95,58 @@ test("an owned IAM tombstone refuses a new run without deleting the old grant", 
   assert.match(result.stderr, /iam-bindings: 1 owned references/);
   assert.equal(policy.bindings[0].members.length, 2);
   assert.doesNotMatch(calls, /\b(create|delete|update|add-iam-policy-binding|remove-iam-policy-binding)\b/);
+});
+
+test("global sweep refuses while a live worker holds the project lock", () => {
+  const { result, calls } = exercise("live");
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /Live run exists; refuse global sweep/);
+  assert.doesNotMatch(calls, /\b(create|delete|update|remove-iam-policy-binding)\b/);
+});
+
+test("Kubernetes cleanup timeout and repeated signals cannot skip cluster deletion", () => {
+  const work = mkdtempSync(join(root, ".run/gke-cleanup-"));
+  try {
+    const driver = readFileSync(join(root, "e2e/kubernetes-ephemeral.sh"), "utf8");
+    const cleanup = driver.slice(driver.indexOf("cleanup() {"), driver.indexOf("if ! audit >"));
+    writeFileSync(join(work, "kubeconfig"), "fixture");
+    writeFileSync(join(work, "forwarding-rules.private.json"), "[]");
+    const result = spawnSync("bash", ["-c", `
+      set -euo pipefail
+      run_id=baskule-ephemeral-1-abcd; project=fixture; region=europe-west1; zone=europe-west1-b
+      state=$1; BASKULE_K8S_EVIDENCE=$1; KUBECONFIG=$1/kubeconfig; DOCKER_CONFIG=$1/docker
+      started=$(date +%s); nodes_started=0
+      inventory() { :; }; owned() { :; }; sweep() { echo zero; }
+      gc() { printf '%s\\n' "$*" >> "$state/calls"; }
+      python3() { :; }
+      timeout() { printf '%s\\n' "$*" >> "$state/timeouts"; kill -s INT $$; kill -s TERM $$; kill -s HUP $$; return 124; }
+      ${cleanup}
+      cleanup
+    `, "bash", work], { encoding: "utf8", timeout: 3000 });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /continuing cluster deletion/);
+    assert.match(readFileSync(join(work, "calls"), "utf8"), /container clusters delete baskule-ephemeral-1-abcd/);
+    assert.match(readFileSync(join(work, "timeouts"), "utf8"), /--kill-after=30s 8m/);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+test("ownership uses labels for labelled kinds and full run IDs only for unlabelled LBs", () => {
+  const work = mkdtempSync(join(root, ".run/gke-ownership-"));
+  try {
+    const driver = readFileSync(join(root, "e2e/kubernetes-ephemeral.sh"), "utf8");
+    const filter = driver.split("owned_filter='")[1].split(/'\n\n?kinds=/)[0].trim();
+    const run = "baskule-ephemeral-1234-abcd";
+    const resources = [
+      { name: "actual", labels: { "baskule-ephemeral": "true", "baskule-run": run }, selfLink: "actual" },
+      { name: `unrelated-${run}`, labels: { owner: "someone-else" }, selfLink: "unrelated" },
+      { name: "lb", description: `namespace: ${run}`, selfLink: "lb" },
+      { name: "baskule-ephemeral-unrelated", selfLink: "other" },
+    ];
+    for (const [file, value] of Object.entries({ resources, runs: [run], links: ["unrelated"], accounts: [] })) writeFileSync(join(work, `${file}.json`), JSON.stringify(value));
+    for (const [kind, expected] of [["instances", ["actual"]], ["disks", ["actual"]], ["forwarding-rules", ["actual"]], ["backend-services", [`unrelated-${run}`, "lb"]], ["firewall-rules", []]]) {
+      const result = spawnSync("jq", ["--arg", "kind", kind, "--arg", "marker", "baskule-ephemeral", "--slurpfile", "runs", join(work, "runs.json"), "--slurpfile", "links", join(work, "links.json"), "--slurpfile", "accounts", join(work, "accounts.json"), `${filter} [.[] | select(selected) | .name]`, join(work, "resources.json")], { encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), expected, kind);
+    }
+  } finally { rmSync(work, { recursive: true, force: true }); }
 });
