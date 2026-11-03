@@ -209,6 +209,12 @@
         },
         "ipv6": {
           "type": "boolean"
+        },
+        "dnsServerCidrs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
