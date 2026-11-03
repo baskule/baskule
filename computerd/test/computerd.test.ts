@@ -73,6 +73,7 @@ before(async () => {
   });
   await new Promise<void>(r => bridge.listen(0, "127.0.0.1", r));
   fake = new FakeBackend();
+  fake.environment = { ...process.env, HOME: join(root, "space/home"), PATH: bin + ":" + process.env.PATH };
   cfg = loadConfig({
     COMPUTERD_TOKEN: TOKEN,
     SANDBOX_ROOT: root,

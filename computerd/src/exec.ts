@@ -33,34 +33,14 @@ export function filterEnv(env: Record<string, unknown> | undefined): { env: Reco
   return { env: out, dropped };
 }
 
-/** Environment every exec gets (OpenShell does not apply the image ENV to exec'd processes). */
-export function baseEnv(root: string): Record<string, string> {
-  const home = `${root}/space/home`;
-  return {
-    HOME: home,
-    PATH: `${home}/.local/bin:${home}/.local/share/pnpm:${home}/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
-    LANG: "en_US.UTF-8",
-    TZ: "Etc/UTC",
-    NPM_CONFIG_PREFIX: `${home}/.local`,
-    // pnpm refuses global installs without a global bin directory.
-    PNPM_HOME: `${home}/.local/share/pnpm`,
-    BUN_INSTALL: `${home}/.bun`,
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
-    CHROME_PATH: "/usr/local/bin/chromium-baskule",
-  };
-}
-
 // The wrapper records the process group: setsid made this sh a session + group leader, so its pid is the pgid.
-// Killing: OpenShell's seccomp filter refuses kill() on a process group (negative pid, EPERM, verified), but a
-// later exec may signal individual pids, so the kill helper enumerates the group (pgrep -g) and signals each.
 // $0 = exec id, $@ = the command.
 const WRAP = 'mkdir -p /tmp/.osj 2>/dev/null; echo $$ > "/tmp/.osj/$0"; "$@"; c=$?; rm -f "/tmp/.osj/$0"; exit $c';
 // $0 = exec id, $1 = signal, $2 = "final" (remove the record). Exit 3: no such exec; 0: signalled (or empty group).
 const KILL = [
   'f="/tmp/.osj/$0"; p=$(cat "$f" 2>/dev/null) || exit 3',
   'case "$p" in ""|*[!0-9]*) exit 3;; esac',
-  'pids=$(pgrep -g "$p")',
-  '[ -n "$pids" ] && kill -s "$1" $pids 2>/dev/null',
+  'kill -s "$1" -- "-$p" 2>/dev/null',
   '[ "$2" = final ] && rm -f "$f"',
   "exit 0",
 ].join("\n");
@@ -70,7 +50,7 @@ export function wrapArgv(id: string, argv: string[]): string[] {
 }
 
 export function killArgv(id: string, signal: string, final = false): string[] {
-  return ["sh", "-c", KILL, id, signal, final ? "final" : ""];
+  return ["bash", "-c", KILL, id, signal, final ? "final" : ""];
 }
 
 export interface ExecOptions {
@@ -102,7 +82,7 @@ export function startExec(backend: Backend, root: string, o: ExecOptions): Runni
     machine: o.sandbox,
     command: o.raw ? o.argv : wrapArgv(id, o.argv),
     workdir: o.cwd,
-    environment: { ...baseEnv(root), ...(o.env ?? {}) },
+    environment: o.env,
   });
   if (!o.interactive) {
     (async () => {

@@ -59,7 +59,7 @@ export class DockerBackend implements Backend {
     try { await this.request("GET", `/networks/${key(this.network)}`); }
     catch (e) {
       if (!(e instanceof DockerError && e.status === 404)) throw e;
-      try { await this.request("POST", "/networks/create", { Name: this.network, Driver: "bridge", CheckDuplicate: true }); }
+      try { await this.request("POST", "/networks/create", { Name: this.network, Driver: "bridge", CheckDuplicate: true, Labels: spec.labels, Options: { "com.docker.network.bridge.enable_icc": "false" } }); }
       catch (e) { if (!(e instanceof DockerError && e.status === 409)) throw e; }
     }
     const memory = /^(\d+(?:\.\d+)?)([KMGT]i?)?$/.exec(spec.memory);
@@ -106,7 +106,7 @@ export class DockerBackend implements Backend {
         const body = JSON.stringify({ Detach: false, Tty: false });
         const req = http.request({ socketPath: this.socketPath, path: `/exec/${key(Id)}/start`, method: "POST",
           headers: { Connection: "Upgrade", Upgrade: "tcp", "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } });
-        req.on("upgrade", (_res, socket, head) => { if (head.length) socket.unshift(head); resolve(socket); });
+        req.on("upgrade", (_res, socket, head) => { socket.allowHalfOpen = true; if (head.length) socket.unshift(head); resolve(socket); });
         req.on("response", res => { res.resume(); reject(new Error(`Docker exec upgrade failed: ${res.statusCode}`)); });
         req.on("error", reject);
         req.end(body);

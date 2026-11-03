@@ -32,8 +32,7 @@ not depend on it.
 
 Persistence: `/sandbox/space` is the per-space volume (home, chats). The rest of the filesystem is the container
 layer: it survives stop/start, not a recreate (`deploy/recreate-computers.sh` after an image upgrade).
-Note: OpenShell does **not** apply the image `ENV` to exec'd processes; computerd passes `HOME`, `PATH`, `LANG`…
-explicitly (`computerd/src/exec.ts` `baseEnv`).
+Docker applies the image `ENV` to exec processes; computerd supplies only allowlisted caller overrides.
 
 Tests: `computerd/test/integration.sh` and `e2e/infra-smoke.sh` (toolchain, pip/npm/git/Chromium over the
 public internet, Playwright MCP, CDP).

@@ -4,6 +4,7 @@ import type { Backend, Machine, MachineSpec, ExecStart, ExecHandle, ExecEvent } 
 
 /** Commands execute locally with the test's temporary sandbox paths. */
 export class FakeBackend implements Backend {
+  environment: NodeJS.ProcessEnv = process.env;
   sandboxes = new Map<string, Machine>();
   disks = new Set<string>();
   calls: { method: string; req: MachineSpec | { name: string } }[] = [];
@@ -36,7 +37,7 @@ export class FakeBackend implements Backend {
     if (this.sandboxes.get(st.machine)?.phase !== "ready") throw new Error("machine is not ready");
     const rec = { command: st.command, environment: st.environment ?? {}, workdir: st.workdir ?? "", stdinChunks: [] as number[] };
     this.execs.push(rec);
-    const child = spawn(st.command[0], st.command.slice(1), { cwd: st.workdir, env: rec.environment, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(st.command[0], st.command.slice(1), { cwd: st.workdir, env: { ...this.environment, ...rec.environment }, stdio: ["pipe", "pipe", "pipe"] });
     const queue: ExecEvent[] = [];
     let wake: (() => void) | undefined;
     let done = false;
