@@ -100,8 +100,8 @@ inventory() {
   jq -s --arg marker "${resource_scope:-$marker}" --slurpfile accounts "$state/known-accounts.private.json" '
     (if all(.[]; type == "array") then flatten else error("Resource inventory must contain arrays") end) as $resources |
     ([$resources[] | (.labels // .resourceLabels // {}) | select(.["baskule-ephemeral"] == "true") | .["baskule-run"]] +
-     [$accounts[0][] | capture("^bk-(?<id>[0-9]+-[a-f0-9]{4})@").id | "baskule-ephemeral-" + .]) |
-    map(select(type == "string" and test("^baskule-ephemeral-[0-9]+-[a-f0-9]{4}$"))) |
+     [$accounts[0][] | capture("^bk-(?<id>[0-9]+-[a-f0-9]{4}(?:-nos)?)@").id | "baskule-ephemeral-" + .]) |
+    map(select(type == "string" and test("^baskule-ephemeral-[0-9]+-[a-f0-9]{4}(-nos)?$"))) |
     unique | if $marker == "baskule-ephemeral" then . else map(select(. == $marker)) end
   ' "${inputs[@]}" > "$state/runs.private.json" || return
   # Follow only references rooted in labelled resources or saved run ownership.
@@ -213,11 +213,11 @@ case "${1:-}" in
   run) exec timeout --signal=TERM --kill-after=30m 90m bash -c "$(cat "$0")" "$0" worker ;;
   worker)
     exec 9> "$lock_root/baskule-gke-$project.lock"
-    flock -n 9 || { echo 'Live run exists; refuse another worker' >&2; exit 1; }
+    flock -w 3600 9 || { echo 'Timed out waiting for the GKE worker lock' >&2; exit 1; }
     ;;
   *) echo "Usage: $0 run|sweep [--force]|audit" >&2; exit 2 ;;
 esac
-run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]')"
+run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]')-nos"
 labels="$marker=true,baskule-run=$run_id"
 export BASKULE_K8S_EVIDENCE="$root/.run/evidence/$run_id"
 export KUBECONFIG="$state/kubeconfig.private" DOCKER_CONFIG="$state/docker.private"
@@ -406,6 +406,7 @@ export BASKULE_K8S_VALUES="$state/values.private.yaml"
 cat > "$BASKULE_K8S_VALUES" <<YAML
 rustfs: {storageClass: baskule-ephemeral}
 computers:
+  prePull: {enabled: false}
   storageClass: baskule-ephemeral
 exposure:
   mode: ingress
