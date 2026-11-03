@@ -170,6 +170,11 @@ case "${1:-}" in
       curl -s -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
     if [ -n "${PLUGIN_SYNC_TOKEN:-}" ] || [ -e /plugins ]; then
+      # A cold Worker may not serve requests immediately after peer reload.
+      if [ -n "${SETUP_STATUS_URL:-}" ]; then
+        curl -fsS --retry 60 --retry-all-errors --retry-delay 2 --retry-max-time 180 --max-time 5 \
+          -o /dev/null "$SETUP_STATUS_URL"
+      fi
       /usr/local/bin/baskule-sync-plugins /plugins "${PLUGIN_SYNC_URL:-http://baskule-celld-a:47091}"
     fi
     log "deployed platform"

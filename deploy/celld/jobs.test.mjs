@@ -114,7 +114,7 @@ for (const status of ["200", "307", "400", "403"]) test(`deploy readiness accept
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 
-test(`single-host platform deploy passes its scoped sync secret without querying setup or printing a link`, () => {
+for (const kubernetes of [false, true]) test(`platform deploy preserves scoped sync secret; Kubernetes readiness=${kubernetes}`, () => {
   const work = mkdtempSync(resolve(tmpdir(), "deploy-no-setup-test-"));
   try {
     const source = resolve(work, "source");
@@ -123,13 +123,13 @@ test(`single-host platform deploy passes its scoped sync secret without querying
     writeFileSync(`${source}/platform/wrangler.json`, '{"vars":{}}');
     writeFileSync(resolve(work, "jobs.sh"), readFileSync("deploy/celld/jobs.sh", "utf8").replaceAll("/src/", `${source}/`).replaceAll("/usr/local/bin/baskule-sync-plugins", resolve(work, "sync")));
     writeFileSync(resolve(work, "celld"), '#!/bin/bash\ncp "$2" "$MOCK_WRANGLER"\n', { mode: 0o755 });
-    writeFileSync(resolve(work, "sync"), '#!/bin/bash\n[[ "$PLUGIN_SYNC_TOKEN" == generated-folder-secret ]]\n', { mode: 0o755 });
+    writeFileSync(resolve(work, "sync"), '#!/bin/bash\n[[ "$PLUGIN_SYNC_TOKEN" == generated-folder-secret ]]\nif [[ "$MOCK_SETUP" == true ]]; then test -f "$MOCK_READY_FILE"; fi\n', { mode: 0o755 });
     mkdirSync(resolve(work, "platform"));
     writeFileSync(resolve(work, "platform/secrets"), 'export PLUGIN_SYNC_TOKEN=generated-folder-secret\n');
-    writeFileSync(resolve(work, "curl"), '#!/bin/bash\nif [[ "$*" == *setup* ]]; then echo unexpected-setup-request >&2; exit 99; fi\necho 200\n', { mode: 0o755 });
+    writeFileSync(resolve(work, "curl"), '#!/bin/bash\nif [[ "$*" == *setup* ]]; then if [[ "$MOCK_SETUP" != true ]]; then echo unexpected-setup-request >&2; exit 99; fi; touch "$MOCK_READY_FILE"; echo \'{"required":false}\'; else echo 200; fi\n', { mode: 0o755 });
     const result = spawnSync("bash", [resolve(work, "jobs.sh"), "deploy"], { encoding: "utf8", timeout: 3_000,
       env: { ...process.env, PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: work, MOCK_WRANGLER: resolve(work, "deployed.json"),
-        S3_ENDPOINT: "http://storage.test", CELLD_BUCKET: "s3://test", SETUP_TOKEN: "test-token", SETUP_STATUS_URL: "", CELLD_NODES_INTERNAL: "" } });
+        S3_ENDPOINT: "http://storage.test", CELLD_BUCKET: "s3://test", SETUP_TOKEN: "test-token", SETUP_STATUS_URL: kubernetes ? "http://platform.test/api/baskule/setup" : "", MOCK_SETUP: String(kubernetes), MOCK_READY_FILE: resolve(work, "ready"), CELLD_NODES_INTERNAL: "" } });
     assert.equal(result.status, 0, result.stderr);
     assert.ok(result.stderr.includes(`deployed platform`));
     assert.equal(JSON.parse(readFileSync(resolve(work, "deployed.json"), "utf8")).vars.PLUGIN_SYNC_TOKEN, "generated-folder-secret");

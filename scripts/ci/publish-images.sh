@@ -4,6 +4,9 @@ set -euo pipefail
 artifacts=${1:?backend artifact directory required}
 : "${GH_TOKEN:?}" "${GH_ACTOR:?}"
 (cd "$artifacts" && sha256sum -c SHA256SUMS)
+shopt -s nullglob
+charts=("$artifacts"/baskule-*.tgz)
+[[ ${#charts[@]} == 1 ]] || { echo 'Expected exactly one Baskule chart before publication' >&2; exit 1; }
 work=$(mktemp -d)
 trap 'rm -rf "$work"; docker logout ghcr.io >/dev/null 2>&1 || true; helm registry logout ghcr.io >/dev/null 2>&1 || true' EXIT
 # Preflight image and chart tags before any publication.
@@ -45,3 +48,16 @@ for chart in "$artifacts"/baskule-*.tgz; do
   printf '%s' "$GH_TOKEN" | helm registry login ghcr.io -u "$GH_ACTOR" --password-stdin
   helm push "$chart" oci://ghcr.io/baskule/charts
 done
+# New GHCR packages can default to private. Check public delivery without the
+# publishing identity, including the chart; release operators must set visibility.
+while read -r image _; do
+  repository=${image%:*}; repository=${repository#ghcr.io/}; tag=${image##*:}
+  curl --connect-timeout 10 --max-time 30 -fsS --get \
+    --data-urlencode service=ghcr.io --data-urlencode "scope=repository:$repository:pull" \
+    https://ghcr.io/token > "$work/anonymous.json"
+  token=$(jq -er '.token // .access_token' "$work/anonymous.json")
+  curl --connect-timeout 10 --max-time 30 -fsS --head \
+    -H "Authorization: Bearer $token" \
+    -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+    "https://ghcr.io/v2/$repository/manifests/$tag" > /dev/null
+done < "$work/refs"

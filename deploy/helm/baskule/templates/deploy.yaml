@@ -39,6 +39,7 @@ spec:
               value: {{ range $i := until (int .Values.replicas) }}{{ $.Release.Name }}-celld-{{ $i }}.{{ $.Release.Name }}-peers.{{ $.Release.Namespace }}.svc.cluster.local:47092 {{ end }}
             - {name: PUBLIC_ORIGINS, value: {{ .Values.publicUrl | quote }}}
             - {name: AUTH_CONFIG, value: {{ .Values.authConfig | quote }}}
+            - {name: SETUP_STATUS_URL, value: {{ printf "http://%s/api/baskule/setup" .Release.Name | quote }}}
             - {name: PLUGIN_SYNC_URL, value: {{ printf "http://%s" .Release.Name | quote }}}
             - {name: COMPUTERD_URL, value: {{ printf "http://%s-computerd:47094" .Release.Name | quote }}}
             {{- range $key := list "COMPUTERD_TOKEN" "SETUP_TOKEN" "PLUGIN_SYNC_TOKEN" }}

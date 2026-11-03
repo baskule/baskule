@@ -5,7 +5,7 @@ kind: Ingress
 metadata:
   name: {{ .Release.Name }}
   annotations:
-    {{- $defaults := dict "nginx.ingress.kubernetes.io/proxy-buffering" "off" "nginx.ingress.kubernetes.io/proxy-read-timeout" "3600" "nginx.ingress.kubernetes.io/proxy-send-timeout" "3600" }}
+    {{- $defaults := dict "nginx.ingress.kubernetes.io/proxy-body-size" "1g" "nginx.ingress.kubernetes.io/proxy-request-buffering" "off" "nginx.ingress.kubernetes.io/proxy-buffering" "off" "nginx.ingress.kubernetes.io/proxy-read-timeout" "3600" "nginx.ingress.kubernetes.io/proxy-send-timeout" "3600" }}
     {{- toYaml (mergeOverwrite $defaults .Values.exposure.ingress.annotations) | nindent 4 }}
 spec:
   {{- with .Values.exposure.ingress.className }}

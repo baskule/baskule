@@ -7,7 +7,8 @@ global:
     tag: "0.0.0" # updated when packaging the release
     pullPolicy: IfNotPresent
 imagePullSecrets: []
-# Keys: COMPUTERD_TOKEN, SETUP_TOKEN, PLUGIN_SYNC_TOKEN. Generated once if empty.
+# Keys: COMPUTERD_TOKEN, SETUP_TOKEN, PLUGIN_SYNC_TOKEN. Generated once with Helm server lookup.
+# GitOps/client rendering must supply existingSecret and s3.existingSecret.
 existingSecret: ""
 authConfig: '{"version":1,"mode":"authenticated","password":true}'
 s3:
@@ -16,6 +17,7 @@ s3:
   bucket: baskule
   # Prefer an existing Secret with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
   existingSecret: ""
+  # Supplied external keys are reapplied on upgrade; RustFS generates and retains its own.
   accessKeyId: ""
   secretAccessKey: ""
 celld:

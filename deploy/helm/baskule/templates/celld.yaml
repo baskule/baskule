@@ -73,6 +73,7 @@ spec:
             httpGet: {path: /.well-known/celld/health, port: http}
             periodSeconds: 2
           livenessProbe:
+            timeoutSeconds: 3
             httpGet: {path: /.well-known/celld/health, port: http}
             periodSeconds: 10
           startupProbe:
@@ -84,3 +85,12 @@ spec:
             - {name: cache, mountPath: /var/lib/celld}
       volumes:
         - {name: cache, emptyDir: {}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-celld
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: celld}

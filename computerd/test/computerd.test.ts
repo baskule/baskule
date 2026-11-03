@@ -548,7 +548,7 @@ test("Kubernetes lifecycle uses driver-owned PVC storage without the Docker help
   assert.equal(create.spec.template.driver_config, null);
   await kube.stop("kube-storage", "test");
   assert.equal((await kube.ensure("kube-storage")).started, true);
-  assert.equal((await kube.delete("kube-storage")).sandboxDeleted, true);
+  assert.deepEqual(await kube.delete("kube-storage"), { spaceId: "kube-storage", sandbox: result.sandbox, sandboxDeleted: true, volumeDeleted: false });
   assert.equal((await kube.delete("kube-storage")).sandboxDeleted, false);
   assert.equal(volumeCalls.length, before);
   assert.throws(() => loadConfig({ COMPUTERD_TOKEN: TOKEN, OPENSHELL_COMPUTE_DRIVER: "other" }), /OPENSHELL_COMPUTE_DRIVER/);

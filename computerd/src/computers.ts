@@ -350,10 +350,11 @@ export class Computers {
       }
     }
     let volumeDeleted = false;
-    // The Kubernetes driver owns the workspace PVC and deletes it with the Sandbox resource.
+    // The Kubernetes driver owns the PVC lifecycle. Sandbox removal does not confirm
+    // asynchronous PVC/CSI deletion; report only what this service observed.
     if (this.cfg.computeDriver === "kubernetes") {
       this.states.delete(spaceId);
-      return { spaceId, sandbox: s.sandbox, sandboxDeleted: existed, volumeDeleted: existed };
+      return { spaceId, sandbox: s.sandbox, sandboxDeleted: existed, volumeDeleted: false };
     }
     const end = Date.now() + 60_000;
     for (;;) {
