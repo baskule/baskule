@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -19,6 +20,7 @@ import {
 } from "@t3tools/contracts";
 import {
   normalizePreviewUrl,
+  isPreviewUrlNormalizationError,
   resolveAddressBarInput,
   previewPdfAssetUrl,
   resolveSearchUrlTemplate,
@@ -111,7 +113,7 @@ function previewProfileName(
   profiles: ReadonlyArray<{ readonly id: string; readonly name: string }>,
   profileId: string,
 ): string {
-  return profiles.find((profile) => profile.id === profileId)?.name ?? "Removed profile";
+  return profiles.find((profile) => profile.id === profileId)?.name ?? t("Removed profile");
 }
 
 const localApi = typeof window === "undefined" ? null : ensureLocalApi();
@@ -168,7 +170,7 @@ export function PreviewView({
   const environmentHttpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
   const open = useAtomCommand(previewEnvironment.open);
   const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
-  const environmentLabel = useEnvironment(threadRef.environmentId)?.label ?? "the environment";
+  const environmentLabel = useEnvironment(threadRef.environmentId)?.label ?? t("the environment");
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const serverBrowser = useEnvironmentSupportsServerBrowser(threadRef.environmentId);
   const adjust = useAtomCommand(previewEnvironment.adjust, "preview appearance or zoom");
@@ -262,7 +264,17 @@ export function PreviewView({
       if (await navigateToResolvedUrl(resolved)) {
         recordVisitForThread(threadRef, resolved);
       }
-    } catch {}
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: t("Could not open this address"),
+        description: isPreviewUrlNormalizationError(error)
+          ? t("Enter an http or https URL.")
+          : error instanceof Error
+            ? error.message
+            : t("An error occurred."),
+      });
+    }
   };
 
   const handleOpenServerUrl = async (next: string) => {
@@ -274,7 +286,17 @@ export function PreviewView({
       if (await navigateToResolvedUrl(resolved)) {
         recordVisitForThread(threadRef, next);
       }
-    } catch {}
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: t("Could not open this address"),
+        description: isPreviewUrlNormalizationError(error)
+          ? t("Enter an http or https URL.")
+          : error instanceof Error
+            ? error.message
+            : t("An error occurred."),
+      });
+    }
   };
 
   const handleRefresh = () => {
@@ -370,7 +392,9 @@ export function PreviewView({
     snapshot,
   );
   const moveLabel =
-    moveTarget === "server" ? `Open in ${environmentLabel}'s browser` : "Open on this computer";
+    moveTarget === "server"
+      ? t("Open in {{environmentLabel}}'s browser", { environmentLabel: environmentLabel })
+      : t("Open on this computer");
   const handleMoveTab = async () => {
     if (!moveTarget || !tabId || !snapshot) return;
     const result = await openPreviewSession({
@@ -528,7 +552,7 @@ export function PreviewView({
                 actionProps: revealAction,
                 data: {
                   secondaryActionProps: {
-                    children: pathCopied ? "Copied!" : "Copy path",
+                    children: pathCopied ? "Copied!" : t("Copy path"),
                     disabled: pathCopied,
                     onClick: copyPath,
                   },
@@ -545,7 +569,7 @@ export function PreviewView({
               actionProps: revealAction,
               data: {
                 secondaryActionProps: {
-                  children: "Copy path",
+                  children: t("Copy path"),
                   onClick: copyPath,
                 },
                 secondaryActionVariant: "outline",
@@ -587,7 +611,7 @@ export function PreviewView({
 
         const updateScreenshotToast = (
           type: "success" | "error" = "success",
-          title = "Screenshot saved",
+          title = t("Screenshot saved"),
           description?: string,
         ) => {
           toastManager.update(
@@ -597,7 +621,7 @@ export function PreviewView({
               title,
               description,
               actionProps: {
-                children: imageCopied ? "Copied!" : "Copy image",
+                children: imageCopied ? "Copied!" : t("Copy image"),
                 disabled: imageCopied,
                 onClick: copyImage,
               },
@@ -606,7 +630,7 @@ export function PreviewView({
                   {
                     id: "copy-path",
                     props: {
-                      children: pathCopied ? "Copied!" : "Copy path",
+                      children: pathCopied ? "Copied!" : t("Copy path"),
                       disabled: pathCopied,
                       onClick: copyPath,
                     },
@@ -625,8 +649,8 @@ export function PreviewView({
           if (!navigator.clipboard?.writeText) {
             updateScreenshotToast(
               "error",
-              "Unable to copy screenshot path",
-              "Clipboard API unavailable.",
+              t("Unable to copy screenshot path"),
+              t("Clipboard API unavailable."),
             );
             return;
           }
@@ -643,7 +667,7 @@ export function PreviewView({
             (error) => {
               updateScreenshotToast(
                 "error",
-                "Unable to copy screenshot path",
+                t("Unable to copy screenshot path"),
                 error instanceof Error ? error.message : t("An error occurred."),
               );
             },
@@ -663,7 +687,7 @@ export function PreviewView({
             (error) => {
               updateScreenshotToast(
                 "error",
-                "Unable to copy screenshot",
+                t("Unable to copy screenshot"),
                 error instanceof Error ? error.message : t("An error occurred."),
               );
             },
@@ -675,7 +699,7 @@ export function PreviewView({
             type: "success",
             title: t("Screenshot saved"),
             actionProps: {
-              children: "Copy image",
+              children: t("Copy image"),
               onClick: copyImage,
             },
             data: {
@@ -683,7 +707,7 @@ export function PreviewView({
                 {
                   id: "copy-path",
                   props: {
-                    children: "Copy path",
+                    children: t("Copy path"),
                     onClick: copyPath,
                   },
                 },
@@ -877,7 +901,9 @@ export function PreviewView({
         pickActive={pickActive}
         pickDisabled={!tabId || isUnreachable}
         pickDisabledReason={
-          isUnreachable ? "Page didn't load. Pick is unavailable until the page renders" : undefined
+          isUnreachable
+            ? t("Page didn't load. Pick is unavailable until the page renders")
+            : undefined
         }
         leadingActions={
           activeProfileId !== browserDefaults.profileId ? (

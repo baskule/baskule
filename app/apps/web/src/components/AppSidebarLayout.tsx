@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useTranslation } from "../i18n";
 
 import { useAtomValue } from "@effect/atom-react";
@@ -39,6 +40,7 @@ import {
   usePanelNavigationSuppression,
 } from "../panelAnimations";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
+import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
 import ThreadSidebar from "./Sidebar";
 import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
@@ -120,7 +122,7 @@ function readInitialThreadSidebarWidth(): number {
       window.innerWidth,
     );
   } catch (error) {
-    console.error("Could not read persisted thread sidebar width.", error);
+    console.error(t("Could not read persisted thread sidebar width."), error);
     return resolveInitialThreadSidebarWidth(null, window.innerWidth);
   }
 }
@@ -396,7 +398,7 @@ function SidebarControl() {
         />
         <TooltipPopup side="bottom">
           {t("Toggle main sidebar")}
-          {shortcutLabel ? ` (${shortcutLabel})` : ""}
+          {shortcutLabel ? t(" ({{shortcutLabel}})", { shortcutLabel: shortcutLabel }) : ""}
         </TooltipPopup>
       </Tooltip>
     </div>
@@ -426,7 +428,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     try {
       removeLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY);
     } catch (error) {
-      console.error("Could not clear persisted thread sidebar width.", error);
+      console.error(t("Could not clear persisted thread sidebar width."), error);
     }
     setSidebarWidth(resolveInitialThreadSidebarWidth(null, viewportWidth));
   };
@@ -453,7 +455,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         defaultOpen
         style={sidebarProviderStyle}
       >
-        <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
+        <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
         <Sidebar
           side="left"
           collapsible="offcanvas"
@@ -478,6 +480,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         {children}
         <BackgroundThreadAnnouncer />
         <SidebarControl />
+        {isElectron ? <HistorySwipeNavigation /> : null}
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );

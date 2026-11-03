@@ -63,6 +63,7 @@ import {
   useState,
 } from "react";
 import { BackgroundThreadContext } from "./backgroundThread";
+import { isInSideChatPane } from "../../lib/sideChatPane";
 import { useStableCallback } from "../../hooks/useStableCallback";
 
 /**
@@ -225,7 +226,10 @@ export function useComposerStash(input: {
       restoredPrompt.length === 0
         ? currentPrompt
         : currentPrompt.trim().length
-          ? `${currentPrompt.replace(/\s+$/, "")}\n\n${restoredPrompt}`
+          ? t("{{value1}}\n\n{{restoredPrompt}}", {
+              value1: currentPrompt.replace(/\s+$/, ""),
+              restoredPrompt: restoredPrompt,
+            })
           : restoredPrompt;
     let promptChanged = nextPrompt !== currentPrompt;
     if (promptChanged) {
@@ -402,7 +406,10 @@ export function useComposerStash(input: {
     }
     if (expiredFileNames.length > 0) {
       missingImageReasons.push(
-        `${expiredFileNames.join(", ")}: stashed files are kept for 24 hours and this upload expired. Attach the file again.`,
+        t(
+          "{{value1}}: stashed files are kept for 24 hours and this upload expired. Attach the file again.",
+          { value1: expiredFileNames.join(", ") },
+        ),
       );
     }
     if (missingImageReasons.length > 0) {
@@ -718,7 +725,11 @@ export function useComposerStash(input: {
     if (backgroundThread) return;
     return registerCommands(
       { "composer.stash": handleStashShortcut },
-      { capture: true, context: readShortcutContext },
+      {
+        capture: true,
+        context: readShortcutContext,
+        when: (event) => !isInSideChatPane(event.target),
+      },
     );
   }, [backgroundThread, handleStashShortcut, readShortcutContext]);
 

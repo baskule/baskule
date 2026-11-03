@@ -195,7 +195,7 @@ function registerMacLauncherBundle(appBundlePath) {
 }
 
 // Bundle-internal paths are macOS paths whatever host builds them.
-function resolveMacLauncherIconPaths(runtimeDir, development = isDevelopment) {
+export function resolveMacLauncherIconPaths(runtimeDir, development = isDevelopment) {
   return {
     sourceIconPath: macIconPngPath,
     generatedIconPath: NodePath.posix.join(

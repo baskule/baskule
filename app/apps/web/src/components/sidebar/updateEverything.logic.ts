@@ -2,7 +2,6 @@ import { t } from "../../i18n";
 
 import type { ServerUpdateState } from "@t3tools/client-runtime/state/server";
 import type { EnvironmentId, ServerConfig } from "@t3tools/contracts";
-import { compareSemverVersions } from "@t3tools/shared/semver";
 import { cliReleaseChannelOf } from "@t3tools/shared/cliRelease";
 
 import {
@@ -60,25 +59,18 @@ export interface SkippedMachine {
   readonly reason: string;
 }
 
-/** Boot services before this build installed the server from npm, not from release archives. */
-const RELEASE_ARCHIVE_SELF_UPDATE_SINCE = "0.0.41-nightly.20260914.1700";
-
 /** Skip current and app-hosted servers; the latter update with the app and would relaunch mid-run.
- * Desktop-managed servers use their own feed. `waitForNpm` lists targets that need
- * `t3@<targetVersion>` on npm first. `releaseArchivesPublished` means the version came from the
- * desktop feed: its GitHub Release goes public with the CLI archives that boot services download. */
+ * Desktop-managed servers use their own feed. Each server's updater checks that it can install the
+ * release before it restarts, so no registry precheck runs here. */
 export function collectServerUpdateTargets(
   machines: ReadonlyArray<UpdateEverythingMachine>,
   targetVersion: string,
-  releaseArchivesPublished: boolean,
 ): {
   readonly targets: ServerUpdateTarget[];
   readonly skipped: SkippedMachine[];
-  readonly waitForNpm: ServerUpdateTarget[];
 } {
   const targets: ServerUpdateTarget[] = [];
   const skipped: SkippedMachine[] = [];
-  const waitForNpm: ServerUpdateTarget[] = [];
   for (const machine of machines) {
     const config = machine.serverConfig;
     if (machine.hostedByThisApp) continue;
@@ -129,16 +121,8 @@ export function collectServerUpdateTargets(
       targetVersion,
     };
     targets.push(target);
-    if (
-      selfUpdate !== "desktop-managed" &&
-      (!releaseArchivesPublished ||
-        selfUpdate === "respawn" ||
-        compareSemverVersions(serverVersion, RELEASE_ARCHIVE_SELF_UPDATE_SINCE) < 0)
-    ) {
-      waitForNpm.push(target);
-    }
   }
-  return { targets, skipped, waitForNpm };
+  return { targets, skipped };
 }
 
 export interface UpdateEverythingSteps<Providers, Servers> {
@@ -224,7 +208,7 @@ export function formatUpdateElapsed(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
   if (minutes < 1) return "<1m";
   if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return t("{{value1}}h {{value2}}m", { value1: Math.floor(minutes / 60), value2: minutes % 60 });
 }
 
 export interface UpdateRunMachineView {
@@ -297,7 +281,10 @@ export function describeUpdateCapsule(
   if (failed.length > 0) {
     return {
       tone: "failed",
-      label: failed.length === 1 ? `${failed[0]!.machine.label} failed` : `${failed.length} failed`,
+      label:
+        failed.length === 1
+          ? t("{{label}} failed", { label: failed[0]!.machine.label })
+          : t("{{length}} failed", { length: failed.length }),
       action: failed.some(({ machine }) => machine.server !== null) ? "retry" : "dismiss",
     };
   }
@@ -309,7 +296,7 @@ export function describeUpdateCapsule(
 }
 
 export const RUN_STATUS_LABELS: Record<UpdateRunMachineStatus, string> = {
-  providers: "updating providers",
+  providers: t("updating providers"),
   waiting: "waiting",
   downloading: "downloading",
   restarting: "restarting",
@@ -343,9 +330,11 @@ export function collectUpdateEverythingResult(input: {
     updatedProviders: input.providers.filter((outcome) => outcome.status === "updated").length,
     restarting: [],
     failures: [
-      ...input.localFailures.map((failure) => `This app: ${failure}`),
+      ...input.localFailures.map((failure) => t("This app: {{failure}}", { failure: failure })),
       ...input.servers.flatMap(({ label, outcome }) =>
-        outcome.status === "failed" ? [`${label}: ${outcome.message}`] : [],
+        outcome.status === "failed"
+          ? [t("{{label}}: {{message}}", { label: label, message: outcome.message })]
+          : [],
       ),
       ...input.providers.flatMap((outcome) => (outcome.status === "failed" ? [outcome.line] : [])),
     ],
@@ -361,7 +350,7 @@ export function getUpdateEverythingToastView(
   readonly description?: string;
 } | null {
   const parts = [
-    result.localVersion !== null && result.localVersion === appVersion ? "this app" : null,
+    result.localVersion !== null && result.localVersion === appVersion ? t("this app") : null,
     countLabel(result.updatedServers, "server"),
     countLabel(result.updatedProviders, "provider"),
   ].filter((part) => part !== null);
@@ -369,7 +358,10 @@ export function getUpdateEverythingToastView(
     result.restarting.length === 0
       ? []
       : [
-          `${joinList(result.restarting)} ${result.restarting.length === 1 ? "is" : "are"} still restarting.`,
+          t("{{value1}} {{value2}} still restarting.", {
+            value1: joinList(result.restarting),
+            value2: result.restarting.length === 1 ? "is" : "are",
+          }),
         ];
   if (result.failures.length === 0) {
     if (parts.length === 0) return null;
@@ -416,12 +408,21 @@ export interface UpdateEverythingRow {
 }
 
 function countLabel(count: number, noun: string): string | null {
-  return count === 0 ? null : `${count} ${noun}${count === 1 ? "" : "s"}`;
+  return count === 0
+    ? null
+    : t("{{count}} {{noun}}{{value3}}", {
+        count: count,
+        noun: noun,
+        value3: count === 1 ? "" : "s",
+      });
 }
 
 function joinList(parts: ReadonlyArray<string>): string {
   if (parts.length <= 2) return parts.join(" and ");
-  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
+  return t("{{value1}}, and {{value2}}", {
+    value1: parts.slice(0, -1).join(", "),
+    value2: parts.at(-1),
+  });
 }
 
 /** One row per machine: this app's machines first, then servers, provider-only, and skipped. */
@@ -435,13 +436,15 @@ export function describeUpdateEverything(plan: UpdateEverythingPlan): {
     (count, machine) => count + machine.providers.length,
     0,
   );
-  const summary = `Update ${joinList(
-    [
-      plan.localVersion ? "this app" : null,
-      countLabel(plan.servers.length, "server"),
-      countLabel(providerCount, "provider"),
-    ].filter((part) => part !== null),
-  )}`;
+  const summary = t("Update {{value1}}", {
+    value1: joinList(
+      [
+        plan.localVersion ? "this app" : null,
+        countLabel(plan.servers.length, "server"),
+        countLabel(providerCount, "provider"),
+      ].filter((part) => part !== null),
+    ),
+  });
 
   const rows = new Map<EnvironmentId | null, UpdateEverythingRow>();
   const update = (
@@ -459,7 +462,7 @@ export function describeUpdateEverything(plan: UpdateEverythingPlan): {
     rows.set(environmentId, { ...row, ...change });
   };
   if (plan.localVersion) {
-    if (plan.localMachines.length === 0) update(null, "This app", { app: "this-app" });
+    if (plan.localMachines.length === 0) update(null, t("This app"), { app: "this-app" });
     for (const machine of plan.localMachines) {
       update(machine.environmentId, machine.label, { app: "this-app" });
     }

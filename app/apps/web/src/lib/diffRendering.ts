@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import { parseDiffFromFile } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs/types";
@@ -34,14 +35,9 @@ export function fnv1a32(
 }
 
 function buildPatchCacheKey(patch: string, scope = "diff-panel"): string {
-  const normalizedPatch = patch.trim();
-  const primary = fnv1a32(normalizedPatch, FNV_OFFSET_BASIS_32, FNV_PRIME_32).toString(36);
-  const secondary = fnv1a32(
-    normalizedPatch,
-    SECONDARY_HASH_SEED,
-    SECONDARY_HASH_MULTIPLIER,
-  ).toString(36);
-  return `${scope}:${normalizedPatch.length}:${primary}:${secondary}`;
+  const primary = fnv1a32(patch, FNV_OFFSET_BASIS_32, FNV_PRIME_32).toString(36);
+  const secondary = fnv1a32(patch, SECONDARY_HASH_SEED, SECONDARY_HASH_MULTIPLIER).toString(36);
+  return `${scope}:${patch.length}:${primary}:${secondary}`;
 }
 
 export type RenderablePatch =
@@ -87,11 +83,11 @@ function hideWhitespaceChanges(file: FileDiffMetadata): FileDiffMetadata {
   const hunks = file.hunks.map((hunk) => {
     const oldContents = file.deletionLines
       .slice(hunk.deletionLineIndex, hunk.deletionLineIndex + hunk.deletionCount)
-      .map((line) => `${line.replace(/\s/g, "")}\n`)
+      .map((line) => t("{{value1}}\n", { value1: line.replace(/\s/g, "") }))
       .join("");
     const newContents = file.additionLines
       .slice(hunk.additionLineIndex, hunk.additionLineIndex + hunk.additionCount)
-      .map((line) => `${line.replace(/\s/g, "")}\n`)
+      .map((line) => t("{{value1}}\n", { value1: line.replace(/\s/g, "") }))
       .join("");
     const filtered = parseDiffFromFile(
       { name: file.name, contents: oldContents },
@@ -164,15 +160,10 @@ export function getRenderablePatch(
   cacheScope = "diff-panel",
   options: RenderablePatchOptions = {},
 ): RenderablePatch | null {
-  if (!patch) return null;
-  const normalizedPatch = patch.trim();
-  if (normalizedPatch.length === 0) return null;
+  if (!patch?.trim()) return null;
 
   try {
-    const parsedPatches = parsePatchFiles(
-      normalizedPatch,
-      buildPatchCacheKey(normalizedPatch, cacheScope),
-    );
+    const parsedPatches = parsePatchFiles(patch, buildPatchCacheKey(patch, cacheScope));
     const sourceFiles = parsedPatches.flatMap((parsedPatch) => parsedPatch.files);
     const files = sourceFiles.map((file) => {
       const filtered = options.ignoreWhitespace ? hideWhitespaceChanges(file) : file;
@@ -184,14 +175,14 @@ export function getRenderablePatch(
 
     return {
       kind: "raw",
-      text: normalizedPatch,
-      reason: "Unsupported diff format. Showing raw patch.",
+      text: patch,
+      reason: t("Unsupported diff format. Showing raw patch."),
     };
   } catch {
     return {
       kind: "raw",
-      text: normalizedPatch,
-      reason: "Failed to parse patch. Showing raw patch.",
+      text: patch,
+      reason: t("Failed to parse patch. Showing raw patch."),
     };
   }
 }

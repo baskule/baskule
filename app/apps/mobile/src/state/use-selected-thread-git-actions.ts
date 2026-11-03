@@ -38,7 +38,7 @@ import { useSelectedThreadWorktree } from "./use-selected-thread-worktree";
 
 function refreshFailureMessage(cause: Cause.Cause<unknown>): string {
   const error = Cause.squash(cause);
-  return error instanceof Error ? error.message : "Failed to refresh git status.";
+  return error instanceof Error ? error.message : t("Failed to refresh git status.");
 }
 
 // Selecting a thread or reconnecting its environment refreshes the checkout's
@@ -56,6 +56,7 @@ export function useSelectedThreadGitActions() {
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
+  const readRefs = useAtomCommand(vcsEnvironment.readRefs, { reportFailure: false });
   const refreshStatus = useAtomCommand(vcsEnvironment.refreshStatus, { reportFailure: false });
   const switchRef = useAtomCommand(vcsEnvironment.switchRef, { reportFailure: false });
   const createRef = useAtomCommand(vcsEnvironment.createRef, { reportFailure: false });
@@ -198,7 +199,7 @@ export function useSelectedThreadGitActions() {
         : await vcsActionManager.track(appAtomRegistry, target, { operation, label }, run);
     if (AsyncResult.isFailure(result)) {
       const error = Cause.squash(result.cause);
-      const message = error instanceof Error ? error.message : "Git action failed.";
+      const message = error instanceof Error ? error.message : t("Git action failed.");
       setPendingConnectionError(message);
       showGitActionResult({ type: "error", title: t("Git action failed"), description: message });
       return null;
@@ -206,9 +207,21 @@ export function useSelectedThreadGitActions() {
     return result.value;
   };
 
-  const refreshSelectedThreadBranches = async (): Promise<ReadonlyArray<VcsRef>> => {
-    branchState.refresh();
-    return dedupeRemoteBranchesWithLocalMatches(branchState.data?.refs ?? []).filter(
+  const refreshSelectedThreadBranches = async (): Promise<ReadonlyArray<VcsRef> | null> => {
+    if (branchTarget.environmentId === null || branchTarget.cwd === null) return null;
+    const result = await readRefs({
+      environmentId: branchTarget.environmentId,
+      input: { cwd: branchTarget.cwd, limit: 100, refresh: true },
+    });
+    if (AsyncResult.isFailure(result)) {
+      const error = Cause.squash(result.cause);
+      const message = error instanceof Error ? error.message : t("Failed to refresh branches.");
+      setPendingConnectionError(message);
+      showGitActionResult({ type: "error", title: t("Git action failed"), description: message });
+      return null;
+    }
+    setPendingConnectionError(null);
+    return dedupeRemoteBranchesWithLocalMatches(result.value.refs).filter(
       (branch) => !branch.isRemote,
     );
   };
@@ -235,7 +248,7 @@ export function useSelectedThreadGitActions() {
   const onCheckoutSelectedThreadBranch = async (branch: string) => {
     return runSelectedThreadGitMutation(
       "switch_ref",
-      "Switching branch",
+      t("Switching branch"),
       async ({ thread, cwd }) => {
         const result = await switchRef({
           environmentId: thread.environmentId,
@@ -261,7 +274,7 @@ export function useSelectedThreadGitActions() {
   const onCreateSelectedThreadBranch = async (branch: string) => {
     return runSelectedThreadGitMutation(
       "create_ref",
-      "Creating branch",
+      t("Creating branch"),
       async ({ thread, cwd }) => {
         const result = await createRef({
           environmentId: thread.environmentId,
@@ -290,7 +303,7 @@ export function useSelectedThreadGitActions() {
   }) => {
     return runSelectedThreadGitMutation(
       "create_worktree",
-      "Creating worktree",
+      t("Creating worktree"),
       async ({ thread, project }) => {
         const result = await createWorktree({
           environmentId: thread.environmentId,
@@ -321,7 +334,7 @@ export function useSelectedThreadGitActions() {
   const onPullSelectedThreadBranch = async () => {
     await runSelectedThreadGitMutation(
       "pull",
-      "Pulling latest changes",
+      t("Pulling latest changes"),
       async ({ thread, cwd }) => {
         const result = await pull({
           environmentId: thread.environmentId,
@@ -349,7 +362,7 @@ export function useSelectedThreadGitActions() {
     const actionId = uuidv4();
     return await runSelectedThreadGitMutation(
       "run_change_request",
-      "Running source control action",
+      t("Running source control action"),
       async ({ thread, cwd }) => {
         const result = await runStackedAction({
           actionId,

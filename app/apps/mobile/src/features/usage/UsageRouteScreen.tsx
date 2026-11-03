@@ -26,6 +26,7 @@ import {
   formatUsageContractMismatch,
   formatUsd,
   makeWindow,
+  usageSourceMessages,
 } from "@t3tools/shared/usageFormat";
 import { useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, RefreshControl, View } from "react-native";
@@ -60,10 +61,10 @@ const VIEW_OPTIONS = [
 ] as const satisfies readonly { value: UsageView; label: string }[];
 
 const WINDOW_OPTIONS = [
-  { value: 1, label: "24h", accessibilityLabel: t("Past 24 hours") },
-  { value: 7, label: "7d", accessibilityLabel: t("Past 7 days") },
-  { value: 30, label: "30d", accessibilityLabel: t("Past 30 days") },
-  { value: 90, label: "90d", accessibilityLabel: t("Past 90 days") },
+  { value: 1, label: t("24h"), accessibilityLabel: t("Past 24 hours") },
+  { value: 7, label: t("7d"), accessibilityLabel: t("Past 7 days") },
+  { value: 30, label: t("30d"), accessibilityLabel: t("Past 30 days") },
+  { value: 90, label: t("90d"), accessibilityLabel: t("Past 90 days") },
 ] as const;
 
 const CHART_HEIGHT = 180;
@@ -112,18 +113,9 @@ function UsageScreen(props: {
   );
   const isFocused = useIsFocused();
   const limits = useRefreshLimits(selectedEnvironmentIds, isFocused && view === "limits");
-  const sourceMessages = [
-    ...new Set(
-      selectedEnvironments.flatMap(
-        (environment) =>
-          environment.summary?.sources.flatMap((source) =>
-            source.message && (source.status === "partial" || source.status === "failed")
-              ? [source.message]
-              : [],
-          ) ?? [],
-      ),
-    ),
-  ];
+  const sourceMessages = usageSourceMessages(
+    selectedEnvironments.flatMap((environment) => environment.summary?.sources ?? []),
+  );
   const canReadDiagnostics = selectedEnvironments.some(
     (environment) => environment.canReadDiagnostics,
   );
@@ -362,7 +354,9 @@ function UsageScreen(props: {
                         key={environment.environmentId}
                         className="text-center text-base text-foreground-muted"
                       >
-                        {selectedEnvironments.length > 1 ? `${environment.label}: ` : null}
+                        {selectedEnvironments.length > 1
+                          ? t("{{label}}: ", { label: environment.label })
+                          : null}
                         {environment.error}
                       </Text>
                     ))}
@@ -388,7 +382,10 @@ function UsageScreen(props: {
                               {...chart}
                               height={WIDE_CHART_HEIGHT}
                               fill
-                              title={`${isPast24Hours ? t("Hourly") : t("Daily")} ${metric === "cost" ? "cost" : t("processed tokens")}`}
+                              title={t("{{value1}} {{value2}}", {
+                                value1: isPast24Hours ? t("Hourly") : t("Daily"),
+                                value2: metric === "cost" ? "cost" : t("processed tokens"),
+                              })}
                             />
                           </View>
                         </View>
@@ -896,13 +893,17 @@ function usageEnvironmentStatus(environment: EnvironmentUsageStatus, refreshing:
     });
   }
   if (environment.error)
-    return environment.summary ? `${environment.error} Showing saved totals.` : environment.error;
+    return environment.summary
+      ? t("{{error}} Showing saved totals.", { error: environment.error })
+      : environment.error;
   if (!environment.isConnected)
-    return environment.summary ? "Disconnected · showing saved usage" : "Waiting for connection…";
+    return environment.summary
+      ? t("Disconnected · showing saved usage")
+      : t("Waiting for connection…");
   const progress = usageEnvironmentProgress(environment, refreshing);
-  if (progress.phase === "loading") return "Loading usage…";
-  if (progress.phase === "stale") return "Updating usage…";
+  if (progress.phase === "loading") return t("Loading usage…");
+  if (progress.phase === "stale") return t("Updating usage…");
   if (progress.phase === "partway")
     return updatingProvidersLabel(progress.providers, providerLabel);
-  return "Usage up to date";
+  return t("Usage up to date");
 }

@@ -2,7 +2,10 @@ import { t } from "../../i18n";
 
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import type { ChangeTypes, FileDiffMetadata } from "@pierre/diffs/types";
-import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
+import {
+  checkpointFileTotals,
+  type ThreadCheckpointSummary,
+} from "@t3tools/client-runtime/state/thread-checkpoints";
 import type { ReviewDiffPreviewSource } from "@t3tools/contracts";
 import { quoteGitPatchPath } from "@t3tools/shared/gitPatchPath";
 import * as Arr from "effect/Array";
@@ -13,7 +16,7 @@ export type ReviewSectionKind = "turn" | "working-tree" | "branch-range";
 
 const CHANGES_SECTION_ID = "git:branch-range";
 const CHANGES_TITLE = "Changes";
-const UNCOMMITTED_SUBTITLE = "Staged, unstaged, and untracked files";
+const UNCOMMITTED_SUBTITLE = t("Staged, unstaged, and untracked files");
 
 export interface ReviewSectionItem {
   readonly id: string;
@@ -109,11 +112,14 @@ function checkpointTitle(checkpoint: ThreadCheckpointSummary): string {
 }
 
 function checkpointSubtitle(checkpoint: ThreadCheckpointSummary): string {
-  const fileCount = checkpoint.files.length;
+  const fileCount = checkpointFileTotals(checkpoint).count;
   if (checkpoint.status !== "ready") {
     return t("Diff {{status}}", { status: checkpoint.status });
   }
-  return `${fileCount} file${fileCount === 1 ? "" : "s"} changed`;
+  return t("{{fileCount}} file{{value2}} changed", {
+    fileCount: fileCount,
+    value2: fileCount === 1 ? "" : "s",
+  });
 }
 
 function compareCheckpointTurnCountDescending(
@@ -136,7 +142,10 @@ function gitSubtitle(section: ReviewDiffPreviewSource): string | null {
     return UNCOMMITTED_SUBTITLE;
   }
   if (section.baseRef) {
-    return `${section.baseRef} ... ${section.headRef ?? "HEAD"}`;
+    return t("{{baseRef}} ... {{value2}}", {
+      baseRef: section.baseRef,
+      value2: section.headRef ?? "HEAD",
+    });
   }
   return t("Base branch unavailable");
 }
@@ -270,7 +279,7 @@ export function getReviewFilePreviewState(file: ReviewRenderableFile): ReviewFil
       kind: "suppressed",
       reason: "non-text",
       title: t("Non-text file"),
-      message: "Diff preview is not available for this file format.",
+      message: t("Diff preview is not available for this file format."),
       actionLabel: null,
     };
   }
@@ -282,8 +291,8 @@ export function getReviewFilePreviewState(file: ReviewRenderableFile): ReviewFil
       kind: "suppressed",
       reason: "large",
       title: t("Large diff"),
-      message: "Large diffs are not rendered by default.",
-      actionLabel: "Load diff",
+      message: t("Large diffs are not rendered by default."),
+      actionLabel: t("Load diff"),
     };
   }
 
@@ -291,7 +300,12 @@ export function getReviewFilePreviewState(file: ReviewRenderableFile): ReviewFil
 }
 
 function fallbackHunkHeader(hunk: FileDiffMetadata["hunks"][number]): string {
-  return `@@ -${hunk.deletionStart},${hunk.deletionCount} +${hunk.additionStart},${hunk.additionCount} @@`;
+  return t("@@ -{{deletionStart}},{{deletionCount}} +{{additionStart}},{{additionCount}} @@", {
+    deletionStart: hunk.deletionStart,
+    deletionCount: hunk.deletionCount,
+    additionStart: hunk.additionStart,
+    additionCount: hunk.additionCount,
+  });
 }
 
 function buildRenderableRows(
@@ -403,9 +417,11 @@ function completePatchSource(file: FileDiffMetadata, rawPatch: string | null | u
   const lines = rawPatch.split("\n");
   if (lines.pop() !== "" || rawPatch.includes("\0")) return undefined;
   let index = 0;
-  if (lines[index++] !== `diff --git ${a} ${b}`) return undefined;
+  if (lines[index++] !== t("diff --git {{a}} {{b}}", { a: a, b: b })) return undefined;
   if (
-    !new RegExp(`^${added ? "new" : "deleted"} file mode 100(644|755)$`).test(lines[index++] ?? "")
+    !new RegExp(
+      t("^{{value1}} file mode 100(644|755)$", { value1: added ? "new" : "deleted" }),
+    ).test(lines[index++] ?? "")
   ) {
     return undefined;
   }
@@ -415,7 +431,7 @@ function completePatchSource(file: FileDiffMetadata, rawPatch: string | null | u
     }
   }
   if (lines[index++] !== `--- ${added ? "/dev/null" : a}`) return undefined;
-  if (lines[index++] !== `+++ ${added ? b : "/dev/null"}`) return undefined;
+  if (lines[index++] !== t("+++ {{value1}}", { value1: added ? b : "/dev/null" })) return undefined;
   // Pierre repairs both underfull and overfull hunks. Its resulting counts cannot
   // prove that patch lines cover the whole file; read the original header instead.
   const header = lines[index++] ?? "";
@@ -429,7 +445,7 @@ function completePatchSource(file: FileDiffMetadata, rawPatch: string | null | u
   if (!Number.isSafeInteger(count) || count <= 0) return undefined;
   const hunk = file.hunks[0]!;
   if (
-    hunk.hunkSpecs !== `${header}\n` ||
+    hunk.hunkSpecs !== t("{{header}}\n", { header: header }) ||
     (added ? hunk.additionCount : hunk.deletionCount) !== count ||
     (added ? file.additionLines : file.deletionLines).length !== count ||
     (added ? file.deletionLines : file.additionLines).length !== 0
@@ -441,9 +457,9 @@ function completePatchSource(file: FileDiffMetadata, rawPatch: string | null | u
     if (!lines[index++]?.startsWith(prefix)) return undefined;
   }
   let bodyEnd = rawPatch.length;
-  if (lines[index] === "\\ No newline at end of file") {
+  if (lines[index] === t("\\ No newline at end of file")) {
     // Only the patch's LF is synthetic, including when the source ends in a bare CR.
-    bodyEnd -= "\\ No newline at end of file\n".length + 1;
+    bodyEnd -= t("\\ No newline at end of file\n").length + 1;
     index++;
   }
   if (index !== lines.length) return undefined;
@@ -533,17 +549,22 @@ export function buildReviewSectionItems(input: {
     },
   );
 
-  const gitItems = input.gitSections.map<ReviewSectionItem>((section) => ({
-    id: `git:${section.kind}`,
-    kind: section.kind,
-    title: section.title,
-    subtitle: gitSubtitle(section),
-    diff: section.diff,
-    source: section,
-    ...(section.files ? { files: section.files } : {}),
-    truncated: section.truncated,
-    isLoading: false,
-  }));
+  const gitItems = input.gitSections
+    .filter(
+      (section): section is typeof section & { kind: ReviewSectionKind } =>
+        section.kind !== "commit",
+    )
+    .map<ReviewSectionItem>((section) => ({
+      id: `git:${section.kind}`,
+      kind: section.kind,
+      title: section.title,
+      subtitle: gitSubtitle(section),
+      diff: section.diff,
+      source: section,
+      ...(section.files ? { files: section.files } : {}),
+      truncated: section.truncated,
+      isLoading: false,
+    }));
   const hasChangesItem = gitItems.some((item) => item.id === CHANGES_SECTION_ID);
   const visibleGitItems =
     input.loadingGitSections && !hasChangesItem
@@ -597,7 +618,7 @@ export function buildReviewParsedDiff(
   }
 
   const notice = truncated
-    ? "Diff output hit the server size cap. Showing the available excerpt."
+    ? t("Diff output hit the server size cap. Showing the available excerpt.")
     : null;
 
   try {
@@ -630,8 +651,8 @@ export function buildReviewParsedDiff(
         kind: "raw",
         text,
         reason: truncated
-          ? "Diff was truncated before it could be parsed completely. Showing the raw excerpt."
-          : "Unsupported diff format. Showing raw patch.",
+          ? t("Diff was truncated before it could be parsed completely. Showing the raw excerpt.")
+          : t("Unsupported diff format. Showing raw patch."),
         notice,
       };
     }
@@ -649,8 +670,8 @@ export function buildReviewParsedDiff(
       kind: "raw",
       text,
       reason: truncated
-        ? "Diff was truncated before it could be parsed completely. Showing the raw excerpt."
-        : "Failed to parse patch. Showing raw patch.",
+        ? t("Diff was truncated before it could be parsed completely. Showing the raw excerpt.")
+        : t("Failed to parse patch. Showing raw patch."),
       notice,
     };
   }
@@ -662,7 +683,9 @@ export function applyReviewDiffMetadata(
 ): ReviewParsedDiff {
   if (previewDiff.kind === "empty") return previewDiff;
   const notice = selectedSection?.truncated
-    ? `This preview exceeds the size limit. Changes shown are incomplete.${selectedSection.files ? " Counts include all changes." : ""}`
+    ? t("This preview exceeds the size limit. Changes shown are incomplete.{{value1}}", {
+        value1: selectedSection.files ? " Counts include all changes." : "",
+      })
     : previewDiff.notice;
   if (previewDiff.kind !== "files" || !selectedSection?.files) return { ...previewDiff, notice };
   const totals = selectedSection.files.reduce(

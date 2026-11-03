@@ -187,8 +187,8 @@ async function requestThreadUnpinConfirmation(input: {
   return settlePromise(() =>
     confirm(
       [
-        `Unpin thread "${input.title}"?`,
-        "This will move the thread out of your pinned section.",
+        t('Unpin thread "{{title}}"?', { title: input.title }),
+        t("This will move the thread out of your pinned section."),
       ].join("\n"),
     ),
   );
@@ -239,6 +239,13 @@ export function useAcknowledgeThreadWoke() {
     }
     markThreadVisited(scopedThreadKey(target), wokeAt);
   };
+}
+
+// These Undos restore a thread's place in the list, which archiving or deleting it ends.
+const LIST_PLACEMENT_UNDO_KINDS = ["settle", "snooze", "pin"];
+
+function expireThreadUndos(target: ScopedThreadRef, kinds: readonly string[]) {
+  for (const kind of kinds) ThreadUndo.invalidate(kind, scopedThreadKey(target));
 }
 
 /** A No project thread that already has its own folder, on a server that can promote it. */
@@ -387,6 +394,7 @@ export function useThreadActions() {
       );
     }
 
+    const requestingRouteHref = router.state.location.href;
     const currentRouteThreadRef = getCurrentRouteThreadRef();
     const shouldNavigateToDraft =
       currentRouteThreadRef?.threadId === threadRef.threadId &&
@@ -400,6 +408,7 @@ export function useThreadActions() {
       action.finish();
       return archiveResult;
     }
+    expireThreadUndos(threadRef, LIST_PLACEMENT_UNDO_KINDS);
     const wokeAt = threadWokeAt(thread, { now: new Date().toISOString() });
     if (wokeAt !== null) {
       markThreadVisited(scopedThreadKey(threadRef), wokeAt);
@@ -410,10 +419,10 @@ export function useThreadActions() {
       action: "Archived",
       claim: action,
       undo: () => unarchiveThread(threadRef, { navigate: shouldNavigateToDraft }),
-      failureTitle: "Failed to undo archive",
+      failureTitle: t("Failed to undo archive"),
     });
 
-    if (shouldNavigateToDraft) {
+    if (shouldNavigateToDraft && router.state.location.href === requestingRouteHref) {
       const navigationResult = await settlePromise(() =>
         handleNewThread(scopeProjectRef(thread.environmentId, thread.projectId)),
       );
@@ -439,6 +448,7 @@ export function useThreadActions() {
         input: { threadId: target.threadId },
       });
       if (result._tag === "Success") {
+        expireThreadUndos(target, [...LIST_PLACEMENT_UNDO_KINDS, "archive"]);
         refreshArchivedThreadsForEnvironment(target.environmentId);
         clearThreadPreviewState(target);
       }
@@ -516,10 +526,10 @@ export function useThreadActions() {
       const confirmationResult = await settlePromise(() =>
         localApi.dialogs.confirm(
           [
-            "This thread is the only one linked to this worktree:",
+            t("This thread is the only one linked to this worktree:"),
             displayWorktreePath ?? orphanedWorktreePath,
             "",
-            "Delete the worktree too?",
+            t("Delete the worktree too?"),
           ].join("\n"),
           { variant: "destructive" },
         ),
@@ -555,6 +565,7 @@ export function useThreadActions() {
     if (deleteResult._tag === "Failure") {
       return deleteResult;
     }
+    expireThreadUndos(threadRef, [...LIST_PLACEMENT_UNDO_KINDS, "archive"]);
     refreshArchivedThreadsForEnvironment(threadRef.environmentId);
     releaseComposerDraftUploads(threadRef);
     clearComposerDraftForThread(threadRef);
@@ -619,8 +630,8 @@ export function useThreadActions() {
     if (cleanupFailure) {
       const removalFailed = removeResult._tag === "Failure";
       const error = squashAtomCommandFailure(cleanupFailure);
-      const message = error instanceof Error ? error.message : "An error occurred.";
-      console.error("Worktree cleanup failed after thread deletion", {
+      const message = error instanceof Error ? error.message : t("An error occurred.");
+      console.error(t("Worktree cleanup failed after thread deletion"), {
         threadId: threadRef.threadId,
         projectCwd: threadProject.workspaceRoot,
         worktreePath: orphanedWorktreePath,
@@ -729,7 +740,7 @@ export function useThreadActions() {
         action: "Unpinned",
         claim: action,
         undo: () => runUndoPlan(target, undoPlan),
-        failureTitle: "Failed to undo unpin",
+        failureTitle: t("Failed to undo unpin"),
       });
     } else {
       action.finish();
@@ -773,7 +784,7 @@ export function useThreadActions() {
       action: "Settled",
       claim: action,
       undo: () => runUndoPlan(target, undoPlan),
-      failureTitle: "Failed to undo settle",
+      failureTitle: t("Failed to undo settle"),
     });
     return result;
   };
@@ -785,7 +796,7 @@ export function useThreadActions() {
     const resolved = resolveThreadTarget(target);
     const confirmationResult = await requestThreadUnpinConfirmation({
       enabled: confirmThreadUnpin,
-      title: resolved?.thread.title ?? "this thread",
+      title: resolved?.thread.title ?? t("this thread"),
       confirm: localApi ? (message) => localApi.dialogs.confirm(message) : null,
     });
     if (confirmationResult._tag === "Failure") {
@@ -886,7 +897,7 @@ export function useThreadActions() {
       action: "Snoozed",
       claim: action,
       undo: () => runUndoPlan(target, ThreadUndo.planThreadUndo("snooze")),
-      failureTitle: "Failed to wake thread",
+      failureTitle: t("Failed to wake thread"),
     });
     return result;
   };
@@ -922,12 +933,12 @@ export function useThreadActions() {
     const resolved = resolveThreadTarget(target);
 
     if (confirmThreadDelete && localApi) {
-      const title = resolved?.thread.title ?? "this thread";
+      const title = resolved?.thread.title ?? t("this thread");
       const confirmationResult = await settlePromise(() =>
         localApi.dialogs.confirm(
           [
-            `Delete thread "${title}"?`,
-            "This permanently clears conversation history for this thread.",
+            t('Delete thread "{{title}}"?', { title: title }),
+            t("This permanently clears conversation history for this thread."),
           ].join("\n"),
           { variant: "destructive" },
         ),

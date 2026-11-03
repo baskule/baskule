@@ -16,6 +16,7 @@ type AudioPreviewProps = {
   readonly revision?: string | null;
   readonly onError?: () => void;
   readonly compact?: boolean;
+  readonly variant?: "chip" | "bubble";
   readonly failed?: boolean;
   readonly onOpen?: (() => void) | undefined;
   readonly onRetry?: () => void;
@@ -113,6 +114,7 @@ function AudioChip(props: AudioPreviewProps) {
     <ContextChip
       kind="file"
       {...(props.failed ? { state: "invalid" as const } : {})}
+      {...(props.variant === "bubble" ? { shape: "bubble" as const } : {})}
       className="relative isolate overflow-hidden"
       title={props.failed ? t("Audio unavailable. Open the file or retry playback.") : props.name}
     >
@@ -123,7 +125,11 @@ function AudioChip(props: AudioPreviewProps) {
       />
       <ContextChipAction
         className="ml-0 [&_svg]:size-[1em]"
-        aria-label={`${props.failed ? t("Audio unavailable. ") : ""}${action} ${props.name}`}
+        aria-label={t("{{value1}}{{action}} {{name}}", {
+          value1: props.failed ? t("Audio unavailable. ") : "",
+          action: action,
+          name: props.name,
+        })}
         disabled={loading}
         onClick={() => {
           if (props.failed) {
@@ -142,13 +148,16 @@ function AudioChip(props: AudioPreviewProps) {
       >
         <Icon aria-hidden className={loading && props.src ? "animate-spin" : undefined} />
       </ContextChipAction>
-      <ContextChipLabel className="max-w-72">
+      <ContextChipLabel className={props.variant === "bubble" ? "flex-1" : "max-w-72"}>
         {open ? (
           <button
             type="button"
             className="block max-w-full cursor-pointer truncate rounded-sm text-left focus-visible:outline-2 focus-visible:outline-foreground"
             onClick={open}
-            aria-label={`${props.failed && !props.onOpen ? t("Retry") : t("Preview")} ${props.name}`}
+            aria-label={t("{{value1}} {{name}}", {
+              value1: props.failed && !props.onOpen ? t("Retry") : t("Preview"),
+              name: props.name,
+            })}
           >
             {middleTruncateAttachmentName(props.name)}
           </button>
@@ -163,7 +172,10 @@ function AudioChip(props: AudioPreviewProps) {
             ? "..."
             : duration > 0
               ? elapsed > 0 || playing
-                ? `${audioTime(elapsed)} / ${audioTime(duration)}`
+                ? t("{{value1}} / {{value2}}", {
+                    value1: audioTime(elapsed),
+                    value2: audioTime(duration),
+                  })
                 : audioTime(duration)
               : audioTime(elapsed)}
       </span>

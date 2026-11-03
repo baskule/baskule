@@ -59,7 +59,7 @@ export function usagePriceCell(
   if (values.some((value) => value !== values[0])) return { value: "", placeholder: t("Mixed") };
   return {
     value: values[0] ?? "",
-    placeholder: values[0] === null ? "Automatic" : optional ? "Input rate" : "0.00",
+    placeholder: values[0] === null ? "Automatic" : optional ? t("Input rate") : "0.00",
   };
 }
 
@@ -80,8 +80,17 @@ export function usagePriceTableChanges(
     }
     const alias = (draft.alias ?? currentAlias ?? "").trim();
     if (alias !== "") {
-      if (model === "") errors.set(draft.id, "Enter a model ID.");
-      else if (alias === model) errors.set(draft.id, "Map to a different model.");
+      if (draft.alias === undefined && Object.keys(draft.values).length > 0) {
+        errors.set(
+          draft.id,
+          t('{{label}} maps this model. Remove it from "Apply to" or clear its mapping first.', {
+            label: target.label,
+          }),
+        );
+        continue;
+      }
+      if (model === "") errors.set(draft.id, t("Enter a model ID."));
+      else if (alias === model) errors.set(draft.id, t("Map to a different model."));
       else {
         if (alias !== currentAlias) changes.push({ model, alias });
         if (modelPrice(target, model)) changes.push({ model, price: null });
@@ -106,16 +115,42 @@ export function usagePriceTableChanges(
       errors.set(
         draft.id,
         model === ""
-          ? "Enter a model ID."
+          ? t("Enter a model ID.")
           : missing
-            ? `${missing.label} is required on ${target.label}.`
-            : "Use non-negative numbers for prices.",
+            ? t("{{label}} is required on {{value2}}.", {
+                label: missing.label,
+                value2: target.label,
+              })
+            : t("Use non-negative numbers for prices."),
       );
       continue;
     }
     const next = usagePriceForm(model, parsed.price);
     if (USAGE_PRICE_FIELDS.some((field) => original[field.key] !== next[field.key]))
       changes.push(parsed);
+  }
+  // Check the final batch so clearing a mapping and reversing it in one save stays valid.
+  const aliases = new Map(Object.entries(target.aliases ?? {}));
+  for (const change of changes) {
+    if (!("alias" in change)) continue;
+    if (change.alias === null) aliases.delete(change.model);
+    else aliases.set(change.model, change.alias);
+  }
+  for (const draft of drafts) {
+    if (draft.removed || errors.has(draft.id)) continue;
+    let model = draft.model.trim();
+    const seen = new Set<string>();
+    while (aliases.has(model)) {
+      if (seen.has(model)) {
+        errors.set(
+          draft.id,
+          t("Model mappings cannot form a cycle on {{label}}.", { label: target.label }),
+        );
+        break;
+      }
+      seen.add(model);
+      model = aliases.get(model)!;
+    }
   }
   return { changes, errors };
 }

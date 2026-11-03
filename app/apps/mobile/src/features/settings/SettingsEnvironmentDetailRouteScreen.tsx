@@ -10,6 +10,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { sessionPermissionsUnavailableMessage } from "@t3tools/shared/authScopeOptions";
 import * as Cause from "effect/Cause";
 import * as Exit from "effect/Exit";
 import { AsyncResult } from "effect/reactivity";
@@ -120,7 +121,13 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
       return;
     Dialog.alert(
       `Update ${environment?.environmentLabel ?? "environment"}?`,
-      `Install T3 Code ${targetVersion}. ${capabilities.serverSelfUpdate === "desktop-managed" ? "The desktop app will close and relaunch." : "The server will restart and reconnect."} Running threads may be interrupted.`,
+      t("Install T3 Code {{targetVersion}}. {{value2}} Running threads may be interrupted.", {
+        targetVersion: targetVersion,
+        value2:
+          capabilities.serverSelfUpdate === "desktop-managed"
+            ? "The desktop app will close and relaunch."
+            : "The server will restart and reconnect.",
+      }),
       [
         { text: t("Cancel"), style: "cancel" },
         {
@@ -213,11 +220,14 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
               </Text>
             ) : !allowed ? (
               <Text className="px-2 text-sm text-foreground-muted">
-                {AsyncResult.isFailure(sessionResult)
-                  ? t("Could not verify your permissions. Reconnect to try again.")
-                  : session === null
-                    ? t("Checking permissions…")
-                    : t("This connection does not have permission to manage the environment.")}
+                {AsyncResult.isFailure(sessionResult) || session === null || !session.authenticated
+                  ? sessionPermissionsUnavailableMessage({
+                      connected,
+                      failed: AsyncResult.isFailure(sessionResult),
+                      rejected:
+                        !AsyncResult.isFailure(sessionResult) && session?.authenticated === false,
+                    })
+                  : t("This connection does not have permission to manage the environment.")}
               </Text>
             ) : null}
             {error ? (

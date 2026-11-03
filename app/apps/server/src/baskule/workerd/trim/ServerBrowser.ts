@@ -49,7 +49,7 @@ const noComputer: Service = {
   openDownload: () => Effect.succeedNone,
   clearProfile: (profileId) =>
     Effect.fail(new PreviewClearProfileError({ profileId, cause: "no computer" })),
-  reportProfiles: () => Effect.void,
+  profileReporter: Effect.succeed(() => Effect.void),
 };
 
 export class ServerBrowser extends Context.Service<ServerBrowser, Service>()(

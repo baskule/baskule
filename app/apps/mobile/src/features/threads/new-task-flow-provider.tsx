@@ -325,72 +325,13 @@ export function NewTaskFlowProvider(
           (project) => scopedProjectKey(project.environmentId, project.id) === selectedProjectKey,
         ) ?? (selectedProjectKey === null ? (projectsForEnvironment[0] ?? null) : null));
 
+  const storedStickyModelSelection = useStickyComposerModelSelection();
+  const modelSelectionNow = useNowMinuteMs();
   const projectDefaults = useNewTaskProjectDefaults(selectedProject);
   const selectedEnvironmentServerConfig = projectDefaults.serverConfig;
   const isScratchDraft = projectDefaults.isScratch;
   const serverConfigs = useServerConfigs();
   const { connectedEnvironments } = useRemoteConnectionStatus();
-  const scratchEnvironments = connectedEnvironments.filter(
-    (environment) =>
-      availableScratchWorkspaceRoot(
-        environment.connectionState,
-        serverConfigs.get(environment.environmentId),
-      ) !== null,
-  );
-
-  const selectedRepositoryKey = selectedProject?.repositoryIdentity
-    ? repositoryGroupingKeyOf(selectedProject.repositoryIdentity)
-    : null;
-  // Use || null: placeholder workspaceRoot can be empty, and an empty basename rejects real hosts.
-  const selectedWorkspaceBasename = selectedProject?.workspaceRoot.split("/").at(-1) || null;
-  const selectedProjectTitle = selectedProject?.title ?? null;
-  const environments = (() => {
-    if (isScratchDraft) {
-      return scratchEnvironments.map((environment) => ({
-        environmentId: environment.environmentId,
-        environmentLabel: environment.environmentLabel,
-      }));
-    }
-    const seen = new Set<EnvironmentId>();
-    const result: Array<{
-      readonly environmentId: EnvironmentId;
-      readonly environmentLabel: string;
-    }> = [];
-    const hostsSelectedRepository = (project: EnvironmentProject) => {
-      if (selectedRepositoryKey === null && selectedWorkspaceBasename === null) {
-        return true;
-      }
-      const projectKey = project.repositoryIdentity
-        ? repositoryGroupingKeyOf(project.repositoryIdentity)
-        : null;
-      if (selectedRepositoryKey !== null && projectKey !== null) {
-        return projectKey === selectedRepositoryKey;
-      }
-      return (
-        project.workspaceRoot.split("/").at(-1) === selectedWorkspaceBasename ||
-        (selectedProjectTitle !== null && project.title === selectedProjectTitle)
-      );
-    };
-    for (const project of projects) {
-      if (!hostsSelectedRepository(project)) {
-        continue;
-      }
-      if (seen.has(project.environmentId)) {
-        continue;
-      }
-      const environment = savedConnectionsById[project.environmentId];
-      if (!environment) {
-        continue;
-      }
-      seen.add(project.environmentId);
-      result.push({
-        environmentId: project.environmentId,
-        environmentLabel: environment.environmentLabel,
-      });
-    }
-    return result;
-  })();
-
   const selectedProjectDraftKey = selectedProject ? activeDraftKey : null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- creates the persistent draft in the new-task flow store once a project is selected, before the composer mounts
   useEffect(() => {
@@ -483,13 +424,11 @@ export function NewTaskFlowProvider(
     selectedProjectDraft.modelSelection ?? null,
     selectedProject?.id ?? null,
   );
-  const modelSelectionNow = useNowMinuteMs();
   const projectDefaultModelSelection = resolveDefaultableModelSelection(
     selectedEnvironmentServerConfig,
     projectSettings.settings.defaultModelSelection,
     selectedProject?.id ?? null,
   );
-  const storedStickyModelSelection = useStickyComposerModelSelection();
   const stickyModelSelection = resolveDefaultableModelSelection(
     selectedEnvironmentServerConfig,
     storedStickyModelSelection,
@@ -679,10 +618,10 @@ export function NewTaskFlowProvider(
     if (!isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       Dialog.alert(
-        "Could not switch machine",
+        t("Could not switch machine"),
         error instanceof Error
           ? error.message
-          : "The folder for threads without a project could not be created.",
+          : t("The folder for threads without a project could not be created."),
       );
     }
     return false;
@@ -839,6 +778,67 @@ export function NewTaskFlowProvider(
     };
   };
 
+  const scratchEnvironments = connectedEnvironments.filter(
+    (environment) =>
+      availableScratchWorkspaceRoot(
+        environment.connectionState,
+        serverConfigs.get(environment.environmentId),
+      ) !== null,
+  );
+
+  const selectedRepositoryKey = selectedProject?.repositoryIdentity
+    ? repositoryGroupingKeyOf(selectedProject.repositoryIdentity)
+    : null;
+  // Use || null: placeholder workspaceRoot can be empty, and an empty basename rejects real hosts.
+  const selectedWorkspaceBasename = selectedProject?.workspaceRoot.split("/").at(-1) || null;
+  const selectedProjectTitle = selectedProject?.title ?? null;
+  const environments = (() => {
+    if (isScratchDraft) {
+      return scratchEnvironments.map((environment) => ({
+        environmentId: environment.environmentId,
+        environmentLabel: environment.environmentLabel,
+      }));
+    }
+    const seen = new Set<EnvironmentId>();
+    const result: Array<{
+      readonly environmentId: EnvironmentId;
+      readonly environmentLabel: string;
+    }> = [];
+    const hostsSelectedRepository = (project: EnvironmentProject) => {
+      if (selectedRepositoryKey === null && selectedWorkspaceBasename === null) {
+        return true;
+      }
+      const projectKey = project.repositoryIdentity
+        ? repositoryGroupingKeyOf(project.repositoryIdentity)
+        : null;
+      if (selectedRepositoryKey !== null && projectKey !== null) {
+        return projectKey === selectedRepositoryKey;
+      }
+      return (
+        project.workspaceRoot.split("/").at(-1) === selectedWorkspaceBasename ||
+        (selectedProjectTitle !== null && project.title === selectedProjectTitle)
+      );
+    };
+    for (const project of projects) {
+      if (!hostsSelectedRepository(project)) {
+        continue;
+      }
+      if (seen.has(project.environmentId)) {
+        continue;
+      }
+      const environment = savedConnectionsById[project.environmentId];
+      if (!environment) {
+        continue;
+      }
+      seen.add(project.environmentId);
+      result.push({
+        environmentId: project.environmentId,
+        environmentLabel: environment.environmentLabel,
+      });
+    }
+    return result;
+  })();
+
   const value = {
     activeNewTask,
     projectScopes,
@@ -908,7 +908,7 @@ export function NewTaskFlowProvider(
 export function useNewTaskFlow() {
   const value = React.use(NewTaskFlowContext);
   if (value === null) {
-    throw new Error("useNewTaskFlow must be used within NewTaskFlowProvider.");
+    throw new Error(t("useNewTaskFlow must be used within NewTaskFlowProvider."));
   }
   return value;
 }

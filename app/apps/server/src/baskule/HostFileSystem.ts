@@ -17,7 +17,7 @@ import * as Context from "effect/Context";
 
 export type HostFileSystemApi = Pick<
   typeof NodeFSP,
-  "realpath" | "lstat" | "readdir" | "open" | "writeFile"
+  "realpath" | "stat" | "lstat" | "readdir" | "open" | "writeFile"
 > & {
   readonly searchEntries?: (
     input: ProjectSearchEntriesInput,
@@ -35,6 +35,7 @@ export type HostBigIntStats = NodeFS.BigIntStats;
 export class HostFileSystem extends Context.Reference<HostFileSystemApi>("baskule/HostFileSystem", {
   defaultValue: () => ({
     realpath: NodeFSP.realpath,
+    stat: NodeFSP.stat,
     lstat: NodeFSP.lstat,
     readdir: NodeFSP.readdir,
     open: NodeFSP.open,

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
@@ -303,7 +304,7 @@ export function GuestPendingMessages({
                   size="xs"
                   variant="ghost-muted"
                   disabled={busy}
-                  aria-label={`Dismiss message from ${guestName}`}
+                  aria-label={t("Dismiss message from {{value1}}", { value1: guestName })}
                   onClick={() => void resolve(message.id, "dismiss")}
                 >
                   Dismiss
@@ -311,7 +312,7 @@ export function GuestPendingMessages({
                 <Button
                   size="xs"
                   disabled={busy}
-                  aria-label={`Send message from ${guestName}`}
+                  aria-label={t("Send message from {{value1}}", { value1: guestName })}
                   onClick={() => void resolve(message.id, "send")}
                 >
                   Send

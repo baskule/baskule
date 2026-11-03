@@ -64,7 +64,7 @@ export function GuideOutline({
       </View>
       {guide.stops[0]?.summary ? (
         <View className="mb-6">
-          <PullRequestMarkdown markdown={guide.stops[0].summary} />
+          <PullRequestMarkdown lineBreaks={false} markdown={guide.stops[0].summary} />
         </View>
       ) : null}
       {guide.stops.map((stop, position) => {
@@ -98,7 +98,7 @@ export function GuideOutline({
                 ) : null}
                 <Text className="shrink text-xs text-foreground-muted" numberOfLines={1}>
                   {filename ?? t("Context")}
-                  {paths.length > 1 ? ` +${paths.length - 1}` : ""}
+                  {paths.length > 1 ? t(" +{{value1}}", { value1: paths.length - 1 }) : ""}
                 </Text>
               </View>
             </View>

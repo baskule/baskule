@@ -5,7 +5,7 @@ import {
   type AuthMcpApprovalDetails,
   AuthMcpApprovalError,
   AuthMcpClientAccess,
-  type AuthMcpAuthorizationRequest,
+  AuthMcpAuthorizationRequest,
 } from "@t3tools/contracts";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { isLoopbackHost } from "@t3tools/shared/preview";
@@ -51,7 +51,7 @@ type Loaded =
   | { readonly status: "invalid"; readonly message: string }
   | { readonly status: "ready"; readonly details: AuthMcpApprovalDetails };
 
-const UNREACHABLE = "Could not reach this environment. Try again.";
+const UNREACHABLE = t("Could not reach this environment. Try again.");
 const isApprovalError = Schema.is(AuthMcpApprovalError);
 
 type Answer<A> =
@@ -82,8 +82,10 @@ function runApproval<A>(
   ).catch((): Answer<A> => ({ kind: "error", message: UNREACHABLE }));
 }
 
+const decodeAuthorizationRequest = Schema.decodeSync(AuthMcpAuthorizationRequest);
+
 function readAuthorizationRequest(): AuthMcpAuthorizationRequest {
-  return Object.fromEntries(new URL(window.location.href).searchParams);
+  return decodeAuthorizationRequest(Object.fromEntries(new URL(window.location.href).searchParams));
 }
 
 /** Sessions can grant only scopes they hold. */
@@ -141,7 +143,9 @@ export function ConnectAgentSurface() {
       return;
     }
     setPending(null);
-    setErrorMessage(answer.kind === "error" ? answer.message : "The sign-in could not continue.");
+    setErrorMessage(
+      answer.kind === "error" ? answer.message : t("The sign-in could not continue."),
+    );
   };
 
   if (loaded.status === "loading") {

@@ -44,6 +44,7 @@ function projection() {
       id: threadId,
       projectId: ProjectId.make("project"),
       providerInstanceId: instanceId,
+      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
       archivedAt: null,
       deletedAt: null,
     },

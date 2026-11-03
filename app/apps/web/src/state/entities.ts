@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type * as DateTime from "effect/DateTime";
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -68,6 +69,9 @@ const EMPTY_VISIBLE_TURN_ITEMS_ATOM = Atom.make(EMPTY_VISIBLE_TURN_ITEMS).pipe(
 const EMPTY_CHECKPOINT_SUMMARIES_ATOM = Atom.make<ReadonlyArray<ThreadCheckpointSummary>>(
   Object.freeze([]),
 ).pipe(Atom.withLabel("web-thread-checkpoint-summaries:empty"));
+const EMPTY_ASSISTANT_MESSAGE_TEXT_ATOM = Atom.make<string | null>(null).pipe(
+  Atom.withLabel("web-assistant-message-text:empty"),
+);
 const EMPTY_LAST_VISITED_AT_ATOM = Atom.make<DateTime.Utc | null>(null).pipe(
   Atom.withLabel("web-thread-last-visited:empty"),
 );
@@ -210,6 +214,29 @@ export function useThreadVisibleTurnItems(
   );
 }
 
+/** Visible turn items held through streamed assistant text; see useAssistantMessageText. */
+export function useTimelineVisibleTurnItems(
+  ref: ScopedThreadRef | null,
+): ReadonlyArray<OrchestrationV2ProjectedTurnItem> {
+  return useAtomValue(
+    ref === null
+      ? EMPTY_VISIBLE_TURN_ITEMS_ATOM
+      : environmentThreadDetails.timelineVisibleTurnItemsAtom(ref),
+  );
+}
+
+/** One assistant message's live text, or null when the thread does not hold the item. */
+export function useAssistantMessageText(
+  ref: ScopedThreadRef | null,
+  itemId: string | undefined,
+): string | null {
+  return useAtomValue(
+    ref === null || itemId === undefined
+      ? EMPTY_ASSISTANT_MESSAGE_TEXT_ATOM
+      : environmentThreadDetails.assistantMessageTextAtom(ref, itemId),
+  );
+}
+
 /** Visible turn items without their streamed text; see ThreadStructure. */
 export function useQuietThreadVisibleTurnItems(
   ref: ScopedThreadRef | null,
@@ -257,7 +284,7 @@ export function waitForProject(
     let unsubscribe: (() => void) | null = null;
     const timeout = setTimeout(() => {
       unsubscribe?.();
-      reject(new Error("The project did not appear in the desktop app."));
+      reject(new Error(t("The project did not appear in the desktop app.")));
     }, timeoutMs);
     const finish = (project: EnvironmentProject | null) => {
       if (project === null) return;

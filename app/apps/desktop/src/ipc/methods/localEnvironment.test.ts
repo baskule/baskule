@@ -33,6 +33,7 @@ describe("local environment IPC", () => {
       DesktopAppSettings.layerTest({
         ...DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS,
         wslBackendEnabled: true,
+        localEnvironmentEnabled: true,
       }),
       Layer.mock(DesktopLifecycle.DesktopLifecycle, {
         relaunch: (reason) =>

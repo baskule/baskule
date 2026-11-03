@@ -12,6 +12,8 @@ On mobile, choose **Usage** in the workspace navigation.
 cache savings, model breakdowns, and estimated API-equivalent cost. These estimates are not
 your subscription bill. Select a model under **Breakdown** to inspect its trend and pricing.
 
+The server persists its first hostname in `<T3 home>/usage-host-id`. Set `T3CODE_HOST_ID` to choose an explicit identity.
+
 OpenCode reads its SQLite session-message database. Set `OPENCODE_DATA_DIR` on the server to
 read another data directory; comma-separated paths read multiple directories. Configured
 instances sharing a history directory count once, including disabled instances.
@@ -55,6 +57,8 @@ and Console browser sign-in alone do not expose these limits. You can configure
 
 Opening Limits checks connected environments automatically. Refresh for a new reading. The
 `/usage-limits` composer command opens the same saved snapshot without running the agent.
+
+Turn on **Usage limits** and **Context window** in **Settings → Appearance → Thread details** to see allowance and context use.
 
 ## Keyboard shortcuts
 

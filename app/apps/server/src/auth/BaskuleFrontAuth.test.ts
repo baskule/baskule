@@ -1,3 +1,4 @@
+import * as Redacted from "effect/Redacted";
 // baskule: BASKULE_AUTH_MODE=front.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthAccessReadScope, AuthSettingsWriteScope } from "@t3tools/contracts";
@@ -84,7 +85,7 @@ it.layer(NodeServices.layer)("Baskule front auth mode", (it) => {
       const auth = yield* EnvironmentAuth.EnvironmentAuth;
       const session = yield* auth.authenticateHttpRequest(as(alice));
       const { ticket } = yield* auth.issueWebSocketTicket(session, { use: "rpc" });
-      const wsUrl = `/ws?wsTicket=${encodeURIComponent(ticket)}`;
+      const wsUrl = `/ws?wsTicket=${encodeURIComponent(Redacted.value(ticket))}`;
       const upgraded = yield* auth.authenticateWebSocketUpgrade(as(alice, wsUrl), "rpc");
       expect(upgraded.sessionId).toBe(session.sessionId);
       const wrongAudience = yield* Effect.flip(
@@ -110,13 +111,15 @@ it.layer(NodeServices.layer)("Baskule front auth mode", (it) => {
       yield* auth.authenticateHttpRequest(as({ ...alice, sessionId: "ba-session-3" }));
       const { ticket } = yield* auth.issueWebSocketTicket(first);
       expect(yield* revokeFrontSessions(sessions, { userId: "u-alice" })).toBe(2);
-      const revoked = yield* Effect.flip(sessions.verifyWebSocketToken(ticket));
+      const revoked = yield* Effect.flip(sessions.verifyWebSocketToken(Redacted.value(ticket)));
       expect(revoked._tag).toBe("WebSocketSessionRevokedError");
       expect(yield* revokeFrontSessions(sessions, { sessionId: "ba-session-1" })).toBe(0);
       // The Worker vouches again (the member was re-added): the same session works again.
       const again = yield* auth.authenticateHttpRequest(as(alice));
       expect(again.sessionId).toBe(first.sessionId);
-      expect((yield* sessions.verifyWebSocketToken(ticket)).sessionId).toBe(first.sessionId);
+      expect((yield* sessions.verifyWebSocketToken(Redacted.value(ticket))).sessionId).toBe(
+        first.sessionId,
+      );
     }).pipe(Effect.provide(layerAuth)),
   );
 });

@@ -1,3 +1,4 @@
+import * as Redacted from "effect/Redacted";
 // baskule: BASKULE_AUTH_MODE=none behaviour.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthAccessWriteScope, AuthTerminalOperateScope } from "@t3tools/contracts";
@@ -64,7 +65,7 @@ it.layer(NodeServices.layer)("Baskule no-auth mode", (it) => {
       const { ticket } = yield* auth.issueWebSocketTicket(session);
       const upgraded = yield* auth.authenticateWebSocketUpgrade(
         {
-          url: `/ws?wsTicket=${encodeURIComponent(ticket)}`,
+          url: `/ws?wsTicket=${encodeURIComponent(Redacted.value(ticket))}`,
           cookies: {},
           headers: { host: HOST },
         } as never,

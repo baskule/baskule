@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useTranslation } from "../i18n";
 
 import { useComposerAttachmentActions } from "./use-composer-attachment-actions";
@@ -31,6 +32,7 @@ import {
 
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
+import { restoreAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
 import { composerContextSendBlockReason, reidentifyComposerContext } from "../lib/composerContext";
 import { uuidv4 } from "../lib/uuid";
 import { makeQueuedMessageMetadata } from "../lib/commandMetadata";
@@ -121,7 +123,10 @@ export function appendReviewCommentToDraft(input: {
       reidentifyComposerContext(upgraded.text, upgraded.records, uuidv4),
     )
   ) {
-    Dialog.alert("Too many context items", "Remove some context from the draft and try again.");
+    Dialog.alert(
+      t("Too many context items"),
+      t("Remove some context from the draft and try again."),
+    );
     return;
   }
   if (input.attachments && input.attachments.length > 0) {
@@ -130,7 +135,14 @@ export function appendReviewCommentToDraft(input: {
     });
     if (rejectedCount > 0) {
       setPendingConnectionError(
-        `${rejectedCount} comment attachment${rejectedCount === 1 ? " was" : "s were"} not added. Messages can contain at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} attachments.`,
+        t(
+          "{{rejectedCount}} comment attachment{{value2}} not added. Messages can contain at most {{PROVIDER_SEND_TURN_MAX_ATTACHMENTS}} attachments.",
+          {
+            rejectedCount: rejectedCount,
+            value2: rejectedCount === 1 ? " was" : "s were",
+            PROVIDER_SEND_TURN_MAX_ATTACHMENTS: PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+          },
+        ),
       );
     }
   }
@@ -158,6 +170,7 @@ export function useThreadDraftForThread(input: {
 
   return {
     draftMessage: draft.text,
+    draftContext: draft.context,
     draftAttachments: draft.attachments,
   };
 }
@@ -358,8 +371,12 @@ export function useThreadComposerState() {
     if (edit === null) return;
     const draft = getComposerDraftSnapshot(queuedEditDraftKey(threadKey, edit.runId));
     const text = draft.text.trim();
-    if (text.length === 0) {
-      Dialog.alert("Add a message", "A queued message cannot be left empty.");
+    if (
+      text.length === 0 &&
+      edit.existingAttachments.length === 0 &&
+      draft.attachments.length === 0
+    ) {
+      Dialog.alert(t("Add a message"), "A queued message cannot be left empty.");
       return;
     }
     if (
@@ -367,8 +384,10 @@ export function useThreadComposerState() {
       PROVIDER_SEND_TURN_MAX_ATTACHMENTS
     ) {
       Dialog.alert(
-        "Too many attachments",
-        `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
+        t("Too many attachments"),
+        t("Remove attachments until there are at most {{PROVIDER_SEND_TURN_MAX_ATTACHMENTS}}.", {
+          PROVIDER_SEND_TURN_MAX_ATTACHMENTS: PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+        }),
       );
       return;
     }
@@ -390,8 +409,8 @@ export function useThreadComposerState() {
       finishSave(false);
       const error = squashAtomCommandFailure(prepared);
       Dialog.alert(
-        "Could not save the queued message",
-        error instanceof Error ? error.message : "Your edit is still in the composer.",
+        t("Could not save the queued message"),
+        error instanceof Error ? error.message : t("Your edit is still in the composer."),
       );
       return;
     }
@@ -412,7 +431,7 @@ export function useThreadComposerState() {
       input: {
         threadId: thread.id,
         runId: edit.runId,
-        text,
+        text: restoreAttachmentOnlyBootstrapPrompt(text, payload.attachments.length > 0),
         edit: {
           messageId: edit.messageId,
           attachments: payload.attachments,
@@ -426,8 +445,8 @@ export function useThreadComposerState() {
       // The run left the queue during the save; its exit already told the composer what happened.
       if (!finishSave(false)) return;
       Dialog.alert(
-        "Could not save the queued message",
-        "It may have already started. Your edit is still in the composer.",
+        t("Could not save the queued message"),
+        t("It may have already started. Your edit is still in the composer."),
       );
       return;
     }
@@ -489,15 +508,17 @@ export function useThreadComposerState() {
     // Recovery preserves over-cap attachments; require trimming or outbox delivery would reject indefinitely.
     if (attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
       Dialog.alert(
-        "Too many attachments",
-        `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
+        t("Too many attachments"),
+        t("Remove attachments until there are at most {{PROVIDER_SEND_TURN_MAX_ATTACHMENTS}}.", {
+          PROVIDER_SEND_TURN_MAX_ATTACHMENTS: PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+        }),
       );
       return null;
     }
 
     const contextBlockReason = composerContextSendBlockReason(draft.context);
     if (contextBlockReason) {
-      Dialog.alert("Too much context", contextBlockReason);
+      Dialog.alert(t("Too much context"), contextBlockReason);
       return null;
     }
 
@@ -598,7 +619,7 @@ export function useThreadComposerState() {
         appendComposerDraftAttachments(threadKey, attachments, { allowOverflow: true });
         setThreadComposerError(
           threadKey,
-          error instanceof Error ? error.message : "Failed to save the queued message.",
+          error instanceof Error ? error.message : t("Failed to save the queued message."),
         );
       },
     );

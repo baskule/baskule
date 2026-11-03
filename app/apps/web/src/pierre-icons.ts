@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import {
   createFileTreeIconResolver,
   getBuiltInSpriteSheet,
@@ -16,11 +17,11 @@ export interface PierreIconResolution {
 const PIERRE_ICON_SPRITE_ID = "t3code-pierre-file-icon-sprite";
 
 const DOCUMENT_ICON_COLORS: Readonly<Record<string, string>> = {
-  "t3-file-icon-pdf": "light-dark(#d52c36, #ff6762)",
-  "t3-file-icon-word": "light-dark(#1a85d4, #69b1ff)",
-  "t3-file-icon-spreadsheet": "light-dark(#199f43, #5ecc71)",
-  "t3-file-icon-slides": "light-dark(#d47628, #ffa359)",
-  "t3-file-icon-epub": "light-dark(#693acf, #9d6afb)",
+  "t3-file-icon-pdf": t("light-dark(#d52c36, #ff6762)"),
+  "t3-file-icon-word": t("light-dark(#1a85d4, #69b1ff)"),
+  "t3-file-icon-spreadsheet": t("light-dark(#199f43, #5ecc71)"),
+  "t3-file-icon-slides": t("light-dark(#d47628, #ffa359)"),
+  "t3-file-icon-epub": t("light-dark(#693acf, #9d6afb)"),
 };
 
 const T3_FILE_ICON_SPRITE = `
@@ -176,6 +177,7 @@ export const T3_PIERRE_ICONS = {
     kt: "t3-file-icon-kotlin",
     kts: "t3-file-icon-kotlin",
     lua: "t3-file-icon-lua",
+    luau: "t3-file-icon-lua",
     php: "t3-file-icon-php",
     ps1: "t3-file-icon-powershell",
     psm1: "t3-file-icon-powershell",
@@ -184,6 +186,9 @@ export const T3_PIERRE_ICONS = {
     scala: "t3-file-icon-scala",
     toml: "t3-file-icon-toml",
     xml: "t3-file-icon-xml",
+    xsd: "t3-file-icon-xml",
+    xsl: "t3-file-icon-xml",
+    xslt: "t3-file-icon-xml",
   },
 } satisfies FileTreeIcons;
 

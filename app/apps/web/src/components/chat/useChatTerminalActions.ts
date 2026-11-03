@@ -25,7 +25,11 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { MAX_TERMINALS_PER_GROUP } from "../../types";
-import { type RightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
+import {
+  selectThreadRightPanelState,
+  type RightPanelSurface,
+  useRightPanelStore,
+} from "../../rightPanelStore";
 import { isPreviewSupportedInRuntime } from "../../previewStateStore";
 import { openUrlInPreview } from "../../browser/openFileInPreview";
 import { resolveDiscoveredServerUrl } from "../../browser/browserTargetResolver";
@@ -193,7 +197,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   const createNewTerminalStable = useStableCallback(createNewTerminal);
   const closeTerminal = (terminalId: string) => {
     if (!hasTerminalWriteAccess() || !activeThreadRef) return;
-    terminalActions.closeTerminalSession(terminalId);
+    terminalActions.closeTerminalSession(terminalId, activeThreadRef);
     storeCloseTerminal(activeThreadRef, terminalId);
     focusActiveDrawerTerminal(activeThreadRef);
   };
@@ -264,7 +268,9 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
         const error = squashAtomCommandFailure(openResult);
         setThreadError(
           activeThreadId,
-          error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
+          error instanceof Error
+            ? error.message
+            : t('Failed to run script "{{name}}".', { name: script.name }),
         );
       }
       return;
@@ -273,7 +279,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     const writeResult = await terminalActions.writeToTerminal(
       targetTerminalId,
       options?.shellHistory === "preserve"
-        ? `${script.command}\r`
+        ? t("{{command}}\r", { command: script.command })
         : projectScriptTerminalInput(script.command),
     );
     if (!writeResult) return;
@@ -282,7 +288,9 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
         const error = squashAtomCommandFailure(writeResult);
         setThreadError(
           activeThreadId,
-          error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
+          error instanceof Error
+            ? error.message
+            : t('Failed to run script "{{name}}".', { name: script.name }),
         );
       }
       return;
@@ -299,7 +307,8 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
           stackedThreadToast({
             type: "error",
             title: t("Could not open preview"),
-            description: error instanceof Error ? error.message : "An unexpected error occurred.",
+            description:
+              error instanceof Error ? error.message : t("An unexpected error occurred."),
           }),
         );
       }
@@ -363,21 +372,17 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     focusTerminal(activeThreadRef, terminalId);
   };
   const activatePanelTerminalStable = useStableCallback(activatePanelTerminal);
-  const closePanelTerminal = (terminalId: string) => {
-    if (
-      !hasTerminalWriteAccess() ||
-      !activeThreadRef ||
-      activeRightPanelSurface?.kind !== "terminal"
-    )
-      return;
-    terminalActions.closeTerminalSession(terminalId);
-    storeCloseTerminal(activeThreadRef, terminalId);
-    useRightPanelStore
-      .getState()
-      .closeTerminal(activeThreadRef, activeRightPanelSurface.id, terminalId);
-    // Closing a surface's last terminal falls back to a neighbouring surface,
-    // which can be another terminal surface.
-    focusActivePanelTerminal(activeThreadRef);
+  const closePanelTerminal = (terminalId: string, target = activeThreadRef) => {
+    if (!target || !readEnvironmentScope(target.environmentId, AuthTerminalOperateScope)) return;
+    const store = useRightPanelStore.getState();
+    const surface = selectThreadRightPanelState(store.byThreadKey, target).surfaces.find(
+      (entry) => entry.kind === "terminal" && entry.terminalIds.includes(terminalId),
+    );
+    if (!surface) return;
+    terminalActions.closeTerminalSession(terminalId, target);
+    storeCloseTerminal(target, terminalId);
+    store.closeTerminal(target, surface.id, terminalId);
+    focusActivePanelTerminal(target);
   };
   const closePanelTerminalStable = useStableCallback(closePanelTerminal);
   const requestCloseTerminal = (terminalId: string) => {

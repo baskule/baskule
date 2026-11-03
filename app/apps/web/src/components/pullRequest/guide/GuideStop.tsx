@@ -33,10 +33,10 @@ import { GuideProse } from "./GuideProse";
 import { letterStopNotes } from "@t3tools/client-runtime/review-guide-tour";
 
 const ATTENTION_LABELS = {
-  tradeoff: "A tradeoff to weigh",
-  contract: "A contract to check",
-  product: "A product call",
-  risk: "A risk to judge",
+  tradeoff: t("A tradeoff to weigh"),
+  contract: t("A contract to check"),
+  product: t("A product call"),
+  risk: t("A risk to judge"),
   get accessibility() {
     return t("An accessibility call");
   },
@@ -125,8 +125,8 @@ export function GuideStop({
                 aria-hidden
                 className="ml-1 flex items-center gap-0.5 @max-[30rem]/guide:hidden"
               >
-                <Kbd>J</Kbd>
-                <Kbd>K</Kbd>
+                <Kbd>{t("J")}</Kbd>
+                <Kbd>{t("K")}</Kbd>
               </span>
             </div>
           </header>
@@ -277,8 +277,8 @@ export function GuideStop({
 
         <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-border/60 pt-4">
           {nextTitle !== null ? (
-            <Button className="min-w-0" onClick={() => onStep(1)}>
-              <span className="min-w-0 truncate">
+            <Button size="multiline" className="max-w-full" onClick={() => onStep(1)}>
+              <span className="min-w-0 break-words">
                 {t("Next:")} {nextTitle}
               </span>
               <ArrowRightIcon aria-hidden />

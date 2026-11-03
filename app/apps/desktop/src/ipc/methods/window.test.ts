@@ -206,7 +206,12 @@ describe("pickProjectFavicon", () => {
       Layer.mock(ElectronWindow.ElectronWindow)({
         focusedMainOrFirst: Effect.succeedNone,
       }),
-      DesktopAppSettings.layerTest(settings),
+      DesktopAppSettings.layerTest(
+        settings ?? {
+          ...DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS,
+          localEnvironmentEnabled: true,
+        },
+      ),
     );
 
   it.effect("opens a single-image picker from the project directory", () =>

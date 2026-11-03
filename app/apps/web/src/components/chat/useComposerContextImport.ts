@@ -41,6 +41,7 @@ import {
 import { assetEnvironment } from "~/state/assets";
 import { copiedComposerAttachmentFile } from "~/lib/copiedComposerAttachments";
 import { countQuestionAttachments, questionAttachmentDraftId } from "../../questionAttachments";
+import { collectInlineContextIds } from "../../lib/composerContextReferences";
 import { elementContextToPreviewAnnotation } from "../../lib/elementContext";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { pendingDraftWork } from "./pendingDraftWork";
@@ -88,6 +89,7 @@ export function useComposerContextImport(input: {
   readonly composerContextRecords: ComposerDraftContextRecords;
   readonly composerImages: ReadonlyArray<ComposerImageAttachment>;
   readonly composerFilesRef: ChatComposerProps["composerFilesRef"];
+  readonly promptRef: RefObject<string>;
   readonly pendingThreadImportsRef: RefObject<Map<string, number>>;
   readonly addComposerFilesToDraft: (files: ComposerFileAttachment[]) => string[];
 }) {
@@ -105,6 +107,7 @@ export function useComposerContextImport(input: {
     composerContextRecords,
     composerImages,
     composerFilesRef,
+    promptRef,
     pendingThreadImportsRef,
     addComposerFilesToDraft,
   } = input;
@@ -164,7 +167,7 @@ export function useComposerContextImport(input: {
     if (!file) {
       const sourceConnection = readPreparedConnection(sourceEnvironmentId);
       if (!sourceConnection) {
-        fail("The environment it came from is not connected.");
+        fail(t("The environment it came from is not connected."));
         return;
       }
       const result = await createAssetUrl({
@@ -179,16 +182,30 @@ export function useComposerContextImport(input: {
         const cause = result._tag === "Failure" ? Cause.squash(result.cause) : null;
         fail(
           isUnreachable(cause)
-            ? "The environment it came from is not reachable right now."
-            : "The original attachment is no longer available.",
+            ? t("The environment it came from is not reachable right now.")
+            : t("The original attachment is no longer available."),
         );
         return;
       }
       const blob = await downloadAttachmentBlob(url);
       if (!blob) {
-        fail("Downloading it from the source failed.");
+        fail(t("Downloading it from the source failed."));
         return;
       }
+      // Question attachments have no inline reference; annotations can own their screenshots.
+      const references = new Set(collectInlineContextIds(promptRef.current));
+      if (
+        !questionAttachmentTarget &&
+        !references.has(toKindScopedComposerContextId(record.kind, localId)) &&
+        !(
+          record.kind === "image" &&
+          references.has(previewAnnotationContextId(localId)) &&
+          getComposerDraft(composerDraftTarget)?.previewAnnotations.some(
+            (annotation) => annotation.id === localId,
+          )
+        )
+      )
+        return;
       file = new File([blob], record.name, { type: record.mimeType || blob.type });
     }
     // The draft these bytes belong to may have been sent or switched away from while they
@@ -210,7 +227,7 @@ export function useComposerContextImport(input: {
       (pendingThreadImportsRef.current.get(importTargetKey) ?? 0) > 0 &&
       countReservedAttachments() >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS
     ) {
-      fail("The attachment limit has been reached.");
+      fail(t("The attachment limit has been reached."));
       return;
     }
     if (record.kind === "image") {
@@ -235,7 +252,7 @@ export function useComposerContextImport(input: {
         },
       );
       if (!accepted.includes(localId))
-        fail("The draft rejected this attachment (duplicate or attachment limit reached).");
+        fail(t("The draft rejected this attachment (duplicate or attachment limit reached)."));
     } else {
       const accepted = addComposerFilesToDraft([
         {
@@ -248,7 +265,7 @@ export function useComposerContextImport(input: {
         },
       ]);
       if (!accepted.includes(localId))
-        fail("The draft rejected this attachment (duplicate or attachment limit reached).");
+        fail(t("The draft rejected this attachment (duplicate or attachment limit reached)."));
     }
   };
   const importAttachmentRecord = async (

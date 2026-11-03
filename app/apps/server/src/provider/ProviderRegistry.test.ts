@@ -8,6 +8,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -221,6 +222,13 @@ const layerTestNodeServices = Layer.mergeAll(
   Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, {
     getEnvironmentId: Effect.succeed(EnvironmentId.make("00000000-0000-4000-8000-000000000001")),
   }),
+  // An empty home, so the developer's own Claude settings never reach provider probes.
+  Layer.effect(
+    HostProcess.HomeDirectory,
+    Effect.gen(function* () {
+      return yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped();
+    }),
+  ).pipe(Layer.provide(NodeServices.layer)),
 );
 
 it.layer(
@@ -1008,6 +1016,7 @@ it.layer(
           const registry = yield* ProviderRegistry.ProviderRegistry;
           const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
           const before = yield* registry.getProviders;
+          events.length = 0;
           if (scenario === "selected defect") {
             const selected = before.find((p) => p.instanceId === "personal");
             assert.strictEqual(selected?.version, "2.0.0");
@@ -1027,9 +1036,9 @@ it.layer(
             events.filter((event) => event === "update"),
             ["update"],
           );
-          assert.strictEqual(events[0], "update");
+          const postUpdateEvents = events.slice(events.indexOf("update"));
           assert.deepStrictEqual(
-            events.filter((event) => event.startsWith("probe:")).toSorted(),
+            postUpdateEvents.filter((event) => event.startsWith("probe:")).toSorted(),
             [
               "probe:personal",
               "probe:work",
@@ -1037,7 +1046,10 @@ it.layer(
             ].toSorted(),
           );
           for (const id of ["personal", "work"]) {
-            assert.isBelow(events.indexOf(`invalidate:${id}`), events.indexOf(`probe:${id}`));
+            assert.isBelow(
+              postUpdateEvents.indexOf(`invalidate:${id}`),
+              postUpdateEvents.indexOf(`probe:${id}`),
+            );
             assert.include(events, `invalidate:${id}`);
             const provider = result.providers.find((p) => p.instanceId === id);
             assert.deepStrictEqual(

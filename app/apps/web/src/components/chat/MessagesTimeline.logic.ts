@@ -1,6 +1,7 @@
 import { t } from "../../i18n";
 
 import { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
+import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { isLiveSubagentTurnItem } from "@t3tools/client-runtime/state/subagentRuntime";
 import * as DateTime from "effect/DateTime";
 import * as Equal from "effect/Equal";
@@ -107,7 +108,7 @@ function singleToolCallLabel(entry: WorkLogEntry): string {
   const title =
     item?.type === "dynamic_tool" ? dynamicToolTitle(item.toolName, item.input, item.title) : null;
   if (title) return title;
-  if (entry.itemType === "web_search") return entry.toolTitle ?? "Web search";
+  if (entry.itemType === "web_search") return entry.toolTitle ?? t("Web search");
   return workEntryDisplayLabel(entry, undefined);
 }
 
@@ -174,7 +175,7 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
     const path = formatWorkspaceRelativePath(firstPath, workspaceRoot);
     return entry.changedFiles!.length === 1
       ? path
-      : `${path} +${entry.changedFiles!.length - 1} more`;
+      : t("{{path}} +{{value2}} more", { path: path, value2: entry.changedFiles!.length - 1 });
   }
   if (action === "read" && !entry.viewedImagePath) {
     return t("Read file");
@@ -193,7 +194,7 @@ export function threadReadTargetId(entry: Pick<WorkLogEntry, "structuredPayload"
   return typeof threadId === "string" && threadId.trim().length > 0 ? threadId.trim() : null;
 }
 
-const THREAD_READ_OBJECT = " a T3 thread";
+const THREAD_READ_OBJECT = t(" a T3 thread");
 
 export function threadReadTargetTitle(
   shell: Pick<ThreadShell, "title" | "archivedAt" | "deletedAt"> | null,
@@ -204,7 +205,7 @@ export function threadReadTargetTitle(
 
 export function threadReadLabelPrefix(label: string) {
   return label.endsWith(THREAD_READ_OBJECT)
-    ? `${label.slice(0, -THREAD_READ_OBJECT.length)} thread`
+    ? t("{{value1}} thread", { value1: label.slice(0, -THREAD_READ_OBJECT.length) })
     : null;
 }
 
@@ -265,7 +266,10 @@ export function liveWorkEntryLabel(
             : status === "stopped"
               ? "Stopped"
               : "Ran";
-    return `${verb} ${commandProgramName(command) ?? "command"}`;
+    return t("{{verb}} {{value2}}", {
+      verb: verb,
+      value2: commandProgramName(command) ?? "command",
+    });
   }
   return workEntryDisplayLabel(entry, workspaceRoot);
 }
@@ -285,7 +289,7 @@ export function workEntryIsVisibleInGroup(
 }
 const TIMELINE_MINIMAP_ITEM_SPACING = 8;
 export const TIMELINE_MINIMAP_MIN_ITEMS = 2;
-const TIMELINE_MINIMAP_MAX_HEIGHT_CSS = "calc(100vh - 18rem)";
+const TIMELINE_MINIMAP_MAX_HEIGHT_CSS = t("calc(100vh - 18rem)");
 const TIMELINE_MINIMAP_PERSISTENT_GUTTER = 48;
 
 export interface WorkGroupScrollAnchor {
@@ -340,7 +344,10 @@ export function resolveTimelineIsAtEnd(state: TimelineEndState | undefined): boo
 
 export function resolveTimelineMinimapHeightStyle(itemCount: number): string {
   const naturalHeight = Math.max(1, (itemCount - 1) * TIMELINE_MINIMAP_ITEM_SPACING);
-  return `min(${naturalHeight}px, ${TIMELINE_MINIMAP_MAX_HEIGHT_CSS})`;
+  return t("min({{naturalHeight}}px, {{TIMELINE_MINIMAP_MAX_HEIGHT_CSS}})", {
+    naturalHeight: naturalHeight,
+    TIMELINE_MINIMAP_MAX_HEIGHT_CSS: TIMELINE_MINIMAP_MAX_HEIGHT_CSS,
+  });
 }
 
 export function resolveTimelineMinimapTopPercent(index: number, itemCount: number): number {
@@ -600,6 +607,12 @@ type MessagesTimelineRowContent =
       assistantCopyStreaming: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
       revertTurnCount?: number | undefined;
+      /** Another of your messages follows directly, so the two sit closer together. */
+      groupedWithNext?: boolean;
+      /** Another of your messages sits directly above, so the joined corners tighten. */
+      groupedWithPrevious?: boolean;
+      /** Set when the message above is a steer too, so the label shows once. */
+      continuesSteer?: boolean;
     }
   | {
       kind: "assistant-meta";
@@ -1174,10 +1187,10 @@ function deriveTurnFolds(input: {
     const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
     const label = isLatestInterruptedTurn
       ? duration
-        ? `You stopped after ${duration}`
-        : "You stopped this response"
+        ? t("You stopped after {{duration}}", { duration: duration })
+        : t("You stopped this response")
       : duration
-        ? `Worked for ${duration}`
+        ? t("Worked for {{duration}}", { duration: duration })
         : "Worked";
 
     // The top row keeps the whole turn's time, steers included. Work after a
@@ -2111,11 +2124,33 @@ export function deriveMessagesTimelineRows(input: {
   const result = attachTrailingToolGroupsToAssistant(
     attachCreatedThreadSummaries(nextRows, timelineEntries, collapsedFoldMemberIds),
   );
-  return result.map((row, index) =>
-    timelineRowIsWorkLog(row) && timelineRowIsWorkLog(result[index + 1])
-      ? { ...row, continuesWorkLog: true }
-      : row,
+  return result.map((row, index) => {
+    if (timelineRowIsWorkLog(row) && timelineRowIsWorkLog(result[index + 1])) {
+      return { ...row, continuesWorkLog: true };
+    }
+    if (!timelineRowIsOwnUserMessage(row)) return row;
+    const previous = result[index - 1];
+    const groupedWithNext = timelineRowIsOwnUserMessage(result[index + 1]);
+    const groupedWithPrevious = timelineRowIsOwnUserMessage(previous);
+    const continuesSteer =
+      groupedWithPrevious && messageIsSteer(row.message) && messageIsSteer(previous.message);
+    if (!groupedWithNext && !groupedWithPrevious) return row;
+    return { ...row, groupedWithNext, groupedWithPrevious, continuesSteer };
+  });
+}
+
+function timelineRowIsOwnUserMessage(
+  row: MessagesTimelineRow | undefined,
+): row is Extract<MessagesTimelineRow, { kind: "message" }> {
+  return (
+    row?.kind === "message" &&
+    row.message.role === "user" &&
+    resolveUserMessagePresentation(row.message).attribution === null
   );
+}
+
+function messageIsSteer(message: ChatMessage): boolean {
+  return message.inputIntent === "steer" || message.inputIntent === "promoted_queued_to_steer";
 }
 
 function timelineRowIsWorkLog(row: MessagesTimelineRow | undefined): boolean {
@@ -2455,7 +2490,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
-        a.revertTurnCount === bm.revertTurnCount
+        a.revertTurnCount === bm.revertTurnCount &&
+        a.groupedWithNext === bm.groupedWithNext &&
+        a.groupedWithPrevious === bm.groupedWithPrevious &&
+        a.continuesSteer === bm.continuesSteer
       );
     }
   }

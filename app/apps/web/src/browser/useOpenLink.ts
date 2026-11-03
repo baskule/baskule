@@ -1,4 +1,5 @@
-import { AuthPreviewOperateScope, type ScopedThreadRef } from "@t3tools/contracts";
+import { t } from "../i18n";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -6,7 +7,6 @@ import {
 import { recordVisitForThread } from "~/browserHistoryStore";
 import { readLocalApi } from "~/localApi";
 import { previewEnvironment } from "~/state/preview";
-import { readEnvironmentScope } from "~/state/session";
 import { useAtomCommand } from "~/state/use-atom-command";
 
 import {
@@ -37,10 +37,7 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
       url,
       event: options.event ?? NO_MODIFIER,
       preference: await resolveBrowserLinkTargetPreference(),
-      canOpenInApp:
-        targetThreadRef != null &&
-        readEnvironmentScope(targetThreadRef.environmentId, AuthPreviewOperateScope) &&
-        canOpenLinksInApp(targetThreadRef),
+      canOpenInApp: canOpenLinksInApp(targetThreadRef),
     });
     if (target === "app" && targetThreadRef) {
       const result = await openUrlInPreview({ threadRef: targetThreadRef, url, openPreview });
@@ -54,7 +51,7 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
       console.error(result.cause);
     }
     const api = readLocalApi();
-    if (!api) throw new Error("Link opening is unavailable.");
+    if (!api) throw new Error(t("Link opening is unavailable."));
     await api.shell.openExternal(url);
   };
 }

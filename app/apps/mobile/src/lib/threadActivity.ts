@@ -254,6 +254,7 @@ function compactWorkEntryText(value: string): string {
 }
 
 export function workEntryRowLabel(entry: WorkLogPresentationEntry, expanded = false): string {
+  if (entry.itemType === "fork") return entry.label;
   if (expanded && entry.itemType === "reasoning")
     return entry.toolLifecycleStatus === "inProgress" ? t("Thinking") : t("Thought");
   const presentation = resolveWorkEntryToolPresentation(entry);
@@ -287,7 +288,10 @@ export function workEntryRowLabel(entry: WorkLogPresentationEntry, expanded = fa
     (entry.changedFiles?.length
       ? entry.changedFiles.length === 1
         ? entry.changedFiles[0]!
-        : `${entry.changedFiles[0]!} +${entry.changedFiles.length - 1} more`
+        : t("{{value1}} +{{value2}} more", {
+            value1: entry.changedFiles[0]!,
+            value2: entry.changedFiles.length - 1,
+          })
       : null);
   if (expanded) return preview?.trim() ? truncate(preview, WORK_LOG_LABEL_MAX_LENGTH) : entry.label;
   return preview ? compactWorkEntryText(preview) || entry.label : entry.label;
@@ -562,10 +566,10 @@ function itemSummary(
       return t("Command");
     case "file_change":
       return item.changes !== undefined && item.changes.length > 1
-        ? `Changed ${item.changes.length} files`
-        : `Changed ${item.fileName}`;
+        ? t("Changed {{length}} files", { length: item.changes.length })
+        : t("Changed {{fileName}}", { fileName: item.fileName });
     case "file_search":
-      return item.title?.trim() || formatSearchToolLabel(item) || "Searched files";
+      return item.title?.trim() || formatSearchToolLabel(item) || t("Searched files");
     case "web_search":
       return t("Searched the web");
     case "approval_request":
@@ -598,9 +602,9 @@ function itemSummary(
         return formatReadToolLabel(path ?? "");
       }
       if (classified === "search") {
-        return formatSearchToolLabel({ input: item.input }) ?? item.toolName ?? "Tool call";
+        return formatSearchToolLabel({ input: item.input }) ?? item.toolName ?? t("Tool call");
       }
-      return toolPresentation?.displayName ?? item.toolName ?? "Tool call";
+      return toolPresentation?.displayName ?? item.toolName ?? t("Tool call");
     }
     case "proposed_plan":
       return t("Proposed plan");
@@ -632,7 +636,7 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "checkpoint":
       return item.files.length === 1
         ? (item.files[0]?.path ?? null)
-        : `${item.files.length} changed files`;
+        : t("{{length}} changed files", { length: item.files.length });
     case "run_interrupt_request":
     case "run_interrupt_result":
     case "system_notice":
@@ -656,7 +660,10 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "proposed_plan":
       return item.markdown || null;
     case "todo_list":
-      return `${item.steps.filter((step) => step.status === "completed").length}/${item.steps.length} completed`;
+      return t("{{length}}/{{value2}} completed", {
+        length: item.steps.filter((step) => step.status === "completed").length,
+        value2: item.steps.length,
+      });
     case "user_message":
     case "assistant_message":
       return item.text || null;
@@ -699,21 +706,21 @@ function toWorkLogEntry(
       return {
         ...common,
         changedFiles: [item.fileName],
-        toolTitle: title ?? "File change",
+        toolTitle: title ?? t("File change"),
         toolData: item,
       };
     case "file_search":
       return {
         ...common,
         ...(item.pattern ? { detail: item.pattern } : {}),
-        toolTitle: title ?? "File search",
+        toolTitle: title ?? t("File search"),
         toolData: item,
       };
     case "web_search":
       return {
         ...common,
         ...(item.patterns?.length ? { detail: item.patterns.join(", ") } : {}),
-        toolTitle: title ?? "Web search",
+        toolTitle: title ?? t("Web search"),
         toolData: item,
       };
     case "checkpoint":
@@ -777,7 +784,7 @@ function toFeedActivity(
   );
   const getCopyText = memoizeValue(() =>
     item.type === "proposed_plan"
-      ? `${item.markdown.trimEnd()}\n`
+      ? t("{{value1}}\n", { value1: item.markdown.trimEnd() })
       : [summary, detail, getFullDetail()]
           .filter(
             (value, index, values): value is string =>
@@ -1856,7 +1863,7 @@ function liveToolActivitySummary(activity: ThreadFeedActivity, presentTense: boo
             : status === "stopped"
               ? "Stopped"
               : "Ran";
-    return `${verb} ${program ?? "command"}`;
+    return t("{{verb}} {{value2}}", { verb: verb, value2: program ?? "command" });
   }
   return activity.detail ?? activity.summary;
 }
@@ -2063,10 +2070,7 @@ export function buildThreadFeed(
       entryRows.push(index);
       continue;
     }
-    const app =
-      item.type === "dynamic_tool" && item.status === "completed"
-        ? mcpAppFromToolItem(item)
-        : undefined;
+    const app = item.type === "dynamic_tool" ? mcpAppFromToolItem(item) : undefined;
     if (app) {
       const entry: RawThreadFeedEntry = {
         type: "mcp-app",

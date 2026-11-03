@@ -86,7 +86,11 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
     ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
   );
   const handleReconnectActiveEnvironment = async (environmentId: EnvironmentId) => {
-    const result = await retryEnvironment(environmentId);
+    // A retry does nothing while the environment is switched off.
+    const result =
+      activeEnvironment?.entry.enabled === false
+        ? await setEnvironmentEnabled({ environmentId, enabled: true })
+        : await retryEnvironment(environmentId);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       toastManager.add(
@@ -136,7 +140,12 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
   const versionMismatch = resolveServerConfigVersionMismatch(serverConfig);
   const versionMismatchServerLabel =
     hasMultipleRegisteredEnvironments && activeThreadEnvironmentId !== null
-      ? `${activeEnvironment?.label ?? serverConfig?.environment.label ?? activeThreadEnvironmentId} server`
+      ? t("{{value1}} server", {
+          value1:
+            activeEnvironment?.label ??
+            serverConfig?.environment.label ??
+            activeThreadEnvironmentId,
+        })
       : "server";
   const serverUpdateEnvironmentId = activeThreadEnvironmentId;
   const versionMismatchSelfUpdate = resolveServerSelfUpdateCapability(serverConfig);
@@ -228,7 +237,10 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         variant: updateFailed ? "error" : "default",
         group: "environment",
         icon: <ComposerServerUpdateIcon status={serverUpdateState.status} />,
-        title: `${updateFailed ? t("Could not update") : t("Updating")} ${versionMismatchServerLabel}`,
+        title: t("{{value1}} {{versionMismatchServerLabel}}", {
+          value1: updateFailed ? t("Could not update") : t("Updating"),
+          versionMismatchServerLabel: versionMismatchServerLabel,
+        }),
         description:
           serverUpdateState.status === "failed"
             ? serverUpdateState.message
@@ -251,7 +263,7 @@ export function useSystemComposerBanners(input: SystemComposerBannersInput) {
         ),
         ...(updateFailed
           ? {
-              dismissLabel: "Dismiss update notice",
+              dismissLabel: t("Dismiss update notice"),
               onDismiss: () => {
                 dismissServerUpdateFailure(serverUpdateState);
                 setDismissedServerUpdateState(serverUpdateState);

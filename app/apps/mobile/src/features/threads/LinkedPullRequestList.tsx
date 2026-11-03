@@ -19,7 +19,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import * as Dialog from "../../components/ui/Dialog";
 import { Menu } from "../../components/ui/Menu";
 import { cn } from "../../lib/cn";
-import { relativeTime } from "../../lib/time";
+import { RelativeTime } from "../../components/RelativeTime";
 import type { EnvironmentRuntimeState } from "../../state/remote-runtime-types";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
@@ -167,7 +167,7 @@ export const LinkedPullRequestRow = memo(function LinkedPullRequestRow(props: {
               ) : null}
               {snapshot?.updatedAt ? (
                 <Text className="text-2xs tabular-nums text-foreground-tertiary">
-                  {relativeTime(snapshot.updatedAt)}
+                  <RelativeTime timestamp={snapshot.updatedAt} />
                 </Text>
               ) : null}
             </View>
@@ -188,7 +188,10 @@ export const LinkedPullRequestRow = memo(function LinkedPullRequestRow(props: {
   return (
     <Menu
       shouldOpenOnLongPress
-      title={`#${link.number} · ${link.repository}`}
+      title={t("#{{number}} · {{repository}}", {
+        number: link.number,
+        repository: link.repository,
+      })}
       actions={actions.menuActions(link)}
       onPressAction={({ nativeEvent }) => actions.onMenuAction(link, nativeEvent.event)}
     >

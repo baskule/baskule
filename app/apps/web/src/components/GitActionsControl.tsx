@@ -91,7 +91,7 @@ import {
   useVcsInitAction,
   useVcsPullAction,
 } from "../state/sourceControlActions";
-import { useThreadProjection, useQuietThreadShell } from "~/state/entities";
+import { useQuietThreadProjection, useQuietThreadShell } from "~/state/entities";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
@@ -280,9 +280,10 @@ function getMenuActionDisabledReason({
   return t("Create {{singular}} is currently unavailable.", { singular: terminology.singular });
 }
 
-const COMMIT_DIALOG_TITLE = "Commit changes";
-const COMMIT_DIALOG_DESCRIPTION =
-  "Review and confirm your commit. Leave the message blank to auto-generate one.";
+const COMMIT_DIALOG_TITLE = t("Commit changes");
+const COMMIT_DIALOG_DESCRIPTION = t(
+  "Review and confirm your commit. Leave the message blank to auto-generate one.",
+);
 
 function GitActionItemIcon({
   icon,
@@ -974,7 +975,7 @@ export default function GitActionsControl({
         ? store.getDraftThreadByRef(activeThreadRef)
         : null,
   );
-  const activeServerThreadProjection = useThreadProjection(
+  const activeServerThreadProjection = useQuietThreadProjection(
     activeDraftThread !== null && activeServerThreadShell === null ? null : activeThreadRef,
   );
   const activeServerThread =
@@ -1125,7 +1126,7 @@ export default function GitActionsControl({
   const quickActionDisabledReason = !canWriteSourceControl
     ? t("This connection cannot change source control.")
     : quickAction.disabled
-      ? (quickAction.hint ?? "This action is currently unavailable.")
+      ? (quickAction.hint ?? t("This action is currently unavailable."))
       : null;
   const gitActionProgress = resolveGitActionProgressPresentation(vcsActionState);
   // A fresh draft or a thread with no turns hides commit, push, and diff rows until there is work.
@@ -1318,11 +1319,14 @@ export default function GitActionsControl({
         }
 
         const pullResult = result.value;
-        const title = pullResult.status === "pulled" ? "Pulled" : "Already up to date";
+        const title = pullResult.status === "pulled" ? "Pulled" : t("Already up to date");
         const description =
           pullResult.status === "pulled"
-            ? `Updated ${pullResult.refName} from ${pullResult.upstreamRef ?? "upstream"}`
-            : `${pullResult.refName} is already synchronized.`;
+            ? t("Updated {{refName}} from {{value2}}", {
+                refName: pullResult.refName,
+                value2: pullResult.upstreamRef ?? "upstream",
+              })
+            : t("{{refName}} is already synchronized.", { refName: pullResult.refName });
         setInlineSuccess({
           title,
           description,
@@ -1529,7 +1533,10 @@ export default function GitActionsControl({
             <ThreadDetailsControl
               aria-label={
                 gitActionProgress.output
-                  ? `${gitActionProgress.status} ${gitActionProgress.output}`
+                  ? t("{{status}} {{output}}", {
+                      status: gitActionProgress.status,
+                      output: gitActionProgress.output,
+                    })
                   : gitActionProgress.status
               }
               part="primary"

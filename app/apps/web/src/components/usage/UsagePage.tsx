@@ -51,6 +51,7 @@ import {
   formatUsageContractMismatch,
   formatUsd,
   makeWindow,
+  usageSourceMessages,
 } from "@t3tools/shared/usageFormat";
 import { Button, InlineButton } from "../ui/button";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
@@ -177,7 +178,9 @@ export function UsagePage() {
     const shortcut = shortcutLabelForCommand(keybindings, option.command, {
       context: { usagePageOpen: true },
     });
-    return shortcut ? `${option.label} (${shortcut})` : option.label;
+    return shortcut
+      ? t("{{label}} ({{shortcut}})", { label: option.label, shortcut: shortcut })
+      : option.label;
   };
   const [windowSelection, setWindowSelection] = useState(() => ({
     days: preferences.windowDays,
@@ -338,8 +341,14 @@ export function UsagePage() {
 
   const windowLabel =
     shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
-      ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
-      : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
+      ? t("{{value1}} to {{value2}}", {
+          value1: formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12),
+          value2: formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12),
+        })
+      : t("{{value1}} to {{value2}}", {
+          value1: formatDayShort(shownWindow.sinceDay),
+          value2: formatDayShort(shownWindow.untilDay),
+        });
   const topbarContent = (
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2 @4xl/usage-header:flex">
       <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
@@ -516,7 +525,9 @@ export function UsagePage() {
               <div className="space-y-2 py-12 text-center text-sm text-muted-foreground">
                 {selectedEnvironments.map((environment) => (
                   <p key={environment.environmentId}>
-                    {selectedEnvironments.length > 1 ? `${environment.label}: ` : null}
+                    {selectedEnvironments.length > 1
+                      ? t("{{label}}: ", { label: environment.label })
+                      : null}
                     {environment.error}
                   </p>
                 ))}
@@ -616,20 +627,14 @@ function UsageOverview({
   const chartLoadingProviders = new Set(
     activeProviders.filter((provider) => loadingProviders.has(provider)),
   );
-  const sourceMessages = [
-    ...new Set(
-      selectedEnvironments.flatMap(
-        (environment) =>
-          environment.summary?.sources.flatMap((source) =>
-            source.message &&
-            !hiddenProviders.has(source.fingerprint.provider) &&
-            (source.status === "partial" || source.status === "failed")
-              ? [source.message]
-              : [],
-          ) ?? [],
-      ),
+  const sourceMessages = usageSourceMessages(
+    selectedEnvironments.flatMap(
+      (environment) =>
+        environment.summary?.sources.filter(
+          (source) => !hiddenProviders.has(source.fingerprint.provider),
+        ) ?? [],
     ),
-  ];
+  );
   const breakdownPeriods: readonly (DailyTotals | HourlyTotals)[] = (
     shownHourly ? merged.hourly : merged.daily
   ).toReversed();
@@ -689,9 +694,10 @@ function UsageOverview({
             const totals = merged.providers.find((entry) => entry.provider === provider);
             const share = metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
             const providerSessions = totals?.sessions ?? 0;
-            const sessionLabel = `${formatCount(providerSessions)} ${
-              providerSessions === 1 ? "session" : t("sessions")
-            }`;
+            const sessionLabel = t("{{value1}} {{value2}}", {
+              value1: formatCount(providerSessions),
+              value2: providerSessions === 1 ? "session" : t("sessions"),
+            });
             const providerLoading = loadingProviders.has(provider);
             const awaitingData = providerLoading && !providersWithData.has(provider);
             return (
@@ -1133,7 +1139,7 @@ function UsageEnvironmentFilter({
     ? t("All environments")
     : selectedEnvironments.length === 1
       ? selectedEnvironments[0]!.label
-      : `${selectedEnvironments.length} environments`;
+      : t("{{length}} environments", { length: selectedEnvironments.length });
   const hasIssue =
     selectedEnvironments.some((environment) => environment.error !== null) ||
     contractMismatches.length > 0;
@@ -1178,7 +1184,7 @@ function UsageEnvironmentFilter({
                     environment.summary.contractVersion,
                     USAGE_CONTRACT_VERSION,
                   )
-                ? "Update required"
+                ? t("Update required")
                 : !environment.isConnected
                   ? t("Connecting…")
                   : progress.phase === "loading"
@@ -1256,10 +1262,10 @@ function UsageProviderFilter({
     visible.length === PROVIDER_ORDER.length
       ? t("All providers")
       : visible.length === 0
-        ? "No providers"
+        ? t("No providers")
         : visible.length === 1
           ? PROVIDER_PRESENTATION[visible[0]!].label
-          : `${visible.length} providers`;
+          : t("{{length}} providers", { length: visible.length });
 
   return (
     <Menu>

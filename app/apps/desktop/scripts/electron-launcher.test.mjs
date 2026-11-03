@@ -12,6 +12,7 @@ import {
   makeDevelopmentLauncherScript,
   resolveElectronBinaryPath,
   resolveMacLauncherPaths,
+  resolveMacLauncherIconPaths,
   writeDevelopmentLauncherScript,
 } from "./electron-launcher.mjs";
 

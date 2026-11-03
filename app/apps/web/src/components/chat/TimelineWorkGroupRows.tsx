@@ -50,7 +50,8 @@ import {
   SimpleWorkEntryRow,
 } from "./TimelineWorkEntryRow";
 import {
-  remarkThoughtPreview,
+  THINKING_PREVIEW_PLUGINS,
+  THOUGHT_PREVIEW_PLUGINS,
   toolGroupSummaryIconName,
   workEntryIconName,
 } from "./TimelineWorkEntryRow.logic";
@@ -285,7 +286,7 @@ export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
   const compacting = row.compacting === true || isCompacting;
   const shimmer = isPreparingWorktree || compacting;
   const label = isPreparingWorktree ? (
-    "Setting up worktree…"
+    t("Setting up worktree…")
   ) : compacting ? (
     <CompactingLabel createdAt={row.createdAt} />
   ) : row.createdAt ? (
@@ -554,7 +555,7 @@ export function LiveWorkEntryTimelineRow({
                 text={thoughtLine}
                 cwd={ctx.markdownCwd}
                 parseRawHtml={false}
-                extraRemarkPlugins={[[remarkThoughtPreview, "Thought"]]}
+                extraRemarkPlugins={THOUGHT_PREVIEW_PLUGINS}
               />
             </span>
           }
@@ -575,9 +576,7 @@ export function LiveWorkEntryTimelineRow({
               text={row.entry.detail ?? label}
               cwd={ctx.markdownCwd}
               parseRawHtml={false}
-              extraRemarkPlugins={[
-                [remarkThoughtPreview, row.active ? t("Thinking") : t("Thought")],
-              ]}
+              extraRemarkPlugins={row.active ? THINKING_PREVIEW_PLUGINS : THOUGHT_PREVIEW_PLUGINS}
             />
           ) : threadLabel ? (
             <ThreadReadLabel

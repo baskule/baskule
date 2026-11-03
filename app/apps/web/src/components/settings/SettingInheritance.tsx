@@ -45,26 +45,33 @@ const WRITING_STYLE_LABELS: Record<string, string> = {
   },
 };
 
+const BACKGROUND_ACTIVITY_PROFILE_LABELS: Record<string, string> = {
+  balanced: "Balanced",
+  performance: "Performance",
+  "battery-saver": t("Battery saver"),
+  custom: "Advanced",
+};
+
 function formatValue(key: keyof ServerSettings, value: unknown): string {
   if (value === null || value === undefined) {
     return key === "pullRequestMergeMethod"
-      ? "Last selected"
+      ? t("Last selected")
       : key === "sidebarAutoSettleAfterDays"
         ? "Never"
         : key === "defaultModelSelection"
           ? "Automatic"
           : key === "sourceControlWriterModelSelection"
-            ? "Text generation model"
+            ? t("Text generation model")
             : key === "reviewGuideModelSelection"
-              ? "Source control writer model"
+              ? t("Source control writer model")
               : key === "defaultThreadEnvMode" || key === "worktreeSubmodules"
                 ? "Inherit"
-                : "Not set";
+                : t("Not set");
   }
-  if (typeof value === "boolean") return value ? "On" : "Off";
+  if (typeof value === "boolean") return value ? t("On") : t("Off");
   if (typeof value === "number") {
     return key === "sidebarAutoSettleAfterDays"
-      ? `${value} ${value === 1 ? "day" : "days"}`
+      ? t("{{value}} {{value2}}", { value: value, value2: value === 1 ? "day" : "days" })
       : String(value);
   }
   if (typeof value === "string") {
@@ -81,11 +88,21 @@ function formatValue(key: keyof ServerSettings, value: unknown): string {
     }
     return value === "" ? "Empty" : value;
   }
-  if (Array.isArray(value)) return `${value.length} ${value.length === 1 ? "item" : "items"}`;
+  if (Array.isArray(value))
+    return t("{{length}} {{value2}}", {
+      length: value.length,
+      value2: value.length === 1 ? "item" : "items",
+    });
   if (typeof value === "object") {
+    if (key === "backgroundActivity" && "profile" in value && typeof value.profile === "string") {
+      return BACKGROUND_ACTIVITY_PROFILE_LABELS[value.profile] ?? value.profile;
+    }
     if ("model" in value && typeof value.model === "string") return value.model;
     if ("mode" in value && typeof value.mode === "string") {
-      return WRITING_STYLE_LABELS[value.mode] ?? value.mode;
+      if (key === "worktreeCleanup") return value.mode === "off" ? "Off" : "Custom";
+      return key === "sourceControlWritingStyle"
+        ? (WRITING_STYLE_LABELS[value.mode] ?? value.mode)
+        : value.mode;
     }
   }
   return "Custom";
@@ -186,7 +203,11 @@ export function SettingInheritance({
   const hasMultipleEnvironments = new Set(targets.map((target) => target.environmentId)).size > 1;
   const overrideSummary =
     overridingProjects.length > 0
-      ? `${summary} · ${overridingProjects.length} project ${overridingProjects.length === 1 ? "override" : "overrides"}`
+      ? t("{{summary}} · {{length}} project {{value3}}", {
+          summary: summary,
+          length: overridingProjects.length,
+          value3: overridingProjects.length === 1 ? "override" : "overrides",
+        })
       : summary;
   const chains = targets.flatMap((target) => {
     const environment = environments.find(

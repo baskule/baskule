@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
 
@@ -5,7 +6,6 @@ import { APP_VERSION } from "~/branding";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { isElectron } from "~/env";
 import { useEnvironments } from "~/state/environments";
-import { useNpmReleasePublished } from "~/state/npmRelease";
 import { environmentIdsKey } from "~/state/environmentAtomList";
 import { environmentUpdateStatesAtom } from "~/state/server";
 import { environmentSessionStatesAtom } from "~/state/session";
@@ -19,7 +19,6 @@ import {
   collectUpdateEverythingResult,
   describeUpdateEverything,
   runUpdateEverything,
-  type SkippedMachine,
   type UpdateRunMachine,
 } from "./updateEverything.logic";
 import {
@@ -54,25 +53,7 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
     canMaintain: canUpdateServer(sessionStates[index]!),
     updateState: updateStates[index]!,
   }));
-  const {
-    targets: behindServers,
-    skipped: unreachable,
-    waitForNpm,
-  } = collectServerUpdateTargets(machines, targetVersion, localUpdateVersion !== null);
-  const published = useNpmReleasePublished(waitForNpm.length > 0 ? targetVersion : null);
-  const servers = published
-    ? behindServers
-    : behindServers.filter((server) => !waitForNpm.includes(server));
-  const skipped: ReadonlyArray<SkippedMachine> = [
-    ...unreachable,
-    ...behindServers
-      .filter((server) => !servers.includes(server))
-      .map((server) => ({
-        environmentId: server.environmentId,
-        label: server.serverLabel,
-        reason: `t3@${targetVersion} is not on npm yet`,
-      })),
-  ];
+  const { targets: servers, skipped } = collectServerUpdateTargets(machines, targetVersion);
   const restarts = collectRestartingMachines(machines, servers, localUpdateVersion !== null);
   const providers = useProviderUpdates();
   const updateServer = useServerUpdate();
@@ -154,7 +135,9 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
               if (runOutcome.status !== "updated") {
                 providerFailures.set(
                   run.environmentId,
-                  runOutcome.status === "failed" ? runOutcome.line : "Provider update interrupted",
+                  runOutcome.status === "failed"
+                    ? runOutcome.line
+                    : t("Provider update interrupted"),
                 );
               }
               return runOutcome;

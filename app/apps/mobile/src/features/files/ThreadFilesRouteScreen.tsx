@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
@@ -366,6 +367,7 @@ function useThreadFilesWorkspace(params: {
   readonly threadId?: string | string[];
   readonly cwd?: string | string[];
   readonly projectName?: string | string[];
+  readonly path?: string | string[];
 }) {
   const routeEnvironmentId = firstRouteParam(params.environmentId);
   const routeThreadId = firstRouteParam(params.threadId);
@@ -387,13 +389,14 @@ function useThreadFilesWorkspace(params: {
     cwd: routeCwd ?? selectedThreadCwd ?? project?.workspaceRoot ?? null,
     environmentId,
     projectName: routeProjectName ?? project?.title ?? "Files",
+    relativePath: normalizeRoutePath(params.path),
     selectedThread,
     threadId,
   };
 }
 
 function FilesUnavailable({
-  detail = "This thread does not have an active workspace path.",
+  detail = t("This thread does not have an active workspace path."),
 }: {
   detail?: string;
 }) {
@@ -602,11 +605,9 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
   const { appearance, setCodeWordBreak } = useAppearancePreferences();
   const iconColor = useUniwindTheme()["--color-icon"];
   const params = props.route.params;
-  const relativePath = normalizeRoutePath(params.path);
   const targetLine = normalizeRouteLine(firstRouteParam(params.line));
-  const { cwd, environmentId, projectName, selectedThread, threadId } = useThreadFilesWorkspace(
-    props.route.params,
-  );
+  const { cwd, environmentId, projectName, relativePath, selectedThread, threadId } =
+    useThreadFilesWorkspace(props.route.params);
   const fileAccessSession = useEnvironmentQuery(
     environmentId !== null ? environmentSession.sessionStateAtom(environmentId) : null,
   );

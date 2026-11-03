@@ -19,7 +19,10 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "@t3tools/shared/composerContextReferences";
+import {
+  restoreAttachmentOnlyBootstrapPrompt,
+  stripAttachmentOnlyBootstrapPrompt,
+} from "@t3tools/shared/composerContextReferences";
 import { Atom } from "effect/reactivity";
 import type { RefObject } from "react";
 import { useAssetUrls } from "../../assets/assetUrls";
@@ -111,7 +114,7 @@ async function submitQueuedRunEdit(input: {
     await awaitAttachmentUploads(files.map((file) => file.id));
     validateFiles();
     const uploaded = getUploadedAttachments({ environmentId, images: files });
-    if (uploaded === null) throw new Error("Retry or remove failed uploads before saving.");
+    if (uploaded === null) throw new Error(t("Retry or remove failed uploads before saving."));
     return uploaded;
   };
   try {
@@ -145,7 +148,7 @@ async function submitQueuedRunEdit(input: {
       input: {
         threadId: editing.threadId,
         runId: editing.runId,
-        text: editText.length === 0 ? ATTACHMENT_ONLY_BOOTSTRAP_PROMPT : editText,
+        text: restoreAttachmentOnlyBootstrapPrompt(editText, uploads.length > 0),
         edit: {
           messageId: editing.messageId,
           attachments: uploads,
@@ -162,9 +165,9 @@ async function submitQueuedRunEdit(input: {
         },
       },
     });
-    return result._tag === "Failure" ? "Could not save the edited queued message." : null;
+    return result._tag === "Failure" ? t("Could not save the edited queued message.") : null;
   } catch (error) {
-    return error instanceof Error ? error.message : "Could not save the edited queued message.";
+    return error instanceof Error ? error.message : t("Could not save the edited queued message.");
   }
 }
 
@@ -226,9 +229,10 @@ export function useQueuedRunEdit(input: {
     if (activeThreadId === null) return;
     if (editing !== null && editing.runId !== request.runId) clearEditDraft(editing.runId);
     const target = queuedEditDraftTarget(routeThreadRef, request.runId);
+    const text = stripAttachmentOnlyBootstrapPrompt(request.text);
     const store = useComposerDraftStore.getState();
     store.clearComposerContent(target);
-    store.setPrompt(target, request.text);
+    store.setPrompt(target, text);
     const threadRef = { environmentId, threadId: activeThreadId };
     queuedRunEdits.begin(
       editKey,
@@ -236,7 +240,7 @@ export function useQueuedRunEdit(input: {
         threadId: activeThreadId,
         runId: request.runId,
         messageId: request.messageId,
-        originalText: request.text,
+        originalText: text,
         existingAttachments: request.attachments,
         context: serverProjection?.messages.find((message) => message.id === request.messageId)
           ?.context,
@@ -265,7 +269,7 @@ export function useQueuedRunEdit(input: {
           const title = appAtomRegistry.get(
             environmentThreadShells.threadShellAtom(threadRef),
           )?.title;
-          const where = title === undefined ? "" : ` in “${title}”`;
+          const where = title === undefined ? "" : t(" in “{{title}}”", { title: title });
           toastManager.add(
             stackedThreadToast({
               type: recovery === "kept" ? "info" : "warning",

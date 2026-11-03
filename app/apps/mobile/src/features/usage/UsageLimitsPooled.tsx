@@ -1,8 +1,10 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId } from "@t3tools/contracts";
+import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
 import {
   collectLimitAccounts,
   collectExternalUsageLinks,
@@ -27,7 +29,7 @@ import { environmentPresentations } from "../../state/presentation";
 import { ResetCredits } from "./UsageLimitsSection";
 import { PROVIDER_COLORS, usageProviderKind } from "./usageProviders";
 const DRIVER_LABEL: Partial<Record<string, string>> = {};
-const PACE_LABEL = { ahead: "Ahead of pace", on: "On pace", under: "Under pace" } as const;
+const PACE_LABEL = { ahead: t("Ahead of pace"), on: t("On pace"), under: t("Under pace") } as const;
 
 function accountName(account: LimitAccount) {
   if (account.displayName) return account.displayName;
@@ -252,7 +254,7 @@ function PoolWindowCard({
               <View className="absolute inset-0 overflow-hidden rounded-md">
                 <AccountSegment
                   remaining={remainingPercent(window)}
-                  color={color}
+                  color={normalizeProviderAccentColor(account.accentColor) ?? color}
                   refillPercent={window.resetsAt ? member.refillPercent : 0}
                 />
               </View>
@@ -323,6 +325,7 @@ function PoolWindowCard({
     <View>
       {pool.columns.map(({ account, window }, index) => {
         if (!window) return null;
+        const segmentColor = normalizeProviderAccentColor(account.accentColor) ?? color;
         const credits = account.limits.resetCredits?.availableCount ?? 0;
         const resetsIn = formatResetsIn(window, now);
         return (
@@ -343,7 +346,12 @@ function PoolWindowCard({
             onPress={() => openAccount(account)}
             className="min-h-[44px] flex-row items-center gap-2 active:opacity-60"
           >
-            <View className="size-5 items-center justify-center overflow-hidden rounded-md bg-subtle-strong">
+            <View className="relative size-5 items-center justify-center overflow-hidden rounded-md bg-subtle-strong">
+              <View
+                pointerEvents="none"
+                className="absolute inset-0"
+                style={{ backgroundColor: segmentColor, opacity: 0.35 }}
+              />
               <Text className="text-xs font-t3-medium tabular-nums text-foreground">
                 {index + 1}
               </Text>

@@ -7,11 +7,13 @@ import { CheckIcon, MessageSquareIcon, XCircleIcon } from "lucide-react";
 import { useState, type ReactNode, type RefObject } from "react";
 
 import { pullRequestEnvironment } from "~/state/pullRequests";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
+import { readableFailure } from "./pullRequestDetail.logic";
 import {
   pullRequestReviewKey,
   usePendingReviewComments,
@@ -104,7 +106,14 @@ export function PullRequestReviewForm({
     });
     onPendingChange(false);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: t("The review could not be submitted") });
+      toastManager.add({
+        type: "error",
+        title: t("The review could not be submitted"),
+        description: readableFailure(
+          squashAtomCommandFailure(result),
+          t("The host refused the review. Your draft is still here to try again."),
+        ),
+      });
       return;
     }
     // Preserve comments and summary edits made during submission.
@@ -124,10 +133,10 @@ export function PullRequestReviewForm({
       : verdict === "approve" || summary.trim().length > 0 || comments.length > 0;
   const placeholder =
     selectedVerdict === undefined || canSubmit(selectedVerdict.value, "")
-      ? "Summarize your review (optional)"
+      ? t("Summarize your review (optional)")
       : selectedVerdict.value === "request-changes" && requestChangesSummaryRequired
-        ? "Summarize your review (required to request changes)"
-        : "Summarize your review or add line comments";
+        ? t("Summarize your review (required to request changes)")
+        : t("Summarize your review or add line comments");
 
   return (
     <>

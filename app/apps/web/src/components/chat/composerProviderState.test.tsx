@@ -11,8 +11,7 @@ import { getProviderModelCapabilities } from "../../providerModels";
 import {
   getComposerProviderState,
   getComposerReasoningStep,
-  renderProviderTraitsMenuContent,
-  renderProviderTraitsPicker,
+  resolveComposerTraitsInput,
   withImplicitFastModeDefault,
 } from "./composerProviderState";
 const PROVIDER: ProviderDriverKind = ProviderDriverKind.make("opencode");
@@ -364,14 +363,14 @@ describe("provider traits render guards", () => {
     ]);
     const args = {
       provider: PROVIDER,
+      instanceId: ProviderInstanceId.make("opencode"),
       model: MODEL,
       models,
       modelOptions: undefined,
       planModeEnabled: true,
     };
 
-    expect(renderProviderTraitsPicker(args)).toBeNull();
-    expect(renderProviderTraitsMenuContent(args)).toBeNull();
+    expect(resolveComposerTraitsInput(args)).toBeNull();
   });
 });
 

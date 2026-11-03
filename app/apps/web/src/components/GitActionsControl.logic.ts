@@ -80,11 +80,11 @@ export function resolveGitActionProgressPresentation(input: {
   const isPull = input.operation === "pull";
   return {
     status:
-      currentLabel && currentLabel !== "Running source control action"
+      currentLabel && currentLabel !== t("Running source control action")
         ? currentLabel
         : isPull
-          ? "Pulling latest changes..."
-          : "Starting source control action...",
+          ? t("Pulling latest changes...")
+          : t("Starting source control action..."),
     output: !isPull && output ? output : null,
     startedAtMs: isPull
       ? input.phaseStartedAtMs
@@ -104,7 +104,7 @@ export function formatGitActionElapsed(startedAtMs: number | null, nowMs: number
 
   const minutes = Math.floor(elapsedSeconds / 60);
   const seconds = elapsedSeconds % 60;
-  return `${minutes}m ${seconds}s`;
+  return t("{{minutes}}m {{seconds}}s", { minutes: minutes, seconds: seconds });
 }
 
 export function buildMenuItems(
@@ -221,7 +221,7 @@ export function resolveQuickAction(
   }
 
   if (hasChanges) {
-    if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
+    if (isBehind || (!gitStatus.hasUpstream && !hasPrimaryRemote)) {
       return { label: t("Commit"), disabled: false, kind: "run_action", action: "commit" };
     }
     if (hasOpenPr || isDefaultRef) {
@@ -347,7 +347,10 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   terminology: ChangeRequestTerminology;
 }): DefaultBranchActionDialogCopy {
   const branchLabel = input.branchName;
-  const suffix = ` on "${branchLabel}". You can continue on this ref or create a feature ref and run the same action there.`;
+  const suffix = t(
+    ' on "{{branchLabel}}". You can continue on this ref or create a feature ref and run the same action there.',
+    { branchLabel: branchLabel },
+  );
   const { terminology } = input;
 
   if (input.action === "push" || input.action === "commit_push") {
@@ -355,13 +358,13 @@ export function resolveDefaultBranchActionDialogCopy(input: {
       return {
         title: t("Commit & push to default ref?"),
         description: t("This action will commit and push changes{{suffix}}", { suffix: suffix }),
-        continueLabel: `Commit & push to ${branchLabel}`,
+        continueLabel: t("Commit & push to {{branchLabel}}", { branchLabel: branchLabel }),
       };
     }
     return {
       title: t("Push to default ref?"),
       description: t("This action will push local commits{{suffix}}", { suffix: suffix }),
-      continueLabel: `Push to ${branchLabel}`,
+      continueLabel: t("Push to {{branchLabel}}", { branchLabel: branchLabel }),
     };
   }
 
@@ -374,7 +377,9 @@ export function resolveDefaultBranchActionDialogCopy(input: {
         singular: terminology.singular,
         suffix: suffix,
       }),
-      continueLabel: `Commit, push & create ${terminology.shortLabel}`,
+      continueLabel: t("Commit, push & create {{shortLabel}}", {
+        shortLabel: terminology.shortLabel,
+      }),
     };
   }
   return {
@@ -385,7 +390,7 @@ export function resolveDefaultBranchActionDialogCopy(input: {
       singular: terminology.singular,
       suffix: suffix,
     }),
-    continueLabel: `Push & create ${terminology.shortLabel}`,
+    continueLabel: t("Push & create {{shortLabel}}", { shortLabel: terminology.shortLabel }),
   };
 }
 

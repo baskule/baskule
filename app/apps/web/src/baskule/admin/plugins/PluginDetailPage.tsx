@@ -130,6 +130,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   );
   const vendor = fromCatalog ? catalogVendor(plugin.vendor) : undefined;
   const signIn = vendor?.signIn;
+  // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- client is the catalog OAuth registration type, not an environment RPC client.
   const vendorApp = signIn?.type === "account" && signIn.client === "static" ? signIn : undefined;
   const setGrant = (group: Group, allowed: boolean) =>
     run(

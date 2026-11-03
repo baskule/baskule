@@ -75,7 +75,7 @@ import { useAndroidWorkspaceBack } from "../workspace/useAndroidWorkspaceNavigat
 import { EmptyState } from "../../components/ui/EmptyState";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { relativeTime } from "../../lib/time";
+import { RelativeTime } from "../../components/RelativeTime";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { usePullRequestConnected } from "./usePullRequestConnected";
 import { usePullRequestLiveChecks } from "./usePullRequestLiveChecks";
@@ -214,7 +214,7 @@ function PullRequestIdentity(props: {
           {pr.author?.login ?? t("Unknown author")}
         </Text>
         <Text className="shrink text-right text-2xs text-foreground-muted" numberOfLines={1}>
-          {t("Updated")} {relativeTime(pr.updatedAt)} {t("ago")}
+          {t("Updated")} <RelativeTime timestamp={pr.updatedAt} /> {"ago"}
         </Text>
       </View>
       <View className="flex-row items-start gap-1.5">
@@ -431,7 +431,10 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
     action.confirm(
       "delete-branch",
       pullRequestActionLabel("delete-branch", terminology),
-      `Delete ${pr.headBranch} from ${pr.headRepositoryNameWithOwner ?? pr.repository}? Local branches and worktrees are not changed.`,
+      t(
+        "Delete {{headBranch}} from {{repository}}? Local branches and worktrees are not changed.",
+        { headBranch: pr.headBranch, repository: pr.headRepositoryNameWithOwner ?? pr.repository },
+      ),
     );
   const stack = usePullRequestStack(params, pr);
   const refreshActivity = useAtomRefresh(composerPullRequests.activity(requestTarget(params)));
@@ -483,7 +486,10 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
         />
         {Platform.OS === "android" ? (
           <AndroidScreenHeader
-            title={`#${params.number}${connected ? "" : t(" · Offline")}`}
+            title={t("#{{number}}{{value2}}", {
+              number: params.number,
+              value2: connected ? "" : t(" · Offline"),
+            })}
             subtitle={params.repository}
             onBack={layout.usesSplitView ? undefined : returnToList}
             leading={layout.usesSplitView ? <AndroidWorkspaceSidebarButton /> : undefined}
@@ -793,7 +799,12 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                               </View>
                             </View>
                           ) : null}
-                          {tab === "guide" ? <PullRequestGuideContent params={params} /> : null}
+                          {tab === "guide" ? (
+                            <PullRequestGuideContent
+                              params={params}
+                              visible={section === "guide"}
+                            />
+                          ) : null}
                           {tab === "activity" ? (
                             <PullRequestActivityFilters
                               value={activityFilter}
@@ -867,19 +878,25 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                           }}
                         >
                           <PullRequestIdentity pr={identity} params={params} />
-                          <SegmentedControl
-                            options={[
-                              { value: "overview", label: t("Overview") },
-                              ...(guidesEnabled
-                                ? [{ value: "guide" as const, label: t("Guide") }]
-                                : []),
-                              { value: "activity", label: t("Activity") },
-                            ]}
-                            selected={section}
-                            onSelect={selectSection}
-                            role="tab"
-                            size="compact"
-                          />
+                          {/* UIKit draws the tapped control's glass lens outside the hidden
+                              tab's opacity, so only the visible tab mounts the control. */}
+                          {Platform.OS !== "ios" || section === tab ? (
+                            <SegmentedControl
+                              options={[
+                                { value: "overview", label: "Overview" },
+                                ...(guidesEnabled
+                                  ? [{ value: "guide" as const, label: "Guide" }]
+                                  : []),
+                                { value: "activity", label: "Activity" },
+                              ]}
+                              selected={section}
+                              onSelect={selectSection}
+                              role="tab"
+                              size="compact"
+                            />
+                          ) : (
+                            <View style={{ height: 32 }} />
+                          )}
                         </View>
                       ) : null}
                     </>
@@ -1104,7 +1121,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
     setSelectedRowId(null);
     filter.toggle();
   };
-  const title = commit ? "Commit changes" : "Changes";
+  const title = commit ? t("Commit changes") : "Changes";
   const seekingFile = !targetFile && result.nextCursor !== null;
   const loadingDiff = (result.isPending && !data.rows.length) || (seekingFile && !result.error);
   return (

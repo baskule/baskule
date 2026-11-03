@@ -87,6 +87,7 @@ describe.skipIf(serverUrl === null || email === "")("Baskule front-session (real
         authorizeBearer: unused,
         authorizeDpop: unused,
         authorizeDpopHttp: unused,
+        renewDpopBeforeExpiry: () => Effect.void,
       }),
       Layer.succeed(ClientCapabilities.SshEnvironmentGateway, {
         provision: unused,

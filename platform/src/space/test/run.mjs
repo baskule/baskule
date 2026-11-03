@@ -83,14 +83,16 @@ const failureText = (exit) => JSON.stringify(exit);
 
 /** Shell state from a subscribeShell stream: threads by id, kept current. */
 function watchShell(client) {
-  const shell = { threads: new Map(), events: 0, ready: false };
+  const shell = { threads: new Map(), projects: new Map(), events: 0, ready: false };
   // Frames: {kind: "snapshot", snapshot: {threads}} then {kind: "thread.updated", location, thread}, …
   client.stream("orchestration.subscribeShell", {}, (v) => {
     shell.events++;
     if (v.kind === "snapshot") {
       for (const t of v.snapshot?.threads ?? []) shell.threads.set(t.id, t);
+      for (const p of v.snapshot?.projects ?? []) shell.projects.set(p.id, p);
       shell.ready = true;
     }
+    else if (v.project?.id) shell.projects.set(v.project.id, v.project);
     else if (v.thread?.id) {
       if (v.location === "active") shell.threads.set(v.thread.id, v.thread);
       else shell.threads.delete(v.thread.id);
@@ -266,6 +268,61 @@ async function main() {
     const instance = settingsRead.settings.providerInstances.opencode;
     assert(JSON.stringify(settingsRead).includes("http://agent/sp1/oc"), `managed OpenCode instance missing: ${JSON.stringify(instance ?? settingsRead).slice(0, 300)}`);
     return "terminal, settings writes and settle refused; settlement advertised off";
+  });
+
+  await check("upstream-0.1.6", async () => {
+    await seedPrimary();
+    const c = alicePrimary;
+    const config = await c.ok("server.getConfig", {});
+    assert(config.environment.capabilities.sideChats === true, "side chats must be advertised");
+    assert(config.environment.capabilities.projectOrganization === true, "project organization must be advertised");
+    const shell = watchShell(c);
+    await waitFor("project snapshot", () => shell.ready, 10_000);
+    const project = () => shell.projects.get(projectId);
+    for (const patch of [{ pinned: true }, { archived: true }, { archived: false }, { pinned: false }]) {
+      await c.ok("projects.mutate", { type: "project.update", commandId: crypto.randomUUID(), projectId, ...patch });
+      await waitFor("project organization persisted", async () => {
+        const value = await project();
+        return Object.entries(patch).every(([key, enabled]) => key === "pinned" ? (value.pinnedAt !== null) === enabled : (value.archivedAt !== null) === enabled);
+      }, 10_000);
+    }
+    const targetThreadId = `thread:side:${crypto.randomUUID()}`;
+    await dispatch(c, { type: "thread.fork", sourceThreadId: firstThreadId, targetThreadId, sourcePoint: { type: "latest_stable" }, sideChat: true, title: "Cell side chat", createdBy: "user", creationSource: "web" });
+    await waitFor("side chat projection", async () => {
+      const projection = await c.ok("orchestration.getThreadProjection", { threadId: targetThreadId });
+      return projection.thread.lineage.sideChat === true;
+    }, 30_000);
+    const side = watchThread(c, targetThreadId);
+    await dispatch(c, { type: "message.dispatch", createdBy: "user", creationSource: "web", threadId: targetThreadId, messageId: `message:side:${crypto.randomUUID()}`, text: "Side chat [[fake:text side chat works]]", attachments: [], dispatchMode: { type: "queue_after_active" } });
+    await waitFor("side chat answer", () => side.settled() && side.assistantText().includes("side chat works"), 60_000);
+    side.stop();
+    const tid = await launch(c, projectId, "Long reply [[fake:long 2000]] [[fake:delay 50]]", "Stop fixture");
+    const running = watchThread(c, tid);
+    await waitFor("streaming before Stop", () => running.assistantText().length > 20, 60_000);
+    const runId = [...running.runs.values()].find((run) => run.status === "running")?.id;
+    assert(runId, "streaming run missing");
+    await dispatch(c, { type: "run.interrupt", threadId: tid, runId });
+    await waitFor("Stop settles run", () => running.settled(), 30_000);
+    running.stop();
+    return "DO SQLite 073–076: pin/archive persisted; portable side chat answered; Stop settled streaming run";
+  });
+
+  await check("force-stop", async () => {
+    await seedPrimary();
+    const c = alicePrimary;
+    const tid = await launch(c, projectId, "Force stop [[fake:long 2000]] [[fake:delay 50]]", "Force stop fixture");
+    const running = watchThread(c, tid);
+    await waitFor("streaming before Force stop", () => running.assistantText().length > 20, 60_000);
+    const runId = [...running.runs.values()].find((run) => run.status === "running")?.id;
+    assert(runId, "streaming run missing");
+    const result = await c.ok("orchestration.forceStopThread", { threadId: tid, runId });
+    await waitFor("Force stop settles run", () => running.settled(), 30_000);
+    running.stop();
+    const other = await launch(c, projectId, "After Force stop [[fake:text still available]]", "After Force stop");
+    const answer = watchThread(c, other);
+    await waitFor("unrelated chat still answers", () => answer.settled() && answer.assistantText().includes("still available"), 60_000);
+    answer.stop();
+    return `Force stop ${result.outcome}; another chat answered afterward`;
   });
 
   await check("files-and-attachments", async () => {

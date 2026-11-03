@@ -1,7 +1,9 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { RegistryContext, useAtomMount, useAtomValue } from "@effect/atom-react";
+import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
 import {
   AuthProvidersManageScope,
   type EnvironmentId,
@@ -38,7 +40,7 @@ import {
 } from "./usageLimitsRefresh";
 import { usageProviderKind, PROVIDER_COLORS } from "./usageProviders";
 
-const PACE_LABEL = { ahead: "ahead of pace", on: "on pace", under: "under pace" } as const;
+const PACE_LABEL = { ahead: t("ahead of pace"), on: t("on pace"), under: t("under pace") } as const;
 
 type Driver = ServerProvider["driver"];
 
@@ -162,6 +164,7 @@ function AccountInstanceLabel({ value }: { readonly value: string }) {
 
 export function AccountLimits(props: {
   readonly driver: Driver;
+  readonly accentColor?: string | undefined;
   readonly label: string;
   readonly instanceLabel: string;
   readonly detail: string | undefined;
@@ -174,7 +177,8 @@ export function AccountLimits(props: {
 }) {
   const t = useTranslation();
   const { limits, now, dense = false } = props;
-  const color = barColor(props.driver);
+  const providerColor = barColor(props.driver);
+  const color = normalizeProviderAccentColor(props.accentColor) ?? providerColor;
   if (!limits) return null;
   const notice = limitsNotice(limits);
   const externalUsage = limits.externalUsage;
@@ -224,10 +228,10 @@ export function AccountLimits(props: {
 }
 
 const OUTCOME_TEXT: Record<ProviderConsumeResetCreditOutcome, string> = {
-  reset: "Reset applied. Your windows have cleared.",
-  nothingToReset: "Nothing to reset right now.",
-  noCredit: "No reset credit left.",
-  alreadyRedeemed: "That credit was already redeemed.",
+  reset: t("Reset applied. Your windows have cleared."),
+  nothingToReset: t("Nothing to reset right now."),
+  noCredit: t("No reset credit left."),
+  alreadyRedeemed: t("That credit was already redeemed."),
 };
 
 export function ResetCredits(props: {
@@ -252,10 +256,12 @@ export function ResetCredits(props: {
     : null;
   const summary =
     credits.availableCount === 0
-      ? "No reset credits banked"
-      : `${credits.availableCount} ${credits.availableCount === 1 ? "reset credit" : "reset credits"} banked${
-          expiresIn ? ` · next expires in ${expiresIn}` : ""
-        }`;
+      ? t("No reset credits banked")
+      : t("{{availableCount}} {{value2}} banked{{value3}}", {
+          availableCount: credits.availableCount,
+          value2: credits.availableCount === 1 ? "reset credit" : "reset credits",
+          value3: expiresIn ? ` · next expires in ${expiresIn}` : "",
+        });
 
   const redeem = async () => {
     if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
@@ -270,15 +276,17 @@ export function ResetCredits(props: {
     setStatus(
       "error" in result.cause && result.cause.error instanceof Error
         ? result.cause.error.message
-        : "Could not use the reset credit.",
+        : t("Could not use the reset credit."),
     );
   };
 
   const confirm = () => {
     if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
     Dialog.alert(
-      "Use a reset credit?",
-      "This redeems one credit on your account and clears the current rate-limit windows. It cannot be undone.",
+      t("Use a reset credit?"),
+      t(
+        "This redeems one credit on your account and clears the current rate-limit windows. It cannot be undone.",
+      ),
       [
         { text: t("Cancel"), style: "cancel" },
         { text: t("Use credit"), onPress: () => void redeem() },

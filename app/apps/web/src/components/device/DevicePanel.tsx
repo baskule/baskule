@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { DeviceHostUpdates } from "./DeviceHostUpdates";
@@ -38,7 +39,7 @@ import { DeviceWorkspace } from "./DeviceWorkspace";
 import { PreviewPanelShell, type PreviewPanelMode } from "../preview/PreviewPanelShell";
 
 const platformLabel = (platform: DevicePlatform) =>
-  platform === "ios" ? "iOS Simulators" : "Android Emulators";
+  platform === "ios" ? t("iOS Simulators") : t("Android Emulators");
 
 const deviceKey = (device: Pick<DeviceSummary, "hostId" | "id">) =>
   `${device.hostId}\u0000${device.id}`;
@@ -52,7 +53,7 @@ export function DevicePanel(props: {
 }) {
   const t = useTranslation();
   const { environmentId, threadId } = props.threadRef;
-  const { state, loaded } = useDeviceState(environmentId);
+  const { state, loaded, error: stateError, refresh: refreshState } = useDeviceState(environmentId);
   const list = useAtomCommand(deviceEnvironment.list, { reportFailure: false });
   const open = useAtomCommand(deviceEnvironment.open);
   const close = useAtomCommand(deviceEnvironment.close);
@@ -172,6 +173,8 @@ export function DevicePanel(props: {
     state.bootingDevices?.filter((device) => device.threadId === threadId) ?? [];
   const { ready: hostReady, busy: hostBusy } = deviceHubReadiness(state);
   const loading = !activeDevice && (pendingDevice !== null || hostBusy || !loaded);
+  // Without a first snapshot a failed subscription never settles on its own.
+  const loadError = loaded ? null : stateError;
   const diagnostics = state.hosts.flatMap((host) => {
     const status = state.hostStatuses[host.id];
     const detail = status?.detail ?? (host.kind === "local" ? state.hostStatusDetail : undefined);
@@ -240,6 +243,7 @@ export function DevicePanel(props: {
               hostLabel={
                 state.hosts.find((host) => host.id === activeDevice.hostId)?.label ?? "Device host"
               }
+              hostKind={state.hosts.find((host) => host.id === activeDevice.hostId)?.kind}
               hostDiagnostics={
                 diagnostics.find(({ hostId }) => hostId === activeDevice.hostId)?.detail
               }
@@ -253,20 +257,33 @@ export function DevicePanel(props: {
               name={pendingDevice?.name ?? "Devices"}
               description={
                 pendingDevice
-                  ? `${state.hosts.find((host) => host.id === pendingDevice.hostId)?.label ?? "Device host"} · ${pendingDevice.version}`
+                  ? t("{{value1}} · {{version}}", {
+                      value1:
+                        state.hosts.find((host) => host.id === pendingDevice.hostId)?.label ??
+                        "Device host",
+                      version: pendingDevice.version,
+                    })
                   : ""
               }
               stage="opening"
               message={
-                pendingDevice
+                loadError ??
+                (pendingDevice
                   ? pendingDevice.booted
                     ? t("Opening device…")
                     : t("Starting device…")
                   : state.hostStatus === "installing"
                     ? (state.hostStatusDetail ?? t("Installing device support…"))
-                    : t("Finding devices…")
+                    : t("Finding devices…"))
               }
-            />
+              error={loadError !== null}
+            >
+              {loadError !== null ? (
+                <Button size="sm" variant="outline" onClick={refreshState}>
+                  {t("Retry")}
+                </Button>
+              ) : null}
+            </DeviceLoadingView>
           ) : (
             <div className="scrollbar-gutter-both flex size-full flex-col overflow-y-auto px-5 py-8 text-sm text-muted-foreground">
               <div
@@ -310,14 +327,22 @@ export function DevicePanel(props: {
                                   {device.name}
                                 </span>
                                 <span className="truncate text-xs text-muted-foreground">
-                                  {`${state.hosts.find((host) => host.id === device.hostId)?.label} · ${device.version} · ${device.booted ? "Running" : "Stopped"}`}
+                                  {t("{{label}} · {{version}} · {{value3}}", {
+                                    label: state.hosts.find((host) => host.id === device.hostId)
+                                      ?.label,
+                                    version: device.version,
+                                    value3: device.booted ? "Running" : "Stopped",
+                                  })}
                                 </span>
                               </div>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 disabled={pendingDeviceKey !== null}
-                                aria-label={`${device.booted ? "Open" : "Start"} ${device.name}`}
+                                aria-label={t("{{value1}} {{name}}", {
+                                  value1: device.booted ? "Open" : "Start",
+                                  name: device.name,
+                                })}
                                 onClick={() => void selectDevice(deviceKey(device))}
                               >
                                 {pendingDeviceKey === deviceKey(device) ? (

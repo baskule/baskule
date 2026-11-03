@@ -19,6 +19,7 @@ import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
+import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   CommonActions,
@@ -212,7 +213,7 @@ export function NewTaskDraftScreen(props: {
     const result = await action();
     if (AsyncResult.isFailure(result)) {
       const error = Cause.squash(result.cause);
-      Dialog.alert(title, error instanceof Error ? error.message : "An error occurred.");
+      Dialog.alert(title, error instanceof Error ? error.message : t("An error occurred."));
     }
   };
   const deleteProject = useAtomCommand(projectEnvironment.delete, { reportFailure: false });
@@ -226,8 +227,8 @@ export function NewTaskDraftScreen(props: {
     if (AsyncResult.isFailure(result)) {
       const error = Cause.squash(result.cause);
       Dialog.alert(
-        "Failed to remove project",
-        error instanceof Error ? error.message : "An error occurred.",
+        t("Failed to remove project"),
+        error instanceof Error ? error.message : t("An error occurred."),
       );
       return;
     }
@@ -452,10 +453,15 @@ export function NewTaskDraftScreen(props: {
       return;
     }
 
-    const selection = resolveDraftProjectSelection(selectedProjectKey, projects, projectScopes, {
-      incomingShareId: props.incomingShareId,
-      pickerClosed: initialPickerRef.current === "open" && isFocused,
-    });
+    const selection = resolveDraftProjectSelection(
+      selectedProjectKey,
+      projects,
+      pickableProjectGroups(projectScopes),
+      {
+        incomingShareId: props.incomingShareId,
+        pickerClosed: initialPickerRef.current === "open" && isFocused,
+      },
+    );
     if (selection.kind === "preserve") {
       initialPickerRef.current = null;
       return;
@@ -604,15 +610,17 @@ export function NewTaskDraftScreen(props: {
     // Recovery may retain over-cap attachments; block send before uploading a turn the server would reject.
     if (draft.attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
       Dialog.alert(
-        "Too many attachments",
-        `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
+        t("Too many attachments"),
+        t("Remove attachments until there are at most {{PROVIDER_SEND_TURN_MAX_ATTACHMENTS}}.", {
+          PROVIDER_SEND_TURN_MAX_ATTACHMENTS: PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+        }),
       );
       return null;
     }
 
     const contextBlockReason = composerContextSendBlockReason(draft.context);
     if (contextBlockReason) {
-      Dialog.alert("Too much context", contextBlockReason);
+      Dialog.alert(t("Too much context"), contextBlockReason);
       return null;
     }
     const strandedThread = threadContextsOutsideEnvironment({
@@ -624,10 +632,13 @@ export function NewTaskDraftScreen(props: {
       const owner =
         flow.environments.find(
           (environment) => environment.environmentId === strandedThread.environmentId,
-        )?.environmentLabel ?? "its machine";
+        )?.environmentLabel ?? t("its machine");
       Dialog.alert(
-        "Attached thread unavailable",
-        `"${strandedThread.title}" is on another machine. Switch back to ${owner} or remove it from the draft.`,
+        t("Attached thread unavailable"),
+        t(
+          '"{{title}}" is on another machine. Switch back to {{owner}} or remove it from the draft.',
+          { title: strandedThread.title, owner: owner },
+        ),
       );
       return null;
     }
@@ -645,8 +656,8 @@ export function NewTaskDraftScreen(props: {
     if (AsyncResult.isFailure(queued)) {
       const error = squashAtomCommandFailure(queued);
       Dialog.alert(
-        "Could not queue task",
-        error instanceof Error ? error.message : "The task could not be saved to the outbox.",
+        t("Could not queue task"),
+        error instanceof Error ? error.message : t("The task could not be saved to the outbox."),
       );
       return null;
     }
@@ -678,13 +689,13 @@ export function NewTaskDraftScreen(props: {
   const setupBlockReason =
     isIncomingShareReady && !isImportingShare
       ? cloneBlocksStart
-        ? "Wait for the project clone to finish."
+        ? t("Wait for the project clone to finish.")
         : flow.submitting
-          ? "Starting the thread…"
+          ? t("Starting the thread…")
           : flow.workspaceMode === "worktree" && (!flow.selectedBranchName || !flow.isGitRepoKnown)
-            ? "Choose a base branch before creating a worktree."
+            ? t("Choose a base branch before creating a worktree.")
             : null
-      : "Wait for shared content to finish importing.";
+      : t("Wait for shared content to finish importing.");
   const chooseProject = () => {
     if (isComposerInteractionLocked) {
       return;
@@ -826,7 +837,10 @@ export function NewTaskDraftScreen(props: {
 
       <View className="min-w-0 shrink">
         <ComposerInlineControl
-          accessibilityLabel={`${flow.workspaceMode === "worktree" ? t("Base branch") : t("Branch")}: ${selectedBranchLabel}`}
+          accessibilityLabel={t("{{value1}}: {{selectedBranchLabel}}", {
+            value1: flow.workspaceMode === "worktree" ? t("Base branch") : t("Branch"),
+            selectedBranchLabel: selectedBranchLabel,
+          })}
           chevronDirection="right"
           disabled={isComposerInteractionLocked || !flow.isGitRepo}
           icon="arrow.triangle.branch"

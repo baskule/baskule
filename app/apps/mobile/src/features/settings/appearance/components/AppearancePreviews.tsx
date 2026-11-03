@@ -1,3 +1,4 @@
+import { t } from "../../../../i18n";
 import { useTranslation } from "../../../../i18n";
 
 import { Platform, ScrollView, type StyleProp, type TextStyle, View } from "react-native";
@@ -48,7 +49,7 @@ export function TerminalAppearancePreview(props: { readonly fontSize: number }) 
   const theme = getMobileTerminalTheme(themeId, scheme);
   const lineHeight = Math.round(props.fontSize * 1.6);
   const lineStyle = {
-    fontFamily: "Menlo",
+    fontFamily: Platform.OS === "android" ? "monospace" : "Menlo",
     fontSize: props.fontSize,
     lineHeight,
   } as const;
@@ -71,7 +72,7 @@ export function TerminalAppearancePreview(props: { readonly fontSize: number }) 
       <Text style={span(theme.foreground)}>
         <Text style={span(theme.palette[2])}>{t("VITE v7.1.1")}</Text>
         <Text style={span(theme.mutedForeground)}> {t("ready in")}</Text>
-        <Text style={span(theme.foreground)}> 1.24s</Text>
+        <Text style={span(theme.foreground)}> {t("1.24s")}</Text>
       </Text>
       <Text style={span(theme.foreground)}>
         <Text style={span(theme.palette[2])}>→ </Text>
@@ -109,7 +110,7 @@ interface CodePreviewLine {
 const CODE_PREVIEW_LINES: ReadonlyArray<CodePreviewLine> = [
   {
     id: "signature",
-    tokens: [{ text: "function", keyword: true }, { text: " formatUser(user) {" }],
+    tokens: [{ text: "function", keyword: true }, { text: t(" formatUser(user) {") }],
   },
   {
     id: "body",

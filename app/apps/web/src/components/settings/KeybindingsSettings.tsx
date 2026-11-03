@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { useEnvironmentScope } from "../../state/session";
@@ -252,8 +253,8 @@ function UnknownWhenVariableWarning({
   if (identifiers.length === 0) return null;
   const label =
     identifiers.length === 1
-      ? `Unknown condition: ${identifiers[0]}`
-      : `Unknown conditions: ${identifiers.join(", ")}`;
+      ? t("Unknown condition: {{value1}}", { value1: identifiers[0] })
+      : t("Unknown conditions: {{value1}}", { value1: identifiers.join(", ") });
 
   return (
     <WarningTooltipIcon label={label} focusable={focusable} className="size-4.5">
@@ -269,8 +270,11 @@ function KeybindingConflictWarning({ labels }: { labels: ReadonlyArray<string> }
   if (labels.length === 0) return null;
   const description =
     labels.length === 1
-      ? `Conflicts with ${labels[0]}.`
-      : `Conflicts with ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ", and more" : ""}.`;
+      ? t("Conflicts with {{value1}}.", { value1: labels[0] })
+      : t("Conflicts with {{value1}}{{value2}}.", {
+          value1: labels.slice(0, 3).join(", "),
+          value2: labels.length > 3 ? ", and more" : "",
+        });
 
   return (
     <WarningTooltipIcon label={description}>
@@ -867,8 +871,13 @@ function WhenClauseControl({
   onValidityChange: (valid: boolean) => void;
 }) {
   const t = useTranslation();
+  // Closing unmounts the builder, which drops an unparsed draft and keeps the last valid value.
+  const handleOpenChange = (open: boolean) => {
+    if (!open) onValidityChange(true);
+  };
+
   return (
-    <Popover>
+    <Popover onOpenChange={handleOpenChange}>
       <PopoverTrigger
         render={
           <Button
@@ -1053,7 +1062,7 @@ function useNewKeybindingDraft({
     key: keyDraft,
     when: whenDraftExpression,
   });
-  const commandLabelText = commandDraft ? commandLabel(commandDraft) : "new keybinding";
+  const commandLabelText = commandDraft ? commandLabel(commandDraft) : t("new keybinding");
   const canSave = Boolean(commandDraft) && keyDraft.trim().length > 0 && isWhenDraftValid;
 
   const save = () => {
@@ -1271,7 +1280,9 @@ function KeybindingsGroups(props: KeybindingsGroupsProps) {
 }
 
 function BrowserKeybindingNotice() {
-  const message = "The browser may claim some shortcuts first. The desktop app receives them all.";
+  const message = t(
+    "The browser may claim some shortcuts first. The desktop app receives them all.",
+  );
   return (
     <Tooltip>
       <TooltipTrigger
@@ -1366,7 +1377,7 @@ export function KeybindingsSettingsPanel() {
       toastManager.add({
         title: t("Unable to open keybindings file"),
         description:
-          error instanceof Error ? error.message : "The keybindings file was not opened.",
+          error instanceof Error ? error.message : t("The keybindings file was not opened."),
         type: "error",
       });
     })();
@@ -1403,7 +1414,7 @@ export function KeybindingsSettingsPanel() {
         const error = squashAtomCommandFailure(failed);
         toastManager.add({
           title: t("Unable to save keybinding"),
-          description: error instanceof Error ? error.message : "The keybinding was not saved.",
+          description: error instanceof Error ? error.message : t("The keybinding was not saved."),
           type: "error",
         });
       }
@@ -1434,7 +1445,8 @@ export function KeybindingsSettingsPanel() {
         const error = squashAtomCommandFailure(result);
         toastManager.add({
           title: t("Unable to remove keybinding"),
-          description: error instanceof Error ? error.message : "The keybinding was not removed.",
+          description:
+            error instanceof Error ? error.message : t("The keybinding was not removed."),
           type: "error",
         });
       }

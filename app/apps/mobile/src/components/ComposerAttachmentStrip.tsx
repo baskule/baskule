@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useTranslation } from "../i18n";
 
 import { FilePreviewGallery, useFilePreviewGallery } from "./FilePreviewGallery";
@@ -317,7 +318,7 @@ export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
               />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Remove ${attachment.name}`}
+                accessibilityLabel={t("Remove {{value1}}", { value1: attachment.name })}
                 className="absolute h-[22px] w-[22px] items-center justify-center rounded-[11px] bg-black/55"
                 style={{
                   top: removeButtonPlacement === "gutter" ? 0 : 4,

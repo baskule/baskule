@@ -1,6 +1,7 @@
 import { t } from "../../i18n";
 
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
 import {
   type ModelSelection,
   repositoryGroupingKeyOf,
@@ -28,7 +29,7 @@ export function promptLinkFor(
     readonly model: string | null;
   },
 ): string | null {
-  const trimmed = prompt.trim();
+  const trimmed = isAttachmentOnlyBootstrapPrompt(prompt) ? "" : prompt.trim();
   if (trimmed.length === 0 || trimmed.length > PROMPT_LINK_MAX_PROMPT_LENGTH) return null;
   return buildNewThreadLink({ prompt: trimmed, ...context, origin: configuredHostedAppUrl() });
 }
@@ -77,7 +78,7 @@ export async function copyPromptLink(link: string): Promise<void> {
       stackedThreadToast({
         type: "error",
         title: t("Could not copy the prompt link"),
-        description: error instanceof Error ? error.message : "An error occurred.",
+        description: error instanceof Error ? error.message : t("An error occurred."),
       }),
     );
   }

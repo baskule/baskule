@@ -12,7 +12,7 @@ import {
   type StaticScreenProps,
 } from "@react-navigation/native";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { availableScratchWorkspaceRoot } from "@t3tools/client-runtime/operations/projects";
+import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import {
   isAtomCommandInterrupted,
@@ -37,7 +37,11 @@ import { useWorkspaceState } from "../../state/workspace";
 
 import { useIncomingShare } from "../sharing/IncomingShareProvider";
 import { useNewTaskFlow } from "./new-task-flow-provider";
-import { filterProjectScopes, getProjectScopeSelectionTarget } from "./new-task-project-selection";
+import {
+  filterProjectScopes,
+  getProjectScopeSelectionTarget,
+  resolveNewTaskScratchOption,
+} from "./new-task-project-selection";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 // baskule: alpha scope flags.
 import { BASKULE_FLAGS } from "../../baskule/flags";
@@ -86,7 +90,7 @@ function deriveProjectEmptyState(catalogState: WorkspaceState): {
           : t("Environment unavailable"),
       detail:
         catalogState.connectionError ??
-        "The saved environment is offline. Check the URL or start the environment, then retry.",
+        t("The saved environment is offline. Check the URL or start the environment, then retry."),
       loading: false,
     };
   }
@@ -170,15 +174,22 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
   const incomingShare = routeShareId ? getShare(routeShareId) : null;
   const incomingShareSubtitle = incomingShare
     ? incomingShare.attachments.length === 0
-      ? "Choose a project for what you shared"
+      ? t("Choose a project for what you shared")
       : incomingShare.attachments.length === 1
-        ? `Choose a project for the ${incomingShare.attachments[0]?.type === "image" ? "image" : "file"} you shared`
-        : `Choose a project for the ${incomingShare.attachments.length} ${incomingShare.attachments.every((attachment) => attachment.type === "image") ? "images" : "files"} you shared`
+        ? t("Choose a project for the {{value1}} you shared", {
+            value1: incomingShare.attachments[0]?.type === "image" ? "image" : "file",
+          })
+        : t("Choose a project for the {{length}} {{value2}} you shared", {
+            length: incomingShare.attachments.length,
+            value2: incomingShare.attachments.every((attachment) => attachment.type === "image")
+              ? "images"
+              : "files",
+          })
     : null;
-  const screenTitle = incomingShare ? "Start a task" : "Choose project";
+  const screenTitle = incomingShare ? t("Start a task") : t("Choose project");
   const projectEmptyState = deriveProjectEmptyState(catalogState);
   const serverConfigs = useServerConfigs();
-  const listScopes = projectScopes.filter(
+  const listScopes = pickableProjectGroups(projectScopes).filter(
     (scope) =>
       !scope.projects.every((project) =>
         isScratchProject(project, serverConfigs.get(project.environmentId)?.scratchWorkspaceRoot),
@@ -202,18 +213,15 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
   const openScratch = useAtomCommand(projectEnvironment.openScratch, {
     reportFailure: false,
   });
-  const scratchEnvironments = connectedEnvironments.filter(
-    (environment) =>
-      availableScratchWorkspaceRoot(
-        environment.connectionState,
-        serverConfigs.get(environment.environmentId),
-      ) !== null,
-  );
-  const scratchEnvironment =
-    scratchEnvironments.find(
-      (environment) => environment.environmentId === selectedEnvironmentId,
-    ) ?? null;
-  const canStartScratch = scratchEnvironment !== null && reservedDestinationProject === null;
+  const scratchOption =
+    reservedDestinationProject === null
+      ? resolveNewTaskScratchOption({
+          environments: connectedEnvironments,
+          serverConfigs,
+          selectedEnvironmentId,
+        })
+      : null;
+  const canStartScratch = scratchOption?.ready === true;
   const scratchStartInFlightRef = useRef(false);
 
   async function selectProject(project: EnvironmentProject): Promise<void> {
@@ -222,10 +230,10 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
         await releaseShareReservation(incomingShare.id, incomingShare.destination);
       } catch (error) {
         Dialog.alert(
-          "Could not change project",
+          t("Could not change project"),
           error instanceof Error
             ? error.message
-            : "The shared content reservation could not be updated.",
+            : t("The shared content reservation could not be updated."),
         );
         return;
       }
@@ -253,8 +261,8 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
   }
 
   async function startScratch(): Promise<void> {
-    if (!scratchEnvironment || scratchStartInFlightRef.current) return;
-    const environmentId = scratchEnvironment.environmentId;
+    if (!canStartScratch || !scratchOption || scratchStartInFlightRef.current) return;
+    const environmentId = scratchOption.environmentId;
     scratchStartInFlightRef.current = true;
     const result = await openScratch({ environmentId, input: {} });
     if (result._tag === "Failure") {
@@ -262,10 +270,10 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
       if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         Dialog.alert(
-          "Could not start without a project",
+          t("Could not start without a project"),
           error instanceof Error
             ? error.message
-            : "The folder for threads without a project could not be created.",
+            : t("The folder for threads without a project could not be created."),
         );
       }
       return;
@@ -285,37 +293,35 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
       return;
     void selectProject(project);
   });
+  const autoScratchEnvironmentId = canStartScratch ? scratchOption?.environmentId : undefined;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel the scratch-workspace request continuation when the focused draft route changes.
   useEffect(() => {
-    if (BASKULE_FLAGS.projects || !isFocused || !canStartScratch || incomingShare?.destination)
+    if (
+      BASKULE_FLAGS.projects ||
+      !isFocused ||
+      !autoScratchEnvironmentId ||
+      incomingShare?.destination
+    )
       return;
     if (autoScratchStartedRef.current || scratchStartInFlightRef.current) return;
     autoScratchStartedRef.current = true;
     scratchStartInFlightRef.current = true;
     let active = true;
-    void openScratch({ environmentId: scratchEnvironment.environmentId, input: {} }).then(
-      (result) => {
-        if (!active) return;
-        scratchStartInFlightRef.current = false;
-        if (result._tag === "Failure") {
-          autoScratchStartedRef.current = false;
-          return;
-        }
-        finishAutoScratch(result.value);
-      },
-    );
+    void openScratch({ environmentId: autoScratchEnvironmentId, input: {} }).then((result) => {
+      if (!active) return;
+      scratchStartInFlightRef.current = false;
+      if (result._tag === "Failure") {
+        autoScratchStartedRef.current = false;
+        return;
+      }
+      finishAutoScratch(result.value);
+    });
     return () => {
       active = false;
       autoScratchStartedRef.current = false;
       scratchStartInFlightRef.current = false;
     };
-  }, [
-    canStartScratch,
-    incomingShare?.destination,
-    isFocused,
-    openScratch,
-    scratchEnvironment?.environmentId,
-  ]);
+  }, [autoScratchEnvironmentId, incomingShare?.destination, isFocused, openScratch]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- navigates to the incoming share's reserved destination draft once its project loads and the screen is focused
   useEffect(() => {
@@ -377,13 +383,14 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               : {}),
           }}
         >
-          {canStartScratch && listScopes.length > 0 ? (
+          {scratchOption !== null && listScopes.length > 0 ? (
             Platform.OS === "android" ? (
               <View collapsable={false} className="overflow-hidden rounded-[28px] bg-grouped-card">
                 <NavigationRow
                   className="bg-grouped-card"
                   title={t("No project")}
                   subtitle={t("Start a task without a project")}
+                  disabled={!canStartScratch}
                   onPress={() => void startScratch()}
                   leading={
                     <SymbolView
@@ -400,8 +407,12 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t("No project")}
+                  disabled={!canStartScratch}
                   onPress={() => void startScratch()}
-                  className="flex-row items-center gap-3 bg-grouped-card px-4 py-3.5"
+                  className={cn(
+                    "flex-row items-center gap-3 bg-grouped-card px-4 py-3.5",
+                    !canStartScratch && "opacity-45",
+                  )}
                 >
                   <View className="h-7 w-7 items-center justify-center">
                     <SymbolView

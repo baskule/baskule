@@ -28,6 +28,7 @@ export function ComposerContextPermissions(props: {
             size="xs"
             className="ms-auto min-w-0 shrink-0"
             aria-label={t("Permissions: {{value1}}", { value1: label })}
+            aria-haspopup="menu"
             data-composer-context-control
             onClick={props.onOpen}
           />
@@ -38,7 +39,7 @@ export function ComposerContextPermissions(props: {
       </TooltipTrigger>
       <TooltipPopup>
         {t("Permissions")}
-        {shortcutLabel ? ` · ${shortcutLabel}` : null}
+        {shortcutLabel ? t(" · {{shortcutLabel}}", { shortcutLabel: shortcutLabel }) : null}
       </TooltipPopup>
     </Tooltip>
   );

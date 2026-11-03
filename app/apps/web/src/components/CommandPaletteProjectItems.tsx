@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { EnvironmentId, EnvironmentMachineKind } from "@t3tools/contracts";
 
 import type { SidebarProjectSnapshot } from "../sidebarProjectGrouping";
@@ -5,6 +6,7 @@ import type { Project } from "../types";
 import {
   buildCommandPaletteProjectMetadata,
   buildProjectActionItems,
+  type CommandPaletteItemPin,
   type CommandPaletteProject,
   ITEM_ICON_CLASS,
 } from "./CommandPalette.logic";
@@ -20,7 +22,7 @@ export interface CommandPaletteProjectLocation {
 
 const UNKNOWN_PROJECT_LOCATION: CommandPaletteProjectLocation = {
   kind: "remote",
-  label: "Remote",
+  label: t("Remote"),
   machine: "server",
 };
 
@@ -29,6 +31,7 @@ interface ProjectItemsInput {
   readonly projectGroupByTargetKey: ReadonlyMap<string, SidebarProjectSnapshot>;
   readonly locationByEnvironmentId: ReadonlyMap<EnvironmentId, CommandPaletteProjectLocation>;
   readonly runProject: (project: CommandPaletteProject) => Promise<void>;
+  readonly pin?: (project: CommandPaletteProject) => CommandPaletteItemPin | null;
 }
 
 function projectFaviconIcon(project: Project) {
@@ -66,6 +69,7 @@ export function buildProjectSearchItems(input: ProjectItemsInput) {
     },
     icon: projectFaviconIcon,
     runProject: input.runProject,
+    ...(input.pin ? { pin: input.pin } : {}),
   });
 }
 
@@ -90,6 +94,7 @@ export function buildNewThreadInProjectItems(input: ProjectItemsInput) {
     ),
     icon: projectFaviconIcon,
     runProject: input.runProject,
+    ...(input.pin ? { pin: input.pin } : {}),
   });
 }
 

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
@@ -27,7 +28,12 @@ export function AppRouteModal({ label, children }: { label: string; children: Re
       // Portaled layers outside this tree (toasts, Clerk, confirm dialogs) are not backdrop presses.
       disablePointerDismissal
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) setOpen(false);
+        if (nextOpen) return;
+        // Closing unmounts a focused field without a blur, so commit-on-blur rows would
+        // drop what was typed. Blur first so they commit.
+        const focused = document.activeElement;
+        if (focused instanceof HTMLElement && popupRef.current?.contains(focused)) focused.blur();
+        setOpen(false);
       }}
       onOpenChangeComplete={(nextOpen) => {
         if (!nextOpen) void closeAppModal();
@@ -68,14 +74,14 @@ export function AppRouteModalClose() {
       <TooltipTrigger
         render={
           <DialogPrimitive.Close
-            aria-label="Close"
+            aria-label={t("Close")}
             render={<Button size="icon-sm" variant="ghost" />}
           />
         }
       >
         <XIcon />
       </TooltipTrigger>
-      <TooltipPopup side="bottom">Close (Esc)</TooltipPopup>
+      <TooltipPopup side="bottom">{t("Close (Esc)")}</TooltipPopup>
     </Tooltip>
   );
 }

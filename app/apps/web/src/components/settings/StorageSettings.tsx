@@ -18,6 +18,8 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { useDebouncedValue } from "../../state/queries";
+import { AnimatedHeight } from "../AnimatedHeight";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 
@@ -146,8 +148,8 @@ function RetentionControl({
             <NumberFieldDecrement aria-label={t("Decrease {{label}}", { label: label })} />
             <NumberFieldInput
               aria-label={t("{{label}} in days", { label: label })}
-              size={new Intl.NumberFormat().format(draft ?? value).length}
-              className="field-sizing-content w-auto min-w-[1ch] grow-0 text-right"
+              size={5}
+              className="w-auto grow-0 text-right"
             />
             <span aria-hidden="true" className="self-center pr-2 text-xs">
               {t("days")}
@@ -187,9 +189,11 @@ function lastRunSummary(
   if (!first) return "";
   if (machineCount <= 1) return first.counts;
   if (entries.length === machineCount && entries.every((entry) => entry.counts === first.counts)) {
-    return `${first.counts} on every machine`;
+    return t("{{counts}} on every machine", { counts: first.counts });
   }
-  return entries.map((entry) => `${entry.label}: ${entry.counts}`).join(" · ");
+  return entries
+    .map((entry) => t("{{label}}: {{counts}}", { label: entry.label, counts: entry.counts }))
+    .join(" · ");
 }
 
 function CleanupResults({
@@ -209,8 +213,8 @@ function CleanupResults({
                 ? entry.path
                 : entry.path?.split(/[\\/]/).findLast(Boolean)) ?? t("Worktrees"))
             : entry.kind === "logs"
-              ? "Rotated logs"
-              : "Browser artifacts";
+              ? t("Rotated logs")
+              : t("Browser artifacts");
         return (
           <SettingsRow
             key={`${entry.path ?? entry.kind}:${entry.threadId ?? index}`}
@@ -337,15 +341,26 @@ function CleanupSection() {
       report,
       label: settingsScopeEnvironmentLabel(environment, connectedEnvironments),
       counts: report
-        ? `${report.counts.removed} removed, ${report.counts.kept} kept${report.counts.failed > 0 ? `, ${report.counts.failed} failed` : ""}`
+        ? t("{{removed}} removed, {{kept}} kept{{value3}}", {
+            removed: report.counts.removed,
+            kept: report.counts.kept,
+            value3: report.counts.failed > 0 ? `, ${report.counts.failed} failed` : "",
+          })
         : "",
       description: report
-        ? `Last run ${formatRelativeTimeLabel(report.finishedAt, nowMs)}. ${formatBytes(report.bytesFreed)} recovered.${report.counts.failed > 0 ? ` ${report.counts.failed} ${report.counts.failed === 1 ? "item" : "items"} couldn't be removed.` : ""}`
+        ? t("Last run {{value1}}. {{value2}} recovered.{{value3}}", {
+            value1: formatRelativeTimeLabel(report.finishedAt, nowMs),
+            value2: formatBytes(report.bytesFreed),
+            value3:
+              report.counts.failed > 0
+                ? ` ${report.counts.failed} ${report.counts.failed === 1 ? "item" : "items"} couldn't be removed.`
+                : "",
+          })
         : query?.failed
-          ? "Could not load the last run."
+          ? t("Could not load the last run.")
           : query?.loading
-            ? "Loading last run…"
-            : "Cleanup hasn't run yet.",
+            ? t("Loading last run…")
+            : t("Cleanup hasn't run yet."),
     };
   });
   const deleteNow = async () => {
@@ -387,7 +402,7 @@ function CleanupSection() {
                 ? t("Turn on a cleanup rule to use this.")
                 : summaries.map(({ environment, label, description }) => (
                     <span key={environment.environmentId} className="block">
-                      {supported.length > 1 ? `${label}: ` : ""}
+                      {supported.length > 1 ? t("{{label}}: ", { label: label }) : ""}
                       {description}
                     </span>
                   ))}
@@ -489,7 +504,7 @@ export function WorktreeCleanupSection() {
           key
         ] !== settings[key],
     )
-      ? "Mixed across selected machines"
+      ? t("Mixed across selected machines")
       : undefined;
   const update = (patch: Partial<StorageCleanupSettings>) =>
     updateSettings({ storageCleanup: patch });
@@ -724,12 +739,31 @@ export function StorageCleanupSections() {
   const { scope, connectedEnvironments, targets } = useSettingsScope();
   const scopedSettings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
-  if (scope.kind === "project" || scope.kind === "checkout") return null;
   const settings = scopedSettings.storageCleanup;
-  const ruleStatus = (key: "browserArtifactsAfterDays" | "logsAfterDays") =>
-    targets.some((target) => target.settings.storageCleanup[key] !== settings[key])
-      ? "Mixed across selected machines"
+  const targetIdsKey = environmentIdsKey(targets.map((target) => target.environmentId).sort());
+  const artifactsMixed =
+    targets.length > 1 &&
+    targets.some(
+      (target) =>
+        target.settings.storageCleanup.browserArtifactsAfterDays !==
+        settings.browserArtifactsAfterDays,
+    );
+  const logsMixed =
+    targets.length > 1 &&
+    targets.some(
+      (target) => target.settings.storageCleanup.logsAfterDays !== settings.logsAfterDays,
+    );
+  const settledArtifactsStatus = useDebouncedValue(`${targetIdsKey}:${artifactsMixed}`, 300);
+  const settledLogsStatus = useDebouncedValue(`${targetIdsKey}:${logsMixed}`, 300);
+  const artifactsStatus =
+    targets.length > 1 && settledArtifactsStatus === `${targetIdsKey}:true`
+      ? t("Mixed across selected machines")
       : undefined;
+  const logsStatus =
+    targets.length > 1 && settledLogsStatus === `${targetIdsKey}:true`
+      ? t("Mixed across selected machines")
+      : undefined;
+  if (scope.kind === "project" || scope.kind === "checkout") return null;
   const update = (patch: Partial<StorageCleanupSettings>) =>
     updateSettings({ storageCleanup: patch });
   const databaseStorageNotice = (
@@ -755,36 +789,40 @@ export function StorageCleanupSections() {
     <>
       {databaseStorageNotice}
       <SettingsSection id="storage-artifacts" title={t("Artifacts and logs")}>
-        <SettingsRow
-          title={t("Delete old browser artifacts")}
-          status={ruleStatus("browserArtifactsAfterDays")}
-          description={t(
-            "Delete saved browser captures after this many days. Older capture links will no longer open.",
-          )}
-          serverScoped
-          control={
-            <RetentionControl
-              label={t("Delete old browser artifacts")}
-              value={settings.browserArtifactsAfterDays}
-              onChange={(browserArtifactsAfterDays) => update({ browserArtifactsAfterDays })}
-            />
-          }
-        />
-        <SettingsRow
-          title={t("Delete old rotated logs")}
-          status={ruleStatus("logsAfterDays")}
-          description={t(
-            "Delete inactive rotated log files after this many days. Current logs are kept.",
-          )}
-          serverScoped
-          control={
-            <RetentionControl
-              label={t("Delete old rotated logs")}
-              value={settings.logsAfterDays}
-              onChange={(logsAfterDays) => update({ logsAfterDays })}
-            />
-          }
-        />
+        <AnimatedHeight>
+          <SettingsRow
+            title={t("Delete old browser artifacts")}
+            status={artifactsStatus}
+            description={t(
+              "Delete saved browser captures after this many days. Older capture links will no longer open.",
+            )}
+            serverScoped
+            control={
+              <RetentionControl
+                label={t("Delete old browser artifacts")}
+                value={settings.browserArtifactsAfterDays}
+                onChange={(browserArtifactsAfterDays) => update({ browserArtifactsAfterDays })}
+              />
+            }
+          />
+        </AnimatedHeight>
+        <AnimatedHeight>
+          <SettingsRow
+            title={t("Delete old rotated logs")}
+            status={logsStatus}
+            description={t(
+              "Delete inactive rotated log files after this many days. Current logs are kept.",
+            )}
+            serverScoped
+            control={
+              <RetentionControl
+                label={t("Delete old rotated logs")}
+                value={settings.logsAfterDays}
+                onChange={(logsAfterDays) => update({ logsAfterDays })}
+              />
+            }
+          />
+        </AnimatedHeight>
       </SettingsSection>
       <CleanupSection />
     </>

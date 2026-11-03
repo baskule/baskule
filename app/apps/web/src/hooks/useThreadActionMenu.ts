@@ -61,10 +61,11 @@ export function useThreadActionMenu(input: {
   readonly threadRef: ScopedThreadRef | null;
   readonly projectCwd: string | null;
   readonly onStartRename: () => void;
+  readonly onFind?: ((threadRef: ScopedThreadRef) => void) | undefined;
   readonly canShareWithGuest: boolean;
 }) {
   const t = useTranslation();
-  const { threadRef, projectCwd, onStartRename, canShareWithGuest } = input;
+  const { threadRef, projectCwd, onStartRename, onFind, canShareWithGuest } = input;
   const router = useRouter();
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -101,7 +102,7 @@ export function useThreadActionMenu(input: {
     onError: (error) => failureToast(t("Failed to copy path"), error),
   });
   const { copyToClipboard: copyBranchToClipboard } = useCopyToClipboard<{ branch: string }>({
-    target: "branch name",
+    target: t("branch name"),
     onCopy: ({ branch }) => {
       toastManager.add({ type: "success", title: t("Branch copied"), description: branch });
     },
@@ -134,6 +135,7 @@ export function useThreadActionMenu(input: {
       const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
       const items = buildThreadActionMenuItems({
         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
+        canFind: onFind !== undefined,
         branch: thread.branch ?? null,
         projectFilter: null,
         isPinned: thread.pinnedAt != null,
@@ -188,6 +190,9 @@ export function useThreadActionMenu(input: {
         }
       };
       switch (action) {
+        case "find":
+          onFind?.(threadRef);
+          return;
         case "project-settings": {
           const project = projects.find(
             (candidate) =>
@@ -266,7 +271,10 @@ export function useThreadActionMenu(input: {
               description: thread.title,
             });
           } else if (!isAtomCommandInterrupted(result)) {
-            failureToast("Could not turn thread into a project", squashAtomCommandFailure(result));
+            failureToast(
+              t("Could not turn thread into a project"),
+              squashAtomCommandFailure(result),
+            );
           }
           return;
         }
@@ -296,7 +304,7 @@ export function useThreadActionMenu(input: {
         case "archive": {
           if (confirmThreadArchive) {
             const confirmed = await settlePromise(() =>
-              api.dialogs.confirm(`Archive thread "${thread.title}"?`),
+              api.dialogs.confirm(t('Archive thread "{{title}}"?', { title: thread.title })),
             );
             if (confirmed._tag === "Failure" || !confirmed.value) return;
           }
@@ -321,8 +329,8 @@ export function useThreadActionMenu(input: {
             const confirmed = await settlePromise(() =>
               api.dialogs.confirm(
                 [
-                  `Delete thread "${thread.title}"?`,
-                  "This permanently clears conversation history for this thread.",
+                  t('Delete thread "{{title}}"?', { title: thread.title }),
+                  t("This permanently clears conversation history for this thread."),
                 ].join("\n"),
                 { variant: "destructive" },
               ),

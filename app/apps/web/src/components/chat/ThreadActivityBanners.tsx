@@ -9,17 +9,20 @@ import type { EnvironmentThreadShell, ThreadStructure } from "@t3tools/client-ru
 import {
   presentPendingBackgroundWork,
   presentProviderGoal,
+  type RunStopPresentation,
 } from "@t3tools/client-runtime/state/thread-execution";
 import { childThreadInputsTitle } from "@t3tools/client-runtime/state/threads";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import * as DateTime from "effect/DateTime";
 import {
   CircleDashedIcon,
+  CircleStopIcon,
   GitBranchIcon,
   MessageCircleIcon,
   ShieldQuestionIcon,
   TargetIcon,
   TerminalIcon,
+  TriangleAlertIcon,
 } from "lucide-react";
 import { Fragment } from "react";
 import { tickTextContent } from "~/lib/tickTextContent";
@@ -29,12 +32,12 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import type { ThreadNowItem } from "./ThreadNow";
 
-/** Subagents waiting on the user, unless the parent is itself waiting on them. */
+/** Subagents and side chats waiting on the user, unless the parent is itself waiting on them. */
 export function childInputNowItem(input: {
   readonly childThreadInputs: ReadonlyArray<EnvironmentThreadShell>;
   readonly parentAwaitingUser: boolean;
   readonly onOpenThread: (threadId: ThreadId) => void;
-}): ThreadNowItem | null {
+}): (ThreadNowItem & { readonly waitingLabel: string }) | null {
   const { childThreadInputs, onOpenThread } = input;
   const first = childThreadInputs[0];
   if (!first || input.parentAwaitingUser) return null;
@@ -47,6 +50,9 @@ export function childInputNowItem(input: {
       <MessageCircleIcon className="text-info-foreground" />
     ),
     title: childThreadInputsTitle(childThreadInputs),
+    waitingLabel: childThreadInputs.every((child) => child.lineage.sideChat === true)
+      ? t("Side chat waiting")
+      : t("Subagent waiting"),
     description: childThreadInputs.map((child, index) => (
       <Fragment key={child.id}>
         {index > 0 ? " " : null}
@@ -81,7 +87,7 @@ export function goalNowItem(input: {
     title:
       presentation.usage === null
         ? presentation.title
-        : `${presentation.title} · ${presentation.usage}`,
+        : t("{{title}} · {{usage}}", { title: presentation.title, usage: presentation.usage }),
     description: presentation.objective,
     // Clear stops goal work; Resume would stop unrelated work, so it waits.
     actions: (
@@ -102,6 +108,46 @@ export function goalNowItem(input: {
         >
           {t("Clear")}
         </InlineButton>
+      </>
+    ),
+  };
+}
+
+/** A Stop the provider has not finished; Force stop once it stops answering. */
+export function runStopNowItem(input: {
+  readonly threadId: ThreadId;
+  readonly stop: RunStopPresentation;
+  readonly canForceStop: boolean;
+  readonly forceStopping: boolean;
+  readonly onForceStop: () => void;
+}): ThreadNowItem {
+  const unresponsive = input.stop.state === "unresponsive";
+  const requestedAtMs = Date.parse(input.stop.requestedAt);
+  return {
+    id: `run-stop:${input.threadId}`,
+    icon: unresponsive ? (
+      <TriangleAlertIcon className="text-warning-foreground" />
+    ) : (
+      <CircleStopIcon />
+    ),
+    title: unresponsive ? t("Agent not responding to Stop") : "Stopping",
+    description: unresponsive
+      ? t("It may be short on memory. Force stop kills its processes.")
+      : undefined,
+    actions: (
+      <>
+        <span
+          ref={tickTextContent(
+            (nowMs) => formatDuration(Math.max(1_000, nowMs - requestedAtMs)),
+            true,
+          )}
+          className="tabular-nums"
+        />
+        {unresponsive && input.canForceStop ? (
+          <InlineButton disabled={input.forceStopping} onClick={input.onForceStop}>
+            {input.forceStopping ? t("Force stopping...") : t("Force stop")}
+          </InlineButton>
+        ) : null}
       </>
     ),
   };
@@ -139,7 +185,7 @@ export function backgroundWorkNowItem(input: {
     .filter((row) => row.activity)
     .toSorted((left, right) => right.updatedAtMs - left.updatedAtMs)[0];
   const isCommand = (row: (typeof rows)[number]) => row.task.kind !== "subagent";
-  const verb = presentation.waiting ? "Waiting on" : "Running";
+  const verb = presentation.waiting ? t("Waiting on") : "Running";
   const onlyThreadId = only?.childThreadId;
   const startedAtMs = only?.startedAtMs ?? null;
   return {
@@ -155,7 +201,7 @@ export function backgroundWorkNowItem(input: {
     description: only ? (
       only.activity
     ) : newest ? (
-      `${newest.task.label}: ${newest.activity}`
+      t("{{label}}: {{activity}}", { label: newest.task.label, activity: newest.activity })
     ) : rows.every(isCommand) ? (
       <span className="font-mono">{rows.map((row) => row.task.label).join(", ")}</span>
     ) : (
@@ -224,7 +270,7 @@ export function branchMismatchBannerItem(input: {
         {input.restoring ? t("Restoring...") : t("Restore branch")}
       </Button>
     ),
-    dismissLabel: "Dismiss branch change notice",
+    dismissLabel: t("Dismiss branch change notice"),
     onDismiss: input.onDismiss,
   };
 }

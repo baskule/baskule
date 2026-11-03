@@ -12,6 +12,7 @@ import { encodeOAuthScope } from "@t3tools/shared/oauthScope";
 import { hashTelemetryId } from "@t3tools/shared/telemetryId";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import { environmentEndpointUrl, environmentSocketUrl } from "../environment/endpoint.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import {
@@ -282,7 +283,7 @@ export const resolveRemoteWebSocketConnectionUrl = Effect.fn(
   });
 
   const url = environmentSocketUrl(input.wsBaseUrl);
-  url.searchParams.set("wsTicket", issued.ticket);
+  url.searchParams.set("wsTicket", Redacted.value(issued.ticket));
   appendClientConnectionParams(
     url,
     input.clientMetadata,
@@ -335,9 +336,9 @@ export const resolveRemoteDpopWebSocketConnectionUrl = Effect.fn(
   const upgradeProof = yield* input.createProof({
     method: "GET",
     url: `${url.protocol === "wss:" ? "https:" : "http:"}//${url.host}${url.pathname}`,
-    accessToken: issued.ticket,
+    accessToken: Redacted.value(issued.ticket),
   });
-  url.searchParams.set("wsTicket", issued.ticket);
+  url.searchParams.set("wsTicket", Redacted.value(issued.ticket));
   url.searchParams.set("dpop", upgradeProof);
   appendClientConnectionParams(
     url,

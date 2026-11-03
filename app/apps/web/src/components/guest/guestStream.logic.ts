@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import {
   GUEST_ATTACHMENT_ROUTE,
   GUEST_MEDIA_ROUTE,
@@ -9,11 +10,13 @@ import {
   type GuestMessageId,
   type GuestShareView,
   type OrchestrationV2ProjectedTurnItem,
+  type OrchestrationV2ThreadHistoryPage,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
   type ThreadGuestMessage,
 } from "@t3tools/contracts";
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
+import { mergeOlderHistoryIntoProjection } from "@t3tools/client-runtime/state/thread-history-merge";
 import { boundedSnapshotProjection } from "@t3tools/shared/orchestrationV2BoundedSnapshot";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -25,6 +28,8 @@ export interface GuestStreamState {
   readonly sequence: number;
   /** Set while the snapshot is a window of a longer history, as the owner's client tracks it. */
   readonly partial: { readonly latestLocalTurnOrdinal: number | null } | null;
+  /** Where "Load earlier turns" continues, or null once the whole thread is loaded. */
+  readonly historyCursor: string | null;
   readonly ended: boolean;
   /**
    * Messages this page saw waiting that have no transcript row yet. Survives reconnects, and a
@@ -38,6 +43,7 @@ export const initialGuestStreamState: GuestStreamState = {
   projection: null,
   sequence: 0,
   partial: null,
+  historyCursor: null,
   ended: false,
   awaitingRowIds: new Set(),
 };
@@ -76,16 +82,32 @@ const decodeGuestStreamEvent = Schema.decodeUnknownOption(
 export const parseGuestStreamEvent = (data: string): GuestStreamEvent | null =>
   Option.getOrNull(decodeGuestStreamEvent(data));
 
+/** A page of older turns, fetched from `cursor`. */
+export type GuestHistoryPageLoaded = {
+  readonly type: "history-page";
+  readonly cursor: string;
+  readonly page: OrchestrationV2ThreadHistoryPage;
+};
+
 /**
  * Applies the owner's thread stream the way the owner's client does (see
  * EnvironmentThreadState in client-runtime): a snapshot replaces the thread, and later events
- * pass through the same projection reducer, once each.
+ * pass through the same projection reducer, once each. Older pages merge in front, as they do in
+ * the owner's view.
  */
 export function applyGuestStreamEvent(
   state: GuestStreamState,
-  event: GuestStreamEvent,
+  event: GuestStreamEvent | GuestHistoryPageLoaded,
 ): GuestStreamState {
   switch (event.type) {
+    case "history-page":
+      // A snapshot since the request replaced the thread and its cursor.
+      if (state.projection === null || state.historyCursor !== event.cursor) return state;
+      return {
+        ...state,
+        projection: mergeOlderHistoryIntoProjection(state.projection, event.page.items),
+        historyCursor: event.page.hasMoreHistory ? event.page.nextCursor : null,
+      };
     case "view":
       // The page follows the share it names; a view of another one means the link changed.
       if (state.view !== null && state.view.shareId !== event.view.shareId) {
@@ -108,6 +130,7 @@ export function applyGuestStreamEvent(
             item.hasMoreHistory === true || (item.historyCursor ?? null) !== null
               ? { latestLocalTurnOrdinal: item.latestLocalTurnOrdinal ?? null }
               : null,
+          historyCursor: item.hasMoreHistory === true ? (item.historyCursor ?? null) : null,
           awaitingRowIds: withoutPlaced(
             state.awaitingRowIds,
             projection.visibleTurnItems.map((row) => row.item),
@@ -169,7 +192,9 @@ export function unplacedGuestMessages(
 export function formatGuestExpiry(expiresAt: string, nowMs: number): string {
   const minutes = Math.floor((Date.parse(expiresAt) - nowMs) / 60_000);
   if (minutes <= 0) return "Expired";
-  return minutes >= 60 ? `${Math.floor(minutes / 60)}h left` : `${minutes}m left`;
+  return minutes >= 60
+    ? t("{{value1}}h left", { value1: Math.floor(minutes / 60) })
+    : t("{{minutes}}m left", { minutes: minutes });
 }
 
 /**
@@ -197,10 +222,12 @@ export function guestFilesProblem(
   files: ReadonlyArray<Pick<File, "type" | "size">>,
 ): string | null {
   if (files.length > GUEST_MESSAGE_MAX_ATTACHMENTS) {
-    return `Attach up to ${GUEST_MESSAGE_MAX_ATTACHMENTS} files to a message.`;
+    return t("Attach up to {{GUEST_MESSAGE_MAX_ATTACHMENTS}} files to a message.", {
+      GUEST_MESSAGE_MAX_ATTACHMENTS: GUEST_MESSAGE_MAX_ATTACHMENTS,
+    });
   }
   if (files.reduce((total, file) => total + file.size, 0) > GUEST_MESSAGE_MAX_ATTACHMENT_BYTES) {
-    return "Attached files can total up to 10 MB per message.";
+    return t("Attached files can total up to 10 MB per message.");
   }
   const unsupported = files.some(
     (file) =>
@@ -209,7 +236,7 @@ export function guestFilesProblem(
         !isProviderSendTurnSupportedImageMimeType(file.type)),
   );
   return unsupported
-    ? "This file cannot be attached. Images must be PNG, JPEG, GIF, or WebP."
+    ? t("This file cannot be attached. Images must be PNG, JPEG, GIF, or WebP.")
     : null;
 }
 

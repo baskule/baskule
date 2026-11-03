@@ -57,7 +57,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
 
   const environmentItems = [
     ...(onAutoEnvironment
-      ? [{ value: AUTO_VALUE, label: autoEnvironmentLabel ?? "Auto balance" }]
+      ? [{ value: AUTO_VALUE, label: autoEnvironmentLabel ?? t("Auto balance") }]
       : []),
     ...availableEnvironments.map((env) => ({
       value: environmentValue(env.environmentId),
@@ -71,7 +71,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
   if (envLocked || (onEnvironmentChange === undefined && onAddToMachine === undefined)) {
     const lockedRow = (
       <span
-        className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 border border-transparent px-1.75 font-normal text-muted-foreground/70 text-xs sm:h-6"
+        className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 border border-transparent px-1.75 font-normal text-muted-foreground/70 text-sm sm:h-6 sm:text-xs"
         data-composer-context-control
       >
         <EnvironmentMachineIcon
@@ -130,7 +130,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
         </TooltipTrigger>
         <TooltipPopup>
           {autoEnvironmentLabel ?? activeEnvironment?.label ?? t("Run on")}
-          {shortcutLabel ? ` · ${shortcutLabel}` : null}
+          {shortcutLabel ? t(" · {{shortcutLabel}}", { shortcutLabel: shortcutLabel }) : null}
         </TooltipPopup>
       </Tooltip>
       <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>

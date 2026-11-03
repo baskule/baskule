@@ -1,4 +1,12 @@
-import { t, useTranslation } from "../../i18n";
+import { t } from "../../i18n";
+import {
+  buildTraitsTriggerDisplay,
+  getDescriptorStringValue,
+  getTraitSelectChange,
+  replaceDescriptorCurrentValue,
+  selectableProviderOptionChoices,
+  REASONING_SELECT_DESCRIPTOR_IDS,
+} from "@t3tools/client-runtime/model-traits";
 import {
   type ModelSelection,
   type ProviderDriverKind,
@@ -8,22 +16,14 @@ import {
   type ScopedThreadRef,
   type ServerProviderModel,
 } from "@t3tools/contracts";
-import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
   getProviderOptionDescriptors,
-  resolveSelectableModel,
+  normalizeModelSlug,
 } from "@t3tools/shared/model";
-import {
-  replaceDescriptorCurrentValue,
-  getDescriptorStringValue,
-  getTraitSelectChange,
-  buildTraitsTriggerDisplay,
-  REASONING_SELECT_DESCRIPTOR_IDS,
-} from "@t3tools/client-runtime/model-traits";
-import { memo, type ReactNode, useRef } from "react";
-import { GaugeIcon, ZapIcon } from "lucide-react";
+import { memo } from "react";
+import { GaugeIcon } from "lucide-react";
 import {
   Menu,
   MenuGroup,
@@ -39,24 +39,15 @@ import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
-import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
-import { EffortGlyph, resolveEffortGlyph } from "./EffortGlyph";
+
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
 const SAVED_OPTION_LABELS: Readonly<Record<string, string>> = {
-  get agent() {
-    return t("Agent");
-  },
-  get effort() {
-    return t("Effort");
-  },
-  get reasoningEffort() {
-    return t("Reasoning effort");
-  },
-  get variant() {
-    return t("Reasoning");
-  },
+  agent: "Agent",
+  effort: "Effort",
+  reasoningEffort: t("Reasoning effort"),
+  variant: "Reasoning",
 };
 
 function savedOptionLabel(id: string): string {
@@ -66,7 +57,7 @@ function savedOptionLabel(id: string): string {
   );
 }
 
-export function buildUnavailableModelOptionDescriptors(
+function buildUnavailableModelOptionDescriptors(
   selections: ProviderOptions | null | undefined,
 ): ReadonlyArray<ProviderOptionDescriptor> {
   return (selections ?? []).map((selection) =>
@@ -99,7 +90,6 @@ type TraitsPersistence =
     };
 
 function DefaultBadge() {
-  const t = useTranslation();
   return (
     <Badge variant="outline" size="sm" className="min-w-0">
       {t("Default")}
@@ -116,7 +106,8 @@ function getSelectedTraits(
 ) {
   const caps = getProviderModelCapabilities(models, model, provider, planModeEnabled);
   const modelIsUnavailable =
-    provider === "opencode" && resolveSelectableModel(provider, model, models) === null;
+    provider === "opencode" &&
+    !models.some((candidate) => candidate.slug === normalizeModelSlug(model, provider));
   const descriptors = modelIsUnavailable
     ? buildUnavailableModelOptionDescriptors(
         planModeEnabled
@@ -166,18 +157,17 @@ function getSelectedTraits(
     effort,
     thinkingEnabled,
     contextWindow,
-
     selectedAgent,
     selectedAgentLabel,
     modelIsUnavailable,
   };
 }
 
-function getTraitsSectionVisibility(input: {
+export function getTraitsSectionVisibility(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
-  modelOptions: ProviderOptions | null | undefined;
+  modelOptions?: ProviderOptions | null | undefined;
   planModeEnabled: boolean;
 }) {
   const selected = getSelectedTraits(
@@ -237,43 +227,26 @@ export function getReasoningTraitStep(input: {
   const descriptor = selected.selectDescriptors.find((entry) =>
     REASONING_SELECT_DESCRIPTOR_IDS.has(entry.id),
   );
-  if (!descriptor || descriptor.options.length < 2) return null;
+  const choices = descriptor ? selectableProviderOptionChoices(descriptor) : [];
+  if (!descriptor || choices.length < 2) return null;
   const current = getDescriptorStringValue(
     descriptor,
     { instanceId: input.instanceId, model: input.model, options: input.modelOptions ?? [] },
     input.reportedModelSelection,
   );
   const ordered = input.direction > 0 ? descriptor.options : descriptor.options.toReversed();
-  // A reported value outside the catalog, such as OpenCode's "default", steps
-  // from the catalog default, or from the end when there is none.
   const position =
     [current, getDescriptorStringValue(descriptor)]
       .map((value) => ordered.findIndex((option) => option.id === value))
       .find((index) => index >= 0) ?? -1;
-  for (const option of [
-    ...ordered.slice(position + 1),
-    ...ordered.slice(0, Math.max(position, 0)),
-  ]) {
-    const change = getTraitSelectChange(selected, descriptor, option.id);
-    if (!change) return null;
-    if ("modelOptions" in change) {
-      return change.modelOptions ? { modelOptions: change.modelOptions } : null;
-    }
-  }
-  return null;
+  const next = [...ordered.slice(position + 1), ...ordered.slice(0, Math.max(position, 0))].find(
+    (option) => choices.includes(option),
+  );
+  const change = next && getTraitSelectChange(selected, descriptor, next.id);
+  return change?.modelOptions ? { modelOptions: change.modelOptions } : null;
 }
 
-export function shouldRenderTraitsControls(input: {
-  provider: ProviderDriverKind;
-  models: ReadonlyArray<ServerProviderModel>;
-  model: string | null | undefined;
-  modelOptions: ProviderOptions | null | undefined;
-  planModeEnabled: boolean;
-}): boolean {
-  return getTraitsSectionVisibility(input).hasAnyControls;
-}
-
-interface TraitsMenuContentProps {
+export interface TraitsMenuContentProps {
   provider: ProviderDriverKind;
   instanceId?: ProviderInstanceId;
   models: ReadonlyArray<ServerProviderModel>;
@@ -282,18 +255,12 @@ interface TraitsMenuContentProps {
   reportedModelSelection?: ModelSelection | null | undefined;
   planModeEnabled: boolean;
   triggerClassName?: string;
-  isComposerOwned?: boolean;
-  /** Composer chips name the effort level unless the user picked bars. */
-  effortDisplay?: EffortDisplay;
-  /** Extra section shown below the traits in the picker popup (Permissions). */
-  extraMenuContent?: ReactNode;
-  /** This trigger also answers composer.mode (while the permissions chip is hidden). */
-  extraMenuOwnsModeShortcut?: boolean;
-  /** Extra tooltip text naming what else the menu holds. */
-  extraMenuHint?: string;
 }
 
-export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
+export type TraitsSelectionInput = TraitsMenuContentProps & TraitsPersistence;
+
+/** The model's traits with their shown values, and writers that persist a change. */
+export function useTraitsSelection({
   provider,
   instanceId,
   models,
@@ -301,9 +268,9 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   modelOptions,
   reportedModelSelection,
   planModeEnabled,
+  triggerClassName: _triggerClassName,
   ...persistence
-}: TraitsMenuContentProps & TraitsPersistence) {
-  const t = useTranslation();
+}: TraitsSelectionInput) {
   const modelSelection =
     instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null;
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
@@ -329,26 +296,35 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     modelOptions,
     planModeEnabled,
   });
-  const {
-    descriptors,
-    selectDescriptors,
-    booleanDescriptors,
-
-    hasAnyControls,
-    modelIsUnavailable,
-  } = selected;
-  const updateDescriptors = (nextDescriptors: ReadonlyArray<ProviderOptionDescriptor>) => {
-    updateModelOptions(buildProviderOptionSelectionsFromDescriptors(nextDescriptors));
+  return {
+    ...selected,
+    selectValue: (descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>) =>
+      getDescriptorStringValue(descriptor, modelSelection, reportedModelSelection) ?? "",
+    currentLabel: (descriptor: ProviderOptionDescriptor) =>
+      getProviderOptionCurrentLabel(descriptor, modelSelection, reportedModelSelection),
+    changeSelect: (
+      descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
+      value: string,
+    ) => {
+      // Whether a pick applies, and the options it writes, do not depend on the prompt text.
+      const change = getTraitSelectChange(selected, descriptor, value);
+      if (!change) return;
+      updateModelOptions(change.modelOptions);
+    },
+    changeBoolean: (descriptorId: string, value: boolean) => {
+      updateModelOptions(
+        buildProviderOptionSelectionsFromDescriptors(
+          replaceDescriptorCurrentValue(selected.descriptors, descriptorId, value),
+        ),
+      );
+    },
   };
+}
 
-  const handleSelectChange = (
-    descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
-    value: string,
-  ) => {
-    const change = getTraitSelectChange(selected, descriptor, value);
-    if (!change) return;
-    if ("modelOptions" in change) updateModelOptions(change.modelOptions);
-  };
+const TraitsMenuContent = memo(function TraitsMenuContentImpl(props: TraitsSelectionInput) {
+  const traits = useTraitsSelection(props);
+  const { descriptors, selectDescriptors, booleanDescriptors, hasAnyControls, modelIsUnavailable } =
+    traits;
 
   if (!hasAnyControls) {
     return null;
@@ -358,11 +334,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     return (
       <>
         {descriptors.map((descriptor, index) => {
-          const value = getProviderOptionCurrentLabel(
-            descriptor,
-            modelSelection,
-            reportedModelSelection,
-          );
+          const value = traits.currentLabel(descriptor);
           if (!value) return null;
           return (
             <div key={descriptor.id}>
@@ -382,182 +354,87 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
 
   return (
     <>
-      {selectDescriptors.map((descriptor, index) => {
-        const selectedValue =
-          getDescriptorStringValue(descriptor, modelSelection, reportedModelSelection) ?? "";
-
-        return (
-          <div key={descriptor.id}>
-            {index > 0 ? <MenuDivider /> : null}
-            <MenuGroup>
-              <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
-                {descriptor.label}
-              </div>
-              <MenuRadioGroup
-                value={selectedValue}
-                onValueChange={(value) => handleSelectChange(descriptor, value)}
-              >
-                {descriptor.options.map((option) => (
-                  <MenuRadioItem
-                    key={option.id}
-                    value={option.id}
-                    hideIndicator
-                    // Base UI keeps radio menus open by default. Close on pick so
-                    // the traits menu behaves like the model picker.
-                    closeOnClick
-                    disabled={false}
-                  >
-                    <span className="flex w-full min-w-0 flex-col">
-                      <span className="flex min-w-0 items-center gap-1">
-                        <span className="min-w-0 truncate">{option.label}</span>
-                        {option.isDefault ? <DefaultBadge /> : null}
+      {selectDescriptors.map((descriptor, index) => (
+        <div key={descriptor.id}>
+          {index > 0 ? <MenuDivider /> : null}
+          <MenuGroup>
+            <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
+              {descriptor.label}
+            </div>
+            <MenuRadioGroup
+              value={traits.selectValue(descriptor)}
+              onValueChange={(value) => traits.changeSelect(descriptor, value)}
+            >
+              {selectableProviderOptionChoices(descriptor).map((option) => (
+                <MenuRadioItem key={option.id} value={option.id} hideIndicator closeOnClick>
+                  <span className="flex w-full min-w-0 flex-col">
+                    <span className="flex min-w-0 items-center gap-1">
+                      <span className="min-w-0 truncate">{option.label}</span>
+                      {option.isDefault ? <DefaultBadge /> : null}
+                    </span>
+                    {option.description ? (
+                      <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
+                        {option.description}
                       </span>
-                      {option.description ? (
-                        <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
-                          {option.description}
-                        </span>
-                      ) : null}
-                    </span>
-                  </MenuRadioItem>
-                ))}
-              </MenuRadioGroup>
-            </MenuGroup>
-          </div>
-        );
-      })}
-      {booleanDescriptors.map((descriptor, index) => {
-        const selectedValue = descriptor.currentValue === true ? "on" : "off";
-
-        return (
-          <div key={descriptor.id}>
-            {index > 0 || selectDescriptors.length > 0 ? <MenuDivider /> : null}
-            <MenuGroup>
-              <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
-                {descriptor.label}
-              </div>
-              <MenuRadioGroup
-                value={selectedValue}
-                onValueChange={(value) => {
-                  updateDescriptors(
-                    replaceDescriptorCurrentValue(descriptors, descriptor.id, value === "on"),
-                  );
-                }}
-              >
-                {(["on", "off"] as const).map((value) => (
-                  <MenuRadioItem key={value} value={value} hideIndicator closeOnClick>
-                    <span className="flex w-full min-w-0 items-center justify-between gap-3">
-                      <span>{value === "on" ? t("On") : t("Off")}</span>
-                    </span>
-                  </MenuRadioItem>
-                ))}
-              </MenuRadioGroup>
-            </MenuGroup>
-          </div>
-        );
-      })}
+                    ) : null}
+                  </span>
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </MenuGroup>
+        </div>
+      ))}
+      {booleanDescriptors.map((descriptor, index) => (
+        <div key={descriptor.id}>
+          {index > 0 || selectDescriptors.length > 0 ? <MenuDivider /> : null}
+          <MenuGroup>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
+              {descriptor.label}
+            </div>
+            <MenuRadioGroup
+              value={descriptor.currentValue === true ? "on" : "off"}
+              onValueChange={(value) => traits.changeBoolean(descriptor.id, value === "on")}
+            >
+              {(["on", "off"] as const).map((value) => (
+                <MenuRadioItem key={value} value={value} hideIndicator closeOnClick>
+                  <span className="flex w-full min-w-0 items-center justify-between gap-3">
+                    <span>{value === "on" ? t("On") : t("Off")}</span>
+                  </span>
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </MenuGroup>
+        </div>
+      ))}
     </>
   );
 });
 
-/** One bolt for Fast. Ultrafast adds an outlined echo behind it, cut away by the surface color. */
-function FastBolt(props: { ultra: boolean }) {
-  if (!props.ultra) {
-    return (
-      <ZapIcon aria-hidden="true" data-composer-control-icon className="size-3 fill-current" />
-    );
-  }
-  return (
-    <span aria-hidden="true" className="relative h-3 w-3.75 shrink-0">
-      <ZapIcon className="absolute top-0 left-0.75 size-3" />
-      <ZapIcon
-        strokeWidth={4}
-        className="absolute top-0 left-0 size-3 fill-current stroke-(--chat-composer-glass-surface) [paint-order:stroke]"
-      />
-    </span>
-  );
-}
-
 export const TraitsPicker = memo(function TraitsPicker({
-  provider,
-  instanceId,
-  models,
-  model,
-  modelOptions,
-  reportedModelSelection,
-  planModeEnabled,
-  triggerClassName,
-  isComposerOwned,
-  effortDisplay = "label",
-  extraMenuContent,
-  extraMenuOwnsModeShortcut,
-  extraMenuHint,
   size = "sm",
   hidden = false,
   disabled = false,
-  ...persistence
-}: TraitsMenuContentProps &
-  TraitsPersistence & {
-    size?: ComposerControlSize;
-    hidden?: boolean;
-    disabled?: boolean;
-  }) {
-  const composerFloatingLayerProps = useComposerMenuProps();
+  ...props
+}: TraitsSelectionInput & {
+  size?: ComposerControlSize;
+  hidden?: boolean;
+  disabled?: boolean;
+}) {
   const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(hidden || disabled);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const { descriptors, primarySelectDescriptor } = getTraitsSectionVisibility({
-    provider,
-    models,
-    model,
-    modelOptions,
-    planModeEnabled,
-  });
-  if (
-    !shouldRenderTraitsControls({
-      provider,
-      models,
-      model,
-      modelOptions,
-      planModeEnabled,
-    })
-  ) {
+  const traits = useTraitsSelection(props);
+  if (!traits.hasAnyControls) {
     return null;
   }
-
-  const {
-    label: triggerLabel,
-    speedLabel,
-    otherLabels,
-  } = buildTraitsTriggerDisplay({
-    provider,
-    descriptors,
-
-    modelSelection: instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null,
-    reportedModelSelection,
+  const { label: triggerLabel } = buildTraitsTriggerDisplay({
+    provider: props.provider,
+    descriptors: traits.descriptors,
+    modelSelection:
+      props.instanceId && props.model
+        ? { instanceId: props.instanceId, model: props.model, options: props.modelOptions ?? [] }
+        : null,
+    reportedModelSelection: props.reportedModelSelection,
   });
-
-  const triggerDescription = isComposerOwned
-    ? [t("Effort: {{effort}}", { effort: triggerLabel }), speedLabel, extraMenuHint]
-        .filter(Boolean)
-        .join(" · ")
-    : triggerLabel;
-  const effortGlyph =
-    isComposerOwned &&
-    primarySelectDescriptor &&
-    REASONING_SELECT_DESCRIPTOR_IDS.has(primarySelectDescriptor.id)
-      ? resolveEffortGlyph(
-          primarySelectDescriptor,
-          getDescriptorStringValue(
-            primarySelectDescriptor,
-            instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null,
-            reportedModelSelection,
-          ),
-        )
-      : null;
-  const effortWord = effortGlyph
-    ? (effortGlyph.special ?? (effortDisplay === "label" ? effortGlyph.label : null))
-    : isComposerOwned
-      ? triggerLabel
-      : null;
+  const isCodexStyle = props.provider === "codex";
 
   return (
     <Menu
@@ -565,7 +442,6 @@ export const TraitsPicker = memo(function TraitsPicker({
       onOpenChange={(open) => {
         setIsMenuOpen(open && !disabled);
       }}
-      onOpenChangeComplete={(open) => focusRequestedPermission(open, triggerRef.current)}
     >
       <Tooltip>
         <TooltipTrigger
@@ -573,75 +449,32 @@ export const TraitsPicker = memo(function TraitsPicker({
             <MenuTrigger
               render={
                 <ComposerControl
-                  ref={triggerRef}
                   disabled={disabled}
-                  aria-label={triggerDescription}
-                  data-composer-shortcut={
-                    isComposerOwned
-                      ? extraMenuOwnsModeShortcut
-                        ? "composer.effort composer.mode"
-                        : "composer.effort"
-                      : undefined
-                  }
+                  aria-label={triggerLabel}
                   size={size}
                   className={cn(
-                    "shrink-0 whitespace-nowrap",
-                    triggerClassName, // Effort reads on from the model name, "Opus 5.5 High", at about the space
-                    // inside the name: this cancels the model chip's end padding and the row gap.
-                    isComposerOwned && (effortWord !== null ? "-ms-1 ps-0" : "-ms-1 ps-0.5"),
-                    // The word is muted next to the model name and brightens like it on hover.
-                    effortWord !== null &&
-                      "text-muted-foreground hover:text-foreground data-pressed:text-foreground data-popup-open:text-foreground",
+                    isCodexStyle
+                      ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
+                      : "shrink-0 whitespace-nowrap",
+                    props.triggerClassName,
                   )}
                 />
               }
             />
           }
         >
-          {effortGlyph ? (
-            <span className="flex items-center gap-1.5">
-              {effortWord === null ? (
-                <EffortGlyph count={effortGlyph.count} filled={effortGlyph.filled} size={size} />
-              ) : null}
-              {effortWord !== null ? (
-                <>
-                  <span data-composer-control-label>{effortWord}</span>
-                  {/* Icon-only footers hide labels and reveal this instead. */}
-                  <GaugeIcon
-                    aria-hidden="true"
-                    data-composer-control-compact-icon
-                    className="invisible absolute size-3.5"
-                  />
-                </>
-              ) : (
-                <span data-composer-control-label className="sr-only">
-                  {triggerLabel}
-                </span>
+          {isCodexStyle ? (
+            <span
+              className={cn(
+                "flex min-w-0 w-full items-center",
+                size === "xs" ? "gap-1" : "gap-1.5",
               )}
-              {speedLabel === "Fast" || speedLabel === "Ultrafast" ? (
-                <FastBolt ultra={speedLabel === "Ultrafast"} />
-              ) : null}
-              {otherLabels.length > 0 ? (
-                <span
-                  aria-hidden="true"
-                  // A label, so icon-only footers drop it; compacted rows drop it before the model.
-                  data-composer-control-label
-                  data-composer-secondary-trait
-                  className="max-w-24 truncate text-xs"
-                >
-                  {otherLabels.join(" · ")}
-                </span>
-              ) : null}
+            >
+              <ComposerControlIcon icon={GaugeIcon} size={size} />
+              <span data-composer-control-label className="min-w-0 truncate">
+                {triggerLabel}
+              </span>
             </span>
-          ) : effortWord !== null ? (
-            <>
-              <span data-composer-control-label>{effortWord}</span>
-              <GaugeIcon
-                aria-hidden="true"
-                data-composer-control-compact-icon
-                className="invisible absolute size-3.5"
-              />
-            </>
           ) : (
             <>
               <ComposerControlIcon icon={GaugeIcon} size={size} />
@@ -649,25 +482,10 @@ export const TraitsPicker = memo(function TraitsPicker({
             </>
           )}
         </TooltipTrigger>
-        <TooltipPopup side="top">{triggerDescription}</TooltipPopup>
+        <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
       </Tooltip>
-      <MenuPopup align="start" {...(isComposerOwned ? composerFloatingLayerProps : {})}>
-        <TraitsMenuContent
-          provider={provider}
-          {...(instanceId ? { instanceId } : {})}
-          models={models}
-          model={model}
-          modelOptions={modelOptions}
-          reportedModelSelection={reportedModelSelection}
-          planModeEnabled={planModeEnabled}
-          {...persistence}
-        />
-        {extraMenuContent ? (
-          <>
-            <MenuDivider />
-            {extraMenuContent}
-          </>
-        ) : null}
+      <MenuPopup align="start">
+        <TraitsMenuContent {...props} />
       </MenuPopup>
     </Menu>
   );

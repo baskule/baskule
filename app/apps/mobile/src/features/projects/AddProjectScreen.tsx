@@ -472,11 +472,16 @@ function SourceControlRow(props: {
 }) {
   const navigation = useNavigation();
   const title =
-    props.source === "url" ? "Git URL" : `${addProjectRemoteSourceLabel(props.source)} repository`;
+    props.source === "url"
+      ? t("Git URL")
+      : t("{{value1}} repository", { value1: addProjectRemoteSourceLabel(props.source) });
   const subtitle =
     props.source === "url"
-      ? "Clone from a remote URL"
-      : `Clone ${addProjectRemoteSourceLabel(props.source)} ${props.hint}`;
+      ? t("Clone from a remote URL")
+      : t("Clone {{value1}} {{hint}}", {
+          value1: addProjectRemoteSourceLabel(props.source),
+          hint: props.hint,
+        });
   const icon =
     props.source === "url" ? (
       <SymbolView
@@ -717,6 +722,9 @@ function useCreateProject(environment: EnvironmentOption | null) {
   const openNewTaskDraft = useOpenNewTaskDraft();
   const navigation = useNavigation();
   const createProject = useAtomCommand(projectEnvironment.create, { reportFailure: false });
+  const updateProject = useAtomCommand(projectEnvironment.update, {
+    label: t("project unarchive"),
+  });
   const projects = useProjects();
 
   return async (workspaceRoot: string, originRoute = getActiveRoute(navigation)) => {
@@ -726,8 +734,11 @@ function useCreateProject(environment: EnvironmentOption | null) {
       !readEnvironmentScope(environment.environmentId, AuthOrchestrationOperateScope)
     ) {
       Dialog.alert(
-        "Project not added",
-        `This connection cannot add projects right now. Any existing files remain at ${workspaceRoot}.`,
+        t("Project not added"),
+        t(
+          "This connection cannot add projects right now. Any existing files remain at {{workspaceRoot}}.",
+          { workspaceRoot: workspaceRoot },
+        ),
       );
       return;
     }
@@ -738,7 +749,21 @@ function useCreateProject(environment: EnvironmentOption | null) {
       path: workspaceRoot,
     });
     if (existing) {
-      Dialog.alert("Project already exists", existing.title);
+      // Adding an archived project's folder again brings the project back.
+      const unarchived =
+        existing.archivedAt == null ||
+        (
+          await updateProject({
+            environmentId: existing.environmentId,
+            input: { projectId: existing.id, archived: false },
+          })
+        )._tag === "Success";
+      Dialog.alert(
+        t("Project already exists"),
+        unarchived
+          ? existing.title
+          : t("{{title}} is still archived. Try again later.", { title: existing.title }),
+      );
       openNewTaskDraft(
         {
           environmentId: existing.environmentId,
@@ -771,8 +796,10 @@ function useCreateProject(environment: EnvironmentOption | null) {
     );
     if (project === null) {
       Dialog.alert(
-        "Project added",
-        "The project was created but has not reached this device yet. It will appear in the project list once the connection catches up.",
+        t("Project added"),
+        t(
+          "The project was created but has not reached this device yet. It will appear in the project list once the connection catches up.",
+        ),
       );
       return result;
     }
@@ -1088,7 +1115,7 @@ export function AddProjectNewScreen(props: { readonly environmentId?: string | s
     }
     const { projectId, workspaceRoot, commitError } = result.value;
     if (commitError !== undefined) {
-      Dialog.alert("Created without a first commit", commitError);
+      Dialog.alert(t("Created without a first commit"), commitError);
     }
     if (publishes && publishTarget !== null) {
       void publishRepository({
@@ -1102,7 +1129,9 @@ export function AddProjectNewScreen(props: { readonly environmentId?: string | s
       }).then((publishResult) => {
         if (AsyncResult.isFailure(publishResult)) {
           Dialog.alert(
-            `Could not create the ${publishTarget.definition.label} repository`,
+            t("Could not create the {{label}} repository", {
+              label: publishTarget.definition.label,
+            }),
             errorMessage(Cause.squash(publishResult.cause)),
           );
         }
@@ -1403,7 +1432,9 @@ export function AddProjectDestinationScreen(props: {
       );
       if (project === null) {
         setError(
-          "The project was created but has not reached this device yet. It will appear in the project list once the connection catches up.",
+          t(
+            "The project was created but has not reached this device yet. It will appear in the project list once the connection catches up.",
+          ),
         );
       } else {
         openNewTaskDraft(

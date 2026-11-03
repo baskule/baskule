@@ -57,7 +57,12 @@ export const DesktopConfig = Config.all({
   ),
   desktopLauncherPath: trimmedString("T3CODE_DESKTOP_LAUNCHER_PATH"),
   appImagePath: trimmedString("APPIMAGE"),
-  disableAutoUpdate: Config.succeed(true), // baskule: no upstream T3 release feed.
+  // baskule: no upstream T3 release feed. The existing mock-feed harness still exercises the updater.
+  disableAutoUpdate: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES").pipe(
+    Config.flatMap((mock) =>
+      mock ? optionalBoolean("T3CODE_DISABLE_AUTO_UPDATE") : Config.succeed(true),
+    ),
+  ),
   mockUpdates: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES"),
   mockUpdateServerPort: Config.Port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(
     Config.withDefault(3000),
