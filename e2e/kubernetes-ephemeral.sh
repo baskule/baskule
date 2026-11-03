@@ -419,7 +419,7 @@ exposure:
       kubernetes.io/ingress.class: gce
       kubernetes.io/ingress.global-static-ip-name: $run_id
 YAML
-export BASKULE_K8S_CROSS_NODE=1 BASKULE_K8S_CHECK_INGRESS=1
+export BASKULE_K8S_CROSS_NODE=1 BASKULE_K8S_CHECK_INGRESS=${BASKULE_K8S_CHECK_INGRESS:-1}
 bash e2e/kubernetes-install.sh > "$BASKULE_K8S_EVIDENCE/install.log" 2>&1
 pod=$(kubectl -n "$run_id" get pod -l app.kubernetes.io/component=computerd -o jsonpath='{.items[0].metadata.name}')
 kubectl -n "$run_id" exec "$pod" -- sh -c 'mkdir -p /tmp/baskule-tests; ln -sfn /app/node_modules /tmp/baskule-tests/node_modules'
