@@ -1,8 +1,10 @@
+import { t } from "../i18n";
 import { useTranslation } from "../i18n";
 
 import * as Dialog from "../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
+import { Discovery } from "@t3tools/client-runtime/relay";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -19,7 +21,18 @@ import { environmentSession } from "./session";
 import { environmentCatalog } from "../connection/catalog";
 import { createRemoteEnvironmentProjectionAtoms } from "./remote-environment-projections";
 import { serverEnvironment } from "./server";
+import { relayEnvironmentDiscovery } from "./relay";
 import { connectPairingUrl as connectPairingUrlCommand } from "../connection/onboarding";
+
+const RELAY_REMOVAL_ACCOUNT_NOTE: Record<Discovery.RelayEnvironmentRegistration, string> = {
+  registered: t(
+    "It stays on your T3 Connect account and keeps its host space. Deregister it under T3 Account → T3 Connect to free it.",
+  ),
+  unregistered: t("It's no longer on your T3 Connect account."),
+  unknown: t(
+    "This doesn't change your T3 Connect account. To deregister it there, use T3 Account → T3 Connect.",
+  ),
+};
 
 const connectionPairingUrlAtom = Atom.make("").pipe(
   Atom.keepAlive,
@@ -57,14 +70,15 @@ export async function pairEnvironment(
     return { ok: true, error: null };
   }
   const error = Cause.squash(result.cause);
-  const message = error instanceof Error ? error.message : "Failed to pair with the environment.";
+  const message =
+    error instanceof Error ? error.message : t("Failed to pair with the environment.");
   if (
     error !== null &&
     typeof error === "object" &&
     "reason" in error &&
     error.reason === "unsupported"
   ) {
-    Dialog.alert("Client not supported", message);
+    Dialog.alert(t("Client not supported"), message);
     return { ok: false, error: null };
   }
   return { ok: false, error: message };
@@ -183,28 +197,32 @@ export function useRemoteConnections() {
       },
     } as const;
     if (environment.isRelayManaged) {
+      const registration = Discovery.relayEnvironmentRegistration(
+        appAtomRegistry.get(relayEnvironmentDiscovery.stateValueAtom),
+        environmentId,
+      );
+      const openAccount = {
+        text: t("Open T3 Account"),
+        onPress: () => navigation.navigate("SettingsAuth"),
+      };
       Dialog.alert(
-        "Remove from this device?",
-        `Forget ${environment.environmentLabel} and its cached threads on this device.\n\nIt stays on your T3 Connect account and keeps its host space. Deregister it under T3 Account → T3 Connect to free it.`,
-        [
-          { text: t("Cancel"), style: "cancel" },
-          // SettingsAuth renders nothing in builds without cloud config.
-          ...(hasCloudPublicConfig()
-            ? [
-                {
-                  text: "Open T3 Account",
-                  onPress: () => navigation.navigate("SettingsAuth"),
-                },
-              ]
-            : []),
-          remove,
-        ],
+        t("Remove from this device?"),
+        t("Forget {{environmentLabel}} and its cached threads on this device.\n\n{{value2}}", {
+          environmentLabel: environment.environmentLabel,
+          value2: RELAY_REMOVAL_ACCOUNT_NOTE[registration],
+        }),
+        registration === "unregistered" || !hasCloudPublicConfig()
+          ? [{ text: "Cancel", style: "cancel" }, remove]
+          : [{ text: "Cancel", style: "cancel" }, openAccount, remove],
       );
       return;
     }
     Dialog.alert(
-      "Remove from this device?",
-      `Forget ${environment.environmentLabel} and its cached threads on this device. Switch it off instead to keep it saved.`,
+      t("Remove from this device?"),
+      t(
+        "Forget {{environmentLabel}} and its cached threads on this device. Switch it off instead to keep it saved.",
+        { environmentLabel: environment.environmentLabel },
+      ),
       [{ text: "Cancel", style: "cancel" }, remove],
     );
   };

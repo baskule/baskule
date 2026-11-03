@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-manual-effect-runtime-in-tests -- verifies the native request Promise and its retained event while Effect authentication and finalizers wait. */
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";

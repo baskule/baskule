@@ -82,6 +82,7 @@ const layerService = (input: {
   ) => Effect.Effect<Response, HttpClientError.HttpClientError>;
   readonly environment?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
+  readonly hostname?: string;
 }) =>
   Layer.empty.pipe(
     Layer.provideMerge(Layer.empty),
@@ -94,6 +95,7 @@ const layerService = (input: {
     ),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(Layer.succeed(HostProcess.Platform, input.platform ?? "linux")),
+    Layer.provideMerge(Layer.succeed(HostProcess.Hostname, input.hostname ?? "usage-test-host")),
     Layer.provideMerge(ServerSettings.layerTest(input.settings)),
     Layer.provideMerge(
       Layer.succeed(

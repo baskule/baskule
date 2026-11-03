@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { useSidebarWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
@@ -34,7 +35,7 @@ import {
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
 import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
-import { Keyboard, Platform, View, type ViewStyle } from "react-native";
+import { I18nManager, Keyboard, Platform, View, type ViewStyle } from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
@@ -95,6 +96,7 @@ import {
   resolveComposerSendPresentation,
   type ComposerSendPresentation,
 } from "./composerSendPresentation";
+import { compactEditorInsets } from "./compactEditorInsets";
 import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { ComposerPopoverAnchor } from "./ComposerPopoverAnchor";
 import { ComposerQueuedEditAttachments } from "./ComposerQueuedEdit";
@@ -151,12 +153,19 @@ function useCompactComposerEditor(text: ScaledTextRole, value: string) {
     (contentHeight > text.lineHeight * 1.5 ||
       (compactWidth > 0 && contentSize.width > compactWidth));
   const compactRowHeight = Math.max(44, minimum);
+  const isRTL = I18nManager.isRTL;
   const editorStyle = useAnimatedStyle(() => ({
     position: "absolute",
     overflow: "hidden",
     height,
-    left: isExpanded ? 14 : editorX.value + 4,
-    right: isExpanded ? 14 : rowWidth.value - editorX.value - editorWidth.value + 4,
+    ...(isExpanded
+      ? { left: 14, right: 14 }
+      : compactEditorInsets({
+          slotX: editorX.value,
+          slotWidth: editorWidth.value,
+          rowWidth: rowWidth.value,
+          isRTL,
+        })),
     // The full-width editor must move above the controls in the same frame it widens.
     bottom: isExpanded ? 52 : (compactRowHeight - minimum) / 2,
   }));
@@ -276,14 +285,14 @@ const AnimatedGlassSurface = Animated.createAnimatedComponent(GlassSurface);
 
 const FOLLOW_UP_ACTION_LABEL = {
   queue: "Queue",
-  steer: "Steer now",
-  restart: "Restart turn",
+  steer: t("Steer now"),
+  restart: t("Restart turn"),
 } as const;
 
 const FOLLOW_UP_ACTION_SUBTITLE = {
-  queue: "Run after the current turn",
-  steer: "Interrupt what the agent is doing",
-  restart: "Start the turn over with this message",
+  queue: t("Run after the current turn"),
+  steer: t("Interrupt what the agent is doing"),
+  restart: t("Start the turn over with this message"),
 } as const;
 
 function SendActionButton(props: {
@@ -510,7 +519,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     );
     onShowUsageLimits(report);
     if (!report) {
-      Dialog.alert("Usage limits unavailable", "This provider does not currently report limits.");
+      Dialog.alert(
+        t("Usage limits unavailable"),
+        t("This provider does not currently report limits."),
+      );
     }
     return report !== null;
   };
@@ -538,7 +550,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   });
   const voiceInput = useVoiceInputController({
     ownerKey: composerDraftKey,
-    label: props.selectedThread.title || "Untitled thread",
+    label: props.selectedThread.title || t("Untitled thread"),
     readDraftMessage: () => getComposerDraftSnapshot(composerDraftKey).text,
     subscribeToDraftChanges: (onChange) => appAtomRegistry.subscribe(composerDraftsAtom, onChange),
     selection: composerMenu.selection,
@@ -577,7 +589,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const sendBlockedReason =
     (queuedEdit?.saving === true ? "Saving…" : null) ??
     props.sendBlockedReason ??
-    (pendingPastedTextAttachmentCount > 0 ? "Attaching pasted text" : null) ??
+    (pendingPastedTextAttachmentCount > 0 ? t("Attaching pasted text") : null) ??
     attachmentBlockReason;
   const canSend =
     (props.canOperateThread || props.connectionState !== "connected") &&

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 
 export interface FloatingStatusAction {
@@ -31,6 +32,12 @@ export type FloatingWorkingStatus =
       readonly label: string;
       readonly action: FloatingStatusAction;
     }
+  | {
+      readonly kind: "stop";
+      readonly label: string;
+      readonly unresponsive: boolean;
+      readonly action: FloatingStatusAction | null;
+    }
   | { readonly kind: "goal"; readonly label: string; readonly accessibilityLabel: string }
   | { readonly kind: "preparing"; readonly label: string }
   | {
@@ -62,22 +69,29 @@ export function connectionFloatingStatus(input: {
         tone: "reconnecting",
         label:
           input.connectionError === null
-            ? `Reconnecting to ${environmentLabel}...`
-            : `Failed to connect. Retrying ${environmentLabel}...`,
+            ? t("Reconnecting to {{environmentLabel}}...", { environmentLabel: environmentLabel })
+            : t("Failed to connect. Retrying {{environmentLabel}}...", {
+                environmentLabel: environmentLabel,
+              }),
         onPress: input.onReconnect,
       };
     case "offline":
-      return unavailable("You are offline");
+      return unavailable(t("You are offline"));
     case "unsupported":
-      return unavailable("Client not supported");
+      return unavailable(t("Client not supported"));
     case "error":
       return unavailable(
         input.connectionError
-          ? `Failed to connect to ${environmentLabel}: ${input.connectionError}`
-          : `Failed to connect to ${environmentLabel}`,
+          ? t("Failed to connect to {{environmentLabel}}: {{connectionError}}", {
+              environmentLabel: environmentLabel,
+              connectionError: input.connectionError,
+            })
+          : t("Failed to connect to {{environmentLabel}}", { environmentLabel: environmentLabel }),
       );
     case "available":
-      return unavailable(`${environmentLabel} is not connected`);
+      return unavailable(
+        t("{{environmentLabel}} is not connected", { environmentLabel: environmentLabel }),
+      );
     case "connected":
       return null;
   }

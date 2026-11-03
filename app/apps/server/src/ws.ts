@@ -4,7 +4,6 @@ import * as DocumentText from "./provider/DocumentText.ts";
 import { OrchestrationDispatchCommandError, type OrchestrationV2Author } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
-import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Base64 from "effect/encoding/Base64";
 import * as Effect from "effect/Effect";
@@ -107,7 +106,6 @@ import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
 import {
-  buildActiveShellSnapshot,
   bufferShellLiveStream,
   coalesceShellApplicationEvents,
   composeShellStreamWithEnrichment,
@@ -117,7 +115,7 @@ import {
   shellStreamItemFromEnrichmentRefresh,
   shellStreamItemFromThreadShell,
   shellStreamItemsFromInitialSnapshot,
-  shellSnapshotForSubscriber,
+  loadSubscriberShellSnapshot,
   shellStreamItemsFromResumeSnapshot,
   shouldPublishShellApplicationEvent,
   skipUnchangedThreadShells,
@@ -200,7 +198,7 @@ import * as ProjectService from "./project/ProjectService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
 import * as ScratchThreadPromotion from "./project/ScratchThreadPromotion.ts";
-import { projectMutationOperation } from "./project/ProjectMutation.ts";
+import { mutateProjectWithClone } from "./project/ProjectMutation.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
@@ -987,21 +985,23 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
       },
     );
     const loadSnapshot = Effect.fn("ws.orchestrationV2.loadShellSnapshot")(function* () {
-      const base = buildActiveShellSnapshot(
-        yield* loadShellSnapshotParts({
-          sql,
-          readThreads: threadManagement.readShellSnapshot({ location: "active" }),
-          listProjects: projects.listShells(),
-          latestSequence: applicationEvents.latestApplicationSequence,
-        }),
-      );
-      const forSubscriber = shellSnapshotForSubscriber(base, {
-        omitIdleSubagents: input.omitIdleSubagents === true,
-        omitOlderSettled: input.omitOlderSettled === true,
-        now: yield* DateTime.now,
+      const forSubscriber = yield* loadSubscriberShellSnapshot({
+        sql,
+        listShellIndex: threadManagement.listActiveShellIndex(),
+        readThreads: (threadIds) =>
+          threadManagement.readShellSnapshot({
+            location: "active",
+            ...(threadIds === undefined ? {} : { threadIds }),
+          }),
+        listProjects: projects.listShells(),
+        latestSequence: applicationEvents.latestApplicationSequence,
+        options: {
+          omitIdleSubagents: input.omitIdleSubagents === true,
+          omitOlderSettled: input.omitOlderSettled === true,
+        },
       });
       subagentThreadIds = forSubscriber.subagentThreadIds;
-      const enriched = yield* enrichProjectShells(base.projects);
+      const enriched = yield* enrichProjectShells(forSubscriber.snapshot.projects);
       return {
         snapshot: {
           ...forSubscriber.snapshot,
@@ -1198,6 +1198,7 @@ export const layerWsRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
+  reportProfiles: ServerBrowser.ProfileReporter,
   // baskule: the Baskule member behind this socket, stamped on the messages it sends.
   messageAuthor?: OrchestrationV2Author,
   canStopOthers = false,
@@ -1504,10 +1505,7 @@ export const layerWsRpc = (
       );
 
       const mutateProject = Effect.fn("ws.projects.mutate")(function* (mutation: ProjectMutation) {
-        const result = yield* projectMutationOperation(projectService, mutation);
-        if (mutation.type === "project.delete")
-          yield* projectCloneTracker.discard(mutation.projectId);
-        return result;
+        return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
       });
 
       const handlers = ServerWsRpcGroup.of({
@@ -1565,6 +1563,8 @@ export const layerWsRpc = (
             ),
           ),
         [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: (input) => threadManagement.stopWorkflow(input),
+        [ORCHESTRATION_V2_WS_METHODS.forceStopThread]: (input) =>
+          threadManagement.forceStopThread(input),
         [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: (input) =>
           readWorkflowScript({ scriptPath: input.scriptPath }),
         [ORCHESTRATION_V2_WS_METHODS.getTurnItem]: (input) =>
@@ -2517,6 +2517,7 @@ export const layerWsRpc = (
           gitWorkflow.switchRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsInit]: (input) =>
           vcsProvisioning.initRepository(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.reviewGetBranchCommits]: (input) => review.getBranchCommits(input),
         [WS_METHODS.reviewGetDiffPreview]: (input) => review.getDiffPreview(input),
         [WS_METHODS.reviewGetDiffFileContents]: (input) => review.getDiffFileContents(input),
         [WS_METHODS.terminalOpen]: (input) => terminalManager.open(input),
@@ -2547,7 +2548,7 @@ export const layerWsRpc = (
         [WS_METHODS.previewClose]: (input) => previewManager.close(input),
         [WS_METHODS.previewList]: (input) => previewManager.list(input),
         [WS_METHODS.previewClearProfile]: (input) => serverBrowser.clearProfile(input.profileId),
-        [WS_METHODS.previewReportProfiles]: (input) => serverBrowser.reportProfiles(input),
+        [WS_METHODS.previewReportProfiles]: (input) => reportProfiles(input),
         [WS_METHODS.previewReportStatus]: (input) => previewManager.reportStatus(input),
         [WS_METHODS.subscribePreviewEvents]: (_input) => previewManager.events,
         [WS_METHODS.deviceConfigure]: (input) => deviceService.configure(input),
@@ -2773,6 +2774,7 @@ export const layer = Layer.unwrap(
         const taskIdentity = identityFromRequest(request);
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* analytics.recordOwners(readClientOwners(request), "client");
+        const reportProfiles = yield* serverBrowser.profileReporter;
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
           const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
           yield* RpcServer.make(ServerWsRpcGroup, WS_RPC_SERVER_OPTIONS).pipe(
@@ -2806,6 +2808,7 @@ export const layer = Layer.unwrap(
               session,
               clientAnalyticsProps,
               serverBrowser,
+              reportProfiles,
               baskuleAuthorFromRequest(request),
               taskIdentity?.role === "admin" || taskIdentity?.spaceRole === "owner",
             ).pipe(
@@ -2845,7 +2848,7 @@ export const layer = Layer.unwrap(
           () =>
             Effect.raceFirst(
               rpcWebSocketHttpEffect,
-              sessions.awaitInvalidation(session.sessionId).pipe(
+              sessions.awaitInvalidation(session.sessionId, session.proofKeyThumbprint).pipe(
                 Effect.as(HttpServerResponse.empty()),
                 Effect.catchTags({
                   SessionCredentialVerificationError: (error) =>

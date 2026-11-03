@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import type { SubagentPillSegment } from "@t3tools/client-runtime/state/thread-subagents";
@@ -86,7 +87,9 @@ export function FloatingWorkingControl(props: {
   const [queueWidth, setQueueWidth] = useState(0);
   const [actionWidth, setActionWidth] = useState(0);
   const action =
-    props.status?.kind === "background" || props.status?.kind === "lifecycle"
+    props.status?.kind === "background" ||
+    props.status?.kind === "lifecycle" ||
+    props.status?.kind === "stop"
       ? props.status.action
       : null;
   const [agentsWidth, setAgentsWidth] = useState(0);
@@ -483,6 +486,30 @@ function FloatingStatusLabel(props: {
       </StatusLabelRow>
     );
   }
+  if (props.status.kind === "stop") {
+    return (
+      <StatusLabelRow
+        key="stop"
+        accessibilityLabel={props.status.label}
+        className="gap-2"
+        onLayout={props.onLayout}
+      >
+        {props.status.unresponsive ? (
+          <SymbolView
+            name="exclamationmark.triangle"
+            size={13}
+            tintColorClassName="accent-warning-foreground"
+            type="monochrome"
+          />
+        ) : (
+          <AppActivityIndicator size="small" colorClassName="accent-icon-muted" />
+        )}
+        <Text className="shrink font-t3-medium text-xs text-foreground" numberOfLines={1}>
+          {props.status.label}
+        </Text>
+      </StatusLabelRow>
+    );
+  }
   if (props.status.kind === "goal") {
     return (
       <StatusLabelRow
@@ -604,7 +631,7 @@ function formatWorkingDuration(startedAt: string, nowMs: number): string {
 
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = String(totalSeconds % 60).padStart(2, "0");
-  return `${minutes}m ${seconds}s`;
+  return t("{{minutes}}m {{seconds}}s", { minutes: minutes, seconds: seconds });
 }
 
 function ScrollToEndButton(props: { readonly disabled?: boolean; readonly onPress: () => void }) {

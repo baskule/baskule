@@ -48,10 +48,13 @@ export function getDescriptorStringValue(
   return typeof value === "string" ? value : null;
 }
 
+// Prompt-injected levels such as Ultrathink still work when typed, but pickers do not offer them.
 export function selectableProviderOptionChoices(
   descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
 ) {
-  return descriptor.options;
+  return descriptor.options.filter(
+    (option) => !descriptor.promptInjectedValues?.includes(option.id),
+  );
 }
 
 export function getTraitSelectChange(

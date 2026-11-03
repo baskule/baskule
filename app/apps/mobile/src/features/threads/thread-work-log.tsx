@@ -99,6 +99,7 @@ import Animated, {
   FadeOut,
   LinearTransition,
   ReduceMotion,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -536,11 +537,13 @@ export function ThreadWorkLog(props: ThreadWorkLogProps) {
     props.activities.every((row) => row.projectedItem.item.type === "reasoning")
   ) {
     return (
-      <ScrollView nestedScrollEnabled className="ml-7 max-h-96 py-1">
-        {props.activities.map((row) => (
-          <View key={row.id}>{props.renderReasoning(row.workEntry.detail ?? "")}</View>
-        ))}
-      </ScrollView>
+      <WorkLogBlock continues={props.continuesWorkLog}>
+        <ThreadReasoningGroup
+          activities={props.activities}
+          edgeFadeColor={props.edgeFadeColor}
+          renderReasoning={props.renderReasoning}
+        />
+      </WorkLogBlock>
     );
   }
 
@@ -560,6 +563,55 @@ export function ThreadWorkLog(props: ThreadWorkLogProps) {
         <WorkLogRows>{props.activities.map(renderRow)}</WorkLogRows>
       )}
     </WorkLogBlock>
+  );
+}
+
+function ThreadReasoningGroup(props: {
+  readonly activities: ReadonlyArray<ThreadFeedActivity>;
+  readonly edgeFadeColor: string;
+  readonly renderReasoning: (text: string) => ReactNode;
+}) {
+  const scrollOffset = useSharedValue(0);
+  const contentHeight = useSharedValue(0);
+  const viewportHeight = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((event) => {
+    scrollOffset.set(event.contentOffset.y);
+  });
+  const bottomFadeStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(
+      1,
+      Math.max(0, contentHeight.value - viewportHeight.value - scrollOffset.value) /
+        WORK_GROUP_EDGE_FADE_HEIGHT,
+    ),
+  }));
+
+  return (
+    <View className="ml-7">
+      <Animated.ScrollView
+        nestedScrollEnabled
+        className="max-h-96"
+        contentContainerClassName="py-1"
+        scrollEventThrottle={16}
+        onScroll={onScroll}
+        onLayout={(event) => {
+          viewportHeight.set(event.nativeEvent.layout.height);
+        }}
+        onContentSizeChange={(_width, height) => {
+          contentHeight.set(height);
+        }}
+      >
+        {props.activities.map((row) => (
+          <View key={row.id}>{props.renderReasoning(row.workEntry.detail ?? "")}</View>
+        ))}
+      </Animated.ScrollView>
+      <Animated.View
+        pointerEvents="none"
+        className="absolute inset-x-0 bottom-0"
+        style={[{ height: WORK_GROUP_EDGE_FADE_HEIGHT }, bottomFadeStyle]}
+      >
+        <EdgeFade color={props.edgeFadeColor} direction="up" />
+      </Animated.View>
+    </View>
   );
 }
 
@@ -902,11 +954,20 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         })
       : null;
     const label = warning
-      ? `Usage limit reached.${resetTime ? ` Retry after ${resetTime}.` : ""}`
+      ? t("Usage limit reached.{{value1}}", {
+          value1: resetTime ? ` Retry after ${resetTime}.` : "",
+        })
       : row.summary;
     return (
       <WorkLogPressable
-        accessibilityLabel={warning ? label : `${row.summary}: ${failureItem.failure.message}`}
+        accessibilityLabel={
+          warning
+            ? label
+            : t("{{summary}}: {{message}}", {
+                summary: row.summary,
+                message: failureItem.failure.message,
+              })
+        }
         accessibilityHint={t("Long press to copy.")}
         onLongPress={() => props.onCopyRow(row.id, row.getCopyText())}
       >
@@ -1000,13 +1061,13 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         ? turnItemOutputText(shownItem)
         : fetchedItem
           ? (turnItemOutputText(fetchedItem) ??
-            (outputImages.length > 0 || viewedImagePath ? null : "No output."))
+            (outputImages.length > 0 || viewedImagePath ? null : t("No output.")))
           : fetchedDetail.error
-            ? `Couldn't load output: ${fetchedDetail.error}`
+            ? t("Couldn't load output: {{error}}", { error: fetchedDetail.error })
             : row.fetchesDetail
               ? fetchedDetail.data
-                ? "Output is no longer available."
-                : "Loading output…"
+                ? t("Output is no longer available.")
+                : t("Loading output…")
               : null;
   const exitLine =
     failedExitCode === null ? null : (
@@ -1122,7 +1183,9 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
                       ? "text-foreground"
                       : "text-foreground-subtle"
                   }
-                >{`  ${answerPreview}`}</Text>
+                >
+                  {t("  {{answerPreview}}", { answerPreview: answerPreview })}
+                </Text>
               ) : null}
             </WorkLogLabel>
           </>
@@ -1227,7 +1290,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
                       <ReplCodeText code={value} theme={props.themeAppearance} />
                     </View>
                   ) : (
-                    `${key} ${value}`
+                    t("{{key}} {{value}}", { key: key, value: value })
                   ),
                 ),
                 call.argsText,
@@ -1302,8 +1365,12 @@ export function ThreadWorkGroupToggle(props: {
   readonly onToggle: () => void;
 }) {
   const t = useTranslation();
-  const statusLabel = props.hasFailure ? `${props.summary}, tool call failed` : props.summary;
-  const accessibilityLabel = props.thought ? `${props.thought} ${statusLabel}` : statusLabel;
+  const statusLabel = props.hasFailure
+    ? t("{{summary}}, tool call failed", { summary: props.summary })
+    : props.summary;
+  const accessibilityLabel = props.thought
+    ? t("{{thought}} {{statusLabel}}", { thought: props.thought, statusLabel: statusLabel })
+    : statusLabel;
   const icon =
     props.summaryToolIcon ??
     (props.toolSurface

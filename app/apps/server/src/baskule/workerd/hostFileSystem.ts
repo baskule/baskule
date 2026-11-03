@@ -165,6 +165,7 @@ export const makeHostFileSystem = (
       await fs.stat(path);
       return path;
     },
+    stat: statOf,
     lstat: statOf,
     readdir: async (raw: unknown, options?: { readonly withFileTypes?: boolean }) => {
       const path = guard(raw);

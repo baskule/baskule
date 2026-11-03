@@ -5,6 +5,7 @@ import {
   deriveLatestThreadRun,
   deriveThreadRuntime,
 } from "@t3tools/client-runtime/state/thread-execution";
+import { checkpointFileTotals } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import {
   latestUnheldRun,
@@ -120,13 +121,19 @@ export function agentControlledBrowserCloseConfirmation(
   if (activeBrowserCount === 0) return null;
   if (activeBrowserCount === 1) {
     return [
-      "Close browser while the agent is using it?",
-      "The agent is actively controlling this browser. Closing it may interrupt the current browser action.",
+      t("Close browser while the agent is using it?"),
+      t(
+        "The agent is actively controlling this browser. Closing it may interrupt the current browser action.",
+      ),
     ].join("\n");
   }
   return [
-    `Close ${activeBrowserCount} browsers while the agent is using them?`,
-    "The agent is actively controlling these browsers. Closing them may interrupt the current browser actions.",
+    t("Close {{activeBrowserCount}} browsers while the agent is using them?", {
+      activeBrowserCount: activeBrowserCount,
+    }),
+    t(
+      "The agent is actively controlling these browsers. Closing them may interrupt the current browser actions.",
+    ),
   ].join("\n");
 }
 
@@ -213,7 +220,7 @@ export function shouldOpenProactiveTurnDiff(input: {
 }
 
 export function resolveProactiveTurnDiffAction(input: {
-  checkpoint: Pick<TurnDiffSummary, "status" | "files"> | undefined;
+  checkpoint: Pick<TurnDiffSummary, "status" | "files" | "filesTotal"> | undefined;
   isGitRepo: boolean | undefined;
 }): "defer" | "ignore" | "open" {
   if (input.checkpoint === undefined || input.checkpoint.status === "missing") return "defer";
@@ -225,11 +232,8 @@ export function resolveProactiveTurnDiffAction(input: {
   ) {
     return "ignore";
   }
-  const changedLines = input.checkpoint.files.reduce(
-    (total, file) => total + file.additions + file.deletions,
-    0,
-  );
-  return input.checkpoint.files.length >= 3 || changedLines >= 50 ? "open" : "ignore";
+  const totals = checkpointFileTotals(input.checkpoint);
+  return totals.count >= 3 || totals.additions + totals.deletions >= 50 ? "open" : "ignore";
 }
 
 /** Mark reactivated Diff tabs to preserve review scope. Already-active tabs must not leave a marker for
@@ -513,6 +517,7 @@ export function resolveComposerProviderSelection(input: {
       : requestedInstanceId;
   return {
     selectedProviderEntry,
+    requestedInstanceId,
     requestedDriverKind,
     lockedContinuationGroupKey,
     unavailableProviderInstanceId,
@@ -599,7 +604,7 @@ export async function resolveFileAttachmentUrl(input: {
   });
   if (result._tag === "Failure") throw squashAtomCommandFailure(result);
   const url = resolveAssetUrl(input.httpBaseUrl, result.value.relativeUrl);
-  if (url === null) throw new Error("The environment returned an invalid attachment URL.");
+  if (url === null) throw new Error(t("The environment returned an invalid attachment URL."));
   return url;
 }
 
@@ -612,7 +617,7 @@ export async function prepareRevertedMessageAttachments(input: {
   return Promise.all(
     (input.message.attachments ?? []).map(async (attachment) => {
       if (attachment.type !== "image" && attachment.type !== "file") {
-        throw new Error("This message has an attachment that cannot be restored.");
+        throw new Error(t("This message has an attachment that cannot be restored."));
       }
       const result = await input.createAssetUrl({
         environmentId: input.environmentId,
@@ -627,9 +632,10 @@ export async function prepareRevertedMessageAttachments(input: {
       });
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
       const url = resolveAssetUrl(input.httpBaseUrl, result.value.relativeUrl);
-      if (url === null) throw new Error("The environment returned an invalid attachment URL.");
+      if (url === null) throw new Error(t("The environment returned an invalid attachment URL."));
       const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-      if (!response.ok) throw new Error(`Could not restore attachment: ${attachment.name}`);
+      if (!response.ok)
+        throw new Error(t("Could not restore attachment: {{name}}", { name: attachment.name }));
       return new File([await response.blob()], attachment.name, { type: attachment.mimeType });
     }),
   );
@@ -700,6 +706,7 @@ export function cloneComposerImageForRetry(
 export function deriveComposerSendState(options: {
   prompt: string;
   imageCount: number;
+  existingAttachmentCount?: number;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   elementContextCount?: number;
 }): {
@@ -720,6 +727,7 @@ export function deriveComposerSendState(options: {
     hasSendableContent:
       trimmedPrompt.length > 0 ||
       options.imageCount > 0 ||
+      (options.existingAttachmentCount ?? 0) > 0 ||
       sendableTerminalContexts.length > 0 ||
       elementContextCount > 0,
   };
@@ -730,16 +738,19 @@ export function buildExpiredTerminalContextToastCopy(
   variant: "omitted" | "empty",
 ): { title: string; description: string } {
   const count = Math.max(1, Math.floor(expiredTerminalContextCount));
-  const noun = count === 1 ? "Expired terminal context" : "Expired terminal contexts";
+  const noun = count === 1 ? t("Expired terminal context") : t("Expired terminal contexts");
+  const pronoun = count === 1 ? "it" : "them";
   if (variant === "empty") {
     return {
       title: t("{{noun}} won't be sent", { noun: noun }),
-      description: t("Remove it or re-add it to include terminal output."),
+      description: t("Remove {{pronoun}} or re-add {{pronoun}} to include terminal output.", {
+        pronoun,
+      }),
     };
   }
   return {
     title: t("{{noun}} omitted from message", { noun: noun }),
-    description: t("Re-add it if you want that terminal output included."),
+    description: t("Re-add {{pronoun}} if you want that terminal output included.", { pronoun }),
   };
 }
 
@@ -930,7 +941,7 @@ export async function waitForRevertedMessage(
     return latest === undefined || run.ordinal > latest.ordinal ? run : latest;
   }, undefined);
   if (witness === undefined) {
-    throw new Error("The thread has changed. Select a message to rewind again.");
+    throw new Error(t("The thread has changed. Select a message to rewind again."));
   }
   return new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -972,7 +983,7 @@ export async function waitForRevertedMessage(
     };
     unsubscribe = appAtomRegistry.subscribe(threadAtom, inspect);
     timeout = globalThis.setTimeout(() => {
-      finish(new Error("Timed out waiting for the thread to rewind."));
+      finish(new Error(t("Timed out waiting for the thread to rewind.")));
     }, timeoutMs);
     Promise.resolve()
       .then(revert)
@@ -1276,7 +1287,11 @@ export function makeModelDisabledReason(
       ...context,
       nextModelSelection: { instanceId, model },
     });
-    return reason ? `${reason.description} Start a new thread to use this model.` : null;
+    return reason
+      ? t("{{description}} Start a new thread to use this model.", {
+          description: reason.description,
+        })
+      : null;
   };
 }
 
@@ -1405,7 +1420,9 @@ export function sendTitleFallbackLabels(snapshot: ComposerSendSnapshot) {
   const previewAnnotation = snapshot.previewAnnotations[0];
   return [
     terminalContext ? formatTerminalContextLabel(terminalContext) : undefined,
-    reviewComment ? `Review: ${reviewCommentContextLabel(reviewComment)}` : undefined,
+    reviewComment
+      ? t("Review: {{value1}}", { value1: reviewCommentContextLabel(reviewComment) })
+      : undefined,
     previewAnnotation ? previewAnnotationContextLabel(previewAnnotation) : undefined,
   ];
 }

@@ -88,8 +88,8 @@ export function ConnectionEnvironmentRow(props: {
     }
     const error = Cause.squash(result.cause);
     Dialog.alert(
-      "Could not update environment",
-      error instanceof Error ? error.message : "The environment could not be updated.",
+      t("Could not update environment"),
+      error instanceof Error ? error.message : t("The environment could not be updated."),
     );
   };
 
@@ -167,7 +167,10 @@ export function ConnectionEnvironmentRow(props: {
               className="text-xs text-warning-foreground"
               numberOfLines={props.expanded ? undefined : 1}
             >
-              {`${freeze.title}. ${freeze.description}`}
+              {t("{{title}}. {{description}}", {
+                title: freeze.title,
+                description: freeze.description,
+              })}
             </Text>
           ) : null}
         </Pressable>
@@ -298,6 +301,9 @@ export function ConnectionEnvironmentRow(props: {
               )}
 
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("Reconnect environment")}
+                accessibilityState={{ disabled: !enabled }}
                 className="h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-input-border bg-input active:opacity-70 disabled:opacity-40"
                 disabled={!enabled}
                 onPress={() => props.onReconnect(props.environment.environmentId)}
@@ -311,6 +317,8 @@ export function ConnectionEnvironmentRow(props: {
               </Pressable>
 
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("Remove environment")}
                 className="h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-danger-border bg-danger active:opacity-70"
                 onPress={() => props.onRemove(props.environment.environmentId)}
               >

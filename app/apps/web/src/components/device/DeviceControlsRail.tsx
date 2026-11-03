@@ -1,6 +1,6 @@
 import { useTranslation } from "../../i18n";
 
-import type { DevicePlatform } from "@t3tools/contracts";
+import type { DeviceHostSummary, DevicePlatform } from "@t3tools/contracts";
 import {
   Camera,
   ChevronLeft,
@@ -38,6 +38,7 @@ import type { DeviceControls } from "./useDeviceControls";
 
 export function DeviceControlsRail(props: {
   platform: DevicePlatform;
+  hostKind: DeviceHostSummary["kind"] | undefined;
   handle: DeviceStreamHandle | null;
   view: DeviceViewControls;
   controls: DeviceControls;
@@ -54,6 +55,7 @@ export function DeviceControlsRail(props: {
   const popupSide = "left";
   const settings = controls.detail?.settings;
   const inputDisabled = !handle?.inputConnected;
+  const runsHostCommands = props.hostKind === "local" || props.hostKind === "ssh";
   const nextAppearance = settings?.appearance === "dark" ? "light" : "dark";
   return (
     <aside
@@ -88,6 +90,60 @@ export function DeviceControlsRail(props: {
             >
               <Square />
             </RailButton>
+            {runsHostCommands ? (
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={t("Rotate device")}
+                      disabled={controls.disabled}
+                    />
+                  }
+                >
+                  <RotateCcw />
+                </MenuTrigger>
+                <MenuPopup side={popupSide}>
+                  <MenuItem
+                    onClick={() => void controls.act({ type: "setOrientation", value: "portrait" })}
+                  >
+                    {t("Portrait")}
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() =>
+                      void controls.act({ type: "setOrientation", value: "landscape_left" })
+                    }
+                  >
+                    {t("Landscape")}
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            ) : null}
+          </>
+        ) : (
+          <RailButton
+            tooltipSide={popupSide}
+            label={t("Rotate device")}
+            disabled={inputDisabled || !!view.keyboard?.attached}
+            onClick={() => handle?.rotate()}
+          >
+            <RotateCcw />
+          </RailButton>
+        )}
+        {runsHostCommands ? (
+          <>
+            <RailDivider />
+            <RailButton
+              tooltipSide={popupSide}
+              label={t("Switch device to {{nextAppearance}} mode", {
+                nextAppearance: nextAppearance,
+              })}
+              disabled={controls.disabled || !settings?.appearance}
+              onClick={() => void controls.act({ type: "setAppearance", value: nextAppearance })}
+            >
+              <MorphIcon icon={settings?.appearance === "dark" ? Sun : Moon} />
+            </RailButton>
             <Menu>
               <MenuTrigger
                 render={
@@ -117,7 +173,8 @@ export function DeviceControlsRail(props: {
               </MenuPopup>
             </Menu>
           </>
-        ) : (
+        ) : null}
+        {
           <RailButton
             tooltipSide={popupSide}
             label={t("Rotate device")}
@@ -126,7 +183,7 @@ export function DeviceControlsRail(props: {
           >
             <RotateCcw />
           </RailButton>
-        )}
+        }
         <RailDivider />
         <RailButton
           tooltipSide={popupSide}
@@ -168,7 +225,7 @@ export function DeviceControlsRail(props: {
                   ["small", "Small"],
                   ["default", "Default"],
                   ["large", "Large"],
-                  ["extra-large", "Extra large"],
+                  ["extra-large", t("Extra large")],
                 ] as const
               ).map(([value, label]) => (
                 <MenuRadioItem key={value} value={value}>

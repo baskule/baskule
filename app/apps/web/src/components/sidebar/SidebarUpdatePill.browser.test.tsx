@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
-import { act, render } from "../../../test/render";
+import { render } from "../../../test/render";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
 const mocks = vi.hoisted(() => {
@@ -44,66 +44,10 @@ vi.mock("./useUpdateEverything", () => ({
   }),
 }));
 
-function nightlyUpdate(releaseNotes: DesktopUpdateState["releaseNotes"]): DesktopUpdateState {
-  return {
-    enabled: true,
-    status: "available",
-    channel: "nightly",
-    currentVersion: "0.0.50-nightly.1",
-    hostArch: "arm64",
-    appArch: "arm64",
-    runningUnderArm64Translation: false,
-    availableVersion: "0.0.50-nightly.2",
-    downloadedVersion: null,
-    releaseNotes,
-    omittedReleaseCount: 0,
-    downloadPercent: null,
-    checkedAt: null,
-    message: null,
-    errorContext: null,
-    canRetry: false,
-  };
-}
-
-const RELEASE_NOTES: DesktopUpdateState["releaseNotes"] = [
-  { version: "0.0.50-nightly.2", items: ["Faster sidebar."], totalItems: 1 },
-];
-
 function setup(update: DesktopUpdateState | null, { hasUpdates = false } = {}) {
   mocks.update = update;
   mocks.hasUpdates = hasUpdates;
 }
-
-function publish(update: DesktopUpdateState | null) {
-  return act(() => {
-    mocks.update = update;
-    mocks.notify();
-  });
-}
-
-const releaseNotes = () => document.querySelector('[aria-label="Nightly update release notes"]');
-
-describe("SidebarUpdatePill release notes", () => {
-  it("closes when the release notes stop applying", async () => {
-    setup(nightlyUpdate(RELEASE_NOTES));
-    await using _screen = await render(<SidebarUpdatePill />);
-    await userEvent.tab();
-    await vi.waitFor(() => expect(releaseNotes()).not.toBeNull());
-
-    await publish(nightlyUpdate([]));
-    await vi.waitFor(() => expect(releaseNotes()).toBeNull());
-  });
-
-  it("opens when release notes arrive while the trigger has keyboard focus", async () => {
-    setup(nightlyUpdate([]));
-    await using _screen = await render(<SidebarUpdatePill />);
-    await userEvent.tab();
-    expect(releaseNotes()).toBeNull();
-
-    await publish(nightlyUpdate(RELEASE_NOTES));
-    await vi.waitFor(() => expect(releaseNotes()).not.toBeNull());
-  });
-});
 
 describe("SidebarUpdatePill update everything", () => {
   it("does not refocus the update button after a pointer cancel", async () => {

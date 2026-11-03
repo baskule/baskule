@@ -12,12 +12,14 @@ import {
   MIN_PROMPT_FONT_SIZE,
 } from "@t3tools/contracts";
 
-export const DEFAULT_SANS_FONT_STACK =
-  '-apple-system, BlinkMacSystemFont, "Inter Variable", "Segoe UI", system-ui, sans-serif';
+export const DEFAULT_SANS_FONT_STACK = t(
+  '-apple-system, BlinkMacSystemFont, "Inter Variable", "Segoe UI", system-ui, sans-serif',
+);
 
 // Some engines map `ui-monospace` to a proportional font, so prefer concrete names.
-export const DEFAULT_CODE_FONT_STACK =
-  '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace';
+export const DEFAULT_CODE_FONT_STACK = t(
+  '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace',
+);
 
 export const TYPOGRAPHY_ADVANCED_STORAGE_KEY = "t3code:typography-advanced";
 
@@ -57,7 +59,9 @@ function cssFontFamilies(input: string): string | null {
 
 export function appearanceFontStack(custom: string, defaultStack: string): string {
   const families = cssFontFamilies(custom);
-  return families === null ? defaultStack : `${families}, ${defaultStack}`;
+  return families === null
+    ? defaultStack
+    : t("{{families}}, {{defaultStack}}", { families: families, defaultStack: defaultStack });
 }
 
 export interface AppearanceFontPreferences {
@@ -68,9 +72,10 @@ export interface AppearanceFontPreferences {
   readonly sizePrompt: number;
   readonly sizeCode: number;
   readonly smoothing: boolean;
+  readonly separate: boolean;
 }
 
-/** Always writes sizes: interface size sets the root; prompt and code use pixels to avoid double scaling. */
+/** Interface size sets the root; prompt and code use pixels to avoid double scaling. */
 export function applyAppearanceFontVariables(
   root: HTMLElement,
   preferences: AppearanceFontPreferences,
@@ -78,7 +83,7 @@ export function applyAppearanceFontVariables(
   const families: ReadonlyArray<readonly [variable: string, custom: string, fallback: string]> = [
     ["--font-sans", preferences.sans, DEFAULT_SANS_FONT_STACK],
     ["--font-mono", preferences.code, DEFAULT_CODE_FONT_STACK],
-    ["--font-composer", preferences.composer, "var(--font-sans)"],
+    ["--font-composer", preferences.separate ? preferences.composer : "", "var(--font-sans)"],
   ];
   for (const [variable, custom, fallback] of families) {
     const list = cssFontFamilies(custom);
@@ -90,7 +95,10 @@ export function applyAppearanceFontVariables(
   }
 
   root.style.fontSize = `${clampInterfaceFontSize(preferences.sizeInterface)}px`;
-  root.style.setProperty("--font-size-prompt", `${clampPromptFontSize(preferences.sizePrompt)}px`);
+  root.style.setProperty(
+    "--font-size-prompt",
+    preferences.separate ? `${clampPromptFontSize(preferences.sizePrompt)}px` : "var(--text-sm)",
+  );
   const code = clampCodeFontSize(preferences.sizeCode);
   root.style.setProperty("--font-size-code", `${code}px`);
   root.style.setProperty("--diffs-font-size", `${code}px`);
@@ -124,7 +132,7 @@ function clampCodeFontSize(value: number): number {
   return clampFontSize(value, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE, DEFAULT_CODE_FONT_SIZE);
 }
 
-const FONT_PROBE_TEXT = "mmmmmmmmMMWli1O0@# fjord";
+const FONT_PROBE_TEXT = t("mmmmmmmmMMWli1O0@# fjord");
 let fontProbeContext: CanvasRenderingContext2D | null | undefined;
 
 function probeWidth(fontList: string): number | null {
@@ -132,7 +140,7 @@ function probeWidth(fontList: string): number | null {
     fontProbeContext = document.createElement("canvas").getContext("2d");
   }
   if (fontProbeContext === null) return null;
-  fontProbeContext.font = `16px ${fontList}`;
+  fontProbeContext.font = t("16px {{fontList}}", { fontList: fontList });
   return fontProbeContext.measureText(FONT_PROBE_TEXT).width;
 }
 
@@ -154,7 +162,12 @@ export function isFontFamilyAvailable(family: string): boolean {
   }
 }
 
-const MONOSPACE_PROBE_VARIANTS = ["normal 400", "normal 700", "italic 400", "italic 700"] as const;
+const MONOSPACE_PROBE_VARIANTS = [
+  t("normal 400"),
+  t("normal 700"),
+  t("italic 400"),
+  t("italic 700"),
+] as const;
 const MONOSPACE_PROBE_GLYPHS = ["i", "M", "W", "0", "@", "#", ".", " "] as const;
 const MONOSPACE_ADVANCE_TOLERANCE = 0.01;
 
@@ -180,7 +193,10 @@ export function isMonospaceFamily(family: string): boolean {
     if (fontProbeContext === null) return true;
     const context = fontProbeContext;
     for (const variant of MONOSPACE_PROBE_VARIANTS) {
-      context.font = `${variant} 32px ${families}, monospace`;
+      context.font = t("{{variant}} 32px {{families}}, monospace", {
+        variant: variant,
+        families: families,
+      });
       const advances = MONOSPACE_PROBE_GLYPHS.map((glyph) => context.measureText(glyph).width);
       if (!areFontAdvancesMonospace(advances)) return false;
     }
@@ -191,30 +207,30 @@ export function isMonospaceFamily(family: string): boolean {
 }
 
 const SANS_GENERIC_CANDIDATES = [
-  "Segoe UI",
+  t("Segoe UI"),
   "Roboto",
-  "Noto Sans",
+  t("Noto Sans"),
   "Ubuntu",
   "Cantarell",
-  "DejaVu Sans",
-  "Liberation Sans",
-  "Helvetica Neue",
+  t("DejaVu Sans"),
+  t("Liberation Sans"),
+  t("Helvetica Neue"),
   "Arial",
 ] as const;
 const MONO_GENERIC_CANDIDATES = [
   "Menlo",
   "Consolas",
-  "Cascadia Mono",
-  "DejaVu Sans Mono",
-  "Ubuntu Mono",
-  "Liberation Mono",
-  "Noto Sans Mono",
-  "Roboto Mono",
+  t("Cascadia Mono"),
+  t("DejaVu Sans Mono"),
+  t("Ubuntu Mono"),
+  t("Liberation Mono"),
+  t("Noto Sans Mono"),
+  t("Roboto Mono"),
   "Monaco",
-  "Courier New",
+  t("Courier New"),
 ] as const;
 
-const GENERIC_PROBE_TEXT = "RagIl10O@ fjord quiz";
+const GENERIC_PROBE_TEXT = t("RagIl10O@ fjord quiz");
 
 // Canvas generic-family mappings can differ from CSS, so measure the DOM.
 function measureDomProbeWidth(fontFamily: string): number | null {

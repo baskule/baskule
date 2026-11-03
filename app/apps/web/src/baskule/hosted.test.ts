@@ -83,17 +83,33 @@ it("lists the person's settings sections, scheduled tasks first", async () => {
   );
 });
 
-it("shows the shared browser next to files", async () => {
+it.each(["en", "fr", "es"] as const)("shows Files, Browser and Side chat in %s", async (locale) => {
   const { rightPanel } = await loadHosted();
-  const labels = rightPanel
-    .baskuleSurfaceActions([
-      { label: "Browser" },
-      { label: "Terminal" },
-      { label: "Files" },
-      { label: "Diff" },
-    ])
-    .map((action) => action.label);
-  expect(labels).toEqual(["Browser", "Files"]);
+  const { activateLocale, i18n, t } = await import("@t3tools/shared/localization");
+  await activateLocale(locale);
+  // Side chat is new in 0.1.6; exercise its translated label before release catalogs arrive.
+  if (locale !== "en")
+    i18n.addResourceBundle(
+      locale,
+      "translation",
+      { "Side chat": "Conversación lateral" },
+      true,
+      true,
+    );
+  try {
+    const labels = rightPanel
+      .baskuleSurfaceActions([
+        { label: "Browser" },
+        { label: "Terminal" },
+        { label: "Files" },
+        { label: t("Side chat") },
+        { label: "Diff" },
+      ])
+      .map((action) => action.label);
+    expect(labels).toEqual(["Browser", "Files", t("Side chat")]);
+  } finally {
+    await activateLocale("en");
+  }
 });
 
 it("names spaces in connection banners", async () => {

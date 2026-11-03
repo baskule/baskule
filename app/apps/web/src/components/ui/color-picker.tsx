@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import {
@@ -32,7 +33,7 @@ function useColorDrag(
   return {
     thumbTransition: isDragging
       ? undefined
-      : "left 80ms linear, top 80ms linear, background-color 80ms linear",
+      : t("left 80ms linear, top 80ms linear, background-color 80ms linear"),
     handlers: {
       onPointerDown(event: PointerEvent<HTMLDivElement>) {
         if (pointerId.current !== null || event.button !== 0) return;
@@ -143,7 +144,10 @@ export function ColorSaturationValuePlane({
             max={100}
             step="any"
             value={value[axis] * 100}
-            aria-label={`${label} ${axisLabel.toLowerCase()}`}
+            aria-label={t("{{label}} {{value2}}", {
+              label: label,
+              value2: axisLabel.toLowerCase(),
+            })}
             aria-describedby={instructionsId}
             aria-valuetext={`${Math.round(value[axis] * 100)}%`}
             className="peer sr-only"
@@ -186,6 +190,11 @@ export function ColorHueSlider({
   }, onInteractionEnd);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      onChange(event.key === "Home" ? 0 : 360);
+      return;
+    }
     if (!["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(event.key)) return;
     event.preventDefault();
     const step = event.shiftKey ? 10 : 1;

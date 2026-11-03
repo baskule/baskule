@@ -23,7 +23,8 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
-import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
+import { HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
+import { AboutVersionTitle } from "./AboutVersionTitle";
 import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
 import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
 import {
@@ -160,16 +161,6 @@ const QUIT_CONFIRMATION_MODE_LABELS: Record<QuitConfirmationMode, string> = {
 };
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("opencode");
-function AboutVersionTitle() {
-  const t = useTranslation();
-  return (
-    <span className="inline-flex items-baseline gap-2">
-      <span>{t("Version")}</span>
-      <code className="text-2xs font-medium text-muted-foreground">{APP_VERSION}</code>
-    </span>
-  );
-}
-
 function AboutVersionSection() {
   const t = useTranslation();
   const updateState = useDesktopUpdateState();
@@ -437,7 +428,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       : []),
     ...(settings.chatWidth !== DEFAULT_UNIFIED_SETTINGS.chatWidth ? [t("Chat width")] : []),
     ...(settings.effortDisplay !== DEFAULT_UNIFIED_SETTINGS.effortDisplay
-      ? ["Effort display"]
+      ? [t("Effort display")]
       : []),
     ...(settings.mathRenderingEnabled !== DEFAULT_UNIFIED_SETTINGS.mathRenderingEnabled
       ? [t("Render math")]
@@ -484,7 +475,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? [t("Snooze until limits reset")]
       : []),
     ...(!Equal.equals(settings.snoozePresets, DEFAULT_UNIFIED_SETTINGS.snoozePresets)
-      ? ["Snooze options"]
+      ? [t("Snooze options")]
       : []),
     ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? [t("Word wrap")] : []),
     ...(settings.persistComposerContextStrip !==

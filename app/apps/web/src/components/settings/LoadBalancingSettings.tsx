@@ -10,7 +10,7 @@ import {
 import type { EnvironmentPresentation } from "~/state/environments";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { EnvironmentRow, environmentTransportLabel } from "./EnvironmentRow";
+import { EnvironmentRow, EnvironmentTransportLabel } from "./EnvironmentRow";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { searchableSetting } from "./settingsSearch";
 
@@ -61,7 +61,12 @@ function summarizeLoadPreferences(
     const preference = loadPreferenceForWeight(weights[environment.environmentId]);
     return preference === 50
       ? []
-      : [`${environment.label} ${preferenceLabel(preference).toLowerCase()}`];
+      : [
+          t("{{label}} {{value2}}", {
+            label: environment.label,
+            value2: preferenceLabel(preference).toLowerCase(),
+          }),
+        ];
   });
   return parts.length === 0 ? null : parts.join(" · ");
 }
@@ -88,7 +93,7 @@ export function LoadBalancingSettings({
       summary={
         settings.loadBalancingEnabled
           ? summarizeLoadPreferences(environments, settings.loadBalancingWeights)
-          : "Off"
+          : t("Off")
       }
       control={
         <Switch
@@ -109,7 +114,7 @@ export function LoadBalancingSettings({
           key={environment.environmentId}
           kind={resolveEnvironmentMachineKind(environment.serverConfig)}
           label={environment.label}
-          subtitle={environmentTransportLabel(environment)}
+          subtitle={<EnvironmentTransportLabel environment={environment} />}
         >
           <Select
             items={preferences}

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import {
   type PreviewPanelInlineSize,
@@ -45,7 +46,7 @@ function ResizablePreviewPanelShell(props: PreviewPanelShellProps) {
 function PreviewPanelShellFrame(
   props: PreviewPanelShellProps & { inlineSize: PreviewPanelInlineSize },
 ) {
-  const panelArea = workspaceAreaProps("panel", 4, props.workspaceLabel ?? "Workspace panel");
+  const panelArea = workspaceAreaProps("panel", 4, props.workspaceLabel ?? t("Workspace panel"));
   const isInline = props.mode === "inline";
   const collapsible = isInline && props.open !== undefined;
   const open = props.open ?? true;
@@ -150,9 +151,20 @@ function PreviewPanelShellFrame(
       data-preview-panel-maximized={maximized ? "true" : "false"}
     >
       {isInline && !maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}
-      <div className={cn("h-full min-h-0 w-full", collapsible && "overflow-clip")}>
+      {/* Content stays pinned to the right edge, so closing uncovers the chat
+          instead of sliding the tab bar under the title bar controls. */}
+      <div
+        className={cn(
+          "h-full min-h-0 w-full",
+          collapsible && "overflow-clip",
+          collapsible && !maximized && "flex justify-end",
+        )}
+      >
         <div
-          className="flex h-full min-h-0 min-w-0 flex-col"
+          className={cn(
+            "flex h-full min-h-0 min-w-0 flex-col",
+            collapsible && !maximized && "shrink-0",
+          )}
           style={
             collapsible && !maximized
               ? { width: `calc(var(${RESIZABLE_WIDTH_PROPERTY}) - 1px)` }

@@ -57,6 +57,7 @@ const inert: Service = {
   attachOutputStream: (input) => Stream.unwrap(notRunning(input)),
   observeStream: notRunning,
   resyncStream: notRunning,
+  getShell: notRunning,
   write: notRunning,
   resize: notRunning,
   clear: notRunning,

@@ -33,6 +33,13 @@ import "./pdfViewer.css";
 const MAX_PAGES = 2000;
 const MAX_FIND_TEXT = 4 * 1024 * 1024;
 
+export type PdfViewState = {
+  page: number;
+  offset: number;
+  zoom: number | null;
+  left: number;
+};
+
 function PdfPage(props: {
   document: PDFDocumentProxy;
   index: number;
@@ -84,7 +91,7 @@ function PdfPage(props: {
       await Promise.all([paint.promise, layer.render()]);
     })().catch((cause: unknown) => {
       if (!cancelled)
-        onError(cause instanceof Error ? cause.message : "This PDF page could not render.");
+        onError(cause instanceof Error ? cause.message : t("This PDF page could not render."));
     });
     return () => {
       cancelled = true;
@@ -93,7 +100,7 @@ function PdfPage(props: {
       // Release operator lists when virtual pages leave the viewport.
       void Promise.allSettled([paint?.promise]).then(() => loadedPage?.cleanup());
     };
-  }, [pdf, index, width, onSize, onError]);
+  }, [pdf, index, width, onSize, onError, t]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Highlight pdf.js-owned text nodes and observe asynchronous text layer mutations for the current search query.
   useEffect(() => {
     const node = text.current;
@@ -123,13 +130,21 @@ function PdfPage(props: {
   );
 }
 
-export default function PdfViewer(props: { src: string; title: string }) {
+export default function PdfViewer(props: {
+  src: string;
+  title: string;
+  initialView?: PdfViewState;
+  onViewChange?: (view: PdfViewState) => void;
+}) {
+  const [initialView] = useState<PdfViewState>(
+    () => props.initialView ?? { page: 0, offset: 0, zoom: null, left: 0 },
+  );
   const t = useTranslation();
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [ratios, setRatios] = useState<number[]>([]);
-  const [zoom, setZoom] = useState<number | null>(null);
+  const [zoom, setZoom] = useState(initialView.zoom);
   const [pageWidth, setPageWidth] = useState(612);
   const [viewport, setViewport] = useState({ width: 600, height: 800 });
   const [scrollTop, setScrollTop] = useState(0);
@@ -141,13 +156,14 @@ export default function PdfViewer(props: { src: string; title: string }) {
   const scroll = useRef<HTMLDivElement>(null);
   const find = useRef<HTMLInputElement>(null);
   const zoomAnchor = useRef<{ page: number; offset: number; width: number } | null>(null);
+  const initialPage = initialView.page;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the PDF fetch, load timeout, and pdf.js document task across source changes, retries, and unmounts.
   useEffect(() => {
     const controller = new AbortController();
     let disposed = false;
     let task: ReturnType<typeof openPdf> | undefined;
     const timeout = setTimeout(() => {
-      setError("This PDF took too long to load. Try again.");
+      setError(t("This PDF took too long to load. Try again."));
       controller.abort();
       void task?.destroy();
     }, 30_000);
@@ -162,16 +178,27 @@ export default function PdfViewer(props: { src: string; title: string }) {
         task = openPdf(bytes);
         const document = await task.promise;
         if (document.numPages > MAX_PAGES)
-          throw new Error("Preview limited to 2,000 pages. Save this PDF to read it in full.");
+          throw new Error(t("Preview limited to 2,000 pages. Save this PDF to read it in full."));
         const first = (await document.getPage(1)).getViewport({ scale: 1 });
+        const sizes = await Promise.all(
+          Array.from({ length: Math.min(initialPage + 1, document.numPages) }, async (_, index) => {
+            const size = (await document.getPage(index + 1)).getViewport({ scale: 1 });
+            return size.height / size.width;
+          }),
+        );
         if (controller.signal.aborted) return;
         setPageWidth(first.width);
-        setRatios(Array.from({ length: document.numPages }, () => first.height / first.width));
+        setRatios(
+          Array.from(
+            { length: document.numPages },
+            (_, index) => sizes[index] ?? first.height / first.width,
+          ),
+        );
         setPdf(document);
       })
       .catch((cause: unknown) => {
         if (!disposed && !controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Unable to open PDF.");
+          setError(cause instanceof Error ? cause.message : t("Unable to open PDF."));
       })
       .finally(() => clearTimeout(timeout));
     return () => {
@@ -180,7 +207,7 @@ export default function PdfViewer(props: { src: string; title: string }) {
       clearTimeout(timeout);
       void task?.destroy();
     };
-  }, [props.src, revision]);
+  }, [props.src, revision, initialPage, t]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Measure the PDF viewport before paint and observe resizes for fit-width sizing and visible-page selection.
   useLayoutEffect(() => {
     const node = scroll.current;
@@ -203,6 +230,30 @@ export default function PdfViewer(props: { src: string; title: string }) {
   const jumpToPage = useEffectEvent((index: number) => {
     scroll.current?.scrollTo({ top: pdfPageScrollTop(offsets, index) });
   });
+  const saveView = (node: HTMLDivElement) => {
+    const page = currentPdfPage(offsets, ratios.length, node.scrollTop);
+    props.onViewChange?.({
+      page,
+      offset: Math.max(0, node.scrollTop - (offsets[page]! - 16)),
+      zoom,
+      left: node.scrollLeft,
+    });
+  };
+  const restoreView = useEffectEvent(() => {
+    const node = scroll.current;
+    if (!pdf || !node) return;
+    const page = Math.min(initialPage, pdf.numPages - 1);
+    node.scrollTo({
+      top:
+        offsets[page]! - 16 + Math.min(initialView.offset, Math.max(0, width * ratios[page]! - 1)),
+      left: initialView.left,
+    });
+    saveView(node);
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Restore the saved PDF scroll position after the loaded document's page layout commits.
+  useLayoutEffect(() => {
+    if (pdf) restoreView();
+  }, [pdf]);
   const showPage = (index: number) => {
     scroll.current?.scrollTo({ top: pdfPageScrollTop(offsets, index) });
   };
@@ -218,10 +269,14 @@ export default function PdfViewer(props: { src: string; title: string }) {
   useLayoutEffect(() => {
     const anchor = zoomAnchor.current;
     zoomAnchor.current = null;
-    if (!anchor || anchor.width === width) return;
-    scroll.current?.scrollTo({
-      top: offsets[anchor.page]! - 16 + (anchor.offset * width) / anchor.width,
-    });
+    const node = scroll.current;
+    if (!anchor || !node) return;
+    if (anchor.width !== width) {
+      node.scrollTo({
+        top: offsets[anchor.page]! - 16 + (anchor.offset * width) / anchor.width,
+      });
+    }
+    saveView(node);
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Scroll to the first asynchronous search result after its measured page offsets have committed.
   useLayoutEffect(() => {
@@ -254,7 +309,7 @@ export default function PdfViewer(props: { src: string; title: string }) {
           size += text.length;
           if (size > MAX_FIND_TEXT)
             throw new Error(
-              "This PDF has too much text to search. Save it to search in another app.",
+              t("This PDF has too much text to search. Save it to search in another app."),
             );
           if (pdfFindIncludes(text, query)) found.push(index);
         }
@@ -264,7 +319,7 @@ export default function PdfViewer(props: { src: string; title: string }) {
       })()
         .catch((cause: unknown) => {
           if (!cancelled)
-            setFindError(cause instanceof Error ? cause.message : "Could not search this PDF.");
+            setFindError(cause instanceof Error ? cause.message : t("Could not search this PDF."));
         })
         .finally(() => {
           if (!cancelled) setFinding(false);
@@ -274,12 +329,14 @@ export default function PdfViewer(props: { src: string; title: string }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [pdf, query]);
+  }, [pdf, query, t]);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-2 py-1 text-xs">
         <span className="mr-auto px-1 tabular-nums" aria-live="polite">
-          {pdf ? `${current + 1} / ${pdf.numPages} pages` : "PDF"}
+          {pdf
+            ? t("{{value1}} / {{numPages}} pages", { value1: current + 1, numPages: pdf.numPages })
+            : t("PDF")}
         </span>
         <FileSurfaceAction
           label={t("Previous page")}
@@ -362,8 +419,12 @@ export default function PdfViewer(props: { src: string; title: string }) {
         role="region"
         aria-label={props.title}
         tabIndex={0}
-        className="relative min-h-0 min-w-0 w-full flex-1 overflow-auto bg-muted/40"
-        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        className="relative min-h-0 min-w-0 w-full flex-1 overflow-auto scrollbar-gutter-stable bg-muted/40"
+        onScroll={(event) => {
+          const top = event.currentTarget.scrollTop;
+          setScrollTop(top);
+          saveView(event.currentTarget);
+        }}
         onKeyDown={(event) => {
           if ((event.ctrlKey || event.metaKey) && event.key === "f") {
             event.preventDefault();

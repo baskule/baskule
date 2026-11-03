@@ -143,7 +143,7 @@ function ScopeMenu({
   const Trigger = options.length > 6 ? ComboboxTrigger : MenuTrigger;
   const trigger = (
     <Trigger
-      aria-label={`${ariaLabel}: ${label}`}
+      aria-label={t("{{ariaLabel}}: {{label}}", { ariaLabel: ariaLabel, label: label })}
       render={<Button variant="outline" size="sm" />}
       className="min-w-0 max-w-72"
     >
@@ -160,7 +160,13 @@ function ScopeMenu({
   if (options.length > 6) {
     const needle = query.trim().toLowerCase();
     const filteredItems = choices.filter((option) =>
-      `${option.label} ${option.secondary ?? ""} ${option.value}`.toLowerCase().includes(needle),
+      t("{{label}} {{value2}} {{value}}", {
+        label: option.label,
+        value2: option.secondary ?? "",
+        value: option.value,
+      })
+        .toLowerCase()
+        .includes(needle),
     );
     return (
       <Combobox
@@ -333,17 +339,18 @@ function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsSco
             other.group.projectKey !== group.projectKey &&
             other.group.displayName === group.displayName,
         );
+        const location =
+          sameName.length === 0
+            ? environments.length > 1
+              ? group.workspaceRoot
+              : ""
+            : sameName.some((other) => other.machines === machines)
+              ? `${machines} · ${group.workspaceRoot}`
+              : machines;
         return {
           value: group.projectKey,
           label: group.displayName,
-          secondary:
-            sameName.length === 0
-              ? environments.length > 1
-                ? group.workspaceRoot
-                : ""
-              : sameName.some((other) => other.machines === machines)
-                ? `${machines} · ${group.workspaceRoot}`
-                : machines,
+          secondary: group.archived ? ["Archived", location].filter(Boolean).join(" · ") : location,
           icon: <ProjectFavicon project={group} className="size-3.5 shrink-0" />,
         };
       })}

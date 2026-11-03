@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { ProcessSignalActions } from "./ProcessSignalActions";
@@ -49,12 +50,14 @@ function formatCount(value: number): string {
 }
 
 function formatDuration(value: number): string {
-  if (value < 1_000) return `${Math.round(value)} ms`;
-  return `${(value / 1_000).toFixed(value >= 10_000 ? 1 : 2)} s`;
+  if (value < 1_000) return t("{{value1}} ms", { value1: Math.round(value) });
+  return t("{{value1}} s", {
+    value1: (value / 1_000).toFixed(value >= 10_000 ? 1 : 2).replace(/\.0+$/, ""),
+  });
 }
 
 function formatBytes(value: number): string {
-  if (value < 1024) return `${value} B`;
+  if (value < 1024) return t("{{value}} B", { value: value });
   const units = ["KB", "MB", "GB"] as const;
   let unitIndex = -1;
   let next = value;
@@ -62,13 +65,18 @@ function formatBytes(value: number): string {
     next /= 1024;
     unitIndex += 1;
   } while (next >= 1024 && unitIndex < units.length - 1);
-  return `${next.toFixed(next >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+  return t("{{value1}} {{value2}}", {
+    value1: next.toFixed(next >= 10 ? 1 : 2),
+    value2: units[unitIndex],
+  });
 }
 
 function RelativeTimeNoWrap(props: { value: DateTime.Utc }) {
   const relative = useRelativeTimeState(DateTime.formatIso(props.value));
   if (relative.status !== "relative") return null;
-  return relative.suffix ? `${relative.value}\u00a0${relative.suffix}` : relative.value;
+  return relative.suffix
+    ? t("{{value}} {{suffix}}", { value: relative.value, suffix: relative.suffix })
+    : relative.value;
 }
 
 function shortenTraceId(traceId: string): string {
@@ -207,7 +215,7 @@ function DiagnosticsTable({
 function TraceIdCell({ traceId }: { traceId: string }) {
   const t = useTranslation();
   const { copyToClipboard, isCopied: copied } = useCopyToClipboard({
-    target: "trace ID",
+    target: t("trace ID"),
     timeout: 1_200,
   });
 
@@ -441,17 +449,17 @@ function ProcessDiagnosticsTable({
 }
 
 const RESOURCE_HISTORY_WINDOWS = [
-  { label: "5m", windowMs: 5 * 60_000, bucketMs: 30_000 },
-  { label: "15m", windowMs: 15 * 60_000, bucketMs: 60_000 },
-  { label: "30m", windowMs: 30 * 60_000, bucketMs: 2 * 60_000 },
-  { label: "1h", windowMs: 60 * 60_000, bucketMs: 5 * 60_000 },
+  { label: t("5m"), windowMs: 5 * 60_000, bucketMs: 30_000 },
+  { label: t("15m"), windowMs: 15 * 60_000, bucketMs: 60_000 },
+  { label: t("30m"), windowMs: 30 * 60_000, bucketMs: 2 * 60_000 },
+  { label: t("1h"), windowMs: 60 * 60_000, bucketMs: 5 * 60_000 },
 ] as const;
 
 function formatCpuTime(seconds: number): string {
-  if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 1 : 2)}s`;
+  if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 1 : 2).replace(/\.0+$/, "")}s`;
   const minutes = seconds / 60;
-  if (minutes < 60) return `${minutes.toFixed(minutes >= 10 ? 1 : 2)}m`;
-  return `${(minutes / 60).toFixed(2)}h`;
+  if (minutes < 60) return `${minutes.toFixed(minutes >= 10 ? 1 : 2).replace(/\.0+$/, "")}m`;
+  return `${(minutes / 60).toFixed(2).replace(/\.0+$/, "")}h`;
 }
 
 function formatShortProcessName(command: string): string {
@@ -824,7 +832,7 @@ function DiagnosticsSettingsBody() {
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         setOpenLogsDirectoryError(
-          error instanceof Error ? error.message : "Unable to open logs folder.",
+          error instanceof Error ? error.message : t("Unable to open logs folder."),
         );
       }
     })();
@@ -865,7 +873,9 @@ function DiagnosticsSettingsBody() {
       let confirmed = false;
       try {
         confirmed = await ensureLocalApi().dialogs.confirm(
-          `Send SIGKILL to process ${pid}? This cannot be handled by the process.`,
+          t("Send SIGKILL to process {{pid}}? This cannot be handled by the process.", {
+            pid: pid,
+          }),
           { variant: "destructive" },
         );
       } catch (error) {
@@ -873,7 +883,10 @@ function DiagnosticsSettingsBody() {
         toastManager.add({
           type: "error",
           title: t("Could not confirm signal"),
-          description: error instanceof Error ? error.message : `Failed to send ${signal}.`,
+          description:
+            error instanceof Error
+              ? error.message
+              : t("Failed to send {{signal}}.", { signal: signal }),
         });
         return;
       }
@@ -900,7 +913,10 @@ function DiagnosticsSettingsBody() {
         toastManager.add({
           type: "error",
           title: t("Could not send {{signal}}", { signal: signal }),
-          description: error instanceof Error ? error.message : `Failed to send ${signal}.`,
+          description:
+            error instanceof Error
+              ? error.message
+              : t("Failed to send {{signal}}.", { signal: signal }),
         });
       }
       return;
@@ -922,7 +938,7 @@ function DiagnosticsSettingsBody() {
       toastManager.add({
         type: "error",
         title: t("Could not send {{signal}}", { signal: signal }),
-        description: message ?? `Failed to send ${signal}.`,
+        description: message ?? t("Failed to send {{signal}}.", { signal: signal }),
       });
       return;
     }
@@ -1057,7 +1073,7 @@ function DiagnosticsSettingsBody() {
             value={
               resourceData
                 ? resourceData.sampleIntervalMs === 0
-                  ? "On demand"
+                  ? t("On demand")
                   : formatDuration(resourceData.sampleIntervalMs)
                 : "..."
             }
@@ -1190,7 +1206,7 @@ function DiagnosticsSettingsBody() {
 
       <SettingsSection title={t("Latest Failures")}>
         {data && data.latestFailures.length > 0 ? (
-          <DiagnosticsTable headers={["Span", "Cause", "Duration", "Ended"]}>
+          <DiagnosticsTable headers={[t("Span"), t("Cause"), t("Duration"), t("Ended")]}>
             {data.latestFailures.map((failure) => (
               <tr key={`${failure.traceId}:${failure.spanId}`}>
                 <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
@@ -1218,7 +1234,7 @@ function DiagnosticsSettingsBody() {
       <SettingsSection title={t("Most Common Failures")}>
         {data && data.commonFailures.length > 0 ? (
           <DiagnosticsTable
-            headers={["Span", "Count", "Cause", "Last Seen"]}
+            headers={[t("Span"), t("Count"), t("Cause"), t("Last Seen")]}
             minTableWidth="min-w-[760px]"
           >
             {data.commonFailures.map((failure) => (
@@ -1250,7 +1266,7 @@ function DiagnosticsSettingsBody() {
       <SettingsSection title={t("Slowest Spans")}>
         {data && data.slowestSpans.length > 0 ? (
           <DiagnosticsTable
-            headers={["Span", "Duration", "Ended", "Trace"]}
+            headers={[t("Span"), t("Duration"), t("Ended"), t("Trace")]}
             minTableWidth="min-w-[900px]"
             columnWidths={["w-[44%]", "w-[14%]", "w-[12%]", "w-[30%]"]}
           >
@@ -1350,7 +1366,7 @@ function DiagnosticsSettingsBody() {
       <SettingsSection title={t("Top Span Names")}>
         {data && data.topSpansByCount.length > 0 ? (
           <DiagnosticsTable
-            headers={["Span", "Count", "Failures", "Average", "Max"]}
+            headers={[t("Span"), t("Count"), t("Failures"), t("Average"), t("Max")]}
             minTableWidth="min-w-[760px]"
             columnWidths={["w-[48%]", "w-[13%]", "w-[13%]", "w-[13%]", "w-[13%]"]}
           >

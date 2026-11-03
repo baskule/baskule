@@ -31,6 +31,7 @@ import { selectActiveRightPanelSurface, useRightPanelStore } from "../../rightPa
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { resolveThreadRouteTarget } from "../../threadRoutes";
 import { assetEnvironment } from "../../state/assets";
+import { readProject, readThreadShell } from "../../state/entities";
 import { useEnvironmentHttpBaseUrl, usePrimaryEnvironment } from "../../state/environments";
 import { previewEnvironment } from "../../state/preview";
 import { allReachableShellsLiveAtom } from "../../state/shell";
@@ -139,7 +140,9 @@ function UpstreamDesktopWebLinkCoordinator() {
       reportPairingFailure(error);
       return;
     }
-    const confirmed = (await requestConfirmDialog(`Add the backend at ${origin}?`)) ?? false;
+    const confirmed =
+      (await requestConfirmDialog(t("Add the backend at {{origin}}?", { origin: origin }))) ??
+      false;
     if (!confirmed) return;
     const result = await connectPairingEnvironment({ pairingUrl });
     if (result._tag === "Failure") {
@@ -160,7 +163,7 @@ function UpstreamDesktopWebLinkCoordinator() {
       reportFailure(url);
       return null;
     }
-    const project = await openScratchProject(environmentId, "Could not open the link");
+    const project = await openScratchProject(environmentId, t("Could not open the link"));
     if (!project) return null;
     const opened = await openThread(scopeProjectRef(project.environmentId, project.id));
     if (!opened) {
@@ -172,25 +175,14 @@ function UpstreamDesktopWebLinkCoordinator() {
     return threadRef;
   };
 
-  const openLink = useEffectEvent(async (url: string) => {
-    const pairingUrl = readPairingAppLink(url);
-    if (pairingUrl !== null) {
-      await pairFromLink(pairingUrl);
-      return;
-    }
-    const appPath = promptLinkAppPath(url);
-    if (appPath !== null) {
-      await router.navigate({ href: appPath });
-      return;
-    }
-    if (openChangeRequest(externalClick, url)) return;
+  const openInBrowser = useEffectEvent(async (url: string) => {
+    const routeParams = router.state.matches.at(-1)?.params ?? {};
     const isFile = url.startsWith("file:");
     // Only this machine's environment serves files, so fail before starting a thread.
     if (isFile && httpBaseUrl === null) {
       reportFailure(url);
       return;
     }
-    const routeParams = router.state.matches.at(-1)?.params ?? {};
     const threadRef =
       threadShowingBrowser(
         routeParams,
@@ -219,15 +211,49 @@ function UpstreamDesktopWebLinkCoordinator() {
     }
   });
 
+  const openLink = useEffectEvent(async (url: string) => {
+    const pairingUrl = readPairingAppLink(url);
+    if (pairingUrl !== null) {
+      await pairFromLink(pairingUrl);
+      return;
+    }
+    const appPath = promptLinkAppPath(url);
+    if (appPath !== null) {
+      await router.navigate({ href: appPath });
+      return;
+    }
+    const routeParams = router.state.matches.at(-1)?.params ?? {};
+    const routeTarget = resolveThreadRouteTarget(routeParams);
+    const activeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : undefined;
+    const activeThread = activeThreadRef ? readThreadShell(activeThreadRef) : null;
+    const activeProject =
+      activeThread && activeThreadRef
+        ? readProject(scopeProjectRef(activeThreadRef.environmentId, activeThread.projectId))
+        : null;
+    const commitThreadRef =
+      activeThread &&
+      sourceControlClients.parseCommitUrl(url, activeProject?.repositoryIdentity?.provider) !== null
+        ? activeThreadRef
+        : undefined;
+    // A commit the thread's workspace lacks continues here, after its lookup.
+    const openUnavailableCommit = () => {
+      queueRef.current = queueRef.current.then(() => openInBrowser(url)).catch(() => undefined);
+    };
+    if (openChangeRequest(externalClick, url, commitThreadRef, undefined, openUnavailableCommit))
+      return;
+    await openInBrowser(url);
+  });
+
   const receiveLink = useEffectEvent((url: string) => {
-    // A connected server publishes its config before its project snapshot, so a PR link
-    // delivered at launch would miss its project and fall through to the browser. Hold PR
-    // links, and only those, until discovery settles; an ordinary link never waits for it.
+    // A connected server publishes its config before its project snapshot, so a source control
+    // link delivered at launch would miss its project and fall through to the browser. Hold
+    // those links until discovery settles; an ordinary link never waits for it.
     // Discovery never settles without the local environment, so those links do not wait.
     const hold =
       openPullRequestsInApp &&
       !localEnvironmentDisabled &&
-      sourceControlClients.parseChangeRequestUrl(url) !== null
+      (sourceControlClients.parseChangeRequestUrl(url) !== null ||
+        sourceControlClients.parseCommitUrl(url) !== null)
         ? projectsSettled()
         : Promise.resolve();
     void hold.then(() => {

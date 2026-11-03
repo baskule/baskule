@@ -50,6 +50,7 @@ import {
 import {
   type ComposerSubmissionIntent,
   collapseExpandedComposerCursor,
+  parseSideChatCommand,
   parseStandaloneComposerSlashCommand,
 } from "../../composer-logic";
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
@@ -71,7 +72,10 @@ import {
   useComposerDraftStore,
   DraftId,
 } from "../../composerDraftStore";
-import { type TerminalContextDraft } from "../../lib/terminalContext";
+import {
+  filterTerminalContextsWithText,
+  type TerminalContextDraft,
+} from "../../lib/terminalContext";
 import { ensureInlineContextReferences } from "../../lib/composerContextReferences";
 import {
   buildMessageContext,
@@ -224,6 +228,10 @@ interface ComposerSendInput {
   readonly anchorNewTurn: TimelineFollow["anchorNewTurn"];
   readonly acknowledgeActiveThreadWoke: () => void;
   readonly handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
+  /** Resolves true once the side chat started and got the prompt. */
+  readonly onSideChat?: ((prompt: string) => Promise<boolean>) | undefined;
+  /** Refuses `/side` with this reason and keeps the draft. */
+  readonly sideChatDisabledReason: string | null;
   readonly handleNewThreadInActiveProject: () => void;
   readonly persistThreadSettingsForNextTurn: (input: {
     threadId: ThreadId;
@@ -304,6 +312,8 @@ export function useComposerSend(input: ComposerSendInput) {
     anchorNewTurn,
     acknowledgeActiveThreadWoke,
     handleInteractionModeChange,
+    onSideChat,
+    sideChatDisabledReason,
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
   } = input;
@@ -447,7 +457,56 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     const sendCtx = composerRef.current?.getSendContext();
-    if (activePendingProgress && sendCtx?.answeringPendingUserInput !== false) {
+    // `/side` beats an open question and a plan follow-up, which would send the text to main.
+    const sideChatCommand =
+      sendCtx && !directAnnotation && !queuedRunEdit.isEditing
+        ? parseSideChatCommand(promptAtSend)
+        : null;
+    const answeringQuestion =
+      Boolean(activePendingProgress) && sendCtx?.answeringPendingUserInput !== false;
+    // Where side chats are unavailable, `/side` text can still be a literal answer.
+    if (sideChatDisabledReason !== null && sideChatCommand && !answeringQuestion) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: t("Side chat not started"),
+          description: sideChatDisabledReason,
+        }),
+      );
+      return;
+    }
+    if (onSideChat && sendCtx && sideChatCommand && sideChatDisabledReason === null) {
+      if (
+        sendCtx.images.length > 0 ||
+        sendCtx.files.length > 0 ||
+        filterTerminalContextsWithText(sendCtx.terminalContexts).length > 0 ||
+        sendCtx.previewAnnotations.length > 0 ||
+        sendCtx.reviewComments.length > 0 ||
+        sendCtx.threadContexts.length > 0
+      ) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "warning",
+            title: t("Side chats take text only"),
+            description: t("Remove the attachments and context, then send it again."),
+          }),
+        );
+        return;
+      }
+      const started = await onSideChat(sideChatCommand.prompt);
+      // Clear only what was sent; the user may have edited the draft or left meanwhile.
+      if (
+        started &&
+        currentRouteThreadKeyRef.current === routeThreadKey &&
+        promptRef.current === promptAtSend
+      ) {
+        promptRef.current = "";
+        setComposerDraftPrompt(composerDraftTarget, "");
+        composerRef.current?.resetCursorState();
+      }
+      return;
+    }
+    if (answeringQuestion) {
       if (directAnnotation) {
         notifyDirectAnnotationAttached();
         return;
@@ -477,7 +536,7 @@ export function useComposerSend(input: ComposerSendInput) {
             branch: activeThreadBranch,
           });
     if (multipleModelBlock === "server-outdated") {
-      setThreadError(activeThread.id, "Update this server before starting multiple models.");
+      setThreadError(activeThread.id, t("Update this server before starting multiple models."));
       return;
     }
     if (multipleModelBlock === "needs-new-git-thread") {
@@ -526,7 +585,7 @@ export function useComposerSend(input: ComposerSendInput) {
     if (strandedThread) {
       const owner =
         readEnvironmentPresentation(strandedThread.environmentId)?.entry.target.label ??
-        "its machine";
+        t("its machine");
       toastManager.add(
         stackedThreadToast({
           type: "warning",
@@ -714,7 +773,10 @@ export function useComposerSend(input: ComposerSendInput) {
       dispatchMode,
     });
     if (missingWorktreeBaseBranch) {
-      setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
+      setThreadError(
+        threadIdForSend,
+        t("Select a base branch before sending in New worktree mode."),
+      );
       return;
     }
     // Records bind attachments by the id each side knows: the local id for the optimistic
@@ -805,7 +867,7 @@ export function useComposerSend(input: ComposerSendInput) {
       }
       if (getUploadedAttachments({ environmentId, images: composerAttachmentsSnapshot }) === null) {
         sendInFlightRef.current = false;
-        setThreadError(threadIdForSend, "Retry or remove failed uploads before sending.");
+        setThreadError(threadIdForSend, t("Retry or remove failed uploads before sending."));
         return;
       }
     }
@@ -845,7 +907,7 @@ export function useComposerSend(input: ComposerSendInput) {
       setThreadError(
         threadIdForSend,
         attachmentCapabilitiesBeforeDispatch.fileBlockReason ??
-          "This connection cannot change threads.",
+          t("This connection cannot change threads."),
       );
       setDockedDraftHeroThreadKey((currentThreadKey) =>
         currentThreadKey === activeThreadKey ? null : currentThreadKey,
@@ -902,7 +964,7 @@ export function useComposerSend(input: ComposerSendInput) {
         if (composerAttachmentsSnapshot.length > 0 || outgoingMessageContext !== undefined) {
           setThreadError(
             threadIdForSend,
-            "Send approval feedback without attachments or added context.",
+            t("Send approval feedback without attachments or added context."),
           );
           sendInFlightRef.current = false;
           return;
@@ -1278,7 +1340,7 @@ export function useComposerSend(input: ComposerSendInput) {
         const error = squashAtomCommandFailure(failure);
         setThreadError(
           threadIdForSend,
-          error instanceof Error ? error.message : "Failed to send message.",
+          error instanceof Error ? error.message : t("Failed to send message."),
         );
         if (
           draftId &&
@@ -1293,7 +1355,7 @@ export function useComposerSend(input: ComposerSendInput) {
                   : t("Could not start thread"),
               description: error instanceof Error ? error.message : t("Failed to send message."),
               actionProps: {
-                children: "Open draft",
+                children: t("Open draft"),
                 onClick: () => {
                   void navigate({ to: "/draft/$draftId", params: { draftId } });
                 },

@@ -270,28 +270,35 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const showResume = canResume && !hasSendableContent && !isEditingQueuedMessage;
 
   const submitLabel = showResume
-    ? "Resume thread"
+    ? t("Resume thread")
     : isEditingQueuedMessage
-      ? "Update queued message"
+      ? t("Update queued message")
       : isQueuing
-        ? "Queue message"
+        ? t("Queue message")
         : isRunning
-          ? "Steer message"
-          : "Submit message";
+          ? t("Steer message")
+          : t("Submit message");
   const submitStatus = isEnvironmentUnavailable
-    ? "Environment disconnected"
+    ? t("Environment disconnected")
     : (sendDisabledReason ??
       (isPreparingWorktree
-        ? "Preparing worktree"
+        ? t("Preparing worktree")
         : isSendBusy
           ? isEditingQueuedMessage
-            ? "Updating queued message"
-            : "Submitting message"
+            ? t("Updating queued message")
+            : t("Submitting message")
           : null));
   const submitTooltip =
     submitStatus ??
     (isRunning && !isEditingQueuedMessage && canSteer
-      ? `Click to ${followUpBehavior}, ${isMacPlatform(navigator.platform) ? "⌘" : "Ctrl"}-click${alternateShortcutLabel ? ` or ${alternateShortcutLabel}` : ""} to ${alternateAction}`
+      ? t("Click to {{action}}, {{modifier}}-click{{shortcut}} to {{alternate}}", {
+          action: followUpBehavior === "queue" ? t("queue") : t("steer"),
+          modifier: isMacPlatform(navigator.platform) ? "⌘" : "Ctrl",
+          shortcut: alternateShortcutLabel
+            ? t(" or {{shortcut}}", { shortcut: alternateShortcutLabel })
+            : "",
+          alternate: alternateAction === "queue" ? t("queue") : t("steer"),
+        })
       : submitLabel);
 
   const sendButton = (

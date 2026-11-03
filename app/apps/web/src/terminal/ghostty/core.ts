@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import {
   type GhosttyKeyboardLayoutMap,
   ghosttyConsumedMods,
@@ -736,6 +737,25 @@ export class GhosttyTerminalCore {
     }
   }
 
+  selectionRange(): GhosttySelectionRange["screen"] | null {
+    this.ensureActive();
+    const layout = this.runtime.layout("GhosttySelection");
+    const selection = this.runtime.alloc(layout.size);
+    try {
+      this.runtime.setField(selection, "GhosttySelection", "size", layout.size);
+      if (
+        this.runtime.call("ghostty_terminal_get", this.terminal, 31, selection) !== GHOSTTY_SUCCESS
+      ) {
+        return null;
+      }
+      const start = this.pointFromGridRef(selection + layout.fields.start!.offset, 2);
+      const end = this.pointFromGridRef(selection + layout.fields.end!.offset, 2);
+      return start && end ? { start, end } : null;
+    } finally {
+      this.runtime.free(selection, layout.size);
+    }
+  }
+
   selectWord(col: number, row: number): GhosttySelectionRange | null {
     return this.selectAt(
       "GhosttyTerminalSelectWordOptions",
@@ -1067,7 +1087,8 @@ export class GhosttyTerminalCore {
         }
       }
       let wide = 0;
-      if (text.length === 0 && cells.at(-1)?.text.length) {
+      // A wrap spacer in the final column can follow a spacer tail.
+      if (text.length === 0 && (cells.at(-1)?.text.length || cells.length === cols - 1)) {
         this.assertSuccess(
           "ghostty_render_state_row_cells_get(raw)",
           this.runtime.call(
@@ -1290,11 +1311,14 @@ export class GhosttyTerminalCore {
   }
 
   private assertSuccess(operation: string, result: number): void {
-    if (result !== GHOSTTY_SUCCESS) throw new Error(`${operation} failed with result ${result}`);
+    if (result !== GHOSTTY_SUCCESS)
+      throw new Error(
+        t("{{operation}} failed with result {{result}}", { operation: operation, result: result }),
+      );
   }
 
   private ensureActive(): void {
-    if (this.disposed) throw new Error("libghostty-vt terminal has been disposed");
+    if (this.disposed) throw new Error(t("libghostty-vt terminal has been disposed"));
   }
 }
 

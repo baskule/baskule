@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import {
   AuthTerminalOperateScope,
   AuthTerminalReadScope,
@@ -113,10 +114,10 @@ export function useThreadTerminalActions(threadRef: ScopedThreadRef | null) {
   };
 
   /** Ends a session and deletes its history. A failed close falls back to typing `exit`. */
-  const closeTerminalSession = (terminalId: string) => {
-    if (!threadRef || !canWrite()) return;
-    const environmentId = threadRef.environmentId;
-    const threadId = threadRef.threadId;
+  const closeTerminalSession = (terminalId: string, target = threadRef) => {
+    if (!target || !readEnvironmentScope(target.environmentId, AuthTerminalOperateScope)) return;
+    const environmentId = target.environmentId;
+    const threadId = target.threadId;
     void (async () => {
       const closeResult = await closeTerminalCommand({
         environmentId,
@@ -127,7 +128,7 @@ export function useThreadTerminalActions(threadRef: ScopedThreadRef | null) {
         !isAtomCommandInterrupted(closeResult) &&
         readEnvironmentScope(environmentId, AuthTerminalOperateScope)
       ) {
-        await writeTerminal({ environmentId, input: { threadId, terminalId, data: "exit\n" } });
+        await writeTerminal({ environmentId, input: { threadId, terminalId, data: t("exit\n") } });
       }
     })();
   };

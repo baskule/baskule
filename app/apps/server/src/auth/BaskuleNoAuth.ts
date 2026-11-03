@@ -4,6 +4,7 @@
 import {
   AuthAccessWriteScope,
   AuthEnvironmentMaintainScope,
+  type AuthEnvironmentScope,
   AuthPreviewOperateScope,
   AuthProvidersManageScope,
   AuthRelayReadScope,
@@ -21,7 +22,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import type * as PairingGrantStore from "./PairingGrantStore.ts";
+import * as PairingGrantStore from "./PairingGrantStore.ts";
 
 export const BASKULE_AUTH_MODE_ENV = "BASKULE_AUTH_MODE";
 export const BASKULE_NO_AUTH_SESSION_ID = AuthSessionId.make("baskule-no-auth-owner");
@@ -44,9 +45,8 @@ const BASKULE_NO_AUTH_DROPPED_SCOPES: ReadonlySet<string> = new Set([
   AuthProvidersManageScope,
   AuthEnvironmentMaintainScope,
 ]);
-export const BASKULE_NO_AUTH_SCOPES = AuthStandardClientScopes.filter(
-  (scope) => !BASKULE_NO_AUTH_DROPPED_SCOPES.has(scope),
-);
+export const BASKULE_NO_AUTH_SCOPES: ReadonlyArray<AuthEnvironmentScope> =
+  AuthStandardClientScopes.filter((scope) => !BASKULE_NO_AUTH_DROPPED_SCOPES.has(scope));
 
 export interface BaskuleNoAuth {
   readonly credential: string;
@@ -117,17 +117,19 @@ export function withBaskuleNoAuthGrants(
   return {
     ...store,
     consume: (credential, input) =>
-      store.consume(credential, input).pipe(
-        Effect.orElseSucceed(
-          () =>
-            ({
-              method: "one-time-token",
-              scopes: BASKULE_NO_AUTH_SCOPES,
-              subject: BASKULE_NO_AUTH_SUBJECT,
-              label: "Baskule client",
-              expiresAt: BASKULE_NO_AUTH_EXPIRES_AT,
-            }) satisfies PairingGrantStore.BootstrapGrant,
-        ),
-      ),
+      input?.requiredScopes?.some((scope) => !BASKULE_NO_AUTH_SCOPES.includes(scope))
+        ? Effect.fail(new PairingGrantStore.BootstrapCredentialScopeNotGrantedError({}))
+        : store.consume(credential, input).pipe(
+            Effect.orElseSucceed(
+              () =>
+                ({
+                  method: "one-time-token",
+                  scopes: BASKULE_NO_AUTH_SCOPES,
+                  subject: BASKULE_NO_AUTH_SUBJECT,
+                  label: "Baskule client",
+                  expiresAt: BASKULE_NO_AUTH_EXPIRES_AT,
+                }) satisfies PairingGrantStore.BootstrapGrant,
+            ),
+          ),
   };
 }

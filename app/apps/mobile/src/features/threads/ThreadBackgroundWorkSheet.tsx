@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -133,7 +134,7 @@ function BackgroundWorkRow(props: {
   ) : (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={`Open subagent ${item.label}`}
+      accessibilityLabel={t("Open subagent {{value1}}", { value1: item.label })}
       onPress={() => props.onOpen(childThreadId)}
       className="active:opacity-70"
     >

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import type { RuntimeRequestId } from "@t3tools/contracts";
 import { useTranslation } from "../../i18n";
 
@@ -48,7 +49,13 @@ import {
 } from "@legendapp/list/react";
 import { type PendingApproval, type TimelineEntry } from "../../session-logic";
 import { type ChatFileAttachment, type TurnDiffSummary } from "../../types";
-import { ArrowRightIcon, BotIcon, CircleAlertIcon, Minimize2Icon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  BotIcon,
+  CircleAlertIcon,
+  MessagesSquareIcon,
+  Minimize2Icon,
+} from "lucide-react";
 import { ChevronDown, ChevronRight } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
 import { Skeleton } from "../ui/skeleton";
@@ -245,9 +252,14 @@ interface MessagesTimelineProps {
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   renderHtmlRender?: TimelineRowSharedState["renderHtmlRender"];
   turnItemSource?: TimelineRowSharedState["turnItemSource"];
+  /**
+   * The thread this one is a subagent or side chat of; `open` is absent when it cannot be
+   * opened from here.
+   */
   parentThreadLink?: {
     readonly threadId: ThreadId;
     readonly title: string;
+    readonly sideChat?: boolean;
   } | null;
   workflowOpening?: WorkflowOpening | null;
   onForkFromRun?: (input: {
@@ -654,12 +666,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
       ? new Set(paintedExpandedAttemptIds).add(activeFindAttemptId)
       : paintedExpandedAttemptIds;
 
-  const pendingApprovalsByRequestId = new Map(
-    pendingApprovals
-      .filter((approval) => !heldApprovalRequestIds?.has(approval.requestId))
-      .map((approval) => [approval.requestId, approval]),
+  const isVisiblePendingApproval = (approval: PendingApproval) =>
+    !heldApprovalRequestIds?.has(approval.requestId);
+  const pendingApprovalRequestIds = new Set(
+    pendingApprovals.filter(isVisiblePendingApproval).map((approval) => approval.requestId),
   );
-  const pendingApprovalRequestIds = new Set(pendingApprovalsByRequestId.keys());
   const rawRows = useIncrementalTimelineRows(`${listIdentityKey}\0${workspaceRoot ?? ""}`, {
     timelineEntries,
     pendingApprovalRequestIds,
@@ -678,17 +689,19 @@ const ConversationTimeline = memo(function ConversationTimeline({
     worktreeSetup,
   });
   const rows = useStableRows(rawRows, listIdentityKey);
-  const unmatchedPendingApprovals = new Map(pendingApprovalsByRequestId);
-  if (unmatchedPendingApprovals.size > 0) {
-    for (const row of rows) {
-      const entries =
-        row.kind === "work" ? row.groupedEntries : row.kind === "work-live" ? [row.entry] : [];
-      for (const entry of entries) {
-        const item = entry.projectedItem?.item;
-        if (item?.type === "approval_request") unmatchedPendingApprovals.delete(item.requestId);
-      }
+  const matchedApprovalRequestIds = new Set<string>();
+  for (const row of pendingApprovalRequestIds.size > 0 ? rows : []) {
+    const entries =
+      row.kind === "work" ? row.groupedEntries : row.kind === "work-live" ? [row.entry] : [];
+    for (const entry of entries) {
+      const item = entry.projectedItem?.item;
+      if (item?.type === "approval_request") matchedApprovalRequestIds.add(item.requestId);
     }
   }
+  const unmatchedPendingApprovals = pendingApprovals.filter(
+    (approval) =>
+      isVisiblePendingApproval(approval) && !matchedApprovalRequestIds.has(approval.requestId),
+  );
   // Run status/timestamps change per stream event; keep them out of shared row context.
   const runs = useStableHandoffRuns(runsProp);
   const minimapItems = deriveTimelineMinimapItems(rows);
@@ -701,7 +714,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     restoringThreadPosition && restoreRowIndex >= 0 ? { indices: [restoreRowIndex] } : undefined;
   const showsEmptyState =
     rows.length === 0 &&
-    unmatchedPendingApprovals.size === 0 &&
+    unmatchedPendingApprovals.length === 0 &&
     !isWorking &&
     parentThreadLink === null &&
     historyControls === undefined &&
@@ -995,6 +1008,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
     };
   };
 
+  // Built from props after the last hook so the compiler can memoize the row context; a map
+  // made before a hook would rebuild it, and re-render every row, on each streamed update.
+  const pendingApprovalsByRequestId = new Map(
+    pendingApprovals
+      .filter(isVisiblePendingApproval)
+      .map((approval) => [approval.requestId, approval]),
+  );
   const sharedState: TimelineRowSharedState = {
     pendingApprovals: pendingApprovalsByRequestId,
     respondingRequestIds,
@@ -1085,9 +1105,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
       <div className="messages-timeline-row-frame">
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
-            label={t("Subagent of")}
+            label={parentThreadLink.sideChat ? t("Context from") : t("Subagent of")}
             detail={parentThreadLink.title}
-            icon={BotIcon}
+            icon={parentThreadLink.sideChat ? MessagesSquareIcon : BotIcon}
             actionLabel={t("Open parent thread")}
             onAction={() => onOpenThread(parentThreadLink.threadId)}
           />
@@ -1228,12 +1248,12 @@ const ConversationTimeline = memo(function ConversationTimeline({
       onGrow={onFooterGrow}
     >
       {footer}
-      {unmatchedPendingApprovals.size > 0 ? (
+      {unmatchedPendingApprovals.length > 0 ? (
         <TimelineRowCtx value={sharedState}>
           <div className="messages-timeline-row-frame">
             <div className="chat-content-lane overflow-x-clip" data-timeline-root="true">
               <WorkLogBlock>
-                {[...unmatchedPendingApprovals.values()].map((approval) => (
+                {unmatchedPendingApprovals.map((approval) => (
                   <TimelinePendingApprovalRow key={approval.requestId} approval={approval} />
                 ))}
               </WorkLogBlock>
@@ -1426,16 +1446,18 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           ? undefined
           : row.kind === "turn-fold" || row.kind === "working"
             ? "pb-1.5"
-            : (row.kind === "message" &&
-                  row.message.role === "assistant" &&
-                  !row.showAssistantMeta) ||
-                row.kind === "worktree-setup" ||
-                row.kind === "event" ||
-                row.kind === "attempt-fold" ||
-                row.kind === "html-render" ||
-                row.kind === "mcp-app"
-              ? "pb-2"
-              : "pb-4",
+            : row.kind === "message" && row.groupedWithNext
+              ? "pb-1"
+              : (row.kind === "message" &&
+                    row.message.role === "assistant" &&
+                    !row.showAssistantMeta) ||
+                  row.kind === "worktree-setup" ||
+                  row.kind === "event" ||
+                  row.kind === "attempt-fold" ||
+                  row.kind === "html-render" ||
+                  row.kind === "mcp-app"
+                ? "pb-2"
+                : "pb-4",
         (row.kind === "message" && row.message.role === "assistant") ||
           row.kind === "assistant-meta"
           ? "group/assistant"
@@ -1519,8 +1541,8 @@ function ContextCompactionTimelineRow({
 }) {
   const t = useTranslation();
   const label =
-    row.title && row.label.startsWith("Context compacted")
-      ? row.title + row.label.slice("Context compacted".length)
+    row.title && row.label.startsWith(t("Context compacted"))
+      ? row.title + row.label.slice(t("Context compacted").length)
       : row.label;
   const content = (
     <span className="flex min-w-0 items-center gap-1.5">
@@ -1539,14 +1561,18 @@ function ContextCompactionTimelineRow({
         label
       )}
       {row.failure ? (
-        <span className="min-w-0 truncate opacity-80">&middot; {row.failure}</span>
+        <span className="min-w-0 truncate opacity-80">
+          {t("&middot;")} {row.failure}
+        </span>
       ) : null}
     </span>
   );
   return (
     <div
       role="separator"
-      aria-label={row.failure ? `${label}: ${row.failure}` : label}
+      aria-label={
+        row.failure ? t("{{label}}: {{failure}}", { label: label, failure: row.failure }) : label
+      }
       className={cn(
         "mx-auto flex w-full max-w-(--chat-content-max-width) items-center gap-3 py-1 text-xs",
         row.failed ? "text-destructive" : "text-muted-foreground",
@@ -1593,7 +1619,7 @@ function useDeferredWorkLoading(
   useEffect(() => {
     if (row.expanded && anchorsKey && environmentId && threadId) loadOnExpand();
   }, [row.expanded, anchorsKey, environmentId, threadId]);
-  const error = anchorsKey && failed ? "Couldn't load work. Click to retry." : null;
+  const error = anchorsKey && failed ? t("Couldn't load work. Click to retry.") : null;
   const loading = ref !== null && row.expanded && anchorsKey !== "" && !failed;
   const toggle = () => {
     setFailed(false);
@@ -1640,7 +1666,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         >
           <span>
             {row.label}
-            {error ? ` · ${error}` : ""}
+            {error ? t(" · {{error}}", { error: error }) : ""}
           </span>
           <MorphIcon className="size-3.5" icon={row.expanded ? ChevronDown : ChevronRight} />
         </button>
@@ -1679,7 +1705,7 @@ function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "at
         />
         <span className="text-xs font-medium text-foreground/80">
           {row.label}
-          {error ? ` · ${error}` : ""}
+          {error ? t(" · {{error}}", { error: error }) : ""}
         </span>
         <span className="text-2xs text-muted-foreground">{t("Cut off by a steer")}</span>
       </button>

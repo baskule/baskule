@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import { useTranslation } from "../../../i18n";
 
 import type { NativeStackHeaderItem } from "@react-navigation/native-stack";
@@ -103,7 +104,7 @@ export function SettingsEnvironmentFilterHeader(props: {
                     },
                     ...selectableProjectGroups.map((group) => ({
                       type: "action" as const,
-                      label: group.label,
+                      label: projectMenuLabel(group),
                       state: selectedProjectKey === group.key ? ("on" as const) : undefined,
                       onPress: () => selectProject(group.key),
                     })),
@@ -164,7 +165,7 @@ export function AndroidSettingsEnvironmentFilter() {
         },
         ...selectableProjectGroups.map((group) => ({
           id: `project:${group.key}`,
-          title: t("Project · {{label}}", { label: group.label }),
+          title: t("Project · {{label}}", { label: projectMenuLabel(group) }),
           state: selectedProjectKey === group.key ? ("on" as const) : ("off" as const),
         })),
       ]}
@@ -194,3 +195,6 @@ export function AndroidSettingsEnvironmentFilter() {
     </Menu>
   );
 }
+
+const projectMenuLabel = (group: { readonly label: string; readonly archived: boolean }) =>
+  group.archived ? t("{{label}} · Archived", { label: group.label }) : group.label;

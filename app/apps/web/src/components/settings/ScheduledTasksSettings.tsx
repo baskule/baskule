@@ -64,10 +64,12 @@ import {
   useEnvironmentHttpBaseUrl,
   type EnvironmentPresentation,
 } from "../../state/environments";
-import { useProjects } from "../../state/entities";
+import { useProjects, useThreadShell } from "../../state/entities";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { environmentAtomList, environmentIdsKey } from "../../state/environmentAtomList";
 import { formatEnvironmentQueryError, useEnvironmentQuery } from "../../state/query";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
+import { threadFamilies } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { WorktreeBaseBranchPicker } from "../WorktreeBaseBranchPicker";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
@@ -75,13 +77,14 @@ import { ConnectionStatusDot, connectionPhaseDotClassName } from "../ConnectionS
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "~/state/session";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { EnvironmentRow, environmentTransportLabel } from "./EnvironmentRow";
+import { EnvironmentRow, useEnvironmentTransportLabel } from "./EnvironmentRow";
 import { SettingsGroup } from "./SettingsGroup";
 import { settingsScopeEnvironmentLabel, settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import {
   WEBHOOK_SIGNATURE_DEFAULTS,
   webhookDraftErrors,
   webhookDeliveryLabel,
+  defaultScheduledTaskProjectId,
   matchesScheduledTaskScope,
   scheduleFromDraft,
   scheduledTaskDefaultModel,
@@ -302,8 +305,8 @@ export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
   if (schedule.type === "interval") {
     const minutes = schedule.everyMs / 60_000;
     return Number.isInteger(minutes)
-      ? `Every ${minutes} min`
-      : `Every ${Math.round(schedule.everyMs / 1000)} sec`;
+      ? t("Every {{minutes}} min", { minutes: minutes })
+      : t("Every {{value1}} sec", { value1: Math.round(schedule.everyMs / 1000) });
   }
   const weekdays = schedule.weekdays ?? [];
   const days =
@@ -312,7 +315,11 @@ export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
       : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
         ? t("Weekdays")
         : weekdays.map((day) => WEEKDAY_LABELS[day]).join(", ");
-  return `${days} at ${schedule.timeOfDay}${baskule.hosted ? " UTC" : ""}`;
+  return t("{{days}} at {{timeOfDay}}{{value3}}", {
+    days: days,
+    timeOfDay: schedule.timeOfDay,
+    value3: baskule.hosted ? " UTC" : "",
+  });
 }
 
 /** formatRelativeTime handles only the past; upcoming runs need future labels. */
@@ -322,14 +329,16 @@ function relativeLabel(value: string | null, nowMs: number): string {
   if (diffMs <= 0) {
     const relative = formatRelativeTime(value, nowMs);
     if (!relative) return t("Not scheduled");
-    return relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value;
+    return relative.suffix
+      ? t("{{value}} {{suffix}}", { value: relative.value, suffix: relative.suffix })
+      : relative.value;
   }
   const minutes = Math.ceil(diffMs / 60_000);
   if (minutes < 2) return t("in under a minute");
-  if (minutes < 60) return `in ${minutes}m`;
+  if (minutes < 60) return t("in {{minutes}}m", { minutes: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `in ${hours}h`;
-  return `in ${Math.round(hours / 24)}d`;
+  if (hours < 24) return t("in {{hours}}h", { hours: hours });
+  return t("in {{value1}}d", { value1: Math.round(hours / 24) });
 }
 
 // Use the label's minute tick because the compiler caches render-time Date.now() on the timestamp.
@@ -420,9 +429,18 @@ export function ScheduledTasksSettings(target: {
       replace: true,
     });
   };
-  const canCreate = useAtomValue(
-    serverEnvironment.upsertScheduledTask.permissionAtom(defaultEnvironment?.environmentId ?? null),
+  const createPermissions = useAtomValue(
+    scheduledTaskCreatePermissionsAtom(
+      environmentIdsKey(connectedEnvironments.map((entry) => entry.environmentId)),
+    ),
   );
+  const permittedEnvironments = connectedEnvironments.filter(
+    (_entry, index) => createPermissions[index],
+  );
+  const creationEnvironment =
+    permittedEnvironments.find(
+      (entry) => entry.environmentId === defaultEnvironment?.environmentId,
+    ) ?? permittedEnvironments[0];
   return (
     <SettingsPageContainer>
       <SettingsSection
@@ -433,10 +451,10 @@ export function ScheduledTasksSettings(target: {
           <Button
             size="xs"
             variant="ghost-muted"
-            disabled={!defaultEnvironment || !canCreate}
+            disabled={!creationEnvironment}
             onClick={() =>
-              defaultEnvironment &&
-              setEditor({ environmentId: defaultEnvironment.environmentId, task: null })
+              creationEnvironment &&
+              setEditor({ environmentId: creationEnvironment.environmentId, task: null })
             }
           >
             <PlusIcon className="size-3" />
@@ -491,6 +509,11 @@ export function ScheduledTasksSettings(target: {
   );
 }
 
+const scheduledTaskCreatePermissionsAtom = environmentAtomList(
+  "web-scheduled-task-create-permissions",
+  serverEnvironment.upsertScheduledTask.permissionAtom,
+);
+
 const scheduledTasksListAtom = environmentAtomList("web-scheduled-tasks-list", (environmentId) =>
   serverEnvironment.scheduledTasksLive({ environmentId, input: {} }),
 );
@@ -539,15 +562,15 @@ function ScheduledTaskEnvironmentList({
   for (const { environment, connected, tasks, error } of states) {
     const label = settingsScopeEnvironmentLabel(environment, environments);
     if (!connected) {
-      summaries["Not connected:"]!.push(
+      summaries[t("Not connected:")]!.push(
         `${label} (${connectionStatusTitle(environment.connection)})`,
       );
     } else if (error !== null) {
-      summaries["Could not load scheduled tasks:"]!.push(`${label}: ${error}`);
+      summaries[t("Could not load scheduled tasks:")]!.push(`${label}: ${error}`);
     } else if (!tasks) {
-      summaries["Loading scheduled tasks on"]!.push(label);
+      summaries[t("Loading scheduled tasks on")]!.push(label);
     } else if (tasks.length === 0 && populated.length > 0) {
-      summaries["No tasks on"]!.push(label);
+      summaries[t("No tasks on")]!.push(label);
     }
   }
 
@@ -555,19 +578,13 @@ function ScheduledTaskEnvironmentList({
     <SettingsGroup>
       {populated.map(({ environment, tasks }) => {
         const { primary, secondary } = settingsScopeEnvironmentLabels(environment, environments);
-        const transport = environmentTransportLabel(environment);
         return (
           <div key={environment.environmentId} className="divide-y divide-border/50">
             <EnvironmentRow
               kind={resolveEnvironmentMachineKind(environment.serverConfig)}
               label={primary}
               subtitle={
-                <>
-                  {secondary && secondary !== transport ? (
-                    <span className="block truncate">{secondary}</span>
-                  ) : null}
-                  <span className="block truncate">{transport}</span>
-                </>
+                <ScheduledTaskEnvironmentSubtitle environment={environment} secondary={secondary} />
               }
             >
               <ConnectionStatusDot
@@ -604,7 +621,7 @@ function ScheduledTaskEnvironmentList({
       ) : null}
       {Object.entries(summaries).map(([label, entries]) => {
         if (entries.length === 0) return null;
-        const summary = `${label} ${entries.join(", ")}`;
+        const summary = t("{{label}} {{value2}}", { label: label, value2: entries.join(", ") });
         return (
           <Tooltip key={label}>
             <TooltipTrigger
@@ -622,6 +639,24 @@ function ScheduledTaskEnvironmentList({
         );
       })}
     </SettingsGroup>
+  );
+}
+
+function ScheduledTaskEnvironmentSubtitle({
+  environment,
+  secondary,
+}: {
+  readonly environment: EnvironmentPresentation;
+  readonly secondary: string;
+}) {
+  const transport = useEnvironmentTransportLabel(environment);
+  return (
+    <>
+      {secondary && secondary !== transport ? (
+        <span className="block truncate">{secondary}</span>
+      ) : null}
+      <span className="block truncate">{transport}</span>
+    </>
   );
 }
 
@@ -942,7 +977,7 @@ function WebhookDeliveriesDialog({
               ) : null}
               <DeliveryBlock title={t("Headers")}>
                 {Object.entries(selected.headers)
-                  .map(([name, value]) => `${name}: ${value}`)
+                  .map(([name, value]) => t("{{name}}: {{value}}", { name: name, value: value }))
                   .join("\n")}
               </DeliveryBlock>
               {selected.query ? (
@@ -1038,7 +1073,7 @@ function WebhookEndpointField({
     serverEnvironment.rotateScheduledTaskWebhookToken.permissionAtom(environmentId),
   );
   const httpBaseUrl = useEnvironmentHttpBaseUrl(environmentId);
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "webhook URL" });
+  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: t("webhook URL") });
   const rotate = useAtomCommand(serverEnvironment.rotateScheduledTaskWebhookToken, {
     label: t("scheduled task rotate webhook token"),
   });
@@ -1050,9 +1085,9 @@ function WebhookEndpointField({
   const { address: url, copyable, note } = webhookAddress(endpoint, httpBaseUrl);
   const rotateUrl = async () => {
     const confirmed =
-      (await requestConfirmDialog("Rotate this webhook URL?\nThe current URL stops working.", {
+      (await requestConfirmDialog(t("Rotate this webhook URL?\nThe current URL stops working."), {
         variant: "destructive",
-      })) ?? window.confirm("Rotate this webhook URL? The current URL stops working.");
+      })) ?? window.confirm(t("Rotate this webhook URL? The current URL stops working."));
     if (!confirmed) return;
     setRotating(true);
     const result = await rotate({ environmentId, input: { id: task.id } });
@@ -1149,6 +1184,42 @@ function ScheduledTaskEditorDialog({
   );
 }
 
+function ScheduledTaskDestination({
+  environmentId,
+  threadId,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId | null;
+}) {
+  const ref = threadId === null ? null : scopeThreadRef(environmentId, threadId);
+  const shell = useThreadShell(ref);
+  // The shell can omit older settled threads; their family read still carries the title.
+  const family = useEnvironmentQuery(
+    ref !== null && shell === null ? threadFamilies.familyAtom(environmentId, ref.threadId) : null,
+  );
+  const thread = shell ?? family.data?.threads.find((row) => row.id === threadId);
+  return (
+    <Field label={t("Destination")}>
+      {ref === null ? (
+        <p className="text-sm text-muted-foreground">
+          {t("Each run starts a new thread with the workspace and model below.")}
+        </p>
+      ) : (
+        <div className="space-y-1 text-sm">
+          <p className="wrap-anywhere">
+            {thread?.title.trim() || t("Thread {{threadId}}", { threadId: ref.threadId })}
+          </p>
+          <p className="text-muted-foreground">
+            {t(
+              "Each run continues this conversation, in its workspace and with its current model.",
+            )}
+          </p>
+        </div>
+      )}
+    </Field>
+  );
+}
+
 function ScheduledTaskEditorForm({
   initialEnvironmentId,
   task,
@@ -1172,11 +1243,11 @@ function ScheduledTaskEditorForm({
     connected ? serverEnvironment.scheduledTasksLive({ environmentId, input: {} }) : null,
   );
   const allProjects = useProjects();
-  const projects = allProjects.filter(
-    (project) =>
-      project.environmentId === environmentId &&
-      matchesScheduledTaskScope(scope, environmentId, project.id),
-  );
+  const projectsOn = (id: EnvironmentId) =>
+    allProjects.filter(
+      (project) => project.environmentId === id && matchesScheduledTaskScope(scope, id, project.id),
+    );
+  const scopedProjects = projectsOn(environmentId);
   const settings = useEnvironmentSettings(environmentId);
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
@@ -1189,8 +1260,22 @@ function ScheduledTaskEditorForm({
     label: t("scheduled task upsert"),
   });
   const [draft, setDraft] = useState<DraftState>(() =>
-    task ? taskToDraft(task) : { ...EMPTY_DRAFT, projectId: projects[0]?.id ?? "" },
+    task
+      ? taskToDraft(task)
+      : {
+          ...EMPTY_DRAFT,
+          projectId: defaultScheduledTaskProjectId(scopedProjects, scope),
+        },
   );
+  // Pinned first. The chosen project stays listed after it is archived.
+  const projects = scopedProjects
+    .filter(
+      (project) =>
+        project.archivedAt == null ||
+        project.id === draft.projectId ||
+        project.id === task?.projectId,
+    )
+    .sort((left, right) => Number(right.pinnedAt != null) - Number(left.pinnedAt != null));
   const submissionPending = useRef(false);
   const editingTaskMissing =
     draft.editingId !== null &&
@@ -1251,12 +1336,15 @@ function ScheduledTaskEditorForm({
       !projects.some((project) => project.id === selectedProjectId) ||
       selection === null
     ) {
-      reportFailure("Scheduled task is incomplete", "Add a title, prompt, project, and model.");
+      reportFailure(
+        t("Scheduled task is incomplete"),
+        t("Add a title, prompt, project, and model."),
+      );
       return;
     }
     const parsedFilters = parseWebhookFilterDrafts(draft.filters);
     if (draft.scheduleMode === "webhook" && "error" in parsedFilters) {
-      reportFailure("Invalid filter", parsedFilters.error);
+      reportFailure(t("Invalid filter"), parsedFilters.error);
       return;
     }
     const schedule = scheduleFromDraft(draft);
@@ -1271,14 +1359,14 @@ function ScheduledTaskEditorForm({
         (!schedule.signature.secret &&
           !(liveTask?.schedule.type === "webhook" && liveTask.webhook?.hasSecret)))
     ) {
-      reportFailure("Signing secret is required", "Enter the signature header and secret.");
+      reportFailure(t("Signing secret is required"), t("Enter the signature header and secret."));
       return;
     }
     if (
       schedule.type === "interval" &&
       (!Number.isSafeInteger(schedule.everyMs) || schedule.everyMs < MIN_SCHEDULED_TASK_INTERVAL_MS)
     ) {
-      reportFailure("Invalid interval", "Enter an interval of at least one minute.");
+      reportFailure(t("Invalid interval"), t("Enter an interval of at least one minute."));
       return;
     }
     if (
@@ -1286,7 +1374,7 @@ function ScheduledTaskEditorForm({
       draft.workspaceMode === "existing_worktree" &&
       !draft.existingWorktreePath.trim()
     ) {
-      reportFailure("Checkout path is required", "Enter the path of the checkout to run in.");
+      reportFailure(t("Checkout path is required"), t("Enter the path of the checkout to run in."));
       return;
     }
     const modelSelection =
@@ -1327,7 +1415,7 @@ function ScheduledTaskEditorForm({
     if (result._tag === "Failure") {
       submissionPending.current = false;
       if (!isAtomCommandInterrupted(result)) {
-        reportFailure("Could not save scheduled task", squashAtomCommandFailure(result));
+        reportFailure(t("Could not save scheduled task"), squashAtomCommandFailure(result));
       }
       return;
     }
@@ -1363,7 +1451,7 @@ function ScheduledTaskEditorForm({
                 setEnvironmentId(next.environmentId);
                 setDraft((current) => ({
                   ...current,
-                  projectId: "",
+                  projectId: defaultScheduledTaskProjectId(projectsOn(next.environmentId), scope),
                   modelKey: "",
                   baseModelSelection: null,
                   baseRef: "main",
@@ -1435,6 +1523,11 @@ function ScheduledTaskEditorForm({
               }
             />
           </Field>
+
+          <ScheduledTaskDestination
+            environmentId={environmentId}
+            threadId={draft.threadId ? (draft.threadId as ThreadId) : null}
+          />
 
           {!baskule.hosted && (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1632,7 +1725,7 @@ function ScheduledTaskEditorForm({
                 >
                   <Input
                     id="scheduled-task-replay-key"
-                    placeholder="{{headers.delivery-id}}"
+                    placeholder={t("{{headers.delivery-id}}")}
                     value={draft.replayKey}
                     onChange={(event) =>
                       setDraft((current) => ({ ...current, replayKey: event.target.value }))
@@ -1646,7 +1739,7 @@ function ScheduledTaskEditorForm({
                 >
                   <Input
                     id="scheduled-task-coalesce-key"
-                    placeholder="{{body.id}}"
+                    placeholder={t("{{body.id}}")}
                     value={draft.coalesceKey}
                     onChange={(event) =>
                       setDraft((current) => ({ ...current, coalesceKey: event.target.value }))

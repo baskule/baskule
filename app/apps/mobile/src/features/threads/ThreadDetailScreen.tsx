@@ -46,6 +46,7 @@ import type {
   ScopedThreadRef,
   ServerConfig as T3ServerConfig,
   UsageLimitsReport,
+  RunId,
 } from "@t3tools/contracts";
 import {
   declinePendingApprovals,
@@ -151,8 +152,10 @@ import {
 import { appAtomRegistry } from "../../state/atom-registry";
 import { threadStreamHaptics } from "./threadStreamHaptics";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { orchestrationEnvironment } from "../../state/orchestration";
 import { useDelayedStatus } from "../../lib/useDelayedStatus";
 import type { PendingUserInputDraftAnswer } from "@t3tools/client-runtime/state/pending-user-input";
+import type { RunStopPresentation } from "@t3tools/client-runtime/state/thread-execution";
 import type {
   PendingApproval,
   PendingUserInput,
@@ -186,6 +189,7 @@ import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
 import { useThreadQueuedCount } from "./ThreadQueueControl";
 import { ThreadGuestShareBar } from "./ThreadGuestShareBar";
+import { ThreadSideChatsRow } from "./ThreadSideChatsRow";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
@@ -330,6 +334,12 @@ const threadVisitTracker = createThreadVisitTracker({
 
 // Past the composer's 180 ms height animation.
 const COMPOSER_HEIGHT_SETTLE_MS = 220;
+const NO_RUN_STOP_ATOM = Atom.make<RunStopPresentation | null>(null).pipe(
+  Atom.withLabel("mobile-thread-run-stop:empty"),
+);
+
+// Connection failures survive retries and app suspension.
+const RECONNECT_ERROR_DELAY_MS = 5_000;
 
 // Anchors, the submitted message, follow state and pending scrolls belong to
 // one thread, so the body remounts when the thread changes.
@@ -507,12 +517,20 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
         if (contentPresentationKind === "ready") {
           return t("Syncing messages...");
         }
-        return contentPresentationKind === "loading" ? "Loading messages..." : null;
+        return contentPresentationKind === "loading" ? t("Loading messages...") : null;
       default:
         return null;
     }
   })();
   const threadSyncLabel = useDelayedStatus(selectedThreadKey, realThreadSyncLabel);
+  const connectionRetrying =
+    props.connectionStateLabel === "connecting" || props.connectionStateLabel === "reconnecting";
+  const retryError = connectionRetrying ? props.connectionError : null;
+  const retryConnectionError = useDelayedStatus(
+    `${props.environmentId}:${retryError !== null}`,
+    retryError,
+    RECONNECT_ERROR_DELAY_MS,
+  );
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, {
     reportFailure: false,
   });
@@ -520,6 +538,53 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
   const unsettleThread = useAtomCommand(threadEnvironment.unsettle, { reportFailure: false });
   const updateMetadata = useAtomCommand(threadEnvironment.updateMetadata, { reportFailure: false });
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
+  const anyRunStop = useAtomValue(
+    props.selectedThreadDetailRef === null
+      ? NO_RUN_STOP_ATOM
+      : environmentThreadDetails.runStopAtom(props.selectedThreadDetailRef),
+  );
+  // A background Stop matters only while that work is still pending.
+  const runStop =
+    anyRunStop?.background && props.selectedThread.pendingBackgroundTasks.length === 0
+      ? null
+      : anyRunStop;
+  const forceStopThread = useAtomCommand(orchestrationEnvironment.forceStopThread, {
+    reportFailure: false,
+  });
+  const canForceStop =
+    useAtomValue(orchestrationEnvironment.forceStopThread.permissionAtom(props.environmentId)) &&
+    props.serverConfig?.environment.capabilities.threadForceStop === true;
+  const [forceStoppingKey, setForceStoppingKey] = useState<string | null>(null);
+  // The run that ignored Stop, so a confirmation left open cannot hit a newer run.
+  const forceStop = async (runId: RunId | undefined) => {
+    const threadKey = selectedThreadKey;
+    setForceStoppingKey(threadKey);
+    const result = await forceStopThread({
+      environmentId: props.environmentId,
+      input:
+        runId === undefined
+          ? { threadId: props.selectedThread.id }
+          : { threadId: props.selectedThread.id, runId },
+    });
+    setForceStoppingKey((current) => (current === threadKey ? null : current));
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) Dialog.alert(t("Could not force stop the agent"));
+      return;
+    }
+    const others = result.value.sharedWithThreadIds.length;
+    if (result.value.outcome === "releasing") {
+      Dialog.alert(t("Turn stopped; the agent is still shutting down"));
+    }
+    if (result.value.outcome === "shared") {
+      Dialog.alert(
+        t("Turn stopped; the agent process kept running"),
+        t("It is shared with {{value1}} working {{value2}}. Stop those to free it.", {
+          value1: others === 0 ? "other" : others,
+          value2: others === 1 ? "thread" : "threads",
+        }),
+      );
+    }
+  };
   const [statusRequest, setStatusRequest] = useState<{ threadKey: string } | null>(null);
   const statusPending = statusRequest?.threadKey === selectedThreadKey;
   const [lifecycleNow, setLifecycleNow] = useState(() => new Date().toISOString());
@@ -593,8 +658,8 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       Dialog.alert(
-        "Could not update thread",
-        error instanceof Error ? error.message : "Try again.",
+        t("Could not update thread"),
+        error instanceof Error ? error.message : t("Try again."),
       );
     }
   };
@@ -603,13 +668,41 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
   );
   const floatingStatus = ((): FloatingWorkingStatus | null => {
     const connectionStatus = connectionFloatingStatus({
-      connectionError: props.connectionError,
+      connectionError: connectionRetrying ? retryConnectionError : props.connectionError,
       connectionState: props.connectionStateLabel,
       environmentLabel: props.environmentLabel,
       onReconnect: props.onReconnectEnvironment,
     });
     if (connectionStatus !== null && !props.draftMode) {
       return connectionStatus;
+    }
+    // Before the request check: an agent stuck on an approval may also ignore Stop.
+    if (runStop !== null && contentPresentationKind === "ready") {
+      const unresponsive = runStop.state === "unresponsive";
+      return {
+        kind: "stop",
+        unresponsive,
+        label: unresponsive ? t("Not responding to Stop") : "Stopping…",
+        action:
+          unresponsive && canForceStop
+            ? {
+                label:
+                  forceStoppingKey === selectedThreadKey ? t("Force stopping...") : t("Force stop"),
+                accessibilityLabel: t("Force stop the agent"),
+                disabled: forceStoppingKey === selectedThreadKey,
+                onPress: () =>
+                  Dialog.confirm({
+                    title: t("Force stop the agent?"),
+                    message: t(
+                      "It has not answered Stop. Force stop ends the turn and kills the agent's processes, unless other working threads share them.",
+                    ),
+                    confirmText: t("Force stop"),
+                    destructive: true,
+                    onConfirm: () => void forceStop(runStop.runId),
+                  }),
+              }
+            : null,
+      };
     }
     if (props.activePendingApproval !== null || props.activePendingUserInput !== null) {
       return null;
@@ -652,9 +745,10 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
       return {
         kind: "background",
         label: pendingBackgroundWork.title,
-        accessibilityLabel: `${pendingBackgroundWork.title}: ${pendingBackgroundWork.items
-          .map((item) => item.label)
-          .join(", ")}`,
+        accessibilityLabel: t("{{title}}: {{value2}}", {
+          title: pendingBackgroundWork.title,
+          value2: pendingBackgroundWork.items.map((item) => item.label).join(", "),
+        }),
         waiting: pendingBackgroundWork.waiting,
         onPress: () => {
           Keyboard.dismiss();
@@ -675,11 +769,13 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
       const state = snoozed ? "snoozed" : settled ? "settled" : "woke";
       const label =
         snoozed && snoozedUntil !== null
-          ? `Snoozed, wakes in ${snoozeWakeLabel(snoozedUntil, { now: lifecycleNow })}`
+          ? t("Snoozed, wakes in {{value1}}", {
+              value1: snoozeWakeLabel(snoozedUntil, { now: lifecycleNow }),
+            })
           : settled
             ? "Settled"
-            : "Woke from snooze";
-      const actionLabel = snoozed ? "Wake now" : settled ? "Un-settle" : "Dismiss";
+            : t("Woke from snooze");
+      const actionLabel = snoozed ? t("Wake now") : settled ? "Un-settle" : "Dismiss";
       return {
         kind: "lifecycle",
         state,
@@ -703,7 +799,10 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
       return {
         kind: "goal",
         label: goal.title,
-        accessibilityLabel: `${goal.title}: ${goal.objective}`,
+        accessibilityLabel: t("{{title}}: {{objective}}", {
+          title: goal.title,
+          objective: goal.objective,
+        }),
       };
     }
     return null;
@@ -1091,8 +1190,8 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
             if (feedbackTarget?.supportsFeedback) {
               if (hasAttachmentsOrContext) {
                 Dialog.alert(
-                  "Approval feedback",
-                  "Send approval feedback without attachments or added context.",
+                  t("Approval feedback"),
+                  t("Send approval feedback without attachments or added context."),
                 );
                 return false;
               }
@@ -1162,8 +1261,8 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
     if (AsyncResult.isFailure(edited)) {
       const error = squashAtomCommandFailure(edited);
       Dialog.alert(
-        "Could not edit message",
-        error instanceof Error ? error.message : "Please try again.",
+        t("Could not edit message"),
+        error instanceof Error ? error.message : t("Please try again."),
       );
       return;
     }
@@ -1412,6 +1511,12 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                     threadRef={props.selectedThreadDetailRef}
                     canOperateThread={props.canOperateThread}
                   />
+                  {props.draftMode ? null : (
+                    <ThreadSideChatsRow
+                      environmentId={props.environmentId}
+                      threadId={props.selectedThread.id}
+                    />
+                  )}
                   {composerError !== null ? (
                     <Animated.View
                       className="shrink-0"

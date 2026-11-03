@@ -97,7 +97,7 @@ async function loadNextPages(
         JSON.stringify(Object.entries(input.cursors).sort()) ===
           JSON.stringify(Object.entries(next.nextCursors).sort())
       )
-        throw new Error("Couldn't advance the list. Try again.");
+        throw new Error(t("Couldn't advance the list. Try again."));
     }),
   );
   return requestErrors(responses);
@@ -164,8 +164,7 @@ export function usePullRequestList(targets: readonly ListTarget[]) {
   const refreshAtom = refreshLoadFamily(scopeKey);
   const page = useAtomValue(pageAtom);
   const refresh = useAtomValue(refreshAtom);
-  // Starting one kind of load clears the other, so at most one holds an error.
-  const loadError = settledError(refresh) ?? settledError(page);
+  const loadError = settledError(page);
 
   // A page or refresh asked for while an environment was unreachable fails at once, and its
   // error stops loading on scroll. Once it is back, ask for the page again; a refresh's error is
@@ -186,7 +185,7 @@ export function usePullRequestList(targets: readonly ListTarget[]) {
     const pageResult = registry.get(pageAtom);
     const refreshResult = registry.get(refreshAtom);
     if (pageResult.waiting || refreshResult.waiting) return;
-    if (!retry && (settledError(refreshResult) ?? settledError(pageResult))) return;
+    if (!retry && settledError(pageResult)) return;
     if (!continuations(registry, targets).length) return;
     registry.set(refreshAtom, Atom.Reset);
     registry.set(pageAtom, retry);
@@ -348,7 +347,7 @@ function requestErrors(results: readonly PromiseSettledResult<unknown>[]) {
           ? [
               result.reason instanceof Error
                 ? result.reason.message
-                : "Couldn't load pull requests.",
+                : t("Couldn't load pull requests."),
             ]
           : [],
       )

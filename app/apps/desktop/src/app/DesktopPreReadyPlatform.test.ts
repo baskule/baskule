@@ -127,17 +127,17 @@ describe("DesktopPreReadyPlatform", () => {
     vi.stubEnv("XDG_DATA_HOME", "/xdg");
     vi.stubEnv("APPIMAGE", "/Applications/current.AppImage");
     getSwitchValueMock.mockReturnValue("");
-    let desktopName = "t3code.desktop";
+    let desktopName = "baskule.desktop";
     let desktopEntry = previousEntry;
     let iconInstalled = false;
     copyFileSyncMock.mockImplementation((_source: string, destination: string) => {
-      iconInstalled = destination === "/xdg/icons/com.t3tools.T3Code.desktop.png";
+      iconInstalled = destination === "/xdg/icons/dev.baskule.Baskule.desktop.png";
     });
     setDesktopNameMock.mockImplementation((name: string) => {
       desktopName = name;
     });
     writeFileSyncMock.mockImplementation((path: string, contents: string) => {
-      if (path === "/xdg/applications/com.t3tools.T3Code.desktop") desktopEntry = contents;
+      if (path === "/xdg/applications/dev.baskule.Baskule.desktop") desktopEntry = contents;
     });
 
     return Effect.scoped(
@@ -153,13 +153,13 @@ describe("DesktopPreReadyPlatform", () => {
           ),
         );
         const identity = yield* Effect.promise(() => portalIdentity);
-        assert.equal(identity.desktopName, "com.t3tools.T3Code.desktop");
+        assert.equal(identity.desktopName, "dev.baskule.Baskule.desktop");
         assert.include(identity.desktopEntry ?? "", "Exec=/Applications/current.AppImage %U");
-        assert.include(identity.desktopEntry ?? "", "Name=T3 Code (Beta)");
-        assert.include(identity.desktopEntry ?? "", "MimeType=x-scheme-handler/t3code;");
+        assert.include(identity.desktopEntry ?? "", "Name=Baskule (Beta)");
+        assert.include(identity.desktopEntry ?? "", "MimeType=x-scheme-handler/baskule;");
         assert.include(
           identity.desktopEntry ?? "",
-          "Icon=/xdg/icons/com.t3tools.T3Code.desktop.png",
+          "Icon=/xdg/icons/dev.baskule.Baskule.desktop.png",
         );
         assert.isTrue(identity.iconInstalled);
       }),
@@ -170,7 +170,7 @@ describe("DesktopPreReadyPlatform", () => {
     vi.stubEnv("VITE_DEV_SERVER_URL", "");
     vi.stubEnv("XDG_DATA_HOME", "/xdg");
     vi.stubEnv("APPIMAGE", "/Applications/current.AppImage");
-    vi.stubEnv("T3CODE_DESKTOP_LAUNCHER_PATH", " /opt/T3 Code/t3code ");
+    vi.stubEnv("T3CODE_DESKTOP_LAUNCHER_PATH", " /opt/Baskule App/baskule ");
     getSwitchValueMock.mockReturnValue("");
 
     return Effect.scoped(
@@ -181,9 +181,9 @@ describe("DesktopPreReadyPlatform", () => {
           ),
         );
         const entry = writeFileSyncMock.mock.calls.find(
-          ([path]) => path === "/xdg/applications/com.t3tools.T3Code.desktop",
+          ([path]) => path === "/xdg/applications/dev.baskule.Baskule.desktop",
         )?.[1];
-        assert.include(entry, 'Exec="/opt/T3 Code/t3code" %U');
+        assert.include(entry, 'Exec="/opt/Baskule App/baskule" %U');
       }),
     ).pipe(Effect.ensuring(Effect.sync(() => vi.unstubAllEnvs())));
   });

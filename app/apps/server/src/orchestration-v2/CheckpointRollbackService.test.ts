@@ -362,7 +362,18 @@ it.effect.skipIf(!symlinksSupported)(
             schemaVersion: 1,
             snapshotSequence: 0,
             threads: [],
-            archivedThreads: [{ id: otherId, deletedAt: null, worktreePath: alias } as never],
+            archivedThreads: [
+              {
+                id: otherId,
+                deletedAt: null,
+                worktreePath: alias,
+                lineage: {
+                  parentThreadId: null,
+                  relationshipToParent: null,
+                  rootThreadId: otherId,
+                },
+              } as never,
+            ],
           }),
         getThreadProviderContext: () => Effect.succeed({ providerSessions: [] } as never),
         getCheckpointContext: () =>

@@ -1,3 +1,5 @@
+import { t } from "../../i18n";
+import type { PluggableList } from "unified";
 import type { Root, RootContent } from "mdast";
 import {
   resolveWorkEntryToolPresentation,
@@ -112,7 +114,8 @@ export function buildToolCallExpandedBody(
             "input" in workEntry.toolData
           ? workEntry.toolData.input
           : undefined;
-    if (input !== undefined) addBlock(`Tool input\n${JSON.stringify(input, null, 2)}`);
+    if (input !== undefined)
+      addBlock(t("Tool input\n{{value1}}", { value1: JSON.stringify(input, null, 2) }));
   }
   const command = workEntry.command?.trim();
   const raw = workEntryRawCommand(workEntry);
@@ -237,3 +240,6 @@ export function remarkThoughtPreview(fallback: string) {
       : [{ type: "text", value: fallback }];
   };
 }
+
+export const THOUGHT_PREVIEW_PLUGINS: PluggableList = [[remarkThoughtPreview, "Thought"]];
+export const THINKING_PREVIEW_PLUGINS: PluggableList = [[remarkThoughtPreview, "Thinking"]];

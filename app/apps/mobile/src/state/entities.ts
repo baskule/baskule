@@ -187,6 +187,10 @@ export function useChildThreadInputs(ref: ScopedThreadRef) {
   return useAtomValue(environmentThreadShells.childThreadInputsAtom(ref));
 }
 
+export function useSideChats(ref: ScopedThreadRef) {
+  return useAtomValue(environmentThreadShells.sideChatsAtom(ref));
+}
+
 export function useLiveThreadLinkLabels(markdown: string, environmentId: EnvironmentId): string {
   const titles = useAtomValue(
     hasThreadLinks(markdown) ? threadTitlesAtom(environmentId) : EMPTY_THREAD_TITLES_ATOM,

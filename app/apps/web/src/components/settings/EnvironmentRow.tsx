@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import type { EnvironmentPresentation } from "~/state/environments";
+import { usePreparedConnection } from "~/state/session";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 
@@ -36,7 +37,7 @@ export function environmentTransportLabel(
           );
     return active === undefined
       ? connectionRouteLabel(routes[0]!)
-      : `via ${connectionRouteLabel(active)}`;
+      : t("via {{value1}}", { value1: connectionRouteLabel(active) });
   }
   if (environment.relayManaged) return t("T3 Connect");
   if (isDesktopLocalConnectionTarget(entry.target)) return "WSL";
@@ -45,9 +46,25 @@ export function environmentTransportLabel(
     Option.isSome(entry.profile) &&
     entry.profile.value._tag === "SshConnectionProfile"
   ) {
-    return `SSH ${formatDesktopSshTarget(entry.profile.value.target)}`;
+    return t("SSH {{value1}}", { value1: formatDesktopSshTarget(entry.profile.value.target) });
   }
-  return environment.displayUrl ?? "Remote link";
+  return environment.displayUrl ?? t("Remote link");
+}
+
+export function useEnvironmentTransportLabel(environment: EnvironmentPresentation): string {
+  const prepared = usePreparedConnection(environment.environmentId);
+  return environmentTransportLabel(
+    environment,
+    environment.connection.phase === "connected" && prepared._tag === "Some"
+      ? prepared.value.target
+      : null,
+  );
+}
+
+export function EnvironmentTransportLabel(props: {
+  readonly environment: EnvironmentPresentation;
+}) {
+  return useEnvironmentTransportLabel(props.environment);
 }
 
 export function EnvironmentRow({

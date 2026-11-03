@@ -5,6 +5,8 @@ import { expect, it } from "@effect/vitest";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  DeviceId,
+  DeviceOperationError,
   EnvironmentId,
   OrchestratorMcpFailure,
   PreviewTabId,
@@ -22,6 +24,7 @@ import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import { HttpBody, HttpClient, HttpClientRequest, HttpRouter } from "effect/http";
 
 import * as ProjectService from "../project/ProjectService.ts";
+import * as DeviceService from "../device/DeviceService.ts";
 import * as PullRequestReviewGuideService from "../pullRequest/PullRequestReviewGuideService.ts";
 import * as ServerConfig from "../config.ts";
 import { advertisedJsonSchema } from "./advertisedJsonSchema.ts";
@@ -136,6 +139,86 @@ const callTool = (name: string, args: Record<string, unknown>) =>
   });
 
 const callSnapshot = (args: Record<string, unknown>) => callTool("preview_snapshot", args);
+
+it.effect.each([
+  { input: {}, open: false, message: "No device is open in this thread. Call device_open first." },
+  {
+    input: { deviceId: "missing", hostId: "local" },
+    open: false,
+    message: "Device missing is not open in this thread. Call device_open first.",
+  },
+  {
+    input: {},
+    open: true,
+    message:
+      "Device screenshot failed: Could not communicate with device support. Try refreshing devices.",
+  },
+  {
+    input: {},
+    open: true,
+    rejected: true,
+    message:
+      "Device screenshot failed: The device hub could not complete the request. Call device_list to check the device state, and device_open if it needs to be reopened.",
+  },
+])(
+  "preserves actionable screenshot failure text: $message",
+  ({ input, open, message, ...options }) =>
+    Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const result = yield* server.callTool({ name: "device_screenshot", arguments: input }).pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, {
+          ...invocation,
+          capabilities: new Set(["device"] as const),
+        }),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toEqual([{ type: "text", text: message }]);
+      expect(result.structuredContent).toMatchObject({
+        error: { message, operation: "screenshot" },
+      });
+      expect(JSON.stringify(result)).not.toContain("private hub output");
+    }).pipe(
+      Effect.provide(
+        McpHttpServer.layerDeviceToolkit.pipe(
+          Layer.provideMerge(McpServer.McpServer.layer),
+          Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+          Layer.provide(
+            Layer.mock(DeviceService.DeviceService)({
+              locateSession: () => Effect.succeedNone,
+              sessionsForThread: () =>
+                Effect.succeed(
+                  open
+                    ? [
+                        {
+                          threadId,
+                          hostId: "local",
+                          deviceId: DeviceId.make("phone"),
+                          platform: "ios",
+                          openedAt: "2026-10-23T00:00:00Z",
+                        },
+                      ]
+                    : [],
+                ),
+              screenshot: () =>
+                Effect.fail(
+                  new DeviceOperationError({
+                    operation: "screenshot",
+                    reason:
+                      "rejected" in options && options.rejected ? "hub_rejected" : "request_failed",
+                    cause: new Error("private hub output"),
+                  }),
+                ),
+            }),
+          ),
+          Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
+          Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-device-mcp-test-" })),
+          Layer.provide(NodeServices.layer),
+        ),
+      ),
+      Effect.scoped,
+    ),
+);
 
 const layerRecordingTools = (calls: Array<unknown>) => {
   const RecordingToolkit = Toolkit.make(
@@ -944,126 +1027,120 @@ it.effect("lists pull request watch tools only to threads that are not delegated
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );
 
-it.effect(
-  "caps an OAuth client's tool writes at its approved access",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const clientToken = "client-payload.client-signature";
-        const clientScope: McpInvocationContext.McpInvocationScope = {
-          environmentId,
-          requestNamespace: "client:linked",
-          thread: undefined,
-          client: { sessionId: "linked", label: "T3 Code · laptop", access: "auto" },
-          capabilities: new Set(["orchestration"]),
-          issuedAt: 1,
-        };
-        // Starts a thread at the modes the gate hands it, so the outcome is those modes.
-        const StartsToolkit = Toolkit.make(
-          Tool.make("starts", {
-            description: "Reports the modes a started thread would run with.",
-            parameters: Schema.Struct({
-              runtimeMode: Schema.optional(RuntimeMode),
-              interactionMode: Schema.optional(ProviderInteractionMode),
-            }),
-            success: Schema.Struct({ modes: Schema.String }),
-            failure: OrchestratorMcpFailure,
-            failureMode: "return",
-            dependencies: [
-              McpInvocationContext.McpInvocationContext,
-              ThreadManagementService.ThreadManagementService,
-            ],
+it.effect("caps an OAuth client's tool writes at its approved access", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const clientToken = "client-payload.client-signature";
+      const clientScope: McpInvocationContext.McpInvocationScope = {
+        environmentId,
+        requestNamespace: "client:linked",
+        thread: undefined,
+        client: { sessionId: "linked", label: "T3 Code · laptop", access: "auto" },
+        capabilities: new Set(["orchestration"]),
+        issuedAt: 1,
+      };
+      // Starts a thread at the modes the gate hands it, so the outcome is those modes.
+      const StartsToolkit = Toolkit.make(
+        Tool.make("starts", {
+          description: "Reports the modes a started thread would run with.",
+          parameters: Schema.Struct({
+            runtimeMode: Schema.optional(RuntimeMode),
+            interactionMode: Schema.optional(ProviderInteractionMode),
           }),
-        );
-        const serverLayer = McpHttpServer.toolkitRegistration(
-          StartsToolkit,
-          McpToolAccess.toLayer(StartsToolkit, {
-            starts: McpToolAccess.startsThreads(
-              (input) => input,
-              (_, modes) =>
-                Effect.succeed({ modes: `${modes.runtimeMode}/${modes.interactionMode}` }),
+          success: Schema.Struct({ modes: Schema.String }),
+          failure: OrchestratorMcpFailure,
+          failureMode: "return",
+          dependencies: [
+            McpInvocationContext.McpInvocationContext,
+            ThreadManagementService.ThreadManagementService,
+          ],
+        }),
+      );
+      const serverLayer = McpHttpServer.toolkitRegistration(
+        StartsToolkit,
+        McpToolAccess.toLayer(StartsToolkit, {
+          starts: McpToolAccess.startsThreads(
+            (input) => input,
+            (_, modes) =>
+              Effect.succeed({ modes: `${modes.runtimeMode}/${modes.interactionMode}` }),
+          ),
+        }),
+      ).pipe(
+        Layer.provideMerge(McpHttpServer.layerMcpTransport),
+        Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+        Layer.provide(
+          Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+            // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
+            resolve: () => Effect.succeed(undefined),
+          }),
+        ),
+        Layer.provide(
+          Layer.succeed(McpHttpServer.McpClientAuthenticator, {
+            authenticate: (request) =>
+              Effect.succeed(
+                request.headers.authorization === `Bearer ${clientToken}` ? clientScope : undefined,
+              ),
+          }),
+        ),
+      );
+      yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
+        Layer.build,
+      );
+      const httpClient = yield* HttpClient.HttpClient;
+      const decodeOutcome = Schema.decodeUnknownEffect(
+        Schema.fromJsonString(
+          Schema.Struct({
+            result: Schema.Struct({
+              content: Schema.Array(Schema.Struct({ text: Schema.String })),
+            }),
+          }),
+        ),
+      );
+      const decodeText = Schema.decodeUnknownEffect(
+        Schema.fromJsonString(
+          Schema.Union([
+            Schema.Struct({ modes: Schema.String }),
+            Schema.Struct({ code: Schema.String }),
+          ]),
+        ),
+      );
+      const start = (args: Record<string, string> = {}) =>
+        Effect.gen(function* () {
+          const headers = {
+            accept: "application/json, text/event-stream",
+            authorization: `Bearer ${clientToken}`,
+          };
+          const initialize = yield* httpClient.post("/mcp", {
+            headers,
+            body: HttpBody.text(
+              `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1.0.0"}}}`,
+              "application/json",
             ),
-          }),
-        ).pipe(
-          Layer.provideMerge(McpHttpServer.layerMcpTransport),
-          Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
-          Layer.provide(
-            Layer.mock(McpSessionRegistry.McpSessionRegistry)({
-              // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
-              resolve: () => Effect.succeed(undefined),
-            }),
-          ),
-          Layer.provide(
-            Layer.succeed(McpHttpServer.McpClientAuthenticator, {
-              authenticate: (request) =>
-                Effect.succeed(
-                  request.headers.authorization === `Bearer ${clientToken}`
-                    ? clientScope
-                    : undefined,
-                ),
-            }),
-          ),
-        );
-        yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
-          Layer.build,
-        );
-        const httpClient = yield* HttpClient.HttpClient;
-        const decodeOutcome = Schema.decodeUnknownEffect(
-          Schema.fromJsonString(
-            Schema.Struct({
-              result: Schema.Struct({
-                content: Schema.Array(Schema.Struct({ text: Schema.String })),
-              }),
-            }),
-          ),
-        );
-        const decodeText = Schema.decodeUnknownEffect(
-          Schema.fromJsonString(
-            Schema.Union([
-              Schema.Struct({ modes: Schema.String }),
-              Schema.Struct({ code: Schema.String }),
-            ]),
-          ),
-        );
-        const start = (args: Record<string, string> = {}) =>
-          Effect.gen(function* () {
-            const headers = {
-              accept: "application/json, text/event-stream",
-              authorization: `Bearer ${clientToken}`,
-            };
-            const initialize = yield* httpClient.post("/mcp", {
-              headers,
-              body: HttpBody.text(
-                `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1.0.0"}}}`,
-                "application/json",
-              ),
-            });
-            if (initialize.status !== 200) return initialize.status;
-            const response = yield* httpClient.post("/mcp", {
-              headers: {
-                ...headers,
-                "mcp-session-id": initialize.headers["mcp-session-id"]!,
-                "mcp-protocol-version": "2025-06-18",
-              },
-              body: HttpBody.text(
-                JSON.stringify({
-                  jsonrpc: "2.0",
-                  id: 2,
-                  method: "tools/call",
-                  params: { name: "starts", arguments: args },
-                }),
-                "application/json",
-              ),
-            });
-            const body = yield* decodeOutcome(yield* response.text);
-            const outcome = yield* decodeText(
-              body.result.content.map((part) => part.text).join(""),
-            );
-            return "code" in outcome ? outcome.code : outcome.modes;
           });
+          if (initialize.status !== 200) return initialize.status;
+          const response = yield* httpClient.post("/mcp", {
+            headers: {
+              ...headers,
+              "mcp-session-id": initialize.headers["mcp-session-id"]!,
+              "mcp-protocol-version": "2025-06-18",
+            },
+            body: HttpBody.text(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                id: 2,
+                method: "tools/call",
+                params: { name: "starts", arguments: args },
+              }),
+              "application/json",
+            ),
+          });
+          const body = yield* decodeOutcome(yield* response.text);
+          const outcome = yield* decodeText(body.result.content.map((part) => part.text).join(""));
+          return "code" in outcome ? outcome.code : outcome.modes;
+        });
 
-        expect(yield* start()).toBe("auto/default");
-        expect(yield* start({ runtimeMode: "full-access" })).toBe("runtime_mode_escalation_denied");
-      }),
-    ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+      expect(yield* start()).toBe("auto/default");
+      expect(yield* start({ runtimeMode: "full-access" })).toBe("runtime_mode_escalation_denied");
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

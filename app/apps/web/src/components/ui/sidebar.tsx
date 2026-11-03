@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { mergeProps } from "@base-ui/react/merge-props";
@@ -88,7 +89,7 @@ const SidebarInstanceContext = React.createContext<SidebarInstanceContextProps |
 function useSidebar() {
   const context = React.use(SidebarContext);
   if (!context) {
-    throw new Error("useSidebar must be used within a SidebarProvider.");
+    throw new Error(t("useSidebar must be used within a SidebarProvider."));
   }
 
   return context;
@@ -440,8 +441,8 @@ function SidebarRail({
   const suppressClickRef = React.useRef(false);
   const resolvedResizable = sidebarInstance?.resizable ?? null;
   const canResize = resolvedResizable !== null && open;
-  const railLabel = canResize ? "Resize Sidebar" : "Toggle Sidebar";
-  const railTitle = canResize ? "Drag to resize sidebar" : "Toggle Sidebar";
+  const railLabel = canResize ? t("Resize Sidebar") : t("Toggle Sidebar");
+  const railTitle = canResize ? t("Drag to resize sidebar") : t("Toggle Sidebar");
   const resize = useResizeDrag<HTMLButtonElement>((event) => {
     const options = resolvedResizable;
     if (!options || !open) return null;
@@ -498,7 +499,7 @@ function SidebarRail({
           try {
             setLocalStorageItem(options.storageKey, finalWidth, Schema.Finite);
           } catch (error) {
-            console.error("Could not persist sidebar width.", error);
+            console.error(t("Could not persist sidebar width."), error);
           }
         }
         options.onResize?.(finalWidth);
@@ -634,7 +635,10 @@ function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
 function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("flex flex-col gap-2 px-[var(--sidebar-content-inset)] py-1", className)}
+      className={cn(
+        "flex flex-col gap-2 px-[var(--sidebar-content-inset)] pt-1 pb-[var(--sidebar-content-inset)]",
+        className,
+      )}
       data-sidebar="footer"
       data-slot="sidebar-footer"
       {...props}

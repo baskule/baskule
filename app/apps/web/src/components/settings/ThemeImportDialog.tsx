@@ -37,9 +37,10 @@ const MAX_THEME_FILE_BYTES = 256 * 1024;
 const MAX_HIGHLIGHTED_JSON_LENGTH = 20_000;
 
 function formatByteSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} bytes`;
+  if (bytes >= 1024 * 1024)
+    return t("{{value1}} MB", { value1: (bytes / (1024 * 1024)).toFixed(1) });
+  if (bytes >= 1024) return t("{{value1}} KB", { value1: Math.round(bytes / 1024) });
+  return t("{{bytes}} bytes", { bytes: bytes });
 }
 
 function describeOversizedThemeFile(bytes: number): string | null {
@@ -292,11 +293,10 @@ function ThemeImportBody({
       }
     }
     if (installed.length > 0) onImportedMany(installed, { updated: false });
-    if (failures.length > 0) {
-      setError(failures.join("; "));
-    } else if (conflicting.length > 0) {
+    setError(failures.length > 0 ? failures.join("; ") : null);
+    if (conflicting.length > 0) {
       setConflicts(conflicting);
-    } else if (installed.length > 0) {
+    } else if (installed.length > 0 && failures.length === 0) {
       onClose();
     }
   };
@@ -364,7 +364,7 @@ function ThemeImportBody({
       if (getCustomThemes().some((existing) => existing.id === candidate.id)) continue;
       return candidate;
     }
-    throw new Error(`Too many copies of "${theme.label}".`);
+    throw new Error(t('Too many copies of "{{label}}".', { label: theme.label }));
   };
 
   const resolveConflicts = (mode: "update" | "copy") => {
@@ -395,8 +395,8 @@ function ThemeImportBody({
     }
     if (resolved.length > 0) onImportedMany(resolved, { updated: mode === "update" });
     setConflicts(null);
-    if (failures.length > 0) setError(failures.join("; "));
-    else onClose();
+    if (failures.length > 0) setError([error, ...failures].filter(Boolean).join("; "));
+    else if (!error) onClose();
   };
 
   const handleSubmit = () => {

@@ -1,7 +1,11 @@
 import { t } from "../../i18n";
 
 import { useSyncExternalStore } from "react";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import type { OrchestrationMessageContext } from "@t3tools/contracts";
+import {
+  collectComposerContextReferences,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 
 import type { ReviewRenderableLineRow } from "./reviewModel";
 
@@ -209,7 +213,7 @@ export function formatReviewSelectedRangeLabel(target: ReviewCommentTarget): str
   const lastNumber = getReviewUnifiedLineNumber(lastLine);
 
   if (firstNumber === null || lastNumber === null) {
-    return lines.length === 1 ? t("line") : `${lines.length} lines`;
+    return lines.length === 1 ? t("line") : t("{{length}} lines", { length: lines.length });
   }
 
   const firstMarker = getReviewChangeMarker(firstLine.change).trim();
@@ -222,7 +226,12 @@ export function formatReviewSelectedRangeLabel(target: ReviewCommentTarget): str
     return `${consistentMarker}${firstNumber}`;
   }
 
-  return `${consistentMarker}${firstNumber} to ${consistentMarker}${lastNumber}`;
+  return t("{{consistentMarker}}{{firstNumber}} to {{value3}}{{lastNumber}}", {
+    consistentMarker: consistentMarker,
+    firstNumber: firstNumber,
+    value3: consistentMarker,
+    lastNumber: lastNumber,
+  });
 }
 
 function getDiffHunkRange(
@@ -252,7 +261,12 @@ function formatReviewSelectedDiff(target: ReviewCommentTarget): string {
     .join("\n");
 
   return [
-    `@@ -${oldRange.start},${oldRange.count} +${newRange.start},${newRange.count} @@`,
+    t("@@ -{{start}},{{count}} +{{value3}},{{value4}} @@", {
+      start: oldRange.start,
+      count: oldRange.count,
+      value3: newRange.start,
+      value4: newRange.count,
+    }),
     diffBody.length > 0 ? diffBody : " ",
   ].join("\n");
 }
@@ -343,12 +357,14 @@ export function formatReviewCommentContext(target: ReviewCommentTarget, comment:
   return [
     [
       "<review_comment",
-      ` sectionId="${escapeReviewCommentAttribute(target.sectionId)}"`,
-      ` sectionTitle="${escapeReviewCommentAttribute(target.sectionTitle)}"`,
-      ` filePath="${escapeReviewCommentAttribute(target.filePath)}"`,
-      ` startIndex="${target.startIndex}"`,
-      ` endIndex="${target.endIndex}"`,
-      ` rangeLabel="${escapeReviewCommentAttribute(rangeLabel)}"`,
+      t(' sectionId="{{value1}}"', { value1: escapeReviewCommentAttribute(target.sectionId) }),
+      t(' sectionTitle="{{value1}}"', {
+        value1: escapeReviewCommentAttribute(target.sectionTitle),
+      }),
+      t(' filePath="{{value1}}"', { value1: escapeReviewCommentAttribute(target.filePath) }),
+      t(' startIndex="{{startIndex}}"', { startIndex: target.startIndex }),
+      t(' endIndex="{{endIndex}}"', { endIndex: target.endIndex }),
+      t(' rangeLabel="{{value1}}"', { value1: escapeReviewCommentAttribute(rangeLabel) }),
       ">",
     ].join(""),
     comment.trim(),
@@ -359,11 +375,10 @@ export function formatReviewCommentContext(target: ReviewCommentTarget, comment:
   ].join("\n");
 }
 
-export function countReviewCommentContexts(value: string): number {
-  return Array.from(value.matchAll(/<review_comment\b/g)).length;
-}
-
-export function parseReviewInlineComments(value: string): ReadonlyArray<ReviewInlineComment> {
+export function parseReviewInlineComments(
+  value: string,
+  context?: OrchestrationMessageContext,
+): ReadonlyArray<ReviewInlineComment> {
   const comments: ReviewInlineComment[] = [];
   // Mask chip delimiters: labels containing </review_comment> would otherwise truncate the block.
   const masked = replaceComposerContextReferences(value, (reference) =>
@@ -386,6 +401,33 @@ export function parseReviewInlineComments(value: string): ReadonlyArray<ReviewIn
     }
 
     comments.push(comment);
+  }
+  const referencedIds = new Set(
+    collectComposerContextReferences(value)
+      .filter((reference) => reference.kind === "review-comment")
+      .map((reference) => reference.contextId),
+  );
+  for (const record of context?.records ?? []) {
+    if (
+      record.kind !== "review-comment" ||
+      "payload" in record ||
+      record.sectionId.startsWith("pull-request:") ||
+      !referencedIds.has(record.contextId)
+    ) {
+      continue;
+    }
+    comments.push({
+      id: record.contextId,
+      sectionId: record.sectionId,
+      sectionTitle: record.sectionTitle,
+      filePath: record.filePath,
+      startIndex: record.startIndex,
+      endIndex: record.endIndex,
+      rangeLabel: record.rangeLabel,
+      text: record.text,
+      diff: record.diff,
+      ...(record.fenceLanguage !== undefined ? { fenceLanguage: record.fenceLanguage } : {}),
+    });
   }
   return comments;
 }

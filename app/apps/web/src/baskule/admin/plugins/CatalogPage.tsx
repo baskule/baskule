@@ -63,6 +63,7 @@ function needsVendorSetup(service: CatalogService, configured: ReadonlySet<strin
   const signIn = catalogVendor(service.vendor)?.signIn;
   if (signIn?.type === "key") return true;
   return (
+    // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- client is the catalog OAuth registration type, not an environment RPC client.
     signIn?.type === "account" && signIn.client === "static" && !configured.has(service.vendor)
   );
 }

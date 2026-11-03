@@ -7,23 +7,16 @@ import {
   type ScopedThreadRef,
   type ServerProviderModel,
 } from "@t3tools/contracts";
-import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
   resolveSelectableModel,
 } from "@t3tools/shared/model";
-import type { ReactNode } from "react";
+
 import type { DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
-import type { ComposerControlSize } from "./ComposerControl";
-import {
-  getReasoningTraitStep,
-  shouldRenderTraitsControls,
-  TraitsMenuContent,
-  TraitsPicker,
-} from "./TraitsPicker";
+import { getReasoningTraitStep, type TraitsSelectionInput } from "./TraitsPicker";
 type ComposerProviderStateInput = {
   provider: ProviderDriverKind;
   model: string;
@@ -39,24 +32,16 @@ export type ComposerProviderState = {
   modelOptionsForDispatch: ReadonlyArray<ProviderOptionSelection> | undefined;
 };
 
-type TraitsRenderInput = {
+type ComposerTraitsTarget = {
   provider: ProviderDriverKind;
-  instanceId?: ProviderInstanceId;
-  threadRef?: ScopedThreadRef;
-  draftId?: DraftId;
+  instanceId: ProviderInstanceId;
+  threadRef?: ScopedThreadRef | undefined;
+  draftId?: DraftId | undefined;
   model: string;
   models: ReadonlyArray<ServerProviderModel>;
   modelOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
   reportedModelSelection?: ModelSelection | null | undefined;
   planModeEnabled: boolean;
-  size?: ComposerControlSize;
-  hidden?: boolean;
-  triggerClassName?: string;
-  isComposerOwned?: boolean;
-  effortDisplay?: EffortDisplay;
-  extraMenuContent?: ReactNode;
-  extraMenuOwnsModeShortcut?: boolean;
-  extraMenuHint?: string;
 };
 
 /** Fast mode is enabled only by an explicit user selection. */
@@ -153,7 +138,7 @@ export function getComposerReasoningStep(input: {
 }): {
   prompt: string;
   cursor: number;
-  modelOptions?: ReadonlyArray<ProviderOptionSelection>;
+  modelOptions: ReadonlyArray<ProviderOptionSelection>;
 } | null {
   const { prompt, cursor } = input;
   const { selections } = resolveComposerOptionSelections(
@@ -177,76 +162,22 @@ export function getComposerReasoningStep(input: {
   return { prompt, cursor, modelOptions: step.modelOptions };
 }
 
-function renderTraitsControl(
-  Component: typeof TraitsMenuContent | typeof TraitsPicker,
-  input: TraitsRenderInput,
-): ReactNode {
-  const {
-    provider,
-    instanceId,
-    threadRef,
-    draftId,
-    model,
-    models,
-    modelOptions,
-    reportedModelSelection,
-    planModeEnabled,
-    size,
-    hidden,
-    triggerClassName,
-    isComposerOwned,
-    effortDisplay,
-    extraMenuContent,
-    extraMenuOwnsModeShortcut,
-    extraMenuHint,
-  } = input;
-  const hasTarget = threadRef !== undefined || draftId !== undefined;
-  const { selections: resolvedModelOptions } = resolveComposerOptionSelections(
-    models,
-    model,
-    provider,
-    modelOptions,
-    planModeEnabled,
+/**
+ * The composer's traits input with the model's implicit defaults applied, so a pick writes what
+ * the composer would send. Null without a draft or thread to persist to.
+ */
+export function resolveComposerTraitsInput(
+  input: ComposerTraitsTarget,
+): TraitsSelectionInput | null {
+  const { threadRef, draftId, ...rest } = input;
+  const { selections } = resolveComposerOptionSelections(
+    input.models,
+    input.model,
+    input.provider,
+    input.modelOptions,
+    input.planModeEnabled,
   );
-  if (
-    !hasTarget ||
-    !shouldRenderTraitsControls({
-      provider,
-      models,
-      model,
-      modelOptions: resolvedModelOptions,
-      planModeEnabled,
-    })
-  ) {
-    return null;
-  }
-  return (
-    <Component
-      provider={provider}
-      {...(instanceId ? { instanceId } : {})}
-      models={models}
-      {...(threadRef ? { threadRef } : {})}
-      {...(draftId ? { draftId } : {})}
-      model={model}
-      modelOptions={resolvedModelOptions}
-      reportedModelSelection={reportedModelSelection}
-      planModeEnabled={planModeEnabled}
-      {...(size !== undefined ? { size } : {})}
-      {...(hidden !== undefined ? { hidden } : {})}
-      {...(triggerClassName !== undefined ? { triggerClassName } : {})}
-      {...(isComposerOwned ? { isComposerOwned } : {})}
-      {...(effortDisplay ? { effortDisplay } : {})}
-      {...(extraMenuContent ? { extraMenuContent } : {})}
-      {...(extraMenuOwnsModeShortcut ? { extraMenuOwnsModeShortcut } : {})}
-      {...(extraMenuHint ? { extraMenuHint } : {})}
-    />
-  );
-}
-
-export function renderProviderTraitsMenuContent(input: TraitsRenderInput): ReactNode {
-  return renderTraitsControl(TraitsMenuContent, input);
-}
-
-export function renderProviderTraitsPicker(input: TraitsRenderInput): ReactNode {
-  return renderTraitsControl(TraitsPicker, input);
+  const persistence = threadRef ? { threadRef } : draftId ? { draftId } : null;
+  if (!persistence) return null;
+  return { ...rest, ...persistence, modelOptions: selections };
 }

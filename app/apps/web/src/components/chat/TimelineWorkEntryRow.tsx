@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { limitRecoveryCopy } from "../../baskule/usage/format";
@@ -67,7 +68,8 @@ import {
   workEntryRawCommand,
   buildToolCallExpandedBody,
   workEntryIconName,
-  remarkThoughtPreview,
+  THINKING_PREVIEW_PLUGINS,
+  THOUGHT_PREVIEW_PLUGINS,
 } from "./TimelineWorkEntryRow.logic";
 
 export function useThreadReadTarget(entry: TimelineWorkEntry, environmentId: EnvironmentId) {
@@ -80,7 +82,13 @@ export function useThreadReadTarget(entry: TimelineWorkEntry, environmentId: Env
 
 export function threadReadLabel(label: string, target: ReturnType<typeof useThreadReadTarget>) {
   const prefix = target && threadReadLabelPrefix(label);
-  return prefix ? { ...target, prefix, text: `${prefix} “${target.title}”` } : null;
+  return prefix
+    ? {
+        ...target,
+        prefix,
+        text: t("{{prefix}} “{{title}}”", { prefix: prefix, title: target.title }),
+      }
+    : null;
 }
 
 export function ThreadReadLabel({
@@ -163,6 +171,7 @@ export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEn
     <SubagentNotificationLink
       parentRef={scopeThreadRef(ctx.activeThreadEnvironmentId, item.threadId)}
       childThreadId={childThreadId}
+      taskIds={item.source.kind === "delegated_task" ? item.source.taskIds : undefined}
       outcome={item.outcome}
       createdAt={props.workEntry.createdAt}
       timestampFormat={ctx.timestampFormat}
@@ -215,9 +224,14 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     // baskule: a refusal by an Baskule limit names the limit and when it resets.
     const baskuleLimit = limitRecoveryCopy(failureItem.failure.usageWindowStatus);
     const label = baskuleLimit
-      ? `${baskuleLimit.title}. ${baskuleLimit.description}`
+      ? t("{{title}}. {{description}}", {
+          title: baskuleLimit.title,
+          description: baskuleLimit.description,
+        })
       : warning
-        ? `Usage limit reached.${resetTime ? ` Retry after ${resetTime}.` : ""}`
+        ? t("Usage limit reached.{{value1}}", {
+            value1: resetTime ? ` Retry after ${resetTime}.` : "",
+          })
         : workEntry.label;
     const retryRunId =
       failureItem.runId !== null &&
@@ -379,7 +393,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     .filter(Boolean)
     .join(": ");
   const accessibleDisplayText = showFailedIndicator
-    ? `${accessiblePreview}, tool call failed`
+    ? t("{{accessiblePreview}}, tool call failed", { accessiblePreview: accessiblePreview })
     : accessiblePreview;
   const rowToggleProps = canExpandProjectedItem
     ? {
@@ -428,12 +442,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                   text={workEntry.detail ?? previewText}
                   cwd={ctx.markdownCwd}
                   parseRawHtml={false}
-                  extraRemarkPlugins={[
-                    [
-                      remarkThoughtPreview,
-                      workEntry.toolLifecycleStatus === "inProgress" ? t("Thinking") : t("Thought"),
-                    ],
-                  ]}
+                  extraRemarkPlugins={
+                    workEntry.toolLifecycleStatus === "inProgress"
+                      ? THINKING_PREVIEW_PLUGINS
+                      : THOUGHT_PREVIEW_PLUGINS
+                  }
                 />
               ) : threadLabel ? (
                 <ThreadReadLabel

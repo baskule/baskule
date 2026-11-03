@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import type { ChangeRequestTerminology } from "@t3tools/client-runtime/source-control-clients";
 import type { PullRequestRef, PullRequestStack, ThreadPullRequestLink } from "@t3tools/contracts";
 
@@ -13,15 +14,19 @@ export function pullRequestStackMerge(
   );
   const reason =
     position < 0
-      ? `This ${terminology.singular} is no longer in the stack. Refresh it.`
+      ? t("This {{singular}} is no longer in the stack. Refresh it.", {
+          singular: terminology.singular,
+        })
       : stack.layers[position]?.state !== "open" || layers.length === 0
-        ? `There are no open layers to merge through this ${terminology.singular}.`
+        ? t("There are no open layers to merge through this {{singular}}.", {
+            singular: terminology.singular,
+          })
         : layers.some((layer) => layer.state !== "open")
-          ? "Reopen the closed layers before merging this stack."
+          ? t("Reopen the closed layers before merging this stack.")
           : layers.some((layer) => layer.isDraft)
-            ? "Mark every layer being merged ready for review."
+            ? t("Mark every layer being merged ready for review.")
             : heads.length !== layers.length
-              ? "Refresh the stack to load its latest revisions before merging."
+              ? t("Refresh the stack to load its latest revisions before merging.")
               : null;
   return { position: position + 1, layers, heads, reason };
 }
@@ -65,6 +70,15 @@ export function savedPullRequestStack(
       };
     }),
   };
+}
+
+/** The list summary describes the layer it was opened from, so another layer's route drops it. */
+export function pullRequestLayerParams<Params extends { readonly initialSummary?: unknown }>(
+  params: Params,
+  number: number,
+) {
+  const { initialSummary: _, ...layer } = params;
+  return { ...layer, number };
 }
 
 export function singlePullRequestMergeAllowed(input: {

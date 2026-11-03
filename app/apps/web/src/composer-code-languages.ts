@@ -13,9 +13,12 @@ export const CODE_BLOCK_LANGUAGES = [
       return t("Bash");
     },
   },
-  { id: "c", label: "C" },
-  { id: "cpp", label: "C++" },
-  { id: "csharp", label: "C#" },
+  { id: "", label: t("Plain text") },
+  { id: "asm", label: t("Assembly") },
+  { id: "bash", label: t("Bash") },
+  { id: "c", label: t("C") },
+  { id: "cpp", label: t("C++") },
+  { id: "csharp", label: t("C#") },
   {
     id: "css",
     get label() {
@@ -130,7 +133,7 @@ export const CODE_BLOCK_LANGUAGES = [
       return t("Python");
     },
   },
-  { id: "r", label: "R" },
+  { id: "r", label: t("R") },
   {
     id: "ruby",
     get label() {
@@ -220,16 +223,21 @@ export const CODE_BLOCK_LANGUAGES = [
 export type CodeBlockLanguage = { readonly id: string; readonly label: string };
 
 const LANGUAGE_ALIASES: Record<string, string> = {
+  assembly: "asm",
   cs: "csharp",
   "c++": "cpp",
   js: "javascript",
   md: "markdown",
+  plaintext: "",
   py: "python",
   rb: "ruby",
   rs: "rust",
+  s: "asm",
   sh: "bash",
   shell: "bash",
+  text: "",
   ts: "typescript",
+  txt: "",
   yml: "yaml",
 };
 
@@ -246,7 +254,7 @@ export function withInfoStringLanguage(info: string, language: string): string {
 }
 
 export function codeLanguageEntry(language: string): CodeBlockLanguage | null {
-  const id = language === "text" ? "" : (LANGUAGE_ALIASES[language.toLowerCase()] ?? language);
+  const id = LANGUAGE_ALIASES[language.toLowerCase()] ?? language;
   return CODE_BLOCK_LANGUAGES.find((entry) => entry.id === id.toLowerCase()) ?? null;
 }
 

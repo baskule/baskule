@@ -2,7 +2,8 @@ import { useTranslation } from "../i18n";
 
 import { useEvent } from "expo";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useIsFocused } from "@react-navigation/native";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppActivityIndicator } from "./ui/AppActivityIndicator";
@@ -10,6 +11,8 @@ import { AppText } from "./ui/AppText";
 import { SymbolView } from "./ui/AppSymbol";
 import { VideoThumbnailImage } from "./VideoThumbnailImage";
 import { useMediaActions } from "../state/mediaActions";
+import { fitVideoFrame } from "../lib/videoFrameFit";
+import { loadVideoThumbnail } from "../lib/videoThumbnails";
 import { type MediaActionsSource } from "../lib/mediaActionsSource";
 import { useMediaVideoPlayback } from "../lib/useMediaVideoPlayback";
 import { MediaActionsMenu } from "./MediaActionsMenu";
@@ -71,7 +74,7 @@ function LoadedMediaVideo(props: {
     const playIfUninterrupted = createPlayRequest();
     const uri = props.resolvePlaybackUri ? await props.resolvePlaybackUri() : props.uri;
     if (signal.aborted) return;
-    if (uri === null) throw new Error("Video unavailable");
+    if (uri === null) throw new Error(t("Video unavailable"));
     playback.pause();
     previousPlaybackRequested.current = false;
     await player.replaceAsync({ uri, contentType: "progressive" });
@@ -139,24 +142,55 @@ interface MediaVideoPlayerProps {
   readonly visible?: boolean;
   readonly unavailable?: boolean;
   readonly expanded?: boolean;
+  /** Fill the parent and size the frame to the video's shape instead of a fixed 16:9 slot. */
+  readonly fitToVideo?: boolean;
   readonly autoPlay?: boolean;
   readonly paused?: boolean;
   readonly onPlaybackStart?: () => void;
   readonly actionsSource?: MediaActionsSource;
+  readonly borderRadius?: number;
 }
 
 function MediaVideoPlayerContent(props: MediaVideoPlayerProps) {
   const t = useTranslation();
   const mediaActions = useMediaActions(props.actionsSource);
+  const isFocused = useIsFocused();
   const [playbackUri, setPlaybackUri] = useState<string | null>(props.expanded ? props.uri : null);
   // Keep an opened player mounted while signing or reconnecting temporarily has no usable URL.
   if (playbackUri === null && props.expanded && props.uri !== null) setPlaybackUri(props.uri);
+  const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null);
+  const [bounds, setBounds] = useState<{ width: number; height: number } | null>(null);
+  const sizeSource = props.fitToVideo && isFocused && videoSize === null ? props.uri : null;
+  // Queue before the poster so early Play cannot cancel the extraction that supplies frame dimensions.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- loads native thumbnail dimensions independently of the poster's lifetime
+  useLayoutEffect(() => {
+    if (sizeSource === null) return;
+    // Thumbnails are oriented like the displayed frame, unlike VideoTrack.size.
+    const controller = new AbortController();
+    void loadVideoThumbnail(
+      props.thumbnailKey,
+      async () => ({ uri: sizeSource, dispose: () => undefined }),
+      controller.signal,
+    ).then((thumbnail) => {
+      if (thumbnail && !controller.signal.aborted) {
+        setVideoSize({ width: thumbnail.width, height: thumbnail.height });
+      }
+    });
+    return () => controller.abort();
+  }, [props.thumbnailKey, sizeSource]);
+  const fittedFrame =
+    props.fitToVideo && videoSize && bounds ? fitVideoFrame(videoSize, bounds, 480) : null;
 
-  return (
+  const frame = (
     <View
       collapsable={false}
       className="overflow-hidden rounded-[10px] bg-black"
-      style={props.expanded ? { flex: 1 } : { width: "100%", maxWidth: 480, aspectRatio: 16 / 9 }}
+      style={[
+        props.expanded
+          ? { flex: 1 }
+          : (fittedFrame ?? { width: "100%", maxWidth: 480, aspectRatio: 16 / 9 }),
+        props.borderRadius === undefined ? null : { borderRadius: props.borderRadius },
+      ]}
     >
       {playbackUri ? (
         <LoadedMediaVideo
@@ -212,6 +246,18 @@ function MediaVideoPlayerContent(props: MediaVideoPlayerProps) {
           </Pressable>
         </MediaActionsMenu>
       )}
+    </View>
+  );
+  if (!props.fitToVideo) return frame;
+  return (
+    <View
+      className="flex-1 items-center justify-center self-stretch"
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setBounds({ width, height });
+      }}
+    >
+      {frame}
     </View>
   );
 }

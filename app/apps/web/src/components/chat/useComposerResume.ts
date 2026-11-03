@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import {
   type EnvironmentId,
   type ProviderInteractionMode,
@@ -106,6 +107,9 @@ export function useComposerResume(input: ComposerResumeInput) {
       if (resumableRunId === null) {
         return resumeThreadQueue({ environmentId, input: { threadId } });
       }
+      // Read before the first await: the composer follows the route, so after the user switches
+      // threads it holds the other thread's model.
+      const modelSelection = composerRef.current?.getSendContext().selectedModelSelection;
       const createdAt = new Date().toISOString();
       const settingsResult = await persistThreadSettingsForNextTurn({
         threadId,
@@ -117,7 +121,6 @@ export function useComposerResume(input: ComposerResumeInput) {
         interactionMode,
       });
       if (settingsResult._tag === "Failure") return settingsResult;
-      const modelSelection = composerRef.current?.getSendContext().selectedModelSelection;
       const turnResult = await startThreadTurn({
         environmentId,
         input: {
@@ -127,7 +130,7 @@ export function useComposerResume(input: ComposerResumeInput) {
           message: {
             messageId: newMessageId(),
             role: "user",
-            text: "Continue where you left off.",
+            text: t("Continue where you left off."),
             attachments: [],
           },
           runtimeMode,
@@ -145,7 +148,7 @@ export function useComposerResume(input: ComposerResumeInput) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
           threadId,
-          error instanceof Error ? error.message : "Could not resume thread.",
+          error instanceof Error ? error.message : t("Could not resume thread."),
         );
       }
     } else {

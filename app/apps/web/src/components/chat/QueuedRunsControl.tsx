@@ -6,7 +6,10 @@ import { otherAuthor } from "../../baskule/authorship";
 import { useBaskuleMe } from "../../baskule/session";
 import { deriveThreadQueueWorkflowState } from "@t3tools/client-runtime/state/thread-workflows";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import {
+  isAttachmentOnlyBootstrapPrompt,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 import type {
   ChatAttachment as ContractChatAttachment,
   EnvironmentId,
@@ -253,15 +256,17 @@ export function QueuedRunsControl({
       className="relative mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-2 pb-4"
     >
       <span className="sr-only" aria-live="polite">
-        {items.length} queued
+        {items.length} {"queued"}
       </span>
       <ol className="flex flex-col items-end gap-3" id={queueListId}>
         {visibleItems.map((item, position) => {
-          const previewText = assistantCitationsToPlainText(
-            replaceComposerContextReferences(item.text, (reference) =>
-              reference.kind === "image" && item.thumbnails.length > 0 ? "" : reference.label,
-            ),
-          ).trim();
+          const previewText = isAttachmentOnlyBootstrapPrompt(item.text)
+            ? ""
+            : assistantCitationsToPlainText(
+                replaceComposerContextReferences(item.text, (reference) =>
+                  reference.kind === "image" && item.thumbnails.length > 0 ? "" : reference.label,
+                ),
+              ).trim();
           const isEditing = item.runId !== null && item.runId === props.editingRunId;
           return (
             <li
@@ -303,7 +308,17 @@ export function QueuedRunsControl({
                         </Button>
                       </TooltipTrigger>
                       <TooltipPopup>
-                        {`${workflow?.canSendNow ? t("Start a turn with this message") : workflow?.promoteSkipsCompaction ? t("Skip compaction and send this message") : t("Send into the current turn")}${item.serverIndex === 0 && props.steerShortcutLabel ? ` (${props.steerShortcutLabel})` : ""}`}
+                        {t("{{value1}}{{value2}}", {
+                          value1: workflow?.canSendNow
+                            ? t("Start a turn with this message")
+                            : workflow?.promoteSkipsCompaction
+                              ? t("Skip compaction and send this message")
+                              : t("Send into the current turn"),
+                          value2:
+                            item.serverIndex === 0 && props.steerShortcutLabel
+                              ? ` (${props.steerShortcutLabel})`
+                              : "",
+                        })}
                       </TooltipPopup>
                     </Tooltip>
                   </>
@@ -357,7 +372,12 @@ export function QueuedRunsControl({
                       </TooltipTrigger>
                       <TooltipPopup>
                         {props.editBlockedReason ??
-                          `Edit in the composer${item.serverIndex === queued.length - 1 && props.editShortcutLabel ? ` (${props.editShortcutLabel})` : ""}`}
+                          t("Edit in the composer{{value1}}", {
+                            value1:
+                              item.serverIndex === queued.length - 1 && props.editShortcutLabel
+                                ? ` (${props.editShortcutLabel})`
+                                : "",
+                          })}
                       </TooltipPopup>
                     </Tooltip>
                     <Tooltip>

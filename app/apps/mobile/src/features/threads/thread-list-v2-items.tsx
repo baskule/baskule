@@ -156,7 +156,7 @@ function ThreadListV2Duration(props: { readonly startedAt: string | null }) {
   const startedAtMs = Date.parse(props.startedAt ?? "");
   const nowMs = useVisibleSecondClock(Number.isFinite(startedAtMs));
   if (!Number.isFinite(startedAtMs)) return null;
-  return ` ${formatWorkingDurationLabel(nowMs - startedAtMs)}`;
+  return t(" {{value1}}", { value1: formatWorkingDurationLabel(nowMs - startedAtMs) });
 }
 
 const CARD_MENU_ACTIONS: MenuAction[] = [
@@ -332,7 +332,9 @@ function ThreadListV2ShelfHeader(
   const label = SHELF_LABEL[props.kind];
   return (
     <ThreadListV2Section
-      label={props.expanded ? label : `${label} (${props.count})`}
+      label={
+        props.expanded ? label : t("{{label}} ({{count}})", { label: label, count: props.count })
+      }
       pane={props.pane}
       tone={props.kind === "snoozed" ? "snoozed" : "default"}
       disclosure={{
@@ -461,13 +463,16 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   );
   const deleteAction = useMemo(
     () => ({
-      accessibilityLabel: `${deleteLabel} ${pendingTask.title}`,
+      accessibilityLabel: t("{{deleteLabel}} {{title}}", {
+        deleteLabel: deleteLabel,
+        title: pendingTask.title,
+      }),
       destructive: true,
       icon: "trash" as const,
       label: deleteLabel,
       onPress: handleDelete,
     }),
-    [deleteLabel, handleDelete, pendingTask.title],
+    [t, deleteLabel, handleDelete, pendingTask.title],
   );
   const projectTitle = props.projectTitle ?? props.project?.title ?? pendingTask.projectTitle ?? "";
   const projectCwd = props.project?.workspaceRoot || null;
@@ -782,6 +787,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ? { ...workingLabel, label: t("Goal") }
       : workingLabel) ?? (isUnread ? DONE_STATUS_LABEL : undefined);
   const recede = shouldRecedeThreadRow({ status, selected });
+  const isRegeneratingTitle = thread.titleRegeneration != null;
+  const rowAccessibilityLabel = `${thread.title}${props.hasQueuedMessages ? ", messages queued to send" : ""}${isRegeneratingTitle ? ", regenerating title" : ""}`;
   const timeLabel = props.timeLabel;
 
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
@@ -933,7 +940,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       { id: "rename", title: t("Rename"), image: "square.and.pencil" },
       ...buildThreadTitleRegenerationMenuItems({
         supported: props.titleRegenerationSupported,
-        isRegenerating: thread.titleRegeneration != null,
+        isRegenerating: isRegeneratingTitle,
       }),
       ...(canTurnIntoProject
         ? [
@@ -946,13 +953,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           ]
         : []),
     ],
-    [
-      t,
-      canTurnIntoProject,
-      props.titleRegenerationSupported,
-      thread.runtime,
-      thread.titleRegeneration,
-    ],
+    [t, canTurnIntoProject, props.titleRegenerationSupported, thread.runtime, isRegeneratingTitle],
   );
   const snoozableCardMenuActions = useMemo<MenuAction[]>(
     () => [
@@ -1049,12 +1050,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         handleSnooze(snoozeSelection.preset.snoozedUntil);
       } else if (snoozeSelection._tag === "expired") {
         Dialog.alert(
-          "Could not snooze thread",
-          "That snooze time has passed. Choose another time.",
+          t("Could not snooze thread"),
+          t("That snooze time has passed. Choose another time."),
         );
       }
     },
     [
+      t,
       onNewThreadOnBranch,
       thread,
       handleArchive,
@@ -1132,10 +1134,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     [t, handleMenuAction, snoozePresetActions, swipeActions.secondary, thread.title],
   );
   const swipeAccessibilityHint = !canOperateThread
-    ? "Opens the thread"
+    ? t("Opens the thread")
     : secondaryAction === null
-      ? `Opens the thread. Swipe left to ${primaryAction.label.toLowerCase()}.`
-      : `Opens the thread. Swipe left for ${primaryAction.label.toLowerCase()} and snooze actions.`;
+      ? t("Opens the thread. Swipe left to {{value1}}.", {
+          value1: primaryAction.label.toLowerCase(),
+        })
+      : t("Opens the thread. Swipe left for {{value1}} and snooze actions.", {
+          value1: primaryAction.label.toLowerCase(),
+        });
 
   const titleTextInset = props.project ? projectIconSize + 8 : 0;
   const cardContent = (
@@ -1160,6 +1166,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             selected
               ? selectedThreadRowColors.foregroundClassName
               : rowAppearance.foregroundClassName,
+            isRegeneratingTitle && "opacity-55",
           )}
           numberOfLines={2}
         >
@@ -1380,11 +1387,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         interactionOpacity={rowAppearance.interactionOpacity}
         className={rowAppearance.className}
         accessibilityHint={swipeAccessibilityHint}
-        accessibilityLabel={
-          props.hasQueuedMessages
-            ? t("{{title}}, messages queued to send", { title: thread.title })
-            : thread.title
-        }
+        accessibilityLabel={rowAccessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         accessibilityActions={rowAccessibilityActions}
@@ -1415,11 +1418,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         interactionClassName={rowAppearance.interactionClassName}
         interactionOpacity={rowAppearance.interactionOpacity}
         accessibilityHint={swipeAccessibilityHint}
-        accessibilityLabel={
-          props.hasQueuedMessages
-            ? t("{{title}}, messages queued to send", { title: thread.title })
-            : thread.title
-        }
+        accessibilityLabel={rowAccessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         className={rowAppearance.className}
@@ -1455,6 +1454,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                 selected
                   ? selectedThreadRowColors.foregroundClassName
                   : rowAppearance.mutedForegroundClassName,
+                isRegeneratingTitle && "opacity-55",
               )}
               numberOfLines={1}
             >

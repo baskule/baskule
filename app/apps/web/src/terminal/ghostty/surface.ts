@@ -1,8 +1,11 @@
+import { t } from "../../i18n";
 import { isMacPlatform } from "../../lib/utils";
 import { SELECTION_MULTI_CLICK_INTERVAL_MS } from "../../lib/selectionActions";
 import { collectWrappedTerminalLinkLine, extractTerminalLinks } from "../../terminal-links";
 import {
+  GHOSTTY_CELL_WIDE,
   GhosttyTerminalCore,
+  type GhosttyCell,
   type GhosttyScrollbar,
   type GhosttySnapshot,
   type GhosttyTheme,
@@ -22,25 +25,25 @@ const DEFAULT_TERMINAL_FONT_SIZE = 12;
 const MIN_TERMINAL_FONT_SIZE = 6;
 const MAX_TERMINAL_FONT_SIZE = 32;
 const TERMINAL_GLYPH_FALLBACKS =
-  '"Symbols Nerd Font Mono", "Symbols Nerd Font", "JetBrainsMono Nerd Font", ' +
-  '"JetBrainsMono NF", "FiraCode Nerd Font", "Hack Nerd Font", "MesloLGS NF", ' +
-  '"CaskaydiaCove Nerd Font", "PowerlineSymbols", monospace';
+  t('"Symbols Nerd Font Mono", "Symbols Nerd Font", "JetBrainsMono Nerd Font", ') +
+  t('"JetBrainsMono NF", "FiraCode Nerd Font", "Hack Nerd Font", "MesloLGS NF", ') +
+  t('"CaskaydiaCove Nerd Font", "PowerlineSymbols", monospace');
 // The platform's own monospace faces; concrete names only, because an
 // unknown keyword (like ui-monospace) makes canvas font shorthand parsing
 // reject the whole string.
 const DEFAULT_TERMINAL_FONT_FAMILY =
-  '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", ' + TERMINAL_GLYPH_FALLBACKS;
+  t('"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", ') + TERMINAL_GLYPH_FALLBACKS;
 const CONTENT_PADDING = 4;
 const MIN_SCROLLBAR_THUMB_HEIGHT = 18;
 const CURSOR_BLINK_INTERVAL_MS = 500;
 /** End an unterminated synchronized update instead of freezing the last frame. */
 const SYNCHRONIZED_OUTPUT_RENDER_TIMEOUT_MS = 500;
-const TERMINAL_FONT_LOAD_TEXT = "iMW0@# .";
+const TERMINAL_FONT_LOAD_TEXT = t("iMW0@# .");
 const TERMINAL_FONT_LOAD_VARIANTS = [
-  "normal 400",
-  "normal 700",
-  "italic 400",
-  "italic 700",
+  t("normal 400"),
+  t("normal 700"),
+  t("italic 400"),
+  t("italic 700"),
 ] as const;
 
 export interface GhosttyTerminalFont {
@@ -54,7 +57,7 @@ function ensureTerminalSymbolsFont(): Promise<void> {
   if (symbolsFontLoad !== null) return symbolsFontLoad;
   symbolsFontLoad = (async () => {
     try {
-      const face = new FontFace("Symbols Nerd Font Mono", `url(${symbolsFontUrl})`);
+      const face = new FontFace(t("Symbols Nerd Font Mono"), `url(${symbolsFontUrl})`);
       document.fonts.add(await face.load());
     } catch {}
   })();
@@ -79,7 +82,10 @@ function uncheckedTerminalFontFamily(family?: string): string {
   const custom = family === undefined ? "" : quoteTerminalFontFamilies(family);
   return custom.length === 0
     ? DEFAULT_TERMINAL_FONT_FAMILY
-    : `${custom}, ${TERMINAL_GLYPH_FALLBACKS}`;
+    : t("{{custom}}, {{TERMINAL_GLYPH_FALLBACKS}}", {
+        custom: custom,
+        TERMINAL_GLYPH_FALLBACKS: TERMINAL_GLYPH_FALLBACKS,
+      });
 }
 
 function terminalFontFamily(family?: string): string {
@@ -201,15 +207,23 @@ function terminalGridCellAt(options: {
   };
 }
 
+function terminalCellText(cell: GhosttyCell): string {
+  if (cell.wide === GHOSTTY_CELL_WIDE.spacerTail || cell.wide === GHOSTTY_CELL_WIDE.spacerHead) {
+    return "";
+  }
+  return cell.text || " ";
+}
+
 function terminalRowText(row: GhosttySnapshot["rowData"][number], trimRight: boolean): string {
-  const text = row.cells.map((cell) => cell.text || " ").join("");
+  const text = row.cells.map(terminalCellText).join("");
   return trimRight ? text.trimEnd() : text;
 }
 
 function terminalColumnOffset(row: GhosttySnapshot["rowData"][number], column: number): number {
   let offset = 0;
   for (let cellIndex = 0; cellIndex < column; cellIndex += 1) {
-    offset += row.cells[cellIndex]?.text.length || 1;
+    const cell = row.cells[cellIndex];
+    offset += cell ? terminalCellText(cell).length : 1;
   }
   return offset;
 }
@@ -265,7 +279,8 @@ export function terminalLinkAtPositionWithRange(
   const lastSegment = wrappedLine.segments.at(-1);
   const lastRow = lastSegment ? rows[lastSegment.bufferLineNumber - 1] : undefined;
   const continuesBelowViewport = lastRow !== undefined && lastRow.wrapsToNext;
-  const offset = segment.startIndex + terminalColumnOffset(row, column);
+  const hitColumn = row.cells[column]?.wide === GHOSTTY_CELL_WIDE.spacerTail ? column - 1 : column;
+  const offset = segment.startIndex + terminalColumnOffset(row, hitColumn);
   for (const match of extractTerminalLinks(wrappedLine.text)) {
     if (offset >= match.start && offset < match.end) {
       if (match.end === wrappedLine.text.length && continuesBelowViewport) return null;
@@ -278,6 +293,7 @@ export function terminalLinkAtPositionWithRange(
       const startRow = startSegment ? rows[startSegment.bufferLineNumber - 1] : undefined;
       const endRow = endSegment ? rows[endSegment.bufferLineNumber - 1] : undefined;
       if (!startSegment || !endSegment || !startRow || !endRow) return null;
+      const endColumn = terminalColumnAtOffset(endRow, match.end - 1 - endSegment.startIndex);
       return {
         text: match.text,
         range: {
@@ -286,7 +302,10 @@ export function terminalLinkAtPositionWithRange(
             y: startSegment.bufferLineNumber - 1,
           },
           end: {
-            x: terminalColumnAtOffset(endRow, match.end - 1 - endSegment.startIndex),
+            x:
+              endRow.cells[endColumn + 1]?.wide === GHOSTTY_CELL_WIDE.spacerTail
+                ? endColumn + 1
+                : endColumn,
             y: endSegment.bufferLineNumber - 1,
           },
         },
@@ -558,7 +577,6 @@ export class GhosttyTerminalSurface {
   private mountHeight = 0;
   private selectionEnd: { x: number; y: number } | null = null;
   private selectionAnchorScreen: { x: number; y: number } | null = null;
-  private selectionEndScreen: { x: number; y: number } | null = null;
   private selectionMode: "cell" | "word" | "line" = "cell";
   private selectionBase: {
     start: { x: number; y: number };
@@ -657,12 +675,12 @@ export class GhosttyTerminalSurface {
   ): Promise<GhosttyTerminalSurface> {
     const canvas = document.createElement("canvas");
     canvas.className = "block size-full cursor-text";
-    canvas.style.touchAction = "pan-x pinch-zoom";
+    canvas.style.touchAction = t("pan-x pinch-zoom");
     canvas.setAttribute("aria-hidden", "true");
 
     const input = document.createElement("textarea");
     input.className = "t3-ghostty-input";
-    input.setAttribute("aria-label", "Terminal input");
+    input.setAttribute("aria-label", t("Terminal input"));
     input.autocapitalize = "off";
     input.autocomplete = "off";
     input.spellcheck = false;
@@ -673,7 +691,7 @@ export class GhosttyTerminalSurface {
     scrollbar.className =
       "group absolute top-1 right-px bottom-1 z-1 w-[var(--app-scrollbar-width)] cursor-default touch-none";
     scrollbar.setAttribute("role", "scrollbar");
-    scrollbar.setAttribute("aria-label", "Terminal scrollback");
+    scrollbar.setAttribute("aria-label", t("Terminal scrollback"));
     scrollbar.setAttribute("aria-orientation", "vertical");
     scrollbar.tabIndex = 0;
     scrollbar.hidden = true;
@@ -684,8 +702,12 @@ export class GhosttyTerminalSurface {
     mount.replaceChildren(canvas, input, scrollbar);
 
     const context = canvas.getContext("2d", { alpha: false });
-    if (!context) throw new Error("Canvas 2D is unavailable");
-    context.fillStyle = `rgb(${options.theme.background.r}, ${options.theme.background.g}, ${options.theme.background.b})`;
+    if (!context) throw new Error(t("Canvas 2D is unavailable"));
+    context.fillStyle = t("rgb({{r}}, {{g}}, {{b}})", {
+      r: options.theme.background.r,
+      g: options.theme.background.g,
+      b: options.theme.background.b,
+    });
     context.fillRect(0, 0, canvas.width, canvas.height);
     const fontSize = terminalFontSize(options.font?.size);
     try {
@@ -970,11 +992,16 @@ export class GhosttyTerminalSurface {
     return this.core.selectionText();
   }
 
+  /** An upper bound on the selection's size, read without formatting its text. */
+  getSelectionCellCount(): number {
+    const range = this.core.selectionRange();
+    return range ? (Math.abs(range.end.y - range.start.y) + 1) * this.cols : 0;
+  }
+
   selectAll(): void {
     this.clearPrimedCopy();
     const range = this.core.selectAll();
     this.selectionAnchorScreen = range?.start ?? null;
-    this.selectionEndScreen = range?.end ?? null;
     this.selectionEnd = range ? this.core.screenPointToViewport(range.end.x, range.end.y) : null;
     this.selectionMode = "cell";
     this.selectionBase = null;
@@ -985,15 +1012,13 @@ export class GhosttyTerminalSurface {
   }
 
   getSelectionPosition(): GhosttySelectionPosition | null {
-    if (!this.selectionAnchorScreen || !this.selectionEndScreen || !this.hasSelection())
-      return null;
-    const before =
-      this.selectionAnchorScreen.y < this.selectionEndScreen.y ||
-      (this.selectionAnchorScreen.y === this.selectionEndScreen.y &&
-        this.selectionAnchorScreen.x <= this.selectionEndScreen.x);
-    return before
-      ? { start: this.selectionAnchorScreen, end: this.selectionEndScreen }
-      : { start: this.selectionEndScreen, end: this.selectionAnchorScreen };
+    // Ask Ghostty rather than the gesture's coordinates, which go stale once
+    // output scrolls the selected rows (alternate screen, scrollback pruning).
+    const range = this.hasSelection() ? this.core.selectionRange() : null;
+    if (!range) return null;
+    const { start, end } = range;
+    const before = start.y < end.y || (start.y === end.y && start.x <= end.x);
+    return before ? { start, end } : { start: end, end: start };
   }
 
   getSelectionEndClientRect(): { readonly right: number; readonly bottom: number } | null {
@@ -1021,7 +1046,6 @@ export class GhosttyTerminalSurface {
     this.core.clearSelection();
     this.selectionEnd = null;
     this.selectionAnchorScreen = null;
-    this.selectionEndScreen = null;
     this.selectionMode = "cell";
     this.selectionBase = null;
     this.setSelectionAutoscroll(0);
@@ -1406,7 +1430,6 @@ export class GhosttyTerminalSurface {
       this.selectionBase = range.screen;
       this.selectionEnd = range.viewport.end;
       this.selectionAnchorScreen = range.screen.start;
-      this.selectionEndScreen = range.screen.end;
       this.options.onSelectionChange();
     } else {
       this.selectionMode = "cell";
@@ -1414,7 +1437,6 @@ export class GhosttyTerminalSurface {
       this.selectionEnd = cell;
       const screen = this.core.viewportPointToScreen(cell.x, cell.y);
       this.selectionAnchorScreen = screen;
-      this.selectionEndScreen = screen;
       if (screen) {
         this.core.setSelection({ ...screen, tag: 2 }, { ...screen, tag: 2 });
       } else {
@@ -1496,8 +1518,18 @@ export class GhosttyTerminalSurface {
   };
 
   private extendSelectionTo(clientX: number, clientY: number): void {
-    const anchorScreen = this.selectionAnchorScreen;
-    if (anchorScreen === null) return;
+    if (this.selectionAnchorScreen === null) return;
+    // Ghostty moves its selection with output; keep the drag on those rows too.
+    const anchorScreen = this.core.selectionRange()?.start;
+    if (!anchorScreen) return;
+    const rowDelta = anchorScreen.y - this.selectionAnchorScreen.y;
+    if (this.selectionBase && rowDelta !== 0) {
+      const { start, end } = this.selectionBase;
+      this.selectionBase = {
+        start: { x: start.x, y: start.y + rowDelta },
+        end: { x: end.x, y: end.y + rowDelta },
+      };
+    }
     const cell = this.cellAt(clientX, clientY);
     this.selectionMoved = true;
     this.selectionEnd = cell;
@@ -1517,7 +1549,6 @@ export class GhosttyTerminalSurface {
     const anchor = base === null ? anchorScreen : beforeBase ? base.end : base.start;
     const end = range === null ? cellScreen : beforeBase ? range.screen.start : range.screen.end;
     this.selectionAnchorScreen = anchor;
-    this.selectionEndScreen = end;
     this.core.setSelection({ ...anchor, tag: 2 }, { ...end, tag: 2 });
     this.options.onSelectionChange();
     this.forceFullRender = true;

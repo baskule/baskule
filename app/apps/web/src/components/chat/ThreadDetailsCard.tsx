@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
 import {
   useLayoutEffect,
@@ -35,7 +36,7 @@ export function ThreadDetailsCard({
   onContextMenu?: MouseEventHandler<HTMLDivElement>;
   children: (density: "full" | "compact" | "essential") => ReactNode;
 }) {
-  const detailsArea = workspaceAreaProps("details", 3, "Thread details");
+  const detailsArea = workspaceAreaProps("details", 3, t("Thread details"));
   const canvas = useChatCanvas();
   const preferredPlacement = canvas?.preferredDetailsCard ?? null;
   const placement = canvas?.detailsCardPlacement ?? null;
@@ -78,10 +79,10 @@ export function ThreadDetailsCard({
     const measure = () => {
       const frame = element.closest<HTMLElement>("[data-thread-details-card]");
       const next = element.offsetHeight + (frame ? frame.offsetHeight - frame.clientHeight : 0);
-      // PR lists and lineage scroll as they expand. Counting them toward density would hide
-      // the section and workspace controls when the user asks to see more rows.
+      // PR lists, lineage and side chats scroll as they expand. Counting them toward density
+      // would hide the section and workspace controls when the user asks to see more rows.
       const lists = element.querySelectorAll<HTMLElement>(
-        "[data-thread-relationships-panel], [data-thread-details-pr-list]",
+        "[data-thread-relationships-panel], [data-thread-side-chats-panel], [data-thread-details-pr-list]",
       );
       const fittingHeight =
         next - Array.from(lists).reduce((sum, list) => sum + list.offsetHeight, 0);

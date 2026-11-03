@@ -14,6 +14,7 @@ import {
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import type { Popover as PopoverPrimitive } from "@base-ui/react/popover";
+import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
 import { AlertTriangleIcon, ExternalLinkIcon, TicketIcon } from "lucide-react";
 import {
   createContext,
@@ -185,7 +186,7 @@ function SegmentPopover({
         {window.resetsAt ? (
           <Row label={t("Resets")}>
             {formatUpcomingTimestamp(window.resetsAt, timestampFormat, now)}
-            {resetsIn ? ` · ${resetsIn.replace("resets in ", "in ")}` : ""}
+            {resetsIn ? t(" · {{value1}}", { value1: resetsIn.replace("resets in ", "in ") }) : ""}
           </Row>
         ) : null}
         {timeLeft !== null ? (
@@ -534,7 +535,7 @@ function PoolBar({
               window={member.window}
               reset={restores.get(member.account.key)}
               refillPercent={member.refillPercent}
-              color={color}
+              color={normalizeProviderAccentColor(member.account.accentColor) ?? color}
               now={now}
               index={position + 1}
               showAccountName={pool.columns.length > 1}
@@ -676,6 +677,9 @@ export function UsageLimitsPooled({
             {null}
             <div className="min-w-0 space-y-1">
               <h2 className="text-sm font-medium">{link.label}</h2>
+              <p className="text-xs break-words text-muted-foreground">
+                {link.accounts.join(", ")}
+              </p>
               {link.message ? (
                 <p className="max-w-xl text-xs text-muted-foreground">{link.message}</p>
               ) : null}

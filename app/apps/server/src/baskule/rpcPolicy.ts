@@ -14,6 +14,7 @@ export const BASKULE_ALLOWED_METHODS: ReadonlySet<string> = new Set<string>([
   // 1. Chat and conversation controls (search, queue, unread/pin/snooze, questions/approvals).
   O.dispatchCommand,
   O.launchThread,
+  O.forceStopThread,
   O.getThreadProjection,
   O.subscribeShell,
   O.subscribeThread,
@@ -33,6 +34,7 @@ export const BASKULE_ALLOWED_METHODS: ReadonlySet<string> = new Set<string>([
   W.projectsReadFile,
   W.projectsWriteFile,
   W.projectsEnsureScratch,
+  W.projectsMutate,
   W.assetsCreateUrl,
   W.assetsPersistChatAttachments,
   W.attachmentsCreateUploadUrl,
@@ -192,6 +194,19 @@ export const baskuleRefusal = (
   payload: unknown,
 ): string | undefined => {
   if (!policy.methods.has(method)) return `${method} is unsupported in Baskule.`;
+  // baskule: project organization does not grant project creation or workspace changes.
+  if (method === W.projectsMutate) {
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      !("type" in payload) ||
+      payload.type !== "project.update" ||
+      Object.keys(payload).some(
+        (key) => !["type", "commandId", "projectId", "pinned", "archived"].includes(key),
+      )
+    )
+      return "Only project pin and archive updates are supported in Baskule.";
+  }
   if (method === O.dispatchCommand) {
     const type = (payload as { readonly type?: unknown } | null)?.type;
     if (typeof type !== "string" || !policy.commands.has(type)) {

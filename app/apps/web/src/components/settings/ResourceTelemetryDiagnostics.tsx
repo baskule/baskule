@@ -64,10 +64,10 @@ import {
 import { SettingsSection } from "./settingsLayout";
 
 const HISTORY_WINDOWS = [
-  { label: "5m", windowMs: 5 * 60_000, bucketMs: 15_000 },
-  { label: "15m", windowMs: 15 * 60_000, bucketMs: 30_000 },
-  { label: "30m", windowMs: 30 * 60_000, bucketMs: 60_000 },
-  { label: "1h", windowMs: 60 * 60_000, bucketMs: 2 * 60_000 },
+  { label: t("5m"), windowMs: 5 * 60_000, bucketMs: 15_000 },
+  { label: t("15m"), windowMs: 15 * 60_000, bucketMs: 30_000 },
+  { label: t("30m"), windowMs: 30 * 60_000, bucketMs: 60_000 },
+  { label: t("1h"), windowMs: 60 * 60_000, bucketMs: 2 * 60_000 },
 ] as const;
 
 function formatRate(value: number): string {
@@ -76,24 +76,26 @@ function formatRate(value: number): string {
 
 function formatCpuTime(valueMs: number): string {
   const seconds = valueMs / 1_000;
-  if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 1 : 2)}s`;
+  if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 1 : 2).replace(/\.0+$/, "")}s`;
   const minutes = seconds / 60;
-  if (minutes < 60) return `${minutes.toFixed(minutes >= 10 ? 1 : 2)}m`;
-  return `${(minutes / 60).toFixed(2)}h`;
+  if (minutes < 60) return `${minutes.toFixed(minutes >= 10 ? 1 : 2).replace(/\.0+$/, "")}m`;
+  return `${(minutes / 60).toFixed(2).replace(/\.0+$/, "")}h`;
 }
 
 function formatDurationMicros(value: number): string {
-  if (value < 1_000) return `${Math.round(value)} µs`;
-  if (value < 1_000_000) return `${(value / 1_000).toFixed(2)} ms`;
-  return `${(value / 1_000_000).toFixed(2)} s`;
+  if (value < 1_000) return t("{{value1}} µs", { value1: Math.round(value) });
+  if (value < 1_000_000)
+    return t("{{value1}} ms", { value1: (value / 1_000).toFixed(2).replace(/\.0+$/, "") });
+  return t("{{value1}} s", { value1: (value / 1_000_000).toFixed(2).replace(/\.0+$/, "") });
 }
 
 function formatSampleInterval(valueMs: number): string {
-  if (valueMs < 1_000) return `${Math.max(0, Math.round(valueMs))} ms`;
+  if (valueMs < 1_000) return t("{{value1}} ms", { value1: Math.max(0, Math.round(valueMs)) });
   const seconds = valueMs / 1_000;
-  return `${seconds.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${
-    seconds === 1 ? "second" : "seconds"
-  }`;
+  return t("{{value1}} {{value2}}", {
+    value1: seconds.toLocaleString(undefined, { maximumFractionDigits: 1 }),
+    value2: seconds === 1 ? "second" : "seconds",
+  });
 }
 
 function formatProcessName(process: Pick<ResourceTelemetryProcess, "command" | "name">): string {
@@ -211,7 +213,7 @@ function LastSampleLabel({ sampledAt }: { sampledAt: DateTime.Utc | null }) {
   return (
     <span className="text-2xs text-muted-foreground/60">
       {t("Updated")} <span className="font-mono tabular-nums">{relative.value}</span>
-      {relative.suffix ? ` ${relative.suffix}` : ""}
+      {relative.suffix ? t(" {{suffix}}", { suffix: relative.suffix }) : ""}
     </span>
   );
 }
@@ -310,7 +312,7 @@ function HealthSource({ label, health }: { label: string; health: ResourceTeleme
           {expectedInBrowser
             ? t("Available when this page runs inside the desktop app.")
             : Option.match(health.lastError, {
-                onNone: () => "No reported errors",
+                onNone: () => t("No reported errors"),
                 onSome: (error) => error,
               })}
         </div>
@@ -811,7 +813,8 @@ function AttributionTable({ entries }: { entries: ReadonlyArray<ResourceAttribut
               </td>
               <td className="px-3 py-2 text-right font-mono tabular-nums">{entry.count}</td>
               <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground sm:pr-5">
-                {(entry.durationMs / 1_000).toFixed(2)}s
+                {(entry.durationMs / 1_000).toFixed(2).replace(/\.0+$/, "")}
+                {"s"}
               </td>
             </tr>
           ))}
@@ -884,7 +887,9 @@ function ResourceTelemetryDiagnosticsBody({
       let confirmed = false;
       try {
         confirmed = await ensureLocalApi().dialogs.confirm(
-          `Send SIGKILL to process ${process.identity.pid}? This cannot be handled by the process.`,
+          t("Send SIGKILL to process {{pid}}? This cannot be handled by the process.", {
+            pid: process.identity.pid,
+          }),
           { variant: "destructive" },
         );
       } catch (error) {
@@ -925,9 +930,11 @@ function ResourceTelemetryDiagnosticsBody({
         toastManager.add({
           type: "error",
           title: t("Could not send {{signal}}", { signal: signal }),
-          description: Option.getOrElse(
-            result.value.message,
-            () => `Failed to send ${signal} to process ${process.identity.pid}.`,
+          description: Option.getOrElse(result.value.message, () =>
+            t("Failed to send {{signal}} to process {{pid}}.", {
+              signal: signal,
+              pid: process.identity.pid,
+            }),
           ),
         });
       })
@@ -1022,7 +1029,7 @@ function ResourceTelemetryDiagnosticsBody({
           </div>
         }
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm/5">
+        <div className="overflow-hidden rounded-[inherit]">
           <div className="flex flex-col gap-3 border-b border-border/60 bg-linear-to-r from-muted/45 via-muted/20 to-transparent px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
@@ -1163,7 +1170,7 @@ function ResourceTelemetryDiagnosticsBody({
           ) : null
         }
       >
-        <div className="grid overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5 md:grid-cols-2 md:divide-x md:divide-border/60">
+        <div className="grid overflow-hidden rounded-[inherit] md:grid-cols-2 md:divide-x md:divide-border/60">
           <div className="px-4 py-4 sm:px-5">
             <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
               <span className="flex size-6 items-center justify-center rounded-md bg-muted/60">
@@ -1202,7 +1209,7 @@ function ResourceTelemetryDiagnosticsBody({
                   label={t("Session")}
                   value={
                     snapshot.power.suspended
-                      ? "Suspended"
+                      ? t("Suspended")
                       : booleanStateLabel(snapshot.power.locked, {
                           true: "Locked",
                           false: "Unlocked",
@@ -1301,7 +1308,7 @@ function ResourceTelemetryDiagnosticsBody({
           </div>
         }
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
+        <div className="overflow-hidden rounded-[inherit]">
           {history.error ? (
             <div className="flex items-start gap-2 border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-xs text-destructive sm:px-5">
               <AlertTriangleIcon className="size-3.5 h-lh shrink-0" />
@@ -1324,7 +1331,7 @@ function ResourceTelemetryDiagnosticsBody({
           ) : null
         }
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
+        <div className="overflow-hidden rounded-[inherit]">
           <ProcessTable
             processes={snapshot?.processes ?? []}
             canMaintainEnvironment={canMaintainEnvironment}
@@ -1343,7 +1350,7 @@ function ResourceTelemetryDiagnosticsBody({
           </span>
         }
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
+        <div className="overflow-hidden rounded-[inherit]">
           <div className="bg-muted/15 px-4 py-3 text-2xs leading-relaxed text-muted-foreground sm:px-5">
             {t(
               "Native counters identify which process is reading or writing. These application-level counters identify known T3 operations so process spikes can be correlated with specific persistence and logging paths.",

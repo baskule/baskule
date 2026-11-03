@@ -16,6 +16,7 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import * as Dialog from "../../components/ui/Dialog";
 import { Menu } from "../../components/ui/Menu";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+import { relayEnvironmentDiscovery } from "../../state/relay";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   deregisterManagedRelayEnvironmentCommand,
@@ -28,7 +29,7 @@ function linkedAtLabel(value: string): string {
   const linkedAt = new Date(value);
   return Number.isNaN(linkedAt.getTime())
     ? t("Link date unavailable")
-    : `Linked ${linkedAtFormatter.format(linkedAt)}`;
+    : t("Linked {{value1}}", { value1: linkedAtFormatter.format(linkedAt) });
 }
 
 function endpointLabel(environment: RelayClientEnvironmentRecord): string {
@@ -38,8 +39,11 @@ function endpointLabel(environment: RelayClientEnvironmentRecord): string {
 }
 
 function confirmDeregister(environment: RelayClientEnvironmentRecord, onConfirm: () => void) {
-  const title = "Deregister server?";
-  const message = `“${environment.label}” will be removed from this account. T3 Connect access will be revoked, any managed tunnel will be removed, and a host space will become available. Local connections on your devices are not changed.`;
+  const title = t("Deregister server?");
+  const message = t(
+    "“{{label}}” will be removed from this account. T3 Connect access will be revoked, any managed tunnel will be removed, and a host space will become available. Local connections on your devices are not changed.",
+    { label: environment.label },
+  );
   Dialog.confirm({ title, message, confirmText: "Deregister", destructive: true, onConfirm });
 }
 
@@ -47,6 +51,9 @@ export function T3ConnectProfilePage() {
   const t = useTranslation();
   const environmentsState = useManagedRelayEnvironments();
   const deregisterEnvironment = useAtomCommand(deregisterManagedRelayEnvironmentCommand, {
+    reportFailure: false,
+  });
+  const refreshRelayEnvironments = useAtomCommand(relayEnvironmentDiscovery.refreshAfterMutation, {
     reportFailure: false,
   });
   const [deregisteringEnvironmentId, setDeregisteringEnvironmentId] =
@@ -78,22 +85,25 @@ export function T3ConnectProfilePage() {
         return { accountId, linkedAtById };
       });
       environmentsState.refresh();
+      void refreshRelayEnvironments();
       return;
     }
     if (isAtomCommandInterrupted(result)) return;
 
     const cause = squashAtomCommandFailure(result);
-    const message = cause instanceof Error ? cause.message : "Could not deregister the server.";
+    const message = cause instanceof Error ? cause.message : t("Could not deregister the server.");
     const traceId = findErrorTraceId(cause);
-    console.error("[t3-connect] Could not deregister environment", {
+    console.error(t("[t3-connect] Could not deregister environment"), {
       environmentId: environment.environmentId,
       message,
       traceId,
       cause,
     });
     Dialog.alert(
-      "Could not deregister server",
-      traceId ? `${message}\n\nTrace ID: ${traceId}` : message,
+      t("Could not deregister server"),
+      traceId
+        ? t("{{message}}\n\nTrace ID: {{traceId}}", { message: message, traceId: traceId })
+        : message,
       traceId
         ? [
             {
@@ -157,7 +167,10 @@ export function T3ConnectProfilePage() {
           <ClerkRow
             key={environment.environmentId}
             title={environment.label}
-            subtitle={`${linkedAtLabel(environment.linkedAt)} · ${endpointLabel(environment)}`}
+            subtitle={t("{{value1}} · {{value2}}", {
+              value1: linkedAtLabel(environment.linkedAt),
+              value2: endpointLabel(environment),
+            })}
             accessory={
               deregisteringEnvironmentId === environment.environmentId ? (
                 <AppActivityIndicator

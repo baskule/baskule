@@ -11,6 +11,7 @@ import {
   UsageProviderKind,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
+import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
 import {
   formatDuration,
   formatResetsIn,
@@ -94,18 +95,41 @@ export function PaceIcon({ pace }: { readonly pace: LimitPace }) {
 // the bar's rounded ends, and the polygon reaches 1px past the box so only the slot edges clip.
 function paceMarkStyles(timeLeft: number | null) {
   if (timeLeft === null) return null;
-  const at = `clamp(3px, ${timeLeft}%, calc(100% - 3px))`;
-  const [left, right] = [`calc(${at} - 3px)`, `calc(${at} + 3px)`];
-  const [near, far] = ["-1px", "calc(100% + 1px)"];
+  const at = t("clamp(3px, {{timeLeft}}%, calc(100% - 3px))", { timeLeft: timeLeft });
+  const [left, right] = [t("calc({{at}} - 3px)", { at: at }), t("calc({{at}} + 3px)", { at: at })];
+  const [near, far] = ["-1px", t("calc(100% + 1px)")];
   return {
     tick: { left: at },
     gap: {
-      clipPath: `polygon(${near} ${near}, ${left} ${near}, ${left} ${far}, ${right} ${far}, ${right} ${near}, ${far} ${near}, ${far} ${far}, ${near} ${far})`,
+      clipPath: t(
+        "polygon({{near}} {{value2}}, {{left}} {{value4}}, {{value5}} {{far}}, {{right}} {{value8}}, {{value9}} {{value10}}, {{value11}} {{value12}}, {{value13}} {{value14}}, {{value15}} {{value16}})",
+        {
+          near: near,
+          value2: near,
+          left: left,
+          value4: near,
+          value5: left,
+          far: far,
+          right: right,
+          value8: far,
+          value9: right,
+          value10: near,
+          value11: far,
+          value12: near,
+          value13: far,
+          value14: far,
+          value15: near,
+          value16: far,
+        },
+      ),
     },
     // For a track painted on an element that also draws focus rings, which a clip would cut.
     gappedTrack: {
       backgroundColor: "transparent",
-      backgroundImage: `linear-gradient(to right, var(--color-muted) ${left}, transparent ${left}, transparent ${right}, var(--color-muted) ${right})`,
+      backgroundImage: t(
+        "linear-gradient(to right, var(--color-muted) {{left}}, transparent {{value2}}, transparent {{right}}, var(--color-muted) {{value4}})",
+        { left: left, value2: left, right: right, value4: right },
+      ),
     },
   };
 }
@@ -145,9 +169,12 @@ function WindowBar({
   const resetsAt = window.resetsAt
     ? formatUpcomingTimestamp(window.resetsAt, timestampFormat, now)
     : null;
-  const summary = `${window.label}: ${remaining}% left${
-    timeLeft === null ? "" : `, ${timeLeft}% of the window left`
-  }${resetsIn ? `, ${resetsIn}` : ""}`;
+  const summary = t("{{label}}: {{remaining}}% left{{value3}}{{value4}}", {
+    label: window.label,
+    remaining: remaining,
+    value3: timeLeft === null ? "" : `, ${timeLeft}% of the window left`,
+    value4: resetsIn ? `, ${resetsIn}` : "",
+  });
 
   return (
     <Tooltip>
@@ -197,7 +224,7 @@ function WindowBar({
           {resetsAt ? (
             <span className="text-muted-foreground">
               {t("Resets")} {resetsAt}
-              {resetsIn ? ` · ${resetsIn}` : ""}
+              {resetsIn ? t(" · {{resetsIn}}", { resetsIn: resetsIn }) : ""}
             </span>
           ) : null}
         </div>
@@ -208,17 +235,19 @@ function WindowBar({
 
 export function LimitWindows({
   driver,
+  accentColor,
   windows,
   now,
   compact = false,
 }: {
   readonly driver: ServerProvider["driver"];
+  readonly accentColor?: string | undefined;
   readonly windows: ReadonlyArray<ServerProviderUsageWindow>;
   readonly now: number;
   readonly compact?: boolean;
 }) {
   const t = useTranslation();
-  const color = barColor(driver);
+  const color = normalizeProviderAccentColor(accentColor) ?? barColor(driver);
   return (
     <div
       className={
@@ -252,10 +281,10 @@ export function LimitWindows({
 }
 
 const OUTCOME_TEXT: Record<ProviderConsumeResetCreditOutcome, string> = {
-  reset: "Reset applied. Your windows have cleared.",
-  nothingToReset: "Nothing to reset right now.",
-  noCredit: "No reset credit left.",
-  alreadyRedeemed: "That credit was already redeemed.",
+  reset: t("Reset applied. Your windows have cleared."),
+  nothingToReset: t("Nothing to reset right now."),
+  noCredit: t("No reset credit left."),
+  alreadyRedeemed: t("That credit was already redeemed."),
 };
 
 export function useResetCredit(
@@ -282,7 +311,7 @@ export function useResetCredit(
     setStatus(
       "error" in result.cause && result.cause.error instanceof Error
         ? result.cause.error.message
-        : "Could not use the reset credit.",
+        : t("Could not use the reset credit."),
     );
   };
 
@@ -335,10 +364,15 @@ export function resetCreditsSummary(
     : null;
   if (credits.availableCount === 0) return t("No reset credits banked");
   if (compact)
-    return `${credits.availableCount} banked${expiresIn ? ` · expires in ${expiresIn}` : ""}`;
-  return `${credits.availableCount} ${credits.availableCount === 1 ? "reset credit" : "reset credits"} banked${
-    expiresIn ? ` · next expires in ${expiresIn}` : ""
-  }`;
+    return t("{{availableCount}} banked{{value2}}", {
+      availableCount: credits.availableCount,
+      value2: expiresIn ? ` · expires in ${expiresIn}` : "",
+    });
+  return t("{{availableCount}} {{value2}} banked{{value3}}", {
+    availableCount: credits.availableCount,
+    value2: credits.availableCount === 1 ? "reset credit" : "reset credits",
+    value3: expiresIn ? ` · next expires in ${expiresIn}` : "",
+  });
 }
 
 export function ResetCredits({

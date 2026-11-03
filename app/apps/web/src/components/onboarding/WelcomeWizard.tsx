@@ -539,7 +539,7 @@ function PairingForm({
     }
     if (isAtomCommandInterrupted(result)) return;
     const cause = squashAtomCommandFailure(result);
-    setErrorMessage(cause instanceof Error ? cause.message : "Pairing failed.");
+    setErrorMessage(cause instanceof Error ? cause.message : t("Pairing failed."));
   };
 
   return (
@@ -601,14 +601,14 @@ function PairingForm({
           </div>
           <CollapsiblePanel>
             <p className="pt-3 text-sm text-muted-foreground">
-              {t("Run this on the computer with your code.")}
+              {t("On the computer with your code, start T3 Code or run")}{" "}
+              <code className="font-mono">npx t3 serve</code>
+              {t(", then run:")}
             </p>
             <CommandBlock command="npx t3 pair" className="mt-2" />
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              {t("Start T3 Code first, or run")}{" "}
-              <code className="font-mono">{t("npx t3 serve")}</code>
-              {t(". Add")} <code className="font-mono">{"--tailscale"}</code>{" "}
-              {t("to use your tailnet.")}
+              {t("On a tailnet, run")} <code className="font-mono">npx t3 pair --tailscale</code>{" "}
+              instead.
             </p>
           </CollapsiblePanel>
         </Collapsible>
@@ -788,7 +788,9 @@ function AgentCard({
         <span className="block text-sm font-medium text-foreground">{displayName}</span>
         <p className="mt-0.5 text-xs leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
           {providerState === "ready" ? t("Ready to code.") : summary.headline}
-          {providerState !== "ready" && summary.detail ? ` · ${summary.detail}` : ""}
+          {providerState !== "ready" && summary.detail
+            ? t(" · {{detail}}", { detail: summary.detail })
+            : ""}
         </p>
       </div>
       <div className="shrink-0">

@@ -21,7 +21,7 @@ function accountLabel(account: UsageLimitsReport["accounts"][number]): string {
     account.displayName?.trim() ||
     (String(account.instanceId) !== String(account.driver) ? account.instanceId : "");
   return instance && instance.toLowerCase() !== driver.toLowerCase()
-    ? `${driver} · ${instance}`
+    ? t("{{driver}} · {{instance}}", { driver: driver, instance: instance })
     : driver;
 }
 
@@ -41,7 +41,7 @@ function AccountSummary({ account }: { readonly account: UsageLimitsReport["acco
       ) : (
         label
       )}
-      {account.plan ? ` · ${account.plan}` : null}
+      {account.plan ? t(" · {{plan}}", { plan: account.plan }) : null}
     </>
   );
 }
@@ -57,7 +57,7 @@ export function usageLimitsBannerItem(
   const summary = single ? (
     <AccountSummary account={single} />
   ) : (
-    `${report.accounts.length} accounts`
+    t("{{length}} accounts", { length: report.accounts.length })
   );
   return {
     id,
@@ -65,7 +65,7 @@ export function usageLimitsBannerItem(
     icon: <GaugeIcon />,
     title: t("Usage limits"),
     description: summary,
-    dismissLabel: "Dismiss usage limits",
+    dismissLabel: t("Dismiss usage limits"),
     onDismiss,
     children: <UsageLimitsBannerBody report={report} environmentId={environmentId} />,
   };
@@ -103,7 +103,7 @@ export function modelFallbackBannerItem({
         {defaultModelName}
       </Button>
     ),
-    dismissLabel: "Dismiss fallback model notice",
+    dismissLabel: t("Dismiss fallback model notice"),
     onDismiss,
   };
 }
@@ -139,6 +139,7 @@ function UsageLimitsBannerBody({
                 <LimitWindows
                   compact
                   driver={account.driver}
+                  accentColor={account.accentColor}
                   windows={account.limits.windows}
                   now={now}
                 />

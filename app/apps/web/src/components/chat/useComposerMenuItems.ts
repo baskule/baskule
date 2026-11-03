@@ -59,6 +59,8 @@ export function useComposerMenuItems({
   pullRequestRepository,
   threadPullRequests,
   planModeUiEnabled,
+  sideChatAvailable,
+  sideChatDisabledReason,
   selectedProvider,
   selectedProviderSkills,
   selectedProviderSlashCommands,
@@ -72,6 +74,8 @@ export function useComposerMenuItems({
   readonly pullRequestRepository: string | null;
   readonly threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
   readonly planModeUiEnabled: boolean;
+  readonly sideChatAvailable: boolean;
+  readonly sideChatDisabledReason: string | null;
   readonly selectedProvider: ProviderDriverKind;
   readonly selectedProviderSkills: ServerProvider["skills"];
   readonly selectedProviderSlashCommands: ServerProvider["slashCommands"];
@@ -215,6 +219,24 @@ export function useComposerMenuItems({
               },
             ] as const)
           : []),
+        ...(sideChatAvailable
+          ? ([
+              {
+                id: "slash:side",
+                type: "slash-command",
+                command: "side",
+                label: "/side",
+                description: sideChatDisabledReason ?? t("Ask a side question in a new side chat"),
+              },
+              {
+                id: "slash:btw",
+                type: "slash-command",
+                command: "btw",
+                label: "/btw",
+                description: sideChatDisabledReason ?? t("Same as /side"),
+              },
+            ] as const)
+          : []),
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const slashMenuSkills = getProviderSkillsForSlashMenu(
         selectedProviderSkills,
@@ -229,7 +251,7 @@ export function useComposerMenuItems({
         provider: selectedProvider,
         command,
         label: `/${command.name}`,
-        description: command.description ?? command.input?.hint ?? "Run provider command",
+        description: command.description ?? command.input?.hint ?? t("Run provider command"),
       }));
       const query = composerTrigger.query.trim().toLowerCase();
       const skillItems = slashMenuSkills.map((skill) => ({
@@ -241,7 +263,7 @@ export function useComposerMenuItems({
         description:
           skill.shortDescription ??
           skill.description ??
-          (skill.scope ? `${skill.scope} skill` : ""),
+          (skill.scope ? t("{{scope}} skill", { scope: skill.scope }) : ""),
       }));
       const slashCommandItems = slashCommandItemsForPromptPosition(
         [...builtInSlashCommandItems, ...providerSlashCommandItems, ...skillItems],
@@ -259,7 +281,7 @@ export function useComposerMenuItems({
         description:
           skill.shortDescription ??
           skill.description ??
-          (skill.scope ? `${skill.scope} skill` : "Run provider skill"),
+          (skill.scope ? t("{{scope}} skill", { scope: skill.scope }) : t("Run provider skill")),
       }));
     }
     if (
@@ -316,11 +338,14 @@ export function useComposerMenuItems({
           state: pullRequest.state,
           isDraft: pullRequest.isDraft,
         },
-        label: `#${pullRequest.number}`,
+        label: t("#{{number}}", { number: pullRequest.number }),
         description:
           pullRequest.repository.trim().toLowerCase() === pullRequestRepository.trim().toLowerCase()
             ? pullRequest.title
-            : `${pullRequest.repository} · ${pullRequest.title}`,
+            : t("{{repository}} · {{title}}", {
+                repository: pullRequest.repository,
+                title: pullRequest.title,
+              }),
       }));
     }
     return [];
@@ -349,12 +374,12 @@ export function useComposerMenuItems({
         return t("Pull requests could not be read for this project.");
       }
       return composerTrigger?.query
-        ? `No pull request matches ${composerTrigger.query}.`
-        : "No pull requests found in this repository.";
+        ? t("No pull request matches {{query}}.", { query: composerTrigger.query })
+        : t("No pull requests found in this repository.");
     }
     return composerTriggerKind === "path"
-      ? "No matching files or folders."
-      : "No matching command.";
+      ? t("No matching files or folders.")
+      : t("No matching command.");
   })();
 
   return { items, isLoading, emptyState };

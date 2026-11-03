@@ -227,6 +227,7 @@ export const make = Effect.gen(function* () {
       fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
       pullRequests: true,
       pullRequestChecks: true,
+      sideChats: policy?.commands.has("thread.fork") ?? true, // baskule: side chats use local portable handoffs.
       inlineMessageContext: true,
       requiredWorktreeBootstrap: true,
       threadSettlement: settlement,
@@ -243,6 +244,7 @@ export const make = Effect.gen(function* () {
       projectSettingsOverrides: true,
       projectProviderInstanceOverrides: true,
       threadSnooze: true,
+      threadForceStop: true,
       environmentThemes: true,
       providerWorkspaceSnapshotsOnDemand: true,
       usagePriceOverrides: true,
@@ -263,6 +265,7 @@ export const make = Effect.gen(function* () {
       threadStop: true,
       environmentIcon: true,
       projectCloneTracking: true,
+      projectOrganization: policy?.methods.has(W.projectsMutate) ?? true, // baskule: follow hosted policy.
       ignoredFileListing: true,
       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
       ...(serverInstallation === null ? {} : { serverInstallation }),

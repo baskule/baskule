@@ -2,7 +2,6 @@ import { t, useTranslation } from "../../i18n";
 
 import { projectChangeRequestUrl } from "@t3tools/client-runtime/change-request-links";
 import { normalizeThreadPullRequestKey } from "@t3tools/client-runtime/thread-pull-requests";
-import { changeRequestReferenceAutolinker } from "@t3tools/client-runtime/pull-request-markdown";
 import { useAtomValue } from "@effect/atom-react";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
 import {
@@ -107,6 +106,7 @@ import { PullRequestsUnavailableState } from "./PullRequestsUnavailableState";
 import type { PullRequestAgentSelectionInput } from "./PullRequestCodeTab";
 import { openOnHostLabel } from "./pullRequestLinkContextMenu";
 import { PullRequestMarkdownContext } from "./PullRequestMarkdown";
+import { pullRequestAutolinkPlugins } from "./pullRequestMarkdown.logic";
 import { PullRequestComposer } from "./PullRequestComposer";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
 import { PullRequestTimelineTab } from "./PullRequestTimelineTab";
@@ -174,28 +174,39 @@ const actionFailureLabels = (term: string): Record<PullRequestAction, string> =>
 });
 
 const actionFailureHints = (term: string): Record<PullRequestAction, string> => ({
-  merge:
+  merge: t(
     "The host refused the merge. Check that you have write access, that the checks it requires have passed, and that the branch is not conflicting.",
-  ready: "The host refused it. Check that you have write access to this repository.",
-  draft: "The host refused it. Check that you have write access to this repository.",
-  close: "The host refused it. Check that you have write access, or that you opened it.",
-  reopen:
+  ),
+  ready: t("The host refused it. Check that you have write access to this repository."),
+  draft: t("The host refused it. Check that you have write access to this repository."),
+  close: t("The host refused it. Check that you have write access, or that you opened it."),
+  reopen: t(
     "The host refused it. Check that you have write access, and that the branch still exists.",
-  "update-branch":
+  ),
+  "update-branch": t(
     "The host refused it. Check that you have write access to the branch (a fork branch also needs its author to allow edits from maintainers), and that it does not conflict with the base.",
-  "enable-auto-merge":
+  ),
+  "enable-auto-merge": t(
     "The host refused it. Check that this repository allows auto-merge, that you have write access, and that there is something left for it to wait on.",
-  "disable-auto-merge":
+  ),
+  "disable-auto-merge": t(
     "The host refused it. Check that you have write access, and that the merge has not already happened.",
-  revert: `The host refused it. Check that you have write access and that this ${term} was merged on the host.`,
-  "delete-branch":
+  ),
+  revert: t(
+    "The host refused it. Check that you have write access and that this {{term}} was merged on the host.",
+    { term: term },
+  ),
+  "delete-branch": t(
     "The host refused it. Check that you have write access to the source repository and that the branch has not moved since this page loaded.",
-  "approve-workflows":
+  ),
+  "approve-workflows": t(
     "The host refused it. Check that you have Actions write access and that these workflow runs are still awaiting approval.",
+  ),
 });
 
-const UPDATE_BRANCH_REBASE_FAILURE_HINT =
-  "The host refused it. A rebase stops at the first commit that does not apply cleanly; updating with a merge commit may still work.";
+const UPDATE_BRANCH_REBASE_FAILURE_HINT = t(
+  "The host refused it. A rebase stops at the first commit that does not apply cleanly; updating with a merge commit may still work.",
+);
 
 const TABS: ReadonlyArray<{ value: PullRequestDetailTab; label: string }> = [
   {
@@ -260,7 +271,11 @@ function pullRequestMarkdownContext(
   detail: Pick<PullRequestDetail, "provider" | "url"> | null,
   threadRef: ScopedThreadRef | null,
 ) {
-  return { autolinks: changeRequestReferenceAutolinker(detail), threadRef };
+  return {
+    remarkPlugins: pullRequestAutolinkPlugins(detail),
+    lineBreaks: sourceControlClients.find(detail?.provider ?? "")?.hardLineBreaks ?? false,
+    threadRef,
+  };
 }
 
 function pullRequestStackReference(
@@ -435,16 +450,16 @@ export function PullRequestDetailPanel({
     Partial<Record<PullRequestDetailTab, boolean>>
   >({});
   const condensed = condensedByTab[tab] ?? false;
-  const scrollerByTab = useRef<Partial<Record<PullRequestDetailTab, HTMLDivElement | null>>>({});
+  const scrollerByTab = useRef<Partial<Record<PullRequestDetailTab, HTMLElement | null>>>({});
   // Fresh ref callbacks would detach and reattach every scroller on each render.
   const [scrollerRefs] = useState(() => ({
-    summary: (node: HTMLDivElement | null) => {
+    summary: (node: HTMLElement | null) => {
       scrollerByTab.current.summary = node;
     },
-    timeline: (node: HTMLDivElement | null) => {
+    timeline: (node: HTMLElement | null) => {
       scrollerByTab.current.timeline = node;
     },
-    code: (node: HTMLDivElement | null) => {
+    code: (node: HTMLElement | null) => {
       scrollerByTab.current.code = node;
     },
   }));
@@ -454,7 +469,7 @@ export function PullRequestDetailPanel({
   // so applying a delta afterward would compensate twice.
   const compensationRef = useRef<{
     tab: PullRequestDetailTab;
-    scroller: HTMLDivElement;
+    scroller: HTMLElement;
     target: number;
   } | null>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- restores the scroller's scrollTop before paint after the header condenses
@@ -492,7 +507,7 @@ export function PullRequestDetailPanel({
   ).changeRequest;
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { copyToClipboard: copyReference } = useCopyToClipboard<string>({
-    target: `${terminology.singular} reference`,
+    target: t("{{singular}} reference", { singular: terminology.singular }),
     onCopy: (label) =>
       toastManager.add({ type: "success", title: t("{{label}} copied", { label: label }) }),
     onError: (error, label) =>
@@ -510,7 +525,11 @@ export function PullRequestDetailPanel({
     if (command !== "pullRequest.copyNumber") return;
     event.preventDefault();
     event.stopPropagation();
-    if (!event.repeat) copyReference(`#${reference.number}`, `${terminology.shortLabel} number`);
+    if (!event.repeat)
+      copyReference(
+        `#${reference.number}`,
+        t("{{shortLabel}} number", { shortLabel: terminology.shortLabel }),
+      );
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window keydown capture listener for the copy-number shortcut
   useEffect(() => {
@@ -1144,12 +1163,16 @@ export function PullRequestDetailPanel({
     lastSelectedMergeMethod,
   );
   const selectedMergeMethodLabel = PULL_REQUEST_MERGE_METHOD_LABELS[selectedMergeMethod];
-  const pendingAutoMergeLabel = `Auto-merge (${selectedMergeMethodLabel.toLowerCase()})`;
+  const pendingAutoMergeLabel = t("Auto-merge ({{value1}})", {
+    value1: selectedMergeMethodLabel.toLowerCase(),
+  });
   const conflicting = isPullRequestConflicting(detail);
   const autoMergeArmed = detail?.state === "open" && detail.autoMergeEnabled === true;
   const armedMergeMethod = detail?.autoMergeMethod;
   const armedAutoMergeLabel = armedMergeMethod
-    ? `Auto-merge (${PULL_REQUEST_MERGE_METHOD_LABELS[armedMergeMethod].toLowerCase()})`
+    ? t("Auto-merge ({{value1}})", {
+        value1: PULL_REQUEST_MERGE_METHOD_LABELS[armedMergeMethod].toLowerCase(),
+      })
     : "Auto-merge";
   const workflowApprovalsRequired =
     detail?.state === "open" ? (detail.workflowApprovalsRequired ?? 0) : 0;
@@ -1221,8 +1244,14 @@ export function PullRequestDetailPanel({
     if (detail === null) return;
     const confirmed = await readLocalApi()?.dialogs.confirm(
       [
-        `Delete branch ${detail.headBranch}?`,
-        `This deletes ${detail.headBranch} from ${detail.headRepositoryNameWithOwner ?? detail.repository}. Local branches and worktrees are not changed.`,
+        t("Delete branch {{headBranch}}?", { headBranch: detail.headBranch }),
+        t(
+          "This deletes {{headBranch}} from {{repository}}. Local branches and worktrees are not changed.",
+          {
+            headBranch: detail.headBranch,
+            repository: detail.headRepositoryNameWithOwner ?? detail.repository,
+          },
+        ),
       ].join("\n"),
       { variant: "destructive" },
     );
@@ -1262,7 +1291,7 @@ export function PullRequestDetailPanel({
   const resolveConflictsControl = (
     <PullRequestResolveConflictsButton
       handoff={handoff}
-      unavailable={attachTarget === null && checkoutRoot === null}
+      unavailable={attachTarget === null && (checkoutRoot === null || !canPrepareWorktree)}
       onResolve={startResolveConflicts}
     />
   );
@@ -1662,9 +1691,10 @@ export function PullRequestDetailPanel({
                     aria-label={
                       activityError
                         ? t("Comments unavailable")
-                        : `${detail.commentCount.toLocaleString()} ${
-                            detail.commentCount === 1 ? "comment" : "comments"
-                          }`
+                        : t("{{value1}} {{value2}}", {
+                            value1: detail.commentCount.toLocaleString(),
+                            value2: detail.commentCount === 1 ? "comment" : "comments",
+                          })
                     }
                   >
                     <MessageSquareIcon aria-hidden className="size-3" />
@@ -1679,9 +1709,10 @@ export function PullRequestDetailPanel({
                     aria-label={
                       activityError
                         ? t("Commits unavailable")
-                        : `${detail.commits.length.toLocaleString()} ${
-                            detail.commits.length === 1 ? "commit" : "commits"
-                          }`
+                        : t("{{value1}} {{value2}}", {
+                            value1: detail.commits.length.toLocaleString(),
+                            value2: detail.commits.length === 1 ? "commit" : "commits",
+                          })
                     }
                   >
                     <GitCommitHorizontalIcon aria-hidden className="size-3" />

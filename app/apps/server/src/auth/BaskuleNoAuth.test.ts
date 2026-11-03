@@ -5,6 +5,7 @@ import { expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -64,7 +65,7 @@ it.layer(NodeServices.layer)("Baskule no-auth mode", (it) => {
       const { ticket } = yield* auth.issueWebSocketTicket(session);
       const upgraded = yield* auth.authenticateWebSocketUpgrade(
         {
-          url: `/ws?wsTicket=${encodeURIComponent(ticket)}`,
+          url: `/ws?wsTicket=${encodeURIComponent(Redacted.value(ticket))}`,
           cookies: {},
           headers: { host: HOST },
         } as never,
@@ -101,6 +102,18 @@ it.layer(NodeServices.layer)("Baskule no-auth mode", (it) => {
       const browser = yield* auth.createBrowserSession("anything", metadata);
       expect(browser.response.authenticated).toBe(true);
       expect((yield* sessions.verify(browser.sessionToken)).subject).toBe(BASKULE_NO_AUTH_SUBJECT);
+    }).pipe(Effect.provide(layerAuth(NO_AUTH))),
+  );
+
+  it.effect("refuses full-access MCP approval and permits read-write approval", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const error = yield* Effect.flip(auth.consumeMcpApprovalCode("dummy", "full-access"));
+      expect(error._tag).toBe("ServerAuthMcpApprovalCodeError");
+      if (error._tag === "ServerAuthMcpApprovalCodeError") {
+        expect(error.reason).toBe("insufficient_scope");
+      }
+      yield* auth.consumeMcpApprovalCode("dummy", "approval-required");
     }).pipe(Effect.provide(layerAuth(NO_AUTH))),
   );
 

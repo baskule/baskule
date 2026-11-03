@@ -10,11 +10,12 @@ import {
 } from "@t3tools/contracts";
 import {
   DEFAULT_RESOLVED_KEYBINDINGS,
+  parseKeybindingShortcut,
   parseKeybindingWhenExpression,
   US_SHIFTED_TO_UNSHIFTED_KEYS,
 } from "@t3tools/shared/keybindings";
 
-import { shortcutKeyFromEvent } from "../../keybindings";
+import { shortcutConflictKey, shortcutKeyFromEvent } from "../../keybindings";
 import { isMacPlatform } from "../../lib/utils";
 import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 
@@ -97,9 +98,15 @@ export function whenAstToExpression(node: KeybindingWhenNode | undefined): strin
     case "not":
       return `!${wrapWhenExpression(node.node)}`;
     case "and":
-      return `${wrapWhenExpression(node.left)} && ${wrapWhenExpression(node.right)}`;
+      return t("{{value1}} && {{value2}}", {
+        value1: wrapWhenExpression(node.left),
+        value2: wrapWhenExpression(node.right),
+      });
     case "or":
-      return `${wrapWhenExpression(node.left)} || ${wrapWhenExpression(node.right)}`;
+      return t("{{value1}} || {{value2}}", {
+        value1: wrapWhenExpression(node.left),
+        value2: wrapWhenExpression(node.right),
+      });
   }
 }
 
@@ -182,13 +189,18 @@ function conflictsWithWhen(leftWhen: string, rightWhen: string): boolean {
 export function keybindingConflictLabels(
   rows: ReadonlyArray<KeybindingRow>,
   input: { readonly rowId: string; readonly key: string; readonly when: string },
+  platform = navigator.platform,
 ): ReadonlyArray<string> {
   if (input.key.trim().length === 0) return [];
+  const shortcut = parseKeybindingShortcut(input.key);
+  if (!shortcut) return [];
+  // Compare resolved chords so mod+k and ctrl+k collide where mod is Ctrl.
+  const conflictKey = shortcutConflictKey(shortcut, platform);
   const conflicts: Array<string> = [];
   for (const candidate of rows) {
     if (
       candidate.id !== input.rowId &&
-      candidate.key === input.key &&
+      shortcutConflictKey(candidate.binding.shortcut, platform) === conflictKey &&
       conflictsWithWhen(candidate.when, input.when)
     ) {
       conflicts.push(commandLabel(candidate.command));
@@ -287,6 +299,7 @@ export function groupKeybindingRows(
 
 export function buildKeybindingRows(
   keybindings: ResolvedKeybindingsConfig,
+  platform = navigator.platform,
 ): ReadonlyArray<KeybindingRow> {
   const rowsById = new Map<string, KeybindingRow>();
   for (const binding of keybindings) {
@@ -309,11 +322,15 @@ export function buildKeybindingRows(
   const rows = [...rowsById.values()];
 
   const rowsWithConflicts = rows.map((row) => {
-    const conflicts = keybindingConflictLabels(rows, {
-      rowId: row.id,
-      key: row.key,
-      when: row.when,
-    });
+    const conflicts = keybindingConflictLabels(
+      rows,
+      {
+        rowId: row.id,
+        key: row.key,
+        when: row.when,
+      },
+      platform,
+    );
     return conflicts.length > 0
       ? Object.assign({}, row, { conflicts: [...new Set(conflicts)].toSorted() })
       : row;
@@ -402,8 +419,8 @@ export function buildKeybindingCommandOptions(
 }
 
 export function commandLabel(command: KeybindingCommand): string {
-  if (command === "workspace.focusNext") return "Focus Next Workspace Area";
-  if (command === "workspace.focusPrevious") return "Focus Previous Workspace Area";
+  if (command === "workspace.focusNext") return t("Focus Next Workspace Area");
+  if (command === "workspace.focusPrevious") return t("Focus Previous Workspace Area");
   if (command === "composer.sendAlternate") return t("Composer: Opposite Queue or Steer Action");
   if (command === "composer.sendBackground") return t("Composer: Start in Background");
   if (command === "composer.sendAndNewThread") return t("Composer: Send and Start New Thread");

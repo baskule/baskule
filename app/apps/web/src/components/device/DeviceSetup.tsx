@@ -21,10 +21,12 @@ import { cn } from "~/lib/utils";
 
 const platformName = (platform: DevicePlatform) => (platform === "ios" ? "iOS" : "Android");
 
-export const deviceHubDescription =
-  "Enable this environment to open simulators and emulators, whether they run here or on a remote device host.";
-export const agentDeviceDescription =
-  "Allow new agent sessions in this environment to start and control local and remote devices, with required tools set up automatically.";
+export const deviceHubDescription = t(
+  "Enable this environment to open simulators and emulators, whether they run here or on a remote device host.",
+);
+export const agentDeviceDescription = t(
+  "Allow new agent sessions in this environment to start and control local and remote devices, with required tools set up automatically.",
+);
 
 export const isAndroidDiscoveryUncertain = (state: DeviceServiceState) =>
   Object.values(state.hostStatuses).some(
@@ -96,7 +98,9 @@ export function platformSetupStatus(state: DeviceServiceState, platform: DeviceP
   if (supportingHosts.length === 0) {
     return {
       ready: false,
-      message: availabilities[0]?.reason ?? `${platformName(platform)} support was not detected.`,
+      message:
+        availabilities[0]?.reason ??
+        t("{{value1}} support was not detected.", { value1: platformName(platform) }),
     };
   }
   const readyHosts = supportingHosts.filter(
@@ -109,22 +113,29 @@ export function platformSetupStatus(state: DeviceServiceState, platform: DeviceP
       ready: false,
       message:
         platform === "ios"
-          ? "Xcode is installed, but no iOS Simulator is available. Install a runtime in Xcode Settings → Components."
-          : "The Android SDK is installed, but no virtual device exists. Create one in Android Studio → Device Manager.",
+          ? t(
+              "Xcode is installed, but no iOS Simulator is available. Install a runtime in Xcode Settings → Components.",
+            )
+          : t(
+              "The Android SDK is installed, but no virtual device exists. Create one in Android Studio → Device Manager.",
+            ),
     };
   }
   const remoteHost = supportingHosts.every((host) => host.kind !== "local")
     ? supportingHosts[0]
     : undefined;
-  const location = remoteHost ? ` on ${remoteHost.label}` : "";
+  const location = remoteHost ? t(" on {{label}}", { label: remoteHost.label }) : "";
   return {
     ready: true,
     message:
       remoteHost?.kind === "eas"
-        ? `${remoteHost.label} starts iOS Simulators in the cloud with EAS Simulator.`
+        ? t("{{label}} starts {{value2}} in the cloud with EAS Simulator.", {
+            label: remoteHost.label,
+            value2: platform === "ios" ? "iOS Simulators" : "Android emulators",
+          })
         : platform === "ios"
-          ? `Xcode and iOS Simulator are available${location}.`
-          : `The Android SDK and Emulator are available${location}.`,
+          ? t("Xcode and iOS Simulator are available{{location}}.", { location: location })
+          : t("The Android SDK and Emulator are available{{location}}.", { location: location }),
   };
 }
 
@@ -167,7 +178,7 @@ export function DeviceSetup(props: {
         )}
       >
         <WizardSteps
-          steps={["Device hub", "Simulators", "Agent access"]}
+          steps={[t("Device hub"), t("Simulators"), t("Agent access")]}
           currentStep={step}
           onStepChange={setStep}
           isStepDisabled={(requested) => busy || pending !== null || requested > step}
@@ -338,14 +349,14 @@ export function AgentDeviceSetupStatus(props: {
       props.state.hostStatus === "installing"
         ? props.compact
           ? "Installing…"
-          : "Installing agent tools…"
+          : t("Installing agent tools…")
         : props.state.hostStatus === "starting"
           ? props.compact
             ? "Starting…"
-            : "Starting agent tools…"
+            : t("Starting agent tools…")
           : props.compact
             ? "Updating…"
-            : "Updating agent access…";
+            : t("Updating agent access…");
     return (
       <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
         <Spinner size="xs" />

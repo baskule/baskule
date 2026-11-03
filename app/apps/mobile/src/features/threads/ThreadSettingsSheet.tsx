@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { BASKULE_FLAGS } from "../../baskule/flags";
@@ -49,7 +50,12 @@ import {
   type ReactNode,
 } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, TextInput, View } from "react-native";
-import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useReducedMotion,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -59,6 +65,7 @@ import { IconButton } from "../../components/ui/IconButton";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { cn } from "../../lib/cn";
+import { useReduceMotionEnabled } from "../../lib/appState";
 import {
   buildModelOptions,
   groupByProvider,
@@ -506,8 +513,8 @@ function ThreadSettingsSessionProvider(
     if (pendingModel) {
       if (!canCommitPendingModel(pendingModel, props.providerGroups)) {
         Dialog.alert(
-          "Model unavailable",
-          "Set up this provider on web or desktop, or select another model.",
+          t("Model unavailable"),
+          t("Set up this provider on web or desktop, or select another model."),
         );
         return false;
       }
@@ -607,7 +614,9 @@ function ThreadSettingsSessionProvider(
 function useThreadSettingsSession() {
   const value = use(ThreadSettingsSessionContext);
   if (!value) {
-    throw new Error("useThreadSettingsSession must be used inside ThreadSettingsSessionProvider.");
+    throw new Error(
+      t("useThreadSettingsSession must be used inside ThreadSettingsSessionProvider."),
+    );
   }
   return value;
 }
@@ -894,10 +903,14 @@ function ThreadSettingsMainContent(props: {
     void refreshProviderCatalog(session.environmentId).then((result) => {
       setIsRefreshingProviders(false);
       const error = providerCatalogRefreshError(result);
-      if (error) Dialog.alert("Could not refresh models", error);
+      if (error) Dialog.alert(t("Could not refresh models"), error);
     });
   };
-  const [animationsReady, setAnimationsReady] = useState(false);
+  const [listLoaded, setListLoaded] = useState(false);
+  // Android can drop the first frame of a reduced-motion fade, leaving rows invisible.
+  const reducedMotion = useReducedMotion();
+  const reduceMotionEnabled = useReduceMotionEnabled();
+  const animationsReady = listLoaded && !reducedMotion && !reduceMotionEnabled;
   const catalogItems = buildThreadSettingsCatalogItems(session);
   const hasActiveCatalogFilter =
     session.providerFilter !== null || session.searchQuery.trim().length > 0;
@@ -1023,7 +1036,7 @@ function ThreadSettingsMainContent(props: {
           <RefreshControl refreshing={isRefreshingProviders} onRefresh={refreshProviders} />
         ) : undefined
       }
-      onLoad={() => setAnimationsReady(true)}
+      onLoad={() => setListLoaded(true)}
       renderItem={renderCatalogItem}
       showsVerticalScrollIndicator={false}
     />
@@ -1135,7 +1148,7 @@ function useThreadSettingsPickerPresentation() {
   const value = use(ThreadSettingsPickerPresentationContext);
   if (!value) {
     throw new Error(
-      "useThreadSettingsPickerPresentation must be used inside ThreadSettingsPickerNavigator.",
+      t("useThreadSettingsPickerPresentation must be used inside ThreadSettingsPickerNavigator."),
     );
   }
   return value;

@@ -40,6 +40,7 @@ const loadMine = () => pluginsApi.mine();
  * `connectionError` means it failed. */
 function useConnectionOutcome() {
   const t = useTranslation();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- consumes the OAuth callback URL once and reports its outcome in a toast.
   useEffect(() => {
     const url = new URL(window.location.href);
     const outcome = url.searchParams.get("pluginConnection");

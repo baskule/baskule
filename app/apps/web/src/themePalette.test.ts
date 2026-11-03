@@ -144,7 +144,7 @@ describe("theme files", () => {
 
   it("keeps stock dark controls in the neutral-black surface hierarchy", () => {
     expectThemeColors(getStandardThemeColors("dark"), {
-      canvas: "#0a0a0a",
+      canvas: "#000000",
       surface: "#111111",
       surfaceRaised: "#111111",
       surfaceOverlay: "#111111",
@@ -163,7 +163,7 @@ describe("theme files", () => {
       messageSurface: "#f5f5f5",
     });
     expectThemeColors(getStandardThemeColors("dark"), {
-      canvas: "#0a0a0a",
+      canvas: "#000000",
       sidebar: "#000000",
       sidebarRowActive: "#1a1b1b",
       messageSurface: "#141414",

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
 
 import { documentChipKindForFileName } from "~/pierre-icons";
@@ -61,6 +62,7 @@ import {
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
 import { TimelineRowCtx } from "./timelineRowContext";
+import { userMessageFileLabel } from "./TimelineUserMessageRow.logic";
 
 function UserMessageMentionChip(props: {
   record: Extract<KnownComposerContextRecord, { kind: "mention" }>;
@@ -162,7 +164,7 @@ function UserMessagePreviewAnnotationDetails(props: {
         >
           <img
             src={props.image.previewUrl}
-            alt="Annotated preview crop"
+            alt={t("Annotated preview crop")}
             className="max-h-64 w-full object-contain"
           />
         </button>
@@ -366,12 +368,14 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         }
         const attachment = context.attachment;
         const isVideo = isVideoAttachment(attachment);
+        const label = userMessageFileLabel(attachment);
         const disabled =
           attachment.downloadable === false && (!isVideo || attachment.previewUrl === undefined);
-        const size = formatAttachmentSize(record.sizeBytes);
+        const size =
+          attachment.downloadable === false ? "Sending…" : formatAttachmentSize(record.sizeBytes);
         return (
           <FileChip
-            name={record.name}
+            name={label}
             svgPreview={
               isSvgAttachment(attachment)
                 ? { environmentId: context.environmentId, attachmentId: attachment.id }
@@ -381,12 +385,12 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
             isVideo={isVideo}
             theme={context.resolvedTheme}
             disabled={disabled}
-            accessibleLabel={`${isVideo ? "Video" : "File"} attachment, ${record.name}, ${size}`}
+            accessibleLabel={`${isVideo ? t("Video") : t("File")} attachment, ${label}, ${size}`}
             copyMarkdown={context.copyMarkdown}
             onOpen={() =>
               isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
             }
-            tooltip={`${record.name}\n${size}`}
+            tooltip={t("{{label}}\n{{size}}", { label: label, size: size })}
           />
         );
       },
@@ -437,7 +441,7 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         }
         const isPullRequest = isPullRequestSummaryContext(record);
         const label = reviewCommentContextLabel(record);
-        const kindLabel = isPullRequest ? pullRequestContextKindLabel(record) : "Review comment";
+        const kindLabel = isPullRequest ? pullRequestContextKindLabel(record) : t("Review comment");
         const pullRequestState = pullRequestContextDisplayState(record) ?? "unknown";
         if (isPullRequest && record.pullRequest !== undefined) {
           return (

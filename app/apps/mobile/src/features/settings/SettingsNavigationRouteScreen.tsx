@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context";
@@ -83,7 +84,7 @@ export function SettingsNavigationRouteScreen() {
               />
               <IconButton
                 icon="arrow.up"
-                accessibilityLabel={`Move ${WORKSPACE_TAB_LABELS[tab]} up`}
+                accessibilityLabel={t("Move {{value1}} up", { value1: WORKSPACE_TAB_LABELS[tab] })}
                 disabled={!ready || index === 0}
                 onPress={() =>
                   save({
@@ -99,7 +100,9 @@ export function SettingsNavigationRouteScreen() {
               />
               <IconButton
                 icon="arrow.down"
-                accessibilityLabel={`Move ${WORKSPACE_TAB_LABELS[tab]} down`}
+                accessibilityLabel={t("Move {{value1}} down", {
+                  value1: WORKSPACE_TAB_LABELS[tab],
+                })}
                 disabled={!ready || index === order.length - 1}
                 onPress={() =>
                   save({

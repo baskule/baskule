@@ -76,6 +76,7 @@ import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
 import {
   editDraft,
+  parseIntervalMinutes,
   scheduledTaskDefaultModel,
   scheduleFromDraft,
   type ScheduledTaskDraft as Draft,
@@ -146,10 +147,12 @@ const DAYS = [
 ] as const;
 
 function describeSchedule(task: ScheduledTask): string {
-  if (task.schedule.type === "webhook") return "On webhook";
+  if (task.schedule.type === "webhook") return t("On webhook");
   if (task.schedule.type === "interval") return formatScheduledTaskInterval(task.schedule.everyMs);
-  const days = task.schedule.weekdays?.length ? repeatLabel(task.schedule.weekdays) : "Every day";
-  return `${days} at ${formatTime(task.schedule.timeOfDay)}`;
+  const days = task.schedule.weekdays?.length
+    ? repeatLabel(task.schedule.weekdays)
+    : t("Every day");
+  return t("{{days}} at {{value2}}", { days: days, value2: formatTime(task.schedule.timeOfDay) });
 }
 
 function formatTime(value: string): string {
@@ -179,7 +182,7 @@ function repeatLabel(weekdays: ReadonlyArray<number>): string {
   return (
     DAYS.filter((day) => days.has(day.index))
       .map((day) => day.label)
-      .join(", ") || "Choose days"
+      .join(", ") || t("Choose days")
   );
 }
 
@@ -257,7 +260,7 @@ function SelectRow(props: {
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${props.label}, ${props.value}`}
+        accessibilityLabel={t("{{label}}, {{value}}", { label: props.label, value: props.value })}
         className={
           props.borderTop
             ? "min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
@@ -373,7 +376,7 @@ function PickerRow(props: {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${props.label}, ${props.value}`}
+      accessibilityLabel={t("{{label}}, {{value}}", { label: props.label, value: props.value })}
       accessibilityState={{ disabled: props.disabled }}
       disabled={props.disabled}
       onPress={props.onPress}
@@ -580,10 +583,10 @@ function SettingsScheduledTaskEditorScreen({ title }: { readonly title: string }
       return;
     }
     if (saving) {
-      Dialog.alert("Saving task", "Wait for the task to finish saving before leaving.");
+      Dialog.alert(t("Saving task"), t("Wait for the task to finish saving before leaving."));
       return;
     }
-    Dialog.alert("Discard changes?", "Your unsaved changes will be lost.", [
+    Dialog.alert(t("Discard changes?"), t("Your unsaved changes will be lost."), [
       { text: t("Keep editing"), style: "cancel" },
       {
         text: t("Discard changes"),
@@ -715,7 +718,16 @@ function TaskForm({
   const tasks = useEnvironmentQuery(
     serverEnvironment.scheduledTasksLive({ environmentId, input: {} }),
   );
-  const projects = useProjects().filter((project) => project.environmentId === environmentId);
+  // Pinned first. The chosen project stays listed after it is archived.
+  const projects = useProjects()
+    .filter(
+      (project) =>
+        project.environmentId === environmentId &&
+        (project.archivedAt == null ||
+          project.id === draft.projectId ||
+          project.id === draft.task?.projectId),
+    )
+    .sort((left, right) => Number(right.pinnedAt != null) - Number(left.pinnedAt != null));
   const config = useEnvironmentServerConfig(environmentId);
   const modelOptions = buildModelOptions(config, null, undefined, draft.projectId);
   const canOperate = useAtomValue(
@@ -763,20 +775,25 @@ function TaskForm({
       parseMaxDeliveryAge(draft.schedule.maxDeliveryAgeMinutes) === undefined
     ) {
       Dialog.alert(
-        "Invalid age limit",
-        `Enter whole minutes from 1 to ${MAX_WEBHOOK_DELIVERY_AGE_MINUTES}, or leave it blank.`,
+        t("Invalid age limit"),
+        t(
+          "Enter whole minutes from 1 to {{MAX_WEBHOOK_DELIVERY_AGE_MINUTES}}, or leave it blank.",
+          { MAX_WEBHOOK_DELIVERY_AGE_MINUTES: MAX_WEBHOOK_DELIVERY_AGE_MINUTES },
+        ),
       );
       return;
     }
     const parsedFilters = parseWebhookFilterDrafts(draft.schedule.filters);
     if (draft.schedule.mode === "webhook" && "error" in parsedFilters) {
-      Dialog.alert("Invalid filter", parsedFilters.error);
+      Dialog.alert(t("Invalid filter"), parsedFilters.error);
       return;
     }
     if (draft.schedule.mode === "webhook" && schedule === null) {
       Dialog.alert(
-        "Invalid webhook settings",
-        "Each dedupe key must contain a valid request placeholder. The coalesce window must be whole seconds from 10 to 3600, or blank.",
+        t("Invalid webhook settings"),
+        t(
+          "Each dedupe key must contain a valid request placeholder. The coalesce window must be whole seconds from 10 to 3600, or blank.",
+        ),
       );
       return;
     }
@@ -789,13 +806,13 @@ function TaskForm({
       (draft.workspace === "existing_worktree" && !draft.checkoutPath.trim())
     ) {
       Dialog.alert(
-        "Incomplete task",
-        "Add a name, prompt, project, model, valid schedule, and checkout path if needed.",
+        t("Incomplete task"),
+        t("Add a name, prompt, project, model, valid schedule, and checkout path if needed."),
       );
       return;
     }
     if (!projects.some((project) => project.id === draft.projectId)) {
-      Dialog.alert("Project unavailable", "Choose a project in this environment.");
+      Dialog.alert(t("Project unavailable"), t("Choose a project in this environment."));
       return;
     }
     const input: ScheduledTaskUpsertInput = {
@@ -827,7 +844,7 @@ function TaskForm({
     setSaving(false);
     if (result._tag === "Failure") {
       submissionPending.current = false;
-      failure("Could not save task", result);
+      failure(t("Could not save task"), result);
       return;
     }
     onSaved();
@@ -949,10 +966,10 @@ function TaskForm({
             label={t("Run in")}
             value={
               draft.workspace === "worktree"
-                ? "New worktree"
+                ? t("New worktree")
                 : draft.workspace === "root"
-                  ? "Project checkout"
-                  : "Specific checkout"
+                  ? t("Project checkout")
+                  : t("Specific checkout")
             }
             actions={[
               {
@@ -1136,7 +1153,7 @@ function TaskForm({
               <FormField
                 label={t("Replay key template")}
                 value={draft.schedule.replayKey}
-                placeholder="{{headers.delivery-id}}"
+                placeholder={t("{{headers.delivery-id}}")}
                 disabled={saving}
                 borderTop
                 onChange={(replayKey) =>
@@ -1146,7 +1163,7 @@ function TaskForm({
               <FormField
                 label={t("Coalesce key template")}
                 value={draft.schedule.coalesceKey}
-                placeholder="{{body.id}}"
+                placeholder={t("{{body.id}}")}
                 disabled={saving}
                 borderTop
                 onChange={(coalesceKey) =>
@@ -1182,7 +1199,7 @@ function TaskForm({
                   setDraft({ ...draft, schedule: { ...draft.schedule, intervalMinutes } })
                 }
               />
-              {Number(draft.schedule.intervalMinutes) < 1 ? (
+              {!(parseIntervalMinutes(draft.schedule.intervalMinutes) >= 1) ? (
                 <Text className="px-4 pb-3 text-sm text-danger-foreground">
                   {t("Intervals must be at least 1 minute. Update this interval before saving.")}
                 </Text>
@@ -1376,7 +1393,10 @@ function EnvironmentTasks({
         : action === "toggle"
           ? await setEnabled({ environmentId, input: { id: task.id, enabled: !task.enabled } })
           : await remove({ environmentId, input: { id: task.id } });
-    failure(`Could not ${action === "toggle" ? "update" : action} task`, result);
+    failure(
+      t("Could not {{value1}} task", { value1: action === "toggle" ? "update" : action }),
+      result,
+    );
   };
 
   return (
@@ -1427,7 +1447,9 @@ function EnvironmentTasks({
                 {!task.enabled
                   ? t(" · Paused")
                   : task.nextRunAt
-                    ? ` · ${formatNextScheduledTaskRun(task.nextRunAt, now)}`
+                    ? t(" · {{value1}}", {
+                        value1: formatNextScheduledTaskRun(task.nextRunAt, now),
+                      })
                     : ""}
               </Text>
               {task.lastRunError ? (

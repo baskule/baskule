@@ -8,7 +8,7 @@ import * as Schema from "effect/Schema";
 
 import { GUARD_LENGTH, type TranscriptParsePosition } from "./usageTranscriptReader.ts";
 
-const USAGE_SCAN_CACHE_VERSION = 9 as const;
+const USAGE_SCAN_CACHE_VERSION = 10 as const;
 const SPEED_COMPATIBLE_SINCE_VERSION = 4;
 
 /**
@@ -16,8 +16,9 @@ const SPEED_COMPATIBLE_SINCE_VERSION = 4;
  * replace it, dropping saved usage for deleted transcripts. Separate files keep
  * both.
  */
-export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v9.json";
+export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v10.json";
 export const LEGACY_SCAN_CACHE_FILE_NAMES = [
+  "usage-scan-cache-v9.json",
   "usage-scan-cache-v8.json",
   "usage-scan-cache-v7.json",
   "usage-scan-cache-v6.json",

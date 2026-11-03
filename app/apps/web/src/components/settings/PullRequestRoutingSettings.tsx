@@ -14,7 +14,7 @@ import type { EnvironmentPresentation } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { toastManager } from "../ui/toast";
-import { EnvironmentRow, environmentTransportLabel } from "./EnvironmentRow";
+import { EnvironmentRow, EnvironmentTransportLabel } from "./EnvironmentRow";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { searchableSetting } from "./settingsSearch";
 
@@ -58,7 +58,12 @@ function summarizePullRequestRouting(
     const labels = entries.filter((entry) => entry.permission === permission);
     return labels.length === 0
       ? []
-      : [`${labels.map((entry) => entry.label).join(", ")} ${summaryLabels[permission]}`];
+      : [
+          t("{{value1}} {{value2}}", {
+            value1: labels.map((entry) => entry.label).join(", "),
+            value2: summaryLabels[permission],
+          }),
+        ];
   });
   return groups.length === 0 ? null : groups.join(" · ");
 }
@@ -100,7 +105,7 @@ export function PullRequestRoutingSettings({
           key={environment.environmentId}
           kind={resolveEnvironmentMachineKind(environment.serverConfig)}
           label={environment.label}
-          subtitle={environmentTransportLabel(environment)}
+          subtitle={<EnvironmentTransportLabel environment={environment} />}
         >
           <Select
             items={options}

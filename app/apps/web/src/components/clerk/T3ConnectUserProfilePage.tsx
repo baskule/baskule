@@ -14,6 +14,7 @@ import {
   deregisterManagedRelayEnvironmentCommand,
   useManagedRelayEnvironments,
 } from "../../cloud/managedRelayState";
+import { relayEnvironmentDiscovery } from "../../state/relay";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
@@ -31,7 +32,7 @@ function linkedAtLabel(value: string): string {
   const linkedAt = new Date(value);
   return Number.isNaN(linkedAt.getTime())
     ? t("Link date unavailable")
-    : `Linked ${linkedAtFormatter.format(linkedAt)}`;
+    : t("Linked {{value1}}", { value1: linkedAtFormatter.format(linkedAt) });
 }
 
 function endpointLabel(environment: RelayClientEnvironmentRecord): string {
@@ -121,6 +122,9 @@ export function T3ConnectUserProfilePage() {
   const deregisterEnvironment = useAtomCommand(deregisterManagedRelayEnvironmentCommand, {
     reportFailure: false,
   });
+  const refreshRelayEnvironments = useAtomCommand(relayEnvironmentDiscovery.refreshAfterMutation, {
+    reportFailure: false,
+  });
   const [deregisteringEnvironmentId, setDeregisteringEnvironmentId] =
     useState<EnvironmentId | null>(null);
   const [confirmingEnvironmentId, setConfirmingEnvironmentId] = useState<EnvironmentId | null>(
@@ -153,6 +157,7 @@ export function T3ConnectUserProfilePage() {
         return { accountId, linkedAtById };
       });
       environmentsState.refresh();
+      void refreshRelayEnvironments();
       toastManager.add({
         type: "success",
         title: t("Server deregistered"),
@@ -163,9 +168,9 @@ export function T3ConnectUserProfilePage() {
     if (isAtomCommandInterrupted(result)) return;
 
     const cause = squashAtomCommandFailure(result);
-    const message = cause instanceof Error ? cause.message : "Could not deregister the server.";
+    const message = cause instanceof Error ? cause.message : t("Could not deregister the server.");
     const traceId = findErrorTraceId(cause);
-    console.error("[t3-connect] Could not deregister environment", {
+    console.error(t("[t3-connect] Could not deregister environment"), {
       environmentId: environment.environmentId,
       message,
       traceId,
@@ -178,7 +183,7 @@ export function T3ConnectUserProfilePage() {
       data: traceId
         ? {
             secondaryActionProps: {
-              children: "Copy trace ID",
+              children: t("Copy trace ID"),
               onClick: () => void navigator.clipboard?.writeText(traceId),
             },
           }

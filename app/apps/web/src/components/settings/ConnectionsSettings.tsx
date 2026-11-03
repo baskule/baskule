@@ -31,6 +31,7 @@ import {
   isWslSettingsRowVisible,
   missingTailscaleEndpointDescription,
   resolveLocalVersionStatusLabel,
+  resolveTailscaleServeBaseUrl,
 } from "./ConnectionsSettings.logic";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { LocalEnvironmentSetting } from "./LocalEnvironmentSetting";
@@ -339,20 +340,11 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
     parsedTailscaleServePort >= 1 &&
     parsedTailscaleServePort <= 65_535;
 
-  const pendingTailscaleServeBaseUrl = (() => {
-    if (!pendingTailscaleServeEndpoint) return null;
-    if (!isTailscaleServePortValid) return pendingTailscaleServeEndpoint.httpBaseUrl;
-    if (parsedTailscaleServePort === DEFAULT_TAILSCALE_SERVE_PORT) {
-      return pendingTailscaleServeEndpoint.httpBaseUrl;
-    }
-    try {
-      const url = new URL(pendingTailscaleServeEndpoint.httpBaseUrl);
-      url.port = String(parsedTailscaleServePort);
-      return url.toString().replace(/\/$/u, "");
-    } catch {
-      return pendingTailscaleServeEndpoint.httpBaseUrl;
-    }
-  })();
+  const pendingTailscaleServeBaseUrl = resolveTailscaleServeBaseUrl(
+    pendingTailscaleServeEndpoint,
+    parsedTailscaleServePort,
+    isTailscaleServePortValid,
+  );
 
   const handleDesktopServerExposureChange = async (checked: boolean) => {
     if (
@@ -369,7 +361,8 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
       setPendingDesktopServerExposureMode(null);
       setIsUpdatingDesktopServerExposure(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to update network exposure.";
+      const message =
+        error instanceof Error ? error.message : t("Failed to update network exposure.");
       setPendingDesktopServerExposureMode(null);
       setDesktopServerExposureMutationError(message);
       toastManager.add(
@@ -410,7 +403,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
     if (settled._tag === "Failure") {
       const error = Cause.squash(settled.cause);
       const message =
-        error instanceof Error ? error.message : "Failed to configure Tailscale HTTPS.";
+        error instanceof Error ? error.message : t("Failed to configure Tailscale HTTPS.");
       setDesktopServerExposureMutationError(message);
       toastManager.add(
         stackedThreadToast({
@@ -449,7 +442,8 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
     });
     if (settled._tag === "Failure") {
       const error = Cause.squash(settled.cause);
-      const message = error instanceof Error ? error.message : "Failed to disable Tailscale HTTPS.";
+      const message =
+        error instanceof Error ? error.message : t("Failed to disable Tailscale HTTPS.");
       setDesktopServerExposureMutationError(message);
       toastManager.add(
         stackedThreadToast({
@@ -479,7 +473,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
     });
     if (settled._tag === "Failure") {
       const error = Cause.squash(settled.cause);
-      const message = error instanceof Error ? error.message : "Failed to revoke pairing link.";
+      const message = error instanceof Error ? error.message : t("Failed to revoke pairing link.");
       setDesktopAccessManagementMutationError(message);
       toastManager.add(
         stackedThreadToast({
@@ -507,7 +501,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
     });
     if (settled._tag === "Failure") {
       const error = Cause.squash(settled.cause);
-      const message = error instanceof Error ? error.message : "Failed to revoke client access.";
+      const message = error instanceof Error ? error.message : t("Failed to revoke client access.");
       setDesktopAccessManagementMutationError(message);
       toastManager.add(
         stackedThreadToast({
@@ -541,7 +535,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
     });
     if (settled._tag === "Failure") {
       const error = Cause.squash(settled.cause);
-      const message = error instanceof Error ? error.message : "Failed to revoke other clients.";
+      const message = error instanceof Error ? error.message : t("Failed to revoke other clients.");
       setDesktopAccessManagementMutationError(message);
       toastManager.add(
         stackedThreadToast({
@@ -562,7 +556,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
       const message =
         error instanceof Error
           ? error.message
-          : `Failed to switch the backend ${enabled ? "on" : "off"}.`;
+          : t("Failed to switch the backend {{value1}}.", { value1: enabled ? "on" : "off" });
       setSavedBackendError(message);
       toastManager.add(
         stackedThreadToast({
@@ -582,7 +576,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
     setRemovingSavedEnvironmentId(null);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
-      const message = error instanceof Error ? error.message : "Failed to remove backend.";
+      const message = error instanceof Error ? error.message : t("Failed to remove backend.");
       setSavedBackendError(message);
       toastManager.add(
         stackedThreadToast({
@@ -604,7 +598,10 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
       return;
     }
     const confirmed = await requestConfirmDialog(
-      `Remove ${environment.label} from this device?\nThis forgets its pairing, credentials, and cached threads here. Switch it off instead to keep it saved.`,
+      t(
+        "Remove {{label}} from this device?\nThis forgets its pairing, credentials, and cached threads here. Switch it off instead to keep it saved.",
+        { label: environment.label },
+      ),
       { variant: "destructive" },
     );
     if (confirmed === true) await removeSavedBackend(environment);
@@ -677,7 +674,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
     });
     if (settled._tag === "Failure") {
       const error = Cause.squash(settled.cause);
-      const message = error instanceof Error ? error.message : "Failed to update WSL backend.";
+      const message = error instanceof Error ? error.message : t("Failed to update WSL backend.");
       setDesktopWslMutationError(message);
       toastManager.add(
         stackedThreadToast({
@@ -974,7 +971,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
                 ? `Reachable at ${desktopServerExposureState.endpointUrl}`
                 : desktopServerExposureState?.advertisedHost
                   ? `Exposed on all interfaces. Pairing links use ${desktopServerExposureState.advertisedHost}.`
-                  : "Exposed on all interfaces."
+                  : t("Exposed on all interfaces.")
             }
           />
         ) : desktopServerExposureState ? (
@@ -1553,6 +1550,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
       {hasCloudPublicConfig() ? (
         <RemoveT3ConnectEnvironmentDialog
           environmentLabel={pendingT3ConnectRemoval?.label ?? null}
+          environmentId={pendingT3ConnectRemoval?.environmentId ?? null}
           onCancel={() => setPendingT3ConnectRemoval(null)}
           onConfirm={() => {
             if (!pendingT3ConnectRemoval) return;

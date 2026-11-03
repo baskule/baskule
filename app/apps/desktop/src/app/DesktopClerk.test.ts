@@ -1,9 +1,13 @@
-import * as NodePath from "@effect/platform-node/NodePath";
+// @effect-diagnostics nodeBuiltinImport:off globalFetchInEffect:off - Hosted handoff test uses a real localhost listener without an OpenAI account.
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodePathLayer from "@effect/platform-node/NodePath";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { beforeEach, vi } from "vite-plus/test";
+import { afterAll, beforeEach, vi } from "vite-plus/test";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as ElectronApp from "../electron/ElectronApp.ts";
@@ -13,7 +17,11 @@ import * as DesktopClerk from "./DesktopClerk.ts";
 import * as DesktopWebLinks from "./DesktopWebLinks.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopPreReadyFileSystem from "./DesktopPreReadyFileSystem.ts";
-// @effect-diagnostics nodeBuiltinImport:off globalFetchInEffect:off - Hosted handoff test uses a real localhost listener without an OpenAI account.
+
+const clerkStateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-desktop-clerk-"));
+afterAll(() => {
+  NodeFS.rmSync(clerkStateDir, { recursive: true, force: true });
+});
 
 const { createClerkBridgeMock, requestSingleInstanceLockMock, storageAdapter, storageMock } =
   vi.hoisted(() => ({
@@ -56,7 +64,7 @@ const layerDesktopClerk = (
   listeners = new Map<string, (...args: unknown[]) => void>(),
 ) => {
   const environment = DesktopEnvironment.DesktopEnvironment.of({
-    stateDir: "/tmp/t3-state",
+    stateDir: clerkStateDir,
     isDevelopment,
     appDataDirectory: "/tmp/app-data",
     platform,
@@ -90,7 +98,7 @@ const layerDesktopClerk = (
   return DesktopClerk.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        NodePath.layerPosix,
+        NodePathLayer.layerPosix,
         Layer.succeed(DesktopEnvironment.DesktopEnvironment, environment),
         Layer.succeed(ElectronApp.ElectronApp, electronApp),
         Layer.succeed(ElectronShell.ElectronShell, shell),
@@ -157,6 +165,10 @@ describe("DesktopClerk", () => {
         "on:open-url",
         "createClerkBridge",
       ]);
+      assert.deepEqual(storageMock.mock.calls, [
+        [{ path: NodePath.join(NodePath.resolve(clerkStateDir), "clerk") }],
+      ]);
+      assert.notStrictEqual(createClerkBridgeMock.mock.calls[0]?.[0]?.storage, storageAdapter);
     },
   );
 

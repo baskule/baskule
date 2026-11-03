@@ -13,6 +13,7 @@ import {
   SERVER_BROWSER_AUTOMATION_CLIENT_ID,
   PREVIEW_AUTOMATION_SERVER_OPERATIONS,
   type PreviewEvent,
+  type PreviewReportProfilesInput,
   type PreviewListResult,
 } from "@t3tools/contracts";
 import type { PreviewManager } from "../../preview/Manager.ts";
@@ -265,6 +266,33 @@ export const makeBrowser = Effect.gen(function* () {
       Effect.forever,
       Effect.forkScoped,
     );
+  // baskule: each socket owns a report; the bridge receives their union without waking a computer.
+  const reports = new Map<number, PreviewReportProfilesInput>();
+  let nextReporter = 0;
+  const publishProfiles = () => {
+    const latest = [...reports.values()].at(-1);
+    if (!latest) return Effect.void;
+    const profiles = new Map(
+      [...reports.values()].flatMap((report) =>
+        report.profiles.map((profile) => [profile.id, profile] as const),
+      ),
+    );
+    return Effect.promise(() =>
+      state.call("reportProfiles", { ...latest, profiles: [...profiles.values()] }),
+    ).pipe(Effect.asVoid);
+  };
+  const profileReporter = Effect.acquireRelease(
+    Effect.sync(() => nextReporter++),
+    (id) => Effect.sync(() => reports.delete(id)).pipe(Effect.andThen(publishProfiles)),
+  ).pipe(
+    Effect.map(
+      (id) => (input: PreviewReportProfilesInput) =>
+        Effect.sync(() => {
+          reports.delete(id);
+          reports.set(id, input);
+        }).pipe(Effect.andThen(publishProfiles)),
+    ),
+  );
   return {
     attachViewer: () => Effect.die("Viewer transport is forwarded directly to the computer"),
     answerFileChooser: () => Effect.succeed(false),
@@ -274,7 +302,6 @@ export const makeBrowser = Effect.gen(function* () {
         try: () => state.call("clearProfile", { profileId }).then(() => {}),
         catch: (cause) => new PreviewClearProfileError({ profileId, cause }),
       }),
-    reportProfiles: (input) =>
-      Effect.promise(() => state.call("reportProfiles", input)).pipe(Effect.asVoid),
+    profileReporter,
   } satisfies ServerBrowser["Service"];
 });

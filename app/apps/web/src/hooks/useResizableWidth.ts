@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import * as Schema from "effect/Schema";
 import { type PointerEvent as ReactPointerEvent, useLayoutEffect, useState } from "react";
 
@@ -29,6 +30,7 @@ export interface ResizableWidthHandlers {
 /** Persist on drag end to avoid a storage write on every animation frame. */
 export function useResizableWidth(options: UseResizableWidthOptions): {
   readonly width: number;
+  readonly setWidth: (width: number) => void;
   readonly handlers: ResizableWidthHandlers;
 } {
   const { storageKey, defaultWidth, minWidth, maxWidth, edge } = options;
@@ -44,7 +46,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       const stored = getLocalStorageItem(storageKey, WidthSchema);
       return stored;
     } catch (error) {
-      console.error("Could not read persisted panel width.", error);
+      console.error(t("Could not read persisted panel width."), error);
       return null;
     }
   };
@@ -54,6 +56,16 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
   }
 
   const clampedWidth = clamp(widthState.width ?? defaultWidth);
+
+  const commitWidth = (nextStorageKey: string, nextWidth: number) => {
+    // Resizing remains usable for this session when browser storage is unavailable.
+    setWidthState({ storageKey: nextStorageKey, width: nextWidth });
+    try {
+      setLocalStorageItem(nextStorageKey, nextWidth, WidthSchema);
+    } catch (error) {
+      console.error(t("Could not persist panel width."), error);
+    }
+  };
 
   const drag = useResizeDrag<HTMLElement>((event) => {
     const host = event.currentTarget.parentElement;
@@ -72,12 +84,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
         return nextWidth;
       },
       finish(finalWidth) {
-        setWidthState({ storageKey: startStorageKey, width: finalWidth });
-        try {
-          setLocalStorageItem(startStorageKey, finalWidth, WidthSchema);
-        } catch (error) {
-          console.error("Could not persist panel width.", error);
-        }
+        commitWidth(startStorageKey, finalWidth);
       },
       cleanup(committed) {
         host?.style.removeProperty("transition-property");
@@ -94,6 +101,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
 
   return {
     width: clampedWidth,
+    setWidth: (value) => commitWidth(storageKey, clamp(value)),
     handlers: {
       ref: drag.ref,
       onPointerDown: drag.onPointerDown,

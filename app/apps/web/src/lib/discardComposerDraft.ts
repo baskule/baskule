@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 
@@ -29,15 +30,25 @@ export function discardComposerDraft(target: ComposerThreadTarget): void {
     store.clearComposerContent(target);
   }
 
+  const releaseDiscardedDraft = () => {
+    releaseDraftAttachments([...draft.images, ...draft.files]);
+    // Draft-session removal already revoked these previews.
+    if (!discardsSession) {
+      for (const image of draft.images) {
+        if (image.previewUrl.startsWith("blob:")) URL.revokeObjectURL(image.previewUrl);
+      }
+    }
+  };
+
   showThreadUndoNotice({
     action: "Discarded",
     claim,
-    failureTitle: "Failed to restore draft",
+    failureTitle: t("Failed to restore draft"),
     undo: async () => {
       const current = useComposerDraftStore.getState().draftsByThreadKey[key];
       if (current && composerDraftHasUserContent(current)) {
-        releaseDraftAttachments([...draft.images, ...draft.files]);
-        return AsyncResult.failure(Cause.fail(new Error("The draft has new content.")));
+        releaseDiscardedDraft();
+        return AsyncResult.failure(Cause.fail(new Error(t("The draft has new content."))));
       }
       useComposerDraftStore.setState((state) => {
         const logicalProjectDraftThreadKeyByLogicalProjectKey = {
@@ -68,6 +79,6 @@ export function discardComposerDraft(target: ComposerThreadTarget): void {
       });
       return AsyncResult.success(undefined);
     },
-    commit: () => releaseDraftAttachments([...draft.images, ...draft.files]),
+    commit: releaseDiscardedDraft,
   });
 }

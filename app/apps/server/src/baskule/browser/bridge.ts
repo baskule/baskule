@@ -49,18 +49,18 @@ const dependencies = Layer.mergeAll(
   Desktop.layer.pipe(Layer.provide(config)),
 ).pipe(Layer.provideMerge(config), Layer.provideMerge(NodeServices.layer));
 const runtime = ManagedRuntime.make(Browser.layer.pipe(Layer.provideMerge(dependencies)));
+const profileScope = await runtime.runPromise(Scope.make());
 const services = await runtime.runPromise(
   Effect.gen(function* () {
     return {
       manager: yield* Manager.PreviewManager,
       browser: yield* Browser.ServerBrowser,
+      reportProfiles: yield* (yield* Browser.ServerBrowser).profileReporter,
       broker: yield* Broker.PreviewAutomationBroker,
     };
-  }),
+  }).pipe(Effect.provideService(Scope.Scope, profileScope)),
 );
-await runtime.runPromise(
-  services.browser.reportProfiles({ profiles: [], defaultProfileId: "default" }),
-);
+await runtime.runPromise(services.reportProfiles({ profiles: [], defaultProfileId: "default" }));
 const json = (res: NodeHttp.ServerResponse, status: number, body: unknown) => {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(body));
@@ -175,7 +175,7 @@ const server = NodeHttp.createServer(async (req, res) => {
     else if (method === "clearProfile")
       result = await runtime.runPromise(services.browser.clearProfile(input.profileId));
     else if (method === "reportProfiles")
-      result = await runtime.runPromise(services.browser.reportProfiles(input));
+      result = await runtime.runPromise(services.reportProfiles(input));
     else if (method === "automation") {
       result = await runtime.runPromise(
         services.broker.invoke({
@@ -293,6 +293,7 @@ server.listen(Number(process.env.BASKULE_BROWSER_PORT ?? 9223), "127.0.0.1");
 const shutdown = async () => {
   wss.close();
   server.close();
+  await runtime.runPromise(Scope.close(profileScope, Exit.void));
   await runtime.dispose();
   process.exit(0);
 };

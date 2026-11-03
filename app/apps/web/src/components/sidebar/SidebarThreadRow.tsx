@@ -126,7 +126,7 @@ export type SidebarProviderEntry = Pick<
   "instanceId" | "driverKind" | "enabled" | "displayName" | "accentColor" | "models"
 >;
 function compactSidebarTimeLabel(label: string): string {
-  if (label === "just now") return t("now");
+  if (label === t("just now")) return t("now");
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
 }
 
@@ -172,7 +172,10 @@ function WorkingDurationLabel(props: { startedMs: number }) {
 }
 
 function terminalProcessLabel(count: number): string {
-  return `${count} terminal ${count === 1 ? "process" : "processes"} running`;
+  return t("{{count}} terminal {{value2}} running", {
+    count: count,
+    value2: count === 1 ? "process" : "processes",
+  });
 }
 
 function SidebarProviderStack(props: {
@@ -316,7 +319,10 @@ function SidebarThreadTooltip({
             />
             <div className="min-w-0 truncate text-foreground/75">
               {showInstanceBadge && providerEntry
-                ? `${modelLabel} · ${providerEntry.displayName}`
+                ? t("{{modelLabel}} · {{displayName}}", {
+                    modelLabel: modelLabel,
+                    displayName: providerEntry.displayName,
+                  })
                 : modelLabel}
             </div>
           </div>
@@ -466,7 +472,7 @@ export function SortableThreadRow(
     listeners,
     setNodeRef,
     transform: contextDrag ? null : transform,
-    transition: contextDrag && isDragging ? "transform 150ms ease-out" : transition,
+    transition: contextDrag && isDragging ? t("transform 150ms ease-out") : transition,
     isDragging: isDragging && !contextDrag,
   };
   // The sidebar arranges rows from quiet shells, which hold still while a
@@ -957,7 +963,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     shouldRecede &&
       status === "working" &&
       "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
-    isFileDragOver && "ring-1 ring-inset ring-primary/70",
+    isFileDragOver && t("ring-1 ring-inset ring-primary/70"),
     isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
     props.sortable?.isDragging &&
       "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground opacity-100 shadow-lg",
@@ -1125,14 +1131,19 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     )
   ) : null;
 
+  const remoteMachineIcon =
+    isRemote && !showsScratchMachine ? (
+      <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+        <EnvironmentMachineIcon aria-hidden kind={props.environmentMachine} className="size-3.5" />
+      </span>
+    ) : null;
   const diff = latestRunDiff(thread);
-  // Only the provider icon would remain, so the row drops the line instead of leaving it blank.
+  // Only the trailing icons would remain, so the row moves them to the title line instead.
   const metaLineEmpty =
     !thread.branch &&
     !showsScratchMachine &&
     prBadge === null &&
     diff === null &&
-    !isRemote &&
     runningTerminalIds.length === 0;
   const metaLine = metaLineEmpty ? null : (
     <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
@@ -1167,15 +1178,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         aria-hidden
         className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
       >
-        {isRemote && !showsScratchMachine ? (
-          <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-            <EnvironmentMachineIcon
-              aria-hidden
-              kind={props.environmentMachine}
-              className="size-3.5"
-            />
-          </span>
-        ) : null}
+        {remoteMachineIcon}
         <SidebarProviderStack
           thread={thread}
           providerEntryByInstanceId={props.providerEntryByInstanceId}
@@ -1183,8 +1186,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       </span>
     </div>
   );
-  const titleLineProviderStack = metaLineEmpty ? (
-    <span aria-hidden className="inline-flex shrink-0">
+  const titleLineIcons = metaLineEmpty ? (
+    <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
+      {remoteMachineIcon}
       <SidebarProviderStack
         thread={thread}
         providerEntryByInstanceId={props.providerEntryByInstanceId}
@@ -1260,7 +1264,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {baskule.flatChatSidebar ? (
                 <BaskuleChatStatus status={status} unread={baskule.hosted && isUnread} />
               ) : null}
-              {multiline ? titleLineProviderStack : null}
+              {multiline ? titleLineIcons : null}
               {baskule.flatChatSidebar && !baskule.hosted ? null : pinIndicator}
               {multiline || baskule.flatChatSidebar ? null : terminalStatusIcon}
               {isRegeneratingTitle ? (
@@ -1387,18 +1391,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       <TooltipPopup side="top">{t("Un-settle thread")}</TooltipPopup>
                     </Tooltip>
                   ) : (
-                    <button
-                      type="button"
-                      aria-label={t("Settle thread")}
-                      onClick={handleSettleClick}
-                      onPointerDown={handleActionPointerDown}
-                      className={cn(
-                        "pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                        isWoke && "group-any-hover/sidebar-row:static",
-                      )}
-                    >
-                      <CheckIcon className="size-3" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            aria-label={t("Settle thread")}
+                            onClick={handleSettleClick}
+                            onPointerDown={handleActionPointerDown}
+                            className={cn(
+                              "pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+                              isWoke && "group-any-hover/sidebar-row:static",
+                            )}
+                          />
+                        }
+                      >
+                        <CheckIcon className="size-3" />
+                      </TooltipTrigger>
+                      <TooltipPopup side="top">{t("Settle thread")}</TooltipPopup>
+                    </Tooltip>
                   )}
                 </span>
               )}
@@ -1602,7 +1613,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   {t("Regenerating title")}
                 </span>
               ) : null}
-              {titleLineProviderStack}
+              {titleLineIcons}
             </div>
             {metaLine}
           </div>

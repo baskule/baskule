@@ -1,5 +1,6 @@
 import { t } from "../../i18n";
 
+import { pullRequestFilterProjects } from "@t3tools/client-runtime/pull-request-project-filter";
 import { parsePullRequestQuery } from "@t3tools/client-runtime/pull-request-query";
 import {
   ProjectId,
@@ -34,6 +35,34 @@ export function withoutScratchProjectScope(
   )
     ? { ...controls, projectId: undefined, projectEnvironmentId: undefined }
     : controls;
+}
+
+type FilterProject = Parameters<typeof pullRequestFilterProjects>[0][number];
+
+export function pullRequestProjectChoices<
+  Project extends FilterProject & { readonly isScratch?: true },
+>(
+  projects: readonly Project[],
+  input: {
+    readonly environmentId: string | null;
+    readonly controls: PullRequestListControls;
+    readonly environmentLabels: ReadonlyMap<EnvironmentId, string>;
+    readonly servesPullRequests: (environmentId: EnvironmentId) => boolean;
+  },
+) {
+  const isSelected = (project: Project) =>
+    project.id === input.controls.projectId &&
+    project.environmentId === input.controls.projectEnvironmentId;
+  return pullRequestFilterProjects(
+    projects.filter(
+      (project) =>
+        !project.isScratch &&
+        (input.environmentId === null || project.environmentId === input.environmentId) &&
+        (input.servesPullRequests(project.environmentId) || isSelected(project)),
+    ),
+    input.environmentLabels,
+    projects.find(isSelected),
+  );
 }
 
 export function pullRequestListKey(
@@ -191,7 +220,8 @@ export function mergeEnvironmentPullRequestPages(
   for (const { environmentId, pages } of sources) {
     entries.push(...pages.entries.map((entry) => ({ ...entry, environmentId })));
     for (const [host, viewer] of Object.entries(pages.head.viewers))
-      viewers[`${environmentId} ${host}`] = viewer;
+      viewers[t("{{environmentId}} {{host}}", { environmentId: environmentId, host: host })] =
+        viewer;
     for (const provider of pages.head.providers)
       if (!provider.searchesOnHost) localSearchHosts.add(`${environmentId} ${provider.host}`);
     errors.push(...pages.head.errors.map((error) => ({ ...error, environmentId })));
@@ -388,7 +418,9 @@ export function filterPullRequestList<
     if (controls.projectId && entry.projectId !== controls.projectId) return false;
     if (controls.projectEnvironmentId && entry.environmentId !== controls.projectEnvironmentId)
       return false;
-    const viewerKey = entry.environmentId ? `${entry.environmentId} ${entry.host}` : entry.host;
+    const viewerKey = entry.environmentId
+      ? t("{{environmentId}} {{host}}", { environmentId: entry.environmentId, host: entry.host })
+      : entry.host;
     const viewer = viewers[viewerKey];
     if (controls.involvement === "reviewing" && !entry.viewerReviewRequested) return false;
     if (
@@ -411,8 +443,18 @@ export function filterPullRequestList<
       return false;
     if (filters.excludedLabels?.some((label) => labels.has(normalize(label)))) return false;
     if (words.length && localSearchHosts.has(viewerKey)) {
-      const text =
-        `${entry.repository} #${entry.number} ${entry.title} ${entry.author?.login ?? ""} ${entry.headBranch} ${entry.baseBranch} ${entry.labels.map((label) => label.name).join(" ")}`.toLowerCase();
+      const text = t(
+        "{{repository}} #{{number}} {{title}} {{value4}} {{headBranch}} {{baseBranch}} {{value7}}",
+        {
+          repository: entry.repository,
+          number: entry.number,
+          title: entry.title,
+          value4: entry.author?.login ?? "",
+          headBranch: entry.headBranch,
+          baseBranch: entry.baseBranch,
+          value7: entry.labels.map((label) => label.name).join(" "),
+        },
+      ).toLowerCase();
       if (!words.every((word) => text.includes(word))) return false;
     }
     return true;
@@ -441,28 +483,28 @@ export function pullRequestListReviewStatus(
   if (entry.reviewDecision === "changes-requested")
     return {
       label: t("Changes"),
-      accessibleLabel: "Changes requested",
+      accessibleLabel: t("Changes requested"),
       icon: "person.fill.xmark",
       tint: "accent-danger-foreground",
     } as const;
   if (entry.reviewDecision === "approved")
     return {
       label: t("Approved"),
-      accessibleLabel: "Reviews approved",
+      accessibleLabel: t("Reviews approved"),
       icon: "person.fill.checkmark",
       tint: "accent-adaptive-emerald-600-400",
     } as const;
   if (entry.viewerReviewRequested)
     return {
       label: t("Your review"),
-      accessibleLabel: "Your review requested",
+      accessibleLabel: t("Your review requested"),
       icon: "person.badge.clock",
       tint: "accent-warning-foreground",
     } as const;
   if (entry.reviewDecision === "review-required")
     return {
       label: t("Review"),
-      accessibleLabel: "Review required",
+      accessibleLabel: t("Review required"),
       icon: "person.badge.clock",
       tint: "accent-icon-muted",
     } as const;
