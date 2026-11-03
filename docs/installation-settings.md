@@ -56,7 +56,8 @@ answers finish. Chats using a model no longer offered then run on the new defaul
 
 Run `docker compose up -d` after authentication changes, or `docker compose run --rm deploy` for a cluster. The server rejects invalid files instead of silently
 falling back to password or anonymous access. Keep stable provider IDs: accounts are bound to those IDs.
-Switching between authenticated and anonymous modes requires a data wipe.
+Switching between authenticated and anonymous modes currently has no migration; it needs the owner's explicit
+approval and documented deployment steps before any data is removed.
 
 ## Authentication file
 
@@ -262,4 +263,5 @@ does not stop computers using a guessed policy.
 ## Upgrade
 
 Back up and update the installation using the [installation update procedure](install.md#update).
-Follow the release's data-wipe instructions when required, then configure the product in the admin area.
+Follow the release's forward migration steps, then configure the product in the admin area. A change that cannot
+be migrated needs the owner's explicit approval and documented deployment steps.

@@ -72,6 +72,8 @@ import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { ScopedSwitch } from "./ScopedSwitch";
+import { BASKULE_UI } from "../../baskule/flags";
+import { showDesktopUpdateDownloadedToast } from "../desktopUpdate.toast";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -161,7 +163,7 @@ const QUIT_CONFIRMATION_MODE_LABELS: Record<QuitConfirmationMode, string> = {
 };
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("opencode");
-function AboutVersionSection() {
+export function AboutVersionSection() {
   const t = useTranslation();
   const updateState = useDesktopUpdateState();
   const [isChangingUpdateChannel, setIsChangingUpdateChannel] = useState(false);
@@ -205,15 +207,21 @@ function AboutVersionSection() {
     const action = updateState ? resolveDesktopUpdateButtonAction(updateState) : "none";
 
     if (action === "download") {
-      void bridge.downloadUpdate().catch((error: unknown) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: t("Could not download update"),
-            description: error instanceof Error ? error.message : t("Download failed."),
-          }),
-        );
-      });
+      void bridge
+        .downloadUpdate()
+        .then((result) => {
+          if (result.accepted && result.completed)
+            showDesktopUpdateDownloadedToast(bridge, result.state);
+        })
+        .catch((error: unknown) => {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: t("Could not download update"),
+              description: error instanceof Error ? error.message : t("Download failed."),
+            }),
+          );
+        });
       return;
     }
 
@@ -299,9 +307,10 @@ function AboutVersionSection() {
   const buttonLabel =
     actionLabel[action] ?? statusLabel[updateState?.status ?? ""] ?? t("Check for Updates");
   const description =
-    action === "download" || action === "install"
+    updateState?.message ??
+    (action === "download" || action === "install"
       ? t("Update available.")
-      : (getDesktopUpdateDisabledReason(updateState) ?? t("Current version of the application."));
+      : (getDesktopUpdateDisabledReason(updateState) ?? t("Current version of the application.")));
 
   return (
     <>
@@ -388,7 +397,7 @@ function AboutVersionSection() {
           }
         />
       ) : null}
-      {hasDesktopBridge ? <CliCommandSettingsRow /> : null}
+      {hasDesktopBridge && !BASKULE_UI ? <CliCommandSettingsRow /> : null}
     </>
   );
 }

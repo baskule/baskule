@@ -701,6 +701,7 @@ describe("EnvironmentRegistry", () => {
         label: "Server",
         platform: { os: "linux", arch: "x64" },
         serverVersion: "1.0.0",
+        minClient: "0.0.0",
         orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION,
         capabilities: { repositoryIdentity: true },
       });
@@ -864,6 +865,7 @@ describe("EnvironmentRegistry", () => {
               label: "Preview server",
               platform: { os: "darwin", arch: "arm64" },
               serverVersion: "2.0.0",
+              minClient: "0.0.0",
               orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION + 1,
               capabilities: { repositoryIdentity: true },
             },

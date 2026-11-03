@@ -253,8 +253,9 @@ Baskule's migration head is **076**. Migrations 073–076 add active-turn indexe
 index subagent delivery state, and add project pin/archive columns. They use Baskule's existing schema and
 require no data wipe. Baskule has never shipped peer-only migrations 070–072. Their ids stay absent.
 On the next upgrade, inspect migrations after 076 for peer tables, fences, indexes, and migration-head assumptions.
-Do not add empty migrations or compatibility shims. A layout that requires an alpha wipe must document the removed
-data and deployment steps. Operating an installation requires its owner's authorization.
+Do not add empty migrations for retired layouts. Keep compatibility code within the declared release window.
+Ship forward migrations for schema and data-layout changes. A change that cannot be migrated needs the owner's
+explicit approval and documentation of affected data and deployment steps. Operating an installation requires its owner's authorization.
 
 ### Next-upgrade checklist
 

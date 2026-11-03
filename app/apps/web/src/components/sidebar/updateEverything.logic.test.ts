@@ -24,6 +24,7 @@ function machine(
         label: id,
         platform: { os: "linux", arch: "x64" },
         serverVersion,
+        minClient: "0.0.0",
         capabilities: {
           repositoryIdentity: true,
           ...(selfUpdate ? { serverSelfUpdate: selfUpdate } : {}),

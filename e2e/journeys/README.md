@@ -25,7 +25,7 @@ Use fake markers documented in
 List and HTML reports go under `.run/journeys/`; failure traces and screenshots are in `results/`. Run one
 Playwright invocation at a time per worktree so its report is not overwritten. Two worktrees are independent.
 Save durable evidence under `.run/evidence/<date>/` before the next run. Stop stacks you start with
-`scripts/stack down` (or `--purge` for disposable alpha data); evidence survives. Tests leave the stack available
+`scripts/stack down` (or `--purge` for disposable test data); evidence survives. Tests leave the stack available
 for inspection; their people fixture closes its clients and retains fresh users/spaces for inspection. Every world is stopped after clients close. `down --purge` removes all test data for this worktree; account-deletion behaviour belongs to its own feature checks.
 
 The maintained feature map and manual driver are in `.agents/skills/verify-baskule/`. Other harnesses remain for

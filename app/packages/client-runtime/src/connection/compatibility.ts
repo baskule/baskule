@@ -1,14 +1,29 @@
 import {
+  BASKULE_RELEASE,
   ORCHESTRATION_PROTOCOL_QUERY_PARAM,
   ORCHESTRATION_PROTOCOL_VERSION,
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
+
+import { compareReleaseVersions } from "@t3tools/shared/releaseCompatibility";
 
 import { ConnectionBlockedError } from "./model.ts";
 
 export function orchestrationProtocolCompatibilityError(
   descriptor: ExecutionEnvironmentDescriptor,
 ): ConnectionBlockedError | null {
+  if (compareReleaseVersions(BASKULE_RELEASE.version, descriptor.minClient) < 0) {
+    return new ConnectionBlockedError({
+      reason: "unsupported",
+      detail: `You must update Baskule to ${descriptor.minClient} or newer to connect to ${descriptor.label}.`,
+    });
+  }
+  if (compareReleaseVersions(descriptor.serverVersion, BASKULE_RELEASE.minServer) < 0) {
+    return new ConnectionBlockedError({
+      reason: "unsupported",
+      detail: "This installation needs an update to work with this version of Baskule.",
+    });
+  }
   // Servers shipped before negotiation use the original wire protocol.
   const serverProtocolVersion = descriptor.orchestrationProtocolVersion ?? 1;
   if (serverProtocolVersion === ORCHESTRATION_PROTOCOL_VERSION) {
@@ -21,17 +36,8 @@ export function orchestrationProtocolCompatibilityError(
       })
     : new ConnectionBlockedError({
         reason: "unsupported",
-        detail: `This client requires a newer server. Update T3 Code on ${descriptor.label} to connect.`,
-        ...(canSelfUpdate(descriptor) ? { serverUpdateRequired: true } : {}),
+        detail: "This installation needs an update to work with this version of Baskule.",
       });
-}
-
-function canSelfUpdate(descriptor: ExecutionEnvironmentDescriptor): boolean {
-  const { serverSelfUpdate, desktopAppUpdate } = descriptor.capabilities;
-  return (
-    serverSelfUpdate !== undefined &&
-    (serverSelfUpdate !== "desktop-managed" || desktopAppUpdate === true)
-  );
 }
 
 export function appendOrchestrationProtocol(socketUrl: string): string {

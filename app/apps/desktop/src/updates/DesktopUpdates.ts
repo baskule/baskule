@@ -1,5 +1,7 @@
 import {
   DESKTOP_UPDATE_RESTART_MARKER_FILE,
+  BASKULE_RELEASE,
+  type ExecutionEnvironmentDescriptor,
   DesktopUpdateChannelSchema,
   type DesktopRuntimeInfo,
   type DesktopUpdateActionResult,
@@ -7,6 +9,12 @@ import {
   type DesktopUpdateCheckResult,
   type DesktopUpdateState,
 } from "@t3tools/contracts";
+import { selectCompatibleRelease } from "@t3tools/client-runtime/connection/releaseCompatibility";
+import {
+  compareReleaseVersions,
+  parseCompatibilityIndex,
+} from "@t3tools/shared/releaseCompatibility";
+import { HttpClient } from "effect/http";
 import { errorTag } from "@t3tools/shared/observability";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -165,6 +173,9 @@ export type DesktopUpdateSetChannelError = typeof DesktopUpdateSetChannelError.T
 export class DesktopUpdates extends Context.Service<
   DesktopUpdates,
   {
+    readonly setInstallation: (
+      descriptor: ExecutionEnvironmentDescriptor | null,
+    ) => Effect.Effect<void>;
     readonly getState: Effect.Effect<DesktopUpdateState>;
     readonly isActionActive: Effect.Effect<boolean>;
     readonly isInstallActive: Effect.Effect<boolean>;
@@ -333,7 +344,16 @@ function isArm64HostRunningIntelBuild(runtimeInfo: DesktopRuntimeInfo): boolean 
 
 /** @public */
 export const make = Effect.gen(function* () {
+  const scope = yield* Effect.scope;
+  const http = (yield* HttpClient.HttpClient).pipe(
+    HttpClient.followRedirects(),
+    HttpClient.filterStatusOk,
+  );
   const config = yield* DesktopConfig.DesktopConfig;
+  const installation = yield* Ref.make<ExecutionEnvironmentDescriptor | null>(null);
+  const installationRevision = yield* Ref.make(0);
+  const downloadRevision = yield* Ref.make<number | null>(null);
+  const checkRevision = yield* Ref.make<number | null>(null);
   const pool = yield* DesktopBackendPool.DesktopBackendPool;
   const desktopState = yield* DesktopState.DesktopState;
   const electronUpdater = yield* ElectronUpdater.ElectronUpdater;
@@ -454,15 +474,52 @@ export const make = Effect.gen(function* () {
     const allowsPrerelease = channel === "nightly";
     yield* electronUpdater.setChannel(channel);
     yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-    yield* electronUpdater.setAllowDowngrade(allowsPrerelease);
+    yield* electronUpdater.setAllowDowngrade(false);
     yield* electronUpdater.setFullChangelog(allowsPrerelease);
     yield* logUpdaterInfo("using update channel", {
       channel,
       allowPrerelease: allowsPrerelease,
-      allowDowngrade: allowsPrerelease,
+      allowDowngrade: false,
       fullChangelog: allowsPrerelease,
     });
   });
+
+  const releaseRoot = config.mockUpdates
+    ? `http://localhost:${config.mockUpdateServerPort}`
+    : "https://github.com/baskule/baskule/releases";
+
+  const fetchIndex = http
+    .get(
+      `${releaseRoot}/${config.mockUpdates ? "compatibility.json" : "latest/download/compatibility.json"}`,
+    )
+    .pipe(
+      Effect.flatMap((response) => response.json),
+      Effect.flatMap((json) => Effect.try(() => parseCompatibilityIndex(json))),
+      Effect.timeout("15 seconds"),
+    );
+
+  const isCompatibleTarget = Effect.fn("desktop.updates.isCompatibleTarget")(
+    function* (version: string) {
+      const revision = yield* Ref.get(installationRevision);
+      const server = yield* Ref.get(installation);
+      if (!server || compareReleaseVersions(version, environment.appVersion) <= 0) return false;
+      const entries = yield* fetchIndex;
+      return (
+        revision === (yield* Ref.get(installationRevision)) &&
+        entries.some(
+          (entry) =>
+            entry.version === version &&
+            selectCompatibleRelease({
+              entries: [entry],
+              currentVersion: environment.appVersion,
+              serverVersion: server.serverVersion,
+              minClient: server.minClient,
+            }) !== null,
+        )
+      );
+    },
+    Effect.orElseSucceed(() => false),
+  );
 
   const checkForUpdates = Effect.fn("desktop.updates.checkForUpdates")(function* (
     reason: string,
@@ -488,6 +545,59 @@ export const make = Effect.gen(function* () {
       yield* setState(reduceDesktopUpdateStateOnCheckStart(state, checkedAt));
       yield* logUpdaterInfo("checking for updates", { reason });
 
+      const revision = yield* Ref.get(installationRevision);
+      const server = yield* Ref.get(installation);
+      if (!server) {
+        yield* setState({
+          ...reduceDesktopUpdateStateOnNoUpdate(state, checkedAt),
+          message: "Connect to an installation to check for compatible updates.",
+        });
+        return true;
+      }
+      const index = yield* fetchIndex.pipe(Effect.result);
+      if (revision !== (yield* Ref.get(installationRevision))) return false;
+      if (index._tag === "Failure") {
+        yield* setState(
+          reduceDesktopUpdateStateOnCheckFailure(
+            state,
+            "Could not load release compatibility. Try again.",
+            checkedAt,
+          ),
+        );
+        return true;
+      }
+      const target = selectCompatibleRelease({
+        entries: index.success.filter(
+          (entry) => resolveDefaultDesktopUpdateChannel(entry.version) === state.channel,
+        ),
+        currentVersion: environment.appVersion,
+        serverVersion: server.serverVersion,
+        minClient: server.minClient,
+      });
+      const required = compareReleaseVersions(environment.appVersion, server.minClient) < 0;
+      const message = required
+        ? `You must update Baskule to ${server.minClient} or newer to use this installation.`
+        : compareReleaseVersions(server.serverVersion, BASKULE_RELEASE.minServer) < 0
+          ? "This installation needs an update to work with this version of Baskule."
+          : null;
+      if (!target) {
+        yield* setState({
+          ...reduceDesktopUpdateStateOnNoUpdate(
+            { ...state, availableVersion: null, downloadedVersion: null },
+            checkedAt,
+          ),
+          message,
+        });
+        return true;
+      }
+      yield* electronUpdater.setFeedURL({
+        provider: "generic",
+        url: `${releaseRoot}/${config.mockUpdates ? `v${target.version}` : `download/v${target.version}`}/`,
+      });
+      yield* electronUpdater.setChannel(state.channel);
+      yield* electronUpdater.setAllowDowngrade(false);
+      yield* logUpdaterInfo("selected compatible release", { version: target.version });
+      yield* Ref.set(checkRevision, revision);
       return yield* electronUpdater.checkForUpdates.pipe(
         Effect.as(true),
         Effect.catchTags({
@@ -528,6 +638,9 @@ export const make = Effect.gen(function* () {
     }
 
     return yield* Effect.gen(function* () {
+      if (!state.availableVersion || !(yield* isCompatibleTarget(state.availableVersion)))
+        return { accepted: false, completed: false };
+      yield* Ref.set(downloadRevision, yield* Ref.get(installationRevision));
       yield* setState(reduceDesktopUpdateStateOnDownloadStart(state));
       yield* electronUpdater.setDisableDifferentialDownload(
         isArm64HostRunningIntelBuild(environment.runtimeInfo),
@@ -728,6 +841,11 @@ export const make = Effect.gen(function* () {
           return { accepted: false, completed: false, failed: false };
         }
 
+        const pending = yield* Ref.get(updateStateRef);
+        if (!pending.downloadedVersion || !(yield* isCompatibleTarget(pending.downloadedVersion))) {
+          yield* finishUpdateAction("install");
+          return { accepted: false, completed: false, failed: false };
+        }
         yield* Ref.set(desktopState.quitting, true);
         yield* Ref.set(installRunningBackendsRef, []);
 
@@ -845,6 +963,8 @@ export const make = Effect.gen(function* () {
   const handleUpdateAvailable = Effect.fn("desktop.updates.handleUpdateAvailable")(function* (
     raw: unknown,
   ) {
+    const revision = yield* Ref.get(checkRevision);
+    if (revision !== null && revision !== (yield* Ref.get(installationRevision))) return;
     yield* decodeUpdateInfo(raw).pipe(
       Effect.flatMap(
         Effect.fn("desktop.updates.applyUpdateAvailable")(function* (info) {
@@ -875,6 +995,13 @@ export const make = Effect.gen(function* () {
               omittedReleaseCount,
             ),
           );
+          const server = yield* Ref.get(installation);
+          if (server && compareReleaseVersions(environment.appVersion, server.minClient) < 0) {
+            yield* updateState((current) => ({
+              ...current,
+              message: `You must update Baskule to ${server.minClient} or newer to use this installation.`,
+            }));
+          }
           yield* Ref.set(lastLoggedDownloadMilestoneRef, -1);
           yield* logUpdaterInfo("update available", {
             version: info.version,
@@ -898,6 +1025,8 @@ export const make = Effect.gen(function* () {
   });
 
   const handleUpdateNotAvailable = Effect.gen(function* () {
+    const revision = yield* Ref.get(checkRevision);
+    if (revision !== null && revision !== (yield* Ref.get(installationRevision))) return;
     const checkedAt = yield* currentIsoTimestamp;
     const state = yield* Ref.get(updateStateRef);
     yield* setState(reduceDesktopUpdateStateOnNoUpdate(state, checkedAt));
@@ -949,6 +1078,8 @@ export const make = Effect.gen(function* () {
   const handleDownloadProgress = Effect.fn("desktop.updates.handleDownloadProgress")(function* (
     raw: unknown,
   ) {
+    const revision = yield* Ref.get(downloadRevision);
+    if (revision !== null && revision !== (yield* Ref.get(installationRevision))) return;
     yield* decodeDownloadProgressInfo(raw).pipe(
       Effect.flatMap(
         Effect.fn("desktop.updates.applyDownloadProgress")(function* (progress) {
@@ -982,6 +1113,8 @@ export const make = Effect.gen(function* () {
   const handleUpdateDownloaded = Effect.fn("desktop.updates.handleUpdateDownloaded")(function* (
     raw: unknown,
   ) {
+    const revision = yield* Ref.get(downloadRevision);
+    if (revision !== null && revision !== (yield* Ref.get(installationRevision))) return;
     yield* decodeUpdateInfo(raw).pipe(
       Effect.flatMap(
         Effect.fn("desktop.updates.applyUpdateDownloaded")(function* (info) {
@@ -1005,6 +1138,34 @@ export const make = Effect.gen(function* () {
   });
 
   return DesktopUpdates.of({
+    setInstallation: Effect.fn("desktop.updates.setInstallation")(function* (descriptor) {
+      const previous = yield* Ref.get(installation);
+      if (
+        previous?.serverVersion === descriptor?.serverVersion &&
+        previous?.minClient === descriptor?.minClient
+      )
+        return;
+      yield* Ref.set(installation, descriptor);
+      yield* Ref.update(installationRevision, (revision) => revision + 1);
+      yield* updateState((state) => ({
+        ...state,
+        availableVersion: null,
+        downloadedVersion: null,
+        downloadPercent: null,
+        releaseNotes: [],
+        omittedReleaseCount: 0,
+        errorContext: null,
+        canRetry: false,
+        status: state.enabled ? "idle" : "disabled",
+        message: !state.enabled
+          ? state.message
+          : descriptor === null
+            ? "Connect to an installation to check for compatible updates."
+            : null,
+      }));
+      if (descriptor && (yield* Ref.get(updaterConfiguredRef)))
+        yield* checkForUpdates("installation-change").pipe(Effect.forkIn(scope));
+    }),
     getState: Ref.get(updateStateRef),
     isActionActive: activeUpdateAction.pipe(Effect.map(Option.isSome)),
     isInstallActive: activeUpdateAction.pipe(
@@ -1041,7 +1202,7 @@ export const make = Effect.gen(function* () {
         yield* electronUpdater.setFeedURL({
           provider: "generic",
           url: `http://localhost:${config.mockUpdateServerPort}`,
-        } as ElectronUpdater.ElectronUpdaterFeedUrl);
+        });
       }
 
       const settings = yield* desktopSettings.get;
@@ -1124,11 +1285,7 @@ export const make = Effect.gen(function* () {
         }
 
         yield* applyAutoUpdaterChannel(nextChannel);
-        const allowDowngrade = yield* electronUpdater.allowDowngrade;
-        yield* electronUpdater.setAllowDowngrade(true);
-        yield* checkForUpdates("channel-change", "held").pipe(
-          Effect.ensuring(electronUpdater.setAllowDowngrade(allowDowngrade).pipe(Effect.ignore)),
-        );
+        yield* checkForUpdates("channel-change", "held");
         return yield* Ref.get(updateStateRef);
       }).pipe(Effect.ensuring(finishUpdateAction("channel")));
     }),

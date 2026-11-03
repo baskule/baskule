@@ -38,7 +38,8 @@ const DESCRIPTOR = {
     os: "linux",
     arch: "x64",
   },
-  serverVersion: "0.0.0-test",
+  serverVersion: "0.5.0",
+  minClient: "0.0.0",
   capabilities: {
     repositoryIdentity: true,
   },

@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
@@ -32,11 +33,20 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+          fetch-depth: 0
       - id: setup
         uses: ./.github/actions/setup
         with:
           runtime: 'true'
           save-cache: 'true'
+      - name: Guard release compatibility on contract edits
+        if: github.event_name == 'pull_request'
+        env:
+          COMPATIBILITY_NOOP: ${{ contains(github.event.pull_request.labels.*.name, 'compatibility-noop') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch origin "$BASE_SHA" --depth=1
+          node app/scripts/generate-compatibility.ts guard "$BASE_SHA"
       - name: harness
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh harness 2>&1 | tee .run/evidence/ci-harness.log

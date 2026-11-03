@@ -3,6 +3,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { EnvironmentId, type ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 import type { Session } from "electron";
 import {
   isAppFrame,
@@ -37,6 +38,65 @@ async function setup() {
 }
 
 describe("Baskule bundled desktop connection", () => {
+  it("reports descriptors only from the selected installation and clears them on a switch", async () => {
+    await using s = await setup();
+    const onDescriptor = vi
+      .fn<(value: ExecutionEnvironmentDescriptor | null) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    const connection = await baskuleConnection(s.directory, s.session, onDescriptor);
+    await connection.connect("https://cloud.example");
+    expect(onDescriptor).toHaveBeenLastCalledWith(null);
+    const descriptor: ExecutionEnvironmentDescriptor = {
+      environmentId: EnvironmentId.make("space"),
+      label: "Space",
+      platform: { os: "linux", arch: "x64" },
+      serverVersion: "0.5.0",
+      minClient: "0.5.0",
+      capabilities: { repositoryIdentity: true },
+    };
+    s.fetch.mockResolvedValueOnce(Response.json(descriptor));
+    await connection.proxy(new Request("baskule://app/s/space/.well-known/t3/environment"));
+    expect(onDescriptor).toHaveBeenLastCalledWith(descriptor);
+    let reply: (response: Response) => void = () => {
+      throw new Error("request not started");
+    };
+    s.fetch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        reply = resolve;
+      }),
+    );
+    const pending = connection.proxy(
+      new Request("baskule://app/s/space/.well-known/t3/environment"),
+    );
+    s.fetch.mockResolvedValueOnce(Response.json({ product: "baskule" }));
+    await connection.connect("https://other.example");
+    reply(Response.json(descriptor));
+    await pending;
+    expect(onDescriptor).toHaveBeenLastCalledWith(null);
+
+    const cloned = Promise.withResolvers<void>();
+    const body = new TransformStream<Uint8Array, Uint8Array>();
+    const response = new Response(body.readable);
+    const clone = response.clone.bind(response);
+    using _clone = vi.spyOn(response, "clone").mockImplementation(() => {
+      const result = clone();
+      cloned.resolve();
+      return result;
+    });
+    s.fetch.mockResolvedValueOnce(response);
+    const reading = connection.proxy(
+      new Request("baskule://app/s/space/.well-known/t3/environment"),
+    );
+    await cloned.promise;
+    s.fetch.mockResolvedValueOnce(Response.json({ product: "baskule" }));
+    await connection.connect("https://third.example");
+    const writer = body.writable.getWriter();
+    await writer.write(new TextEncoder().encode(JSON.stringify(descriptor)));
+    await writer.close();
+    await reading;
+    expect(onDescriptor).toHaveBeenLastCalledWith(null);
+  });
+
   it("requires a private network for plain HTTP and rejects URL credentials", () => {
     expect(parseServerAddress("https://cloud.example/link#code=one-time")).toEqual({
       origin: "https://cloud.example",

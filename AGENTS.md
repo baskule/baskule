@@ -6,10 +6,10 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md), [build instructions](docs/building.md),
 
 `github.com/baskule/baskule` (`origin`) is the only source of truth. Base every branch on `origin/main`, push only to `origin`, and open pull requests only there. Its history begins at the 2026-10-27 public initial commit. The earlier private OpenSoft repository is archived and must not be fetched, compared against, ported from, or pushed to. If a change you were told exists is missing from `origin/main`, stop and ask the owner instead of looking for it elsewhere.
 
-## Alpha constraints
+## Beta rules
 
-- No backward compatibility. When a design or data layout changes, remove the retired code and data layout. Do not add migrations, compatibility shims, dead flags, or test substitutes for retired layouts.
-- Alpha data may be wiped. A change that requires a wipe must document the deployment steps and the data removed. Operating an existing installation still requires its owner's authorization.
+- Client/server compatibility follows `app/packages/contracts/release-compatibility.json`. Keep code needed within that window; remove it once the window moves past it. Do not add dead flags or test substitutes for retired layouts.
+- Released installations hold real user data. Schema and data-layout changes need forward migrations. A change that cannot be migrated needs the owner's explicit approval and documented deployment steps. Operating an existing installation still requires its owner's authorization.
 - Keep the fewest moving parts. Propose new cells, Durable Object classes, bindings, services, processes, or abstractions before implementing them. Architecture changes need the owner's agreement.
 - Keep one shared SQL client per SpaceCell, the multiplexed alarm, and the same-cell self-request required by celld issue #258. See [the embedded runtime README](platform/src/agent/README.md).
 - Put experiments and reproduction notes in `docs/`; keep temporary files under ignored `.run/`. Do not add probe routes or flags to runtime code.

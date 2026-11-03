@@ -42,12 +42,12 @@ fi
 pnpm exec vp run dist:desktop:artifact "${args[@]}"
 # On native Windows this executes the Electron fff native-load probe and the
 # server.asar self-containment probe inside validateWindowsPackagedPayload.
-printf 'Desktop %s/%s: %s. T3 native packager; Windows includes packaged runtime probes. WSL archive omitted for the hosted alpha.\n' "$PLATFORM" "$ARCH" "$status" | tee "$OUT/STATUS.txt" >> "$GITHUB_STEP_SUMMARY"
+printf 'Desktop %s/%s: %s. T3 native packager; Windows includes packaged runtime probes. WSL archive omitted for the hosted beta.\n' "$PLATFORM" "$ARCH" "$status" | tee "$OUT/STATUS.txt" >> "$GITHUB_STEP_SUMMARY"
 
 (cd "$OUT" && node --input-type=module <<'JS'
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-const files = readdirSync('.').filter(name => /\.(dmg|exe)$/.test(name));
+const files = readdirSync('.').filter(name => /\.(dmg|exe|zip|blockmap)$/.test(name) || /^(latest|nightly)(-.*)?\.yml$/.test(name));
 if (!files.length) throw new Error('No native desktop package was produced');
 writeFileSync('SHA256SUMS', files.map(name => `${createHash('sha256').update(readFileSync(name)).digest('hex')}  ${name}\n`).join(''));
 JS

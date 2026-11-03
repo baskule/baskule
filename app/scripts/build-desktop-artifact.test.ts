@@ -534,7 +534,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
       assert.isNull(preview.publish);
       assert.isNull(previewChannel.publish);
-      assert.isNull(release.publish);
+      assert.deepStrictEqual(release.publish, {
+        provider: "generic",
+        url: "https://github.com/baskule/baskule/releases/download/v0.0.33/",
+      });
     }).pipe(
       Effect.provide(
         ConfigProvider.layer(
@@ -1567,7 +1570,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         );
 
       const onWindows = yield* signedWinConfig("win32");
-      assert.equal((onWindows.azureSignOptions as Record<string, unknown>).publisherName, "T3");
+      assert.equal(
+        (onWindows.azureSignOptions as Record<string, unknown>).publisherName,
+        "Baskule Test Publisher",
+      );
       assert.notProperty(onWindows, "signtoolOptions");
 
       const onLinux = yield* signedWinConfig("linux");
@@ -1575,13 +1581,13 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       const signtoolOptions = onLinux.signtoolOptions as Record<string, unknown>;
       assert.match(signtoolOptions.sign as string, /scripts[\\/]lib[\\/]windows-jsign\.ts$/);
       assert.deepStrictEqual(signtoolOptions.signingHashAlgorithms, ["sha256"]);
-      assert.deepStrictEqual(signtoolOptions.publisherName, ["T3"]);
+      assert.deepStrictEqual(signtoolOptions.publisherName, ["Baskule Test Publisher"]);
     }).pipe(
       Effect.provide(
         ConfigProvider.layer(
           ConfigProvider.fromEnv({
             env: {
-              AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: "T3",
+              AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: "Baskule Test Publisher",
               AZURE_TRUSTED_SIGNING_ENDPOINT: "https://eus.codesigning.azure.net/",
               AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: "profile",
               AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: "account",
@@ -1745,7 +1751,7 @@ it.effect.skipIf(!symlinksSupported)("rebases packaged links into the isolated t
   }).pipe(Effect.provide(NodeServices.layer)),
 );
 
-// baskule: carry branding, disabled update feeds, and the pinned terminal through upstream packaging changes.
+// baskule: carry branding, release update feeds, and the pinned terminal through upstream packaging changes.
 it("keeps Baskule packaging assets and the patched terminal version", () => {
   assert.equal(resolveDesktopProductName("0.1.3"), "Baskule");
   assert.deepStrictEqual(resolveDesktopBuildIconAssets(), {

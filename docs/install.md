@@ -159,7 +159,8 @@ keeps passwords enabled alongside OIDC. Use `"password":false` for SSO only, the
 setup link without a password and sign in through SSO with that email. Use
 [installation settings](installation-settings.md#authentication-file) for providers and callbacks. Environment
 references such as `{"env":"OIDC_SECRET"}` resolve from the optional `.env`. Run `docker compose up -d` after edits.
-Changing between anonymous and authenticated modes requires wiping alpha data.
+Changing between anonymous and authenticated modes currently has no migration. It needs the owner's explicit
+approval and documented deployment steps before any data is removed.
 
 ## External S3
 
@@ -197,7 +198,8 @@ other computer files are temporary. Restore the same release before updating.
 
 ## Update
 
-Read release notes for alpha data wipes. Back up first and keep the old compose file with the backup.
+Read release notes for migrations and the declared client/server compatibility window. Back up first and keep
+the old compose file with the backup. Changes without a migration need the owner's explicit approval.
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
@@ -207,7 +209,7 @@ docker compose up -d
 The compose file selects the released version. Keep your optional `.env`; no version edit or secret regeneration
 is needed. Updates can interrupt chats and commands. Check sign-in and a computer command after reconnecting.
 `docker compose down` stops services and retains data. `docker compose down -v` deletes all local data and secrets;
-it does not delete external S3. For an authorized alpha wipe, preserve backups, remove volumes, empty external S3
+it does not delete external S3. Only for a wipe explicitly approved by the owner, preserve backups, remove volumes, empty external S3
 if used, and start the new release with a fresh setup link.
 
 ## Troubleshooting

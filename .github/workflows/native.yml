@@ -280,6 +280,10 @@ jobs:
           path: |
             .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/*.dmg
             .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/*.exe
+            .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/*.zip
+            .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/latest*.yml
+            .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/nightly*.yml
+            .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/*.blockmap
             .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/STATUS.txt
             .run/native/desktop-${{ matrix.platform }}-${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error

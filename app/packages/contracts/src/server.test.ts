@@ -98,6 +98,7 @@ describe("resolveEnvironmentMachineKind", () => {
       label: "Box",
       platform: { os: "linux", arch: "x64", ...platform },
       serverVersion: "1.0.0",
+      minClient: "0.0.0",
       capabilities: {},
     });
 

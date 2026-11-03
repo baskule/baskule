@@ -15,6 +15,7 @@ const descriptor = (orchestrationProtocolVersion?: number): ExecutionEnvironment
   label: "Build Mac",
   platform: { os: "darwin", arch: "arm64" },
   serverVersion: "9.0.0",
+  minClient: "0.0.0",
   ...(orchestrationProtocolVersion === undefined ? {} : { orchestrationProtocolVersion }),
   capabilities: { repositoryIdentity: true },
 });
@@ -53,26 +54,21 @@ describe("orchestration protocol compatibility", () => {
     expect(error).not.toHaveProperty("serverUpdateRequired");
   });
 
-  it("offers a remote update only for an older host that can update itself", () => {
-    const older = descriptor(ORCHESTRATION_PROTOCOL_VERSION - 1);
-    const withCapabilities = (capabilities: ExecutionEnvironmentDescriptor["capabilities"]) =>
-      orchestrationProtocolCompatibilityError({ ...older, capabilities });
-
+  it("requires a client update below minClient and gives no server action ahead of the window", () => {
     expect(
-      withCapabilities({ repositoryIdentity: true, serverSelfUpdate: "boot-service" }),
-    ).toMatchObject({ serverUpdateRequired: true });
-    expect(withCapabilities({ repositoryIdentity: true })).not.toHaveProperty(
-      "serverUpdateRequired",
-    );
+      orchestrationProtocolCompatibilityError({
+        ...descriptor(ORCHESTRATION_PROTOCOL_VERSION),
+        minClient: "0.6.0",
+      })?.message,
+    ).toContain("must update Baskule");
+    const error = orchestrationProtocolCompatibilityError({
+      ...descriptor(ORCHESTRATION_PROTOCOL_VERSION),
+      serverVersion: "0.4.0",
+    });
+    expect(error?.message).toContain("This installation needs an update");
+    expect(error).not.toHaveProperty("serverUpdateRequired");
     expect(
-      withCapabilities({ repositoryIdentity: true, serverSelfUpdate: "desktop-managed" }),
+      orchestrationProtocolCompatibilityError(descriptor(ORCHESTRATION_PROTOCOL_VERSION - 1)),
     ).not.toHaveProperty("serverUpdateRequired");
-    expect(
-      withCapabilities({
-        repositoryIdentity: true,
-        serverSelfUpdate: "desktop-managed",
-        desktopAppUpdate: true,
-      }),
-    ).toMatchObject({ serverUpdateRequired: true });
   });
 });

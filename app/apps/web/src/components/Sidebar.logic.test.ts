@@ -1252,6 +1252,7 @@ describe("Working shelf (beta)", () => {
           label: environmentId,
           platform: { os: "linux" as const, arch: "x64" as const },
           serverVersion: "0.1.1",
+          minClient: "0.0.0",
           capabilities,
         },
       });

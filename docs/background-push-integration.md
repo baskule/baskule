@@ -16,6 +16,6 @@ Delivery is at least once. A crash after provider acceptance but before saving t
 
 ## Installation requirements
 
-ControlCell stores device registrations and delivery receipts. Follow [the installation update procedure](install.md#update) when updating the installation. Recreate installation settings and accounts after a data wipe required by a release.
+ControlCell stores device registrations and delivery receipts. Follow [the installation update procedure](install.md#update) when updating the installation. Releases migrate existing data forward. Changes that cannot be migrated need the owner's explicit approval and documented deployment steps.
 
 Provider delivery requires credentials, outbound access, APNs HTTP/2 support where applicable, and a matching native build. Simulated provider checks establish request and retry behavior. Receipt on a real background device and notification taps need separate device verification.

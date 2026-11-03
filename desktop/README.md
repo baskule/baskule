@@ -2,8 +2,8 @@
 
 The shipped desktop is the T3 Code Electron app in [`app/apps/desktop`](../app/apps/desktop), with its bundled
 renderer, preload, IPC, native menus, window lifecycle, browser implementation, and packaged server backend.
-Local-server startup defaults to disabled for the hosted alpha. The backend, SSH and WSL implementation remain
-available for future local capabilities. Automatic updates are disabled until Baskule owns an update feed.
+Local-server startup defaults to disabled for the hosted beta. The backend, SSH and WSL implementation remain
+available for future local capabilities. Automatic updates select the latest compatible published Baskule release for the installation in use.
 
 On first launch, enter a server address or paste a connection link from the installation's **Settings → Desktop
 app → Connect a device** section. `baskule://connect` links use T3's queued OS-link handoff and show the connection
@@ -53,3 +53,30 @@ This Linux check does not build or verify those other packages.
 Settings → Desktop app links to the Linux x64 AppImage on the GitHub release matching the running installation's
 version. The release factory publishes that AppImage separately; server images do not embed app installers.
 Add other platforms to the web client's download list when their installable release assets are available.
+
+## Compatible updates
+
+`app/packages/contracts/release-compatibility.json` declares this release's `version`, `minServer` and `minClient`.
+Both minimums default to the release version; loosening either is an explicit reviewed edit. Bump the declaration
+with `VERSION`. Contract edits must touch it; the `compatibility-noop` PR label overrides the guard for no-op edits.
+The release factory validates and appends this entry to the previous published release's `compatibility.json`.
+Every release carries the full index. A malformed entry, duplicate version or decreasing minimum fails the build.
+
+Desktop selects the newest newer client whose `minServer` is satisfied by the selected installation and whose
+version meets that server's `minClient`. It never downgrades. Clients below `minClient` must update; clients ahead
+of an installation's supported window report that the installation needs an update. Desktop takes no server action.
+The existing update toast and Settings controls handle check, download, progress and restart.
+
+Linux AppImage updates use the versioned release's generic feed and YAML, with a blockmap embedded in the AppImage. macOS also needs the ZIP and
+merged arm64/x64 YAML; real updates require Developer ID signing and notarization. Windows real updates depend on
+signing, with the publisher identity supplied by `AZURE_TRUSTED_SIGNING_PUBLISHER_NAME`. No signing identity or
+credential is hardcoded. Unsigned native CI builds prove packaging only.
+
+The factory creates draft releases. **An owner must publish the release before clients can update.** The owner
+keeps publication manual after verification. Installers remain per-platform GitHub release-asset links and
+are never embedded in celld images. Mobile store apps cannot self-update; compatible store-update guidance is follow-up work.
+
+Build the first published beta through this pipeline; do not publish a pre-change draft. Update an alpha installation
+before connecting a beta desktop: pre-beta servers are outside the declared window and lack `minClient`. If a
+published release lacks `compatibility.json`, its owner must attach an index from reviewed release history before
+running the next release factory. The factory refuses to silently discard that history.

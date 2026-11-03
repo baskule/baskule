@@ -7,6 +7,7 @@
       "types": "./src/assemblyHighlighting.ts",
       "default": "./src/assemblyHighlighting.ts"
     },
+    "./connection/releaseCompatibility": "./src/connection/releaseCompatibility.ts",
     "./zip/bounded-zip": {
       "types": "./src/zip/boundedZip.ts",
       "default": "./src/zip/boundedZip.ts"

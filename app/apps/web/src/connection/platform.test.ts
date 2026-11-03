@@ -104,7 +104,8 @@ function makeBridge(
           os: "linux",
           arch: "x64",
         },
-        serverVersion: "0.0.0-test",
+        serverVersion: "0.5.0",
+        minClient: "0.0.0",
         capabilities: {
           repositoryIdentity: true,
         },
@@ -233,6 +234,7 @@ describe("desktop SSH pairing", () => {
     vi.spyOn(bridge, "fetchSshEnvironmentDescriptor").mockImplementation(async (url) => ({
       ...(await fetchDescriptor(url)),
       serverVersion,
+      minClient: "0.0.0",
     }));
     vi.spyOn(bridge, "bootstrapSshBearerSession").mockRejectedValue(new Error(message));
     return provisionDesktopSshEnvironment(bridge, TARGET).pipe(Effect.flip);

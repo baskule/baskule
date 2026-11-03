@@ -27,7 +27,7 @@ Create `.run/evidence/<YYYY-MM-DD>/` and save screenshots of the action and resu
 
 ## Cleanup
 
-Close preview tabs you opened. Run `scripts/stack down` for a stack you started (use `--purge` to remove its alpha test data). Never stop another worktree or staging. Check `scripts/stack status --json` and confirm the files under `.run/evidence/<YYYY-MM-DD>/` still exist after cleanup. Cleanup must preserve evidence.
+Close preview tabs you opened. Run `scripts/stack down` for a stack you started (use `--purge` to remove its disposable test data). Never stop another worktree or staging. Check `scripts/stack status --json` and confirm the files under `.run/evidence/<YYYY-MM-DD>/` still exist after cleanup. Cleanup must preserve evidence.
 
 ## Helpers
 
