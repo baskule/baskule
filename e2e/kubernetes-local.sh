@@ -6,18 +6,18 @@ source scripts/env.sh
 export PATH="$HOME/.local/bin:$PATH"
 helm dependency build deploy/helm/baskule >/dev/null
 if [[ ${1:-} == lint ]]; then
-  helm lint deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false
-  helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false >/dev/null
-  helm template baskule deploy/helm/baskule --set s3.endpoint=https://s3.example.test --set s3.existingSecret=bucket --set existingSecret=platform --set publicUrl=https://baskule.example.test --set exposure.mode=ingress --set openshell.agentSandbox.preflight.enabled=false >/dev/null
-  helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set publicUrl=https://baskule.example.test --set exposure.mode=gateway --set exposure.gateway.name=edge --set openshell.agentSandbox.preflight.enabled=false >/dev/null
+  helm lint deploy/helm/baskule --set rustfs.enabled=true
+  helm template baskule deploy/helm/baskule --set rustfs.enabled=true >/dev/null
+  helm template baskule deploy/helm/baskule --set s3.endpoint=https://s3.example.test --set s3.existingSecret=bucket --set existingSecret=platform --set publicUrl=https://baskule.example.test --set exposure.mode=ingress >/dev/null
+  helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set publicUrl=https://baskule.example.test --set exposure.mode=gateway --set exposure.gateway.name=edge >/dev/null
   for invalid in typo=true s3.typo=true global.image.typo=true exposure.mode=ingress exposure.mode=gateway; do
-    if helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false --set exposure.gateway.name=edge --set "$invalid" >/dev/null 2>&1; then
+    if helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set exposure.gateway.name=edge --set "$invalid" >/dev/null 2>&1; then
       echo "Expected chart schema to reject $invalid" >&2; exit 1
     fi
   done
   for invalid_url in http://0.0.0.0 http://[::] http://LOCALHOST; do
     for mode in ingress gateway; do
-      if helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false --set exposure.gateway.name=edge --set exposure.mode="$mode" --set-string publicUrl="$invalid_url" >/dev/null 2>&1; then
+      if helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set exposure.gateway.name=edge --set exposure.mode="$mode" --set-string publicUrl="$invalid_url" >/dev/null 2>&1; then
         echo "Expected chart schema to reject $invalid_url for $mode" >&2; exit 1
       fi
     done
@@ -55,7 +55,7 @@ kubectl wait --for=condition=Ready nodes --all --timeout=180s
 registry=${BASKULE_K8S_REGISTRY:-ghcr.io/baskule-kubernetes-test}
 export BASKULE_K8S_REGISTRY="$registry"
 export BASKULE_K8S_TAG=${BASKULE_K8S_TAG:-kubernetes}
-for name in celld computerd openshell-kubernetes computer openshell-supervisor openshell-sandbox; do
+for name in celld computerd computer; do
   docker tag "baskule-$name:$BASKULE_K8S_TAG" "$registry/baskule-$name:$BASKULE_K8S_TAG"
   kind load docker-image --name "$cluster" --nodes "$cluster-worker,$cluster-worker2" "$registry/baskule-$name:$BASKULE_K8S_TAG" >> "$BASKULE_K8S_EVIDENCE/image-load.log" 2>&1
 done

@@ -30,14 +30,13 @@ helm upgrade --install "$BASKULE_K8S_RELEASE" "$chart" \
   --set-string global.image.registry="$registry" --set-string global.image.tag="$tag" \
   "${values_args[@]}" > /dev/null
 kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status statefulset/"$BASKULE_K8S_RELEASE-celld" --timeout=240s
-kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status statefulset/"$BASKULE_K8S_RELEASE-openshell" --timeout=180s
 if [[ ${BASKULE_K8S_JOURNEY:-full} == full ]]; then
   # Run the actual deployment command with setup still required, retaining this
   # test Job long enough to assert its logs without writing them to evidence.
   kubectl -n "$BASKULE_K8S_NAMESPACE" exec "$BASKULE_K8S_RELEASE-celld-0" -- \
     curl -fsS "http://$BASKULE_K8S_RELEASE/api/baskule/setup" | jq -e '.required == true' >/dev/null
   helm template "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" \
-    --show-only templates/deploy.yaml --set openshell.agentSandbox.preflight.enabled=false --set rustfs.enabled=true \
+    --show-only templates/deploy.yaml --set rustfs.enabled=true \
     --set-string publicUrl="$BASKULE_K8S_PUBLIC_URL" --set-string global.image.registry="$registry" \
     --set-string global.image.tag="$tag" "${values_args[@]}" | \
     kubectl -n "$BASKULE_K8S_NAMESPACE" create --dry-run=client -f - -o json | \

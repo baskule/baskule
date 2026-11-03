@@ -325,7 +325,7 @@ helm push "$BASKULE_K8S_CHART" "oci://$BASKULE_K8S_REGISTRY" > "$BASKULE_K8S_EVI
 export BASKULE_K8S_CHART="oci://$BASKULE_K8S_REGISTRY/baskule"
 export BASKULE_K8S_CHART_VERSION=0.0.0-ephemeral
 export BASKULE_K8S_TAG=${BASKULE_K8S_TAG:-kubernetes}
-for name in celld computerd openshell-kubernetes computer openshell-supervisor openshell-sandbox; do
+for name in celld computerd computer; do
   docker tag "baskule-$name:$BASKULE_K8S_TAG" "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG"
   for attempt in 1 2 3; do
     if docker push "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG" >> "$BASKULE_K8S_EVIDENCE/push-$name.log" 2>&1; then break; fi
@@ -405,8 +405,8 @@ YAML
 export BASKULE_K8S_VALUES="$state/values.private.yaml"
 cat > "$BASKULE_K8S_VALUES" <<YAML
 rustfs: {storageClass: baskule-ephemeral}
-openshell:
-  server: {dataStorageClass: baskule-ephemeral, workspaceStorageClass: baskule-ephemeral}
+computers:
+  storageClass: baskule-ephemeral
 exposure:
   mode: ingress
   serviceAnnotations:

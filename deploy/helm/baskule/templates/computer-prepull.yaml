@@ -1,4 +1,4 @@
-{{- if .Values.computers.prePull }}
+{{- if .Values.computers.prePull.enabled }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -14,8 +14,14 @@ spec:
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
-      {{- with .Values.imagePullSecrets }}
+      {{- with .Values.computers.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.computers.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.computers.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
         runAsUser: 1000
@@ -24,7 +30,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: computer
-          image: {{ include "baskule.image" (dict "root" . "name" "computer") }}
+          image: {{ (.Values.computers.image | default (include "baskule.image" (dict "root" . "name" "computer"))) }}
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           command: [sleep, infinity]
           securityContext:

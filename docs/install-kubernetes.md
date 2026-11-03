@@ -1,3 +1,16 @@
+> Kubernetes backend transition: the chart now runs computerd directly against Agent Sandbox.
+> It requires only celld/platform, computerd, and computer images. Computer settings live
+> under `computers`: `image` (empty uses the release image), `cpus` ("2"), `memory`
+> (3Gi), `diskSize` (10Gi), `storageClass` and `runtimeClassName` (empty uses cluster
+> defaults), `nodeSelector` ({}), `tolerations` ([]), `imagePullSecrets` ([]),
+> `prePull.enabled` (true), `blockedCidrs` ([]), and `ipv6` (false).
+> Add privately used public cluster and storage CIDRs to `blockedCidrs`.
+> Computer ingress is denied; egress allows cluster DNS and public addresses outside
+> the excluded ranges. RuntimeClasses and enforcement need kind/GKE verification.
+> The older gateway-specific installation, backup, and isolation instructions below
+> have not yet been revalidated for this backend. This change supplies no migration
+> of existing gateway-managed installations; do not use it to upgrade one.
+
 # Install a Baskule cluster on Kubernetes
 
 Kubernetes is the recommended way to run Baskule across machines. The Helm chart runs

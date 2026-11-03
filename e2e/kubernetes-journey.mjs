@@ -235,9 +235,9 @@ try {
       computer("ensure");
       assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
       pass("per-space PVC preserves file bytes after computer stop/start");
-      const sandbox = objects("get", "sandboxes", `default--${namesFor(space, release).sandbox}`);
-      const workloadSelector = `openshell.ai/boundary-role=workload,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`;
-      const pods = objects("get", "pods", "-l", workloadSelector).items;
+      const sandbox = objects("get", "sandboxes", namesFor(space, release).sandbox);
+      const computerPods = () => objects("get", "pods", "-l", "baskule.computer=true").items.filter(pod => pod.metadata.ownerReferences?.some(owner => owner.uid === sandbox.metadata.uid));
+      const pods = computerPods();
       assert.equal(pods.length, 1);
       const pod = pods[0];
       const pvcBefore = objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort();
@@ -247,11 +247,11 @@ try {
         await expect.poll(() => {
           // The next use wakes a Sandbox suspended after its workload pod vanished.
           try { computer("ensure"); } catch { return false; }
-          const replacement = objects("get", "pods", "-l", workloadSelector).items[0];
+          const replacement = computerPods()[0];
           return Boolean(replacement && replacement.metadata.uid !== pod.metadata.uid && replacement.status.conditions?.some(c => c.type === "Ready" && c.status === "True"));
         }, { timeout: 240_000 }).toBe(true);
         if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
-          assert.notEqual(objects("get", "pods", "-l", workloadSelector).items[0].spec.nodeName, pod.spec.nodeName);
+          assert.notEqual(computerPods()[0].spec.nodeName, pod.spec.nodeName);
         }
         computer("ensure");
         assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
@@ -261,7 +261,7 @@ try {
         if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("uncordon", pod.spec.nodeName);
       }
       // A network-policy-enforced workload cannot dial any peer, S3 or private IP.
-      const workload = objects("get", "pods", "-l", workloadSelector).items[0];
+      const workload = computerPods()[0];
       const probe = 'const net=require("net");const s=net.connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>process.exit(1));s.on("error",()=>process.exit(0));s.setTimeout(3000,()=>{s.destroy();process.exit(0)});';
       for (const [host, port] of [
         [objects("get", "pod", celldPod).status.podIP, "47092"],
@@ -273,8 +273,7 @@ try {
         kube("exec", celldPod, "--", "curl", "-fsS", "--max-time", "10", "-H", "Metadata-Flavor: Google", "-o", "/dev/null", "http://169.254.169.254/computeMetadata/v1/");
         pass("GKE metadata server exists and is reachable from the trusted platform");
       }
-      // Unlike kubectl exec above, computerd exec enters the sandbox's seccomp
-      // broker and trusted supervisor: assert application-policy denial as well.
+      // Exercise the same network isolation through the product exec API.
       const computerApi = new Client(await forward(`service/${release}-computerd`, 47094), Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString());
       const publicControl = await computerApi.exec(space, { argv: ["curl", "-fsS", "--max-time", "20", "https://example.com/"] });
       assert.equal(publicControl.code, 0, publicControl.stderr);
@@ -287,14 +286,10 @@ try {
         "http://169.254.169.254/computeMetadata/v1/",
       ]) {
         const denied = await computerApi.exec(space, { argv: ["curl", "--silent", "--show-error", "--max-time", "10", "--insecure", "-H", "X-Forwarded-For: 198.51.100.1", target] });
-        assert.notEqual(denied.code, 0, `supervisor must deny ${target}`);
+        assert.notEqual(denied.code, 0, `NetworkPolicy must deny ${target}`);
         assert.equal(denied.stdout, "", "no protected response body may escape");
       }
-      const supervisor = objects("get", "pods", "-l", `openshell.ai/boundary-role=supervisor,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`).items[0];
-      const denialLog = kube("logs", supervisor.metadata.name, "--all-containers=true");
-      assert.match(denialLog, /denied|not allowed|blocked/i, "supervisor must record policy denials, not just a dial timeout");
-      assert.ok(denialLog.includes(apiService), "the Kubernetes API denial must appear in supervisor logs");
-      pass("supervisor-mediated curl permits public HTTPS and denies Kubernetes API, platform Service, RustFS and metadata");
+      pass("computer curl permits public HTTPS and denies Kubernetes API, platform Service, RustFS and metadata");
       const cdp = await wsExchange(computerApi.ws(`/v1/spaces/${space}/cdp`), [JSON.stringify({ id: 1, method: "Target.getTargets" })], messages => messages.some(message => message.includes('"id":1')), 60_000);
       const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
       assert.ok(targets.some(target => target.type === "page"));
@@ -332,8 +327,8 @@ try {
     kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
     kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");
     kube("rollout", "status", `statefulset/${release}-celld`, "--timeout=180s");
-    const sandboxName = `default--${namesFor(space, release).sandbox}`;
-    const workspace = objects("get", "pvc", `workspace-${sandboxName}`);
+    const sandboxName = namesFor(space, release).sandbox;
+    const workspace = objects("get", "pvc", `${namesFor(space, release).volume}-${sandboxName}`);
     client.close(); await client.closed; client = undefined;
     await person.json("DELETE", `/api/baskule/spaces/${space}`);
     await expect.poll(() => objects("get", "pvc").items.some(pvc => pvc.metadata.uid === workspace.metadata.uid), { timeout: 180_000 }).toBe(false);

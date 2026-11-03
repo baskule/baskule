@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 const sha = data => createHash("sha256").update(data).digest("hex");
 function fixture(scenario) {
   const work = mkdtempSync(resolve(tmpdir(), "publish-test-"));
-  const refs = ["celld", "computerd", "openshell-gateway", "openshell-kubernetes", "computer", "openshell-supervisor", "openshell-sandbox"].map(name => `ghcr.io/baskule/baskule-${name}:test`);
+  const refs = ["celld", "computerd", "computer"].map(name => `ghcr.io/baskule/baskule-${name}:test`);
   const expected = {};
   const files = {};
   for (const ref of refs) {
