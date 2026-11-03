@@ -60,6 +60,23 @@ spec:
 YAML
 kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status deployment/fake-llm --timeout=180s
 node e2e/kubernetes-journey.mjs | tee "$BASKULE_K8S_EVIDENCE/journey.log"
+# Server-side rendering must apply newly supplied external credentials even when
+# the old evaluation Secret exists. No bucket or credential mutation is performed.
+render=$(mktemp "$root/.run/s3-upgrade.XXXXXX.private.json")
+helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" \
+  --reuse-values --dry-run=server --output json --set rustfs.enabled=false \
+  --set s3.endpoint=https://s3.example.test --set s3.accessKeyId=review-access --set s3.secretAccessKey=review-secret > "$render"
+node --input-type=module - "$render" "$BASKULE_K8S_RELEASE" <<'JS'
+import { readFileSync, unlinkSync } from "node:fs";
+import assert from "node:assert/strict";
+const [file, release] = process.argv.slice(2);
+try {
+  const manifests = JSON.parse(readFileSync(file, "utf8")).manifest.split("---");
+  const secret = manifests.find(doc => doc.includes(`name: ${release}-s3\n`));
+  for (const value of ["review-access", "review-secret"]) assert.ok(secret?.includes(Buffer.from(value).toString("base64")));
+} finally { unlinkSync(file); }
+JS
+echo 'PASS server-side upgrade rendering applies changed external S3 credentials' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
 # Real lookup must retain token bytes on an upgrade. Compare hashes, never dump Secrets.
 before=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" -o jsonpath='{.data}' | sha256sum)
 helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" --reuse-values --timeout 10m --wait > /dev/null

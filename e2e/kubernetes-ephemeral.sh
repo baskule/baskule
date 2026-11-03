@@ -225,6 +225,7 @@ nodes_started=$(date +%s)
 gc container clusters create "$run_id" --zone="$zone" --node-locations="$zone" \
   --num-nodes=2 --machine-type=e2-custom-4-8192 --spot --image-type=UBUNTU_CONTAINERD \
   --disk-type=pd-standard --disk-size=40 --enable-dataplane-v2 --enable-ip-alias \
+  --cluster-ipv4-cidr=10.40.0.0/14 --services-ipv4-cidr=10.44.0.0/20 \
   --labels="$labels" --node-labels="$labels" --service-account="$email" \
   --scopes=cloud-platform --logging=NONE --monitoring=NONE --no-enable-managed-prometheus \
   > "$BASKULE_K8S_EVIDENCE/cluster-create.log" 2>&1

@@ -6,6 +6,7 @@ import { mkdirSync, appendFileSync, writeFileSync, existsSync, readFileSync } fr
 import { resolve } from "node:path";
 import { expect } from "@playwright/test";
 import { createApi } from "./journeys/api.mjs";
+import { Client, wsExchange } from "../computerd/test/client.ts";
 import { namesFor } from "../computerd/src/policy.ts";
 
 const namespace = process.env.BASKULE_K8S_NAMESPACE ?? "baskule";
@@ -61,15 +62,21 @@ async function checkIngress(publicUrl) {
   const externalClient = await rpc(externalPerson, externalApi.personalSpace(externalPerson));
   try {
     const externalProject = (await externalClient.ok("projects.ensureScratch", {})).projectId;
-    const externalThread = await externalApi.launch(externalClient, externalProject, "[[fake:text LOAD_BALANCER_STREAM_OK alpha beta gamma delta epsilon]][[fake:delay 200]]");
+    const started = Date.now();
+    const words = Array.from({ length: 400 }, (_, i) => `chunk${i}`).join(" ");
+    const externalThread = await externalApi.launch(externalClient, externalProject, `[[fake:text LOAD_BALANCER_STREAM_OK ${words}]][[fake:delay 200]]`);
     const externalState = externalApi.watchThread(externalClient, externalThread);
     try {
       await externalApi.waitFor("load balancer text before completion", () => !externalState.settled() && externalState.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 60_000);
+      await externalApi.waitFor("WebSocket still streaming after 65 seconds", () => Date.now() - started >= 65_000 && !externalState.settled() && externalState.assistantUpdates >= 2, 90_000);
+      const updates = externalState.assistantUpdates;
+      await externalApi.waitFor("incremental delivery after 65 seconds", () => externalState.assistantUpdates > updates, 30_000);
       await externalApi.waitFor("load balancer streamed chat", () => externalState.settled() && externalState.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 180_000);
       assert.ok([...externalState.runs.values()].every(run => run.status === "completed"));
       assert.ok(externalState.assistantUpdates >= 2, "incremental updates must traverse the public load balancer");
     } finally { externalState.stop(); }
-    pass("real Ingress load balancer serves sign-in and incremental fake chat over WebSocket");
+    writeFileSync(resolve(evidence, "ingress-stream.json"), JSON.stringify({ elapsedMs: Date.now() - started, updates: externalState.assistantUpdates, visibleBeforeCompletion: true, deliveredAfter65Seconds: true }));
+    pass("real Ingress load balancer keeps WebSocket and incremental chat streaming beyond 65 seconds");
     if (process.env.BASKULE_K8S_JOURNEY === "ingress") {
       externalClient.close(); await externalClient.closed;
       const oldPod = objects("get", "pod", `${release}-celld-1`);
@@ -89,6 +96,19 @@ async function checkIngress(publicUrl) {
       } finally { reconnected.close(); await reconnected.closed; }
     }
   } finally { externalClient.close(); await externalClient.closed; }
+  // Security test: attacker-controlled earlier XFF entries must not avoid the edge bucket.
+  const statuses = [];
+  for (let i = 0; i < 12; i++) {
+    const response = await fetch(`${publicUrl}/auth/sign-in/email`, {
+      method: "POST", headers: { Origin: publicUrl, "Content-Type": "application/json", "X-Forwarded-For": `198.51.100.${i + 1}` },
+      body: JSON.stringify({ email: externalPerson.email, password: "intentionally-wrong-password" }),
+    });
+    statuses.push(response.status); await response.body?.cancel();
+  }
+  assert.ok(statuses.includes(429), "changing forged XFF must not escape sign-in throttling");
+  assert.equal(statuses.at(-1), 429);
+  writeFileSync(resolve(evidence, "ingress-rate-limit.json"), JSON.stringify({ statuses, differentForgedXff: true, sharedBucketLimit: "GCE forwarding-rule IP; documented production limit" }));
+  pass("public GCE sign-in rate limit cannot be bypassed with changing forged XFF entries");
 }
 const select = component => `app.kubernetes.io/instance=${release},app.kubernetes.io/component=${component}`;
 // Keep retry credentials outside uploaded evidence; never print them.
@@ -101,7 +121,14 @@ let client;
 try {
   const diagnose = kube("exec", `${release}-celld-0`, "--", "sh", "-ec", 'celld diagnose --json --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT"');
   writeFileSync(resolve(evidence, "rustfs-diagnose.jsonl"), diagnose);
-  assert.ok(!diagnose.split("\n").filter(line => line.startsWith("{")).some(line => JSON.parse(line).verdict === "fail"));
+  const diagnosis = diagnose.split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line));
+  assert.ok(diagnosis.length > 0, "diagnose must return checks");
+  assert.ok(diagnosis.every(check => check.verdict !== "fail"));
+  assert.equal(diagnosis.find(check => check.check === "bucket conditional write")?.verdict, "ok");
+  const fleet = diagnosis.find(check => check.check === "fleet");
+  const replicas = objects("get", "statefulset", `${release}-celld`).spec.replicas;
+  assert.equal(fleet?.verdict, "ok");
+  assert.equal(fleet.detail, `${replicas} node lease(s) enumerated`);
   pass("celld diagnose verifies RustFS conditional writes and the two-node fleet");
   const publicUrl = process.env.BASKULE_K8S_PUBLIC_URL ?? "http://127.0.0.1:47090";
   // Route initial cell activations to the ordinal used by the later crash drill.
@@ -144,6 +171,9 @@ try {
     assert.ok(state.assistantUpdates >= 2, "multiple assistant updates prove incremental streaming");
     state.stop();
     pass("fake chat streams through the platform WebSocket");
+    const coldNodeImages = objects("get", "nodes").items.flatMap(node => node.status.images ?? []).flatMap(image => image.names);
+    const cold = !coldNodeImages.some(name => name.includes("/baskule-computer:"));
+    if (process.env.BASKULE_K8S_CROSS_NODE === "1") assert.ok(cold, "first computer must pull onto a cold GKE node");
     const toolThread = await api.launch(client, projectId, '[[fake:tool shell {"command":"printf KUBERNETES_DISK_OK > /sandbox/space/kubernetes-proof.txt; cat /sandbox/space/kubernetes-proof.txt"}]]');
     const tool = api.watchThread(client, toolThread);
     await api.waitFor("computer exec", () => tool.settled() && tool.assistantText().includes("KUBERNETES_DISK_OK"), 300_000);
@@ -152,6 +182,12 @@ try {
     assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
     pass("platform invokes computerd and writes verified file bytes on a Kubernetes computer");
     const computerdPod = objects("get", "pods", "-l", select("computerd")).items[0].metadata.name;
+    const ready = kube("logs", computerdPod).split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line)).find(line => line.msg === "computer ready" && line.spaceId === space);
+    assert.ok(ready && ready.ms > 0, "record actual computer startup duration");
+    writeFileSync(resolve(evidence, "computer-startup.json"), JSON.stringify({ coldNode: cold, readyMs: ready.ms, timeoutMs: 180_000 }));
+    assert.ok(ready.ms < 144_000, "cold start must leave at least 20% of the 180-second readiness budget");
+    pass(`computer startup took ${ready.ms} ms (cold node: ${cold})`);
+    const computerApi = new Client(await forward(`service/${release}-computerd`, 47094), Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString());
     // Run through the actual HTTP API from the celld trust domain. No extra public service.
     const celldPod = `${release}-celld-0`;
     function computer(action) {
@@ -198,6 +234,35 @@ try {
         ["169.254.169.254", "80"],
       ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
       pass("NetworkPolicy blocks direct computer access to peer, S3 and metadata IPs");
+      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
+        kube("exec", celldPod, "--", "curl", "-fsS", "--max-time", "10", "-H", "Metadata-Flavor: Google", "-o", "/dev/null", "http://169.254.169.254/computeMetadata/v1/");
+        pass("GKE metadata server exists and is reachable from the trusted platform");
+      }
+      // Unlike kubectl exec above, computerd exec enters the sandbox's seccomp
+      // broker and trusted supervisor: assert application-policy denial as well.
+      const publicControl = await computerApi.exec(space, { argv: ["curl", "-fsS", "--max-time", "20", "https://example.com/"] });
+      assert.equal(publicControl.code, 0, publicControl.stderr);
+      const apiService = JSON.parse(execFileSync("kubectl", ["-n", "default", "get", "service", "kubernetes", "-o", "json"], { encoding: "utf8" })).spec.clusterIP;
+      for (const target of [
+        `https://${apiService}:443/`,
+        `http://${objects("get", "svc", release).spec.clusterIP}:80/api/baskule/setup`,
+        `http://${release}:80/api/baskule/setup`,
+        `http://${objects("get", "svc", `${release}-rustfs`).spec.clusterIP}:3900/`,
+        "http://169.254.169.254/computeMetadata/v1/",
+      ]) {
+        const denied = await computerApi.exec(space, { argv: ["curl", "--silent", "--show-error", "--max-time", "10", "--insecure", "-H", "X-Forwarded-For: 198.51.100.1", target] });
+        assert.notEqual(denied.code, 0, `supervisor must deny ${target}`);
+        assert.equal(denied.stdout, "", "no protected response body may escape");
+      }
+      const supervisor = objects("get", "pods", "-l", `openshell.ai/boundary-role=supervisor,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`).items[0];
+      const denialLog = kube("logs", supervisor.metadata.name, "--all-containers=true");
+      assert.match(denialLog, /denied|not allowed|blocked/i, "supervisor must record policy denials, not just a dial timeout");
+      assert.ok(denialLog.includes(apiService), "the Kubernetes API denial must appear in supervisor logs");
+      pass("supervisor-mediated curl permits public HTTPS and denies Kubernetes API, platform Service, RustFS and metadata");
+      const cdp = await wsExchange(computerApi.ws(`/v1/spaces/${space}/cdp`), [JSON.stringify({ id: 1, method: "Target.getTargets" })], messages => messages.some(message => message.includes('"id":1')), 60_000);
+      const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
+      assert.ok(targets.some(target => target.type === "page"));
+      pass("computer Chromium responds through the real CDP WebSocket tunnel");
       if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
     }
     // Keep the killed ordinal unavailable until another celld owns its cells.
@@ -231,7 +296,13 @@ try {
     kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
     kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");
     kube("rollout", "status", `statefulset/${release}-celld`, "--timeout=180s");
-    writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), selection, computerPodReplaced: selection === "full", crossNode: selection === "full" && process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
+    const sandboxName = `default--${namesFor(space, release).sandbox}`;
+    const workspace = objects("get", "pvc", `workspace-${sandboxName}`);
+    client.close(); await client.closed; client = undefined;
+    await person.json("DELETE", `/api/baskule/spaces/${space}`);
+    await expect.poll(() => objects("get", "pvc").items.some(pvc => pvc.metadata.uid === workspace.metadata.uid), { timeout: 180_000 }).toBe(false);
+    pass("deleting a space removes its actual workspace PVC");
+    writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), selection, spacePvcDeleted: true, computerPodReplaced: selection === "full", crossNode: selection === "full" && process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
   }
 } finally {
   if (client) { client.close(); await client.closed; }

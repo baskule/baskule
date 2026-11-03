@@ -8,8 +8,13 @@ helm dependency build deploy/helm/baskule >/dev/null
 if [[ ${1:-} == lint ]]; then
   helm lint deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false
   helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false >/dev/null
-  helm template baskule deploy/helm/baskule --set s3.endpoint=https://s3.example.test --set s3.existingSecret=bucket --set existingSecret=platform --set exposure.mode=ingress --set openshell.agentSandbox.preflight.enabled=false >/dev/null
-  helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set exposure.mode=gateway --set exposure.gateway.name=edge --set openshell.agentSandbox.preflight.enabled=false >/dev/null
+  helm template baskule deploy/helm/baskule --set s3.endpoint=https://s3.example.test --set s3.existingSecret=bucket --set existingSecret=platform --set publicUrl=https://baskule.example.test --set exposure.mode=ingress --set openshell.agentSandbox.preflight.enabled=false >/dev/null
+  helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set publicUrl=https://baskule.example.test --set exposure.mode=gateway --set exposure.gateway.name=edge --set openshell.agentSandbox.preflight.enabled=false >/dev/null
+  for invalid in typo=true s3.typo=true global.image.typo=true exposure.mode=ingress exposure.mode=gateway; do
+    if helm template baskule deploy/helm/baskule --set rustfs.enabled=true --set openshell.agentSandbox.preflight.enabled=false --set "$invalid" >/dev/null 2>&1; then
+      echo "Expected chart schema to reject $invalid" >&2; exit 1
+    fi
+  done
   exit
 fi
 export BASKULE_K8S_EVIDENCE="$root/.run/evidence/kubernetes/$(date -u +%Y%m%dT%H%M%SZ)"

@@ -7,7 +7,8 @@ The [single-machine Compose install](install.md) remains available.
 ## Create a cluster and install
 
 Use Linux amd64 worker nodes with a NetworkPolicy-enforcing CNI and a default,
-block-backed StorageClass. Start with two nodes with 4 vCPU and 8 GiB each. A computer
+block-backed StorageClass. Use RFC 1918 Pod and Service CIDRs; privately used public
+ranges need operator egress denial (see GKE below). Start with two nodes with 4 vCPU and 8 GiB each. A computer
 requests 2 CPU and 3 GiB by default, in addition to the platform and OpenShell pods.
 For production, size the pool for concurrent computers and keep nodes in the zones
 supported by your volumes. Read the isolation and storage limits below.
@@ -32,7 +33,7 @@ kubectl -n baskule port-forward svc/baskule 47090:80
 
 The post-install hook creates the evaluation bucket and deploys the application.
 Do not add `--wait` to the first install: celld cannot become ready before that hook.
-Replace `X` with a published Baskule chart version. Open the private setup link printed
+Replace `X` with the version listed on [Baskule Releases](https://github.com/baskule/baskule/releases) (without a leading `v`). Open the private setup link printed
 by Helm and create the first admin. Configure your model provider in Administration.
 RustFS has one replica and no redundancy. Use it for tests and evaluation only.
 
@@ -55,12 +56,9 @@ s3:
   bucket: baskule
   existingSecret: baskule-bucket
 exposure:
-  mode: ingress
-  ingress:
-    className: nginx
-    tls:
-      - hosts: [baskule.example.com]
-        secretName: baskule-tls
+  mode: gateway
+  gateway:
+    name: public # an existing Gateway with a configured HTTPS listener
 ```
 
 ```sh
@@ -68,10 +66,13 @@ helm install baskule oci://ghcr.io/baskule/charts/baskule --version X \
   --namespace baskule --create-namespace --values values.yaml --timeout 10m
 ```
 
-Install your Ingress controller, DNS record, and TLS certificate separately. The chart
-sets ingress-nginx's streaming and one-hour timeout annotations. For another controller,
-set equivalent annotations through `exposure.ingress.annotations`. Confirm WebSocket
-upgrades, immediate SSE/NDJSON delivery, and upload-size limits on your controller.
+Install your Gateway/Ingress controller, DNS record, and TLS certificate separately.
+Use Gateway API or the managed GKE Ingress example below for production.
+[ingress-nginx retired in March 2026](https://kubernetes.io/blog/2025/11/11/ingress-nginx-retirement/)
+and is not recommended for new installations. For existing installations, the chart's
+nginx annotations allow 1 GiB bodies, disable request/response buffering, and set
+one-hour read/send timeouts. Other controllers need equivalent settings. Confirm
+WebSocket upgrades, immediate SSE/NDJSON delivery, and upload-size limits.
 
 To use an existing Gateway instead, set `exposure.mode: gateway` and
 `exposure.gateway.name`, with optional `namespace` and `sectionName`. The chart creates
@@ -89,16 +90,30 @@ execution, cross-node PVC persistence, network denial, celld takeover, public HT
 Ingress with incremental WebSocket delivery, recovery after pod replacement, and
 stable secrets after a Helm upgrade. TLS and snapshot restore remain unverified.
 
+Prerequisites: a Google Cloud project with billing enabled, an authenticated Google
+Cloud CLI, `gke-gcloud-auth-plugin`, kubectl, and Helm 3.8 or newer (OCI support).
+Use your own project explicitly; these commands do not change gcloud configuration.
+Enable the Kubernetes Engine API in that project:
+
 ```sh
-gcloud container clusters create baskule \
+export GKE_PROJECT=your-project-id
+gcloud --project="$GKE_PROJECT" services enable container.googleapis.com
+gcloud --project="$GKE_PROJECT" container clusters create baskule \
   --zone europe-west1-b --node-locations europe-west1-b \
   --num-nodes 2 --machine-type e2-custom-4-8192 \
-  --image-type UBUNTU_CONTAINERD --enable-dataplane-v2
-gcloud container clusters get-credentials baskule --zone europe-west1-b
+  --image-type UBUNTU_CONTAINERD --enable-dataplane-v2 --enable-ip-alias \
+  --cluster-ipv4-cidr 10.40.0.0/14 --services-ipv4-cidr 10.44.0.0/20
+gcloud --project="$GKE_PROJECT" container clusters get-credentials baskule --zone europe-west1-b
 ```
 
 Install Agent Sandbox, then run either Helm install command above. Dataplane V2 provides
 NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass.
+Choose non-overlapping RFC 1918 Pod and Service ranges before creating the cluster.
+Do not use GKE's Google-managed `34.118.224.0/20` Service range here: OpenShell's
+public-internet policy treats globally routable addresses as public even when a
+cluster privately uses them. The same warning applies to privately used public Pod
+ranges on any provider. Supporting such ranges requires operator egress denial;
+configurable cluster-CIDR exclusions in the supervisor remain an open item.
 For a private cluster, provide outbound image-registry and model-provider access.
 
 For Google's managed Ingress, create a `BackendConfig` in the Baskule namespace:
@@ -133,6 +148,13 @@ GKE reconciles its load balancer asynchronously. Wait for the Ingress address an
 healthy backends before opening the setup link. Google's
 [Ingress configuration guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration)
 describes backend health checks, timeouts and optional reserved addresses.
+
+Client-IP limit: Google's load balancer [appends the client and forwarding-rule IPs
+to X-Forwarded-For](https://docs.cloud.google.com/load-balancing/docs/https#x-forwarded-for_header).
+Baskule currently takes the last entry, so GKE Ingress shares a sign-in rate-limit
+bucket across clients behind that forwarding rule. Forged earlier entries do not
+bypass it, but one client's failures can throttle others. Configure operator-owned
+edge rate limits before production; per-client GKE header handling is not claimed.
 
 Target Standard, with a native containerd runtime. Autopilot is not an accepted target
 for this release because the required nested seccomp/Landlock behavior has not been
@@ -209,7 +231,8 @@ The main settings are:
 | `publicUrl` | `http://localhost:47090` | Public origin and setup link |
 | `replicas` | `2` | celld nodes, stable pod names and peer DNS |
 | `s3.endpoint`, `region`, `bucket` | external endpoint required | Shared celld storage |
-| `s3.existingSecret` | generated from supplied keys | S3 credentials; use the same keys for bundled RustFS |
+| `s3.existingSecret` | empty | Operator-owned S3 Secret; required for GitOps |
+| `s3.accessKeyId`, `secretAccessKey` | empty | External S3 keys, applied on each upgrade when no existing Secret; RustFS keys are generated once |
 | `rustfs.enabled` | `false` | Single-node evaluation S3 store |
 | `existingSecret` | generated once | `COMPUTERD_TOKEN`, `SETUP_TOKEN`, `PLUGIN_SYNC_TOKEN` |
 | `exposure.mode` | `none` | `none`, `ingress`, or `gateway` |
@@ -223,7 +246,16 @@ The main settings are:
 Supply private registry credentials through both `imagePullSecrets` and
 `openshell.imagePullSecrets`/`openshell.server.sandboxImagePullSecrets` as needed.
 The generated platform and S3 Secrets use Helm lookup on upgrade and are retained on
-uninstall. If you supply `existingSecret`, Helm prints the setup URL template and the
+uninstall. Only generated RustFS keys are preserved; supplied external S3 values
+replace the managed S3 Secret's keys on upgrade. Moving buckets also requires copying
+bucket data before switching values; changing credentials alone does not move data.
+
+GitOps (`helm template`, ArgoCD) and client-side dry runs cannot use server lookup:
+they generate new random values on each render. **Set both `existingSecret` and
+`s3.existingSecret` for those workflows**, including evaluation RustFS. Manage the
+three platform tokens and two S3 keys outside Helm. Also set `openshell.server.credentialStorage.existingSecret` to a pre-created
+Secret containing `key-encryption-key`, as documented by the vendored chart.
+If you supply `existingSecret`, Helm prints the setup URL template and the
 Secret name instead of reading its token into the notes.
 
 ## Upgrade and scale
@@ -232,7 +264,7 @@ Back up first, then upgrade the chart with your saved values:
 
 ```sh
 helm upgrade baskule oci://ghcr.io/baskule/charts/baskule --version X \
-  --namespace baskule --values values.yaml --wait --timeout 10m
+  --namespace baskule --reuse-values --values values.yaml --wait --timeout 10m
 ```
 
 The hook deploys the Worker and asks every configured celld node to reload it. celld
@@ -296,13 +328,19 @@ Agent Sandbox controller may serve other installations; do not remove it automat
 
 ## Verify a source change
 
-Build branch images using [the build guide](building.md), including `openshell/build.sh`.
-Build the release celld target with the current platform bundle. Use a dedicated tag
-such as `kubernetes` for all six Kubernetes images. Then run:
+First run the exact Ubuntu build-environment command in [the build guide](building.md)
+with `deploy/build.sh --no-deploy`. This builds web, runtime and all `:local` images,
+including `openshell/build.sh`, without starting an installation. Use the same
+image build before `scripts/check release`. Then bake the current platform bundle into the release celld target and tag
+all six Kubernetes images explicitly:
 
 ```sh
 source scripts/env.sh
-scripts/check feature:kubernetes
+scripts/docker-build.sh celld --network host --target release -t baskule-celld:kubernetes -f deploy/celld/Dockerfile .
+for image in computerd openshell-kubernetes computer openshell-supervisor openshell-sandbox; do
+  docker tag "baskule-$image:local" "baskule-$image:kubernetes"
+done
+BASKULE_K8S_TAG=kubernetes scripts/check feature:kubernetes
 ```
 
 The local check creates a kind cluster with Calico, Agent Sandbox and RustFS, using
@@ -311,7 +349,9 @@ production computer defaults. The journey runs
 setup, fake chat, computer exec, stop/start persistence, pod replacement, network
 isolation, celld takeover, and a token-preserving Helm upgrade. kind's default local
 PVCs stay on one node. The cloud check additionally forces a computer onto another
-node with the same block volume.
+node with the same block volume. The upgrade step re-applies the same chart/images
+and asserts generated token stability and hook success. It does not prove an upgrade
+from a previous release, schema migration, or snapshot restoration.
 
 Only with the installation owner's authorization, authenticate gcloud and set
 `BASKULE_GKE_PROJECT` to the authorized active project. Run
