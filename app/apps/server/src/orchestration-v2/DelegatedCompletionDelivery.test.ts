@@ -2020,6 +2020,33 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
           continuationPending: false,
           now,
         });
+        const author = { id: "alice", name: "Alice" };
+        yield* eventSink.write({
+          events: [
+            {
+              id: EventId.make("event:question-answer-child-message"),
+              type: "message.updated",
+              threadId: child.childThreadId,
+              runId: child.childRunId,
+              occurredAt: now,
+              payload: {
+                id: MessageId.make(`message:${child.childRunId}`),
+                threadId: child.childThreadId,
+                runId: child.childRunId,
+                nodeId: null,
+                role: "user",
+                text: "Run the delegated task.",
+                attachments: [],
+                streaming: false,
+                createdBy: "agent",
+                creationSource: "server",
+                author,
+                createdAt: now,
+                updatedAt: now,
+              },
+            },
+          ],
+        });
         // The cancelled result is published before anyone answers the question.
         yield* orchestrator.recoverDelegatedTasks;
         assert.isNotNull(
@@ -2121,6 +2148,7 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
             .dispatch({
               type: "runtime-request.respond",
               commandId: CommandId.make("command:question-answer"),
+              author,
               threadId: child.childThreadId,
               requestId,
               answers: { color: "Blue" },

@@ -124,7 +124,10 @@ export const handleUpgrade = (
       ),
       Effect.scoped,
     );
-    hooks.waitUntil(Effect.runPromiseWith(context)(run as Effect.Effect<void>));
+    const releaseKeepAlive = keepAlive();
+    hooks.waitUntil(
+      Effect.runPromiseWith(context)(run as Effect.Effect<void>).finally(releaseKeepAlive),
+    );
   });
 };
 

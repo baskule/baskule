@@ -194,6 +194,8 @@ Constants and the codec: `src/shared/contract.ts`,
 - **Revocation** is pushed from Better Auth's `session.delete` database hook (sign-out, password change/reset, ban,
   sign-out-everywhere, user deletion) and from our member/role changes; each request waits for its revocation calls
   (5 s timeout) before answering. The 60 s recheck covers expiry and lost pushes.
+- **Settings reloads**: plugin, group, membership, and account changes await their own space reloads. Unrelated public
+  requests and internal SpaceCell callbacks do not wait for those reloads. Revocation keeps its separate barrier.
 - **#258**: ControlCell only makes outbound calls inside the request that causes them (no long-lived continuations),
   so it needs no keepalive.
 - `src/dev/stub-cells.ts`: isolated echo SpaceCell for the Worker integration test (`test/integration/entry.ts`);

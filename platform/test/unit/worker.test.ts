@@ -124,6 +124,16 @@ describe("path handling", () => {
 });
 
 describe("Worker routing", () => {
+  it("reads memberships without waking spaces", async () => {
+    const spaces = [{ id: "acme" }, { id: "other" }];
+    const { env, spaceCalls } = fakeEnv({
+      CONTROL: { getByName: () => ({ fetch: async () => Response.json({ spaces }) }) } as unknown as Env["CONTROL"],
+    });
+    const response = await worker.fetch(req("/api/baskule/me", { headers: aliceCookie }), env);
+    expect(await response.json()).toEqual({ spaces });
+    expect(spaceCalls).toEqual([]);
+  });
+
   it("forwards a 25 MiB audio body unchanged to the ControlCell stub", async () => {
     const { env, controlCalls } = fakeEnv();
     const bytes = new Uint8Array(BASKULE_TRANSCRIPTION_MAX_BYTES).fill(42);
@@ -132,7 +142,7 @@ describe("Worker routing", () => {
     const response = await worker.fetch(req("/api/baskule/transcriptions", {
       method: "POST", body: bytes,
       headers: { origin: O, ...aliceCookie, "content-type": "audio/webm;codecs=opus", "content-length": String(bytes.length) },
-    }), env, { waitUntil() {} });
+    }), env);
     expect(response.status).toBe(200);
     expect(controlCalls).toHaveLength(1);
     expect(controlCalls[0].headers.get("content-type")).toBe("audio/webm;codecs=opus");

@@ -566,7 +566,6 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
       return handleUpgrade(captured, request, {
         waitUntil: config.waitUntil,
         onOpen: (closeSocket) => {
-          const releaseKeepAlive = keepAlive();
           const releaseHost = config.onSocketOpen?.() ?? (() => {});
           const entry: SpaceSocket = {
             userId: identity?.userId ?? "",
@@ -578,7 +577,6 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
           sockets.add(entry);
           return () => {
             sockets.delete(entry);
-            releaseKeepAlive();
             releaseHost();
           };
         },

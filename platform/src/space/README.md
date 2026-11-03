@@ -39,9 +39,10 @@ id, history, chat folder, follow-up turn), two spaces isolated in one isolate an
 - T3 boots on the first client request, webhook or due alarm; never for `/_baskule/status` or `/revoke`. In a new
   space OpenCode boots first: it only creates its schema in an empty database. Otherwise OpenCode boots on the first
   agent request, which T3 sends through this cell's own stub (`/_baskule/agent/*`, a live celld event, #258).
-- #258: the boot events are retained with `waitUntil` until their runtimes close, alongside their keepalive
-  intervals. Each RPC WebSocket retains its native event until its handler scope finishes. SDK calls and response
-  body pulls enter through OpenCode's retained boot event; workerd Effect callbacks preserve their native origin.
+- #258: the boot events are retained with `waitUntil` until runtime teardown and usage flush/capture finish,
+  alongside their keepalive intervals. Each RPC WebSocket retains its native event until its handler scope finishes.
+  SDK calls and response body pulls enter through OpenCode's retained boot event; workerd Effect callbacks preserve
+  their native origin.
 - One alarm multiplexes the 60 s socket recheck, a 10 s heartbeat while runs are active, the next scheduled task or
   snooze, and the idle check (5 min without request, socket or active run → T3 and OpenCode disposed so the cell can
   be evicted). OpenCode's own heartbeat/idle deadline shares the alarm (`alarms.ts`: one persisted deadline per owner).

@@ -5,7 +5,7 @@ import { fakeMcp } from "../../platform/test/fixtures/mcp.mjs";
 
 const folder = fileURLToPath(new URL("../../.run/plugins/mcp/", import.meta.url));
 
-test("folder entry is configured in the UI, survives restart, and disappears after removal", { tag: ["@feature:plugins", "@profile:light"] }, async ({ browser, stack, stackCtl, api }) => {
+test("folder entry is configured in the UI, survives restart, and disappears after removal", { tag: ["@feature:plugins"] }, async ({ browser, stack, stackCtl, api }) => {
   test.slow(); // Three celld restarts rebuild the real Worker and assets.
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
   const page = await context.newPage();

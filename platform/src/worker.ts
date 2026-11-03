@@ -19,7 +19,7 @@ const AUTH_COOKIE_PREFIX = /^(?:__Secure-)?baskule\./;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export default {
-  async fetch(req: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
+  async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const p = url.pathname;
     try {
@@ -42,12 +42,7 @@ export default {
       if (p.startsWith("/api/baskule/")) {
         const o = checkOrigin(req, env);
         if (o) return o;
-        const r = await control(env).fetch(toControl(req, url));
-        if (p !== "/api/baskule/me" || req.method !== "GET" || !r.ok) return r;
-        // celld cannot clone a streaming response: read the (small) body once, answer it and pre-wake from it.
-        const body = await r.text();
-        preWake(env, ctx, body);
-        return new Response(body, { status: r.status, statusText: r.statusText, headers: r.headers });
+        return await control(env).fetch(toControl(req, url));
       }
       if (p === "/api" || p.startsWith("/api/")) return notFound();
       if (p === "/s" || p.startsWith("/s/")) return await spaceRoute(req, env, url);
@@ -62,31 +57,6 @@ export default {
 };
 
 const control = (env: Env) => env.CONTROL.getByName(CONTROL_CELL_NAME);
-
-/** Spaces woken per app load (personal first, as /me lists them). */
-const PRE_WAKE_MAX = 4;
-
-/**
- * Pre-wake: the web/desktop/mobile clients fetch /api/baskule/me first thing after sign-in or at app load, before
- * they open the spaces' sockets. Booting the member's SpaceCells (T3, and only T3: never a computer) in the background
- * then overlaps T3's cold boot with the client's own start. /me is ControlCell's membership answer, so only spaces the
- * caller belongs to are woken.
- */
-function preWake(env: Env, ctx: { waitUntil(p: Promise<unknown>): void } | undefined, me: string): void {
-  const work = (async () => {
-    const body = JSON.parse(me) as { spaces?: { id: string }[] };
-    const ids = (body.spaces ?? []).map((s) => s.id).filter((id) => SPACE_ID_RE.test(id)).slice(0, PRE_WAKE_MAX);
-    await Promise.all(
-      ids.map((id) =>
-        env.SPACE.getByName(id)
-          .fetch(new Request("http://space/_baskule/wake", { method: "POST", headers: { [BASE_HEADER]: spaceBase(id) } }))
-          .then((r) => r.body?.cancel())
-          .catch((e) => console.warn(`pre-wake ${id}: ${e}`)),
-      ),
-    );
-  })().catch((e) => console.warn(`pre-wake: ${e}`));
-  ctx?.waitUntil(work);
-}
 
 /** Copies headers without any x-baskule-* (clients can never set them). */
 export function stripBaskuleHeaders(h: Headers): Headers {
