@@ -217,8 +217,26 @@ done
 account="bk-${run_id#baskule-ephemeral-}"
 email="$account@$project.iam.gserviceaccount.com"
 gc iam service-accounts create "$account" --display-name="$run_id" --description="$labels" >/dev/null
-gc projects add-iam-policy-binding "$project" --member="serviceAccount:$email" --role=roles/container.defaultNodeServiceAccount --condition=None >/dev/null
-gc artifacts repositories add-iam-policy-binding "$run_id" --location="$region" --member="serviceAccount:$email" --role=roles/artifactregistry.reader >/dev/null
+# IAM policy readers can lag a successful service-account creation. Retry only
+# that propagation error; authorization and other failures remain fatal.
+(cd e2e && node --input-type=module - "$project" "$email" "$run_id" "$region" <<'JS'
+import { execFileSync } from "node:child_process";
+import { expect } from "@playwright/test";
+const [project, email, repository, region] = process.argv.slice(2);
+for (const args of [
+  ["projects", "add-iam-policy-binding", project, `--member=serviceAccount:${email}`, "--role=roles/container.defaultNodeServiceAccount", "--condition=None"],
+  ["artifacts", "repositories", "add-iam-policy-binding", repository, `--location=${region}`, `--member=serviceAccount:${email}`, "--role=roles/artifactregistry.reader"],
+]) {
+  await expect.poll(() => {
+    try { execFileSync("gcloud", [`--project=${project}`, "--quiet", ...args], { stdio: ["ignore", "ignore", "pipe"] }); return true; }
+    catch (error) {
+      if (/Service account .* does not exist/.test(String(error.stderr))) return false;
+      throw error;
+    }
+  }, { timeout: 90_000, message: "new node service account propagates to IAM" }).toBe(true);
+}
+JS
+)
 # Two 4-vCPU/8-GiB Spot nodes fit a 2-CPU computer plus platform services and
 # allow zonal PD reattachment onto a different node. No regional x3 pool.
 nodes_started=$(date +%s)
