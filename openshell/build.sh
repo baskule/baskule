@@ -43,6 +43,7 @@ cp -r "$HERE/images/supervisor" "$BUILD/supervisor"
 cp "$TARGET/release/openshell-supervisor" "$BUILD/supervisor/"
 
 label="--label baskule.openshell.fork-rev=$rev"
+nice -n 10 "$ROOT/scripts/docker-build.sh" openshell-kubernetes --network host -q $label -t "baskule-openshell-kubernetes:$TAG" -f "$HERE/images/gateway-kubernetes/Dockerfile" "$BUILD/gateway"
 nice -n 10 "$ROOT/scripts/docker-build.sh" openshell-supervisor --network host -q $label -t "baskule-openshell-supervisor:$TAG" "$BUILD/supervisor"
 # The sandbox runtime is compiled from the fork inside the image build (static musl, cached cargo target).
 nice -n 10 "$ROOT/scripts/docker-build.sh" openshell-sandbox --network host -q $label --build-arg CARGO_BUILD_JOBS="${OPENSHELL_CARGO_JOBS:-2}" -t "baskule-openshell-sandbox:$TAG" -f "$HERE/images/sandbox/Dockerfile" "$FORK"

@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-computerd
+spec:
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: computerd}
+  ports:
+    - {name: http, port: 47094}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-computerd
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: computerd}
+  template:
+    metadata:
+      labels:
+        {{- include "baskule.labels" . | nindent 8 }}
+        app.kubernetes.io/component: computerd
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: computerd
+          image: {{ include "baskule.image" (dict "root" . "name" "computerd") }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          env:
+            - name: COMPUTERD_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "baskule.secretName" . }}, key: COMPUTERD_TOKEN}
+            - {name: COMPUTERD_INSTANCE, value: {{ .Release.Name | quote }}}
+            - {name: OPENSHELL_COMPUTE_DRIVER, value: kubernetes}
+            - {name: OPENSHELL_GATEWAY, value: {{ printf "%s:8080" (include "openshell.fullname" .Subcharts.openshell) | quote }}}
+            - {name: COMPUTER_IMAGE, value: {{ include "baskule.image" (dict "root" . "name" "computer") | quote }}}
+            - {name: COMPUTER_CPUS, value: {{ .Values.computer.cpu | quote }}}
+            - {name: COMPUTER_MEMORY, value: {{ .Values.computer.memory | quote }}}
+            - {name: PRODUCT_SETTINGS_URL, value: {{ printf "http://%s/api/baskule/runtime-settings" .Release.Name | quote }}}
+          ports:
+            - {name: http, containerPort: 47094}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          resources: {{ toYaml .Values.computerd.resources | nindent 12 }}

@@ -21,7 +21,7 @@ save_image() {
   local image=$1 out=$2 archive bytes
   docker tag "$image:local" "ghcr.io/baskule/$image:$image_tag"
   printf '%s %s\n' "ghcr.io/baskule/$image:$image_tag" "$(docker image inspect --format '{{.Id}}' "ghcr.io/baskule/$image:$image_tag")" >> "$out/images.txt"
-  # Workload images travel inside the gateway; only host-pulled images are published.
+  # Kubernetes pulls workload images directly; Compose still bundles them in its gateway.
   archive="$out/$image.tar.gz"
   docker save "ghcr.io/baskule/$image:$image_tag" | gzip -1 > "$archive"
   bytes=$(stat -c %s "$archive")
@@ -56,7 +56,7 @@ case "$phase" in
     # A changed source key compiles afresh rather than restoring a stale source marker.
 
     : > .run/release/runtime/images.txt
-    for image in baskule-computerd baskule-openshell-gateway; do
+    for image in baskule-computerd baskule-openshell-gateway baskule-openshell-kubernetes baskule-openshell-supervisor baskule-openshell-sandbox baskule-computer; do
       save_image "$image" .run/release/runtime
     done
     (cd .run/release/runtime && sha256sum *.tar.gz images.txt > SHA256SUMS)
@@ -77,6 +77,7 @@ case "$phase" in
     tar -czf .run/release/backend/platform-worker.tar.gz -C platform/dist worker.js
     tar -czf .run/release/backend/space-cell.tar.gz -C platform/src/space/t3 space-cell.js BUILT_FROM
     scripts/release-install-assets.sh .run/release/backend
+    scripts/helm-package.sh .run/release/backend
     ;;
   *) echo "Unknown backend build phase: $phase" >&2; exit 2 ;;
 esac

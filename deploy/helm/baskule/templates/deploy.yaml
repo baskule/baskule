@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-deploy
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        {{- include "baskule.labels" . | nindent 8 }}
+        app.kubernetes.io/component: deploy
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: deploy
+          image: {{ include "baskule.image" (dict "root" . "name" "celld") }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          command: [sh, -ec]
+          args:
+            - |
+              {{- if .Values.rustfs.enabled }}
+              baskule-celld-job bootstrap
+              {{- end }}
+              baskule-celld-job deploy
+              curl -fsS --retry 60 --retry-all-errors --retry-delay 2 --retry-max-time 180 --max-time 5 \
+                -o /dev/null http://{{ .Release.Name }}/api/baskule/setup
+          env:
+            {{- include "baskule.s3Env" . | nindent 12 }}
+            - name: CELLD_NODES_INTERNAL
+              value: {{ range $i := until (int .Values.replicas) }}{{ $.Release.Name }}-celld-{{ $i }}.{{ $.Release.Name }}-peers.{{ $.Release.Namespace }}.svc.cluster.local:47092 {{ end }}
+            - {name: PUBLIC_ORIGINS, value: {{ .Values.publicUrl | quote }}}
+            - {name: AUTH_CONFIG, value: {{ .Values.authConfig | quote }}}
+            - {name: PLUGIN_SYNC_URL, value: {{ printf "http://%s" .Release.Name | quote }}}
+            - {name: COMPUTERD_URL, value: {{ printf "http://%s-computerd:47094" .Release.Name | quote }}}
+            {{- range $key := list "COMPUTERD_TOKEN" "SETUP_TOKEN" "PLUGIN_SYNC_TOKEN" }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef: {name: {{ include "baskule.secretName" $ }}, key: {{ $key }}}
+            {{- end }}

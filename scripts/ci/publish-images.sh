@@ -5,8 +5,15 @@ artifacts=${1:?backend artifact directory required}
 : "${GH_TOKEN:?}" "${GH_ACTOR:?}"
 (cd "$artifacts" && sha256sum -c SHA256SUMS)
 work=$(mktemp -d)
-trap 'rm -rf "$work"; docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-# Preflight every tag before pushing any image. Authentication and transport errors fail closed.
+trap 'rm -rf "$work"; docker logout ghcr.io >/dev/null 2>&1 || true; helm registry logout ghcr.io >/dev/null 2>&1 || true' EXIT
+# Preflight image and chart tags before any publication.
+cp "$artifacts/images.txt" "$work/refs"
+for chart in "$artifacts"/baskule-*.tgz; do
+  [[ -f $chart ]] || continue
+  version=${chart##*/baskule-}; version=${version%.tgz}
+  printf 'ghcr.io/baskule/charts/baskule:%s chart\n' "${version//+/_}" >> "$work/refs"
+done
+# Authentication and transport errors fail closed.
 while read -r image _; do
   repository=${image%:*}
   repository=${repository#ghcr.io/}
@@ -24,7 +31,7 @@ while read -r image _; do
     200) echo "Refusing to overwrite existing release image: $image" >&2; exit 1 ;;
     *) echo "Cannot establish whether $image exists (HTTP $status); refusing publication." >&2; exit 1 ;;
   esac
-done < "$artifacts/images.txt"
+done < "$work/refs"
 while read -r image _; do
   name=${image%:*}
   name=${name##*/}
@@ -33,3 +40,8 @@ while read -r image _; do
 done < "$artifacts/images.txt"
 printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 while read -r image _; do docker push "$image"; done < "$artifacts/images.txt"
+for chart in "$artifacts"/baskule-*.tgz; do
+  [[ -f $chart ]] || continue
+  printf '%s' "$GH_TOKEN" | helm registry login ghcr.io -u "$GH_ACTOR" --password-stdin
+  helm push "$chart" oci://ghcr.io/baskule/charts
+done
