@@ -57,9 +57,13 @@ s3 = boto3.client('s3', endpoint_url=f'https://s3.{region}.scw.cloud', region_na
     aws_access_key_id=os.environ['SCW_ACCESS_KEY'], aws_secret_access_key=os.environ['SCW_SECRET_KEY'])
 tags = {t['Key']: t['Value'] for t in s3.get_bucket_tagging(Bucket=name)['TagSet']}
 assert tags.get('baskule-ephemeral') == 'true' and tags.get('baskule-run') == name
-assert s3.get_bucket_versioning(Bucket=name).get('Status') is None
-for page in s3.get_paginator('list_objects_v2').paginate(Bucket=name):
-    objects = [{'Key': o['Key']} for o in page.get('Contents', [])]
+# scw explicitly suspends versioning when creating a non-versioned bucket.
+assert s3.get_bucket_versioning(Bucket=name).get('Status') in (None, 'Suspended')
+# Explicit version IDs also remove null versions and delete markers while
+# versioning is suspended; unqualified deletes would leave new markers.
+for page in s3.get_paginator('list_object_versions').paginate(Bucket=name):
+    objects = [{'Key': o['Key'], 'VersionId': o['VersionId']}
+        for o in page.get('Versions', []) + page.get('DeleteMarkers', [])]
     if objects:
         result = s3.delete_objects(Bucket=name, Delete={'Objects': objects, 'Quiet': True})
         assert not result.get('Errors'), 'S3 object deletion failed'
