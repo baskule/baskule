@@ -24,6 +24,9 @@ spec:
         app.kubernetes.io/component: rustfs
     spec:
       automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: rustfs
           image: {{ .Values.rustfs.image }}
