@@ -21,6 +21,8 @@ produce documents instead of only answering. You choose the model.
   </picture>
 </p>
 
+For clusters, use the [recommended Kubernetes installation](docs/install-kubernetes.md).
+
 ## How it works
 
 Baskule has three parts:
