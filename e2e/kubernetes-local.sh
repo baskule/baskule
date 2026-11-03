@@ -24,7 +24,7 @@ if [[ ${1:-} == lint ]]; then
   done
   exit
 fi
-export BASKULE_K8S_EVIDENCE="$root/.run/evidence/kubernetes/$(date -u +%Y%m%dT%H%M%SZ)"
+export BASKULE_K8S_EVIDENCE="${BASKULE_K8S_EVIDENCE:-$root/.run/evidence/kind/$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$BASKULE_K8S_EVIDENCE"
 cluster="baskule-k8s-$(date -u +%s)"
 export KUBECONFIG="$BASKULE_K8S_EVIDENCE/kubeconfig.private"
@@ -63,6 +63,6 @@ done
 # functional checks do not need the production computer's full resource limits.
 if [[ -z ${BASKULE_K8S_VALUES:-} ]]; then
   export BASKULE_K8S_VALUES="$BASKULE_K8S_EVIDENCE/values.yaml"
-  printf 'computer:\n  cpu: "1"\n  memory: 1Gi\n' > "$BASKULE_K8S_VALUES"
+  printf 'computers:\n  cpus: "1"\n  memory: 1Gi\n' > "$BASKULE_K8S_VALUES"
 fi
 bash e2e/kubernetes-install.sh
