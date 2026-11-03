@@ -10,7 +10,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
 import { LocalEnvironmentList } from "./LocalEnvironmentList";
-import { PullRequestRoutingSettings } from "./PullRequestRoutingSettings";
 
 export function ConnectionsRouteScreen() {
   const t = useTranslation();
@@ -70,7 +69,6 @@ export function ConnectionsRouteScreen() {
           onSetEnabled={onSetEnvironmentEnabled}
           onUpdate={onUpdateEnvironment}
         />
-        <PullRequestRoutingSettings />
       </ScrollView>
     </View>
   );

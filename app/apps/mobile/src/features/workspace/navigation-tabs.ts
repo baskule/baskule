@@ -11,17 +11,16 @@ import {
 import type { AppSymbolName } from "../../components/ui/AppSymbol";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import { BASKULE_FLAGS } from "../../baskule/flags";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+
 import { resolveWorkspaceTabOrder } from "./workspace-tabs-state";
 
 export const WORKSPACE_TAB_LABELS = {
   ...NAVIGATION_TAB_LABELS,
-  ...(Platform.OS === "ios" ? { threads: "Chats", pullRequests: "PRs" } : {}),
+  ...(Platform.OS === "ios" ? { threads: "Chats" } : {}),
 };
 
 export const NAVIGATION_TAB_ICONS = {
   threads: "text.bubble",
-  pullRequests: PullRequestGlyph.pullRequest,
   usage: "chart.bar.xaxis",
 } as const satisfies Readonly<Record<NavigationTab, AppSymbolName>>;
 
@@ -34,10 +33,9 @@ export function useNavigationTabOrder() {
 }
 
 // baskule: sections outside the product scope are never shown (Usage was a hidden settings page).
-const BASKULE_HIDDEN_TABS: readonly NavigationTab[] = [
-  ...(BASKULE_FLAGS.pullRequests ? [] : (["pullRequests"] as const)),
-  ...(BASKULE_FLAGS.extendedSettings ? [] : (["usage"] as const)),
-];
+const BASKULE_HIDDEN_TABS: readonly NavigationTab[] = BASKULE_FLAGS.extendedSettings
+  ? []
+  : (["usage"] as const);
 
 export function useHiddenNavigationTabs() {
   const preferences = useAtomValue(mobilePreferencesAtom);

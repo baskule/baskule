@@ -1,3 +1,4 @@
+import { legacyPullRequestKeyFromUrl } from "@t3tools/shared/threadPullRequests";
 import {
   isOrchestrationV2WorkActive,
   isToolLifecycleItemType,
@@ -17,7 +18,7 @@ import {
 } from "@t3tools/shared/t3McpToolPresentation";
 import { classifyMarkdownImageSource } from "@t3tools/client-runtime/markdown-images";
 import { resolveMediaSource } from "@t3tools/client-runtime/media-source";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/mediaPreview";
 import { formatTokens } from "@t3tools/shared/usageFormat";
 import { classifyToolActivity } from "@t3tools/shared/toolActivity";
@@ -195,18 +196,16 @@ function resolveT3McpToolPresentation(
   const payload = asRecord(data);
   const input =
     asRecord(payload?.arguments) ?? asRecord(payload?.input) ?? asRecord(payload?.rawInput);
-  const urlTarget =
-    typeof input?.url === "string" ? sourceControlClients.parseChangeRequestUrl(input.url) : null;
-  const number = urlTarget?.link.number ?? input?.number;
-  const { shortLabel } = (urlTarget?.definition ?? sourceControlClients.get(undefined))
-    .changeRequest;
+  const number =
+    (typeof input?.url === "string" ? legacyPullRequestKeyFromUrl(input.url)?.number : undefined) ??
+    input?.number;
   const target =
     actionKind !== undefined &&
     actionKind !== "list-prs" &&
     typeof number === "number" &&
     Number.isSafeInteger(number) &&
     number > 0
-      ? `${shortLabel} #${number}`
+      ? `PR #${number}`
       : detail;
   return {
     displayName: `${verb} ${target}`,

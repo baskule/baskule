@@ -1,11 +1,9 @@
 import { useTranslation } from "../../i18n";
 
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { getCloneDestinationPath } from "@t3tools/client-runtime/operations/projects";
 import {
   findPromptLinkProjects,
-  findPromptLinkPullRequestThread,
-  pickPromptLinkPullRequestThread,
   resolvePromptLinkModelSelection,
 } from "@t3tools/client-runtime/prompt-links";
 import {
@@ -13,15 +11,11 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
-import {
-  type NewThreadLink,
-  type PromptLinkRepository,
-  promptLinkPullRequestUrl,
-} from "@t3tools/shared/promptLinks";
+
+import { type NewThreadLink, type PromptLinkRepository } from "@t3tools/shared/promptLinks";
 import { useAtomValue } from "@effect/atom-react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
-import { Atom } from "effect/reactivity";
+import { useLocation } from "@tanstack/react-router";
+
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { isElectron } from "~/env";
@@ -32,74 +26,35 @@ import { useProjects, useThreadShells, waitForProject } from "~/state/entities";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { environmentPresentations } from "~/state/presentation";
-import { allReachableShellsLiveAtom, environmentShell } from "~/state/shell";
+import { allReachableShellsLiveAtom } from "~/state/shell";
 import { sourceControlEnvironment } from "~/state/sourceControl";
-import { pullRequestEnvironment } from "~/state/pullRequests";
+
 import { useAtomCommand } from "~/state/use-atom-command";
-import { usePullRequestHandoffs } from "../pullRequest/usePullRequestActions";
+
 import { sortScopedProjectsForSidebar } from "../Sidebar.logic";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { SidebarInset } from "../ui/sidebar";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { placeLinkedPrompt, warnAboutHiddenCharacters } from "./linkedPrompt";
+import { placeLinkedPrompt } from "./linkedPrompt";
 
 type LinkState =
   | { readonly status: "opening" }
   | { readonly status: "opened" }
   | { readonly status: "failed"; readonly message: string; readonly title?: string }
-  | { readonly status: "missing-repository"; readonly repository: PromptLinkRepository }
-  | {
-      readonly status: "pull-request-checkout";
-      readonly project: EnvironmentProject;
-    };
+  | { readonly status: "missing-repository"; readonly repository: PromptLinkRepository };
 
 type LinkLaunch =
-  | {
-      readonly kind: "thread";
-      readonly thread: Pick<ReturnType<typeof useThreadShells>[number], "environmentId" | "id">;
-    }
   | { readonly kind: "draft"; readonly project: EnvironmentProject }
   | { readonly kind: "scratch" }
   | { readonly kind: "settled" };
 
 const openedLinkKeys = new Set<string>();
 
-type PullRequestThreadLookup = {
-  readonly targets: ReadonlyArray<readonly [environmentId: EnvironmentId, projectId: ProjectId]>;
-  readonly repository: string;
-  readonly number: number;
-};
-
-// A pull request's thread can be an older settled thread no shell holds, so ask every
-// environment with the repository.
-const pullRequestThreadLookupAtom = Atom.family((key: string) => {
-  const { targets, repository, number } = JSON.parse(key) as PullRequestThreadLookup;
-  return Atom.make((get) =>
-    pickPromptLinkPullRequestThread(
-      targets
-        // A shell that is not live cannot answer, and its lookup would wait forever.
-        .filter(([environmentId]) => get(environmentShell.statusAtom(environmentId)) === "live")
-        .map(([environmentId, projectId]) => ({
-          environmentId,
-          result: get(
-            pullRequestEnvironment.linkedThreadsUncached({
-              environmentId,
-              input: { projectId, repository, number },
-            }),
-          ),
-        })),
-    ),
-  ).pipe(Atom.withLabel(`web-prompt-link-pull-request-thread:${key}`));
-});
-
-const NO_PULL_REQUEST_THREAD_LOOKUP = Atom.make(null);
-
 export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
   const t = useTranslation();
   const locationKey = useLocation({ select: (location) => location.state.__TSR_key ?? "" });
-  const navigate = useNavigate();
   const ready = useAtomValue(allReachableShellsLiveAtom);
   const projects = useProjects();
   const threads = useThreadShells();
@@ -184,10 +139,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
       });
       return;
     }
-    await openDraft(
-      project,
-      link.kind === "pull-request" ? promptLinkPullRequestUrl(link.pullRequest) : undefined,
-    );
+    await openDraft(project, undefined);
   };
 
   const openWithoutProject = () => {
@@ -244,77 +196,24 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
       });
       return;
     }
-    if (link.kind === "pull-request") {
-      setState({
-        status: "failed",
-        title: t("Cloning {{owner}}/{{name}}", { owner: repository.owner, name: repository.name }),
-        message: t("Open this link again when the clone finishes."),
-      });
-      return;
-    }
     await openDraft(project);
   };
 
-  const localPullRequestThread =
-    ready && link.kind === "pull-request"
-      ? findPromptLinkPullRequestThread(threads, link.pullRequest)
-      : undefined;
-  // Mounted only while deciding, so "Open it again" asks the server again.
-  const lookupProjects =
-    ready &&
-    state.status === "opening" &&
-    !started &&
-    link.kind === "pull-request" &&
-    localPullRequestThread === undefined
-      ? findPromptLinkProjects(recentProjects(), link.pullRequest)
-      : [];
-  const serverPullRequestThread = useAtomValue(
-    link.kind === "pull-request" && lookupProjects.length > 0
-      ? pullRequestThreadLookupAtom(
-          JSON.stringify({
-            targets: lookupProjects.map((project) => [project.environmentId, project.id]),
-            repository: `${link.pullRequest.owner}/${link.pullRequest.name}`,
-            number: link.pullRequest.number,
-          } satisfies PullRequestThreadLookup),
-        )
-      : NO_PULL_REQUEST_THREAD_LOOKUP,
-  );
-
-  if (ready && serverPullRequestThread !== undefined && state.status === "opening" && !started) {
+  if (ready && state.status === "opening" && !started) {
     setStarted(true);
-    const pullRequestThread = localPullRequestThread ?? serverPullRequestThread ?? undefined;
-    const repository = link.kind === "new" ? link.repository : link.pullRequest;
+    const repository = link.repository;
     const project =
       repository === null ? undefined : findPromptLinkProjects(recentProjects(), repository)[0];
-    if (pullRequestThread !== undefined) {
-      setState({ status: "opened" });
-      setLaunch({ kind: "thread", thread: pullRequestThread });
-    } else if (repository === null) {
-      setLaunch({ kind: "scratch" });
-    } else if (project === undefined) {
+    if (repository === null) setLaunch({ kind: "scratch" });
+    else if (project === undefined) {
       setState({ status: "missing-repository", repository });
       setLaunch({ kind: "settled" });
-    } else if (link.kind === "pull-request") {
-      setState({ status: "pull-request-checkout", project });
-      setLaunch({ kind: "settled" });
-    } else {
-      setLaunch({ kind: "draft", project });
-    }
+    } else setLaunch({ kind: "draft", project });
   }
 
   const runLaunch = useEffectEvent((next: LinkLaunch) => {
     openedLinkKeys.add(locationKey);
     switch (next.kind) {
-      case "thread": {
-        const threadRef = scopeThreadRef(next.thread.environmentId, next.thread.id);
-        if (link.prompt !== null) placeLinkedPrompt(threadRef, link.prompt);
-        void navigate({
-          to: "/$environmentId/$threadId",
-          params: { environmentId: next.thread.environmentId, threadId: next.thread.id },
-          replace: true,
-        });
-        return;
-      }
       case "scratch":
         void openScratchDraft();
         return;
@@ -371,63 +270,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
         </LinkPage>
       );
     }
-    case "pull-request-checkout":
-      return link.kind === "pull-request" ? (
-        <PullRequestLinkCheckout link={link} project={state.project} />
-      ) : null;
   }
-}
-
-/** Checkout runs setup from PR code, so links alone must not start it. */
-function PullRequestLinkCheckout({
-  link,
-  project,
-}: {
-  readonly link: Extract<NewThreadLink, { kind: "pull-request" }>;
-  readonly project: EnvironmentProject;
-}) {
-  const t = useTranslation();
-  const { handoff, startHandoff } = usePullRequestHandoffs({
-    environmentId: project.environmentId,
-    detail: {
-      projectId: project.id,
-      workspaceRoot: project.workspaceRoot,
-      url: promptLinkPullRequestUrl(link.pullRequest),
-    },
-  });
-  const warnedRef = useRef(false);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- shows the hidden-characters warning toast once per linked prompt
-  useEffect(() => {
-    if (warnedRef.current || link.prompt === null) return;
-    warnedRef.current = true;
-    warnAboutHiddenCharacters(link.prompt);
-  }, [link.prompt]);
-  const { owner, name, number } = link.pullRequest;
-  return (
-    <LinkPage
-      title={t("Check out {{owner}}/{{name}}#{{number}}?", {
-        owner: owner,
-        name: name,
-        number: number,
-      })}
-      description={t(
-        "This puts the pull request's code in a new worktree and runs your project's setup script on it.",
-      )}
-    >
-      <Button
-        size="sm"
-        disabled={handoff !== null}
-        onClick={() =>
-          void startHandoff(
-            "prompt-link",
-            link.prompt === null ? null : { prompt: link.prompt.text },
-          )
-        }
-      >
-        {handoff !== null ? t("Checking out...") : t("Check out")}
-      </Button>
-    </LinkPage>
-  );
 }
 
 function LinkPage({

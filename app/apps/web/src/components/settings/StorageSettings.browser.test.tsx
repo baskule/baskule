@@ -92,14 +92,14 @@ vi.mock(import("../ui/toast"), async (original) => {
 
 import { StorageCleanupSections } from "./StorageSettings";
 
-function setup() {
+function setup(legacyMerge = false) {
   state.settings = {
     ...DEFAULT_SERVER_SETTINGS,
     storageCleanup: {
       worktreeKeepWhen: "uncommitted-changes",
       worktreeAfterDays: null,
       worktreeSettledAfterDays: null,
-      worktreeOnMerge: false,
+      worktreeOnMerge: legacyMerge,
       worktreeOnDelete: false,
       worktreeUnchanged: false,
       browserArtifactsAfterDays: null,
@@ -144,15 +144,18 @@ const deleteButton = (container: HTMLElement) =>
     (button) => button.textContent === "Delete now",
   )!;
 
-it("keeps cleanup disabled when settled retention and all other rules are off", async () => {
-  setup();
-  await using screen = await render(panel());
-  const button = deleteButton(screen.container);
+it.each([false, true])(
+  "keeps cleanup disabled when only the retired merge rule is %s",
+  async (legacyMerge) => {
+    setup(legacyMerge);
+    await using screen = await render(panel());
+    const button = deleteButton(screen.container);
 
-  expect(button.disabled).toBe(true);
-  await act(async () => button.click());
-  expect(state.run).not.toHaveBeenCalled();
-});
+    expect(button.disabled).toBe(true);
+    await act(async () => button.click());
+    expect(state.run).not.toHaveBeenCalled();
+  },
+);
 
 it("settles mixed retention statuses independently across selected machines", async () => {
   setup();

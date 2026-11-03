@@ -57,7 +57,7 @@ import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
-import * as RunFinalizationService from "./RunFinalizationService.ts";
+
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 
 const driver = ProviderDriverKind.make("codex");
@@ -1287,7 +1287,6 @@ it.effect.each(["failure", "interruption", "stale-attempt", "start-guard"] as co
         id: CheckpointScopeId.make("checkpoint-scope:run-execution-settings-failure"),
       } as OrchestrationV2CheckpointScope;
       const providerStarts = yield* Ref.make(0);
-      const refreshes = yield* Ref.make(0);
       const guardedWrites = yield* Ref.make(0);
       const writes = yield* Ref.make<ReadonlyArray<ReadonlyArray<OrchestrationV2DomainEvent>>>([]);
       const layerTest = RunExecutionService.layer.pipe(
@@ -1333,10 +1332,6 @@ it.effect.each(["failure", "interruption", "stale-attempt", "start-guard"] as co
                           }),
                         ),
                 }),
-            Layer.succeed(RunFinalizationService.RunFinalizationObserver, {
-              refresh: () => Effect.void,
-              refreshAfterTurn: () => Ref.update(refreshes, (count) => count + 1),
-            }),
           ),
         ),
       );
@@ -1402,24 +1397,20 @@ it.effect.each(["failure", "interruption", "stale-attempt", "start-guard"] as co
         assert.isTrue(Exit.isFailure(result));
         if (Exit.isFailure(result)) assert.isTrue(Cause.hasInterruptsOnly(result.cause));
         assert.equal(yield* Ref.get(guardedWrites), 0);
-        assert.equal(yield* Ref.get(refreshes), 0);
         assert.isEmpty(events);
         return;
       }
       assert.isTrue(Exit.isSuccess(result));
       if (scenario === "start-guard") {
         assert.equal(yield* Ref.get(guardedWrites), 0);
-        assert.equal(yield* Ref.get(refreshes), 0);
         assert.isEmpty(events);
         return;
       }
       assert.equal(yield* Ref.get(guardedWrites), 1);
       if (scenario === "stale-attempt") {
-        assert.equal(yield* Ref.get(refreshes), 0);
         assert.isEmpty(events);
         return;
       }
-      assert.equal(yield* Ref.get(refreshes), 1);
       assert.deepEqual(
         events
           .filter(
@@ -2578,7 +2569,7 @@ it.effect("emits run_interrupt_result when superseded attempt still has a hard-s
       written.map((item) => item.type),
       ["run_interrupt_result"],
     );
-    assert.deepEqual(observed, ["pull-requests-refreshed"]);
+    assert.deepEqual(observed, []);
     const ids = backgroundScenarioIds("stop-then-steer-supersede");
     const expectedRequestId = yield* Effect.gen(function* () {
       const idAllocator = yield* IdAllocator.IdAllocatorV2;
@@ -2619,7 +2610,7 @@ it.effect("emits run_interrupt_result when hard-stop finalizes the active attemp
       written.map((item) => item.type),
       ["run_interrupt_result"],
     );
-    assert.deepEqual(observed, ["run:interrupted", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:interrupted"]);
     assert.deepEqual(
       committedEffects.map((effect) => effect.request.type),
       ["checkpoint.capture"],
@@ -2641,52 +2632,6 @@ it.effect("records a finished run as failed when its ownership check cannot be r
       events: (ids) => Stream.make(rootTerminalEvent(ids, "completed")),
     });
     assert.include(observed, "run:failed");
-  }),
-);
-
-it.effect("does not refresh pull requests for auxiliary or stale provider terminals", () =>
-  Effect.gen(function* () {
-    const { observed } = yield* captureRootRunTermination({
-      key: "pull-request-refresh:auxiliary",
-      shouldFinalizeRun: () => Effect.succeed(true),
-      events: (ids) =>
-        Stream.fromIterable([
-          rootTerminalEvent(
-            { ...ids, rootProviderTurnId: ProviderTurnId.make("turn:child") },
-            "completed",
-          ),
-          rootTerminalEvent(
-            { ...ids, rootProviderTurnId: ProviderTurnId.make("turn:previous") },
-            "interrupted",
-          ),
-          rootTerminalEvent(ids, "cancelled"),
-        ]),
-    });
-    assert.deepEqual(observed, ["run:cancelled", "pull-requests-refreshed"]);
-  }),
-);
-
-it.effect("refreshes pull requests after a provider stream exits with an error", () =>
-  Effect.gen(function* () {
-    const { written, observed } = yield* captureRootRunTermination({
-      key: "pull-request-refresh:stream-error",
-      shouldFinalizeRun: () => Effect.succeed(true),
-      events: () =>
-        Stream.fail(
-          new ProviderAdapter.ProviderAdapterEventStreamError({
-            driver,
-            providerSessionId: ProviderSessionId.make("session:exited"),
-            cause: "provider process exited",
-          }),
-        ),
-    });
-    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
-    assert.deepEqual(
-      written.map((item) => item.type),
-      ["error"],
-    );
-    const error = written.find((item) => item.type === "error");
-    assert.include(error?.failure.message ?? "", "provider event stream closed unexpectedly");
   }),
 );
 
@@ -2785,7 +2730,7 @@ it.effect.each(["failure", "defect", "interrupt-failure", "ownership-lost"] as c
           yield* Ref.get(backgroundWorkAtFinalization),
           failureMode === "interrupt-failure",
         );
-        assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+        assert.deepEqual(observed, ["run:failed"]);
         const error = written.find((item) => item.type === "error");
         assert.include(error?.failure.message ?? "", "(SQLITE_CANTOPEN)");
         const repaired = finalEvents.find((event) => event.type === "provider-turn.updated");
@@ -2891,7 +2836,7 @@ it.effect.each([
       const calls = yield* Ref.get(interrupts);
       assert.equal(calls.length, 1);
       assert.isTrue(calls[0]?.requestRuntimeRestart);
-      assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+      assert.deepEqual(observed, ["run:failed"]);
       assert.isTrue(finalEvents.some((event) => event.type === "run.updated"));
       const durable = (yield* Ref.get(durableTurns)).get(ids.rootProviderTurnId);
       // A failed interrupt keeps the stored turn running for the next start to retry.
@@ -2918,7 +2863,7 @@ it.effect("does not interrupt an ended provider when its terminal write fails", 
         }),
     });
     assert.equal(yield* Ref.get(interrupts), 0);
-    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:failed"]);
   }),
 );
 
@@ -2940,7 +2885,7 @@ it.effect("does not interrupt a provider when ingestion fails before the root tu
       interruptTurn: () => Ref.update(interrupts, (count) => count + 1),
     });
     assert.equal(yield* Ref.get(interrupts), 0);
-    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:failed"]);
   }),
 );
 
@@ -3040,7 +2985,7 @@ it.effect("fails the run when its event stream ends without a root terminal", ()
       shouldFinalizeRun: () => Effect.succeed(true),
       events: () => Stream.empty,
     });
-    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:failed"]);
     assert.equal(
       finalEvents.find((event) => event.type === "provider-thread.updated")?.payload.status,
       "idle",
@@ -3068,6 +3013,10 @@ it.effect("does not start a turn whose run settled during the app context read",
     const providerCalls = yield* Ref.make(0);
     const { observed } = yield* captureRootRunTermination({
       key: "stream-end:context-read",
+      onSubscriptionClose: Ref.set(current, false).pipe(
+        Effect.andThen(Deferred.succeed(runFailed, undefined)),
+        Effect.asVoid,
+      ),
       shouldStartProviderTurn: () => Ref.get(current),
       shouldFinalizeRun: () => Ref.get(current),
       events: () => Stream.unwrap(Deferred.await(contextReadStarted).pipe(Effect.as(Stream.empty))),
@@ -3075,25 +3024,10 @@ it.effect("does not start a turn whose run settled during the app context read",
         Effect.andThen(Deferred.await(runFailed)),
         Effect.as([]),
       ),
-      refreshAfterTurn: Ref.set(current, false).pipe(
-        Effect.andThen(Deferred.succeed(runFailed, undefined)),
-      ),
       startTurn: () => Ref.update(providerCalls, (count) => count + 1),
     });
-    assert.deepEqual(observed, ["run:failed", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:failed"]);
     assert.equal(yield* Ref.get(providerCalls), 0);
-  }),
-);
-
-it.effect("keeps completed runs completed when pull request refresh fails", () =>
-  Effect.gen(function* () {
-    const { observed } = yield* captureRootRunTermination({
-      key: "pull-request-refresh:refresh-failure",
-      shouldFinalizeRun: () => Effect.succeed(true),
-      events: (ids) => Stream.make(rootTerminalEvent(ids, "completed")),
-      refreshAfterTurn: Effect.die("refresh failed"),
-    });
-    assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
   }),
 );
 
@@ -3116,7 +3050,6 @@ function captureRootRunTermination(input: {
   readonly onStartFailure?: (
     error: RunExecutionService.RunExecutionServiceV2Error,
   ) => Effect.Effect<void>;
-  readonly refreshAfterTurn?: Effect.Effect<void>;
   readonly onSubscriptionClose?: Effect.Effect<void>;
   readonly shouldStartProviderTurn?: RunExecutionService.RunExecutionServiceV2StartRootRunInput["shouldStartProviderTurn"];
   readonly appContext?: ReturnType<McpAppModelContext.McpAppModelContext["Service"]["forThread"]>;
@@ -3204,13 +3137,6 @@ function captureRootRunTermination(input: {
             ingestNormalized: input.ingestNormalized ?? (() => Effect.succeed([])),
           }),
           ServerSettings.layerTest(),
-          Layer.succeed(RunFinalizationService.RunFinalizationObserver, {
-            refresh: () => Effect.void,
-            refreshAfterTurn: () =>
-              Ref.update(observed, (current) => [...current, "pull-requests-refreshed"]).pipe(
-                Effect.andThen(input.refreshAfterTurn ?? Effect.void),
-              ),
-          }),
         ),
       ),
       Layer.provideMerge(PreviewAgentActivity.layer),

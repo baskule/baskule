@@ -14,9 +14,7 @@ export function resolveWorkspaceTabOrder(saved: readonly unknown[] | undefined) 
 
 export type WorkspaceTab = NavigationTab;
 export const ENABLED_WORKSPACE_TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER.filter(
-  (tab) =>
-    (tab !== "pullRequests" || BASKULE_FLAGS.pullRequests) &&
-    (tab !== "usage" || BASKULE_FLAGS.extendedSettings),
+  (tab) => tab !== "usage" || BASKULE_FLAGS.extendedSettings,
 );
 /** Lists with their own search: the searchable tabs and the Settings list. */
 export type WorkspaceSearchTab = WorkspaceTab | "settings";
@@ -24,7 +22,7 @@ export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
 /** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
 export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
-  return settingsOpen || tab === "threads" || tab === "pullRequests";
+  return settingsOpen || tab === "threads";
 }
 
 export interface WorkspaceTabState {
@@ -50,7 +48,6 @@ export function initialWorkspaceTabsState(): WorkspaceTabsState {
     selectionRevision: 0,
     tabs: {
       threads: emptyTab(),
-      pullRequests: emptyTab(),
       usage: emptyTab(),
       settings: emptyTab(),
     },
@@ -79,7 +76,7 @@ export function workspaceTabsReducer(
           selectionRevision: state.selectionRevision + 1,
         };
   const tab = action.tab ?? state.selectedTab;
-  if (tab !== "threads" && tab !== "pullRequests" && tab !== "settings") return state;
+  if (tab !== "threads" && tab !== "settings") return state;
   const current = state.tabs[tab];
   let next: WorkspaceTabState;
   switch (action.type) {

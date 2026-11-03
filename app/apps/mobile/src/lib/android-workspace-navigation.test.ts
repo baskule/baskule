@@ -252,7 +252,7 @@ describe("Android Settings tab", () => {
   it("stays selected under a settings page until a list tab returns to Home", () => {
     const previous = legacyHistory();
     const usage = apply(openTab(previous, "settings"), StackActions.push("SettingsUsage"));
-    const list = openTab(usage, "pullRequests");
+    const list = openTab(usage, "threads");
     expect(names(list)).toEqual(["Home"]);
     expect(list.routes[0]?.key).toBe(previous.routes[0]?.key);
   });

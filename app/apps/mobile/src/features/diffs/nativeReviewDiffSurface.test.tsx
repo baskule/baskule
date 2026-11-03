@@ -2,7 +2,6 @@ import {
   act,
   useLayoutEffect,
   useImperativeHandle,
-  useRef,
   useState,
   type Ref,
   type ReactNode,
@@ -127,11 +126,6 @@ vi.mock("../settings/appearance/AppearancePreferencesProvider", () => ({
 vi.mock("../../lib/useUniwindTheme", () => ({ useUniwindTheme: () => ({}) }));
 
 import { resolveNativeReviewDiffView } from "./nativeReviewDiffSurface";
-import { useNativeReviewDiffBridge } from "../review/useNativeReviewDiffBridge";
-import {
-  handlePullRequestDiffDebugEvent,
-  pullRequestDiffInitialPosition,
-} from "../pull-requests/pullRequestDiffDebug";
 
 function setup(integrated = false) {
   vi.useFakeTimers();
@@ -177,61 +171,6 @@ function setup(integrated = false) {
   const NativeDiff = resolveNativeReviewDiffView()!;
   const container = document.createElement("div");
   const root = createRoot(container);
-  let data: NativeReviewDiffData = {
-    rows: Array.from({ length: 1000 }, (_, index) =>
-      index === 999
-        ? { kind: "comment", id: `r${index}`, commentText: "Original comment" }
-        : index === 900
-          ? { kind: "file", id: `r${index}`, fileId: "last-file" }
-          : { kind: "line", id: `r${index}` },
-    ),
-    files: [],
-    additions: 0,
-    deletions: 0,
-    commentTargetsByRowId: new Map(),
-    rowIdByCommentLineId: new Map(),
-  };
-  const ids: string[] = [];
-  let collapsedFileIds: ReadonlyArray<string> = ids;
-  function PullRequestDiff({ targetFileId }: { targetFileId?: string }) {
-    const bridge = useNativeReviewDiffBridge({
-      threadKey: null,
-      sectionId: "pull-request:test:1:all",
-      diff: "test diff",
-      data,
-      collapsedFileIds,
-      viewedFileIds: ids,
-      selectedRowIds: ids,
-      canHighlight: true,
-    });
-    const nativeView = useRef(null);
-    const jumpStarted = useRef(true);
-    const onDebug: NonNullable<NativeReviewDiffViewProps["onDebug"]> = (event) =>
-      handlePullRequestDiffDebugEvent(event, {
-        rowCount: data.rows.length,
-        targetFileId,
-        focusIndex: -1,
-        isIos: true,
-        nativeView,
-        jumpStarted: () => jumpStarted.current,
-        setJumpStarted: (started) => {
-          jumpStarted.current = started;
-        },
-        loadMore: () => {},
-        onDebug: bridge.onDebug,
-      });
-    return (
-      <NativeDiff
-        {...bridge}
-        {...pullRequestDiffInitialPosition(targetFileId, -1)}
-        nativeViewRef={nativeView}
-        appearanceScheme="light"
-        rowHeight={20}
-        contentWidth={300}
-        onDebug={onDebug}
-      />
-    );
-  }
   if (!integrated) {
     act(() =>
       root.render(
@@ -248,22 +187,6 @@ function setup(integrated = false) {
   }
   return {
     container,
-    async mountPullRequest(targetFileId?: string) {
-      await act(async () => root.render(<PullRequestDiff targetFileId={targetFileId} />));
-    },
-    async collapseFiles(fileIds: ReadonlyArray<string>) {
-      collapsedFileIds = fileIds;
-      await act(async () => root.render(<PullRequestDiff />));
-    },
-    async updateComment() {
-      data = {
-        ...data,
-        rows: data.rows.map((row) =>
-          row.kind === "comment" ? { ...row, commentText: "Updated comment" } : row,
-        ),
-      };
-      await act(async () => root.render(<PullRequestDiff />));
-    },
     get tokenRows() {
       return container.querySelector("[data-token-rows]")?.getAttribute("data-token-rows");
     },
@@ -321,75 +244,6 @@ it("retries transient native registration without replacing the diff with an err
   expect(screen.container.textContent).toBe("Rendered diff");
 });
 
-it.each([false, undefined])(
-  "keeps colors queued until native accepts them and recovers rejected patches (%s)",
-  async (rejected) => {
-    using screen = setup(true);
-    await screen.mountPullRequest();
-    let accept!: (accepted: boolean) => void;
-    mocks.tokenCompletion = new Promise((resolve) => {
-      accept = resolve;
-    });
-    mocks.tokens.mockClear();
-    await screen.jump(0);
-    await screen.deliverPayloads();
-    await screen.jump(400);
-    await screen.deliverPayloads();
-    expect(
-      mocks.tokens.mock.calls.map(([json]) => Object.keys(JSON.parse(json).tokensByRowId)),
-    ).toEqual([["r0"]]);
-    await act(async () => accept(true));
-
-    mocks.tokenCompletion = null;
-    mocks.tokenAccepted = rejected;
-    await screen.deliverPayloads();
-    expect(screen.tokenRows).toBe("r0");
-
-    mocks.tokenAccepted = true;
-    await screen.jump(800);
-    await screen.deliverPayloads();
-    expect(screen.tokenRows).toBe("r0,r800");
-    await screen.jump(400);
-    await screen.deliverPayloads();
-    expect(screen.tokenRows).toBe("r0,r800,r400");
-  },
-);
-
-it.each(["retry", "comment update"])(
-  "re-highlights accepted rows after a native row failure, PR %s, and viewport revisit",
-  async (recovery) => {
-    using screen = setup(true);
-    await screen.mountPullRequest();
-    mocks.tokens.mockClear();
-    await screen.jump(0);
-    await screen.deliverPayloads();
-    await screen.jump(400);
-    await screen.deliverPayloads();
-    expect(screen.tokenRows).toBe("r0,r400");
-
-    screen.decodeFailure();
-    expect(screen.container.textContent).toContain("Could not display diff");
-    if (recovery === "retry") await act(async () => screen.retry());
-    else await screen.updateComment();
-    await screen.deliverPayloads();
-    expect(screen.container.textContent).toBe("Rendered diff");
-    await screen.jump(800);
-    await screen.deliverPayloads();
-    await screen.jump(400);
-    await screen.deliverPayloads();
-    expect(screen.tokenRows?.split(",")).toContain("r400");
-  },
-);
-
-it("delivers the selected file first with a warm highlighter and no startup command", async () => {
-  using screen = setup(true);
-  mocks.autoViewport = true;
-  await screen.mountPullRequest("last-file");
-  await screen.deliverPayloads();
-  await screen.deliverPayloads();
-  expect(screen.tokenRows).toBe("r900");
-});
-
 it("recognizes registration races for the installed native view name", async () => {
   const { isPendingNativeViewRegistration } = await import("./nativeReviewDiffSurface");
 
@@ -410,36 +264,4 @@ it("recognizes registration races for the installed native view name", async () 
       ),
     ),
   ).toBe(true);
-});
-
-it("cancels stale collapse work and highlights expansion without resetting accepted tokens", async () => {
-  using screen = setup(true);
-  await screen.mountPullRequest();
-  await screen.jump(0);
-  await screen.deliverPayloads();
-  expect(screen.tokenRows).toBe("r0");
-
-  const response = Promise.withResolvers<void>();
-  const highlight = mocks.highlight.getMockImplementation()!;
-  mocks.highlight.mockImplementation(async (input: HighlightNativeReviewDiffVisibleRowsInput) => {
-    if (input.firstRowIndex === 400) {
-      await response.promise;
-      if (input.collapsedFileIds?.has("last-file")) {
-        return { tokensByRowId: {}, rowCount: 0, retryableRowIds: [], durationMs: 0 };
-      }
-    }
-    return highlight(input);
-  });
-  await screen.jump(400);
-  await screen.collapseFiles(["last-file"]);
-  await act(async () => response.resolve());
-  await screen.deliverPayloads();
-  expect(screen.tokenRows).toBe("r0");
-
-  await screen.collapseFiles([]);
-  await screen.deliverPayloads();
-  expect(screen.tokenRows).toBe("r0,r400");
-  await screen.jump(0);
-  await screen.deliverPayloads();
-  expect(screen.tokenRows).toBe("r0,r400");
 });

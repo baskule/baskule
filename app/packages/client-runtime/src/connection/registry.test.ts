@@ -57,11 +57,7 @@ import {
 import * as Persistence from "../platform/persistence.ts";
 import * as ConnectionProfileStore from "./profileStore.ts";
 import * as EnvironmentRegistry from "./registry.ts";
-import {
-  PullRequestRoutingPermissions,
-  type StoredPullRequestRoutingPermission,
-  makePullRequestRoutingPermissions,
-} from "./pullRequestRoutingPermissions.ts";
+
 import * as RpcSession from "../rpc/session.ts";
 import * as EnvironmentSupervisor from "./supervisor.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
@@ -1598,12 +1594,8 @@ describe("EnvironmentRegistry", () => {
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();
       const resume = yield* Deferred.make<void>();
-      const harness = yield* makeHarness([TARGET]);
-      const permissions = yield* makePullRequestRoutingPermissions({
-        read: Effect.succeed([
-          { environmentId: TARGET.environmentId, connectionKey: "saved", permission: "read-write" },
-        ]),
-        write: () =>
+      const harness = yield* makeHarness([TARGET], [], [], {
+        beforeRegistrationRemove: () =>
           Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(resume))),
       });
 
@@ -1624,11 +1616,7 @@ describe("EnvironmentRegistry", () => {
           false,
         );
         expect(yield* registrySpanNames(registry.reconcilePlatform([]))).toEqual([]);
-      }).pipe(
-        Effect.provide(harness.layer),
-        Effect.provideService(PullRequestRoutingPermissions, permissions),
-        Effect.scoped,
-      );
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
 
@@ -1674,24 +1662,10 @@ describe("EnvironmentRegistry", () => {
                 : Effect.void,
           },
         );
-        const permissions = yield* makePullRequestRoutingPermissions({
-          read: Effect.succeed([]),
-          write: () => Effect.void,
-        });
-        const shadowedEntry = {
-          target: shadowedTarget,
-          profile:
-            registration._tag === "BearerConnectionRegistration"
-              ? Option.some(registration.profile)
-              : Option.none(),
-          enabled: true,
-        };
-        yield* permissions.set(shadowedEntry, "read-write");
 
         yield* Effect.gen(function* () {
           const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
           yield* registry.reconcilePlatform([registration]);
-          expect(yield* permissions.get(shadowedEntry)).toBe("off");
           expect(hasRoutes(yield* Ref.get(harness.storedTargets), target.environmentId)).toBe(true);
 
           failRemoval = false;
@@ -1727,11 +1701,7 @@ describe("EnvironmentRegistry", () => {
           expect(hasRoutes(yield* Ref.get(harness.storedTargets), target.environmentId)).toBe(
             false,
           );
-        }).pipe(
-          Effect.provide(harness.layer),
-          Effect.provideService(PullRequestRoutingPermissions, permissions),
-          Effect.scoped,
-        );
+        }).pipe(Effect.provide(harness.layer), Effect.scoped);
       }
     }),
   );
@@ -1916,20 +1886,6 @@ describe("EnvironmentRegistry", () => {
   it.effect("retains a healthy runtime when the platform repeats an identical registration", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness([]);
-      let failWrites = false;
-      const permissions = yield* makePullRequestRoutingPermissions({
-        read: Effect.succeed([]),
-        write: () =>
-          failWrites
-            ? Effect.fail(
-                new ConnectionTransientError({
-                  reason: "remote-unavailable",
-                  detail: "Storage unavailable",
-                }),
-              )
-            : Effect.void,
-      });
-      const entry = { target: TARGET, profile: Option.none(), enabled: true };
 
       yield* Effect.gen(function* () {
         const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
@@ -1940,7 +1896,6 @@ describe("EnvironmentRegistry", () => {
           TARGET.environmentId,
           (state) => state.phase === "connected",
         );
-        yield* permissions.set(entry, "read-write");
 
         const repeated = yield* registrySpanNames(
           registry.reconcilePlatform([
@@ -1950,50 +1905,28 @@ describe("EnvironmentRegistry", () => {
 
         expect(repeated).toEqual([]);
         expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
-        expect(yield* permissions.get(entry)).toBe("read-write");
 
         const changedTarget = new PrimaryConnectionTarget({
           ...TARGET,
           httpBaseUrl: "https://changed.example.test",
         });
-        failWrites = true;
         yield* registry.reconcilePlatform([
           new PrimaryConnectionRegistration({ target: changedTarget }),
         ]);
-        expect(
-          (yield* SubscriptionRef.get(registry.entries)).get(TARGET.environmentId)?.target,
-        ).toEqual(TARGET);
 
-        failWrites = false;
-        yield* registry.reconcilePlatform([
-          new PrimaryConnectionRegistration({ target: changedTarget }),
-        ]);
         expect(
           (yield* SubscriptionRef.get(registry.entries)).get(TARGET.environmentId)?.target,
         ).toEqual(changedTarget);
-        expect(yield* permissions.get(entry)).toBe("off");
         yield* registry.reconcilePlatform([registration]);
-        expect(yield* permissions.get(entry)).toBe("off");
+        yield* registry.reconcilePlatform([]);
 
-        yield* permissions.set(entry, "read-write");
-        failWrites = true;
-        yield* registry.reconcilePlatform([]);
-        expect((yield* SubscriptionRef.get(registry.entries)).has(TARGET.environmentId)).toBe(true);
-        failWrites = false;
-        yield* registry.reconcilePlatform([]);
         expect((yield* SubscriptionRef.get(registry.entries)).has(TARGET.environmentId)).toBe(
           false,
         );
-        expect(yield* permissions.get(entry)).toBe("off");
         expect(yield* registrySpanNames(registry.reconcilePlatform([]))).toEqual([]);
 
         yield* registry.reconcilePlatform([registration]);
-        expect(yield* permissions.get(entry)).toBe("off");
-      }).pipe(
-        Effect.provide(harness.layer),
-        Effect.provideService(PullRequestRoutingPermissions, permissions),
-        Effect.scoped,
-      );
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
 
@@ -2188,40 +2121,6 @@ describe("EnvironmentRegistry routes", () => {
         expect(yield* Ref.get(harness.cacheClears)).toEqual([LAN_TARGET.environmentId]);
       }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
-  );
-
-  it.effect(
-    "revokes pull request routing trust when a route is added but keeps it on reorder",
-    () =>
-      Effect.gen(function* () {
-        const harness = yield* makeHarness([RELAY_TARGET]);
-        let stored: ReadonlyArray<StoredPullRequestRoutingPermission> = [];
-        const permissions = yield* makePullRequestRoutingPermissions({
-          read: Effect.sync(() => stored),
-          write: (next) => Effect.sync(() => void (stored = next)),
-        });
-        yield* Effect.gen(function* () {
-          const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-          const current = () =>
-            SubscriptionRef.get(registry.entries).pipe(
-              Effect.map((entries) => entries.get(RELAY_TARGET.environmentId)!),
-            );
-          yield* permissions.set(yield* current(), "read");
-          yield* registry.register(lanRegistration());
-          expect(yield* permissions.get(yield* current())).toBe("off");
-
-          yield* permissions.set(yield* current(), "read");
-          yield* registry.reorderRoutes(LAN_TARGET.environmentId, [
-            "relay",
-            LAN_TARGET.connectionId,
-          ]);
-          expect(yield* permissions.get(yield* current())).toBe("read");
-        }).pipe(
-          Effect.provide(harness.layer),
-          Effect.provideService(PullRequestRoutingPermissions, permissions),
-          Effect.scoped,
-        );
-      }),
   );
 
   it.effect("loads saved routes grouped by environment, in saved order", () =>

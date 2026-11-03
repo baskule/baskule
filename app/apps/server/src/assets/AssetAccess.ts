@@ -1,7 +1,6 @@
 import type { AssetResource } from "@t3tools/contracts";
 import {
   AssetAttachmentNotFoundError,
-  AssetSourceControlMediaUrlValidationError,
   AssetPreviewTypeValidationError,
   AssetProjectFaviconInspectionError,
   AssetProjectFaviconNotFoundError,
@@ -13,7 +12,6 @@ import {
   AssetWorkspacePathValidationError,
   AssetWorkspaceResolutionError,
   AssetWorkspaceRootNormalizationError,
-  SOURCE_CONTROL_MEDIA_ASSET,
   ThreadId,
   ToolActivityNativeAppReference,
   TurnItemId,
@@ -63,7 +61,7 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import { isWithinRoot } from "../workspace/KnownWorkspaces.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as NativeAppIconResolver from "./NativeAppIconResolver.ts";
-import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
+
 import { extractIcnsPng } from "./icns.ts";
 import { openMediaFile, readMediaFileHeader, type OpenMediaFile } from "./MediaFile.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -177,14 +175,6 @@ const AssetClaimsSchema = Schema.Union([
     index: Schema.Number,
     expiresAt: Schema.Number,
   }),
-  Schema.Struct({
-    version: Schema.Literal(1),
-    kind: Schema.Literal(SOURCE_CONTROL_MEDIA_ASSET),
-    /** A host's `fetchUrl`, narrowed at mint time; the signature is what keeps it there. */
-    url: Schema.String,
-    cwd: Schema.String,
-    expiresAt: Schema.Number,
-  }),
 ]);
 type AssetClaims = typeof AssetClaimsSchema.Type;
 
@@ -206,12 +196,6 @@ export type ResolvedAsset =
       readonly kind: "bytes";
       readonly bytes: Uint8Array;
       readonly mimeType: string;
-    }
-  | {
-      readonly kind: "source-control-media";
-      readonly url: string;
-      readonly cwd: string;
-      readonly expiresAt: number;
     };
 
 function decodeClaims(encodedPayload: string): AssetClaims | null {
@@ -855,21 +839,6 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       fileName = "native-app-icon.png";
       break;
     }
-    case SOURCE_CONTROL_MEDIA_ASSET: {
-      const media = sourceControlDefinitions.mediaUrl(input.resource.url);
-      if (media === null) {
-        return yield* new AssetSourceControlMediaUrlValidationError({});
-      }
-      claims = {
-        version: 1,
-        kind: SOURCE_CONTROL_MEDIA_ASSET,
-        url: media.fetchUrl,
-        cwd: input.resource.cwd,
-        expiresAt,
-      };
-      fileName = media.fileName;
-      break;
-    }
   }
 
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
@@ -976,15 +945,6 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       Effect.orElseSucceed(() => null),
     );
     return faviconPath === claims.filePath ? yield* projectFaviconAsset(faviconPath) : null;
-  }
-
-  if (claims.kind === SOURCE_CONTROL_MEDIA_ASSET) {
-    return {
-      kind: "source-control-media",
-      url: claims.url,
-      cwd: claims.cwd,
-      expiresAt: claims.expiresAt,
-    } satisfies ResolvedAsset;
   }
 
   if (claims.kind === "tool-output-image") {

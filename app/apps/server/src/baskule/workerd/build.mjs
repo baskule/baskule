@@ -32,7 +32,6 @@ const SHIMS = {
 const TRIM = {
   "src/provider/DocumentText.ts": "DocumentText.ts",
   "src/terminal/Manager.ts": "TerminalManager.ts",
-  "src/sourceControl/builtInDrivers.ts": "sourceControlDrivers.ts",
   "src/preview/ServerBrowser.ts": "ServerBrowser.ts",
   "src/device/DeviceService.ts": "DeviceService.ts",
   "src/device/DeviceHubProxy.ts": "DeviceHubProxy.ts",

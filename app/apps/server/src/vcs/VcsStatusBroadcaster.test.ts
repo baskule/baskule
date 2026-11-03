@@ -279,46 +279,6 @@ describe("VcsStatusBroadcaster", () => {
     },
   );
 
-  it.effect("clears the previous branch's remote status after an in-flight PR refresh", () => {
-    const remoteReadStarted = Deferred.makeUnsafe<void>();
-    const releaseRemoteRead = Deferred.makeUnsafe<void>();
-    const state = {
-      currentLocalStatus: baseLocalStatus,
-      currentRemoteStatus: remoteStatusWithPr,
-      localStatusCalls: 0,
-      remoteStatusCalls: 0,
-      localInvalidationCalls: 0,
-      remoteInvalidationCalls: 0,
-      beforeRemoteStatus: Effect.void,
-    };
-
-    return Effect.gen(function* () {
-      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-      yield* broadcaster.getStatus({ cwd: "/repo" });
-      state.beforeRemoteStatus = Deferred.succeed(remoteReadStarted, undefined).pipe(
-        Effect.andThen(Deferred.await(releaseRemoteRead)),
-      );
-      const remoteRefresh = yield* broadcaster
-        .refreshPullRequestStatus("/repo")
-        .pipe(Effect.forkScoped);
-      yield* Deferred.await(remoteReadStarted);
-      state.currentLocalStatus = { ...baseLocalStatus, refName: "main" };
-      const localRefresh = yield* broadcaster
-        .refreshStatus("/repo", { localOnly: true })
-        .pipe(Effect.forkScoped);
-      yield* Deferred.succeed(releaseRemoteRead, undefined);
-      yield* Fiber.join(remoteRefresh);
-      yield* Fiber.join(localRefresh);
-
-      const status = yield* broadcaster.getStatus({ cwd: "/repo" });
-      assert.equal(status.refName, "main");
-      assert.isNull(status.pr);
-      assert.equal(status.aheadCount, 0);
-      assert.equal(status.behindCount, 0);
-      assert.equal(state.remoteStatusCalls, 2);
-    }).pipe(Effect.provide(layerTestFor(state)));
-  });
-
   it.effect.skipIf(!symlinksSupported)(
     "automatically pulls an enabled clean default branch when status detects it is behind",
     () => {
@@ -380,90 +340,6 @@ describe("VcsStatusBroadcaster", () => {
       }).pipe(Effect.provide(layerTest));
     },
   );
-
-  it.effect("refreshes a loaded cwd without reusing a previous branch's PR", () => {
-    const state = {
-      currentLocalStatus: baseLocalStatus,
-      currentRemoteStatus: baseRemoteStatus,
-      localStatusCalls: 0,
-      remoteStatusCalls: 0,
-      localInvalidationCalls: 0,
-      remoteInvalidationCalls: 0,
-    };
-
-    return Effect.gen(function* () {
-      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-
-      assert.isNull(yield* broadcaster.refreshPullRequestStatus("/repo"));
-      assert.equal(state.remoteStatusCalls, 0);
-
-      yield* broadcaster.getStatus({ cwd: "/repo" });
-      assert.equal(state.remoteStatusCalls, 1);
-
-      state.currentRemoteStatus = remoteStatusWithPr;
-      const refreshed = yield* broadcaster.refreshPullRequestStatus("/repo");
-      assert.deepStrictEqual(refreshed, remoteStatusWithPr);
-      assert.equal(state.remoteStatusCalls, 2);
-      assert.equal(state.remoteInvalidationCalls, 2);
-
-      state.currentLocalStatus = { ...baseLocalStatus, refName: "feature/next" };
-      state.currentRemoteStatus = baseRemoteStatus;
-      yield* broadcaster.refreshLocalStatus("/repo");
-      const refreshedBranch = yield* broadcaster.refreshPullRequestStatus("/repo");
-      assert.deepStrictEqual(refreshedBranch, baseRemoteStatus);
-      assert.equal(state.remoteStatusCalls, 3);
-      const refreshedStatus = yield* broadcaster.getStatus({ cwd: "/repo" });
-      assert.equal(refreshedStatus.refName, "feature/next");
-      assert.isNull(refreshedStatus.pr);
-      assert.equal(state.remoteStatusCalls, 3);
-      assert.equal(state.remoteInvalidationCalls, 3);
-    }).pipe(Effect.provide(layerTestFor(state)));
-  });
-
-  it.effect("a poll that started before the turn-end refresh cannot overwrite its PR", () => {
-    const releaseFirstPoll = Deferred.makeUnsafe<void>();
-    const firstPollStarted = Deferred.makeUnsafe<void>();
-    let remoteReads = 0;
-    const layer = VcsStatusBroadcaster.layer.pipe(
-      Layer.provideMerge(NodeServices.layer),
-      Layer.provide(layerBackgroundPolicy(() => true)),
-      Layer.provide(
-        Layer.mock(GitWorkflowService.GitWorkflowService)({
-          localStatus: () => Effect.succeed(baseLocalStatus),
-          currentBranch: () => Effect.succeed(baseLocalStatus.refName),
-          remoteStatus: () =>
-            Effect.gen(function* () {
-              remoteReads += 1;
-              if (remoteReads === 2) {
-                yield* Deferred.succeed(firstPollStarted, undefined);
-                yield* Deferred.await(releaseFirstPoll);
-                return baseRemoteStatus;
-              }
-              return remoteReads === 1 ? baseRemoteStatus : remoteStatusWithPr;
-            }),
-          invalidateLocalStatus: () => Effect.void,
-          invalidateRemoteStatus: () => Effect.void,
-          invalidateStatus: () => Effect.void,
-        }),
-      ),
-    );
-
-    return Effect.gen(function* () {
-      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-      yield* broadcaster.getStatus({ cwd: "/repo" });
-
-      const poll = yield* broadcaster.refreshStatus("/repo").pipe(Effect.forkScoped);
-      yield* Deferred.await(firstPollStarted);
-      const refresh = yield* broadcaster.refreshPullRequestStatus("/repo").pipe(Effect.forkScoped);
-      yield* Deferred.succeed(releaseFirstPoll, undefined);
-      yield* Fiber.join(poll);
-      const refreshed = yield* Fiber.join(refresh);
-
-      assert.deepStrictEqual(refreshed, remoteStatusWithPr);
-      const final = yield* broadcaster.getStatus({ cwd: "/repo" });
-      assert.deepStrictEqual(final.pr, remoteStatusWithPr.pr);
-    }).pipe(Effect.provide(layer), Effect.scoped);
-  });
 
   it.effect("an initial status read cannot overwrite an explicit refresh", () => {
     const firstReadStarted = Deferred.makeUnsafe<void>();
@@ -688,55 +564,6 @@ describe("VcsStatusBroadcaster", () => {
     }).pipe(Effect.provide(layerTestFor(state)));
   });
 
-  it.effect("publishes local status while an earlier lookup holds the remote lock", () => {
-    const state: Parameters<typeof layerTestFor>[0] = {
-      currentLocalStatus: baseLocalStatus,
-      currentRemoteStatus: baseRemoteStatus,
-      localStatusCalls: 0,
-      remoteStatusCalls: 0,
-      localInvalidationCalls: 0,
-      remoteInvalidationCalls: 0,
-    };
-
-    return Effect.gen(function* () {
-      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-      yield* broadcaster.getStatus({ cwd: "/repo" });
-      const subscribed = yield* Deferred.make<void>();
-      const published = yield* Deferred.make<VcsStatusLocalResult>();
-      yield* broadcaster.streamStatus({ cwd: "/repo", includeRemote: false }).pipe(
-        Stream.runForEach((event) => {
-          if (event._tag === "snapshot") return Deferred.succeed(subscribed, undefined);
-          if (event._tag === "localUpdated") return Deferred.succeed(published, event.local);
-          return Effect.void;
-        }),
-        Effect.forkScoped,
-      );
-      yield* Deferred.await(subscribed);
-      const started = yield* Deferred.make<void>();
-      const release = yield* Deferred.make<void>();
-      state.beforeRemoteStatus = Deferred.succeed(started, undefined).pipe(
-        Effect.andThen(Deferred.await(release)),
-      );
-      const earlier = yield* broadcaster.refreshPullRequestStatus("/repo").pipe(Effect.forkScoped);
-      yield* Deferred.await(started);
-      state.currentLocalStatus = { ...baseLocalStatus, hasWorkingTreeChanges: true };
-      const completed = yield* Deferred.make<void>();
-      const refresh = yield* broadcaster
-        .refreshStatus("/repo")
-        .pipe(Effect.ensuring(Deferred.succeed(completed, undefined)), Effect.forkScoped);
-
-      assert.deepStrictEqual(yield* Deferred.await(published), state.currentLocalStatus);
-      assert.isFalse(yield* Deferred.isDone(completed));
-      assert.isFalse(yield* Deferred.isDone(release));
-      state.currentRemoteStatus = remoteStatusWithPr;
-      yield* Deferred.succeed(release, undefined);
-      yield* Fiber.join(earlier);
-      const status = yield* Fiber.join(refresh);
-      assert.isTrue(status.hasWorkingTreeChanges);
-      assert.deepStrictEqual(status.pr, remoteStatusWithPr.pr);
-    }).pipe(Effect.provide(layerTestFor(state)), Effect.scoped);
-  });
-
   it.effect("publishes local changes before a remote error and propagates that error", () => {
     const remoteError = new GitManagerError({
       operation: "VcsStatusBroadcaster.remoteStatus",
@@ -885,58 +712,6 @@ describe("VcsStatusBroadcaster", () => {
       }).pipe(Effect.provide(layerTest), Effect.scoped);
     },
   );
-
-  it.effect("recovers a discarded branch lookup on the next permitted turn-end refresh", () => {
-    const state: Parameters<typeof layerTestFor>[0] = {
-      currentLocalStatus: baseLocalStatus,
-      currentRemoteStatus: { ...remoteStatusWithPr, aheadCount: 3, behindCount: 5 },
-      localStatusCalls: 0,
-      remoteStatusCalls: 0,
-      localInvalidationCalls: 0,
-      remoteInvalidationCalls: 0,
-    };
-
-    return Effect.gen(function* () {
-      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-      const started = yield* Deferred.make<void>();
-      const release = yield* Deferred.make<void>();
-      state.beforeRemoteStatus = Deferred.succeed(started, undefined).pipe(
-        Effect.andThen(Deferred.await(release)),
-      );
-      const lookup = yield* broadcaster.getStatus({ cwd: "/repo" }).pipe(Effect.forkScoped);
-      yield* Deferred.await(started);
-      state.currentLocalStatus = { ...baseLocalStatus, refName: "feature/next-status" };
-      yield* Deferred.succeed(release, undefined);
-      const discarded = yield* Fiber.join(lookup);
-      assert.equal(discarded.refName, state.currentLocalStatus.refName);
-      assert.isNull(discarded.pr);
-      assert.equal(discarded.aheadCount, 0);
-      assert.equal(discarded.behindCount, 0);
-      const snapshot = Option.getOrThrow(
-        yield* Stream.runHead(broadcaster.streamStatus({ cwd: "/repo", includeRemote: false })),
-      );
-      assert.equal(snapshot._tag, "snapshot");
-      if (snapshot._tag === "snapshot") assert.isNull(snapshot.remote);
-
-      state.beforeRemoteStatus = Effect.void;
-      state.currentRemoteStatus = {
-        ...baseRemoteStatus,
-        aheadCount: 2,
-        pr: { ...remoteStatusWithPr.pr!, number: 2979, headRef: "feature/next-status" },
-      };
-      state.backgroundWorkEnabled = false;
-      yield* broadcaster.refreshPullRequestStatus("/repo");
-      assert.equal(state.remoteStatusCalls, 1);
-      state.backgroundWorkEnabled = true;
-      const recovered = yield* broadcaster.refreshPullRequestStatus("/repo");
-      assert.deepStrictEqual(recovered, state.currentRemoteStatus);
-      const cached = yield* broadcaster.getStatus({ cwd: "/repo" });
-      assert.equal(cached.refName, state.currentLocalStatus.refName);
-      assert.deepStrictEqual(cached.pr, state.currentRemoteStatus.pr);
-      assert.equal(cached.aheadCount, 2);
-      assert.equal(state.remoteStatusCalls, 2);
-    }).pipe(Effect.provide(layerTestFor(state)), Effect.scoped);
-  });
 
   it.effect("releases remote demand while passive observers remain", () => {
     const state = {

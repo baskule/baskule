@@ -2,11 +2,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigation } from "@react-navigation/native";
 import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context";
 import { startOpeningEnvironmentThread } from "../../state/threads";
-import {
-  selectWorkspaceDetail,
-  type WorkspaceDetail,
-  type WorkspaceDetailSheet,
-} from "./workspace-detail-selection";
+import { selectWorkspaceDetail, type WorkspaceDetail } from "./workspace-detail-selection";
 
 const first = (value: string | readonly string[] | undefined) =>
   typeof value === "string" ? value : value?.[0];
@@ -30,9 +26,9 @@ export function useSelectWorkspaceDetail() {
   const { selectDetail } = useAdaptiveWorkspaceLayout();
   return (
     selectDetail ??
-    ((detail: WorkspaceDetail, sheet?: WorkspaceDetailSheet) => {
+    ((detail: WorkspaceDetail) => {
       startOpeningDetail(detail);
-      navigation.dispatch(selectWorkspaceDetail(detail, sheet));
+      navigation.dispatch(selectWorkspaceDetail(detail));
     })
   );
 }

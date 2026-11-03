@@ -15,7 +15,6 @@ export function WorkspaceEmptyDetail(props: {
   readonly onAddConnection?: () => void;
 }) {
   const t = useTranslation();
-  const pullRequests = props.tab === "pullRequests";
   const settings = props.tab === "settings";
   if (props.tab === "usage") return <View className="flex-1 bg-screen" />;
   return (
@@ -52,22 +51,16 @@ export function WorkspaceEmptyDetail(props: {
             type="hierarchical"
           />
           <Text className="text-center text-xl font-t3-bold">
-            {settings
-              ? t("Select a setting")
-              : pullRequests
-                ? t("Select a pull request")
-                : t("Select a thread")}
+            {settings ? t("Select a setting") : t("Select a thread")}
           </Text>
           <Text className="text-center text-base text-foreground-muted">
             {settings
               ? t("Choose a page from the sidebar.")
-              : pullRequests
-                ? t("Choose a pull request from the sidebar to review it.")
-                : Platform.OS === "android"
-                  ? t("Choose a thread from the sidebar or start a new thread.")
-                  : t("Choose a thread from the sidebar or start a new task.")}
+              : Platform.OS === "android"
+                ? t("Choose a thread from the sidebar or start a new thread.")
+                : t("Choose a thread from the sidebar or start a new task.")}
           </Text>
-          {props.onStartNewTask && !pullRequests && !settings ? (
+          {props.onStartNewTask && !settings ? (
             Platform.OS === "android" ? (
               <NewThreadButton extended className="mt-2" onPress={props.onStartNewTask} />
             ) : (

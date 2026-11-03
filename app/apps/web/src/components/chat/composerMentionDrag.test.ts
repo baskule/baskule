@@ -36,10 +36,6 @@ const makeHost = (insertResult = true) => {
       log.push(`insert:${text}`);
       return insertResult;
     },
-    insertPullRequestAtEnd: (pullRequest) => {
-      log.push(`pr:${pullRequest.number}`);
-      return insertResult;
-    },
     setDragActive: (active) => void log.push(`active:${active}`),
     onInsertRejected: () => void log.push("rejected"),
   };

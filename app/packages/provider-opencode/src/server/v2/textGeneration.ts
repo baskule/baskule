@@ -195,8 +195,5 @@ export const make = Effect.fn("OpenCode2TextGeneration.make")(function* () {
         ),
         Effect.flatMap((raw) => TextGenerationOperations.decodeJsonReply(input, "OpenCode", raw)),
       );
-  return TextGenerationOperations.fromRunner(
-    "OpenCode2TextGeneration",
-    TextGenerationOperations.withoutInvestigation("OpenCode", run),
-  );
+  return TextGenerationOperations.fromRunner("OpenCode2TextGeneration", run);
 });

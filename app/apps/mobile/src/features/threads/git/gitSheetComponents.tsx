@@ -1,6 +1,5 @@
 import { t } from "../../../i18n";
 
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { SymbolView } from "../../../components/ui/AppSymbol";
 import type { ComponentProps } from "react";
 import { View } from "react-native";
@@ -59,12 +58,6 @@ export function statusSummary(
   }
   if ((gitStatus.behindCount ?? 0) > 0) {
     parts.push(`${gitStatus.behindCount} behind`);
-  }
-  if (gitStatus.pr?.state === "open") {
-    const { shortLabel } = sourceControlClients.get(
-      gitStatus.sourceControlProvider?.kind,
-    ).changeRequest;
-    parts.push(`${shortLabel} #${gitStatus.pr.number} open`);
   }
 
   return parts.join(" \u00b7 ");

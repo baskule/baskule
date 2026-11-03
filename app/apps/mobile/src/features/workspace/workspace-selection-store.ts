@@ -59,7 +59,7 @@ function withoutRouteKeys(saved: WorkspaceSelections | undefined): WorkspaceSele
   return {
     ...rest,
     ...(threads ? { threads: omitKey(threads) } : {}),
-    ...(pullRequests ? { pullRequests: omitKey(pullRequests) } : {}),
+    ...(pullRequests ? {} : {}),
   };
 }
 
@@ -114,7 +114,6 @@ export const workspaceSelectionCheck: WorkspaceSelectionCheck = {
       .get(environmentThreadShells.environmentThreadIndexAtom(environmentId))
       .has(selection.threadId as ThreadId);
   },
-  pullRequest: (selection) => !environmentRemoved(selection.environmentId),
 };
 
 /** Whether the window lays the workspace out in columns, by the rule the layout itself uses. */

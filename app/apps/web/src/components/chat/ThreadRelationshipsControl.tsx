@@ -1,3 +1,4 @@
+import { GitMergeIcon } from "lucide-react";
 import { t, useTranslation } from "../../i18n";
 
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
@@ -5,7 +6,7 @@ import { ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { SectionHeaderStatus } from "../ui/collapsible-section-header";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
-import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   deriveWorkflowGroups,
@@ -645,7 +646,7 @@ export function ThreadRelationshipsPanel(props: {
                     {busyAction === "merge" ? (
                       <Spinner size="xs" />
                     ) : (
-                      <PullRequestGlyph.merged className="size-3" />
+                      <GitMergeIcon className="size-3" />
                     )}
                   </ThreadDetailsControl>
                 }

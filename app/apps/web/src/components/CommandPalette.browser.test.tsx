@@ -20,14 +20,15 @@ describe("CommandPalette open intents", () => {
     await expect.element(page.getByPlaceholder("Search...")).toHaveFocus();
   });
 
-  it("opens a search intent with its query in the focused input", async () => {
+  it("keeps focus while entering a search query", async () => {
     setup();
     await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
 
-    openCommandPalette({ query: "acme" });
+    openCommandPalette();
 
     const input = page.getByPlaceholder("Search commands, projects, and threads...");
     await expect.element(input).toHaveFocus();
+    await input.fill("acme");
     await expect.element(input).toHaveValue("acme");
   });
 });

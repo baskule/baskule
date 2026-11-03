@@ -1,3 +1,4 @@
+import * as Schema from "effect/Schema";
 import * as NodeBuffer from "node:buffer";
 
 import * as Context from "effect/Context";
@@ -12,6 +13,7 @@ import { ChildProcessSpawner } from "effect/process";
 
 import {
   GitCommandError,
+  VcsProcessSpawnError,
   VcsProcessExitError,
   VcsUnsupportedOperationError,
   type VcsSwitchRefInput,
@@ -35,7 +37,7 @@ import {
   type VcsStatusResult,
   type WorktreeSubmodules,
 } from "@t3tools/contracts";
-import { isMissingExecutable } from "@t3tools/source-control-core/server/discovery";
+import * as PlatformError from "effect/PlatformError";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   makeGitVcsDriverCore,
@@ -44,6 +46,16 @@ import {
 } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
+
+const isVcsProcessSpawnError = Schema.is(VcsProcessSpawnError);
+function isMissingExecutable(error: unknown): boolean {
+  return (
+    isVcsProcessSpawnError(error) &&
+    PlatformError.isPlatformError(error.cause) &&
+    error.cause.reason._tag === "NotFound" &&
+    error.cause.reason.module === "ChildProcess"
+  );
+}
 
 export interface ExecuteGitInput {
   readonly operation: string;
@@ -223,12 +235,6 @@ export interface GitRefreshCheckedOutBranchResult {
   onTarget: boolean;
 }
 
-export interface GitEnsureRemoteInput {
-  cwd: string;
-  preferredName: string;
-  url: string;
-}
-
 export interface GitFetchRemoteBranchInput {
   cwd: string;
   remoteName: string;
@@ -376,7 +382,6 @@ export class GitVcsDriver extends Context.Service<
     readonly refreshCheckedOutBranch: (
       input: GitRefreshCheckedOutBranchInput,
     ) => Effect.Effect<GitRefreshCheckedOutBranchResult, GitCommandError>;
-    readonly ensureRemote: (input: GitEnsureRemoteInput) => Effect.Effect<string, GitCommandError>;
     readonly resolvePrimaryRemoteName: (cwd: string) => Effect.Effect<string, GitCommandError>;
     readonly resolveDefaultBranchName: (
       cwd: string,

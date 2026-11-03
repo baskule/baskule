@@ -1,19 +1,13 @@
 import { useTranslation } from "../../i18n";
 
-import type {
-  DeviceServiceState,
-  EnvironmentId,
-  MessageId,
-  ScopedThreadRef,
-  ThreadId,
-} from "@t3tools/contracts";
+import type { DeviceServiceState, MessageId, ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { DeviceSetup } from "../device/DeviceSetup";
-import { PullRequestThreadDialog } from "../PullRequestThreadDialog";
+
 import {
   AlertDialog,
   AlertDialogClose,
@@ -55,46 +49,6 @@ function closeThreadOverlay<T>(atom: ThreadOverlayAtom<T>): void {
 function useThreadOverlay<T>(atom: ThreadOverlayAtom<T>, threadKey: string | null): T | null {
   const entry = useAtomValue(atom);
   return threadKey !== null && entry?.threadKey === threadKey ? entry.value : null;
-}
-
-const pullRequestThreadDialogAtom = makeThreadOverlayAtom<{
-  readonly initialReference: string | null;
-  readonly key: number;
-}>("pull-request-thread-dialog");
-
-export function openPullRequestThreadDialog(threadKey: string, reference?: string): void {
-  appAtomRegistry.set(pullRequestThreadDialogAtom, {
-    threadKey,
-    value: { initialReference: reference ?? null, key: Date.now() },
-  });
-}
-
-export function PullRequestThreadDialogHost(props: {
-  readonly threadKey: string | null;
-  readonly environmentId: EnvironmentId;
-  readonly threadId: ThreadId;
-  readonly cwd: string | null;
-  readonly onPrepared: (input: {
-    branch: string;
-    worktreePath: string | null;
-  }) => Promise<void> | void;
-}) {
-  const state = useThreadOverlay(pullRequestThreadDialogAtom, props.threadKey);
-  if (state === null) return null;
-  return (
-    <PullRequestThreadDialog
-      key={state.key}
-      open
-      environmentId={props.environmentId}
-      threadId={props.threadId}
-      cwd={props.cwd}
-      initialReference={state.initialReference}
-      onOpenChange={(open) => {
-        if (!open) closeThreadOverlay(pullRequestThreadDialogAtom);
-      }}
-      onPrepared={props.onPrepared}
-    />
-  );
 }
 
 const deviceSetupDialogAtom = makeThreadOverlayAtom<true>("device-setup-dialog");

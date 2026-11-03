@@ -16,7 +16,7 @@ import {
 } from "../../navigationHistory";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { cn } from "../../lib/utils";
-import { usePullRequestsSupported } from "../../state/environments";
+
 import { BaskuleWordmark } from "../BaskuleBrand";
 import { T3Wordmark } from "../T3Wordmark";
 import {
@@ -36,12 +36,12 @@ import {
   useSidebar,
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
-import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+
 import { observeResize } from "~/lib/observeResize";
 import { baskule } from "~/baskule/flags";
 import { BaskuleUserMenu } from "~/baskule/BaskuleUserMenu"; // baskule:
@@ -239,18 +239,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const isOnUtilityPage = useLocation({
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
-  const pullRequestsSupported = usePullRequestsSupported();
   const closeMobileSidebar = () => {
     if (isMobile) {
       setOpenMobile(false);
     }
-  };
-  const handlePullRequestsClick = () => {
-    closeMobileSidebar();
-    void navigate({
-      to: "/pull-requests",
-      search: readPullRequestListPreferences(),
-    });
   };
   const handleSettingsClick = () => {
     closeMobileSidebar();
@@ -310,13 +302,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label={t("Settings")}
             onClick={handleSettingsClick}
           />
-          {pullRequestsSupported ? (
-            <SidebarUtilityItem
-              icon={<PullRequestGlyph.pullRequest />}
-              label={t("Pull requests")}
-              onClick={handlePullRequestsClick}
-            />
-          ) : null}
+
           <SidebarUtilityItem
             icon={<ChartNoAxesColumnIcon />}
             label={t("Usage")}

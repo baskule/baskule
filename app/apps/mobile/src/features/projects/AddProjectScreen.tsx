@@ -9,10 +9,6 @@ import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { Button } from "../../components/ui/Button";
 import {
-  addProjectRemoteSourceLabel,
-  addProjectRemoteSourcePathHint,
-  addProjectRemoteSourceProvider,
-  buildAddProjectRemoteSourceReadiness,
   buildProjectCreateCommand,
   canCreateProjectInEnvironment,
   findExistingAddProject,
@@ -20,17 +16,8 @@ import {
   getCloneDestinationBrowsePath,
   getCloneDestinationPath,
   getCloneDirectoryName,
-  getDefaultCloneUrl,
   getNewProjectPathPreview,
-  getNewProjectPublishTarget,
-  getNewProjectPublishTargets,
-  getNewProjectRepository,
-  defaultHostCloneUrl,
-  normalizePastedCloneUrl,
-  parseAddProjectRemoteSource,
   resolveAddProjectPath,
-  sortAddProjectProviderSources,
-  type AddProjectRemoteSource,
 } from "@t3tools/client-runtime/operations/projects";
 import {
   connectionStatusText,
@@ -57,7 +44,6 @@ import {
   type EnvironmentMachineKind,
   ProjectId,
   resolveEnvironmentMachineKind,
-  SourceControlProviderKind,
 } from "@t3tools/contracts";
 import {
   StackActions,
@@ -84,9 +70,7 @@ import { sourceControlEnvironment } from "../../state/sourceControl";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
-import { SourceControlIcon } from "./SourceControlIcon";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
+
 import { uuidv4 } from "../../lib/uuid";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
@@ -137,10 +121,6 @@ function errorMessage(error: unknown): string {
 function stringParam(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
-}
-
-function sourceFromParam(value: string | string[] | undefined): AddProjectRemoteSource {
-  return parseAddProjectRemoteSource(stringParam(value));
 }
 
 function SectionTitle(props: { readonly children: string }) {
@@ -464,39 +444,22 @@ function EmptyEnvironmentState() {
 }
 
 function SourceControlRow(props: {
-  readonly source: AddProjectRemoteSource;
   readonly selectedEnvironmentId: EnvironmentId;
   readonly ready: boolean;
   readonly hint: string;
   readonly isFirst: boolean;
 }) {
   const navigation = useNavigation();
-  const title =
-    props.source === "url"
-      ? t("Git URL")
-      : t("{{value1}} repository", { value1: addProjectRemoteSourceLabel(props.source) });
-  const subtitle =
-    props.source === "url"
-      ? t("Clone from a remote URL")
-      : t("Clone {{value1}} {{hint}}", {
-          value1: addProjectRemoteSourceLabel(props.source),
-          hint: props.hint,
-        });
-  const icon =
-    props.source === "url" ? (
-      <SymbolView
-        name="link"
-        size={Platform.OS === "android" ? 24 : 17}
-        tintColorClassName="accent-icon"
-        type="monochrome"
-      />
-    ) : (
-      <SourceControlIcon
-        icon={sourceControlClients.get(props.source).icon}
-        size={Platform.OS === "android" ? 24 : 18}
-        colorClassName="accent-icon"
-      />
-    );
+  const title = t("Git URL");
+  const subtitle = t("Clone from a remote URL");
+  const icon = (
+    <SymbolView
+      name="link"
+      size={Platform.OS === "android" ? 24 : 17}
+      tintColorClassName="accent-icon"
+      type="monochrome"
+    />
+  );
 
   if (!props.ready) {
     return (
@@ -514,7 +477,6 @@ function SourceControlRow(props: {
         navigation.dispatch(
           StackActions.push("AddProjectRepository", {
             environmentId: props.selectedEnvironmentId,
-            source: props.source,
           }),
         )
       }
@@ -537,15 +499,6 @@ export function AddProjectSourceScreen(props: { readonly environmentId?: string 
   );
   const isConnected = canCreateProjectInEnvironment(selectedEnvironment?.connectionState);
   const canCloneProject = isConnected && canWriteSourceControl && canCreateProject;
-  const discoveryState = useEnvironmentQuery(
-    selectedEnvironment === null || !isConnected
-      ? null
-      : sourceControlEnvironment.discovery({
-          environmentId: selectedEnvironment.environmentId,
-          input: {},
-        }),
-  );
-  const readiness = buildAddProjectRemoteSourceReadiness(discoveryState.data);
 
   return (
     <AddProjectShell title={t("Add project")}>
@@ -646,28 +599,13 @@ export function AddProjectSourceScreen(props: { readonly environmentId?: string 
                 )
               }
             />
-            {(["url", ...sortAddProjectProviderSources(readiness)] as AddProjectRemoteSource[]).map(
-              (candidate) => (
-                <SourceControlRow
-                  key={candidate}
-                  source={candidate}
-                  selectedEnvironmentId={selectedEnvironment.environmentId}
-                  ready={canCloneProject && readiness(candidate).ready}
-                  hint={
-                    !canCloneProject
-                      ? t("This connection cannot clone projects.")
-                      : readiness(candidate).ready
-                        ? addProjectRemoteSourcePathHint(candidate)
-                        : (readiness(candidate).hint ?? "")
-                  }
-                  isFirst={false}
-                />
-              ),
-            )}
+            <SourceControlRow
+              selectedEnvironmentId={selectedEnvironment.environmentId}
+              ready={canCloneProject}
+              hint={t("This connection cannot clone projects.")}
+              isFirst={false}
+            />
           </ListSection>
-          {discoveryState.isPending ? (
-            <AppActivityIndicator colorClassName="accent-icon-muted" />
-          ) : null}
         </>
       ) : null}
     </AddProjectShell>
@@ -823,68 +761,27 @@ function useEnvironmentFromParam(
   return resolveAddProjectEnvironment(environmentOptions, environmentId);
 }
 
-export function AddProjectRepositoryScreen(props: {
-  readonly environmentId?: string | string[];
-  readonly source?: string | string[];
-}) {
+export function AddProjectRepositoryScreen(props: { readonly environmentId?: string | string[] }) {
   const t = useTranslation();
-  const lookupRepositoryQuery = useAtomQueryRunner(sourceControlEnvironment.repository, {
-    reportFailure: false,
-  });
   const navigation = useNavigation();
   const environment = useEnvironmentFromParam(props.environmentId);
-  const source = sourceFromParam(props.source);
   const [repositoryInput, setRepositoryInput] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const lookupRepository = async () => {
-    if (!environment || repositoryInput.trim().length === 0 || isSubmitting) return;
-    setError(null);
-    setIsSubmitting(true);
-    const provider = addProjectRemoteSourceProvider(source);
-    if (!provider) {
-      const remoteUrl = normalizePastedCloneUrl(repositoryInput);
-      navigation.dispatch(
-        StackActions.push("AddProjectDestination", {
-          environmentId: environment.environmentId,
-          source,
-          remoteUrl,
-          repositoryTitle: remoteUrl,
-          repositoryName: getCloneDirectoryName(remoteUrl),
-        }),
-      );
-      setIsSubmitting(false);
-      return;
-    }
-
-    const result = await lookupRepositoryQuery({
-      environmentId: environment.environmentId,
-      input: {
-        provider,
-        repository: repositoryInput.trim(),
-      },
-    });
-    if (AsyncResult.isFailure(result)) {
-      setError(errorMessage(Cause.squash(result.cause)));
-    } else {
-      const repository = result.value;
-      navigation.dispatch(
-        StackActions.push("AddProjectDestination", {
-          environmentId: environment.environmentId,
-          source,
-          remoteUrl: getDefaultCloneUrl(repository),
-          repositoryTitle: repository.nameWithOwner,
-          repositoryName: getCloneDirectoryName(repository.nameWithOwner),
-        }),
-      );
-    }
-    setIsSubmitting(false);
+  const continueWithUrl = () => {
+    if (!environment || repositoryInput.trim().length === 0) return;
+    const remoteUrl = repositoryInput.trim();
+    navigation.dispatch(
+      StackActions.push("AddProjectDestination", {
+        environmentId: environment.environmentId,
+        remoteUrl,
+        repositoryTitle: remoteUrl,
+        repositoryName: getCloneDirectoryName(remoteUrl),
+      }),
+    );
   };
 
   return (
-    <AddProjectShell title={source === "url" ? t("Git URL") : addProjectRemoteSourceLabel(source)}>
-      {error ? <ErrorBanner message={error} /> : null}
+    <AddProjectShell title={t("Git URL")}>
       {environment ? (
         <>
           <TextInput
@@ -893,19 +790,14 @@ export function AddProjectRepositoryScreen(props: {
             onChangeText={setRepositoryInput}
             autoCapitalize="none"
             autoCorrect={false}
-            placeholder={
-              source === "url"
-                ? (defaultHostCloneUrl("org/repo") ?? "https://example.com/org/repo.git")
-                : addProjectRemoteSourcePathHint(source)
-            }
+            placeholder={"https://example.com/org/repo.git"}
             returnKeyType="next"
-            onSubmitEditing={() => void lookupRepository()}
+            onSubmitEditing={() => void continueWithUrl()}
           />
           <PrimaryActionButton
-            label={source === "url" ? t("Continue") : t("Lookup repository")}
-            disabled={isSubmitting || repositoryInput.trim().length === 0}
-            onPress={() => void lookupRepository()}
-            loading={isSubmitting}
+            label={t("Continue")}
+            disabled={repositoryInput.trim().length === 0}
+            onPress={() => void continueWithUrl()}
           />
         </>
       ) : (
@@ -1034,22 +926,7 @@ export function AddProjectNewScreen(props: { readonly environmentId?: string | s
   );
   const environment = resolveAddProjectEnvironment(environmentOptions, selectedEnvironmentId);
   const createNew = useAtomCommand(projectEnvironment.createNew, { reportFailure: false });
-  const publishRepository = useAtomCommand(sourceControlEnvironment.publishRepository, {
-    reportFailure: false,
-  });
-  const discoveryState = useEnvironmentQuery(
-    environment === null
-      ? null
-      : sourceControlEnvironment.discovery({
-          environmentId: environment.environmentId,
-          input: {},
-        }),
-  );
-  const publishTargets = getNewProjectPublishTargets(discoveryState.data);
   const [name, setName] = useState("");
-  const [publishes, setPublishes] = useState(false);
-  const [publishKind, setPublishKind] = useState<SourceControlProviderKind | null>(null);
-  const publishTarget = getNewProjectPublishTarget(publishTargets, publishKind);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const trimmedName = name.trim();
@@ -1113,29 +990,9 @@ export function AddProjectNewScreen(props: { readonly environmentId?: string | s
       setError(errorMessage(Cause.squash(result.cause)));
       return;
     }
-    const { projectId, workspaceRoot, commitError } = result.value;
+    const { projectId, commitError } = result.value;
     if (commitError !== undefined) {
       Dialog.alert(t("Created without a first commit"), commitError);
-    }
-    if (publishes && publishTarget !== null) {
-      void publishRepository({
-        environmentId: environment.environmentId,
-        input: {
-          cwd: workspaceRoot,
-          provider: publishTarget.definition.kind,
-          repository: getNewProjectRepository(publishTarget, workspaceRoot),
-          visibility: "private",
-        },
-      }).then((publishResult) => {
-        if (AsyncResult.isFailure(publishResult)) {
-          Dialog.alert(
-            t("Could not create the {{label}} repository", {
-              label: publishTarget.definition.label,
-            }),
-            errorMessage(Cause.squash(publishResult.cause)),
-          );
-        }
-      });
     }
     // The draft screen resolves its project from the client store, so it
     // must not open before the create event has arrived.
@@ -1190,69 +1047,7 @@ export function AddProjectNewScreen(props: { readonly environmentId?: string | s
             </Text>
           ) : null}
           {machineRows}
-          {publishTarget !== null ? (
-            <ListSection>
-              <ListRow
-                title={t("Create private repository on {{label}}", {
-                  label: publishTarget.definition.label,
-                })}
-                subtitle={
-                  trimmedName.length > 0 && pathPreview !== null
-                    ? getNewProjectRepository(publishTarget, pathPreview)
-                    : publishTarget.owner
-                }
-                icon={
-                  <SourceControlIcon
-                    icon={publishTarget.definition.icon}
-                    size={Platform.OS === "android" ? 24 : 18}
-                    colorClassName="accent-icon"
-                  />
-                }
-                isFirst
-                right={
-                  <ThemedSwitch
-                    accessibilityLabel={t("Create private repository on {{label}}", {
-                      label: publishTarget.definition.label,
-                    })}
-                    value={publishes}
-                    onValueChange={setPublishes}
-                  />
-                }
-                onPress={() => setPublishes((current) => !current)}
-              />
-              {publishes && publishTargets.length > 1
-                ? publishTargets.map((target) => {
-                    const selected = target.definition.kind === publishTarget.definition.kind;
-                    return (
-                      <ListRow
-                        key={target.definition.kind}
-                        title={target.definition.label}
-                        icon={
-                          <SourceControlIcon
-                            icon={target.definition.icon}
-                            size={Platform.OS === "android" ? 24 : 17}
-                            colorClassName="accent-icon"
-                          />
-                        }
-                        selected={selected}
-                        disabled={isSubmitting}
-                        right={
-                          selected ? (
-                            <SymbolView
-                              name="checkmark"
-                              size={Platform.OS === "android" ? 20 : 14}
-                              tintColorClassName="accent-icon"
-                              type="monochrome"
-                            />
-                          ) : null
-                        }
-                        onPress={() => setPublishKind(target.definition.kind)}
-                      />
-                    );
-                  })
-                : null}
-            </ListSection>
-          ) : null}
+
           <PrimaryActionButton
             label={t("Create project")}
             disabled={isSubmitting || trimmedName.length === 0}
@@ -1411,7 +1206,7 @@ export function AddProjectDestinationScreen(props: {
     const originRoute = getActiveRoute(navigation);
     setIsSubmitting(true);
     const projectId = ProjectId.make(uuidv4());
-    const title = inferProjectTitleFromPath(resolved.path);
+    const title = t("Git URL");
     const startResult = await startProjectClone({
       environmentId: environment.environmentId,
       input: {

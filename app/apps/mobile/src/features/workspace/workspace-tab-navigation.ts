@@ -12,7 +12,6 @@ type RouteLike = {
   readonly params?: object | undefined;
 };
 type ThreadSelection = NonNullable<WorkspaceSelections["threads"]>;
-type PullRequestSelection = NonNullable<WorkspaceSelections["pullRequests"]>;
 
 /** Opened when Settings has columns and none of its pages has been opened yet. */
 export const DEFAULT_SETTINGS_PAGE = "SettingsEnvironments" satisfies SettingsPageTarget;
@@ -40,46 +39,11 @@ export function rememberedSettingsPage(selections: WorkspaceSelections): Setting
 /** Whether a remembered chat or pull request can still be opened. */
 export interface WorkspaceSelectionCheck {
   readonly thread: (selection: ThreadSelection) => boolean;
-  readonly pullRequest: (selection: PullRequestSelection) => boolean;
 }
 
 function stringParam(params: object | undefined, key: string) {
   const value = (params as Record<string, unknown> | undefined)?.[key];
   return typeof value === "string" ? value : undefined;
-}
-
-function pullRequestSelection(
-  params: object | undefined,
-): Omit<PullRequestSelection, "key"> | undefined {
-  const value = params as Record<string, unknown> | undefined;
-  if (
-    typeof value?.environmentId !== "string" ||
-    typeof value.projectId !== "string" ||
-    typeof value.repository !== "string" ||
-    typeof value.number !== "number"
-  ) {
-    return undefined;
-  }
-  return {
-    environmentId: value.environmentId,
-    projectId: value.projectId,
-    repository: value.repository,
-    number: value.number,
-    ...(typeof value.host === "string" ? { host: value.host } : {}),
-  };
-}
-
-function samePullRequest(
-  left: PullRequestSelection | undefined,
-  right: Omit<PullRequestSelection, "key">,
-) {
-  return (
-    left?.environmentId === right.environmentId &&
-    left.projectId === right.projectId &&
-    left.repository === right.repository &&
-    left.number === right.number &&
-    left.host === right.host
-  );
 }
 
 /**
@@ -111,15 +75,6 @@ export function workspaceSelectionsIn(
   ) {
     next = { ...next, threadsDraft: { key: thread.key, params: thread.params } };
   }
-  const pullRequestRoute = routes.findLast((route) => route.name === "PullRequest");
-  const pullRequest = pullRequestSelection(pullRequestRoute?.params);
-  if (
-    pullRequest &&
-    (!samePullRequest(next.pullRequests, pullRequest) ||
-      next.pullRequests?.key !== pullRequestRoute?.key)
-  ) {
-    next = { ...next, pullRequests: { ...pullRequest, key: pullRequestRoute?.key } };
-  }
   const list = routes.findIndex((route) => route.name === "Settings");
   const page = list < 0 ? undefined : routes[list + 1];
   if (
@@ -130,10 +85,6 @@ export function workspaceSelectionsIn(
     next = { ...next, settings: page.name, settingsKey: page.key };
   }
   return next;
-}
-
-function identityOf({ key: _key, ...identity }: PullRequestSelection) {
-  return identity;
 }
 
 let routeKeys = 0;
@@ -147,7 +98,7 @@ function keyed<Route extends RouteLike>(route: Route): Route & { readonly key: s
 
 function detailRoute(
   state: { readonly routes: readonly RouteLike[] },
-  tab: "threads" | "pullRequests",
+  tab: "threads",
   selections: WorkspaceSelections,
   check: WorkspaceSelectionCheck,
 ): RouteLike | undefined {
@@ -177,15 +128,6 @@ function detailRoute(
       }
     );
   }
-  const pullRequest = selections.pullRequests;
-  if (!pullRequest || !check.pullRequest(pullRequest)) return undefined;
-  return (
-    state.routes.find(
-      (route) =>
-        route.name === "PullRequest" &&
-        samePullRequest(pullRequestSelection(route.params), pullRequest),
-    ) ?? { key: pullRequest.key, name: "PullRequest", params: identityOf(pullRequest) }
-  );
 }
 
 /**

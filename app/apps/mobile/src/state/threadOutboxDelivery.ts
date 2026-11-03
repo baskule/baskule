@@ -1,6 +1,5 @@
 import { t } from "../i18n";
 
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import * as Dialog from "../components/ui/Dialog";
 import {
   type EnvironmentProject,
@@ -49,7 +48,7 @@ import {
 } from "./pending-thread-creation";
 import { environmentProjects } from "./projects";
 import { environmentServerConfigsAtom, serverEnvironment } from "./server";
-import { gitEnvironment } from "./git";
+
 import { environmentSession, readEnvironmentScope, sessionHasScope } from "./session";
 import {
   confirmThreadOutboxMessageQueued,
@@ -998,37 +997,16 @@ export function createThreadOutboxDelivery(): {
       currentConfig.providers,
     );
     if (!hasAccess()) return true;
-    let workspace = creation;
+    const workspace = creation;
     if (creation.pullRequestReference) {
-      const checkout = await runDeliveryCommand(gitEnvironment.preparePullRequestThread, {
-        environmentId: queuedMessage.environmentId,
-        input: { cwd: projectCwd, reference: creation.pullRequestReference, mode: "worktree" },
-      });
-      if (!isQueuedMessagePayloadCurrent(persistedMessage, deliveryRevision) || !hasAccess())
-        return true;
-      const failure = reportCommandFailure(queuedMessage, checkout, "start-turn");
-      if (failure?.action === "retry") return false;
-      if (failure?.action === "restore")
-        return restoreQueuedMessage(persistedMessage, failure.message);
-      if (!AsyncResult.isSuccess(checkout)) return false;
-      if (!checkout.value.worktreePath || !checkout.value.isOnPullRequestHead) {
-        const { shortLabel } = (
-          sourceControlClients.findByChangeRequestUrl(creation.pullRequestReference) ??
-          sourceControlClients.get(undefined)
-        ).changeRequest;
-        return restoreQueuedMessage(
-          persistedMessage,
-          `The ${shortLabel} worktree has local changes and could not update to the ${shortLabel} head. Resolve them before trying again.`,
-        );
-      }
-      workspace = {
-        ...creation,
-        workspaceMode: "local",
-        branch: checkout.value.branch,
-        worktreePath: checkout.value.worktreePath,
-        startFromOrigin: false,
-      };
+      return restoreQueuedMessage(
+        persistedMessage,
+        t(
+          "Forge checkout is no longer supported. Choose a workspace before sending this saved message.",
+        ),
+      );
     }
+
     const deliveryResult = await runDeliveryCommand(threadEnvironment.startTurn, {
       environmentId: queuedMessage.environmentId,
       input: buildProjectThreadStartTurnInput({

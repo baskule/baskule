@@ -147,7 +147,6 @@ type NewTaskFlowContextValue = {
     selection: ComposerDraftWorkspaceSelection | undefined,
   ) => ComposerDraftWorkspaceSelection;
   readonly startFromOrigin: boolean;
-  readonly pullRequestReference: string | undefined;
   readonly draftKey: string | null;
   readonly prompt: string;
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
@@ -854,7 +853,6 @@ export function NewTaskFlowProvider(
     resolveWorkspaceSelection,
     startFromOrigin,
     draftKey: selectedProjectDraftKey,
-    pullRequestReference: selectedProjectDraft.workspaceSelection?.pullRequestReference,
     prompt,
     attachments,
     submitting,
