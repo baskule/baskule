@@ -1,13 +1,15 @@
 // baskule-computerd entry point. See README.md.
 import { loadConfig } from "./config.ts";
+import { KubernetesBackend } from "./kubernetes.ts";
 import { DockerBackend } from "./docker.ts";
 import { Computers } from "./computers.ts";
 import { createServer } from "./server.ts";
 import { log } from "./log.ts";
 
 const cfg = loadConfig();
-if (cfg.backend === "kubernetes") throw new Error("Kubernetes backend not built in yet");
-const backend = new DockerBackend(cfg.dockerHost, cfg.network);
+const backend = cfg.backend === "kubernetes"
+  ? new KubernetesBackend(cfg.kubernetes)
+  : new DockerBackend(cfg.dockerHost, cfg.network);
 const computers = new Computers(backend, cfg);
 const server = createServer({ cfg, backend, computers });
 

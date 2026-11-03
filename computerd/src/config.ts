@@ -1,3 +1,4 @@
+import type { KubernetesOptions } from "./kubernetes.ts";
 // computerd configuration, from the environment. Secrets (LLM key, tokens) are read here and never logged.
 
 export interface Config {
@@ -6,6 +7,7 @@ export interface Config {
   host: string;
   token: string;
   backend: "docker" | "kubernetes";
+  kubernetes?: KubernetesOptions;
   dockerHost: string;
   network: string;
   image: string;
@@ -49,6 +51,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: env.COMPUTERD_HOST ?? "0.0.0.0",
     token,
     backend,
+    kubernetes: {
+      storageClass: env.COMPUTER_STORAGE_CLASS || undefined,
+      storageSize: env.COMPUTER_DISK_SIZE || "10Gi",
+      runtimeClassName: env.COMPUTER_RUNTIME_CLASS_NAME || undefined,
+      nodeSelector: stringMap(env.COMPUTER_NODE_SELECTOR ?? "{}"),
+      tolerations: objects(env.COMPUTER_TOLERATIONS ?? "[]"),
+      imagePullSecrets: objects(env.COMPUTER_IMAGE_PULL_SECRETS ?? "[]").map(value => {
+        if (typeof value.name !== "string" || !value.name) throw new Error("Invalid COMPUTER_IMAGE_PULL_SECRETS name");
+        return { name: value.name };
+      }),
+    },
     dockerHost: env.DOCKER_HOST ?? "unix:///var/run/docker.sock",
     network: env.COMPUTER_NETWORK ?? "baskule-computers",
     image: env.COMPUTER_IMAGE ?? "baskule-computer:local",
@@ -64,4 +77,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     browserPort: num(env, "BASKULE_BROWSER_PORT", 9223),
     productSettingsUrl: env.PRODUCT_SETTINGS_URL ?? "",
   };
+}
+
+function objects(raw: string): Record<string, unknown>[] {
+  const value: unknown = JSON.parse(raw);
+  if (!Array.isArray(value) || !value.every(v => v !== null && typeof v === "object" && !Array.isArray(v))) throw new Error("Expected JSON array of objects");
+  return value;
+}
+function stringMap(raw: string): Record<string, string> {
+  const value: unknown = JSON.parse(raw);
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected JSON string map");
+  const result: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item !== "string") throw new Error("Expected JSON string map");
+    result[key] = item;
+  }
+  return result;
 }
