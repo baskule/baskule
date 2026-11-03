@@ -8,10 +8,24 @@ export PATH="$HOME/.local/bin:$PATH"
 : "${SCW_ACCESS_KEY:?}" "${SCW_SECRET_KEY:?}" "${SCW_DEFAULT_PROJECT_ID:?}"
 export SCW_DEFAULT_REGION=fr-par SCW_DEFAULT_ZONE=fr-par-1
 marker=baskule-ephemeral
-state="$root/.run/kubernetes-ephemeral"
-mkdir -p "$state"
+state_root="$root/.run/kubernetes-ephemeral"
+mkdir -p "$state_root"
 umask 077
+state=$(mktemp -d "$state_root/manager.XXXXXX")
 scw_json() { scw "$@" -o json; }
+# Preserve provider lifecycle tags when adding our ownership markers.
+tag_resource() {
+  local api=$1 resource=$2 id=$3 marker_tag=$4 run_tag=$5 data tag index=0
+  local args=("$id")
+  data=$(scw_json "$api" "$resource" get "$id") || return 1
+  while read -r tag; do
+    args+=("tags.$index=$tag")
+    index=$((index + 1))
+  done < <(jq -r --arg marker "$marker_tag" --arg run "$run_tag" '((.tags // []) + [$marker, $run]) | unique[]' <<< "$data")
+  scw "$api" "$resource" update "${args[@]}" >/dev/null
+}
+export -f scw_json tag_resource
+
 # Every selector below is limited to this tool's explicit marker or name prefix.
 marked_ids() { jq -r --arg marker "$marker" '.[] | select((.tags // [] | index($marker)) != null) | .id'; }
 inventory() {
@@ -21,34 +35,39 @@ inventory() {
   while read -r id; do scw_json k8s pool list "cluster-id=$id" | jq -c '.[]' >> "$pools"; done < <(jq -r '.[].id' "$state/clusters.private.json")
   jq -s . "$pools" > "$state/pools.private.json"
   scw_json registry namespace list > "$state/registries.private.json"
+  scw_json vpc private-network list > "$state/networks.private.json"
   scw_json lb lb list zone=all > "$state/lbs.private.json"
   scw_json block volume list zone=all > "$state/volumes.private.json"
+  scw_json instance volume list zone=all > "$state/legacy-volumes.private.json"
   scw_json instance ip list zone=all > "$state/ips.private.json"
   scw_json instance server list zone=all > "$state/instances.private.json"
   scw_json lb ip list zone=all > "$state/lb-ips.private.json"
 }
 sweep() {
+  local marker=${1:-$marker}
   inventory || return 1
   while read -r id; do scw k8s cluster delete "$id" with-additional-resources=true --wait >/dev/null; done < <(marked_ids < "$state/clusters.private.json")
-  while read -r id; do scw registry namespace delete "$id" >/dev/null; done < <(jq -r --arg prefix "$marker-" '.[] | select(.name | startswith($prefix)) | .id' "$state/registries.private.json")
+  while read -r id; do scw registry namespace delete "$id" >/dev/null; done < <(jq -r --arg prefix "$marker" '.[] | select(.name == $prefix or (.name | startswith($prefix + "-"))) | .id' "$state/registries.private.json")
   inventory || return 1
   # Only leftovers explicitly tagged by the run can be deleted here.
   while read -r id zone; do scw instance server delete "$id" "zone=$zone" with-volumes=all with-ip=true force-shutdown=true --wait >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/instances.private.json")
   while read -r id zone; do scw lb lb delete "$id" "zone=$zone" release-ip=true >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/lbs.private.json")
+  while read -r id zone; do scw instance volume delete "$id" "zone=$zone" >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/legacy-volumes.private.json")
   while read -r id zone; do scw block volume delete "$id" "zone=$zone" >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/volumes.private.json")
   while read -r id zone; do scw instance ip delete "$id" "zone=$zone" >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/ips.private.json")
   while read -r id zone; do scw lb ip release "$id" "zone=$zone" >/dev/null; done < <(jq -r --arg marker "$marker" '.[] | select(.tags // [] | index($marker)) | "\(.id) \(.zone)"' "$state/lb-ips.private.json")
+  while read -r id; do scw vpc private-network delete "$id" >/dev/null; done < <(marked_ids < "$state/networks.private.json")
   audit
 }
 audit() {
   inventory || return 1
   local remaining=0 count
-  for kind in clusters pools instances lbs volumes ips lb-ips; do
+  for kind in clusters pools instances networks lbs volumes legacy-volumes ips lb-ips; do
     count=$(marked_ids < "$state/$kind.private.json" | wc -l)
     printf '%s: %s tagged resources\n' "$kind" "$count"
     remaining=$((remaining + count))
   done
-  count=$(jq --arg prefix "$marker-" '[.[] | select(.name | startswith($prefix))] | length' "$state/registries.private.json")
+  count=$(jq --arg prefix "$marker" '[.[] | select(.name == $prefix or (.name | startswith($prefix + "-")))] | length' "$state/registries.private.json")
   printf 'registries: %s matching namespaces\n' "$count"
   (( remaining + count == 0 ))
 }
@@ -61,7 +80,7 @@ case "${1:-}" in
   worker) ;;
   *) echo "Usage: $0 run|sweep|audit" >&2; exit 2 ;;
 esac
-run_id="$marker-$(date -u +%Y%m%d%H%M%S)"
+run_id="$marker-$(date -u +%Y%m%d%H%M%S)-$(od -An -N3 -tx1 /dev/urandom | tr -d '[:space:]')"
 export BASKULE_K8S_EVIDENCE="$root/.run/evidence/$run_id"
 mkdir -p "$BASKULE_K8S_EVIDENCE"
 export KUBECONFIG="$state/$run_id.kubeconfig.private"
@@ -80,7 +99,7 @@ cleanup() {
     kubectl get pv -o json > "$state/$run_id.pv.private.json"
     while read -r handle; do
       id=${handle##*/}
-      scw block volume update "$id" "tags.0=$marker" "tags.1=$run_id" > /dev/null
+      tag_resource block volume "$id" "$marker" "$run_id"
     done < <(jq -r '.items[].spec.csi.volumeHandle // empty' "$state/$run_id.pv.private.json")
     kubectl -n baskule get events --sort-by=.lastTimestamp > "$BASKULE_K8S_EVIDENCE/events.txt"
     kubectl -n baskule delete sandboxes --all --wait=true --timeout=120s > /dev/null
@@ -90,7 +109,7 @@ cleanup() {
   # Also finds a cluster created just before interruption, before its ID was saved.
   if [[ -n $cluster_id ]]; then scw k8s cluster delete "$cluster_id" with-additional-resources=true --wait > /dev/null; fi
   if [[ -n $registry_id ]]; then scw registry namespace delete "$registry_id" > /dev/null; fi
-  sweep > "$BASKULE_K8S_EVIDENCE/cleanup-audit.txt" 2>&1
+  sweep "$run_id" > "$BASKULE_K8S_EVIDENCE/cleanup-audit.txt" 2>&1
   cleanup_status=$?
   finished=$(date +%s)
   elapsed=$(( finished - started ))
@@ -127,17 +146,27 @@ scw_json k8s cluster create "name=$run_id" "version=${BASKULE_K8S_VERSION:-1.35.
   pools.0.name=computers pools.0.zone=fr-par-1 pools.0.node-type=DEV1-L pools.0.size=2 pools.0.root-volume-size=40GB \
   "pools.0.tags.0=$marker" "pools.0.tags.1=$run_id" --wait > "$state/$run_id.cluster.private.json"
 cluster_id=$(jq -er .id "$state/$run_id.cluster.private.json")
+private_network_id=$(jq -r '.private_network_id // empty' "$state/$run_id.cluster.private.json")
+if [[ -n $private_network_id ]]; then tag_resource vpc private-network "$private_network_id" "$marker" "$run_id"; fi
 scw k8s kubeconfig install "$cluster_id" auth-method=copy-cli-token >/dev/null
 kubectl wait --for=condition=Ready nodes --all --timeout=600s
 # Tag node IPs explicitly; namespaces in Container Registry have no tags API.
 kubectl get nodes -o json | jq '[.items[].spec.providerID | split("/") | last]' > "$state/$run_id.nodes.private.json"
 scw_json instance ip list | jq -r --slurpfile nodes "$state/$run_id.nodes.private.json" '.[] | . as $ip | select($nodes[0] | index($ip.server.id)) | .id' | while read -r id; do
-  scw instance ip update "$id" "tags.0=$marker" "tags.1=$run_id" >/dev/null
+  tag_resource instance ip "$id" "$marker" "$run_id"
 done
+# Pool tags should propagate; explicitly mark nodes and their boot volumes as well.
+while read -r id; do
+  tag_resource instance server "$id" "$marker" "$run_id"
+  scw_json instance server get "$id" > "$state/$id.node.private.json"
+  while read -r volume; do
+    tag_resource block volume "$volume" "$marker" "$run_id" 2>/dev/null || tag_resource instance volume "$volume" "$marker" "$run_id"
+  done < <(jq -r '.volumes[]?.id // empty' "$state/$id.node.private.json")
+done < <(jq -r '.[]' "$state/$run_id.nodes.private.json")
 # Tag PVC block volumes as soon as CSI creates the PV. No polling or sleeps.
 setsid bash -c '
   kubectl get pv --watch --output-watch-events -o json | jq --unbuffered -r ".object.spec.csi.volumeHandle // empty" | while read -r handle; do
-    scw block volume update "${handle##*/}" "tags.0=$1" "tags.1=$2" >/dev/null
+    tag_resource block volume "${handle##*/}" "$1" "$2"
   done
 ' bash "$marker" "$run_id" > "$state/$run_id.volume-tags.private.log" 2>&1 &
 volume_watcher=$!

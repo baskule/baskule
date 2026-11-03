@@ -36,7 +36,10 @@ Replace `X` with a published Baskule chart version. Open the private setup link 
 by Helm and create the first admin. Configure your model provider in Administration.
 RustFS has one replica and no redundancy. Use it for tests and evaluation only.
 
-For production, create an external bucket and a Kubernetes Secret containing
+For production, use a private S3 endpoint or operator-managed egress rules that deny
+supervisor access to public S3 endpoints. This is required for strict storage network
+isolation; standard NetworkPolicy alone cannot enforce a DNS-based exclusion.
+Create an external bucket and a Kubernetes Secret containing
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Supply credentials through your secret
 manager or an untracked file. Keep credentials out of shell history and chart values.
 Use an S3-compatible service with atomic `If-Match` and `If-None-Match` writes. celld
@@ -47,7 +50,7 @@ Google Cloud Storage's XML endpoint is not a substitute for a verified S3 servic
 # values.yaml
 publicUrl: https://baskule.example.com
 s3:
-  endpoint: https://s3.example.com
+  endpoint: https://s3.storage.internal
   region: us-east-1
   bucket: baskule
   existingSecret: baskule-bucket

@@ -165,7 +165,7 @@ try {
   assert.ok(before.residents.some(cell => after.residents.includes(cell)), "a cell resident on the killed peer is now resident on the survivor");
   pass("killed celld owner stays unavailable while another pod serves persisted chat and computer files");
   kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
-  kube("delete", "pod", victim, "--wait=true");
+  kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");
   kube("rollout", "status", `statefulset/${release}-celld`, "--timeout=180s");
   writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), computerPodReplaced: true, crossNode: process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
 } finally {
