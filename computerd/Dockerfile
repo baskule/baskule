@@ -9,6 +9,7 @@ COPY computerd/src computerd/src
 RUN pnpm --filter baskule-computerd deploy --prod /out
 
 FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea
+RUN apt-get update && apt-get install -y --no-install-recommends iptables && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=dependencies /out ./

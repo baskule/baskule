@@ -1,4 +1,5 @@
 import http from "node:http";
+import { guardScript } from "./guard.ts";
 import { Duplex } from "node:stream";
 import type { Backend, Machine, MachineSpec, ExecStart, ExecHandle, ExecEvent } from "./backend.ts";
 
@@ -17,10 +18,33 @@ const key = encodeURIComponent;
 export class DockerBackend implements Backend {
   private readonly socketPath: string;
   private readonly network: string;
+  private guardPending: Promise<void> | undefined;
+  private readonly guardTimer: ReturnType<typeof setInterval>;
+  private verifyGuard(): Promise<void> {
+    return this.guardPending ??= this.reconcileGuard().finally(() => { this.guardPending = undefined; });
+  }
+  private async reconcileGuard(): Promise<void> {
+    const network = await this.request<{ Driver: string; IPAM: { Config: { Subnet: string }[] } }>("GET", `/networks/${key(this.network)}`);
+    if (network.Driver !== "bridge") throw new Error("Computer guard requires a Docker bridge network");
+    const script = guardScript(network.IPAM.Config.map(config => config.Subnet));
+    const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
+      Image: process.env.COMPUTER_GUARD_IMAGE || "baskule-computerd:local", User: "0:0",
+      Entrypoint: ["/bin/sh", "-ec", script],
+      HostConfig: { NetworkMode: "host", CapDrop: ["ALL"], CapAdd: ["NET_ADMIN"], SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true },
+    });
+    try {
+      await this.request("POST", `/containers/${helper.Id}/start`);
+      const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`);
+      if (result.StatusCode !== 0) throw new Error("Computer guard verification failed: requires Docker iptables DOCKER-USER (nftables-only Docker unsupported) and NET_ADMIN; refusing computer creation/start");
+    } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
+  }
   constructor(host = "unix:///var/run/docker.sock", network = "baskule-computers") {
     this.network = network;
+    this.guardTimer = setInterval(() => { void this.verifyGuard().catch(error => console.error(error)); }, 60_000);
+    this.guardTimer.unref();
     this.socketPath = host.replace(/^unix:\/\//, "");
     if (!this.socketPath.startsWith("/")) throw new Error("DOCKER_HOST must be an absolute Unix socket path");
+    void this.verifyGuard().catch(error => console.error(error));
   }
   private request<T>(method: string, path: string, body?: object): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -62,6 +86,7 @@ export class DockerBackend implements Backend {
       try { await this.request("POST", "/networks/create", { Name: this.network, Driver: "bridge", CheckDuplicate: true, Labels: spec.labels, Options: { "com.docker.network.bridge.enable_icc": "false" } }); }
       catch (e) { if (!(e instanceof DockerError && e.status === 409)) throw e; }
     }
+    await this.verifyGuard();
     const memory = /^(\d+(?:\.\d+)?)([KMGT]i?)?$/.exec(spec.memory);
     if (!memory) throw new Error(`Unsupported memory quantity: ${spec.memory}`);
     const unit = memory[2] ?? "";
@@ -78,6 +103,7 @@ export class DockerBackend implements Backend {
     return this.start(spec.name);
   }
   async start(name: string): Promise<Machine> {
+    await this.verifyGuard();
     await this.request("POST", `/containers/${key(name)}/start`);
     const machine = await this.get(name);
     if (machine?.phase !== "ready") throw new Error(`Container ${name} did not start`);
@@ -156,5 +182,5 @@ export class DockerBackend implements Backend {
     Object.assign(stream, { setNoDelay() {}, setKeepAlive() {}, setTimeout() {}, ref() {}, unref() {} });
     return stream;
   }
-  close() {}
+  close() { clearInterval(this.guardTimer); }
 }
