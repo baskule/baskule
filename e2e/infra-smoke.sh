@@ -54,7 +54,7 @@ test "$(grep -c '^WORKS ' "$EVIDENCE/probes.log")" -ge 11
 subnet=$(docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "$network")
 tag="baskule-computer-guard:$subnet"
 rules() {
-  for chain in DOCKER-USER INPUT; do
+  for chain in DOCKER-USER INPUT FORWARD; do
     iptables -w -S "$chain" | grep -F "$tag"
   done
 }
@@ -63,7 +63,7 @@ scripts/stack restart computerd
 request "$space" ensure >/dev/null
 rules > "$EVIDENCE/rules-after.txt"
 cmp "$EVIDENCE/rules-before.txt" "$EVIDENCE/rules-after.txt"
-for chain in DOCKER-USER INPUT; do
+for chain in DOCKER-USER INPUT FORWARD; do
   printf '%s before=%s after=%s\n' "$chain" "$(grep -c "^-A $chain " "$EVIDENCE/rules-before.txt")" "$(grep -c "^-A $chain " "$EVIDENCE/rules-after.txt")"
 done | tee "$EVIDENCE/counts.txt"
 iptables -w -D INPUT -s "$subnet" -m comment --comment "$tag" -j DROP
