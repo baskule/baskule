@@ -85,10 +85,13 @@ Gateway API CRDs, the controller, certificates, and DNS remain operator-owned.
 These commands follow Google's [zonal cluster guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/creating-a-zonal-cluster).
 This is the verified cloud path. The packaged chart was tested on GKE
 `1.36.4-gke.2046003` with Ubuntu containerd, Dataplane V2 and two Spot nodes with
-4 vCPU and 8 GiB each. Verification covered setup, fake streamed chat, computer
-execution, cross-node PVC persistence, network denial, celld takeover, public HTTP
-Ingress with incremental WebSocket delivery, recovery after pod replacement, and
-stable secrets after a Helm upgrade. TLS and snapshot restore remain unverified.
+4 vCPU and 8 GiB each. Across focused runs with matching production images,
+verification covered setup, fake chat, computer execution, stop/start and cross-node
+PVC persistence, direct and supervisor-mediated denial, GKE metadata, CDP, celld
+takeover, space/PVC deletion, public WebSocket and HTTP/SSE transport streaming past
+65 seconds, and same-version Helm upgrade with stable platform and storage secrets.
+A measured cold first computer start took 71.7 seconds against the 180-second
+readiness timeout. TLS and snapshot restore remain unverified.
 
 Prerequisites: a Google Cloud project with billing enabled, an authenticated Google
 Cloud CLI, `gke-gcloud-auth-plugin`, kubectl, and Helm 3.8 or newer (OCI support).
@@ -145,7 +148,10 @@ exposure:
 ```
 
 GKE reconciles its load balancer asynchronously. Wait for the Ingress address and
-healthy backends before opening the setup link. Google's
+healthy backends before opening the setup link. Frontend route propagation can
+continue after backends become healthy, returning transient Google Frontend HTML
+404 or 502 responses. Verify the setup JSON and successful sign-in before starting
+user journeys. Google's
 [Ingress configuration guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration)
 describes backend health checks, timeouts and optional reserved addresses.
 
@@ -351,7 +357,9 @@ The local check creates a kind cluster with Calico, Agent Sandbox and RustFS, us
 a 1-CPU/1-GiB computer so it can run on a two-CPU CI host. The cloud run uses the
 production computer defaults. The journey runs
 setup, fake chat, computer exec, stop/start persistence, pod replacement, network
-isolation, celld takeover, and a token-preserving Helm upgrade. kind's default local
+isolation, celld takeover, space/PVC deletion, and a credential-preserving Helm upgrade.
+Public checks exercise product WebSocket chat and a separate HTTP/SSE transport
+probe that reuses the fake LLM behind the same Ingress. kind's default local
 PVCs stay on one node. The cloud check additionally forces a computer onto another
 node with the same block volume. The upgrade step re-applies the same chart/images
 and asserts generated token stability and hook success. It does not prove an upgrade

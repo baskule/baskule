@@ -16,7 +16,43 @@ umask 077
 state=$(mktemp -d "$state_root/gke.XXXXXX")
 printf '%s' "$project" > "$state/project.private"
 printf '[]' > "$state/owned-links.private.json"
+printf '[]' > "$state/known-accounts.private.json"
+for previous in "$state_root"/gke.*; do
+  [[ -f $previous/project.private && $(cat "$previous/project.private") == "$project" && -f $previous/known-accounts.private.json ]] || continue
+  jq -e 'type == "array" and all(.[]; type == "string")' "$previous/known-accounts.private.json" >/dev/null
+  jq -s 'add | unique' "$state/known-accounts.private.json" "$previous/known-accounts.private.json" > "$state/accounts.next"
+  mv "$state/accounts.next" "$state/known-accounts.private.json"
+done
 gc() { gcloud --project="$project" --quiet "$@"; }
+# IAM cleanup is idempotent. Retry quota responses without hiding other failures.
+iam_gc() {
+  (cd e2e && node --input-type=module - "$project" "$@" <<'JS'
+import { execFileSync } from "node:child_process";
+import { expect } from "@playwright/test";
+const [project, ...args] = process.argv.slice(2);
+let output = "";
+await expect.poll(() => {
+  try {
+    output = execFileSync("bash", ["-c", 'gcloud "$@"', "gcloud", `--project=${project}`, "--quiet", ...args], { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
+    return true;
+  } catch (error) {
+    const message = String(error.stderr);
+    if (/Policy binding .* not found/.test(message)) return true;
+    if (/\b429\b|RESOURCE_EXHAUSTED/.test(message)) return false;
+    throw error;
+  }
+}, { timeout: 90_000, message: "IAM cleanup quota becomes available" }).toBe(true);
+process.stdout.write(output);
+JS
+  )
+}
+project_bindings() {
+  jq -r --slurpfile known "$state/known-accounts.private.json" '
+    .bindings[]? | .role as $role | .members[] as $member |
+    select($member | startswith("serviceAccount:") or startswith("deleted:serviceAccount:")) |
+    ($member | split("serviceAccount:")[1] | split("?")[0]) as $email |
+    select($known[0] | index($email)) | [$role, $member] | @tsv' "$state/iam.private.json"
+}
 owned_filter='def marked:
   (.labels // .resourceLabels // {}) as $labels |
   ($labels["baskule-run"] == $marker) or
@@ -66,11 +102,17 @@ audit() {
       remaining=$((remaining + count))
     done
   fi
+  if [[ $(jq length "$state/known-accounts.private.json") != 0 ]]; then
+    iam_gc projects get-iam-policy "$project" --format=json > "$state/iam.private.json" || return
+    count=$(project_bindings | wc -l) || return
+    printf 'iam-bindings: %s owned references (including deleted accounts)\n' "$count"
+    remaining=$((remaining + count))
+  fi
   (( remaining == 0 ))
 }
 sweep() {
   inventory || return
-  local name location kind flag email
+  local name location kind flag email role member
   while read -r name location; do gc container clusters delete "$name" --zone="$location" || true; done < <(jq -r --arg marker "${resource_scope:-$marker}" "$owned_filter"'.[] | select(marked) | [.name,.location] | @tsv' "$state/clusters.private.json")
   inventory || return
   # Delete dependants first. Never delete an unrelated resource on an audit guess.
@@ -87,8 +129,15 @@ sweep() {
     done < <(owned < "$state/$kind.private.json")
   done
   while read -r name; do gc artifacts repositories delete "$name" --location="$region" || true; done < <(owned < "$state/repositories.private.json" | cut -f1 | sed 's|.*/||')
+  if [[ $(jq length "$state/known-accounts.private.json") != 0 ]]; then
+    iam_gc projects get-iam-policy "$project" --format=json > "$state/iam.private.json" || return
+    project_bindings > "$state/iam-bindings.private.tsv" || return
+    while read -r role member; do
+      iam_gc projects remove-iam-policy-binding "$project" --member="$member" --role="$role" --condition=None >/dev/null || return
+    done < "$state/iam-bindings.private.tsv"
+  fi
+  # Do not delete an identity while removing its project grant is unconfirmed.
   while read -r email; do
-    gc projects remove-iam-policy-binding "$project" --member="serviceAccount:$email" --role=roles/container.defaultNodeServiceAccount --condition=None >/dev/null || true
     gc iam service-accounts delete "$email" || true
   done < <(jq -r --arg marker "${resource_scope:-$marker}" "$owned_filter"'.[] | select(marked) | .email' "$state/accounts.private.json")
   audit
@@ -191,6 +240,7 @@ fi
 # Nothing exists for this run before preflight succeeds. Never install a cleanup
 # trap with another run's ownership references from that global audit.
 resource_scope=$run_id
+jq -n --arg email "bk-${run_id#baskule-ephemeral-}@$project.iam.gserviceaccount.com" '[$email]' > "$state/known-accounts.private.json"
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
