@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { KubernetesOptions } from "./kubernetes.ts";
 // computerd configuration, from the environment. Secrets (LLM key, tokens) are read here and never logged.
 
@@ -10,6 +11,8 @@ export interface Config {
   kubernetes?: KubernetesOptions;
   dockerHost: string;
   network: string;
+  guardImage: string;
+  dns: string[];
   image: string;
   cpuLimit: string;
   memoryLimit: string;
@@ -45,6 +48,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (backend !== "docker" && backend !== "kubernetes") {
     throw new Error("COMPUTER_BACKEND must be docker or kubernetes");
   }
+  const dns = (env.COMPUTER_DNS ?? "1.1.1.1,8.8.8.8").split(",").map(value => value.trim());
+  if (!dns.length || dns.some(value => !isIP(value))) throw new Error("COMPUTER_DNS must contain comma-separated IP addresses");
   return {
     instance,
     port: num(env, "COMPUTERD_PORT", 47094),
@@ -64,6 +69,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     dockerHost: env.DOCKER_HOST ?? "unix:///var/run/docker.sock",
     network: env.COMPUTER_NETWORK ?? "baskule-computers",
+    guardImage: env.COMPUTER_GUARD_IMAGE ?? "baskule-computerd:local",
+    dns,
     image: env.COMPUTER_IMAGE ?? "baskule-computer:local",
     cpuLimit: env.COMPUTER_CPUS ?? "2",
     memoryLimit: env.COMPUTER_MEMORY ?? "3Gi",

@@ -1,4 +1,5 @@
 import http from "node:http";
+import { log } from "./log.ts";
 import { guardScript } from "./guard.ts";
 import { Duplex } from "node:stream";
 import type { Backend, Machine, MachineSpec, ExecStart, ExecHandle, ExecEvent } from "./backend.ts";
@@ -18,17 +19,32 @@ const key = encodeURIComponent;
 export class DockerBackend implements Backend {
   private readonly socketPath: string;
   private readonly network: string;
+  private readonly guardImage: string;
+  private readonly dns: string[];
   private guardPending: Promise<void> | undefined;
+  private guardVerified: { subnets: string[]; at: number } | undefined;
+  private async requireGuard(): Promise<void> {
+    if (this.guardPending) await this.guardPending;
+    if (!this.guardVerified) throw new Error("Computer guard has not been verified; refusing create/start");
+  }
   private readonly guardTimer: ReturnType<typeof setInterval>;
   private verifyGuard(): Promise<void> {
-    return this.guardPending ??= this.reconcileGuard().finally(() => { this.guardPending = undefined; });
+    return this.guardPending ??= this.reconcileGuard().catch(error => { this.guardVerified = undefined; throw error; }).finally(() => { this.guardPending = undefined; });
   }
   private async reconcileGuard(): Promise<void> {
+    this.guardVerified = undefined;
+    try { await this.request("GET", `/networks/${key(this.network)}`); }
+    catch (error) {
+      if (!(error instanceof DockerError && error.status === 404)) throw error;
+      try { await this.request("POST", "/networks/create", { Name: this.network, Driver: "bridge", CheckDuplicate: true,
+        Options: { "com.docker.network.bridge.enable_icc": "false" } }); }
+      catch (error) { if (!(error instanceof DockerError && error.status === 409)) throw error; }
+    }
     const network = await this.request<{ Driver: string; IPAM: { Config: { Subnet: string }[] } }>("GET", `/networks/${key(this.network)}`);
     if (network.Driver !== "bridge") throw new Error("Computer guard requires a Docker bridge network");
     const script = guardScript(network.IPAM.Config.map(config => config.Subnet));
     const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
-      Image: process.env.COMPUTER_GUARD_IMAGE || "baskule-computerd:local", User: "0:0",
+      Image: this.guardImage, User: "0:0",
       Entrypoint: ["/bin/sh", "-ec", script],
       HostConfig: { NetworkMode: "host", CapDrop: ["ALL"], CapAdd: ["NET_ADMIN"], SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true },
     });
@@ -36,15 +52,18 @@ export class DockerBackend implements Backend {
       await this.request("POST", `/containers/${helper.Id}/start`);
       const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`);
       if (result.StatusCode !== 0) throw new Error("Computer guard verification failed: requires Docker iptables DOCKER-USER (nftables-only Docker unsupported) and NET_ADMIN; refusing computer creation/start");
+      this.guardVerified = { subnets: network.IPAM.Config.map(config => config.Subnet), at: Date.now() };
     } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
   }
-  constructor(host = "unix:///var/run/docker.sock", network = "baskule-computers") {
+  constructor(host = "unix:///var/run/docker.sock", network = "baskule-computers", guardImage = "baskule-computerd:local", dns = ["1.1.1.1", "8.8.8.8"]) {
     this.network = network;
-    this.guardTimer = setInterval(() => { void this.verifyGuard().catch(error => console.error(error)); }, 60_000);
+    this.guardImage = guardImage;
+    this.dns = dns;
+    this.guardTimer = setInterval(() => { void this.verifyGuard().catch(error => log.error("Computer guard reconciliation failed", { error: String(error) })); }, 60_000);
     this.guardTimer.unref();
     this.socketPath = host.replace(/^unix:\/\//, "");
     if (!this.socketPath.startsWith("/")) throw new Error("DOCKER_HOST must be an absolute Unix socket path");
-    void this.verifyGuard().catch(error => console.error(error));
+    void this.verifyGuard().catch(error => log.error("Computer guard reconciliation failed", { error: String(error) }));
   }
   private request<T>(method: string, path: string, body?: object): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -80,13 +99,7 @@ export class DockerBackend implements Backend {
   }
   async create(spec: MachineSpec): Promise<Machine> {
     if (await this.get(spec.name)) return this.start(spec.name);
-    try { await this.request("GET", `/networks/${key(this.network)}`); }
-    catch (e) {
-      if (!(e instanceof DockerError && e.status === 404)) throw e;
-      try { await this.request("POST", "/networks/create", { Name: this.network, Driver: "bridge", CheckDuplicate: true, Labels: spec.labels, Options: { "com.docker.network.bridge.enable_icc": "false" } }); }
-      catch (e) { if (!(e instanceof DockerError && e.status === 409)) throw e; }
-    }
-    await this.verifyGuard();
+    await this.requireGuard();
     const memory = /^(\d+(?:\.\d+)?)([KMGT]i?)?$/.exec(spec.memory);
     if (!memory) throw new Error(`Unsupported memory quantity: ${spec.memory}`);
     const unit = memory[2] ?? "";
@@ -96,14 +109,14 @@ export class DockerBackend implements Backend {
       await this.request("POST", `/containers/create?name=${key(spec.name)}`, {
         Image: spec.image, Cmd: ["sleep", "infinity"], User: "1000:1000", Labels: { ...spec.annotations, ...spec.labels },
         HostConfig: { CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges"], PidsLimit: 1024,
-          NanoCpus: Math.round(Number(spec.cpus) * 1e9), Memory: Math.round(bytes), NetworkMode: this.network,
+          NanoCpus: Math.round(Number(spec.cpus) * 1e9), Memory: Math.round(bytes), NetworkMode: this.network, Dns: this.dns,
           Mounts: [{ Type: "volume", Source: spec.disk, Target: "/sandbox/space" }] },
       });
     } catch (e) { if (!(e instanceof DockerError && e.status === 409)) throw e; }
     return this.start(spec.name);
   }
   async start(name: string): Promise<Machine> {
-    await this.verifyGuard();
+    await this.requireGuard();
     await this.request("POST", `/containers/${key(name)}/start`);
     const machine = await this.get(name);
     if (machine?.phase !== "ready") throw new Error(`Container ${name} did not start`);
