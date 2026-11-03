@@ -255,7 +255,7 @@ require no data wipe. Baskule has never shipped peer-only migrations 070–072. 
 On the next upgrade, inspect migrations after 076 for peer tables, fences, indexes, and migration-head assumptions.
 Do not add empty migrations for retired layouts. Keep compatibility code within the declared release window.
 Ship forward migrations for schema and data-layout changes. A change that cannot be migrated needs the owner's
-explicit approval and documented deployment steps and affected data. Operating an installation requires its owner's authorization.
+explicit approval and documentation of affected data and deployment steps. Operating an installation requires its owner's authorization.
 
 ### Next-upgrade checklist
 
