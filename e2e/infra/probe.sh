@@ -20,14 +20,11 @@ probe_isolation() {
     name=${t%%=*}; ip=${t#*=}
     case $name in
       celld-*) ports="47091 47092 80" ;; rustfs) ports="47093 80" ;; edge) ports="47090 80" ;;
-      computerd) ports="47094 80" ;; openshell) ports="47095 47096 47097 2375 80" ;; *) ports=80 ;;
+      computerd) ports="47094 80" ;; web) ports="80 443" ;; computer) ports="8080 22" ;; host|bridge) ports="22 80 443 ${HOST_SERVICE_PORTS:-}" ;; *celld*) ports="47091 47092" ;; *rustfs*) ports=47093 ;; *computerd*) ports=47094 ;; *edge*) ports="80 443 47090" ;; *) ports=80 ;;
     esac
     for p in $ports; do list+=("$name|$ip|$p"); done
   done
   list+=(
-    "gateway-loopback|127.0.0.1|47095" "volumes-loopback|127.0.0.1|47096" "gateway-health-loopback|127.0.0.1|47097"
-    "gateway-localhost|localhost|47095" "gateway-ipv6-loopback|[::1]|47095" "dockerd-tcp|127.0.0.1|2375"
-    "compose-dns-computerd|baskule-computerd|47094" "compose-dns-openshell|baskule-openshell|47095"
     "compose-dns-celld|baskule-celld-a|47091" "compose-dns-rustfs|baskule-rustfs|47093"
     "computers-net-gateway|$cgw|80" "computers-net-gateway|$cgw|22" "stack-net-gateway|$ngw|80"
     "host-docker-bridge|172.17.0.1|80" "host-bridge|172.21.0.1|80" "lan-example|192.168.0.2|80" "lan-example-ssh|192.168.0.2|22"
@@ -35,8 +32,7 @@ probe_isolation() {
     "rfc1918-192|192.168.0.1|80" "tailnet-example-edge|100.64.0.2|47090" "tailnet-example|100.64.0.2|80"
     "tailnet-example-ssh|100.64.0.2|22" "tailscale-dns|100.100.100.100|80" "cgnat|100.64.0.1|80"
     "metadata|169.254.169.254|80" "metadata-dns|metadata.google.internal|80" "host-docker-internal|host.docker.internal|80"
-    "host-openshell-internal|host.openshell.internal|47095" "this-host-zero|0.0.0.0|80"
-    "rebind-lan|192.168.0.2.nip.io|80" "rebind-loopback|127.0.0.1.nip.io|47095" "rebind-tailnet-example|100.64.0.2.sslip.io|47090"
+    "rebind-lan|192.168.0.2.nip.io|80" "rebind-loopback|127.0.0.1.nip.io|47094" "rebind-tailnet-example|100.64.0.2.sslip.io|47090"
     "rebind-tailnet-example-80|100.64.0.2.sslip.io|80" "rebind-10|10.0.0.1.nip.io|80" "rebind-metadata|169.254.169.254.nip.io|80"
     "rebind-localtest|localtest.me|80" "ipv6-ula|[fd00::1]|80" "ipv4-mapped-lan|[::ffff:192.168.0.2]|80"
   )
@@ -64,6 +60,8 @@ w() { # w <name> <command...>
 
 probe_internet() {
   local tmp; tmp=$(mktemp -d)
+  w dns-resolution getent ahostsv4 example.com
+  w udp-dns python3 -c 'import socket,struct; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(10); q=struct.pack("!HHHHHH",1234,256,1,0,0,0)+b"\x07example\x03com\x00\x00\x01\x00\x01"; s.sendto(q,("1.1.1.1",53)); r=s.recv(4096); assert r[:2]==q[:2] and struct.unpack("!H",r[6:8])[0]>0'
   w https-example.com bash -c 'test "$(curl -s -m 20 -o /dev/null -w %{http_code} https://example.com/)" = 200'
   w https-wikipedia bash -c 'test "$(curl -s -m 20 -o /dev/null -w %{http_code} https://www.wikipedia.org/)" = 200'
   w http-port-80 bash -c 'curl -s -m 20 -o /dev/null -w %{http_code} http://example.com/ | grep -q "^[23]"'
