@@ -231,7 +231,7 @@ try {
     kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
     kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");
     kube("rollout", "status", `statefulset/${release}-celld`, "--timeout=180s");
-    writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), computerPodReplaced: true, crossNode: process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
+    writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), selection, computerPodReplaced: selection === "full", crossNode: selection === "full" && process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
   }
 } finally {
   if (client) { client.close(); await client.closed; }

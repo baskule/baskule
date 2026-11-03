@@ -21,26 +21,29 @@ owned_filter='def marked:
   (.labels // .resourceLabels // {}) as $labels |
   ($labels["baskule-run"] == $marker) or
   ($marker == "baskule-ephemeral" and $labels["baskule-ephemeral"] == "true") or
-  ([$labels["baskule-run"] // "", $labels["goog-k8s-cluster-name"] // "",
-    .description // "", .displayName // "",
-    (if .email then "" else (.name // "" | split("/") | last) end)] | any(contains($marker)));
+  ([$labels["baskule-run"], $labels["goog-k8s-cluster-name"], .description, .displayName,
+    (if .email then null else (.name // "" | split("/") | last) end)] | any(.[] | strings; contains($marker)));
 '
 kinds=(instances disks forwarding-rules target-http-proxies target-https-proxies url-maps backend-services target-pools health-checks http-health-checks https-health-checks addresses network-endpoint-groups firewall-rules)
 inventory() {
+  jq -e 'type == "array"' "$state/owned-links.private.json" >/dev/null || return
   gc container clusters list --format=json > "$state/clusters.private.json" || return
   gc artifacts repositories list --location=all --format=json > "$state/repositories.private.json" || return
   gc iam service-accounts list --format=json > "$state/accounts.private.json" || return
-  local kind
-  for kind in "${kinds[@]}"; do gc compute "$kind" list --format=json > "$state/$kind.private.json" || return; done
+  local kind inputs=("$state/clusters.private.json" "$state/repositories.private.json" "$state/accounts.private.json")
+  for kind in "${kinds[@]}"; do
+    gc compute "$kind" list --format=json > "$state/$kind.private.json" || return
+    inputs+=("$state/$kind.private.json")
+  done
   # Persist references before controllers remove their parent objects, so sweep
   # can still identify a leftover health check/NEG after an interrupted deletion.
   jq -s --arg marker "${resource_scope:-$marker}" --arg project "$project" --slurpfile saved "$state/owned-links.private.json" "$owned_filter"'
-    flatten | map(select(type == "object")) as $resources |
+    (if all(.[]; type == "array") then flatten else error("Resource inventory must contain arrays") end) as $resources |
     def expand($links): ($links + [$resources[] |
       select(marked or (.selfLink as $url | $links | index($url))) |
       .. | strings | select(contains("/projects/" + $project + "/"))]) | unique;
     $saved[0] | until(expand(.) == .; expand(.))
-  ' "$state/"*.private.json > "$state/links.next"
+  ' "${inputs[@]}" > "$state/links.next" || return
   mv "$state/links.next" "$state/owned-links.private.json"
 }
 owned() {
@@ -51,14 +54,14 @@ audit() {
   inventory || return
   local kind count remaining=0
   for kind in clusters repositories accounts "${kinds[@]}"; do
-    count=$(owned < "$state/$kind.private.json" | wc -l)
+    count=$(owned < "$state/$kind.private.json" | wc -l) || return
     printf '%s: %s owned resources\n' "$kind" "$count"
     remaining=$((remaining + count))
   done
   # Surface unlabelled LB/PVC orphans added since this run's baseline as well.
   if [[ -d $state/before ]]; then
     for kind in disks forwarding-rules addresses target-pools backend-services health-checks http-health-checks https-health-checks; do
-      count=$(jq -s '.[0] as $before | [.[1][] | . as $resource | select(any($before[]; .selfLink == $resource.selfLink) | not)] | length' "$state/before/$kind.private.json" "$state/$kind.private.json")
+      count=$(jq -s '.[0] as $before | [.[1][] | . as $resource | select(any($before[]; .selfLink == $resource.selfLink) | not)] | length' "$state/before/$kind.private.json" "$state/$kind.private.json") || return
       printf '%s: %s resources added since baseline\n' "$kind" "$count"
       remaining=$((remaining + count))
     done
@@ -95,6 +98,7 @@ case "${1:-}" in
     # Recover saved ownership from interrupted runs, confined to this project.
     for previous in "$state_root"/gke.*; do
       [[ -f $previous/project.private && $(cat "$previous/project.private") == "$project" && -f $previous/owned-links.private.json ]] || continue
+      jq -e 'type == "array"' "$previous/owned-links.private.json" >/dev/null || exit 1
       jq -s 'add | unique' "$state/owned-links.private.json" "$previous/owned-links.private.json" > "$state/links.next"
       mv "$state/links.next" "$state/owned-links.private.json"
     done

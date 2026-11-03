@@ -82,7 +82,12 @@ Gateway API CRDs, the controller, certificates, and DNS remain operator-owned.
 ## GKE Standard
 
 These commands follow Google's [zonal cluster guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/creating-a-zonal-cluster).
-The source verification runner exercises this path on a disposable zonal cluster.
+This is the verified cloud path. The packaged chart was tested on GKE
+`1.36.4-gke.2046003` with Ubuntu containerd, Dataplane V2 and two Spot nodes with
+4 vCPU and 8 GiB each. Verification covered setup, fake streamed chat, computer
+execution, cross-node PVC persistence, network denial, celld takeover, public HTTP
+Ingress with incremental WebSocket delivery, recovery after pod replacement, and
+stable secrets after a Helm upgrade. TLS and snapshot restore remain unverified.
 
 ```sh
 gcloud container clusters create baskule \
@@ -137,7 +142,8 @@ describes its enforced RuntimeDefault profile and admission constraints.
 
 Do not set `runtimeClassName: gvisor` by default. OpenShell installs a seccomp
 user-notification filter and uses Landlock inside the workload. GKE Sandbox uses gVisor
-and [does not support the Linux security modules that OpenShell needs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods).
+and [does not support Linux security modules](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods),
+so it does not provide the same Landlock isolation.
 Other RuntimeClasses require a successful computer journey before use.
 
 ## Scaleway Kapsule
@@ -162,8 +168,11 @@ CNI. Native containerd is the intended runtime; no gVisor installation is requir
 The gateway and each computer's workload/supervisor pods run without privileged mode,
 host networking, host PID namespaces, or a Docker socket. Workload and supervisor pods
 run as non-root, drop all capabilities, disable privilege escalation, and use
-RuntimeDefault seccomp. The workload needs nested seccomp user notification and
-Landlock. OpenShell fails startup when required isolation operations are unavailable.
+RuntimeDefault seccomp. The workload uses nested seccomp user notification and
+Landlock. Baskule currently selects Landlock's `best_effort` compatibility: unsupported
+kernels can start with degraded filesystem restrictions. A successful exec alone does
+not prove Landlock enforcement. Check OpenShell's isolation diagnostics when choosing
+another node image or runtime.
 Keep the namespace exclusive to Baskule and its trusted operators.
 
 The chart restricts port 47092 to celld pods and its deployment job. It restricts the
@@ -310,6 +319,7 @@ Only with the installation owner's authorization, authenticate gcloud and set
 explicitly; the script does not change the account or project configuration.
 It creates two Spot `e2-custom-4-8192` nodes in `europe-west1-b`, an ephemeral Artifact
 Registry repository, a disposable node service account, and a real GKE Ingress.
+It pushes the packaged chart to that OCI repository and installs it by version.
 It checks cross-node PD reattachment and incremental chat over the public load balancer.
 
 The script records node-hours under `.run/evidence/` and enforces a 90-minute lifetime
@@ -322,6 +332,8 @@ baseline. Run `e2e/kubernetes-ephemeral.sh sweep` after an interrupted host sess
 then `audit`. Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
 To repeat only public Ingress and Helm-upgrade verification after the core journey
 passes on the same chart and images, set `BASKULE_K8S_JOURNEY=ingress` for the run.
+Use `BASKULE_K8S_JOURNEY=failover` to prepare chat and file data, then repeat only
+celld takeover and the Helm upgrade.
 
 ## Limits
 
