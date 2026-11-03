@@ -45,7 +45,9 @@ async function ingressSession(signIn) {
     catch (error) {
       // GFE can still be converging after NEG registration. Refuse auth and
       // application errors; only retry load-balancer availability failures.
-      if (!/: 50[234] /.test(String(error))) throw error;
+      const message = String(error);
+      const edge404 = /: 404 /.test(message) && /<title>404 Not Found<\/title>/.test(message) && message.includes("The requested URL");
+      if (!/: 50[234] /.test(message) && !edge404) throw error;
       return false;
     }
   }, { timeout: 180_000 }).toBe(true);
@@ -58,7 +60,7 @@ async function checkIngress(publicUrl) {
   }, { timeout: 600_000 }).toBe(200);
   const externalApi = createApi({ urls: { loopback: publicUrl, front: publicUrl }, admin });
   await ingressSession(() => externalApi.adminSession());
-  const externalPerson = await externalApi.person("Ingress", randomBytes(4).toString("hex"));
+  const externalPerson = await ingressSession(() => externalApi.person("Ingress", randomBytes(4).toString("hex")));
   const externalClient = await rpc(externalPerson, externalApi.personalSpace(externalPerson));
   try {
     const externalProject = (await externalClient.ok("projects.ensureScratch", {})).projectId;
@@ -297,8 +299,8 @@ try {
       const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
       assert.ok(targets.some(target => target.type === "page"));
       pass("computer Chromium responds through the real CDP WebSocket tunnel");
-      if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
     }
+    if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
     // Keep the killed ordinal unavailable until another celld owns its cells.
     const victim = `${release}-celld-1`;
     const peer = async name => {

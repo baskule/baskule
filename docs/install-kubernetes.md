@@ -249,12 +249,16 @@ The generated platform and S3 Secrets use Helm lookup on upgrade and are retaine
 uninstall. Only generated RustFS keys are preserved; supplied external S3 values
 replace the managed S3 Secret's keys on upgrade. Moving buckets also requires copying
 bucket data before switching values; changing credentials alone does not move data.
+Pods read keys at startup. For a credentials-only change, run
+`kubectl -n baskule rollout restart statefulset/baskule-celld` after updating the
+Secret; restart RustFS too if its credentials changed.
 
 GitOps (`helm template`, ArgoCD) and client-side dry runs cannot use server lookup:
 they generate new random values on each render. **Set both `existingSecret` and
 `s3.existingSecret` for those workflows**, including evaluation RustFS. Manage the
 three platform tokens and two S3 keys outside Helm. Also set `openshell.server.credentialStorage.existingSecret` to a pre-created
 Secret containing `key-encryption-key`, as documented by the vendored chart.
+Helm CLI installation is verified; GitOps controller hook ordering is not.
 If you supply `existingSecret`, Helm prints the setup URL template and the
 Secret name instead of reading its token into the notes.
 
@@ -273,7 +277,7 @@ an atomic rollback of bucket state: `helm rollback` alone cannot undo a deployed
 
 ```sh
 helm upgrade baskule oci://ghcr.io/baskule/charts/baskule --version X \
-  --namespace baskule --values values.yaml --set replicas=3 --wait --timeout 10m
+  --namespace baskule --reuse-values --values values.yaml --set replicas=3 --wait --timeout 10m
 ```
 
 Use Helm for scaling so the reload target list tracks the replica count. Persist that
@@ -372,8 +376,10 @@ baseline. Run `e2e/kubernetes-ephemeral.sh sweep` after an interrupted host sess
 then `audit`. Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
 To repeat only public Ingress and Helm-upgrade verification after the core journey
 passes on the same chart and images, set `BASKULE_K8S_JOURNEY=ingress` for the run.
-Use `BASKULE_K8S_JOURNEY=failover` to prepare chat and file data, then repeat only
-celld takeover and the Helm upgrade.
+Use `BASKULE_K8S_JOURNEY=failover` after reschedule/isolation checks pass on the
+same images. It prepares chat and file data, repeats configured public exposure,
+celld takeover, space/PVC deletion and the Helm upgrade, and skips the earlier
+reschedule/isolation/CDP selection.
 
 ## Limits
 
