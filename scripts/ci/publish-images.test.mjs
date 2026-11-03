@@ -60,6 +60,7 @@ else if(status === 200) console.log(JSON.stringify(manifest)); else process.exit
 set -euo pipefail
 echo "$*" >> "$MOCK_WORK/commands"
 case $1 in
+  login) cat >/dev/null ;;
   save) name=\${2##*/}; name=\${name%%:*}; gzip -dc "$MOCK_WORK/$name.tar.gz" ;;
   push)
     count=$(cat "$MOCK_WORK/count" 2>/dev/null || echo 0); count=$((count+1)); echo "$count" > "$MOCK_WORK/count"
@@ -71,6 +72,7 @@ esac
   writeFileSync(resolve(work, "helm"), `#!/bin/bash
 set -euo pipefail
 echo "helm $*" >> "$MOCK_WORK/commands"
+if [[ $1 == registry && \${2:-} == login ]]; then cat >/dev/null; fi
 if [[ $1 == push ]]; then
   if [[ $MOCK_SCENARIO == chart-failure && ! -f $MOCK_WORK/failed ]]; then touch "$MOCK_WORK/failed"; exit 1; fi
   jq --arg ref '${chart}' --slurpfile expected "$MOCK_WORK/expected.json" '.[$ref]={layers:[{mediaType:"application/vnd.cncf.helm.chart.content.v1.tar+gzip",digest:$expected[0][$ref]}]}' "$MOCK_WORK/remote.json" > "$MOCK_WORK/next"
