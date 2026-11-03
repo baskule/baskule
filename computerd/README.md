@@ -140,3 +140,10 @@ existing default workspace and avoid workspace provisioning changes.
 
 Create → Ready 1.0–2.3 s (image local); exec warm 25–110 ms; stop 0.3–15 s; start + first exec 1.0–1.7 s; Playwright
 MCP initialize + tools/list 2.5–4.5 s cold; delete (sandbox + volume) 0.7–0.8 s; CDP `Target.getTargets` 0.35 s including the browser start.
+
+On Kubernetes, set `OPENSHELL_COMPUTE_DRIVER=kubernetes`. The OpenShell driver owns
+the per-space workspace PVC at `/sandbox` and preserves it through stop/start and
+pod replacement. computerd does not call the Docker volume helper on this path.
+Deletion confirms Sandbox disappearance; `volumeDeleted` stays false because this
+service does not observe the driver's asynchronous PVC/CSI deletion.
+See [the Kubernetes installation guide](../docs/install-kubernetes.md).

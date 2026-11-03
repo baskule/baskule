@@ -1,0 +1,6 @@
+dependencies:
+- name: helm-chart
+  repository: file://../../../vendor/openshell/deploy/helm/openshell
+  version: 0.0.0
+digest: sha256:c7bca033e13ed36d83edbc864f11fbe0b776cd21896d45e962ee97777557f351
+generated: "2026-11-03T06:50:25.580883936+01:00"

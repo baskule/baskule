@@ -1,5 +1,7 @@
 # Install a Baskule cluster
 
+[Kubernetes is the recommended cluster installation](install-kubernetes.md).
+
 A cluster runs platform nodes on several machines and keeps their cell state in one external S3-compatible bucket.
 The computers run on one separate host. Use the [single-machine guide](install.md) for a smaller installation.
 All machines need Linux x86-64 and Docker Engine 25 or newer with Compose 2.24.4 or newer. The setup commands also use OpenSSL.

@@ -2,7 +2,7 @@
 
 Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. Start with 4 CPU cores,
 24 GiB RAM, and 80 GB free disk. OpenShell runs a privileged container with its own Docker daemon.
-For several machines, use the [cluster guide](install-cluster.md).
+From the next release, several machines can use the [recommended Kubernetes installation](install-kubernetes.md).
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml

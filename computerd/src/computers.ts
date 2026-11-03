@@ -186,7 +186,7 @@ export class Computers {
     let started = false;
     let info = await this.getSandbox(s.sandbox);
     if (!info) {
-      await traced("computer.volume", {}, () => this.ensureVolume(s.volume));
+      if (this.cfg.computeDriver === "docker") await traced("computer.volume", {}, () => this.ensureVolume(s.volume));
       try {
         info = await traced("computer.create", {}, () => this.gw.create({
           name: s.sandbox,
@@ -258,9 +258,9 @@ export class Computers {
       template: {
         image: this.cfg.image,
         resources: struct({ limits: { cpu: this.cfg.cpuLimit, memory: this.cfg.memoryLimit } }),
-        driver_config: struct({
+        ...(this.cfg.computeDriver === "docker" ? { driver_config: struct({
           docker: { mounts: [{ type: "volume", source: s.volume, target: `${this.cfg.sandboxRoot}/space`, read_only: false }] },
-        }),
+        }) } : {}),
         labels: this.labels(),
       },
       policy: computerPolicy(),
@@ -350,6 +350,12 @@ export class Computers {
       }
     }
     let volumeDeleted = false;
+    // The Kubernetes driver owns the PVC lifecycle. Sandbox removal does not confirm
+    // asynchronous PVC/CSI deletion; report only what this service observed.
+    if (this.cfg.computeDriver === "kubernetes") {
+      this.states.delete(spaceId);
+      return { spaceId, sandbox: s.sandbox, sandboxDeleted: existed, volumeDeleted: false };
+    }
     const end = Date.now() + 60_000;
     for (;;) {
       const res = await fetch(`${this.cfg.volumesUrl}/volumes/${s.volume}`, {

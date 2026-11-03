@@ -93,3 +93,13 @@ network subnet. Rootless Docker can hide client addresses and needs outer-proxy 
 Setup unit checks cover invalid tokens, validation, SSO, duplicate and concurrent submissions, rate limiting, capacity
 eviction, and success when automatic sign-in fails. Jobs checks cover consumer secret scopes, idempotence, adding
 missing keys, explicit overrides, and conditional setup-link output. Use `scripts/check plan` for focused selections.
+
+## Kubernetes installation
+
+`scripts/check kubernetes` uses kind, Calico and the fake model. It installs the chart
+with RustFS and checks admin setup, streamed chat, computer execution, PVC persistence,
+network isolation, celld takeover and stable tokens after a Helm upgrade. The release
+factory runs it in a separate `install-kubernetes` job with the retained image archives.
+Unlike Compose, Kubernetes pulls the computer, supervisor and sandbox images directly.
+See [the Kubernetes guide](install-kubernetes.md#verify-a-source-change) for local and
+owner-authorized ephemeral GKE Standard runs.

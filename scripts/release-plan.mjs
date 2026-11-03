@@ -1,5 +1,5 @@
 // A full component loop covers its named selections. Unknown commands always survive.
-export const releaseCoverage = ["worker", "space", "agent", "computerd", "features", "web", "desktop"];
+export const releaseCoverage = ["worker", "space", "agent", "computerd", "features", "web", "desktop", "kubernetes"];
 export function remainingFeatureChecks(feature, covered = []) {
   return (feature.checks ?? []).flatMap((command) => {
     if (command === "desktop/check.sh" && covered.includes("desktop")) return [];

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: baskule
+description: Baskule clustered platform and Kubernetes computers
+type: application
+version: 0.0.0
+appVersion: "0.0.0"
+dependencies:
+  - name: helm-chart
+    alias: openshell
+    version: 0.0.0
+    repository: file://../../../vendor/openshell/deploy/helm/openshell

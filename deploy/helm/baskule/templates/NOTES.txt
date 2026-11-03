@@ -1,0 +1,16 @@
+Baskule: {{ .Values.publicUrl }}
+{{- if .Values.existingSecret }}
+Read SETUP_TOKEN from Secret {{ .Values.existingSecret }}, then open:
+{{ .Values.publicUrl }}/setup#token=<SETUP_TOKEN>
+{{- else }}
+{{- $data := include "baskule.secretData" . | fromYaml }}
+Create the first admin (keep this link private):
+{{ .Values.publicUrl }}/setup#token={{ index $data "SETUP_TOKEN" | b64dec }}
+{{- end }}
+{{- if eq .Values.exposure.mode "none" }}
+Forward the service before opening that link:
+kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }} 47090:80
+{{- end }}
+{{- if .Values.rustfs.enabled }}
+RustFS is a single-node evaluation store. Use managed S3-compatible storage for production.
+{{- end }}

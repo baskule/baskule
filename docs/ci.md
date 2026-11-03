@@ -53,8 +53,9 @@ App installers remain GitHub release assets. Settings → Desktop app derives it
 
 Verified image archives and checksums pass to a separate publish job after backend, Linux app, and requested native
 checks pass. Only that job holds `packages: write`. Tag pushes or manual runs with `verify_only=false` publish the
-three host images: celld, computerd, and the gateway. Computer, supervisor, and sandbox images stay bundled in the
-gateway. Publication refuses existing version tags and fails on registry authentication or transport errors.
+the seven images and the OCI chart listed below. The Compose gateway still bundles the computer, supervisor, and
+sandbox images; Kubernetes pulls them from GHCR. Publication skips existing tags whose contents match, refuses
+differing ones, and fails on registry authentication or transport errors.
 Verification-only runs never log in or push, including manual runs on tag refs.
 
 The native workflow compiles Android arm64, an iOS simulator app, macOS arm64/x64 and Windows x64. Windows packaging executes the existing native-load and server-archive probes. iOS includes a simulator install/launch smoke. Android does not add an emulator lane. Optional upstream Windows package diagnostics remain manual.
@@ -82,7 +83,31 @@ Use a run's job logs and artifacts to inspect failures, checksums, package statu
 ## First image release
 
 The owner must enable Actions package publishing and allow `GITHUB_TOKEN` to write packages for this repository.
-After the first publishing run, make the three host-image GHCR packages public and verify anonymous pulls. The workflow
-links their source to this repository. Check the draft's Compose assets and image tags before publishing the draft.
+After the first publishing run, make these GHCR packages public once in each
+package's settings: `baskule-celld`, `baskule-computerd`, `baskule-openshell-gateway`,
+`baskule-openshell-kubernetes`, `baskule-computer`, `baskule-openshell-supervisor`,
+`baskule-openshell-sandbox`, and the OCI chart `charts/baskule`. The workflow links
+their source to this repository. The separate `public-packages` job checks anonymous
+pulls and can be rerun after changing visibility **within 24 hours**, while the
+backend Actions artifact is retained; it never republishes artifacts.
+A visibility failure does not block draft creation. Do not publish the draft until
+this job passes. To check downloaded backend artifacts manually, run
+`bash scripts/ci/check-public-images.sh artifacts/backend`. Check the draft's Compose assets and image tags before publishing the draft.
 Version tags identify one release; do not replace a published tag with different image contents. A verification-only
 run checks builds and local behavior without proving GHCR visibility or anonymous downloads.
+
+After that 24-hour window, download the draft release's
+`backend-<v>-metadata.tar.gz` and release `SHA256SUMS` with an authenticated account.
+Verify the metadata archive against that checksum list, then extract it to a private
+scratch directory. It contains `images.txt` and the chart, so run the same
+`check-public-images.sh` command against that extracted directory. No image archives
+or republishing are needed for this visibility check.
+
+`images.txt` records each saved image's config digest, independent of Docker's image
+store (`docker inspect .Id` can be an OCI index digest). Publication follows the
+linux/amd64 manifest in an index, skips existing matching config/chart-layer digests,
+and refuses differing artifacts before pushing. Rerun a failed publish job to resume
+a partial push without replacing published contents.
+Resume within the backend artifact's 24-hour retention. A later factory run rebuilds
+images with different config digests, so publication of that version is refused
+and the release needs a new version.

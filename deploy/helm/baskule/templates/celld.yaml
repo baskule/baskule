@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-peers
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: celld}
+  ports:
+    - {name: peer, port: 47092}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  {{- with .Values.exposure.serviceAnnotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: celld}
+  ports:
+    - {name: http, port: 80, targetPort: 47091}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-celld
+  labels:
+    {{- include "baskule.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-peers
+  replicas: {{ .Values.replicas }}
+  podManagementPolicy: Parallel
+  updateStrategy: {type: RollingUpdate}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: celld}
+  template:
+    metadata:
+      labels:
+        {{- include "baskule.labels" . | nindent 8 }}
+        app.kubernetes.io/component: celld
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.celld.terminationGracePeriodSeconds }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: celld}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: celld
+          image: {{ include "baskule.image" (dict "root" . "name" "celld") }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          args: ["--listen", "0.0.0.0:47091", "--internal-listen", "0.0.0.0:47092", "--advertise", "$(CELLD_NODE).{{ .Release.Name }}-peers.{{ .Release.Namespace }}.svc.cluster.local:47092"]
+          env:
+            {{- include "baskule.s3Env" . | nindent 12 }}
+            - name: CELLD_NODE
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - {name: CELLD_V8_HEAP_LIMIT_MB, value: {{ .Values.celld.heapLimitMb | quote }}}
+            - {name: CELLD_FETCH_TIMEOUT_S, value: "3600"}
+            - {name: CELLD_MAX_ASSET_FILE_BYTES, value: "536870912"}
+            - {name: CELLD_TRUST_FORWARDED_HEADERS, value: "1"}
+          ports:
+            - {name: http, containerPort: 47091}
+            - {name: peer, containerPort: 47092}
+          readinessProbe:
+            httpGet: {path: /.well-known/celld/health, port: http}
+            periodSeconds: 2
+          livenessProbe:
+            timeoutSeconds: 3
+            httpGet: {path: /.well-known/celld/health, port: http}
+            periodSeconds: 10
+          startupProbe:
+            httpGet: {path: /.well-known/celld/health, port: http}
+            periodSeconds: 2
+            failureThreshold: 90
+          resources: {{ toYaml .Values.celld.resources | nindent 12 }}
+          volumeMounts:
+            - {name: cache, mountPath: /var/lib/celld}
+      volumes:
+        - {name: cache, emptyDir: {}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-celld
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: celld}

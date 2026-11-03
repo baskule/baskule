@@ -1,0 +1,128 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "publicUrl": {"type": "string", "pattern": "^https?://[^/?#@]+$"},
+    "replicas": {"type": "integer", "minimum": 1},
+    "global": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"registry": {"type": "string"}, "tag": {"type": "string"}, "pullPolicy": {"type": "string"}}
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"]
+      }
+    },
+    "existingSecret": {"type": "string"},
+    "authConfig": {"type": "string"},
+    "s3": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {"type": "string"},
+        "region": {"type": "string"},
+        "bucket": {"type": "string"},
+        "existingSecret": {"type": "string"},
+        "accessKeyId": {"type": "string"},
+        "secretAccessKey": {"type": "string"}
+      }
+    },
+    "celld": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {"type": "object", "additionalProperties": {"type": ["string", "number"]}},
+            "limits": {"type": "object", "additionalProperties": {"type": ["string", "number"]}}
+          }
+        },
+        "heapLimitMb": {"type": "integer"},
+        "terminationGracePeriodSeconds": {"type": "integer", "minimum": 40}
+      }
+    },
+    "computerd": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {"type": "object", "additionalProperties": {"type": ["string", "number"]}},
+            "limits": {"type": "object", "additionalProperties": {"type": ["string", "number"]}}
+          }
+        }
+      }
+    },
+    "computer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"cpu": {"type": ["string", "number"]}, "memory": {"type": "string"}}
+    },
+    "exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"enum": ["none", "ingress", "gateway"]},
+        "serviceAnnotations": {"type": "object", "additionalProperties": {"type": "string"}},
+        "ingress": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "className": {"type": "string"},
+            "annotations": {"type": "object", "additionalProperties": {"type": "string"}},
+            "tls": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {"hosts": {"type": "array", "items": {"type": "string"}}, "secretName": {"type": "string"}}
+              }
+            }
+          }
+        },
+        "gateway": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"name": {"type": "string"}, "namespace": {"type": "string"}, "sectionName": {"type": "string"}}
+        }
+      }
+    },
+    "networkPolicy": {"type": "object", "additionalProperties": false, "properties": {"enabled": {"type": "boolean"}}},
+    "rustfs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "image": {"type": "string"},
+        "storage": {"type": "string"},
+        "storageClass": {"type": "string"},
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": {"type": "object", "additionalProperties": {"type": ["string", "number"]}},
+            "limits": {"type": "object", "additionalProperties": {"type": ["string", "number"]}}
+          }
+        }
+      }
+    },
+    "openshell": {"type": "object"}
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "allOf": [{"if": {"properties": {"exposure": {"properties": {"mode": {"enum": ["ingress", "gateway"]}}}}}, "then": {"properties": {"publicUrl": {"not": {"pattern": "^https?://([lL][oO][cC][aA][lL][hH][oO][sS][tT]|0\\.0\\.0\\.0|127\\.[0-9.]+|\\[::(1)?\\])(:|$)"}}}}}]
+}

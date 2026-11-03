@@ -20,3 +20,4 @@ Front matter is JSON-valued YAML: `paths`, `journeys`, `profile`, optional `chec
 - [Deployed edge, fleet and failover](deployed-seams.md)
 - [Spaces and membership](spaces.md)
 - [Personal settings](personal-settings.md)
+- [Kubernetes installation](kubernetes.md)

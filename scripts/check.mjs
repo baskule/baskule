@@ -42,6 +42,7 @@ Component loops (local, no live stack; wait for a host lock, then check ports)
   agent     embedded agent runtime through the SpaceCell, real computerd + shared OpenShell gateway           ~2 min
   features  real platform app (wpf) + real computers: queue/steer, inbox, snooze, questions, delegation,
             webhook schedules, MCP app                                                                      ~6 min
+  kubernetes disposable kind cluster: Helm install, RustFS, fake chat, computers, PVCs and celld takeover
   computerd computerd against the shared OpenShell gateway: exec, kill, files, CDP, idle, delete         ~40 s
   web       hosted web client: unit tests, (build), mock stack page checks + screenshots                    ~1.5-3.5 min
   <loop>:<checks>   only some checks of worker, space, agent or features, e.g. worker:transcriptions
@@ -202,7 +203,9 @@ function plan(files, base) {
   if (has(/^openshell\/dev-down\.sh$/)) add("stack: shared gateway teardown", "node", ["--test", "scripts/stack.test.mjs"], ".");
   if (has(/^deploy\/(?:docker-compose|cluster\/|\.env\.example)|^scripts\/check-compose\.sh$/)) add("deploy: compose config", "bash", ["scripts/check-compose.sh"], ".");
   if (has(/^deploy\/celld\//)) add("deploy: startup jobs", "node", ["--test", "deploy/celld/jobs.test.mjs", "deploy/celld/sync-plugins.test.mjs"], ".");
-  if (has(/^scripts\/ci\/publish-images/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
+  if (has(/^deploy\/helm\/|^scripts\/helm-package\.sh$/)) add("Kubernetes: chart rendering", "bash", ["e2e/kubernetes-local.sh", "lint"], ".");
+  if (has(/^scripts\/ci\/(publish-images|check-public-images|image-config-id)|^scripts\/release-backend\.sh$/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
+  if (has(/^e2e\/kubernetes-ephemeral\.sh$|^scripts\/ci\/kubernetes-ephemeral\.test\.mjs$/)) add("Kubernetes: ephemeral cleanup guard", "node", ["--test", "scripts/ci/kubernetes-ephemeral.test.mjs"], ".");
   if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
   if (has(/^(deploy|openshell|computer)\//)) tags.add("infra");
   const docs = files.filter((f) => /\.md$/.test(f)).filter((f) => existsSync(join(ROOT, f)) && !f.startsWith("vendor/") && !f.startsWith("app/"));
@@ -504,6 +507,8 @@ for (const target of targets) {
     if (!p.steps.length) console.log("nothing to check for these changes");
     for (const s of p.steps) run(s);
     if (p.loops.length || p.tags.length) console.log(`\n${nextHint(p)}`);
+  } else if (target === "kubernetes") {
+    run({ label: "Kubernetes installation", cmd: "bash", args: ["e2e/kubernetes-local.sh"], cwd: "." });
   } else if (target.startsWith("feature:")) {
     runFeature(target.slice(8));
   } else if (target === "journey" || target.startsWith("journey:")) {
@@ -538,6 +543,7 @@ for (const target of targets) {
     await runLanes([["worker", "space", "web"], ["computerd", "agent", "features"]]);
     if (target === "release") {
       if (results.slice(before).some((r) => !r.ok)) break;
+      run({ label: "Kubernetes installation", cmd: "bash", args: ["e2e/kubernetes-local.sh"], cwd: "." });
       for (const feature of releaseFeatures(features())) {
         try { runFeature(feature.name, releaseCoverage); }
         finally {
