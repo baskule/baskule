@@ -1,4 +1,3 @@
-import * as Redacted from "effect/Redacted";
 // baskule: BASKULE_AUTH_MODE=front.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthAccessReadScope, AuthSettingsWriteScope } from "@t3tools/contracts";
@@ -6,6 +5,7 @@ import { expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";

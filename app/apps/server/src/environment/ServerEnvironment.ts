@@ -267,7 +267,6 @@ export const make = Effect.gen(function* () {
       projectCloneTracking: true,
       projectOrganization: policy?.methods.has(W.projectsMutate) ?? true, // baskule: follow hosted policy.
       ignoredFileListing: true,
-      npmReleaseLookup: true,
       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
       ...(serverInstallation === null ? {} : { serverInstallation }),
       ...(serverSelfUpdate === "boot-service" || desktopAppUpdate

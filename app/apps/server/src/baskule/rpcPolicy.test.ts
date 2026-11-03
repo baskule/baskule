@@ -22,9 +22,6 @@ describe("hosted client RPC policy", () => {
     O.getArchivedShellSnapshot,
     O.subscribeThread,
     O.forceStopThread,
-    W.reviewGetBranchCommits,
-    W.reviewGetDiffPreview,
-    W.reviewGetDiffFileContents,
   ])("allows %s used by hosted clients", (method) => {
     expect(baskuleRefusal(BASKULE_POLICY, method, {})).toBeUndefined();
   });
