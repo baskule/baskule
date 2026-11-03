@@ -406,6 +406,7 @@ export BASKULE_K8S_VALUES="$state/values.private.yaml"
 cat > "$BASKULE_K8S_VALUES" <<YAML
 rustfs: {storageClass: baskule-ephemeral}
 computers:
+  dnsServerCidrs: [169.254.20.10/32]
   prePull: {enabled: false}
   storageClass: baskule-ephemeral
 exposure:
