@@ -16,6 +16,8 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   let version = 1;
   let watches = 0;
   let eof = false;
+  let protocol = 'v5.channel.k8s.io';
+  let upgrades = 0;
   const deletes: string[] = [];
   const server = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, 'Bearer test');
@@ -68,11 +70,13 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     if (url.searchParams.has('fieldSelector') || url.searchParams.has('labelSelector')) { send({ metadata: { resourceVersion: String(version) }, items: value ? (kind === 'pod' && terminatingFirst ? [{ ...value, metadata: { name: 'old', deletionTimestamp: 'now' } }, value] : [value]) : [] }); return; }
     send(value ?? {}, value ? 200 : 404);
   });
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, handleProtocols: (protocols, req) => { if (req.url?.includes('/portforward')) return 'v4.channel.k8s.io'; assert.ok(protocols.has(protocol)); return protocol; } });
   server.on('upgrade', (req, socket, head) => wss.handleUpgrade(req, socket, head, ws => {
     const url = new URL(req.url!, 'http://test');
     if (url.pathname.endsWith('/exec')) {
-      assert.equal(ws.protocol, 'v5.channel.k8s.io');
+      upgrades++;
+      assert.equal(req.headers['sec-websocket-protocol'], 'v5.channel.k8s.io,v4.channel.k8s.io');
+      assert.equal(ws.protocol, protocol);
       assert.deepEqual(url.searchParams.getAll('command'), ['cat']);
       ws.on('message', raw => {
         const b = Buffer.from(raw as Buffer);
@@ -106,6 +110,17 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   await exec.writeStdin(Buffer.from('hello')); exec.endStdin();
   const events = []; for await (const e of exec.events) events.push(e);
   assert.deepEqual(events, [{ stdout: Buffer.from('hello') }, { stderr: Buffer.from('stderr') }, { exit: 7 }]); assert.ok(eof);
+  await t.test('negotiates v4 in one handshake and reports unsupported EOF', async () => {
+    protocol = 'v4.channel.k8s.io';
+    const before = upgrades;
+    const oldExec = backend.exec({ machine: 'machine', command: ['cat'] });
+    const consume = async () => { for await (const event of oldExec.events) void event; };
+    const rejected = assert.rejects(consume(), /v4 cannot close stdin/);
+    oldExec.endStdin();
+    await rejected;
+    assert.equal(upgrades - before, 1);
+    protocol = 'v5.channel.k8s.io';
+  });
   const stream = backend.connect('machine', 9222);
   const received = once(stream, 'data'); stream.write(Buffer.from('roundtrip'));
   assert.equal((await received)[0].toString(), 'roundtrip'); stream.destroy();
