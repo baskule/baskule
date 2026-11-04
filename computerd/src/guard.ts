@@ -28,6 +28,7 @@ export function guardScript(subnets: string[], networkId: string, bridge = `br-$
     lines.push(`${tool} -w -S DOCKER-USER >/dev/null`, `${tool} -w -S ${chain} >/dev/null 2>&1 || ${tool} -w -N ${chain}`);
     // Restore commits the replacement chain in one transaction, preserving other chains.
     lines.push(`${tool}-restore -w --noflush <<'GUARD'`, "*filter", `-F ${chain}`,
+      ...(family === 6 ? [133, 134, 135, 136].map(type => `-A ${chain} -p ipv6-icmp --icmpv6-type ${type} -j ACCEPT`) : []),
       `-A ${chain} -m addrtype --dst-type LOCAL -j DROP`,
       ...(family === 4 ? privateRanges : ["fc00::/7", "fe80::/10", "::1/128", "ff00::/8"]).map(range => `-A ${chain} -d ${range} -j DROP`), "COMMIT", "GUARD");
     for (const parent of ["DOCKER-USER", "FORWARD", "INPUT"]) {

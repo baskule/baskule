@@ -31,3 +31,8 @@ test("subnet sets own stable distinct chains and ordered leading jumps", () => {
     assert.ok(script.includes(`awk -v rule='-A ${parent} -s ${a} -i br-abcdef123456 -j `)); // later duplicates removed after insertion
   }
 });
+
+test("IPv6 neighbour discovery precedes host drops", () => {
+ const script = guardScript(["fd00::/64"]);
+ for (const type of [133,134,135,136]) assert.ok(script.indexOf(`--icmpv6-type ${type} -j ACCEPT`) < script.indexOf("--dst-type LOCAL"));
+});
