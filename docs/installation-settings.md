@@ -49,12 +49,12 @@ answers finish. Chats using a model no longer offered then run on the new defaul
    `docker compose logs setup` to create the first admin. SSO-only installations omit the password.
 2. Password login is the default. For SSO, put your authentication JSON in the single-quoted `AUTH_CONFIG` value
    in `.env`. For example: `AUTH_CONFIG='{"version":1,"password":true}'`. The source-build override can instead
-   mount `deploy/auth.json`, with `AUTH_CONFIG_FILE` selecting another file. Cluster deploy jobs can also read optional `config/auth.json`; it overrides `AUTH_CONFIG`.
+   mount `deploy/auth.json`, with `AUTH_CONFIG_FILE` selecting another file. Kubernetes uses the chart's `authConfig` value; see the [Kubernetes guide](install-kubernetes.md).
 3. Sign in as the initial admin and configure **Admin → AI → Models**. Without an AI connection, administration and
    existing data remain accessible; chat generation requires a model and either a provider key or a keyless provider.
 4. Invite people from the admin area. The setup token cannot create another admin after setup.
 
-Run `docker compose up -d` after authentication changes, or `docker compose run --rm deploy` for a cluster. The server rejects invalid files instead of silently
+Run `docker compose up -d` after Compose authentication changes, or `helm upgrade` with the updated values for Kubernetes. The server rejects invalid files instead of silently
 falling back to password or anonymous access. Keep stable provider IDs: accounts are bound to those IDs.
 Switching between authenticated and anonymous modes currently has no migration; it needs the owner's explicit
 approval and documented deployment steps before any data is removed.

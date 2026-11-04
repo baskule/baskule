@@ -32,20 +32,13 @@ The driver excludes CI's packaging variable `BASKULE_VERSION` from Docker comman
 Compose file selects the version. Retagged host images keep their image IDs; the gateway's changed
 `BASKULE_VERSION` must still recreate it and finish image cleanup before assertions run.
 
-The cluster simulation gives each role its own network namespace on an isolated Docker LAN. Test-only Compose
-network overrides model machine interfaces and avoid the host firewall's bridge-to-host rules. The release node
-role uses private host bindings; the override gives each simulated node its own private interface instead. The
-computers' gateway stays on its separate private bridge. The S3 bucket and fake model are independent fixtures.
-Checks cover two node leases and signed peer probes, chat and computer execution through the edge, and recovery
-after killing the owner node. This proves local role wiring, not network behavior or firewall rules across physical machines.
-
 The driver removes its own containers, networks, and volumes in a `finally` block. It never uses `scripts/stack`
 or the shared development gateway. Evidence, logs, the backup, and private generated configuration stay under
 `.run/`; treat them as private. The release factory runs the driver on its disposable runner before image publishing.
 
 Before submitting a change, also run `BASKULE_CHECK_RECORD=0 scripts/check plan`, its selected checks with
 `BASKULE_CHECK_RECORD=0` to disable evidence-ref reads and pushes, `actionlint` on the release
-workflow, and Compose configuration checks for all roles and profiles. Config validation may use `--profile '*'`;
+workflow, and Compose configuration checks for the release and source definitions and their profiles. Config validation may use `--profile '*'`;
 starting every profile is unsupported because it includes the edge inheritance templates. A verification-only factory run can prove
 the full packaging path. Anonymous GHCR pulls, public release downloads, and real multi-machine operation require
 separate owner-controlled verification after publication.
@@ -56,7 +49,7 @@ browser assertion that the folder plugin appears in Admin → Plugins after setu
 Pass `fresh` to run three cold installs into empty volumes, checking first startup, health, version, and
 admin sign-in each time. Set `BASKULE_INSTALL_EVIDENCE` to choose an evidence directory.
 
-Pass `single`, `https`, `proxy`, `external`, or `cluster` as the driver's last argument to rerun only that target after a classified failure.
+Pass `single`, `https`, `proxy`, or `external` as the driver's last argument to rerun only that target after a classified failure.
 
 The single-machine driver saves private account and thread references in `.run/<run>/single-proof.json`.
 To rerun only restoration against the retained archive, pass `restore .run/<run>/single-proof.json` to the driver.
@@ -79,7 +72,6 @@ the host-local proxy using `private_ranges`, with the port bound to loopback and
 setup, Secure cookies, sign-in, foreign Origin refusal, and independent public-client rate limits. The fixture replaces
 incoming X-Forwarded-For with its simulated peer address. With `private_ranges`, private-address LAN/VPN clients
 share a budget, as the installation guide explains. The proxy target checks that incoming XFF cannot rotate that budget.
-The cluster target also checks its bundled edge with an explicitly trusted host-local proxy.
 
 Runtime environment and mounted-volume assertions verify that RustFS, computerd, and OpenShell receive only their
 own generated secrets and no unrelated `.env` values. The proxy target checks the custom bind port in the printed

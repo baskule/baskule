@@ -150,7 +150,6 @@ case "${1:-}" in
     cp -r "/src/platform/." "$work/"
     # Resolve {"env":"NAME"} leaves without evaluating shell syntax. Never print the result.
     auth=${AUTH_CONFIG:-'{"version":1,"mode":"authenticated","password":true}'}
-    if [ -f /src/config/auth.json ]; then auth=$(cat /src/config/auth.json); fi
     if [ -f /src/auth.json ]; then auth=$(cat /src/auth.json); fi
     AUTH_CONFIG=$(printf '%s' "$auth" | jq -ce 'walk(if type == "object" and keys == ["env"] then
       .env as $name | env[$name] | if type == "string" and length > 0 then . else error("Missing authentication environment reference") end
@@ -178,7 +177,6 @@ case "${1:-}" in
       /usr/local/bin/baskule-sync-plugins /plugins "${PLUGIN_SYNC_URL:-http://baskule-celld-a:47091}"
     fi
     log "deployed platform"
-    if [ -n "${SETUP_STATUS_URL:-}" ] && [ -n "${SETUP_TOKEN:-}" ]; then print_setup_link; fi
     ;;
   *) echo "usage: baskule-celld-job setup|run COMMAND|bootstrap|deploy|backup|restore" >&2; exit 2 ;;
 esac

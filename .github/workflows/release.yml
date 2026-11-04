@@ -373,9 +373,6 @@ jobs:
           - name: install-folder
             suite: install
             selection: folder
-          - name: install-cluster
-            suite: install
-            selection: cluster
           - name: install-proxy
             suite: install
             selection: proxy
@@ -747,4 +744,4 @@ jobs:
         run: |
           gh release create "v$VERSION" release/* --draft --target "$SOURCE_COMMIT" \
             --title "Baskule $VERSION" \
-            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes single-machine and cluster Compose assets, the Kubernetes Helm chart, versioned GHCR platform and computer images, Worker, SpaceCell, hosted web and a Linux x64 AppImage. The web app links to versioned GitHub release assets; app installers are not embedded in celld. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'
+            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes single-machine Compose assets, the Kubernetes Helm chart, versioned GHCR platform and computer images, Worker, SpaceCell, hosted web and a Linux x64 AppImage. The web app links to versioned GitHub release assets; app installers are not embedded in celld. When native verification is included, the draft also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'

@@ -10,7 +10,7 @@ import { createApi } from "./journeys/api.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const target = process.argv[2] ?? "all";
-if (!["all", "single", "cluster", "restore", "fresh", "proxy", "https", "external", "folder"].includes(target)) throw new Error("Choose all, single, proxy, https, external, cluster, restore, fresh, or folder");
+if (!["all", "single", "restore", "fresh", "proxy", "https", "external", "folder"].includes(target)) throw new Error("Choose all, single, proxy, https, external, restore, fresh, or folder");
 const version = process.env.BASKULE_INSTALL_VERSION ?? "local";
 const registry = process.env.BASKULE_INSTALL_REGISTRY ?? "ghcr.io/baskule";
 const computerImage = `${registry}/baskule-computerd:${version}`;
@@ -26,7 +26,6 @@ if (!process.env.BASKULE_INSTALL_ASSETS) execFileSync(resolve(root, "scripts/rel
 const projects = [];
 const containers = new Map();
 const fixtureVolumes = new Set();
-const fixtureNetworks = new Set();
 const fixtureImages = new Set();
 function command(args, { cwd = root, input, inputFile, output, allowFailure = false } = {}) {
   appendFileSync(resolve(evidence, "commands.log"), `docker ${args.map(a => a.startsWith("RUSTFS_SECRET_KEY=") ? "RUSTFS_SECRET_KEY=<redacted>" : a).join(" ")}\n`);
@@ -65,21 +64,13 @@ function envFile(file, values) {
 function world(role, values) {
   const directory = resolve(run, role);
   mkdirSync(directory);
-  const kind = role.startsWith("node") ? "node" : role.startsWith("single") ? "single" : role;
-  const compose = kind === "single" ? "docker-compose.yml" : `cluster-${kind}.yml`;
-  const example = kind === "single" ? "baskule.env.example" : `cluster-${kind}.env.example`;
-  copyFileSync(resolve(assets, compose), resolve(directory, "docker-compose.yml"));
+  copyFileSync(resolve(assets, "docker-compose.yml"), resolve(directory, "docker-compose.yml"));
   const file = resolve(directory, ".env");
-  if (kind !== "single") {
-    mkdirSync(resolve(directory, "config"));
-    copyFileSync(resolve(assets, example), file);
-    envFile(file, { COMPUTERD_TOKEN: randomBytes(32).toString("hex"), OPENSHELL_VOLUMES_TOKEN: randomBytes(32).toString("hex") });
-  }
   if (Object.keys(values).length) envFile(file, values);
   const project = `${id}-${role}`;
   const files = ["-f", resolve(directory, "docker-compose.yml")];
   const dc = (args, options = {}) => command(["compose", "-p", project, ...files, ...args], { cwd: directory, ...options });
-  if (kind === "single" && !Object.keys(values).length) expect(readdirSync(directory)).toEqual(["docker-compose.yml"]);
+  if (!Object.keys(values).length) expect(readdirSync(directory)).toEqual(["docker-compose.yml"]);
   const w = { directory, file, project, dc, values, files };
   projects.push(w);
   dc(["--profile", "*", "config", "-q"]);
@@ -113,17 +104,11 @@ async function rpc(person, space) {
 }
 const admin = { email: "admin@release.test", password: `quoted$"${randomBytes(24).toString("hex")}` };
 const adminVars = { SETUP_TOKEN: randomBytes(32).toString("hex") };
-async function fake(w, lan) {
+async function fake(w) {
   const name = `${w.project}-llm`;
-  const args = ["run", "-d", "--no-healthcheck", "--name", name];
-  let endpoint;
-  if (lan) {
-    args.push("--network", lan.network, "--ip", lan.address);
-    endpoint = `http://${lan.address}:47601/v1`;
-  } else {
-    args.push("--network", `${w.project}_baskule-net`, "--network-alias", "release-install-llm");
-    endpoint = "http://release-install-llm:47601/v1";
-  }
+  const args = ["run", "-d", "--no-healthcheck", "--name", name,
+    "--network", `${w.project}_baskule-net`, "--network-alias", "release-install-llm"];
+  const endpoint = "http://release-install-llm:47601/v1";
   containers.set(name, "model");
   command([...args, "--entrypoint", "node", "-v", `${root}/platform/dev/fake-llm:/fake:ro`, computerImage,
     "/fake/server.mjs", "--host", "0.0.0.0"]);
@@ -568,93 +553,6 @@ async function restoreOnly() {
   await persisted(base, previous);
   pass("focused restore preserves chat and re-admits the computer disk into empty volumes");
 }
-async function cluster() {
-  const network = `${id}-lan`;
-  fixtureNetworks.add(network); command(["network", "create", network]);
-  const [{ Subnet: subnet }] = JSON.parse(command(["network", "inspect", "-f", "{{json .IPAM.Config}}", network]));
-  command(["network", "rm", network]);
-  command(["network", "create", "--subnet", subnet, network]);
-  const [baseAddress, bits] = subnet.split("/");
-  if (Number(bits) > 28) throw new Error("The private test LAN needs at least eight addresses");
-  const octets = baseAddress.split(".").map(Number);
-  const address = offset => [...octets.slice(0, 3), octets[3] + offset].join(".");
-  const [nodeA, nodeB, computerHost, edgeHost, modelHost, storageHost] = [2, 3, 4, 5, 6, 7].map(address);
-  const adapter = (w, services) => {
-    const file = resolve(run, `${w.project}-lan.yml`);
-    writeFileSync(file, `services:\n${services}networks:\n  lan:\n    external: true\n    name: ${network}\n`);
-    w.files.push("-f", file);
-    w.dc(["--profile", "*", "config", "-q"]);
-  };
-  const storage = `${id}-s3`;
-  const storageVolume = `${id}-s3`;
-  containers.set(storage, "storage"); fixtureVolumes.add(storageVolume);
-  const key = randomBytes(32).toString("hex");
-  command(["run", "-d", "--name", storage, "--network", network, "--ip", storageHost,
-    "-e", "RUSTFS_ADDRESS=0.0.0.0:47093", "-e", "RUSTFS_CONSOLE_ENABLE=false", "-e", "RUSTFS_ACCESS_KEY=release-test",
-    "-e", `RUSTFS_SECRET_KEY=${key}`, "-v", `${storageVolume}:/data`,
-    "rustfs/rustfs@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b", "rustfs", "/data"]);
-  const token = randomBytes(32).toString("hex");
-  const base = `http://${edgeHost}:47090`;
-  const shared = { ...adminVars, S3_ENDPOINT: `http://${storageHost}:47093`, S3_REGION: "us-east-1",
-    S3_ACCESS_KEY: "release-test", S3_SECRET_KEY: key, CELLD_BUCKET_NAME: "baskule", COMPUTERD_TOKEN: token,
-    COMPUTERD_URL: `http://${computerHost}:47094`, CELLD_NODES_INTERNAL: `${nodeA}:47092 ${nodeB}:47092`,
-    AUTH_CONFIG: "", PUBLIC_URL: base, PUBLIC_ORIGINS: base };
-  const a = world("node-a", { ...shared, BASKULE_PRIVATE_IP: nodeA, CELLD_NODE: `${id}-a` });
-  const b = world("node-b", { ...shared, BASKULE_PRIVATE_IP: nodeB, CELLD_NODE: `${id}-b` });
-  const computers = world("computers", { BASKULE_PRIVATE_IP: computerHost, COMPUTERD_TOKEN: token, PLATFORM_URL: base });
-  const edge = world("edge", { BASKULE_BIND: edgeHost, BASKULE_NODES_WORKER: `${nodeA}:47091 ${nodeB}:47091` });
-  for (const [w, ip] of [[a, nodeA], [b, nodeB]]) adapter(w,
-    `  node:\n    network_mode: !reset null\n    networks:\n      lan:\n        ipv4_address: ${ip}\n  deploy:\n    network_mode: !reset null\n    networks: [lan]\n`);
-  adapter(computers, `  baskule-computerd:\n    ports: !reset []\n    networks:\n      lan:\n        ipv4_address: ${computerHost}\n`);
-  adapter(edge, `  edge:\n    ports: !reset []\n    networks:\n      lan:\n        ipv4_address: ${edgeHost}\n`);
-  // The external bucket is an independent fixture, not a service of any cluster role.
-  await expect.poll(async () => {
-    try { return (await fetch(`${shared.S3_ENDPOINT}/health/ready`, { signal: AbortSignal.timeout(3000) })).ok; } catch { return false; }
-  }, { message: "external S3 fixture ready", timeout: 60_000 }).toBe(true);
-  // Create only the bucket, as the guide requires; do not initialize celld state with a bootstrap shortcut.
-  a.dc(["run", "--rm", "--no-deps", "--entrypoint", "sh", "deploy", "-c",
-    'curl -sf --aws-sigv4 "aws:amz:$AWS_REGION:s3" -H "x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" -X PUT "$S3_ENDPOINT/$CELLD_BUCKET_NAME"']);
-  computers.dc(["up", "-d"]);
-  a.dc(["up", "-d"]); b.dc(["up", "-d"]);
-  a.dc(["run", "--rm", "deploy"]);
-  edge.dc(["up", "-d"]);
-  await health(a, ["node"]); await health(b, ["node"]);
-  await health(computers, ["baskule-openshell", "baskule-computerd"]);
-  let fleet;
-  await expect.poll(() => {
-    fleet = a.dc(["exec", "-T", "node", "sh", "-c", 'celld diagnose --read-only --json --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT"'], { allowFailure: true });
-    writeFileSync(resolve(evidence, "cluster-fleet.json"), fleet);
-    const peers = fleet.split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line)).filter(row => row.check?.startsWith("peer "));
-    return peers.length === 2 && peers.every(row => row.verdict === "ok");
-  }, { message: "both fleet peers answer signed probes", timeout: 90_000 }).toBe(true);
-  expect(fleet).toMatch(/2 node lease/);
-  expect(fleet).toContain(`peer ${id}-a`); expect(fleet).toContain(`peer ${id}-b`);
-  pass("cluster forms a two-node fleet with an external bucket");
-  const llm = await fake(computers, { network, address: modelHost });
-  await completeSetup(a, base);
-  const result = await exercise(computers, base, llm.endpoint);
-  envFile(edge.file, { BASKULE_TRUSTED_PROXIES: "private_ranges" });
-  edge.dc(["up", "-d"]);
-  const localProxy = await outerProxy(edge, base);
-  expect(localProxy.post("/auth/sign-in/email", admin)).toBe(200);
-  secureCookie(edge);
-  expect(localProxy.post("/auth/sign-in/email", admin, { Origin: "https://foreign.test" })).toBe(403);
-  proxyBudgets(localProxy.post);
-  pass("cluster edge with explicitly trusted host-local proxy preserves HTTPS, Secure cookies and separate public-client limits");
-  command(["rm", "-f", localProxy.name]); containers.delete(localProxy.name);
-
-  // Kill the node owning the most cells; disable automatic restart for this drill.
-  const owned = (w, ip) => JSON.parse(w.dc(["exec", "-T", "node", "curl", "-sf", `http://${ip}:47092/state`])).owned_cells ?? 0;
-  const victim = owned(a, nodeA) >= owned(b, nodeB) ? a : b;
-  const victimId = victim.dc(["ps", "-q", "node"]);
-  command(["update", "--restart=no", victimId]); command(["kill", victimId]);
-  for (let i = 0; i < 20; i++) expect((await fetch(`${base}/version.json`)).status).toBe(200);
-  await expect.poll(async () => {
-    try { await persisted(base, result); return true; } catch { return false; }
-  }, { message: "cell takeover after node loss", timeout: 120_000 }).toBe(true);
-  pass("cluster serves 20/20 Worker requests and persisted cell/computer state after owner-node kill");
-  command(["rm", "-f", llm.name]); containers.delete(llm.name);
-}
 try {
   if (target === "all" || target === "https") await https();
   if (target === "all" || target === "proxy") await proxy();
@@ -663,7 +561,6 @@ try {
   if (target === "folder") await folder();
   if (target === "restore") await restoreOnly();
   if (target === "all" || target === "single") await single();
-  if (target === "all" || target === "cluster") await cluster();
 } finally {
   for (const [name, kind] of containers) if (kind === "model" || kind === "proxy") command(["rm", "-f", name], { allowFailure: true });
   for (const w of [...projects].reverse()) {
@@ -674,5 +571,4 @@ try {
   for (const [name, kind] of containers) if (kind === "storage") command(["rm", "-f", name], { allowFailure: true });
   for (const volume of fixtureVolumes) command(["volume", "rm", volume], { allowFailure: true });
   for (const image of fixtureImages) command(["image", "rm", image], { allowFailure: true });
-  for (const network of fixtureNetworks) command(["network", "rm", network], { allowFailure: true });
 }

@@ -1,14 +1,12 @@
 # Deployment assets
 
-Operators use [Install Baskule](../docs/install.md) or [Install a cluster](../docs/install-cluster.md).
-Developers use [Build Baskule](../docs/building.md). These files describe the current Compose deployment.
+Operators use [Install Baskule](../docs/install.md) or [Install on Kubernetes](../docs/install-kubernetes.md).
+Developers use [Build Baskule](../docs/building.md). The Helm chart is the only cluster install; Compose serves single-machine installs.
 
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yml`, `.env.example` | Standalone single-machine release assets |
-| `cluster/node.yml`, `cluster/node.env.example` | One platform node and an optional app deployment job |
-| `cluster/computers.yml`, `cluster/computers.env.example` | One computers host, plus offline backup and restore jobs |
-| `cluster/edge.yml`, `cluster/edge.env.example` | Optional HTTP edge for a node list |
+| `helm/baskule/` | Kubernetes cluster chart |
 | `docker-compose.build.yml` | Source-build override, selected by `lib.sh` |
 | `celld/` | Shared node/job image containing Worker, web app and deployment utilities |
 | `build-env/` | Ubuntu 24.04 native build environment |
@@ -20,7 +18,7 @@ workload images, so its private daemon needs no registry access or host image lo
 The single-machine stack has separate platform and computer networks. Only computerd joins both; the optional
 trace collector also receives from both. The edge publishes HTTP on loopback by default, or TCP 80/443 and UDP 443
 on all IPv4/IPv6 interfaces in HTTPS mode. The optional trace UI has its own loopback-default bind
-(`BASKULE_TRACES_BIND`). Cluster roles bind Worker, peer, and computerd listeners on explicitly configured private addresses. Computer egress policy
+(`BASKULE_TRACES_BIND`). Computer egress policy
 continues to deny private destinations.
 
 Default memory caps total 15.75 GiB: two nodes at 3 GiB each, RustFS at 1 GiB, edge at 256 MiB, computerd at
@@ -36,8 +34,7 @@ developer path. For a source-stack backup, source `deploy/lib.sh` and run
 
 The bootstrap job generates per-consumer secrets in separate named volumes. After deployment, the one-shot
 `setup` service prints `/setup#token=…` only when the API reports that setup is required.
-Create the first admin through that link. Cluster deployments supply a shared `SETUP_TOKEN`; the deploy job prints
-the link using `PUBLIC_URL`. Once an admin exists, the token cannot create another.
+Create the first admin through that link. Once an admin exists, the token cannot create another.
 
 Start only named profiles such as `traces`; `docker compose --profile '*' up` is unsupported because it also starts
 the edge inheritance templates. `BASKULE_EDGE` accepts lowercase `http` or `https`; HTTPS requires `BASKULE_DOMAIN`.
