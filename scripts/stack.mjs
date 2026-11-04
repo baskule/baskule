@@ -348,16 +348,21 @@ async function login(s) {
   await r.arrayBuffer();
   return r;
 }
-async function cleanupComputers(s, purge) {
+export async function cleanupComputers(s, purge, execute = run) {
   if (!s.definition.services.computerd) return;
-  const ids = run("docker", ["ps", "-aq", "--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${s.id}`]).split(/\s+/).filter(Boolean);
+  const ids = execute("docker", ["ps", "-aq", "--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${s.id}`]).split(/\s+/).filter(Boolean);
   for (const id of ids) {
-    if (purge) run("docker", ["rm", "-f", id]);
-    else run("docker", ["stop", id]);
+    if (purge) execute("docker", ["rm", "-f", id]);
+    else execute("docker", ["stop", id]);
   }
   if (purge) {
-    const volumes = run("docker", ["volume", "ls", "-q", "--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${s.id}`]).split(/\s+/).filter(Boolean);
-    for (const volume of volumes) run("docker", ["volume", "rm", volume]);
+    const volumes = execute("docker", ["volume", "ls", "-q", "--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${s.id}`]).split(/\s+/).filter(Boolean);
+    for (const volume of volumes) execute("docker", ["volume", "rm", volume]);
+    const env = environment(s);
+    const networks = execute("docker", ["network", "ls", "-q", "--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${s.id}`]).split(/\s+/).filter(Boolean);
+    for (const network of networks) execute("docker", ["network", "rm", network]);
+    execute("docker", ["run", "--rm", "--user", "0:0", "--cap-drop", "ALL", "--cap-add", "NET_ADMIN", "--network", "host", "--read-only", "--tmpfs", "/run", "--entrypoint", "node", env.COMPUTER_GUARD_IMAGE, "--input-type=module", "-e",
+      'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});']);
   }
 }
 function purgeBucket(s) {
