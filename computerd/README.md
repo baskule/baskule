@@ -9,18 +9,26 @@ machine and disk. Activity and keep flags are held in memory; idle computers sto
 ## Docker
 
 DockerBackend talks to Docker Engine over its Unix socket. Computers run as 1000:1000
-on the `baskule-computers` bridge with inter-container communication disabled,
+on a bridge with inter-container communication disabled (Compose defaults to
+`<project>-computers`; standalone computerd defaults to `baskule-computers` when
+`COMPUTER_NETWORK` is unset),
 CapDrop ALL, no-new-privileges and PidsLimit 1024. Each uses a named
 `baskule-space-<suffix>` volume. Exec uses Docker's hijacked stream; port connections
 use a relay inside the computer.
 
-[The guard](src/guard.ts) installs DROP rules in DOCKER-USER, INPUT for host addresses,
-and FORWARD mirrors so earlier Tailscale-style accepts cannot bypass them. It blocks
-private, link-local, CGNAT, loopback, multicast and reserved destinations. Rules carry
-`baskule-computer-guard:<subnet>` tags. A short-lived helper from the computerd image
-runs with host networking and NET_ADMIN. Rules reconcile at startup and every 60 seconds.
-If verification fails, ensure returns HTTP 503 without creating a computer.
-Docker using only nftables is unsupported. Public DNS defaults avoid blocked private upstreams.
+[The guard](src/guard.ts) installs a per-network `BASKULE-<hash>` chain derived from
+the network ID and subnets. Jumps match the source subnet and bridge interface and
+remain in the leading block of DOCKER-USER, FORWARD and INPUT, ahead of other accepts.
+It blocks host addresses and private, link-local, CGNAT, loopback, multicast and
+reserved IPv4 destinations; IPv6 permits neighbor discovery and blocks local,
+unique-local, link-local, loopback and multicast destinations.
+Garbage collection removes jumps for vanished bridge interfaces and unreferenced chains.
+The guard selects iptables-nft or iptables-legacy (and the IPv6 equivalents) by
+the presence of DOCKER-USER. Docker's native nftables backend without that chain
+is unsupported. A short-lived helper from the computerd image uses host networking
+and NET_ADMIN. Rules reconcile at startup and every 60 seconds. Verification fails
+closed: ensure returns HTTP 503 without creating a computer if guard setup fails.
+Public DNS defaults avoid blocked private upstreams.
 
 ## Kubernetes
 
