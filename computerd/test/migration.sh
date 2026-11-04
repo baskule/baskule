@@ -8,7 +8,9 @@ instance="$space-instance"
 disk=$(node --input-type=module -e 'import { namesFor } from "./computerd/src/policy.ts"; console.log(namesFor(process.argv[1], process.argv[2]).volume)' "$space" "$instance")
 legacy="$space-legacy"
 network="$space-network"
-image="${MIGRATION_IMAGE:-baskule-computer:release-install-verify}"
+image="${MIGRATION_IMAGE:-baskule-computer:local}"
+if [ -z "${MIGRATION_IMAGE:-}" ]; then bash computer/build.sh; fi
+scripts/docker-build.sh computerd --network host -t baskule-computerd:local -f computerd/Dockerfile .
 cleanup() {
   docker rm -f "$disk-migration" >/dev/null 2>&1 || true
   docker volume rm "$disk" "$legacy" >/dev/null
@@ -71,3 +73,5 @@ driver
 manifest "$disk" "" > .run/evidence/migration/target
 diff -u .run/evidence/migration/source .run/evidence/migration/target
 echo "PASS: metadata, hashes, hardlinks, no-copy retry, killed-copy recovery"
+
+bash computerd/test/migration-backup.sh

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-image=${BACKUP_TEST_IMAGE:-baskule-celld:proof-84f150713-18417}
+image=${BACKUP_TEST_IMAGE:-baskule-celld:local}
+if [ -z "${BACKUP_TEST_IMAGE:-}" ]; then scripts/docker-build.sh celld --network host --target source -t "$image" -f deploy/celld/Dockerfile .; fi
 legacy="backup-test-$(openssl rand -hex 5)"
 stage=$(mktemp -d)
 cleanup() { docker volume rm "$legacy" >/dev/null; rm -rf "$stage"; }

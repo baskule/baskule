@@ -40,7 +40,7 @@ export class DockerBackend implements Backend {
     log.error("Computer guard unavailable; stopping managed computers");
     const machines = await this.list({ "baskule.managed": "true", ...(this.guardInstance ? { "baskule.instance": this.guardInstance } : {}) });
     if (this.guardVerified) return;
-    await Promise.all(machines.filter(machine => machine.phase === "ready").map(machine => this.stop(machine.name)));
+    await Promise.all(machines.filter(machine => machine.phase === "ready" && (this.guardInstance || !Object.hasOwn(machine.labels, "baskule.instance"))).map(machine => this.stop(machine.name)));
   }
   private verifyGuard(): Promise<void> {
     return this.guardPending ??= (async () => {
