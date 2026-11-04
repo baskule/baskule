@@ -203,6 +203,12 @@ services:
       BASKULE_SITE: "${BASKULE_DOMAIN:-} :47090"
       BASKULE_AUTO_HTTPS: ""
 
+  baskule-computer-image:
+    image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computer:${BASKULE_VERSION:-0.5.0}
+    entrypoint: ["true"]
+    restart: "no"
+    cap_drop: [ALL]
+
   baskule-computerd:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computerd:${BASKULE_VERSION:-0.5.0}
     restart: unless-stopped
@@ -230,7 +236,10 @@ services:
     depends_on:
       baskule-bootstrap:
         condition: service_completed_successfully
-      # Traces of the whole stack (celld, the T3 server in each cell): Jaeger, in memory. The UI
+      baskule-computer-image:
+        condition: service_completed_successfully
+
+  # Traces of the whole stack (celld, the T3 server in each cell): Jaeger, in memory. The UI
   # has its own loopback-default bind, independent of the edge.
   baskule-traces:
     profiles: [traces]

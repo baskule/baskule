@@ -35,6 +35,8 @@ services:
     volumes:
       - ${AUTH_CONFIG_FILE:-./auth.json}:/src/auth.json:ro
       - ${BASKULE_PLATFORM_DIR:-../platform}:/src/platform:ro
+  baskule-computer-image:
+    image: baskule-computer:${BASKULE_TAG:-local}
   baskule-computerd:
     image: baskule-computerd:${BASKULE_TAG:-local}
     container_name: baskule-computerd
