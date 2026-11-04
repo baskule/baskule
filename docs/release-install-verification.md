@@ -17,7 +17,7 @@ node e2e/release-install.mjs
 ```
 
 Choose a different registry prefix or tag with `BASKULE_INSTALL_REGISTRY` and `BASKULE_INSTALL_VERSION`.
-Only the three host images need these tags; workload images are bundled in the gateway. These commands do not
+All three images need these tags; Compose fetches the computer image through its one-shot image service. These commands do not
 push images or contact a model provider.
 
 The driver creates unique Compose projects under `.run/`. The single-machine target uses the default loopback
@@ -27,13 +27,11 @@ source-build override. The fake LLM is a separate fixture. Checks cover default 
 sign-in, a streamed fake chat, and a shell command through the platform's computerd endpoint. It checks chat and
 computer-file persistence after a compose-file version update and down/up, then backs up and restores into empty
 volumes. Hashes of every consumer secrets file must match across restart, update, and restore.
-The gateway update also checks removal of old workload tags and pruning of a distinct obsolete image.
 The driver excludes CI's packaging variable `BASKULE_VERSION` from Docker commands so the downloaded
-Compose file selects the version. Retagged host images keep their image IDs; the gateway's changed
-`BASKULE_VERSION` must still recreate it and finish image cleanup before assertions run.
+Compose file selects the version. Computerd creates computers directly on the host Docker Engine.
 
 The driver removes its own containers, networks, and volumes in a `finally` block. It never uses `scripts/stack`
-or the shared development gateway. Evidence, logs, the backup, and private generated configuration stay under
+or the shared development stack. Evidence, logs, the backup, and private generated configuration stay under
 `.run/`; treat them as private. The release factory runs the driver on its disposable runner before image publishing.
 
 Before submitting a change, also run `BASKULE_CHECK_RECORD=0 scripts/check plan`, its selected checks with

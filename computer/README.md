@@ -5,10 +5,10 @@
 | | |
 |---|---|
 | Base | `debian:trixie-slim` (digest-pinned), user `agent` uid/gid 1000, `WORKDIR /sandbox`, `HOME=/sandbox/space/home` |
-| Tools | bash, coreutils, findutils, grep, sed, gawk, util-linux (`setsid`), procps (`pgrep`), psmisc, curl, wget, git, jq, ripgrep, zip/unzip, xz, bzip2, make, ssh client, Python 3.13 + pip + venv (`python` → `python3`), uv 0.13.5, Node 24.22.1 + npm/npx/corepack, pnpm 12.15.0 (`/opt/pnpm`), Bun 1.3.14 (baseline build), locales en_US/fr_FR, ca-certificates |
+| Tools | tini, bash, coreutils, findutils, grep, sed, gawk, util-linux (`setsid`), procps (`pgrep`), psmisc, curl, wget, git, jq, ripgrep, zip/unzip, xz, bzip2, make, ssh client, Python 3.13 + pip + venv (`python` → `python3`), uv 0.13.5, Node 24.22.1 + npm/npx/corepack, pnpm 12.15.0 (`/opt/pnpm`), Bun 1.3.14 (baseline build), locales en_US/fr_FR, ca-certificates |
 | Documents and media | LibreOffice headless (writer, calc, impress: `soffice --headless --convert-to`), pandoc, poppler-utils, qpdf, ffmpeg; Python libraries pinned in `python-requirements.txt`, installed system-wide (python-docx, openpyxl, python-pptx, pypdf, reportlab, pandas, matplotlib, xlsxwriter) |
 | Browser | Chromium (Debian, 156 at build time) + fonts; `@playwright/mcp@0.0.83` in `/opt/playwright-mcp`; uBlock Origin Lite (pinned, sha256-checked, pruned to 8 lists by `prune-ublock-lite.py`) in `/opt/baskule-browser/ublock-lite`, settings in `chromium-policies/` |
-| No | OpenCode, sudo, tini, entrypoint (computerd launches `sleep infinity`) |
+| No | OpenCode, sudo, entrypoint (computerd launches `sleep infinity`) |
 
 Wrappers in `/usr/local/bin` (`bin/`):
 - `chromium-baskule`: Chromium with `--no-sandbox --no-zygote --in-process-gpu --disable-dev-shm-usage`

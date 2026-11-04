@@ -22,7 +22,7 @@ export interface Config {
   maxConcurrent: number; // per computer: exec + cdp + files streams
   readyTimeoutMs: number;
   maxPutBytes: number;
-  sandboxRoot: string; // "/sandbox" in production; a temp dir in unit tests (fake gateway runs commands locally)
+  sandboxRoot: string; // "/sandbox" in production; a temp dir in unit tests (commands run locally)
   cdpPort: number;
   browserPort: number;
   productSettingsUrl: string;

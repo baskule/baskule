@@ -67,7 +67,7 @@ and Compose project name stable.
 ## Open it
 
 Open the link from `docker compose logs setup` and create the first admin. The link works once, then becomes
-useless. Initial image imports can take several minutes. In **Admin → AI → Models**, configure your provider and
+useless. Initial image pulls can take several minutes. In **Admin → AI → Models**, configure your provider and
 model, then invite people. Password sign-in is enabled by default.
 
 ### Built-in HTTPS (recommended)
