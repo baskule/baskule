@@ -173,8 +173,19 @@ export class Computers {
       created = true;
     }
     const deadline = Date.now() + this.cfg.readyTimeoutMs;
+    let recovered = false;
     while (info.phase !== "ready") {
-      if (info.phase === "error") throw new Error(info.error ?? "computer is in error");
+      if (info.phase === "error") {
+        if (recovered) throw new Error(info.error ?? "computer is in error");
+        recovered = true;
+        await this.backend.stop(s.sandbox);
+        if (info.image !== this.cfg.image) {
+          log.info("computer image update", { sandbox: s.sandbox, oldImage: info.image, newImage: this.cfg.image });
+          info = await this.backend.recreate(spec);
+        } else info = await this.backend.start(s.sandbox);
+        started = true;
+        continue;
+      }
       if (Date.now() > deadline) throw new Error("computer not ready before timeout");
       if (info.phase === "stopped") {
         if (info.image !== this.cfg.image) {

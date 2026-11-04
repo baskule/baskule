@@ -573,15 +573,15 @@ test("backend config defaults to Docker and validates the selection", () => {
   assert.throws(() => loadConfig({ COMPUTERD_TOKEN: TOKEN, COMPUTER_BACKEND: "other" }), /COMPUTER_BACKEND/);
 });
 
-test("ensure reports backend errors without restarting the machine", async () => {
+test("ensure recovers backend errors by restarting the machine", async () => {
   await computers.ensure("backend-error");
   const machine = fake.sandboxes.get(namesFor("backend-error").sandbox)!;
   machine.phase = "error";
   machine.error = "machine failed";
   const before = fake.calls.length;
-  assert.equal((await c.req("POST", "/v1/spaces/backend-error/computer/ensure", {})).status, 503);
-  assert.equal((await c.json("GET", "/v1/spaces/backend-error/computer")).error, "machine failed");
-  assert.equal(fake.calls.length, before);
+  assert.equal((await c.req("POST", "/v1/spaces/backend-error/computer/ensure", {})).status, 200);
+  assert.equal((await c.json("GET", "/v1/spaces/backend-error/computer")).error, null);
+  assert.equal(fake.calls.length, before + 1);
 });
 
 test("image updates replace stopped computers while keeping disks and running machines", async () => {
@@ -598,4 +598,19 @@ test("image updates replace stopped computers while keeping disks and running ma
   assert.equal(f.sandboxes.get(name.sandbox)?.image, cfg.image);
   assert.ok(f.disks.has(name.volume));
   assert.equal(f.calls.filter(c => c.method === "recreate").length, 1);
+});
+
+test("error recovery is attempted once", async () => {
+  const f = new FakeBackend();
+  const cs = new Computers(f, cfg);
+  await cs.ensure("recover");
+  const name = namesFor("recover", cfg.instance).sandbox;
+  const machine = f.sandboxes.get(name)!;
+  machine.phase = "error";
+  await cs.ensure("recover");
+  assert.equal(machine.phase, "ready");
+  machine.phase = "error";
+  f.start = async () => { machine.phase = "error"; return machine; };
+  await assert.rejects(cs.ensure("recover"), /computer is in error/);
+  assert.equal(f.calls.filter(c => c.method === "stop").length, 2);
 });
