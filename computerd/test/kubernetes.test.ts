@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -116,4 +119,25 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   assert.deepEqual(deletes, ['sandbox', 'disk']);
   assert.deepEqual(await backend.remove('machine', 'space'), { machineDeleted: false, diskDeleted: false });
   assert.equal(await backend.get('machine'), null);
+});
+
+test('projected service account token refreshes after 60 seconds', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'kube-token-'));
+  const tokenFile = join(dir, 'token');
+  writeFileSync(tokenFile, 'first');
+  let now = 1000;
+  t.mock.method(Date, 'now', () => now);
+  const seen: unknown[] = [];
+  const server = createServer((req, res) => { seen.push(req.headers.authorization); res.statusCode = 404; res.end(JSON.stringify({ items: [] })); });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const backend = new KubernetesBackend({ baseUrl: `http://127.0.0.1:${address.port}`, tokenFile, ca: '', namespace: 'test' });
+  t.after(() => { backend.close(); server.close(); server.closeAllConnections(); rmSync(dir, { recursive: true }); });
+  await backend.get('missing');
+  writeFileSync(tokenFile, 'second');
+  now += 59999;
+  await backend.get('missing');
+  now++;
+  await backend.get('missing');
+  assert.deepEqual(seen, ['Bearer first', 'Bearer first', 'Bearer second']);
 });

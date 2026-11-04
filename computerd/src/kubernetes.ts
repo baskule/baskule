@@ -7,7 +7,7 @@ import WebSocket from 'ws';
 import type { Backend, Machine, MachineSpec, ExecStart, ExecHandle, ExecEvent } from './backend.ts';
 
 export interface KubernetesOptions {
-  baseUrl?: string; token?: string; ca?: string | Buffer; namespace?: string;
+  baseUrl?: string; token?: string; tokenFile?: string; ca?: string | Buffer; namespace?: string;
   storageClass?: string; storageSize?: string; runtimeClassName?: string;
   nodeSelector?: Record<string, string>; tolerations?: Record<string, unknown>[];
   imagePullSecrets?: { name: string }[]; timeoutMs?: number;
@@ -32,6 +32,7 @@ export class KubernetesBackend implements Backend {
   private options: KubernetesOptions;
   private base: string;
   private token: string;
+  private tokenReadAt = Date.now();
   private ca: string | Buffer;
   private sandboxes: string;
   private core: string;
@@ -41,18 +42,25 @@ export class KubernetesBackend implements Backend {
     this.options = options;
     const host = process.env.KUBERNETES_SERVICE_HOST ?? 'kubernetes.default.svc';
     this.base = options.baseUrl ?? `https://${host.includes(':') ? `[${host}]` : host}:${process.env.KUBERNETES_SERVICE_PORT ?? '443'}`;
-    this.token = options.token ?? readFileSync(`${serviceAccount}/token`, 'utf8').trim();
+    this.token = options.token ?? readFileSync(options.tokenFile ?? `${serviceAccount}/token`, 'utf8').trim();
     this.ca = options.ca ?? readFileSync(`${serviceAccount}/ca.crt`);
     const namespace = options.namespace ?? readFileSync(`${serviceAccount}/namespace`, 'utf8').trim();
     this.core = `/api/v1/namespaces/${encode(namespace)}`;
     this.sandboxes = `/apis/agents.x-k8s.io/v1beta1/namespaces/${encode(namespace)}/sandboxes`;
+  }
+  private authorization(): string {
+    if (this.options.token === undefined && Date.now() - this.tokenReadAt >= 60_000) {
+      this.token = readFileSync(this.options.tokenFile ?? `${serviceAccount}/token`, 'utf8').trim();
+      this.tokenReadAt = Date.now();
+    }
+    return `Bearer ${this.token}`;
   }
   private response(path: string, method = 'GET', body?: unknown, signal = this.abort.signal) {
     const url = new URL(path, this.base);
     return new Promise<import('node:http').IncomingMessage>((resolve, reject) => {
       const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
         method, ca: this.ca, signal,
-        headers: { ...(body === undefined ? {} : { 'Content-Length': Buffer.byteLength(JSON.stringify(body)) }), Authorization: `Bearer ${this.token}`, 'Content-Type': method === 'PATCH' ? 'application/merge-patch+json' : 'application/json' },
+        headers: { ...(body === undefined ? {} : { 'Content-Length': Buffer.byteLength(JSON.stringify(body)) }), Authorization: this.authorization(), 'Content-Type': method === 'PATCH' ? 'application/merge-patch+json' : 'application/json' },
       }, resolve);
       req.on('error', reject);
       req.setTimeout(this.options.timeoutMs ?? 180000, () => req.destroy(new Error('Kubernetes request timed out')));
@@ -182,7 +190,7 @@ export class KubernetesBackend implements Backend {
     if (!pod) throw new Error(`No pod for ${name}`);
     const url = new URL(`${this.core}/pods/${encode(pod)}/${action}?${query}`, this.base); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url, protocols, { ca: this.ca, headers: { Authorization: `Bearer ${this.token}` }, handshakeTimeout: this.options.timeoutMs ?? 180000 });
+      const ws = new WebSocket(url, protocols, { ca: this.ca, headers: { Authorization: this.authorization() }, handshakeTimeout: this.options.timeoutMs ?? 180000 });
       this.sockets.add(ws); ws.on('close', () => this.sockets.delete(ws));
       ws.once('open', () => { ws.pause(); resolve(ws); }); ws.on('error', reject);
       ws.once('unexpected-response', (_req, res) => { ws.terminate(); reject(new ApiError(res.statusCode ?? 500, 'WebSocket upgrade refused')); });
