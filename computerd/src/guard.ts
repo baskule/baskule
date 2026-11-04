@@ -21,7 +21,10 @@ export function guardScript(subnets: string[], networkId: string, bridge = `br-$
   for (const family of [4, 6]) {
     const sources = [...new Set(subnets)].sort().filter(subnet => isIP(subnet.split("/")[0]) === family);
     if (!sources.length) continue;
-    const tool = family === 4 ? "iptables" : "ip6tables";
+    const base = family === 4 ? "iptables" : "ip6tables";
+    const tool = "$tool";
+    lines.push(`tool=""; for candidate in ${base}-nft ${base}-legacy; do if $candidate -w -S DOCKER-USER >/dev/null 2>&1; then tool=$candidate; break; fi; done
+[ -n "$tool" ] || { echo "Computer guard: neither ${base}-nft nor ${base}-legacy has DOCKER-USER" >&2; exit 1; }`);
     lines.push(`${tool} -w -S DOCKER-USER >/dev/null`, `${tool} -w -S ${chain} >/dev/null 2>&1 || ${tool} -w -N ${chain}`);
     // Restore commits the replacement chain in one transaction, preserving other chains.
     lines.push(`${tool}-restore -w --noflush <<'GUARD'`, "*filter", `-F ${chain}`,
@@ -52,7 +55,7 @@ export function guardScript(subnets: string[], networkId: string, bridge = `br-$
 export function guardGcScript(onlyChain?: string): string {
   if (onlyChain && !/^BASKULE-[0-9a-f]{16}$/.test(onlyChain)) throw new Error("Invalid guard chain");
   return `set -eu
-for tool in iptables ip6tables; do
+for tool in iptables-nft iptables-legacy ip6tables-nft ip6tables-legacy; do
   for parent in DOCKER-USER FORWARD INPUT; do
     $tool -w -S "$parent" 2>/dev/null | awk '/^-A / { n++; iface=""; target=""; for(i=1;i<=NF;i++) { if($i=="-i") iface=$(i+1); if($i=="-j") target=$(i+1) } if(target ~ /^BASKULE-[0-9a-f]+$/) print n,iface==""?"-":iface,target }' | sort -rn | while read -r n iface target; do
       ${onlyChain ? `[ "$target" = "${onlyChain}" ] || continue` : ":"}

@@ -68,8 +68,9 @@ export class DockerBackend implements Backend {
     const script = guardScript(network.IPAM.Config.map(config => config.Subnet), network.Id, network.Options?.["com.docker.network.bridge.name"]);
     const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
       Image: this.guardImage, Labels: { "baskule.guard-helper": "true", "baskule.instance": this.guardInstance }, User: "0:0", Tty: true,
-      Entrypoint: ["/bin/sh", "-ec", script],
-      HostConfig: { NetworkMode: "host", CapDrop: ["ALL"], CapAdd: ["NET_ADMIN"], SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true },
+      Entrypoint: ["/bin/sh", "-ec", `if [ -f /host-run/xtables.lock ]; then ln -s /host-run/xtables.lock /run/xtables.lock; fi
+${script}`],
+      HostConfig: { NetworkMode: "host", CapDrop: ["ALL"], CapAdd: ["NET_ADMIN"], SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true, Binds: ["/run:/host-run"], Tmpfs: { "/run": "rw,nosuid,nodev,noexec,size=1m" } },
     });
     try {
       await this.request("POST", `/containers/${helper.Id}/start`);

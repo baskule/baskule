@@ -10,7 +10,7 @@ test("guard blocks private destinations and host INPUT without restricting publi
   assert.ok(script.includes("--dst-type LOCAL"));
   assert.ok(script.includes("-I DOCKER-USER 1"));
   assert.match(script, /awk .!\/ -j BASKULE-\[0-9a-f\]\+\$\/ { exit }/); // only guard jumps may precede ours
-  assert.ok(script.includes("iptables-restore -w --noflush"));
+  assert.ok(script.includes("$tool-restore -w --noflush"));
   assert.ok(script.includes(`-F ${guardChain(["172.30.0.0/24"])}`));
   assert.ok(!script.includes("--dport"));
 });
