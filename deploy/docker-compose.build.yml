@@ -43,6 +43,7 @@ services:
       dockerfile: computerd/Dockerfile
     environment:
       COMPUTER_GUARD_IMAGE: baskule-computerd:${BASKULE_TAG:-local}
+      COMPUTER_LEGACY_VOLUME: baskule-openshell-docker
       COMPUTER_IMAGE: baskule-computer:${BASKULE_TAG:-local}
       OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
   baskule-rustfs:
