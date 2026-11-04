@@ -15,7 +15,7 @@ export interface KubernetesOptions {
 type Resource = {
   metadata: { name: string; resourceVersion?: string; generation?: number; deletionTimestamp?: string;
     labels?: Record<string, string>; annotations?: Record<string, string> };
-  spec?: { operatingMode?: string; podTemplate?: { spec?: { containers?: { image: string }[] } } };
+  spec?: { operatingMode?: string; podTemplate?: { spec?: { containers?: { name?: string; image: string }[] } } };
   status?: { selector?: string; phase?: string; message?: string; conditions?: { type: string; status: string; reason?: string; message?: string; observedGeneration?: number }[] };
 };
 class ApiError extends Error {
@@ -146,6 +146,17 @@ export class KubernetesBackend implements Backend {
     return this.ready(spec.name);
   }
   async start(name: string) { await this.api(`${this.sandboxes}/${encode(name)}`, 'PATCH', { spec: { operatingMode: 'Running' } }); return this.ready(name); }
+  async recreate(spec: MachineSpec): Promise<Machine> {
+    const path = `${this.sandboxes}/${encode(spec.name)}`;
+    const sandbox = await this.resource(path);
+    const containers = sandbox?.spec?.podTemplate?.spec?.containers;
+    if (!containers?.some(c => c.name === 'computer')) throw new Error(`No computer container for ${spec.name}`);
+    const resources = { cpu: spec.cpus, memory: spec.memory };
+    await this.api(path, 'PATCH', { spec: { operatingMode: 'Running', podTemplate: { spec: {
+      containers: containers.map(c => c.name === 'computer' ? { ...c, image: spec.image, resources: { requests: resources, limits: resources } } : c),
+    } } } });
+    return this.ready(spec.name);
+  }
   async stop(name: string) {
     const s = await this.resource(`${this.sandboxes}/${encode(name)}`); if (!s) return;
     await this.api(`${this.sandboxes}/${encode(name)}`, 'PATCH', { spec: { operatingMode: 'Suspended' } });

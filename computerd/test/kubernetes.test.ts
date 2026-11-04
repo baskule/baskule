@@ -40,6 +40,10 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     }
     if (req.method === 'PATCH') {
       assert.equal(req.headers['content-type'], 'application/merge-patch+json');
+      if (data.spec.podTemplate) {
+        assert.equal(data.spec.volumeClaimTemplates, undefined);
+        sandbox.spec.podTemplate.spec.containers = data.spec.podTemplate.spec.containers;
+      }
       sandbox.spec.operatingMode = data.spec.operatingMode;
       if (data.spec.operatingMode === 'Suspended') pod = null;
       else { sandbox.status = {}; pod = null; }
@@ -98,6 +102,15 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   assert.equal((await received)[0].toString(), 'roundtrip'); stream.destroy();
   await backend.stop('machine'); assert.equal((await backend.get('machine'))?.phase, 'stopped');
   assert.equal((await backend.start('machine')).phase, 'ready');
+  await t.test('recreate preserves disk and container settings while changing image and limits', async () => {
+    await backend.stop('machine');
+    const claims = structuredClone(sandbox.spec.volumeClaimTemplates);
+    const original = structuredClone(sandbox.spec.podTemplate.spec.containers[0]);
+    assert.equal((await backend.recreate({ ...spec, image: 'new:image', cpus: '4', memory: '8Gi' })).phase, 'ready');
+    assert.deepEqual(sandbox.spec.volumeClaimTemplates, claims);
+    assert.deepEqual(sandbox.spec.podTemplate.spec.containers[0], { ...original, image: 'new:image', resources: { requests: { cpu: '4', memory: '8Gi' }, limits: { cpu: '4', memory: '8Gi' } } });
+    assert.ok(disk);
+  });
   assert.ok(watches >= 3);
   assert.deepEqual(await backend.remove('machine', 'space'), { machineDeleted: true, diskDeleted: true });
   assert.deepEqual(deletes, ['sandbox', 'disk']);
