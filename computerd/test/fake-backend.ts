@@ -36,8 +36,21 @@ export class FakeBackend implements Backend {
     this.calls.push({ method: "stop", req: { name } });
     const s = this.sandboxes.get(name);
     if (s) s.phase = "stopped";
+    this.endStreams(name);
+  }
+  /** The machine fails behind computerd's back: like a real backend, its exec streams end. */
+  fail(name: string, error = "machine failed") {
+    const s = this.sandboxes.get(name)!;
+    s.phase = "error"; s.error = error;
+    this.endStreams(name);
+  }
+  private children = new Map<string, Set<ReturnType<typeof spawn>>>();
+  private endStreams(name: string) {
+    closeSessions(this, name);
+    for (const child of this.children.get(name) ?? []) child.kill("SIGKILL");
   }
   async remove(name: string, disk: string) {
+    this.endStreams(name);
     return { machineDeleted: this.sandboxes.delete(name), diskDeleted: this.disks.delete(disk) };
   }
   exec(st: ExecStart): ExecHandle {
@@ -45,6 +58,10 @@ export class FakeBackend implements Backend {
     const rec = { command: st.command, environment: st.environment ?? {}, workdir: st.workdir ?? "", stdinChunks: [] as number[] };
     this.execs.push(rec);
     const child = spawn(st.command[0], st.command.slice(1), { cwd: st.workdir, env: { ...this.environment, ...rec.environment }, stdio: ["pipe", "pipe", "pipe"] });
+    let running = this.children.get(st.machine);
+    if (!running) this.children.set(st.machine, running = new Set());
+    running.add(child);
+    child.on("close", () => running.delete(child));
     const queue: ExecEvent[] = [];
     let wake: (() => void) | undefined;
     let done = false;

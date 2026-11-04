@@ -1,7 +1,7 @@
 // Computer lifecycle: one machine per space (`os-<spaceId>`), a per-space labelled volume at
 // /sandbox/space, lazy create/start, idle stop. All durable state lives in
 // the backend; this class only keeps soft state (activity, stream counts, keep flags) that is rebuilt on restart.
-import { closeSessions } from "./session.ts";
+import { closeSessions, liveSession } from "./session.ts";
 import type { Config } from "./config.ts";
 import type { Backend, Machine } from "./backend.ts";
 import { namesFor } from "./policy.ts";
@@ -147,7 +147,11 @@ export class Computers {
     s.lastActivity = Date.now();
     if (opts.keep !== undefined) s.keep = opts.keep;
     if (s.ensuring) return s.ensuring;
-    // Always query the backend: a computer stopped behind our back is restarted.
+    // An open agent session proves the machine is running: its stream ends when the machine stops.
+    if (s.prepared && !s.stopping && liveSession(this.backend, s.sandbox)) {
+      return Promise.resolve({ spaceId: s.spaceId, sandbox: s.sandbox, created: false, started: false, ms: 0 });
+    }
+    // Otherwise query the backend: a computer stopped behind our back is restarted.
     s.ensuring = traced("computer.ensure", { "baskule.space": spaceId }, async (span) => {
       const r = await this.doEnsure(s);
       span.set({ created: r.created, started: r.started });

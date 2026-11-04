@@ -10,6 +10,10 @@ export function closeSessions(backend: Backend, machine?: string) {
   if (!map) return;
   for (const [name, session] of map) if (machine === undefined || name === machine) session.close();
 }
+/** True while an agent session to this machine is open: the machine is running. */
+export function liveSession(backend: Backend, machine: string): boolean {
+  return sessions.get(backend)?.get(machine)?.alive ?? false;
+}
 export function sessionFor(backend: Backend, machine: string): ExecSession {
   let map = sessions.get(backend);
   if (!map) { map = new Map(); sessions.set(backend, map); }
@@ -25,12 +29,20 @@ export class ExecSession {
   private jobs = new Map<number, Job>();
   private next = 1;
   private dead = false;
+  private opened = false;
+  private lastFrame = Date.now();
+  /** Opened (the agent answered once) and not closed since. */
+  get alive() { return this.opened && !this.dead; }
   private timer: NodeJS.Timeout;
   private transport: ExecHandle;
   private removed: () => void;
   constructor(transport: ExecHandle, removed: () => void = () => {}) {
     this.transport = transport; this.removed = removed;
-    this.timer = setInterval(() => { void this.send(10, 0); }, 30000);
+    // Ping every 15 s; the agent always answers, so 45 s of silence means a half-open stream (lost node).
+    this.timer = setInterval(() => {
+      if (this.opened && Date.now() - this.lastFrame > 45000) this.close();
+      else void this.send(10, 0);
+    }, 15000);
     this.timer.unref();
     void this.read();
   }
@@ -50,6 +62,7 @@ export class ExecSession {
           const n = buffer.readUInt32BE(); if (n < 5 || n > 262144) throw Error('Invalid frame');
           if (buffer.length < n + 4) break;
           const type = buffer[4], handle = buffer.readUInt32BE(5), payload = buffer.subarray(9, n + 4);
+          this.opened = true; this.lastFrame = Date.now();
           const j = this.jobs.get(handle);
           if (j) {
             if (type === 4 || type === 5) j.output.write(type === 4 ? { stdout: Buffer.from(payload) } : { stderr: Buffer.from(payload) });
@@ -77,7 +90,8 @@ export class ExecSession {
     const output = new PassThrough({ objectMode: true });
     output.on('error', () => {});
     const j: Job = { id, output, credit: 1048576, wake: () => {} };
-    this.jobs.set(handle, j);
+    if (this.dead) output.destroy(new Error(deadMessage));
+    else this.jobs.set(handle, j);
     void this.send(1, handle, JSON.stringify({ id, argv: start.command, cwd: start.workdir, env: start.environment }));
     const send = this.send.bind(this);
     return {
