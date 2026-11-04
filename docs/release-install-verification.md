@@ -92,6 +92,6 @@ missing keys, explicit overrides, and conditional setup-link output. Use `script
 with RustFS and checks admin setup, streamed chat, computer execution, PVC persistence,
 network isolation, celld takeover and stable tokens after a Helm upgrade. The release
 factory runs it in a separate `install-kubernetes` job with the retained image archives.
-Unlike Compose, Kubernetes pulls the computer, supervisor and sandbox images directly.
+Unlike Compose, Kubernetes pulls the computer image directly; the pre-pull DaemonSet caches it on each node.
 See [the Kubernetes guide](install-kubernetes.md#verify-a-source-change) for local and
 owner-authorized ephemeral GKE Standard runs.
