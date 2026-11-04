@@ -10,6 +10,8 @@ class DockerError extends Error {
 }
 interface Inspection {
   Name: string;
+  Image?: string;
+  HostConfig?: { NanoCpus?: number; Memory?: number };
   Config: { Image: string; Labels: Record<string, string> };
   State: { Running: boolean; Status: string; Error: string };
 }
@@ -132,10 +134,14 @@ export class DockerBackend implements Backend {
       req.end(data);
     });
   }
+  async imageId(image: string): Promise<string | null> {
+    try { return (await this.request<{ Id: string }>("GET", `/images/${key(image)}/json`)).Id; }
+    catch (e) { if (e instanceof DockerError && e.status === 404) return null; throw e; }
+  }
   async get(name: string): Promise<Machine | null> {
     try {
       const c = await this.request<Inspection>("GET", `/containers/${key(name)}/json`);
-      return { name: c.Name.replace(/^\//, ""), image: c.Config.Image, labels: c.Config.Labels ?? {},
+      return { name: c.Name.replace(/^\//, ""), image: c.Config.Image, imageId: c.Image, cpus: c.HostConfig?.NanoCpus === undefined ? undefined : String(c.HostConfig.NanoCpus / 1e9), memory: c.HostConfig?.Memory === undefined ? undefined : String(c.HostConfig.Memory), labels: c.Config.Labels ?? {},
         phase: c.State.Running ? "ready" : c.State.Error ? "error" : "stopped", error: c.State.Error || null };
     } catch (e) { if (e instanceof DockerError && e.status === 404) return null; throw e; }
   }

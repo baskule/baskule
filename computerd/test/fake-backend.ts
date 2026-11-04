@@ -9,6 +9,7 @@ export class FakeBackend implements Backend {
   disks = new Set<string>();
   calls: { method: string; req: MachineSpec | { name: string } }[] = [];
   execs: { command: string[]; environment: Record<string, string>; workdir: string; stdinChunks: number[] }[] = [];
+  async imageId(_image: string): Promise<string | null> { return null; }
   async get(name: string) { return this.sandboxes.get(name) ?? null; }
   async list(labels: Record<string, string>) {
     return [...this.sandboxes.values()].filter(s => Object.entries(labels).every(([k,v]) => s.labels[k] === v));

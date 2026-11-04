@@ -15,7 +15,7 @@ export interface KubernetesOptions {
 type Resource = {
   metadata: { name: string; resourceVersion?: string; generation?: number; deletionTimestamp?: string;
     ownerReferences?: { kind: string; name: string }[]; labels?: Record<string, string>; annotations?: Record<string, string> };
-  spec?: { operatingMode?: string; podTemplate?: { spec?: { containers?: { name?: string; image: string }[] } } };
+  spec?: { operatingMode?: string; podTemplate?: { spec?: { containers?: { name?: string; image: string; resources?: { limits?: { cpu?: string; memory?: string } } }[] } } };
   status?: { selector?: string; phase?: string; message?: string; conditions?: { type: string; status: string; reason?: string; message?: string; observedGeneration?: number }[] };
 };
 class ApiError extends Error {
@@ -95,8 +95,10 @@ export class KubernetesBackend implements Backend {
     const suspended = s.spec?.operatingMode === 'Suspended';
     const phase = s.metadata.deletionTimestamp ? 'stopping' : suspended ? (p ? 'stopping' : 'stopped') : error ? 'error' :
       p && !p.metadata.deletionTimestamp && conditions.some(c => c.type === 'Ready' && c.status === 'True') && p.status?.conditions?.some(c => c.type === 'Ready' && c.status === 'True') ? 'ready' : 'starting';
-    return { name: s.metadata.name, phase, image: s.spec?.podTemplate?.spec?.containers?.[0]?.image ?? '', labels: s.metadata.labels ?? {}, error: phase === 'error' ? error : null };
+    const limits = s.spec?.podTemplate?.spec?.containers?.[0]?.resources?.limits;
+    return { cpus: limits?.cpu, memory: limits?.memory, name: s.metadata.name, phase, image: s.spec?.podTemplate?.spec?.containers?.[0]?.image ?? '', labels: s.metadata.labels ?? {}, error: phase === 'error' ? error : null };
   }
+  async imageId(_image: string): Promise<string | null> { return null; }
   async get(name: string) { const s = await this.resource(`${this.sandboxes}/${encode(name)}`); return s ? this.machine(s) : null; }
   async list(labels: Record<string, string>) {
     const query = new URLSearchParams({ labelSelector: Object.entries(labels).map(([k,v]) => `${k}=${v}`).join(',') });
@@ -145,7 +147,7 @@ export class KubernetesBackend implements Backend {
     if (!result) throw new Error('Missing ready machine');
     return result;
   }
-  async create(spec: MachineSpec): Promise<Machine> {
+  private sandbox(spec: MachineSpec) {
     if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(spec.disk) || spec.disk.length > 63 || pvcName(spec.name, spec.disk).length > 253) throw new Error('Invalid disk template name');
     const resources = { cpu: spec.cpus, memory: spec.memory };
     const object = {
@@ -162,6 +164,10 @@ export class KubernetesBackend implements Backend {
         } },
       },
     };
+    return object;
+  }
+  async create(spec: MachineSpec): Promise<Machine> {
+    const object = this.sandbox(spec);
     try { await this.api(this.sandboxes, 'POST', object); } catch (e) { if (e instanceof ApiError && e.code === 409) return this.start(spec.name); throw e; }
     return this.ready(spec.name);
   }
@@ -169,13 +175,10 @@ export class KubernetesBackend implements Backend {
   async recreate(spec: MachineSpec): Promise<Machine> {
     this.podNames.delete(spec.name);
     const path = `${this.sandboxes}/${encode(spec.name)}`;
-    const sandbox = await this.resource(path);
-    const containers = sandbox?.spec?.podTemplate?.spec?.containers;
-    if (!containers?.some(c => c.name === 'computer')) throw new Error(`No computer container for ${spec.name}`);
-    const resources = { cpu: spec.cpus, memory: spec.memory };
-    await this.api(path, 'PATCH', { spec: { operatingMode: 'Running', podTemplate: { spec: {
-      containers: containers.map(c => c.name === 'computer' ? { ...c, image: spec.image, resources: { requests: resources, limits: resources } } : c),
-    } } } });
+    const existing = await this.resource(path);
+    if (!existing) throw new Error(`Sandbox ${spec.name} disappeared`);
+    const podTemplate = this.sandbox(spec).spec.podTemplate;
+    await this.api(path, 'PUT', { ...existing, spec: { ...existing.spec, operatingMode: 'Running', podTemplate } });
     return this.ready(spec.name);
   }
   async stop(name: string) {

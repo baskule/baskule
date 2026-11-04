@@ -49,11 +49,15 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
       assert.deepEqual(template.spec.containers[0].volumeMounts, [{ name: 'space', mountPath: '/sandbox/space' }]);
       sandbox = data; disk = true; send(sandbox); return;
     }
+    if (req.method === 'PUT') {
+      assert.deepEqual(data.spec.volumeClaimTemplates, sandbox.spec.volumeClaimTemplates);
+      sandbox = data; sandbox.status = {}; pod = null; send(sandbox); return;
+    }
     if (req.method === 'PATCH') {
       assert.equal(req.headers['content-type'], 'application/merge-patch+json');
       if (data.spec.podTemplate) {
         assert.equal(data.spec.volumeClaimTemplates, undefined);
-        sandbox.spec.podTemplate.spec.containers = data.spec.podTemplate.spec.containers;
+        sandbox.spec.podTemplate = data.spec.podTemplate;
       }
       sandbox.spec.operatingMode = data.spec.operatingMode;
       if (data.spec.operatingMode === 'Suspended') pod = null;
@@ -106,7 +110,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   }); });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address !== 'string');
-  const backend = new KubernetesBackend({ baseUrl: `http://127.0.0.1:${address.port}`, token: 'test', ca: '', namespace: 'test', timeoutMs: 2000 });
+  const backend = new KubernetesBackend({ baseUrl: `http://127.0.0.1:${address.port}`, token: 'test', ca: '', namespace: 'test', runtimeClassName: 'sandboxed', nodeSelector: { pool: 'computers' }, tolerations: [{ key: 'computer', operator: 'Exists' }], imagePullSecrets: [{ name: 'registry' }], timeoutMs: 2000 });
   t.after(() => { backend.close(); wss.close(); server.close(); server.closeAllConnections(); });
   const spec = { name: 'machine', disk: 'space', image: 'computer:test', cpus: '2', memory: '3Gi', labels: { managed: 'true' }, annotations: {} };
   assert.equal((await backend.create(spec)).phase, 'ready');
@@ -138,6 +142,9 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     await rejected;
     assert.equal(upgrades - before, 1);
     protocol = 'v5.channel.k8s.io';
+    const recovered = backend.exec({ machine: 'machine', command: ['cat'] });
+    recovered.endStdin();
+    for await (const event of recovered.events) void event;
   });
   await t.test('repeated exec avoids API reads after first handshake', async () => {
     const before = apiRequests;
@@ -166,9 +173,15 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     await backend.stop('machine');
     const claims = structuredClone(sandbox.spec.volumeClaimTemplates);
     const original = structuredClone(sandbox.spec.podTemplate.spec.containers[0]);
+    sandbox.spec.podTemplate.spec.runtimeClassName = 'old-runtime';
+    sandbox.spec.podTemplate.spec.nodeSelector = { pool: 'old' };
     assert.equal((await backend.recreate({ ...spec, image: 'new:image', cpus: '4', memory: '8Gi' })).phase, 'ready');
     assert.deepEqual(sandbox.spec.volumeClaimTemplates, claims);
     assert.deepEqual(sandbox.spec.podTemplate.spec.containers[0], { ...original, image: 'new:image', resources: { requests: { cpu: '4', memory: '8Gi' }, limits: { cpu: '4', memory: '8Gi' } } });
+    assert.equal(sandbox.spec.podTemplate.spec.runtimeClassName, 'sandboxed');
+    assert.deepEqual(sandbox.spec.podTemplate.spec.nodeSelector, { pool: 'computers' });
+    assert.deepEqual(sandbox.spec.podTemplate.spec.tolerations, [{ key: 'computer', operator: 'Exists' }]);
+    assert.deepEqual(sandbox.spec.podTemplate.spec.imagePullSecrets, [{ name: 'registry' }]);
     assert.ok(disk);
   });
   assert.ok(watches >= 3);

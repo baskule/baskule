@@ -172,6 +172,18 @@ export class Computers {
       info = await this.backend.create(spec);
       created = true;
     }
+    const needsUpdate = async (machine: Machine) => {
+      const imageId = await this.backend.imageId(spec.image);
+      const quantity = (value: string) => {
+        const match = /^(\d+(?:\.\d+)?)([KMGT]i?|m)?$/.exec(value);
+        if (!match) return NaN;
+        const unit = match[2] ?? "";
+        return Number(match[1]) * (unit === "m" ? 0.001 : unit ? (unit.endsWith("i") ? 1024 : 1000) ** ("KMGT".indexOf(unit[0]) + 1) : 1);
+      };
+      return (imageId && machine.imageId ? imageId !== machine.imageId : machine.image !== spec.image) ||
+        (machine.cpus !== undefined && quantity(machine.cpus) !== quantity(spec.cpus)) ||
+        (machine.memory !== undefined && quantity(machine.memory) !== quantity(spec.memory));
+    };
     const deadline = Date.now() + this.cfg.readyTimeoutMs;
     let recovered = false;
     while (info.phase !== "ready") {
@@ -179,7 +191,7 @@ export class Computers {
         if (recovered) throw new Error(info.error ?? "computer is in error");
         recovered = true;
         await this.backend.stop(s.sandbox);
-        if (info.image !== this.cfg.image) {
+        if (await needsUpdate(info)) {
           log.info("computer image update", { sandbox: s.sandbox, oldImage: info.image, newImage: this.cfg.image });
           info = await this.backend.recreate(spec);
         } else info = await this.backend.start(s.sandbox);
@@ -188,7 +200,7 @@ export class Computers {
       }
       if (Date.now() > deadline) throw new Error("computer not ready before timeout");
       if (info.phase === "stopped") {
-        if (info.image !== this.cfg.image) {
+        if (await needsUpdate(info)) {
           log.info("computer image update", { sandbox: s.sandbox, oldImage: info.image, newImage: this.cfg.image });
           info = await this.backend.recreate(spec);
         } else info = await this.backend.start(s.sandbox);

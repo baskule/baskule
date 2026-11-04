@@ -614,3 +614,20 @@ test("error recovery is attempted once", async () => {
   await assert.rejects(cs.ensure("recover"), /computer is in error/);
   assert.equal(f.calls.filter(c => c.method === "stop").length, 2);
 });
+
+test("stopped computers refresh rebuilt tags and changed limits", async () => {
+  for (const change of ["imageId", "cpus", "memory"] as const) {
+    const f = new FakeBackend();
+    f.imageId = async () => "sha256:new";
+    const cs = new Computers(f, cfg);
+    await cs.ensure("refresh");
+    const name = namesFor("refresh", cfg.instance).sandbox;
+    const machine = f.sandboxes.get(name)!;
+    machine[change] = change === "imageId" ? "sha256:old" : "999";
+    await cs.ensure("refresh");
+    assert.equal(f.calls.filter(c => c.method === "recreate").length, 0);
+    await f.stop(name);
+    await cs.ensure("refresh");
+    assert.equal(f.calls.filter(c => c.method === "recreate").length, 1);
+  }
+});

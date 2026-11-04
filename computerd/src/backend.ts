@@ -9,6 +9,9 @@ export interface Machine {
   name: string;
   phase: MachinePhase;
   image: string;
+  imageId?: string;
+  cpus?: string;
+  memory?: string;
   labels: Record<string, string>;
   /** Why the machine is in `error`, otherwise null. */
   error: string | null;
@@ -47,6 +50,7 @@ export interface ExecHandle {
 }
 
 export interface Backend {
+  imageId(image: string): Promise<string | null>;
   /** null when the machine does not exist. */
   get(name: string): Promise<Machine | null>;
   /** Machines carrying every given label. */
