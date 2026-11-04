@@ -5,7 +5,7 @@ set -euo pipefail
 # Prepare the mounted app before the source deploy job starts.
 [ -f "$ROOT/platform/dist/worker.js" ] || "$DEPLOY_DIR/build.sh" --no-deploy
 if [ "${1:-}" = --build ]; then "$DEPLOY_DIR/images.sh" --all >/dev/null; else "$DEPLOY_DIR/images.sh" --missing >/dev/null; fi
-dc up -d --no-build
+dc up -d --no-build --remove-orphans
 # The deploy job runs once per `up` (when its dependencies are healthy).
 for _ in $(seq 300); do
   st=$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' baskule-deploy 2>/dev/null || echo "missing 0")

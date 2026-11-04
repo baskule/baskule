@@ -6,7 +6,7 @@ For several machines, use the [Kubernetes installation](install-kubernetes.md), 
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
-docker compose up -d
+docker compose up -d --remove-orphans
 docker compose logs setup        # prints the one-time link that creates the first admin
 ```
 
@@ -219,8 +219,11 @@ the old compose file with the backup. Changes without a migration need the owner
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
+
+For upgrades from 0.5.0, `--remove-orphans` removes the privileged OpenShell service and its old computers
+before migration reads the legacy volume.
 
 The compose file selects the released version. Keep your optional `.env`; no version edit or secret regeneration
 is needed. Updates can interrupt chats and commands. Check sign-in and a computer command after reconnecting.

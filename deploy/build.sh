@@ -84,7 +84,7 @@ was_up=0
 if [ $was_up = 1 ]; then
   # Running stack: recreate only services whose image changed (compose compares image ids), then deploy once.
   step "refresh running services"
-  dc up -d --no-build baskule-traces baskule-edge baskule-computerd baskule-celld-a baskule-celld-b >&2
+  dc up -d --no-build --remove-orphans baskule-traces baskule-edge baskule-computerd baskule-celld-a baskule-celld-b >&2
   step "deploy.sh"
   "$DEPLOY_DIR/deploy.sh" 2>&1 | tail -2 >&2
 else
