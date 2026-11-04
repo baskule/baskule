@@ -8,7 +8,8 @@ global:
     pullPolicy: IfNotPresent
 imagePullSecrets: []
 # Keys: COMPUTERD_TOKEN, SETUP_TOKEN, PLUGIN_SYNC_TOKEN. Generated once with Helm server lookup.
-# GitOps/client rendering must supply existingSecret and s3.existingSecret.
+# GitOps/client rendering must supply existingSecret for platform tokens.
+# Prefer s3.existingSecret to keep bucket keys outside rendered manifests.
 existingSecret: ""
 authConfig: '{"version":1,"mode":"authenticated","password":true}'
 s3:

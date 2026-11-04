@@ -15,4 +15,6 @@ under `.run/evidence/kubernetes/`. Build images as described in
 a tagged Scaleway S3 bucket, cross-node PD reattachment and WebSocket streaming through GKE Ingress. It requires
 the owner's explicit authorization, authenticated gcloud and `BASKULE_GKE_PROJECT`
 matching the active project, plus private `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and
-`SCW_DEFAULT_PROJECT_ID` (Object Storage only). It is never selected by ordinary checks.
+`SCW_DEFAULT_PROJECT_ID` for bucket management. The cluster requires separate
+`BASKULE_S3_ACCESS_KEY` and `BASKULE_S3_SECRET_KEY` from an application limited to
+Object Storage. It is never selected by ordinary checks.

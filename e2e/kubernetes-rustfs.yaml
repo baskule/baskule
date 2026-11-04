@@ -54,7 +54,7 @@ spec:
   ingress:
     - from:
         - podSelector:
-            matchLabels: {app.kubernetes.io/instance: baskule}
+            matchLabels: {app.kubernetes.io/instance: ${BASKULE_K8S_RELEASE}}
             matchExpressions:
               - {key: app.kubernetes.io/component, operator: In, values: [celld, deploy]}
       ports: [{port: 3900, protocol: TCP}]
