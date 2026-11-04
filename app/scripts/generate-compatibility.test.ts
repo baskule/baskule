@@ -1,3 +1,8 @@
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import {
   compatibilityFile,
@@ -59,4 +64,55 @@ describe("contract compatibility guard", () => {
       ),
     ).not.toThrow();
   });
+});
+
+it("checks a large patch through the real CLI without overflowing its diff buffer", () => {
+  const cwd = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "compatibility-guard-"));
+  try {
+    const config = NodePath.join(cwd, "gitconfig");
+    NodeFS.writeFileSync(config, "");
+    const env = {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: config,
+      GIT_CONFIG_NOSYSTEM: "1",
+      COMPATIBILITY_NOOP: "false",
+    };
+    const git = (...args: string[]) =>
+      NodeChildProcess.execFileSync(
+        "git",
+        [
+          "-c",
+          "user.name=Compatibility test",
+          "-c",
+          "user.email=compatibility@example.test",
+          "-c",
+          "commit.gpgsign=false",
+          ...args,
+        ],
+        { cwd, env, encoding: "utf8" },
+      );
+    git("init", "-q");
+    NodeFS.writeFileSync(NodePath.join(cwd, "large.txt"), "before\n");
+    git("add", ".");
+    git("commit", "-qm", "baseline");
+    const base = git("rev-parse", "HEAD").trim();
+    NodeFS.writeFileSync(
+      NodePath.join(cwd, "large.txt"),
+      "Ordinary repository documentation.\n".repeat(40_000),
+    );
+    git("add", ".");
+    git("commit", "-qm", "large patch");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      [
+        NodeURL.fileURLToPath(new URL("./generate-compatibility.ts", import.meta.url)),
+        "guard",
+        base,
+      ],
+      { cwd, env, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+    );
+    expect(result.status, result.stderr?.slice(0, 500)).toBe(0);
+  } finally {
+    NodeFS.rmSync(cwd, { recursive: true, force: true });
+  }
 });
