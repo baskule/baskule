@@ -39,3 +39,24 @@ for (const scenario of ["absent legacy", "absent legacy with data", "target abse
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 }
+
+test("legacy inventory is shared and fresh disks skip migration helpers", async () => {
+  const { DockerBackend } = await import("../src/docker.ts");
+  const backend: DockerBackend = Object.create(DockerBackend.prototype);
+  const requests: string[] = [];
+  Object.assign(backend, {
+    legacyVolume: "legacy",
+    request: async (method: string, path: string) => {
+      requests.push(method + " " + path);
+      if (path === "/containers/create") return { Id: "inventory" };
+      if (path.includes("/wait?")) return { StatusCode: 0 };
+      if (path.includes("/logs?")) return "baskule-space-old\n";
+      return null;
+    },
+  });
+  await Promise.all(["one", "two"].map(id => backend.ensureDisk({
+    disk: "baskule-space-scoped-" + id, legacyDisk: "baskule-space-" + id, image: "test", labels: {},
+  })));
+  assert.equal(requests.filter(r => r === "POST /containers/create").length, 1);
+  assert.equal(requests.filter(r => r.startsWith("POST /containers/create?")).length, 0);
+});

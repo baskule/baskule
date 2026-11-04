@@ -141,20 +141,39 @@ export class DockerBackend implements Backend {
     } catch (e) { if (!(e instanceof DockerError && e.status === 409)) throw e; }
     return this.start(spec.name);
   }
+  private legacyDisks: Promise<Set<string>> | undefined;
+  private async listLegacyDisks(image: string): Promise<Set<string>> {
+    try { await this.request("GET", `/volumes/${key(this.legacyVolume)}`); }
+    catch (error) {
+      if (error instanceof DockerError && error.status === 404) return new Set();
+      throw error;
+    }
+    const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
+      Image: image, User: "0:0", Tty: true,
+      Entrypoint: ["/bin/sh", "-ec", 'if [ -d /legacy/volumes ]; then ls -1 /legacy/volumes; fi'],
+      HostConfig: { NetworkMode: "none", CapDrop: ["ALL"], CapAdd: ["DAC_READ_SEARCH"],
+        SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true,
+        Mounts: [{ Type: "volume", Source: this.legacyVolume, Target: "/legacy", ReadOnly: true }] },
+    });
+    try {
+      await this.request("POST", `/containers/${helper.Id}/start`);
+      const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`, undefined, JSON.parse, 0);
+      if (result.StatusCode !== 0) throw new Error("Cannot list legacy disks");
+      const output = await this.request<string>("GET", `/containers/${helper.Id}/logs?stdout=true`, undefined, text => text);
+      return new Set((output ?? "").split(/\r?\n/).filter(Boolean));
+    } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
+  }
   async ensureDisk(spec: Pick<MachineSpec, "disk" | "legacyDisk" | "labels" | "image">): Promise<void> {
     if (!/^baskule-space-[a-zA-Z0-9_-]+$/.test(spec.disk)) throw new Error("Invalid disk name");
     const legacyDisk = spec.legacyDisk ?? spec.disk;
     if (!/^baskule-space-[a-zA-Z0-9_-]+$/.test(legacyDisk)) throw new Error("Invalid legacy disk name");
-    if (this.legacyVolume) {
-      try { await this.request("GET", `/volumes/${key(this.legacyVolume)}`); }
-      catch (error) {
-        if (!(error instanceof DockerError && error.status === 404)) throw error;
-        await this.request("POST", "/volumes/create", { Name: spec.disk, Labels: spec.labels });
-        return;
-      }
-    }
     await this.request("POST", "/volumes/create", { Name: spec.disk, Labels: spec.labels });
     if (!this.legacyVolume) return;
+    const disks = await (this.legacyDisks ??= this.listLegacyDisks(spec.image).catch(error => {
+      this.legacyDisks = undefined;
+      throw error;
+    }));
+    if (!disks.has(legacyDisk)) return;
     const helperName = spec.disk + "-migration";
     const previous = await this.get(helperName);
     if (previous) {
@@ -276,7 +295,7 @@ if [ ! -d "$source" ]; then
   sync
   exit 0
 fi
-echo "migration start bytes=$(du -sb "$source" | cut -f1)"
+echo "migration start"
 find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 cp -a "$source/." /target/
 sync
