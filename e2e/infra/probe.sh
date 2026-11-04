@@ -1,5 +1,5 @@
 # Private-address probes use representative examples, not an operator's network addresses.
-# Sourced INSIDE a computer by e2e/infra-smoke.sh (bash). Prints one line per probe.
+# Sourced INSIDE a computer by e2e/infra-smoke.sh and e2e/computer-isolation.sh (bash). Prints one line per probe.
 #   probe_isolation "<name=ip ...>" <computers-net gateway> <stack-net gateway>   -> DENIED|OPEN <target> <detail>
 #   probe_internet                                                                -> WORKS|BROKEN <check> <detail>
 

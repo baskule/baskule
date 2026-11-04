@@ -17,6 +17,7 @@ The worktree and release-install harnesses generate their own setup tokens and c
 | Parallel phase only | `scripts/check e2e` (= `E2E_SLOW=0 e2e/run.sh`) | see the workflow doc |
 | Acceptance (both phases) | `e2e/run.sh` | see the workflow doc |
 | Infrastructure smoke | `scripts/check infra` (= `e2e/infra-smoke.sh --no-up`) | 2–4 min |
+| Computer isolation (development stack) | `e2e/computer-isolation.sh` (starts and stops the full fake-LLM stack) | 3–5 min |
 | Real model | `E2E_REAL=1 e2e/run.sh --grep @real` | ≈ 1 min, ≈ $0.002 |
 | Build + deploy + suite | `BUILD=1 [T3_APP_DIR=…] e2e/run.sh` | + build |
 | Performance samples | `e2e/run.sh --project perf`, `e2e/perf/run.sh <label> 5` | minutes |
