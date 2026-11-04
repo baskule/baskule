@@ -285,6 +285,10 @@ try {
       const computerApi = new Client(await forward(`service/${release}-computerd`, 47094), Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString());
       const publicControl = await computerApi.exec(space, { argv: ["curl", "-fsS", "--max-time", "20", "https://example.com/"] });
       assert.equal(publicControl.code, 0, publicControl.stderr);
+      const sshControl = await computerApi.exec(space, { argv: ["node", "-e", "const s=require('net').connect(22,'github.com');s.on('connect',()=>{s.destroy();process.exit(0)});s.on('error',()=>process.exit(1));s.setTimeout(20000,()=>process.exit(2))"] });
+      assert.equal(sshControl.code, 0, sshControl.stderr);
+      pass("computer DNS, public HTTPS and public TCP 22 work");
+
       const apiService = JSON.parse(execFileSync("kubectl", ["-n", "default", "get", "service", "kubernetes", "-o", "json"], { encoding: "utf8" })).spec.clusterIP;
       for (const target of [
         `https://${apiService}:443/`,
