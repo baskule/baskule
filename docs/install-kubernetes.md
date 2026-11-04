@@ -489,8 +489,9 @@ tag 2.0.0 without launching those fictitious images. This does not prove applica
 behavior across releases or schema migration. Evidence stays under `.run/evidence/`.
 
 Only with the installation owner's authorization, authenticate gcloud and set
-`BASKULE_GKE_PROJECT` to the authorized active project. Run
-`e2e/kubernetes-ephemeral.sh run`. Every gcloud operation selects that project
+`BASKULE_GKE_PROJECT` to the authorized active project. Build the three images as above,
+then run `BASKULE_K8S_TAG=kubernetes e2e/kubernetes-ephemeral.sh run`; the tag is required so a
+run never ships another checkout's images, and the IDs it pushes are recorded in `images.txt`. Every gcloud operation selects that project
 explicitly; the script does not change the account or project configuration.
 It creates two Spot `e2-custom-4-8192` nodes in `europe-west1-b`, an ephemeral Artifact
 Registry repository, a disposable node service account, a reserved address and a real
