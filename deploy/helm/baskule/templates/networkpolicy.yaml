@@ -45,6 +45,11 @@ spec:
             matchLabels: {kubernetes.io/metadata.name: kube-system}
           podSelector:
             matchLabels: {k8s-app: kube-dns}
+        # NodeLocal DNSCache pods (GKE Dataplane V2 redirects kube-dns queries to them; ipBlock never matches pods there).
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: node-local-dns}
       ports:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}

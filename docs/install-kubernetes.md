@@ -154,7 +154,8 @@ With `networkPolicy.enabled` (the default), the chart adds these NetworkPolicies
 - computerd accepts port 47094 only from celld pods.
 - Evaluation RustFS accepts port 3900 only from celld pods and the deploy job.
 - Computer pods accept no ingress. They may send only:
-  - DNS (UDP and TCP 53) to kube-dns pods in `kube-system` and to `computers.dnsServerCidrs`;
+  - DNS (UDP and TCP 53) to kube-dns and NodeLocal DNSCache (`k8s-app: node-local-dns`) pods in
+    `kube-system`, and to `computers.dnsServerCidrs`;
   - IPv4 traffic to `0.0.0.0/0` except private (`10.0.0.0/8`, `172.16.0.0/12`,
     `192.168.0.0/16`), CGNAT (`100.64.0.0/10`), link-local (`169.254.0.0/16`, including
     cloud metadata), loopback, `0.0.0.0/8`, multicast and reserved ranges, and the IPv4
@@ -169,8 +170,9 @@ publicly addressed Pod, Service, node, storage or organization range that comput
 not reach to `computers.blockedCidrs`. The journey's storage denial check covers only the
 in-cluster RustFS Service; it does not prove denial of an external S3 provider.
 
-Some clusters, including GKE, answer computer DNS from an address that the kube-dns pod
-rule does not match, such as a node-local DNS cache. Set `computers.dnsServerCidrs` to
+GKE's NodeLocal DNSCache with Dataplane V2 is covered by the pod rule. A cluster whose
+resolver is neither of those pods, such as a host-network DNS cache, answers from an address
+the pod rules do not match. Set `computers.dnsServerCidrs` to
 the `nameserver` addresses in a pod's `/etc/resolv.conf`, as `/32` CIDRs; computers may
 reach them only on port 53. computerd uses the same cluster DNS, so
 `kubectl -n baskule exec deploy/baskule-computerd -- cat /etc/resolv.conf` shows them.
@@ -215,8 +217,9 @@ above uses on-demand nodes, the project default node identity, and GKE's disk an
 observability defaults. It needs an identity with the required node permissions.
 
 Install Agent Sandbox, then run either Helm install command above. Dataplane V2 provides
-NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass. Set
-`computers.dnsServerCidrs` as described in [Isolation and network rules](#isolation-and-network-rules).
+NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass. With Dataplane V2,
+`ipBlock` rules never match pod traffic, so the DNS pod rules above, not `computers.dnsServerCidrs`,
+allow NodeLocal DNSCache.
 Choose non-overlapping RFC 1918 Pod and Service ranges before creating the cluster.
 GKE's Google-managed `34.118.224.0/20` Service range is public address space, which the
 chart's computer policy does not exclude. If a cluster uses it, or any other publicly
