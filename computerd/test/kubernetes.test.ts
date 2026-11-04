@@ -15,6 +15,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   let terminatingFirst = false;
   let version = 1;
   let watches = 0;
+  let podLists = 0;
   let eof = false;
   let protocol = 'v5.channel.k8s.io';
   let upgrades = 0;
@@ -23,6 +24,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     assert.equal(req.headers.authorization, 'Bearer test');
     const url = new URL(req.url!, 'http://test');
     const path = url.pathname;
+    if (path.endsWith('/pods')) podLists++;
     let body = ''; for await (const c of req) body += c;
     const data = body ? JSON.parse(body) : null;
     const send = (value: unknown, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
@@ -63,9 +65,12 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     if (url.searchParams.has('watch')) {
       watches++; assert.ok(url.searchParams.get('resourceVersion'));
       sandbox.status = { selector: 'agents.x-k8s.io/sandbox-name-hash=test', conditions: [{ type: 'Ready', status: 'True' }] };
-      pod = { metadata: { name: 'pod' }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }] } };
+      pod = { metadata: { name: 'pod', ownerReferences: [{ kind: 'Sandbox', name: 'machine' }] }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }] } };
       sandbox.metadata.resourceVersion = String(++version);
       res.end(JSON.stringify({ type: 'MODIFIED', object: sandbox }) + '\n'); return;
+    }
+    if (kind === 'sandbox' && url.searchParams.has('labelSelector')) {
+      send({ items: [sandbox, { ...sandbox, metadata: { ...sandbox.metadata, name: 'other' } }] }); return;
     }
     if (url.searchParams.has('fieldSelector') || url.searchParams.has('labelSelector')) { send({ metadata: { resourceVersion: String(version) }, items: value ? (kind === 'pod' && terminatingFirst ? [{ ...value, metadata: { name: 'old', deletionTimestamp: 'now' } }, value] : [value]) : [] }); return; }
     send(value ?? {}, value ? 200 : 404);
@@ -99,7 +104,14 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   t.after(() => { backend.close(); wss.close(); server.close(); server.closeAllConnections(); });
   const spec = { name: 'machine', disk: 'space', image: 'computer:test', cpus: '2', memory: '3Gi', labels: { managed: 'true' }, annotations: {} };
   assert.equal((await backend.create(spec)).phase, 'ready');
-  assert.equal((await backend.list({ managed: 'true' })).length, 1);
+  await t.test('list joins Sandbox owners with one pod LIST', async () => {
+    const before = podLists;
+    const listed = await backend.list({ managed: 'true' });
+    assert.equal(listed.length, 2);
+    assert.equal(listed[1].phase, 'starting');
+    assert.equal(listed[0].phase, 'ready');
+    assert.equal(podLists - before, 1);
+  });
   assert.equal((await backend.create(spec)).phase, 'ready');
   await t.test('prefers Running replacement over terminating pod', async () => {
     terminatingFirst = true;

@@ -14,7 +14,7 @@ export interface KubernetesOptions {
 }
 type Resource = {
   metadata: { name: string; resourceVersion?: string; generation?: number; deletionTimestamp?: string;
-    labels?: Record<string, string>; annotations?: Record<string, string> };
+    ownerReferences?: { kind: string; name: string }[]; labels?: Record<string, string>; annotations?: Record<string, string> };
   spec?: { operatingMode?: string; podTemplate?: { spec?: { containers?: { name?: string; image: string }[] } } };
   status?: { selector?: string; phase?: string; message?: string; conditions?: { type: string; status: string; reason?: string; message?: string; observedGeneration?: number }[] };
 };
@@ -86,8 +86,8 @@ export class KubernetesBackend implements Backend {
   private selectPod(pods: Resource[]): Resource | null {
     return pods.find(p => !p.metadata.deletionTimestamp && p.status?.phase === 'Running') ?? pods[0] ?? null;
   }
-  private async machine(s: Resource): Promise<Machine> {
-    const p = await this.pod(s);
+  private async machine(s: Resource, suppliedPod?: Resource | null): Promise<Machine> {
+    const p = suppliedPod === undefined ? await this.pod(s) : suppliedPod;
     const conditions = s.status?.conditions?.filter(c => c.observedGeneration === undefined || c.observedGeneration === s.metadata.generation) ?? [];
     const failed = conditions.find(c => c.type === 'Ready' && c.status === 'False' && /Failed|Error|Crash|Invalid/i.test(c.reason ?? ''));
     const error = p?.status?.phase === 'Failed' ? p.status.message ?? 'Pod failed' : failed ? failed.message ?? failed.reason ?? 'Sandbox failed' : null;
@@ -100,7 +100,15 @@ export class KubernetesBackend implements Backend {
   async list(labels: Record<string, string>) {
     const query = new URLSearchParams({ labelSelector: Object.entries(labels).map(([k,v]) => `${k}=${v}`).join(',') });
     const list = await this.api<{ items: Resource[] }>(`${this.sandboxes}?${query}`);
-    return Promise.all(list.items.map(s => this.machine(s)));
+    const pods = await this.api<{ items: Resource[] }>(`${this.core}/pods?${new URLSearchParams({ labelSelector: 'baskule.computer=true' })}`);
+    const bySandbox = new Map<string, Resource[]>();
+    for (const pod of pods.items) {
+      const name = pod.metadata.ownerReferences?.find(owner => owner.kind === 'Sandbox')?.name ?? pod.metadata.labels?.['agents.x-k8s.io/sandbox-name'];
+      if (!name) continue;
+      const group = bySandbox.get(name) ?? [];
+      group.push(pod); bySandbox.set(name, group);
+    }
+    return Promise.all(list.items.map(s => this.machine(s, this.selectPod(bySandbox.get(s.metadata.name) ?? []))));
   }
   // LIST supplies a race-free resourceVersion, WATCH observes subsequent changes;
   // expiration (410) relists, normal watch timeout reconnects until the deadline.
