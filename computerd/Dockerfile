@@ -16,6 +16,7 @@ COPY --from=dependencies /out ./
 COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/baskule/
 LABEL org.opencontainers.image.source=https://github.com/baskule/baskule org.opencontainers.image.licenses=MIT
 COPY --chmod=0755 computerd/entrypoint.sh /usr/local/bin/baskule-computerd-entrypoint
+USER 1000:1000
 ENTRYPOINT ["baskule-computerd-entrypoint"]
 ENV COMPUTERD_PORT=47094
 EXPOSE 47094

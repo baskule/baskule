@@ -212,6 +212,7 @@ services:
     cap_drop: [ALL]
 
   baskule-computerd:
+    user: "0:0"
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computerd:${BASKULE_VERSION:-0.5.0}
     restart: unless-stopped
     command: ["/bin/sh", "-c", ". /run/baskule/secrets; exec node --disable-warning=ExperimentalWarning src/main.ts"]

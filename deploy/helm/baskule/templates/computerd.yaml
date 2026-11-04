@@ -29,6 +29,14 @@ spec:
       {{- end }}
       containers:
         - name: computerd
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
           image: {{ include "baskule.image" (dict "root" . "name" "computerd") }}
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           env:
