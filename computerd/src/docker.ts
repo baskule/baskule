@@ -45,14 +45,17 @@ export class DockerBackend implements Backend {
     if (network.Driver !== "bridge") throw new Error("Computer guard requires a Docker bridge network");
     const script = guardScript(network.IPAM.Config.map(config => config.Subnet));
     const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
-      Image: this.guardImage, User: "0:0",
+      Image: this.guardImage, User: "0:0", Tty: true,
       Entrypoint: ["/bin/sh", "-ec", script],
       HostConfig: { NetworkMode: "host", CapDrop: ["ALL"], CapAdd: ["NET_ADMIN"], SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true },
     });
     try {
       await this.request("POST", `/containers/${helper.Id}/start`);
       const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`);
-      if (result.StatusCode !== 0) throw new Error("Computer guard verification failed: requires Docker iptables DOCKER-USER (nftables-only Docker unsupported) and NET_ADMIN; refusing computer creation/start");
+      if (result.StatusCode !== 0) {
+        const output = await this.request<string>("GET", `/containers/${helper.Id}/logs?stdout=true&stderr=true&tail=20`, undefined, text => text.trim()).catch(() => "");
+        throw new Error(`Computer guard verification failed (exit ${result.StatusCode}): requires Docker iptables DOCKER-USER (nftables-only Docker unsupported) and NET_ADMIN; refusing computer creation/start${output ? `: ${output}` : ""}`);
+      }
       this.guardVerified = { subnets: network.IPAM.Config.map(config => config.Subnet), at: Date.now() };
     } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
   }
