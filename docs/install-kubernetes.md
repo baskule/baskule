@@ -1,5 +1,7 @@
 # Install a Baskule cluster on Kubernetes
 
+Exec requires an API server supporting `v5.channel.k8s.io` (see [upstream WebSocket requirements](https://kubernetes.io/blog/2024/08/20/websockets-transition/)).
+
 Kubernetes is the recommended way to run Baskule across machines. The Helm chart runs
 celld as a StatefulSet and computerd as a Deployment. computerd runs each space's computer
 as an Agent Sandbox `Sandbox` with a persistent volume.

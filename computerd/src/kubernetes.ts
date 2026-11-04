@@ -224,7 +224,7 @@ export class KubernetesBackend implements Backend {
     const command = start.workdir || start.environment ? ['sh', '-c', `${start.workdir ? `cd ${quote(start.workdir)} && ` : ''}exec env ${Object.entries(start.environment ?? {}).map(([k,v]) => { if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) throw new Error('Invalid environment name'); return quote(`${k}=${v}`); }).join(' ')} ${start.command.map(quote).join(' ')}`] : start.command;
     command.forEach(c => query.append('command', c));
     const opened = (async () => {
-      ws = await this.socket(start.machine, 'exec', query, ['v5.channel.k8s.io', 'v4.channel.k8s.io']);
+      ws = await this.socket(start.machine, 'exec', query, ['v5.channel.k8s.io']).catch(cause => { throw new Error('Kubernetes exec requires an API server supporting v5.channel.k8s.io', { cause }); });
       if (canceled) { ws.close(); throw new Error('Exec canceled'); }
       ws.on('message', data => {
         try {
@@ -245,9 +245,8 @@ export class KubernetesBackend implements Backend {
       return ws;
     })();
     void opened.catch(e => output.destroy(e));
-    // v4 has no stdin half-close; report EOF failure through the event stream.
     return { events: output as AsyncIterable<ExecEvent>, writeStdin: async chunk => { const socket = await opened; await new Promise<void>((resolve, reject) => socket.send(Buffer.concat([Buffer.from([0]), chunk]), e => e ? reject(e) : resolve())); },
-      endStdin: () => { void opened.then(s => { if (s.protocol === 'v5.channel.k8s.io') s.send(Buffer.from([255, 0])); else { output.destroy(new Error('Kubernetes exec v4 cannot close stdin; v5 is required for EOF')); s.close(); } }).catch(() => {}); },
+      endStdin: () => { void opened.then(s => s.send(Buffer.from([255, 0]))).catch(() => {}); },
       cancel: () => { canceled = true; ws?.close(); } };
   }
   connect(name: string, port: number): Duplex {

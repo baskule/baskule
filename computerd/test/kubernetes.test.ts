@@ -78,14 +78,15 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     if (url.searchParams.has('fieldSelector') || url.searchParams.has('labelSelector')) { send({ metadata: { resourceVersion: String(version) }, items: value ? (kind === 'pod' && terminatingFirst ? [{ ...value, metadata: { name: 'old', deletionTimestamp: 'now' } }, value] : [value]) : [] }); return; }
     send(value ?? {}, value ? 200 : 404);
   });
-  const wss = new WebSocketServer({ noServer: true, handleProtocols: (protocols, req) => { if (req.url?.includes('/portforward')) return 'v4.channel.k8s.io'; assert.ok(protocols.has(protocol)); return protocol; } });
+  const wss = new WebSocketServer({ noServer: true, handleProtocols: (protocols, req) => { if (req.url?.includes('/portforward')) return 'v4.channel.k8s.io'; return protocols.has(protocol) ? protocol : false; } });
   server.on('upgrade', (req, socket, head) => {
     if (refuseUpgrade) { socket.end('HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n'); return; }
     wss.handleUpgrade(req, socket, head, ws => {
     const url = new URL(req.url!, 'http://test');
     if (url.pathname.endsWith('/exec')) {
       upgrades++;
-      assert.equal(req.headers['sec-websocket-protocol'], 'v5.channel.k8s.io,v4.channel.k8s.io');
+      assert.equal(req.headers['sec-websocket-protocol'], 'v5.channel.k8s.io');
+      if (!ws.protocol) return;
       assert.equal(ws.protocol, protocol);
       assert.deepEqual(url.searchParams.getAll('command'), ['cat']);
       ws.on('message', raw => {
@@ -127,12 +128,12 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   await exec.writeStdin(Buffer.from('hello')); exec.endStdin();
   const events = []; for await (const e of exec.events) events.push(e);
   assert.deepEqual(events, [{ stdout: Buffer.from('hello') }, { stderr: Buffer.from('stderr') }, { exit: 7 }]); assert.ok(eof);
-  await t.test('negotiates v4 in one handshake and reports unsupported EOF', async () => {
+  await t.test('rejects servers without v5 exec support', async () => {
     protocol = 'v4.channel.k8s.io';
     const before = upgrades;
     const oldExec = backend.exec({ machine: 'machine', command: ['cat'] });
     const consume = async () => { for await (const event of oldExec.events) void event; };
-    const rejected = assert.rejects(consume(), /v4 cannot close stdin/);
+    const rejected = assert.rejects(consume(), /requires an API server supporting v5/);
     oldExec.endStdin();
     await rejected;
     assert.equal(upgrades - before, 1);
@@ -148,7 +149,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   await t.test('failed cached upgrade invalidates pod discovery', async () => {
     refuseUpgrade = true;
     const failed = backend.exec({ machine: 'machine', command: ['cat'] });
-    await assert.rejects(async () => { for await (const event of failed.events) void event; }, /Kubernetes 404/);
+    await assert.rejects(async () => { for await (const event of failed.events) void event; }, /requires an API server supporting v5/);
     refuseUpgrade = false;
     const before = apiRequests;
     const recovered = backend.exec({ machine: 'machine', command: ['cat'] });
