@@ -300,6 +300,35 @@ try {
       const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
       assert.ok(targets.some(target => target.type === "page"));
       pass("computer Chromium responds through the real CDP WebSocket tunnel");
+      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
+        const claim = objects("get", "pvc").items.find(p => p.metadata.ownerReferences?.some(o => o.uid === sandbox.metadata.uid));
+        assert.ok(claim);
+        const snapshotName = "restore-proof";
+        const apply = object => execFileSync("kubectl", ["-n", namespace, "apply", "-f", "-"], { input: JSON.stringify(object), encoding: "utf8" });
+        const command = async argv => {
+          const r = await computerApi.exec(space, { argv });
+          assert.equal(r.code, 0, r.stderr); return r.stdout;
+        };
+        await command(["sh", "-c", "mkdir -p /sandbox/space/restore-proof; printf snapshot-proof > /sandbox/space/restore-proof/a; printf second-file > /sandbox/space/restore-proof/b; sync"]);
+        const hashes = () => command(["sh", "-c", "cd /sandbox/space/restore-proof && sha256sum a b"]);
+        const beforeHashes = await hashes();
+        computer("stop");
+        apply({ apiVersion: "snapshot.storage.k8s.io/v1", kind: "VolumeSnapshotClass", metadata: { name: "baskule-proof" }, driver: "pd.csi.storage.gke.io", deletionPolicy: "Delete" });
+        try {
+          apply({ apiVersion: "snapshot.storage.k8s.io/v1", kind: "VolumeSnapshot", metadata: { name: snapshotName }, spec: { volumeSnapshotClassName: "baskule-proof", source: { persistentVolumeClaimName: claim.metadata.name } } });
+          await expect.poll(() => objects("get", "volumesnapshot", snapshotName).status?.readyToUse, { timeout: 240_000 }).toBe(true);
+          await computerApi.json("POST", `/v1/spaces/${space}/computer/delete`, { confirm: space });
+          assert.equal(objects("get", "pvc").items.some(p => p.metadata.name === claim.metadata.name), false);
+          apply({ apiVersion: "v1", kind: "PersistentVolumeClaim", metadata: { name: claim.metadata.name, annotations: { "agents.x-k8s.io/adoptable": "true" } }, spec: { accessModes: claim.spec.accessModes, storageClassName: claim.spec.storageClassName, resources: claim.spec.resources, dataSource: { apiGroup: "snapshot.storage.k8s.io", kind: "VolumeSnapshot", name: snapshotName } } });
+          computer("ensure");
+          assert.equal(await hashes(), beforeHashes);
+          writeFileSync(resolve(evidence, "restore.json"), JSON.stringify({ pvc: claim.metadata.name, hashes: beforeHashes, restored: true }));
+          pass("VolumeSnapshot restores known files into the original PVC name after Sandbox and PVC deletion");
+        } finally {
+          kube("delete", "volumesnapshot", snapshotName, "--ignore-not-found", "--timeout=180s");
+        }
+      }
+
     }
     if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
     // Keep the killed ordinal unavailable until another celld owns its cells.
