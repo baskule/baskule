@@ -49,6 +49,15 @@ diff -u .run/evidence/migration/source .run/evidence/migration/target
 run -v "$disk:/data" "$image" -ec 'echo retained > /data/home/after'
 driver
 run -v "$disk:/data" "$image" -ec 'test "$(cat /data/home/after)" = retained; rm /data/.baskule-migrated'
+driver
+run -v "$disk:/data" "$image" -ec 'test "$(cat /data/home/after)" = retained'
+# Simulate the crash after marker, before source rename.
+run -v "$legacy:/legacy" "$image" -ec 'mv "/legacy/volumes/$1/_data.migrated" "/legacy/volumes/$1/_data"' sh "$legacyDisk"
+run -v "$disk:/data" "$image" -ec 'touch /data/.baskule-migrated'
+driver
+run -v "$disk:/data" "$image" -ec 'test "$(cat /data/home/after)" = retained; rm /data/.baskule-migrated'
+# Reset source to exercise an interrupted copy.
+run -v "$legacy:/legacy" "$image" -ec 'mv "/legacy/volumes/$1/_data.migrated" "/legacy/volumes/$1/_data"' sh "$legacyDisk"
 driver &
 pid=$!
 deadline=$((SECONDS+60))

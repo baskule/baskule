@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { namesFor } from "../src/policy.ts";
-import { migrationScript } from "../src/docker.ts";
+import { migrationScript, migrationFinalizeScript } from "../src/docker.ts";
 
 for (const scenario of ["absent legacy", "absent legacy with data", "target absent", "target incomplete", "target complete"]) {
   test(scenario, () => {
@@ -26,15 +26,20 @@ for (const scenario of ["absent legacy", "absent legacy with data", "target abse
     }
     if (scenario === "target complete") writeFileSync(join(target, ".baskule-migrated"), "");
     try {
-      execFileSync("sh", ["-ec", migrationScript.replaceAll("/legacy", legacy).replaceAll("/target", target), "migration", legacyDisk]);
+      for (const script of [migrationScript, migrationFinalizeScript]) execFileSync("sh", ["-ec", script.replaceAll("/legacy", legacy).replaceAll("/target", target), "migration", legacyDisk]);
       if (scenario.startsWith("absent legacy")) {
-        assert.ok(existsSync(join(target, ".baskule-migrated")));
+        assert.equal(existsSync(join(target, ".baskule-migrated")), !scenario.startsWith("absent legacy"));
         if (scenario.endsWith("with data")) assert.equal(readFileSync(join(target, "home/data"), "utf8"), "new");
       }
       else {
         assert.equal(readFileSync(join(target, "home/data"), "utf8"), scenario === "target complete" ? "new" : "legacy");
+        assert.ok(existsSync(source + ".migrated"));
+        rmSync(join(target, ".baskule-migrated"));
+        writeFileSync(join(target, "home/data"), "retained");
+        execFileSync("sh", ["-ec", migrationScript.replaceAll("/legacy", legacy).replaceAll("/target", target), "migration", legacyDisk]);
+        assert.equal(readFileSync(join(target, "home/data"), "utf8"), "retained");
         assert.equal(existsSync(join(target, "stale")), scenario === "target complete");
-        assert.ok(existsSync(join(target, ".baskule-migrated")));
+
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

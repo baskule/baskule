@@ -165,7 +165,7 @@ ${script}`],
     }
     const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
       Image: image, User: "0:0", Tty: true,
-      Entrypoint: ["/bin/sh", "-ec", 'if [ -d /legacy/volumes ]; then ls -1 /legacy/volumes; fi'],
+      Entrypoint: ["/bin/sh", "-ec", 'for d in /legacy/volumes/baskule-space-*; do [ ! -d "$d/_data" ] || basename "$d"; done'],
       HostConfig: { NetworkMode: "none", CapDrop: ["ALL"], CapAdd: ["DAC_READ_SEARCH"],
         SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true,
         Mounts: [{ Type: "volume", Source: this.legacyVolume, Target: "/legacy", ReadOnly: true }] },
@@ -198,12 +198,13 @@ ${script}`],
       await this.request("DELETE", `/containers/${key(helperName)}`);
     }
     const started = Date.now();
+    for (const finalize of [false, true]) {
     const helper = await this.request<{ Id: string }>("POST", `/containers/create?name=${key(spec.disk + "-migration")}`, {
-      Image: spec.image, Labels: { "baskule.migration-source": this.legacyVolume }, User: "0:0", Tty: true, Entrypoint: ["/bin/sh", "-ec", migrationScript, "migration", legacyDisk],
+      Image: spec.image, Labels: { "baskule.migration-source": this.legacyVolume }, User: "0:0", Tty: true, Entrypoint: ["/bin/sh", "-ec", finalize ? migrationFinalizeScript : migrationScript, "migration", legacyDisk],
       HostConfig: { NetworkMode: "none", CapDrop: ["ALL"], CapAdd: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID"],
         SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true,
         Mounts: [
-          { Type: "volume", Source: this.legacyVolume, Target: "/legacy", ReadOnly: true },
+          { Type: "volume", Source: this.legacyVolume, Target: "/legacy", ReadOnly: !finalize },
           { Type: "volume", Source: spec.disk, Target: "/target", VolumeOptions: { NoCopy: true } },
         ] },
     });
@@ -216,6 +217,7 @@ ${script}`],
       if (result.StatusCode !== 0) throw new Error(`Disk migration failed: ${spec.disk} (exit ${result.StatusCode})`);
       log.info("Disk migration check finished", { disk: spec.disk, ms: Date.now() - started });
     } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
+  }
   }
   async recreate(spec: MachineSpec): Promise<Machine> {
     await this.request("DELETE", `/containers/${key(spec.name)}`);
@@ -305,20 +307,25 @@ ${script}`],
 }
 
 
-// The marker sits beside home/, outside the user's home directory.
+// Copy with a read-only legacy mount; finalize separately with write access.
 export const migrationScript = `
 source=/legacy/volumes/$1/_data
+[ -d "$source" ] || exit 0
 [ ! -e /target/.baskule-migrated ] || exit 0
-if [ ! -d "$source" ]; then
-  touch /target/.baskule-migrated
-  sync
-  exit 0
-fi
 echo "migration start"
 find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 cp -a "$source/." /target/
 sync
 touch /target/.baskule-migrated
+sync
+`;
+
+export const migrationFinalizeScript = `
+source=/legacy/volumes/$1/_data
+[ -d "$source" ] || exit 0
+test -e /target/.baskule-migrated
+test ! -e "$source.migrated"
+mv "$source" "$source.migrated"
 sync
 echo "migration complete"
 `;
