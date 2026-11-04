@@ -19,6 +19,11 @@ export class FakeBackend implements Backend {
     if (!this.sandboxes.has(spec.name)) this.sandboxes.set(spec.name, { name: spec.name, phase: "ready", image: spec.image, labels: spec.labels, error: null });
     return this.start(spec.name);
   }
+  async recreate(spec: MachineSpec): Promise<Machine> {
+    this.calls.push({ method: "recreate", req: spec });
+    this.sandboxes.delete(spec.name);
+    return this.create(spec);
+  }
   async start(name: string) {
     const s = this.sandboxes.get(name);
     if (!s) throw new Error("machine not found");

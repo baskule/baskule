@@ -583,3 +583,19 @@ test("ensure reports backend errors without restarting the machine", async () =>
   assert.equal((await c.json("GET", "/v1/spaces/backend-error/computer")).error, "machine failed");
   assert.equal(fake.calls.length, before);
 });
+
+test("image updates replace stopped computers while keeping disks and running machines", async () => {
+  const f = new FakeBackend();
+  const cs = new Computers(f, cfg);
+  await cs.ensure("image-update");
+  const name = namesFor("image-update", cfg.instance);
+  const machine = f.sandboxes.get(name.sandbox)!;
+  machine.image = "old-image";
+  await cs.ensure("image-update");
+  assert.equal(machine.image, "old-image");
+  await f.stop(name.sandbox);
+  await cs.ensure("image-update");
+  assert.equal(f.sandboxes.get(name.sandbox)?.image, cfg.image);
+  assert.ok(f.disks.has(name.volume));
+  assert.equal(f.calls.filter(c => c.method === "recreate").length, 1);
+});

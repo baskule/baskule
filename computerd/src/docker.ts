@@ -202,6 +202,10 @@ export class DockerBackend implements Backend {
       log.info("Disk migration check finished", { disk: spec.disk, ms: Date.now() - started });
     } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
   }
+  async recreate(spec: MachineSpec): Promise<Machine> {
+    await this.request("DELETE", `/containers/${key(spec.name)}`);
+    return this.create(spec);
+  }
   async start(name: string): Promise<Machine> {
     await this.requireGuard();
     await this.request("POST", `/containers/${key(name)}/start`);

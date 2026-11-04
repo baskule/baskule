@@ -163,12 +163,13 @@ export class Computers {
     let created = false;
     let started = false;
     let info = await this.getSandbox(s.sandbox);
+    const spec = {
+      name: s.sandbox, disk: s.volume, legacyDisk: namesFor(s.spaceId, "").volume, image: this.cfg.image,
+      cpus: this.cfg.cpuLimit, memory: this.cfg.memoryLimit,
+      labels: this.labels(), annotations: { "baskule.space": s.spaceId },
+    };
     if (!info) {
-      info = await this.backend.create({
-        name: s.sandbox, disk: s.volume, legacyDisk: namesFor(s.spaceId, "").volume, image: this.cfg.image,
-        cpus: this.cfg.cpuLimit, memory: this.cfg.memoryLimit,
-        labels: this.labels(), annotations: { "baskule.space": s.spaceId },
-      });
+      info = await this.backend.create(spec);
       created = true;
     }
     const deadline = Date.now() + this.cfg.readyTimeoutMs;
@@ -176,7 +177,10 @@ export class Computers {
       if (info.phase === "error") throw new Error(info.error ?? "computer is in error");
       if (Date.now() > deadline) throw new Error("computer not ready before timeout");
       if (info.phase === "stopped") {
-        info = await this.backend.start(s.sandbox);
+        if (info.image !== this.cfg.image) {
+          log.info("computer image update", { sandbox: s.sandbox, oldImage: info.image, newImage: this.cfg.image });
+          info = await this.backend.recreate(spec);
+        } else info = await this.backend.start(s.sandbox);
         started = true;
       } else {
         await sleep(300);
