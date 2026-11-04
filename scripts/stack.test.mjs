@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, cpSync, readFileSync, rmSync, writeFileSync, ex
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { environment, stackIdentity, portlessEnvironment } from "./stack.mjs";
+import { cleanupComputers, environment, stackIdentity, portlessEnvironment } from "./stack.mjs";
 
 const stack = { id: "test-instance", ports: { "fake-llm": 12345 }, urls: { loopback: "http://127.0.0.1:12346", front: "https://test.baskule.localhost" }, definition: { env: { FIRST: "${PORT_FAKE_LLM}", SECOND: "${FIRST}" } }, overrides: { THIRD: "${SECOND}", COMPUTERD_INSTANCE: "other" } };
 test("profile and --set values resolve runtime ports and references", () => {
@@ -79,4 +79,19 @@ test("all local dev profiles share the lease default; explicit values and non-de
   assert.equal(environment({ ...stack, definition: { mode: "dev", env: {} }, overrides: {} }).CELLD_TTL_MS, process.env.CELLD_TTL_MS || "60000");
   assert.equal(environment({ ...stack, definition: { mode: "dev", env: { CELLD_TTL_MS: "90000" } }, overrides: {} }).CELLD_TTL_MS, "90000");
   assert.equal(environment({ ...stack, definition: { mode: "rustfs", env: {} }, overrides: {} }).CELLD_TTL_MS, process.env.CELLD_TTL_MS);
+});
+
+
+test("computer purge removes scoped networks before guard garbage collection", async () => {
+  const calls = [];
+  await cleanupComputers({ ...stack, definition: { services: { computerd: {} } } }, true, (cmd, args) => {
+    calls.push(args);
+    return args[0] === "network" && args[1] === "ls" ? "network-id" : "";
+  });
+  const listing = calls.find(args => args[0] === "network" && args[1] === "ls");
+  assert(listing.includes("label=baskule.instance=test-instance"));
+  const removal = calls.findIndex(args => args[0] === "network" && args[1] === "rm");
+  assert.deepEqual(calls[removal], ["network", "rm", "network-id"]);
+  assert.equal(calls[removal + 1][0], "run");
+  assert(calls[removal + 1].at(-1).includes("guardGcScript()"));
 });
