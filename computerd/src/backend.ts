@@ -18,6 +18,8 @@ export interface MachineSpec {
   name: string;
   /** Persistent disk mounted at `${sandboxRoot}/space`; survives stop, start and machine replacement. */
   disk: string;
+  /** Docker only: disk name used before installation scoping, the 0.5.0 migration source. */
+  legacyDisk?: string;
   image: string;
   /** Decimal CPUs, e.g. "2". */
   cpus: string;

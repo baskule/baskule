@@ -165,7 +165,7 @@ export class Computers {
     let info = await this.getSandbox(s.sandbox);
     if (!info) {
       info = await this.backend.create({
-        name: s.sandbox, disk: s.volume, image: this.cfg.image,
+        name: s.sandbox, disk: s.volume, legacyDisk: namesFor(s.spaceId, "").volume, image: this.cfg.image,
         cpus: this.cfg.cpuLimit, memory: this.cfg.memoryLimit,
         labels: this.labels(), annotations: { "baskule.space": s.spaceId },
       });

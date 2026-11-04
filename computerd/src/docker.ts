@@ -141,8 +141,10 @@ export class DockerBackend implements Backend {
     } catch (e) { if (!(e instanceof DockerError && e.status === 409)) throw e; }
     return this.start(spec.name);
   }
-  async ensureDisk(spec: Pick<MachineSpec, "disk" | "labels" | "image">): Promise<void> {
+  async ensureDisk(spec: Pick<MachineSpec, "disk" | "legacyDisk" | "labels" | "image">): Promise<void> {
     if (!/^baskule-space-[a-zA-Z0-9_-]+$/.test(spec.disk)) throw new Error("Invalid disk name");
+    const legacyDisk = spec.legacyDisk ?? spec.disk;
+    if (!/^baskule-space-[a-zA-Z0-9_-]+$/.test(legacyDisk)) throw new Error("Invalid legacy disk name");
     if (this.legacyVolume) {
       try { await this.request("GET", `/volumes/${key(this.legacyVolume)}`); }
       catch (error) {
@@ -163,7 +165,7 @@ export class DockerBackend implements Backend {
     }
     const started = Date.now();
     const helper = await this.request<{ Id: string }>("POST", `/containers/create?name=${key(spec.disk + "-migration")}`, {
-      Image: spec.image, Labels: { "baskule.migration-source": this.legacyVolume }, User: "0:0", Tty: true, Entrypoint: ["/bin/sh", "-ec", migrationScript, "migration", spec.disk],
+      Image: spec.image, Labels: { "baskule.migration-source": this.legacyVolume }, User: "0:0", Tty: true, Entrypoint: ["/bin/sh", "-ec", migrationScript, "migration", legacyDisk],
       HostConfig: { NetworkMode: "none", CapDrop: ["ALL"], CapAdd: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID"],
         SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true,
         Mounts: [
