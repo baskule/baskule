@@ -9,7 +9,6 @@ Developers use [Build Baskule](../docs/building.md). The Helm chart is the only 
 | `helm/baskule/` | Kubernetes cluster chart |
 | `docker-compose.build.yml` | Source-build override, selected by `lib.sh` |
 | `celld/` | Shared node/job image containing Worker, web app and deployment utilities |
-| `build-env/` | Ubuntu 24.04 native build environment |
 
 Compose runs computerd against the host Docker socket as user `node`. Its entrypoint
 discovers the socket group and drops privileges with that supplementary group.

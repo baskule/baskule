@@ -101,7 +101,7 @@ const LOOPS = {
     ],
   },
   migration: { ports: [], run: () => [["test/migration.sh", [], "computerd"]] },
-  computerd: { ports: [], run: () => [["test/integration.sh", [], "computerd", { env: { KEEP_DEV: "1" } }]] },
+  computerd: { ports: [], run: () => [["test/integration.sh", [], "computerd"]] },
   web: {
     ports: [47700, 47702, 47703],
     run: () => {
