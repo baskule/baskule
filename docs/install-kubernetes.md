@@ -186,6 +186,14 @@ and disabled workload/system logging, monitoring and managed Prometheus. The com
 above uses on-demand nodes, the project default node identity, and GKE's disk and
 observability defaults. It needs an identity with the required node permissions.
 
+Dataplane V2 provides NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass.
+Choose non-overlapping RFC 1918 Pod and Service ranges before creating the cluster.
+Do not use GKE's Google-managed `34.118.224.0/20` Service range here: OpenShell's
+public-internet policy treats globally routable addresses as public even when a
+cluster privately uses them. The same warning applies to privately used public Pod
+ranges on any provider. Supporting such ranges requires operator egress denial;
+configurable cluster-CIDR exclusions in the supervisor remain an open item.
+For a private cluster, provide outbound image-registry and model-provider access.
 
 ### Create the Kubernetes Secret
 
@@ -207,17 +215,7 @@ kubectl -n baskule create secret generic baskule-bucket \
 rm -rf "$private"
 ```
 
-
 Install Agent Sandbox, then install the chart with the S3 values above.
-Dataplane V2 provides
-NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass.
-Choose non-overlapping RFC 1918 Pod and Service ranges before creating the cluster.
-Do not use GKE's Google-managed `34.118.224.0/20` Service range here: OpenShell's
-public-internet policy treats globally routable addresses as public even when a
-cluster privately uses them. The same warning applies to privately used public Pod
-ranges on any provider. Supporting such ranges requires operator egress denial;
-configurable cluster-CIDR exclusions in the supervisor remain an open item.
-For a private cluster, provide outbound image-registry and model-provider access.
 
 For an evaluation using Google's managed Ingress, create a `BackendConfig` in the Baskule namespace:
 
