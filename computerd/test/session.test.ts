@@ -97,3 +97,19 @@ test('unopened sessions expire', async t => {
   await assert.rejects(async () => { for await (const _ of job.events) {} }, /exec stream ended/);
   events.destroy();
 });
+
+test('start frame size: large starts work, oversized starts fail alone', { timeout: 15000 }, async t => {
+  const backend = new FakeBackend();
+  backend.sandboxes.set('size', { name: 'size', phase: 'ready', image: '', labels: {}, error: null });
+  t.after(() => backend.close());
+  const run = (argv: string[], options = {}) => runCollect(backend, '', { sandbox: 'size', argv, ...options });
+  const bystander = run(['sh', '-c', 'sleep 0.5; echo survived']);
+  // Each value stays under Linux's 128 KiB per-string limit; control characters escape six-fold in JSON.
+  const env = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`BASKULE_BIG${i}`, '\x01'.repeat(100 * 1024)]));
+  const escaped = await run(['sh', '-c', 'printf %s "${#BASKULE_BIG0}"'], { env: env(12) }); // ~7 MiB start frame
+  assert.equal(escaped.code, 0); assert.equal(escaped.stdout.toString(), String(100 * 1024));
+  const oversized = await run(['true'], { env: env(30) }); // ~18 MiB
+  assert.equal(oversized.code, 126); assert.match(oversized.stderr.toString(), /exceed 16 MiB/);
+  assert.equal((await bystander).stdout.toString(), 'survived\n');
+  assert.equal(backend.execs.length, 1);
+});

@@ -4,8 +4,8 @@ import { PassThrough } from 'node:stream';
 import type { Backend, ExecEvent, ExecHandle, ExecStart } from './backend.ts';
 const source = readFileSync(new URL('./agent/agent.mjs', import.meta.url), 'utf8');
 const sessions = new WeakMap<Backend, Map<string, ExecSession>>();
-// HTTP JSON is capped at 128 MiB; JSON escaping expands each input byte by at most six.
-const MAX_START_FRAME = (6 * 128 + 1) * 1024 * 1024;
+// Same cap as the agent. Argv is validated to 200 KiB; a larger start (huge env) fails only its own exec.
+const MAX_START_FRAME = 16 * 1024 * 1024;
 const deadMessage = 'exec stream ended without an exit status';
 
 export function closeSessions(backend: Backend, machine?: string) {
@@ -107,7 +107,9 @@ export class ExecSession {
     else this.jobs.set(handle, j);
     const payload = JSON.stringify({ id, argv: start.command, cwd: start.workdir, env: start.environment });
     if (Buffer.byteLength(payload) + 5 > MAX_START_FRAME) {
-      this.jobs.delete(handle); output.end({ exit: 126 });
+      this.jobs.delete(handle);
+      output.write({ stderr: Buffer.from('command, working directory and environment exceed 16 MiB\n') });
+      output.end({ exit: 126 });
     } else void this.send(1, handle, payload);
     const send = this.send.bind(this);
     return {

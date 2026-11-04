@@ -2,7 +2,7 @@
 // 1 start JSON {argv,cwd,env,id}; 2 stdin; 3 EOF; 4 stdout; 5 stderr;
 // 6 exit decimal; 7 signal; 8 credit decimal; 9 error; 10 ping; 11 pong;
 // 12 detach. Each direction starts with 1 MiB credit per exec; consumers
-// replenish only consumed bytes. Start frames allow the HTTP JSON limit plus escaping; data frames are at most 64 KiB.
+// replenish only consumed bytes. Frames are at most 16 MiB (start); data frames are at most 64 KiB.
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, unlinkSync, statSync } from 'node:fs';
 import { constants } from 'node:os';
@@ -60,12 +60,16 @@ function receive(type, handle, data) {
   else if (type === 8) { j.credit += Number(data); pump(j); }
   else if (type === 12) { j.discard = true; j.child.stdout.removeAllListeners('readable'); j.child.stderr.removeAllListeners('readable'); pump(j); }
 }
+// Chunks of an incomplete frame are joined once it is complete: no quadratic copying for large start frames.
+let pending = [], pendingBytes = 0, needed = 0;
 process.stdin.on('data', chunk => {
   try {
-    buffer = Buffer.concat([buffer, chunk]);
+    pending.push(chunk); pendingBytes += chunk.length;
+    if (pendingBytes < needed) return;
+    buffer = Buffer.concat([buffer, ...pending]); pending = []; pendingBytes = 0; needed = 0;
     while (buffer.length >= 4) {
-      const n = buffer.readUInt32BE(); if (n < 5 || n > (6 * 128 + 1) * 1024 * 1024) throw Error('Invalid frame');
-      if (buffer.length < n + 4) break;
+      const n = buffer.readUInt32BE(); if (n < 5 || n > 16 * 1024 * 1024) throw Error('Invalid frame');
+      if (buffer.length < n + 4) { needed = n + 4 - buffer.length; break; }
       try { receive(buffer[4], buffer.readUInt32BE(5), buffer.subarray(9, n + 4)); }
       catch (e) { const handle = buffer.readUInt32BE(5); send(5, handle, Buffer.from(String(e.message)).subarray(0, 4096)); send(6, handle, e.code === 'ENOENT' ? '127' : '126'); } buffer = buffer.subarray(n + 4);
     }
