@@ -57,11 +57,14 @@ export class DockerBackend implements Backend {
     catch (error) {
       if (!(error instanceof DockerError && error.status === 404)) throw error;
       try { await this.request("POST", "/networks/create", { Name: this.network, Driver: "bridge", CheckDuplicate: true,
+        Labels: { "baskule.managed": "true", ...(this.guardInstance ? { "baskule.instance": this.guardInstance } : {}) },
         Options: { "com.docker.network.bridge.enable_icc": "false" } }); }
       catch (error) { if (!(error instanceof DockerError && error.status === 409)) throw error; }
     }
-    const network = await this.request<{ Driver: string; IPAM: { Config: { Subnet: string }[] } }>("GET", `/networks/${key(this.network)}`);
+    const network = await this.request<{ Driver: string; Options?: Record<string, string>; IPAM: { Config: { Subnet: string }[] } }>("GET", `/networks/${key(this.network)}`);
     if (network.Driver !== "bridge") throw new Error("Computer guard requires a Docker bridge network");
+    // Computers must not reach each other; an existing network created without this option is refused, not reused.
+    if (network.Options?.["com.docker.network.bridge.enable_icc"] !== "false") throw new Error(`Computer network ${this.network} allows inter-container traffic; remove it or set COMPUTER_NETWORK`);
     const script = guardScript(network.IPAM.Config.map(config => config.Subnet));
     const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
       Image: this.guardImage, Labels: { "baskule.guard-helper": "true", "baskule.instance": this.guardInstance }, User: "0:0", Tty: true,
