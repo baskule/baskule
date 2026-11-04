@@ -204,10 +204,21 @@ case "${1:-}" in
     # Recover saved ownership from interrupted runs, confined to this project.
     for previous in "$state_root"/gke.*; do
       [[ -f $previous/project.private && $(cat "$previous/project.private") == "$project" && -f $previous/owned-links.private.json ]] || continue
+      if [[ -n ${BASKULE_GKE_RUN:-} ]]; then
+        [[ -f $previous/known-accounts.private.json ]] || continue
+        jq -e --arg email "bk-${BASKULE_GKE_RUN#baskule-ephemeral-}@$project.iam.gserviceaccount.com" '. == [$email]' "$previous/known-accounts.private.json" >/dev/null || continue
+      fi
       jq -e 'type == "array"' "$previous/owned-links.private.json" >/dev/null || exit 1
       jq -s 'add | unique' "$state/owned-links.private.json" "$previous/owned-links.private.json" > "$state/links.next"
       mv "$state/links.next" "$state/owned-links.private.json"
     done
+    if [[ -n ${BASKULE_GKE_RUN:-} ]]; then
+      [[ $BASKULE_GKE_RUN =~ ^baskule-ephemeral-[0-9]+-[a-f0-9]{4}$ ]] || exit 2
+      resource_scope=$BASKULE_GKE_RUN
+      protect_young_runs=false
+      jq --arg email "bk-${BASKULE_GKE_RUN#baskule-ephemeral-}@$project.iam.gserviceaccount.com" '[.[] | select(. == $email)]' "$state/known-accounts.private.json" > "$state/accounts.next"
+      mv "$state/accounts.next" "$state/known-accounts.private.json"
+    fi
     "$1"; exit ;;
   # Snapshot into bash's input string so edits cannot change an in-flight run.
   run) exec timeout --signal=TERM --kill-after=30m 90m bash -c "$(cat "$0")" "$0" worker ;;
