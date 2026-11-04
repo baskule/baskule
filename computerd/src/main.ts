@@ -1,4 +1,5 @@
 // baskule-computerd entry point. See README.md.
+import { closeSessions } from "./session.ts";
 import { loadConfig } from "./config.ts";
 import { KubernetesBackend } from "./kubernetes.ts";
 import { DockerBackend } from "./docker.ts";
@@ -29,6 +30,7 @@ function shutdown(sig: string) {
   computers.stopIdleLoop();
   server.close();
   server.closeAllConnections();
+  closeSessions(backend);
   backend.close();
   setTimeout(() => process.exit(0), 500).unref();
 }

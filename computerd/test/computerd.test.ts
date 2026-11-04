@@ -165,7 +165,7 @@ test("ensure: creates os-<id> with disk and resources; idempotent", async () => 
   assert.equal(create.cpus, "2");
   assert.equal(create.memory, "3Gi");
   // first exec prepared home + chats
-  assert.deepEqual(fake.execs.at(-1)!.command, ["mkdir", "-p", "--", `${root}/space/home`, `${root}/space/chats`]);
+  assert.ok((await c.exec("s1", { argv: ["test", "-d", `${root}/space/chats`] })).code === 0);
   const again = await c.json("POST", "/v1/spaces/s1/computer/ensure", {});
   assert.equal(again.created, false);
   assert.equal(fake.calls.filter((x) => x.method === "create").length, 1);
@@ -220,11 +220,10 @@ test("exec: large stdin reaches the process intact", async () => {
   assert.equal(Buffer.from(out.d, "base64").toString().trim(), String(big.length));
 });
 
-test("exec: wrapped with setsid and a per-exec process-group record", async () => {
+test("exec: reuses the computer session", async () => {
+  const before = fake.execs.length;
   await c.exec("s1", { id: "wraptest", argv: ["true"] });
-  const cmd = fake.execs.find((e) => e.command.includes("wraptest"))!.command;
-  assert.deepEqual(cmd.slice(0, 4), ["setsid", "-w", "sh", "-c"]);
-  assert.deepEqual(cmd.slice(5), ["wraptest", "true"]);
+  assert.equal(fake.execs.length, before);
 });
 
 test("kill: TERM then KILL reaches the whole process group", async (t) => {
@@ -584,8 +583,9 @@ test("ensure recovers backend errors by restarting the machine", async () => {
   assert.equal(fake.calls.length, before + 1);
 });
 
-test("image updates replace stopped computers while keeping disks and running machines", async () => {
+test("image updates replace stopped computers while keeping disks and running machines", async (t) => {
   const f = new FakeBackend();
+  t.after(() => f.close());
   const cs = new Computers(f, cfg);
   await cs.ensure("image-update");
   const name = namesFor("image-update", cfg.instance);
@@ -600,8 +600,9 @@ test("image updates replace stopped computers while keeping disks and running ma
   assert.equal(f.calls.filter(c => c.method === "recreate").length, 1);
 });
 
-test("error recovery is attempted once", async () => {
+test("error recovery is attempted once", async (t) => {
   const f = new FakeBackend();
+  t.after(() => f.close());
   const cs = new Computers(f, cfg);
   await cs.ensure("recover");
   const name = namesFor("recover", cfg.instance).sandbox;
@@ -615,9 +616,10 @@ test("error recovery is attempted once", async () => {
   assert.equal(f.calls.filter(c => c.method === "stop").length, 2);
 });
 
-test("stopped computers refresh rebuilt tags and changed limits", async () => {
+test("stopped computers refresh rebuilt tags and changed limits", async (t) => {
   for (const change of ["imageId", "cpus", "memory"] as const) {
     const f = new FakeBackend();
+    t.after(() => f.close());
     f.imageId = async () => "sha256:new";
     const cs = new Computers(f, cfg);
     await cs.ensure("refresh");

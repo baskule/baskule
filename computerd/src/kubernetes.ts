@@ -223,9 +223,7 @@ export class KubernetesBackend implements Backend {
     const output = new PassThrough({ objectMode: true });
     let ws: WebSocket | undefined; let canceled = false; let exited = false;
     const query = new URLSearchParams({ container: 'computer', stdin: 'true', stdout: 'true', stderr: 'true', tty: 'false' });
-    const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
-    const command = start.workdir || start.environment ? ['sh', '-c', `${start.workdir ? `cd ${quote(start.workdir)} && ` : ''}exec env ${Object.entries(start.environment ?? {}).map(([k,v]) => { if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) throw new Error('Invalid environment name'); return quote(`${k}=${v}`); }).join(' ')} ${start.command.map(quote).join(' ')}`] : start.command;
-    command.forEach(c => query.append('command', c));
+    start.command.forEach(c => query.append('command', c));
     const opened = (async () => {
       ws = await this.socket(start.machine, 'exec', query, ['v5.channel.k8s.io']).catch(cause => { throw new Error('Kubernetes exec requires an API server supporting v5.channel.k8s.io', { cause }); });
       if (canceled) { ws.close(); throw new Error('Exec canceled'); }

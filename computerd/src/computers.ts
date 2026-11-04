@@ -1,6 +1,7 @@
 // Computer lifecycle: one machine per space (`os-<spaceId>`), a per-space labelled volume at
 // /sandbox/space, lazy create/start, idle stop. All durable state lives in
 // the backend; this class only keeps soft state (activity, stream counts, keep flags) that is rebuilt on restart.
+import { closeSessions } from "./session.ts";
 import type { Config } from "./config.ts";
 import type { Backend, Machine } from "./backend.ts";
 import { namesFor } from "./policy.ts";
@@ -190,9 +191,11 @@ export class Computers {
       if (info.phase === "error") {
         if (recovered) throw new Error(info.error ?? "computer is in error");
         recovered = true;
+        closeSessions(this.backend, s.sandbox);
         await this.backend.stop(s.sandbox);
         if (await needsUpdate(info)) {
           log.info("computer image update", { sandbox: s.sandbox, oldImage: info.image, newImage: this.cfg.image });
+          closeSessions(this.backend, s.sandbox);
           info = await this.backend.recreate(spec);
         } else info = await this.backend.start(s.sandbox);
         started = true;
@@ -200,8 +203,10 @@ export class Computers {
       }
       if (Date.now() > deadline) throw new Error("computer not ready before timeout");
       if (info.phase === "stopped") {
+        closeSessions(this.backend, s.sandbox);
         if (await needsUpdate(info)) {
           log.info("computer image update", { sandbox: s.sandbox, oldImage: info.image, newImage: this.cfg.image });
+          closeSessions(this.backend, s.sandbox);
           info = await this.backend.recreate(spec);
         } else info = await this.backend.start(s.sandbox);
         started = true;
@@ -219,7 +224,6 @@ export class Computers {
       const r = await traced("computer.prepare", {}, () => runCollect(this.backend, this.cfg.sandboxRoot, {
         sandbox: s.sandbox,
         argv: ["mkdir", "-p", "--", `${this.cfg.sandboxRoot}/space/home`, `${this.cfg.sandboxRoot}/space/chats`],
-        raw: true,
       }));
       if (r.code !== 0) throw new Error(`preparing the computer failed: ${r.stderr.toString().slice(0, 500)}`);
       s.prepared = true;
@@ -239,10 +243,11 @@ export class Computers {
     s.stopping = (async () => {
       if (s.ensuring) await s.ensuring.catch(() => {});
       const info = await this.getSandbox(s.sandbox);
-      if (!info || info.phase === "stopped") return;
+      if (!info || info.phase === "stopped") { closeSessions(this.backend, s.sandbox); return; }
       await traced("computer.stop", { "baskule.space": spaceId, reason }, async () => {
         if (reason === "idle") await traced("computer.clear_caches", {}, () => this.clearCaches(s.sandbox, spaceId));
         log.info("computer stop", { spaceId, reason });
+        closeSessions(this.backend, s.sandbox);
         await this.backend.stop(s.sandbox);
       });
     })().finally(() => {
@@ -261,7 +266,7 @@ export class Computers {
   private async clearCaches(sandbox: string, spaceId: string) {
     const started = Date.now();
     const home = `${this.cfg.sandboxRoot}/space/home`;
-    const cleared = runCollect(this.backend, this.cfg.sandboxRoot, { sandbox, argv: ["sh", "-c", CLEAR_CACHES, "sh", home], raw: true })
+    const cleared = runCollect(this.backend, this.cfg.sandboxRoot, { sandbox, argv: ["sh", "-c", CLEAR_CACHES, "sh", home] })
       .then((r) => (r.code === 0 ? "ok" : `exit ${r.code}: ${r.stderr.toString().slice(0, 200)}`))
       .catch((e: any) => String(e?.message ?? e));
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -279,6 +284,7 @@ export class Computers {
     s.readyAt = null;
     s.prepared = false;
     await this.getSandbox(s.sandbox); // Verify instance ownership before removal.
+    closeSessions(this.backend, s.sandbox);
     const result = await this.backend.remove(s.sandbox, s.volume, namesFor(spaceId, "").volume);
     this.states.delete(spaceId);
     return { spaceId, sandbox: s.sandbox, sandboxDeleted: result.machineDeleted, volumeDeleted: result.diskDeleted };
@@ -326,6 +332,7 @@ export class Computers {
       try {
         if (s.spaceId.startsWith("sandbox:")) {
           if (this.cfg.instance) await this.getSandbox(s.sandbox);
+          closeSessions(this.backend, s.sandbox);
           await this.backend.stop(s.sandbox);
           this.states.delete(s.spaceId);
           log.info("computer stop", { sandbox: s.sandbox, reason: "idle (adopted)" });

@@ -1,6 +1,5 @@
-// Exec inside a computer: argv only (no shell strings built from caller input), a `setsid` wrapper that records
-// the process group so it can be killed independently of the exec stream),
-// an environment allowlist, and streaming stdin.
+// Exec and Files commands share one multiplexed agent session per computer.
+import { sessionFor } from "./session.ts";
 import { randomUUID } from "node:crypto";
 import type { ExecEvent, Backend } from "./backend.ts";
 
@@ -33,9 +32,6 @@ export function filterEnv(env: Record<string, unknown> | undefined): { env: Reco
   return { env: out, dropped };
 }
 
-// The wrapper records the process group: setsid made this sh a session + group leader, so its pid is the pgid.
-// $0 = exec id, $@ = the command.
-const WRAP = 'mkdir -p /tmp/.osj 2>/dev/null; echo $$ > "/tmp/.osj/$0"; "$@"; c=$?; rm -f "/tmp/.osj/$0"; exit $c';
 // $0 = exec id, $1 = signal, $2 = "final" (remove the record). Exit 3: no such exec; 0: signalled (or empty group).
 const KILL = [
   'f="/tmp/.osj/$0"; p=$(cat "$f" 2>/dev/null) || exit 3',
@@ -44,10 +40,6 @@ const KILL = [
   '[ "$2" = final ] && rm -f "$f"',
   "exit 0",
 ].join("\n");
-
-export function wrapArgv(id: string, argv: string[]): string[] {
-  return ["setsid", "-w", "sh", "-c", WRAP, id, ...argv];
-}
 
 export function killArgv(id: string, signal: string, final = false): string[] {
   return ["bash", "-c", KILL, id, signal, final ? "final" : ""];
@@ -63,8 +55,6 @@ export interface ExecOptions {
   /** Keep stdin open; feed it with write(). */
   interactive?: boolean;
   id?: string;
-  /** Do not wrap with setsid (internal one-shot helpers that must not be killable / counted). */
-  raw?: boolean;
 }
 
 export interface RunningExec {
@@ -78,12 +68,12 @@ export interface RunningExec {
 
 export function startExec(backend: Backend, root: string, o: ExecOptions): RunningExec {
   const id = o.id ?? randomUUID();
-  const h = backend.exec({
+  const h = sessionFor(backend, o.sandbox).start({
     machine: o.sandbox,
-    command: o.raw ? o.argv : wrapArgv(id, o.argv),
+    command: o.argv,
     workdir: o.cwd,
     environment: o.env,
-  });
+  }, id);
   if (!o.interactive) {
     (async () => {
       try {
@@ -127,6 +117,7 @@ export async function runCollect(
 
 /** Signal every process of the exec's process group. false = no such (running) exec. */
 export async function killExec(backend: Backend, root: string, sandbox: string, id: string, signal: string): Promise<boolean> {
-  const r = await runCollect(backend, root, { sandbox, argv: killArgv(id, signal, signal === "KILL"), raw: true });
+  if (sessionFor(backend, sandbox).kill(id, signal)) return true;
+  const r = await runCollect(backend, root, { sandbox, argv: killArgv(id, signal, signal === "KILL") });
   return r.code === 0;
 }

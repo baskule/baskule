@@ -238,7 +238,6 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
       const x = startExec(backend, cfg.sandboxRoot, {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", GET_SCRIPT, statOnly ? "stat" : "auto", path, start, count, suffix, cfg.sandboxRoot],
-        raw: true,
       });
       // Header lines first ("<stat>\n", then "L\n" or "R\t<start>\t<count>\n"), then the payload is streamed.
       let head = Buffer.alloc(0);
@@ -344,7 +343,6 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", PUT_SCRIPT, isDir ? "dir" : "file", path, cfg.sandboxRoot, isDir ? "" : (len ?? "")],
         stdin: body,
-        raw: true,
       });
       computers.touch(spaceId);
       if (r.code !== 0) {
@@ -365,7 +363,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
       pending = (async () => {
         await ensureFor(spaceId);
         const result = await traced("browser.bridge.ensure", {}, () =>
-          runCollect(backend, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv: ["baskule-browser-bridge", "ensure"], env: { BASKULE_BROWSER_PORT: String(browserPort) }, raw: true }));
+          runCollect(backend, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv: ["baskule-browser-bridge", "ensure"], env: { BASKULE_BROWSER_PORT: String(browserPort) } }));
         if (result.code !== 0) throw new HttpError(502, `browser bridge did not start: ${result.stderr.toString().slice(-400)}`);
       })();
       browserStarts.set(spaceId, pending);
@@ -488,7 +486,6 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
       sandbox: sandboxOf(spaceId),
       argv: ["baskule-browser", "ensure"],
       env: { BASKULE_CDP_PORT: String(cfg.cdpPort) },
-      raw: true,
     }));
     if (r.code !== 0) throw new HttpError(502, `browser did not start: ${r.stderr.toString().slice(-400)}`);
     try {

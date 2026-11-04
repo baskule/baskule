@@ -1,3 +1,4 @@
+import { closeSessions } from "../src/session.ts";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import type { Backend, Machine, MachineSpec, ExecStart, ExecHandle, ExecEvent } from "../src/backend.ts";
@@ -66,5 +67,5 @@ export class FakeBackend implements Backend {
     };
   }
   connect(_name: string, port: number) { return net.connect(port, "127.0.0.1"); }
-  close() {}
+  close() { closeSessions(this); }
 }

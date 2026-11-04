@@ -68,9 +68,14 @@ All `/v1` routes need `Authorization: Bearer <COMPUTERD_TOKEN>`. `:id` is the sp
 `application/octet-stream` with that JSON in header `x-baskule-exec` and stdin streamed as the body.
 Frames are `{"t":"o"|"e","d":"<base64>"}`, then `{"t":"x","code":N}` or `{"t":"err","msg":"…"}`.
 Commands are argv only (no shell built from caller input; argv is capped at 200 KiB). Caller environment
-is filtered by an allowlist in [exec.ts](src/exec.ts); `LD_*` is always refused. Each exec runs under
-`setsid` and records its process group, so `kill`, client disconnect and `timeoutMs` signal the whole
-group. At most `MAX_STREAMS_PER_COMPUTER` exec, file and CDP streams run per computer (429 beyond).
+is filtered by an allowlist in [exec.ts](src/exec.ts); `LD_*` is always refused. A lazily opened Node agent multiplexes execs over one backend exec stream per computer.
+The agent source ships with computerd and is sent when opening the stream. Each command
+runs in a detached process group and records its group in `/tmp/.osj`, so `kill`, client disconnect and `timeoutMs` signal the whole
+group. Per-command 1 MiB credit windows bound stdin and output buffering; stalled
+consumers do not block other commands. Sessions ping every 30 seconds and close on
+stop, replacement, deletion and shutdown. Failed sessions fail their active commands
+without retry; the next command opens a new session. Sessions do not count as active
+request streams. At most `MAX_STREAMS_PER_COMPUTER` exec, file and CDP streams run per computer (429 beyond).
 
 **Files.** Paths are absolute under `/sandbox`; `..` is refused and the path is resolved inside the
 computer with `realpath -m` and checked again, so symlinks cannot escape (403).
