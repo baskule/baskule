@@ -1,7 +1,6 @@
 {
   "mode": "rustfs",
   "shared": [
-    "gateway",
     "rustfs"
   ],
   "env": {
