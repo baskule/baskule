@@ -21,6 +21,7 @@ network="baskule-computers-$instance"
 space="isolation-$(date +%s)-$$"
 request() { curl --fail-with-body -sS -H "Authorization: Bearer $COMPUTERD_TOKEN" -H 'Content-Type: application/json' -X POST "$COMPUTERD_URL/v1/spaces/$1/computer/$2" -d "$(jq -nc --arg s "$1" '{confirm:$s}')"; }
 cleanup() {
+  if [[ -n ${dummy:-} ]]; then iptables -w -D FORWARD -s "$subnet" -m comment --comment "$dummy" -j ACCEPT || true; fi
   request "$space" delete >/dev/null || true
   request "$space-peer" delete >/dev/null || true
   if (( DOWN )); then scripts/stack down; fi
@@ -55,10 +56,13 @@ if grep -E '^(OPEN|BROKEN) ' "$EVIDENCE/probes.log"; then exit 1; fi
 test "$(grep -c '^DENIED ' "$EVIDENCE/probes.log")" -ge 30
 test "$(grep -c '^WORKS ' "$EVIDENCE/probes.log")" -ge 11
 subnet=$(docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "$network")
-tag="baskule-computer-guard:$subnet"
+chain=$(node --input-type=module -e 'import {guardChain} from "./computerd/src/guard.ts"; console.log(guardChain([process.argv[1]]))' "$subnet")
 rules() {
-  for chain in DOCKER-USER INPUT FORWARD; do
-    iptables -w -S "$chain" | grep -F "$tag"
+  iptables -w -S "$chain"
+  for parent in DOCKER-USER INPUT FORWARD; do
+    first=$(iptables -w -S "$parent" | grep '^-A ' | head -n 1)
+    test "$first" = "-A $parent -s $subnet -j $chain" || return 1
+    echo "$first"
   done
 }
 rules > "$EVIDENCE/rules-before.txt"
@@ -66,16 +70,16 @@ scripts/stack restart computerd
 request "$space" ensure >/dev/null
 rules > "$EVIDENCE/rules-after.txt"
 cmp "$EVIDENCE/rules-before.txt" "$EVIDENCE/rules-after.txt"
-for chain in DOCKER-USER INPUT FORWARD; do
-  printf '%s before=%s after=%s\n' "$chain" "$(grep -c "^-A $chain " "$EVIDENCE/rules-before.txt")" "$(grep -c "^-A $chain " "$EVIDENCE/rules-after.txt")"
-done | tee "$EVIDENCE/counts.txt"
-iptables -w -D INPUT -s "$subnet" -m comment --comment "$tag" -j DROP
+dummy="baskule-isolation-order-$space"
+iptables -w -I FORWARD 1 -s "$subnet" -m comment --comment "$dummy" -j ACCEPT
 start=$SECONDS
-until iptables -w -C INPUT -s "$subnet" -m comment --comment "$tag" -j DROP 2>/dev/null; do
+until rules > "$EVIDENCE/reconciled.txt"; do
   if (( SECONDS - start >= 70 )); then echo 'FAIL guard restoration'; exit 1; fi
   python3 -c 'import threading; threading.Event().wait(1)'
 done
-printf 'PASS rule restored in %s seconds\n' "$((SECONDS-start))" | tee "$EVIDENCE/reconciliation.txt"
+iptables -w -D FORWARD -s "$subnet" -m comment --comment "$dummy" -j ACCEPT
+dummy=""
+printf 'PASS ordering restored in %s seconds\n' "$((SECONDS-start))" | tee "$EVIDENCE/reconciliation.txt"
 export ISOLATION_NETWORK="$network" ISOLATION_INSTANCE="$instance-fail" ISOLATION_EVIDENCE="$EVIDENCE"
 python3 - <<'PYFAIL'
 import json, os, socket, subprocess, time, urllib.request, urllib.error
