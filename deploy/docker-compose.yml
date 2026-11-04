@@ -205,8 +205,10 @@ services:
 
   baskule-computer-image:
     image: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-computer:${BASKULE_VERSION:-0.5.0}
+    # Pull-only: Compose fetches the computer image that computerd starts through the Docker socket.
     entrypoint: ["true"]
     restart: "no"
+    network_mode: none
     cap_drop: [ALL]
 
   baskule-computerd:
