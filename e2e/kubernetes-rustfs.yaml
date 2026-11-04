@@ -1,0 +1,60 @@
+# Disposable kind fixture, outside the shipping chart. Public test credentials.
+# RustFS: Apache-2.0, unmodified upstream image: https://github.com/rustfs/rustfs
+apiVersion: v1
+kind: Secret
+metadata: {name: rustfs-fixture}
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: baskule-kind-test
+  AWS_SECRET_ACCESS_KEY: baskule-kind-test-secret
+---
+apiVersion: v1
+kind: Service
+metadata: {name: rustfs-fixture}
+spec:
+  selector: {app: rustfs-fixture}
+  ports: [{name: s3, port: 3900}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: rustfs-fixture}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: rustfs-fixture}}
+  template:
+    metadata: {labels: {app: rustfs-fixture}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001}
+      containers:
+        - name: rustfs
+          image: rustfs/rustfs@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b
+          args: [/data]
+          env:
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: rustfs-fixture, key: AWS_ACCESS_KEY_ID}}
+            - name: RUSTFS_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: rustfs-fixture, key: AWS_SECRET_ACCESS_KEY}}
+            - {name: RUSTFS_ADDRESS, value: "0.0.0.0:3900"}
+            - {name: RUSTFS_CONSOLE_ENABLE, value: "false"}
+          ports: [{name: s3, containerPort: 3900}]
+          readinessProbe: {httpGet: {path: /health/ready, port: s3}}
+          resources:
+            requests: {cpu: 100m, memory: 512Mi}
+            limits: {cpu: "1", memory: 2Gi}
+          volumeMounts: [{name: data, mountPath: /data}]
+      volumes: [{name: data, emptyDir: {}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: rustfs-fixture}
+spec:
+  podSelector: {matchLabels: {app: rustfs-fixture}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/instance: ${BASKULE_K8S_RELEASE}}
+            matchExpressions:
+              - {key: app.kubernetes.io/component, operator: In, values: [celld, deploy]}
+      ports: [{port: 3900, protocol: TCP}]

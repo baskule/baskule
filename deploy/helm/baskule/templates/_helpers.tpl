@@ -27,11 +27,7 @@ app.kubernetes.io/part-of: baskule
 {{ toYaml .Values._secretData }}
 {{- end -}}
 {{- define "baskule.s3Endpoint" -}}
-{{- if .Values.rustfs.enabled -}}
-{{ printf "http://%s-rustfs:3900" .Release.Name }}
-{{- else -}}
-{{ required "s3.endpoint is required (or enable rustfs for evaluation)" .Values.s3.endpoint }}
-{{- end -}}
+{{ required "s3.endpoint is required; supply an S3 bucket with conditional writes" .Values.s3.endpoint }}
 {{- end -}}
 {{- define "baskule.s3Env" -}}
 - name: AWS_ACCESS_KEY_ID
@@ -42,6 +38,6 @@ app.kubernetes.io/part-of: baskule
     secretKeyRef: {name: {{ include "baskule.s3SecretName" . }}, key: AWS_SECRET_ACCESS_KEY}
 - {name: AWS_REGION, value: {{ .Values.s3.region | quote }}}
 - {name: S3_ENDPOINT, value: {{ include "baskule.s3Endpoint" . | quote }}}
-- {name: CELLD_BUCKET_NAME, value: {{ .Values.s3.bucket | quote }}}
-- {name: CELLD_BUCKET, value: {{ printf "s3://%s" .Values.s3.bucket | quote }}}
+- {name: CELLD_BUCKET_NAME, value: {{ (required "s3.bucket is required" .Values.s3.bucket) | quote }}}
+- {name: CELLD_BUCKET, value: {{ printf "s3://%s" (required "s3.bucket is required" .Values.s3.bucket) | quote }}}
 {{- end -}}

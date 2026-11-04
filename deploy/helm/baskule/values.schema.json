@@ -30,13 +30,18 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "endpoint": {"type": "string"},
-        "region": {"type": "string"},
-        "bucket": {"type": "string"},
+        "endpoint": {"type": "string", "pattern": "^https?://[^ ]+$"},
+        "region": {"type": "string", "minLength": 1},
+        "bucket": {"type": "string", "minLength": 1},
         "existingSecret": {"type": "string"},
         "accessKeyId": {"type": "string"},
         "secretAccessKey": {"type": "string"}
-      }
+      },
+      "required": ["endpoint", "region", "bucket"],
+      "anyOf": [
+        {"properties": {"existingSecret": {"minLength": 1}}, "required": ["existingSecret"]},
+        {"properties": {"accessKeyId": {"minLength": 1}, "secretAccessKey": {"minLength": 1}}, "required": ["accessKeyId", "secretAccessKey"]}
+      ]
     },
     "celld": {
       "type": "object",
@@ -103,24 +108,6 @@
       }
     },
     "networkPolicy": {"type": "object", "additionalProperties": false, "properties": {"enabled": {"type": "boolean"}}},
-    "rustfs": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {"type": "boolean"},
-        "image": {"type": "string"},
-        "storage": {"type": "string"},
-        "storageClass": {"type": "string"},
-        "resources": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "requests": {"type": "object", "additionalProperties": {"type": ["string", "number"]}},
-            "limits": {"type": "object", "additionalProperties": {"type": ["string", "number"]}}
-          }
-        }
-      }
-    },
     "openshell": {"type": "object"}
   },
   "$schema": "http://json-schema.org/draft-07/schema#",

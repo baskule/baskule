@@ -11,6 +11,3 @@ Create the first admin (keep this link private):
 Forward the service before opening that link:
 kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }} 47090:80
 {{- end }}
-{{- if .Values.rustfs.enabled }}
-RustFS is a single-node evaluation store. Use managed S3-compatible storage for production.
-{{- end }}
