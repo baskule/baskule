@@ -267,6 +267,7 @@ services:
     network_mode: none
     environment:
       COMPUTERD_INSTANCE: ${COMPUTERD_INSTANCE:-${COMPOSE_PROJECT_NAME}}
+      COMPUTER_LEGACY_VOLUME: ${COMPOSE_PROJECT_NAME}_baskule-openshell-docker
       BACKUP_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     logging:
       driver: none
@@ -284,6 +285,7 @@ services:
     network_mode: none
     environment:
       COMPUTERD_INSTANCE: ${COMPUTERD_INSTANCE:-${COMPOSE_PROJECT_NAME}}
+      COMPUTER_LEGACY_VOLUME: ${COMPOSE_PROJECT_NAME}_baskule-openshell-docker
       BACKUP_IMAGE: ${BASKULE_REGISTRY:-ghcr.io/baskule}/baskule-celld:${BASKULE_VERSION:-0.5.0}
     logging:
       driver: none

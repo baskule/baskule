@@ -57,8 +57,12 @@ services:
 
   backup:
     image: baskule-celld:${BASKULE_TAG:-local}
+    environment:
+      COMPUTER_LEGACY_VOLUME: baskule-openshell-docker
   restore:
     image: baskule-celld:${BASKULE_TAG:-local}
+    environment:
+      COMPUTER_LEGACY_VOLUME: baskule-openshell-docker
 
 networks:
   baskule-net:
