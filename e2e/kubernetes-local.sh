@@ -3,6 +3,8 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 source scripts/env.sh
+export BASKULE_K8S_NAMESPACE=${BASKULE_K8S_NAMESPACE:-baskule}
+export BASKULE_K8S_RELEASE=${BASKULE_K8S_RELEASE:-baskule}
 export PATH="$HOME/.local/bin:$PATH"
 helm dependency build deploy/helm/baskule >/dev/null
 if [[ ${1:-} == lint ]]; then
@@ -37,7 +39,7 @@ export KUBECONFIG="$BASKULE_K8S_EVIDENCE/kubeconfig.private"
 umask 077
 cleanup() {
   status=$?
-  kubectl -n baskule get events --sort-by=.lastTimestamp > "$BASKULE_K8S_EVIDENCE/events.txt" 2>/dev/null || true
+  kubectl -n "$BASKULE_K8S_NAMESPACE" get events --sort-by=.lastTimestamp > "$BASKULE_K8S_EVIDENCE/events.txt" 2>/dev/null || true
   kind delete cluster --name "$cluster" >> "$BASKULE_K8S_EVIDENCE/cleanup.log" 2>&1 || true
   rm -f "$KUBECONFIG"
   exit "$status"
@@ -72,15 +74,19 @@ if [[ -z ${BASKULE_K8S_VALUES:-} ]]; then
   printf 'computer:\n  cpu: "1"\n  memory: 1Gi\n' > "$BASKULE_K8S_VALUES"
 fi
 # Test-only S3 fixture. It is never part of the Helm chart/package.
-kubectl create namespace baskule >/dev/null
-kubectl -n baskule apply -f e2e/kubernetes-rustfs.yaml >/dev/null
-kubectl -n baskule rollout status deployment/rustfs-fixture --timeout=180s
-kubectl -n baskule run fixture-bucket --restart=Never --image="$registry/baskule-celld:$BASKULE_K8S_TAG" \
+kubectl create namespace "$BASKULE_K8S_NAMESPACE" >/dev/null
+python3 - <<'PYFIXTURE' | kubectl -n "$BASKULE_K8S_NAMESPACE" apply -f - >/dev/null
+import os
+from pathlib import Path
+print(Path('e2e/kubernetes-rustfs.yaml').read_text().replace('${BASKULE_K8S_RELEASE}', os.environ['BASKULE_K8S_RELEASE']))
+PYFIXTURE
+kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status deployment/rustfs-fixture --timeout=180s
+kubectl -n "$BASKULE_K8S_NAMESPACE" run fixture-bucket --restart=Never --image="$registry/baskule-celld:$BASKULE_K8S_TAG" \
   --env=AWS_ACCESS_KEY_ID=baskule-kind-test --env=AWS_SECRET_ACCESS_KEY=baskule-kind-test-secret \
   --env=AWS_REGION=us-east-1 --env=S3_ENDPOINT=http://rustfs-fixture:3900 \
-  --env=CELLD_BUCKET_NAME=baskule-test --labels=app.kubernetes.io/instance=baskule,app.kubernetes.io/component=deploy \
+  --env=CELLD_BUCKET_NAME=baskule-test --labels="app.kubernetes.io/instance=$BASKULE_K8S_RELEASE,app.kubernetes.io/component=deploy" \
   --command -- baskule-celld-job bootstrap >/dev/null
-kubectl -n baskule wait --for=jsonpath='{.status.phase}'=Succeeded pod/fixture-bucket --timeout=120s
+kubectl -n "$BASKULE_K8S_NAMESPACE" wait --for=jsonpath='{.status.phase}'=Succeeded pod/fixture-bucket --timeout=120s
 cat >> "$BASKULE_K8S_VALUES" <<'YAML'
 s3:
   endpoint: http://rustfs-fixture:3900

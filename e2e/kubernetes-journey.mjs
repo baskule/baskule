@@ -272,7 +272,7 @@ try {
         ...(process.env.BASKULE_K8S_S3_FIXTURE ? [[objects("get", "svc", process.env.BASKULE_K8S_S3_FIXTURE).spec.clusterIP, "3900"]] : []),
         ["169.254.169.254", "80"],
       ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
-      pass("NetworkPolicy blocks direct computer access to peer, S3 and metadata IPs");
+      pass(`NetworkPolicy blocks direct computer access to peer${process.env.BASKULE_K8S_S3_FIXTURE ? ", S3" : ""} and metadata IPs`);
       if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
         kube("exec", celldPod, "--", "curl", "-fsS", "--max-time", "10", "-H", "Metadata-Flavor: Google", "-o", "/dev/null", "http://169.254.169.254/computeMetadata/v1/");
         pass("GKE metadata server exists and is reachable from the trusted platform");
@@ -298,7 +298,7 @@ try {
       const denialLog = kube("logs", supervisor.metadata.name, "--all-containers=true");
       assert.match(denialLog, /denied|not allowed|blocked/i, "supervisor must record policy denials, not just a dial timeout");
       assert.ok(denialLog.includes(apiService), "the Kubernetes API denial must appear in supervisor logs");
-      pass("supervisor-mediated curl permits public HTTPS and denies Kubernetes API, platform Service, optional S3 fixture and metadata");
+      pass(`supervisor-mediated curl permits public HTTPS and denies Kubernetes API, platform Service${process.env.BASKULE_K8S_S3_FIXTURE ? ", S3 fixture" : ""} and metadata`);
       const cdp = await wsExchange(computerApi.ws(`/v1/spaces/${space}/cdp`), [JSON.stringify({ id: 1, method: "Target.getTargets" })], messages => messages.some(message => message.includes('"id":1')), 60_000);
       const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
       assert.ok(targets.some(target => target.type === "page"));
