@@ -14,7 +14,7 @@ Developers use [Build Baskule](../docs/building.md). The Helm chart is the only 
 Compose runs computerd against the host Docker socket as user `node`. Its entrypoint
 discovers the socket group and drops privileges with that supplementary group.
 This grants Docker administration privileges. Computers use the separate
-`COMPUTER_NETWORK` bridge (default `baskule-computers`), created by computerd.
+`COMPUTER_NETWORK` bridge (default `${COMPOSE_PROJECT_NAME}-computers`), created by computerd.
 The guard helper uses the computerd image with NET_ADMIN in the host network namespace;
 Docker must provide the iptables DOCKER-USER chain. It denies private and host destinations and fails closed if verification fails.
 FORWARD mirrors prevent earlier accepts from bypassing the guard; nftables-only Docker is unsupported.

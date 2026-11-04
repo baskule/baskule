@@ -53,7 +53,7 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 #BASKULE_TRACES_BIND=127.0.0.1
 
 # Network and DNS for host Docker computers.
-#COMPUTER_NETWORK=baskule-computers
+#COMPUTER_NETWORK=${COMPOSE_PROJECT_NAME}-computers
 #COMPUTER_DNS=1.1.1.1,8.8.8.8
 ```
 <!-- install-env:end -->

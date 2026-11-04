@@ -12,7 +12,8 @@ if [ "${1:-}" = --purge ]; then
   dc down -v --remove-orphans
   docker ps -aq --filter label=baskule.managed=true --filter "label=baskule.instance=$instance" | xargs -r docker rm -f
   docker volume ls -q --filter label=baskule.managed=true --filter "label=baskule.instance=$instance" | xargs -r docker volume rm
-  if docker network inspect "$network" >/dev/null 2>&1; then
+  if network_info=$(docker network inspect "$network" 2>/dev/null) &&
+    printf '%s' "$network_info" | jq -e --arg instance "$instance" ' .[0] | .Labels["baskule.instance"] == $instance and (.Containers | length) == 0' >/dev/null; then
     docker network rm "$network"
   fi
   docker run --rm --network host --user 0:0 --cap-drop ALL --cap-add NET_ADMIN --read-only --tmpfs /run --entrypoint node "$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].image')" --input-type=module -e 'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});'
