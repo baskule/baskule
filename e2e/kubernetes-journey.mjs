@@ -243,7 +243,12 @@ try {
       const computerPvcs = () => objects("get", "pvc").items.filter(pvc => pvc.metadata.ownerReferences?.some(owner => owner.uid === sandbox.metadata.uid)).map(pvc => pvc.metadata.uid).sort();
       const pvcBefore = computerPvcs();
       assert.ok(pvcBefore.length > 0);
-      if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("cordon", pod.spec.nodeName);
+      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
+        execFileSync("helm", ["upgrade", release, process.env.BASKULE_K8S_CHART, "--version", process.env.BASKULE_K8S_CHART_VERSION, "-n", namespace, "--reuse-values", "--set", "computers.prePull.enabled=true"], { stdio: "ignore", timeout: 180_000 });
+        kube("rollout", "status", `daemonset/${release}-computer-prepull`, "--timeout=180s");
+        pass("computer image cached on all nodes before cross-node move");
+        kube("cordon", pod.spec.nodeName);
+      }
       const moveStarted = performance.now();
       try {
         kube("delete", "pod", pod.metadata.name, "--wait=true");
