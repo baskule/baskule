@@ -44,6 +44,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
       assert.equal(template.spec.enableServiceLinks, false);
       assert.equal(template.spec.terminationGracePeriodSeconds, 1);
       assert.equal(template.spec.securityContext.fsGroup, 1000);
+      assert.equal(template.spec.securityContext.fsGroupChangePolicy, "OnRootMismatch");
       assert.deepEqual(template.spec.containers[0].securityContext, { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } });
       assert.deepEqual(template.spec.containers[0].resources, { requests: { cpu: '2', memory: '3Gi' }, limits: { cpu: '2', memory: '3Gi' } });
       assert.deepEqual(template.spec.containers[0].volumeMounts, [{ name: 'space', mountPath: '/sandbox/space' }]);

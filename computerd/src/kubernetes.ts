@@ -157,7 +157,7 @@ export class KubernetesBackend implements Backend {
         volumeClaimTemplates: [{ metadata: { name: spec.disk }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: this.options.storageClass, resources: { requests: { storage: this.options.storageSize ?? '10Gi' } } } }],
         podTemplate: { metadata: { labels: { ...spec.labels, 'baskule.computer': 'true' }, annotations: spec.annotations }, spec: {
           automountServiceAccountToken: false, enableServiceLinks: false, terminationGracePeriodSeconds: 1,
-          securityContext: { runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, runAsNonRoot: true, seccompProfile: { type: 'RuntimeDefault' } },
+          securityContext: { runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, fsGroupChangePolicy: "OnRootMismatch", runAsNonRoot: true, seccompProfile: { type: 'RuntimeDefault' } },
           runtimeClassName: this.options.runtimeClassName, nodeSelector: this.options.nodeSelector, tolerations: this.options.tolerations, imagePullSecrets: this.options.imagePullSecrets,
           containers: [{ name: 'computer', image: spec.image, command: ['/usr/bin/tini', '--', 'sleep', 'infinity'], resources: { requests: resources, limits: resources },
             securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } }, volumeMounts: [{ name: spec.disk, mountPath: '/sandbox/space' }] }],
