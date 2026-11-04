@@ -14,6 +14,9 @@ EVIDENCE="$ROOT/.run/evidence/docker-int"
 mkdir -p "$EVIDENCE"
 export COMPUTER_IMAGE=baskule-computer:local
 "$ROOT/computer/build.sh" > "$EVIDENCE/build.log" 2>&1
+# The guard helper runs from the computerd image (it carries iptables): build it from this checkout.
+export COMPUTER_GUARD_IMAGE=baskule-computerd:it
+nice -n 10 "$ROOT/scripts/docker-build.sh" computerd --network host -t "$COMPUTER_GUARD_IMAGE" -f "$HERE/Dockerfile" "$ROOT" >> "$EVIDENCE/build.log" 2>&1
 PID=
 cleanup() {
   if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; fi
