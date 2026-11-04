@@ -35,6 +35,44 @@ See [Kubernetes installation](../docs/install-kubernetes.md) for RBAC, network p
 pre-pulling and snapshot restore. Plugin MCP requests originate in celld, so computer
 network restrictions do not govern plugin connections.
 
+## API
+
+All `/v1` routes need `Authorization: Bearer <COMPUTERD_TOKEN>`. `:id` is the space id,
+`[A-Za-z0-9_-]{1,64}`. Errors are `{"error": "<message>"}`. Routes other than
+`GET .../computer`, `kill`, `stop` and `delete` make the computer ready first.
+
+| Route | Body / query | Answer |
+|---|---|---|
+| `GET /healthz` (no auth) | | `{ok:true}` |
+| `POST /v1/spaces/:id/computer/ensure` | `{"keep"?: boolean}` | status after create/start; `keep` disables idle stop |
+| `POST /v1/spaces/:id/computer/stop` | | status after stop; the disk is kept |
+| `POST /v1/spaces/:id/computer/delete` | `{"confirm": "<spaceId>"}` | `{sandboxDeleted, volumeDeleted}`; removes machine and disk, irreversible, idempotent |
+| `GET /v1/spaces/:id/computer` | | `{phase, running, image, activeStreams, keep, lastActivity, idleStopAt, error, …}`; never starts it |
+| `POST /v1/spaces/:id/exec` | see below | NDJSON frames; header `x-exec-id` |
+| `POST /v1/spaces/:id/kill` | `{"id", "signal"?, "graceMs"?}` | `{id, killed}`; TERM escalates to KILL after `graceMs` (default 3000) |
+| `GET /v1/spaces/:id/files?path=` | `&stat=1`, `Range` | bytes for a file, `{entries:[…]}` for a directory |
+| `PUT /v1/spaces/:id/files?path=` | bytes, or `&type=dir` | `{path, type, size}`; atomic write, parents created |
+| `GET /v1/spaces/:id/cdp[?target=]` (WebSocket) | | tunnel to the computer's Chromium DevTools (port 9222 inside the computer) |
+| `GET /v1/spaces/:id/cdp/json[/list\|/version]` | | DevTools discovery JSON |
+| `/v1/spaces/:id/browser/ws` and `browser/{call,events,download,upload,peek}` | | the image's browser bridge on the same shared browser |
+
+**Exec.** The request is JSON `{"argv", "cwd"?, "env"?, "stdin"?: base64, "id"?, "timeoutMs"?}`, or
+`application/octet-stream` with that JSON in header `x-baskule-exec` and stdin streamed as the body.
+Frames are `{"t":"o"|"e","d":"<base64>"}`, then `{"t":"x","code":N}` or `{"t":"err","msg":"…"}`.
+Commands are argv only (no shell built from caller input; argv is capped at 200 KiB). Caller environment
+is filtered by an allowlist in [exec.ts](src/exec.ts); `LD_*` is always refused. Each exec runs under
+`setsid` and records its process group, so `kill`, client disconnect and `timeoutMs` signal the whole
+group. At most `MAX_STREAMS_PER_COMPUTER` exec, file and CDP streams run per computer (429 beyond).
+
+**Files.** Paths are absolute under `/sandbox`; `..` is refused and the path is resolved inside the
+computer with `realpath -m` and checked again, so symlinks cannot escape (403).
+
+**Lifecycle.** One computer per space, named by [policy.ts](src/policy.ts) (`os-<suffix>`, disk
+`baskule-space-<suffix>`; scoped by `COMPUTERD_INSTANCE` when set). Concurrent ensures share one
+operation. Idle computers stop after `IDLE_MINUTES` (or the organization setting) once regenerable
+package and browser caches are cleared; on start-up computerd adopts running computers it does not
+know, so a restart never leaves them running forever.
+
 ## Configuration and checks
 
 [Configuration](src/config.ts) is the authoritative environment reference.

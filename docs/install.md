@@ -47,7 +47,7 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 #S3_SECRET_KEY=YOUR_SECRET_KEY
 # Memory cap for each of the two platform nodes (default 3g).
 #CELLD_MEMORY=3g
-# Memory cap per computer  (default 3Gi).
+# Memory cap per computer (default 3Gi).
 #COMPUTER_MEMORY=3Gi
 # Trace UI bind (default 127.0.0.1), independent of BASKULE_BIND; requires COMPOSE_PROFILES=traces.
 #BASKULE_TRACES_BIND=127.0.0.1
