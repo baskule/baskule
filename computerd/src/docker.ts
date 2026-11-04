@@ -134,7 +134,7 @@ export class DockerBackend implements Backend {
     try {
       await this.request("POST", `/containers/create?name=${key(spec.name)}`, {
         Image: spec.image, Cmd: ["sleep", "infinity"], User: "1000:1000", Labels: { ...spec.annotations, ...spec.labels },
-        HostConfig: { CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges"], PidsLimit: 1024,
+        HostConfig: { Init: true, OomScoreAdj: 500, CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges"], PidsLimit: 1024,
           NanoCpus: Math.round(Number(spec.cpus) * 1e9), Memory: Math.round(bytes), NetworkMode: this.network, Dns: this.dns,
           Mounts: [{ Type: "volume", Source: spec.disk, Target: "/sandbox/space" }] },
       });
