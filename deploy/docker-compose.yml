@@ -216,6 +216,8 @@ services:
     volumes:
       - baskule-computerd-secrets:/run/baskule:ro
       - /var/run/docker.sock:/var/run/docker.sock
+    cpus: 1
+    mem_limit: 512m
     group_add: ["${DOCKER_GID:-999}"]
     environment:
       COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:-}
