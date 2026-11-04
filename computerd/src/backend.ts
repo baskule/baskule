@@ -64,7 +64,7 @@ export interface Backend {
   /** Resolves once the machine is stopped or absent. The disk is kept. */
   stop(name: string): Promise<void>;
   /** Removes the machine and its disk; resolves once both are gone. */
-  remove(name: string, disk: string): Promise<{ machineDeleted: boolean; diskDeleted: boolean }>;
+  remove(name: string, disk: string, legacyDisk?: string): Promise<{ machineDeleted: boolean; diskDeleted: boolean }>;
   exec(start: ExecStart): ExecHandle;
   /** A TCP stream to 127.0.0.1:<port> inside the machine. */
   connect(name: string, port: number): Duplex;

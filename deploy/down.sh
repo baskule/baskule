@@ -9,7 +9,9 @@ if [ "${1:-}" = --purge ]; then
   config=$(dc config --format json)
   instance=$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].environment.COMPUTERD_INSTANCE')
   network=$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].environment.COMPUTER_NETWORK')
+  legacy=$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].environment.COMPUTER_LEGACY_VOLUME // empty')
   dc down -v --remove-orphans
+  if [ -n "$legacy" ] && docker volume inspect "$legacy" >/dev/null 2>&1; then docker volume rm "$legacy"; fi
   docker ps -aq --filter label=baskule.managed=true --filter "label=baskule.instance=$instance" | xargs -r docker rm -f
   docker volume ls -q --filter label=baskule.managed=true --filter "label=baskule.instance=$instance" | xargs -r docker volume rm
   if network_info=$(docker network inspect "$network" 2>/dev/null) &&

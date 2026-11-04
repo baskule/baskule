@@ -279,7 +279,7 @@ export class Computers {
     s.readyAt = null;
     s.prepared = false;
     await this.getSandbox(s.sandbox); // Verify instance ownership before removal.
-    const result = await this.backend.remove(s.sandbox, s.volume);
+    const result = await this.backend.remove(s.sandbox, s.volume, namesFor(spaceId, "").volume);
     this.states.delete(spaceId);
     return { spaceId, sandbox: s.sandbox, sandboxDeleted: result.machineDeleted, volumeDeleted: result.diskDeleted };
   }

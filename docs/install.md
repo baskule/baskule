@@ -210,8 +210,7 @@ Stop computer containers as well as Compose services before backup; they are man
 Backup and restore mount the Docker socket read-only, which still grants Docker API administration.
 They use temporary network-disabled containers, removed on exit, and temporary local archive space
 large enough for all disks. Only standard local Docker volumes are supported for restore.
-Legacy unlabelled disks must first be migrated by the installation’s computerd; retired OpenShell
-stores are not included. This archive format requires the matching release’s restore command. Files under `/sandbox/space` persist;
+Unmigrated legacy disks are included alongside migrated computer disks. This archive format requires the matching release’s restore command. Files under `/sandbox/space` persist;
 other computer files are temporary. Restore the same release before updating.
 
 ## Update
@@ -259,3 +258,5 @@ until migration and file contents are checked. The regular backup includes migra
 legacy disks. Set `COMPUTER_LEGACY_VOLUME` on backup and restore jobs to the same
 legacy volume used by computerd. Restore recreates that store for lazy migration
 and refuses to overwrite an existing legacy volume.
+
+Compose no longer mounts the legacy volume, so `docker compose down -v` keeps it. Delete it only after every space has migrated and its files have been verified, with a backup retained, or during an explicitly authorized full purge.

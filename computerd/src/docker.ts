@@ -253,7 +253,27 @@ export class DockerBackend implements Backend {
     try { await this.request("POST", `/containers/${key(name)}/stop?t=1`); }
     catch (e) { if (!(e instanceof DockerError && e.status === 404)) throw e; }
   }
-  async remove(name: string, disk: string) {
+  async remove(name: string, disk: string, legacyDisk = disk) {
+    if (!/^baskule-space-[a-zA-Z0-9_-]+$/.test(legacyDisk)) throw new Error("Invalid legacy disk name");
+    if (this.legacyVolume) {
+      let exists = true;
+      try { await this.request("GET", `/volumes/${key(this.legacyVolume)}`); }
+      catch (error) { if (error instanceof DockerError && error.status === 404) exists = false; else throw error; }
+      if (exists) {
+        const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
+          Image: this.guardImage, User: "0:0",
+          Entrypoint: ["/bin/sh", "-ec", 'rm -rf -- "/legacy/volumes/$1/_data" "/legacy/volumes/$1/_data.migrated"', "cleanup", legacyDisk],
+          HostConfig: { NetworkMode: "none", ReadonlyRootfs: true,
+            Mounts: [{ Type: "volume", Source: this.legacyVolume, Target: "/legacy", ReadOnly: false }] },
+        });
+        try {
+          await this.request("POST", `/containers/${helper.Id}/start`);
+          const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`, undefined, JSON.parse, 0);
+          if (result.StatusCode !== 0) throw new Error("Cannot remove legacy disk");
+          this.legacyDisks = undefined;
+        } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
+      }
+    }
     let machineDeleted = false, diskDeleted = false;
     try { await this.request("DELETE", `/containers/${key(name)}?force=true`); machineDeleted = true; }
     catch (e) { if (!(e instanceof DockerError && e.status === 404)) throw e; }
