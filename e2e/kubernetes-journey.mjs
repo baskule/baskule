@@ -244,6 +244,7 @@ try {
       const pvcBefore = computerPvcs();
       assert.ok(pvcBefore.length > 0);
       if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("cordon", pod.spec.nodeName);
+      const moveStarted = performance.now();
       try {
         kube("delete", "pod", pod.metadata.name, "--wait=true");
         await expect.poll(() => {
@@ -258,6 +259,7 @@ try {
         computer("ensure");
         assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
         assert.deepEqual(computerPvcs(), pvcBefore);
+        writeFileSync(resolve(evidence, "node-move.json"), JSON.stringify({ elapsedMs: performance.now() - moveStarted, from: pod.spec.nodeName, to: computerPods()[0].spec.nodeName }));
         pass("replacement computer pod mounts the same PVC and preserves file bytes");
       } finally {
         if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("uncordon", pod.spec.nodeName);
