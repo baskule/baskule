@@ -77,11 +77,18 @@ export class DockerBackend implements Backend {
     // Computers must not reach each other; an existing network created without this option is refused, not reused.
     if (network.Options?.["com.docker.network.bridge.enable_icc"] !== "false") throw new Error(`Computer network ${this.network} allows inter-container traffic; remove it or set COMPUTER_NETWORK`);
     const script = guardScript(network.IPAM.Config.map(config => config.Subnet), network.Id, network.Options?.["com.docker.network.bridge.name"]);
-    const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
+    // iptables-legacy serialises with the host through /run/xtables.lock: share only that file, never the rest of /run
+    // (it holds the Docker socket). Hosts without the file (nftables backends) get a private /run.
+    const createHelper = (shareLock: boolean) => this.request<{ Id: string }>("POST", "/containers/create", {
       Image: this.guardImage, Labels: { "baskule.guard-helper": "true", "baskule.instance": this.guardInstance }, User: "0:0", Tty: true,
-      Entrypoint: ["/bin/sh", "-ec", `if [ -f /host-run/xtables.lock ]; then ln -s /host-run/xtables.lock /run/xtables.lock; fi
-${script}`],
-      HostConfig: { NetworkMode: "host", CapDrop: ["ALL"], CapAdd: ["NET_ADMIN"], SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true, Binds: ["/run:/host-run"], Tmpfs: { "/run": "rw,nosuid,nodev,noexec,size=1m" } },
+      Entrypoint: ["/bin/sh", "-ec", script],
+      HostConfig: { NetworkMode: "host", CapDrop: ["ALL"], CapAdd: ["NET_ADMIN"], SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true,
+        Mounts: [{ Type: "tmpfs", Target: "/run", TmpfsOptions: { SizeBytes: 1 << 20 } },
+          ...(shareLock ? [{ Type: "bind", Source: "/run/xtables.lock", Target: "/run/xtables.lock" }] : [])] },
+    });
+    const helper = await createHelper(true).catch(error => {
+      if (error instanceof DockerError && /bind source path does not exist/i.test(error.message)) return createHelper(false);
+      throw error;
     });
     try {
       await this.request("POST", `/containers/${helper.Id}/start`);

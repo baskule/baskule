@@ -23,7 +23,7 @@ cleanup() {
   docker ps -aq --filter "label=baskule.instance=$COMPUTERD_INSTANCE" | xargs -r docker rm -f
   docker volume ls -q --filter "label=baskule.instance=$COMPUTERD_INSTANCE" | xargs -r docker volume rm
   docker network ls -q --filter "label=baskule.instance=$COMPUTERD_INSTANCE" | xargs -r docker network rm
-  docker run --rm --network host --cap-drop ALL --cap-add NET_ADMIN --read-only --tmpfs /run --entrypoint node "$COMPUTER_GUARD_IMAGE" --input-type=module -e 'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});'
+  docker run --rm --network host --user 0:0 --cap-drop ALL --cap-add NET_ADMIN --read-only --tmpfs /run --entrypoint node "$COMPUTER_GUARD_IMAGE" --input-type=module -e 'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});'
 }
 trap cleanup EXIT
 node "$HERE/src/main.ts" > "$EVIDENCE/computerd.log" 2>&1 &
