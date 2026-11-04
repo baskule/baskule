@@ -343,14 +343,28 @@ test("a recorded exact-name untagged bucket is audited and swept after an interr
   assert.match(swept.result.stdout, /buckets: 0 owned resources/);
 });
 
-test("missing cluster application credentials fail before any cloud command", () => {
-  for (const missing of ["BASKULE_S3_ACCESS_KEY", "BASKULE_S3_SECRET_KEY"]) {
-    const result = spawnSync("bash", ["e2e/kubernetes-ephemeral.sh", "run"], {
-      cwd: root, encoding: "utf8", env: { ...process.env, BASKULE_S3_ACCESS_KEY: "app-access", BASKULE_S3_SECRET_KEY: "app-secret", [missing]: "" },
-    });
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, new RegExp(missing));
-    assert.doesNotMatch(result.stderr, /gcloud|Scaleway unavailable/);
+test("missing or reused cluster application credentials fail before any cloud command", () => {
+  const stubs = mkdtempSync(join(root, ".run/gke-credential-guard-"));
+  try {
+    for (const tool of ["gcloud", "scw", "kubectl", "helm"]) {
+      writeFileSync(join(stubs, tool), `#!/bin/sh\necho "unexpected cloud command: ${tool}" >&2\nexit 99\n`, { mode: 0o755 });
+    }
+    const cases = [
+      [{ BASKULE_S3_ACCESS_KEY: "" }, /BASKULE_S3_ACCESS_KEY/],
+      [{ BASKULE_S3_SECRET_KEY: "" }, /BASKULE_S3_SECRET_KEY/],
+      [{ BASKULE_S3_ACCESS_KEY: "operator-access", SCW_ACCESS_KEY: "operator-access" }, /dedicated application key/],
+    ];
+    for (const [override, message] of cases) {
+      const result = spawnSync("bash", ["e2e/kubernetes-ephemeral.sh", "run"], {
+        cwd: root, encoding: "utf8", timeout: 20_000,
+        env: { PATH: `${stubs}:/usr/bin:/bin`, HOME: process.env.HOME, BASKULE_S3_ACCESS_KEY: "app-access", BASKULE_S3_SECRET_KEY: "app-secret", ...override },
+      });
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, message);
+      assert.doesNotMatch(result.stderr, /unexpected cloud command|Scaleway unavailable/);
+    }
+  } finally {
+    rmSync(stubs, { recursive: true, force: true });
   }
 });
 

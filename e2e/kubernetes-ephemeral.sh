@@ -8,6 +8,7 @@ case "${1:-}" in
   run|worker)
     : "${BASKULE_S3_ACCESS_KEY:?set a dedicated Object Storage application key privately}"
     : "${BASKULE_S3_SECRET_KEY:?set the dedicated application secret privately}"
+    [[ $BASKULE_S3_ACCESS_KEY != "${SCW_ACCESS_KEY:-}" ]] || { echo 'BASKULE_S3_ACCESS_KEY must be a dedicated application key, not SCW_ACCESS_KEY' >&2; exit 1; }
     ;;
 esac
 project=${BASKULE_GKE_PROJECT:?set the owner-authorized project}
