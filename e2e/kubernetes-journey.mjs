@@ -319,7 +319,7 @@ try {
           await expect.poll(() => objects("get", "volumesnapshot", snapshotName).status?.readyToUse, { timeout: 240_000 }).toBe(true);
           await computerApi.json("POST", `/v1/spaces/${space}/computer/delete`, { confirm: space });
           assert.equal(objects("get", "pvc").items.some(p => p.metadata.name === claim.metadata.name), false);
-          apply({ apiVersion: "v1", kind: "PersistentVolumeClaim", metadata: { name: claim.metadata.name, annotations: { "agents.x-k8s.io/adoptable": "true" } }, spec: { accessModes: claim.spec.accessModes, storageClassName: claim.spec.storageClassName, resources: claim.spec.resources, dataSource: { apiGroup: "snapshot.storage.k8s.io", kind: "VolumeSnapshot", name: snapshotName } } });
+          apply({ apiVersion: "v1", kind: "PersistentVolumeClaim", metadata: { name: claim.metadata.name, labels: { "agents.x-k8s.io/adoptable": "true" } }, spec: { accessModes: claim.spec.accessModes, storageClassName: claim.spec.storageClassName, resources: claim.spec.resources, dataSource: { apiGroup: "snapshot.storage.k8s.io", kind: "VolumeSnapshot", name: snapshotName } } });
           computer("ensure");
           assert.equal(await hashes(), beforeHashes);
           writeFileSync(resolve(evidence, "restore.json"), JSON.stringify({ pvc: claim.metadata.name, hashes: beforeHashes, restored: true }));
