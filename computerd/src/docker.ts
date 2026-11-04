@@ -30,22 +30,33 @@ export class DockerBackend implements Backend {
     if (!this.guardVerified) await this.verifyGuard();
   }
   private readonly guardTimer: ReturnType<typeof setInterval>;
-  private readonly guardStarted = Date.now();
+  private guardScriptFailed = false;
   private readonly guardInstance = process.env.COMPUTERD_INSTANCE ?? "";
   private guardHelpersCleaned = false;
   private async stopUnguarded(): Promise<void> {
+    if (this.guardVerified) return;
     log.error("Computer guard unavailable; stopping managed computers");
     const machines = await this.list({ "baskule.managed": "true", ...(this.guardInstance ? { "baskule.instance": this.guardInstance } : {}) });
+    if (this.guardVerified) return;
     await Promise.all(machines.filter(machine => machine.phase === "ready").map(machine => this.stop(machine.name)));
   }
   private verifyGuard(): Promise<void> {
-    return this.guardPending ??= this.reconcileGuard().catch(async error => {
-      const wasVerified = !!this.guardVerified;
-      this.guardVerified = undefined;
-      if (wasVerified || Date.now() - this.guardStarted >= 60_000) await this.stopUnguarded();
-      throw error;
-    }).finally(() => { this.guardPending = undefined; });
+    return this.guardPending ??= (async () => {
+      for (let attempt = 1; ; attempt++) {
+        this.guardScriptFailed = false;
+        try { await this.reconcileGuard(); return; }
+        catch (error) {
+          if (this.guardScriptFailed || attempt === 3) {
+            this.guardVerified = undefined;
+            await this.stopUnguarded();
+            throw error;
+          }
+          await new Promise(resolve => setTimeout(resolve, 5_000));
+        }
+      }
+    })().finally(() => { this.guardPending = undefined; });
   }
+
   private async reconcileGuard(): Promise<void> {
     if (!this.guardHelpersCleaned) {
       const filters = key(JSON.stringify({ label: ["baskule.guard-helper=true", `baskule.instance=${this.guardInstance}`] }));
@@ -76,6 +87,7 @@ ${script}`],
       await this.request("POST", `/containers/${helper.Id}/start`);
       const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`);
       if (result.StatusCode !== 0) {
+        this.guardScriptFailed = true;
         const output = await this.request<string>("GET", `/containers/${helper.Id}/logs?stdout=true&stderr=true&tail=20`, undefined, text => text.trim()).catch(() => "");
         throw new Error(`Computer guard verification failed (exit ${result.StatusCode}): requires Docker iptables DOCKER-USER (nftables-only Docker unsupported) and NET_ADMIN; refusing computer creation/start${output ? `: ${output}` : ""}`);
       }
@@ -88,7 +100,6 @@ ${script}`],
     this.guardImage = guardImage;
     this.dns = dns;
     this.guardTimer = setInterval(() => {
-      if (!this.guardVerified) void this.stopUnguarded().catch(error => log.error("Failed to stop unguarded computers", { error: String(error) }));
       void this.verifyGuard().catch(error => log.error("Computer guard reconciliation failed", { error: String(error) })); }, 60_000);
     this.guardTimer.unref();
     this.socketPath = host.replace(/^unix:\/\//, "");
