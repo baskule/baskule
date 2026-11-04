@@ -32,10 +32,10 @@ backup)
     api "$url/volumes" > "$stage/existing.json"
     if jq -e --arg name "$legacy" 'any(.Volumes[]?; .Name == $name)' "$stage/existing.json" >/dev/null; then
       mount_disk "$legacy" true
-      api -G --data-urlencode 'path=/disk/.' "$url/containers/$helper/archive" > "$stage/legacy-store.tar"
+      api -G --data-urlencode 'path=/disk/volumes/.' "$url/containers/$helper/archive" > "$stage/legacy-store.tar"
       unmount_disk
-      mkdir "$stage/legacy-store"
-      tar -xf "$stage/legacy-store.tar" -C "$stage/legacy-store"
+      mkdir -p "$stage/legacy-store/volumes"
+      tar -xf "$stage/legacy-store.tar" -C "$stage/legacy-store/volumes"
       for data in "$stage/legacy-store"/volumes/baskule-space-*/_data; do
         [ -d "$data" ] || continue
         name=$(basename "$(dirname "$data")")
