@@ -337,8 +337,10 @@ export BASKULE_K8S_REGISTRY="$region-docker.pkg.dev/$project/$run_id"
 helm push "$BASKULE_K8S_CHART" "oci://$BASKULE_K8S_REGISTRY" > "$BASKULE_K8S_EVIDENCE/chart-push.log" 2>&1
 export BASKULE_K8S_CHART="oci://$BASKULE_K8S_REGISTRY/baskule"
 export BASKULE_K8S_CHART_VERSION=0.0.0-ephemeral
-export BASKULE_K8S_TAG=${BASKULE_K8S_TAG:-kubernetes}
+# Shared tags such as :kubernetes or :local may hold another checkout's build: require an explicit tag and record what ships.
+: "${BASKULE_K8S_TAG:?set BASKULE_K8S_TAG to images built from this checkout}"
 for name in celld computerd computer; do
+  docker image inspect -f "baskule-$name:$BASKULE_K8S_TAG {{.Id}} {{.Created}}" "baskule-$name:$BASKULE_K8S_TAG" >> "$BASKULE_K8S_EVIDENCE/images.txt"
   docker tag "baskule-$name:$BASKULE_K8S_TAG" "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG"
   for attempt in 1 2 3; do
     if docker push "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG" >> "$BASKULE_K8S_EVIDENCE/push-$name.log" 2>&1; then break; fi
