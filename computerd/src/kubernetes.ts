@@ -81,7 +81,10 @@ export class KubernetesBackend implements Backend {
     if (!selector) return null;
     const query = new URLSearchParams({ labelSelector: selector });
     const pods = await this.api<{ items: Resource[] }>(`${this.core}/pods?${query}`);
-    return pods.items[0] ?? null;
+    return this.selectPod(pods.items);
+  }
+  private selectPod(pods: Resource[]): Resource | null {
+    return pods.find(p => !p.metadata.deletionTimestamp && p.status?.phase === 'Running') ?? pods[0] ?? null;
   }
   private async machine(s: Resource): Promise<Machine> {
     const p = await this.pod(s);

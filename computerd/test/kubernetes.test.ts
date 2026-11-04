@@ -12,6 +12,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   let sandbox: any = null;
   let pod: any = null;
   let disk = false;
+  let terminatingFirst = false;
   let version = 1;
   let watches = 0;
   let eof = false;
@@ -64,7 +65,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
       sandbox.metadata.resourceVersion = String(++version);
       res.end(JSON.stringify({ type: 'MODIFIED', object: sandbox }) + '\n'); return;
     }
-    if (url.searchParams.has('fieldSelector') || url.searchParams.has('labelSelector')) { send({ metadata: { resourceVersion: String(version) }, items: value ? [value] : [] }); return; }
+    if (url.searchParams.has('fieldSelector') || url.searchParams.has('labelSelector')) { send({ metadata: { resourceVersion: String(version) }, items: value ? (kind === 'pod' && terminatingFirst ? [{ ...value, metadata: { name: 'old', deletionTimestamp: 'now' } }, value] : [value]) : [] }); return; }
     send(value ?? {}, value ? 200 : 404);
   });
   const wss = new WebSocketServer({ noServer: true });
@@ -96,6 +97,11 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   assert.equal((await backend.create(spec)).phase, 'ready');
   assert.equal((await backend.list({ managed: 'true' })).length, 1);
   assert.equal((await backend.create(spec)).phase, 'ready');
+  await t.test('prefers Running replacement over terminating pod', async () => {
+    terminatingFirst = true;
+    assert.equal((await backend.get('machine'))?.phase, 'ready');
+    terminatingFirst = false;
+  });
   const exec = backend.exec({ machine: 'machine', command: ['cat'] });
   await exec.writeStdin(Buffer.from('hello')); exec.endStdin();
   const events = []; for await (const e of exec.events) events.push(e);
