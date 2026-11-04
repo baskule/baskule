@@ -26,7 +26,7 @@ if [[ -n ${BASKULE_K8S_VALUES:-} ]]; then values_args=(--values "$BASKULE_K8S_VA
 helm upgrade --install "$BASKULE_K8S_RELEASE" "$chart" \
   "${chart_args[@]}" \
   --namespace "$BASKULE_K8S_NAMESPACE" --create-namespace --timeout 10m \
-  --set rustfs.enabled=true --set-string publicUrl="$BASKULE_K8S_PUBLIC_URL" \
+  --set-string publicUrl="$BASKULE_K8S_PUBLIC_URL" \
   --set-string global.image.registry="$registry" --set-string global.image.tag="$tag" \
   "${values_args[@]}" > /dev/null
 kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status statefulset/"$BASKULE_K8S_RELEASE-celld" --timeout=240s
@@ -36,7 +36,7 @@ if [[ ${BASKULE_K8S_JOURNEY:-full} == full ]]; then
   kubectl -n "$BASKULE_K8S_NAMESPACE" exec "$BASKULE_K8S_RELEASE-celld-0" -- \
     curl -fsS "http://$BASKULE_K8S_RELEASE/api/baskule/setup" | jq -e '.required == true' >/dev/null
   helm template "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" \
-    --show-only templates/deploy.yaml --set rustfs.enabled=true \
+    --show-only templates/deploy.yaml \
     --set-string publicUrl="$BASKULE_K8S_PUBLIC_URL" --set-string global.image.registry="$registry" \
     --set-string global.image.tag="$tag" "${values_args[@]}" | \
     kubectl -n "$BASKULE_K8S_NAMESPACE" create --dry-run=client -f - -o json | \
@@ -95,11 +95,11 @@ if [[ ${BASKULE_K8S_JOURNEY:-full} != upgrade ]]; then
   node e2e/kubernetes-journey.mjs | tee "$BASKULE_K8S_EVIDENCE/journey.log"
 fi
 # Server-side rendering must apply newly supplied external credentials even when
-# the old evaluation Secret exists. No bucket or credential mutation is performed.
+# an existing S3 Secret was selected. No bucket or credential mutation is performed.
 render=$(mktemp "$root/.run/s3-upgrade.XXXXXX.private.json")
 helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" \
-  --reset-then-reuse-values --dry-run=server --output json --set rustfs.enabled=false \
-  --set s3.endpoint=https://s3.example.test --set s3.accessKeyId=review-access --set s3.secretAccessKey=review-secret > "$render"
+  --reset-then-reuse-values --dry-run=server --output json \
+  --set s3.existingSecret= --set s3.endpoint=https://s3.example.test --set s3.accessKeyId=review-access --set s3.secretAccessKey=review-secret > "$render"
 node --input-type=module - "$render" "$BASKULE_K8S_RELEASE" <<'JS'
 import { readFileSync, unlinkSync } from "node:fs";
 import assert from "node:assert/strict";
@@ -112,11 +112,12 @@ try {
 JS
 echo 'PASS server-side upgrade rendering applies changed external S3 credentials' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
 # Real lookup must retain token bytes on an upgrade. Compare hashes, never dump Secrets.
-before=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" "$BASKULE_K8S_RELEASE-s3" -o json | jq -c '[.items[] | {name:.metadata.name,data}] | sort_by(.name)' | sha256sum)
+s3_secret=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get statefulset "$BASKULE_K8S_RELEASE-celld" -o json | jq -r '.spec.template.spec.containers[0].env[] | select(.name == "AWS_ACCESS_KEY_ID") | .valueFrom.secretKeyRef.name')
+before=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" "$s3_secret" -o json | jq -c '[.items[] | {name:.metadata.name,data}] | sort_by(.name)' | sha256sum)
 helm upgrade "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" --reset-then-reuse-values --timeout 10m --wait > /dev/null
-after=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" "$BASKULE_K8S_RELEASE-s3" -o json | jq -c '[.items[] | {name:.metadata.name,data}] | sort_by(.name)' | sha256sum)
+after=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get secret "$BASKULE_K8S_RELEASE-secrets" "$s3_secret" -o json | jq -c '[.items[] | {name:.metadata.name,data}] | sort_by(.name)' | sha256sum)
 [[ $before == "$after" ]]
-echo 'PASS Helm upgrade preserves generated platform tokens and RustFS keys' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
+echo 'PASS Helm upgrade preserves generated platform tokens and keeps the supplied S3 Secret' | tee -a "$BASKULE_K8S_EVIDENCE/results.log"
 kubectl -n "$BASKULE_K8S_NAMESPACE" get pods,pvc,networkpolicy > "$BASKULE_K8S_EVIDENCE/resources.txt"
 
 # Exercise Helm's cross-version default merge without pulling fictitious images.
@@ -143,7 +144,7 @@ kubectl -n "$BASKULE_K8S_NAMESPACE" get pods,pvc,networkpolicy > "$BASKULE_K8S_E
     printf 'apiVersion: v2\nname: baskule\nversion: %s\nappVersion: "%s"\n' "$version" "$version" > "$fixture/Chart.yaml"
     helm package "$fixture" --destination "$work/$version" >/dev/null
   done
-  helm install "$proof" "$work/1.0.0/baskule-1.0.0.tgz" --namespace "$BASKULE_K8S_NAMESPACE" --set rustfs.enabled=true >/dev/null
+  helm install "$proof" "$work/1.0.0/baskule-1.0.0.tgz" --namespace "$BASKULE_K8S_NAMESPACE" --set s3.endpoint=https://s3.example.test --set s3.bucket=tag-proof --set s3.existingSecret=bucket >/dev/null
   helm upgrade "$proof" "$work/2.0.0/baskule-2.0.0.tgz" --namespace "$BASKULE_K8S_NAMESPACE" --reset-then-reuse-values >/dev/null
   image=$(kubectl -n "$BASKULE_K8S_NAMESPACE" get configmap "$proof" -o jsonpath='{.data.image}')
   [[ $image == ghcr.io/baskule/baskule-celld:2.0.0 ]]

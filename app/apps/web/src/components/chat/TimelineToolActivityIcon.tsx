@@ -1,5 +1,6 @@
+import { LinkIcon } from "lucide-react";
 import { BaskuleMark } from "../BaskuleBrand";
-import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+
 import { type ToolActivityIcon } from "@t3tools/contracts";
 import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
 import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
@@ -233,7 +234,7 @@ function ToolActivityImageIcon(props: {
 function WorkEntryIcon({ name, className }: { name: WorkEntryIconName; className: string }) {
   switch (name) {
     case "pull-request":
-      return <PullRequestGlyph.pullRequest className={className} aria-hidden />;
+      return <LinkIcon className={className} aria-hidden />;
     case "bot":
       return <BotIcon className={className} aria-hidden />;
     case "brain":

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 
-import { pullRequestComposerContext } from "../../lib/composerContext";
+import { ComposerContextId } from "@t3tools/contracts";
 
 import {
   clearReviewCommentTarget,
@@ -55,18 +55,29 @@ function makeTarget(): ReviewCommentTarget {
 
 describe("review comment serialization", () => {
   it("excludes a linked pull request chip from draft review comments", () => {
-    const record = pullRequestComposerContext(
-      {
+    const record = {
+      version: 1 as const,
+      kind: "review-comment" as const,
+      contextId: ComposerContextId.make("pr-42"),
+      label: "#42",
+      sectionId: "pull-request:42",
+      sectionTitle: "PR #42",
+      filePath: "PR #42",
+      startIndex: 0,
+      endIndex: 0,
+      rangeLabel: "Fix checkout",
+      text: "Saved pull request context",
+      diff: "",
+      pullRequest: {
         number: 42,
         title: "Fix checkout",
         url: "https://github.com/example/repo/pull/42",
         headBranch: "fix-checkout",
         baseBranch: "main",
-        state: "open",
+        state: "open" as const,
         isDraft: false,
       },
-      "pr-42",
-    );
+    };
 
     expect(
       parseReviewInlineComments(formatComposerContextReference(record), {

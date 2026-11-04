@@ -44,14 +44,6 @@ export function sanitizeCommitSubject(raw: string): string {
   return subject.trimEnd() || "Update project files";
 }
 
-export function sanitizePrTitle(raw: string): string {
-  const singleLine = raw.trim().split(/\r?\n/g)[0]?.trim() ?? "";
-  if (singleLine.length > 0) {
-    return singleLine;
-  }
-  return "Update project changes";
-}
-
 const MAX_THREAD_TITLE_CHARS = 120;
 
 export function sanitizeThreadTitle(raw: string): string {

@@ -70,11 +70,6 @@ type ViewProps = ComponentProps<typeof NativeStackView>;
 type Descriptor = ViewProps["descriptors"][string];
 type Route = ViewProps["state"]["routes"][number];
 
-const isPullRequestRoute = (route: Route) =>
-  route.name === "PullRequest" ||
-  route.name === "PullRequestFile" ||
-  route.name === "PullRequestFiles";
-
 /** Beside the list, the first Settings page shows on one native screen that swaps its content. */
 const SETTINGS_DETAIL_SCREEN = "settings-detail";
 
@@ -84,7 +79,7 @@ function ColumnScreen(props: {
   readonly primary?: boolean;
   readonly attached?: boolean;
   readonly selectedThreadKey?: string | null;
-  readonly selectedPullRequestKey?: string | null;
+
   readonly onDismiss: (routeKey: string, native: boolean) => void;
   readonly onAppearance: (type: "willAppear" | "didAppear" | "willDisappear", key: string) => void;
   readonly onCompose?: () => void;
@@ -102,7 +97,6 @@ function ColumnScreen(props: {
     ? {
         presented,
         selectedThreadKey: props.selectedThreadKey ?? null,
-        selectedPullRequestKey: props.selectedPullRequestKey ?? null,
       }
     : null;
   const key = descriptor.route.key;
@@ -226,10 +220,7 @@ function WorkspaceColumns(
   const openNewTask = startNewTask;
   // The cover detail rail needs room for thread tools above the fixed tabs.
   // The unfolded Duo keeps compose in its detail bar.
-  const detailCompose =
-    deviceType === "duo-unfolded" && selectedTab !== "pullRequests" && !settingsOpen
-      ? openNewTask
-      : undefined;
+  const detailCompose = deviceType === "duo-unfolded" && !settingsOpen ? openNewTask : undefined;
   const inspector = use(NativeWorkspaceInspectorContext);
   const hostRef = useRef<SplitHostCommands>(null);
   const activeDetailKey = props.detail.at(-1)?.key;
@@ -237,19 +228,6 @@ function WorkspaceColumns(
   const collapsed = useRef(!layout.usesSplitView);
   const collapsedColumn = useRef<CollapsedSplitColumn>({ visible: compactColumn, leaving: null });
   const threadParams = props.detail.findLast((route) => route.name === "Thread")?.params;
-  const pullRequestParams = props.detail.findLast(isPullRequestRoute)?.params;
-  const selectedPullRequestKey =
-    pullRequestParams &&
-    "environmentId" in pullRequestParams &&
-    "host" in pullRequestParams &&
-    "repository" in pullRequestParams &&
-    "number" in pullRequestParams &&
-    typeof pullRequestParams.environmentId === "string" &&
-    typeof pullRequestParams.host === "string" &&
-    typeof pullRequestParams.repository === "string" &&
-    typeof pullRequestParams.number === "number"
-      ? `${pullRequestParams.environmentId}:${pullRequestParams.host}:${pullRequestParams.repository}:${pullRequestParams.number}`
-      : null;
   const selectedThreadKey =
     threadParams &&
     "environmentId" in threadParams &&
@@ -326,7 +304,7 @@ function WorkspaceColumns(
         if (workspace.some((route) => route.name !== "Home" && route.name !== "Settings")) return;
         const tab = workspace.some((route) => route.name === "Settings")
           ? "settings"
-          : (["threads", "pullRequests", "usage"] as const).find((candidate) =>
+          : (["threads", "usage"] as const).find((candidate) =>
               workspaceTabs?.isTabActive(candidate),
             );
         openWorkspaceTab(tab ?? "threads", { columns: true });
@@ -372,7 +350,7 @@ function WorkspaceColumns(
             descriptor={primary}
             primary
             selectedThreadKey={selectedThreadKey}
-            selectedPullRequestKey={selectedPullRequestKey}
+
             onDismiss={handleNativeDismiss}
             onAppearance={followCollapsedSplit}
             navigation={props.navigation}
@@ -424,7 +402,7 @@ function WorkspaceColumns(
                 attached={props.detail.some((current) => current.key === route.key)}
                 onDismiss={handleNativeDismiss}
                 onAppearance={followCollapsedSplit}
-                onCompose={isPullRequestRoute(route) ? undefined : detailCompose}
+                onCompose={detailCompose}
                 navigation={props.navigation}
               />
             ) : null;

@@ -1,3 +1,4 @@
+import { LinkIcon } from "lucide-react";
 import { useTranslation } from "../i18n";
 
 import ChatMarkdown from "./ChatMarkdown";
@@ -17,7 +18,7 @@ import {
   formatAttachmentUploadProgress,
   type AttachmentUploadState,
 } from "~/lib/attachmentUploadState";
-import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+
 import {
   fileContextReference,
   imageContextReference,
@@ -422,7 +423,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
         }
         return (
           <ContextChip
-            icon={isPullRequest ? <PullRequestGlyph.pullRequest /> : <MessageCircleIcon />}
+            icon={isPullRequest ? <LinkIcon /> : <MessageCircleIcon />}
             label={reviewCommentContextLabel(entry.record)}
             kindLabel={isPullRequest ? pullRequestContextKindLabel(entry.record) : "Review comment"}
             details={<ComposerReviewCommentDetails comment={entry.record} />}

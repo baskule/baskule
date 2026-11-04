@@ -8,16 +8,17 @@ global:
     pullPolicy: IfNotPresent
 imagePullSecrets: []
 # Keys: COMPUTERD_TOKEN, SETUP_TOKEN, PLUGIN_SYNC_TOKEN. Generated once with Helm server lookup.
-# GitOps/client rendering must supply existingSecret and s3.existingSecret.
+# GitOps/client rendering must supply existingSecret for platform tokens.
+# Prefer s3.existingSecret to keep bucket keys outside rendered manifests.
 existingSecret: ""
 authConfig: '{"version":1,"mode":"authenticated","password":true}'
 s3:
   endpoint: ""
   region: us-east-1
-  bucket: baskule
+  bucket: ""
   # Prefer an existing Secret with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
   existingSecret: ""
-  # Supplied external keys are reapplied on upgrade; RustFS generates and retains its own.
+  # Supplied keys are reapplied on upgrade when no existing Secret is selected.
   accessKeyId: ""
   secretAccessKey: ""
 celld:
@@ -44,15 +45,6 @@ exposure:
     sectionName: ""
 networkPolicy:
   enabled: true
-# Single-node RustFS is for evaluation only. No redundancy or production SLA.
-rustfs:
-  enabled: false
-  image: rustfs/rustfs@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b
-  storage: 10Gi
-  storageClass: ""
-  resources:
-    requests: {cpu: 100m, memory: 512Mi}
-    limits: {cpu: "1", memory: 2Gi}
 computers:
   image: ""
   cpus: "2"

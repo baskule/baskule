@@ -7,28 +7,18 @@ export interface PromptLinkRepository {
   readonly name: string;
 }
 
-export interface PromptLinkPullRequest extends PromptLinkRepository {
-  readonly number: number;
-}
-
 export interface LinkedPrompt {
   readonly text: string;
   readonly hiddenCharacters: number;
 }
 
-export type NewThreadLink =
-  | {
-      readonly kind: "new";
-      readonly prompt: LinkedPrompt;
-      readonly repository: PromptLinkRepository | null;
-      readonly provider: string | null;
-      readonly model: string | null;
-    }
-  | {
-      readonly kind: "pull-request";
-      readonly pullRequest: PromptLinkPullRequest;
-      readonly prompt: LinkedPrompt | null;
-    };
+export type NewThreadLink = {
+  readonly kind: "new";
+  readonly prompt: LinkedPrompt;
+  readonly repository: PromptLinkRepository | null;
+  readonly provider: string | null;
+  readonly model: string | null;
+};
 
 export type PromptLinkResult<T> =
   | { readonly ok: true; readonly value: T }
@@ -83,24 +73,6 @@ export function parsePromptLinkRepository(value: string): PromptLinkRepository |
   return match?.[1] && match[2] ? repositoryOf(match[1], match[2]) : null;
 }
 
-function parsePromptLinkPullRequest(value: string): PromptLinkPullRequest | null {
-  const trimmed = value.trim();
-  const match =
-    /^https?:\/\/(?:www\.)?github\.com\/([^/?#]+)\/([^/?#]+)\/pull\/(\d+)(?:[/?#].*)?$/i.exec(
-      trimmed,
-    ) ?? /^([^/\s#]+)\/([^/\s#]+)(?:\/|#)(\d+)$/.exec(trimmed);
-  if (!match?.[1] || !match[2] || !match[3]) return null;
-  const repository = repositoryOf(match[1], match[2]);
-  const number = Number(match[3]);
-  return repository && Number.isSafeInteger(number) && number > 0
-    ? { ...repository, number }
-    : null;
-}
-
-export function promptLinkPullRequestUrl(pullRequest: PromptLinkPullRequest): string {
-  return `https://github.com/${pullRequest.owner}/${pullRequest.name}/pull/${pullRequest.number}`;
-}
-
 function readPrompt(params: URLSearchParams): PromptLinkResult<LinkedPrompt | null> {
   const raw = params.get("prompt");
   if (raw === null) return { ok: true, value: null };
@@ -127,14 +99,11 @@ export function parseNewThreadLink(search: string): PromptLinkResult<NewThreadLi
   const params = new URLSearchParams(search);
   const prompt = readPrompt(params);
   if (!prompt.ok) return prompt;
-  const pr = params.get("pr");
-  if (pr !== null) {
-    const pullRequest = parsePromptLinkPullRequest(pr);
-    if (pullRequest === null) {
-      return { ok: false, error: "This link names a pull request T3 Code cannot read." };
-    }
-    return { ok: true, value: { kind: "pull-request", pullRequest, prompt: prompt.value } };
-  }
+  if (params.has("pr"))
+    return {
+      ok: false,
+      error: "Forge links are no longer supported. Open the URL in your browser.",
+    };
   if (prompt.value === null) return { ok: false, error: "This link has no prompt." };
   const repo = params.get("repo");
   const repository = repo === null ? null : parsePromptLinkRepository(repo);

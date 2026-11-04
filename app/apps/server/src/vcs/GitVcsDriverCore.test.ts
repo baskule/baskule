@@ -314,24 +314,6 @@ it.effect.each(["root", "nested", "worktree"] as const)(
     }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("invalidates origin remote cache when a driver mutation adds origin", () =>
-  Effect.gen(function* () {
-    const driver = yield* GitVcsDriver.GitVcsDriver;
-    const cwd = yield* makeTmpDir();
-    const remote = yield* makeTmpDir("git-vcs-driver-remote-");
-    yield* initRepoWithCommit(cwd);
-    yield* git(remote, ["init", "--bare"]);
-
-    const before = yield* driver.statusDetailsLocal(cwd);
-    assert.equal(before.hasOriginRemote, false);
-
-    yield* driver.ensureRemote({ cwd, preferredName: "origin", url: remote });
-
-    const after = yield* driver.statusDetailsLocal(cwd);
-    assert.equal(after.hasOriginRemote, true);
-  }).pipe(Effect.provide(layerTest)),
-);
-
 it.effect.each([
   { hookExitCode: 0, commonDirFailure: "none" },
   { hookExitCode: 1, commonDirFailure: "none" },
@@ -4526,63 +4508,6 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
   });
 
   describe("remote operations", () => {
-    it.effect("ensureRemote reuses a partial clone remote and avoids its name", () =>
-      Effect.gen(function* () {
-        const cwd = yield* makeTmpDir();
-        yield* git(cwd, ["init"]);
-        yield* git(cwd, ["remote", "add", "origin", "https://github.com/pingdotgg/t3code.git"]);
-        yield* git(cwd, ["config", "remote.origin.promisor", "true"]);
-        yield* git(cwd, ["config", "remote.origin.partialclonefilter", "blob:none"]);
-        const driver = yield* GitVcsDriver.GitVcsDriver;
-
-        const reused = yield* driver.ensureRemote({
-          cwd,
-          preferredName: "origin",
-          url: "git@github.com:pingdotgg/t3code.git",
-        });
-        assert.equal(reused, "origin");
-        const added = yield* driver.ensureRemote({
-          cwd,
-          preferredName: "origin",
-          url: "https://github.com/another-owner/t3code.git",
-        });
-        assert.equal(added, "origin-1");
-      }),
-    );
-
-    it.effect("ensureRemote returns the remote a parallel call added for the same URL", () =>
-      Effect.gen(function* () {
-        const cwd = yield* makeTmpDir();
-        yield* git(cwd, ["init"]);
-        // Hold the first add until both calls have listed remotes, so both decide to add.
-        let listings = 0;
-        const bothListed = yield* Deferred.make<void>();
-        const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
-        const spawner = ChildProcessSpawner.make((command) =>
-          Effect.gen(function* () {
-            const args = ChildProcess.isStandardCommand(command) ? command.args : [];
-            if (args[0] === "remote" && args[1] === "-v") {
-              listings += 1;
-              if (listings === 2) yield* Deferred.succeed(bothListed, undefined);
-            }
-            if (args[0] === "remote" && args[1] === "add") yield* Deferred.await(bothListed);
-            return yield* delegate.spawn(command);
-          }),
-        );
-        const driver = yield* makeGitVcsDriverCore().pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.provide(layerServerConfig),
-        );
-        const input = { cwd, preferredName: "fork", url: "https://github.com/fork/t3code.git" };
-
-        const names = yield* Effect.all([driver.ensureRemote(input), driver.ensureRemote(input)], {
-          concurrency: "unbounded",
-        });
-
-        assert.deepEqual(names, ["fork", "fork"]);
-      }),
-    );
-
     it.effect("retries a config write while another process holds the config lock", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
@@ -4719,59 +4644,6 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           yield* git(cwd, ["rev-parse", `refs/remotes/${remoteName}/${initialBranch}`]),
           head.commitSha,
         );
-      }),
-    );
-
-    it.effect("ensureRemote reuses an existing remote across ssh/https transport variants", () =>
-      Effect.gen(function* () {
-        const cwd = yield* makeTmpDir();
-        yield* initRepoWithCommit(cwd);
-        const driver = yield* GitVcsDriver.GitVcsDriver;
-
-        yield* git(cwd, ["remote", "add", "origin", "https://github.com/pingdotgg/t3code.git"]);
-
-        const reusedForSsh = yield* driver.ensureRemote({
-          cwd,
-          preferredName: "pingdotgg",
-          url: "git@github.com:pingdotgg/t3code.git",
-        });
-        assert.equal(reusedForSsh, "origin");
-
-        const reusedForSshScheme = yield* driver.ensureRemote({
-          cwd,
-          preferredName: "pingdotgg",
-          url: "ssh://git@github.com/pingdotgg/t3code",
-        });
-        assert.equal(reusedForSshScheme, "origin");
-
-        const reusedForBareSshScheme = yield* driver.ensureRemote({
-          cwd,
-          preferredName: "pingdotgg",
-          url: "ssh://github.com/pingdotgg/t3code",
-        });
-        assert.equal(reusedForBareSshScheme, "origin");
-
-        const reusedForSshPort = yield* driver.ensureRemote({
-          cwd,
-          preferredName: "pingdotgg",
-          url: "ssh://git@github.com:22/pingdotgg/t3code",
-        });
-        assert.equal(reusedForSshPort, "origin");
-
-        const reusedForSshWithPort = yield* driver.ensureRemote({
-          cwd,
-          preferredName: "pingdotgg",
-          url: "ssh://git@github.com:22/pingdotgg/t3code.git",
-        });
-        assert.equal(reusedForSshWithPort, "origin");
-
-        const addedForFork = yield* driver.ensureRemote({
-          cwd,
-          preferredName: "octocat",
-          url: "git@github.com:octocat/t3code.git",
-        });
-        assert.equal(addedForFork, "octocat");
-        assert.equal(yield* git(cwd, ["remote"]), "octocat\norigin");
       }),
     );
   });

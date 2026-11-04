@@ -26,7 +26,6 @@ vi.mock("./presentation", () => ({
     presentation: { connection: { phase: state.phase, error: null } },
   }),
 }));
-vi.mock("./pull-requests", () => ({ composerPullRequests: {} }));
 vi.mock("./projects", () => ({
   projectEnvironment: { searchEntries: () => state.searchAtom },
 }));

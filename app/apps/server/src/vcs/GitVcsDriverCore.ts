@@ -53,7 +53,6 @@ import {
 } from "../git/remoteRefs.ts";
 import { makeIsServerInternalPath } from "../auth/serverInternalPaths.ts";
 import * as ServerConfig from "../config.ts";
-import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 /** T3's record of the branch, named as on the host, that a branch was cut from. */
@@ -333,31 +332,6 @@ const refuseOptionLikeRefName = (operation: string, cwd: string, refName: string
         }),
       )
     : Effect.void;
-
-function sanitizeRemoteName(value: string): string {
-  const sanitized = value
-    .trim()
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return sanitized.length > 0 ? sanitized : "fork";
-}
-
-function parseRemoteFetchUrls(stdout: string): Map<string, string> {
-  const remotes = new Map<string, string>();
-  for (const line of stdout.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
-    // Partial clones append the promisor filter, e.g. `(fetch) [blob:none]`.
-    const match = /^(\S+)\s+(\S+)\s+\((fetch|push)\)(?:\s+\[[^\]]+\])?$/.exec(trimmed);
-    if (!match) continue;
-    const [, remoteName = "", remoteUrl = "", direction = ""] = match;
-    if (direction !== "fetch" || remoteName.length === 0 || remoteUrl.length === 0) {
-      continue;
-    }
-    remotes.set(remoteName, remoteUrl);
-  }
-  return remotes;
-}
 
 function parseUpstreamRefWithRemoteNames(
   upstreamRef: string,
@@ -1733,53 +1707,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
 
     return yield* resolvePrimaryRemoteName(cwd).pipe(Effect.orElseSucceed(() => null));
-  });
-
-  const ensureRemote: GitVcsDriver.GitVcsDriver["Service"]["ensureRemote"] = Effect.fn(
-    "ensureRemote",
-  )(function* (input) {
-    const preferredName = sanitizeRemoteName(input.preferredName);
-    const normalizedTargetUrl = sourceControlDefinitions.repositoryKeyFromRemote(input.url);
-    const listRemoteFetchUrls = runGitStdout(
-      "GitVcsDriver.ensureRemote.listRemoteUrls",
-      input.cwd,
-      ["remote", "-v"],
-    ).pipe(Effect.map((stdout) => parseRemoteFetchUrls(stdout)));
-    const findMatchingRemote = (remoteFetchUrls: Map<string, string>) =>
-      Array.from(remoteFetchUrls.entries()).find(
-        ([, remoteUrl]) =>
-          sourceControlDefinitions.repositoryKeyFromRemote(remoteUrl) === normalizedTargetUrl,
-      )?.[0];
-
-    const remoteFetchUrls = yield* listRemoteFetchUrls;
-    const existing = findMatchingRemote(remoteFetchUrls);
-    if (existing !== undefined) return existing;
-
-    let remoteName = preferredName;
-    let suffix = 1;
-    while (remoteFetchUrls.has(remoteName)) {
-      remoteName = `${preferredName}-${suffix}`;
-      suffix += 1;
-    }
-
-    return yield* executeGitWithStableDiagnostics(
-      "GitVcsDriver.ensureRemote.add",
-      input.cwd,
-      ["remote", "add", "--", remoteName, input.url],
-      { writesSharedConfig: true },
-    ).pipe(
-      retryWhileConfigLocked,
-      Effect.as(remoteName),
-      // A parallel launch for the same fork may have added it since the listing above.
-      Effect.catch((error) =>
-        listRemoteFetchUrls.pipe(
-          Effect.flatMap((current) => {
-            const added = findMatchingRemote(current);
-            return added === undefined ? Effect.fail(error) : Effect.succeed(added);
-          }),
-        ),
-      ),
-    );
   });
 
   const resolveComparisonBaseRef = Effect.fn("resolveComparisonBaseRef")(function* (
@@ -4937,9 +4864,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     resolveCommit,
     refreshCheckedOutBranch: Effect.fnUntraced(function* (input) {
       return yield* withListRefsInvalidation(input.cwd, refreshCheckedOutBranch(input));
-    }),
-    ensureRemote: Effect.fnUntraced(function* (input) {
-      return yield* withListRefsInvalidation(input.cwd, ensureRemote(input));
     }),
     resolvePrimaryRemoteName,
     resolveDefaultBranchName,

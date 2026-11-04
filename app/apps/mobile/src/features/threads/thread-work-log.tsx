@@ -105,7 +105,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useAssetUrl } from "../../state/assets";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
 const SHIMMER_WIDTH = 72;
@@ -151,7 +151,7 @@ function WorkLogIcon(props: {
     <SymbolView
       name={
         props.icon === "pull-request"
-          ? PullRequestGlyph.pullRequest
+          ? "link"
           : props.icon === "browser"
             ? { ios: "globe", android: "public" }
             : props.icon === "device"
@@ -1596,7 +1596,7 @@ function toolGroupSummarySymbolName(kind: ToolGroupSummaryKind): AppSymbolName {
     case "list-prs":
     case "watch-pr":
     case "unwatch-pr":
-      return PullRequestGlyph.pullRequest;
+      return "link";
     case "read":
       return { ios: "eye", android: "visibility" };
     case "edit":

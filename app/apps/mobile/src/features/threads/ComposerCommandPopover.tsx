@@ -5,7 +5,6 @@ import {
   type ProviderSkillSourceKind,
 } from "@t3tools/client-runtime/providerSkills";
 import type {
-  PullRequestContextMetadata,
   ScopedThreadRef,
   ServerProviderSkill,
   ServerProviderSlashCommand,
@@ -18,15 +17,8 @@ import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
-import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
+
 export type ComposerCommandItem =
-  | {
-      readonly id: string;
-      readonly type: "pull-request";
-      readonly pullRequest: PullRequestContextMetadata;
-      readonly label: string;
-      readonly description: string;
-    }
   | {
       readonly id: string;
       readonly type: "path";
@@ -101,8 +93,6 @@ const SKILL_SOURCE_SYMBOL_BY_KIND: Record<ProviderSkillSourceKind, AppSymbolName
 
 function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
   switch (item.type) {
-    case "pull-request":
-      return pullRequestStatus(item.pullRequest).icon;
     case "slash-command":
     case "provider-slash-command":
       return "terminal";
@@ -117,8 +107,6 @@ function itemIcon(item: ComposerCommandItem): AppSymbolName | null {
 
 function groupLabel(triggerKind: ComposerTriggerKind | null): string | null {
   switch (triggerKind) {
-    case "pull-request":
-      return t("Pull requests");
     case "slash-command":
       return t("Commands");
     case "skill":
@@ -135,8 +123,6 @@ function emptyText(triggerKind: ComposerTriggerKind | null, isLoading: boolean):
     return triggerKind === "path" ? "Searching files…" : "Loading…";
   }
   switch (triggerKind) {
-    case "pull-request":
-      return t("No matching pull requests.");
     case "path":
       return t("No matching files or folders.");
     case "skill":
@@ -170,11 +156,7 @@ const CommandRow = memo(function CommandRow(props: {
         <SymbolView
           name={iconName}
           size={14}
-          tintColorClassName={
-            props.item.type === "pull-request"
-              ? pullRequestStatus(props.item.pullRequest).tint
-              : "accent-icon-subtle"
-          }
+          tintColorClassName={"accent-icon-subtle"}
           type="monochrome"
         />
       ) : null}

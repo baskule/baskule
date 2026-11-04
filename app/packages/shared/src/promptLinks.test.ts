@@ -52,23 +52,6 @@ describe("parseNewThreadLink", () => {
     });
   });
 
-  it("reads a pull request link, whose prompt is optional", () => {
-    for (const pr of [
-      "pingdotgg/baskule/42",
-      "pingdotgg/baskule%2342",
-      "https://github.com/pingdotgg/baskule/pull/42/files",
-    ]) {
-      expect(parseNewThreadLink(`?pr=${pr}`)).toEqual({
-        ok: true,
-        value: {
-          kind: "pull-request",
-          pullRequest: { owner: "pingdotgg", name: "baskule", number: 42 },
-          prompt: null,
-        },
-      });
-    }
-  });
-
   it("refuses links it cannot open safely", () => {
     expect(parseNewThreadLink("?repo=a/b").ok).toBe(false);
     expect(parseNewThreadLink("?prompt=%E2%80%8B").ok).toBe(false);

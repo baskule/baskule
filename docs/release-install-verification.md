@@ -86,8 +86,8 @@ missing keys, explicit overrides, and conditional setup-link output. Use `script
 
 ## Kubernetes installation
 
-`scripts/check kubernetes` uses kind, Calico and the fake model. It installs the chart
-with RustFS and checks admin setup, streamed chat, computer execution, PVC persistence,
+`scripts/check kubernetes` uses kind, Calico and the fake model. It runs RustFS as a test-only fixture outside the chart, installs the chart
+with normal S3 values, and checks admin setup, streamed chat, computer execution, PVC persistence,
 network isolation, celld takeover and stable tokens after a Helm upgrade. The release
 factory runs it in a separate `install-kubernetes` job with the retained image archives.
 Unlike Compose, Kubernetes pulls the computer image directly; the pre-pull DaemonSet caches it on each node.

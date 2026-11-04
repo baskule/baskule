@@ -1,4 +1,3 @@
-import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
 import { EnvironmentId, MessageId, ThreadId, type AssistantCitation } from "@t3tools/contracts";
 import {
   collectAssistantCitations,
@@ -279,17 +278,6 @@ describe("detectComposerTrigger", () => {
     expect(detectComposerTrigger(text, text.length)).toBeNull();
   });
 
-  it("detects a pull request number at a token boundary", () => {
-    const text = "Compare this with #8737";
-
-    expect(detectComposerTrigger(text, text.length)).toEqual({
-      kind: "pull-request",
-      query: "8737",
-      rangeStart: "Compare this with ".length,
-      rangeEnd: text.length,
-    });
-  });
-
   it("does not keep pull request completion active for headings or embedded hashes", () => {
     expect(detectComposerTrigger("# Heading", "# Heading".length)).toBeNull();
     expect(detectComposerTrigger("issue#123", "issue#123".length)).toBeNull();
@@ -307,77 +295,6 @@ describe("detectComposerTrigger", () => {
       rangeStart: "Please inspect ".length,
       rangeEnd: cursorAfterAt,
     });
-  });
-});
-
-describe("filterComposerPullRequestMatches", () => {
-  const entries = [
-    {
-      number: 7,
-      projectId: "project-1",
-      repository: "t3tools/t3code",
-      updatedAt: "2026-09-01T12:00:00.000Z",
-    },
-    {
-      number: 8987,
-      projectId: "project-1",
-      repository: "T3Tools/T3Code",
-      updatedAt: "2026-09-03T12:00:00.000Z",
-    },
-    {
-      number: 27,
-      projectId: "project-1",
-      repository: "t3tools/t3code",
-      updatedAt: "2026-09-02T12:00:00.000Z",
-    },
-    {
-      number: 27,
-      projectId: "project-1",
-      repository: "t3tools/t3code",
-      updatedAt: "2026-09-01T13:00:00.000Z",
-    },
-    {
-      number: 70,
-      projectId: "project-2",
-      repository: "t3tools/other",
-      updatedAt: "2026-09-04T12:00:00.000Z",
-    },
-  ];
-
-  it("matches and de-duplicates number fragments within one repository, exact match first", () => {
-    expect(
-      filterComposerPullRequestMatches({
-        entries,
-        projectId: "project-1",
-        repository: "t3tools/t3code",
-        query: "7",
-        limit: 10,
-      }).map((entry) => entry.number),
-    ).toEqual([7, 8987, 27]);
-  });
-
-  it("keeps an older exact match when newer substring matches would fill the limit", () => {
-    const exact = {
-      number: 7,
-      projectId: "project-1",
-      repository: "t3tools/t3code",
-      updatedAt: "2020-01-01T00:00:00.000Z",
-    };
-    const newerSubstringMatches = Array.from({ length: 12 }, (_unused, index) => ({
-      number: 700 + index,
-      projectId: "project-1",
-      repository: "t3tools/t3code",
-      updatedAt: `2026-09-${String(index + 1).padStart(2, "0")}T12:00:00.000Z`,
-    }));
-    const matches = filterComposerPullRequestMatches({
-      entries: [...newerSubstringMatches, exact],
-      projectId: "project-1",
-      repository: "t3tools/t3code",
-      query: "7",
-      limit: 10,
-    });
-    expect(matches[0]?.number).toBe(7);
-    expect(matches).toHaveLength(10);
   });
 });
 

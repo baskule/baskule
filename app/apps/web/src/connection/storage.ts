@@ -22,13 +22,8 @@ import {
 import { TokenStore } from "@t3tools/client-runtime/authorization";
 import {
   ConnectionTransientError,
-  ConnectionBlockedError,
   CredentialStore,
   ProfileStore,
-  PullRequestRoutingPermissions,
-  StoredPullRequestRoutingPermission,
-  pullRequestRoutingConnectionKey,
-  pullRequestRoutingPermissionFor,
 } from "@t3tools/client-runtime/connection";
 import { EnvironmentId, ServerConfig, ThreadId, VcsListRefsResult } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -36,10 +31,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
-import * as Queue from "effect/Queue";
+
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import * as Stream from "effect/Stream";
+
 import { projectFaviconCache } from "../assets/projectFaviconCache";
 
 const DATABASE_NAME = "t3code:connection-runtime";
@@ -499,110 +494,6 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
   return { read, update } satisfies CatalogStore;
 });
 
-// The stored names predate the rename and stay, so a tab still on an older version and an
-// updated one read and revoke the same grants.
-const PULL_REQUEST_ROUTING_KEY_PREFIX = "t3code:github-routing:";
-const PULL_REQUEST_ROUTING_CHANGED = "t3code:github-routing-changed";
-const isStoredPullRequestRoutingPermission = Schema.is(StoredPullRequestRoutingPermission);
-const encodeStoredPullRequestRoutingPermission = Schema.encodeSync(
-  Schema.fromJsonString(StoredPullRequestRoutingPermission),
-);
-
-/** Each grant has its own key so stale tabs and unrelated catalog saves cannot restore trust. */
-export function makeBrowserPullRequestRoutingPermissions(
-  browser: Pick<Window, "localStorage"> & EventTarget = window,
-) {
-  const read = (key: string): StoredPullRequestRoutingPermission | null => {
-    try {
-      const raw = browser.localStorage.getItem(key);
-      const value: unknown = raw === null ? null : JSON.parse(raw);
-      return isStoredPullRequestRoutingPermission(value) &&
-        key === `${PULL_REQUEST_ROUTING_KEY_PREFIX}${value.environmentId}`
-        ? value
-        : null;
-    } catch {
-      return null;
-    }
-  };
-  const readAll = (): ReadonlyArray<StoredPullRequestRoutingPermission> => {
-    try {
-      const values: StoredPullRequestRoutingPermission[] = [];
-      const storage = browser.localStorage;
-      for (let index = 0; index < storage.length; index++) {
-        const key = storage.key(index);
-        if (key?.startsWith(PULL_REQUEST_ROUTING_KEY_PREFIX)) {
-          const value = read(key);
-          if (value !== null) values.push(value);
-        }
-      }
-      return values;
-    } catch {
-      return [];
-    }
-  };
-  const write = (environmentId: EnvironmentId, value: StoredPullRequestRoutingPermission | null) =>
-    Effect.try({
-      try: () => {
-        const key = `${PULL_REQUEST_ROUTING_KEY_PREFIX}${environmentId}`;
-        if (value === null) browser.localStorage.removeItem(key);
-        else browser.localStorage.setItem(key, encodeStoredPullRequestRoutingPermission(value));
-        browser.dispatchEvent(new Event(PULL_REQUEST_ROUTING_CHANGED));
-      },
-      catch: (cause) => catalogError("save pull request routing permissions in", cause),
-    });
-  return PullRequestRoutingPermissions.of({
-    get: Effect.fn("PullRequestRoutingPermissions.get")(function (entry) {
-      return Effect.sync(() => {
-        const value = read(`${PULL_REQUEST_ROUTING_KEY_PREFIX}${entry.target.environmentId}`);
-        return pullRequestRoutingPermissionFor(entry, value === null ? [] : [value]);
-      });
-    }),
-    changes: Stream.callback<ReadonlyArray<StoredPullRequestRoutingPermission>>((queue) =>
-      Effect.acquireRelease(
-        Effect.sync(() => {
-          const listener = (event: Event) => {
-            if (event.type === "storage") {
-              const key = (event as StorageEvent).key;
-              if (key !== null && !key?.startsWith(PULL_REQUEST_ROUTING_KEY_PREFIX)) return;
-            }
-            Queue.offerUnsafe(queue, readAll());
-          };
-          browser.addEventListener("storage", listener);
-          browser.addEventListener(PULL_REQUEST_ROUTING_CHANGED, listener);
-          Queue.offerUnsafe(queue, readAll());
-          return listener;
-        }),
-        (listener) =>
-          Effect.sync(() => {
-            browser.removeEventListener("storage", listener);
-            browser.removeEventListener(PULL_REQUEST_ROUTING_CHANGED, listener);
-          }),
-      ).pipe(Effect.asVoid),
-    ),
-    set: Effect.fn("PullRequestRoutingPermissions.set")(function* (entry, permission) {
-      const connectionKey = pullRequestRoutingConnectionKey(entry);
-      if (connectionKey === null)
-        return yield* new ConnectionBlockedError({
-          reason: "configuration",
-          detail: t("This environment does not have a saved connection endpoint."),
-        });
-      return yield* write(
-        entry.target.environmentId,
-        permission === "off"
-          ? null
-          : {
-              environmentId: entry.target.environmentId,
-              connectionKey,
-              permission,
-            },
-      );
-    }),
-    forget: Effect.fn("PullRequestRoutingPermissions.forget")(function (environmentId) {
-      return write(environmentId, null);
-    }),
-  });
-}
-
 // MessageChannel yields without nested-timer clamping or background throttling.
 const yieldToBrowserTask = Effect.callback<void>((resume) => {
   const { port1, port2 } = new MessageChannel();
@@ -627,7 +518,6 @@ export const layer = Layer.effectContext(
       (owned) => owned.close,
     );
     const catalog = yield* makeCatalogStore(makeCatalogBackend(database));
-    const pullRequestRoutingPermissions = makeBrowserPullRequestRoutingPermissions();
     // Remembers each thread row's encoding, so a save only encodes rows that changed.
     const encodeStoredShellSnapshot = makeStoredShellSnapshotEncoder({
       yieldToHost: yieldToBrowserTask,
@@ -970,7 +860,6 @@ export const layer = Layer.effectContext(
     });
 
     return Context.make(Persistence.ConnectionTargetStore, targetStore).pipe(
-      Context.add(PullRequestRoutingPermissions, pullRequestRoutingPermissions),
       Context.add(Persistence.ConnectionRegistrationStore, registrationStore),
       Context.add(ProfileStore.ConnectionProfileStore, profileStore),
       Context.add(CredentialStore.ConnectionCredentialStore, credentialStore),

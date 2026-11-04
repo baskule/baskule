@@ -1,4 +1,4 @@
-import { applyThreadPullRequestLinkUpdate } from "../threadPullRequests.ts";
+import { applyThreadPullRequestLinkUpdate } from "@t3tools/shared/threadPullRequests";
 import type {
   OrchestrationV2DomainEvent,
   OrchestrationV2Run,

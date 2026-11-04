@@ -1,3 +1,4 @@
+import { useOpenLink } from "~/browser/useOpenLink";
 import { t } from "../../i18n";
 import type { RuntimeRequestId } from "@t3tools/contracts";
 import { useTranslation } from "../../i18n";
@@ -87,7 +88,7 @@ import { type ThreadFindMatch } from "./threadFind";
 import { useThreadFindNavigation } from "./useThreadFindNavigation";
 import { TooltipScrollDismissArea } from "../ui/tooltip";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
-import { useOpenPrLink } from "~/lib/openPullRequestLink";
+
 import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -457,7 +458,12 @@ const ConversationTimeline = memo(function ConversationTimeline({
     setExpandedAttemptIds(paintedExpandedAttemptIds);
   }
   const citationThreadRef = parseScopedThreadKey(routeThreadKey);
-  const openPullRequest = useOpenPrLink(citationThreadRef ?? undefined);
+  const openSavedContextLink = useOpenLink(citationThreadRef);
+  const openPullRequest = (event: React.MouseEvent<HTMLElement>, url: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void openSavedContextLink(url, { event }).catch((error: unknown) => console.error(error));
+  };
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
   const [disclosureToggleSettling, setDisclosureToggleSettling] = useState(false);
   const disclosureAnchorKeyRef = useRef<string | null>(null);

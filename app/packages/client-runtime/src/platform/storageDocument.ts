@@ -9,7 +9,12 @@ import {
 } from "../connection/catalog.ts";
 import { type ConnectionTarget, PersistedConnectionTarget } from "../connection/model.ts";
 import * as TokenStore from "../authorization/tokenStore.ts";
-import { StoredPullRequestRoutingPermission } from "../connection/pullRequestRoutingPermissions.ts";
+// Retained solely to round-trip released connection documents.
+const StoredPullRequestRoutingPermission = Schema.Struct({
+  environmentId: EnvironmentId,
+  connectionKey: Schema.String,
+  permission: Schema.Literals(["off", "read", "read-write"]),
+});
 
 export const StoredConnectionCredential = Schema.Struct({
   connectionId: Schema.String,

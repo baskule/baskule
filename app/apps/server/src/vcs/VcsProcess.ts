@@ -20,7 +20,6 @@ import {
   VcsProcessTimeoutError,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import type { SourceControlProcessInput } from "@t3tools/source-control-core/server/SourceControlHost";
 
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -39,9 +38,6 @@ export interface VcsProcessInput {
   readonly maxOutputBytes?: number;
   readonly outputMode?: ProcessRunner.ProcessRunInput["outputMode"];
   readonly appendTruncationMarker?: boolean;
-  readonly classifyFailure?: SourceControlProcessInput["classifyFailure"];
-  readonly notFoundDetail?: string;
-  readonly concurrency?: SourceControlProcessInput["concurrency"];
 }
 
 export interface VcsProcessOutput {
@@ -132,15 +128,10 @@ export const gitConfigEnv = (
 export const explicitBareRepositoryEnv = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform) =>
   gitConfigEnv(env, "safe.bareRepository", "explicit", platform);
 
-const classifyNonZeroExit = (
-  stderr: string,
-  classifyFailure: VcsProcessInput["classifyFailure"],
-): VcsProcessExitFailureKind => {
+const classifyNonZeroExit = (stderr: string): VcsProcessExitFailureKind => {
   const normalized = stderr.toLowerCase();
-  const commandKind = classifyFailure?.(stderr) ?? null;
 
   if (
-    commandKind === "authentication" ||
     normalized.includes("authentication failed") ||
     normalized.includes("not logged in") ||
     normalized.includes("no oauth token") ||
@@ -150,7 +141,6 @@ const classifyNonZeroExit = (
   }
 
   if (
-    commandKind === "rate-limited" ||
     normalized.includes("api rate limit") ||
     normalized.includes("rate limit exceeded") ||
     normalized.includes("secondary rate limit") ||
@@ -160,7 +150,7 @@ const classifyNonZeroExit = (
     return "rate-limited";
   }
 
-  return commandKind ?? "command-failed";
+  return "command-failed";
 };
 
 // Classify before discarding stderr; keep paths and process output out of errors.
@@ -183,15 +173,6 @@ export const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const hostPlatform = yield* HostProcess.Platform;
   const vcsProcesses = yield* Semaphore.make(VCS_PROCESS_CONCURRENCY);
-  const keyedProcesses = new Map<string, Semaphore.Semaphore>();
-  const keyedPermit = (concurrency: NonNullable<VcsProcessInput["concurrency"]>) => {
-    let semaphore = keyedProcesses.get(concurrency.key);
-    if (semaphore === undefined) {
-      semaphore = Semaphore.makeUnsafe(concurrency.limit);
-      keyedProcesses.set(concurrency.key, semaphore);
-    }
-    return semaphore.withPermits(1);
-  };
 
   const spawn = Effect.fn("VcsProcess.spawn")(function* (
     input: VcsProcessInput,
@@ -302,7 +283,7 @@ export const make = Effect.gen(function* () {
     }
 
     if (!input.allowNonZeroExit && result.code !== 0) {
-      const failureKind = classifyNonZeroExit(result.stderr, input.classifyFailure);
+      const failureKind = classifyNonZeroExit(result.stderr);
       const error = VcsProcessExitError.fromProcessExit(
         baseError,
         {
@@ -316,7 +297,6 @@ export const make = Effect.gen(function* () {
             input.command === "git" &&
             failureKind === "command-failed" &&
             isTransientGitExit(result.stderr),
-          ...(input.notFoundDetail === undefined ? {} : { notFoundDetail: input.notFoundDetail }),
         },
       );
       if (
@@ -365,9 +345,7 @@ export const make = Effect.gen(function* () {
         }),
       );
     }
-    return yield* input.concurrency === undefined
-      ? bounded
-      : keyedPermit(input.concurrency)(bounded);
+    return yield* bounded;
   });
 
   return VcsProcess.of({ run });

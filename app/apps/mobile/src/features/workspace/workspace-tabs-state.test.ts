@@ -52,15 +52,14 @@ describe("Duo list clearance", () => {
 });
 
 describe("workspace root navigation", () => {
-  it("pairs Settings, chats and pull requests with a detail column, and keeps Usage one page", () => {
+  it("pairs Settings and chats with a detail column, and keeps Usage one page", () => {
     expect(workspaceUsesColumns("usage")).toBe(false);
     expect(workspaceUsesColumns("usage", true)).toBe(true);
     expect(workspaceUsesColumns("threads")).toBe(true);
-    expect(workspaceUsesColumns("pullRequests")).toBe(true);
   });
 
   it("keeps the registered defaults while customization is unavailable", () => {
-    expect(resolveWorkspaceTabOrder(undefined)).toEqual(["threads", "pullRequests", "usage"]);
+    expect(resolveWorkspaceTabOrder(undefined)).toEqual(["threads", "usage"]);
     expect(resolveWorkspaceTabOrder(["home", "usage", "issues", "threads"])).toEqual(
       resolveWorkspaceTabOrder(undefined),
     );
@@ -71,7 +70,7 @@ describe("workspace root navigation", () => {
     state = workspaceTabsReducer(state, { type: "scroll", tab: "threads", offset: 640 });
     state = workspaceTabsReducer(state, { type: "search" });
     state = workspaceTabsReducer(state, { type: "query", query: "keyboard" });
-    expect(workspaceTabsReducer(state, { type: "select", tab: "pullRequests" })).toBe(state);
+    expect(workspaceTabsReducer(state, { type: "select", tab: "usage" })).toBe(state);
     expect(state.selectedTab).toBe("threads");
     expect(state.tabs.threads.query).toBe("keyboard");
     expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.threads.scrollOffset).toBe(640);
@@ -112,16 +111,6 @@ describe("workspace root navigation", () => {
     state = workspaceTabsReducer(state, { type: "cancel" });
     expect(workspaceTabsReducer(state, { type: "expand" })).toBe(state);
   });
-
-  it("a blur from the previous native tab cannot open search in the selected tab", () => {
-    let state = workspaceTabsReducer(initialWorkspaceTabsState(), { type: "search" });
-    state = workspaceTabsReducer(state, { type: "query", query: "keyboard" });
-    state = workspaceTabsReducer(state, { type: "select", tab: "pullRequests" });
-    state = workspaceTabsReducer(state, { type: "expand", tab: "threads" });
-    expect(state.tabs.threads).toMatchObject({ query: "keyboard", searchMode: "expanded" });
-    expect(state.tabs.pullRequests.searchMode).toBe("resting");
-    expect(workspaceTabsReducer(state, { type: "select", tab: "pullRequests" })).toBe(state);
-  });
   it("rejects excluded Usage navigation without losing list state", () => {
     let state = workspaceTabsReducer(initialWorkspaceTabsState(), {
       type: "query",
@@ -136,10 +125,11 @@ describe("workspace root navigation", () => {
     expect(state.tabs.threads.query).toBe("retained");
   });
   it("opens Settings on native reselection instead of selecting its overflow section", () => {
-    const order = ["threads", "pullRequests", "usage"] as const;
+    const order = ["threads", "usage"] as const;
     expect(workspaceTabForNativeSlot(order, "settings")).toBe("settings");
     expect(workspaceTabForNativeSlot(order, "first")).toBe("threads");
-    expect(workspaceTabForNativeSlot(order, "third")).toBe("usage");
+    expect(workspaceTabForNativeSlot(order, "second")).toBe("usage");
+    expect(workspaceTabForNativeSlot(order, "third")).toBeNull();
     expect(workspaceTabForNativeSlot(order, "removed")).toBeNull();
   });
 });
@@ -164,7 +154,7 @@ vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
   }),
 }));
 vi.mock("./navigation-tabs", () => ({
-  useEnabledNavigationTabs: () => ["threads", "pullRequests", "usage"],
+  useEnabledNavigationTabs: () => ["threads", "usage"],
 }));
 vi.mock("./WorkspaceTabsContext", () => ({
   WorkspaceTabsContext: createContext(null),
@@ -186,12 +176,6 @@ vi.mock("../../components/ui/useAndroidControlSizing", () => ({
   useAndroidControlSizing: () => ({ fabClearance: 64, scale: 1, fabSize: 56 }),
 }));
 vi.mock("../home/HomeRouteScreen", () => ({ HomeRouteScreen: () => null }));
-vi.mock("../pull-requests/PullRequestFilterMenuContext", () => ({
-  PullRequestFilterMenuProvider: ({ children }: { children: ReactNode }) =>
-    createElement("div", null, children),
-}));
-vi.mock("../pull-requests/PullRequestsScreen", () => ({ PullRequestsScreen: () => null }));
-vi.mock("../pull-requests/PullRequestToolbar.android", () => ({ PullRequestToolbar: () => null }));
 vi.mock("./AndroidWorkspaceNavigation", () => ({
   AndroidWorkspaceNavigation: () => null,
   FloatingWorkspaceTabs: () => null,

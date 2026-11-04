@@ -1,6 +1,5 @@
 import { t, useTranslation } from "../../i18n";
 
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { ExternalLinkIcon, PackagePlusIcon, PaletteIcon, SearchIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -16,7 +15,7 @@ import {
   replaceCustomThemeCollection,
   type ThemeDefinition,
 } from "../../themePalette";
-import { sourceControlIcon } from "../../sourceControlPresentation";
+
 import {
   AlertDialog,
   AlertDialogClose,
@@ -65,19 +64,8 @@ const SORT_OPTIONS: ReadonlyArray<{ value: OpenVsxThemeSort; label: string }> = 
 ];
 const SEARCH_DEBOUNCE_MS = 350;
 
-function sourceHost(url: string): string | null {
-  try {
-    return new URL(url).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function sourceLinkIcon(url: string): ReactNode {
-  const host = sourceHost(url);
-  const definition = host === null ? undefined : sourceControlClients.findByPublicDomain(host);
-  const Icon = definition ? sourceControlIcon(definition) : ExternalLinkIcon;
-  return <Icon className="size-3.5" />;
+function sourceLinkIcon(): ReactNode {
+  return <ExternalLinkIcon className="size-3.5" />;
 }
 
 function ThemeExtensionIcon({ extension }: { extension: OpenVsxThemeExtension }) {
@@ -457,7 +445,7 @@ export function ThemeSearchSection({
                           size="icon-micro"
                           variant="ghost-muted"
                         >
-                          {sourceLinkIcon(extension.sourceUrl)}
+                          {sourceLinkIcon()}
                         </Button>
                       ) : null}
                     </div>

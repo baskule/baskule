@@ -1,12 +1,8 @@
 import { useTranslation } from "../i18n";
 
 import { useAtomValue } from "@effect/atom-react";
-import {
-  scopeProjectRef,
-  scopedThreadKey,
-  scopeThreadRef,
-} from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef } from "react";
 
@@ -19,15 +15,9 @@ import { isEditableFocused } from "../lib/editableFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
+import { planNextReopen, reopenClosedView } from "../reopenClosedView";
 import {
-  planNextReopen,
-  pullRequestsSearchForRestore,
-  reopenClosedView,
-} from "../reopenClosedView";
-import {
-  PULL_REQUESTS_PANEL_REF,
   selectActiveRightPanel,
-  selectSelectedRightPanelSurface,
   selectThreadRightPanelState,
   useRightPanelStore,
 } from "../rightPanelStore";
@@ -52,9 +42,6 @@ const PREVIEW_FORWARDED_LAYOUT_COMMANDS = [
   "rightPanel.toggle",
   "rightPanel.toggleMaximized",
 ] as const;
-
-const isGlobalPullRequests = (ref: ScopedThreadRef) =>
-  scopedThreadKey(ref) === scopedThreadKey(PULL_REQUESTS_PANEL_REF);
 
 export function ReopenClosedViewShortcut() {
   const t = useTranslation();
@@ -89,16 +76,6 @@ export function ReopenClosedViewShortcut() {
     const { drop, restore } = planNextReopen(useClosedViewStore.getState().entries, (entry) => {
       const ref = entry.threadRef;
       const panel = selectThreadRightPanelState(panelsByThread, ref);
-      if (isGlobalPullRequests(ref)) {
-        return {
-          environmentKnown: true,
-          catalogReady: true,
-          ownerExists: true,
-          sideChatExists: true,
-          shellLive: true,
-          panel,
-        };
-      }
       return {
         environmentKnown: catalog.entries.has(ref.environmentId),
         catalogReady: catalog.isReady,
@@ -116,8 +93,7 @@ export function ReopenClosedViewShortcut() {
     if (!restore) return;
 
     const ref = restore.threadRef;
-    const globalPullRequests = isGlobalPullRequests(ref);
-    const thread = globalPullRequests ? null : readThreadShell(ref);
+    const thread = readThreadShell(ref);
     const owner = thread ?? drafts.getDraftThreadByRef(ref);
     const project = owner ? readProject(scopeProjectRef(ref.environmentId, owner.projectId)) : null;
     if (!(await reopenClosedView(restore, { openPreview, workspaceAvailable: project !== null }))) {
@@ -125,16 +101,7 @@ export function ReopenClosedViewShortcut() {
       return;
     }
     useClosedViewStore.getState().remove(restore.id);
-    if (globalPullRequests) {
-      const selected = selectSelectedRightPanelSurface(
-        useRightPanelStore.getState().byThreadKey,
-        ref,
-      );
-      await navigate({
-        to: "/pull-requests",
-        search: (previous) => pullRequestsSearchForRestore(previous, selected),
-      });
-    } else {
+    {
       const draftId = thread === null ? drafts.getDraftIdByRef(ref) : null;
       if (draftId !== null)
         await navigate({ to: "/draft/$draftId", params: buildDraftThreadRouteParams(draftId) });

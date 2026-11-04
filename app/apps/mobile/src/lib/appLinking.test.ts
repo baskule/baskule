@@ -63,16 +63,12 @@ describe("shouldHandleAppLink", () => {
     expect(shouldHandleAppLink(`baskule://${path}`)).toBe(true);
     expect(shouldHandleAppLink(`t3code://${path}`)).toBe(true);
   });
-  it.each([
-    "PullRequest",
-    "PullRequestReview",
-    "ThreadTerminal",
-    "GitOverview",
-    "ThreadReview",
-    "ThreadDevicePreview",
-  ])("rejects direct navigation to %s", (route) => {
-    expect(isMobileRouteEnabled(route)).toBe(false);
-  });
+  it.each(["ThreadTerminal", "GitOverview", "ThreadReview", "ThreadDevicePreview"])(
+    "rejects direct navigation to %s",
+    (route) => {
+      expect(isMobileRouteEnabled(route)).toBe(false);
+    },
+  );
   it.each([
     "Thread",
     "ThreadFiles",
@@ -284,16 +280,12 @@ describe("Baskule app links", () => {
     expect(shouldHandleAppLink(`baskule://${path}`)).toBe(true);
     expect(shouldHandleAppLink(`t3code://${path}`)).toBe(true);
   });
-  it.each([
-    "PullRequest",
-    "PullRequestReview",
-    "ThreadTerminal",
-    "GitOverview",
-    "ThreadReview",
-    "ThreadDevicePreview",
-  ])("rejects direct navigation to %s", (route) => {
-    expect(isMobileRouteEnabled(route)).toBe(false);
-  });
+  it.each(["ThreadTerminal", "GitOverview", "ThreadReview", "ThreadDevicePreview"])(
+    "rejects direct navigation to %s",
+    (route) => {
+      expect(isMobileRouteEnabled(route)).toBe(false);
+    },
+  );
   it.each([
     "Thread",
     "ThreadFiles",

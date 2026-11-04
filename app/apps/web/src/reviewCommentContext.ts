@@ -4,7 +4,13 @@ import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre
 import { PullRequestContextMetadata, type PullRequestReviewPosition } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
-import { isLineInFileDiff } from "./components/pullRequest/pullRequestDiff.logic";
+function isLineInFileDiff(file: FileDiffMetadata, side: "left" | "right", line: number): boolean {
+  return file.hunks.some((hunk) =>
+    side === "left"
+      ? line >= hunk.deletionStart && line < hunk.deletionStart + hunk.deletionCount
+      : line >= hunk.additionStart && line < hunk.additionStart + hunk.additionCount,
+  );
+}
 
 const ReviewCommentSelectionSchema = Schema.Struct({
   start: Schema.Number,

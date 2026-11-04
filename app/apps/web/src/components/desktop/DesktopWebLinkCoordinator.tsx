@@ -9,13 +9,11 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+
 import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
 import { readPairingAppLink, resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import { useRouter } from "@tanstack/react-router";
-import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/reactivity";
-import * as Stream from "effect/Stream";
+
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { openFileInPreview, openUrlInPreview } from "../../browser/openFileInPreview";
 import { isPreviewAvailableFor } from "../../browser/previewRuntime";
@@ -25,37 +23,18 @@ import { isLocalEnvironmentDisabled } from "../../localEnvironment";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { useScratchProject } from "../../hooks/useScratchProject";
-import { useClientSettings } from "../../hooks/useSettings";
-import { useOpenChangeRequestLink } from "../../lib/openPullRequestLink";
+
 import { selectActiveRightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
-import { appAtomRegistry } from "../../rpc/atomRegistry";
+
 import { resolveThreadRouteTarget } from "../../threadRoutes";
 import { assetEnvironment } from "../../state/assets";
-import { readProject, readThreadShell } from "../../state/entities";
+
 import { useEnvironmentHttpBaseUrl, usePrimaryEnvironment } from "../../state/environments";
 import { previewEnvironment } from "../../state/preview";
-import { allReachableShellsLiveAtom } from "../../state/shell";
+
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-
-/** A link handed over by the OS is a plain click: nothing about it asks for the browser. */
-const externalClick = {
-  preventDefault() {},
-  stopPropagation() {},
-  metaKey: false,
-  ctrlKey: false,
-};
-
-/** Resolves once every reachable environment has reported its projects or settled offline. */
-const projectsSettled = (): Promise<void> =>
-  Effect.runPromise(
-    AtomRegistry.toStream(appAtomRegistry, allReachableShellsLiveAtom).pipe(
-      Stream.filter((settled) => settled),
-      Stream.runHead,
-      Effect.asVoid,
-    ),
-  );
 
 /**
  * HTML files are served by this machine's environment, so only its threads can
@@ -90,8 +69,6 @@ function UpstreamDesktopWebLinkCoordinator() {
   const t = useTranslation();
   const router = useRouter();
   const primaryEnvironment = usePrimaryEnvironment();
-  const openPullRequestsInApp = useClientSettings((settings) => settings.pullRequestLinksOpenInApp);
-  const openChangeRequest = useOpenChangeRequestLink();
   const { scratchEnvironmentId, openScratchProject } = useScratchProject();
   const openThread = useNewThreadHandler();
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
@@ -222,43 +199,11 @@ function UpstreamDesktopWebLinkCoordinator() {
       await router.navigate({ href: appPath });
       return;
     }
-    const routeParams = router.state.matches.at(-1)?.params ?? {};
-    const routeTarget = resolveThreadRouteTarget(routeParams);
-    const activeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : undefined;
-    const activeThread = activeThreadRef ? readThreadShell(activeThreadRef) : null;
-    const activeProject =
-      activeThread && activeThreadRef
-        ? readProject(scopeProjectRef(activeThreadRef.environmentId, activeThread.projectId))
-        : null;
-    const commitThreadRef =
-      activeThread &&
-      sourceControlClients.parseCommitUrl(url, activeProject?.repositoryIdentity?.provider) !== null
-        ? activeThreadRef
-        : undefined;
-    // A commit the thread's workspace lacks continues here, after its lookup.
-    const openUnavailableCommit = () => {
-      queueRef.current = queueRef.current.then(() => openInBrowser(url)).catch(() => undefined);
-    };
-    if (openChangeRequest(externalClick, url, commitThreadRef, undefined, openUnavailableCommit))
-      return;
     await openInBrowser(url);
   });
 
   const receiveLink = useEffectEvent((url: string) => {
-    // A connected server publishes its config before its project snapshot, so a source control
-    // link delivered at launch would miss its project and fall through to the browser. Hold
-    // those links until discovery settles; an ordinary link never waits for it.
-    // Discovery never settles without the local environment, so those links do not wait.
-    const hold =
-      openPullRequestsInApp &&
-      !localEnvironmentDisabled &&
-      (sourceControlClients.parseChangeRequestUrl(url) !== null ||
-        sourceControlClients.parseCommitUrl(url) !== null)
-        ? projectsSettled()
-        : Promise.resolve();
-    void hold.then(() => {
-      queueRef.current = queueRef.current.then(() => openLink(url)).catch(() => undefined);
-    });
+    queueRef.current = queueRef.current.then(() => openLink(url)).catch(() => undefined);
   });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop web link opens over the bridge and marks the renderer ready

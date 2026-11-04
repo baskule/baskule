@@ -6,7 +6,6 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { ENABLED_WORKSPACE_TABS, WORKSPACE_DOCK } from "./workspace-tabs-state";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
 export function WorkspaceDock(props: { readonly onNewTask: () => void }) {
   const t = useTranslation();
@@ -45,7 +44,7 @@ export function WorkspaceDock(props: { readonly onNewTask: () => void }) {
                 }
               >
                 <SymbolView
-                  name={tab === "threads" ? "text.bubble" : PullRequestGlyph.pullRequest}
+                  name={tab === "threads" ? "text.bubble" : "chart.bar.xaxis"}
                   size={23}
                   tintColorClassName={selected ? "accent-focus" : "accent-icon"}
                 />

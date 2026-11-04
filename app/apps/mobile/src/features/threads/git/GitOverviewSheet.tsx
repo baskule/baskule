@@ -1,8 +1,7 @@
 import { useTranslation } from "../../../i18n";
 
-import * as Dialog from "../../../components/ui/Dialog";
 import { SheetHeader } from "../../../components/ui/SheetHeader";
-import { useOpenPullRequest } from "../../../native/useOpenPullRequest";
+
 import {
   type GitActionRequestInput,
   buildMenuItems,
@@ -10,7 +9,7 @@ import {
   requiresDefaultBranchConfirmation,
 } from "@t3tools/client-runtime/state/vcs";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+
 import {
   CommonActions,
   StackActions,
@@ -45,12 +44,6 @@ import { useSelectedThreadGitState } from "../../../state/use-selected-thread-gi
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
 import { menuItemIconName, statusSummary } from "./gitSheetComponents";
-import {
-  LinkedPullRequestRow,
-  linkedPullRequestKey,
-  useLinkedPullRequestLines,
-} from "../LinkedPullRequestList";
-import { useLinkedPullRequestActions } from "../useLinkedPullRequestActions";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -83,19 +76,8 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   const isInspector = presentation === "inspector";
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const threadId = ThreadId.make(props.route.params.threadId);
-  const { selectedThread, selectedThreadProject, selectedEnvironmentRuntime } =
-    useThreadSelection();
-  const openPullRequest = useOpenPullRequest({
-    replace: presentation === "sheet",
-    context: selectedThread ?? undefined,
-  });
+  const { selectedThread } = useThreadSelection();
   const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
-  const linkedPrLines = useLinkedPullRequestLines(selectedThread, selectedEnvironmentRuntime);
-  const linkedPrActions = useLinkedPullRequestActions({
-    thread: selectedThread,
-    project: selectedThreadProject,
-    runtime: selectedEnvironmentRuntime,
-  });
   const gitState = useSelectedThreadGitState();
   const gitActions = useSelectedThreadGitActions();
   const { canWriteSourceControl, canChangeThreadBranch } = gitActions;
@@ -123,41 +105,22 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   const sheetMenuItems = menuItems.map((item) => ({
     item: {
       ...item,
-      disabled: item.disabled || (!canWriteSourceControl && item.kind !== "open_pr"),
+      disabled: item.disabled || !canWriteSourceControl,
     },
-    disabledReason:
-      !canWriteSourceControl && item.kind !== "open_pr"
-        ? "This connection cannot change source control."
-        : getGitActionDisabledReason({
-            item,
-            gitStatus: gitStatus.data,
-            isBusy: busy,
-            hasOriginRemote: hasPrimaryRemote,
-          }),
+    disabledReason: !canWriteSourceControl
+      ? "This connection cannot change source control."
+      : getGitActionDisabledReason({
+          item,
+          gitStatus: gitStatus.data,
+          isBusy: busy,
+          hasOriginRemote: hasPrimaryRemote,
+        }),
   }));
-
-  const { shortLabel, singular } = sourceControlClients.get(
-    gitStatus.data?.sourceControlProvider?.kind,
-  ).changeRequest;
-
-  const openExistingPr = async () => {
-    const prUrl = gitStatus.data?.pr?.state === "open" ? gitStatus.data.pr.url : null;
-    if (!prUrl) {
-      Dialog.alert(`No open ${shortLabel}`, `This branch does not have an open ${singular}.`);
-      return;
-    }
-    if (!(await openPullRequest(prUrl))) {
-      Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
-    }
-  };
 
   const runActionWithPrompt = async (input: GitActionRequestInput) => {
     if (!canWriteSourceControl) return;
     const confirmableAction =
-      input.action === "push" ||
-      input.action === "create_pr" ||
-      input.action === "commit_push" ||
-      input.action === "commit_push_pr"
+      input.action === "push" || input.action === "commit_push" || input.action === "commit_push_pr"
         ? input.action
         : null;
     const branchName = gitStatus.data?.refName;
@@ -172,7 +135,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
         threadId: String(threadId),
         confirmAction: confirmableAction,
         branchName,
-        includesCommit: String(input.action === "commit_push" || input.action === "commit_push_pr"),
+        includesCommit: String(input.action === "commit_push"),
       });
       return;
     }
@@ -185,10 +148,6 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
 
   const onPressMenuItem = async (item: (typeof menuItems)[number]) => {
     if (item.disabled) return;
-    if (item.kind === "open_pr") {
-      await openExistingPr();
-      return;
-    }
     if (!canWriteSourceControl) return;
     if (item.dialogAction === "commit") {
       navigation.navigate("GitCommit", {
@@ -200,9 +159,6 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
     if (item.dialogAction === "push") {
       await runActionWithPrompt({ action: "push" });
       return;
-    }
-    if (item.dialogAction === "create_pr") {
-      await runActionWithPrompt({ action: "create_pr" });
     }
   };
 
@@ -218,9 +174,6 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
     if (item.dialogAction === "push" && (status.aheadCount ?? 0) > 0) {
       const ahead = status.aheadCount ?? 0;
       return `${ahead} commit${ahead === 1 ? "" : "s"} ahead`;
-    }
-    if (item.kind === "open_pr" && status.pr?.number != null) {
-      return `${shortLabel} #${status.pr.number} ${status.pr.state ?? "open"}`;
     }
     return undefined;
   };
@@ -312,32 +265,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
             })
           }
         />
-        {linkedPrActions.canLink ? (
-          <ListRow
-            icon="link"
-            label={t("Link {{singular}}", { singular: linkedPrActions.terminology.singular })}
-            description={t("Attach a {{singular}} by URL or number", {
-              singular: linkedPrActions.terminology.singular,
-            })}
-            onPress={linkedPrActions.promptLink}
-          />
-        ) : null}
       </ListSection>
-
-      {linkedPrLines.length > 0 ? (
-        <ListSection title={t("Linked {{plural}}", { plural: linkedPrActions.terminology.plural })}>
-          {linkedPrLines.map((line, index) => (
-            <LinkedPullRequestRow
-              key={linkedPullRequestKey(line)}
-              line={line}
-              separator={index < linkedPrLines.length - 1}
-              surfaceClassName="text-grouped-card"
-              openPullRequest={openPullRequest}
-              actions={linkedPrActions}
-            />
-          ))}
-        </ListSection>
-      ) : null}
 
       {currentWorktreePath ? (
         <ListSection title={t("Worktree")}>

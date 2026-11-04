@@ -10,7 +10,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as EventStore from "../../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
 import * as ProjectionMaintenance from "../../orchestration-v2/ProjectionMaintenance.ts";
-import { listLinkedPullRequestThreads } from "../../pullRequest/linkedThreads.ts";
+
 import { runMigrations } from "../Migrations.ts";
 
 const decodeThread = Schema.decodeSync(Schema.fromJsonString(OrchestrationV2AppThreadJson));
@@ -158,17 +158,10 @@ layer("064_CanonicalizeThreadPullRequestLinks", (it) => {
 
       const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
       assert.isTrue((yield* maintenance.rebuild).valid);
-      for (const [host, repository, id] of [
-        ["github.com", "acme/web", "github"],
-        ["forge.example:3000", "acme/web", "forgejo"],
-        ["dev.azure.com", "org/project/_git/web", "azure"],
-      ] as const) {
-        assert.deepEqual(
-          (yield* listLinkedPullRequestThreads({ host, repository, number: 42 })).threads.map(
-            (value) => value.id,
-          ),
-          [ThreadId.make(id)],
-        );
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      for (const id of ["github", "forgejo", "azure"]) {
+        const projection = yield* projections.getThreadProjection(ThreadId.make(id));
+        assert.equal(projection.thread.pullRequests?.[0]?.number, 42);
       }
     }),
   );

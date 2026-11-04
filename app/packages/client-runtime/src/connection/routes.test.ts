@@ -7,7 +7,7 @@ import {
   type ConnectionCatalogEntry,
   type ConnectionRoute,
 } from "./catalog.ts";
-import { pullRequestRoutingConnectionKey } from "./pullRequestRoutingPermissions.ts";
+import { connectionEndpointKey } from "./catalog.ts";
 import { BearerConnectionTarget, RelayConnectionTarget } from "./model.ts";
 import {
   connectionRouteId,
@@ -369,9 +369,7 @@ describe("learned routes", () => {
       profile: learned[0]!.profile,
       alternateRoutes: learned.slice(1),
     };
-    expect(pullRequestRoutingConnectionKey(withLearned)).toBe(
-      pullRequestRoutingConnectionKey(relayOnly),
-    );
+    expect(connectionEndpointKey(withLearned)).toBe(connectionEndpointKey(relayOnly));
   });
 
   it("keeps the T3 Connect credential when learning over a learned T3 Connect route", () => {

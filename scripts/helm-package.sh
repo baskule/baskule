@@ -11,5 +11,5 @@ trap 'rm -rf "$work"' EXIT
 cp -r "$root/deploy/helm/baskule" "$work/baskule"
 image_tag=${version//+/_}
 sed -i "s/tag: \"0.0.0\"/tag: \"$image_tag\"/g" "$work/baskule/values.yaml"
-helm lint "$work/baskule" --set rustfs.enabled=true
+helm lint "$work/baskule" --set s3.endpoint=https://s3.example.test --set s3.bucket=lint --set s3.existingSecret=bucket
 helm package "$work/baskule" --version "$version" --app-version "$image_tag" --destination "$out"

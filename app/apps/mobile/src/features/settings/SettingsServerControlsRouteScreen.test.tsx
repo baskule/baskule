@@ -145,7 +145,7 @@ function environment(environmentId: string, label: string) {
       settings: {
         ...DEFAULT_SERVER_SETTINGS,
         defaultAutoPull: false,
-        sidebarAutoSettleOnMerge: false,
+        sidebarAutoSettleAfterDays: null,
       },
       environment: {
         capabilities: { projectSettingsOverrides: true, threadAutoSettlement: true },
@@ -205,11 +205,12 @@ describe("SettingsServerControlsRouteScreen", () => {
       )!;
 
     act(() => toggle("Agent browser access").click());
-    act(() => toggle("Auto-settle merged threads").click());
+    act(() => toggle("Auto-settle inactive threads").click());
 
     // Both rewrite the whole project override, so a second write planned now would drop the first.
     expect(mocks.updateSettings).toHaveBeenCalledOnce();
     await act(async () => pending.resolve(AsyncResult.success(undefined)));
+    expect(toggle("Auto-settle inactive threads").disabled).toBe(false);
   });
 
   it("disables auto-settle when a selected environment cannot save settings", () => {
@@ -221,7 +222,7 @@ describe("SettingsServerControlsRouteScreen", () => {
     act(() => root.render(<SettingsThreadsRouteScreen />));
 
     const autoSettle = [...container.querySelectorAll<HTMLButtonElement>('[role="switch"]')].find(
-      (button) => button.textContent === "Auto-settle merged threads",
+      (button) => button.textContent === "Auto-settle inactive threads",
     )!;
     expect(autoSettle.disabled).toBe(true);
   });

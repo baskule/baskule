@@ -119,7 +119,6 @@ export type BrowserDefaultSettings = Pick<
   | "browserSearchEngine"
   | "browserCustomSearchUrl"
   | "browserAutoShowFloatingPreview"
-  | "pullRequestLinksOpenInApp"
 >;
 
 function isSamePreviewViewport(
@@ -163,9 +162,6 @@ export function getChangedBrowserSettingLabels(settings: BrowserDefaultSettings)
     ...(settings.browserAutoShowFloatingPreview !==
     DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview
       ? [t("Floating preview")]
-      : []),
-    ...(settings.pullRequestLinksOpenInApp !== DEFAULT_UNIFIED_SETTINGS.pullRequestLinksOpenInApp
-      ? [t("Open pull requests in T3 Code")]
       : []),
   ];
 }

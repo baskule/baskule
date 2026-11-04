@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from "lucide";
 import * as Schema from "effect/Schema";
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCodeViewFileReveal } from "./diffs/useCodeViewFileReveal";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import { useOpenInPreferredEditor } from "../editorPreferences";
@@ -106,8 +106,6 @@ import { useReviewFilePatches } from "./diffs/useReviewFilePatches";
 import { DiffFileLoadingBoundary } from "./diffs/DiffFileLoadingBoundary";
 import { DiffFileStatus } from "./diffs/DiffFileStatus";
 import { useThreadRouteRef } from "../hooks/useThreadRouteTarget";
-import { projectCommitUrl } from "@t3tools/client-runtime/change-request-links";
-import { useOpenLink } from "../browser/useOpenLink";
 
 type DiffThemeType = "light" | "dark";
 const AUTOMATIC_BASE_REF = "__automatic_base_ref__";
@@ -435,19 +433,6 @@ export default function DiffPanel({
       ? t("Turn {{value1}}", { value1: selectedCheckpointTurnCount ?? "?" })
       : selectedGitScopeLabel;
   const headerCommitSha = selectedRunId === null ? selectedCommitSha : null;
-  const selectedCommitUrl =
-    headerCommitSha !== null
-      ? projectCommitUrl(activeProject?.repositoryIdentity, headerCommitSha)
-      : null;
-  const openLink = useOpenLink(routeThreadRef);
-  // A SHA link goes to the code host; it must not route back into this pane's commit selection.
-  const openCommitUrl = (event: MouseEvent<HTMLElement>, url: string) => {
-    event.stopPropagation();
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button === 1)
-      return;
-    event.preventDefault();
-    void openLink(url, { event });
-  };
   const refreshPreviewQuery = branchDiffPreview.refresh;
   const refreshDiffFromUserAction = refreshPreviewQuery;
 
@@ -804,28 +789,9 @@ export default function DiffPanel({
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
           </DropdownMenuTrigger>
           {headerCommitSha !== null ? (
-            selectedCommitUrl ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <a
-                      href={selectedCommitUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 font-mono text-xs text-muted-foreground underline underline-offset-4"
-                      onClick={(event) => openCommitUrl(event, selectedCommitUrl)}
-                    />
-                  }
-                >
-                  {headerCommitSha.slice(0, 7)}
-                </TooltipTrigger>
-                <TooltipPopup side="top">{selectedCommitUrl}</TooltipPopup>
-              </Tooltip>
-            ) : (
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                {headerCommitSha.slice(0, 7)}
-              </span>
-            )
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">
+              {headerCommitSha.slice(0, 7)}
+            </span>
           ) : null}
           <DropdownMenuContent align="start">
             <DropdownMenuRadioGroup value={selectedScopeValue} onValueChange={selectScopeValue}>
@@ -880,10 +846,6 @@ export default function DiffPanel({
                   onValueChange={selectScopeValue}
                 >
                   {branchCommits?.commits.map((commit) => {
-                    const commitUrl = projectCommitUrl(
-                      activeProject?.repositoryIdentity,
-                      commit.sha,
-                    );
                     return (
                       <div
                         key={commit.sha}
@@ -913,30 +875,11 @@ export default function DiffPanel({
                             {commit.subject}
                           </TooltipPopup>
                         </Tooltip>
-                        {commitUrl ? (
-                          <DropdownMenuItem
-                            className="shrink-0"
-                            render={
-                              <a
-                                href={commitUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                aria-label={t("Open commit {{value1}}", {
-                                  value1: commit.sha.slice(0, 7),
-                                })}
-                              />
-                            }
-                            onClick={(event) => openCommitUrl(event, commitUrl)}
-                          >
-                            <span className="font-mono text-xs text-muted-foreground underline underline-offset-4">
-                              {commit.sha.slice(0, 7)}
-                            </span>
-                          </DropdownMenuItem>
-                        ) : (
+                        {
                           <span className="shrink-0 px-2 font-mono text-xs text-muted-foreground">
                             {commit.sha.slice(0, 7)}
                           </span>
-                        )}
+                        }
                       </div>
                     );
                   })}

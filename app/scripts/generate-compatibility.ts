@@ -46,6 +46,7 @@ if (
       process.env.COMPATIBILITY_NOOP === "true",
       NodeChildProcess.execFileSync("git", ["diff", "--unified=0", `${first}...HEAD`], {
         encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
       }),
     );
   } else if (command === "generate" && first && second && third) {

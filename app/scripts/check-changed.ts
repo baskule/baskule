@@ -257,7 +257,6 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
       "--exclude-standard",
       "--",
       ":(glob)**/.generated/**",
-      ":(glob)**/.astro/**",
       ":(glob)**/*.d.ts",
       ":(glob)**/.env*",
       ":(exclude,glob)**/node_modules/**",
@@ -432,9 +431,7 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
   ).pipe(Effect.catch((error) => Effect.succeed({ ok: false, output: error.message })));
 
   // CI's Lint job checks that generated GraphQL operations match their sources.
-  const graphql = ["apps/server", "packages/source-control-github"].filter((dir) =>
-    files.some((file) => file.startsWith(`${dir}/`)),
-  );
+  const graphql = ["apps/server"].filter((dir) => files.some((file) => file.startsWith(`${dir}/`)));
   const filters = (names: ReadonlyArray<string>) => names.flatMap((name) => ["--filter", name]);
   const typecheckWorkers = Math.min(concurrency, affected.length);
   const command = (name: string, args: ReadonlyArray<string>) => ({ name, run: vp(args) });

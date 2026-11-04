@@ -196,8 +196,9 @@ describe("ChatMarkdown favicon privacy", () => {
     await rerender(markdown("https://example.com"));
     expect(container.querySelectorAll("img")).toHaveLength(1);
     await rerender(markdown("https://github.com/pingdotgg/t3code/pull/1"));
-    expect(container.querySelectorAll("img")).toHaveLength(0);
-    expect(container.querySelector("a svg")).not.toBeNull();
+    expect([...container.querySelectorAll("img")].map((image) => image.src)).toEqual([
+      "https://www.google.com/s2/favicons?domain=github.com&sz=32",
+    ]);
   });
 });
 

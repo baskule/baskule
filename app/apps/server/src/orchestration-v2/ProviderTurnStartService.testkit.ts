@@ -1,4 +1,3 @@
-import { SourceControlProviderError, SourceControlProviderKind } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as ServerConfig from "../config.ts";
 import * as GitManager from "../git/GitManager.ts";
@@ -9,7 +8,7 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
-import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
+
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
@@ -34,18 +33,6 @@ export const layerRealGit = GitWorkflow.layer.pipe(
   Layer.provide(GitManager.layer),
   Layer.provide(
     Layer.mergeAll(
-      Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
-        resolveLink: () => undefined,
-        resolve: ({ cwd }) =>
-          Effect.fail(
-            new SourceControlProviderError({
-              provider: SourceControlProviderKind.make("unknown"),
-              operation: "resolve",
-              cwd,
-              detail: "No source control provider in tests",
-            }),
-          ),
-      }),
       Layer.mock(TextGeneration.TextGeneration)({}),
       Layer.mock(ProviderRegistry.ProviderRegistry)({}),
       Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),

@@ -1,7 +1,7 @@
 import { t } from "../../i18n";
 
 import { sanitizeNewRefName } from "@t3tools/shared/git";
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+
 import { resolveSendEnvMode } from "@t3tools/shared/projectSettings";
 import type { ComposerDraftWorkspaceSelection } from "../../state/use-composer-drafts";
 
@@ -78,17 +78,7 @@ export function resolveNewTaskBranchLabel(input: {
   readonly branchName: string | null;
   readonly startFromOrigin: boolean;
   readonly workspaceMode: WorkspaceMode;
-  readonly pullRequestReference?: string;
 }): string {
-  if (input.workspaceMode === "worktree" && input.pullRequestReference) {
-    const parsed = sourceControlClients.parseChangeRequestUrl(input.pullRequestReference);
-    if (parsed) {
-      return t("From {{changeRequest}} #{{number}}", {
-        changeRequest: parsed.definition.changeRequest.shortLabel,
-        number: parsed.link.number,
-      });
-    }
-  }
   if (!input.branchName) {
     return t("Choose branch");
   }
