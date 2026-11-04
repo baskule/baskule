@@ -68,14 +68,19 @@ All `/v1` routes need `Authorization: Bearer <COMPUTERD_TOKEN>`. `:id` is the sp
 `application/octet-stream` with that JSON in header `x-baskule-exec` and stdin streamed as the body.
 Frames are `{"t":"o"|"e","d":"<base64>"}`, then `{"t":"x","code":N}` or `{"t":"err","msg":"…"}`.
 Commands are argv only (no shell built from caller input; argv is capped at 200 KiB). Caller environment
-is filtered by an allowlist in [exec.ts](src/exec.ts); `LD_*` is always refused. A lazily opened Node agent multiplexes execs over one backend exec stream per computer.
-The agent source ships with computerd and is sent when opening the stream. Each command
-runs in a detached process group and records its group in `/tmp/.osj`, so `kill`, client disconnect and `timeoutMs` signal the whole
-group. Per-command 1 MiB credit windows bound stdin and output buffering; stalled
-consumers do not block other commands. Sessions ping every 30 seconds and close on
-stop, replacement, deletion and shutdown. Failed sessions fail their active commands
-without retry; the next command opens a new session. Sessions do not count as active
-request streams. At most `MAX_STREAMS_PER_COMPUTER` exec, file and CDP streams run per computer (429 beyond).
+is filtered by an allowlist in [exec.ts](src/exec.ts); `LD_*` is always refused.
+Commands do not start a container process each (`runc exec` costs about 100 ms). On first use computerd
+opens one backend exec running `/usr/local/bin/node` with a small agent ([agent.mjs](src/agent/agent.mjs),
+sent with the command, so images cannot drift from computerd), and multiplexes every later command, stdin,
+kill and exit status over it ([session.ts](src/session.ts)). Custom computer images need `/usr/local/bin/node`.
+Each command runs in a detached process group and records it in `/tmp/.osj`, so `kill`, client disconnect,
+`timeoutMs` and other computerd replicas signal the whole group. Per-command 1 MiB credit windows bound
+buffering in both directions; computerd closes a session whose agent exceeds its credit, and waits for slow
+HTTP clients before reading more. A failing command (oversized start, bad `cwd`, spawn error) fails alone.
+Sessions ping every 15 s, close after 45 s of silence and on stop, replacement, deletion and shutdown;
+active commands then fail without retry and the next command opens a new session. While a session is
+open and the backend confirmed the computer within 5 s, `ensure` skips the backend query. Sessions do not
+count as active request streams. At most `MAX_STREAMS_PER_COMPUTER` exec, file and CDP streams run per computer (429 beyond).
 
 **Files.** Paths are absolute under `/sandbox`; `..` is refused and the path is resolved inside the
 computer with `realpath -m` and checked again, so symlinks cannot escape (403).
