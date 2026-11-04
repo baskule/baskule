@@ -313,11 +313,12 @@ case "${1:-}" in
     fi
     "$1"; exit ;;
   # Snapshot into bash's input string so edits cannot change an in-flight run.
-  run) exec timeout --signal=TERM --kill-after=30m 90m bash -c "$(cat "$0")" "$0" worker ;;
-  worker)
+  run)
     exec 9> "$lock_root/baskule-gke-$project.lock"
     flock -w 3600 9 || { echo 'Timed out waiting for the GKE worker lock' >&2; exit 1; }
+    exec timeout --signal=TERM --kill-after=30m 90m bash -c "$(cat "$0")" "$0" worker
     ;;
+  worker) ;;
   *) echo "Usage: $0 run|sweep [--force]|audit" >&2; exit 2 ;;
 esac
 run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]')"
