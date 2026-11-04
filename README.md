@@ -33,7 +33,7 @@ Baskule has three parts:
   [OpenCode](https://github.com/anomalyco/opencode) agent for every conversation. Several platform nodes can run
   side by side, and when one stops another takes over.
 - **Computers.** Each space gets an isolated Linux computer with a shell, Python, Node, a browser and office tools,
-  sandboxed by [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell). It starts when an agent needs it and stops
+  managed by Docker on one machine or agent-sandbox on Kubernetes. It starts when an agent needs it and stops
   when idle. It can reach the internet, never your private network.
 
 <p align="center">
@@ -64,7 +64,7 @@ What Baskule connects to in your environment:
 | Plugins | Connectors, skills and bundles from public catalogs or your own address, off until an admin enables them for a group. |
 | Usage | By person, model and space, with CSV export and per-person limits. |
 
-Not yet: several models in one organization, computers spread across several hosts.
+Not yet: several models in one organization.
 
 ## Install
 
@@ -97,7 +97,6 @@ The `light` profile runs the platform with a fake model and no computers; `full`
 | `app/` | Web, desktop and mobile clients and the chat engine, forked from T3 Code |
 | `platform/` | The agent platform: sign-in, organization, spaces, plugins and the OpenCode agent |
 | `computer/`, `computerd/` | The computer image and the service that manages computers |
-| `openshell/`, `vendor/openshell/` | OpenShell packaging and its patched source |
 | `deploy/` | Docker Compose deployment, build container and operation scripts |
 | `desktop/` | Desktop packaging |
 | `e2e/` | End-to-end tests |
@@ -107,7 +106,6 @@ The `light` profile runs the platform with a fake model and no computers; `full`
 
 - [T3 Code](https://github.com/pingdotgg/t3code): the clients and the chat engine started as a fork (MIT).
 - [OpenCode](https://github.com/anomalyco/opencode): the agent.
-- [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell): the computers' sandbox, included with patches (Apache 2.0).
 - [celld](https://github.com/denoland/celld): the runtime of the agent platform.
 - [Better Auth](https://github.com/better-auth/better-auth), [Drizzle ORM](https://github.com/drizzle-team/drizzle-orm),
   [RustFS](https://github.com/rustfs/rustfs), [Caddy](https://github.com/caddyserver/caddy),
@@ -116,7 +114,5 @@ The `light` profile runs the platform with a fake model and no computers; `full`
 
 ## Licence
 
-Baskule is released under the [MIT licence](LICENSE). Included third-party code keeps its own licence: `app/` the
-T3 Code [MIT licence](app/LICENSE), and `vendor/openshell/` the [Apache 2.0 licence](vendor/openshell/LICENSE) with
-its [notices](vendor/openshell/THIRD-PARTY-NOTICES). See [third-party notices](THIRD_PARTY_NOTICES.md) and
+Baskule is released under the [MIT licence](LICENSE). Included third-party code keeps its own licence, including the [T3 Code licence](app/LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) and
 [source provenance](source-provenance.json).

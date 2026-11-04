@@ -35,7 +35,7 @@ gh workflow run release.yml --repo baskule/baskule --ref main \
 
 Manual factory runs also post a `Release factory` commit status, linking the candidate to the full run. [GitHub excludes workflow-dispatch job checks from PR checks](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks). This status is separate from the routine `CI required` gate.
 
-Computer, computerd and OpenShell build in `backend-runtime` after version and source-CI validation, alongside Linux packaging. They need no translated catalogs or Linux artifacts. A separate `hosted-web` job builds and verifies the web bundle once. Final `backend-build` waits for that bundle and the runtime images; it does not wait for desktop packaging. Packaging copies the runtime image archives byte for byte and adds celld. Linux apps also retains the same verified web archive. The build critical path is the longer of runtime images and hosted web, followed by celld packaging and the slowest verification shard.
+Computer and computerd build in `backend-runtime` after version and source-CI validation, alongside Linux packaging. They need no translated catalogs or Linux artifacts. A separate `hosted-web` job builds and verifies the web bundle once. Final `backend-build` waits for that bundle and the runtime images; it does not wait for desktop packaging. Packaging copies the runtime image archives byte for byte and adds celld. Linux apps also retains the same verified web archive. The build critical path is the longer of runtime images and hosted web, followed by celld packaging and the slowest verification shard.
 
 The release factory builds `backend-<version>` once, then downloads the same archive artifact into isolated GitHub-hosted runners. Each consumer checks `SHA256SUMS`, loads the three published image archives, checks their IDs against `images.txt`, and restores the packaged SpaceCell bundle. Install checks use the packaged Compose assets through `BASKULE_INSTALL_ASSETS`, without checkout mounts or regenerated operator files.
 
@@ -45,16 +45,15 @@ Ordinary CI already covers lint, feature-map coverage, harness tests, Baskule un
 
 `scripts/check release:journeys --shard N/M` uses Playwright to partition individual journey tests across runners, grouped by stack profile. Each runner keeps one worker to protect shared stack state. Uncovered custom commands are assigned once by feature. The planner removes only declared component commands covered by the release jobs and desktop checks covered by Linux apps. Full components cover named selections. Unknown commands remain in the plan, and owner-run deployed checks remain excluded. Normal `feature:<name>` checks still run all their declared checks. Local `release` still runs its unit and component tiers, then uses the same deduplicated feature plan.
 
-BuildKit exports image layers to Actions cache with separate scopes for computer, computerd, celld, build environment, supervisor, sandbox and gateway. Native Cargo uses every runner core. The native cache contains final release binaries with a source marker, keyed by all vendored source, lockfile, toolchain environment and build script inputs. Full native dependency targets exceed the repository cache quota and stay job-local. A native source change requires a cold compile; unchanged source can reuse verified build outputs. No cache is a verification result. Every release still exercises the resulting archives.
+Build caches accelerate packaging but do not replace verification. Every release exercises the resulting archives.
 
-Run the verify-only factory on `main` before tagging to populate caches visible to future release tags. GitHub scopes caches by ref: temporary-branch and tag-only caches do not warm unrelated future tags. The first run populates caches and builds cold. Image export, transfer and Docker-in-Docker startup remain on the critical path after a warm build.
+Run the verify-only factory on `main` before tagging to populate caches visible to future release tags. GitHub scopes caches by ref: temporary-branch and tag-only caches do not warm unrelated future tags. The first run populates caches and builds cold. Image export, transfer and container startup remain on the critical path after a warm build.
 
 App installers remain GitHub release assets. Settings → Desktop app derives its download links from the running `/version.json`; the current list offers Linux x64, with other platforms added when their installable assets are published. No app archives or download manifest are embedded in celld.
 
 Verified image archives and checksums pass to a separate publish job after backend, Linux app, and requested native
 checks pass. Only that job holds `packages: write`. Tag pushes or manual runs with `verify_only=false` publish the
-the seven images and the OCI chart listed below. The Compose gateway still bundles the computer, supervisor, and
-sandbox images; Kubernetes pulls them from GHCR. Publication skips existing tags whose contents match, refuses
+images and the OCI chart listed below. Compose and Kubernetes pull the computer image from GHCR. Publication skips existing tags whose contents match, refuses
 differing ones, and fails on registry authentication or transport errors.
 Verification-only runs never log in or push, including manual runs on tag refs.
 
@@ -84,9 +83,7 @@ Use a run's job logs and artifacts to inspect failures, checksums, package statu
 
 The owner must enable Actions package publishing and allow `GITHUB_TOKEN` to write packages for this repository.
 After the first publishing run, make these GHCR packages public once in each
-package's settings: `baskule-celld`, `baskule-computerd`, `baskule-openshell-gateway`,
-`baskule-openshell-kubernetes`, `baskule-computer`, `baskule-openshell-supervisor`,
-`baskule-openshell-sandbox`, and the OCI chart `charts/baskule`. The workflow links
+package's settings: `baskule-celld`, `baskule-computerd`, `baskule-computer`, and the OCI chart `charts/baskule`. The workflow links
 their source to this repository. The separate `public-packages` job checks anonymous
 pulls and can be rerun after changing visibility **within 24 hours**, while the
 backend Actions artifact is retained; it never republishes artifacts.

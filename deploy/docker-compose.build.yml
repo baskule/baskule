@@ -76,5 +76,6 @@ volumes:
     name: baskule-celld-b
   baskule-edge-data:
     name: baskule-edge-data
+  # Legacy disk source retained for the 0.5.0 forward migration.
   baskule-openshell-docker:
     name: baskule-openshell-docker

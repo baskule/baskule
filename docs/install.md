@@ -1,7 +1,7 @@
 # Install Baskule
 
 Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. Start with 4 CPU cores,
-24 GiB RAM, and 80 GB free disk. OpenShell runs a privileged container with its own Docker daemon.
+24 GiB RAM, and 80 GB free disk. computerd uses the host Docker socket.
 For several machines, use the [Kubernetes installation](install-kubernetes.md), the only cluster install.
 
 ```sh
@@ -47,19 +47,22 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 #S3_SECRET_KEY=YOUR_SECRET_KEY
 # Memory cap for each of the two platform nodes (default 3g).
 #CELLD_MEMORY=3g
-# Memory cap for OpenShell and all computers together (default 8g).
-#OPENSHELL_MEMORY=8g
-# Memory cap per computer within OpenShell (default 3Gi).
+# Memory cap per computer  (default 3Gi).
 #COMPUTER_MEMORY=3Gi
 # Trace UI bind (default 127.0.0.1), independent of BASKULE_BIND; requires COMPOSE_PROFILES=traces.
 #BASKULE_TRACES_BIND=127.0.0.1
+
+# Host Docker socket group: stat -c %g /var/run/docker.sock (default 999).
+#DOCKER_GID=999
+#COMPUTER_NETWORK=baskule-computers
+#COMPUTER_DNS=1.1.1.1,8.8.8.8
 ```
 <!-- install-env:end -->
 
 You can download this commented example with
 `curl -fL https://github.com/baskule/baskule/releases/latest/download/baskule.env.example -o .env`.
 No value in it is required. Keep an edited `.env` private. Secrets are generated in separate storage, platform,
-computerd, and OpenShell volumes; explicit environment values override them. Keep the installation directory
+and computerd volumes; explicit environment values override them. Keep the installation directory
 and Compose project name stable.
 
 ## Open it
@@ -145,12 +148,17 @@ The example above lists common settings. All settings are optional:
 | `AUTH_CONFIG` | password sign-in | Authentication JSON; `publicOrigin` fixes SSO callback URLs |
 | `S3_ENDPOINT`, `S3_REGION`, `CELLD_BUCKET_NAME` | local RustFS, `us-east-1`, `baskule` | Shared storage |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | generated local keys | External storage credentials |
-| `CELLD_MEMORY`, `OPENSHELL_MEMORY`, `COMPUTER_MEMORY` | `3g`, `8g`, `3Gi` | Memory caps |
+| `CELLD_MEMORY`, `COMPUTER_MEMORY` | `3g`, `3Gi` | Memory caps |
 | `COMPOSE_PROFILES` | unset | Set `traces` to enable the trace collector |
 | `BASKULE_TRACES_BIND`, `BASKULE_TRACES_PORT` | `127.0.0.1`, `47098` | Trace UI listener, independent of the HTTP and HTTPS edge |
 
-The default memory caps total 15.75 GiB. Limits are not reservations. Each computer defaults to 2 CPU cores
-and 3 GiB within OpenShell's aggregate cap. See [installation settings](installation-settings.md) for app settings.
+Each computer has its own resource limits. See [installation settings](installation-settings.md) for app settings.
+Set `DOCKER_GID` to the output of `stat -c %g /var/run/docker.sock` before starting.
+The socket grants Docker administration privileges. Docker must expose the iptables
+DOCKER-USER chain; nftables-only Docker is unsupported. The private-network guard
+fails closed: ensure returns HTTP 503 without creating a computer if rules cannot be verified.
+`COMPUTER_DNS` defaults to public resolvers because private DNS upstreams are blocked.
+See [computerd](../computerd/README.md) for isolation and backend details.
 
 ## SSO
 
@@ -168,7 +176,7 @@ Before first start, set all five storage values in the example. The local RustFS
 platform uses the external endpoint. Bootstrap waits only for that configured endpoint; local RustFS health does
 not block external storage. The bucket must support celld's conditional writes and consistency. The
 bootstrap job creates it if absent; pre-create it if credentials forbid creation. Changing buckets selects another
-installation. Computer disks and gateway keys stay local. Back up the external bucket separately.
+installation. Computer disks stay local. Back up the external bucket separately.
 
 ## Backup and restore
 
@@ -226,12 +234,20 @@ if used, and start the new release with a fresh setup link.
 - `docker compose ps -a` shows health and one-shot exit status.
 - `docker compose logs setup baskule-bootstrap baskule-deploy` shows setup, storage, and deployment failures.
 - `docker compose logs baskule-celld-a baskule-celld-b` shows platform errors.
-- `docker compose logs baskule-computerd baskule-openshell` shows computer startup errors.
+- `docker compose logs baskule-computerd` shows computer startup errors.
 - A new platform node cannot become healthy before the first deployment. Check the deploy job and S3 first.
 - A GHCR permission error means your account cannot read the release packages.
 
 For optional traces, set `COMPOSE_PROFILES=traces`, `BASKULE_CELLD_OTEL=http://baskule-traces:4318`,
-`BASKULE_OTLP_TRACES_URL=http://baskule-traces:4318/v1/traces`, and
-`BASKULE_OPENSHELL_OTLP=http://baskule-traces:4317` in `.env`. The trace UI defaults to `127.0.0.1:47098`;
+`BASKULE_OTLP_TRACES_URL=http://baskule-traces:4318/v1/traces` in `.env`. The trace UI defaults to `127.0.0.1:47098`;
 `BASKULE_TRACES_BIND` and `BASKULE_TRACES_PORT` change it independently of the edge. Restarting it clears traces.
 Starting with `--profile '*'` is unsupported: it also starts the edge inheritance templates. Use named profiles such as `traces`.
+
+### Upgrade from 0.5.0
+
+OpenShell is removed. Keep the legacy `baskule-openshell-docker` Compose volume until every space disk is migrated.
+`COMPUTER_LEGACY_VOLUME` selects that volume; Compose supplies its project-prefixed name.
+On first ensure, a no-network helper copies `volumes/baskule-space-<suffix>/_data`
+into the host disk and writes `.baskule-migrated`. Keep a backup of the legacy volume
+until migration and file contents are checked. The regular backup includes migrated
+`baskule-space-*` volumes, not the legacy store.

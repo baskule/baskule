@@ -16,7 +16,8 @@ to `stat -c %g /var/run/docker.sock` (default 999) so it can access the socket.
 This grants Docker administration privileges. Computers use the separate
 `COMPUTER_NETWORK` bridge (default `baskule-computers`), created by computerd.
 The guard helper uses the computerd image with NET_ADMIN in the host network namespace;
-Docker must provide the iptables DOCKER-USER chain. It denies private and host destinations.
+Docker must provide the iptables DOCKER-USER chain. It denies private and host destinations and fails closed if verification fails.
+FORWARD mirrors prevent earlier accepts from bypassing the guard; nftables-only Docker is unsupported.
 `COMPUTER_DNS` optionally selects comma-separated public DNS IPs.
 Each computer defaults to 2 CPUs and 3 GiB. The computer and computerd images must
 already be available on the host.
