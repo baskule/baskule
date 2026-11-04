@@ -36,6 +36,7 @@ export class KubernetesBackend implements Backend {
   private ca: string | Buffer;
   private sandboxes: string;
   private core: string;
+  private podNames = new Map<string, string>();
   private sockets = new Set<WebSocket>();
   private abort = new AbortController();
   constructor(options: KubernetesOptions = {}) {
@@ -164,8 +165,9 @@ export class KubernetesBackend implements Backend {
     try { await this.api(this.sandboxes, 'POST', object); } catch (e) { if (e instanceof ApiError && e.code === 409) return this.start(spec.name); throw e; }
     return this.ready(spec.name);
   }
-  async start(name: string) { await this.api(`${this.sandboxes}/${encode(name)}`, 'PATCH', { spec: { operatingMode: 'Running' } }); return this.ready(name); }
+  async start(name: string) { this.podNames.delete(name); await this.api(`${this.sandboxes}/${encode(name)}`, 'PATCH', { spec: { operatingMode: 'Running' } }); return this.ready(name); }
   async recreate(spec: MachineSpec): Promise<Machine> {
+    this.podNames.delete(spec.name);
     const path = `${this.sandboxes}/${encode(spec.name)}`;
     const sandbox = await this.resource(path);
     const containers = sandbox?.spec?.podTemplate?.spec?.containers;
@@ -177,6 +179,7 @@ export class KubernetesBackend implements Backend {
     return this.ready(spec.name);
   }
   async stop(name: string) {
+    this.podNames.delete(name);
     const s = await this.resource(`${this.sandboxes}/${encode(name)}`); if (!s) return;
     await this.api(`${this.sandboxes}/${encode(name)}`, 'PATCH', { spec: { operatingMode: 'Suspended' } });
     const podName = (await this.pod(s))?.metadata.name;
@@ -184,6 +187,7 @@ export class KubernetesBackend implements Backend {
     await this.wait(this.sandboxes, name, async current => !current || (await this.machine(current)).phase === 'stopped');
   }
   async remove(name: string, disk: string) {
+    this.podNames.delete(name);
     const remove = async (collection: string, id: string) => {
       let deleted = true;
       try { await this.api(`${collection}/${encode(id)}`, 'DELETE', { propagationPolicy: 'Foreground' }); }
@@ -196,15 +200,20 @@ export class KubernetesBackend implements Backend {
     return { machineDeleted, diskDeleted: diskExisted || diskDeleted };
   }
   private async socket(name: string, action: string, query: URLSearchParams, protocols: string[]): Promise<WebSocket> {
-    const s = await this.resource(`${this.sandboxes}/${encode(name)}`);
-    const pod = s ? (await this.pod(s))?.metadata.name : undefined;
+    let pod = this.podNames.get(name);
+    if (!pod) {
+      const s = await this.resource(`${this.sandboxes}/${encode(name)}`);
+      pod = s ? (await this.pod(s))?.metadata.name : undefined;
+    }
     if (!pod) throw new Error(`No pod for ${name}`);
+    const podName = pod;
+    const invalidate = () => { if (this.podNames.get(name) === podName) this.podNames.delete(name); };
     const url = new URL(`${this.core}/pods/${encode(pod)}/${action}?${query}`, this.base); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url, protocols, { ca: this.ca, headers: { Authorization: this.authorization() }, handshakeTimeout: this.options.timeoutMs ?? 180000 });
       this.sockets.add(ws); ws.on('close', () => this.sockets.delete(ws));
-      ws.once('open', () => { ws.pause(); resolve(ws); }); ws.on('error', reject);
-      ws.once('unexpected-response', (_req, res) => { ws.terminate(); reject(new ApiError(res.statusCode ?? 500, 'WebSocket upgrade refused')); });
+      ws.once('open', () => { this.podNames.set(name, podName); ws.pause(); resolve(ws); }); ws.on('error', e => { invalidate(); reject(e); });
+      ws.once('unexpected-response', (_req, res) => { invalidate(); ws.terminate(); reject(new ApiError(res.statusCode ?? 500, 'WebSocket upgrade refused')); });
     });
   }
   exec(start: ExecStart): ExecHandle {

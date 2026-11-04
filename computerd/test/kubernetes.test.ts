@@ -16,11 +16,14 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
   let version = 1;
   let watches = 0;
   let podLists = 0;
+  let apiRequests = 0;
   let eof = false;
   let protocol = 'v5.channel.k8s.io';
   let upgrades = 0;
+  let refuseUpgrade = false;
   const deletes: string[] = [];
   const server = createServer(async (req, res) => {
+    apiRequests++;
     assert.equal(req.headers.authorization, 'Bearer test');
     const url = new URL(req.url!, 'http://test');
     const path = url.pathname;
@@ -76,7 +79,9 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     send(value ?? {}, value ? 200 : 404);
   });
   const wss = new WebSocketServer({ noServer: true, handleProtocols: (protocols, req) => { if (req.url?.includes('/portforward')) return 'v4.channel.k8s.io'; assert.ok(protocols.has(protocol)); return protocol; } });
-  server.on('upgrade', (req, socket, head) => wss.handleUpgrade(req, socket, head, ws => {
+  server.on('upgrade', (req, socket, head) => {
+    if (refuseUpgrade) { socket.end('HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n'); return; }
+    wss.handleUpgrade(req, socket, head, ws => {
     const url = new URL(req.url!, 'http://test');
     if (url.pathname.endsWith('/exec')) {
       upgrades++;
@@ -97,7 +102,7 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
       ws.send(Buffer.from([0, 6, 36])); ws.send(Buffer.from([1, 6, 36]));
       ws.on('message', raw => ws.send(raw));
     }
-  }));
+  }); });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address !== 'string');
   const backend = new KubernetesBackend({ baseUrl: `http://127.0.0.1:${address.port}`, token: 'test', ca: '', namespace: 'test', timeoutMs: 2000 });
@@ -132,6 +137,24 @@ test('Kubernetes lifecycle, watch, exec and port forwarding', async t => {
     await rejected;
     assert.equal(upgrades - before, 1);
     protocol = 'v5.channel.k8s.io';
+  });
+  await t.test('repeated exec avoids API reads after first handshake', async () => {
+    const before = apiRequests;
+    const repeated = backend.exec({ machine: 'machine', command: ['cat'] });
+    repeated.endStdin();
+    for await (const event of repeated.events) void event;
+    assert.equal(apiRequests - before, 0);
+  });
+  await t.test('failed cached upgrade invalidates pod discovery', async () => {
+    refuseUpgrade = true;
+    const failed = backend.exec({ machine: 'machine', command: ['cat'] });
+    await assert.rejects(async () => { for await (const event of failed.events) void event; }, /Kubernetes 404/);
+    refuseUpgrade = false;
+    const before = apiRequests;
+    const recovered = backend.exec({ machine: 'machine', command: ['cat'] });
+    recovered.endStdin();
+    for await (const event of recovered.events) void event;
+    assert.equal(apiRequests - before, 2);
   });
   const stream = backend.connect('machine', 9222);
   const received = once(stream, 'data'); stream.write(Buffer.from('roundtrip'));
