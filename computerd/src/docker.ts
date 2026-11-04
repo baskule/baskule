@@ -263,7 +263,7 @@ export class DockerBackend implements Backend {
         const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
           Image: this.guardImage, User: "0:0",
           Entrypoint: ["/bin/sh", "-ec", 'rm -rf -- "/legacy/volumes/$1/_data" "/legacy/volumes/$1/_data.migrated"', "cleanup", legacyDisk],
-          HostConfig: { NetworkMode: "none", ReadonlyRootfs: true,
+          HostConfig: { NetworkMode: "none", ReadonlyRootfs: true, SecurityOpt: ["no-new-privileges"],
             Mounts: [{ Type: "volume", Source: this.legacyVolume, Target: "/legacy", ReadOnly: false }] },
         });
         try {
