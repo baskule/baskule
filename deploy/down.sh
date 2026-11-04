@@ -15,6 +15,7 @@ if [ "${1:-}" = --purge ]; then
   if docker network inspect "$network" >/dev/null 2>&1; then
     docker network rm "$network"
   fi
+  docker run --rm --network host --cap-drop ALL --cap-add NET_ADMIN --read-only --tmpfs /run --entrypoint node "$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].image')" --input-type=module -e 'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});'
   # An external bucket (docs/install.md#external-s3) holds the cells' data outside the volumes: empty it too.
   if [ -n "$(env_get S3_ENDPOINT)" ]; then
     docker run --rm -e AWS_ACCESS_KEY_ID="$(env_get S3_ACCESS_KEY)" -e AWS_SECRET_ACCESS_KEY="$(env_get S3_SECRET_KEY)" \

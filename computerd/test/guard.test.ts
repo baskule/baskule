@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { guardScript, guardChain, privateRanges } from "../src/guard.ts";
+import { guardScript as scriptForNetwork, guardChain as chainForNetwork, privateRanges } from "../src/guard.ts";
+const guardScript = (subnets: string[]) => scriptForNetwork(subnets, "abcdef1234567890");
+const guardChain = (subnets: string[]) => chainForNetwork(subnets, "abcdef1234567890");
 test("guard blocks private destinations and host INPUT without restricting public ports", () => {
   const script = guardScript(["172.30.0.0/24"]);
   for (const range of privateRanges) assert.ok(script.includes(`-d ${range}`));
@@ -26,6 +28,6 @@ test("subnet sets own stable distinct chains and ordered leading jumps", () => {
   assert.ok(script.indexOf(`-I FORWARD 1 -s ${b}`) < script.indexOf(`-I FORWARD 1 -s ${a}`)); // inserted in reverse so sources keep sorted order
   for (const parent of ["INPUT", "FORWARD", "DOCKER-USER"]) {
     assert.ok(script.includes(`-I ${parent} 1 -s ${a}`));
-    assert.ok(script.includes(`awk -v rule='-A ${parent} -s ${a} -j `)); // later duplicates removed after insertion
+    assert.ok(script.includes(`awk -v rule='-A ${parent} -s ${a} -i br-abcdef123456 -j `)); // later duplicates removed after insertion
   }
 });

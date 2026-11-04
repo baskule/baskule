@@ -56,12 +56,14 @@ if grep -E '^(OPEN|BROKEN) ' "$EVIDENCE/probes.log"; then exit 1; fi
 test "$(grep -c '^DENIED ' "$EVIDENCE/probes.log")" -ge 30
 test "$(grep -c '^WORKS ' "$EVIDENCE/probes.log")" -ge 11
 subnet=$(docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "$network")
-chain=$(node --input-type=module -e 'import {guardChain} from "./computerd/src/guard.ts"; console.log(guardChain([process.argv[1]]))' "$subnet")
+chain=$(node --input-type=module -e 'import {guardChain} from "./computerd/src/guard.ts"; console.log(guardChain([process.argv[1]], process.argv[2]))' "$subnet" "$(docker network inspect -f '{{.Id}}' "$network")")
+bridge=$(docker network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "$network")
+[ -n "$bridge" ] || bridge=br-$(docker network inspect -f '{{.Id}}' "$network" | cut -c1-12)
 rules() {
   iptables -w -S "$chain"
   for parent in DOCKER-USER INPUT FORWARD; do
     first=$(iptables -w -S "$parent" | grep '^-A ' | head -n 1)
-    test "$first" = "-A $parent -s $subnet -j $chain" || return 1
+    test "$first" = "-A $parent -s $subnet -i $bridge -j $chain" || return 1
     echo "$first"
   done
 }
