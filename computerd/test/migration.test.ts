@@ -53,6 +53,7 @@ test("legacy inventory is shared and fresh disks skip migration helpers", async 
     legacyVolume: "legacy",
     request: async (method: string, path: string) => {
       requests.push(method + " " + path);
+      if (path.startsWith("/containers/json?")) return [];
       if (path === "/containers/create") return { Id: "inventory" };
       if (path.includes("/wait?")) return { StatusCode: 0 };
       if (path.includes("/logs?")) return "baskule-space-old\n";
@@ -64,4 +65,17 @@ test("legacy inventory is shared and fresh disks skip migration helpers", async 
   })));
   assert.equal(requests.filter(r => r === "POST /containers/create").length, 1);
   assert.equal(requests.filter(r => r.startsWith("POST /containers/create?")).length, 0);
+});
+
+
+test("running legacy mounts refuse migration before inventory", async () => {
+  const { DockerBackend } = await import("../src/docker.ts");
+  const backend = Object.create(DockerBackend.prototype);
+  Object.assign(backend, { legacyVolume: "legacy", request: async (_method: string, path: string) => {
+    if (path === "/volumes/create") return {};
+    assert.equal(path, "/containers/json?filters=" + encodeURIComponent(JSON.stringify({ volume: ["legacy"] })));
+    return [{ Id: "old-gateway" }];
+  } });
+  await assert.rejects(backend.ensureDisk({ disk: "baskule-space-test", image: "test", labels: {} }),
+    { status: 503, message: /docker compose up -d --remove-orphans/ });
 });

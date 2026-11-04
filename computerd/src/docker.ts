@@ -157,6 +157,11 @@ ${script}`],
     return this.start(spec.name);
   }
   private legacyDisks: Promise<Set<string>> | undefined;
+  private async requireLegacyStopped(): Promise<void> {
+    const filters = key(JSON.stringify({ volume: [this.legacyVolume] }));
+    const running = await this.request<{ Id: string }[]>("GET", `/containers/json?filters=${filters}`);
+    if (running.length) throw new DockerError(503, "Legacy store is in use; run docker compose up -d --remove-orphans before migrating computers");
+  }
   private async listLegacyDisks(image: string): Promise<Set<string>> {
     try { await this.request("GET", `/volumes/${key(this.legacyVolume)}`); }
     catch (error) {
@@ -184,6 +189,7 @@ ${script}`],
     if (!/^baskule-space-[a-zA-Z0-9_-]+$/.test(legacyDisk)) throw new Error("Invalid legacy disk name");
     await this.request("POST", "/volumes/create", { Name: spec.disk, Labels: spec.labels });
     if (!this.legacyVolume) return;
+    await this.requireLegacyStopped();
     const disks = await (this.legacyDisks ??= this.listLegacyDisks(spec.image).catch(error => {
       this.legacyDisks = undefined;
       throw error;
