@@ -100,8 +100,8 @@ inventory() {
   jq -s --arg marker "${resource_scope:-$marker}" --slurpfile accounts "$state/known-accounts.private.json" '
     (if all(.[]; type == "array") then flatten else error("Resource inventory must contain arrays") end) as $resources |
     ([$resources[] | (.labels // .resourceLabels // {}) | select(.["baskule-ephemeral"] == "true") | .["baskule-run"]] +
-     [$accounts[0][] | capture("^bk-(?<id>[0-9]+-[a-f0-9]{4}(?:-nos)?)@").id | "baskule-ephemeral-" + .]) |
-    map(select(type == "string" and test("^baskule-ephemeral-[0-9]+-[a-f0-9]{4}(-nos)?$"))) |
+     [$accounts[0][] | capture("^bk-(?<id>[0-9]+-[a-f0-9]{4})@").id | "baskule-ephemeral-" + .]) |
+    map(select(type == "string" and test("^baskule-ephemeral-[0-9]+-[a-f0-9]{4}$"))) |
     unique | if $marker == "baskule-ephemeral" then . else map(select(. == $marker)) end
   ' "${inputs[@]}" > "$state/runs.private.json" || return
   # Follow only references rooted in labelled resources or saved run ownership.
@@ -217,7 +217,7 @@ case "${1:-}" in
     ;;
   *) echo "Usage: $0 run|sweep [--force]|audit" >&2; exit 2 ;;
 esac
-run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]')-nos"
+run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]')"
 labels="$marker=true,baskule-run=$run_id"
 export BASKULE_K8S_EVIDENCE="$root/.run/evidence/$run_id"
 export KUBECONFIG="$state/kubeconfig.private" DOCKER_CONFIG="$state/docker.private"
