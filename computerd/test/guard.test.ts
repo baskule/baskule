@@ -7,7 +7,7 @@ test("guard blocks private destinations and host INPUT without restricting publi
   assert.ok(script.includes("INPUT -s 172.30.0.0/24"));
   assert.ok(script.includes("--dst-type LOCAL"));
   assert.ok(script.includes("-I DOCKER-USER 1"));
-  assert.ok(script.includes("head -n 1"));
+  assert.match(script, /awk .!\/ -j BASKULE-\[0-9a-f\]\+\$\/ { exit }/); // only guard jumps may precede ours
   assert.ok(script.includes("iptables-restore -w --noflush"));
   assert.ok(script.includes(`-F ${guardChain(["172.30.0.0/24"])}`));
   assert.ok(!script.includes("--dport"));
@@ -23,9 +23,9 @@ test("subnet sets own stable distinct chains and ordered leading jumps", () => {
   assert.equal(guardChain([a,b]), guardChain([b,a,a]));
   assert.notEqual(guardChain([a]), guardChain([b]));
   const script = guardScript([b,a]);
-  assert.ok(script.includes("head -n 2"));
+  assert.ok(script.indexOf(`-I FORWARD 1 -s ${b}`) < script.indexOf(`-I FORWARD 1 -s ${a}`)); // inserted in reverse so sources keep sorted order
   for (const parent of ["INPUT", "FORWARD", "DOCKER-USER"]) {
     assert.ok(script.includes(`-I ${parent} 1 -s ${a}`));
-    assert.ok(script.includes(`-D ${parent} -s ${a}`));
+    assert.ok(script.includes(`awk -v rule='-A ${parent} -s ${a} -j `)); // later duplicates removed after insertion
   }
 });
