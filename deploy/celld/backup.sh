@@ -49,17 +49,17 @@ backup)
   ;;
 restore)
   tar -C "$stage" -xzf -
-  jq -e --arg instance "$COMPUTERD_INSTANCE" 'type == "array" and all(.[]; (.Name | test("^baskule-space-[a-zA-Z0-9_-]+$")) and .Labels["baskule.managed"] == "true" and .Labels["baskule.instance"] == $instance and .Driver == "local" and ((.Options // {}) | length == 0))' "$stage/volumes.json" >/dev/null
+  jq -e --arg instance "$COMPUTERD_INSTANCE" 'type == "array" and all(.[]; (.Name | test("^baskule-space-[a-zA-Z0-9_-]+$")) and .Labels["baskule.managed"] == "true" and .Labels["baskule.instance"] == $instance and .Driver == "local" and ((.Options // {}) | length == 0))' "$stage/volumes.json" >/dev/null || { echo "Restore refused: invalid manifest, instance mismatch, or destination volume already exists" >&2; exit 1; }
   for directory in /backup/*; do
     [ -z "$(ls -A "$directory")" ] || { echo 'restore requires empty platform volumes' >&2; exit 1; }
   done
   # Reject existing names before changing any data, including another installation's disks.
   api "$url/volumes" > "$stage/existing.json"
-  jq -e --slurpfile existing "$stage/existing.json" 'all(.[]; .Name as $name | all($existing[0].Volumes[]?; .Name != $name))' "$stage/volumes.json" >/dev/null
+  jq -e --slurpfile existing "$stage/existing.json" 'all(.[]; .Name as $name | all($existing[0].Volumes[]?; .Name != $name))' "$stage/volumes.json" >/dev/null || { echo "Restore refused: invalid manifest, instance mismatch, or destination volume already exists" >&2; exit 1; }
   if [ -d "$stage/legacy" ] && [ -n "$(ls -A "$stage/legacy")" ]; then
     : "${COMPUTER_LEGACY_VOLUME:?legacy volume required to restore unmigrated spaces}"
     # Refuse an existing store rather than overwrite another installation.
-    jq -e --arg name "$legacy" 'all(.Volumes[]?; .Name != $name)' "$stage/existing.json" >/dev/null
+    jq -e --arg name "$legacy" 'all(.Volumes[]?; .Name != $name)' "$stage/existing.json" >/dev/null || { echo "Restore refused: invalid manifest, instance mismatch, or destination volume already exists" >&2; exit 1; }
     for archive in "$stage/legacy/"*.tar; do
       name=$(basename "$archive" .tar)
       [[ "$name" =~ ^baskule-space-[a-zA-Z0-9_-]+$ ]] || exit 1

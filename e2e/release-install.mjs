@@ -135,6 +135,7 @@ function stopWorld(w) {
   const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
   if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);
   w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
+    purgeComputers(w);
 }
 function scopedSecrets(w) {
   for (const [service, role, keys] of [
@@ -475,7 +476,7 @@ async function single() {
   pass("second up preserves generated secrets");
   expect(secretHash(w)).toBe(secrets);
   await persisted(base, result);
-  writeFileSync(resolve(run, "single-proof.json"), JSON.stringify({ ...result, directory: w.directory }), { mode: 0o600 });
+  writeFileSync(resolve(run, "single-proof.json"), JSON.stringify({ ...result, directory: w.directory, instance: JSON.parse(w.dc(["config", "--format", "json"])).services["baskule-computerd"].environment.COMPUTERD_INSTANCE }), { mode: 0o600 });
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
   // Use exactly the documented stop/backup/start operations from the install directory.
   w.dc(["down"]);
@@ -486,6 +487,7 @@ async function single() {
   await persisted(base, result);
   pass("single-machine down/up preserves chat and computer disk");
   w.dc(["down", "-v"]);
+  purgeComputers(w);
   w.dc(["run", "--rm", "-T", "restore"], { inputFile: backup });
   w.dc(["up", "-d"]);
   await ready(`${base}/version.json`);
@@ -495,6 +497,24 @@ async function single() {
   pass("single-machine backup restores chat and computer disk into empty volumes");
   stopWorld(w);
 }
+function purgeComputers(w) {
+  const config = JSON.parse(w.dc(["--profile", "*", "config", "--format", "json"]));
+  const service = config.services["baskule-computerd"];
+  const instance = service.environment.COMPUTERD_INSTANCE;
+  if (!instance) throw new Error("Refusing cleanup without COMPUTERD_INSTANCE");
+  const filters = ["--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${instance}`];
+  for (const name of command(["ps", "-aq", ...filters]).split(/\s+/).filter(Boolean)) command(["rm", "-f", name]);
+  for (const name of command(["volume", "ls", "-q", ...filters]).split(/\s+/).filter(Boolean)) command(["volume", "rm", name]);
+  const network = service.environment.COMPUTER_NETWORK;
+  const info = command(["network", "inspect", network], { allowFailure: true });
+  if (info) {
+    const [value] = JSON.parse(info);
+    if (value.Labels?.["baskule.instance"] === instance && Object.keys(value.Containers ?? {}).length === 0) command(["network", "rm", network]);
+  }
+  const legacy = service.environment.COMPUTER_LEGACY_VOLUME;
+  if (legacy && command(["volume", "inspect", legacy], { allowFailure: true })) command(["volume", "rm", legacy]);
+  command(["run", "--rm", "--network", "host", "--user", "0:0", "--cap-drop", "ALL", "--cap-add", "NET_ADMIN", "--read-only", "--tmpfs", "/run", "--entrypoint", "node", service.image, "--input-type=module", "-e", 'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});']);
+}
 async function restoreOnly() {
   if (!process.argv[3]) throw new Error("Pass the private single-proof.json path");
   const previous = JSON.parse(readFileSync(resolve(process.argv[3]), "utf8"));
@@ -502,7 +522,7 @@ async function restoreOnly() {
   const base = `http://127.0.0.1:${p}`;
   const w = world("single", adminVars);
   if (existsSync(resolve(previous.directory, ".env"))) copyFileSync(resolve(previous.directory, ".env"), w.file);
-  envFile(w.file, { BASKULE_REGISTRY: registry, BASKULE_VERSION: version, BASKULE_PORT: p, PUBLIC_ORIGINS: base });
+  envFile(w.file, { BASKULE_REGISTRY: registry, BASKULE_VERSION: version, BASKULE_PORT: p, PUBLIC_ORIGINS: base, COMPUTERD_INSTANCE: previous.instance ?? previous.directory.split("/").at(-1) });
   w.dc(["run", "--rm", "-T", "restore"], { inputFile: resolve(evidence, "single-backup.tar.gz") });
   w.dc(["up", "-d"]);
   await ready(`${base}/version.json`);
@@ -523,6 +543,7 @@ try {
     const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
     if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);
     w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
+    purgeComputers(w);
   }
   for (const [name, kind] of containers) if (kind === "storage") command(["rm", "-f", name], { allowFailure: true });
   for (const volume of fixtureVolumes) command(["volume", "rm", volume], { allowFailure: true });
