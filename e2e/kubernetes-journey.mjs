@@ -155,8 +155,10 @@ const admin = existsSync(accountFile) ? JSON.parse(readFileSync(accountFile, "ut
 writeFileSync(accountFile, JSON.stringify(admin), { mode: 0o600 });
 let client;
 try {
+  const diagnoseStarted = Date.now();
   const diagnose = kube("exec", `${release}-celld-0`, "--", "sh", "-ec", 'celld diagnose --json --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT"');
-  writeFileSync(resolve(evidence, "rustfs-diagnose.jsonl"), diagnose);
+  writeFileSync(resolve(evidence, "s3-diagnose.jsonl"), diagnose);
+  const diagnoseMs = Date.now() - diagnoseStarted;
   const diagnosis = diagnose.split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line));
   assert.ok(diagnosis.length > 0, "diagnose must return checks");
   assert.ok(diagnosis.every(check => check.verdict !== "fail"));
@@ -165,7 +167,7 @@ try {
   const replicas = objects("get", "statefulset", `${release}-celld`).spec.replicas;
   assert.equal(fleet?.verdict, "ok");
   assert.equal(fleet.detail, `${replicas} node lease(s) enumerated`);
-  pass("celld diagnose verifies RustFS conditional writes and the two-node fleet");
+  pass("celld diagnose verifies S3 conditional writes and the two-node fleet");
   const publicUrl = process.env.BASKULE_K8S_PUBLIC_URL ?? "http://127.0.0.1:47090";
   // Route initial cell activations to the ordinal used by the later crash drill.
   const base = await forward(`pod/${release}-celld-1`, 47091, Number(new URL(publicUrl).port));
@@ -200,12 +202,14 @@ try {
     const space = api.personalSpace(chatting);
     client = await rpc(chatting, space);
     const projectId = (await client.ok("projects.ensureScratch", {})).projectId;
+    const chatStarted = Date.now();
     const thread = await api.launch(client, projectId, "[[fake:text KUBERNETES_STREAM_OK alpha beta gamma delta epsilon]][[fake:delay 200]]");
     const state = api.watchThread(client, thread);
     await api.waitFor("streamed fake chat", () => state.settled() && state.assistantText().includes("KUBERNETES_STREAM_OK"), 180_000);
     assert.ok([...state.runs.values()].every(run => run.status === "completed"));
     assert.ok(state.assistantUpdates >= 2, "multiple assistant updates prove incremental streaming");
     state.stop();
+    const chatMs = Date.now() - chatStarted;
     pass("fake chat streams through the platform WebSocket");
     const coldNodeImages = objects("get", "nodes").items.flatMap(node => node.status.images ?? []).flatMap(image => image.names);
     const cold = !coldNodeImages.some(name => name.includes("/baskule-computer:"));
@@ -265,10 +269,10 @@ try {
       const probe = 'const net=require("net");const s=net.connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>process.exit(1));s.on("error",()=>process.exit(0));s.setTimeout(3000,()=>{s.destroy();process.exit(0)});';
       for (const [host, port] of [
         [objects("get", "pod", celldPod).status.podIP, "47092"],
-        [objects("get", "svc", `${release}-rustfs`).spec.clusterIP, "3900"],
+        ...(process.env.BASKULE_K8S_S3_FIXTURE ? [[objects("get", "svc", process.env.BASKULE_K8S_S3_FIXTURE).spec.clusterIP, "3900"]] : []),
         ["169.254.169.254", "80"],
       ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
-      pass("NetworkPolicy blocks direct computer access to peer, S3 and metadata IPs");
+      pass(`NetworkPolicy blocks direct computer access to peer${process.env.BASKULE_K8S_S3_FIXTURE ? ", S3" : ""} and metadata IPs`);
       if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
         kube("exec", celldPod, "--", "curl", "-fsS", "--max-time", "10", "-H", "Metadata-Flavor: Google", "-o", "/dev/null", "http://169.254.169.254/computeMetadata/v1/");
         pass("GKE metadata server exists and is reachable from the trusted platform");
@@ -283,7 +287,7 @@ try {
         `https://${apiService}:443/`,
         `http://${objects("get", "svc", release).spec.clusterIP}:80/api/baskule/setup`,
         `http://${release}:80/api/baskule/setup`,
-        `http://${objects("get", "svc", `${release}-rustfs`).spec.clusterIP}:3900/`,
+        ...(process.env.BASKULE_K8S_S3_FIXTURE ? [`http://${objects("get", "svc", process.env.BASKULE_K8S_S3_FIXTURE).spec.clusterIP}:3900/`] : []),
         "http://169.254.169.254/computeMetadata/v1/",
       ]) {
         const denied = await computerApi.exec(space, { argv: ["curl", "--silent", "--show-error", "--max-time", "10", "--insecure", "-H", "X-Forwarded-For: 198.51.100.1", target] });
@@ -294,7 +298,7 @@ try {
       const denialLog = kube("logs", supervisor.metadata.name, "--all-containers=true");
       assert.match(denialLog, /denied|not allowed|blocked/i, "supervisor must record policy denials, not just a dial timeout");
       assert.ok(denialLog.includes(apiService), "the Kubernetes API denial must appear in supervisor logs");
-      pass("supervisor-mediated curl permits public HTTPS and denies Kubernetes API, platform Service, RustFS and metadata");
+      pass(`supervisor-mediated curl permits public HTTPS and denies Kubernetes API, platform Service${process.env.BASKULE_K8S_S3_FIXTURE ? ", S3 fixture" : ""} and metadata`);
       const cdp = await wsExchange(computerApi.ws(`/v1/spaces/${space}/cdp`), [JSON.stringify({ id: 1, method: "Target.getTargets" })], messages => messages.some(message => message.includes('"id":1')), 60_000);
       const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
       assert.ok(targets.some(target => target.type === "page"));
@@ -311,6 +315,7 @@ try {
     writeFileSync(resolve(evidence, "celld-before.json"), JSON.stringify(before));
     assert.ok(before.owned_cells > 0, "the killed pod must own cells for this drill");
     kube("patch", "statefulset", `${release}-celld`, "--type=merge", "-p", JSON.stringify({ spec: { template: { spec: { nodeSelector: { "baskule.test/unavailable": "true" } } } } }));
+    const failoverStarted = Date.now();
     kube("delete", "pod", victim, "--grace-period=0", "--force", "--wait=false");
     client.close(); await client.closed;
     const initialForward = forwards[0];
@@ -328,6 +333,7 @@ try {
     const after = await peer(celldPod);
     writeFileSync(resolve(evidence, "celld-after.json"), JSON.stringify(after));
     assert.ok(before.residents.some(cell => after.residents.includes(cell)), "a cell resident on the killed peer is now resident on the survivor");
+    writeFileSync(resolve(evidence, "storage-timings.json"), JSON.stringify({ diagnoseMs, chatMs, failoverMs: Date.now() - failoverStarted }));
     pass("killed celld owner stays unavailable while another pod serves persisted chat and computer files");
     kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
     kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");

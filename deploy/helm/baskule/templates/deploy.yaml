@@ -27,9 +27,6 @@ spec:
           command: [sh, -ec]
           args:
             - |
-              {{- if .Values.rustfs.enabled }}
-              baskule-celld-job bootstrap
-              {{- end }}
               baskule-celld-job deploy
           env:
             {{- include "baskule.s3Env" . | nindent 12 }}

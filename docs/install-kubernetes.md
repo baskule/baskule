@@ -37,29 +37,23 @@ kubectl -n agent-sandbox-system rollout status deployment/agent-sandbox-controll
 ```
 
 The chart is available **from the next release**; release 0.5.0 has no chart.
-For an evaluation with bundled RustFS:
+Every install needs an S3-compatible bucket with atomic `If-Match` and
+`If-None-Match` writes. celld uses these operations for leases; an upload/download
+test is insufficient. The chart contains no object store and fails rendering without
+`s3.endpoint`, `s3.bucket`, and either `s3.existingSecret` or both key values.
+Scaleway Object Storage (`fr-par`) passed celld's conditional-write check. AWS S3 and
+Cloudflare R2 are unverified examples here. **Google Cloud Storage's S3 XML API is
+unsupported:** it overwrote an existing object on a create-if-absent write in celld's
+probe. See [storage conformance evidence](storage-conformance.md).
 
-```sh
-helm install baskule oci://ghcr.io/baskule/charts/baskule --version X \
-  --namespace baskule --create-namespace --set rustfs.enabled=true --timeout 10m
-kubectl -n baskule port-forward svc/baskule 47090:80
-```
-
-The post-install hook creates the evaluation bucket and deploys the application.
-Do not add `--wait` to the first install: celld cannot become ready before that hook.
-Replace `X` with the version listed on [Baskule Releases](https://github.com/baskule/baskule/releases) (without a leading `v`). Open the private setup link printed
-by Helm and create the first admin. Configure your model provider in Administration.
-RustFS has one replica and no redundancy. Use it for tests and evaluation only.
+Create a bucket and a Kubernetes Secret containing `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY`, as in the Scaleway recipe below. Supply credentials through
+your secret manager or an untracked private file. Keep credentials out of shell
+history, chart values, and evidence.
 
 For production, use a private S3 endpoint or operator-managed egress rules that deny
 supervisor access to public S3 endpoints. This is required for strict storage network
 isolation; standard NetworkPolicy alone cannot enforce a DNS-based exclusion.
-Create an external bucket and a Kubernetes Secret containing
-`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Supply credentials through your secret
-manager or an untracked file. Keep credentials out of shell history and chart values.
-Use an S3-compatible service with atomic `If-Match` and `If-None-Match` writes. celld
-uses those operations for its leases. A plain object upload/download test is insufficient.
-Google Cloud Storage's XML endpoint is not a substitute for a verified S3 service.
 
 ```yaml
 # values.yaml
@@ -80,6 +74,14 @@ helm install baskule oci://ghcr.io/baskule/charts/baskule --version X \
   --namespace baskule --create-namespace --values values.yaml --timeout 10m
 ```
 
+The bucket must already exist. The post-install hook deploys the application.
+Do not add `--wait` to the first install: celld cannot become ready before that hook.
+Replace `X` with the version listed on [Baskule Releases](https://github.com/baskule/baskule/releases)
+(without a leading `v`). Open the private setup link printed by Helm and create the
+first admin. Configure your model provider in Administration.
+For a local port-forward, omit `exposure` and use `publicUrl: http://localhost:47090`,
+then run `kubectl -n baskule port-forward svc/baskule 47090:80`.
+
 Install your Gateway/Ingress controller, DNS record, and TLS certificate separately.
 The GKE Ingress and Gateway recipes below are evaluation-only until Baskule has
 verified per-client client-IP handling. Do not use these recipes for production.
@@ -96,16 +98,79 @@ routes from the Baskule namespace and support WebSockets and unbuffered response
 Gateway API CRDs, the controller, certificates, and DNS remain operator-owned.
 The Gateway example is unverified on GKE, including its client-IP behavior.
 
+## Scaleway Object Storage
+
+This bucket recipe works with GKE or another Kubernetes cluster; it does not require
+Scaleway compute. Use an authenticated `scw` CLI (verified with v2.65.2), `jq`, and
+an operator identity allowed to create a bucket and IAM application/policy/API key.
+Choose an existing dedicated Scaleway project for Baskule. The IAM rule below grants
+Object Storage access to **that whole project**, not just one bucket. See Scaleway's
+[permission sets](https://www.scaleway.com/en/docs/iam/policies-permissions/permission-sets/)
+and [IAM and bucket policy guidance](https://www.scaleway.com/en/docs/object-storage/api-cli/combining-iam-and-object-storage/).
+
+```sh
+export SCW_DEFAULT_ORGANIZATION_ID=your-organization-uuid
+export SCW_DEFAULT_PROJECT_ID=your-dedicated-storage-project-uuid
+export SCW_DEFAULT_REGION=fr-par
+export BASKULE_BUCKET="baskule-$(date -u +%s)" # globally unique; save this name
+scw object bucket create "$BASKULE_BUCKET" \
+  project-id="$SCW_DEFAULT_PROJECT_ID" region=fr-par \
+  tags.0=app=baskule tags.1=baskule-install="$BASKULE_BUCKET"
+
+set +x # never trace credentials
+umask 077
+private=$(mktemp -d)
+scw iam application create name=baskule-storage \
+  organization-id="$SCW_DEFAULT_ORGANIZATION_ID" -o json > "$private/application.json"
+application=$(jq -r .id "$private/application.json")
+scw iam policy create name=baskule-storage application-id="$application" \
+  organization-id="$SCW_DEFAULT_ORGANIZATION_ID" \
+  rules.0.project-ids.0="$SCW_DEFAULT_PROJECT_ID" \
+  rules.0.permission-set-names.0=ObjectStorageFullAccess -o json > "$private/policy.json"
+scw iam api-key create application-id="$application" \
+  default-project-id="$SCW_DEFAULT_PROJECT_ID" description=baskule-storage \
+  -o json > "$private/key.json"
+jq -rj .access_key "$private/key.json" > "$private/AWS_ACCESS_KEY_ID"
+jq -rj .secret_key "$private/key.json" > "$private/AWS_SECRET_ACCESS_KEY"
+```
+
+Store the key and identity/policy IDs in your secret manager. Keep the private files
+until you [create the Kubernetes Secret](#create-the-kubernetes-secret) after cluster
+creation. This application credential recipe is documented from the CLI/API. The
+completed GKE run used the operator's general Scaleway key in celld and did not
+exercise the application-key recipe. Future runs require a separate dedicated
+application key limited to Object Storage. Never give that application IAM
+management permissions.
+
+Set these values alongside your chosen `publicUrl` and exposure settings:
+
+```yaml
+s3:
+  endpoint: https://s3.fr-par.scw.cloud
+  region: fr-par
+  bucket: REPLACE_WITH_BASKULE_BUCKET
+  existingSecret: baskule-bucket
+```
+
+For GKE, create the cluster below, create the Kubernetes Secret, then use the Helm
+install command above. GKE `europe-west1` to Scaleway `fr-par`
+crosses providers: storage latency and egress apply. Measured journey timings include
+that path. A private cluster needs outbound access to this storage endpoint as well
+as image registries and model providers. Apply the private-endpoint and egress
+guidance above before production use.
+
 ## GKE Standard
 
 These commands follow Google's [zonal cluster guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/creating-a-zonal-cluster).
 This is the verified cloud path. The packaged chart was tested on GKE
 `1.36.4-gke.2046003` with Ubuntu containerd, Dataplane V2 and two Spot nodes with
-4 vCPU and 8 GiB each. Across focused runs with matching production images,
+4 vCPU and 8 GiB each. Across focused runs with matching production images and the former in-cluster storage fixture,
 verification covered setup, fake chat, computer execution, stop/start and cross-node
 PVC persistence, direct and supervisor-mediated denial, GKE metadata, CDP, celld
 takeover, space/PVC deletion, public WebSocket and HTTP/SSE transport streaming past
-65 seconds, and same-version Helm upgrade with stable platform and storage secrets.
+65 seconds, and same-version Helm upgrade with stable platform and storage secrets. That historical
+coverage does not by itself verify external storage; see the conformance record and
+the focused GKE/Scaleway run evidence for this change.
 A measured cold first computer start took 71.7 seconds against the 180-second
 readiness timeout. TLS and snapshot restore remain unverified.
 
@@ -131,8 +196,7 @@ and disabled workload/system logging, monitoring and managed Prometheus. The com
 above uses on-demand nodes, the project default node identity, and GKE's disk and
 observability defaults. It needs an identity with the required node permissions.
 
-Install Agent Sandbox, then run either Helm install command above. Dataplane V2 provides
-NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass.
+Dataplane V2 provides NetworkPolicy enforcement. Use the cluster's block-backed default StorageClass.
 Choose non-overlapping RFC 1918 Pod and Service ranges before creating the cluster.
 Do not use GKE's Google-managed `34.118.224.0/20` Service range here: OpenShell's
 public-internet policy treats globally routable addresses as public even when a
@@ -140,6 +204,28 @@ cluster privately uses them. The same warning applies to privately used public P
 ranges on any provider. Supporting such ranges requires operator egress denial;
 configurable cluster-CIDR exclusions in the supervisor remain an open item.
 For a private cluster, provide outbound image-registry and model-provider access.
+
+### Create the Kubernetes Secret
+
+After the target cluster exists and kubectl selects that cluster, check its context:
+
+```sh
+kubectl config current-context
+```
+
+For the GKE commands above, the context is `gke_${GKE_PROJECT}_europe-west1-b_baskule`.
+Do not continue if the selected context points at another cluster. Use the private
+files from the Scaleway application-key recipe to create the Secret:
+
+```sh
+kubectl create namespace baskule
+kubectl -n baskule create secret generic baskule-bucket \
+  --from-file=AWS_ACCESS_KEY_ID="$private/AWS_ACCESS_KEY_ID" \
+  --from-file=AWS_SECRET_ACCESS_KEY="$private/AWS_SECRET_ACCESS_KEY"
+rm -rf "$private"
+```
+
+Install Agent Sandbox, then install the chart with the S3 values above.
 
 For an evaluation using Google's managed Ingress, create a `BackendConfig` in the Baskule namespace:
 
@@ -242,8 +328,8 @@ For external S3 on public IPs, standard NetworkPolicy cannot identify an endpoin
 DNS name or subtract the upstream driver's supervisor egress allow. The workload still
 has no direct egress, and S3 credentials stay with celld. Strict denial of even
 supervisor-mediated connections to a public S3 endpoint requires a private storage
-endpoint or operator-owned CNI/firewall rules. Do not assume the in-cluster RustFS
-network test proves that additional restriction for every external S3 provider.
+endpoint or operator-owned CNI/firewall rules. The kind-only storage fixture
+network test does not prove that restriction for an external S3 provider.
 
 Disabling `networkPolicy.enabled` removes the chart's private-service protection and
 is unsuitable for a shared cluster.
@@ -251,7 +337,7 @@ is unsuitable for a shared cluster.
 Garage v2.5.0 was tested and rejected by celld's conditional-write safety probe.
 Garage's [known issues](https://garagehq.deuxfleurs.fr/documentation/reference-manual/known-issues/)
 confirm that its design does not support conditional writes. It is unsuitable for
-celld leases. The evaluation option therefore uses RustFS, also used by Compose.
+celld leases. GCS's S3 API also failed create-if-absent enforcement; it is unsupported.
 
 ## Values
 
@@ -263,9 +349,8 @@ The main settings are:
 | `publicUrl` | `http://localhost:47090` | Public origin and setup link |
 | `replicas` | `2` | celld nodes, stable pod names and peer DNS |
 | `s3.endpoint`, `region`, `bucket` | external endpoint required | Shared celld storage |
-| `s3.existingSecret` | empty | Operator-owned S3 Secret; required for GitOps |
-| `s3.accessKeyId`, `secretAccessKey` | empty | External S3 keys, applied on each upgrade when no existing Secret; RustFS keys are generated once |
-| `rustfs.enabled` | `false` | Single-node evaluation S3 store |
+| `s3.existingSecret` | empty | Operator-owned S3 Secret; preferred for GitOps |
+| `s3.accessKeyId`, `secretAccessKey` | empty | External S3 keys, applied on each upgrade when no existing Secret |
 | `existingSecret` | generated once | `COMPUTERD_TOKEN`, `SETUP_TOKEN`, `PLUGIN_SYNC_TOKEN` |
 | `exposure.mode` | `none` | `none`, `ingress`, or `gateway` |
 | `exposure.serviceAnnotations` | `{}` | Worker Service annotations for the selected controller |
@@ -277,18 +362,20 @@ The main settings are:
 
 Supply private registry credentials through both `imagePullSecrets` and
 `openshell.imagePullSecrets`/`openshell.server.sandboxImagePullSecrets` as needed.
-The generated platform and S3 Secrets use Helm lookup on upgrade and are retained on
-uninstall. Only generated RustFS keys are preserved; supplied external S3 values
-replace the managed S3 Secret's keys on upgrade. Moving buckets also requires copying
+The generated platform Secret uses Helm lookup to preserve its tokens on upgrade.
+Chart-managed platform and S3 Secrets are retained on uninstall. Supplied S3 values
+replace the managed S3 Secret's keys on upgrade; `s3.existingSecret` remains operator-owned. Moving buckets also requires copying
 bucket data before switching values; changing credentials alone does not move data.
 Pods read keys at startup. For a credentials-only change, run
 `kubectl -n baskule rollout restart statefulset/baskule-celld` after updating the
-Secret; restart RustFS too if its credentials changed.
+Secret.
 
-GitOps (`helm template`, ArgoCD) and client-side dry runs cannot use server lookup:
-they generate new random values on each render. **Set both `existingSecret` and
-`s3.existingSecret` for those workflows**, including evaluation RustFS. Manage the
-three platform tokens and two S3 keys outside Helm. Also set `openshell.server.credentialStorage.existingSecret` to a pre-created
+GitOps (`helm template`, ArgoCD) and client-side dry runs cannot use server lookup
+to retain generated platform tokens. Set `existingSecret` for those workflows and
+manage the three platform tokens outside Helm. S3 keys are supplied values, so
+repeated rendering does not generate new S3 keys. Prefer `s3.existingSecret` to keep
+those credentials outside Helm values and rendered manifests.
+Also set `openshell.server.credentialStorage.existingSecret` to a pre-created
 Secret containing `key-encryption-key`, as documented by the vendored chart.
 Helm CLI installation is verified; GitOps controller hook ordering is not.
 If you supply `existingSecret`, Helm prints the setup URL template and the
@@ -307,7 +394,7 @@ helm upgrade baskule oci://ghcr.io/baskule/charts/baskule --version X \
 so a default image tag advances with the chart. An explicitly pinned
 `global.image.tag` remains pinned; remove it or update it deliberately. Plain
 `--reuse-values` retains the previous release's default tag and must not be used for
-a version upgrade. Keep evaluation `rustfs.enabled=true` in saved values.
+a version upgrade.
 
 The hook deploys the Worker and asks every configured celld node to reload it. celld
 pods update one at a time and have 50 seconds to hand off cells. App deployment is not
@@ -385,7 +472,8 @@ done
 BASKULE_K8S_TAG=kubernetes scripts/check feature:kubernetes
 ```
 
-The local check creates a kind cluster with Calico, Agent Sandbox and RustFS, using
+The local check creates a kind cluster with Calico, Agent Sandbox and a test-only
+RustFS fixture outside the chart, using
 a 1-CPU/1-GiB computer so it can run on a two-CPU CI host. The cloud run uses the
 production computer defaults. The journey runs
 setup, fake chat, computer exec, stop/start persistence, pod replacement, network
@@ -414,14 +502,14 @@ plus teardown time. Its EXIT/INT/TERM trap deletes the cluster, repository, node
 and remaining owned disks or load-balancer resources. Resources carry
 `baskule-ephemeral=true` and `baskule-run=<run-id>` where their APIs support labels.
 Other GKE-managed resources carry the unique run name in their names or descriptions.
-The cleanup audit also detects disks and load-balancer resources added since the run's
+The cleanup audit includes tagged Scaleway buckets and detects disks and load-balancer resources added since the run's
 baseline. Run `e2e/kubernetes-ephemeral.sh sweep` after an interrupted host session,
 or a lifetime/cleanup timeout, then `audit`. Kubernetes cleanup is bounded to eight
 minutes, each API request is bounded, and cluster deletion is attempted even if that
 phase times out. Teardown ignores repeated interrupts and gets up to 30 additional
 minutes before a hard kill. A Git-common-directory lock is shared across worktrees of this repository: global
 sweep refuses while a worker holds that project lock. It also refuses if any labelled
-cluster or Artifact Registry repository is younger than 120 minutes, or its creation
+cluster, Artifact Registry repository or tagged Scaleway bucket is younger than 120 minutes, or its creation
 time is unknown. This age guard covers other checkouts/machines; it is not a live
 process detector. `sweep --force` bypasses both guards only for deliberate recovery.
 Never publish kubeconfigs, private inventory, Helm notes or raw payloads.
@@ -432,6 +520,34 @@ same images. It prepares chat and file data, repeats configured public exposure,
 celld takeover, space/PVC deletion and the Helm upgrade, and skips the earlier
 reschedule/isolation/CDP selection. Set `BASKULE_K8S_JOURNEY=upgrade` to repeat
 only install, server-side credential rendering and same-version upgrade checks.
+For the ephemeral run, privately export `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and
+`SCW_DEFAULT_PROJECT_ID` for host-side bucket provisioning and cleanup. Separately
+export `BASKULE_S3_ACCESS_KEY` and `BASKULE_S3_SECRET_KEY` from a dedicated application
+with only the Object Storage policy on that project. The runner refuses to start
+without both application-key variables. Only those application credentials enter
+the cluster, through `kubectl create`, without a last-applied annotation. The
+`SCW_*` provisioning credentials stay on the host. The runner does not create IAM
+applications, policies or keys. The operator must provision the scoped application
+before the run, as in the recipe above.
+
+The completed GKE run used the operator's general key in celld. That historical
+storage/journey evidence does not verify the new application-key requirement or
+recipe. The credential separation is covered by local regression tests; no new
+cloud run was performed for this review fix.
+
+The runner requires `scw` v2.65.2 and Python `boto3`
+(`python3 -m pip install boto3` in your chosen environment). Each run creates a private,
+versioning-suspended `baskule-ephemeral-<run-id>` bucket tagged `baskule-ephemeral=true`
+and `baskule-run=<full bucket name>` in `fr-par`. Cleanup empties all objects and
+aborts multipart uploads before deleting the bucket. Sweep uses ownership tags or
+an exact bucket name recorded before creation, confined to the GCP and Scaleway
+projects. The exact-name record also covers a create/tag failure that leaves an
+untagged bucket. The audit checks those names too. Unrelated buckets are never
+deleted. A bucket failure does not stop GCP cleanup; the final audit still fails
+if bucket absence cannot be verified. The 90-minute run
+bound, shared live-run lock and 120-minute global sweep guard cover the bucket too.
+No GCS buckets, HMAC credentials or org-policy changes are used.
+
 The GKE runner requires the SDK's `docker-credential-gcloud` helper and uses a private
 shared Docker/Helm helper configuration so long runs can renew registry credentials.
 
@@ -444,6 +560,15 @@ source identities and health-check ranges vary between controllers, and GKE can
 rewrite source addresses. Operators must add controller-specific NetworkPolicy or
 firewall rules after verifying the observed sources. This chart does not claim
 Worker source isolation.
+
+Existing chart installs that used `rustfs.enabled` must be reinstalled with a cloud
+bucket; the retired values are rejected. There is no migration. Back up first, stop
+traffic, uninstall the release, provision a new bucket and credentials, then reinstall
+in a fresh namespace with the new values, Secrets and PVCs. A fresh bucket starts
+with no prior accounts, chats, files stored
+in celld, or settings. Retained PVCs/Secrets in the old namespace are not read by the new install;
+delete them only after deciding to discard their data. Existing computer workspace
+PVCs alone do not restore the lost celld/OpenShell mappings.
 
 This is alpha software. The chart does not migrate a Compose installation and changes
 no data in an existing install. Gateway HA, controller installation, model-provider
