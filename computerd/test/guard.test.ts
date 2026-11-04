@@ -36,3 +36,8 @@ test("IPv6 neighbour discovery precedes host drops", () => {
  const script = guardScript(["fd00::/64"]);
  for (const type of [133,134,135,136]) assert.ok(script.indexOf(`--icmpv6-type ${type} -j ACCEPT`) < script.indexOf("--dst-type LOCAL"));
 });
+
+test("subnets mask host bits and canonicalize IPv6", () => {
+ assert.equal(guardScript(["2001:db8:0:1:0:0:0:0/80"]), guardScript(["2001:db8:0:1::/80"]));
+ assert.equal(guardScript(["172.30.0.123/24"]), guardScript(["172.30.0.0/24"]));
+});

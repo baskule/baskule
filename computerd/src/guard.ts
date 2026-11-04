@@ -3,12 +3,37 @@ import { isIP } from "node:net";
 
 export const privateRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "127.0.0.0/8", "224.0.0.0/4", "240.0.0.0/4", "0.0.0.0/8"];
 
+function canonicalSubnet(subnet: string): string {
+  const [address, prefix, extra] = subnet.split("/");
+  const family = isIP(address);
+  const bits = Number(prefix);
+  if (!family || extra !== undefined || !/^\d+$/.test(prefix ?? "") || bits > (family === 4 ? 32 : 128)) throw new Error("Computer guard: invalid subnet");
+  if (family === 4) {
+    const value = address.split(".").reduce((n, part) => (n << 8) | Number(part), 0);
+    const masked = bits === 0 ? 0 : value & (-1 << (32 - bits));
+    return [24,16,8,0].map(shift => (masked >>> shift) & 255).join(".") + "/" + bits;
+  }
+  let text = address;
+  if (text.includes(".")) {
+    const last = text.lastIndexOf(":");
+    const octets = text.slice(last + 1).split(".").map(Number);
+    text = text.slice(0, last + 1) + ((octets[0] << 8) | octets[1]).toString(16) + ":" + ((octets[2] << 8) | octets[3]).toString(16);
+  }
+  const halves = text.split("::");
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves[1] ? halves[1].split(":") : [];
+  const words = halves.length === 2 ? [...left, ...Array(8-left.length-right.length).fill("0"), ...right] : left;
+  const masked = words.map((word, i) => (parseInt(word,16) & (bits >= i*16+16 ? 65535 : bits <= i*16 ? 0 : 65535 << (16-(bits-i*16)))).toString(16));
+  return new URL("http://[" + masked.join(":") + "]").hostname.slice(1,-1) + "/" + bits;
+}
+
 export function guardChain(subnets: string[], networkId: string): string {
-  return `BASKULE-${createHash("sha256").update(networkId + ":" + [...new Set(subnets)].sort().join(",")).digest("hex").slice(0, 16)}`;
+  return `BASKULE-${createHash("sha256").update(networkId + ":" + [...new Set(subnets.map(canonicalSubnet))].sort().join(",")).digest("hex").slice(0, 16)}`;
 }
 
 /** Each subnet set owns its chain, so independent installations cannot flush each other. */
 export function guardScript(subnets: string[], networkId: string, bridge = `br-${networkId.slice(0, 12)}`): string {
+  subnets = subnets.map(canonicalSubnet);
   if (!subnets.length) throw new Error("Computer guard: network has no subnets");
   for (const subnet of subnets) {
     const [address, prefix, extra] = subnet.split("/");
