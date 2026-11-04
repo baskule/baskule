@@ -9,13 +9,14 @@ COPY computerd/src computerd/src
 RUN pnpm --filter baskule-computerd deploy --prod /out
 
 FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea
-RUN apt-get update && apt-get install -y --no-install-recommends iptables && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends iptables util-linux && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=dependencies /out ./
 COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/baskule/
 LABEL org.opencontainers.image.source=https://github.com/baskule/baskule org.opencontainers.image.licenses=MIT
-USER node
+COPY --chmod=0755 computerd/entrypoint.sh /usr/local/bin/baskule-computerd-entrypoint
+ENTRYPOINT ["baskule-computerd-entrypoint"]
 ENV COMPUTERD_PORT=47094
 EXPOSE 47094
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --start-interval=1s --retries=3 \

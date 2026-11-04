@@ -11,8 +11,8 @@ Developers use [Build Baskule](../docs/building.md). The Helm chart is the only 
 | `celld/` | Shared node/job image containing Worker, web app and deployment utilities |
 | `build-env/` | Ubuntu 24.04 native build environment |
 
-Compose runs computerd against the host Docker socket, as user `node`. Set `DOCKER_GID`
-to `stat -c %g /var/run/docker.sock` (default 999) so it can access the socket.
+Compose runs computerd against the host Docker socket as user `node`. Its entrypoint
+discovers the socket group and drops privileges with that supplementary group.
 This grants Docker administration privileges. Computers use the separate
 `COMPUTER_NETWORK` bridge (default `baskule-computers`), created by computerd.
 The guard helper uses the computerd image with NET_ADMIN in the host network namespace;

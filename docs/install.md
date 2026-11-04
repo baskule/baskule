@@ -52,8 +52,7 @@ To change defaults, create `.env` next to the compose file, uncomment what you n
 # Trace UI bind (default 127.0.0.1), independent of BASKULE_BIND; requires COMPOSE_PROFILES=traces.
 #BASKULE_TRACES_BIND=127.0.0.1
 
-# Host Docker socket group: stat -c %g /var/run/docker.sock (default 999).
-#DOCKER_GID=999
+# Network and DNS for host Docker computers.
 #COMPUTER_NETWORK=baskule-computers
 #COMPUTER_DNS=1.1.1.1,8.8.8.8
 ```
@@ -153,7 +152,7 @@ The example above lists common settings. All settings are optional:
 | `BASKULE_TRACES_BIND`, `BASKULE_TRACES_PORT` | `127.0.0.1`, `47098` | Trace UI listener, independent of the HTTP and HTTPS edge |
 
 Each computer has its own resource limits. See [installation settings](installation-settings.md) for app settings.
-Set `DOCKER_GID` to the output of `stat -c %g /var/run/docker.sock` before starting.
+The computerd entrypoint discovers the socket group automatically and runs as `node`.
 The socket grants Docker administration privileges. Docker must expose the iptables
 DOCKER-USER chain; nftables-only Docker is unsupported. The private-network guard
 fails closed: ensure returns HTTP 503 without creating a computer if rules cannot be verified.
