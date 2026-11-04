@@ -27,12 +27,17 @@ export function guardScript(subnets: string[]): string {
       `-A ${chain} -m addrtype --dst-type LOCAL -j DROP`,
       ...(family === 4 ? privateRanges : ["fc00::/7", "fe80::/10", "::1/128", "ff00::/8"]).map(range => `-A ${chain} -d ${range} -j DROP`), "COMMIT", "GUARD");
     for (const parent of ["DOCKER-USER", "FORWARD", "INPUT"]) {
-      // Multiple sources occupy the leading block in deterministic order.
+      // Our jumps must sit in the leading block of guard jumps, ahead of any other rule (a VPN's ACCEPT, for
+      // example). Other installations' guard jumps may share that block, so they never fight over position 1.
+      // Insert first, then drop later duplicates, so the subnet is never unguarded in between.
       const jumps = sources.map(subnet => `-A ${parent} -s ${subnet} -j ${chain}`);
-      lines.push(`if [ "$(${tool} -w -S ${parent} | grep '^-A ' | head -n ${sources.length})" != '${jumps.join("\n")}' ]; then`);
-      for (const subnet of sources) lines.push(`while ${tool} -w -C ${parent} -s ${subnet} -j ${chain} 2>/dev/null; do ${tool} -w -D ${parent} -s ${subnet} -j ${chain}; done`);
+      lines.push(`leading=$(${tool} -w -S ${parent} | grep '^-A ' | awk '!/ -j BASKULE-[0-9a-f]+$/ { exit } { print }')`);
+      lines.push(`if ! { ${jumps.map(jump => `printf '%s\\n' "$leading" | grep -qxF -- '${jump}'`).join(" && ")}; }; then`);
       for (const subnet of [...sources].reverse()) lines.push(`${tool} -w -I ${parent} 1 -s ${subnet} -j ${chain}`);
       lines.push("fi");
+      for (const jump of jumps) {
+        lines.push(`${tool} -w -S ${parent} | awk -v rule='${jump}' '/^-A / { n++ } $0 == rule && ++seen > 1 { print n }' | sort -rn | while read -r n; do ${tool} -w -D ${parent} "$n"; done`);
+      }
       for (const subnet of sources) {
         // Delete only legacy rules carrying this exact subnet's tag, by rule number.
         lines.push(`${tool} -w -S ${parent} | awk '/^-A / { n++ } /--comment "?baskule-computer-guard:${subnet.replaceAll(".", "\\.").replaceAll("/", "\\/")}"? / { print n }' | sort -rn | while read -r n; do ${tool} -w -D ${parent} "$n"; done`);
