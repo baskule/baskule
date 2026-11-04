@@ -42,6 +42,18 @@ class HttpError extends Error {
 }
 
 const MAX_JSON = 128 * 1024 * 1024;
+async function writeResponse(res: http.ServerResponse, data: string | Buffer) {
+  if (res.destroyed) throw Error("response closed");
+  if (res.write(data)) return;
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => { res.off("drain", drained); res.off("close", closed); res.off("error", failed); };
+    const drained = () => { cleanup(); resolve(); };
+    const closed = () => { cleanup(); reject(Error("response closed")); };
+    const failed = (error: Error) => { cleanup(); reject(error); };
+    res.once("drain", drained); res.once("close", closed); res.once("error", failed);
+  });
+}
+
 const MAX_ARGV_BYTES = 200 * 1024; // Bound request size before spawning a command.
 const KILL_GRACE_MS = 3000;
 
@@ -171,7 +183,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
     running.set(id, entry);
     res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store", "x-exec-id": id });
     res.flushHeaders();
-    const frame = (o: object) => res.write(JSON.stringify(o) + "\n");
+    const frame = (o: object) => writeResponse(res, JSON.stringify(o) + "\n");
     let timer: NodeJS.Timeout | null = null;
     if (timeoutMs > 0) timer = setTimeout(() => terminate(spaceId, id), timeoutMs);
     res.on("close", () => {
@@ -185,17 +197,17 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
     try {
       for await (const ev of x.events) {
         computers.touch(spaceId);
-        if ("stdout" in ev) frame({ t: "o", d: ev.stdout.toString("base64") });
-        else if ("stderr" in ev) frame({ t: "e", d: ev.stderr.toString("base64") });
+        if ("stdout" in ev) await frame({ t: "o", d: ev.stdout.toString("base64") });
+        else if ("stderr" in ev) await frame({ t: "e", d: ev.stderr.toString("base64") });
         else {
-          frame({ t: "x", code: ev.exit });
+          await frame({ t: "x", code: ev.exit });
           exited = true;
           break;
         }
       }
-      if (!exited) frame({ t: "err", msg: "exec stream ended without an exit status" });
+      if (!exited) await frame({ t: "err", msg: "exec stream ended without an exit status" });
     } catch (e: any) {
-      frame({ t: "err", msg: String(e?.message ?? e) });
+      await frame({ t: "err", msg: String(e?.message ?? e) });
     } finally {
       entry.finished = true;
       running.delete(id);
@@ -233,9 +245,10 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
     const count = range && range.end !== undefined && range.start !== undefined ? String(range.end - range.start + 1) : "";
     const suffix = range && range.suffix !== undefined ? String(range.suffix) : "";
     const release = acquire(spaceId);
+    let x: ReturnType<typeof startExec> | undefined;
     try {
       await ensureFor(spaceId);
-      const x = startExec(backend, cfg.sandboxRoot, {
+      x = startExec(backend, cfg.sandboxRoot, {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", GET_SCRIPT, statOnly ? "stat" : "auto", path, start, count, suffix, cfg.sandboxRoot],
       });
@@ -248,8 +261,8 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
       const errChunks: Buffer[] = [];
       let code: number | null = null;
       const it = x.events[Symbol.asyncIterator]();
-      const onData = (d: Buffer) => {
-        if (phase === "read") return void res.write(d);
+      const onData = async (d: Buffer) => {
+        if (phase === "read") return await writeResponse(res, d);
         if (phase === "other") return;
         if (phase === "list") {
           listBytes += d.length;
@@ -290,7 +303,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
           if (range) headers["content-range"] = `bytes ${st}-${st + n - 1}/${info!.size}`;
           res.writeHead(range ? 206 : 200, headers);
           phase = "read";
-          if (head.length) res.write(head);
+          if (head.length) await writeResponse(res, head);
           return;
         }
       };
@@ -298,7 +311,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
         const r = await it.next();
         if (r.done) break;
         const ev = r.value as ExecEvent;
-        if ("stdout" in ev) onData(ev.stdout);
+        if ("stdout" in ev) await onData(ev.stdout);
         else if ("stderr" in ev) errChunks.push(ev.stderr);
         else code = ev.exit;
       }
@@ -316,6 +329,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
       if (phase === "list") return json(res, 200, { path, ...info, entries: parseEntries(Buffer.concat(listChunks)) });
       return json(res, 200, { path, ...info });
     } finally {
+      x?.cancel();
       release();
     }
   }

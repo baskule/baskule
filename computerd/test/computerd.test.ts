@@ -574,7 +574,7 @@ test("backend config defaults to Docker and validates the selection", () => {
 
 test("ensure recovers backend errors by restarting the machine", async () => {
   await computers.ensure("backend-error");
-  fake.fail(namesFor("backend-error").sandbox);
+  await fake.fail(namesFor("backend-error").sandbox);
   const before = fake.calls.length;
   assert.equal((await c.req("POST", "/v1/spaces/backend-error/computer/ensure", {})).status, 200);
   assert.equal((await c.json("GET", "/v1/spaces/backend-error/computer")).error, null);
@@ -605,10 +605,10 @@ test("error recovery is attempted once", async (t) => {
   await cs.ensure("recover");
   const name = namesFor("recover", cfg.instance).sandbox;
   const machine = f.sandboxes.get(name)!;
-  f.fail(name);
+  await f.fail(name);
   await cs.ensure("recover");
   assert.equal(machine.phase, "ready");
-  f.fail(name);
+  await f.fail(name);
   f.start = async () => { machine.phase = "error"; return machine; };
   await assert.rejects(cs.ensure("recover"), /machine failed/);
   assert.equal(f.calls.filter(c => c.method === "stop").length, 2);

@@ -2,9 +2,9 @@
 // 1 start JSON {argv,cwd,env,id}; 2 stdin; 3 EOF; 4 stdout; 5 stderr;
 // 6 exit decimal; 7 signal; 8 credit decimal; 9 error; 10 ping; 11 pong;
 // 12 detach. Each direction starts with 1 MiB credit per exec; consumers
-// replenish only consumed bytes. Frames are at most 256 KiB (data: 64 KiB).
+// replenish only consumed bytes. Start frames allow the HTTP JSON limit plus escaping; data frames are at most 64 KiB.
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, unlinkSync, statSync } from 'node:fs';
 import { constants } from 'node:os';
 const jobs = new Map();
 let buffer = Buffer.alloc(0);
@@ -33,15 +33,19 @@ function receive(type, handle, data) {
   if (type === 1) {
     const o = JSON.parse(data);
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(o.id)) throw Error('Invalid exec id');
+    if (o.cwd) {
+      try { if (!statSync(o.cwd).isDirectory()) throw Error('Not a directory'); }
+      catch (e) { send(5, handle, Buffer.from(`cd: ${o.cwd}: ${e.code === 'ENOENT' ? 'No such file or directory' : e.message}\n`).subarray(0, 4096)); send(6, handle, '1'); return; }
+    }
     const child = spawn(o.argv[0], o.argv.slice(1), { detached: true, cwd: o.cwd, env: { ...process.env, ...o.env }, stdio: ['pipe','pipe','pipe'] });
     const j = { child, handle, credit: 1048576, discard: false };
     jobs.set(handle, j);
     const path = '/tmp/.osj/' + o.id;
-    if (child.pid) { mkdirSync('/tmp/.osj', { recursive: true }); writeFileSync(path, String(child.pid)); }
+    try { if (child.pid) { mkdirSync('/tmp/.osj', { recursive: true }); writeFileSync(path, String(child.pid)); } } catch {}
     for (const s of [child.stdout, child.stderr]) s.on('readable', () => pump(j));
     child.stdin.on('error', () => {});
     let failure;
-    child.on('error', e => { failure = e.code === 'ENOENT' ? 127 : 126; if (!j.discard) send(5, handle, `${o.argv[0]}: ${e.message}\n`); });
+    child.on('error', e => { failure = e.code === 'ENOENT' ? 127 : 126; if (!j.discard) send(5, handle, Buffer.from(`${e.message}\n`).subarray(0, 4096)); });
     child.on('close', (code, signal) => {
       try { unlinkSync(path); } catch {}
       jobs.delete(handle);
@@ -60,9 +64,10 @@ process.stdin.on('data', chunk => {
   try {
     buffer = Buffer.concat([buffer, chunk]);
     while (buffer.length >= 4) {
-      const n = buffer.readUInt32BE(); if (n < 5 || n > 262144) throw Error('Invalid frame');
+      const n = buffer.readUInt32BE(); if (n < 5 || n > (6 * 128 + 1) * 1024 * 1024) throw Error('Invalid frame');
       if (buffer.length < n + 4) break;
-      receive(buffer[4], buffer.readUInt32BE(5), buffer.subarray(9, n + 4)); buffer = buffer.subarray(n + 4);
+      try { receive(buffer[4], buffer.readUInt32BE(5), buffer.subarray(9, n + 4)); }
+      catch (e) { const handle = buffer.readUInt32BE(5); send(5, handle, Buffer.from(String(e.message)).subarray(0, 4096)); send(6, handle, e.code === 'ENOENT' ? '127' : '126'); } buffer = buffer.subarray(n + 4);
     }
   } catch { process.exit(1); }
 });

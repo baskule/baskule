@@ -148,7 +148,7 @@ export class Computers {
     if (opts.keep !== undefined) s.keep = opts.keep;
     if (s.ensuring) return s.ensuring;
     // An open agent session proves the machine is running: its stream ends when the machine stops.
-    if (s.prepared && !s.stopping && liveSession(this.backend, s.sandbox)) {
+    if (s.prepared && s.readyAt !== null && Date.now() - s.readyAt < 5000 && !s.stopping && liveSession(this.backend, s.sandbox)) {
       return Promise.resolve({ spaceId: s.spaceId, sandbox: s.sandbox, created: false, started: false, ms: 0 });
     }
     // Otherwise query the backend: a computer stopped behind our back is restarted.

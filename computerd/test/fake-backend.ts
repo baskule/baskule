@@ -1,4 +1,4 @@
-import { closeSessions } from "../src/session.ts";
+import { closeSessions, liveSession } from "../src/session.ts";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import type { Backend, Machine, MachineSpec, ExecStart, ExecHandle, ExecEvent } from "../src/backend.ts";
@@ -36,21 +36,28 @@ export class FakeBackend implements Backend {
     this.calls.push({ method: "stop", req: { name } });
     const s = this.sandboxes.get(name);
     if (s) s.phase = "stopped";
-    this.endStreams(name);
+    await this.endStreams(name);
   }
   /** The machine fails behind computerd's back: like a real backend, its exec streams end. */
-  fail(name: string, error = "machine failed") {
+  async fail(name: string, error = "machine failed") {
     const s = this.sandboxes.get(name)!;
     s.phase = "error"; s.error = error;
-    this.endStreams(name);
+    await this.endStreams(name);
   }
   private children = new Map<string, Set<ReturnType<typeof spawn>>>();
-  private endStreams(name: string) {
-    closeSessions(this, name);
-    for (const child of this.children.get(name) ?? []) child.kill("SIGKILL");
+  private async endStreams(name: string) {
+    const children = [...(this.children.get(name) ?? [])];
+    const closed = Promise.all(children.map(child => new Promise<void>(resolve => child.once("close", () => resolve()))));
+    for (const child of children) child.kill("SIGKILL");
+    await closed;
+    const deadline = Date.now() + 5000;
+    while (liveSession(this, name)) {
+      if (Date.now() > deadline) throw Error("session did not observe EOF");
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
   }
   async remove(name: string, disk: string) {
-    this.endStreams(name);
+    await this.endStreams(name);
     return { machineDeleted: this.sandboxes.delete(name), diskDeleted: this.disks.delete(disk) };
   }
   exec(st: ExecStart): ExecHandle {
