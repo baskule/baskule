@@ -42,7 +42,7 @@ for (const scenario of ["absent legacy", "absent legacy with data", "target abse
 
 test("legacy inventory is shared and fresh disks skip migration helpers", async () => {
   const { DockerBackend } = await import("../src/docker.ts");
-  const backend: DockerBackend = Object.create(DockerBackend.prototype);
+  const backend: InstanceType<typeof DockerBackend> = Object.create(DockerBackend.prototype);
   const requests: string[] = [];
   Object.assign(backend, {
     legacyVolume: "legacy",

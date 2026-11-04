@@ -54,10 +54,9 @@ export interface Backend {
   /** Creates the disk if missing, then the machine, and resolves once it is ready. An existing machine is started. */
   create(spec: MachineSpec): Promise<Machine>;
   /** Resolves once the machine is ready. */
+  start(name: string): Promise<Machine>;
   /** Replaces a stopped machine with one built from spec (new image or limits), keeping its disk; resolves once ready. */
   recreate(spec: MachineSpec): Promise<Machine>;
-  start(name: string): Promise<Machine>;
-  /** Replaces a stopped machine with one built from spec (new image or limits), keeping its disk; resolves once ready. */ recreate(spec: MachineSpec): Promise<Machine>;
   /** Resolves once the machine is stopped or absent. The disk is kept. */
   stop(name: string): Promise<void>;
   /** Removes the machine and its disk; resolves once both are gone. */
