@@ -255,5 +255,7 @@ OpenShell is removed. Keep the legacy `baskule-openshell-docker` Compose volume 
 `COMPUTER_LEGACY_VOLUME` selects that volume; Compose supplies its project-prefixed name.
 On first ensure, a no-network helper copies `volumes/baskule-space-<suffix>/_data`
 into the host disk and writes `.baskule-migrated`. Keep a backup of the legacy volume
-until migration and file contents are checked. The regular backup includes migrated
-`baskule-space-*` volumes, not the legacy store.
+until migration and file contents are checked. The regular backup includes migrated `baskule-space-*` volumes and unmigrated
+legacy disks. Set `COMPUTER_LEGACY_VOLUME` on backup and restore jobs to the same
+legacy volume used by computerd. Restore recreates that store for lazy migration
+and refuses to overwrite an existing legacy volume.

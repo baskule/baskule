@@ -4,6 +4,7 @@ set -euo pipefail
 : "${BACKUP_IMAGE:?helper image required}"
 api() { curl --silent --show-error --fail --unix-socket /var/run/docker.sock "$@"; }
 url=http://localhost
+legacy=${COMPUTER_LEGACY_VOLUME:-}
 stage=$(mktemp -d)
 helper=
 cleanup() {
@@ -26,8 +27,25 @@ backup)
     api -G --data-urlencode 'path=/disk/.' "$url/containers/$helper/archive" > "$stage/disks/$name.tar"
     unmount_disk
   done < <(jq -r '.[].Name' "$stage/volumes.json")
+  mkdir "$stage/legacy"
+  if [ -n "$legacy" ]; then
+    api "$url/volumes" > "$stage/existing.json"
+    if jq -e --arg name "$legacy" 'any(.Volumes[]?; .Name == $name)' "$stage/existing.json" >/dev/null; then
+      mount_disk "$legacy" true
+      api -G --data-urlencode 'path=/disk/.' "$url/containers/$helper/archive" > "$stage/legacy-store.tar"
+      unmount_disk
+      mkdir "$stage/legacy-store"
+      tar -xf "$stage/legacy-store.tar" -C "$stage/legacy-store"
+      for data in "$stage/legacy-store"/volumes/baskule-space-*/_data; do
+        [ -d "$data" ] || continue
+        name=$(basename "$(dirname "$data")")
+        [[ "$name" =~ ^baskule-space-[a-zA-Z0-9_-]+$ ]] || exit 1
+        tar -C "$(dirname "$data")" -cf "$stage/legacy/$name.tar" _data
+      done
+    fi
+  fi
   tar --xattrs --xattrs-include='*' --numeric-owner -C /backup -cf "$stage/platform.tar" .
-  tar -C "$stage" -czf - platform.tar volumes.json disks
+  tar -C "$stage" -czf - platform.tar volumes.json disks legacy
   ;;
 restore)
   tar -C "$stage" -xzf -
@@ -38,6 +56,22 @@ restore)
   # Reject existing names before changing any data, including another installation's disks.
   api "$url/volumes" > "$stage/existing.json"
   jq -e --slurpfile existing "$stage/existing.json" 'all(.[]; .Name as $name | all($existing[0].Volumes[]?; .Name != $name))' "$stage/volumes.json" >/dev/null
+  if [ -d "$stage/legacy" ] && [ -n "$(ls -A "$stage/legacy")" ]; then
+    : "${COMPUTER_LEGACY_VOLUME:?legacy volume required to restore unmigrated spaces}"
+    # Refuse an existing store rather than overwrite another installation.
+    jq -e --arg name "$legacy" 'all(.Volumes[]?; .Name != $name)' "$stage/existing.json" >/dev/null
+    for archive in "$stage/legacy/"*.tar; do
+      name=$(basename "$archive" .tar)
+      [[ "$name" =~ ^baskule-space-[a-zA-Z0-9_-]+$ ]] || exit 1
+      mkdir -p "$stage/restore-legacy/volumes/$name"
+      tar -xf "$archive" -C "$stage/restore-legacy/volumes/$name"
+    done
+    api -H 'Content-Type: application/json' -d "$(jq -nc --arg name "$legacy" '{Name:$name}')" "$url/volumes/create" >/dev/null
+    tar -C "$stage/restore-legacy" -cf "$stage/restore-legacy.tar" volumes
+    mount_disk "$legacy" false
+    api -X PUT -H 'Content-Type: application/x-tar' --data-binary "@$stage/restore-legacy.tar" "$url/containers/$helper/archive?path=/disk" >/dev/null
+    unmount_disk
+  fi
   while read -r metadata; do
     name=$(jq -r .Name <<< "$metadata")
     api -H 'Content-Type: application/json' -d "$metadata" "$url/volumes/create" >/dev/null
