@@ -179,10 +179,12 @@ installation. Computer disks stay local. Back up the external bucket separately.
 
 ## Backup and restore
 
-Stop services before copying state:
+Stop services and computers before copying state. Replace `<instance>` below with
+`COMPUTERD_INSTANCE`, defaulting to the Compose project name (`docker compose config --format json | jq -r .name`):
 
 ```sh
 docker compose down
+docker ps -q --filter label=baskule.managed=true --filter label=baskule.instance="<instance>" | xargs -r docker stop
 umask 077
 docker compose run --rm -T backup > backup.tar.gz
 ```
@@ -227,8 +229,10 @@ before migration reads the legacy volume.
 
 The compose file selects the released version. Keep your optional `.env`; no version edit or secret regeneration
 is needed. Updates can interrupt chats and commands. Check sign-in and a computer command after reconnecting.
-`docker compose down` stops services and retains data. `docker compose down -v` deletes all local data and secrets;
-it does not delete external S3. Only for a wipe explicitly approved by the owner, preserve backups, remove volumes, empty external S3
+`docker compose down` stops services and retains data. `docker compose down -v` deletes Compose volumes and secrets.
+Computers and their disks are separate: in a source checkout, `deploy/down.sh --purge` also removes
+this installation’s labelled computer containers, disks, and computers network. Use the same
+Compose project name and `COMPUTERD_INSTANCE` as the installation. External S3 is not deleted by Compose. Only for a wipe explicitly approved by the owner, preserve backups, remove volumes, empty external S3
 if used, and start the new release with a fresh setup link.
 
 ## Troubleshooting

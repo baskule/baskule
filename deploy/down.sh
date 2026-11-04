@@ -6,7 +6,15 @@ stack_lock_check
 docker rm -f baskule-e2e-llm >/dev/null 2>&1 || true  # the e2e LLM router (e2e/llm) is attached to baskule-net
 if [ "${1:-}" = --purge ]; then
   read -r -p "Delete ALL baskule data (bucket, computers)? type 'purge': " a; [ "$a" = purge ] || exit 1
+  config=$(dc config --format json)
+  instance=$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].environment.COMPUTERD_INSTANCE')
+  network=$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].environment.COMPUTER_NETWORK')
   dc down -v --remove-orphans
+  docker ps -aq --filter label=baskule.managed=true --filter "label=baskule.instance=$instance" | xargs -r docker rm -f
+  docker volume ls -q --filter label=baskule.managed=true --filter "label=baskule.instance=$instance" | xargs -r docker volume rm
+  if docker network inspect "$network" >/dev/null 2>&1; then
+    docker network rm "$network"
+  fi
   # An external bucket (docs/install.md#external-s3) holds the cells' data outside the volumes: empty it too.
   if [ -n "$(env_get S3_ENDPOINT)" ]; then
     docker run --rm -e AWS_ACCESS_KEY_ID="$(env_get S3_ACCESS_KEY)" -e AWS_SECRET_ACCESS_KEY="$(env_get S3_SECRET_KEY)" \
