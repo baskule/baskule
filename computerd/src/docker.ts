@@ -25,15 +25,34 @@ export class DockerBackend implements Backend {
   private guardPending: Promise<void> | undefined;
   private guardVerified: { subnets: string[]; at: number } | undefined;
   private async requireGuard(): Promise<void> {
+    if (this.guardVerified) return;
     if (this.guardPending) await this.guardPending.catch(() => {});
     if (!this.guardVerified) await this.verifyGuard();
   }
   private readonly guardTimer: ReturnType<typeof setInterval>;
+  private readonly guardStarted = Date.now();
+  private readonly guardInstance = process.env.COMPUTERD_INSTANCE ?? "";
+  private guardHelpersCleaned = false;
+  private async stopUnguarded(): Promise<void> {
+    log.error("Computer guard unavailable; stopping managed computers");
+    const machines = await this.list({ "baskule.managed": "true", ...(this.guardInstance ? { "baskule.instance": this.guardInstance } : {}) });
+    await Promise.all(machines.filter(machine => machine.phase === "ready").map(machine => this.stop(machine.name)));
+  }
   private verifyGuard(): Promise<void> {
-    return this.guardPending ??= this.reconcileGuard().catch(error => { this.guardVerified = undefined; throw error; }).finally(() => { this.guardPending = undefined; });
+    return this.guardPending ??= this.reconcileGuard().catch(async error => {
+      const wasVerified = !!this.guardVerified;
+      this.guardVerified = undefined;
+      if (wasVerified || Date.now() - this.guardStarted >= 60_000) await this.stopUnguarded();
+      throw error;
+    }).finally(() => { this.guardPending = undefined; });
   }
   private async reconcileGuard(): Promise<void> {
-    this.guardVerified = undefined;
+    if (!this.guardHelpersCleaned) {
+      const filters = key(JSON.stringify({ label: ["baskule.guard-helper=true", `baskule.instance=${this.guardInstance}`] }));
+      const helpers = await this.request<{ Id: string }[]>("GET", `/containers/json?all=true&filters=${filters}`);
+      for (const helper of helpers) await this.request("DELETE", `/containers/${helper.Id}?force=true`);
+      this.guardHelpersCleaned = true;
+    }
     try { await this.request("GET", `/networks/${key(this.network)}`); }
     catch (error) {
       if (!(error instanceof DockerError && error.status === 404)) throw error;
@@ -45,7 +64,7 @@ export class DockerBackend implements Backend {
     if (network.Driver !== "bridge") throw new Error("Computer guard requires a Docker bridge network");
     const script = guardScript(network.IPAM.Config.map(config => config.Subnet));
     const helper = await this.request<{ Id: string }>("POST", "/containers/create", {
-      Image: this.guardImage, User: "0:0", Tty: true,
+      Image: this.guardImage, Labels: { "baskule.guard-helper": "true", "baskule.instance": this.guardInstance }, User: "0:0", Tty: true,
       Entrypoint: ["/bin/sh", "-ec", script],
       HostConfig: { NetworkMode: "host", CapDrop: ["ALL"], CapAdd: ["NET_ADMIN"], SecurityOpt: ["no-new-privileges"], ReadonlyRootfs: true },
     });
@@ -64,7 +83,9 @@ export class DockerBackend implements Backend {
     this.network = network;
     this.guardImage = guardImage;
     this.dns = dns;
-    this.guardTimer = setInterval(() => { void this.verifyGuard().catch(error => log.error("Computer guard reconciliation failed", { error: String(error) })); }, 60_000);
+    this.guardTimer = setInterval(() => {
+      if (!this.guardVerified) void this.stopUnguarded().catch(error => log.error("Failed to stop unguarded computers", { error: String(error) }));
+      void this.verifyGuard().catch(error => log.error("Computer guard reconciliation failed", { error: String(error) })); }, 60_000);
     this.guardTimer.unref();
     this.socketPath = host.replace(/^unix:\/\//, "");
     if (!this.socketPath.startsWith("/")) throw new Error("DOCKER_HOST must be an absolute Unix socket path");
