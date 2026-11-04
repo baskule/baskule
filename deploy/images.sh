@@ -44,6 +44,6 @@ bridge=$(sha256sum "$ROOT/computer/browser/bridge.mjs" | cut -c1-16)
 
 build_one "baskule-computer:$TAG" '"$ROOT/computer/build.sh" -q >/dev/null' "$bridge" "$ROOT/computer"
 # Source nodes mount the app at deploy time; bundle changes never rebuild their image.
-build_one "baskule-celld:$TAG" 'nice -n 10 docker build --target source --network host -q -t "baskule-celld:$TAG" -f "$DEPLOY_DIR/celld/Dockerfile" "$ROOT" >/dev/null' "" "$DEPLOY_DIR/celld/Dockerfile" "$DEPLOY_DIR/celld/jobs.sh" "$DEPLOY_DIR/celld/sync-plugins.sh"
+build_one "baskule-celld:$TAG" 'nice -n 10 docker build --target source --network host -q -t "baskule-celld:$TAG" -f "$DEPLOY_DIR/celld/Dockerfile" "$ROOT" >/dev/null' "" "$DEPLOY_DIR/celld/Dockerfile" "$DEPLOY_DIR/celld/backup.sh" "$DEPLOY_DIR/celld/jobs.sh" "$DEPLOY_DIR/celld/sync-plugins.sh"
 # Hash the shared lock as a whole: platform/e2e dependency changes may also rebuild computerd.
 build_one "baskule-computerd:$TAG" 'nice -n 10 docker build --network host -q -t "baskule-computerd:$TAG" -f "$ROOT/computerd/Dockerfile" "$ROOT" >/dev/null' "" "$ROOT/computerd" "$ROOT/package.json" "$ROOT/pnpm-workspace.yaml" "$ROOT/pnpm-lock.yaml"
