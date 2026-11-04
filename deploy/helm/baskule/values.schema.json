@@ -151,7 +151,7 @@
           "type": "string"
         },
         "cpus": {
-          "type": "string"
+          "type": ["string", "number"]
         },
         "memory": {
           "type": "string"
