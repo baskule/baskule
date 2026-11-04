@@ -119,8 +119,9 @@ The Gateway example is unverified on GKE, including its client-IP behavior.
 
 computerd uses a dedicated ServiceAccount, `<release>-computerd`, bound to a
 least-privilege Role in the release namespace. The Role manages `agents.x-k8s.io`
-Sandboxes (get, list, watch, create, patch, delete), reads pods, creates `pods/exec` and
-`pods/portforward`, and reads and deletes PersistentVolumeClaims. computerd is the only
+Sandboxes (get, list, watch, create, update, patch, delete), reads pods (get, list, watch),
+accesses `pods/exec` and `pods/portforward` (get, create), and manages
+PersistentVolumeClaims (get, list, watch, delete). computerd is the only
 chart pod that mounts a service account token. That Role can exec into any pod in the
 namespace: keep the namespace exclusive to Baskule and its trusted operators.
 
@@ -130,8 +131,9 @@ a ReadWriteOnce PVC named `<disk>-<sandbox>` with `computers.diskSize` and
 rest of the filesystem comes from the computer image and resets whenever the pod is
 recreated, including on stop/start. computerd stops and resumes a computer by setting the
 Sandbox's `operatingMode` to `Suspended` or `Running`. Exec and port connections, including
-CDP, use the Kubernetes API WebSocket. Image, resource, disk and scheduling settings apply
-when a Sandbox is created; existing computers keep theirs.
+CDP, use the Kubernetes API WebSocket. On next start, stopped computers with a changed image ID or CPU/memory limits are
+recreated with the current image, limits and scheduling settings, retaining their PVC.
+Scheduling changes alone do not trigger recreation; existing PVC size and storage class remain unchanged.
 
 Computer pods run as non-root user and group 1000, drop all capabilities, disable privilege
 escalation, use RuntimeDefault seccomp, mount no service account token, and run tini as
@@ -457,7 +459,9 @@ so a default image tag advances with the chart. An explicitly pinned
 `global.image.tag` remains pinned; remove it or update it deliberately. Plain
 `--reuse-values` retains the previous release's default tag and must not be used for
 a version upgrade.
-New computer images and settings apply only to computers created afterwards.
+Stopped computers adopt changed images and CPU/memory limits on next start through
+recreation, which also applies current scheduling settings and retains the existing PVC.
+Running computers are not automatically recreated.
 
 The hook deploys the Worker and asks every configured celld node to reload it. celld
 pods update one at a time and have 50 seconds to hand off cells. App deployment is not
@@ -670,6 +674,6 @@ The chart does not migrate a Compose installation and changes no data in an exis
 Compose install. computerd high availability, controller installation, model-provider
 credentials, TLS automation, and multi-zone storage failover are outside this chart.
 Volumes can move only where the selected StorageClass permits. Only `/sandbox/space`
-persists; existing computers keep the image they were created with when the computer
-image changes. EKS, AKS, Kapsule, alternative Ingress/Gateway controllers, RuntimeClasses
+persists; stopped computers are recreated on next start when their image ID or CPU/memory
+limits change, retaining the PVC and applying current scheduling settings. EKS, AKS, Kapsule, alternative Ingress/Gateway controllers, RuntimeClasses
 and full disaster recovery need their own verification.
