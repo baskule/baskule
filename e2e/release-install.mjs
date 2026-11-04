@@ -135,7 +135,7 @@ function stopWorld(w) {
   const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
   if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);
   w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
-    purgeComputers(w);
+  purgeComputers(w);
 }
 function scopedSecrets(w) {
   for (const [service, role, keys] of [
@@ -543,7 +543,8 @@ try {
     const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
     if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);
     w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
-    purgeComputers(w);
+    // Best effort: a cleanup failure must not hide the test failure or skip the remaining cleanup.
+    try { purgeComputers(w); } catch (error) { console.error(`computer cleanup failed for ${w.project}: ${error.message}`); }
   }
   for (const [name, kind] of containers) if (kind === "storage") command(["rm", "-f", name], { allowFailure: true });
   for (const volume of fixtureVolumes) command(["volume", "rm", volume], { allowFailure: true });
