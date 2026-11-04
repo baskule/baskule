@@ -91,7 +91,7 @@ export class DockerBackend implements Backend {
     if (!this.socketPath.startsWith("/")) throw new Error("DOCKER_HOST must be an absolute Unix socket path");
     void this.verifyGuard().catch(error => log.error("Computer guard reconciliation failed", { error: String(error) }));
   }
-  private request<T>(method: string, path: string, body?: object, decode: (text: string) => T = JSON.parse): Promise<T> {
+  private request<T>(method: string, path: string, body?: object, decode: (text: string) => T = JSON.parse, timeoutMs = 180_000): Promise<T> {
     return new Promise((resolve, reject) => {
       const data = body === undefined ? undefined : JSON.stringify(body);
       const req = http.request({ socketPath: this.socketPath, path, method,
@@ -105,7 +105,7 @@ export class DockerBackend implements Backend {
           resolve(text ? decode(text) : JSON.parse("null"));
         } catch (error) { reject(error); }
       });
-      req.setTimeout(180_000, () => req.destroy(new Error("Docker request timed out")));
+      req.setTimeout(timeoutMs, () => req.destroy(new Error("Docker request timed out")));
       req.on("error", reject);
       req.end(data);
     });
@@ -176,7 +176,7 @@ export class DockerBackend implements Backend {
     try {
       log.info("Disk migration check started", { disk: spec.disk });
       await this.request("POST", `/containers/${helper.Id}/start`);
-      const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`);
+      const result = await this.request<{ StatusCode: number }>("POST", `/containers/${helper.Id}/wait?condition=not-running`, undefined, JSON.parse, 0);
       const output = await this.request<string>("GET", `/containers/${helper.Id}/logs?stdout=true&stderr=true`, undefined, text => text);
       log.info("Disk migration helper", { disk: spec.disk, output });
       if (result.StatusCode !== 0) throw new Error(`Disk migration failed: ${spec.disk} (exit ${result.StatusCode})`);
@@ -270,8 +270,12 @@ export class DockerBackend implements Backend {
 // The marker sits beside home/, outside the user's home directory.
 export const migrationScript = `
 source=/legacy/volumes/$1/_data
-[ -d "$source" ] || exit 0
 [ ! -e /target/.baskule-migrated ] || exit 0
+if [ ! -d "$source" ]; then
+  touch /target/.baskule-migrated
+  sync
+  exit 0
+fi
 echo "migration start bytes=$(du -sb "$source" | cut -f1)"
 find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 cp -a "$source/." /target/
