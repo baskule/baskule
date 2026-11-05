@@ -26,7 +26,7 @@ interface Pending {
 }
 interface Connection { config: string; oauth: { discovery: Discovery; client: OAuthClient; tokens: OAuthTokens } }
 type Setup = ({ mode?: "own" } & OAuthClient | { mode: "relay" }) & { tenant?: string; issuer: string };
-const tenantSchema = z.string().max(253).regex(/^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)$/i);
+const tenantSchema = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).transform(tenant => tenant.toLowerCase());
 interface StoredAccount { id: string; server: string; label: string; isDefault: boolean; data: string }
 type Refusal = Extract<PluginCredential, { error: unknown }>;
 type Credential = Omit<Extract<PluginCredential, { headers: unknown }>, "expiresAt"> | Refusal;
@@ -46,8 +46,8 @@ export class Connections {
         const parsed = relayVendorsSchema.safeParse(r.value);
         if (r.status !== 200 || !parsed.success) throw pluginError(502, "oauth_unavailable");
         this.relayCache = { vendors: parsed.data.vendors, until: Date.now() + 5 * 60_000 };
-      } catch (error) {
-        if (!this.relayCache) throw error;
+      } catch {
+        if (!this.relayCache) throw pluginError(502, "relay_vendor_unavailable");
         this.relayCache.until = Date.now() + 5 * 60_000;
       }
       return this.relayCache.vendors;
@@ -160,7 +160,7 @@ export class Connections {
     if (client && client.mode !== "relay" && (client.tokenEndpointAuthMethod !== "none") !== !!client.clientSecret) throw pluginError(400, "invalid_oauth_client");
     if (client?.mode === "relay") {
       if (!staticRecipe?.relay) throw pluginError(400, "invalid_oauth_client");
-      if (!(await this.relayVendors()).some(v => v.id === vendor)) throw pluginError(409, "relay_vendor_unavailable");
+      if (!(await this.relayVendors()).some(v => v.id === vendor)) throw pluginError(409, "relay_vendor_not_served");
     }
     const servers = plugins.flatMap(p => p.servers).filter(s => s.credential === "user-oauth");
     if (client && !servers.length) throw pluginError(400, "not_oauth_server");
@@ -253,7 +253,7 @@ export class Connections {
     let client: OAuthClient;
     if (setup?.mode === "relay") {
       const vendor = (await this.relayVendors()).find(v => v.id === plugin.vendor);
-      if (!vendor) throw pluginError(409, "relay_vendor_unavailable");
+      if (!vendor) throw pluginError(409, "relay_vendor_not_served");
       client = { clientId: vendor.clientId, tokenEndpointAuthMethod: vendor.tokenEndpointAuthMethod, relay: { vendor: plugin.vendor } };
     } else client = setup ?? await registerClient(discovery, callback, this.fetcher);
     if (this.rows("select data from vendor_setup where vendor=?", plugin.vendor)[0]?.data !== row?.data) throw pluginError(409, "connection_not_allowed");

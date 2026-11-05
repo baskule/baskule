@@ -195,6 +195,7 @@ export const PLUGIN_ERROR_CODES = [
   "oauth_scope_missing",
   "oauth_unavailable",
   "relay_vendor_unavailable",
+  "relay_vendor_not_served",
   "plugin_from_folder",
   "plugin_links_unsupported",
   "plugin_not_found",

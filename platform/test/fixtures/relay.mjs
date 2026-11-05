@@ -7,7 +7,7 @@ export async function fakeRelay() {
   const oauth = await fakeOAuth();
   const key = randomBytes(32);
   const requests = [];
-  const state = { vendors: ["github", "microsoft"], unavailable: false, vendorRequests: 0, tokenError: /** @type {string | null} */ (null), tokenStatus: 502 };
+  const state = { vendors: ["github", "microsoft"], unavailable: false, vendorRequests: 0, tokenError: /** @type {string | null} */ (null), tokenStatus: 502, tokenBody: /** @type {unknown} */ (null) };
   let origin;
   const json = (res, value, status = 200) => { res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify(value)); };
   const redirect = (res, location) => { res.writeHead(302, { location }); res.end(); };
@@ -53,6 +53,7 @@ export async function fakeRelay() {
         let body = ""; for await (const chunk of req) body += chunk;
         const p = new URLSearchParams(body);
         requests.push({ ...Object.fromEntries(p), authorization: req.headers.authorization });
+        if (state.tokenBody) return json(res, state.tokenBody, state.tokenStatus);
         if (state.tokenError) return json(res, { error: state.tokenError }, state.tokenStatus);
         if (p.get("token_endpoint") !== `${oauth.issuer}/token` || !["authorization_code", "refresh_token"].includes(p.get("grant_type")) ||
           p.get("grant_type") === "authorization_code" && (p.get("redirect_uri") !== `${origin}/v1/callback` || !p.get("code") || !p.get("code_verifier")) ||

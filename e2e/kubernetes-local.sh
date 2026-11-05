@@ -13,7 +13,7 @@ if [[ ${1:-} == lint ]]; then
   helm template baskule deploy/helm/baskule --set s3.endpoint=https://s3.example.test --set s3.bucket=test --set s3.accessKeyId=test --set s3.secretAccessKey=test >/dev/null
   helm template baskule deploy/helm/baskule "${s3[@]}" --set existingSecret=platform --set publicUrl=https://baskule.example.test --set exposure.mode=ingress >/dev/null
   helm template baskule deploy/helm/baskule "${s3[@]}" --set publicUrl=https://baskule.example.test --set exposure.mode=gateway --set exposure.gateway.name=edge >/dev/null
-  for invalid in typo=true rustfs.enabled=true s3.typo=true global.image.typo=true exposure.mode=ingress exposure.mode=gateway s3.endpoint= s3.bucket= s3.existingSecret=; do
+  for invalid in connectUrl=http://relay.example.test connectUrl=http://127.0.0.1:8787 typo=true rustfs.enabled=true s3.typo=true global.image.typo=true exposure.mode=ingress exposure.mode=gateway s3.endpoint= s3.bucket= s3.existingSecret=; do
     if helm template baskule deploy/helm/baskule "${s3[@]}" --set exposure.gateway.name=edge --set "$invalid" >/dev/null 2>&1; then
       echo "Expected chart schema to reject $invalid" >&2; exit 1
     fi

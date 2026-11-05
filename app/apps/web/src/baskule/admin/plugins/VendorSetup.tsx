@@ -242,13 +242,12 @@ export function VendorSignInStep({
           )}
         </div>
       )}
-      {state?.mode === "relay" && state.relayAvailable === false ? (
+      {state?.mode === "relay" && state.relayAvailable !== true ? (
         <Alert variant="warning">
           <AlertDescription>
-            {t(
-              "Baskule sign-in isn't available for {{name}} right now. People can't connect new accounts until it is back, or until you switch to your own app.",
-              { name },
-            )}
+            {state.relayAvailable === false
+              ? t("Baskule sign-in is not offered for {{name}}. Choose your own app to set up sign-in.", { name })
+              : t("Baskule's sign-in service didn't answer. Try again in a moment.")}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -376,13 +375,14 @@ function SignInForm({
   );
   const needsTenant = app?.fields?.includes("tenant") ?? false;
   const needsSecret = method !== "none";
-  const tenantValue = tenant.trim();
+  const tenantValue = tenant.trim().toLowerCase();
+  const validTenant = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(tenantValue);
   const withTenant = needsTenant ? { tenant: tenantValue } : {};
   const relay = mode === "relay";
   // Saving the same Baskule sign-in again would only disconnect everyone.
   const unchanged = relay && setup.mode === "relay" && tenantValue === (setup.tenant ?? "");
   const input: NonNullable<VendorSetupInput> | null =
-    (needsTenant && !tenantValue) || unchanged
+    (needsTenant && !validTenant) || unchanged
       ? null
       : relay
         ? { mode: "relay", ...withTenant }
@@ -418,9 +418,9 @@ function SignInForm({
     })()
       .catch((cause: unknown) => {
         const code = cause instanceof BaskuleApiError ? cause.code : undefined;
-        if (code === "relay_vendor_unavailable") setUnavailable(true);
-        else if (relay && needsTenant && code === "invalid_oauth_client")
-          setError(t("Check the tenant, then try again."));
+        if (code === "relay_vendor_not_served") setUnavailable(true);
+        else if (needsTenant && code === "invalid_oauth_client")
+          setError(t("Enter your organization's directory (tenant) ID as a GUID."));
         else setError(pluginErrorText(cause, t("The sign-in setup could not be saved.")));
       })
       .finally(() => {
@@ -435,7 +435,7 @@ function SignInForm({
       value={tenant}
       disabled={busy}
       hint={t(
-        "Your organization's directory (tenant) ID or primary domain, such as contoso.onmicrosoft.com.",
+        "Your organization's directory (tenant) ID: a GUID such as aabbccdd-1234-5678-90ab-aabbccddeeff.",
       )}
       onChange={(event) => setTenant(event.currentTarget.value)}
     />
@@ -525,7 +525,7 @@ function SignInForm({
               <Alert variant="warning" role="alert">
                 <AlertDescription>
                   {t(
-                    "Baskule sign-in isn't available for {{name}} right now. Use your own app instead, or try again later.",
+                    "Baskule sign-in is not offered for {{name}}. Choose your own app to set up sign-in.",
                     { name },
                   )}
                 </AlertDescription>

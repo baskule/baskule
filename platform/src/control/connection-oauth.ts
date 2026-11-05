@@ -1,3 +1,4 @@
+import { catalogVendor } from "../../../app/packages/contracts/src/baskule-catalog";
 import type { OAuthRecipe } from "../../../app/packages/contracts/src/baskule-plugins";
 import { checkOutbound, serverNetwork, type Network } from "../shared/plugin-outbound";
 import { z } from "zod";
@@ -88,11 +89,15 @@ export function relayEndpoint(base: string, path: string): string {
   if (url.search) throw pluginError(400, "address_not_allowed");
   return new URL(`${url.pathname.replace(/\/$/, "")}/v1/${path}`, url.origin).href;
 }
-export const relayVendorsSchema = z.object({ vendors: z.array(z.object({
-  id: z.string().regex(/^[a-z][a-z0-9-]*$/), clientId: z.string().min(1).max(4096),
+const relayVendorSchema = z.object({
+  id: z.string().regex(/^[a-z][a-z0-9]*$/), clientId: z.string().min(1).max(4096),
   tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]),
-})).max(100) });
-export type RelayVendor = z.infer<typeof relayVendorsSchema>["vendors"][number];
+});
+export type RelayVendor = z.infer<typeof relayVendorSchema>;
+export const relayVendorsSchema = z.object({ vendors: z.array(z.unknown()).max(100).transform(entries => entries.flatMap(entry => {
+  const parsed = relayVendorSchema.safeParse(entry);
+  return parsed.success && catalogVendor(parsed.data.id) ? [parsed.data] : [];
+})) });
 export interface OAuthClient { clientId: string; clientSecret?: string; tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic"; relay?: { vendor: string } }
 export async function registerClient(discovery: Discovery, redirectUri: string, fetcher: Fetcher): Promise<OAuthClient> {
   if (!discovery.as.registration_endpoint) throw pluginError(409, "oauth_client_configuration_required");
@@ -105,7 +110,7 @@ export async function registerClient(discovery: Discovery, redirectUri: string, 
 }
 export interface OAuthTokens { accessToken: string; refreshToken?: string; expiresAt: number | null; scopes: string[] }
 export async function exchangeToken(discovery: Discovery, client: OAuthClient, params: Record<string, string>, previousScopes: string[], fetcher: Fetcher, recipe?: OAuthRecipe, connectUrl = DEFAULT_CONNECT_URL): Promise<OAuthTokens> {
-  const form = new URLSearchParams({ ...params, ...(recipe?.resource === false ? {} : { resource: discovery.resource }) });
+  const form = new URLSearchParams({ ...params, client_id: client.clientId, ...(recipe?.resource === false ? {} : { resource: discovery.resource }) });
   const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
   let endpoint = discovery.as.token_endpoint;
   let network = serverNetwork(discovery.resource);
@@ -116,13 +121,15 @@ export async function exchangeToken(discovery: Discovery, client: OAuthClient, p
     endpoint = relayEndpoint(connectUrl, `token/${encodeURIComponent(client.relay.vendor)}`);
     network = serverNetwork(connectUrl);
   } else {
-    form.set("client_id", client.clientId);
     if (client.tokenEndpointAuthMethod === "client_secret_post") form.set("client_secret", client.clientSecret!);
     if (client.tokenEndpointAuthMethod === "client_secret_basic") headers.authorization = `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret!)}`)}`;
   }
   const r = await oauthJson(fetcher, endpoint, { method: "POST", headers, body: form.toString() }, network);
-  if (r.status === 400 && (r.value as { error?: string } | null)?.error === "invalid_grant") throw pluginError(401, "oauth_grant_expired");
-  if (r.status >= 500 || ["relay_vendor_unavailable", "oauth_unavailable"].includes((r.value as { error?: string } | null)?.error ?? "")) throw pluginError(502, "oauth_unavailable");
+  const error = z.object({ error: z.string(), ok: z.boolean().optional() }).safeParse(r.value);
+  const code = error.success ? error.data.error : "";
+  if ([408, 429].includes(r.status) || r.status >= 500 || ["temporarily_unavailable", "server_error", "oauth_unavailable"].includes(code) || code.startsWith("relay_")) throw pluginError(502, "oauth_unavailable");
+  const slackDeadGrant = error.success && error.data.ok === false && ["invalid_refresh_token", "token_revoked", "token_expired", "invalid_auth", "account_inactive"].includes(code);
+  if (code === "invalid_grant" || r.status === 200 && (code === "bad_refresh_token" || slackDeadGrant)) throw pluginError(401, "oauth_grant_expired");
   const token = z.object({ access_token: z.string().min(1).max(32768).regex(/^[A-Za-z0-9\-._~+/]+=*$/), token_type: z.string().regex(/^Bearer$/i),
     refresh_token: z.string().min(1).max(32768).optional(), expires_in: z.number().positive().max(365 * 86400).optional(), scope: z.string().max(16384).optional(), resource: z.string().optional(),
   }).safeParse(r.value);

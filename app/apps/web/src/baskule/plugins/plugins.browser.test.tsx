@@ -1546,11 +1546,11 @@ describe("signing in to a plugin's service", () => {
       "GET /api/baskule/admin/groups": () => ({ groups }),
       "GET /api/baskule/admin/vendors/microsoft": () =>
         saved
-          ? vendorSetup({ mode: "relay", relayAvailable: true, tenant: "contoso.onmicrosoft.com" })
+          ? vendorSetup({ mode: "relay", relayAvailable: true, tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff" })
           : vendorSetup({}),
       "PUT /api/baskule/admin/vendors/microsoft": () => {
         if (refusals-- > 0)
-          return Response.json({ error: "relay_vendor_unavailable" }, { status: 409 });
+          return Response.json({ error: "relay_vendor_not_served" }, { status: 409 });
         saved = true;
         return { ok: true, configured: true };
       },
@@ -1572,16 +1572,19 @@ describe("signing in to a plugin's service", () => {
     expect(dialog.getByLabelText("Client ID", { exact: true }).query()).toBeNull();
     const turnOn = dialog.getByRole("button", { name: "Use Baskule sign-in" });
     await expect.element(turnOn).toBeDisabled();
-    await userEvent.type(
+    await userEvent.fill(dialog.getByLabelText("Tenant", { exact: true }), "contoso.onmicrosoft.com");
+    await expect.element(turnOn).toBeDisabled();
+    await userEvent.fill(
       dialog.getByLabelText("Tenant", { exact: true }),
-      "contoso.onmicrosoft.com",
+      "AABBCCDD-1234-5678-90AB-AABBCCDDEEFF",
     );
+    await expect.element(turnOn).toBeEnabled();
 
     await press(turnOn);
     await expect
       .element(
         dialog.getByText(
-          "Baskule sign-in isn't available for Microsoft right now. Use your own app instead, or try again later.",
+          "Baskule sign-in is not offered for Microsoft. Choose your own app to set up sign-in.",
         ),
       )
       .toBeVisible();
@@ -1590,15 +1593,15 @@ describe("signing in to a plugin's service", () => {
     await expect
       .element(steps.getByText("Saved. People sign in to Microsoft with Baskule sign-in."))
       .toBeVisible();
-    await expect.element(steps.getByText("Tenant: contoso.onmicrosoft.com")).toBeVisible();
+    await expect.element(steps.getByText("Tenant: aabbccdd-1234-5678-90ab-aabbccddeeff")).toBeVisible();
     await expect.element(steps.getByText("Set up sign-in to Microsoft (done)")).toBeInTheDocument();
     expect(
       control.calls
         .filter((call) => call.route === "PUT /api/baskule/admin/vendors/microsoft")
         .map((call) => call.body),
     ).toEqual([
-      { mode: "relay", tenant: "contoso.onmicrosoft.com" },
-      { mode: "relay", tenant: "contoso.onmicrosoft.com" },
+      { mode: "relay", tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff" },
+      { mode: "relay", tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff" },
     ]);
     // Nothing was set up before, so nobody was disconnected and nothing was asked.
     expect(confirm).not.toHaveBeenCalled();
@@ -1609,7 +1612,7 @@ describe("signing in to a plugin's service", () => {
       "GET /api/baskule/admin/plugins": () => ({ plugins: [outlook(true)] }),
       "GET /api/baskule/admin/groups": () => ({ groups }),
       "GET /api/baskule/admin/vendors/microsoft": () =>
-        vendorSetup({ mode: "relay", relayAvailable: false, tenant: "contoso.onmicrosoft.com" }),
+        vendorSetup({ mode: "relay", relayAvailable: false, tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff" }),
       "PUT /api/baskule/admin/vendors/microsoft": () => ({ ok: true, configured: true }),
     });
     using _fetch = control.stub;
@@ -1620,7 +1623,7 @@ describe("signing in to a plugin's service", () => {
 
     const steps = screen.getByRole("list", { name: "Setup steps" });
     await expect
-      .element(steps.getByText(/^Baskule sign-in isn't available for Microsoft right now\./))
+      .element(steps.getByText(/^Baskule sign-in is not offered for Microsoft\./))
       .toBeVisible();
     await press(steps.getByRole("button", { name: "Change how people sign in to Microsoft" }));
     const dialog = page.getByRole("dialog", { name: "Set up sign-in to Microsoft" });
@@ -1636,7 +1639,7 @@ describe("signing in to a plugin's service", () => {
       .toHaveValue(callbackUrl);
     await expect
       .element(dialog.getByLabelText("Tenant", { exact: true }))
-      .toHaveValue("contoso.onmicrosoft.com");
+      .toHaveValue("aabbccdd-1234-5678-90ab-aabbccddeeff");
     await expect
       .element(dialog.getByText("Saving disconnects every Microsoft account people connected."))
       .toBeVisible();
@@ -1659,7 +1662,7 @@ describe("signing in to a plugin's service", () => {
         clientId: "client-1",
         tokenEndpointAuthMethod: "client_secret_post",
         clientSecret: "s3cret",
-        tenant: "contoso.onmicrosoft.com",
+        tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff",
       }),
     );
   });

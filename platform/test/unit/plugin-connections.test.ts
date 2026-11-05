@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { zipSync } from "fflate";
 import { base64 } from "../../src/control/plugin-package";
 import { ConnectionCipher, digest, pkce } from "../../src/control/connection-crypto";
-import { canonicalResource, discoverOAuth, exchangeToken } from "../../src/control/connection-oauth";
+import { canonicalResource, discoverOAuth, exchangeToken, relayVendorsSchema } from "../../src/control/connection-oauth";
 import { asAdmin, call, createUser, makeService, ORIGIN, personalSpaceOf, signIn, type H } from "../support/harness";
 import { fakeRelay } from "../fixtures/relay.mjs";
 import { catalogVendor } from "../../../app/packages/contracts/src/baskule-catalog";
@@ -87,7 +87,7 @@ describe("MCP OAuth connections", () => {
     const seen: string[] = [];
     const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
       seen.push(String(input));
-      expect(Object.fromEntries(new URLSearchParams(String(init?.body)))).toEqual({ grant_type: "refresh_token", refresh_token: "refresh", resource: discovery.resource, token_endpoint: discovery.as.token_endpoint });
+      expect(Object.fromEntries(new URLSearchParams(String(init?.body)))).toEqual({ grant_type: "refresh_token", refresh_token: "refresh", client_id: "relay-client", resource: discovery.resource, token_endpoint: discovery.as.token_endpoint });
       return Response.json({ access_token: "access", token_type: "Bearer" });
     };
     const client = { clientId: "relay-client", tokenEndpointAuthMethod: "client_secret_post", relay: { vendor: "github" } } as const;
@@ -385,7 +385,7 @@ describe("plugin sign-in relay", () => {
     relay.state.vendors = served;
     const f = relay.oauth;
     const recipe = catalogVendor(vendor)?.signIn;
-    const tenant = "00000000-0000-0000-0000-000000000001";
+    const tenant = "aabbccdd-1234-5678-90ab-aabbccddeeff";
     const issuer = recipe?.type === "account" && recipe.client === "static" ? recipe.issuer.replace("{tenant}", tenant) : f.issuer;
     f.state.advertisedIssuer = issuer;
     f.state.callbackIssuer = issuer;
@@ -398,7 +398,7 @@ describe("plugin sign-in relay", () => {
         const metadata = await originalFetch(`${f.issuer}/.well-known/oauth-authorization-server`, init);
         const body: unknown = await metadata.json();
         if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid fixture metadata");
-        return Response.json({ ...body, issuer });
+        return Response.json({ ...body, issuer: vendor === "microsoft" ? `https://login.microsoftonline.com/${tenant.toLowerCase()}/v2.0` : issuer });
       }
       return originalFetch(input, init);
     });
@@ -445,24 +445,29 @@ describe("plugin sign-in relay", () => {
     } finally { await t.close(); }
     const absent = await fixture("github", []);
     try {
-      expect((await absent.setup({ mode: "relay" })).body.error).toBe("relay_vendor_unavailable");
+      expect((await absent.setup({ mode: "relay" })).body.error).toBe("relay_vendor_not_served");
       expect((await absent.state()).body.mode).toBe(null);
     } finally { await absent.close(); }
+    const offline = await fixture();
+    try {
+      offline.relay.state.unavailable = true;
+      expect((await offline.setup({ mode: "relay" })).body.error).toBe("relay_vendor_unavailable");
+    } finally { await offline.close(); }
   });
 
   it("validates tenants in both modes, substitutes the Microsoft issuer and keeps setup sealed", async () => {
     const t = await fixture("microsoft");
     try {
-      for (const tenant of [undefined, "common", "organizations", "consumers", "a/b", "evil.test/path", "a..test", "https://evil.test", "{tenant}"]) {
+      for (const tenant of [undefined, "common", "organizations", "consumers", "a/b", "evil.test/path", "contoso.onmicrosoft.com", "example.com", "a..test", "https://evil.test", "{tenant}"]) {
         expect((await t.setup({ mode: "relay", tenant })).body.error).toBe("invalid_oauth_client");
         expect((await t.setup({ clientId: "own", tokenEndpointAuthMethod: "none", tenant })).body.error).toBe("invalid_oauth_client");
       }
-      expect((await t.setup({ mode: "relay", tenant: t.tenant })).status).toBe(200);
+      expect((await t.setup({ mode: "relay", tenant: t.tenant.toUpperCase() })).status).toBe(200);
       expect((await t.state()).body).toMatchObject({ mode: "relay", tenant: t.tenant, relaySupported: true, relayAvailable: true });
       const row = t.h.storage.sql.exec("select data from vendor_setup").toArray()[0];
       expect(row.data).not.toContain(t.tenant);
       expect(await t.cipher.open(row.data as string, JSON.stringify(["vendor", "microsoft"]))).toEqual({ mode: "relay", tenant: t.tenant, issuer: t.issuer });
-      expect((await t.setup({ clientId: "own", tokenEndpointAuthMethod: "none", tenant: t.tenant })).status).toBe(200);
+      expect((await t.setup({ clientId: "own", tokenEndpointAuthMethod: "none", tenant: t.tenant.toUpperCase() })).status).toBe(200);
       expect((await t.state()).body.mode).toBe("own");
     } finally { await t.close(); }
   });
@@ -489,7 +494,7 @@ describe("plugin sign-in relay", () => {
       expect((await t.x.credential()).body).toHaveProperty("headers.Authorization");
       expect(t.relay.requests[1]).toMatchObject({ grant_type: "refresh_token", token_endpoint: `${t.f.issuer}/token` });
       for (const request of t.relay.requests) {
-        expect(request).not.toHaveProperty("client_secret"); expect(request).not.toHaveProperty("client_id"); expect(request.authorization).toBeUndefined();
+        expect(request).not.toHaveProperty("client_secret"); expect(request.client_id).toBe("relay-client"); expect(request.authorization).toBeUndefined();
       }
       expect(t.f.requests.every(r => r.client_secret === "relay-secret" && r.client_id === "relay-client")).toBe(true);
       expect(t.relay.state.vendorRequests).toBe(1);
@@ -514,23 +519,47 @@ describe("plugin sign-in relay", () => {
       t.relay.state.unavailable = false; t.relay.state.vendors = [];
       time.mockReturnValue(now + 12 * 60_000);
       expect((await t.state()).body.relayAvailable).toBe(false);
-      expect((await t.x.start()).headers.get("location")).toContain("connectionError=relay_vendor_unavailable");
+      expect((await t.x.start()).headers.get("location")).toContain("connectionError=relay_vendor_not_served");
     } finally { await t.close(); }
   });
 
-  it.each(["network", "5xx", "relay_vendor_unavailable", "oauth_unavailable"])("keeps refresh tokens during %s outages, then clears only invalid_grant", async failure => {
+  it.each([
+    ["network", 502], ["5xx", 503], ["invalid_grant", 503], ["rate_limited", 429], ["timeout", 408],
+    ["temporarily_unavailable", 400], ["server_error", 400], ["relay_vendor_unavailable", 502],
+    ["relay_invalid_vendor_response", 502], ["relay_invalid_token_endpoint", 400], ["relay_unsupported_vendor", 400],
+    ["oauth_unavailable", 400],
+  ])("keeps refresh tokens during %s (%s), then recovers", async (failure, status) => {
     const t = await fixture();
     try {
       await t.setup({ mode: "relay" }); t.f.state.shortLived = true;
       await call(t.h, "GET", await t.callback(), { creds: t.x.a.creds });
       const before = await t.account();
       t.transport.offline = failure === "network";
-      t.relay.state.tokenError = failure; t.relay.state.tokenStatus = failure === "5xx" ? 503 : 400;
+      t.relay.state.tokenError = failure; t.relay.state.tokenStatus = status;
       expect((await t.x.credential()).body).toEqual({ error: "unavailable" });
       expect((await t.account()).row.data).toBe(before.row.data);
-      t.transport.offline = false; t.relay.state.tokenError = null; t.f.state.invalidGrant = true;
-      expect((await t.x.credential()).body.error).toBe("reconnect");
+      t.transport.offline = false; t.relay.state.tokenError = null;
+      expect((await t.x.credential()).body).toHaveProperty("headers.Authorization");
+    } finally { await t.close(); }
+  });
+
+  it.each([
+    [400, { error: "invalid_grant" }], [200, { error: "invalid_grant" }],
+    ...["invalid_refresh_token", "token_revoked", "token_expired", "invalid_auth", "account_inactive"].map(error => [200, { ok: false, error }] as const),
+    [200, { error: "bad_refresh_token" }],
+  ] as const)("clears a dead grant with status %s and body %j", async (status, body) => {
+    const t = await fixture();
+    try {
+      await t.setup({ mode: "relay" }); t.f.state.shortLived = true;
+      await call(t.h, "GET", await t.callback(), { creds: t.x.a.creds });
+      t.relay.state.tokenBody = body; t.relay.state.tokenStatus = status;
+      expect((await t.x.credential()).body).toEqual({ error: "reconnect" });
       expect((await t.account()).value.oauth.tokens.refreshToken).toBeUndefined();
     } finally { await t.close(); }
+  });
+
+  it("ignores invalid and unknown vendor entries without hiding a served vendor", () => {
+    const valid = { id: "github", clientId: "public-id", tokenEndpointAuthMethod: "client_secret_post" };
+    expect(relayVendorsSchema.parse({ vendors: [null, {}, { ...valid, id: "with-hyphen" }, { ...valid, id: "Upper" }, { ...valid, id: "futurevendor" }, { ...valid, clientId: "" }, { ...valid, tokenEndpointAuthMethod: "unknown" }, valid] }).vendors).toEqual([valid]);
   });
 });

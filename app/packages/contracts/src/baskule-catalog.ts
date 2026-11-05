@@ -542,7 +542,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["search:read.public", "search:read.private", "search:read.mpim", "search:read.im", "channels:history", "groups:history", "mpim:history", "im:history", "chat:write"],
       }
     ],
-    prerequisites: [msg("Slack requires an internal app for your workspace or an approved Marketplace app; unlisted public apps cannot connect."), msg("Workspace app approval, user permissions and IP restrictions apply.")],
+    prerequisites: [msg("Workspace app approval, user permissions and IP restrictions apply.")],
     reviewBy: "2027-01-31",
   },
   // INFERRED meeting-only scope selection on the unified Zoom endpoint. Other Zoom product tools require additional scopes; no complete unified-server scope set is claimed.

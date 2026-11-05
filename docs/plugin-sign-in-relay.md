@@ -25,7 +25,7 @@ relay only in transit, during code exchange and refresh.
 | Mode | Vendors | Administrator setup |
 |---|---|---|
 | Automatic registration | Notion, Linear, Atlassian, Stripe, Figma and the other `client: "dynamic"` vendors | None |
-| Baskule sign-in (relay) | Microsoft, Slack, GitHub, Dropbox, Box, Zoom, Canva, Asana, HubSpot | One click, plus the tenant for Microsoft. "Your own app" stays available. |
+| Baskule sign-in (relay) | Microsoft, Slack, GitHub, Dropbox, Box, Zoom, Canva, Asana, HubSpot | One click, plus the directory tenant GUID for Microsoft. "Your own app" stays available. |
 | Your own app only | Google, Salesforce, Shopify, Docusign | The administrator registers an app in the vendor console |
 
 - **Google** stays "your own app". Baskule does not hold a Google app: Gmail and Drive scopes would need
@@ -132,5 +132,7 @@ with `{"error":"relay_vendor_unavailable"}`.
   migration is needed.
 - Switching a vendor between modes clears its connections and pending sign-ins, as changing the own
   app already does.
+- Microsoft accepts a directory tenant GUID and stores it in lowercase so its pinned issuer matches Microsoft discovery. Tenant domain names are not accepted.
+- A successful vendor list that omits a vendor reports `relay_vendor_not_served`; a relay that cannot be reached reports `relay_vendor_unavailable`.
 - `BASKULE_CONNECT_URL` is a deployment setting. An installation that never chooses Baskule sign-in
   never contacts the relay.
