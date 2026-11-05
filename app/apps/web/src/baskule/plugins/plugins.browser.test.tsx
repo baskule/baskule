@@ -1546,7 +1546,11 @@ describe("signing in to a plugin's service", () => {
       "GET /api/baskule/admin/groups": () => ({ groups }),
       "GET /api/baskule/admin/vendors/microsoft": () =>
         saved
-          ? vendorSetup({ mode: "relay", relayAvailable: true, tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff" })
+          ? vendorSetup({
+              mode: "relay",
+              relayAvailable: true,
+              tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff",
+            })
           : vendorSetup({}),
       "PUT /api/baskule/admin/vendors/microsoft": () => {
         if (refusals-- > 0)
@@ -1572,7 +1576,10 @@ describe("signing in to a plugin's service", () => {
     expect(dialog.getByLabelText("Client ID", { exact: true }).query()).toBeNull();
     const turnOn = dialog.getByRole("button", { name: "Use Baskule sign-in" });
     await expect.element(turnOn).toBeDisabled();
-    await userEvent.fill(dialog.getByLabelText("Tenant", { exact: true }), "contoso.onmicrosoft.com");
+    await userEvent.fill(
+      dialog.getByLabelText("Tenant", { exact: true }),
+      "contoso.onmicrosoft.com",
+    );
     await expect.element(turnOn).toBeDisabled();
     await userEvent.fill(
       dialog.getByLabelText("Tenant", { exact: true }),
@@ -1593,7 +1600,9 @@ describe("signing in to a plugin's service", () => {
     await expect
       .element(steps.getByText("Saved. People sign in to Microsoft with Baskule sign-in."))
       .toBeVisible();
-    await expect.element(steps.getByText("Tenant: aabbccdd-1234-5678-90ab-aabbccddeeff")).toBeVisible();
+    await expect
+      .element(steps.getByText("Tenant: aabbccdd-1234-5678-90ab-aabbccddeeff"))
+      .toBeVisible();
     await expect.element(steps.getByText("Set up sign-in to Microsoft (done)")).toBeInTheDocument();
     expect(
       control.calls
@@ -1612,7 +1621,11 @@ describe("signing in to a plugin's service", () => {
       "GET /api/baskule/admin/plugins": () => ({ plugins: [outlook(true)] }),
       "GET /api/baskule/admin/groups": () => ({ groups }),
       "GET /api/baskule/admin/vendors/microsoft": () =>
-        vendorSetup({ mode: "relay", relayAvailable: false, tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff" }),
+        vendorSetup({
+          mode: "relay",
+          relayAvailable: false,
+          tenant: "aabbccdd-1234-5678-90ab-aabbccddeeff",
+        }),
       "PUT /api/baskule/admin/vendors/microsoft": () => ({ ok: true, configured: true }),
     });
     using _fetch = control.stub;
@@ -1667,7 +1680,192 @@ describe("signing in to a plugin's service", () => {
     );
   });
 
+  const tenant = "aabbccdd-1234-5678-90ab-aabbccddeeff";
+  const disconnectsEveryone = (name: string) =>
+    `Every ${name} account people connected is disconnected. People connect again in Settings → Plugins.`;
+  const vendorPuts = (
+    calls: ReadonlyArray<{ readonly route: string; readonly body: unknown }>,
+    vendor: string,
+  ) =>
+    calls
+      .filter((call) => call.route === `PUT /api/baskule/admin/vendors/${vendor}`)
+      .map((call) => call.body);
+
+  it("keeps a saved sign-in when reading it back fails, so changing it still asks first", async () => {
+    let saved = false;
+    let failReload: ((cause: unknown) => void) | undefined;
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({ plugins: [outlook(saved)] }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/vendors/microsoft": () =>
+        saved
+          ? new Promise((_resolve, reject) => {
+              failReload = reject;
+            })
+          : vendorSetup({}),
+      "PUT /api/baskule/admin/vendors/microsoft": () => {
+        saved = true;
+        return { ok: true, configured: true };
+      },
+    });
+    using _fetch = control.stub;
+    const confirm = vi.fn(() => false);
+    using _confirm = stubGlobal("confirm", confirm);
+    await using screen = await render(<PluginDetailPage id="outlook" />);
+
+    const steps = screen.getByRole("list", { name: "Setup steps" });
+    const setUp = steps.getByRole("button", { name: "Set up sign-in" });
+    await expect.element(setUp).toBeVisible();
+    await press(setUp);
+    const dialog = page.getByRole("dialog", { name: "Set up sign-in to Microsoft" });
+    await userEvent.fill(dialog.getByLabelText("Tenant", { exact: true }), tenant);
+    await press(dialog.getByRole("button", { name: "Use Baskule sign-in" }));
+
+    // What was saved shows at once, and nothing changes it until it is read back.
+    await expect
+      .element(steps.getByText("Saved. People sign in to Microsoft with Baskule sign-in."))
+      .toBeVisible();
+    const change = steps.getByRole("button", { name: "Change how people sign in to Microsoft" });
+    await expect.element(change).toBeDisabled();
+    await expect.element(steps.getByRole("button", { name: "Remove setup" })).toBeDisabled();
+    await vi.waitFor(() => expect(failReload).toBeDefined());
+    failReload?.(new TypeError("offline"));
+
+    await expect
+      .element(steps.getByText("Can't reach the server. Check your connection and try again."))
+      .toBeVisible();
+    await expect
+      .element(steps.getByText("Saved. People sign in to Microsoft with Baskule sign-in."))
+      .toBeVisible();
+    await expect.element(change).toBeEnabled();
+    await press(change);
+    // Saving the same Baskule sign-in again would only disconnect everyone.
+    await expect
+      .element(dialog.getByRole("button", { name: "Use Baskule sign-in" }))
+      .toBeDisabled();
+    await press(dialog.getByRole("radio", { name: /^Your own app/ }));
+    await userEvent.type(dialog.getByLabelText("Client ID", { exact: true }), "client-1");
+    await userEvent.type(dialog.getByLabelText("Client secret", { exact: true }), "s3cret");
+    await press(dialog.getByRole("button", { name: "Save setup" }));
+
+    await vi.waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith(
+        `Switch Microsoft to your own app?\n${disconnectsEveryone("Microsoft")}`,
+      ),
+    );
+    expect(vendorPuts(control.calls, "microsoft")).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      change: "switching an own app to Baskule sign-in",
+      setup: vendorSetup({ mode: "own", tenant }),
+      edit: (dialog: Locator) => press(dialog.getByRole("radio", { name: /^Baskule sign-in/ })),
+      submit: "Use Baskule sign-in",
+      question: "Switch Microsoft to Baskule sign-in?",
+      body: { mode: "relay", tenant },
+    },
+    {
+      change: "replacing an own app with another",
+      setup: vendorSetup({ mode: "own", tenant }),
+      edit: async (dialog: Locator) => {
+        await userEvent.type(dialog.getByLabelText("Client ID", { exact: true }), "client-2");
+        await userEvent.type(dialog.getByLabelText("Client secret", { exact: true }), "s3cret");
+      },
+      submit: "Save setup",
+      question: "Replace the sign-in setup of Microsoft?",
+      body: {
+        clientId: "client-2",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientSecret: "s3cret",
+        tenant,
+      },
+    },
+    {
+      change: "moving Baskule sign-in to another tenant",
+      setup: vendorSetup({ mode: "relay", relayAvailable: true, tenant }),
+      edit: async (dialog: Locator) => {
+        const field = dialog.getByLabelText("Tenant", { exact: true });
+        // The saved tenant typed in capitals is the same tenant.
+        await userEvent.fill(field, tenant.toUpperCase());
+        await expect
+          .element(dialog.getByRole("button", { name: "Use Baskule sign-in" }))
+          .toBeDisabled();
+        await userEvent.fill(field, "11112222-3333-4444-5555-6666777788AA");
+      },
+      submit: "Use Baskule sign-in",
+      question: "Replace the sign-in setup of Microsoft?",
+      body: { mode: "relay", tenant: "11112222-3333-4444-5555-6666777788aa" },
+    },
+  ])("asks before $change", async ({ setup, edit, submit, question, body }) => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({ plugins: [outlook(true)] }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/vendors/microsoft": () => setup,
+      "PUT /api/baskule/admin/vendors/microsoft": () => ({ ok: true, configured: true }),
+    });
+    using _fetch = control.stub;
+    const confirm = vi.fn(() => true);
+    using _confirm = stubGlobal("confirm", confirm);
+    await using screen = await render(<PluginDetailPage id="outlook" />);
+
+    const change = screen.getByRole("button", { name: "Change how people sign in to Microsoft" });
+    await expect.element(change).toBeEnabled();
+    await press(change);
+    const dialog = page.getByRole("dialog", { name: "Set up sign-in to Microsoft" });
+    await edit(dialog);
+    await expect
+      .element(dialog.getByText("Saving disconnects every Microsoft account people connected."))
+      .toBeVisible();
+    await press(dialog.getByRole("button", { name: submit }));
+
+    await vi.waitFor(() => expect(vendorPuts(control.calls, "microsoft")).toEqual([body]));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(confirm).toHaveBeenCalledWith(`${question}\n${disconnectsEveryone("Microsoft")}`);
+  });
+
   const crm = { name: "crm", url: "https://mcp.crm.example.test/mcp", disabledTools: [] };
+
+  it("asks before a first own app disconnects accounts Baskule registered itself for", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [
+          plugin({
+            name: "CRM",
+            vendor: "crm-vendor",
+            servers: [{ ...crm, credential: "user-oauth" }],
+            setup: [{ server: "crm", done: true }],
+          }),
+        ],
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/vendors/crm-vendor": () => vendorSetup({ relaySupported: false }),
+      "PUT /api/baskule/admin/vendors/crm-vendor": () => ({ ok: true, configured: true }),
+    });
+    using _fetch = control.stub;
+    const confirm = vi.fn(() => false);
+    using _confirm = stubGlobal("confirm", confirm);
+    await using screen = await render(<PluginDetailPage id="p1" />);
+
+    await userEvent.click(screen.getByText("Technical details", { exact: true }));
+    const setUp = screen.getByRole("button", { name: "Set up", exact: true });
+    await expect.element(setUp).toBeEnabled();
+    await press(setUp);
+    const dialog = page.getByRole("dialog", { name: "Set up sign-in to CRM" });
+    await expect
+      .element(dialog.getByText("Saving disconnects every CRM account people connected."))
+      .toBeVisible();
+    await userEvent.type(dialog.getByLabelText("Client ID", { exact: true }), "client-1");
+    await userEvent.type(dialog.getByLabelText("Client secret", { exact: true }), "s3cret");
+    await press(dialog.getByRole("button", { name: "Save setup" }));
+
+    await vi.waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith(
+        `Switch CRM to your own app?\n${disconnectsEveryone("CRM")}`,
+      ),
+    );
+    expect(vendorPuts(control.calls, "crm-vendor")).toEqual([]);
+  });
 
   it("edits a plugin an admin brought in the shared editor and saves it whole", async () => {
     const skill = {

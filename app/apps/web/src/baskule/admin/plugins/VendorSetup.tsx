@@ -51,9 +51,42 @@ const GENERIC_STEPS = [
 const LINK =
   "rounded-sm text-foreground/80 underline underline-offset-4 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
+/** What a save stored, as the vendor's GET reports it. */
+const savedSetup = (
+  { tenant: _tenant, ...setup }: VendorSetup,
+  input: VendorSetupInput,
+): VendorSetup => ({
+  ...setup,
+  mode: input ? (input.mode ?? "own") : null,
+  // The server saves Baskule sign-in only once its sign-in service serves the vendor.
+  relayAvailable: input?.mode === "relay" ? true : null,
+  ...(input?.tenant ? { tenant: input.tenant } : {}),
+});
+
+/**
+ * The vendor's setup. After a save, what it stored stands in until a reload succeeds: a failed reload
+ * keeps the old data, and a setup that looks empty would skip the confirmation before disconnecting.
+ */
 const useVendorSetup = (vendor: string) => {
   const [load] = useState(() => () => pluginsApi.vendor(vendor));
-  return useApiResource(load);
+  const resource = useApiResource(load);
+  const [saved, setSaved] = useState<{
+    readonly setup: VendorSetup;
+    readonly before: number | undefined;
+  } | null>(null);
+  const data =
+    saved && (resource.loadedVersion === undefined || resource.loadedVersion === saved.before)
+      ? saved.setup
+      : resource.data;
+  return {
+    data,
+    error: resource.error,
+    refreshing: resource.loading,
+    saved: (input: VendorSetupInput) => {
+      if (data) setSaved({ setup: savedSetup(data, input), before: resource.loadedVersion });
+      return resource.reload();
+    },
+  };
 };
 
 function ClientMethodField({
@@ -145,6 +178,7 @@ export function VendorSignInStep({
   name,
   app,
   configured,
+  connectsWithoutSetup,
   onChanged,
 }: {
   readonly number: number;
@@ -153,6 +187,8 @@ export function VendorSignInStep({
   readonly name: string;
   readonly app: VendorApp | undefined;
   readonly configured: boolean;
+  /** People can connect accounts before any setup, through Baskule registering itself. */
+  readonly connectsWithoutSetup: boolean;
   readonly onChanged: () => Promise<unknown>;
 }) {
   const t = useTranslation();
@@ -161,7 +197,9 @@ export function VendorSignInStep({
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const state = setup.data;
-  const changed = () => Promise.all([setup.reload(), onChanged()]);
+  const busy = removing || setup.refreshing;
+  const shownError = error ?? (state && !setup.refreshing ? setup.error : null);
+  const changed = (input: VendorSetupInput) => Promise.all([setup.saved(input), onChanged()]);
 
   const remove = async () => {
     const confirmed = await confirmAction(
@@ -177,7 +215,7 @@ export function VendorSignInStep({
     return (async () => {
       await pluginsApi.vendorSetup(vendor, null);
       notifySuccess(t("Sign-in setup removed"));
-      await changed();
+      await changed(null);
     })()
       .catch((cause: unknown) => {
         setError(pluginErrorText(cause, t("The sign-in setup could not be saved.")));
@@ -220,12 +258,12 @@ export function VendorSignInStep({
             ) : null}
           </div>
           {state.mode === null ? (
-            <Button size="sm" onClick={() => setOpen(true)}>
+            <Button size="sm" disabled={busy} onClick={() => setOpen(true)}>
               {t("Set up sign-in")}
             </Button>
           ) : (
             <div className="flex gap-2">
-              <Button size="sm" variant="ghost" disabled={removing} onClick={() => void remove()}>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove()}>
                 {removing ? <Spinner size="sm" /> : null}
                 {t("Remove setup")}
               </Button>
@@ -233,7 +271,7 @@ export function VendorSignInStep({
                 size="sm"
                 variant="outline"
                 aria-label={t("Change how people sign in to {{name}}", { name })}
-                disabled={removing}
+                disabled={busy}
                 onClick={() => setOpen(true)}
               >
                 {t("Change")}
@@ -246,14 +284,17 @@ export function VendorSignInStep({
         <Alert variant="warning">
           <AlertDescription>
             {state.relayAvailable === false
-              ? t("Baskule sign-in is not offered for {{name}}. Choose your own app to set up sign-in.", { name })
+              ? t(
+                  "Baskule sign-in is not offered for {{name}}. Choose your own app to set up sign-in.",
+                  { name },
+                )
               : t("Baskule's sign-in service didn't answer. Try again in a moment.")}
           </AlertDescription>
         </Alert>
       ) : null}
-      {error ? (
+      {shownError ? (
         <Alert variant="error" role="alert">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{shownError}</AlertDescription>
         </Alert>
       ) : null}
       {state ? (
@@ -263,10 +304,11 @@ export function VendorSignInStep({
           name={name}
           app={app}
           setup={state}
+          connectsWithoutSetup={connectsWithoutSetup}
           onClose={() => setOpen(false)}
-          onSaved={async () => {
+          onSaved={async (input) => {
             setOpen(false);
-            await changed();
+            await changed(input);
           }}
         />
       ) : null}
@@ -294,13 +336,18 @@ export function OptionalVendorApp({
         <span className="text-xs text-muted-foreground">
           {t("Only needed if {{name}} doesn't let Baskule register itself.", { name })}
         </span>
-        {setup.error && !setup.data ? (
+        {setup.error && !setup.refreshing ? (
           <span role="alert" className="text-xs text-destructive-foreground">
             {setup.error}
           </span>
         ) : null}
       </div>
-      <Button size="sm" variant="outline" disabled={!setup.data} onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!setup.data || setup.refreshing}
+        onClick={() => setOpen(true)}
+      >
         {t("Set up")}
       </Button>
       {setup.data ? (
@@ -310,10 +357,11 @@ export function OptionalVendorApp({
           name={name}
           app={undefined}
           setup={setup.data}
+          connectsWithoutSetup
           onClose={() => setOpen(false)}
-          onSaved={async () => {
+          onSaved={async (input) => {
             setOpen(false);
-            await Promise.all([setup.reload(), onChanged()]);
+            await Promise.all([setup.saved(input), onChanged()]);
           }}
         />
       ) : null}
@@ -331,8 +379,9 @@ function VendorSignInDialog({
   readonly name: string;
   readonly app: VendorApp | undefined;
   readonly setup: VendorSetup;
+  readonly connectsWithoutSetup: boolean;
   readonly onClose: () => void;
-  readonly onSaved: () => Promise<unknown>;
+  readonly onSaved: (input: NonNullable<VendorSetupInput>) => Promise<unknown>;
 }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -349,6 +398,7 @@ function SignInForm({
   name,
   app,
   setup,
+  connectsWithoutSetup,
   busy,
   setBusy,
   onClose,
@@ -358,10 +408,11 @@ function SignInForm({
   readonly name: string;
   readonly app: VendorApp | undefined;
   readonly setup: VendorSetup;
+  readonly connectsWithoutSetup: boolean;
   readonly busy: boolean;
   readonly setBusy: (busy: boolean) => void;
   readonly onClose: () => void;
-  readonly onSaved: () => Promise<unknown>;
+  readonly onSaved: (input: NonNullable<VendorSetupInput>) => Promise<unknown>;
 }) {
   const t = useTranslation();
   const [mode, setMode] = useState<Mode>(setup.mode ?? (setup.relaySupported ? "relay" : "own"));
@@ -376,9 +427,12 @@ function SignInForm({
   const needsTenant = app?.fields?.includes("tenant") ?? false;
   const needsSecret = method !== "none";
   const tenantValue = tenant.trim().toLowerCase();
-  const validTenant = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(tenantValue);
+  const validTenant = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+    tenantValue,
+  );
   const withTenant = needsTenant ? { tenant: tenantValue } : {};
   const relay = mode === "relay";
+  const disconnects = setup.mode !== null || connectsWithoutSetup;
   // Saving the same Baskule sign-in again would only disconnect everyone.
   const unchanged = relay && setup.mode === "relay" && tenantValue === (setup.tenant ?? "");
   const input: NonNullable<VendorSetupInput> | null =
@@ -396,7 +450,7 @@ function SignInForm({
           : null;
 
   const save = async (chosen: NonNullable<VendorSetupInput>) => {
-    if (setup.mode !== null) {
+    if (disconnects) {
       const consequence = t(
         "Every {{name}} account people connected is disconnected. People connect again in Settings → Plugins.",
         { name },
@@ -414,7 +468,7 @@ function SignInForm({
     return (async () => {
       await pluginsApi.vendorSetup(vendor, chosen);
       notifySuccess(t("Sign-in setup saved"));
-      await onSaved();
+      await onSaved(chosen);
     })()
       .catch((cause: unknown) => {
         const code = cause instanceof BaskuleApiError ? cause.code : undefined;
@@ -572,7 +626,7 @@ function SignInForm({
           </>
         )}
 
-        {setup.mode !== null && !unchanged ? (
+        {disconnects && !unchanged ? (
           <p className="text-xs text-muted-foreground">
             {t("Saving disconnects every {{name}} account people connected.", { name })}
           </p>

@@ -425,6 +425,7 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
                 name={vendorName}
                 app={vendorApp}
                 configured={plugin.vendorConfigured}
+                connectsWithoutSetup={ownAccounts.some((server) => !server.oauth?.staticClient)}
                 onChanged={data.reload}
               />
             ) : null}
