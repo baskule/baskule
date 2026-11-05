@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+import type { KubernetesOptions } from "./kubernetes.ts";
 // computerd configuration, from the environment. Secrets (LLM key, tokens) are read here and never logged.
 
 export interface Config {
@@ -5,10 +7,13 @@ export interface Config {
   port: number;
   host: string;
   token: string;
-  gateway: string; // host:port of the OpenShell gateway (plaintext gRPC, internal network only)
-  computeDriver: "docker" | "kubernetes";
-  volumesUrl: string; // baskule-openshell volume helper, e.g. http://baskule-openshell:47096
-  volumesToken: string;
+  backend: "docker" | "kubernetes";
+  kubernetes?: KubernetesOptions;
+  legacyVolume?: string;
+  dockerHost: string;
+  network: string;
+  guardImage: string;
+  dns: string[];
   image: string;
   cpuLimit: string;
   memoryLimit: string;
@@ -17,7 +22,7 @@ export interface Config {
   maxConcurrent: number; // per computer: exec + cdp + files streams
   readyTimeoutMs: number;
   maxPutBytes: number;
-  sandboxRoot: string; // "/sandbox" in production; a temp dir in unit tests (fake gateway runs commands locally)
+  sandboxRoot: string; // "/sandbox" in production; a temp dir in unit tests (commands run locally)
   cdpPort: number;
   browserPort: number;
   productSettingsUrl: string;
@@ -40,19 +45,34 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const idleMinutes = num(env, "IDLE_MINUTES", 10);
   const idleMs = Math.round(idleMinutes * 60_000);
-  const computeDriver = env.OPENSHELL_COMPUTE_DRIVER ?? "docker";
-  if (computeDriver !== "docker" && computeDriver !== "kubernetes") {
-    throw new Error("OPENSHELL_COMPUTE_DRIVER must be docker or kubernetes");
+  const backend = env.COMPUTER_BACKEND ?? "docker";
+  if (backend !== "docker" && backend !== "kubernetes") {
+    throw new Error("COMPUTER_BACKEND must be docker or kubernetes");
   }
+  const dns = (env.COMPUTER_DNS ?? "1.1.1.1,8.8.8.8").split(",").map(value => value.trim());
+  if (!dns.length || dns.some(value => !isIP(value))) throw new Error("COMPUTER_DNS must contain comma-separated IP addresses");
   return {
     instance,
     port: num(env, "COMPUTERD_PORT", 47094),
     host: env.COMPUTERD_HOST ?? "0.0.0.0",
     token,
-    gateway: env.OPENSHELL_GATEWAY ?? "baskule-openshell:47095",
-    computeDriver,
-    volumesUrl: (env.OPENSHELL_VOLUMES_URL ?? "http://baskule-openshell:47096").replace(/\/$/, ""),
-    volumesToken: env.OPENSHELL_VOLUMES_TOKEN ?? "",
+    backend,
+    kubernetes: {
+      storageClass: env.COMPUTER_STORAGE_CLASS || undefined,
+      storageSize: env.COMPUTER_DISK_SIZE || "10Gi",
+      runtimeClassName: env.COMPUTER_RUNTIME_CLASS_NAME || undefined,
+      nodeSelector: stringMap(env.COMPUTER_NODE_SELECTOR ?? "{}"),
+      tolerations: objects(env.COMPUTER_TOLERATIONS ?? "[]"),
+      imagePullSecrets: objects(env.COMPUTER_IMAGE_PULL_SECRETS ?? "[]").map(value => {
+        if (typeof value.name !== "string" || !value.name) throw new Error("Invalid COMPUTER_IMAGE_PULL_SECRETS name");
+        return { name: value.name };
+      }),
+    },
+    legacyVolume: env.COMPUTER_LEGACY_VOLUME ?? "",
+    dockerHost: env.DOCKER_HOST ?? "unix:///var/run/docker.sock",
+    network: env.COMPUTER_NETWORK ?? "baskule-computers",
+    guardImage: env.COMPUTER_GUARD_IMAGE ?? "baskule-computerd:local",
+    dns,
     image: env.COMPUTER_IMAGE ?? "baskule-computer:local",
     cpuLimit: env.COMPUTER_CPUS ?? "2",
     memoryLimit: env.COMPUTER_MEMORY ?? "3Gi",
@@ -66,4 +86,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     browserPort: num(env, "BASKULE_BROWSER_PORT", 9223),
     productSettingsUrl: env.PRODUCT_SETTINGS_URL ?? "",
   };
+}
+
+function objects(raw: string): Record<string, unknown>[] {
+  const value: unknown = JSON.parse(raw);
+  if (!Array.isArray(value) || !value.every(v => v !== null && typeof v === "object" && !Array.isArray(v))) throw new Error("Expected JSON array of objects");
+  return value;
+}
+function stringMap(raw: string): Record<string, string> {
+  const value: unknown = JSON.parse(raw);
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected JSON string map");
+  const result: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item !== "string") throw new Error("Expected JSON string map");
+    result[key] = item;
+  }
+  return result;
 }

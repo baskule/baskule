@@ -35,6 +35,8 @@ services:
     volumes:
       - ${AUTH_CONFIG_FILE:-./auth.json}:/src/auth.json:ro
       - ${BASKULE_PLATFORM_DIR:-../platform}:/src/platform:ro
+  baskule-computer-image:
+    image: baskule-computer:${BASKULE_TAG:-local}
   baskule-computerd:
     image: baskule-computerd:${BASKULE_TAG:-local}
     container_name: baskule-computerd
@@ -42,15 +44,10 @@ services:
       context: ..
       dockerfile: computerd/Dockerfile
     environment:
+      COMPUTER_GUARD_IMAGE: baskule-computerd:${BASKULE_TAG:-local}
+      COMPUTER_LEGACY_VOLUME: baskule-openshell-docker
       COMPUTER_IMAGE: baskule-computer:${BASKULE_TAG:-local}
       OTLP_TRACES_URL: ${BASKULE_OTLP_TRACES_URL-http://baskule-traces:4318/v1/traces}
-  baskule-openshell:
-    image: baskule-openshell-gateway:${BASKULE_TAG:-local}
-    container_name: baskule-openshell
-    environment:
-      OPENSHELL_OTLP_ENDPOINT: ${BASKULE_OPENSHELL_OTLP-http://baskule-traces:4317}
-      BASKULE_REGISTRY: ""
-      BASKULE_VERSION: ${BASKULE_TAG:-local}
   baskule-rustfs:
     container_name: baskule-rustfs
   baskule-edge:
@@ -60,14 +57,16 @@ services:
 
   backup:
     image: baskule-celld:${BASKULE_TAG:-local}
+    environment:
+      COMPUTER_LEGACY_VOLUME: baskule-openshell-docker
   restore:
     image: baskule-celld:${BASKULE_TAG:-local}
+    environment:
+      COMPUTER_LEGACY_VOLUME: baskule-openshell-docker
 
 networks:
   baskule-net:
     name: baskule-net
-  baskule-computers:
-    name: baskule-computers
 volumes:
   baskule-storage-secrets:
     name: baskule-storage-secrets
@@ -75,8 +74,6 @@ volumes:
     name: baskule-platform-secrets
   baskule-computerd-secrets:
     name: baskule-computerd-secrets
-  baskule-openshell-secrets:
-    name: baskule-openshell-secrets
   baskule-rustfs:
     name: baskule-rustfs
   baskule-celld-a:
@@ -85,7 +82,6 @@ volumes:
     name: baskule-celld-b
   baskule-edge-data:
     name: baskule-edge-data
+  # Legacy disk source retained for the 0.5.0 forward migration.
   baskule-openshell-docker:
     name: baskule-openshell-docker
-  baskule-openshell-state:
-    name: baskule-openshell-state

@@ -2,7 +2,7 @@
 
 Baskule forks [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (MIT,
 Copyright (c) 2026 T3 Tools Inc.; keep `LICENSE`) for a self-hosted agent platform. SpaceCell embeds OpenCode 2,
-and tools run on each space's OpenShell computer. See the [project README](../README.md) for the repository layout.
+and tools run on each space's computer. See the [project README](../README.md) for the repository layout.
 
 - **Upstream base:** tag `v0.1.6` = `2359643cffa6ba9ee84d6f2694b935de54a8013e`.
 - `app/` is tracked in the Baskule umbrella repository. The original fork history and snapshot source are recorded in `../source-provenance.json`.

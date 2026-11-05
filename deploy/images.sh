@@ -43,10 +43,7 @@ mkdir -p "$ROOT/computer/browser"
 bridge=$(sha256sum "$ROOT/computer/browser/bridge.mjs" | cut -c1-16)
 
 build_one "baskule-computer:$TAG" '"$ROOT/computer/build.sh" -q >/dev/null' "$bridge" "$ROOT/computer"
-toolchain=$(sha256sum "$DEPLOY_DIR/build-env/Dockerfile" | cut -c1-16)
-# The gateway embeds supervisor/sandbox image names, which include TAG.
-build_one "baskule-openshell-gateway:$TAG" '"$ROOT/openshell/build.sh"' "$toolchain:$TAG:$(docker image inspect -f '{{.Id}}' "baskule-computer:$TAG")" "$ROOT/openshell" "${OPENSHELL_FORK:-$ROOT/vendor/openshell}"
 # Source nodes mount the app at deploy time; bundle changes never rebuild their image.
-build_one "baskule-celld:$TAG" 'nice -n 10 docker build --target source --network host -q -t "baskule-celld:$TAG" -f "$DEPLOY_DIR/celld/Dockerfile" "$ROOT" >/dev/null' "" "$DEPLOY_DIR/celld/Dockerfile" "$DEPLOY_DIR/celld/jobs.sh" "$DEPLOY_DIR/celld/sync-plugins.sh"
+build_one "baskule-celld:$TAG" 'nice -n 10 docker build --target source --network host -q -t "baskule-celld:$TAG" -f "$DEPLOY_DIR/celld/Dockerfile" "$ROOT" >/dev/null' "" "$DEPLOY_DIR/celld/Dockerfile" "$DEPLOY_DIR/celld/backup.sh" "$DEPLOY_DIR/celld/jobs.sh" "$DEPLOY_DIR/celld/sync-plugins.sh"
 # Hash the shared lock as a whole: platform/e2e dependency changes may also rebuild computerd.
 build_one "baskule-computerd:$TAG" 'nice -n 10 docker build --network host -q -t "baskule-computerd:$TAG" -f "$ROOT/computerd/Dockerfile" "$ROOT" >/dev/null' "" "$ROOT/computerd" "$ROOT/package.json" "$ROOT/pnpm-workspace.yaml" "$ROOT/pnpm-lock.yaml"

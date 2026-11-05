@@ -447,7 +447,7 @@ test("kind fixture and bootstrap honor a custom namespace and release without st
 
 test("network denial messages mention S3 only when the fixture is configured", () => {
   const source = readFileSync(join(root, "e2e/kubernetes-journey.mjs"), "utf8");
-  const statements = source.split("\n").filter(line => line.includes("pass(`NetworkPolicy blocks direct") || line.includes("pass(`supervisor-mediated curl"));
+  const statements = source.split("\n").filter(line => line.includes("pass(`NetworkPolicy blocks direct") || line.includes("pass(`computer curl permits"));
   assert.equal(statements.length, 2);
   for (const configured of [false, true]) {
     const messages = [];

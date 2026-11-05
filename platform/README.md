@@ -27,7 +27,7 @@ pnpm run build                 # dist/worker.js (esbuild) + dist/web
 pnpm test                      # vitest: ControlCell, Worker security, recheck, SpaceCell lifecycle, agent runtime/migration
 pnpm run test:integration      # test/integration.sh: real celld dev on :47620, then stops
 node src/space/test/run.mjs   # SpaceCell runner: merged cell + fake computerd + fake LLM
-src/agent/test/run.sh         # embedded agent runner: real computerd + shared OpenShell gateway
+src/agent/test/run.sh         # embedded agent runner: real computerd + Docker backend
 ../scripts/check features     # real hosted app + fake model + real computers
 pnpm run typecheck
 ../scripts/stack up           # isolated real app; --profile light or rustfs

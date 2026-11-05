@@ -31,9 +31,6 @@ computerd:
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {memory: 512Mi}
-computer:
-  cpu: "2"
-  memory: 3Gi
 exposure:
   # none (port-forward), ingress, or gateway. Controller installed separately.
   mode: none
@@ -48,25 +45,18 @@ exposure:
     sectionName: ""
 networkPolicy:
   enabled: true
-# The vendored OpenShell chart owns the gateway, RBAC, JWT and workspace PVCs.
-openshell:
-  gatewayConfig:
-    openshell.drivers.kubernetes:
-      allowed_pod_labels: [baskule.managed, baskule.instance]
-  gateway:
-    image: {repository: baskule-openshell-kubernetes}
-  sandboxRuntime:
-    image: {repository: baskule-openshell-sandbox}
-  supervisor:
-    image: {repository: baskule-openshell-supervisor}
-  server:
-    telemetryEnabled: false
-    disableTls: true
-    auth:
-      allowUnauthenticatedUsers: true # private service; NetworkPolicy restricts clients
-    sandboxUid: "1000"
-    sandboxGid: "1000"
-    workspaceDefaultStorageSize: 10Gi
-  resources:
-    requests: {cpu: 100m, memory: 256Mi}
-    limits: {memory: 1Gi}
+computers:
+  image: ""
+  cpus: "2"
+  memory: 3Gi
+  diskSize: 10Gi
+  storageClass: ""
+  runtimeClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  imagePullSecrets: []
+  prePull:
+    enabled: true
+  dnsServerCidrs: []
+  blockedCidrs: []
+  ipv6: false

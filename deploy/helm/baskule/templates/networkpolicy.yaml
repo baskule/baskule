@@ -30,35 +30,66 @@ spec:
             matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: celld}
       ports: [{port: 47094, protocol: TCP}]
 ---
-# The user API is anonymous on this private listener, as on Compose. Only
-# computerd and authenticated supervisor callbacks may reach it.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ .Release.Name }}-openshell
+  name: {{ .Release.Name }}-computers
 spec:
   podSelector:
-    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/name: {{ include "openshell.name" .Subcharts.openshell }}}
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: computerd}
-        - podSelector:
-            matchLabels: {openshell.ai/boundary-role: supervisor}
-        - podSelector:
-            matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/name: {{ include "openshell.name" .Subcharts.openshell }}}
-      ports: [{port: 8080, protocol: TCP}]
----
-# OpenShell itself installs a workload egress deny and a boundary ingress rule.
-# Keep the deny declared here as well; adding an allow rule would weaken it.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ .Release.Name }}-computer-egress
-spec:
-  podSelector:
-    matchLabels: {openshell.ai/boundary-role: workload}
-  policyTypes: [Egress]
-  egress: []
+    matchLabels: {baskule.computer: "true"}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+        # NodeLocal DNSCache pods (GKE Dataplane V2 redirects kube-dns queries to them; ipBlock never matches pods there).
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: node-local-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    {{- range .Values.computers.dnsServerCidrs }}
+    - to:
+        - ipBlock: {cidr: {{ . | quote }}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    {{- end }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 127.0.0.0/8
+              - 0.0.0.0/8
+              - 224.0.0.0/4
+              - 240.0.0.0/4
+              {{- range .Values.computers.blockedCidrs }}
+              {{- if not (contains ":" .) }}
+              - {{ . | quote }}
+              {{- end }}
+              {{- end }}
+        {{- if .Values.computers.ipv6 }}
+        - ipBlock:
+            cidr: ::/0
+            except:
+              - fc00::/7
+              - fe80::/10
+              - ::1/128
+              - ff00::/8
+              {{- range .Values.computers.blockedCidrs }}
+              {{- if contains ":" . }}
+              - {{ . | quote }}
+              {{- end }}
+              {{- end }}
+        {{- end }}
 {{- end }}

@@ -10,14 +10,14 @@ export BASKULE_INSTALL_REGISTRY=ghcr.io/baskule
 export BASKULE_INSTALL_VERSION=local
 docker build --network host --target release -f deploy/celld/Dockerfile \
   -t "$BASKULE_INSTALL_REGISTRY/baskule-celld:$BASKULE_INSTALL_VERSION" .
-for name in computerd openshell-gateway; do
+for name in computerd computer; do
   docker tag "baskule-$name:local" "$BASKULE_INSTALL_REGISTRY/baskule-$name:$BASKULE_INSTALL_VERSION"
 done
 node e2e/release-install.mjs
 ```
 
 Choose a different registry prefix or tag with `BASKULE_INSTALL_REGISTRY` and `BASKULE_INSTALL_VERSION`.
-Only the three host images need these tags; workload images are bundled in the gateway. These commands do not
+All three images need these tags; Compose fetches the computer image through its one-shot image service. These commands do not
 push images or contact a model provider.
 
 The driver creates unique Compose projects under `.run/`. The single-machine target uses the default loopback
@@ -25,15 +25,13 @@ port 47090; proxy and external-storage targets select free ports. Its single-mac
 starts with only the released Compose file. `.env` and a config directory are not required. It runs Compose directly, with no
 source-build override. The fake LLM is a separate fixture. Checks cover default password authentication, admin
 sign-in, a streamed fake chat, and a shell command through the platform's computerd endpoint. It checks chat and
-computer-file persistence after a compose-file version update and down/up, then backs up and restores into empty
-volumes. Hashes of every consumer secrets file must match across restart, update, and restore.
-The gateway update also checks removal of old workload tags and pruning of a distinct obsolete image.
+computer-file persistence after down/up, then backs up and restores into empty
+volumes. Hashes of every consumer secrets file must match across restart and restore.
 The driver excludes CI's packaging variable `BASKULE_VERSION` from Docker commands so the downloaded
-Compose file selects the version. Retagged host images keep their image IDs; the gateway's changed
-`BASKULE_VERSION` must still recreate it and finish image cleanup before assertions run.
+Compose file selects the version. Computerd creates computers directly on the host Docker Engine.
 
 The driver removes its own containers, networks, and volumes in a `finally` block. It never uses `scripts/stack`
-or the shared development gateway. Evidence, logs, the backup, and private generated configuration stay under
+or the shared development stack. Evidence, logs, the backup, and private generated configuration stay under
 `.run/`; treat them as private. The release factory runs the driver on its disposable runner before image publishing.
 
 Before submitting a change, also run `BASKULE_CHECK_RECORD=0 scripts/check plan`, its selected checks with
@@ -73,7 +71,7 @@ setup, Secure cookies, sign-in, foreign Origin refusal, and independent public-c
 incoming X-Forwarded-For with its simulated peer address. With `private_ranges`, private-address LAN/VPN clients
 share a budget, as the installation guide explains. The proxy target checks that incoming XFF cannot rotate that budget.
 
-Runtime environment and mounted-volume assertions verify that RustFS, computerd, and OpenShell receive only their
+Runtime environment and mounted-volume assertions verify that RustFS and computerd receive only their
 own generated secrets and no unrelated `.env` values. The proxy target checks the custom bind port in the printed
 link, no links from the single-host deploy job, and no additional setup links after admin creation and another `up -d`.
 
@@ -92,6 +90,6 @@ missing keys, explicit overrides, and conditional setup-link output. Use `script
 with normal S3 values, and checks admin setup, streamed chat, computer execution, PVC persistence,
 network isolation, celld takeover and stable tokens after a Helm upgrade. The release
 factory runs it in a separate `install-kubernetes` job with the retained image archives.
-Unlike Compose, Kubernetes pulls the computer, supervisor and sandbox images directly.
+Kubernetes pulls the computer image directly; Compose pulls it through the pull-only `baskule-computer-image` service; the pre-pull DaemonSet caches it on each node.
 See [the Kubernetes guide](install-kubernetes.md#verify-a-source-change) for local and
 owner-authorized ephemeral GKE Standard runs.

@@ -11,3 +11,6 @@ Create the first admin (keep this link private):
 Forward the service before opening that link:
 kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }} 47090:80
 {{- end }}
+
+Computers require the Agent Sandbox controller and an enforcing NetworkPolicy CNI.
+Set computers.blockedCidrs for privately used public cluster or storage ranges.

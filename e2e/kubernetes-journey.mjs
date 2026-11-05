@@ -239,49 +239,65 @@ try {
       computer("ensure");
       assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
       pass("per-space PVC preserves file bytes after computer stop/start");
-      const sandbox = objects("get", "sandboxes", `default--${namesFor(space, release).sandbox}`);
-      const workloadSelector = `openshell.ai/boundary-role=workload,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`;
-      const pods = objects("get", "pods", "-l", workloadSelector).items;
+      const sandbox = objects("get", "sandboxes", namesFor(space, release).sandbox);
+      const computerPods = () => objects("get", "pods", "-l", "baskule.computer=true").items.filter(pod => pod.metadata.ownerReferences?.some(owner => owner.uid === sandbox.metadata.uid));
+      const pods = computerPods();
       assert.equal(pods.length, 1);
       const pod = pods[0];
-      const pvcBefore = objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort();
-      if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("cordon", pod.spec.nodeName);
+      const computerPvcs = () => objects("get", "pvc").items.filter(pvc => pvc.metadata.ownerReferences?.some(owner => owner.uid === sandbox.metadata.uid)).map(pvc => pvc.metadata.uid).sort();
+      const pvcBefore = computerPvcs();
+      assert.ok(pvcBefore.length > 0);
+      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
+        execFileSync("helm", ["upgrade", release, process.env.BASKULE_K8S_CHART, "--version", process.env.BASKULE_K8S_CHART_VERSION, "-n", namespace, "--reuse-values", "--set", "computers.prePull.enabled=true"], { stdio: "ignore", timeout: 180_000 });
+        kube("rollout", "status", `daemonset/${release}-computer-prepull`, "--timeout=180s");
+        pass("computer image cached on all nodes before cross-node move");
+        kube("cordon", pod.spec.nodeName);
+      }
+      const moveStarted = performance.now();
       try {
         kube("delete", "pod", pod.metadata.name, "--wait=true");
         await expect.poll(() => {
           // The next use wakes a Sandbox suspended after its workload pod vanished.
           try { computer("ensure"); } catch { return false; }
-          const replacement = objects("get", "pods", "-l", workloadSelector).items[0];
+          const replacement = computerPods()[0];
           return Boolean(replacement && replacement.metadata.uid !== pod.metadata.uid && replacement.status.conditions?.some(c => c.type === "Ready" && c.status === "True"));
         }, { timeout: 240_000 }).toBe(true);
         if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
-          assert.notEqual(objects("get", "pods", "-l", workloadSelector).items[0].spec.nodeName, pod.spec.nodeName);
+          assert.notEqual(computerPods()[0].spec.nodeName, pod.spec.nodeName);
         }
         computer("ensure");
         assert.match(JSON.stringify(await files()), /KUBERNETES_DISK_OK/);
-        assert.deepEqual(objects("get", "pvc").items.map(pvc => pvc.metadata.uid).sort(), pvcBefore);
+        assert.deepEqual(computerPvcs(), pvcBefore);
+        writeFileSync(resolve(evidence, "node-move.json"), JSON.stringify({ elapsedMs: performance.now() - moveStarted, from: pod.spec.nodeName, to: computerPods()[0].spec.nodeName }));
         pass("replacement computer pod mounts the same PVC and preserves file bytes");
       } finally {
         if (process.env.BASKULE_K8S_CROSS_NODE === "1") kube("uncordon", pod.spec.nodeName);
       }
       // A network-policy-enforced workload cannot dial any peer, S3 or private IP.
-      const workload = objects("get", "pods", "-l", workloadSelector).items[0];
+      const workload = computerPods()[0];
       const probe = 'const net=require("net");const s=net.connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>process.exit(1));s.on("error",()=>process.exit(0));s.setTimeout(3000,()=>{s.destroy();process.exit(0)});';
       for (const [host, port] of [
         [objects("get", "pod", celldPod).status.podIP, "47092"],
         ...(process.env.BASKULE_K8S_S3_FIXTURE ? [[objects("get", "svc", process.env.BASKULE_K8S_S3_FIXTURE).spec.clusterIP, "3900"]] : []),
         ["169.254.169.254", "80"],
+        ["metadata.google.internal", "80"],
+        [objects("get", "svc", release).spec.clusterIP, "80"],
+        [objects("get", "svc", `${release}-computerd`).spec.clusterIP, "47094"],
+        [workload.status.hostIP, "10250"],
       ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
       pass(`NetworkPolicy blocks direct computer access to peer${process.env.BASKULE_K8S_S3_FIXTURE ? ", S3" : ""} and metadata IPs`);
       if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
         kube("exec", celldPod, "--", "curl", "-fsS", "--max-time", "10", "-H", "Metadata-Flavor: Google", "-o", "/dev/null", "http://169.254.169.254/computeMetadata/v1/");
         pass("GKE metadata server exists and is reachable from the trusted platform");
       }
-      // Unlike kubectl exec above, computerd exec enters the sandbox's seccomp
-      // broker and trusted supervisor: assert application-policy denial as well.
+      // Exercise the same network isolation through the product exec API.
       const computerApi = new Client(await forward(`service/${release}-computerd`, 47094), Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString());
       const publicControl = await computerApi.exec(space, { argv: ["curl", "-fsS", "--max-time", "20", "https://example.com/"] });
       assert.equal(publicControl.code, 0, publicControl.stderr);
+      const sshControl = await computerApi.exec(space, { argv: ["node", "-e", "const s=require('net').connect(22,'github.com');s.on('connect',()=>{s.destroy();process.exit(0)});s.on('error',()=>process.exit(1));s.setTimeout(20000,()=>process.exit(2))"] });
+      assert.equal(sshControl.code, 0, sshControl.stderr);
+      pass("computer DNS, public HTTPS and public TCP 22 work");
+
       const apiService = JSON.parse(execFileSync("kubectl", ["-n", "default", "get", "service", "kubernetes", "-o", "json"], { encoding: "utf8" })).spec.clusterIP;
       for (const target of [
         `https://${apiService}:443/`,
@@ -291,18 +307,43 @@ try {
         "http://169.254.169.254/computeMetadata/v1/",
       ]) {
         const denied = await computerApi.exec(space, { argv: ["curl", "--silent", "--show-error", "--max-time", "10", "--insecure", "-H", "X-Forwarded-For: 198.51.100.1", target] });
-        assert.notEqual(denied.code, 0, `supervisor must deny ${target}`);
+        assert.notEqual(denied.code, 0, `NetworkPolicy must deny ${target}`);
         assert.equal(denied.stdout, "", "no protected response body may escape");
       }
-      const supervisor = objects("get", "pods", "-l", `openshell.ai/boundary-role=supervisor,openshell.ai/boundary-pair=${sandbox.metadata.labels["openshell.ai/sandbox-id"]}`).items[0];
-      const denialLog = kube("logs", supervisor.metadata.name, "--all-containers=true");
-      assert.match(denialLog, /denied|not allowed|blocked/i, "supervisor must record policy denials, not just a dial timeout");
-      assert.ok(denialLog.includes(apiService), "the Kubernetes API denial must appear in supervisor logs");
-      pass(`supervisor-mediated curl permits public HTTPS and denies Kubernetes API, platform Service${process.env.BASKULE_K8S_S3_FIXTURE ? ", S3 fixture" : ""} and metadata`);
+      pass(`computer curl permits public HTTPS and denies Kubernetes API, platform Service${process.env.BASKULE_K8S_S3_FIXTURE ? ", S3 fixture" : ""} and metadata`);
       const cdp = await wsExchange(computerApi.ws(`/v1/spaces/${space}/cdp`), [JSON.stringify({ id: 1, method: "Target.getTargets" })], messages => messages.some(message => message.includes('"id":1')), 60_000);
       const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
       assert.ok(targets.some(target => target.type === "page"));
       pass("computer Chromium responds through the real CDP WebSocket tunnel");
+      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
+        const claim = objects("get", "pvc").items.find(p => p.metadata.ownerReferences?.some(o => o.uid === sandbox.metadata.uid));
+        assert.ok(claim);
+        const snapshotName = "restore-proof";
+        const apply = object => execFileSync("kubectl", ["-n", namespace, "apply", "-f", "-"], { input: JSON.stringify(object), encoding: "utf8" });
+        const command = async argv => {
+          const r = await computerApi.exec(space, { argv });
+          assert.equal(r.code, 0, r.stderr); return r.stdout;
+        };
+        await command(["sh", "-c", "mkdir -p /sandbox/space/restore-proof; printf snapshot-proof > /sandbox/space/restore-proof/a; printf second-file > /sandbox/space/restore-proof/b; sync"]);
+        const hashes = () => command(["sh", "-c", "cd /sandbox/space/restore-proof && sha256sum a b"]);
+        const beforeHashes = await hashes();
+        computer("stop");
+        apply({ apiVersion: "snapshot.storage.k8s.io/v1", kind: "VolumeSnapshotClass", metadata: { name: "baskule-proof" }, driver: "pd.csi.storage.gke.io", deletionPolicy: "Delete" });
+        try {
+          apply({ apiVersion: "snapshot.storage.k8s.io/v1", kind: "VolumeSnapshot", metadata: { name: snapshotName }, spec: { volumeSnapshotClassName: "baskule-proof", source: { persistentVolumeClaimName: claim.metadata.name } } });
+          await expect.poll(() => objects("get", "volumesnapshot", snapshotName).status?.readyToUse, { timeout: 240_000 }).toBe(true);
+          await computerApi.json("POST", `/v1/spaces/${space}/computer/delete`, { confirm: space });
+          assert.equal(objects("get", "pvc").items.some(p => p.metadata.name === claim.metadata.name), false);
+          apply({ apiVersion: "v1", kind: "PersistentVolumeClaim", metadata: { name: claim.metadata.name, labels: { "agents.x-k8s.io/adoptable": "true" } }, spec: { accessModes: claim.spec.accessModes, storageClassName: claim.spec.storageClassName, resources: claim.spec.resources, dataSource: { apiGroup: "snapshot.storage.k8s.io", kind: "VolumeSnapshot", name: snapshotName } } });
+          computer("ensure");
+          assert.equal(await hashes(), beforeHashes);
+          writeFileSync(resolve(evidence, "restore.json"), JSON.stringify({ pvc: claim.metadata.name, hashes: beforeHashes, restored: true }));
+          pass("VolumeSnapshot restores known files into the original PVC name after Sandbox and PVC deletion");
+        } finally {
+          kube("delete", "volumesnapshot", snapshotName, "--ignore-not-found", "--timeout=180s");
+        }
+      }
+
     }
     if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
     // Keep the killed ordinal unavailable until another celld owns its cells.
@@ -338,12 +379,13 @@ try {
     kube("patch", "statefulset", `${release}-celld`, "--type=json", "-p", '[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]');
     kube("delete", "pod", victim, "--wait=true", "--ignore-not-found=true");
     kube("rollout", "status", `statefulset/${release}-celld`, "--timeout=180s");
-    const sandboxName = `default--${namesFor(space, release).sandbox}`;
-    const workspace = objects("get", "pvc", `workspace-${sandboxName}`);
+    const sandboxName = namesFor(space, release).sandbox;
+    const workspace = objects("get", "pvc", `${namesFor(space, release).volume}-${sandboxName}`);
     client.close(); await client.closed; client = undefined;
     await person.json("DELETE", `/api/baskule/spaces/${space}`);
     await expect.poll(() => objects("get", "pvc").items.some(pvc => pvc.metadata.uid === workspace.metadata.uid), { timeout: 180_000 }).toBe(false);
-    pass("deleting a space removes its actual workspace PVC");
+    await expect.poll(() => objects("get", "sandboxes").items.some(sandbox => sandbox.metadata.name === sandboxName), { timeout: 180_000 }).toBe(false);
+    pass("deleting a space removes its Sandbox and actual workspace PVC");
     writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), selection, spacePvcDeleted: true, computerPodReplaced: selection === "full", crossNode: selection === "full" && process.env.BASKULE_K8S_CROSS_NODE === "1", celldTakeover: true, computerdPod }));
   }
 } finally {

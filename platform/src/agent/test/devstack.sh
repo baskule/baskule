@@ -4,14 +4,12 @@
 #          Worker), state in test/.run/app/.celld
 #   47651  fake LLM (platform/dev/fake-llm, requires the bearer key "fake-llm-key": proves the key path)
 #   47652  computerd from source (computerd/src/main.ts), the real API, IDLE_MINUTES=${IDLE_MINUTES:-3}
-#   47510  the shared private OpenShell gateway of the component loops (openshell/dev-up.sh: container
-#   47511  osdev-openshell, real baskule-computer:local sandboxes; also used by wpf and computerd)
 #
-#   ./devstack.sh start [--clean]   build the harness, start everything (the gateway is reused if running)
+#   ./devstack.sh start [--clean]   build the harness, start everything
 #   ./devstack.sh restart-celld     restart celld only (persistence checks; same state dir)
 #   ./devstack.sh reload            rebuild the harness and restart celld (after a code change)
-#   ./devstack.sh stop              stop celld, fake LLM, computerd (the gateway keeps running)
-#   ./devstack.sh down [--purge]    stop all, remove the gateway container (--purge: its volumes and network too)
+#   ./devstack.sh stop              stop celld, fake LLM, computerd
+#   ./devstack.sh down              stop all processes
 #   REAL_LLM=1 ./devstack.sh start  computerd serves the real key (LLM_ENV_FILE) and the cells use Mistral Large 4
 #                                   Spend must be logged.
 set -euo pipefail
@@ -23,7 +21,6 @@ mkdir -p "$RUN"
 source "$ROOT/scripts/env.sh"
 CELLD_BIN=${CELLD_BIN:-$ROOT/scripts/celld.sh}
 CD_TOKEN=wpd-computerd-token-0123456789
-VOL_TOKEN=${OPENSHELL_VOLUMES_TOKEN:-dev-volumes-token}
 
 pidkill() {
   [ -f "$RUN/$1.pid" ] && kill "$(cat "$RUN/$1.pid")" 2>/dev/null || true; rm -f "$RUN/$1.pid"
@@ -39,7 +36,6 @@ pidkill() {
 }
 wait_http() { for _ in $(seq 1 "${2:-120}"); do curl -sf -o /dev/null "$1" && return 0; sleep 1; done; echo "timeout waiting for $1" >&2; return 1; }
 
-openshell_up() { "$ROOT/openshell/dev-up.sh" >/dev/null; }
 
 build_harness() {
   local out=$RUN/app
@@ -67,30 +63,28 @@ start_celld() {
 
 case "${1:-}" in
   start)
-    openshell_up
     if [ "${REAL_LLM:-0}" != 1 ]; then
       FAKE_LLM_KEY=fake-llm-key setsid node "$P/dev/fake-llm/server.mjs" --port 47651 >> "$RUN/fake-llm.log" 2>&1 < /dev/null & echo $! > "$RUN/fake-llm.pid"
     else
       KEY=$(set -a; . "${LLM_ENV_FILE:?Set LLM_ENV_FILE to a private provider env file}"; printf %s "$MISTRAL_API_KEY")
       export MISTRAL_API_KEY="$KEY"
     fi
-    env COMPUTERD_INSTANCE=loop-agent COMPUTERD_TOKEN=$CD_TOKEN COMPUTERD_PORT=47652 COMPUTERD_HOST=127.0.0.1 OPENSHELL_GATEWAY=127.0.0.1:${DEV_GATEWAY_PORT:-47510} \
-      OPENSHELL_VOLUMES_URL=http://127.0.0.1:${DEV_VOLUMES_PORT:-47511} OPENSHELL_VOLUMES_TOKEN=$VOL_TOKEN IDLE_MINUTES=${IDLE_MINUTES:-3} LOG_LEVEL=info \
+    env COMPUTERD_INSTANCE=loop-agent COMPUTERD_TOKEN=$CD_TOKEN COMPUTERD_PORT=47652 COMPUTERD_HOST=127.0.0.1 COMPUTER_BACKEND=docker COMPUTER_NETWORK=baskule-loop-agent \
+      IDLE_MINUTES=${IDLE_MINUTES:-3} LOG_LEVEL=info \
       setsid node "$ROOT/computerd/src/main.ts" >> "$RUN/computerd.log" 2>&1 < /dev/null & echo $! > "$RUN/computerd.pid"
     wait_http http://127.0.0.1:47652/healthz 30
     build_harness
     unset KEY MISTRAL_API_KEY
     start_celld "${2:-}"
-    echo "agent dev stack up: celld :47650, fake LLM :47651, computerd :47652, OpenShell :${DEV_GATEWAY_PORT:-47510}" ;;
+    echo "agent dev stack up: celld :47650, fake LLM :47651, computerd :47652" ;;
   restart-celld)
     pidkill celld; sleep 1; start_celld; echo "celld restarted" ;;
   reload)
     build_harness; pidkill celld; sleep 1; start_celld; echo "harness rebuilt, celld restarted" ;;
   stop)
-    for f in celld fake-llm computerd; do pidkill $f; done; echo "stopped (the OpenShell gateway keeps running)" ;;
+    for f in celld fake-llm computerd; do pidkill $f; done; echo "stopped" ;;
   down)
     for f in celld fake-llm computerd; do pidkill $f; done
-    "$ROOT/openshell/dev-down.sh" "${2:-}"
     echo "down" ;;
-  *) sed -n 2,17p "$0"; exit 2 ;;
+  *) sed -n 2,14p "$0"; exit 2 ;;
 esac

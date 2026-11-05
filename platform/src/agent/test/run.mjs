@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { waitFor } from "../../space/test/rpc-client.mjs";
 // Embedded AgentRuntime checks, through the merged SpaceCell (harness /a/<space>/… → /_baskule/agent/…), on celld
-// dev + real computerd + the shared private OpenShell gateway + fake LLM (devstack.sh).
+// dev + real computerd + the Docker backend + fake LLM (devstack.sh).
 //   node test/run.mjs [--only name,name] [--real-llm]
 // Each run uses fresh space ids (computers are deleted at the end). Requires `./devstack.sh start` (run.sh does it).
 import { execFileSync } from "node:child_process";

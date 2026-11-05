@@ -1,9 +1,10 @@
-// Computer lifecycle: one OpenShell sandbox per space (`os-<spaceId>`), a per-space labelled volume at
-// /sandbox/space, lazy create/start, Error -> stop -> start recovery, idle stop. All durable state lives in
-// OpenShell; this class only keeps soft state (activity, stream counts, keep flags) that is rebuilt on restart.
+// Computer lifecycle: one machine per space (`os-<spaceId>`), a per-space labelled volume at
+// /sandbox/space, lazy create/start, idle stop. All durable state lives in
+// the backend; this class only keeps soft state (activity, stream counts, keep flags) that is rebuilt on restart.
+import { closeSessions, liveSession } from "./session.ts";
 import type { Config } from "./config.ts";
-import { type Gateway, GatewayError, type Phase, type SandboxInfo } from "./gateway.ts";
-import { namesFor, computerPolicy } from "./policy.ts";
+import type { Backend, Machine } from "./backend.ts";
+import { namesFor } from "./policy.ts";
 import { runCollect } from "./exec.ts";
 import { log } from "./log.ts";
 import { traced } from "./trace.ts";
@@ -24,34 +25,12 @@ true`;
 
 export type PublicPhase = "absent" | "starting" | "ready" | "stopping" | "stopped" | "error";
 
-export function publicPhase(p: Phase | null): PublicPhase {
-  switch (p) {
-    case null:
-      return "absent";
-    case "SANDBOX_PHASE_READY":
-      return "ready";
-    case "SANDBOX_PHASE_PROVISIONING":
-    case "SANDBOX_PHASE_STARTING":
-    case "SANDBOX_PHASE_UNSPECIFIED":
-    case "SANDBOX_PHASE_UNKNOWN":
-      return "starting";
-    case "SANDBOX_PHASE_STOPPING":
-    case "SANDBOX_PHASE_DELETING":
-      return "stopping";
-    case "SANDBOX_PHASE_STOPPED":
-    case "SANDBOX_PHASE_COMPLETED":
-      return "stopped";
-    default:
-      return "error";
-  }
-}
-
 interface State {
   spaceId: string;
   sandbox: string;
   volume: string;
   lastActivity: number;
-  streams: number; // running exec/cdp/files streams (each holds an OpenShell relay)
+  streams: number; // running exec/cdp/files streams
   keep: boolean;
   ensuring: Promise<EnsureResult> | null;
   stopping: Promise<void> | null;
@@ -74,11 +53,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class Computers {
   private states = new Map<string, State>();
   private timer: NodeJS.Timeout | null = null;
-  private gw: Gateway;
+  private backend: Backend;
   private cfg: Config;
 
-  constructor(gw: Gateway, cfg: Config) {
-    this.gw = gw;
+  constructor(backend: Backend, cfg: Config) {
+    this.backend = backend;
     this.cfg = cfg;
   }
 
@@ -86,8 +65,8 @@ export class Computers {
     return { [MANAGED_LABEL]: "true", ...(this.cfg.instance ? { [INSTANCE_LABEL]: this.cfg.instance } : {}) };
   }
 
-  private async getSandbox(name: string): Promise<SandboxInfo | null> {
-    const info = await this.gw.get(name);
+  private async getSandbox(name: string): Promise<Machine | null> {
+    const info = await this.backend.get(name);
     if (info && this.cfg.instance &&
         (info.labels[MANAGED_LABEL] !== "true" || info.labels[INSTANCE_LABEL] !== this.cfg.instance)) {
       throw new Error(`sandbox ${name} does not belong to computerd instance ${this.cfg.instance}`);
@@ -145,7 +124,7 @@ export class Computers {
   async status(spaceId: string) {
     const s = this.state(spaceId);
     const info = await this.getSandbox(s.sandbox);
-    const phase = publicPhase(info?.phase ?? null);
+    const phase = info?.phase ?? "absent";
     if (phase !== "ready") s.readyAt = null;
     return {
       spaceId,
@@ -158,17 +137,21 @@ export class Computers {
       lastActivity: new Date(s.lastActivity).toISOString(),
       idleStopAt:
         phase === "ready" && !s.keep && s.streams === 0 ? new Date(s.lastActivity + this.cfg.idleMs).toISOString() : null,
-      error: phase === "error" ? info?.conditions.find((c) => c.status !== "True")?.message || null : null,
+      error: phase === "error" ? info?.error || null : null,
     };
   }
 
-  /** Make the computer Ready (create / start / recover), then prepare it once (mkdir home, chats). */
+  /** Make the computer Ready (create / start), then prepare it once (mkdir home, chats). */
   ensure(spaceId: string, opts: { keep?: boolean } = {}): Promise<EnsureResult> {
     const s = this.state(spaceId);
     s.lastActivity = Date.now();
     if (opts.keep !== undefined) s.keep = opts.keep;
     if (s.ensuring) return s.ensuring;
-    // Always one GetSandbox (local SQLite on the gateway, ~ms): a computer stopped behind our back is restarted.
+    // An open agent session proves the machine is running: its stream ends when the machine stops.
+    if (s.prepared && s.readyAt !== null && Date.now() - s.readyAt < 5000 && !s.stopping && liveSession(this.backend, s.sandbox)) {
+      return Promise.resolve({ spaceId: s.spaceId, sandbox: s.sandbox, created: false, started: false, ms: 0 });
+    }
+    // Otherwise query the backend: a computer stopped behind our back is restarted.
     s.ensuring = traced("computer.ensure", { "baskule.space": spaceId }, async (span) => {
       const r = await this.doEnsure(s);
       span.set({ created: r.created, started: r.started });
@@ -185,64 +168,64 @@ export class Computers {
     let created = false;
     let started = false;
     let info = await this.getSandbox(s.sandbox);
+    const spec = {
+      name: s.sandbox, disk: s.volume, legacyDisk: namesFor(s.spaceId, "").volume, image: this.cfg.image,
+      cpus: this.cfg.cpuLimit, memory: this.cfg.memoryLimit,
+      labels: this.labels(), annotations: { "baskule.space": s.spaceId },
+    };
     if (!info) {
-      if (this.cfg.computeDriver === "docker") await traced("computer.volume", {}, () => this.ensureVolume(s.volume));
-      try {
-        info = await traced("computer.create", {}, () => this.gw.create({
-          name: s.sandbox,
-          labels: this.labels(),
-          annotations: { "baskule.space": s.spaceId },
-          spec: this.spec(s),
-        }));
-        created = true;
-        log.info("computer created", { spaceId: s.spaceId, sandbox: s.sandbox });
-      } catch (e) {
-        // Lost a creation race with another replica/request: fall through to the wait loop.
-        if (!(e instanceof GatewayError && e.code === 6 /* ALREADY_EXISTS */)) throw e;
-        info = await this.getSandbox(s.sandbox);
-      }
+      info = await this.backend.create(spec);
+      created = true;
     }
+    const needsUpdate = async (machine: Machine) => {
+      const imageId = await this.backend.imageId(spec.image);
+      const quantity = (value: string) => {
+        const match = /^(\d+(?:\.\d+)?)([KMGT]i?|m)?$/.exec(value);
+        if (!match) return NaN;
+        const unit = match[2] ?? "";
+        return Number(match[1]) * (unit === "m" ? 0.001 : unit ? (unit.endsWith("i") ? 1024 : 1000) ** ("KMGT".indexOf(unit[0]) + 1) : 1);
+      };
+      return (imageId && machine.imageId ? imageId !== machine.imageId : machine.image !== spec.image) ||
+        (machine.cpus !== undefined && quantity(machine.cpus) !== quantity(spec.cpus)) ||
+        (machine.memory !== undefined && quantity(machine.memory) !== quantity(spec.memory));
+    };
+    const restart = async (machine: Machine, stop: boolean) => {
+      closeSessions(this.backend, s.sandbox);
+      if (stop) await this.backend.stop(s.sandbox);
+      if (await needsUpdate(machine)) {
+        log.info("computer image update", { sandbox: s.sandbox, oldImage: machine.image, newImage: this.cfg.image });
+        return this.backend.recreate(spec);
+      }
+      return this.backend.start(s.sandbox);
+    };
     const deadline = Date.now() + this.cfg.readyTimeoutMs;
-    let recoveries = 0;
-    let lastPhase: Phase | null = null;
-    await traced("computer.ready", {}, async () => { for (;;) {
-      const phase = info?.phase ?? null;
-      if (phase !== lastPhase) log.debug("computer phase", { spaceId: s.spaceId, phase });
-      lastPhase = phase;
-      if (phase === "SANDBOX_PHASE_READY") break;
-      if (Date.now() > deadline) throw new Error(`computer not ready after ${this.cfg.readyTimeoutMs} ms (phase ${phase})`);
-      if (phase === null) throw new Error("computer disappeared while starting");
-      if (phase === "SANDBOX_PHASE_STOPPED" || phase === "SANDBOX_PHASE_COMPLETED") {
-        info = await this.gw.start(s.sandbox);
+    let recovered = false;
+    while (info.phase !== "ready") {
+      if (info.phase === "error") {
+        if (recovered) throw new Error(info.error ?? "computer is in error");
+        recovered = true;
+        info = await restart(info, true);
         started = true;
         continue;
       }
-      if (phase === "SANDBOX_PHASE_ERROR") {
-        // Known OpenShell race: stop then start recovers it.
-        if (++recoveries > 3) {
-          const why = info?.conditions.map((c) => `${c.type}=${c.status} ${c.reason}: ${c.message}`).join("; ");
-          throw new Error(`computer in Error after ${recoveries - 1} recoveries: ${why}`);
-        }
-        log.warn("computer in Error, stop + start", { spaceId: s.spaceId, attempt: recoveries });
-        await this.gw.stop(s.sandbox).catch((e) => log.warn("stop during recovery failed", { err: String(e?.message ?? e) }));
-        info = await this.waitPhase(s.sandbox, ["SANDBOX_PHASE_STOPPED", "SANDBOX_PHASE_ERROR", "SANDBOX_PHASE_COMPLETED"], 90_000);
-        if (info?.phase !== "SANDBOX_PHASE_ERROR") {
-          info = await this.gw.start(s.sandbox);
-          started = true;
-        } else await sleep(1000);
-        continue;
+      if (Date.now() > deadline) throw new Error("computer not ready before timeout");
+      if (info.phase === "stopped") {
+        info = await restart(info, false);
+        started = true;
+      } else {
+        await sleep(300);
+        const next = await this.getSandbox(s.sandbox);
+        if (!next) throw new Error("computer disappeared while starting");
+        info = next;
       }
-      await sleep(300);
-      info = await this.getSandbox(s.sandbox);
-    } });
+    }
     s.readyAt = Date.now();
     s.lastActivity = Date.now();
     if (created || started || !s.prepared) {
       // The per-space volume is copied from the image on first mount (it has home/); chats/ is ours.
-      const r = await traced("computer.prepare", {}, () => runCollect(this.gw, this.cfg.sandboxRoot, {
+      const r = await traced("computer.prepare", {}, () => runCollect(this.backend, {
         sandbox: s.sandbox,
         argv: ["mkdir", "-p", "--", `${this.cfg.sandboxRoot}/space/home`, `${this.cfg.sandboxRoot}/space/chats`],
-        raw: true,
       }));
       if (r.code !== 0) throw new Error(`preparing the computer failed: ${r.stderr.toString().slice(0, 500)}`);
       s.prepared = true;
@@ -250,39 +233,6 @@ export class Computers {
     const res = { spaceId: s.spaceId, sandbox: s.sandbox, created, started, ms: Date.now() - t0 };
     if (created || started) log.info("computer ready", res);
     return res;
-  }
-
-  private spec(s: State) {
-    return {
-      command: ["sleep", "infinity"],
-      template: {
-        image: this.cfg.image,
-        resources: struct({ limits: { cpu: this.cfg.cpuLimit, memory: this.cfg.memoryLimit } }),
-        ...(this.cfg.computeDriver === "docker" ? { driver_config: struct({
-          docker: { mounts: [{ type: "volume", source: s.volume, target: `${this.cfg.sandboxRoot}/space`, read_only: false }] },
-        }) } : {}),
-        labels: this.labels(),
-      },
-      policy: computerPolicy(),
-    };
-  }
-
-  private async ensureVolume(name: string) {
-    const res = await fetch(`${this.cfg.volumesUrl}/volumes/${name}`, {
-      method: "PUT",
-      headers: { authorization: `Bearer ${this.cfg.volumesToken}` },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) throw new Error(`volume helper answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  }
-
-  private async waitPhase(name: string, phases: Phase[], timeoutMs: number): Promise<SandboxInfo | null> {
-    const end = Date.now() + timeoutMs;
-    for (;;) {
-      const info = await this.getSandbox(name);
-      if (!info || phases.includes(info.phase) || Date.now() > end) return info;
-      await sleep(500);
-    }
   }
 
   /** Stop and wait until stopped (or absent). */
@@ -295,12 +245,12 @@ export class Computers {
     s.stopping = (async () => {
       if (s.ensuring) await s.ensuring.catch(() => {});
       const info = await this.getSandbox(s.sandbox);
-      if (!info || ["SANDBOX_PHASE_STOPPED", "SANDBOX_PHASE_COMPLETED"].includes(info.phase)) return;
+      if (!info || info.phase === "stopped") { closeSessions(this.backend, s.sandbox); return; }
       await traced("computer.stop", { "baskule.space": spaceId, reason }, async () => {
         if (reason === "idle") await traced("computer.clear_caches", {}, () => this.clearCaches(s.sandbox, spaceId));
         log.info("computer stop", { spaceId, reason });
-        await this.gw.stop(s.sandbox);
-        await this.waitPhase(s.sandbox, ["SANDBOX_PHASE_STOPPED", "SANDBOX_PHASE_ERROR", "SANDBOX_PHASE_COMPLETED"], 120_000);
+        closeSessions(this.backend, s.sandbox);
+        await this.backend.stop(s.sandbox);
       });
     })().finally(() => {
       s.stopping = null;
@@ -318,7 +268,7 @@ export class Computers {
   private async clearCaches(sandbox: string, spaceId: string) {
     const started = Date.now();
     const home = `${this.cfg.sandboxRoot}/space/home`;
-    const cleared = runCollect(this.gw, this.cfg.sandboxRoot, { sandbox, argv: ["sh", "-c", CLEAR_CACHES, "sh", home], raw: true })
+    const cleared = runCollect(this.backend, { sandbox, argv: ["sh", "-c", CLEAR_CACHES, "sh", home] })
       .then((r) => (r.code === 0 ? "ok" : `exit ${r.code}: ${r.stderr.toString().slice(0, 200)}`))
       .catch((e: any) => String(e?.message ?? e));
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -327,11 +277,7 @@ export class Computers {
     log.info("computer caches cleared", { spaceId, outcome, ms: Date.now() - started });
   }
 
-  /**
-   * Delete the computer for good: the sandbox (OpenShell) and the per-space volume (/sandbox/space). Idempotent.
-   * Waits for running ensure/stop operations, then for the sandbox to disappear (the volume stays in use until its
-   * container is removed), then deletes the volume through the volume helper.
-   */
+  /** Delete the machine and persistent disk after pending lifecycle operations finish. */
   async delete(spaceId: string): Promise<{ spaceId: string; sandbox: string; sandboxDeleted: boolean; volumeDeleted: boolean }> {
     const s = this.state(spaceId);
     if (s.ensuring) await s.ensuring.catch(() => {});
@@ -339,49 +285,19 @@ export class Computers {
     s.keep = false;
     s.readyAt = null;
     s.prepared = false;
-    const existed = (await this.getSandbox(s.sandbox)) !== null;
-    if (existed) {
-      log.info("computer delete", { spaceId, sandbox: s.sandbox });
-      await this.gw.remove(s.sandbox);
-      const end = Date.now() + 120_000;
-      while ((await this.getSandbox(s.sandbox)) !== null) {
-        if (Date.now() > end) throw new Error("sandbox still present 120 s after DeleteSandbox");
-        await sleep(500);
-      }
-    }
-    let volumeDeleted = false;
-    // The Kubernetes driver owns the PVC lifecycle. Sandbox removal does not confirm
-    // asynchronous PVC/CSI deletion; report only what this service observed.
-    if (this.cfg.computeDriver === "kubernetes") {
-      this.states.delete(spaceId);
-      return { spaceId, sandbox: s.sandbox, sandboxDeleted: existed, volumeDeleted: false };
-    }
-    const end = Date.now() + 60_000;
-    for (;;) {
-      const res = await fetch(`${this.cfg.volumesUrl}/volumes/${s.volume}`, {
-        method: "DELETE",
-        headers: { authorization: `Bearer ${this.cfg.volumesToken}` },
-        signal: AbortSignal.timeout(30_000),
-      });
-      const body: any = await res.json().catch(() => ({}));
-      if (res.ok) {
-        volumeDeleted = Boolean(body.deleted);
-        break;
-      }
-      // 409 = still in use by a container being removed: retry.
-      if (res.status !== 409 || Date.now() > end) throw new Error(`volume helper answered ${res.status}: ${body.error ?? ""}`);
-      await sleep(1000);
-    }
+    await this.getSandbox(s.sandbox); // Verify instance ownership before removal.
+    closeSessions(this.backend, s.sandbox);
+    const result = await this.backend.remove(s.sandbox, s.volume, namesFor(spaceId, "").volume);
     this.states.delete(spaceId);
-    return { spaceId, sandbox: s.sandbox, sandboxDeleted: existed, volumeDeleted };
+    return { spaceId, sandbox: s.sandbox, sandboxDeleted: result.machineDeleted, volumeDeleted: result.diskDeleted };
   }
 
   /** Adopt computers that are running but unknown (computerd restarted): their idle clock starts now. */
   async adopt() {
-    const list = await this.gw.list(Object.entries(this.labels()).map(([key, value]) => `${key}=${value}`).join(","));
+    const list = await this.backend.list(this.labels());
     const bySandbox = new Map([...this.states.values()].map((s) => [s.sandbox, s]));
     for (const info of list) {
-      if (info.phase !== "SANDBOX_PHASE_READY" || bySandbox.has(info.name)) continue;
+      if (info.phase !== "ready" || bySandbox.has(info.name)) continue;
       // We only know the sandbox name; track it under a synthetic key so the idle loop can stop it.
       const key = `sandbox:${info.name}`;
       if (this.states.has(key)) continue;
@@ -418,7 +334,8 @@ export class Computers {
       try {
         if (s.spaceId.startsWith("sandbox:")) {
           if (this.cfg.instance) await this.getSandbox(s.sandbox);
-          await this.gw.stop(s.sandbox);
+          closeSessions(this.backend, s.sandbox);
+          await this.backend.stop(s.sandbox);
           this.states.delete(s.spaceId);
           log.info("computer stop", { sandbox: s.sandbox, reason: "idle (adopted)" });
         } else await this.stop(s.spaceId, "idle");
@@ -453,17 +370,3 @@ export class Computers {
   }
 }
 
-/** JSON -> google.protobuf.Struct (proto-loader object form). */
-export function struct(obj: Record<string, unknown>): any {
-  return { fields: Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, value(v)])) };
-}
-
-// protobufjs's bundled google/protobuf/struct.proto uses camelCase field names (even with keepCase).
-function value(v: unknown): any {
-  if (v === null || v === undefined) return { nullValue: "NULL_VALUE" };
-  if (typeof v === "string") return { stringValue: v };
-  if (typeof v === "number") return { numberValue: v };
-  if (typeof v === "boolean") return { boolValue: v };
-  if (Array.isArray(v)) return { listValue: { values: v.map(value) } };
-  return { structValue: struct(v as Record<string, unknown>) };
-}

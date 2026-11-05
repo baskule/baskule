@@ -1,7 +1,1 @@
-Baskule is licensed under the MIT license. See LICENSE.
-
-This chart packages the OpenShell Helm chart from vendor/openshell.
-Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES.
-OpenShell is licensed under Apache-2.0; the packaged dependency retains its
-SPDX notices. The source distribution includes vendor/openshell/LICENSE and
-vendor/openshell/THIRD-PARTY-NOTICES.
+Baskule Helm chart. See repository LICENSE.

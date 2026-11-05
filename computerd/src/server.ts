@@ -15,7 +15,7 @@ import { timingSafeEqual, randomUUID } from "node:crypto";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, WebSocket } from "ws";
 import type { Config } from "./config.ts";
-import type { Gateway, ExecEvent } from "./gateway.ts";
+import type { Backend, ExecEvent } from "./backend.ts";
 import { Computers, TooManyStreams } from "./computers.ts";
 import { EXEC_ID, SIGNALS, filterEnv, killExec, runCollect, startExec, type RunningExec } from "./exec.ts";
 import {
@@ -42,7 +42,19 @@ class HttpError extends Error {
 }
 
 const MAX_JSON = 128 * 1024 * 1024;
-const MAX_ARGV_BYTES = 200 * 1024; // OpenShell caps the assembled command at 256 KiB
+async function writeResponse(res: http.ServerResponse, data: string | Buffer) {
+  if (res.destroyed) throw Error("response closed");
+  if (res.write(data)) return;
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => { res.off("drain", drained); res.off("close", closed); res.off("error", failed); };
+    const drained = () => { cleanup(); resolve(); };
+    const closed = () => { cleanup(); reject(Error("response closed")); };
+    const failed = (error: Error) => { cleanup(); reject(error); };
+    res.once("drain", drained); res.once("close", closed); res.once("error", failed);
+  });
+}
+
+const MAX_ARGV_BYTES = 200 * 1024; // Bound request size before spawning a command.
 const KILL_GRACE_MS = 3000;
 
 function json(res: http.ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}) {
@@ -89,11 +101,11 @@ function validCwd(cwd: unknown): string | undefined {
 
 export interface ServerDeps {
   cfg: Config;
-  gw: Gateway;
+  backend: Backend;
   computers: Computers;
 }
 
-export function createServer({ cfg, gw, computers }: ServerDeps) {
+export function createServer({ cfg, backend, computers }: ServerDeps) {
   const tokenBuf = Buffer.from(`Bearer ${cfg.token}`);
   const authorized = (req: http.IncomingMessage) => {
     const h = Buffer.from(String(req.headers.authorization ?? ""));
@@ -124,9 +136,9 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
   /** Kill the process group: TERM now, then KILL after the grace period (harmless if already gone). */
   function terminate(spaceId: string, id: string, graceMs = KILL_GRACE_MS) {
     const sandbox = sandboxOf(spaceId);
-    killExec(gw, cfg.sandboxRoot, sandbox, id, "TERM").catch(() => {});
+    killExec(backend, sandbox, id, "TERM").catch(() => {});
     if (graceMs > 0)
-      setTimeout(() => killExec(gw, cfg.sandboxRoot, sandbox, id, "KILL").catch(() => {}), graceMs).unref();
+      setTimeout(() => killExec(backend, sandbox, id, "KILL").catch(() => {}), graceMs).unref();
   }
 
   // ---------------------------------------------------------------------------------------------- exec
@@ -162,7 +174,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     let x: RunningExec;
     try {
       await ensureFor(spaceId);
-      x = startExec(gw, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv, cwd, env, stdin, id });
+      x = startExec(backend, { sandbox: sandboxOf(spaceId), argv, cwd, env, stdin, id });
     } catch (e) {
       release();
       throw e;
@@ -171,7 +183,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     running.set(id, entry);
     res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store", "x-exec-id": id });
     res.flushHeaders();
-    const frame = (o: object) => res.write(JSON.stringify(o) + "\n");
+    const frame = (o: object) => writeResponse(res, JSON.stringify(o) + "\n");
     let timer: NodeJS.Timeout | null = null;
     if (timeoutMs > 0) timer = setTimeout(() => terminate(spaceId, id), timeoutMs);
     res.on("close", () => {
@@ -185,17 +197,17 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     try {
       for await (const ev of x.events) {
         computers.touch(spaceId);
-        if ("stdout" in ev) frame({ t: "o", d: ev.stdout.toString("base64") });
-        else if ("stderr" in ev) frame({ t: "e", d: ev.stderr.toString("base64") });
+        if ("stdout" in ev) await frame({ t: "o", d: ev.stdout.toString("base64") });
+        else if ("stderr" in ev) await frame({ t: "e", d: ev.stderr.toString("base64") });
         else {
-          frame({ t: "x", code: ev.exit });
+          await frame({ t: "x", code: ev.exit });
           exited = true;
           break;
         }
       }
-      if (!exited) frame({ t: "err", msg: "exec stream ended without an exit status" });
+      if (!exited) await frame({ t: "err", msg: "exec stream ended without an exit status" });
     } catch (e: any) {
-      frame({ t: "err", msg: String(e?.message ?? e) });
+      await frame({ t: "err", msg: String(e?.message ?? e) });
     } finally {
       entry.finished = true;
       running.delete(id);
@@ -217,9 +229,9 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     if (!Number.isFinite(graceMs) || graceMs < 0 || graceMs > 600_000) throw new HttpError(400, "graceMs must be 0..600000");
     const st = await computers.status(spaceId);
     if (!st.running) return json(res, 200, { id, killed: false, reason: "computer not running" });
-    const killed = await killExec(gw, cfg.sandboxRoot, sandboxOf(spaceId), id, signal);
+    const killed = await killExec(backend, sandboxOf(spaceId), id, signal);
     if (killed && signal === "TERM" && graceMs > 0)
-      setTimeout(() => killExec(gw, cfg.sandboxRoot, sandboxOf(spaceId), id, "KILL").catch(() => {}), graceMs).unref();
+      setTimeout(() => killExec(backend, sandboxOf(spaceId), id, "KILL").catch(() => {}), graceMs).unref();
     json(res, 200, { id, killed });
   }
 
@@ -233,12 +245,12 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     const count = range && range.end !== undefined && range.start !== undefined ? String(range.end - range.start + 1) : "";
     const suffix = range && range.suffix !== undefined ? String(range.suffix) : "";
     const release = acquire(spaceId);
+    let x: ReturnType<typeof startExec> | undefined;
     try {
       await ensureFor(spaceId);
-      const x = startExec(gw, cfg.sandboxRoot, {
+      x = startExec(backend, {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", GET_SCRIPT, statOnly ? "stat" : "auto", path, start, count, suffix, cfg.sandboxRoot],
-        raw: true,
       });
       // Header lines first ("<stat>\n", then "L\n" or "R\t<start>\t<count>\n"), then the payload is streamed.
       let head = Buffer.alloc(0);
@@ -249,8 +261,8 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
       const errChunks: Buffer[] = [];
       let code: number | null = null;
       const it = x.events[Symbol.asyncIterator]();
-      const onData = (d: Buffer) => {
-        if (phase === "read") return void res.write(d);
+      const onData = async (d: Buffer) => {
+        if (phase === "read") return await writeResponse(res, d);
         if (phase === "other") return;
         if (phase === "list") {
           listBytes += d.length;
@@ -291,7 +303,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
           if (range) headers["content-range"] = `bytes ${st}-${st + n - 1}/${info!.size}`;
           res.writeHead(range ? 206 : 200, headers);
           phase = "read";
-          if (head.length) res.write(head);
+          if (head.length) await writeResponse(res, head);
           return;
         }
       };
@@ -299,7 +311,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
         const r = await it.next();
         if (r.done) break;
         const ev = r.value as ExecEvent;
-        if ("stdout" in ev) onData(ev.stdout);
+        if ("stdout" in ev) await onData(ev.stdout);
         else if ("stderr" in ev) errChunks.push(ev.stderr);
         else code = ev.exit;
       }
@@ -317,6 +329,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
       if (phase === "list") return json(res, 200, { path, ...info, entries: parseEntries(Buffer.concat(listChunks)) });
       return json(res, 200, { path, ...info });
     } finally {
+      x?.cancel();
       release();
     }
   }
@@ -340,11 +353,10 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
               yield c as Buffer;
             }
           })();
-      const r = await runCollect(gw, cfg.sandboxRoot, {
+      const r = await runCollect(backend, {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", PUT_SCRIPT, isDir ? "dir" : "file", path, cfg.sandboxRoot, isDir ? "" : (len ?? "")],
         stdin: body,
-        raw: true,
       });
       computers.touch(spaceId);
       if (r.code !== 0) {
@@ -365,7 +377,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
       pending = (async () => {
         await ensureFor(spaceId);
         const result = await traced("browser.bridge.ensure", {}, () =>
-          runCollect(gw, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv: ["baskule-browser-bridge", "ensure"], env: { BASKULE_BROWSER_PORT: String(browserPort) }, raw: true }));
+          runCollect(backend, { sandbox: sandboxOf(spaceId), argv: ["baskule-browser-bridge", "ensure"], env: { BASKULE_BROWSER_PORT: String(browserPort) } }));
         if (result.code !== 0) throw new HttpError(502, `browser bridge did not start: ${result.stderr.toString().slice(-400)}`);
       })();
       browserStarts.set(spaceId, pending);
@@ -383,7 +395,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
       } else await ensureBrowserBridge(spaceId);
       const upstream = http.request({ host: "127.0.0.1", port: browserPort, path, method: req.method,
         headers: { "content-type": req.headers["content-type"] ?? "application/json" },
-        createConnection: () => gw.forwardTcp(sandboxOf(spaceId), browserPort) as any,
+        createConnection: () => backend.connect(sandboxOf(spaceId), browserPort) as any,
       }, response => {
         res.writeHead(response.statusCode ?? 502, { "content-type": response.headers["content-type"] ?? "application/json", "cache-control": "no-store", ...(response.headers["content-disposition"] ? { "content-disposition": response.headers["content-disposition"] } : {}) });
         if (metadata) res.flushHeaders();
@@ -484,11 +496,10 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
 
   // ------------------------------------------------------------------------------- cdp (browser)
   async function browserEnsure(spaceId: string): Promise<any> {
-    const r = await traced("browser.cdp.ensure", {}, () => runCollect(gw, cfg.sandboxRoot, {
+    const r = await traced("browser.cdp.ensure", {}, () => runCollect(backend, {
       sandbox: sandboxOf(spaceId),
       argv: ["baskule-browser", "ensure"],
       env: { BASKULE_CDP_PORT: String(cfg.cdpPort) },
-      raw: true,
     }));
     if (r.code !== 0) throw new HttpError(502, `browser did not start: ${r.stderr.toString().slice(-400)}`);
     try {
@@ -507,7 +518,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
           path,
           method: "GET",
           headers: { connection: "close" },
-          createConnection: () => gw.forwardTcp(sandboxOf(spaceId), cfg.cdpPort) as any,
+          createConnection: () => backend.connect(sandboxOf(spaceId), cfg.cdpPort) as any,
         },
         async (r) => {
           const chunks: Buffer[] = [];
@@ -588,13 +599,13 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
     }
     const sandbox = sandboxOf(spaceId);
     const upstream = new WebSocket(`ws://127.0.0.1:${port}${path}`, {
-      createConnection: () => gw.forwardTcp(sandbox, port) as any,
+      createConnection: () => backend.connect(sandbox, port) as any,
       perMessageDeflate: false,
       maxPayload: 256 * 1024 * 1024,
       handshakeTimeout: 15_000,
     });
     await new Promise<void>((resolve, reject) => {
-      upstream.once("open", () => resolve());
+      upstream.once("open", () => { upstream.pause(); resolve(); });
       upstream.once("error", (e) => reject(new HttpError(502, `DevTools connection failed: ${e.message}`)));
       upstream.once("unexpected-response", (_r, resp) => reject(new HttpError(resp.statusCode === 404 ? 404 : 502, `DevTools answered ${resp.statusCode}`)));
     });
@@ -621,6 +632,7 @@ export function createServer({ cfg, gw, computers }: ServerDeps) {
       ws.on("error", () => done());
       upstream.on("close", done);
       upstream.on("error", () => done());
+      upstream.resume();
     });
   }
 

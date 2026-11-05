@@ -135,20 +135,20 @@ function stopWorld(w) {
   const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
   if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);
   w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
+  purgeComputers(w);
 }
 function scopedSecrets(w) {
   for (const [service, role, keys] of [
     ["baskule-rustfs", "storage", ["RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"]],
-    ["baskule-computerd", "computerd", ["COMPUTERD_TOKEN", "OPENSHELL_VOLUMES_TOKEN"]],
-    ["baskule-openshell", "openshell", ["OPENSHELL_VOLUMES_TOKEN"]],
+    ["baskule-computerd", "computerd", ["COMPUTERD_TOKEN"]],
   ]) {
     const container = w.dc(["ps", "-q", service]);
     const names = command(["exec", container, "sh", "-c", 'tr "\\0" "\\n" < /proc/1/environ | cut -d= -f1']).split("\n");
-    expect(names.filter(name => /^(RUSTFS_(?:ACCESS_KEY|SECRET_KEY)|AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY)|S3_(?:ACCESS_KEY|SECRET_KEY)|SETUP_TOKEN|PLUGIN_SYNC_TOKEN|COMPUTERD_TOKEN|OPENSHELL_VOLUMES_TOKEN|E2E_LOGIN_.*)$/.test(name)).sort()).toEqual(keys.sort());
+    expect(names.filter(name => /^(RUSTFS_(?:ACCESS_KEY|SECRET_KEY)|AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY)|S3_(?:ACCESS_KEY|SECRET_KEY)|SETUP_TOKEN|PLUGIN_SYNC_TOKEN|COMPUTERD_TOKEN|E2E_LOGIN_.*)$/.test(name)).sort()).toEqual(keys.sort());
     const mounts = JSON.parse(command(["inspect", "-f", "{{json .Mounts}}", container]));
     expect(mounts.filter(mount => mount.Name?.endsWith("-secrets")).map(mount => mount.Name)).toEqual([`${w.project}_baskule-${role}-secrets`]);
   }
-  pass("RustFS, computerd and OpenShell expose only consumer secrets and no unrelated .env values");
+  pass("RustFS and computerd expose only consumer secrets and no unrelated .env values");
 }
 function directClient(w) {
   const name = `${w.project}-direct-client`;
@@ -250,7 +250,7 @@ async function proxy() {
     const p = await port();
     const w = world(`single-proxy-${trusted ? "trusted" : "default"}`, { BASKULE_PORT: p, SETUP_TOKEN: adminVars.SETUP_TOKEN,
       ...(trusted ? { BASKULE_TRUSTED_PROXIES: "private_ranges" } : {}), COMPUTERD_TOKEN: "computer-env-override",
-      OPENSHELL_VOLUMES_TOKEN: "volume-env-override", RUSTFS_ACCESS_KEY: "rustfs-env-override", RUSTFS_SECRET_KEY: "rustfs-env-secret-override",
+      RUSTFS_ACCESS_KEY: "rustfs-env-override", RUSTFS_SECRET_KEY: "rustfs-env-secret-override",
       E2E_LOGIN_EMAIL: "not-for-services@example.test", E2E_LOGIN_PASSWORD: "not-for-services" });
     w.dc(["up", "-d"]);
     const fixture = await outerProxy(w, `http://127.0.0.1:${p}`);
@@ -385,10 +385,7 @@ async function exercise(w, base, endpoint) {
     await api.waitFor("computer command answered", () => tool.settled() && tool.assistantText().includes("RELEASE_INSTALL_DISK_OK"), 240_000);
     tool.stop();
   } finally { client.close(); await client.closed; }
-  const gateway = w.dc(["ps", "-q", "baskule-openshell"]);
-  const networks = JSON.parse(command(["inspect", "-f", "{{json .NetworkSettings.Networks}}", gateway]));
-  expect(Object.keys(networks)).toEqual([`${w.project}_baskule-computers`]);
-  pass(`${w.project}: version, default password auth, admin sign-in, fake chat, platform-to-computer command, gateway network isolation`);
+  pass(`${w.project}: version, default password auth, admin sign-in, fake chat, platform-to-computer command, computer execution`);
   return { space, thread, admin, user: { email: chatting.email, password: chatting.password } };
 }
 async function persisted(base, previous) {
@@ -422,7 +419,7 @@ async function folder() {
   writeFileSync(resolve(skill, "SKILL.md"), "---\nname: release-folder\ndescription: Fresh install folder proof\n---\nWrite clearly.");
   expect(existsSync(w.file)).toBe(false);
   w.dc(["up", "-d"]);
-  await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-openshell", "baskule-computerd"]);
+  await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-computerd"]);
   await ready(`${base}/version.json`);
   scopedSecrets(w);
   await completeSetup(w, base);
@@ -456,7 +453,7 @@ async function fresh() {
     const base = `http://127.0.0.1:${p}`;
     const w = world(`single-${attempt}`, { BASKULE_PORT: p });
     w.dc(["up", "-d"]);
-    await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-openshell", "baskule-computerd"]);
+    await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-computerd"]);
     await ready(`${base}/version.json`);
     await completeSetup(w, base);
     await createApi({ urls: { loopback: base, front: base }, admin }).adminSession();
@@ -466,60 +463,21 @@ async function fresh() {
     w.dc(["down", "-v"]);
   }
 }
-async function imageCleanup(w) {
-  const gateway = w.dc(["ps", "-q", "baskule-openshell"]);
-  // A distinct obsolete image proves that pruning frees an image, beyond just removing aliases.
-  const old = command(["exec", gateway, "sh", "-c",
-    `mkdir -p /tmp/obsolete; echo old > /tmp/obsolete/release; tar -C /tmp/obsolete -cf - . | docker import - ${registry}/baskule-computer:obsolete`]);
-  const next = `${version}-upgrade`;
-  for (const name of ["celld", "computerd", "openshell-gateway"]) {
-    const tag = `${registry}/baskule-${name}:${next}`;
-    fixtureImages.add(tag);
-    command(["tag", `${registry}/baskule-${name}:${version}`, tag]);
-  }
-  const composeFile = resolve(w.directory, "docker-compose.yml");
-  writeFileSync(composeFile, readFileSync(composeFile, "utf8").replaceAll(`BASKULE_VERSION:-${version}`, `BASKULE_VERSION:-${next}`));
-  w.dc(["up", "-d"]);
-  const updated = w.dc(["ps", "-q", "baskule-openshell"]);
-  expect(updated).not.toBe(gateway);
-  await health(w, ["baskule-openshell"]);
-  const references = command(["exec", updated, "docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"]);
-  expect(references.split("\n").sort()).toEqual(["computer", "openshell-supervisor", "openshell-sandbox"].map(name => `${registry}/baskule-${name}:${next}`).sort());
-  expect(command(["exec", updated, "docker", "image", "ls", "-aq"])).not.toContain(old.replace("sha256:", "").slice(0, 12));
-  writeFileSync(resolve(evidence, "gateway-upgrade-images.txt"), `${references}\nobsolete image pruned: ${old}\n`);
-  pass("gateway update keeps only current workload tags and prunes a distinct obsolete image");
-}
-function metadata(w, create = false) {
-  const gateway = w.dc(["ps", "-q", "baskule-openshell"]);
-  const code = `import os,json,stat
-path='/var/lib/openshell/backup-metadata-proof'
-${create ? `open(path,'w').write('backup metadata')
-os.setxattr(path,'user.baskule-test',b'preserved')
-os.setxattr(path,'trusted.overlay.opaque',b'y')
-os.chown(path,12345,23456)
-os.chmod(path,0o640)` : ""}
-s=os.stat(path)
-print(json.dumps([s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode),os.getxattr(path,'user.baskule-test').decode(),os.getxattr(path,'trusted.overlay.opaque').decode()]))`;
-  expect(JSON.parse(command(["exec", gateway, "python3", "-c", code]))).toEqual([12345, 23456, 0o640, "preserved", "y"]);
-}
 async function single() {
   const base = "http://127.0.0.1:47090";
   const w = world("single", {});
   w.dc(["up", "-d"]);
-  await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-openshell", "baskule-computerd"]);
+  await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-computerd"]);
   const llm = await fake(w);
   const result = await exercise(w, base, llm.endpoint);
   const secrets = secretHash(w);
   w.dc(["up", "-d"]);
   expect(secretHash(w)).toBe(secrets);
   pass("second up preserves generated secrets");
-  await imageCleanup(w);
   expect(secretHash(w)).toBe(secrets);
-  pass("downloaded compose version update preserves generated secrets");
   await persisted(base, result);
-  writeFileSync(resolve(run, "single-proof.json"), JSON.stringify({ ...result, directory: w.directory }), { mode: 0o600 });
+  writeFileSync(resolve(run, "single-proof.json"), JSON.stringify({ ...result, directory: w.directory, instance: JSON.parse(w.dc(["config", "--format", "json"])).services["baskule-computerd"].environment.COMPUTERD_INSTANCE }), { mode: 0o600 });
   command(["rm", "-f", llm.name]); containers.delete(llm.name);
-  metadata(w, true);
   // Use exactly the documented stop/backup/start operations from the install directory.
   w.dc(["down"]);
   const backup = resolve(evidence, "single-backup.tar.gz");
@@ -529,15 +487,33 @@ async function single() {
   await persisted(base, result);
   pass("single-machine down/up preserves chat and computer disk");
   w.dc(["down", "-v"]);
+  purgeComputers(w);
   w.dc(["run", "--rm", "-T", "restore"], { inputFile: backup });
   w.dc(["up", "-d"]);
   await ready(`${base}/version.json`);
   await persisted(base, result);
-  metadata(w);
   expect(secretHash(w)).toBe(secrets);
   pass("restored secrets match the original volume");
-  pass("single-machine backup restores chat, computer disk, user/trusted xattrs, numeric ownership and modes into empty volumes");
+  pass("single-machine backup restores chat and computer disk into empty volumes");
   stopWorld(w);
+}
+function purgeComputers(w) {
+  const config = JSON.parse(w.dc(["--profile", "*", "config", "--format", "json"]));
+  const service = config.services["baskule-computerd"];
+  const instance = service.environment.COMPUTERD_INSTANCE;
+  if (!instance) throw new Error("Refusing cleanup without COMPUTERD_INSTANCE");
+  const filters = ["--filter", "label=baskule.managed=true", "--filter", `label=baskule.instance=${instance}`];
+  for (const name of command(["ps", "-aq", ...filters]).split(/\s+/).filter(Boolean)) command(["rm", "-f", name]);
+  for (const name of command(["volume", "ls", "-q", ...filters]).split(/\s+/).filter(Boolean)) command(["volume", "rm", name]);
+  const network = service.environment.COMPUTER_NETWORK;
+  const info = command(["network", "inspect", network], { allowFailure: true });
+  if (info) {
+    const [value] = JSON.parse(info);
+    if (value.Labels?.["baskule.instance"] === instance && Object.keys(value.Containers ?? {}).length === 0) command(["network", "rm", network]);
+  }
+  const legacy = service.environment.COMPUTER_LEGACY_VOLUME;
+  if (legacy && command(["volume", "inspect", legacy], { allowFailure: true })) command(["volume", "rm", legacy]);
+  command(["run", "--rm", "--network", "host", "--user", "0:0", "--cap-drop", "ALL", "--cap-add", "NET_ADMIN", "--read-only", "--tmpfs", "/run", "--entrypoint", "node", service.image, "--input-type=module", "-e", 'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});']);
 }
 async function restoreOnly() {
   if (!process.argv[3]) throw new Error("Pass the private single-proof.json path");
@@ -546,12 +522,12 @@ async function restoreOnly() {
   const base = `http://127.0.0.1:${p}`;
   const w = world("single", adminVars);
   if (existsSync(resolve(previous.directory, ".env"))) copyFileSync(resolve(previous.directory, ".env"), w.file);
-  envFile(w.file, { BASKULE_REGISTRY: registry, BASKULE_VERSION: version, BASKULE_PORT: p, PUBLIC_ORIGINS: base });
+  envFile(w.file, { BASKULE_REGISTRY: registry, BASKULE_VERSION: version, BASKULE_PORT: p, PUBLIC_ORIGINS: base, COMPUTERD_INSTANCE: previous.instance ?? previous.directory.split("/").at(-1) });
   w.dc(["run", "--rm", "-T", "restore"], { inputFile: resolve(evidence, "single-backup.tar.gz") });
   w.dc(["up", "-d"]);
   await ready(`${base}/version.json`);
   await persisted(base, previous);
-  pass("focused restore preserves chat and re-admits the computer disk into empty volumes");
+  pass("focused restore preserves chat and restores the computer disk into empty volumes");
 }
 try {
   if (target === "all" || target === "https") await https();
@@ -567,6 +543,8 @@ try {
     const logs = w.dc(["logs", "--no-color"], { allowFailure: true });
     if (logs) writeFileSync(resolve(evidence, `${w.project}.log`), logs);
     w.dc(["down", "-v", "--remove-orphans"], { allowFailure: true });
+    // Best effort: a cleanup failure must not hide the test failure or skip the remaining cleanup.
+    try { purgeComputers(w); } catch (error) { console.error(`computer cleanup failed for ${w.project}: ${error.message}`); }
   }
   for (const [name, kind] of containers) if (kind === "storage") command(["rm", "-f", name], { allowFailure: true });
   for (const volume of fixtureVolumes) command(["volume", "rm", volume], { allowFailure: true });

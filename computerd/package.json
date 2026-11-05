@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node src/main.ts",
     "test": "node --test --test-concurrency=1 test/*.test.ts",
@@ -11,8 +13,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@grpc/grpc-js": "^1.14.0",
-    "@grpc/proto-loader": "^0.8.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

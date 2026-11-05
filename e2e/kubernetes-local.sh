@@ -6,33 +6,31 @@ source scripts/env.sh
 export BASKULE_K8S_NAMESPACE=${BASKULE_K8S_NAMESPACE:-baskule}
 export BASKULE_K8S_RELEASE=${BASKULE_K8S_RELEASE:-baskule}
 export PATH="$HOME/.local/bin:$PATH"
-helm dependency build deploy/helm/baskule >/dev/null
 if [[ ${1:-} == lint ]]; then
   s3=(--set s3.endpoint=https://s3.example.test --set s3.bucket=test --set s3.existingSecret=bucket)
-  base=(--set openshell.agentSandbox.preflight.enabled=false)
-  helm lint deploy/helm/baskule "${base[@]}" "${s3[@]}"
-  helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" >/dev/null
-  helm template baskule deploy/helm/baskule "${base[@]}" --set s3.endpoint=https://s3.example.test --set s3.bucket=test --set s3.accessKeyId=test --set s3.secretAccessKey=test >/dev/null
-  helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" --set existingSecret=platform --set publicUrl=https://baskule.example.test --set exposure.mode=ingress >/dev/null
-  helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" --set publicUrl=https://baskule.example.test --set exposure.mode=gateway --set exposure.gateway.name=edge >/dev/null
+  helm lint deploy/helm/baskule "${s3[@]}"
+  helm template baskule deploy/helm/baskule "${s3[@]}" >/dev/null
+  helm template baskule deploy/helm/baskule --set s3.endpoint=https://s3.example.test --set s3.bucket=test --set s3.accessKeyId=test --set s3.secretAccessKey=test >/dev/null
+  helm template baskule deploy/helm/baskule "${s3[@]}" --set existingSecret=platform --set publicUrl=https://baskule.example.test --set exposure.mode=ingress >/dev/null
+  helm template baskule deploy/helm/baskule "${s3[@]}" --set publicUrl=https://baskule.example.test --set exposure.mode=gateway --set exposure.gateway.name=edge >/dev/null
   for invalid in typo=true rustfs.enabled=true s3.typo=true global.image.typo=true exposure.mode=ingress exposure.mode=gateway s3.endpoint= s3.bucket= s3.existingSecret=; do
-    if helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" --set exposure.gateway.name=edge --set "$invalid" >/dev/null 2>&1; then
+    if helm template baskule deploy/helm/baskule "${s3[@]}" --set exposure.gateway.name=edge --set "$invalid" >/dev/null 2>&1; then
       echo "Expected chart schema to reject $invalid" >&2; exit 1
     fi
   done
-  if helm template baskule deploy/helm/baskule "${base[@]}" >/dev/null 2>&1; then
+  if helm template baskule deploy/helm/baskule >/dev/null 2>&1; then
     echo 'Expected chart rendering to reject missing S3 configuration' >&2; exit 1
   fi
   for invalid_url in http://0.0.0.0 http://[::] http://LOCALHOST; do
     for mode in ingress gateway; do
-      if helm template baskule deploy/helm/baskule "${base[@]}" "${s3[@]}" --set exposure.gateway.name=edge --set exposure.mode="$mode" --set-string publicUrl="$invalid_url" >/dev/null 2>&1; then
+      if helm template baskule deploy/helm/baskule "${s3[@]}" --set exposure.gateway.name=edge --set exposure.mode="$mode" --set-string publicUrl="$invalid_url" >/dev/null 2>&1; then
         echo "Expected chart schema to reject $invalid_url for $mode" >&2; exit 1
       fi
     done
   done
   exit
 fi
-export BASKULE_K8S_EVIDENCE="$root/.run/evidence/kubernetes/$(date -u +%Y%m%dT%H%M%SZ)"
+export BASKULE_K8S_EVIDENCE="${BASKULE_K8S_EVIDENCE:-$root/.run/evidence/kind/$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$BASKULE_K8S_EVIDENCE"
 cluster="baskule-k8s-$(date -u +%s)"
 export KUBECONFIG="$BASKULE_K8S_EVIDENCE/kubeconfig.private"
@@ -63,7 +61,7 @@ kubectl wait --for=condition=Ready nodes --all --timeout=180s
 registry=${BASKULE_K8S_REGISTRY:-ghcr.io/baskule-kubernetes-test}
 export BASKULE_K8S_REGISTRY="$registry"
 export BASKULE_K8S_TAG=${BASKULE_K8S_TAG:-kubernetes}
-for name in celld computerd openshell-kubernetes computer openshell-supervisor openshell-sandbox; do
+for name in celld computerd computer; do
   docker tag "baskule-$name:$BASKULE_K8S_TAG" "$registry/baskule-$name:$BASKULE_K8S_TAG"
   kind load docker-image --name "$cluster" --nodes "$cluster-worker,$cluster-worker2" "$registry/baskule-$name:$BASKULE_K8S_TAG" >> "$BASKULE_K8S_EVIDENCE/image-load.log" 2>&1
 done
@@ -71,7 +69,7 @@ done
 # functional checks do not need the production computer's full resource limits.
 if [[ -z ${BASKULE_K8S_VALUES:-} ]]; then
   export BASKULE_K8S_VALUES="$BASKULE_K8S_EVIDENCE/values.yaml"
-  printf 'computer:\n  cpu: "1"\n  memory: 1Gi\n' > "$BASKULE_K8S_VALUES"
+  printf 'computers:\n  cpus: "1"\n  memory: 1Gi\n' > "$BASKULE_K8S_VALUES"
 fi
 # Test-only S3 fixture. It is never part of the Helm chart/package.
 kubectl create namespace "$BASKULE_K8S_NAMESPACE" >/dev/null

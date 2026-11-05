@@ -1,8 +1,7 @@
-// Exec inside a computer: argv only (no shell strings built from caller input), a `setsid` wrapper that records
-// the process group so it can be killed (OpenShell has no kill RPC and cancelling a stream leaks the process),
-// an environment allowlist, and stdin streamed in < 1 MiB gRPC messages.
+// Exec and Files commands share one multiplexed agent session per computer.
+import { sessionFor } from "./session.ts";
 import { randomUUID } from "node:crypto";
-import type { ExecEvent, Gateway } from "./gateway.ts";
+import type { ExecEvent, Backend } from "./backend.ts";
 
 export const EXEC_ID = /^[A-Za-z0-9_-]{1,64}$/;
 export const SIGNALS = new Set(["TERM", "KILL", "INT", "HUP", "QUIT", "USR1", "USR2"]);
@@ -12,8 +11,8 @@ const ENV_EXACT = new Set([
   "EDITOR", "VISUAL", "TMPDIR", "NODE_ENV", "NODE_OPTIONS", "DEBIAN_FRONTEND", "USER", "SHELL", "VIRTUAL_ENV",
 ]);
 const ENV_PREFIXES = ["LC_", "PYTHON", "PIP_", "NPM_CONFIG_", "npm_config_", "BUN_", "GIT_", "OPENCODE", "BASKULE_", "UV_"];
-// Never overridable: the supervisor's CA wiring and OpenShell's own markers.
-const ENV_DENY_PREFIXES = ["OPENSHELL_", "LD_"];
+// Never allow dynamic loader overrides.
+const ENV_DENY_PREFIXES = ["LD_"];
 
 /** Keep allowlisted keys only (silently drops the rest); returns the dropped keys for the caller's information. */
 export function filterEnv(env: Record<string, unknown> | undefined): { env: Record<string, string>; dropped: string[] } {
@@ -33,44 +32,17 @@ export function filterEnv(env: Record<string, unknown> | undefined): { env: Reco
   return { env: out, dropped };
 }
 
-/** Environment every exec gets (OpenShell does not apply the image ENV to exec'd processes). */
-export function baseEnv(root: string): Record<string, string> {
-  const home = `${root}/space/home`;
-  return {
-    HOME: home,
-    PATH: `${home}/.local/bin:${home}/.local/share/pnpm:${home}/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
-    LANG: "en_US.UTF-8",
-    TZ: "Etc/UTC",
-    NPM_CONFIG_PREFIX: `${home}/.local`,
-    // pnpm refuses global installs without a global bin directory.
-    PNPM_HOME: `${home}/.local/share/pnpm`,
-    BUN_INSTALL: `${home}/.bun`,
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
-    CHROME_PATH: "/usr/local/bin/chromium-baskule",
-  };
-}
-
-// The wrapper records the process group: setsid made this sh a session + group leader, so its pid is the pgid.
-// Killing: OpenShell's seccomp filter refuses kill() on a process group (negative pid, EPERM, verified), but a
-// later exec may signal individual pids, so the kill helper enumerates the group (pgrep -g) and signals each.
-// $0 = exec id, $@ = the command.
-const WRAP = 'mkdir -p /tmp/.osj 2>/dev/null; echo $$ > "/tmp/.osj/$0"; "$@"; c=$?; rm -f "/tmp/.osj/$0"; exit $c';
 // $0 = exec id, $1 = signal, $2 = "final" (remove the record). Exit 3: no such exec; 0: signalled (or empty group).
 const KILL = [
   'f="/tmp/.osj/$0"; p=$(cat "$f" 2>/dev/null) || exit 3',
   'case "$p" in ""|*[!0-9]*) exit 3;; esac',
-  'pids=$(pgrep -g "$p")',
-  '[ -n "$pids" ] && kill -s "$1" $pids 2>/dev/null',
+  'kill -s "$1" -- "-$p" 2>/dev/null',
   '[ "$2" = final ] && rm -f "$f"',
   "exit 0",
 ].join("\n");
 
-export function wrapArgv(id: string, argv: string[]): string[] {
-  return ["setsid", "-w", "sh", "-c", WRAP, id, ...argv];
-}
-
 export function killArgv(id: string, signal: string, final = false): string[] {
-  return ["sh", "-c", KILL, id, signal, final ? "final" : ""];
+  return ["bash", "-c", KILL, id, signal, final ? "final" : ""];
 }
 
 export interface ExecOptions {
@@ -83,8 +55,6 @@ export interface ExecOptions {
   /** Keep stdin open; feed it with write(). */
   interactive?: boolean;
   id?: string;
-  /** Do not wrap with setsid (internal one-shot helpers that must not be killable / counted). */
-  raw?: boolean;
 }
 
 export interface RunningExec {
@@ -96,14 +66,14 @@ export interface RunningExec {
   cancel(): void;
 }
 
-export function startExec(gw: Gateway, root: string, o: ExecOptions): RunningExec {
+export function startExec(backend: Backend, o: ExecOptions): RunningExec {
   const id = o.id ?? randomUUID();
-  const h = gw.exec({
-    sandbox: o.sandbox,
-    command: o.raw ? o.argv : wrapArgv(id, o.argv),
+  const h = sessionFor(backend, o.sandbox).start({
+    machine: o.sandbox,
+    command: o.argv,
     workdir: o.cwd,
-    environment: { ...baseEnv(root), ...(o.env ?? {}) },
-  });
+    environment: o.env,
+  }, id);
   if (!o.interactive) {
     (async () => {
       try {
@@ -120,12 +90,11 @@ export function startExec(gw: Gateway, root: string, o: ExecOptions): RunningExe
 
 /** Run to completion and collect output (internal helpers: mkdir, kill, stat...). */
 export async function runCollect(
-  gw: Gateway,
-  root: string,
+  backend: Backend,
   o: ExecOptions,
   maxBytes = 64 * 1024 * 1024,
 ): Promise<{ code: number; stdout: Buffer; stderr: Buffer }> {
-  const x = startExec(gw, root, o);
+  const x = startExec(backend, o);
   const out: Buffer[] = [];
   const err: Buffer[] = [];
   let n = 0;
@@ -146,7 +115,8 @@ export async function runCollect(
 }
 
 /** Signal every process of the exec's process group. false = no such (running) exec. */
-export async function killExec(gw: Gateway, root: string, sandbox: string, id: string, signal: string): Promise<boolean> {
-  const r = await runCollect(gw, root, { sandbox, argv: killArgv(id, signal, signal === "KILL"), raw: true });
+export async function killExec(backend: Backend, sandbox: string, id: string, signal: string): Promise<boolean> {
+  if (sessionFor(backend, sandbox).kill(id, signal)) return true;
+  const r = await runCollect(backend, { sandbox, argv: killArgv(id, signal, signal === "KILL") });
   return r.code === 0;
 }

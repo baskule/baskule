@@ -77,18 +77,10 @@ celld nodes need `CELLD_V8_HEAP_LIMIT_MB` ≥ 1024 (OpenCode + T3 in one isolate
 
 ## Feedback loops
 
-```sh
-src/agent/test/run.sh                 # dev stack + 13 fake-LLM runtime checks through the merged SpaceCell + everything down (~2 min warm)
-src/agent/test/run.sh --keep          # leave the shared OpenShell gateway up (faster next run), services stopped
-src/agent/test/run.sh --real-llm      # the one real-model smoke turn (Mistral Large 4; log the spend)
-pnpm exec vitest run src/agent              # unit tests only (from platform/; also part of `pnpm test`)
-src/agent/test/devstack.sh start|reload|restart-celld|stop|down   # the stack by hand; then node src/agent/test/run.mjs [--only a,b]
-```
+From the repository root, run `scripts/check agent` for the embedded runtime through
+SpaceCell, computerd and Docker computers with the fake LLM. Use `scripts/check plan`
+to select a smaller check for the current diff.
 
-The harness (`test/harness`) routes `/a/<spaceId>/…` to the **merged SpaceCell** at `/_baskule/agent/…`, so the checks
-exercise the embedded runtime in its production composition (shared SQL client, SpaceCell-owned alarms and wipe). It
-uses the fake LLM (requires the bearer key, so the key path is exercised), **computerd from source** and the shared
-private OpenShell gateway of the component loops (`openshell/dev-up.sh`, real `baskule-computer:local` sandboxes).
 Each run uses fresh space ids and deletes its computers at the end. Feature-level behaviour across members (queue,
 delegation, MCP apps) is `platform/test/wpf`; the deployed fleet (restart/failover with real nodes) is `e2e`.
 Which loop to run for a change: [development workflow](../../../docs/development-workflow.md).
@@ -99,3 +91,6 @@ results include an account label. Plugin settings use the same reload lifecycle 
 `/sandbox/space/plugins`, with read-only file modes, and are also registered in OpenCode's location skill service
 because its workerd profile disables disk config plugins. Computer files share the agent uid; these modes do not
 prevent a deliberate shell chmod.
+
+Plugin MCP traffic originates in celld through `plugin-mcp.ts` and `../shared/plugin-outbound.ts`.
+The computer private-network block does not govern these requests.

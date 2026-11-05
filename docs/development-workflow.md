@@ -24,9 +24,9 @@ Before starting the local app or checks that import SpaceCell, run `scripts/work
 | `scripts/check journey:<file-or-grep>` | Selected Playwright journeys against the worktree app |
 | `scripts/check worker` | Worker and ControlCell authentication, sessions, routing, and revocation |
 | `scripts/check space` | SpaceCell and embedded OpenCode with fake computer and model services |
-| `scripts/check agent` | Embedded agent through SpaceCell, computerd, and OpenShell |
+| `scripts/check agent` | Embedded agent through SpaceCell, computerd, and Docker |
 | `scripts/check kubernetes` | Disposable kind install with RustFS, fake chat, computers, PVC persistence and celld takeover |
-| `scripts/check computerd` | Computer execution, files, browser access, and lifecycle through OpenShell |
+| `scripts/check computerd` | Computer execution, files, browser access, and lifecycle through the configured backend |
 | `scripts/check features` | Platform feature contracts against a worktree stack and computers |
 | `scripts/check web` | Hosted client checks against a mock front and local T3 servers |
 | `scripts/check unit` | All Baskule unit suites and typechecks |

@@ -47,7 +47,7 @@ test("consumer secrets preserve each existing key, fill missing keys, and honor 
     };
     generate();
     const roles = { storage: ["RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"], platform: ["COMPUTERD_TOKEN", "SETUP_TOKEN", "PLUGIN_SYNC_TOKEN"],
-      computerd: ["COMPUTERD_TOKEN", "OPENSHELL_VOLUMES_TOKEN"], openshell: ["OPENSHELL_VOLUMES_TOKEN"] };
+      computerd: ["COMPUTERD_TOKEN"] };
     const file = role => resolve(env.BASKULE_SECRETS_DIR, role, "secrets");
     const original = Object.fromEntries(Object.keys(roles).map(role => [role, readFileSync(file(role), "utf8")]));
     for (const [role, keys] of Object.entries(roles)) {

@@ -4,7 +4,7 @@ Run `scripts/worktree setup` to prepare the pinned toolchain and dependencies. `
 same command to refresh dependencies and the embedded bundle, with unchanged inputs skipped.
 Stacks run as root on the development host, using its single portless proxy.
 Install `portless` globally and `libnss3-tools` on the host. Profiles with computers also require the existing
-OpenShell gateway and computer images.
+Docker socket access and local `baskule-computerd:local` (guard) and `baskule-computer:local` images.
 
 ```sh
 scripts/stack up                         # real hosted app, fake model, real computers
@@ -27,9 +27,11 @@ the parent of `.tools`, or `${XDG_CACHE_HOME:-~/.cache}/baskule` when `.tools` i
 `BASKULE_SHARED` overrides this location. `BASKULE_MAX_STACKS` defaults to six; capacity reservations include stacks
 still building. A killed startup is reclaimed by `gc` or the next `up`.
 
-`full` is the default, `light` omits computers and the gateway, and `rustfs` runs production-mode celld against
-the shared development RustFS bucket with an instance-specific prefix. Shared services stay up after `down`. The development gateway uses 127.0.0.1:47510 and its volume helper
-uses 127.0.0.1:47511.
+`full` is the default, `light` omits computers, and `rustfs` runs production-mode celld against
+the shared development RustFS bucket with an instance-specific prefix. Full stacks use the Docker backend and a worktree-scoped computer bridge.
+The guard requires Docker's iptables DOCKER-USER chain. `--set COMPUTER_GUARD_IMAGE=...`
+and `--set COMPUTER_IMAGE=...` select locally available images; `COMPUTER_DNS` accepts public DNS IPs.
+`down` stops owned computers and retains disks; `down --purge` deletes owned containers and disks.
 Node clients of the HTTPS front use `NODE_EXTRA_CA_CERTS=~/.portless/ca.pem`; `portless trust` installs the CA
 for curl. Stack startup also imports the CA idempotently into Chromium's NSS shared database, choosing
 `~/.pki/nssdb` when it exists, otherwise `${XDG_DATA_HOME:-~/.local/share}/pki/nssdb` (Chrome M146+). `portless list` shows the host proxy routes.
@@ -37,7 +39,7 @@ for curl. Stack startup also imports the CA idempotently into Chromium's NSS sha
 ## Profiles
 
 Add `stack/profiles/<name>.json`; no tool change is needed. A profile has `mode` (`dev` or `rustfs`),
-`shared` (`gateway`, `rustfs`), `env` overrides and an ordered `services` object. `celld` is required and uses
+`shared` (`rustfs`), `env` overrides and an ordered `services` object. `celld` is required and uses
 the tool's build/runtime command. Other services declare `command`, `args`, optional `cwd`, `env`, and an
 HTTP `health` URL. Every service receives a kernel-allocated port as `PORT_<UPPERCASE_NAME>` (hyphens become
 underscores). Strings can reference `${ROOT}`, `${RUN}`, `${LOOPBACK_URL}`, `${STACK_URL}`, ports and environment
@@ -48,6 +50,6 @@ variables. For example, clone `light.json`, add an environment value, and run `u
 
 The web cache hashes tracked and untracked app inputs by content, including dirty edits. Failed builds never
 publish cache entries. Cache entries are immutable and shared; `gc` reclaims entries unused for seven days. Component loops use fixed ports,
-the shared `osdev-openshell` gateway and their own loop locks. Worktree stacks lock only
+Docker computers and their own loop locks. Worktree stacks lock only
 capacity reservation and shared infrastructure startup, so feature checks can overlap. The agent and
 computerd loops use `loop-agent` and `loop-computerd` instance labels; they cannot adopt a stack's computers.

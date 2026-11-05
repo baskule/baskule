@@ -1,42 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, cpSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync, utimesSync } from "node:fs";
+import { mkdtempSync, mkdirSync, cpSync, readFileSync, rmSync, writeFileSync, existsSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { environment, stackIdentity, portlessEnvironment } from "./stack.mjs";
-
-function teardown(t, { entry, node = true, flock = true } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "osdev-gateway-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const bin = join(root, "bin"), registry = join(root, "run/stacks"), calls = join(root, "docker-calls");
-  mkdirSync(bin); mkdirSync(registry, { recursive: true });
-  const checkout = join(root, "checkout");
-  mkdirSync(join(checkout, "openshell"), { recursive: true });
-  mkdirSync(join(checkout, "scripts"));
-  cpSync("openshell/dev-down.sh", join(checkout, "openshell/dev-down.sh"));
-  cpSync("scripts/env.sh", join(checkout, "scripts/env.sh"));
-  for (const [name, target] of Object.entries({ bash: "/bin/bash", dirname: "/usr/bin/dirname", mkdir: "/bin/mkdir", ...(node ? { node: process.execPath } : {}), ...(flock ? { flock: "/usr/bin/flock" } : {}) })) symlinkSync(target, join(bin, name));
-  if (!flock) writeFileSync(join(bin, "flock"), "#!/bin/bash\nexit 1\n", { mode: 0o755 });
-  writeFileSync(join(bin, "docker"), '#!/bin/bash\necho "$*" >> "$CALLS"\nif [ "$1" = ps ]; then echo fake-gateway; fi\n', { mode: 0o755 });
-  if (entry !== undefined) writeFileSync(join(registry, "stack.json"), entry);
-  const result = spawnSync("/bin/bash", [join(checkout, "openshell/dev-down.sh")], { encoding: "utf8", env: { ...process.env, BASKULE_SHARED: root, PATH: bin, CALLS: calls } });
-  return { ...result, calls: existsSync(calls) ? readFileSync(calls, "utf8") : "" };
-}
-
-test("empty registry permits gateway teardown", (t) => {
-  const r = teardown(t); assert.equal(r.status, 0, r.stderr); assert.match(r.calls, /rm -f osdev-openshell/);
-});
-test("registered stacks protect gateway even after their worktree disappears", (t) => {
-  const r = teardown(t, { entry: JSON.stringify({ definition: { shared: ["gateway"] }, worktree: "/does-not-exist" }) });
-  assert.equal(r.status, 0, r.stderr); assert.equal(r.calls, ""); assert.match(r.stdout, /kept/);
-});
-for (const [name, options] of Object.entries({ "malformed registry": { entry: "{" }, "invalid registry": { entry: "{}" }, "missing Node": { node: false }, "failed lock": { flock: false } })) {
-  test(`${name} cannot tear down shared gateway`, (t) => {
-    const r = teardown(t, options); assert.notEqual(r.status, 0); assert.equal(r.calls, "");
-    if (name === "missing Node") assert.match(r.stderr, /node: command not found/);
-  });
-}
+import { cleanupComputers, environment, stackIdentity, portlessEnvironment } from "./stack.mjs";
 
 const stack = { id: "test-instance", ports: { "fake-llm": 12345 }, urls: { loopback: "http://127.0.0.1:12346", front: "https://test.baskule.localhost" }, definition: { env: { FIRST: "${PORT_FAKE_LLM}", SECOND: "${FIRST}" } }, overrides: { THIRD: "${SECOND}", COMPUTERD_INSTANCE: "other" } };
 test("profile and --set values resolve runtime ports and references", () => {
@@ -93,23 +61,12 @@ for (const command of [["reload"], ["restart", "celld"]]) test(`${command.join("
   assert(!existsSync(join(root, "shared/run/stacks")));
 });
 
-test("runner stack uses the same gateway ports as the component loops", (t) => {
-  const previous = { DEV_GATEWAY_PORT: process.env.DEV_GATEWAY_PORT, DEV_VOLUMES_PORT: process.env.DEV_VOLUMES_PORT };
-  t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
-  process.env.DEV_GATEWAY_PORT = "47520";
-  process.env.DEV_VOLUMES_PORT = "47521";
+test("full stack uses Docker with a scoped network and accepts image overrides", () => {
   const env = environment(stack);
-  assert.equal(env.DEV_GATEWAY_PORT, "47520"); assert.equal(env.DEV_VOLUMES_PORT, "47521");
-  assert.equal(env.OPENSHELL_GATEWAY, "127.0.0.1:47520");
-  assert.equal(env.OPENSHELL_VOLUMES_URL, "http://127.0.0.1:47521");
-});
-
-test("--set gateway ports are used by both the gateway and computerd", () => {
-  const env = environment({ ...stack, overrides: { DEV_GATEWAY_PORT: "47530", DEV_VOLUMES_PORT: "47531" } });
-  assert.equal(env.DEV_GATEWAY_PORT, "47530");
-  assert.equal(env.DEV_VOLUMES_PORT, "47531");
-  assert.equal(env.OPENSHELL_GATEWAY, "127.0.0.1:47530");
-  assert.equal(env.OPENSHELL_VOLUMES_URL, "http://127.0.0.1:47531");
+  assert.equal(env.COMPUTER_BACKEND, "docker");
+  assert.equal(env.COMPUTER_NETWORK, `baskule-computers-${stack.id}`);
+  assert.equal(environment({ ...stack, overrides: { COMPUTER_GUARD_IMAGE: "test:guard" } }).COMPUTER_GUARD_IMAGE, "test:guard");
+  assert.deepEqual(JSON.parse(readFileSync("stack/profiles/full.json")).shared, []);
 });
 
 test("Portless does not inherit package-runner installation flags", () => {
@@ -122,4 +79,19 @@ test("all local dev profiles share the lease default; explicit values and non-de
   assert.equal(environment({ ...stack, definition: { mode: "dev", env: {} }, overrides: {} }).CELLD_TTL_MS, process.env.CELLD_TTL_MS || "60000");
   assert.equal(environment({ ...stack, definition: { mode: "dev", env: { CELLD_TTL_MS: "90000" } }, overrides: {} }).CELLD_TTL_MS, "90000");
   assert.equal(environment({ ...stack, definition: { mode: "rustfs", env: {} }, overrides: {} }).CELLD_TTL_MS, process.env.CELLD_TTL_MS);
+});
+
+
+test("computer purge removes scoped networks before guard garbage collection", async () => {
+  const calls = [];
+  await cleanupComputers({ ...stack, overrides: {}, definition: { services: { computerd: {} } } }, true, (cmd, args) => {
+    calls.push(args);
+    return args[0] === "network" && args[1] === "ls" ? "network-id" : "";
+  });
+  const listing = calls.find(args => args[0] === "network" && args[1] === "ls");
+  assert(listing.includes("label=baskule.instance=test-instance"));
+  const removal = calls.findIndex(args => args[0] === "network" && args[1] === "rm");
+  assert.deepEqual(calls[removal], ["network", "rm", "network-id"]);
+  assert.equal(calls[removal + 1][0], "run");
+  assert(calls[removal + 1].at(-1).includes("guardGcScript()"));
 });

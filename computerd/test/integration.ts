@@ -1,8 +1,9 @@
-// Integration test against a real computerd + OpenShell gateway (see test/integration.sh).
+// Integration test against a real computerd + Docker Engine (see test/integration.sh).
 // Env: COMPUTERD_URL, COMPUTERD_TOKEN, SPACE (default random), IDLE_EXPECT_S (if computerd runs with a short
 // IDLE_MINUTES: wait up to that many seconds for the idle stop), SKIP_BROWSER=1 to skip MCP/CDP.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { Client, wsExchange } from "./client.ts";
 
@@ -29,9 +30,9 @@ test("ensure creates the computer", async () => {
 
 test("exec: argv, cwd, env allowlist, exit code, toolchain", async () => {
   const r = await c.exec(space, {
-    argv: ["sh", "-c", 'uname -a; python3 --version; node --version; bun --version; git --version; echo "H=$HOME P=$(pwd) L=$LANG F=${FOO:-none} O=${OPENSHELL_X:-none}"; id -u; exit 5'],
+    argv: ["sh", "-c", 'uname -a; python3 --version; node --version; bun --version; git --version; echo "H=$HOME P=$(pwd) L=$LANG F=${FOO:-none} O=${UNTRUSTED_MARKER:-none}"; id -u; exit 5'],
     cwd: "/sandbox/space",
-    env: { LANG: "C.UTF-8", FOO: "dropped", OPENSHELL_X: "dropped" },
+    env: { LANG: "C.UTF-8", FOO: "dropped", UNTRUSTED_MARKER: "dropped" },
   });
   assert.equal(r.code, 5, r.stderr);
   assert.match(r.stdout, /Linux/);
@@ -53,7 +54,7 @@ test("exec: large stdin (JSON base64 and octet-stream)", async () => {
   assert.equal(out.split(" ")[0], createHash("sha256").update(big).digest("hex"));
 });
 
-test("exec: kill by id kills the whole process group, TERM then KILL", async (t) => {
+test("exec: kill by id kills the whole process group, TERM then KILL", { timeout: 20000 }, async (t) => {
   const id = `k${randomBytes(4).toString("hex")}`;
   const p = c.exec(space, { id, argv: ["sh", "-c", 'trap "" TERM; sleep 300 & sleep 301'] });
   await t.waitFor(async () => assert.equal((await c.exec(space, { argv: ["sh", "-c", "pgrep -f '[s]leep 300' && pgrep -f '[s]leep 301'"] })).code, 0), { timeout: 10_000 });
@@ -174,4 +175,41 @@ test("delete: sandbox and volume removed (confirmation required), idempotent", a
   assert.equal((await c.json("POST", `${S}/computer/delete`, { confirm: space })).sandboxDeleted, true);
   const again = await c.json("POST", `${S}/computer/delete`, { confirm: space });
   assert.deepEqual([again.sandboxDeleted, again.volumeDeleted], [false, false]);
+});
+
+test("Docker computers cannot connect to another space", { skip: !process.env.COMPUTER_NETWORK }, async (t) => {
+  const other = space + "peer";
+  const target = "/v1/spaces/" + other;
+  try {
+    await c.json("POST", target + "/computer/ensure", {});
+    const network = JSON.parse(execFileSync("docker", ["network", "inspect", process.env.COMPUTER_NETWORK!], { encoding: "utf8" }))[0];
+    assert.equal(network.Options["com.docker.network.bridge.enable_icc"], "false");
+    console.log("# ICC disabled for all ports; probing a verified listening peer on TCP 18080");
+    const ip = (await c.exec(other, { argv: ["hostname", "-i"] })).stdout.trim();
+    const listener = c.exec(other, { id: "isolation", argv: ["python3", "-u", "-c",
+      "import socket,time; s=socket.socket(); s.bind(('0.0.0.0',18080)); s.listen(); print('ready',flush=True); time.sleep(60)"] });
+    await t.waitFor(async () => {
+      assert.equal((await c.exec(other, { argv: ["python3", "-c", "import socket; socket.create_connection(('127.0.0.1',18080),1)"] })).code, 0);
+    }, { timeout: 10000 });
+    const result = await c.exec(space, { argv: ["python3", "-c",
+      "import socket,sys; s=socket.socket(); s.settimeout(2); sys.exit(1 if s.connect_ex((sys.argv[1],18080))==0 else 0)", ip] });
+    assert.equal(result.code, 0, "cross-space TCP connection succeeded");
+    await c.json("POST", target + "/kill", { id: "isolation", graceMs: 0 });
+    await listener;
+  } finally {
+    await c.json("POST", target + "/computer/delete", { confirm: other });
+    await c.json("POST", S + "/computer/delete", { confirm: space });
+  }
+});
+
+test("browser bridge starts and lists sessions", async () => {
+  try {
+    await c.json("POST", S + "/computer/ensure", {});
+    await c.json("POST", S + "/browser/call", { method: "list", input: { threadId: "integration" } });
+    const response = await c.req("GET", S + "/browser/peek?threadId=integration");
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.ok((await response.text()).includes("sessions"));
+  } finally {
+    await c.json("POST", S + "/computer/delete", { confirm: space });
+  }
 });

@@ -22,25 +22,39 @@ spec:
         {{- include "baskule.labels" . | nindent 8 }}
         app.kubernetes.io/component: computerd
     spec:
-      automountServiceAccountToken: false
+      serviceAccountName: {{ .Release.Name }}-computerd
+      automountServiceAccountToken: true
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
       containers:
         - name: computerd
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
           image: {{ include "baskule.image" (dict "root" . "name" "computerd") }}
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           env:
+            - {name: COMPUTER_BACKEND, value: kubernetes}
             - name: COMPUTERD_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "baskule.secretName" . }}, key: COMPUTERD_TOKEN}
             - {name: COMPUTERD_INSTANCE, value: {{ .Release.Name | quote }}}
-            - {name: OPENSHELL_COMPUTE_DRIVER, value: kubernetes}
-            - {name: OPENSHELL_GATEWAY, value: {{ printf "%s:8080" (include "openshell.fullname" .Subcharts.openshell) | quote }}}
-            - {name: COMPUTER_IMAGE, value: {{ include "baskule.image" (dict "root" . "name" "computer") | quote }}}
-            - {name: COMPUTER_CPUS, value: {{ .Values.computer.cpu | quote }}}
-            - {name: COMPUTER_MEMORY, value: {{ .Values.computer.memory | quote }}}
+            - {name: COMPUTER_IMAGE, value: {{ (.Values.computers.image | default (include "baskule.image" (dict "root" . "name" "computer"))) | quote }}}
+            - {name: COMPUTER_CPUS, value: {{ .Values.computers.cpus | quote }}}
+            - {name: COMPUTER_MEMORY, value: {{ .Values.computers.memory | quote }}}
             - {name: PRODUCT_SETTINGS_URL, value: {{ printf "http://%s/api/baskule/runtime-settings" .Release.Name | quote }}}
+            - {name: COMPUTER_DISK_SIZE, value: {{ .Values.computers.diskSize | quote }}}
+            - {name: COMPUTER_STORAGE_CLASS, value: {{ .Values.computers.storageClass | quote }}}
+            - {name: COMPUTER_RUNTIME_CLASS_NAME, value: {{ .Values.computers.runtimeClassName | quote }}}
+            - {name: COMPUTER_NODE_SELECTOR, value: {{ .Values.computers.nodeSelector | toJson | quote }}}
+            - {name: COMPUTER_TOLERATIONS, value: {{ .Values.computers.tolerations | toJson | quote }}}
+            - {name: COMPUTER_IMAGE_PULL_SECRETS, value: {{ .Values.computers.imagePullSecrets | toJson | quote }}}
           ports:
             - {name: http, containerPort: 47094}
           readinessProbe:

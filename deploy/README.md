@@ -9,25 +9,19 @@ Developers use [Build Baskule](../docs/building.md). The Helm chart is the only 
 | `helm/baskule/` | Kubernetes cluster chart |
 | `docker-compose.build.yml` | Source-build override, selected by `lib.sh` |
 | `celld/` | Shared node/job image containing Worker, web app and deployment utilities |
-| `build-env/` | Ubuntu 24.04 native build environment |
 
-Released images use `ghcr.io/baskule/baskule-{celld,computerd,openshell-gateway}:VERSION`.
-Third-party storage, edge, and trace images are pinned by digest in Compose. The gateway embeds the computer, supervisor, and sandbox
-workload images, so its private daemon needs no registry access or host image loader.
+Compose runs computerd against the host Docker socket as user `node`. Its entrypoint
+discovers the socket group and drops privileges with that supplementary group.
+This grants Docker administration privileges. Computers use the separate
+`COMPUTER_NETWORK` bridge (default `${COMPOSE_PROJECT_NAME}-computers`), created by computerd.
+The guard helper uses the computerd image with NET_ADMIN in the host network namespace;
+Docker must provide the iptables DOCKER-USER chain. It denies private and host destinations and fails closed if verification fails.
+FORWARD mirrors prevent earlier accepts from bypassing the guard; nftables-only Docker is unsupported.
+`COMPUTER_DNS` optionally selects comma-separated public DNS IPs.
+Each computer defaults to 2 CPUs and 3 GiB. Release installs pull the computer and computerd images; Compose uses the pull-only `baskule-computer-image` service for the computer image.
+The old `baskule-openshell-docker` volume supplies the 0.5.0 forward data migration.
 
-The single-machine stack has separate platform and computer networks. Only computerd joins both; the optional
-trace collector also receives from both. The edge publishes HTTP on loopback by default, or TCP 80/443 and UDP 443
-on all IPv4/IPv6 interfaces in HTTPS mode. The optional trace UI has its own loopback-default bind
-(`BASKULE_TRACES_BIND`). Computer egress policy
-continues to deny private destinations.
-
-Default memory caps total 15.75 GiB: two nodes at 3 GiB each, RustFS at 1 GiB, edge at 256 MiB, computerd at
-512 MiB, and OpenShell at 8 GiB. The optional trace collector adds 1 GiB. CPU caps are 2 per node, 1 for storage,
-edge and computerd, and 3 for OpenShell. Each computer defaults to 2 CPU and 3 GiB within OpenShell's aggregate
-cap. These limits are not reservations. Persistent volumes hold generated secrets, the bucket, node caches, gateway state, and private
-Docker store containing computer disks.
-
-`up.sh`, `deploy.sh`, `down.sh`, and `recreate-computers.sh` serve the checkout-based
+`up.sh`, `deploy.sh`, and `down.sh` serve the checkout-based
 developer path. For a source-stack backup, source `deploy/lib.sh` and run
 `dc --profile backup run --rm -T backup > backup.tar.gz` with the stack stopped. Operators need only the release files and Docker Compose. Release assembly uses
 `scripts/release-install-assets.sh`; CI and publishing are documented in [Hosted checks and artifact builds](../docs/ci.md).
@@ -38,3 +32,15 @@ Create the first admin through that link. Once an admin exists, the token cannot
 
 Start only named profiles such as `traces`; `docker compose --profile '*' up` is unsupported because it also starts
 the edge inheritance templates. `BASKULE_EDGE` accepts lowercase `http` or `https`; HTTPS requires `BASKULE_DOMAIN`.
+
+Backup/restore use `celld/backup.sh` through the real job entrypoint. They retain platform secrets
+and RustFS, and discover host computer disks by `baskule.managed=true` plus `baskule.instance`.
+Compose passes `COMPUTERD_INSTANCE` (default: project name) to computerd and both jobs;
+new and migrated disks already receive these labels from computerd. Preserve that identity
+on restore. Stop both the stack and its independently managed computers for a consistent copy.
+The read-only socket bind still permits Docker API writes: temporary containers mount selected
+disks with networking disabled, and are deleted on exit. Archives preserve disk names, all labels,
+numeric owners, modes and symlinks. Restore requires absent disk names and empty platform volumes.
+Unmigrated legacy disks are included. See the install guide for archive storage requirements.
+
+Compose no longer mounts the legacy volume, so `docker compose down -v` keeps it. Delete it only after every space has migrated and its files have been verified, with a backup retained, or during an explicitly authorized full purge.

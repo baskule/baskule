@@ -19,4 +19,4 @@ A change that cannot migrate existing data needs the owner's explicit approval, 
 
 Follow the [review loop](docs/review-loop.md). Address findings within the change's scope and record other suggestions as follow-up work.
 
-Preserve the licences and notices in `app/`, `vendor/openshell/`, and their nested dependencies.
+Preserve the licences and notices in `app/` and its nested dependencies.

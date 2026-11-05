@@ -294,17 +294,31 @@ case "${1:-}" in
     # Recover saved ownership from interrupted runs, confined to this project.
     for previous in "$state_root"/gke.*; do
       [[ -f $previous/project.private && $(cat "$previous/project.private") == "$project" && -f $previous/owned-links.private.json ]] || continue
+      if [[ -n ${BASKULE_GKE_RUN:-} ]]; then
+        [[ -f $previous/known-accounts.private.json ]] || continue
+        jq -e --arg email "bk-${BASKULE_GKE_RUN#baskule-ephemeral-}@$project.iam.gserviceaccount.com" '. == [$email]' "$previous/known-accounts.private.json" >/dev/null || continue
+      fi
       jq -e 'type == "array"' "$previous/owned-links.private.json" >/dev/null || exit 1
       jq -s 'add | unique' "$state/owned-links.private.json" "$previous/owned-links.private.json" > "$state/links.next"
       mv "$state/links.next" "$state/owned-links.private.json"
     done
+    if [[ -n ${BASKULE_GKE_RUN:-} ]]; then
+      [[ $BASKULE_GKE_RUN =~ ^baskule-ephemeral-[0-9]+-[a-f0-9]{4}$ ]] || exit 2
+      resource_scope=$BASKULE_GKE_RUN
+      protect_young_runs=false
+      jq --arg email "bk-${BASKULE_GKE_RUN#baskule-ephemeral-}@$project.iam.gserviceaccount.com" '[.[] | select(. == $email)]' "$state/known-accounts.private.json" > "$state/accounts.next"
+      mv "$state/accounts.next" "$state/known-accounts.private.json"
+      jq --arg name "$BASKULE_GKE_RUN" '[.[] | select(. == $name)]' "$state/known-buckets.private.json" > "$state/buckets.next"
+      mv "$state/buckets.next" "$state/known-buckets.private.json"
+    fi
     "$1"; exit ;;
   # Snapshot into bash's input string so edits cannot change an in-flight run.
-  run) exec timeout --signal=TERM --kill-after=30m 90m bash -c "$(cat "$0")" "$0" worker ;;
-  worker)
+  run)
     exec 9> "$lock_root/baskule-gke-$project.lock"
-    flock -n 9 || { echo 'Live run exists; refuse another worker' >&2; exit 1; }
+    flock -w 3600 9 || { echo 'Timed out waiting for the GKE worker lock' >&2; exit 1; }
+    exec timeout --signal=TERM --kill-after=30m 90m bash -c "$(cat "$0")" "$0" worker
     ;;
+  worker) ;;
   *) echo "Usage: $0 run|sweep [--force]|audit" >&2; exit 2 ;;
 esac
 run_id="$marker-$(date -u +%s)-$(od -An -N2 -tx1 /dev/urandom | tr -d '[:space:]')"
@@ -417,8 +431,10 @@ export BASKULE_K8S_REGISTRY="$region-docker.pkg.dev/$project/$run_id"
 helm push "$BASKULE_K8S_CHART" "oci://$BASKULE_K8S_REGISTRY" > "$BASKULE_K8S_EVIDENCE/chart-push.log" 2>&1
 export BASKULE_K8S_CHART="oci://$BASKULE_K8S_REGISTRY/baskule"
 export BASKULE_K8S_CHART_VERSION=0.0.0-ephemeral
-export BASKULE_K8S_TAG=${BASKULE_K8S_TAG:-kubernetes}
-for name in celld computerd openshell-kubernetes computer openshell-supervisor openshell-sandbox; do
+# Shared tags such as :kubernetes or :local may hold another checkout's build: require an explicit tag and record what ships.
+: "${BASKULE_K8S_TAG:?set BASKULE_K8S_TAG to images built from this checkout}"
+for name in celld computerd computer; do
+  docker image inspect -f "baskule-$name:$BASKULE_K8S_TAG {{.Id}} {{.Created}}" "baskule-$name:$BASKULE_K8S_TAG" >> "$BASKULE_K8S_EVIDENCE/images.txt"
   docker tag "baskule-$name:$BASKULE_K8S_TAG" "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG"
   for attempt in 1 2 3; do
     if docker push "$BASKULE_K8S_REGISTRY/baskule-$name:$BASKULE_K8S_TAG" >> "$BASKULE_K8S_EVIDENCE/push-$name.log" 2>&1; then break; fi
@@ -502,8 +518,9 @@ s3:
   region: $scw_region
   bucket: $run_id
   existingSecret: baskule-bucket
-openshell:
-  server: {dataStorageClass: baskule-ephemeral, workspaceStorageClass: baskule-ephemeral}
+computers:
+  prePull: {enabled: false}
+  storageClass: baskule-ephemeral
 exposure:
   mode: ingress
   serviceAnnotations:
@@ -522,5 +539,19 @@ print(json.dumps({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'ba
         [('AWS_ACCESS_KEY_ID', 'BASKULE_S3_ACCESS_KEY'), ('AWS_SECRET_ACCESS_KEY', 'BASKULE_S3_SECRET_KEY')]}}))
 PYSECRET
 printf 'compute_region=europe-west1\nstorage_region=fr-par\ncross_provider_latency_included=true\n' > "$BASKULE_K8S_EVIDENCE/storage-location.txt"
-export BASKULE_K8S_CROSS_NODE=1 BASKULE_K8S_CHECK_INGRESS=1
-bash e2e/kubernetes-install.sh > "$BASKULE_K8S_EVIDENCE/install.log" 2>&1
+export BASKULE_K8S_CROSS_NODE=1 BASKULE_K8S_CHECK_INGRESS=${BASKULE_K8S_CHECK_INGRESS:-1}
+proof_status=0
+bash e2e/kubernetes-install.sh > "$BASKULE_K8S_EVIDENCE/install.log" 2>&1 || proof_status=1
+printf 'install_and_journey=%s\n' "$proof_status" > "$BASKULE_K8S_EVIDENCE/proof-status.txt"
+helm upgrade "$BASKULE_K8S_RELEASE" "$BASKULE_K8S_CHART" --version "$BASKULE_K8S_CHART_VERSION" -n "$run_id" --reuse-values --set computers.prePull.enabled=true >/dev/null
+kubectl -n "$run_id" rollout status daemonset/baskule-computer-prepull --timeout=180s
+pod=$(kubectl -n "$run_id" get pod -l app.kubernetes.io/component=computerd -o jsonpath='{.items[0].metadata.name}')
+kubectl -n "$run_id" exec "$pod" -- sh -c 'mkdir -p /tmp/baskule-tests; ln -sfn /app/node_modules /tmp/baskule-tests/node_modules'
+for file in integration.ts client.ts; do
+  kubectl -n "$run_id" exec -i "$pod" -- sh -c "cat > /tmp/baskule-tests/$file" < "computerd/test/$file"
+done
+kubectl -n "$run_id" exec "$pod" -- env COMPUTERD_URL=http://127.0.0.1:47094 node --test /tmp/baskule-tests/integration.ts > "$BASKULE_K8S_EVIDENCE/integration.log" 2>&1 || proof_status=1
+if [[ ${BASKULE_K8S_BENCH:-0} == 1 ]]; then
+BENCH_RUNS=3 BENCH_OUT="$BASKULE_K8S_EVIDENCE/bench.json" bash computerd/test/bench-kubernetes.sh > "$BASKULE_K8S_EVIDENCE/bench.log" 2>&1 || proof_status=1
+fi
+exit "$proof_status"

@@ -6,7 +6,19 @@ stack_lock_check
 docker rm -f baskule-e2e-llm >/dev/null 2>&1 || true  # the e2e LLM router (e2e/llm) is attached to baskule-net
 if [ "${1:-}" = --purge ]; then
   read -r -p "Delete ALL baskule data (bucket, computers)? type 'purge': " a; [ "$a" = purge ] || exit 1
+  config=$(dc config --format json)
+  instance=$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].environment.COMPUTERD_INSTANCE')
+  network=$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].environment.COMPUTER_NETWORK')
+  legacy=$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].environment.COMPUTER_LEGACY_VOLUME // empty')
   dc down -v --remove-orphans
+  if [ -n "$legacy" ] && docker volume inspect "$legacy" >/dev/null 2>&1; then docker volume rm "$legacy"; fi
+  docker ps -aq --filter label=baskule.managed=true --filter "label=baskule.instance=$instance" | xargs -r docker rm -f
+  docker volume ls -q --filter label=baskule.managed=true --filter "label=baskule.instance=$instance" | xargs -r docker volume rm
+  if network_info=$(docker network inspect "$network" 2>/dev/null) &&
+    printf '%s' "$network_info" | jq -e --arg instance "$instance" ' .[0] | .Labels["baskule.instance"] == $instance and (.Containers | length) == 0' >/dev/null; then
+    docker network rm "$network"
+  fi
+  docker run --rm --network host --user 0:0 --cap-drop ALL --cap-add NET_ADMIN --read-only --tmpfs /run --entrypoint node "$(printf '%s' "$config" | jq -r '.services["baskule-computerd"].image')" --input-type=module -e 'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});'
   # An external bucket (docs/install.md#external-s3) holds the cells' data outside the volumes: empty it too.
   if [ -n "$(env_get S3_ENDPOINT)" ]; then
     docker run --rm -e AWS_ACCESS_KEY_ID="$(env_get S3_ACCESS_KEY)" -e AWS_SECRET_ACCESS_KEY="$(env_get S3_SECRET_KEY)" \

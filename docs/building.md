@@ -33,73 +33,19 @@ The local celld launcher uses `.tools/bin/celld`, then `celld` on `PATH`. `CELLD
 
 ## Build server, web, and images
 
-Build OpenShell in the Ubuntu 24.04 amd64 environment defined by `deploy/build-env/Dockerfile`. It pins Rust 1.95.0 and Z3 5.1.0. Ubuntu's older system Z3 cannot satisfy this build. The gateway image receives the same shared Z3 library used for linking.
-
-Native compilation requires a matching `CARGO_TARGET_DIR`. Keep native caches separate for each toolchain and target. Follow [OpenShell packaging](../openshell/README.md) for the build environment and [upstream contributor instructions](../vendor/openshell/CONTRIBUTING.md) for source development. Image builds also use jq, rsync, and zstd. Allow disk space for JavaScript dependencies, Rust outputs, and container images.
-
-For a source-build installation, clone the repository and configure its developer Compose override:
+After setup, build the hosted web app, SpaceCell, platform bundle and computer, celld and computerd images:
 
 ```sh
-git clone https://github.com/baskule/baskule
-cd baskule
+deploy/build.sh --no-deploy
 ```
 
-The optional `deploy/.env` overrides defaults. `deploy/auth.json` is the source build's optional
-authentication file; `AUTH_CONFIG_FILE` selects another. Releases use `AUTH_CONFIG` in `.env`.
+Docker, jq and the pinned JavaScript tools are required. Build logs stay in `.run/build/`.
+`deploy/build.sh --force --no-deploy` rebuilds the web and SpaceCell bundles.
+For an installation you operate, `deploy/build.sh` also starts and deploys the source stack.
+`deploy/docker-compose.build.yml` selects local images and checkout mounts.
+`deploy/up.sh` starts it, `deploy/deploy.sh` deploys a changed bundle, and `deploy/down.sh` stops it.
+The optional `deploy/.env` overrides defaults; `AUTH_CONFIG_FILE` selects an authentication file.
 Keep secrets outside Git and do not source `.env` as shell code.
-
-Build and start from the Ubuntu build environment. For example, with the checkout and caches under `/opt/baskule`:
-
-```sh
-docker build --network=host -t baskule-build deploy/build-env
-build_key=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
-docker run --rm --network=host --pid=host \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /opt/baskule:/opt/baskule -w /opt/baskule/src \
-  -e CARGO_HOME=/opt/baskule/cache/cargo \
-  -e CARGO_TARGET_DIR=/opt/baskule/cache/openshell-target-ubuntu24-$build_key \
-  baskule-build bash -c 'scripts/worktree setup && deploy/build.sh'
-```
-
-After startup, read the setup link and create the first admin:
-
-```sh
-docker compose --project-directory deploy \
-  -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml logs setup
-```
-
-The explicit command installs dependencies and runs `deploy/build.sh`. A cold native build can take 30–60 minutes.
-For a linked worktree, also mount its Git common directory and pinned-tool directory at their original paths.
-Use this only for an installation you are authorized to operate. To build without starting or replacing services,
-pass `--no-deploy` and set a target-specific native cache:
-
-```sh
-build_key=$(sha256sum deploy/build-env/Dockerfile | cut -c1-16)
-docker run --rm --network=host \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /opt/baskule:/opt/baskule -w /opt/baskule/src \
-  -e CARGO_HOME=/opt/baskule/cache/cargo \
-  -e CARGO_TARGET_DIR=/opt/baskule/cache/openshell-target-ubuntu24-$build_key \
-  baskule-build bash -c 'scripts/worktree setup && deploy/build.sh --no-deploy'
-```
-
-`deploy/build.sh` builds the hosted web app, SpaceCell and platform Worker, then packages
-computer, OpenShell, celld, and computerd images. The source celld image contains deployment tools; the deploy
-job mounts `../platform`. Release images bake in the bundle. The gateway contains
-compressed computer, supervisor, and sandbox images for its private daemon. Source hashes reuse matching images;
-a computer change also rebuilds the gateway. App changes use `celld deploy` without rebuilding or restarting nodes.
-The source image hash excludes the platform bundle and `version.json`.
-
-The source scripts add `deploy/docker-compose.build.yml` to the single release Compose definition. This selects
-`:local` images, build contexts, checkout mounts for rapid app redeployment, and the developer stack's fixed resource
-names. `deploy/up.sh` builds missing images and starts this source stack; `deploy/deploy.sh` deploys a changed bundle.
-`deploy/down.sh` stops it. `openshell/load-images.sh` remains a developer helper for an existing shared test gateway;
-released installations load their images inside Compose. `scripts/stack` and `scripts/check` keep their worktree-local
-app path. Do not point them at another operator's installation.
-
-`deploy/build.sh --force` rebuilds web and SpaceCell. App downloads link to GitHub release assets for the
-running version; they are not bundled in the images. Image and bundle build
-logs stay in `.run/build/`. Deployment scripts honor `deploy/.stack-lock` while checks use the source stack.
 
 Generated bundles, dependencies, downloaded packages, and local evidence stay ignored. Builds use checked-in source and lockfiles. `source-provenance.json` records the imported upstream snapshots; `/version.json` and generated `BUILT_FROM` files identify built inputs.
 

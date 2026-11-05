@@ -1,6 +1,6 @@
 # Baskule instructions for agents
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [build instructions](docs/building.md), and the [development workflow](docs/development-workflow.md). `app/` and `vendor/openshell/` have additional `AGENTS.md` instructions for their source.
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [build instructions](docs/building.md), and the [development workflow](docs/development-workflow.md). `app/` has additional `AGENTS.md` instructions for their source.
 
 ## One repository
 

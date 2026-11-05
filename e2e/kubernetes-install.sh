@@ -17,7 +17,6 @@ mkdir -p "$BASKULE_K8S_EVIDENCE"
 kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.9/sandbox.yaml > "$BASKULE_K8S_EVIDENCE/agent-sandbox-install.log"
 kubectl -n agent-sandbox-system rollout status deployment/agent-sandbox-controller --timeout=180s
 chart=${BASKULE_K8S_CHART:-deploy/helm/baskule}
-if [[ -d $chart ]]; then helm dependency build "$chart" >/dev/null; fi
 chart_args=()
 if [[ -n ${BASKULE_K8S_CHART_VERSION:-} ]]; then chart_args=(--version "$BASKULE_K8S_CHART_VERSION"); fi
 values_args=()
@@ -30,14 +29,13 @@ helm upgrade --install "$BASKULE_K8S_RELEASE" "$chart" \
   --set-string global.image.registry="$registry" --set-string global.image.tag="$tag" \
   "${values_args[@]}" > /dev/null
 kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status statefulset/"$BASKULE_K8S_RELEASE-celld" --timeout=240s
-kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status statefulset/"$BASKULE_K8S_RELEASE-openshell" --timeout=180s
 if [[ ${BASKULE_K8S_JOURNEY:-full} == full ]]; then
   # Run the actual deployment command with setup still required, retaining this
   # test Job long enough to assert its logs without writing them to evidence.
   kubectl -n "$BASKULE_K8S_NAMESPACE" exec "$BASKULE_K8S_RELEASE-celld-0" -- \
     curl -fsS "http://$BASKULE_K8S_RELEASE/api/baskule/setup" | jq -e '.required == true' >/dev/null
   helm template "$BASKULE_K8S_RELEASE" "$chart" "${chart_args[@]}" --namespace "$BASKULE_K8S_NAMESPACE" \
-    --show-only templates/deploy.yaml --set openshell.agentSandbox.preflight.enabled=false \
+    --show-only templates/deploy.yaml \
     --set-string publicUrl="$BASKULE_K8S_PUBLIC_URL" --set-string global.image.registry="$registry" \
     --set-string global.image.tag="$tag" "${values_args[@]}" | \
     kubectl -n "$BASKULE_K8S_NAMESPACE" create --dry-run=client -f - -o json | \

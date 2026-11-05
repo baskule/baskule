@@ -30,10 +30,10 @@ SPACE=smoke$(head -c 3 /dev/urandom | od -An -tx1 | tr -d ' \n')
 HELPER=baskule-smoke
 
 cleanup() {
+  # Remove the smoke computer and its disk.
+  docker exec "$HELPER" curl -sf -m 120 -o /dev/null -H "Authorization: Bearer $COMPUTERD_TOKEN" -H 'content-type: application/json' \
+    -d "{\"confirm\":\"$SPACE\"}" "http://baskule-computerd:47094/v1/spaces/$SPACE/computer/delete" >/dev/null 2>&1
   docker rm -f "$HELPER" >/dev/null 2>&1
-  # Remove the smoke computer and its volume.
-  docker exec baskule-openshell openshell --gateway-endpoint http://127.0.0.1:47095 sandbox delete "os-$SPACE" >/dev/null 2>&1
-  for _ in $(seq 30); do docker exec baskule-openshell docker volume rm "baskule-space-$SPACE" >/dev/null 2>&1 && break; sleep 1; done
   # Restore computerd's configured idle timeout.
   node "$HERE/llm/settings.mjs" restore >/dev/null 2>&1 || true
   [ "$DOWN" = 1 ] && "$DEPLOY_DIR/down.sh" >/dev/null 2>&1
@@ -45,7 +45,7 @@ trap cleanup EXIT
 if [ "$UP" = 1 ]; then "$DEPLOY_DIR/up.sh" >/dev/null 2>&1 || { echo "deploy/up.sh failed"; exit 1; }; fi
 # An external bucket (S3_ENDPOINT, docs/install.md#external-s3) replaces RustFS.
 S3=$(env_get S3_ENDPOINT)
-for c in $([ -z "$S3" ] && echo baskule-rustfs) baskule-celld-a baskule-celld-b baskule-computerd baskule-openshell; do
+for c in $([ -z "$S3" ] && echo baskule-rustfs) baskule-celld-a baskule-celld-b baskule-computerd; do
   check "container $c healthy" wait_healthy "$c" 120
 done
 check "edge running" test "$(docker inspect -f '{{.State.Running}}' baskule-edge)" = true
@@ -82,7 +82,7 @@ fi
 
 # ------------------------------------------------------------------------- 2. computerd (inside the stack network)
 docker rm -f "$HELPER" >/dev/null 2>&1
-docker run -d --name "$HELPER" --network baskule-net -e COMPUTERD_TOKEN="$COMPUTERD_TOKEN" \
+docker run -d --name "$HELPER" --network baskule-net -e COMPUTERD_TOKEN="$COMPUTERD_TOKEN" -e COMPUTERD_URL=http://baskule-computerd:47094 \
   -v "$HERE/infra:/infra:ro" --entrypoint sleep "baskule-celld:$TAG" infinity >/dev/null
 cx() { docker exec -i "$HELPER" /infra/cx.sh "$SPACE" "$1"; } # run a bash script in the smoke computer
 
@@ -107,7 +107,7 @@ check "runtime policy: refused without the token" docker exec "$HELPER" bash -c 
 # ------------------------------------------------------------------------------ 3. isolation + internet
 ip_of() { docker inspect -f "{{range \$k, \$v := .NetworkSettings.Networks}}{{\$v.IPAddress}} {{end}}" "$1" | awk '{print $1}'; }
 TARGETS=""
-for c in celld-a celld-b rustfs edge computerd openshell; do TARGETS="$TARGETS $c=$(ip_of baskule-$c)"; done
+for c in celld-a celld-b rustfs edge computerd; do TARGETS="$TARGETS $c=$(ip_of baskule-$c)"; done
 COMPUTERS_GW=$(docker network inspect -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' baskule-computers)
 NET_GW=$(docker network inspect -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' baskule-net)
 echo "----- isolation probes from inside the computer (each must FAIL to connect) -----"
