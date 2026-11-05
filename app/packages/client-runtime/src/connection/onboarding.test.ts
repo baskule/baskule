@@ -1,4 +1,5 @@
 import {
+  BASKULE_RELEASE,
   AuthStandardClientScopes,
   EnvironmentId,
   type AuthEnvironmentScope,
@@ -83,7 +84,7 @@ function layerPairingHttp(
             os: "linux",
             arch: "x64",
           },
-          serverVersion: "0.5.0",
+          serverVersion: BASKULE_RELEASE.version,
           minClient: "0.0.0",
           orchestrationProtocolVersion: options?.protocolVersion ?? ORCHESTRATION_PROTOCOL_VERSION,
           capabilities: {

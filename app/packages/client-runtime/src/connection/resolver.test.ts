@@ -1,4 +1,5 @@
 import {
+  BASKULE_RELEASE,
   EnvironmentId,
   ORCHESTRATION_PROTOCOL_VERSION,
   type DesktopSshEnvironmentTarget,
@@ -132,7 +133,7 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
           environmentId: ENVIRONMENT_ID,
           label: "Compatible environment",
           platform: { os: "linux", arch: "x64" },
-          serverVersion: "0.5.0",
+          serverVersion: BASKULE_RELEASE.version,
           minClient: "0.0.0",
           ...(options?.descriptorProtocolVersion === undefined
             ? { orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION }
