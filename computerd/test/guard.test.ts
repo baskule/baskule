@@ -16,7 +16,7 @@ test("guard blocks private destinations and host INPUT without restricting publi
 });
 test("IPv6 and invalid networks", () => {
   assert.ok(guardScript(["fd00::/64"]).includes("-d fe80::/10"));
-  for (const subnet of ["x", "1.2.3.4/33", "1.2.3.4/24;id"]) assert.throws(() => guardScript([subnet]));
+  for (const subnet of ["x", "1.2.3.4/33", "1.2.3.4/24;id", "::1/129", "1.2.3.4/-1"]) assert.throws(() => guardScript([subnet]));
   assert.throws(() => guardScript([]));
 });
 

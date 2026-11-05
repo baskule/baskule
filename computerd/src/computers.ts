@@ -189,30 +189,28 @@ export class Computers {
         (machine.cpus !== undefined && quantity(machine.cpus) !== quantity(spec.cpus)) ||
         (machine.memory !== undefined && quantity(machine.memory) !== quantity(spec.memory));
     };
+    const restart = async (machine: Machine, stop: boolean) => {
+      closeSessions(this.backend, s.sandbox);
+      if (stop) await this.backend.stop(s.sandbox);
+      if (await needsUpdate(machine)) {
+        log.info("computer image update", { sandbox: s.sandbox, oldImage: machine.image, newImage: this.cfg.image });
+        return this.backend.recreate(spec);
+      }
+      return this.backend.start(s.sandbox);
+    };
     const deadline = Date.now() + this.cfg.readyTimeoutMs;
     let recovered = false;
     while (info.phase !== "ready") {
       if (info.phase === "error") {
         if (recovered) throw new Error(info.error ?? "computer is in error");
         recovered = true;
-        closeSessions(this.backend, s.sandbox);
-        await this.backend.stop(s.sandbox);
-        if (await needsUpdate(info)) {
-          log.info("computer image update", { sandbox: s.sandbox, oldImage: info.image, newImage: this.cfg.image });
-          closeSessions(this.backend, s.sandbox);
-          info = await this.backend.recreate(spec);
-        } else info = await this.backend.start(s.sandbox);
+        info = await restart(info, true);
         started = true;
         continue;
       }
       if (Date.now() > deadline) throw new Error("computer not ready before timeout");
       if (info.phase === "stopped") {
-        closeSessions(this.backend, s.sandbox);
-        if (await needsUpdate(info)) {
-          log.info("computer image update", { sandbox: s.sandbox, oldImage: info.image, newImage: this.cfg.image });
-          closeSessions(this.backend, s.sandbox);
-          info = await this.backend.recreate(spec);
-        } else info = await this.backend.start(s.sandbox);
+        info = await restart(info, false);
         started = true;
       } else {
         await sleep(300);
@@ -225,7 +223,7 @@ export class Computers {
     s.lastActivity = Date.now();
     if (created || started || !s.prepared) {
       // The per-space volume is copied from the image on first mount (it has home/); chats/ is ours.
-      const r = await traced("computer.prepare", {}, () => runCollect(this.backend, this.cfg.sandboxRoot, {
+      const r = await traced("computer.prepare", {}, () => runCollect(this.backend, {
         sandbox: s.sandbox,
         argv: ["mkdir", "-p", "--", `${this.cfg.sandboxRoot}/space/home`, `${this.cfg.sandboxRoot}/space/chats`],
       }));
@@ -270,7 +268,7 @@ export class Computers {
   private async clearCaches(sandbox: string, spaceId: string) {
     const started = Date.now();
     const home = `${this.cfg.sandboxRoot}/space/home`;
-    const cleared = runCollect(this.backend, this.cfg.sandboxRoot, { sandbox, argv: ["sh", "-c", CLEAR_CACHES, "sh", home] })
+    const cleared = runCollect(this.backend, { sandbox, argv: ["sh", "-c", CLEAR_CACHES, "sh", home] })
       .then((r) => (r.code === 0 ? "ok" : `exit ${r.code}: ${r.stderr.toString().slice(0, 200)}`))
       .catch((e: any) => String(e?.message ?? e));
     let timer: ReturnType<typeof setTimeout> | undefined;

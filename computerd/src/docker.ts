@@ -25,7 +25,7 @@ export class DockerBackend implements Backend {
   private readonly dns: string[];
   private readonly legacyVolume: string;
   private guardPending: Promise<void> | undefined;
-  private guardVerified: { subnets: string[]; at: number } | undefined;
+  private guardVerified = false;
   private async requireGuard(): Promise<void> {
     if (this.guardVerified) return;
     if (this.guardPending) await this.guardPending.catch(() => {});
@@ -33,7 +33,7 @@ export class DockerBackend implements Backend {
   }
   private readonly guardTimer: ReturnType<typeof setInterval>;
   private guardScriptFailed = false;
-  private readonly guardInstance = process.env.COMPUTERD_INSTANCE ?? "";
+  private readonly guardInstance: string;
   private guardHelpersCleaned = false;
   private async stopUnguarded(): Promise<void> {
     if (this.guardVerified) return;
@@ -49,7 +49,7 @@ export class DockerBackend implements Backend {
         try { await this.reconcileGuard(); return; }
         catch (error) {
           if (this.guardScriptFailed || attempt === 3) {
-            this.guardVerified = undefined;
+            this.guardVerified = false;
             await this.stopUnguarded();
             throw error;
           }
@@ -100,10 +100,11 @@ export class DockerBackend implements Backend {
         const output = await this.request<string>("GET", `/containers/${helper.Id}/logs?stdout=true&stderr=true&tail=20`, undefined, text => text.trim()).catch(() => "");
         throw new Error(`Computer guard verification failed (exit ${result.StatusCode}): requires Docker iptables DOCKER-USER (nftables-only Docker unsupported) and NET_ADMIN; refusing computer creation/start${output ? `: ${output}` : ""}`);
       }
-      this.guardVerified = { subnets: network.IPAM.Config.map(config => config.Subnet), at: Date.now() };
+      this.guardVerified = true;
     } finally { await this.request("DELETE", `/containers/${helper.Id}?force=true`); }
   }
-  constructor(host = "unix:///var/run/docker.sock", network = "baskule-computers", guardImage = "baskule-computerd:local", dns = ["1.1.1.1", "8.8.8.8"], legacyVolume = "") {
+  constructor(host = "unix:///var/run/docker.sock", network = "baskule-computers", guardImage = "baskule-computerd:local", dns = ["1.1.1.1", "8.8.8.8"], legacyVolume = "", options: { instance: string } = { instance: "" }) {
+    this.guardInstance = options.instance;
     this.legacyVolume = legacyVolume;
     this.network = network;
     this.guardImage = guardImage;

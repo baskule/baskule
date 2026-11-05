@@ -1,5 +1,5 @@
 #!/bin/bash
-# cx.sh <spaceId> <bash script>: run a script in the space's computer through computerd .
+# cx.sh <spaceId> <bash script>: run a script in the space's computer through computerd.
 # Prints decoded stdout+stderr; exits with the remote exit code.
 body=$(jq -n --arg s "$2" '{argv: ["bash", "-c", $s], cwd: "/sandbox/space"}')
 out=$(curl -sN -X POST -H "Authorization: Bearer $COMPUTERD_TOKEN" -H 'content-type: application/json' \

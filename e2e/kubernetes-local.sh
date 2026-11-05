@@ -6,7 +6,6 @@ source scripts/env.sh
 export BASKULE_K8S_NAMESPACE=${BASKULE_K8S_NAMESPACE:-baskule}
 export BASKULE_K8S_RELEASE=${BASKULE_K8S_RELEASE:-baskule}
 export PATH="$HOME/.local/bin:$PATH"
-helm dependency build deploy/helm/baskule >/dev/null
 if [[ ${1:-} == lint ]]; then
   s3=(--set s3.endpoint=https://s3.example.test --set s3.bucket=test --set s3.existingSecret=bucket)
   helm lint deploy/helm/baskule "${s3[@]}"

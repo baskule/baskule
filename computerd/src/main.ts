@@ -10,7 +10,7 @@ import { log } from "./log.ts";
 const cfg = loadConfig();
 const backend = cfg.backend === "kubernetes"
   ? new KubernetesBackend(cfg.kubernetes)
-  : new DockerBackend(cfg.dockerHost, cfg.network, cfg.guardImage, cfg.dns, cfg.legacyVolume);
+  : new DockerBackend(cfg.dockerHost, cfg.network, cfg.guardImage, cfg.dns, cfg.legacyVolume, { instance: cfg.instance });
 const computers = new Computers(backend, cfg);
 const server = createServer({ cfg, backend, computers });
 

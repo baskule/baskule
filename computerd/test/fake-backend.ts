@@ -9,7 +9,7 @@ export class FakeBackend implements Backend {
   sandboxes = new Map<string, Machine>();
   disks = new Set<string>();
   calls: { method: string; req: MachineSpec | { name: string } }[] = [];
-  execs: { command: string[]; environment: Record<string, string>; workdir: string; stdinChunks: number[] }[] = [];
+  execs: { command: string[]; environment: Record<string, string>; workdir: string }[] = [];
   async imageId(_image: string): Promise<string | null> { return null; }
   async get(name: string) { return this.sandboxes.get(name) ?? null; }
   async list(labels: Record<string, string>) {
@@ -62,7 +62,7 @@ export class FakeBackend implements Backend {
   }
   exec(st: ExecStart): ExecHandle {
     if (this.sandboxes.get(st.machine)?.phase !== "ready") throw new Error("machine is not ready");
-    const rec = { command: st.command, environment: st.environment ?? {}, workdir: st.workdir ?? "", stdinChunks: [] as number[] };
+    const rec = { command: st.command, environment: st.environment ?? {}, workdir: st.workdir ?? "" };
     this.execs.push(rec);
     const child = spawn(st.command[0], st.command.slice(1), { cwd: st.workdir, env: { ...this.environment, ...rec.environment }, stdio: ["pipe", "pipe", "pipe"] });
     let running = this.children.get(st.machine);
@@ -79,7 +79,7 @@ export class FakeBackend implements Backend {
     child.on("error", e => emit({ stderr: Buffer.from(e.message) }));
     child.on("close", (code, sig) => { emit({ exit: code ?? (sig ? 137 : 127) }); done = true; wake?.(); });
     return {
-      async writeStdin(chunk) { rec.stdinChunks.push(chunk.length); await new Promise<void>(resolve => child.stdin.write(chunk, () => resolve())); },
+      async writeStdin(chunk) { await new Promise<void>(resolve => child.stdin.write(chunk, () => resolve())); },
       endStdin() { child.stdin.end(); },
       cancel() { child.stdin.end(); },
       events: (async function* () {

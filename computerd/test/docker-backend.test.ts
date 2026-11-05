@@ -32,7 +32,7 @@ test("a scoped computerd stops its own computers and nothing once the guard is v
   await backend.stopUnguarded();
   assert.deepEqual(listed, { "baskule.managed": "true", "baskule.instance": "a" });
   assert.deepEqual(stopped, ["x"]);
-  backend.guardVerified = { subnets: [], at: Date.now() };
+  backend.guardVerified = true;
   stopped.length = 0;
   await backend.stopUnguarded();
   assert.deepEqual(stopped, []);

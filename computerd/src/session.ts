@@ -68,7 +68,7 @@ export class ExecSession {
           if (buffer.length < n + 4) break;
           const type = buffer[4], handle = buffer.readUInt32BE(5), payload = buffer.subarray(9, n + 4);
           this.opened = true; this.lastFrame = Date.now();
-          if (![4, 5, 6, 8, 9, 11].includes(type)) throw Error('Unknown frame');
+          if (![4, 5, 6, 8, 11].includes(type)) throw Error('Unknown frame');
           const value = Number(payload);
           if ((type === 8 && (!Number.isSafeInteger(value) || value < 0)) || (type === 6 && (!Number.isInteger(value) || value < 0 || value > 255))) throw Error('Invalid number');
           const j = this.jobs.get(handle);
@@ -80,7 +80,6 @@ export class ExecSession {
             }
             else if (type === 6) { j.output.end({ exit: Number(payload) }); this.jobs.delete(handle); j.wake(); }
             else if (type === 8) { j.credit += Number(payload); j.wake(); }
-            else if (type === 9) throw Error(payload.toString());
           }
           buffer = buffer.subarray(n + 4);
         }

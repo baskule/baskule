@@ -66,7 +66,7 @@ export interface RunningExec {
   cancel(): void;
 }
 
-export function startExec(backend: Backend, root: string, o: ExecOptions): RunningExec {
+export function startExec(backend: Backend, o: ExecOptions): RunningExec {
   const id = o.id ?? randomUUID();
   const h = sessionFor(backend, o.sandbox).start({
     machine: o.sandbox,
@@ -91,11 +91,10 @@ export function startExec(backend: Backend, root: string, o: ExecOptions): Runni
 /** Run to completion and collect output (internal helpers: mkdir, kill, stat...). */
 export async function runCollect(
   backend: Backend,
-  root: string,
   o: ExecOptions,
   maxBytes = 64 * 1024 * 1024,
 ): Promise<{ code: number; stdout: Buffer; stderr: Buffer }> {
-  const x = startExec(backend, root, o);
+  const x = startExec(backend, o);
   const out: Buffer[] = [];
   const err: Buffer[] = [];
   let n = 0;
@@ -116,8 +115,8 @@ export async function runCollect(
 }
 
 /** Signal every process of the exec's process group. false = no such (running) exec. */
-export async function killExec(backend: Backend, root: string, sandbox: string, id: string, signal: string): Promise<boolean> {
+export async function killExec(backend: Backend, sandbox: string, id: string, signal: string): Promise<boolean> {
   if (sessionFor(backend, sandbox).kill(id, signal)) return true;
-  const r = await runCollect(backend, root, { sandbox, argv: killArgv(id, signal, signal === "KILL") });
+  const r = await runCollect(backend, { sandbox, argv: killArgv(id, signal, signal === "KILL") });
   return r.code === 0;
 }

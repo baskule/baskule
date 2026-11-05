@@ -92,7 +92,7 @@ const AREAS = {
 const LOOPS = {
   worker: { ports: [47620], run: (only) => [["bash", ["test/integration.sh", ...(only ? ["--only", only] : [])], "platform"]] },
   space: { ports: [47550, 47551, 47552], run: (only) => [["node", ["src/space/test/run.mjs", ...(only ? ["--only", only] : [])], "platform"]] },
-  agent: { ports: [47650, 47651, 47652], run: (only) => [["src/agent/test/run.sh", ["--keep", ...(only ? ["--", "--only", only] : [])], "platform"]] },
+  agent: { ports: [47650, 47651, 47652], run: (only) => [["src/agent/test/run.sh", [...(only ? ["--", "--only", only] : [])], "platform"]] },
   features: {
     ports: [], isolated: true,
     run: (only) => [

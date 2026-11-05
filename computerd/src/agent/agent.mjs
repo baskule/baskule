@@ -1,6 +1,6 @@
 // Wire: big-endian u32 body length, u8 type, u32 handle, payload.
 // 1 start JSON {argv,cwd,env,id}; 2 stdin; 3 EOF; 4 stdout; 5 stderr;
-// 6 exit decimal; 7 signal; 8 credit decimal; 9 error; 10 ping; 11 pong;
+// 6 exit decimal; 7 signal; 8 credit decimal; 10 ping; 11 pong;
 // 12 detach. Each direction starts with 1 MiB credit per exec; consumers
 // replenish only consumed bytes. Frames are at most 16 MiB (start); data frames are at most 64 KiB.
 import { spawn } from 'node:child_process';

@@ -326,7 +326,7 @@ jobs:
           - name: worker-space
             suite: components
             selection: worker space
-          - name: gateway
+          - name: computerd
             suite: components
             selection: computerd agent
           - name: contracts

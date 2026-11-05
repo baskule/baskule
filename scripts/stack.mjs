@@ -474,7 +474,6 @@ async function up() {
     pluginSyncToken: old?.pluginSyncToken || randomBytes(32).toString("hex"),
     authSecret: old?.authSecret || randomBytes(32).toString("hex"), computerdToken: old?.computerdToken || randomBytes(24).toString("hex"),
     bucketPrefix: old && !args.includes("--clean") ? old.bucketPrefix : `${id}/${randomBytes(8).toString("hex")}`,
-    volumes: old && !args.includes("--clean") ? old.volumes || [] : [],
     processes: {}, logs: Object.fromEntries(Object.keys(definition.services).map((n) => [n, join(RUN, `${n}.log`)])),
     phase: "starting", launcher: identity(process.pid), startedAt: new Date().toISOString() };
   const release = await lock("stack-registry");

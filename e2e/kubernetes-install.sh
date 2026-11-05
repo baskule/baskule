@@ -17,7 +17,6 @@ mkdir -p "$BASKULE_K8S_EVIDENCE"
 kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.9/sandbox.yaml > "$BASKULE_K8S_EVIDENCE/agent-sandbox-install.log"
 kubectl -n agent-sandbox-system rollout status deployment/agent-sandbox-controller --timeout=180s
 chart=${BASKULE_K8S_CHART:-deploy/helm/baskule}
-if [[ -d $chart ]]; then helm dependency build "$chart" >/dev/null; fi
 chart_args=()
 if [[ -n ${BASKULE_K8S_CHART_VERSION:-} ]]; then chart_args=(--version "$BASKULE_K8S_CHART_VERSION"); fi
 values_args=()

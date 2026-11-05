@@ -74,7 +74,7 @@ opens one backend exec running `/usr/local/bin/node` with a small agent ([agent.
 sent with the command, so images cannot drift from computerd), and multiplexes every later command, stdin,
 kill and exit status over it ([session.ts](src/session.ts)). Custom computer images need `/usr/local/bin/node`.
 Each command runs in a detached process group and records it in `/tmp/.osj`, so `kill`, client disconnect,
-`timeoutMs` and other computerd replicas signal the whole group. Per-command 1 MiB credit windows bound
+`timeoutMs` and kill requests after a computerd restart or from other replicas signal the whole group. Per-command 1 MiB credit windows bound
 buffering in both directions; computerd closes a session whose agent exceeds its credit, and waits for slow
 HTTP clients before reading more. A failing command (oversized start, bad `cwd`, spawn error) fails alone.
 Sessions ping every 15 s, close after 45 s of silence and on stop, replacement, deletion and shutdown;
@@ -110,6 +110,9 @@ know, so a restart never leaves them running forever.
 | `IDLE_MINUTES` | `10` |
 | `PRODUCT_SETTINGS_URL` | Organization settings endpoint |
 
+Docker compares computer image IDs; Kubernetes compares image references, so use immutable tags.
+
 Run `scripts/check computerd` from the repository root after [setup](../docs/building.md).
+Benchmarks are opt-in: use `BENCH=1 bash computerd/test/integration.sh` for Docker or `BASKULE_K8S_BENCH=1 e2e/kubernetes-ephemeral.sh run` for Kubernetes.
 Computers on Docker start in about a second on a warm host; on Kubernetes cold start
 is dominated by image pull, which the pre-pull DaemonSet removes.

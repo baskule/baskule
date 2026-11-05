@@ -136,9 +136,9 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
   /** Kill the process group: TERM now, then KILL after the grace period (harmless if already gone). */
   function terminate(spaceId: string, id: string, graceMs = KILL_GRACE_MS) {
     const sandbox = sandboxOf(spaceId);
-    killExec(backend, cfg.sandboxRoot, sandbox, id, "TERM").catch(() => {});
+    killExec(backend, sandbox, id, "TERM").catch(() => {});
     if (graceMs > 0)
-      setTimeout(() => killExec(backend, cfg.sandboxRoot, sandbox, id, "KILL").catch(() => {}), graceMs).unref();
+      setTimeout(() => killExec(backend, sandbox, id, "KILL").catch(() => {}), graceMs).unref();
   }
 
   // ---------------------------------------------------------------------------------------------- exec
@@ -174,7 +174,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
     let x: RunningExec;
     try {
       await ensureFor(spaceId);
-      x = startExec(backend, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv, cwd, env, stdin, id });
+      x = startExec(backend, { sandbox: sandboxOf(spaceId), argv, cwd, env, stdin, id });
     } catch (e) {
       release();
       throw e;
@@ -229,9 +229,9 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
     if (!Number.isFinite(graceMs) || graceMs < 0 || graceMs > 600_000) throw new HttpError(400, "graceMs must be 0..600000");
     const st = await computers.status(spaceId);
     if (!st.running) return json(res, 200, { id, killed: false, reason: "computer not running" });
-    const killed = await killExec(backend, cfg.sandboxRoot, sandboxOf(spaceId), id, signal);
+    const killed = await killExec(backend, sandboxOf(spaceId), id, signal);
     if (killed && signal === "TERM" && graceMs > 0)
-      setTimeout(() => killExec(backend, cfg.sandboxRoot, sandboxOf(spaceId), id, "KILL").catch(() => {}), graceMs).unref();
+      setTimeout(() => killExec(backend, sandboxOf(spaceId), id, "KILL").catch(() => {}), graceMs).unref();
     json(res, 200, { id, killed });
   }
 
@@ -248,7 +248,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
     let x: ReturnType<typeof startExec> | undefined;
     try {
       await ensureFor(spaceId);
-      x = startExec(backend, cfg.sandboxRoot, {
+      x = startExec(backend, {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", GET_SCRIPT, statOnly ? "stat" : "auto", path, start, count, suffix, cfg.sandboxRoot],
       });
@@ -353,7 +353,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
               yield c as Buffer;
             }
           })();
-      const r = await runCollect(backend, cfg.sandboxRoot, {
+      const r = await runCollect(backend, {
         sandbox: sandboxOf(spaceId),
         argv: ["sh", "-c", PUT_SCRIPT, isDir ? "dir" : "file", path, cfg.sandboxRoot, isDir ? "" : (len ?? "")],
         stdin: body,
@@ -377,7 +377,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
       pending = (async () => {
         await ensureFor(spaceId);
         const result = await traced("browser.bridge.ensure", {}, () =>
-          runCollect(backend, cfg.sandboxRoot, { sandbox: sandboxOf(spaceId), argv: ["baskule-browser-bridge", "ensure"], env: { BASKULE_BROWSER_PORT: String(browserPort) } }));
+          runCollect(backend, { sandbox: sandboxOf(spaceId), argv: ["baskule-browser-bridge", "ensure"], env: { BASKULE_BROWSER_PORT: String(browserPort) } }));
         if (result.code !== 0) throw new HttpError(502, `browser bridge did not start: ${result.stderr.toString().slice(-400)}`);
       })();
       browserStarts.set(spaceId, pending);
@@ -496,7 +496,7 @@ export function createServer({ cfg, backend, computers }: ServerDeps) {
 
   // ------------------------------------------------------------------------------- cdp (browser)
   async function browserEnsure(spaceId: string): Promise<any> {
-    const r = await traced("browser.cdp.ensure", {}, () => runCollect(backend, cfg.sandboxRoot, {
+    const r = await traced("browser.cdp.ensure", {}, () => runCollect(backend, {
       sandbox: sandboxOf(spaceId),
       argv: ["baskule-browser", "ensure"],
       env: { BASKULE_CDP_PORT: String(cfg.cdpPort) },

@@ -18,8 +18,7 @@ The guard helper uses the computerd image with NET_ADMIN in the host network nam
 Docker must provide the iptables DOCKER-USER chain. It denies private and host destinations and fails closed if verification fails.
 FORWARD mirrors prevent earlier accepts from bypassing the guard; nftables-only Docker is unsupported.
 `COMPUTER_DNS` optionally selects comma-separated public DNS IPs.
-Each computer defaults to 2 CPUs and 3 GiB. The computer and computerd images must
-already be available on the host.
+Each computer defaults to 2 CPUs and 3 GiB. Release installs pull the computer and computerd images; Compose uses the pull-only `baskule-computer-image` service for the computer image.
 The old `baskule-openshell-docker` volume supplies the 0.5.0 forward data migration.
 
 `up.sh`, `deploy.sh`, and `down.sh` serve the checkout-based

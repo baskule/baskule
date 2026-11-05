@@ -9,7 +9,7 @@
 #   ./devstack.sh restart-celld     restart celld only (persistence checks; same state dir)
 #   ./devstack.sh reload            rebuild the harness and restart celld (after a code change)
 #   ./devstack.sh stop              stop celld, fake LLM, computerd
-#   ./devstack.sh down [--purge]    stop all processes
+#   ./devstack.sh down              stop all processes
 #   REAL_LLM=1 ./devstack.sh start  computerd serves the real key (LLM_ENV_FILE) and the cells use Mistral Large 4
 #                                   Spend must be logged.
 set -euo pipefail
@@ -86,5 +86,5 @@ case "${1:-}" in
   down)
     for f in celld fake-llm computerd; do pidkill $f; done
     echo "down" ;;
-  *) sed -n 2,17p "$0"; exit 2 ;;
+  *) sed -n 2,14p "$0"; exit 2 ;;
 esac

@@ -131,8 +131,9 @@ a ReadWriteOnce PVC named `<disk>-<sandbox>` with `computers.diskSize` and
 rest of the filesystem comes from the computer image and resets whenever the pod is
 recreated, including on stop/start. computerd stops and resumes a computer by setting the
 Sandbox's `operatingMode` to `Suspended` or `Running`. Exec and port connections, including
-CDP, use the Kubernetes API WebSocket. On next start, stopped computers with a changed image ID or CPU/memory limits are
+CDP, use the Kubernetes API WebSocket. On next start, stopped computers with a changed image reference or CPU/memory limits are
 recreated with the current image, limits and scheduling settings, retaining their PVC.
+Docker compares computer image IDs; Kubernetes compares image references, so use immutable tags.
 Scheduling changes alone do not trigger recreation; existing PVC size and storage class remain unchanged.
 
 Computer pods run as non-root user and group 1000, drop all capabilities, disable privilege
@@ -620,6 +621,8 @@ space/PVC deletion and the Helm upgrade, and skips stop/start, pod replacement,
 isolation, CDP and snapshot checks. Set `BASKULE_K8S_JOURNEY=upgrade` to repeat only
 install, server-side credential rendering and same-version upgrade checks. Set
 `BASKULE_K8S_CHECK_INGRESS=0` to skip the public Ingress probes.
+Benchmarks are opt-in: use `BENCH=1 bash computerd/test/integration.sh` for Docker or `BASKULE_K8S_BENCH=1 e2e/kubernetes-ephemeral.sh run` for Kubernetes.
+
 For the ephemeral run, privately export `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and
 `SCW_DEFAULT_PROJECT_ID` for host-side bucket provisioning and cleanup. Separately
 export `BASKULE_S3_ACCESS_KEY` and `BASKULE_S3_SECRET_KEY` from a dedicated application
@@ -674,6 +677,6 @@ The chart does not migrate a Compose installation and changes no data in an exis
 Compose install. computerd high availability, controller installation, model-provider
 credentials, TLS automation, and multi-zone storage failover are outside this chart.
 Volumes can move only where the selected StorageClass permits. Only `/sandbox/space`
-persists; stopped computers are recreated on next start when their image ID or CPU/memory
+persists; stopped computers are recreated on next start when their image reference or CPU/memory
 limits change, retaining the PVC and applying current scheduling settings. EKS, AKS, Kapsule, alternative Ingress/Gateway controllers, RuntimeClasses
 and full disaster recovery need their own verification.

@@ -527,7 +527,7 @@ async function restoreOnly() {
   w.dc(["up", "-d"]);
   await ready(`${base}/version.json`);
   await persisted(base, previous);
-  pass("focused restore preserves chat and re-admits the computer disk into empty volumes");
+  pass("focused restore preserves chat and restores the computer disk into empty volumes");
 }
 try {
   if (target === "all" || target === "https") await https();

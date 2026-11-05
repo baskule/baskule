@@ -25,8 +25,8 @@ port 47090; proxy and external-storage targets select free ports. Its single-mac
 starts with only the released Compose file. `.env` and a config directory are not required. It runs Compose directly, with no
 source-build override. The fake LLM is a separate fixture. Checks cover default password authentication, admin
 sign-in, a streamed fake chat, and a shell command through the platform's computerd endpoint. It checks chat and
-computer-file persistence after a compose-file version update and down/up, then backs up and restores into empty
-volumes. Hashes of every consumer secrets file must match across restart, update, and restore.
+computer-file persistence after down/up, then backs up and restores into empty
+volumes. Hashes of every consumer secrets file must match across restart and restore.
 The driver excludes CI's packaging variable `BASKULE_VERSION` from Docker commands so the downloaded
 Compose file selects the version. Computerd creates computers directly on the host Docker Engine.
 
@@ -90,6 +90,6 @@ missing keys, explicit overrides, and conditional setup-link output. Use `script
 with normal S3 values, and checks admin setup, streamed chat, computer execution, PVC persistence,
 network isolation, celld takeover and stable tokens after a Helm upgrade. The release
 factory runs it in a separate `install-kubernetes` job with the retained image archives.
-Unlike Compose, Kubernetes pulls the computer image directly; the pre-pull DaemonSet caches it on each node.
+Kubernetes pulls the computer image directly; Compose pulls it through the pull-only `baskule-computer-image` service; the pre-pull DaemonSet caches it on each node.
 See [the Kubernetes guide](install-kubernetes.md#verify-a-source-change) for local and
 owner-authorized ephemeral GKE Standard runs.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring the source stack up: build missing images, start everything else, deploy the app. Idempotent. Options: --build (rebuild all images first).
+# Bring the source stack up: build missing images, start the services, deploy the app. Idempotent. Options: --build (rebuild all images first).
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 # Prepare the mounted app before the source deploy job starts.

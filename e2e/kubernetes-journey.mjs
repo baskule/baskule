@@ -315,23 +315,6 @@ try {
       const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
       assert.ok(targets.some(target => target.type === "page"));
       pass("computer Chromium responds through the real CDP WebSocket tunnel");
-      const rawPod = computerPods()[0].metadata.name;
-      const kubectlExecMs = [];
-      for (let i = 0; i < 20; i++) {
-        const started = performance.now();
-        kube("exec", rawPod, "--", "true");
-        kubectlExecMs.push(performance.now() - started);
-      }
-      const rawScript = `
-        const fs=require('fs'), WebSocket=require('/app/node_modules/ws');
-        const root='/var/run/secrets/kubernetes.io/serviceaccount/';
-        const ca=fs.readFileSync(root+'ca.crt'), token=fs.readFileSync(root+'token','utf8').trim();
-        const url='wss://'+process.env.KUBERNETES_SERVICE_HOST+':443/api/v1/namespaces/'+${JSON.stringify(namespace)}+'/pods/'+${JSON.stringify(rawPod)}+'/exec?command=true&stdout=true&stderr=true';
-        (async()=>{const times=[];for(let i=0;i<20;i++){const start=performance.now();await new Promise((resolve,reject)=>{const ws=new WebSocket(url,['v4.channel.k8s.io'],{ca,headers:{Authorization:'Bearer '+token}});const timer=setTimeout(()=>{ws.terminate();reject(Error('exec timeout'))},30000);ws.on('error',reject);ws.on('close',()=>{clearTimeout(timer);resolve()})});times.push(performance.now()-start)}console.log(JSON.stringify(times))})().catch(e=>{console.error(e);process.exit(1)});
-      `;
-      const rawWsMs = JSON.parse(execFileSync("kubectl", ["-n", namespace, "exec", "-i", computerdPod, "--", "node"], { input: rawScript, encoding: "utf8", timeout: 120_000 }));
-      writeFileSync(resolve(evidence, "exec-path.json"), JSON.stringify({ kubectlExecMs, rawWsMs }));
-
       if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
         const claim = objects("get", "pvc").items.find(p => p.metadata.ownerReferences?.some(o => o.uid === sandbox.metadata.uid));
         assert.ok(claim);

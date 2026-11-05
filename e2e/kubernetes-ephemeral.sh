@@ -551,5 +551,7 @@ for file in integration.ts client.ts; do
   kubectl -n "$run_id" exec -i "$pod" -- sh -c "cat > /tmp/baskule-tests/$file" < "computerd/test/$file"
 done
 kubectl -n "$run_id" exec "$pod" -- env COMPUTERD_URL=http://127.0.0.1:47094 node --test /tmp/baskule-tests/integration.ts > "$BASKULE_K8S_EVIDENCE/integration.log" 2>&1 || proof_status=1
+if [[ ${BASKULE_K8S_BENCH:-0} == 1 ]]; then
 BENCH_RUNS=3 BENCH_OUT="$BASKULE_K8S_EVIDENCE/bench.json" bash computerd/test/bench-kubernetes.sh > "$BASKULE_K8S_EVIDENCE/bench.log" 2>&1 || proof_status=1
+fi
 exit "$proof_status"

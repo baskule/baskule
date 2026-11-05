@@ -1,4 +1,4 @@
-// Unit tests: computerd against a fake gateway (test/fake-backend.ts). Run: pnpm test
+// Unit tests: computerd against a fake backend (test/fake-backend.ts). Run: pnpm test
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
