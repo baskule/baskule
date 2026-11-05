@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 /** Separate fake resource and AS, shared by unit and stock-celld component checks. */
 export async function fakeOAuth() {
   const client = { id: /** @type {string | null} */ (null), secret: /** @type {string | null} */ (null), redirectUri: /** @type {string | null} */ (null) };
-  const state = { tokenError: /** @type {string | null} */ (null), tokenStatus: 503, identity: "fixture", refreshes: 0, exchanges: 0, registrations: 0, invalidGrant: false, shortLived: false, scopes: "files.read", dcr: true, resourceMismatch: false, issuerMismatch: false, pkce: true, metadata: true, resourceParameter: true, callbackIssuer: /** @type {string | null} */ (null), advertisedIssuer: /** @type {string | null} */ (null), onRefresh: /** @type {null | (() => Promise<void>)} */ (null), onExchange: /** @type {null | (() => Promise<void>)} */ (null) };
+  const state = { tokenError: /** @type {string | null} */ (null), tokenStatus: 503, identity: "fixture", refreshes: 0, exchanges: 0, registrations: 0, invalidGrant: false, shortLived: false, expiresIn: 3600, scopes: "files.read", dcr: true, resourceMismatch: false, issuerMismatch: false, pkce: true, metadata: true, resourceParameter: true, callbackIssuer: /** @type {string | null} */ (null), advertisedIssuer: /** @type {string | null} */ (null), onRefresh: /** @type {null | (() => Promise<void>)} */ (null), onExchange: /** @type {null | (() => Promise<void>)} */ (null) };
   const codes = new Map();
   const refreshTokens = new Map();
   const accessTokens = new Map();
@@ -54,7 +54,7 @@ export async function fakeOAuth() {
         }
         const token = randomUUID(), refresh = randomUUID();
         accessTokens.set(token, identity); refreshTokens.set(refresh, identity);
-        return json(res, { access_token: token, refresh_token: refresh, expires_in: state.shortLived ? 1 : 3600, token_type: "Bearer", scope: state.scopes, resource });
+        return json(res, { access_token: token, refresh_token: refresh, expires_in: state.shortLived ? 1 : state.expiresIn, token_type: "Bearer", scope: state.scopes, resource });
       }
       json(res, {}, 404);
     } catch { json(res, { error: "fixture_failure" }, 500); }
