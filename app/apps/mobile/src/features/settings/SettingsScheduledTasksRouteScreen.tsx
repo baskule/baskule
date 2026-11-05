@@ -1153,7 +1153,7 @@ function TaskForm({
               <FormField
                 label={t("Replay key template")}
                 value={draft.schedule.replayKey}
-                placeholder={t("{{headers.delivery-id}}")}
+                placeholder="{{headers.delivery-id}}"
                 disabled={saving}
                 borderTop
                 onChange={(replayKey) =>
@@ -1163,7 +1163,7 @@ function TaskForm({
               <FormField
                 label={t("Coalesce key template")}
                 value={draft.schedule.coalesceKey}
-                placeholder={t("{{body.id}}")}
+                placeholder="{{body.id}}"
                 disabled={saving}
                 borderTop
                 onChange={(coalesceKey) =>

@@ -1725,7 +1725,7 @@ function ScheduledTaskEditorForm({
                 >
                   <Input
                     id="scheduled-task-replay-key"
-                    placeholder={t("{{headers.delivery-id}}")}
+                    placeholder="{{headers.delivery-id}}"
                     value={draft.replayKey}
                     onChange={(event) =>
                       setDraft((current) => ({ ...current, replayKey: event.target.value }))
@@ -1739,7 +1739,7 @@ function ScheduledTaskEditorForm({
                 >
                   <Input
                     id="scheduled-task-coalesce-key"
-                    placeholder={t("{{body.id}}")}
+                    placeholder="{{body.id}}"
                     value={draft.coalesceKey}
                     onChange={(event) =>
                       setDraft((current) => ({ ...current, coalesceKey: event.target.value }))
