@@ -3,7 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 
 /** Separate fake resource and AS, shared by unit and stock-celld component checks. */
 export async function fakeOAuth() {
-  const state = { identity: "fixture", refreshes: 0, exchanges: 0, registrations: 0, invalidGrant: false, shortLived: false, scopes: "files.read", dcr: true, resourceMismatch: false, issuerMismatch: false, pkce: true, metadata: true, resourceParameter: true, advertisedIssuer: /** @type {string | null} */ (null), onRefresh: /** @type {null | (() => Promise<void>)} */ (null), onExchange: /** @type {null | (() => Promise<void>)} */ (null) };
+  const client = { id: /** @type {string | null} */ (null), secret: /** @type {string | null} */ (null), redirectUri: /** @type {string | null} */ (null) };
+  const state = { tokenError: /** @type {string | null} */ (null), tokenStatus: 503, identity: "fixture", refreshes: 0, exchanges: 0, registrations: 0, invalidGrant: false, shortLived: false, scopes: "files.read", dcr: true, resourceMismatch: false, issuerMismatch: false, pkce: true, metadata: true, resourceParameter: true, callbackIssuer: /** @type {string | null} */ (null), advertisedIssuer: /** @type {string | null} */ (null), onRefresh: /** @type {null | (() => Promise<void>)} */ (null), onExchange: /** @type {null | (() => Promise<void>)} */ (null) };
   const codes = new Map();
   const refreshTokens = new Map();
   const accessTokens = new Map();
@@ -22,11 +23,12 @@ export async function fakeOAuth() {
       });
       if (u.pathname === "/register") { state.registrations++; return json(res, { client_id: "fake-client", token_endpoint_auth_method: "none" }, 201); }
       if (u.pathname === "/authorize") {
+        if (client.id && (u.searchParams.get("client_id") !== client.id || u.searchParams.get("redirect_uri") !== client.redirectUri)) return json(res, { error: "invalid_client" }, 400);
         if ((state.resourceParameter ? u.searchParams.get("resource") !== resource : u.searchParams.has("resource")) || u.searchParams.get("code_challenge_method") !== "S256") return json(res, { error: "invalid_request" }, 400);
         const code = randomUUID();
         codes.set(code, { ...Object.fromEntries(u.searchParams), identity: state.identity });
         const callback = new URL(u.searchParams.get("redirect_uri"));
-        for (const [key, value] of Object.entries({ code, state: u.searchParams.get("state"), iss: issuer })) callback.searchParams.set(key, value);
+        for (const [key, value] of Object.entries({ code, state: u.searchParams.get("state"), iss: state.callbackIssuer ?? issuer })) callback.searchParams.set(key, value);
         res.writeHead(302, { location: callback.href }); return res.end();
       }
       if (u.pathname === "/token") {
@@ -34,7 +36,9 @@ export async function fakeOAuth() {
         for await (const chunk of req) body += chunk;
         const p = new URLSearchParams(body);
         requests.push({ ...Object.fromEntries(p), authorization: req.headers.authorization });
+        if (client.id && p.get("client_id") !== client.id || client.secret && p.get("client_secret") !== client.secret) return json(res, { error: "invalid_client" }, 401);
         if ((state.resourceParameter ? p.get("resource") !== resource : p.has("resource"))) return json(res, { error: "invalid_target" }, 400);
+        if (state.tokenError) return json(res, { error: state.tokenError }, state.tokenStatus);
         let identity;
         if (p.get("grant_type") === "authorization_code") {
           state.exchanges++;
@@ -77,7 +81,7 @@ export async function fakeOAuth() {
     json(res, { jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "private fixture document" }] } });
   });
   resource = `${await listen(mcp)}/mcp`;
-  return { issuer, resource, state, requests, calls, close: async () => {
+  return { issuer, resource, state, client, requests, calls, close: async () => {
     for (const server of [mcp, as]) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   } };
 }

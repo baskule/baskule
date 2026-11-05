@@ -9,7 +9,7 @@ export type VendorSignIn =
   | { type: "key"; header: string }                                    // one organization key
   | { type: "account"; client: "dynamic"; params?: Record<string, string> }
   | { type: "account"; client: "static"; issuer: string;               // may contain {tenant}
-      fields?: "tenant"[]; params?: Record<string, string>; resource?: false; docs: string };
+      relay?: true; ownApp: string[]; fields?: "tenant"[]; params?: Record<string, string>; resource?: false; docs: string };
 
 export interface CatalogVendor { id: string; name: string; signIn: VendorSignIn }
 
@@ -33,6 +33,15 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      ownApp: [
+        msg("Create or choose one Google Cloud project for Gmail, Calendar, Drive and Chat; one web OAuth client serves every Google service."),
+        msg("Enable the product APIs and MCP APIs for the Google services you will use, following https://developers.google.com/workspace/guides/configure-mcp-servers and each service's setup documentation."),
+        msg("Enrol the project in the Workspace MCP Developer Preview."),
+        msg("Configure the consent screen as Internal. Only accounts in your own Google Workspace organization can connect; this supported setup requires no Google verification and does not support external accounts."),
+        msg("Create one Web application OAuth client and add this installation's callback URL as an authorized redirect URI."),
+        msg("Mark the OAuth client as an AI-powered agent before November 11, 2026."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://accounts.google.com",
       params: {
         access_type: "offline",
@@ -49,6 +58,11 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Register an Entra app for your tenant and configure this installation's callback URL."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://login.microsoftonline.com/{tenant}/v2.0",
       fields: ["tenant"],
       resource: false,
@@ -61,6 +75,12 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Create an internal Slack app for your workspace or use an approved Marketplace app; unlisted public apps cannot connect."),
+        msg("Register this installation's callback and grant the listed user permissions."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://mcp.slack.com",
       docs: "https://docs.slack.dev/ai/slack-mcp-server/",
     },
@@ -71,6 +91,11 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Create a Zoom General app, register this installation's callback and enable the required scopes."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://zoom.us",
       docs: "https://developers.zoom.us/docs/mcp/servers/connect-to-zoom-mcp-servers/",
     },
@@ -97,6 +122,11 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Configure a Box MCP Server app, register this installation's callback and choose its access scopes."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://api.box.com",
       docs: "https://developer.box.com/guides/box-mcp/setup/",
     },
@@ -107,6 +137,11 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Create a scoped Full Dropbox app and register this installation's callback."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://www.dropbox.com",
       params: {
         token_access_type: "offline",
@@ -121,6 +156,11 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Create an Asana MCP app and register this installation's callback."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://app.asana.com",
       resource: false,
       docs: "https://developers.asana.com/docs/integrating-with-asanas-mcp-server",
@@ -220,6 +260,11 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Create an MCP Auth App in the HubSpot account and register this installation's callback."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://mcp.hubspot.com",
       docs: "https://developers.hubspot.com/changelog/remote-hubspot-mcp-server-is-now-generally-available",
     },
@@ -231,6 +276,10 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      ownApp: [
+        msg("Create an External Client App with PKCE, JWT access tokens and this installation's callback."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://login.salesforce.com",
       docs: "https://developer.salesforce.com/docs/platform/hosted-mcp-servers/guide/hosted-mcp-servers-overview.html",
     },
@@ -242,6 +291,11 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Create a Developer Portal app, turn on Canva MCP and register this installation's callback."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://www.canva.com",
       docs: "https://www.canva.dev/docs/apps/mcp/access/",
     },
@@ -252,6 +306,11 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      relay: true,
+      ownApp: [
+        msg("Register a GitHub OAuth App or GitHub App with this installation's callback."),
+        msg("Paste the client ID and client secret here."),
+      ],
       issuer: "https://github.com/login/oauth",
       docs: "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md",
     },
@@ -263,6 +322,9 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      ownApp: [
+        msg("Obtain Shopify's approval for this MCP client before configuring sign-in."),
+      ],
       issuer: "https://setup.shopify.com/auth",
       docs: "https://shopify.dev/docs/apps/build/ai-toolkit",
     },
@@ -282,6 +344,9 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
     signIn: {
       type: "account",
       client: "static",
+      ownApp: [
+        msg("Create a Docusign integration key and configure this installation's callback and permissions."),
+      ],
       issuer: "https://account.docusign.com",
       docs: "https://developers.docusign.com/platform/mcp-server/",
     },
@@ -304,7 +369,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose"],
       }
     ],
-    prerequisites: [msg("Your Google Cloud project must be enrolled in the Workspace MCP Developer Preview and enable the product API and MCP API."), msg("An administrator must register a web OAuth client, add this installation's callback, and mark it as an AI-powered agent before November 11, 2026."), msg("Use an internal app for your own Workspace organization, or meet Google's external-app verification requirements.")],
+    prerequisites: [msg("Only accounts in your own Google Workspace organization can connect through an Internal app; external accounts are not supported.")],
     reviewBy: "2026-11-11",
   },
   // The setup guide lists read scopes despite write tools. The per-tool reference confirms calendar.events for writes; no generic full-calendar scope is needed.
@@ -323,7 +388,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events"],
       }
     ],
-    prerequisites: [msg("Your Google Cloud project must be enrolled in the Workspace MCP Developer Preview and enable the product API and MCP API."), msg("An administrator must register a web OAuth client, add this installation's callback, and mark it as an AI-powered agent before November 11, 2026."), msg("Use an internal app for your own Workspace organization, or meet Google's external-app verification requirements.")],
+    prerequisites: [msg("Only accounts in your own Google Workspace organization can connect through an Internal app; external accounts are not supported.")],
     reviewBy: "2026-11-11",
   },
   // INFERRED minimum scope unions: product readwrite scopes replace corresponding readonly scopes; Drive discovery needs drive.readonly. Exact tool-by-tool coverage remains untested. Docs/Sheets metadata omits drive.file even though their setup guides list it, so this recipe uses product scopes for edits.
@@ -357,7 +422,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/presentations"],
       }
     ],
-    prerequisites: [msg("Your Google Cloud project must be enrolled in the Workspace MCP Developer Preview and enable the product API and MCP API."), msg("An administrator must register a web OAuth client, add this installation's callback, and mark it as an AI-powered agent before November 11, 2026."), msg("Use an internal app for your own Workspace organization, or meet Google's external-app verification requirements."), msg("Editing is limited to the tools and files allowed by your consent and existing permissions.")],
+    prerequisites: [msg("Only accounts in your own Google Workspace organization can connect through an Internal app; external accounts are not supported."), msg("Editing is limited to the tools and files allowed by your consent and existing permissions.")],
     reviewBy: "2026-11-11",
   },
   // INFERRED minimum for search/read/send only. Membership, read-state and space-setting tools require additional consent; do not silently enable them under this scope set.
@@ -376,7 +441,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["https://www.googleapis.com/auth/chat.spaces.readonly", "https://www.googleapis.com/auth/chat.messages.readonly", "https://www.googleapis.com/auth/chat.messages.create"],
       }
     ],
-    prerequisites: [msg("Your Google Cloud project must be enrolled in the Workspace MCP Developer Preview and enable the product API and MCP API."), msg("An administrator must register a web OAuth client, add this installation's callback, and mark it as an AI-powered agent before November 11, 2026."), msg("Use an internal app for your own Workspace organization, or meet Google's external-app verification requirements."), msg("Sending messages requires a configured Google Chat app; read-only access does not.")],
+    prerequisites: [msg("Only accounts in your own Google Workspace organization can connect through an Internal app; external accounts are not supported."), msg("Sending messages requires a configured Google Chat app; read-only access does not.")],
     reviewBy: "2026-11-11",
   },
   // UNVERIFIED final grant: WorkIQ.Act is documented but differs from the metadata-advertised Ask scope. Tenant-specific paths and write policy need an owned-client check. Full Word/Excel/PowerPoint document editing is not established.
@@ -395,7 +460,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["api://workiq.svc.cloud.microsoft/WorkIQ.Act", "offline_access"],
       }
     ],
-    prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
+    prerequisites: [msg("Your organization must enable Work IQ and an administrator must grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
     notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
     reviewBy: "2027-01-31",
   },
@@ -415,7 +480,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["api://workiq.svc.cloud.microsoft/WorkIQ.Act", "offline_access"],
       }
     ],
-    prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
+    prerequisites: [msg("Your organization must enable Work IQ and an administrator must grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
     notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
     reviewBy: "2027-01-31",
   },
@@ -435,7 +500,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["api://workiq.svc.cloud.microsoft/WorkIQ.Act", "offline_access"],
       }
     ],
-    prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
+    prerequisites: [msg("Your organization must enable Work IQ and an administrator must grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
     notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
     reviewBy: "2027-01-31",
   },
@@ -455,7 +520,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["api://workiq.svc.cloud.microsoft/WorkIQ.Act", "offline_access"],
       }
     ],
-    prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
+    prerequisites: [msg("Your organization must enable Work IQ and an administrator must grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
     notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
     reviewBy: "2027-01-31",
   },
@@ -475,7 +540,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["search:read.public", "search:read.private", "search:read.mpim", "search:read.im", "channels:history", "groups:history", "mpim:history", "im:history", "chat:write"],
       }
     ],
-    prerequisites: [msg("An administrator must create an internal Slack app for your workspace or use an approved Marketplace app; unlisted public apps cannot connect."), msg("Register this installation's callback and grant the listed user permissions; workspace app approval and IP restrictions apply.")],
+    prerequisites: [msg("Slack requires an internal app for your workspace or an approved Marketplace app; unlisted public apps cannot connect."), msg("Workspace app approval, user permissions and IP restrictions apply.")],
     reviewBy: "2027-01-31",
   },
   // INFERRED meeting-only scope selection on the unified Zoom endpoint. Other Zoom product tools require additional scopes; no complete unified-server scope set is claimed.
@@ -494,7 +559,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["meeting:read:search", "meeting:read:assets", "cloud_recording:read:list_user_recordings", "cloud_recording:read:content", "meeting:write:meeting", "meeting:update:meeting"],
       }
     ],
-    prerequisites: [msg("An administrator or developer must create a Zoom General app, register this installation's callback and enable the required scopes."), msg("Users need licenses for the Zoom products and meeting or recording content they use.")],
+    prerequisites: [msg("Users need licenses for the Zoom products and meeting or recording content they use.")],
     reviewBy: "2027-01-31",
   },
   {
@@ -571,7 +636,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["root_readwrite"],
       }
     ],
-    prerequisites: [msg("A Box administrator must configure a Box MCP Server app, register this installation's callback and choose its access scopes."), msg("Document generation requires Enterprise Advanced and extra scopes; it is outside this entry's offered tools.")],
+    prerequisites: [msg("Document generation requires Enterprise Advanced and extra scopes; it is outside this entry's offered tools.")],
     reviewBy: "2027-01-31",
   },
   // INFERRED reduced file-only scopes rather than the full vendor sample. File sharing, file requests, permanent deletion and Paper tools are outside the described surface.
@@ -590,7 +655,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["account_info.read", "files.metadata.read", "files.content.read", "files.content.write"],
       }
     ],
-    prerequisites: [msg("An administrator must create a scoped Full Dropbox app and register this installation's callback; team policies may block app connections."), msg("The service is in beta; automatic registration is reserved for Dropbox's named trusted clients.")],
+    prerequisites: [msg("Team policies may block app connections."), msg("The service is in beta; automatic registration is reserved for Dropbox's named trusted clients.")],
     reviewBy: "2027-01-31",
   },
   {
@@ -608,7 +673,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: [],
       }
     ],
-    prerequisites: [msg("An administrator must create an Asana MCP app, register this installation's callback and allow the relevant workspaces."), msg("Asana grants every available MCP tool subject to your own permissions; it does not offer per-tool OAuth scopes.")],
+    prerequisites: [msg("An administrator must allow the relevant workspaces."), msg("Asana grants every available MCP tool subject to your own permissions; it does not offer per-tool OAuth scopes.")],
     reviewBy: "2027-01-31",
   },
   {
@@ -720,7 +785,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: [],
       }
     ],
-    prerequisites: [msg("An administrator must create an MCP Auth App in the HubSpot account and register this installation's callback."), msg("Your HubSpot permissions and enabled objects apply; sensitive-data settings can block activity access.")],
+    prerequisites: [msg("Your HubSpot permissions and enabled objects apply; sensitive-data settings can block activity access.")],
     reviewBy: "2027-01-31",
   },
   {
@@ -738,7 +803,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["mcp_api", "refresh_token"],
       }
     ],
-    prerequisites: [msg("An administrator must enable the hosted server and create an External Client App with PKCE, JWT access tokens and this installation's callback."), msg("Your organization needs Flex Credits and may be billed for server usage."), msg("This entry uses the production login endpoint; sandbox or enforced My Domain access needs separate setup.")],
+    prerequisites: [msg("An administrator must enable the hosted server."), msg("Your organization needs Flex Credits and may be billed for server usage."), msg("This entry uses the production login endpoint; sandbox or enforced My Domain access needs separate setup.")],
     reviewBy: "2027-01-31",
   },
   // INFERRED mcp-only core scope; operator is excluded because Fin Operator tools are not described. EU alternative is mcp.eu.intercom.com/mcp with its own issuer; choose one deployment, do not install both as two mandatory servers.
@@ -813,7 +878,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["profile:read", "design:meta:read", "design:content:read", "design:content:write"],
       }
     ],
-    prerequisites: [msg("An administrator must create a Developer Portal app, turn on Canva MCP and register this installation's callback."), msg("Each person must connect their own Canva account; premium features and assets require the appropriate Canva plan or license.")],
+    prerequisites: [msg("Each person must connect their own Canva account; premium features and assets require the appropriate Canva plan or license.")],
     reviewBy: "2027-01-31",
   },
   // INFERRED board-only scope subset; metadata also advertises openid/email, which are not data permissions and may be required by the server's own account flow. Team consent must not be treated as organization-wide access.
@@ -851,7 +916,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["repo"],
       }
     ],
-    prerequisites: [msg("An administrator must register a GitHub OAuth App or GitHub App with this installation's callback."), msg("Organization app restrictions and repository permissions apply; this entry targets GitHub.com.")],
+    prerequisites: [msg("Organization app restrictions and repository permissions apply; this entry targets GitHub.com.")],
     reviewBy: "2027-01-31",
   },
   // UNVERIFIED minimum scopes: public metadata lists granular scopes but the public tool-to-scope map is insufficient to derive a complete least-privilege set for transactions plus writes. Omit scopes to use server-managed consent; no broad arbitrary scope list is invented. Separate /multi-organization/mcp endpoint is read-only and not added as a mandatory server. scopes is intentionally absent, not an assertion that no permission is needed.
@@ -965,7 +1030,7 @@ export const CATALOG: readonly CatalogService[] = [
         scopes: ["signature", "adm_store_unified_repo_read"],
       }
     ],
-    prerequisites: [msg("An administrator needs a Docusign integration key, callback and permissions; production and developer accounts are separate.")],
+    prerequisites: [msg("Your Docusign permissions apply; production and developer accounts are separate.")],
     notYet: msg("Docusign's sign-in details don't pass Baskule's checks yet."),
     reviewBy: "2027-01-31",
   },

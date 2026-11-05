@@ -143,11 +143,11 @@ case "${1:-}" in
     AUTH_CONFIG=$(printf '%s' "$auth" | jq -ce 'walk(if type == "object" and keys == ["env"] then
       .env as $name | env[$name] | if type == "string" and length > 0 then . else error("Missing authentication environment reference") end
       else . end)')
-    jq --arg PUBLIC_ORIGINS "${PUBLIC_ORIGINS:-}" --arg AUTH_CONFIG "$AUTH_CONFIG" \
+    jq --arg BASKULE_CONNECT_URL "${BASKULE_CONNECT_URL:-https://connect.baskule.com}" --arg PUBLIC_ORIGINS "${PUBLIC_ORIGINS:-}" --arg AUTH_CONFIG "$AUTH_CONFIG" \
        --arg SETUP_TOKEN "${SETUP_TOKEN:-}" --arg PLUGIN_SYNC_TOKEN "${PLUGIN_SYNC_TOKEN:-}" \
        --arg COMPUTERD_URL "${COMPUTERD_URL:-}" --arg COMPUTERD_TOKEN "${COMPUTERD_TOKEN:-}" \
        --arg OTLP_TRACES_URL "${OTLP_TRACES_URL:-}" \
-       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, PLUGIN_SYNC_TOKEN:$PLUGIN_SYNC_TOKEN, COMPUTERD_URL:$COMPUTERD_URL,
+       '.vars = ((.vars // {}) + {BASKULE_CONNECT_URL:$BASKULE_CONNECT_URL, PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, PLUGIN_SYNC_TOKEN:$PLUGIN_SYNC_TOKEN, COMPUTERD_URL:$COMPUTERD_URL,
           COMPUTERD_TOKEN:$COMPUTERD_TOKEN, OTLP_TRACES_URL:$OTLP_TRACES_URL})' \
        "/src/platform/wrangler.json" > "$work/wrangler.json"
     unset AUTH_CONFIG

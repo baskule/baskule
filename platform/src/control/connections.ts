@@ -2,13 +2,13 @@ import { serverFingerprint } from "../../../app/packages/contracts/src/baskule-p
 import { catalogVendor } from "../../../app/packages/contracts/src/baskule-catalog";
 import { serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
-import type { Account, Plugin, PluginServer, PluginCredential, PluginCredentialRequest } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { Account, Plugin, PluginServer, PluginCredential, PluginCredentialRequest, VendorSetup } from "../../../app/packages/contracts/src/baskule-plugins";
 import type { InstallationAuth } from "./auth-config";
 import type { StorageLike } from "./service";
 import type { Plugins } from "./plugins";
 import { HttpError, pluginError, json, notFound, readJson } from "../shared/http";
 import { type ConnectionCipher, digest, pkce, randomSecret } from "./connection-crypto";
-import { discoverOAuth, exchangeToken, registerClient, type Discovery, type OAuthClient, type OAuthTokens } from "./connection-oauth";
+import { DEFAULT_CONNECT_URL, discoverOAuth, exchangeToken, oauthJson, registerClient, relayEndpoint, relayVendorsSchema, type RelayVendor, type Discovery, type OAuthClient, type OAuthTokens } from "./connection-oauth";
 import type { Fetcher } from "./plugin-source";
 
 const TTL = 10 * 60_000;
@@ -25,6 +25,8 @@ interface Pending {
   stateHash?: string;
 }
 interface Connection { config: string; oauth: { discovery: Discovery; client: OAuthClient; tokens: OAuthTokens } }
+type Setup = ({ mode?: "own" } & OAuthClient | { mode: "relay" }) & { tenant?: string; issuer: string };
+const tenantSchema = z.string().max(253).regex(/^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)$/i);
 interface StoredAccount { id: string; server: string; label: string; isDefault: boolean; data: string }
 type Refusal = Extract<PluginCredential, { error: unknown }>;
 type Credential = Omit<Extract<PluginCredential, { headers: unknown }>, "expiresAt"> | Refusal;
@@ -32,7 +34,27 @@ type Credential = Omit<Extract<PluginCredential, { headers: unknown }>, "expires
 export class Connections {
   onChange?: (userId: string | undefined) => Promise<void>;
   private refreshes = new Map<string, Promise<Credential>>();
-  constructor(private storage: StorageLike, private plugins: Plugins, private installation: InstallationAuth, private cipher: ConnectionCipher, private fetcher: Fetcher = fetch) {}
+  private relayCache?: { vendors: RelayVendor[]; until: number };
+  private relayFetch?: Promise<RelayVendor[]>;
+  constructor(private storage: StorageLike, private plugins: Plugins, private installation: InstallationAuth, private cipher: ConnectionCipher, private fetcher: Fetcher = fetch, private connectUrl = DEFAULT_CONNECT_URL) {}
+  private async relayVendors(): Promise<RelayVendor[]> {
+    if (this.relayCache && this.relayCache.until > Date.now()) return this.relayCache.vendors;
+    if (this.relayFetch) return this.relayFetch;
+    const work = (async () => {
+      try {
+        const r = await oauthJson(this.fetcher, relayEndpoint(this.connectUrl, "vendors"), undefined, serverNetwork(this.connectUrl));
+        const parsed = relayVendorsSchema.safeParse(r.value);
+        if (r.status !== 200 || !parsed.success) throw pluginError(502, "oauth_unavailable");
+        this.relayCache = { vendors: parsed.data.vendors, until: Date.now() + 5 * 60_000 };
+      } catch (error) {
+        if (!this.relayCache) throw error;
+        this.relayCache.until = Date.now() + 5 * 60_000;
+      }
+      return this.relayCache.vendors;
+    })();
+    this.relayFetch = work;
+    try { return await work; } finally { this.relayFetch = undefined; }
+  }
   private rows(q: string, ...p: unknown[]) { return this.storage.sql.exec(q, ...p).toArray(); }
   private allowed(userId: string, pluginId: string): Plugin {
     const plugin = this.plugins.get(pluginId);
@@ -113,17 +135,37 @@ export class Connections {
   }
   async vendor(req: Request, vendor: string): Promise<Response> {
     const plugins = this.plugins.list().filter(p => p.vendor === vendor);
-    if (!plugins.length) throw pluginError(404, "vendor_unknown");
+    const recipe = catalogVendor(vendor)?.signIn;
+    const staticRecipe = recipe?.type === "account" && recipe.client === "static" ? recipe : undefined;
+    if (!plugins.length && !recipe) throw pluginError(404, "vendor_unknown");
+    if (req.method === "GET") {
+      const row = this.rows("select data from vendor_setup where vendor=?", vendor)[0];
+      const setup = row ? await this.cipher.open<Setup>(row.data as string, JSON.stringify(["vendor", vendor])) : undefined;
+      const state: VendorSetup = {
+        mode: setup ? setup.mode ?? "own" : null, relaySupported: !!staticRecipe?.relay,
+        relayAvailable: setup?.mode === "relay" ? await this.relayVendors().then(v => v.some(v => v.id === vendor), () => null) : null,
+        callbackUrl: `${new URL(req.url).origin}${CALLBACK}`, ...(setup?.tenant ? { tenant: setup.tenant } : {}),
+      };
+      return json(state);
+    }
     if (req.method !== "PUT") return notFound();
-    const parsed = z.object({ clientId: z.string().min(1).max(4096), clientSecret: z.string().min(1).max(8192).optional(), tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]) }).strict().nullable().safeParse(await req.json().catch(() => { throw pluginError(400, "invalid_json"); }));
+    if (!plugins.length) throw pluginError(404, "vendor_unknown");
+    const parsed = z.union([
+      z.object({ mode: z.literal("own").optional(), clientId: z.string().min(1).max(4096), clientSecret: z.string().min(1).max(8192).optional(), tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]), tenant: tenantSchema.optional() }).strict(),
+      z.object({ mode: z.literal("relay"), tenant: tenantSchema.optional() }).strict(),
+    ]).nullable().safeParse(await req.json().catch(() => { throw pluginError(400, "invalid_json"); }));
     if (!parsed.success) throw pluginError(400, "invalid_oauth_client");
     const client = parsed.data;
-    if (client && (client.tokenEndpointAuthMethod !== "none") !== !!client.clientSecret) throw pluginError(400, "invalid_oauth_client");
+    if (client && (staticRecipe?.fields?.includes("tenant") ? !client.tenant : client.tenant !== undefined)) throw pluginError(400, "invalid_oauth_client");
+    if (client && client.mode !== "relay" && (client.tokenEndpointAuthMethod !== "none") !== !!client.clientSecret) throw pluginError(400, "invalid_oauth_client");
+    if (client?.mode === "relay") {
+      if (!staticRecipe?.relay) throw pluginError(400, "invalid_oauth_client");
+      if (!(await this.relayVendors()).some(v => v.id === vendor)) throw pluginError(409, "relay_vendor_unavailable");
+    }
     const servers = plugins.flatMap(p => p.servers).filter(s => s.credential === "user-oauth");
     if (client && !servers.length) throw pluginError(400, "not_oauth_server");
     const snapshot = JSON.stringify(plugins);
-    const recipe = catalogVendor(vendor)?.signIn;
-    const pin = recipe?.type === "account" && recipe.client === "static" ? recipe.issuer : undefined;
+    const pin = staticRecipe?.issuer.replace("{tenant}", client?.tenant ?? "");
     const issuer = client ? (await discoverOAuth(servers[0].url, this.fetcher, serverNetwork(servers[0].url), pin, servers[0].oauth?.resourceUrl)).as.issuer : undefined;
     const data = client ? await this.cipher.seal({ ...client, issuer }, JSON.stringify(["vendor", vendor])) : null;
     this.storage.transactionSync(() => {
@@ -204,11 +246,16 @@ export class Connections {
     if (!reconnectId && this.records(user.id, plugin.id, server.name).some(a => a.label === label.data)) throw pluginError(409, "account_label_taken");
     const target: Pending["target"] = existing ? { type: "reconnect", id: existing.id } : { type: "new", id: crypto.randomUUID(), label: label.data };
     const row = this.rows("select data from vendor_setup where vendor=?", plugin.vendor)[0];
-    const setup = row ? await this.cipher.open<OAuthClient & { issuer: string }>(row.data as string, JSON.stringify(["vendor", plugin.vendor])) : undefined;
+    const setup = row ? await this.cipher.open<Setup>(row.data as string, JSON.stringify(["vendor", plugin.vendor])) : undefined;
     if (server.oauth?.staticClient && !setup) throw pluginError(409, "oauth_client_configuration_required");
     const discovery = await discoverOAuth(server.url, this.fetcher, serverNetwork(server.url), setup?.issuer, server.oauth?.resourceUrl);
-    const callback = `${u.origin}${CALLBACK}`;
-    const client = setup ?? await registerClient(discovery, callback, this.fetcher);
+    const callback = setup?.mode === "relay" ? relayEndpoint(this.connectUrl, "callback") : `${u.origin}${CALLBACK}`;
+    let client: OAuthClient;
+    if (setup?.mode === "relay") {
+      const vendor = (await this.relayVendors()).find(v => v.id === plugin.vendor);
+      if (!vendor) throw pluginError(409, "relay_vendor_unavailable");
+      client = { clientId: vendor.clientId, tokenEndpointAuthMethod: vendor.tokenEndpointAuthMethod, relay: { vendor: plugin.vendor } };
+    } else client = setup ?? await registerClient(discovery, callback, this.fetcher);
     if (this.rows("select data from vendor_setup where vendor=?", plugin.vendor)[0]?.data !== row?.data) throw pluginError(409, "connection_not_allowed");
     if (discovery.as.token_endpoint_auth_methods_supported && !discovery.as.token_endpoint_auth_methods_supported.includes(client.tokenEndpointAuthMethod)) throw pluginError(409, "oauth_client_configuration_required");
     const proof = await pkce();
@@ -222,6 +269,11 @@ export class Connections {
       authorization.searchParams.set(key, value);
     }
     if (scopes.length) authorization.searchParams.set("scope", scopes.join(" "));
+    if (client.relay) {
+      const relay = new URL(relayEndpoint(this.connectUrl, "authorize"));
+      for (const [key, value] of Object.entries({ vendor: client.relay.vendor, origin: u.origin, url: authorization.href })) relay.searchParams.set(key, value);
+      return redirect(relay.href);
+    }
     return redirect(authorization.href);
   }
   private async callback(req: Request, userId: string, sessionId: string): Promise<Response> {
@@ -240,7 +292,7 @@ export class Connections {
       if (url.searchParams.has("error")) throw pluginError(400, "consent_denied");
       const code = url.searchParams.get("code");
       if (!code || code.length > 8192) throw pluginError(400, "invalid_oauth_code");
-      const tokens = await exchangeToken(discovery, client, { grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: redirectUri }, scopes, this.fetcher, server.oauth);
+      const tokens = await exchangeToken(discovery, client, { grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: redirectUri }, scopes, this.fetcher, server.oauth, this.connectUrl);
       this.active(pending);
       if (!(server.oauth?.scopes ?? discovery.scopes).every(s => tokens.scopes.includes(s))) throw pluginError(400, "oauth_scope_missing");
       await this.save({ config: pending.config, oauth: { discovery, client, tokens } }, pending);
@@ -311,7 +363,7 @@ export class Connections {
       if (connection.config !== serverFingerprint(server)) return { error: "reconnect" };
       if (connection.oauth.tokens.expiresAt !== null && connection.oauth.tokens.expiresAt <= Date.now() + 30_000) {
         if (!connection.oauth.tokens.refreshToken) return { error: "reconnect" };
-        const tokens = await exchangeToken(connection.oauth.discovery, connection.oauth.client, { grant_type: "refresh_token", refresh_token: connection.oauth.tokens.refreshToken }, connection.oauth.tokens.scopes, this.fetcher, server.oauth);
+        const tokens = await exchangeToken(connection.oauth.discovery, connection.oauth.client, { grant_type: "refresh_token", refresh_token: connection.oauth.tokens.refreshToken }, connection.oauth.tokens.scopes, this.fetcher, server.oauth, this.connectUrl);
         const refreshed = current();
         if ("error" in refreshed) return refreshed;
         if (!connection.oauth.tokens.scopes.filter(s => s !== "offline_access").every(s => tokens.scopes.includes(s))) return { error: "reconnect" };
@@ -334,6 +386,7 @@ export class Connections {
         if (this.rows("update plugin_connection set data=? where id=? and data=? returning id", data, row.id, row.data).length) liveData = data;
       }
       const latest = current();
+      if (error instanceof HttpError && error.code === "oauth_unavailable") return "error" in latest ? latest : { error: "unavailable" };
       return "error" in latest ? latest : { error: "reconnect" };
     }
   }

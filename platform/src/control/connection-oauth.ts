@@ -82,7 +82,18 @@ export async function discoverOAuth(server: string, fetcher: Fetcher = fetch, ne
   }
   throw pluginError(502, "invalid_authorization_metadata");
 }
-export interface OAuthClient { clientId: string; clientSecret?: string; tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic" }
+export const DEFAULT_CONNECT_URL = "https://connect.baskule.com";
+export function relayEndpoint(base: string, path: string): string {
+  const url = checkOutbound(base, serverNetwork(base));
+  if (url.search) throw pluginError(400, "address_not_allowed");
+  return new URL(`${url.pathname.replace(/\/$/, "")}/v1/${path}`, url.origin).href;
+}
+export const relayVendorsSchema = z.object({ vendors: z.array(z.object({
+  id: z.string().regex(/^[a-z][a-z0-9-]*$/), clientId: z.string().min(1).max(4096),
+  tokenEndpointAuthMethod: z.enum(["none", "client_secret_post", "client_secret_basic"]),
+})).max(100) });
+export type RelayVendor = z.infer<typeof relayVendorsSchema>["vendors"][number];
+export interface OAuthClient { clientId: string; clientSecret?: string; tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic"; relay?: { vendor: string } }
 export async function registerClient(discovery: Discovery, redirectUri: string, fetcher: Fetcher): Promise<OAuthClient> {
   if (!discovery.as.registration_endpoint) throw pluginError(409, "oauth_client_configuration_required");
   const r = await oauthJson(fetcher, discovery.as.registration_endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
@@ -93,13 +104,25 @@ export async function registerClient(discovery: Discovery, redirectUri: string, 
   return { clientId: parsed.data.client_id, tokenEndpointAuthMethod: "none" };
 }
 export interface OAuthTokens { accessToken: string; refreshToken?: string; expiresAt: number | null; scopes: string[] }
-export async function exchangeToken(discovery: Discovery, client: OAuthClient, params: Record<string, string>, previousScopes: string[], fetcher: Fetcher, recipe?: OAuthRecipe): Promise<OAuthTokens> {
-  const form = new URLSearchParams({ ...params, ...(recipe?.resource === false ? {} : { resource: discovery.resource }), client_id: client.clientId });
+export async function exchangeToken(discovery: Discovery, client: OAuthClient, params: Record<string, string>, previousScopes: string[], fetcher: Fetcher, recipe?: OAuthRecipe, connectUrl = DEFAULT_CONNECT_URL): Promise<OAuthTokens> {
+  const form = new URLSearchParams({ ...params, ...(recipe?.resource === false ? {} : { resource: discovery.resource }) });
   const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
-  if (client.tokenEndpointAuthMethod === "client_secret_post") form.set("client_secret", client.clientSecret!);
-  if (client.tokenEndpointAuthMethod === "client_secret_basic") headers.authorization = `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret!)}`)}`;
-  const r = await oauthJson(fetcher, discovery.as.token_endpoint, { method: "POST", headers, body: form.toString() }, serverNetwork(discovery.resource));
+  let endpoint = discovery.as.token_endpoint;
+  let network = serverNetwork(discovery.resource);
+  if (client.relay) {
+    // Vendor discovery keeps its own network policy; only the configured relay may use this exception.
+    checkOutbound(endpoint, network);
+    form.set("token_endpoint", endpoint);
+    endpoint = relayEndpoint(connectUrl, `token/${encodeURIComponent(client.relay.vendor)}`);
+    network = serverNetwork(connectUrl);
+  } else {
+    form.set("client_id", client.clientId);
+    if (client.tokenEndpointAuthMethod === "client_secret_post") form.set("client_secret", client.clientSecret!);
+    if (client.tokenEndpointAuthMethod === "client_secret_basic") headers.authorization = `Basic ${btoa(`${encodeURIComponent(client.clientId)}:${encodeURIComponent(client.clientSecret!)}`)}`;
+  }
+  const r = await oauthJson(fetcher, endpoint, { method: "POST", headers, body: form.toString() }, network);
   if (r.status === 400 && (r.value as { error?: string } | null)?.error === "invalid_grant") throw pluginError(401, "oauth_grant_expired");
+  if (r.status >= 500 || ["relay_vendor_unavailable", "oauth_unavailable"].includes((r.value as { error?: string } | null)?.error ?? "")) throw pluginError(502, "oauth_unavailable");
   const token = z.object({ access_token: z.string().min(1).max(32768).regex(/^[A-Za-z0-9\-._~+/]+=*$/), token_type: z.string().regex(/^Bearer$/i),
     refresh_token: z.string().min(1).max(32768).optional(), expires_in: z.number().positive().max(365 * 86400).optional(), scope: z.string().max(16384).optional(), resource: z.string().optional(),
   }).safeParse(r.value);

@@ -164,7 +164,7 @@ export class ControlService {
     });
     const cipher = new ConnectionCipher(secret);
     this.plugins = new Plugins(this.storage, this.groups, cipher);
-    this.connections = new Connections(this.storage, this.plugins, this.installation, cipher);
+    this.connections = new Connections(this.storage, this.plugins, this.installation, cipher, fetch, this.env.BASKULE_CONNECT_URL || undefined);
     this.plugins.connections = this.connections;
     this.connections.onChange = userId => this.reloadSpaces(userId ? this.memberSpaceIds(userId) : "all");
     const org = this.one("select id from organization order by created_at limit 1");

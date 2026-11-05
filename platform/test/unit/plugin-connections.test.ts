@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { zipSync } from "fflate";
 import { base64 } from "../../src/control/plugin-package";
 import { ConnectionCipher, digest, pkce } from "../../src/control/connection-crypto";
-import { canonicalResource, discoverOAuth } from "../../src/control/connection-oauth";
+import { canonicalResource, discoverOAuth, exchangeToken } from "../../src/control/connection-oauth";
 import { asAdmin, call, createUser, makeService, ORIGIN, personalSpaceOf, signIn, type H } from "../support/harness";
+import { fakeRelay } from "../fixtures/relay.mjs";
+import { catalogVendor } from "../../../app/packages/contracts/src/baskule-catalog";
 import { fakeOAuth } from "../fixtures/oauth.mjs";
 import { INTERNAL_HEADER } from "../../src/shared/contract";
 
@@ -79,6 +81,20 @@ describe("MCP OAuth connections", () => {
       f.state.issuerMismatch = false; f.state.pkce = false;
       await expect(discoverOAuth(f.resource, fetch, "private")).rejects.toMatchObject({ code: "invalid_authorization_metadata" });
     } finally { await f.close(); }
+  });
+  it("allows only the configured private relay for a public vendor's token transport", async () => {
+    const discovery = { resource: "https://resource.test/mcp", scopes: [], as: { issuer: "https://vendor.test", authorization_endpoint: "https://vendor.test/authorize", token_endpoint: "https://vendor.test/token", response_types_supported: ["code"] } };
+    const seen: string[] = [];
+    const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
+      seen.push(String(input));
+      expect(Object.fromEntries(new URLSearchParams(String(init?.body)))).toEqual({ grant_type: "refresh_token", refresh_token: "refresh", resource: discovery.resource, token_endpoint: discovery.as.token_endpoint });
+      return Response.json({ access_token: "access", token_type: "Bearer" });
+    };
+    const client = { clientId: "relay-client", tokenEndpointAuthMethod: "client_secret_post", relay: { vendor: "github" } } as const;
+    expect(await exchangeToken(discovery, client, { grant_type: "refresh_token", refresh_token: "refresh" }, [], fetcher, undefined, "http://127.0.0.1:1234")).toMatchObject({ accessToken: "access" });
+    expect(seen).toEqual(["http://127.0.0.1:1234/v1/token/github"]);
+    await expect(exchangeToken({ ...discovery, as: { ...discovery.as, token_endpoint: "http://127.0.0.1:5678/token" } }, client, {}, [], fetcher, undefined, "http://127.0.0.1:1234")).rejects.toMatchObject({ code: "address_not_allowed" });
+    expect(seen).toHaveLength(1);
   });
   it("uses the RFC 8414 and both OIDC metadata locations for an issuer with a path", async () => {
     const seen: string[] = [];
@@ -184,6 +200,12 @@ describe("MCP OAuth connections", () => {
       const key = JSON.stringify(["connection", row.id, x.a.userId, x.p.id, "remote"]);
       const c = await cipher.open<any>(row.data as string, key); c.oauth.tokens.expiresAt = 0;
       h.storage.sql.exec("update plugin_connection set data=?", await cipher.seal(c, key)).toArray();
+      const beforeOutage = h.storage.sql.exec("select data from plugin_connection").toArray()[0].data;
+      f.state.tokenError = "temporarily_unavailable";
+      expect((await x.credential()).body.error).toBe("unavailable");
+      expect(h.storage.sql.exec("select data from plugin_connection").toArray()[0].data).toBe(beforeOutage);
+      expect((await cipher.open<any>(h.storage.sql.exec("select data from plugin_connection").toArray()[0].data as string, key)).oauth.tokens.refreshToken).toBe(c.oauth.tokens.refreshToken);
+      f.state.tokenError = null;
       f.state.invalidGrant = true;
       expect((await x.credential()).body.error).toBe("reconnect");
       expect((await call(h, "GET", `${API}/plugins`, { creds: x.a.creds })).body.plugins[0].status).toBe("reconnect");
@@ -354,5 +376,161 @@ describe("ready-member discovery and account reloads", () => {
       await call(h, "PUT", `${API}/admin/vendors/${x.p.id}`, { creds: x.a.creds, body: { clientId: "fake-client", tokenEndpointAuthMethod: "none" } });
       expect(reloads()).toEqual([...own, personalSpaceOf(h, bob.id)].sort());
     } finally { await f.close(); }
+  });
+});
+
+describe("plugin sign-in relay", () => {
+  async function fixture(vendor = "github", served = [vendor]) {
+    const relay = await fakeRelay();
+    relay.state.vendors = served;
+    const f = relay.oauth;
+    const recipe = catalogVendor(vendor)?.signIn;
+    const tenant = "00000000-0000-0000-0000-000000000001";
+    const issuer = recipe?.type === "account" && recipe.client === "static" ? recipe.issuer.replace("{tenant}", tenant) : f.issuer;
+    f.state.advertisedIssuer = issuer;
+    f.state.callbackIssuer = issuer;
+    const transport = { offline: false };
+    const originalFetch = globalThis.fetch;
+    const stub = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (transport.offline && url.includes("/v1/token/")) throw new Error("relay offline");
+      if (url.startsWith(new URL(issuer).origin) && url.includes(".well-known/")) {
+        const metadata = await originalFetch(`${f.issuer}/.well-known/oauth-authorization-server`, init);
+        const body: unknown = await metadata.json();
+        if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid fixture metadata");
+        return Response.json({ ...body, issuer });
+      }
+      return originalFetch(input, init);
+    });
+    try {
+      const h = await makeService({ BASKULE_CONNECT_URL: relay.origin });
+      const x = await install(h, f.resource);
+      // Give the local test server a reviewed vendor recipe without changing catalog endpoints.
+      h.storage.sql.exec("update plugin set definition=? where id=?", JSON.stringify({ ...h.svc.plugins.get(x.p.id), vendor }), x.p.id).toArray();
+      const path = `${API}/admin/vendors/${vendor}`;
+      const setup = (body: unknown) => call(h, "PUT", path, { creds: x.a.creds, body });
+      const state = () => call(h, "GET", path, { creds: x.a.creds });
+      const cipher = new ConnectionCipher(h.storage.sql.exec("select value from kv where key='auth_secret'").toArray()[0].value as string);
+      const account = async () => {
+        const row = h.storage.sql.exec("select id,data from plugin_connection where plugin_id=?", x.p.id).toArray()[0];
+        const key = JSON.stringify(["connection", row.id, x.a.userId, x.p.id, "remote"]);
+        return { row, key, value: await cipher.open<any>(row.data as string, key) };
+      };
+      const callback = async () => {
+        const start = await x.start();
+        const url = start.headers.get("location")!;
+        const confirmation = await fetch(url);
+        expect(confirmation.status).toBe(200);
+        expect(await confirmation.text()).toContain(new URL(ORIGIN).host);
+        const continued = await fetch(url, { method: "POST", redirect: "manual" });
+        expect(continued.status).toBe(302);
+        const vendor = await fetch(continued.headers.get("location")!, { redirect: "manual" });
+        expect(vendor.status).toBe(302);
+        const returned = await fetch(vendor.headers.get("location")!, { redirect: "manual" });
+        expect(returned.status).toBe(302);
+        const callback = new URL(returned.headers.get("location")!);
+        expect(callback.origin).toBe(ORIGIN);
+        return callback.pathname + callback.search;
+      };
+      return { relay, f, h, x, issuer, tenant, cipher, path, setup, state, account, callback, transport, close: async () => { stub.mockRestore(); await relay.close(); } };
+    } catch (error) { stub.mockRestore(); await relay.close(); throw error; }
+  }
+
+  it("requires a catalog relay flag and a served vendor, and never contacts the relay for own-only setup state", async () => {
+    const t = await fixture("google");
+    try {
+      expect((await t.state()).body).toEqual({ mode: null, relaySupported: false, relayAvailable: null, callbackUrl: `${ORIGIN}${API}/plugins/oauth/callback` });
+      expect((await t.setup({ mode: "relay" })).body.error).toBe("invalid_oauth_client");
+      expect(t.relay.state.vendorRequests).toBe(0);
+    } finally { await t.close(); }
+    const absent = await fixture("github", []);
+    try {
+      expect((await absent.setup({ mode: "relay" })).body.error).toBe("relay_vendor_unavailable");
+      expect((await absent.state()).body.mode).toBe(null);
+    } finally { await absent.close(); }
+  });
+
+  it("validates tenants in both modes, substitutes the Microsoft issuer and keeps setup sealed", async () => {
+    const t = await fixture("microsoft");
+    try {
+      for (const tenant of [undefined, "common", "organizations", "consumers", "a/b", "evil.test/path", "a..test", "https://evil.test", "{tenant}"]) {
+        expect((await t.setup({ mode: "relay", tenant })).body.error).toBe("invalid_oauth_client");
+        expect((await t.setup({ clientId: "own", tokenEndpointAuthMethod: "none", tenant })).body.error).toBe("invalid_oauth_client");
+      }
+      expect((await t.setup({ mode: "relay", tenant: t.tenant })).status).toBe(200);
+      expect((await t.state()).body).toMatchObject({ mode: "relay", tenant: t.tenant, relaySupported: true, relayAvailable: true });
+      const row = t.h.storage.sql.exec("select data from vendor_setup").toArray()[0];
+      expect(row.data).not.toContain(t.tenant);
+      expect(await t.cipher.open(row.data as string, JSON.stringify(["vendor", "microsoft"]))).toEqual({ mode: "relay", tenant: t.tenant, issuer: t.issuer });
+      expect((await t.setup({ clientId: "own", tokenEndpointAuthMethod: "none", tenant: t.tenant })).status).toBe(200);
+      expect((await t.state()).body.mode).toBe("own");
+    } finally { await t.close(); }
+  });
+
+  it("wraps authorization, exchanges and refreshes through the relay without local credentials, and clears grants on mode switch", async () => {
+    const t = await fixture();
+    try {
+      expect((await t.setup({ mode: "relay", tenant: t.tenant })).body.error).toBe("invalid_oauth_client");
+      expect((await t.setup({ mode: "relay" })).status).toBe(200);
+      t.f.state.shortLived = true;
+      const start = await t.x.start();
+      const relayUrl = new URL(start.headers.get("location")!);
+      expect(relayUrl.origin).toBe(t.relay.origin);
+      expect(relayUrl.pathname).toBe("/v1/authorize");
+      expect(relayUrl.searchParams.get("vendor")).toBe("github");
+      expect(relayUrl.searchParams.get("origin")).toBe(ORIGIN);
+      const authorization = new URL(relayUrl.searchParams.get("url")!);
+      expect(Object.fromEntries(authorization.searchParams)).toMatchObject({ client_id: "relay-client", redirect_uri: `${t.relay.origin}/v1/callback`, response_type: "code", code_challenge_method: "S256" });
+      expect((await call(t.h, "GET", await t.callback(), { creds: t.x.a.creds })).headers.get("location")).toContain("pluginConnection=connected");
+      expect(t.relay.requests[0]).toMatchObject({ grant_type: "authorization_code", token_endpoint: `${t.f.issuer}/token`, redirect_uri: `${t.relay.origin}/v1/callback` });
+      const connected = await t.account();
+      expect(connected.value.oauth.client).toEqual({ clientId: "relay-client", tokenEndpointAuthMethod: "client_secret_post", relay: { vendor: "github" } });
+      t.f.state.shortLived = false;
+      expect((await t.x.credential()).body).toHaveProperty("headers.Authorization");
+      expect(t.relay.requests[1]).toMatchObject({ grant_type: "refresh_token", token_endpoint: `${t.f.issuer}/token` });
+      for (const request of t.relay.requests) {
+        expect(request).not.toHaveProperty("client_secret"); expect(request).not.toHaveProperty("client_id"); expect(request.authorization).toBeUndefined();
+      }
+      expect(t.f.requests.every(r => r.client_secret === "relay-secret" && r.client_id === "relay-client")).toBe(true);
+      expect(t.relay.state.vendorRequests).toBe(1);
+      await t.x.start();
+      expect(t.h.storage.sql.exec("select * from plugin_oauth_state").toArray().length).toBeGreaterThan(0);
+      expect((await t.setup({ clientId: "own-client", tokenEndpointAuthMethod: "none" })).status).toBe(200);
+      expect((await t.state()).body.mode).toBe("own");
+      expect(t.h.storage.sql.exec("select * from plugin_connection").toArray()).toEqual([]);
+      expect(t.h.storage.sql.exec("select * from plugin_oauth_state").toArray()).toEqual([]);
+    } finally { await t.close(); }
+  });
+
+  it("uses the last good vendor list through an outage, and refuses a vendor removed from a fresh list", async () => {
+    const t = await fixture();
+    try {
+      await t.setup({ mode: "relay" });
+      const now = Date.now();
+      using time = vi.spyOn(Date, "now").mockReturnValue(now + 6 * 60_000);
+      t.relay.state.unavailable = true;
+      expect((await t.state()).body.relayAvailable).toBe(true);
+      expect((await t.x.start()).headers.get("location")).toContain("/v1/authorize?");
+      t.relay.state.unavailable = false; t.relay.state.vendors = [];
+      time.mockReturnValue(now + 12 * 60_000);
+      expect((await t.state()).body.relayAvailable).toBe(false);
+      expect((await t.x.start()).headers.get("location")).toContain("connectionError=relay_vendor_unavailable");
+    } finally { await t.close(); }
+  });
+
+  it.each(["network", "5xx", "relay_vendor_unavailable", "oauth_unavailable"])("keeps refresh tokens during %s outages, then clears only invalid_grant", async failure => {
+    const t = await fixture();
+    try {
+      await t.setup({ mode: "relay" }); t.f.state.shortLived = true;
+      await call(t.h, "GET", await t.callback(), { creds: t.x.a.creds });
+      const before = await t.account();
+      t.transport.offline = failure === "network";
+      t.relay.state.tokenError = failure; t.relay.state.tokenStatus = failure === "5xx" ? 503 : 400;
+      expect((await t.x.credential()).body).toEqual({ error: "unavailable" });
+      expect((await t.account()).row.data).toBe(before.row.data);
+      t.transport.offline = false; t.relay.state.tokenError = null; t.f.state.invalidGrant = true;
+      expect((await t.x.credential()).body.error).toBe("reconnect");
+      expect((await t.account()).value.oauth.tokens.refreshToken).toBeUndefined();
+    } finally { await t.close(); }
   });
 });

@@ -1,5 +1,6 @@
 # Public origin, including scheme. Use HTTPS outside a local evaluation.
 publicUrl: http://localhost:47090
+connectUrl: https://connect.baskule.com
 replicas: 2
 global:
   image:

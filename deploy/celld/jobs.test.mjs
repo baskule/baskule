@@ -128,11 +128,12 @@ for (const kubernetes of [false, true]) test(`platform deploy preserves scoped s
     writeFileSync(resolve(work, "platform/secrets"), 'export PLUGIN_SYNC_TOKEN=generated-folder-secret\n');
     writeFileSync(resolve(work, "curl"), '#!/bin/bash\nif [[ "$*" == *setup* ]]; then if [[ "$MOCK_SETUP" != true ]]; then echo unexpected-setup-request >&2; exit 99; fi; touch "$MOCK_READY_FILE"; echo \'{"required":true}\'; else echo 200; fi\n', { mode: 0o755 });
     const result = spawnSync("bash", [resolve(work, "jobs.sh"), "deploy"], { encoding: "utf8", timeout: 3_000,
-      env: { ...process.env, PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: work, MOCK_WRANGLER: resolve(work, "deployed.json"),
+      env: { ...process.env, PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: work, MOCK_WRANGLER: resolve(work, "deployed.json"), BASKULE_CONNECT_URL: "https://relay.test",
         S3_ENDPOINT: "http://storage.test", CELLD_BUCKET: "s3://test", SETUP_TOKEN: "test-token", SETUP_STATUS_URL: "", PLATFORM_READY_URL: kubernetes ? "http://platform.test/api/baskule/setup" : "", MOCK_SETUP: String(kubernetes), MOCK_READY_FILE: resolve(work, "ready"), CELLD_NODES_INTERNAL: "" } });
     assert.equal(result.status, 0, result.stderr);
     assert.ok(result.stderr.includes(`deployed platform`));
     assert.equal(JSON.parse(readFileSync(resolve(work, "deployed.json"), "utf8")).vars.PLUGIN_SYNC_TOKEN, "generated-folder-secret");
+    assert.equal(JSON.parse(readFileSync(resolve(work, "deployed.json"), "utf8")).vars.BASKULE_CONNECT_URL, "https://relay.test");
     assert.doesNotMatch(result.stdout + result.stderr, /setup|token=|test-token/);
   } finally { rmSync(work, { recursive: true, force: true }); }
 });

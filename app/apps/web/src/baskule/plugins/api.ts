@@ -213,6 +213,7 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
       "The sign-in didn't give the access this plugin needs. Try again and allow everything it asks.",
     ),
   oauth_unavailable: () => t("The service's sign-in didn't answer. Try again in a moment."),
+  relay_vendor_unavailable: () => t("The service's sign-in didn't answer. Try again in a moment."),
   plugin_from_folder: () => t("Edit this plugin in the plugins folder, then restart Baskule."),
   plugin_links_unsupported: () =>
     t("It contains links to other files. Put the files themselves in it instead."),
