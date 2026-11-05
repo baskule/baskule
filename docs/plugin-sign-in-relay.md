@@ -57,6 +57,7 @@ configured on the relay.
 { "vendors": [ { "id": "github", "clientId": "Iv1.…", "tokenEndpointAuthMethod": "client_secret_post" } ] }
 ```
 
+Vendor IDs match `[a-z][a-z0-9]*`; an installation ignores entries it does not recognise.
 `tokenEndpointAuthMethod` is the method the relay uses toward the vendor. The installation stores it so
 the existing `token_endpoint_auth_methods_supported` check still applies.
 
@@ -73,20 +74,23 @@ The relay rejects the request with a plain error page unless:
 - `url` has `response_type=code`, the vendor's `client_id`, `redirect_uri=RELAY/v1/callback`,
   `code_challenge_method=S256`, a `code_challenge`, and a `state` of at most 512 characters.
 
-It then shows a confirmation page naming the vendor and the installation's host ("Connect your GitHub
-account to baskule.example.com?"). **Continue** opens the same URL with `state` replaced by the relay
-state:
+It then shows a confirmation page naming the vendor and highlighting the installation's host
+("Connect your GitHub account to baskule.example.com?"), with a warning for `http` and IP-address
+origins. **Continue** is a plain link, clickable after about a second, to the same URL with `state`
+replaced by the relay state:
 
 ```
-base64url(JSON {"v":1,"o":origin,"s":inner_state,"d":vendor,"e":expiry_ms}) "." base64url(HMAC-SHA256(STATE_KEY, payload))
+base64url(JSON {"v":1,"o":origin,"s":inner_state,"d":vendor,"n":nonce,"e":expiry_ms}) "." base64url(HMAC-SHA256(STATE_KEY, payload))
 ```
 
-The relay state expires after 15 minutes.
+The same response sets `__Host-bk_<nonce>=1; Path=/; Max-Age=900; Secure; HttpOnly; SameSite=Lax`.
+This binds the sign-in to the browser that saw the confirmation page: a state minted by anyone else
+carries a nonce that the member's browser never received. The relay state expires after 15 minutes.
 
 ### `GET /v1/callback`
 
 The single redirect URI registered with every vendor. The relay verifies the state signature and
-expiry, then redirects with `302` to `<o>/api/baskule/plugins/oauth/callback`, carrying `code`,
+expiry and requires the `__Host-bk_<n>` cookie, which it clears (each state is single-use). It then redirects with `302` to `<o>/api/baskule/plugins/oauth/callback`, carrying `code`,
 `state=<s>`, and `iss`, `error` and `error_description` unchanged when present. An invalid or expired
 state shows an error page and redirects nowhere.
 
@@ -97,10 +101,10 @@ Form-encoded, as a normal token request, plus `token_endpoint=<URL>`:
 - `token_endpoint` must match one of the vendor's allowed token endpoints;
 - `grant_type` is `authorization_code` (with `code`, `code_verifier` and `redirect_uri=RELAY/v1/callback`)
   or `refresh_token` (with `refresh_token`);
-- the relay drops any client credentials sent by the caller, adds its own using the vendor's method,
-  and forwards the request.
+- the relay drops any client credentials sent by the caller, always sets `client_id`, adds the secret
+  using the vendor's method, and forwards the request. The installation sends `client_id` too.
 
-The vendor's status and JSON body are returned unchanged, with `cache-control: no-store`. Relay
+The vendor's status and JSON body are returned unchanged (a non-JSON vendor response becomes `502`), with `cache-control: no-store`. Relay
 refusals use `400` with `{"error":"relay_<reason>"}`. A vendor that cannot be reached returns `502`
 with `{"error":"relay_vendor_unavailable"}`.
 
@@ -108,14 +112,18 @@ with `{"error":"relay_vendor_unavailable"}`.
 
 - **PKCE (S256) is mandatory.** An intercepted code is useless without the installation's verifier.
 - **Phishing with Baskule's name.** Someone could start a sign-in that returns to their own server.
-  The confirmation page names the destination host, and the relay only bounces signed states it issued.
-  Installation registration is left out until abuse shows it is needed.
+  The confirmation page names the destination host, and the callback only bounces a state whose
+  nonce cookie was set on that page in the same browser, so the page cannot be skipped. The relay
+  logs route, vendor, outcome and destination host (never codes, states or tokens) so abuse is
+  visible. Installation registration is left out until abuse shows it is needed.
 - **Issuer checks stay in the installation.** It pins the vendor issuer from the catalog and checks
   `iss` against discovery, as for its own app. The relay is never treated as the issuer.
 - **Disconnecting stays local.** Revoking a Google or Microsoft grant would revoke it for every
   installation using the shared app.
-- **Relay outage.** Refreshes fail with `unavailable`, not `reconnect`. The refresh token is kept, and
-  only a vendor `invalid_grant` clears it.
+- **Relay outage.** Refreshes fail with `unavailable`, not `reconnect`, including `429`, `408`,
+  `temporarily_unavailable`, `server_error` and relay `5xx`. The refresh token is kept. Only a vendor
+  answer that the grant is dead clears it: `invalid_grant`, or the HTTP 200 forms Slack
+  (`ok:false`, `invalid_refresh_token`) and GitHub (`bad_refresh_token`) use.
 
 ## Installation behaviour
 
