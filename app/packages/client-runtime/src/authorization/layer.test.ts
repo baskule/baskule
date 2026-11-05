@@ -1,4 +1,5 @@
 import {
+  BASKULE_RELEASE,
   AuthStandardClientScopes,
   EnvironmentId,
   ORCHESTRATION_PROTOCOL_VERSION,
@@ -38,7 +39,7 @@ const DESCRIPTOR = {
     os: "linux",
     arch: "x64",
   },
-  serverVersion: "0.5.0",
+  serverVersion: BASKULE_RELEASE.version,
   minClient: "0.0.0",
   capabilities: {
     repositoryIdentity: true,
