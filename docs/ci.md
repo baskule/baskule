@@ -63,7 +63,7 @@ Each artifact includes checksums and verification/signing status. Android's defa
 
 ## Tags and releases
 
-`VERSION` is the source version (currently `0.5.0`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.0` starts the full release factory; its version must match `VERSION`. Tag only a commit on which `CI required` has passed: the factory checks it once and does not wait. Its first build stage generates missing translations with the `release` environment's `TRANSLATION_API_KEY` (restricted to `v*` tags) and shares them with every build; see [localization](localization.md). The draft GitHub release waits for backend, Linux apps and native builds to succeed. It attaches the standalone Compose file and env example, checksums, and built packages. Images use version tags; Compose retains digest pins for third-party images. This path does not deploy an installation or submit apps to stores. A manual verification run creates no release and publishes no images. Publishing a manual draft requires `verify_only=false`. A manual version override can be supplied for a candidate; otherwise the factory reads `VERSION`.
+`VERSION` is the source version (currently `0.5.1`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.1` starts the full release factory; its version must match `VERSION`. Tag only a commit on which `CI required` has passed: the factory checks it once and does not wait. Its first build stage generates missing translations with the `release` environment's `TRANSLATION_API_KEY` (restricted to `v*` tags) and shares them with every build; see [localization](localization.md). The draft GitHub release waits for backend, Linux apps and native builds to succeed. It attaches the standalone Compose file and env example, checksums, and built packages. Images use version tags; Compose retains digest pins for third-party images. Once `public-packages` confirms anonymous image pulls, the `release` job publishes the draft as the latest release. This path does not deploy an installation or submit apps to stores. A manual verification run creates no release and publishes no images. Publishing a manual draft requires `verify_only=false`. A manual version override can be supplied for a candidate; otherwise the factory reads `VERSION`.
 
 Versions and source revisions are recorded with the outputs. Use a versioned tag for an intended release. Local desktop and mobile builds also default to `VERSION`; `BASKULE_VERSION` and `T3CODE_MOBILE_VERSION` respectively override it. Standalone native workflow dispatches default to `VERSION`.
 
@@ -87,8 +87,8 @@ package's settings: `baskule-celld`, `baskule-computerd`, `baskule-computer`, an
 their source to this repository. The separate `public-packages` job checks anonymous
 pulls and can be rerun after changing visibility **within 24 hours**, while the
 backend Actions artifact is retained; it never republishes artifacts.
-A visibility failure does not block draft creation. Do not publish the draft until
-this job passes. To check downloaded backend artifacts manually, run
+A visibility failure does not block draft creation; it keeps the release a draft. After
+making the packages public, rerun the failed jobs so `public-packages` and `release` publish it. To check downloaded backend artifacts manually, run
 `bash scripts/ci/check-public-images.sh artifacts/backend`. Check the draft's Compose assets and image tags before publishing the draft.
 Version tags identify one release; do not replace a published tag with different image contents. A verification-only
 run checks builds and local behavior without proving GHCR visibility or anonymous downloads.

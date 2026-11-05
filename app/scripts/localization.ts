@@ -212,6 +212,44 @@ export async function translateBatch(
   return translated;
 }
 
+export async function translateWithRetries(
+  locale: string,
+  entries: [string, Message][],
+  context: string,
+  catalog: Catalog,
+  translate: typeof translateBatch = translateBatch,
+) {
+  const retry = async (batch: [string, Message][]) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        Object.assign(catalog, await translate(locale, batch, context));
+        return;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        console.warn(
+          `${locale}: retrying invalid or failed ${batch.length === 1 ? "message" : "batch"} (${attempt + 1}/2)`,
+        );
+      }
+    }
+  };
+  try {
+    await retry(entries);
+    return;
+  } catch (error) {
+    if (entries.length === 1) throw error;
+    console.warn(`${locale}: translating failed batch one message at a time`);
+  }
+  const errors: unknown[] = [];
+  for (const entry of entries) {
+    try {
+      await retry([entry]);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) throw errors[0];
+}
+
 async function nativeMetadata(check: boolean) {
   const file = NodePath.join(root, "app/apps/mobile/app.config.ts");
   const source = ts.createSourceFile(
@@ -301,6 +339,7 @@ async function main() {
           validateTranslation(message.text, catalog[key]);
           return false;
         } catch {
+          if (command === "translate") delete catalog[key];
           return true;
         }
       });
@@ -314,17 +353,12 @@ async function main() {
         if (command === "translate") {
           for (let offset = 0; offset < missing.length; offset += 80) {
             const batch = missing.slice(offset, offset + 80);
-            for (let attempt = 0; ; attempt++) {
-              try {
-                Object.assign(catalog, await translateBatch(locale!, batch, context));
-                break;
-              } catch (error) {
-                if (attempt === 2) throw error;
-                console.warn(`${locale}: retrying invalid or failed batch (${attempt + 1}/2)`);
-              }
+            try {
+              await translateWithRetries(locale!, batch, context, catalog);
+            } finally {
+              // Checkpoint valid translations even when an individual message failed.
+              await saveCatalog(locale!, catalog);
             }
-            // Checkpoint valid batches so an interrupted CI run can be resumed locally.
-            await saveCatalog(locale!, catalog);
             console.log(
               `${locale}: ${Math.min(offset + 80, missing.length)}/${missing.length} translated`,
             );

@@ -1,5 +1,10 @@
 import { expect, it, vi } from "vite-plus/test";
-import { placeholders, translateBatch, validateTranslation } from "./localization.ts";
+import {
+  placeholders,
+  translateBatch,
+  translateWithRetries,
+  validateTranslation,
+} from "./localization.ts";
 
 it("accepts reordered placeholders but rejects missing, duplicated, or broken placeholders", () => {
   expect(placeholders("{{name}} has {{count}} files")).toEqual(["count", "name"]);
@@ -83,3 +88,72 @@ it("fails closed on truncated output and does not echo a provider error body", a
     vi.unstubAllEnvs();
   }
 });
+
+it.each([false, true])(
+  "keeps valid translations after batch retries and fails if individual retries stay invalid (%s)",
+  async (permanentlyInvalid) => {
+    vi.stubEnv("TRANSLATION_API_KEY", "test-key");
+    using _warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const entries: [string, { text: string; locations: string[] }][] = [
+        [
+          "Closed {{value1}} pull request{{value2}}",
+          { text: "Closed {{value1}} pull request{{value2}}", locations: [] },
+        ],
+        ["Hello {{name}}", { text: "Hello {{name}}", locations: [] }],
+        ["Goodbye", { text: "Goodbye", locations: [] }],
+      ];
+      let individualAttempts = 0;
+      const request = vi.fn<typeof fetch>(async (_url, init) => {
+        const body: { messages: { content: string }[] } = JSON.parse(String(init?.body));
+        const messages: { id: string; english: string }[] = JSON.parse(body.messages[1]!.content);
+        const translated = Object.fromEntries(
+          messages.map(({ id, english }) => {
+            if (english === "Closed {{value1}} pull request{{value2}}") {
+              if (messages.length === 1) individualAttempts++;
+              return [
+                id,
+                messages.length > 1 || permanentlyInvalid || individualAttempts < 3
+                  ? "Demande {{value1}} fermée"
+                  : "Demande{{value2}} {{value1}} fermée",
+              ];
+            }
+            return [id, english === "Hello {{name}}" ? "Bonjour {{name}}" : "Au revoir"];
+          }),
+        );
+        return new Response(
+          JSON.stringify({
+            choices: [{ finish_reason: "stop", message: { content: JSON.stringify(translated) } }],
+          }),
+        );
+      });
+      const catalog = { Existing: "Existant" };
+      const result = translateWithRetries(
+        "fr",
+        entries,
+        "context",
+        catalog,
+        (locale, batch, context) => translateBatch(locale, batch, context, request),
+      );
+      if (permanentlyInvalid) {
+        await expect(result).rejects.toThrow("Changed interpolation placeholders");
+      } else {
+        await expect(result).resolves.toBeUndefined();
+      }
+      expect(catalog).toEqual({
+        Existing: "Existant",
+        "Hello {{name}}": "Bonjour {{name}}",
+        Goodbye: "Au revoir",
+        ...(permanentlyInvalid
+          ? {}
+          : {
+              "Closed {{value1}} pull request{{value2}}": "Demande{{value2}} {{value1}} fermée",
+            }),
+      });
+      expect(individualAttempts).toBe(3);
+      expect(request).toHaveBeenCalledTimes(8);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  },
+);
