@@ -135,10 +135,15 @@ test("a connected member supplies discovery while calls keep the turn author's a
       return { name, value: value.join("="), url: stack.urls.front };
     }));
     await adminPage.goto(`${stack.urls.front}/admin/plugins/installed/${plugin.id}`);
-    await adminPage.getByLabel("Client ID", { exact: true }).fill("fake-client");
-    await adminPage.getByLabel("Client secret", { exact: true }).fill("fake-secret");
-    await adminPage.getByRole("button", { name: "Save setup", exact: true }).click();
-    await expect(adminPage.getByText(`Saved. People sign in to ${name} through this app.`, { exact: true })).toBeVisible();
+    await adminPage.getByRole("list", { name: "Setup steps", exact: true }).getByRole("button", { name: "Set up sign-in", exact: true }).click();
+    const signInDialog = adminPage.getByRole("dialog", { name: `Set up sign-in to ${name}`, exact: true });
+    await expect(signInDialog.getByRole("radiogroup")).toHaveCount(0);
+    await expect(signInDialog.getByRole("list", { name: `Steps at ${name}`, exact: true }).getByLabel("Callback address", { exact: true })).toHaveValue(/^https?:\/\/[^/]+\/api\/baskule\/plugins\/oauth\/callback$/);
+    await signInDialog.getByLabel("Client ID", { exact: true }).fill("fake-client");
+    await signInDialog.getByLabel("Client secret", { exact: true }).fill("fake-secret");
+    await adminPage.screenshot({ path: test.info().outputPath("plugin-vendor-own-app-dialog.png") });
+    await signInDialog.getByRole("button", { name: "Save setup", exact: true }).click();
+    await expect(adminPage.getByText(`Saved. People sign in to ${name} through your own app.`, { exact: true })).toBeVisible();
     await adminPage.screenshot({ path: test.info().outputPath("plugin-vendor-setup-saved.png") });
     await secondPage.reload();
     await secondPage.getByRole("button", { name: `Connect your ${name} account`, exact: true }).click();
@@ -208,10 +213,14 @@ test("the curated catalog adds assigned services and opens shared vendor setup",
     await adminPage.goto(`${stack.urls.front}/admin/plugins/catalog`);
     await expect(adminPage.getByRole("link", { name: "Gmail", exact: true })).toHaveAccessibleDescription("Needs setup");
     await adminPage.getByRole("link", { name: "Gmail", exact: true }).click();
-    await expect(adminPage.getByLabel("Client ID", { exact: true })).toBeVisible();
-    await expect(adminPage.getByRole("list", { name: "Setup steps", exact: true }).getByText("Create an app at Google (to do)", { exact: true })).toBeVisible();
-    await expect(adminPage.getByRole("link", { name: "Setup instructions", exact: true })).toBeVisible();
-    await adminPage.getByLabel("Client ID", { exact: true }).scrollIntoViewIfNeeded();
+    const steps = adminPage.getByRole("list", { name: "Setup steps", exact: true });
+    await expect(steps.getByText("Set up sign-in to Google (to do)", { exact: true })).toBeVisible();
+    await steps.getByRole("button", { name: "Set up sign-in", exact: true }).click();
+    const googleDialog = adminPage.getByRole("dialog", { name: "Set up sign-in to Google", exact: true });
+    await expect(googleDialog.getByText(/^Internal app: only accounts in your own Google Workspace organization/)).toBeVisible();
+    await expect(googleDialog.getByRole("link", { name: "Setup instructions", exact: true })).toBeVisible();
+    await expect(googleDialog.getByRole("list", { name: "Steps at Google", exact: true }).getByRole("listitem")).toHaveCount(7);
+    await expect(googleDialog.getByLabel("Client ID", { exact: true })).toBeVisible();
     await adminPage.screenshot({ path: test.info().outputPath("plugin-catalog-google-setup.png") });
   } finally {
     for (const id of installed) await api.admin.json("DELETE", `/api/baskule/admin/plugins/${id}`);

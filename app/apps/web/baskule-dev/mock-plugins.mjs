@@ -1,7 +1,7 @@
 // baskule: the plugins and groups part of the mock front (shapes: packages/contracts/src/baskule-plugins.ts,
 // behaviour: platform/src/control/plugins.ts and groups.ts). In memory; catalog installs use the real list.
-// `/connect` signs an account in at once, a vendor app is only remembered as saved, a package reads as a fixed
-// draft to fix, the exported zip holds only plugin.json, and every server lists the same three tools.
+// `/connect` signs in at once, a vendor's sign-in is only remembered (Baskule sign-in serves every relay
+// vendor), a package reads as a fixed draft, the zip holds only plugin.json, and servers share three tools.
 import * as NodeCrypto from "node:crypto";
 import * as NodeZlib from "node:zlib";
 
@@ -282,8 +282,8 @@ export function createPluginMock({ users, spaces }) {
   ];
   /** `${pluginId}\0${server}` with an organization key */
   const secrets = new Set([`${brave}\u0000brave-search`]);
-  /** Vendor keys with a saved app. Drive's is saved so people can connect it at once. */
-  const vendors = new Set([drive.vendor]);
+  /** Vendor id -> its saved sign-in. Drive's own app is saved so people can connect it at once. */
+  const vendors = new Map([[drive.vendor, { mode: "own" }]]);
   /** space id -> { personalPluginsAllowed, disabled } */
   const spaceSettings = new Map();
 
@@ -480,18 +480,40 @@ export function createPluginMock({ users, spaces }) {
       const vendor = decodeURIComponent(r[1]);
       const owned = [...plugins.values()].filter((plugin) => plugin.vendor === vendor);
       if (owned.length === 0) return (fail(res, 404, "vendor_unknown"), true);
+      const signIn = catalogVendor(vendor)?.signIn;
+      const recipe = signIn?.type === "account" && signIn.client === "static" ? signIn : undefined;
+      if (method === "GET") {
+        const saved = vendors.get(vendor);
+        return (
+          send(res, 200, {
+            mode: saved?.mode ?? null,
+            relaySupported: Boolean(recipe?.relay),
+            relayAvailable: saved?.mode === "relay" ? true : null,
+            callbackUrl: `${url.origin}/api/baskule/plugins/oauth/callback`,
+            ...(saved?.tenant ? { tenant: saved.tenant } : {}),
+          }),
+          true
+        );
+      }
       if (method === "PUT") {
         const body = await readBody(req);
         if (body !== null) {
           const auth = body?.tokenEndpointAuthMethod;
+          const tenantNeeded = Boolean(recipe?.fields?.includes("tenant"));
           if (
-            typeof body?.clientId !== "string" ||
-            !body.clientId ||
-            !["none", "client_secret_post", "client_secret_basic"].includes(auth) ||
-            (auth !== "none") !== Boolean(body.clientSecret)
+            (tenantNeeded ? !body?.tenant : body?.tenant !== undefined) ||
+            (body?.mode === "relay"
+              ? !recipe?.relay
+              : typeof body?.clientId !== "string" ||
+                !body.clientId ||
+                !["none", "client_secret_post", "client_secret_basic"].includes(auth) ||
+                (auth !== "none") !== Boolean(body.clientSecret))
           )
             return (fail(res, 400, "invalid_oauth_client"), true);
-          vendors.add(vendor);
+          vendors.set(vendor, {
+            mode: body.mode === "relay" ? "relay" : "own",
+            ...(body.tenant ? { tenant: body.tenant } : {}),
+          });
         } else vendors.delete(vendor);
         // Saving or removing an app disconnects every account of this vendor.
         accounts = accounts.filter(

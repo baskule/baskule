@@ -9,7 +9,8 @@ export type VendorSignIn =
   | { type: "key"; header: string }                                    // one organization key
   | { type: "account"; client: "dynamic"; params?: Record<string, string> }
   | { type: "account"; client: "static"; issuer: string;               // may contain {tenant}
-      relay?: true; ownApp: string[]; fields?: "tenant"[]; params?: Record<string, string>; resource?: false; docs: string };
+      relay?: true; ownApp: string[]; ownAppLimit?: string;            // msg(): who the supported own app lets connect
+      fields?: "tenant"[]; params?: Record<string, string>; resource?: false; docs: string };
 
 export interface CatalogVendor { id: string; name: string; signIn: VendorSignIn }
 
@@ -37,11 +38,12 @@ export const CATALOG_VENDORS: readonly CatalogVendor[] = [
         msg("Create or choose one Google Cloud project for Gmail, Calendar, Drive and Chat; one web OAuth client serves every Google service."),
         msg("Enable the product APIs and MCP APIs for the Google services you will use, following https://developers.google.com/workspace/guides/configure-mcp-servers and each service's setup documentation."),
         msg("Enrol the project in the Workspace MCP Developer Preview."),
-        msg("Configure the consent screen as Internal. Only accounts in your own Google Workspace organization can connect; this supported setup requires no Google verification and does not support external accounts."),
+        msg("Configure the consent screen as Internal; this supported setup requires no Google verification."),
         msg("Create one Web application OAuth client and add this installation's callback URL as an authorized redirect URI."),
         msg("Mark the OAuth client as an AI-powered agent before November 11, 2026."),
         msg("Paste the client ID and client secret here."),
       ],
+      ownAppLimit: msg("Internal app: only accounts in your own Google Workspace organization can connect. External Google accounts are not supported."),
       issuer: "https://accounts.google.com",
       params: {
         access_type: "offline",

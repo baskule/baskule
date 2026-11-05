@@ -7,6 +7,7 @@ import type {
   MemberPlugin,
   PluginDraft,
   PluginInput,
+  VendorSetup,
 } from "@t3tools/contracts/baskule-plugins";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent, type Locator } from "vite-plus/test/browser";
@@ -91,6 +92,17 @@ function plugin(overrides: Partial<AdminPlugin>): AdminPlugin {
     ...overrides,
   };
 }
+
+const callbackUrl = "https://baskule.example.test/api/baskule/plugins/oauth/callback";
+
+/** `GET /admin/vendors/:vendor`: nothing set up yet, for a vendor offering Baskule sign-in. */
+const vendorSetup = (overrides: Partial<VendorSetup>): VendorSetup => ({
+  mode: null,
+  relaySupported: true,
+  relayAvailable: null,
+  callbackUrl,
+  ...overrides,
+});
 
 const postBody = (calls: ReadonlyArray<{ readonly route: string; readonly body: unknown }>) =>
   calls.find((call) => call.route === "POST /api/baskule/admin/plugins")?.body;
@@ -239,7 +251,19 @@ describe("admin catalog", () => {
     await expect.element(calendar).toHaveAccessibleDescription("Ready in one click");
     await expect
       .element(screen.getByRole("button", { name: "Slack", exact: true }))
+      .toHaveAccessibleDescription("One-click sign-in");
+    await expect
+      .element(screen.getByRole("button", { name: "Salesforce", exact: true }))
       .toHaveAccessibleDescription("Needs setup");
+    await press(screen.getByRole("button", { name: "Add Slack" }));
+    await expect
+      .element(
+        page
+          .getByRole("dialog", { name: "Add Slack" })
+          .getByText("After you add it, turn on its sign-in on its page in one click."),
+      )
+      .toBeVisible();
+    await press(page.getByRole("button", { name: "Cancel", exact: true }));
     await press(screen.getByRole("button", { name: "Add Google Calendar" }));
     const choose = page.getByRole("dialog", { name: "Add Google Calendar" });
     await expect.element(choose.getByRole("checkbox", { name: "Everyone" })).toBeChecked();
@@ -1407,7 +1431,7 @@ describe("pausing a plugin", () => {
 });
 
 describe("signing in to a plugin's service", () => {
-  it("keeps a catalog service's sign-in and links to its vendor setup instructions", async () => {
+  it("guides a vendor's own app step by step when Baskule sign-in isn't offered", async () => {
     const control = fakeControl({
       "GET /api/baskule/admin/plugins": () => ({
         plugins: [
@@ -1430,49 +1454,214 @@ describe("signing in to a plugin's service", () => {
         ],
       }),
       "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/vendors/google": () => vendorSetup({ relaySupported: false }),
       "PUT /api/baskule/admin/vendors/google": () => ({ ok: true, configured: true }),
     });
     using _fetch = control.stub;
     await using screen = await render(<PluginDetailPage id="gmail" />);
 
     const steps = screen.getByRole("list", { name: "Setup steps" });
-    await expect.element(steps.getByText("Create an app at Google (to do)")).toBeVisible();
-    await expect
-      .element(steps.getByText("Save the app's ID and secret here (to do)"))
-      .toBeVisible();
-    expect(screen.getByLabelText("How gmail signs in", { exact: true }).query()).toBeNull();
+    await expect.element(steps.getByText("Set up sign-in to Google (to do)")).toBeVisible();
     await expect
       .element(screen.getByText(/Each person connects their own account in Settings → Plugins/))
       .toBeVisible();
-    await expect.element(screen.getByText(/Workspace MCP Developer Preview/)).toBeVisible();
+    await expect
+      .element(screen.getByText(/Only accounts in your own Google Workspace organization/))
+      .toBeVisible();
     await expect
       .element(screen.getByRole("link", { name: "Gmail documentation" }))
       .toHaveAttribute("target", "_blank");
-    // The callback address and the server's host wait under Technical details.
-    await expect
-      .element(screen.getByLabelText("Callback address", { exact: true }))
-      .not.toBeVisible();
+    // The server's host waits under Technical details.
     await expect
       .element(screen.getByText("https://gmailmcp.googleapis.com/mcp/v1"))
       .not.toBeVisible();
+
+    const setUp = steps.getByRole("button", { name: "Set up sign-in" });
+    await expect.element(setUp).toBeVisible();
+    await press(setUp);
+    const dialog = page.getByRole("dialog", { name: "Set up sign-in to Google" });
+    // Google offers no Baskule sign-in: no choice, and who can connect is said before the steps.
+    expect(dialog.getByRole("radiogroup").query()).toBeNull();
     await expect
-      .element(screen.getByRole("button", { name: "Copy Baskule's address" }))
+      .element(dialog.getByText(/^Internal app: only accounts in your own Google Workspace/))
       .toBeVisible();
-    const instructions = screen.getByRole("link", { name: "Setup instructions" });
+    const guide = dialog.getByRole("list", { name: "Steps at Google" });
+    await expect
+      .element(
+        guide.getByRole("listitem").last().getByText("Paste the client ID and client secret here."),
+      )
+      .toBeVisible();
+    expect(guide.getByRole("listitem").elements()).toHaveLength(7);
+    await expect
+      .element(guide.getByRole("link", { name: /^https:\/\/developers\.google\.com\// }))
+      .toHaveAttribute("target", "_blank");
+    // The callback address sits at the step that registers it.
+    await expect
+      .element(guide.getByRole("listitem").nth(4).getByLabelText("Callback address"))
+      .toHaveValue(callbackUrl);
+    const instructions = dialog.getByRole("link", { name: "Setup instructions" });
     await expect.element(instructions).toHaveAttribute("target", "_blank");
     await expect.element(instructions).toHaveAttribute("rel", "noreferrer noopener");
 
-    await userEvent.type(screen.getByLabelText("Client ID", { exact: true }), "client-1");
-    await userEvent.type(screen.getByLabelText("Client secret", { exact: true }), "s3cret");
-    await press(screen.getByRole("button", { name: "Save setup" }));
+    await userEvent.type(dialog.getByLabelText("Client ID", { exact: true }), "client-1");
+    await userEvent.type(dialog.getByLabelText("Client secret", { exact: true }), "s3cret");
+    await press(dialog.getByRole("button", { name: "Save setup" }));
 
-    expect(
-      control.calls.find((call) => call.route === "PUT /api/baskule/admin/vendors/google")?.body,
-    ).toEqual({
-      clientId: "client-1",
-      tokenEndpointAuthMethod: "client_secret_post",
-      clientSecret: "s3cret",
+    await vi.waitFor(() =>
+      expect(
+        control.calls.find((call) => call.route === "PUT /api/baskule/admin/vendors/google")?.body,
+      ).toEqual({
+        clientId: "client-1",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientSecret: "s3cret",
+      }),
+    );
+  });
+
+  /** A Microsoft service: Baskule sign-in is offered, and both ways need the organization's tenant. */
+  const outlook = (configured: boolean) =>
+    plugin({
+      id: "outlook",
+      vendor: "microsoft",
+      name: "Outlook",
+      source: { type: "catalog" },
+      servers: [
+        {
+          name: "outlook",
+          url: "https://mcp.microsoft.example.test/mcp",
+          credential: "user-oauth",
+          oauth: { staticClient: true },
+          disabledTools: [],
+        },
+      ],
+      setup: [{ server: "outlook", done: configured }],
+      vendorConfigured: configured,
     });
+
+  it("turns on Baskule sign-in in one click, with the tenant Microsoft needs", async () => {
+    let saved = false;
+    let refusals = 1;
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({ plugins: [outlook(saved)] }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/vendors/microsoft": () =>
+        saved
+          ? vendorSetup({ mode: "relay", relayAvailable: true, tenant: "contoso.onmicrosoft.com" })
+          : vendorSetup({}),
+      "PUT /api/baskule/admin/vendors/microsoft": () => {
+        if (refusals-- > 0)
+          return Response.json({ error: "relay_vendor_unavailable" }, { status: 409 });
+        saved = true;
+        return { ok: true, configured: true };
+      },
+    });
+    using _fetch = control.stub;
+    const confirm = vi.fn(() => true);
+    using _confirm = stubGlobal("confirm", confirm);
+    await using screen = await render(<PluginDetailPage id="outlook" />);
+
+    const steps = screen.getByRole("list", { name: "Setup steps" });
+    await expect
+      .element(
+        steps.getByText("Turn on Baskule sign-in in one click, or use your own app at Microsoft."),
+      )
+      .toBeVisible();
+    await press(steps.getByRole("button", { name: "Set up sign-in" }));
+    const dialog = page.getByRole("dialog", { name: "Set up sign-in to Microsoft" });
+    await expect.element(dialog.getByRole("radio", { name: /^Baskule sign-in/ })).toBeChecked();
+    expect(dialog.getByLabelText("Client ID", { exact: true }).query()).toBeNull();
+    const turnOn = dialog.getByRole("button", { name: "Use Baskule sign-in" });
+    await expect.element(turnOn).toBeDisabled();
+    await userEvent.type(
+      dialog.getByLabelText("Tenant", { exact: true }),
+      "contoso.onmicrosoft.com",
+    );
+
+    await press(turnOn);
+    await expect
+      .element(
+        dialog.getByText(
+          "Baskule sign-in isn't available for Microsoft right now. Use your own app instead, or try again later.",
+        ),
+      )
+      .toBeVisible();
+    await press(turnOn);
+
+    await expect
+      .element(steps.getByText("Saved. People sign in to Microsoft with Baskule sign-in."))
+      .toBeVisible();
+    await expect.element(steps.getByText("Tenant: contoso.onmicrosoft.com")).toBeVisible();
+    await expect.element(steps.getByText("Set up sign-in to Microsoft (done)")).toBeInTheDocument();
+    expect(
+      control.calls
+        .filter((call) => call.route === "PUT /api/baskule/admin/vendors/microsoft")
+        .map((call) => call.body),
+    ).toEqual([
+      { mode: "relay", tenant: "contoso.onmicrosoft.com" },
+      { mode: "relay", tenant: "contoso.onmicrosoft.com" },
+    ]);
+    // Nothing was set up before, so nobody was disconnected and nothing was asked.
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("says when Baskule sign-in is unavailable and confirms switching to an own app", async () => {
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({ plugins: [outlook(true)] }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+      "GET /api/baskule/admin/vendors/microsoft": () =>
+        vendorSetup({ mode: "relay", relayAvailable: false, tenant: "contoso.onmicrosoft.com" }),
+      "PUT /api/baskule/admin/vendors/microsoft": () => ({ ok: true, configured: true }),
+    });
+    using _fetch = control.stub;
+    const answers = [false, true];
+    const confirm = vi.fn((_message: string) => answers.shift());
+    using _confirm = stubGlobal("confirm", confirm);
+    await using screen = await render(<PluginDetailPage id="outlook" />);
+
+    const steps = screen.getByRole("list", { name: "Setup steps" });
+    await expect
+      .element(steps.getByText(/^Baskule sign-in isn't available for Microsoft right now\./))
+      .toBeVisible();
+    await press(steps.getByRole("button", { name: "Change how people sign in to Microsoft" }));
+    const dialog = page.getByRole("dialog", { name: "Set up sign-in to Microsoft" });
+    // Saving the same Baskule sign-in again would only disconnect everyone.
+    await expect
+      .element(dialog.getByRole("button", { name: "Use Baskule sign-in" }))
+      .toBeDisabled();
+    await press(dialog.getByRole("radio", { name: /^Your own app/ }));
+    await expect
+      .element(
+        dialog.getByRole("list", { name: "Steps at Microsoft" }).getByLabelText("Callback address"),
+      )
+      .toHaveValue(callbackUrl);
+    await expect
+      .element(dialog.getByLabelText("Tenant", { exact: true }))
+      .toHaveValue("contoso.onmicrosoft.com");
+    await expect
+      .element(dialog.getByText("Saving disconnects every Microsoft account people connected."))
+      .toBeVisible();
+    await userEvent.type(dialog.getByLabelText("Client ID", { exact: true }), "client-1");
+    await userEvent.type(dialog.getByLabelText("Client secret", { exact: true }), "s3cret");
+
+    const save = dialog.getByRole("button", { name: "Save setup" });
+    await press(save);
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm).toHaveBeenCalledWith(
+      "Switch Microsoft to your own app?\nEvery Microsoft account people connected is disconnected. People connect again in Settings → Plugins.",
+    );
+    expect(control.calls.some((call) => call.route.startsWith("PUT "))).toBe(false);
+    await press(save);
+    await vi.waitFor(() =>
+      expect(
+        control.calls.find((call) => call.route === "PUT /api/baskule/admin/vendors/microsoft")
+          ?.body,
+      ).toEqual({
+        clientId: "client-1",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientSecret: "s3cret",
+        tenant: "contoso.onmicrosoft.com",
+      }),
+    );
   });
 
   const crm = { name: "crm", url: "https://mcp.crm.example.test/mcp", disabledTools: [] };
@@ -1771,6 +1960,8 @@ describe("signing in to a plugin's service", () => {
       "GET /api/baskule/admin/groups": () => ({
         groups: groups.map((group) => (group.builtin ? { ...group, plugins: ["p1"] } : group)),
       }),
+      "GET /api/baskule/admin/vendors/crm-vendor": () =>
+        vendorSetup({ relaySupported: false, mode: configured ? "own" : null }),
       "PUT /api/baskule/admin/vendors/crm-vendor": (body) => {
         configured = body !== null;
         return { ok: true, configured };
@@ -1784,35 +1975,42 @@ describe("signing in to a plugin's service", () => {
     await using screen = await render(<PluginDetailPage id="p1" />);
 
     const steps = screen.getByRole("list", { name: "Setup steps" });
-    await expect.element(steps.getByText("Create an app at CRM (to do)")).toBeInTheDocument();
+    await expect.element(steps.getByText("Set up sign-in to CRM (to do)")).toBeInTheDocument();
     await expect
       .element(screen.getByText("People can't use it until you finish setting it up below."))
       .toBeVisible();
-    await expect
-      .element(screen.getByLabelText("Callback address", { exact: true }))
-      .toHaveValue(`${window.location.origin}/api/baskule/plugins/oauth/callback`);
     expect(screen.getByRole("button", { name: "Remove setup" }).query()).toBeNull();
 
-    await userEvent.type(screen.getByLabelText("Client ID", { exact: true }), "client-1");
-    await expect.element(screen.getByRole("button", { name: "Save setup" })).toBeDisabled();
-    await userEvent.type(screen.getByLabelText("Client secret", { exact: true }), "s3cret");
-    await press(screen.getByRole("button", { name: "Save setup" }));
+    const setUp = steps.getByRole("button", { name: "Set up sign-in" });
+    await expect.element(setUp).toBeVisible();
+    await press(setUp);
+    const dialog = page.getByRole("dialog", { name: "Set up sign-in to CRM" });
+    await expect
+      .element(
+        dialog.getByRole("list", { name: "Steps at CRM" }).getByLabelText("Callback address"),
+      )
+      .toHaveValue(callbackUrl);
+    await userEvent.type(dialog.getByLabelText("Client ID", { exact: true }), "client-1");
+    await expect.element(dialog.getByRole("button", { name: "Save setup" })).toBeDisabled();
+    await userEvent.type(dialog.getByLabelText("Client secret", { exact: true }), "s3cret");
+    await press(dialog.getByRole("button", { name: "Save setup" }));
 
     await expect
-      .element(screen.getByText("Saved. People sign in to CRM through this app."))
+      .element(screen.getByText("Saved. People sign in to CRM through your own app."))
       .toBeVisible();
-    await expect.element(steps.getByText("Create an app at CRM (done)")).toBeInTheDocument();
-    // Saved secrets are never shown back: the form is gone until the admin replaces the app.
-    expect(screen.getByLabelText("Client ID", { exact: true }).query()).toBeNull();
+    await expect.element(steps.getByText("Set up sign-in to CRM (done)")).toBeInTheDocument();
     expect(
       screen.getByText("People can't use it until you finish setting it up below.").query(),
     ).toBeNull();
-    await press(screen.getByRole("button", { name: "Replace the app at CRM" }));
-    await expect.element(screen.getByLabelText("Client ID", { exact: true })).toHaveValue("");
-    await press(screen.getByRole("button", { name: "Cancel" }));
+    // Saved secrets are never shown back: changing the app starts from empty fields.
+    await press(screen.getByRole("button", { name: "Change how people sign in to CRM" }));
+    await expect
+      .element(page.getByRole("dialog").getByLabelText("Client ID", { exact: true }))
+      .toHaveValue("");
+    await press(page.getByRole("dialog").getByRole("button", { name: "Cancel" }));
 
     await press(screen.getByRole("button", { name: "Remove setup" }));
-    await expect.element(steps.getByText("Create an app at CRM (to do)")).toBeInTheDocument();
+    await expect.element(steps.getByText("Set up sign-in to CRM (to do)")).toBeInTheDocument();
     expect(
       control.calls
         .filter((call) => call.route === "PUT /api/baskule/admin/vendors/crm-vendor")

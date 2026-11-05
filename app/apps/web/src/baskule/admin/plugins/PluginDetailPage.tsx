@@ -1,5 +1,5 @@
-// baskule: one installed plugin: paused or not, who may use it, and what is left to set up (a vendor app,
-// organization keys) as numbered steps; then the service's needs, its tools and skills, and Technical details.
+// baskule: one installed plugin: paused or not, who may use it, and what is left to set up (the vendor's
+// sign-in, organization keys) as numbered steps; then the service's needs, its tools and skills, and Technical details.
 // An admin's own plugin opens in the editor; catalog or GitHub skills change through a copy. A plugin from
 // the plugins folder opens read-only: the folder defines it, and only its setup changes here.
 import { catalogService, catalogVendor } from "@t3tools/contracts/baskule-catalog";
@@ -38,18 +38,11 @@ import {
   sourceLabel,
 } from "../../plugins/presentation";
 import { confirmAction, FormField, notifySuccess, RowIcon, useApiResource } from "../../ui";
-import { CopyField } from "../../views/AddPersonDialog";
 import { PageDisclosure, PageHeading, PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
 import { PluginEditor } from "./PluginEditor";
 import { ServerTools } from "./ServerTools";
-import {
-  ClientMethodField,
-  SetupStep,
-  vendorCallback,
-  VendorSetupSteps,
-  type ClientMethod,
-} from "./VendorSetup";
+import { OptionalVendorApp, SetupStep, VendorSignInStep } from "./VendorSetup";
 
 /** Saves a package under the plugin's name. */
 function saveZip(blob: Blob, name: string) {
@@ -82,7 +75,6 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
   const data = useApiResource(load);
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<Opened | null>(null);
-  const [method, setMethod] = useState<ClientMethod>("client_secret_post");
 
   const run = async (key: string, action: () => Promise<unknown>, failure: string) => {
     setBusy(key);
@@ -427,20 +419,19 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         >
           <ol aria-label={t("Setup steps")} className="flex flex-col divide-y divide-border/50">
             {appInSteps ? (
-              <VendorSetupSteps
+              <VendorSignInStep
+                number={1}
                 vendor={plugin.vendor}
                 name={vendorName}
+                app={vendorApp}
                 configured={plugin.vendorConfigured}
-                docs={vendorApp?.docs}
-                method={method}
-                first={1}
                 onChanged={data.reload}
               />
             ) : null}
             {keyServers.map((server, index) => (
               <OrganizationKeyStep
                 key={server.name}
-                number={(appInSteps ? 3 : 1) + index}
+                number={(appInSteps ? 2 : 1) + index}
                 title={
                   keyServers.length > 1
                     ? t("Enter the key for {{server}}", { server: server.name })
@@ -519,19 +510,9 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
       ) : null}
 
       <PageDisclosure title={t("Technical details")}>
-        {appNeeded ? (
-          <div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
-            <CopyField label={t("Callback address")} value={vendorCallback()} />
-            <ClientMethodField value={method} onChange={setMethod} />
-            {appInSteps ? null : (
-              <OptionalVendorApp
-                vendor={plugin.vendor}
-                name={vendorName}
-                docs={vendorApp?.docs}
-                method={method}
-                onChanged={data.reload}
-              />
-            )}
+        {appNeeded && !appInSteps ? (
+          <div className="px-3 py-3 sm:px-4">
+            <OptionalVendorApp vendor={plugin.vendor} name={vendorName} onChanged={data.reload} />
           </div>
         ) : null}
         {plugin.servers.map((server) => (
@@ -639,52 +620,6 @@ export function PluginDetailPage({ id }: { readonly id: string }) {
         )}
       </PageSection>
     </>
-  );
-}
-
-/** A vendor app nobody needs yet: offered for services that turn out not to register Baskule. */
-function OptionalVendorApp({
-  vendor,
-  name,
-  docs,
-  method,
-  onChanged,
-}: {
-  readonly vendor: string;
-  readonly name: string;
-  readonly docs: string | undefined;
-  readonly method: ClientMethod;
-  readonly onChanged: () => Promise<unknown>;
-}) {
-  const t = useTranslation();
-  const [opened, setOpened] = useState(false);
-  return opened ? (
-    <ol
-      aria-label={t("Your own app at {{name}}", { name })}
-      className="flex flex-col divide-y divide-border/50 rounded-lg border border-border/60"
-    >
-      <VendorSetupSteps
-        vendor={vendor}
-        name={name}
-        configured={false}
-        docs={docs}
-        method={method}
-        first={1}
-        onChanged={onChanged}
-      />
-    </ol>
-  ) : (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-sm text-foreground">{t("Your own app at {{name}}", { name })}</span>
-        <span className="text-xs text-muted-foreground">
-          {t("Only needed if {{name}} doesn't let Baskule register itself.", { name })}
-        </span>
-      </div>
-      <Button size="sm" variant="outline" onClick={() => setOpened(true)}>
-        {t("Set up")}
-      </Button>
-    </div>
   );
 }
 
