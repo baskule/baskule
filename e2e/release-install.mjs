@@ -485,6 +485,7 @@ async function single() {
   const backup = resolve(evidence, "single-backup.tar.gz");
   w.dc(["run", "--rm", "-T", "backup"], { output: backup });
   w.dc(["up", "-d"]);
+  await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-computerd"]);
   await ready(`${base}/version.json`);
   await persisted(base, result);
   pass("single-machine down/up preserves chat and computer disk");
@@ -492,6 +493,7 @@ async function single() {
   purgeComputers(w);
   w.dc(["run", "--rm", "-T", "restore"], { inputFile: backup });
   w.dc(["up", "-d"]);
+  await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-computerd"]);
   await ready(`${base}/version.json`);
   await persisted(base, result);
   expect(secretHash(w)).toBe(secrets);
