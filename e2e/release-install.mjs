@@ -138,12 +138,14 @@ function stopWorld(w) {
   purgeComputers(w);
 }
 function scopedSecrets(w) {
-  for (const [service, role, keys] of [
+  // computerd drops root before exec; root without CAP_SYS_PTRACE cannot read its environ.
+  for (const [service, role, keys, user] of [
     ["baskule-rustfs", "storage", ["RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"]],
-    ["baskule-computerd", "computerd", ["COMPUTERD_TOKEN"]],
+    ["baskule-computerd", "computerd", ["COMPUTERD_TOKEN"], "node"],
   ]) {
     const container = w.dc(["ps", "-q", service]);
-    const names = command(["exec", container, "sh", "-c", 'tr "\\0" "\\n" < /proc/1/environ | cut -d= -f1']).split("\n");
+    const names = command(["exec", ...(user ? ["--user", user] : []), container, "sh", "-c",
+      'environ=$(tr "\\0" "\\n" < /proc/1/environ) && printf "%s\\n" "$environ" | cut -d= -f1']).split("\n");
     expect(names.filter(name => /^(RUSTFS_(?:ACCESS_KEY|SECRET_KEY)|AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY)|S3_(?:ACCESS_KEY|SECRET_KEY)|SETUP_TOKEN|PLUGIN_SYNC_TOKEN|COMPUTERD_TOKEN|E2E_LOGIN_.*)$/.test(name)).sort()).toEqual(keys.sort());
     const mounts = JSON.parse(command(["inspect", "-f", "{{json .Mounts}}", container]));
     expect(mounts.filter(mount => mount.Name?.endsWith("-secrets")).map(mount => mount.Name)).toEqual([`${w.project}_baskule-${role}-secrets`]);
