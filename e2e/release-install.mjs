@@ -506,13 +506,11 @@ function purgeComputers(w) {
   for (const name of command(["ps", "-aq", ...filters]).split(/\s+/).filter(Boolean)) command(["rm", "-f", name]);
   for (const name of command(["volume", "ls", "-q", ...filters]).split(/\s+/).filter(Boolean)) command(["volume", "rm", name]);
   const network = service.environment.COMPUTER_NETWORK;
-  const info = command(["network", "inspect", network], { allowFailure: true });
-  if (info) {
-    const [value] = JSON.parse(info);
-    if (value.Labels?.["baskule.instance"] === instance && Object.keys(value.Containers ?? {}).length === 0) command(["network", "rm", network]);
-  }
+  // `docker inspect` prints [] when the object is missing.
+  const [value] = JSON.parse(command(["network", "inspect", network], { allowFailure: true }) || "[]");
+  if (value?.Labels?.["baskule.instance"] === instance && Object.keys(value.Containers ?? {}).length === 0) command(["network", "rm", network]);
   const legacy = service.environment.COMPUTER_LEGACY_VOLUME;
-  if (legacy && command(["volume", "inspect", legacy], { allowFailure: true })) command(["volume", "rm", legacy]);
+  if (legacy && command(["volume", "ls", "-q", "--filter", `name=^${legacy}$`])) command(["volume", "rm", legacy]);
   command(["run", "--rm", "--network", "host", "--user", "0:0", "--cap-drop", "ALL", "--cap-add", "NET_ADMIN", "--read-only", "--tmpfs", "/run", "--entrypoint", "node", service.image, "--input-type=module", "-e", 'import {guardGcScript} from "./src/guard.ts"; import {execFileSync} from "node:child_process"; execFileSync("sh", ["-ec", guardGcScript()], {stdio:"inherit"});']);
 }
 async function restoreOnly() {
