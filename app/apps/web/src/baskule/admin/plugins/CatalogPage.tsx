@@ -14,6 +14,7 @@ import {
   CircleCheckIcon,
   CirclePauseIcon,
   ClockIcon,
+  MousePointerClickIcon,
   PlusIcon,
   WrenchIcon,
   ZapIcon,
@@ -57,18 +58,22 @@ const AREAS: Record<CatalogArea, string> = {
   engineering: msg("Engineering"),
 };
 
-/** A service before it is added: whether the admin has anything to set up once it is. A vendor's app is
- * shared by its services, so one saved for another of them counts. */
-function needsVendorSetup(service: CatalogService, configured: ReadonlySet<string>): boolean {
+/** A service before it is added: what the admin sets up once it is, if anything; "relay" when Baskule
+ * sign-in can do it in one click. A vendor's sign-in is shared by its services, so one saved for another
+ * of them counts. */
+function vendorSetupNeeded(
+  service: CatalogService,
+  configured: ReadonlySet<string>,
+): "setup" | "relay" | null {
   const signIn = catalogVendor(service.vendor)?.signIn;
-  if (signIn?.type === "key") return true;
-  return (
-    // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- client is the catalog OAuth registration type, not an environment RPC client.
-    signIn?.type === "account" && signIn.client === "static" && !configured.has(service.vendor)
-  );
+  if (signIn?.type === "key") return "setup";
+  // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- client is the catalog OAuth registration type, not an environment RPC client.
+  if (signIn?.type !== "account" || signIn.client !== "static" || configured.has(service.vendor))
+    return null;
+  return signIn.relay ? "relay" : "setup";
 }
 
-type ServiceState = "ready" | "setup" | "unavailable" | "added" | "paused" | "unfinished";
+type ServiceState = "ready" | "relay" | "setup" | "unavailable" | "added" | "paused" | "unfinished";
 
 function serviceState(
   service: CatalogService,
@@ -76,13 +81,18 @@ function serviceState(
   configured: ReadonlySet<string>,
 ): ServiceState {
   if (service.notYet) return "unavailable";
-  if (!installed) return needsVendorSetup(service, configured) ? "setup" : "ready";
+  if (!installed) return vendorSetupNeeded(service, configured) ?? "ready";
   if (!installed.enabled) return "paused";
   return installed.setup.some((entry) => !entry.done) ? "unfinished" : "added";
 }
 
 const STATES = {
   ready: { text: msg("Ready in one click"), icon: ZapIcon, tone: "text-muted-foreground" },
+  relay: {
+    text: msg("One-click sign-in"),
+    icon: MousePointerClickIcon,
+    tone: "text-muted-foreground",
+  },
   setup: { text: msg("Needs setup"), icon: WrenchIcon, tone: "text-muted-foreground" },
   unavailable: { text: msg("Not available yet"), icon: ClockIcon, tone: "text-muted-foreground" },
   added: { text: msg("Added"), icon: CircleCheckIcon, tone: "text-success-foreground" },
@@ -314,6 +324,7 @@ function ServiceDialog({
   };
 
   const addable = shown !== null && !shown.notYet;
+  const setupNeeded = shown ? vendorSetupNeeded(shown, configured) : null;
   return (
     <Dialog open={service !== null} onOpenChange={(open) => !open && !adding && close()}>
       <DialogPopup className="sm:max-w-md">
@@ -342,9 +353,11 @@ function ServiceDialog({
                 </Alert>
               ) : (
                 <>
-                  {needsVendorSetup(shown, configured) ? (
+                  {setupNeeded ? (
                     <p className="text-sm text-muted-foreground">
-                      {t("After you add it, finish setting it up on its page.")}
+                      {setupNeeded === "relay"
+                        ? t("After you add it, turn on its sign-in on its page in one click.")
+                        : t("After you add it, finish setting it up on its page.")}
                     </p>
                   ) : null}
                   <ServiceNeeds service={shown} />

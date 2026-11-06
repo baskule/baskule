@@ -18,6 +18,7 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ControlCell", "SpaceCell"] }],
   "vars": {
     "PUBLIC_ORIGINS": "",
+    "BASKULE_CONNECT_URL": "https://connect.baskule.com",
     "SETUP_TOKEN": "",
     "AUTH_SECRET": "",
     "AUTH_RATE_LIMIT": "1",

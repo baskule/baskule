@@ -134,6 +134,7 @@ services:
       CELLD_NODES_INTERNAL: baskule-celld-a:47092 baskule-celld-b:47092
       SETUP_STATUS_URL: ""
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
+      BASKULE_CONNECT_URL: ${BASKULE_CONNECT_URL:-https://connect.baskule.com}
       SETUP_TOKEN: ${SETUP_TOKEN:-}
       COMPUTERD_URL: ${COMPUTERD_URL:-http://baskule-computerd:47094}
       COMPUTERD_TOKEN: ${COMPUTERD_TOKEN:-}

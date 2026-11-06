@@ -2,6 +2,10 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "connectUrl": {
+      "type": "string",
+      "pattern": "^https://[^?#@ ]+$"
+    },
     "publicUrl": {
       "type": "string",
       "pattern": "^https?://[^/?#@]+$"

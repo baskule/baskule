@@ -79,6 +79,12 @@ async function signIn(page, who) {
     .waitFor({ state: "attached", timeout: 60_000 });
 }
 
+/** Resolves once a dialog's open transition has finished, so its shot isn't half faded in. */
+const settled = (dialog) =>
+  dialog.evaluate((element) =>
+    Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+  );
+
 const shot = async (page, name) => {
   const file = NodePath.join(OUT, `${name}.png`);
   await page.screenshot({ path: file });
@@ -557,12 +563,31 @@ const scenarios = {
         groups.find((group) => group.builtin === "everyone").plugins.includes(installedId),
       `${device}: the assigned plugin starts unpaused`,
     );
+    await page
+      .getByRole("list", { name: "Setup steps" })
+      .getByRole("button", { name: "Set up sign-in", exact: true })
+      .click();
+    const googleSignIn = page.getByRole("dialog", {
+      name: "Set up sign-in to Google",
+      exact: true,
+    });
+    const googleSteps = googleSignIn.getByRole("list", { name: "Steps at Google", exact: true });
+    await googleSteps.waitFor();
     check(
-      (await page.getByRole("combobox", { name: /signs in$/ }).count()) === 0 &&
-        (await page.getByRole("link", { name: "Setup instructions" }).getAttribute("target")) ===
-          "_blank",
-      `${device}: a catalog service signs in as listed, with its vendor's instructions`,
+      (await googleSignIn.getByRole("radiogroup").count()) === 0 &&
+        (await googleSignIn.getByText(/^Internal app: only accounts/).count()) === 1 &&
+        (await googleSteps.getByRole("listitem").count()) === 7 &&
+        (await googleSteps.getByLabel("Callback address", { exact: true }).inputValue()) ===
+          `${BASE}/api/baskule/plugins/oauth/callback` &&
+        (await googleSignIn
+          .getByRole("link", { name: "Setup instructions" })
+          .getAttribute("target")) === "_blank",
+      `${device}: Google signs in through the organization's own app, step by step`,
     );
+    await settled(googleSignIn);
+    await shot(page, `${device}-plugins-vendor-google-steps`);
+    await googleSignIn.getByRole("button", { name: "Cancel", exact: true }).click();
+    await googleSignIn.waitFor({ state: "detached" });
     await page.getByRole("button", { name: `Pause ${google}`, exact: true }).click();
     await page.getByRole("button", { name: `Resume ${google}`, exact: true }).click();
     await page.getByRole("button", { name: `Pause ${google}`, exact: true }).waitFor();
@@ -570,8 +595,71 @@ const scenarios = {
     await page.getByRole("list", { name: "Setup steps" }).scrollIntoViewIfNeeded();
     await shot(page, `${device}-plugins-vendor-setup`);
     await page.getByText("Technical details", { exact: true }).click();
-    await page.getByLabel("Callback address", { exact: true }).scrollIntoViewIfNeeded();
+    await page.getByText("Source", { exact: true }).scrollIntoViewIfNeeded();
     await shot(page, `${device}-plugins-technical-details`);
+
+    // A vendor Baskule signs in for: one click, or the organization's own app; switching asks first.
+    const relay =
+      device === "desktop" ? { id: "slack", name: "Slack" } : { id: "github", name: "GitHub" };
+    await page.request.delete(`/api/baskule/admin/plugins/${relay.id}`);
+    await page.goto("/admin/plugins/catalog");
+    const relayEntry = page.getByRole("button", { name: relay.name, exact: true });
+    await relayEntry.waitFor();
+    const relayState = await relayEntry.getAttribute("aria-describedby");
+    check(
+      (await page.locator(`[id="${relayState}"]`).textContent()) === "One-click sign-in",
+      `${device}: a vendor Baskule signs in for reads One-click sign-in`,
+    );
+    await page.getByRole("button", { name: `Add ${relay.name}`, exact: true }).click();
+    await page
+      .getByRole("dialog", { name: `Add ${relay.name}`, exact: true })
+      .getByRole("button", { name: "Add plugin", exact: true })
+      .click();
+    const added = page.getByRole("link", { name: relay.name, exact: true });
+    await added.waitFor();
+    // A catalog service's removal keeps its vendor's sign-in: start without one on a reused mock.
+    await page.request.put(`/api/baskule/admin/vendors/${relay.id}`, { data: "null" });
+    await added.click();
+    await page.getByRole("heading", { name: relay.name, level: 1 }).waitFor();
+    await page
+      .getByRole("list", { name: "Setup steps" })
+      .getByRole("button", { name: "Set up sign-in", exact: true })
+      .click();
+    const relayDialog = page.getByRole("dialog", {
+      name: `Set up sign-in to ${relay.name}`,
+      exact: true,
+    });
+    const baskuleSignIn = relayDialog.getByRole("radio", { name: /^Baskule sign-in/ });
+    await baskuleSignIn.waitFor();
+    check(await baskuleSignIn.isChecked(), `${device}: Baskule sign-in is offered first`);
+    await settled(relayDialog);
+    await shot(page, `${device}-plugins-vendor-relay`);
+    await relayDialog.getByRole("radio", { name: /^Your own app/ }).click();
+    await relayDialog.getByLabel("Client ID", { exact: true }).waitFor();
+    await shot(page, `${device}-plugins-vendor-own-app`);
+    await baskuleSignIn.click();
+    await relayDialog.getByRole("button", { name: "Use Baskule sign-in", exact: true }).click();
+    await page
+      .getByText(`Saved. People sign in to ${relay.name} with Baskule sign-in.`, { exact: true })
+      .waitFor();
+    await shot(page, `${device}-plugins-vendor-relay-saved`);
+    await page
+      .getByRole("button", { name: `Change how people sign in to ${relay.name}`, exact: true })
+      .click();
+    await relayDialog.getByRole("radio", { name: /^Your own app/ }).click();
+    await relayDialog.getByLabel("Client ID", { exact: true }).fill("mock-client");
+    await relayDialog.getByLabel("Client secret", { exact: true }).fill("mock-secret");
+    await relayDialog.getByRole("button", { name: "Save setup", exact: true }).click();
+    const switching = page.getByRole("alertdialog");
+    await switching.getByText(`Switch ${relay.name} to your own app?`, { exact: true }).waitFor();
+    await settled(switching);
+    await shot(page, `${device}-plugins-vendor-switch-confirm`);
+    await switching.getByRole("button", { name: "Confirm", exact: true }).click();
+    await page
+      .getByText(`Saved. People sign in to ${relay.name} through your own app.`, { exact: true })
+      .waitFor();
+    check(true, `${device}: switching to the organization's own app asks first, then saves it`);
+    await page.request.delete(`/api/baskule/admin/plugins/${relay.id}`);
 
     await page.goto("/admin/plugins/installed");
     await page.getByRole("link", { name: "Brave Search" }).first().waitFor();
@@ -743,9 +831,15 @@ const scenarios = {
     await page.goto("/settings/desktop");
     await page.getByText("Baskule for Linux").first().waitFor();
     const download = page.getByRole("link", { name: "Download", exact: true });
-    check(await download.getAttribute("href") === "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
-      `${device}: app download points to the running version's GitHub release asset`);
-    check(await page.getByText("Apps · version 0.5.0", { exact: true }).isVisible(), `${device}: apps show the running version`);
+    check(
+      (await download.getAttribute("href")) ===
+        "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
+      `${device}: app download points to the running version's GitHub release asset`,
+    );
+    check(
+      await page.getByText("Apps · version 0.5.0", { exact: true }).isVisible(),
+      `${device}: apps show the running version`,
+    );
     await shot(page, `${device}-apps`);
     await page.getByRole("button", { name: "Show QR for another device", exact: true }).click();
     const link = await page

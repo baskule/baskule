@@ -17,6 +17,8 @@ describe("curated plugin catalog", () => {
         expect(new URL(vendor.signIn.docs).protocol).toBe("https:");
       }
     }
+    expect(CATALOG_VENDORS.filter(v => v.signIn.type === "account" && v.signIn.client === "static" && v.signIn.relay).map(v => v.id).sort()).toEqual(["asana", "box", "canva", "dropbox", "github", "hubspot", "microsoft", "slack", "zoom"]);
+    for (const vendor of CATALOG_VENDORS) if (vendor.signIn.type === "account" && vendor.signIn.client === "static") expect(vendor.signIn.ownApp.length).toBeGreaterThan(0);
     for (const service of CATALOG) {
       const vendor = CATALOG_VENDORS.find(v => v.id === service.vendor)!;
       expect(vendor).toBeDefined();

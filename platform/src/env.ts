@@ -6,6 +6,7 @@ export interface Env {
 
   /** Comma-separated exact origins allowed for state-changing requests and WS upgrades, besides the request's own. */
   PUBLIC_ORIGINS?: string;
+  BASKULE_CONNECT_URL?: string;
   /** First-boot bootstrap (ignored once an admin exists). */
   SETUP_TOKEN?: string;
   PLUGIN_SYNC_TOKEN?: string;

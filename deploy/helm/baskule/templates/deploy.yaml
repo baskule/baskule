@@ -33,6 +33,7 @@ spec:
             - name: CELLD_NODES_INTERNAL
               value: {{ range $i := until (int .Values.replicas) }}{{ $.Release.Name }}-celld-{{ $i }}.{{ $.Release.Name }}-peers.{{ $.Release.Namespace }}.svc.cluster.local:47092 {{ end }}
             - {name: PUBLIC_ORIGINS, value: {{ .Values.publicUrl | quote }}}
+            - {name: BASKULE_CONNECT_URL, value: {{ .Values.connectUrl | quote }}}
             - {name: AUTH_CONFIG, value: {{ .Values.authConfig | quote }}}
             - {name: PLATFORM_READY_URL, value: {{ printf "http://%s/api/baskule/setup" .Release.Name | quote }}}
             - {name: PLUGIN_SYNC_URL, value: {{ printf "http://%s" .Release.Name | quote }}}

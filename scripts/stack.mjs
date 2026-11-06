@@ -295,6 +295,7 @@ async function build(s) {
     w.name = `osdev-${s.id}`;
     w.main = "worker.js"; w.assets.directory = "web";
     Object.assign(w.vars, {
+      BASKULE_CONNECT_URL: env.BASKULE_CONNECT_URL || "https://connect.baskule.com",
       PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, SETUP_TOKEN: s.setupToken, PLUGIN_SYNC_TOKEN: s.pluginSyncToken,
       AUTH_SECRET: s.authSecret, COMPUTERD_URL: s.ports.computerd ? `http://127.0.0.1:${s.ports.computerd}` : "http://127.0.0.1:1",
       COMPUTERD_TOKEN: s.computerdToken, ...Object.fromEntries(Object.keys({ ...s.definition.env, ...s.overrides }).map((key) => [key, env[key]])),

@@ -47,6 +47,18 @@ export interface AdminPluginList {
   plugins: AdminPlugin[];
   folder: PluginFolder | null;
 }
+/** `GET /admin/vendors/:vendor`. Availability is checked only after choosing relay mode. */
+export interface VendorSetup {
+  mode: "own" | "relay" | null;
+  relaySupported: boolean;
+  relayAvailable: boolean | null;
+  callbackUrl: string;
+  tenant?: string;
+}
+/** `PUT /admin/vendors/:vendor`; null removes setup and disconnects this vendor's accounts. */
+export type VendorSetupInput = null
+  | { mode?: "own"; clientId: string; clientSecret?: string; tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic"; tenant?: string }
+  | { mode: "relay"; tenant?: string };
 export interface Group {
   id: string;
   name: string;
@@ -182,6 +194,8 @@ export const PLUGIN_ERROR_CODES = [
   "oauth_resource_mismatch",
   "oauth_scope_missing",
   "oauth_unavailable",
+  "relay_vendor_unavailable",
+  "relay_vendor_not_served",
   "plugin_from_folder",
   "plugin_links_unsupported",
   "plugin_not_found",

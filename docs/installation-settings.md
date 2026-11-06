@@ -190,9 +190,17 @@ identifier where vendor metadata requires one. Custom servers default to their M
 OAuth endpoints never follow redirects with credentials. A client-ID metadata document is not served by this version;
 servers without DCR use pre-registration.
 
-For a service without dynamic registration, open the plugin from Admin → Plugins and follow its Setup steps. Register
-Baskule's address with the vendor as the callback, then save the client ID and secret. Technical details shows the
-callback address and the client authentication method.
+For a service without dynamic registration, configure its vendor once. Supported vendors can use Baskule sign-in
+through the stateless relay, or an administrator can register their own app with the installation callback and save
+the client ID and secret. Google requires one project and one web OAuth client shared across its services, with
+an Internal consent screen: only accounts in your own Workspace organization are supported.
+
+`BASKULE_CONNECT_URL` selects the sign-in relay (default `https://connect.baskule.com`); Kubernetes uses the chart
+value `connectUrl`. Set it in the deployment environment and redeploy the platform. A configured private relay may
+use HTTP, including a loopback relay for local tests; vendor discovery keeps the outbound rules above. An installation
+that never selects relay mode never contacts the relay. The relay holds the shared client secret and forwards token
+requests; MCP traffic goes directly to the vendor. Temporary token-service failures keep refresh tokens and report
+unavailable; a vendor invalid_grant requires reconnecting.
 Values are write-only and encrypted. Saving or removing setup disconnects accounts and cancels pending consent
 for every plugin using that vendor; other vendors are unaffected. The saved issuer is pinned: a resource that
 changes its authorization server is refused before Baskule sends the client secret. If resource metadata disappears

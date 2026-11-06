@@ -16,6 +16,8 @@ import {
   type ServerTestResult,
   type SkillHistory,
   type SpacePluginSettings,
+  type VendorSetup,
+  type VendorSetupInput,
 } from "@t3tools/contracts/baskule-plugins";
 import { toastManager } from "../../components/ui/toast";
 import { t } from "../../i18n";
@@ -23,13 +25,6 @@ import { BaskuleApiError, messageFromBody, request } from "../api";
 
 const root = "/api/baskule";
 const enc = encodeURIComponent;
-
-/** One vendor's OAuth client. Write-only: the server only says whether one is saved. */
-export interface VendorClient {
-  clientId: string;
-  clientSecret?: string;
-  tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic";
-}
 
 export const pluginsApi = {
   /** Installed plugins, and the mounted plugins folder as last read at startup. */
@@ -81,11 +76,14 @@ export const pluginsApi = {
   remove: (id: string) => request<{ ok: true }>("DELETE", `${root}/admin/plugins/${enc(id)}`),
   secret: (id: string, input: PluginSecretInput) =>
     request<{ ok: true }>("PUT", `${root}/admin/plugins/${enc(id)}/secret`, input),
-  vendorSetup: (vendor: string, client: VendorClient | null) =>
+  /** How a vendor's accounts sign in. An own app's ID and secret are write-only and never read back. */
+  vendor: (vendor: string) => request<VendorSetup>("GET", `${root}/admin/vendors/${enc(vendor)}`),
+  /** Replacing or removing it disconnects every account people connected for this vendor. */
+  vendorSetup: (vendor: string, input: VendorSetupInput) =>
     request<{ ok: true; configured: boolean }>(
       "PUT",
       `${root}/admin/vendors/${enc(vendor)}`,
-      client,
+      input,
     ),
   mine: async () => (await request<{ plugins: MemberPlugin[] }>("GET", `${root}/plugins`)).plugins,
   updateAccount: (id: string, account: string, patch: { label: string } | { default: true }) =>
@@ -213,6 +211,8 @@ const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
       "The sign-in didn't give the access this plugin needs. Try again and allow everything it asks.",
     ),
   oauth_unavailable: () => t("The service's sign-in didn't answer. Try again in a moment."),
+  relay_vendor_unavailable: () => t("Baskule's sign-in service didn't answer. Try again in a moment."),
+  relay_vendor_not_served: () => t("Baskule sign-in is not offered for this service. Ask an administrator to set up your own app."),
   plugin_from_folder: () => t("Edit this plugin in the plugins folder, then restart Baskule."),
   plugin_links_unsupported: () =>
     t("It contains links to other files. Put the files themselves in it instead."),
