@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "../../src/control/settings";
-import { SpaceCell } from "../../src/space/index";
+import { IDLE_DISPOSE_MS, RUN_HEARTBEAT_MS, SpaceCell } from "../../src/space/index";
+import { RECHECK_INTERVAL_MS } from "../../src/shared/recheck";
 
 const createServer = vi.hoisted(() => vi.fn());
 vi.mock("../../src/space/t3/space-cell.js", () => ({
@@ -14,6 +15,7 @@ const deferred = () => {
 };
 const server = (dispose = vi.fn(async () => {})) => ({
   bootMs: 0, activeRuns: () => 0, nextWakeAt: () => null, sockets: () => [], dispose,
+  fetch: async () => new Response("ok"), drainPushEffects: async () => {}, wakeDueSnoozes: async () => 0,
 });
 /** A cell whose database has these tables (default: an existing space, OpenCode's schema present). */
 const control = { getByName: () => ({ fetch: async () => Response.json({ ...defaultSettings, apiKey: "test", plugins: { servers: [], skills: [] } }) }) };
@@ -26,6 +28,99 @@ const cell = (put = vi.fn(async () => {}), tables = ["session"], waitUntil: (pro
 } } as never, { CONTROL: control } as never) as any;
 
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
+
+describe("SpaceCell idle alarms and cached status", () => {
+  const storedCell = () => {
+    const values = new Map<string, unknown>();
+    const c = cell();
+    c.ctx.storage.put.mockImplementation(async (key: string, value: unknown) => { values.set(key, value); });
+    c.ctx.storage.get.mockImplementation(async (key: string) => values.get(key));
+    c.ctx.storage.delete.mockImplementation(async (key: string) => values.delete(key));
+    c.ctx.storage.setAlarm = vi.fn(async () => {});
+    return c;
+  };
+  const request = () => new Request("http://space/", { headers: { "x-baskule-base": "/s/space" } });
+
+  it("rechecks an inactive open socket, then re-arms idle disposal after it closes", async () => {
+    vi.useFakeTimers();
+    const sockets = [{ userId: "user", sessionId: "session", close: vi.fn() }];
+    const runtime = { ...server(), sockets: () => sockets };
+    createServer.mockResolvedValueOnce(runtime);
+    const c = storedCell();
+    c.env.CONTROL = { getByName: () => ({ fetch: async (req: Request) => new URL(req.url).pathname === "/_baskule/check"
+      ? Response.json({ valid: ["session"] }) : control.getByName().fetch() }) };
+    await c.fetch(request());
+    const scheduling = vi.spyOn(c, "scheduleAlarm");
+    try {
+      const close = createServer.mock.calls.at(-1)![0].onSocketOpen();
+      await scheduling.mock.results.at(-1)!.value;
+      vi.setSystemTime(Date.now() + IDLE_DISPOSE_MS + 1);
+      await c.alarm();
+      expect(runtime.dispose).not.toHaveBeenCalled();
+      expect(await c.alarms.get("space")).toBe(Date.now() + RECHECK_INTERVAL_MS);
+      expect(c.ctx.storage.setAlarm).toHaveBeenLastCalledWith(Date.now() + RECHECK_INTERVAL_MS);
+
+      sockets.length = 0;
+      close();
+      await scheduling.mock.results.at(-1)!.value;
+      const idleAt = Date.now() + IDLE_DISPOSE_MS;
+      // The already scheduled recheck runs first, then leaves only the idle deadline.
+      vi.setSystemTime(await c.alarms.get("space"));
+      await c.alarm();
+      expect(await c.alarms.get("space")).toBe(idleAt);
+      vi.setSystemTime(idleAt);
+      await c.alarm();
+      expect(runtime.dispose).toHaveBeenCalledOnce();
+      expect(await c.alarms.get("space")).toBeNull();
+    } finally { await c.dispose(); }
+  });
+
+  it("re-arms idle disposal from the heartbeat after the last run ends", async () => {
+    vi.useFakeTimers();
+    let activeRuns = 1;
+    const runtime = { ...server(), activeRuns: () => activeRuns };
+    createServer.mockResolvedValueOnce(runtime);
+    const c = storedCell();
+    await c.fetch(request());
+    const idleAt = Date.now() + IDLE_DISPOSE_MS;
+    try {
+      vi.setSystemTime(Date.now() + RUN_HEARTBEAT_MS);
+      await c.alarm();
+      expect(await c.alarms.get("space")).toBe(Date.now() + RUN_HEARTBEAT_MS);
+      activeRuns = 0;
+      vi.setSystemTime(await c.alarms.get("space"));
+      await c.alarm();
+      expect(await c.alarms.get("space")).toBe(idleAt);
+      vi.setSystemTime(idleAt);
+      await c.alarm();
+      expect(runtime.dispose).toHaveBeenCalledOnce();
+    } finally { await c.dispose(); }
+  });
+
+  it.each([false, true])("writes status only when its values change, legacy=%s", async legacy => {
+    vi.useFakeTimers();
+    let activeRuns = 0, nextWakeAt: number | null = null;
+    createServer.mockResolvedValueOnce({ ...server(), activeRuns: () => activeRuns, nextWakeAt: () => nextWakeAt });
+    const c = storedCell();
+    if (legacy) await c.ctx.storage.put("baskule:status", { activeRuns: 0, nextWakeAt: null, updatedAt: 1 });
+    c.ctx.storage.put.mockClear();
+    const statusWrites = () => c.ctx.storage.put.mock.calls.filter(([key]: [string]) => key === "baskule:status");
+    try {
+      await c.fetch(request());
+      vi.setSystemTime(Date.now() + 1_000);
+      await c.fetch(request());
+      await c.fetch(new Request("http://space/_baskule/status"));
+      expect(statusWrites()).toHaveLength(legacy ? 0 : 1);
+      activeRuns = 1;
+      await c.fetch(request());
+      nextWakeAt = Date.now() + 60_000;
+      await c.fetch(request());
+      await c.fetch(request());
+      expect(statusWrites()).toHaveLength(legacy ? 2 : 3);
+      expect(statusWrites().at(-1)?.[1]).toEqual({ activeRuns, nextWakeAt });
+    } finally { await c.dispose(); }
+  });
+});
 
 describe("SpaceCell boot/dispose overlap", () => {
   it("finishes the agent alarm before reconfigure retires its shared database", async () => {
