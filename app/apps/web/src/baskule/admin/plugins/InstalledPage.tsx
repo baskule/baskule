@@ -1,5 +1,5 @@
 // baskule: Plugins → Installed: every plugin the admin added, whether it is paused or needs setup,
-// and who may use it; above them, what the mounted plugins folder couldn't use.
+// and who may use it. Skipped package contents belong in each plugin’s details.
 import type { Group, Plugin, PluginFolder } from "@t3tools/contracts/baskule-plugins";
 import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
@@ -46,7 +46,6 @@ export function InstalledPage() {
 
   return (
     <>
-      {data.data?.folder ? <FolderProblems folder={data.data.folder} /> : null}
       <PageSection
         title={data.data ? t("Plugins ({{count}})", { count: plugins.length }) : t("Plugins")}
         description={t(
@@ -118,19 +117,37 @@ export function InstalledPage() {
           );
         })}
       </PageSection>
+      {data.data?.folder ? <FolderProblems folder={data.data.folder} plugins={plugins} /> : null}
     </>
   );
 }
 
-function FolderProblems({ folder }: { readonly folder: PluginFolder }) {
+function FolderProblems({
+  folder,
+  plugins,
+}: {
+  readonly folder: PluginFolder;
+  readonly plugins: ReadonlyArray<Plugin>;
+}) {
   const t = useTranslation();
-  if (folder.problems.length === 0) return null;
+  const problems = folder.problems.filter(
+    (problem) =>
+      !plugins.some(
+        (plugin) =>
+          plugin.source.type === "folder" &&
+          plugin.source.path === problem.path &&
+          plugin.omitted.some(
+            (omission) => problem.message === `${omission.code}: ${omission.subject}`,
+          ),
+      ),
+  );
+  if (problems.length === 0) return null;
   return (
     <Alert variant="warning">
       <AlertTitle>{t("Some of the plugins folder couldn't be used")}</AlertTitle>
       <AlertDescription>
         <ul className="flex flex-col gap-1">
-          {folder.problems.map((problem) => (
+          {problems.map((problem) => (
             <li key={`${problem.path}:${problem.message}`} className="[overflow-wrap:anywhere]">
               <span className="font-mono text-xs">{problem.path}</span> · {problem.message}
             </li>
