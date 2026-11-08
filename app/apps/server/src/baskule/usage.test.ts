@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { baskuleUsageFailure } from "../../../../packages/provider-opencode/src/server/baskuleUsage.ts";
+import {
+  baskuleSetupFailure,
+  baskuleUsageFailure,
+} from "../../../../packages/provider-opencode/src/server/baskuleUsage.ts";
 import { usageAuthor } from "./usageAuthor.ts";
 import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 
@@ -28,6 +31,23 @@ describe("usage attribution and errors", () => {
     });
     expect(baskuleUsageFailure({ kind: "usage_limit_reached", field: "broken" })).toBeUndefined();
     expect(baskuleUsageFailure(new Error("other provider error"))).toBeUndefined();
+  });
+  it("tells members who can choose an AI provider when the installation has none", () => {
+    expect(
+      baskuleSetupFailure({
+        _tag: "InvalidRequestError",
+        kind: "ai_not_configured",
+        message: "ignored provider text",
+      }),
+    ).toEqual({
+      class: "provider_error",
+      code: "ai_not_configured",
+      retryable: false,
+      message:
+        "No AI model is set up yet. An administrator needs to choose an AI provider in Admin → AI → Models.",
+    });
+    expect(baskuleSetupFailure({ kind: "usage_limit_reached" })).toBeUndefined();
+    expect(baskuleSetupFailure(new Error("other provider error"))).toBeUndefined();
   });
   it("assigns agent-created schedules to the active turn author, even after someone else queues a message", () => {
     const author = { id: "alice", name: "Alice" };

@@ -215,14 +215,24 @@ export function baskuleManagementDestination(
   return BASKULE_MANAGEMENT_DESTINATIONS.find((destination) => destination === value) ?? null;
 }
 
+/** The installation's one chat provider, endpoint and model. */
+export interface BaskuleAISettings {
+  providerId: BaskuleAIProviderId;
+  baseUrl: string;
+  model: BaskuleAIModel;
+}
+/** A chat turn refused because no administrator has chosen an AI provider yet. */
+export const BASKULE_AI_NOT_CONFIGURED = {
+  kind: "ai_not_configured",
+  message:
+    "No AI model is set up yet. An administrator needs to choose an AI provider in Admin → AI → Models.",
+} as const;
+
 export interface BaskuleProductSettings {
   googleSignupDomains: string[];
   organizationName: string;
-  ai: {
-    providerId: BaskuleAIProviderId;
-    baseUrl: string;
-    model: BaskuleAIModel;
-  };
+  /** Null until an administrator saves a provider and model: a new installation has none. */
+  ai: BaskuleAISettings | null;
   idleMinutes: number;
   transcription: BaskuleTranscriptionSettings;
 }

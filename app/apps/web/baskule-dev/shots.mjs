@@ -40,7 +40,7 @@ const check = (condition, message) => {
 async function newPage(browser, device) {
   const context = await browser.newContext({ ...VIEWPORTS[device], baseURL: BASE });
   const page = await context.newPage();
-  // The shared host boots a T3 server per space on first use (about 5 CPU-s each).
+  // A space starts its T3 server on first use; allow for initialization.
   page.setDefaultTimeout(90_000);
   page.on("console", (message) => {
     if (message.type() === "error" && !/favicon|Failed to load resource/.test(message.text())) {
@@ -112,8 +112,15 @@ const scenarios = {
       await page.getByLabel("Organization name", { exact: true }).fill(`Settings test ${device}`);
       await page.getByRole("button", { name: "Save settings", exact: true }).click();
       await page.getByText("Organization settings saved", { exact: true }).waitFor();
+      const fresh =
+        (await (await page.request.get("/api/baskule/admin/settings")).json()).ai === null;
       await page.goto("/admin/ai/models");
-      await page.getByLabel("API key", { exact: true }).waitFor();
+      await page.getByLabel("Provider", { exact: true }).waitFor();
+      if (fresh)
+        check(
+          await page.getByText("No AI provider yet", { exact: true }).isVisible(),
+          `${device}: a new installation has no AI provider until an admin saves one`,
+        );
       await shot(page, `${device}-admin-models`);
       await page.getByLabel("Provider", { exact: true }).click();
       await page.getByRole("option", { name: "Custom", exact: true }).click();

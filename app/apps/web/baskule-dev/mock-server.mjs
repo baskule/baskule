@@ -16,22 +16,11 @@ const HERE = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const WEB_ROOT = NodePath.resolve(HERE, "..");
 const REPO_ROOT = NodePath.resolve(WEB_ROOT, "../..");
 const authConfig = { mode: "authenticated", password: true, providers: [] };
+// Like a new installation: no AI provider until an admin saves one.
 let productSettings = {
   organizationName: "Mock organisation",
   idleMinutes: 10,
-  ai: {
-    providerId: "mistral",
-    baseUrl: "https://api.mistral.ai/v1",
-    model: {
-      id: "mistral-large-4",
-      name: "Mistral Large 4",
-      image: true,
-      pdf: true,
-      limit: { context: 524288, output: 262144 },
-      cost: { input: 0.68, output: 2.09, cache_read: 0.07 },
-      settings: {},
-    },
-  },
+  ai: null,
   transcription: {
     enabled: true,
     providerId: "openai",
@@ -685,19 +674,20 @@ async function handleApi(req, res, url) {
     if (!isAdmin) return fail(res, 403, "forbidden");
     if (method === "PATCH") {
       const { apiKey, transcriptionApiKey, ...settings } = await readBody(req);
-      const { cost: _cost, ...model } = settings.ai.model;
-      const sameAI =
-        JSON.stringify({ ...settings.ai, model }) ===
-        JSON.stringify({
-          ...productSettings.ai,
-          model: { ...productSettings.ai.model, cost: undefined },
+      const withoutCost = (ai) =>
+        JSON.stringify(ai && { ...ai, model: { ...ai.model, cost: undefined } });
+      const sameAI = withoutCost(settings.ai) === withoutCost(productSettings.ai);
+      if (settings.ai && (!sameAI || apiKey !== undefined)) {
+        const problem = await checkMockConnection({
+          ...settings.ai,
+          apiKey,
+          modelId: settings.ai.model.id,
         });
-      if (!sameAI || apiKey !== undefined) {
-        const problem = await checkMockConnection({ ...settings.ai, apiKey, modelId: model.id });
         if (problem) return fail(res, problem.status, problem.code, problem.message);
       }
       // Built-in prices are the ControlCell's: the listed model's, or none.
-      if (settings.ai.providerId !== "custom") {
+      if (settings.ai && settings.ai.providerId !== "custom") {
+        const { cost: _cost, ...model } = settings.ai.model;
         const cost = sameAI
           ? productSettings.ai.model.cost
           : MOCK_PROVIDER_MODELS[settings.ai.providerId]?.find((entry) => entry.id === model.id)
@@ -716,7 +706,9 @@ async function handleApi(req, res, url) {
     }
     return send(res, 200, {
       ...productSettings,
-      apiKeyConfigured: configuredKeys.has(keySlot(productSettings.ai)),
+      apiKeyConfigured: Boolean(
+        productSettings.ai && configuredKeys.has(keySlot(productSettings.ai)),
+      ),
       transcriptionApiKeyConfigured: Boolean(
         productSettings.transcription && configuredKeys.has(keySlot(productSettings.transcription)),
       ),

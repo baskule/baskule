@@ -12,7 +12,7 @@ import { createAuth, type Auth } from "./auth";
 import { hashPassword } from "./password";
 import { parseAuthConfig, publicAuthConfig } from "./auth-config";
 import { UsageService } from "./usage";
-import { defaultSettings, parseConnectionCheck, parseSettings, type ProductSettings } from "./settings";
+import { defaultSettings, parseConnectionCheck, parseSettings, type AISettings, type ProductSettings } from "./settings";
 import { AIModels, type AIConnection } from "./ai-models";
 import { BASKULE_AI_PROVIDERS } from "../../../app/packages/contracts/src/baskule";
 import { Push } from "./push";
@@ -210,9 +210,14 @@ export class ControlService {
     return { voiceInput: settings.enabled && !!key, key, baseUrl: settings.baseUrl, model: settings.model };
   }
 
+  /** The key saved for the chat connection; none while AI is not configured. */
+  private chatKey(ai: AISettings | null): string {
+    return ai ? this.savedApiKey(ai.providerId, ai.baseUrl) : "";
+  }
+
   private settingsView() {
     const settings = this.productSettings();
-    return { ...settings, apiKeyConfigured: !!(BASKULE_AI_PROVIDERS[settings.ai.providerId].keyless || this.one("select value from kv where key=?", this.apiKeySlot(settings.ai.providerId, settings.ai.baseUrl))?.value),
+    return { ...settings, apiKeyConfigured: !!settings.ai && (!!BASKULE_AI_PROVIDERS[settings.ai.providerId].keyless || !!this.chatKey(settings.ai)),
       transcriptionApiKeyConfigured: !!this.transcriptionConnection(settings.transcription).key,
       authentication: publicAuthConfig(this.installation) };
   }
@@ -221,7 +226,11 @@ export class ControlService {
     const { apiKey, transcriptionApiKey, ...input } = await readJson<Record<string, unknown>>(req);
     const settings = parseSettings(input);
     const previous = this.productSettings().ai;
-    const chatSlot = this.apiKeySlot(settings.ai.providerId, settings.ai.baseUrl);
+    const ai = settings.ai;
+    // Running spaces keep the configuration they booted with: once chosen, a provider is replaced, never removed.
+    if (!ai && previous) throw new HttpError(400, "ai_required", "Choose a provider; the AI configuration can be changed but not removed");
+    // Without a chat connection (AI not configured yet) or with a keyless one, no chat key is stored.
+    const chatSlot = ai && !BASKULE_AI_PROVIDERS[ai.providerId].keyless ? this.apiKeySlot(ai.providerId, ai.baseUrl) : null;
     const transcriptionSlot = this.apiKeySlot(settings.transcription.providerId, settings.transcription.baseUrl);
     if (transcriptionApiKey === "" && transcriptionSlot === chatSlot)
       throw new HttpError(400, "shared_api_key", "This key is shared with chat; change it on AI → Models");
@@ -229,27 +238,29 @@ export class ControlService {
     for (const [slot, key] of [[chatSlot, apiKey], [transcriptionSlot, transcriptionApiKey]] as const) {
       if (key === undefined) continue;
       if (typeof key !== "string" || key.length > 8192) throw new HttpError(400, "invalid_api_key");
-      if (slot === chatSlot && BASKULE_AI_PROVIDERS[settings.ai.providerId].keyless) continue;
+      if (slot === null) continue;
       if (keys.has(slot) && keys.get(slot) !== key) throw new HttpError(400, "conflicting_api_keys");
       keys.set(slot, key);
     }
-    const chatKey = this.savedApiKey(settings.ai.providerId, settings.ai.baseUrl);
-    const nextChatKey = keys.get(chatSlot) ?? chatKey;
-    const withoutCost = (ai: ProductSettings["ai"]) => JSON.stringify({ ...ai, model: { ...ai.model, cost: undefined } });
-    const aiChanged = withoutCost(settings.ai) !== withoutCost(previous) || nextChatKey !== chatKey;
-    // Every chat configuration change is proven to work before it is stored, whatever the client checked.
-    if (aiChanged) await this.aiModels.verify({ providerId: settings.ai.providerId, baseUrl: settings.ai.baseUrl,
-      key: BASKULE_AI_PROVIDERS[settings.ai.providerId].keyless ? "public" : nextChatKey }, settings.ai.model.id);
-    // Only custom endpoints take the admin's prices; built-in models keep the catalog's.
-    if (settings.ai.providerId !== "custom") {
-      const { cost: _client, ...model } = settings.ai.model;
-      const cost = aiChanged ? await this.aiModels.price(settings.ai.providerId, model.id) : previous.model.cost;
-      settings.ai = { ...settings.ai, model: cost ? { ...model, cost } : model };
+    const chatKey = this.chatKey(ai);
+    const nextChatKey = chatSlot === null ? chatKey : keys.get(chatSlot) ?? chatKey;
+    const withoutCost = (value: ProductSettings["ai"]) => JSON.stringify(value && { ...value, model: { ...value.model, cost: undefined } });
+    const aiChanged = withoutCost(ai) !== withoutCost(previous) || nextChatKey !== chatKey;
+    if (ai) {
+      // Every chat configuration change is proven to work before it is stored, whatever the client checked.
+      if (aiChanged) await this.aiModels.verify({ providerId: ai.providerId, baseUrl: ai.baseUrl,
+        key: BASKULE_AI_PROVIDERS[ai.providerId].keyless ? "public" : nextChatKey }, ai.model.id);
+      // Only custom endpoints take the admin's prices; built-in models keep the catalog's.
+      if (ai.providerId !== "custom") {
+        const { cost: _client, ...model } = ai.model;
+        const cost = aiChanged ? await this.aiModels.price(ai.providerId, model.id) : previous?.model.cost;
+        settings.ai = { ...ai, model: cost ? { ...model, cost } : model };
+      }
     }
-    const reload = aiChanged || JSON.stringify(settings.ai.model.cost) !== JSON.stringify(previous.model.cost);
+    const reload = aiChanged || JSON.stringify(settings.ai?.model.cost) !== JSON.stringify(previous?.model.cost);
     this.storage.transactionSync(() => {
       // The check above awaited the provider: refuse if another save replaced the key it proved.
-      if (this.savedApiKey(settings.ai.providerId, settings.ai.baseUrl) !== chatKey)
+      if (this.chatKey(settings.ai) !== chatKey)
         throw new HttpError(409, "ai_settings_changed", "The AI settings changed meanwhile; check the connection again");
       this.run("insert into kv(key, value) values ('product_settings', ?) on conflict(key) do update set value=excluded.value", JSON.stringify(settings));
       this.run("update organization set name=? where id=?", settings.organizationName, this.orgId);
@@ -473,7 +484,7 @@ export class ControlService {
       const { spaceId } = await readJson<{ spaceId: string }>(req);
       if (!this.spaceRow(spaceId)) return notFound();
       const settings = this.productSettings();
-      return json({ ...settings, usageLimits: this.usage.settings(), plugins: await this.plugins.settings(spaceId), apiKey: this.one("select value from kv where key=?", this.apiKeySlot(settings.ai.providerId, settings.ai.baseUrl))?.value ?? "" });
+      return json({ ...settings, usageLimits: this.usage.settings(), plugins: await this.plugins.settings(spaceId), apiKey: this.chatKey(settings.ai) });
     }
     if (path === "/auth" || path.startsWith("/auth/")) return this.authRoute(req, path);
     if (path === WELL_KNOWN_PATH && req.method === "GET") return this.instanceInfo();

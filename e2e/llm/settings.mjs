@@ -2,7 +2,7 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "../..");
-const env = Object.fromEntries(readFileSync(`${root}/deploy/.env`, "utf8").split("\n").flatMap(line => {
+const env = Object.fromEntries((existsSync(`${root}/deploy/.env`) ? readFileSync(`${root}/deploy/.env`, "utf8") : "").split("\n").flatMap(line => {
   const match = /^([A-Z0-9_]+)=(.*)$/.exec(line); return match ? [[match[1], match[2]]] : [];
 }));
 const base = process.env.E2E_BASE_URL ?? `http://${env.BASKULE_BIND || "127.0.0.1"}:${env.BASKULE_PORT || "47090"}`;
@@ -19,19 +19,27 @@ const currentResponse = await fetch(`${base}/api/baskule/admin/settings`, { head
 if (!currentResponse.ok) throw new Error(`Read product settings: HTTP ${currentResponse.status}`);
 const { apiKeyConfigured: _apiKeyConfigured, transcriptionApiKeyConfigured: _transcriptionApiKeyConfigured, authentication: _authentication, ...current } = await currentResponse.json();
 const [action, endpoint, idle] = process.argv.slice(2);
-if (action === "status") { console.log(current.ai.baseUrl); process.exit(0); }
+if (action === "status") { console.log(current.ai?.baseUrl ?? "unconfigured"); process.exit(0); }
 let settings;
 if (action === "restore") {
   if (!existsSync(backup)) process.exit(0);
   settings = JSON.parse(readFileSync(backup, "utf8"));
+  // A provider can be replaced but not removed: keep one an administrator chose meanwhile.
+  if (settings.ai === null) settings.ai = current.ai;
 } else if (["router", "idle"].includes(action)) {
+  const original = existsSync(backup) ? JSON.parse(readFileSync(backup, "utf8")) : current;
+  // Restoring would have to remove the router's provider, which the settings API refuses.
+  if (action === "router" && original.ai === null)
+    throw new Error("The installation has no AI provider, so its settings could not be restored after routing; choose one in Admin → AI → Models first");
+  if (action === "router" && process.env.E2E_REAL === "1" && !process.env.E2E_REAL_API_KEY)
+    throw new Error("Real router checks require E2E_REAL_API_KEY");
+  const model = process.env.E2E_REAL === "1" ? process.env.E2E_MODEL : "fake-model";
+  if (action === "router" && !model) throw new Error("Real router checks require E2E_MODEL");
   mkdirSync(`${root}/.run`, { recursive: true });
   if (!existsSync(backup)) writeFileSync(backup, JSON.stringify(current), { mode: 0o600 });
-  if (action === "router" && process.env.E2E_REAL === "1" && !process.env.E2E_REAL_API_KEY)
-    throw new Error("Real router checks require a privately supplied E2E_REAL_API_KEY");
   settings = { ...current,
     ...(action === "router" ? {
-      ai: { ...current.ai, providerId: "custom", baseUrl: endpoint },
+      ai: { providerId: "custom", baseUrl: endpoint, model: { id: model, name: model, image: true, pdf: true, limit: { context: 200_000, output: 16_000 }, settings: {} } },
       apiKey: process.env.E2E_REAL === "1" ? process.env.E2E_REAL_API_KEY : "",
     } : {}),
     idleMinutes: Number(action === "idle" ? endpoint : idle || "1.5"),

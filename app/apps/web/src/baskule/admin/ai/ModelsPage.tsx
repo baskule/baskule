@@ -1,17 +1,24 @@
 import { useTranslation } from "../../../i18n";
 // baskule: AI → Models: the provider, its key and the one model everyone uses. Saving needs a passed
 // connection check for the current provider, endpoint, key and model; the ControlCell checks again.
-import { CheckCircle2Icon, CheckIcon, CircleAlertIcon, TriangleAlertIcon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  CheckIcon,
+  CircleAlertIcon,
+  InfoIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import {
   BASKULE_AI_PROVIDERS,
   type BaskuleAIConnectionCheck,
   type BaskuleAIModel,
   type BaskuleAIProviderId,
+  type BaskuleAISettings,
   type BaskuleAvailableModel,
 } from "@t3tools/contracts/baskule";
 
-import { Alert, AlertDescription } from "../../../components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import {
   Combobox,
@@ -41,21 +48,59 @@ import { costOf, CustomPriceFields, PriceSummary, priceDraftOf } from "./ModelPr
 import {
   connectionCheckOf,
   connectionOf,
-  defaultModel,
   limitsAreValid,
   modelFromListing,
+  providerDraft,
   SAVED_KEY_MASK,
   typedKey,
 } from "./modelsForm";
 
-const PROVIDER_IDS = Object.keys(BASKULE_AI_PROVIDERS) as BaskuleAIProviderId[];
+/** Alphabetical by name, so no vendor comes first; a custom endpoint last. */
+const PROVIDER_IDS: BaskuleAIProviderId[] = [
+  ...(Object.keys(BASKULE_AI_PROVIDERS) as BaskuleAIProviderId[])
+    .filter((id) => id !== "custom")
+    .sort((a, b) => BASKULE_AI_PROVIDERS[a].name.localeCompare(BASKULE_AI_PROVIDERS[b].name, "en")),
+  "custom",
+];
 /** Typing pauses this long before the connection is checked. */
 const CHECK_DELAY_MS = 600;
 
 export function ModelsPage() {
   const resource = useApiResource(baskuleApi.adminSettings);
   if (!resource.data) return <PageMessage>{resource.error ?? <Spinner />}</PageMessage>;
-  return <ModelsForm initial={resource.data} />;
+  return <ModelsSettings initial={resource.data} />;
+}
+
+/** A new installation has no provider: the admin chooses one before the rest of the form applies. */
+function ModelsSettings({ initial }: { readonly initial: BaskuleAdminSettings }) {
+  const t = useTranslation();
+  const [chosen, setChosen] = useState(initial.ai);
+  if (chosen === null)
+    return (
+      <div className="flex flex-col gap-8">
+        <NoProviderNotice />
+        <PageSection title={t("Connection")}>
+          <ProviderRow
+            providerId={null}
+            onChange={(providerId) => setChosen(providerDraft(providerId))}
+          />
+        </PageSection>
+      </div>
+    );
+  return <ModelsForm initial={initial} initialAI={chosen} />;
+}
+
+function NoProviderNotice() {
+  const t = useTranslation();
+  return (
+    <Alert variant="info" role="status">
+      <InfoIcon aria-hidden />
+      <AlertTitle>{t("No AI provider yet")}</AlertTitle>
+      <AlertDescription>
+        {t("People can't chat until you choose a provider and save a model.")}
+      </AlertDescription>
+    </Alert>
+  );
 }
 
 type Check =
@@ -70,18 +115,24 @@ type Check =
     };
 
 /** Compared without the price: built-in prices follow the model and the ControlCell sets them. */
-const connectionAndModel = (ai: BaskuleAdminSettings["ai"]) =>
-  JSON.stringify({ ...ai, model: { ...ai.model, cost: undefined } });
+const connectionAndModel = (ai: BaskuleAISettings | null) =>
+  JSON.stringify(ai && { ...ai, model: { ...ai.model, cost: undefined } });
 
-function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
+function ModelsForm({
+  initial,
+  initialAI,
+}: {
+  readonly initial: BaskuleAdminSettings;
+  readonly initialAI: BaskuleAISettings;
+}) {
   const t = useTranslation();
   const [saved, setSaved] = useState(initial);
   // A saved-key listing has no key in its identity: a new key must drop it.
   const [keyRevision, setKeyRevision] = useState(0);
-  const [ai, setAI] = useState(initial.ai);
+  const [ai, setAI] = useState(initialAI);
   /** Null until the admin types: requests then use the key saved for the connection. */
   const [key, setKey] = useState<string | null>(null);
-  const [prices, setPrices] = useState(() => priceDraftOf(initial.ai.model.cost));
+  const [prices, setPrices] = useState(() => priceDraftOf(initialAI.model.cost));
   const [check, setCheck] = useState<Check | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,14 +141,14 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
   const keySavedHere =
     !provider.keyless &&
     saved.apiKeyConfigured &&
-    saved.ai.providerId === ai.providerId &&
+    saved.ai?.providerId === ai.providerId &&
     saved.ai.baseUrl === ai.baseUrl;
   const keyMasked = key === null && keySavedHere;
   const customCost = custom ? costOf(prices) : undefined;
   const dirty =
     key !== null ||
     connectionAndModel(ai) !== connectionAndModel(saved.ai) ||
-    (custom && JSON.stringify(customCost) !== JSON.stringify(saved.ai.model.cost));
+    (custom && JSON.stringify(customCost) !== JSON.stringify(saved.ai?.model.cost));
   const problem = !ai.model.name.trim()
     ? "name"
     : !limitsAreValid(ai.model.limit)
@@ -138,14 +189,7 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
     setAI((current) => ({ ...current, model: { ...current.model, ...update } }));
   const selectProvider = (providerId: BaskuleAIProviderId) => {
     // Coming back to the saved provider brings back its saved model.
-    const next =
-      providerId === saved.ai.providerId
-        ? saved.ai
-        : {
-            providerId,
-            baseUrl: BASKULE_AI_PROVIDERS[providerId].baseUrl,
-            model: defaultModel(providerId),
-          };
+    const next = saved.ai?.providerId === providerId ? saved.ai : providerDraft(providerId);
     setAI(next);
     setPrices(priceDraftOf(providerId === "custom" ? next.model.cost : undefined));
     setKey(null);
@@ -165,8 +209,10 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
         ...(key === null || provider.keyless ? {} : { apiKey: key }),
       });
       setSaved(next);
-      setAI(next.ai);
-      setPrices(priceDraftOf(next.ai.model.cost));
+      if (next.ai) {
+        setAI(next.ai);
+        setPrices(priceDraftOf(next.ai.model.cost));
+      }
       if (key !== null) {
         listings.clear();
         setKeyRevision((revision) => revision + 1);
@@ -191,46 +237,9 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
   return (
     <form className="flex flex-col gap-8" onSubmit={(event) => void submit(event)}>
       <fieldset disabled={busy} className="contents">
+        {saved.ai === null ? <NoProviderNotice /> : null}
         <PageSection title={t("Connection")}>
-          <FieldRow
-            label={t("Provider")}
-            description={
-              ai.providerId === "opencode" ? (
-                <span className="flex items-start gap-1.5">
-                  <TriangleAlertIcon
-                    aria-hidden="true"
-                    className="mt-0.5 size-3 shrink-0 text-warning"
-                  />
-                  {t(
-                    "Free model hosted by OpenCode. Prompts are sent to OpenCode's servers and may be used to improve their models; subject to OpenCode's terms.",
-                  )}
-                </span>
-              ) : custom ? (
-                t("Connect an OpenAI-compatible streaming Chat Completions API.")
-              ) : (
-                t("Use your provider API key and choose a model below.")
-              )
-            }
-            renderControl={(id) => (
-              <Select
-                value={ai.providerId}
-                onValueChange={(value) => {
-                  if (value) selectProvider(value as BaskuleAIProviderId);
-                }}
-              >
-                <SelectTrigger id={id}>
-                  <SelectValue>{provider.name}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  {PROVIDER_IDS.map((id) => (
-                    <SelectItem key={id} value={id}>
-                      {BASKULE_AI_PROVIDERS[id].name}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            )}
-          />
+          <ProviderRow providerId={ai.providerId} onChange={selectProvider} />
           {/* A keyless preset is OpenCode's own endpoint with its public token: nothing to enter. */}
           {provider.keyless ? null : (
             <>
@@ -449,6 +458,58 @@ function ModelsForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
         </div>
       </fieldset>
     </form>
+  );
+}
+
+function ProviderRow({
+  providerId,
+  onChange,
+}: {
+  readonly providerId: BaskuleAIProviderId | null;
+  readonly onChange: (providerId: BaskuleAIProviderId) => void;
+}) {
+  const t = useTranslation();
+  return (
+    <FieldRow
+      label={t("Provider")}
+      description={
+        providerId === null ? (
+          t("The provider and model answer every chat in your organization.")
+        ) : providerId === "opencode" ? (
+          <span className="flex items-start gap-1.5">
+            <TriangleAlertIcon aria-hidden="true" className="mt-0.5 size-3 shrink-0 text-warning" />
+            {t(
+              "Free model hosted by OpenCode. Prompts are sent to OpenCode's servers and may be used to improve their models; subject to OpenCode's terms.",
+            )}
+          </span>
+        ) : providerId === "custom" ? (
+          t("Connect an OpenAI-compatible streaming Chat Completions API.")
+        ) : (
+          t("Use your provider API key and choose a model below.")
+        )
+      }
+      renderControl={(id) => (
+        <Select
+          value={providerId}
+          onValueChange={(value) => {
+            if (value) onChange(value as BaskuleAIProviderId);
+          }}
+        >
+          <SelectTrigger id={id}>
+            <SelectValue placeholder={t("Choose a provider")}>
+              {providerId === null ? null : BASKULE_AI_PROVIDERS[providerId].name}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {PROVIDER_IDS.map((id) => (
+              <SelectItem key={id} value={id}>
+                {BASKULE_AI_PROVIDERS[id].name}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      )}
+    />
   );
 }
 

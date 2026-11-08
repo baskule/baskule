@@ -5,6 +5,7 @@ import {
   type BaskuleAIConnectionCheck,
   type BaskuleAIModel,
   type BaskuleAIProviderId,
+  type BaskuleAISettings,
   type BaskuleAvailableModel,
 } from "@t3tools/contracts/baskule";
 
@@ -23,6 +24,15 @@ export function defaultModel(providerId: BaskuleAIProviderId): BaskuleAIModel {
     ...(BASKULE_AI_PROVIDERS[providerId].models[0] ?? blankBaskuleModel()),
     image: true,
     pdf: true,
+  };
+}
+
+/** A provider's endpoint and suggested model, before the admin changes them. */
+export function providerDraft(providerId: BaskuleAIProviderId): BaskuleAISettings {
+  return {
+    providerId,
+    baseUrl: BASKULE_AI_PROVIDERS[providerId].baseUrl,
+    model: defaultModel(providerId),
   };
 }
 

@@ -19,9 +19,10 @@ import { Computerd } from "./computerd";
 import { configModels, configPrices, opencodeConfig, type AgentEnv } from "./config";
 import { registerLazyMcp, unregisterLazyMcp } from "./lazy-mcp";
 import { sampleAppHandler } from "./sample-app";
-import { type Models, offeredModel, prepareSessionCreate } from "./session";
+import { type Models, offeredModel, prepareSessionCreate, startsModelWork } from "./session";
 import { SPACE_HOST, registerSpaceBridge, unregisterSpaceBridge } from "./space-bridge";
 import type { SqlClient } from "effect/sql/SqlClient";
+import { BASKULE_AI_NOT_CONFIGURED } from "../../../app/packages/contracts/src/baskule";
 import type { UsageLimitSettings } from "../../../app/packages/contracts/src/baskule-usage";
 import { UsageReporter } from "./usage";
 import { T3McpProxy } from "./t3-mcp";
@@ -145,7 +146,7 @@ export class AgentRuntime {
 
   private async loadKey(): Promise<void> {
     const env = (globalThis.process.env ??= {} as NodeJS.ProcessEnv);
-    env[this.keyEnv] = this.env.AI.apiKey || "unused";
+    env[this.keyEnv] = this.env.AI?.apiKey || "unused";
   }
 
   /** Boots OpenCode (once; concurrent callers share the boot). */
@@ -429,6 +430,10 @@ export class AgentRuntime {
     const path = url.pathname;
     if (path.startsWith("/_baskule/debug/") && this.env.BASKULE_AGENT_DEBUG === "1") return this.debug(path, request);
     if (path !== "/oc" && !path.startsWith("/oc/")) return json({ error: "not_found" }, 404);
+    const ocPath = path.slice(3) || "/";
+    // OpenCode's declared 400 envelope: T3 shows the message as the turn's error.
+    if (!this.env.AI && startsModelWork(request.method, ocPath, request.method === "PATCH" ? await request.clone().json().catch(() => null) : undefined))
+      return json({ _tag: "InvalidRequestError", error: BASKULE_AI_NOT_CONFIGURED.kind, ...BASKULE_AI_NOT_CONFIGURED }, 400);
     this.lastActivity = Date.now();
     this.inflight++;
     try {
@@ -438,7 +443,6 @@ export class AgentRuntime {
       } catch (e) {
         return json({ error: "agent_unavailable", message: String((e as Error)?.message ?? e) }, 503);
       }
-      const ocPath = path.slice(3) || "/";
       // Internal-only adapter bridge (T3's MCP apps). The Worker never forwards /_baskule/* to a cell.
       if (ocPath === "/api/baskule/mcp-app" && request.method === "POST") {
         const input = await request.json() as { sessionID: string; operation: string; server: string; name?: string; args?: Record<string, unknown>; uri?: string };

@@ -61,7 +61,7 @@ const small = {
   cost: { input: 0.15, output: 0.6, cache_read: 0.015 },
 };
 
-const setup = () => {
+const setup = (overrides: Partial<BaskuleAdminSettings> = {}) => {
   api.settings = {
     organizationName: "Acme",
     googleSignupDomains: [],
@@ -71,6 +71,7 @@ const setup = () => {
     transcription: DEFAULT_BASKULE_TRANSCRIPTION,
     transcriptionApiKeyConfigured: false,
     authentication: { mode: "authenticated", password: true, providers: [] },
+    ...overrides,
   };
   api.models = [{ id: mistral.models[0]!.id, name: mistral.models[0]!.name }, small];
   api.saved = [];
@@ -89,6 +90,36 @@ async function chooseProvider(name: string) {
 }
 
 describe("AI models page", () => {
+  it("starts a new installation without a provider and saves the first one chosen", async () => {
+    setup({ ai: null, apiKeyConfigured: false });
+    await using screen = await render(<ModelsPage />);
+    const notice = screen.getByText("No AI provider yet", { exact: true });
+    await expect.element(notice).toBeVisible();
+    await expect
+      .element(screen.getByLabelText("Provider", { exact: true }))
+      .toHaveTextContent("Choose a provider");
+    expect(screen.getByLabelText("API key", { exact: true }).query()).toBeNull();
+    expect(screen.getByRole("button", { name: "Save settings" }).query()).toBeNull();
+    // No vendor first: names in alphabetical order, a custom endpoint last.
+    await userEvent.click(page.getByLabelText("Provider", { exact: true }));
+    await expect.element(page.getByRole("option", { name: "Custom", exact: true })).toBeVisible();
+    expect(
+      page
+        .getByRole("option")
+        .elements()
+        .map((option) => option.textContent),
+    ).toEqual(["Anthropic", "Mistral", "OpenAI", "OpenCode (free)", "Custom"]);
+    await userEvent.click(page.getByRole("option", { name: "OpenCode (free)", exact: true }));
+    await expect
+      .element(screen.getByText("Connection works", { exact: true }), CHECK)
+      .toBeVisible();
+    await expect.element(notice).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await vi.waitFor(() => expect(api.saved).toHaveLength(1));
+    expect(api.saved[0]?.ai).toMatchObject({ providerId: "opencode" });
+    await expect.element(notice).not.toBeInTheDocument();
+  });
+
   it("shows a saved key as dots and saves a listed model once its connection works", async () => {
     setup();
     await using screen = await render(<ModelsPage />);
@@ -113,8 +144,8 @@ describe("AI models page", () => {
     const [saved] = api.saved;
     expect(saved).not.toHaveProperty("apiKey");
     // Built-in prices are the ControlCell's to set.
-    expect(saved?.ai.model).not.toHaveProperty("cost");
-    expect(saved?.ai.model).toMatchObject({
+    expect(saved?.ai?.model).not.toHaveProperty("cost");
+    expect(saved?.ai?.model).toMatchObject({
       id: small.id,
       name: small.name,
       image: true,

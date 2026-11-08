@@ -3,10 +3,11 @@
 import { describe, expect, it } from "vitest";
 import { Effect, Stream } from "effect";
 import { ChildProcess } from "effect/process";
-import { computerPath, type Models, offeredModel, prepareSessionCreate, stripNulls } from "../../session";
+import { computerPath, type Models, offeredModel, prepareSessionCreate, startsModelWork, stripNulls } from "../../session";
 import { defaultSettings, parseSettings } from "../../../control/settings";
-import { BASKULE_AI_PROVIDERS } from "../../../../../app/packages/contracts/src/baskule";
-import { configModels, configPrices, opencodeConfig, TEST_PATCH_MODEL } from "../../config";
+import { BASKULE_AI_NOT_CONFIGURED, BASKULE_AI_PROVIDERS } from "../../../../../app/packages/contracts/src/baskule";
+import { configModels, configPrices, opencodeConfig, TEST_PATCH_MODEL, UNCONFIGURED_AI } from "../../config";
+import { AgentRuntime } from "../../index";
 import { makeRemoteSpawner } from "../../remote-spawner.js";
 
 const ndjson = (frames: object[]) =>
@@ -80,7 +81,7 @@ describe("OpenCode config", () => {
   it.each(["mistral", "openai", "anthropic"] as const)("uses %s native routing and model pricing without exposing a key", (providerId) => {
     const provider = BASKULE_AI_PROVIDERS[providerId];
     const model = { ...provider.models[0]!, settings: {} };
-    const c = opencodeConfig({ AI: { ...defaultSettings.ai, providerId, model, apiKey: "private-key" } }, "runtime-key") as any;
+    const c = opencodeConfig({ AI: { providerId, baseUrl: provider.baseUrl, model, apiKey: "private-key" } }, "runtime-key") as any;
     expect(Object.keys(c.providers)).toEqual([providerId]);
     expect(c.model).toBe(`${providerId}/${model.id}`);
     expect(c.providers[providerId].package).toBe(`@opencode/ai/providers/${providerId}`);
@@ -111,7 +112,7 @@ describe("OpenCode config", () => {
   });
   it("uses public auth without private environment keys for a keyless installation", () => {
     const provider = BASKULE_AI_PROVIDERS.opencode;
-    const ai = parseSettings({ ...defaultSettings, ai: { providerId: "opencode", baseUrl: provider.baseUrl, model: provider.models[0] } }).ai;
+    const ai = parseSettings({ ...defaultSettings, ai: { providerId: "opencode", baseUrl: provider.baseUrl, model: provider.models[0] } }).ai!;
     const model = ai.model;
     const c = opencodeConfig({ AI: { ...ai, apiKey: "ignored-private-key" } }, "private-env-key") as any;
     expect(Object.keys(c.providers)).toEqual(["opencode"]);
@@ -127,6 +128,29 @@ describe("OpenCode config", () => {
       { action: "provider.use", resource: "opencode", effect: "allow" },
     ]);
     expect(JSON.stringify(c)).not.toMatch(/ignored-private-key|private-env-key/);
+  });
+  it("offers an unreachable placeholder and refuses every turn until an administrator chooses a provider", async () => {
+    const c = opencodeConfig({ AI: null }, "runtime-key") as any;
+    expect(configModels(c)).toEqual({ offered: new Set([`custom/${UNCONFIGURED_AI.model.id}`]), fallback: { providerID: "custom", id: UNCONFIGURED_AI.model.id } });
+    expect(c.providers.custom.settings).toEqual({ baseURL: "http://ai-not-configured.invalid/v1" });
+    const runtime = new AgentRuntime({} as never, { AI: null }, "space", {}, { fetch: async () => new Response(null, { status: 500 }) }, () => {});
+    // Every OpenCode 2.1.3 route that starts a turn or a model call, answered before OpenCode boots.
+    const modelWork = ["prompt", "command", "shell", "synthetic", "compact", "generate"].map((route) => `/api/session/ses_1/${route}`)
+      .concat("/api/experimental/session/ses_1/skill", "/api/experimental/generate", "/api/experimental/voice/session");
+    for (const path of modelWork) {
+      expect(startsModelWork("POST", path)).toBe(true);
+      const refused = await runtime.fetch(new Request(`http://agent/oc${path}`, { method: "POST", body: "{}" }));
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toEqual({ _tag: "InvalidRequestError", error: "ai_not_configured", kind: "ai_not_configured", message: BASKULE_AI_NOT_CONFIGURED.message });
+    }
+    // Clearing a title asks OpenCode to generate one with the model; renaming does not.
+    const regenerate = await runtime.fetch(new Request("http://agent/oc/api/session/ses_1", { method: "PATCH", body: JSON.stringify({ title: "" }) }));
+    expect(regenerate.status).toBe(400);
+    expect(startsModelWork("PATCH", "/api/session/ses_1", { title: "Plans" })).toBe(false);
+    expect(startsModelWork("PATCH", "/api/session/ses_1", { metadata: {} })).toBe(false);
+    for (const [method, path] of [["GET", "/api/session/ses_1/prompt"], ["POST", "/api/session"], ["POST", "/api/session/ses_1/model"],
+      ["POST", "/api/session/ses_1/fork"], ["POST", "/api/session/ses_1/permission/per_1/reply"], ["POST", "/api/session/ses_1/skill"]])
+      expect(startsModelWork(method!, path!)).toBe(false);
   });
   it("adds the patch test model only in debug mode", () => {
     const c = opencodeConfig({ ...env, BASKULE_AGENT_DEBUG: "1" }, "runtime-key") as any;

@@ -34,7 +34,7 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
   const provider = BASKULE_TRANSCRIPTION_PROVIDERS[draft.providerId];
   // The front keeps one key per provider and endpoint, so a matching chat connection lends its key.
   const sharesChatKey =
-    saved.ai.providerId === draft.providerId && saved.ai.baseUrl === draft.baseUrl;
+    saved.ai?.providerId === draft.providerId && saved.ai.baseUrl === draft.baseUrl;
   const keyConfigured =
     (saved.transcriptionApiKeyConfigured &&
       saved.transcription.providerId === draft.providerId &&

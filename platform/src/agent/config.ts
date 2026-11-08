@@ -5,12 +5,12 @@ import { BASKULE_AI_PROVIDERS } from "../../../app/packages/contracts/src/baskul
 import type { SpacePlugins } from "../../../app/packages/contracts/src/baskule-plugins";
 import type { UsagePrices } from "../../../app/packages/contracts/src/baskule-usage";
 import { PLUGIN_SKILLS_PATH } from "./plugin-skills";
-import type { ProductSettings } from "../control/settings";
+import type { AISettings } from "../control/settings";
 import type { Models } from "./session";
 
 export interface AgentEnv {
-  /** Resolved from ControlCell, never deployment variables. */
-  AI: ProductSettings["ai"] & { apiKey: string };
+  /** Resolved from ControlCell, never deployment variables. Null until an administrator chooses a provider. */
+  AI: (AISettings & { apiKey: string }) | null;
   PLUGINS?: SpacePlugins;
   COMPUTERD_URL?: string;
   COMPUTERD_TOKEN?: string;
@@ -21,6 +21,14 @@ export interface AgentEnv {
 }
 
 export const TEST_PATCH_MODEL = "gpt-fake-patch";
+
+/** Offered while no provider is configured, so chats open as usual. Its endpoint never resolves: the runtime refuses
+ *  every turn before OpenCode could call it. */
+export const UNCONFIGURED_AI: AISettings = {
+  providerId: "custom",
+  baseUrl: "http://ai-not-configured.invalid/v1",
+  model: { id: "not-configured", name: "No AI model", image: true, pdf: true, limit: { context: 200_000, output: 16_000 }, settings: {} },
+};
 
 export const ASSISTANT_PROMPT = `You are Baskule, a capable assistant for knowledge work: research, writing, analysis, data, documents and automation.
 
@@ -45,7 +53,7 @@ How you work:
 - Be honest about failures and limits; never invent facts, sources or file contents.`;
 
 export function opencodeConfig(env: AgentEnv, keyEnv: string, sampleMcpUrl?: string, pluginServers: Record<string, unknown> = {}): Record<string, unknown> {
-  const { providerId, model } = env.AI;
+  const { providerId, baseUrl, model } = env.AI ?? UNCONFIGURED_AI;
   const provider = BASKULE_AI_PROVIDERS[providerId];
   const models = [model];
   if (env.BASKULE_AGENT_DEBUG === "1") models.push({ ...models[0]!, id: TEST_PATCH_MODEL });
@@ -62,7 +70,7 @@ export function opencodeConfig(env: AgentEnv, keyEnv: string, sampleMcpUrl?: str
         // OpenCode echoes settings in /api/model: private keys stay in env; keyless providers use its public token.
         package: provider.package,
         env: provider.keyless ? [] : [keyEnv],
-        settings: { baseURL: env.AI.baseUrl, ...(provider.keyless ? { apiKey: "public" } : {}) },
+        settings: { baseURL: baseUrl, ...(provider.keyless ? { apiKey: "public" } : {}) },
         models: Object.fromEntries(models.map(m => [m.id, {
           name: m.name, settings: m.settings,
           capabilities: { tools: true, input: ["text", ...(m.image ? ["image"] : []), ...(m.pdf ? ["pdf"] : [])], output: ["text"] },
