@@ -10,14 +10,14 @@ checks: ["scripts/check worker web"]
 
 Personal preferences, language, appearance, password changes and device connections.
 
-## How to get to it (user POV)
+## Open the feature
 
 Open the account menu → Settings. It opens as a pop-up over the chat, like Admin, with one nav row per section: Scheduled tasks, Usage, Plugins, Spaces (owners and space creators), Desktop app (downloads, device connections, and the server in the desktop app), Change password (password sign-in), Language & appearance, and Archived chats.
 
-## Driving it with T3 preview or Playwright
+## Verification
 
-Run `scripts/check feature:personal-settings`. Change one preference and verify the visible result, then restore it. For a password check, use a disposable user and prove the old password fails after the new one succeeds. The current web harness covers these screens until migration.
+This feature has no dedicated journey; `feature:personal-settings` runs the worker and web checks. Change one preference and verify the visible result, then restore it. For a password check, use a disposable user and prove the old password fails after the new one succeeds.
 
 ## Gotchas
 
-Some preferences are per browser, so use an isolated browser context. Never change the owner’s account password or an existing signed-in profile.
+Some preferences are per browser, so use an isolated browser context. Use a disposable account. Never change another person's password or signed-in profile. If a port is busy, identify the process using it; never stop another run or worktree to free it.

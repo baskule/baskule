@@ -3,22 +3,29 @@ paths: ["deploy/**", "e2e/README.md", "e2e/fixtures/**", "e2e/infra/**", "e2e/in
 journeys: null
 profile: "full"
 checks: ["e2e/run.sh --project lifecycle"]
-ownerRun: true
+liveOnly: true
 ---
 # Deployed edge, fleet and failover
 
 ## Sub-features
 
-Edge routing, two-node fleet and failover.
+Edge routing, two-node celld fleet, restart persistence, and failover.
 
-## How to get to it (user POV)
+## Open the feature
 
-Owner-run staging stack only.
+Use an explicitly configured test installation managed by the installation's operator.
+Supply administrator credentials with `E2E_LOGIN_EMAIL` and `E2E_LOGIN_PASSWORD`, and
+select the browser origin with `E2E_BASE_URL`. The runner also uses source Compose
+services, so run it where that test installation is managed.
 
-## Driving it with T3 preview or Playwright
+## Verification
 
-Run `scripts/check feature:deployed-seams`. Not migrated yet: the declared check preserves the current harness coverage.
+Run `scripts/check feature:deployed-seams --live` after preparing the installation.
+The check can restart services and change organization model routing and idle settings.
+See the [e2e guide](../../../../e2e/README.md) for prerequisites and restoration behavior.
 
 ## Gotchas
 
-Deployed-only: requires explicit owner authorization; never run against staging as a local fallback.
+The `liveOnly` flag excludes this feature from disposable release journeys and requires
+`--live` for explicit feature runs. Ordinary local checks use the worktree stack.
+If a port is busy, identify the process using it; never stop another run or worktree to free it.

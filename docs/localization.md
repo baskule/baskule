@@ -27,17 +27,17 @@ node app/scripts/localization.ts extract
 node app/scripts/localization.ts check
 ```
 
-Translation uses a model provider and requires explicit credentials. Set `TRANSLATION_API_KEY` privately, then run:
+Translation uses a model provider and requires explicit credentials. Set `TRANSLATION_API_KEY` privately and configure `TRANSLATION_BASE_URL` and `TRANSLATION_MODEL`, then run:
 
 ```sh
 node app/scripts/localization.ts translate --locale fr
 ```
 
-`TRANSLATION_BASE_URL` and `TRANSLATION_MODEL` select the provider and model. Their defaults are in `app/scripts/localization.ts`. The request includes source messages, source locations, and the [product context and glossary](../app/scripts/localization-context.md). Runtime interpolation values and chat histories are not translation inputs.
+`TRANSLATION_BASE_URL` and `TRANSLATION_MODEL` select the provider and model; the script has no defaults. The endpoint must offer OpenAI-compatible Chat Completions with JSON-schema structured outputs. The request includes source messages, source locations, and the [product context and glossary](../app/scripts/localization-context.md). Runtime interpolation values and chat histories are not translation inputs.
 
 Review generated changes before committing them. Valid entries are preserved. To retranslate changed terminology, remove the target entry and generate it again. Commit the JSON catalogs and generated native metadata files together.
 
-The release workflow generates missing translations only for `v*` tags, using `TRANSLATION_API_KEY` from the `release` environment. The GitHub variables `TRANSLATION_MODEL` and `TRANSLATION_BASE_URL` optionally select the model and provider. Release builds share the generated catalogs and native metadata through the `translations` artifact. When catalogs change, the run pushes `translations/v<version>` and adds a compare/PR-create link to its summary. Merge that branch into `main` to keep catalogs committed and update the hosted site, which builds `main`. Pull request CI does not generate translations; manual factory runs use the committed catalogs without the key.
+The release workflow generates missing translations only for `v*` tags, using `TRANSLATION_API_KEY` from the `release` environment. The workflow sets the project's translation model and endpoint; the GitHub variables `TRANSLATION_MODEL` and `TRANSLATION_BASE_URL` override them. Release builds share the generated catalogs and native metadata through the `translations` artifact. When catalogs change, the run pushes `translations/v<version>` and adds a compare/PR-create link to its summary. Merge that branch into `main` to keep catalogs committed. Pull request CI does not generate translations; manual factory runs use the committed catalogs without the key.
 
 ## Build clients
 

@@ -26,21 +26,15 @@ List and HTML reports go under `.run/journeys/`; failure traces and screenshots 
 Playwright invocation at a time per worktree so its report is not overwritten. Two worktrees are independent.
 Save durable evidence under `.run/evidence/<date>/` before the next run. Stop stacks you start with
 `scripts/stack down` (or `--purge` for disposable test data); evidence survives. Tests leave the stack available
-for inspection; their people fixture closes its clients and retains fresh users/spaces for inspection. Every world is stopped after clients close. `down --purge` removes all test data for this worktree; account-deletion behaviour belongs to its own feature checks.
+for inspection; their people fixture closes its clients and retains fresh users/spaces for inspection. Every world is stopped after clients close. `down --purge` removes all test data for this worktree; account-deletion behavior belongs to its own feature checks.
 
-The maintained feature map and manual driver are in `.agents/skills/verify-baskule/`. Other harnesses remain for
-unmigrated areas; the chat pilot replaces only the checks listed below.
+The [feature map](../../.agents/skills/verify-baskule/features/README.md) selects coverage:
 
-| Removed check | Journey replacement |
-| --- | --- |
-| web `home` | `personal-chat`: home, Personal default/first, team option, user menu (desktop/phone) |
-| web `chat` | `team-chat`: shared answer, follow-up, attribution/grouping; `conversation-controls`: menu entries |
-| space `chat-turn-streams` | `personal-chat`: rendered answer; `chat-contracts`: multiple streamed updates and authoritative author |
-| space `new-chat-start` | `chat-contracts`: generated title, one pre-run session, work counted from send |
-| space `configured-model-only` | `chat-contracts`: configured provider catalog contains only custom/fake-model |
-| space `replaced-model-chat` | `chat-contracts`: retired selection still answers through configured fake model |
-| space `conversation-controls` | `chat-contracts`: rename/search/snooze/unsnooze/pin/unpin/unread/fork/queue edit/cancel/stop/archive |
-| live `02-plain-chat-lazy` | `personal-chat`: original plain sourdough question, two turns, picker and computer stays stopped |
-| live `11-chat-lifecycle` | `conversation-controls`: two-device lifecycle and stop; `team-chat`: disconnected catch-up |
+- `personal-chat` checks the home page, space selection, two-turn chat, and lazy computers.
+- `team-chat` checks attribution, shared answers, follow-ups, and disconnected catch-up.
+- `conversation-controls` checks menus and lifecycle behavior across two devices.
+- `chat-contracts` checks streaming, generated titles, provider selection, authorship,
+  conversation commands, queue operations, and schedules through the API.
+- Plugin journeys check catalog, installation, authorization, runtime tools, and settings.
 
 Initial navigation and reload can repeat once only after a traced Chromium `ERR_NETWORK_CHANGED` navigation or bootstrap failure. Chat and stop actions are never retried; Playwright test retries remain zero.

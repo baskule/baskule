@@ -19,7 +19,6 @@ Docker must provide the iptables DOCKER-USER chain. It denies private and host d
 FORWARD mirrors prevent earlier accepts from bypassing the guard; nftables-only Docker is unsupported.
 `COMPUTER_DNS` optionally selects comma-separated public DNS IPs.
 Each computer defaults to 2 CPUs and 3 GiB. Release installs pull the computer and computerd images; Compose uses the pull-only `baskule-computer-image` service for the computer image.
-The old `baskule-openshell-docker` volume supplies the 0.5.0 forward data migration.
 
 `up.sh`, `deploy.sh`, and `down.sh` serve the checkout-based
 developer path. For a source-stack backup, source `deploy/lib.sh` and run
@@ -41,6 +40,13 @@ on restore. Stop both the stack and its independently managed computers for a co
 The read-only socket bind still permits Docker API writes: temporary containers mount selected
 disks with networking disabled, and are deleted on exit. Archives preserve disk names, all labels,
 numeric owners, modes and symlinks. Restore requires absent disk names and empty platform volumes.
-Unmigrated legacy disks are included. See the install guide for archive storage requirements.
+See the install guide for archive storage requirements.
 
-Compose no longer mounts the legacy volume, so `docker compose down -v` keeps it. Delete it only after every space has migrated and its files have been verified, with a backup retained, or during an explicitly authorized full purge.
+## Upgrade from 0.5.0
+
+Follow the [0.5.0 upgrade instructions](../docs/install.md#upgrade-from-050).
+
+The `baskule-openshell-docker` volume supplies the forward migration into per-space disks.
+Backup includes unmigrated legacy disks. Compose does not mount this source volume, so
+`docker compose down -v` keeps it. Retain it and a backup until every space has migrated
+and its files have been verified; remove it only after that verification or during a deliberate full purge.

@@ -1,40 +1,21 @@
-# Review loop
+# Review a contribution
 
-## Author's rule
+Keep review focused on the pull request's intended behavior, compatibility requirements, and verification evidence.
 
-- Give the reviewer the brief's intent, explicit out-of-scope work, diff and verification evidence.
-- Verify each finding and grade it yourself against the intent: blocking = intended case is wrong;
-  should-fix = a real bug callers will hit within that intent; nit = everything else, including unrelated paths,
-  rare cases, small performance costs and extra compatibility. The reviewer's label is advisory.
-- Fix confirmed blockers and in-scope should-fixes with the smallest change. Prefer deleting or narrowing code.
-  Disagree with evidence. Decline nits and out-of-scope suggestions in one line and list them as follow-ups.
-- Use at most three rounds. Later rounds check only changed code and open findings. Stop early when only nits
-  remain; declined nits and documentation or formatting fixes need no new round.
-- An unresolved blocker or should-fix at the limit, or a dispute after two replies, goes to the coordinator with
-  both positions and their evidence. Reaching the limit is not approval. Do not agree just to end the loop.
-- Report rounds, a findings ledger (ID, author-assessed severity, outcome and reason), and diff size before and
-  after review (`git diff --shortstat <base>`). If review grew the diff, cut additions the intent does not need.
+## Prepare for review
 
-## Reviewer brief
+Describe the problem, the resulting behavior, and the limits of the change. Explain significant removals and retained compatibility code. Include the checks you ran, their results, and any gaps in coverage. Document migrations and deployment steps when existing installations are affected.
 
-```text
-Read-only second opinion for PR #<PR>, unit <UNIT>, round <N>.
-Intent: <intended behaviour from the unit brief>
-Out of scope: <explicit exclusions>
-Base: <SHA>  Diff: <command and paths>  Checks: <commands, results and evidence>
-Unit brief: <paste>  Prior findings and author responses: <paste, if any>
+## Review the change
 
-Read the PR, surrounding code, AGENTS.md and the approved design.
-Do not edit, run tests, builds or services, change state, or start subagents.
-Find bugs, broken callers, unapproved architecture and mismatches with the intent.
-Hold to the smallest change. Flag code, tests or guards the intent does not need.
-Suggest an alternative only when it resolves a concrete in-scope defect or removes unnecessary code.
-Check whether the evidence proves the acceptance criteria. Name any missing check and what it would prove;
-the author decides which checks to run. Later rounds cover only changed code and open findings.
+- Read the surrounding code and applicable repository instructions.
+- Check for incorrect behavior, broken callers, security issues, and compatibility or migration gaps.
+- Verify that the evidence covers the intended behavior. Name any missing check and what it would prove.
+- Explain each finding with a file location, the triggering condition, and its impact. Suggest the smallest correction that resolves the problem.
+- Distinguish required fixes from optional improvements. Keep unrelated suggestions as follow-up work.
 
-Severity: blocking = intended case wrong; should-fix = real bug callers will hit, within intent;
-nit = everything else (unrelated paths, rare cases, small performance costs, extra compatibility).
-Reply briefly: PASS, PASS+NOTES (only nits), or FAIL (open blocker or should-fix).
-Give stable finding IDs, severity, file:line, evidence, impact on intent, and the smallest fix when needed.
-Mark prior findings resolved or still open with a reason. Do not repeat declined nits as merge blockers.
-```
+## Resolve findings
+
+Reproduce or otherwise verify each reported issue. Fix confirmed issues within scope and rerun the affected checks. If you disagree, explain why with code references or verification evidence.
+
+Ask maintainers to resolve disagreements that affect correctness, compatibility, architecture, or the scope of the contribution. An unresolved material issue needs a decision before merge. After a fix, review the changed code and any remaining findings without reopening resolved discussions unless new evidence changes the conclusion.

@@ -1,0 +1,17 @@
+name: Feature request
+description: Propose an improvement to Baskule.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the task and who needs it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the desired behavior and any alternatives you considered.
+    validations:
+      required: true

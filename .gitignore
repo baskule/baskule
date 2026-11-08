@@ -1,4 +1,4 @@
-# Source lives in app/ and vendor/; local build caches stay ignored.
+# Local tools, build caches, and generated output stay ignored.
 .tools/
 .run/
 node_modules/

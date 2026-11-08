@@ -10,14 +10,14 @@ checks: ["scripts/check computerd"]
 
 Shared tabs and CDP control.
 
-## How to get to it (user POV)
+## Open the feature
 
 Open the computer browser panel from a chat.
 
-## Driving it with T3 preview or Playwright
+## Verification
 
-Run `scripts/check feature:shared-browser`. Not migrated yet: the declared check preserves the current harness coverage.
+This feature has no dedicated journey; `feature:shared-browser` runs the computerd checks.
 
 ## Gotchas
 
-Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Do not assume existing users, spaces or computers. Legacy checks may own fixed ports; do not kill another run to free them.
+Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Use disposable accounts, spaces, and computers created for the check. If a port is busy, identify the process using it; never stop another run or worktree to free it.

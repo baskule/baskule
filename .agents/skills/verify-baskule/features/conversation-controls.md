@@ -9,14 +9,14 @@ profile: "full"
 
 Rename, archive, delete, pin, unread, snooze, search, fork, queue and stop.
 
-## How to get to it (user POV)
+## Open the feature
 
 Open the chat row menu.
 
-## Driving it with T3 preview or Playwright
+## Verification
 
 Run `scripts/check feature:conversation-controls`. `e2e/journeys/conversation-controls.spec.mjs` opens the chat row menu via `baskule-chat-menu-button`. Rename on one device; verify the other changes. Archive and check Archived chats; delete a different chat and verify both rows disappear. Start a long answer, click Stop generation, then reload and compare the committed partial answer. `chat-contracts.spec.mjs` covers search, snooze/unsnooze, pin, unread, fork and queue edit/cancel through client RPC.
 
 ## Gotchas
 
-Phone menu choices can close the sidebar drawer. Reopen it to edit the `Thread title` textbox or open the account menu → Settings → Archived chats. Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Do not assume existing users, spaces or computers. Legacy checks may own fixed ports; do not kill another run to free them.
+Phone menu choices can close the sidebar drawer. Reopen it to edit the `Thread title` textbox or open the account menu → Settings → Archived chats. Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Use disposable accounts, spaces, and computers created for the check. If a port is busy, identify the process using it; never stop another run or worktree to free it.

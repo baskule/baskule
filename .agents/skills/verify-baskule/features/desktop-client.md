@@ -10,14 +10,14 @@ checks: ["desktop/check.sh"]
 
 Native shell, connection and IPC.
 
-## How to get to it (user POV)
+## Open the feature
 
 Launch the packaged desktop app and connect to the installation.
 
-## Driving it with T3 preview or Playwright
+## Verification
 
-Run `scripts/check feature:desktop-client`. Not migrated yet: the declared check preserves the current harness coverage.
+This feature has no dedicated journey; `feature:desktop-client` runs the desktop checks.
 
 ## Gotchas
 
-Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Do not assume existing users, spaces or computers. Legacy checks may own fixed ports; do not kill another run to free them.
+Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Use disposable accounts, spaces, and computers created for the check. If a port is busy, identify the process using it; never stop another run or worktree to free it.

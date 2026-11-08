@@ -38,8 +38,8 @@ id, history, chat folder, follow-up turn), two spaces isolated in one isolate an
 
 - T3 boots on the first client request, webhook or due alarm; never for `/_baskule/status` or `/revoke`. In a new
   space OpenCode boots first: it only creates its schema in an empty database. Otherwise OpenCode boots on the first
-  agent request, which T3 sends through this cell's own stub (`/_baskule/agent/*`, a live celld event, #258).
-- #258: the boot events are retained with `waitUntil` until runtime teardown and usage flush/capture finish,
+  agent request, which T3 sends through this cell's own stub (`/_baskule/agent/*`, a live celld event, [celld issue #258](https://github.com/denoland/celld/issues/258)).
+- [celld issue #258](https://github.com/denoland/celld/issues/258): the boot events are retained with `waitUntil` until runtime teardown and usage flush/capture finish,
   alongside their keepalive intervals. Each RPC WebSocket retains its native event until its handler scope finishes.
   SDK calls and response body pulls enter through OpenCode's retained boot event; workerd Effect callbacks preserve
   their native origin.
@@ -50,6 +50,7 @@ id, history, chat folder, follow-up turn), two spaces isolated in one isolate an
   disposes T3. `/_baskule/delete` disposes both runtimes, deletes the computer (`computer/delete`) and
   `deleteAll()`s the cell; 502 if the computer deletion fails.
   `/_baskule/recheck` runs the recheck now (ops/tests).
+- Runtime disposal drains any in-flight agent alarm before retiring the agent and its shared SQL client, so a retired agent cannot boot a second SQL client (`platform/test/unit/space-lifecycle.test.ts`). An agent alarm delivered during disposal waits for disposal to finish. The space alarm runs after the agent operation, so idle disposal does not wait on itself.
 - If celld hands the cell to another node while T3 still runs here (`no db for <cell>`), this copy disposes itself.
 
 Vars: `COMPUTERD_URL`, `COMPUTERD_TOKEN`, `PUBLIC_ORIGINS` (first one

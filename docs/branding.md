@@ -1,7 +1,6 @@
 # Baskule brand
 
-The owner approved this identity in October 2026. It replaces an earlier wordmark built around a red uppercase K.
-None of that wordmark's artwork or colours remain.
+Baskule's identity is the lowercase **baskule** wordmark with a gold leaning l, and the **/e** mark, in ink, paper and gold.
 
 | Light | Dark |
 | --- | --- |
@@ -16,20 +15,20 @@ as the proper noun **Baskule**.
 
 The wordmark is Inter Tight 800 with -0.03 em tracking. The **l** is a parallelogram the width of Inter Tight's l
 stem, leaning 12° onto the **e** like a lever. The e sits 0.11 em under the l, and the l's tip is trimmed along the
-e's outer curve with a 0.035 em gap. The l is the only coloured element.
+e's outer curve with a 0.035 em gap. The l is the only colored element.
 
 The mark is **/e**: the leaning l and the e from the wordmark. It is the app icon, the favicon and every small
 brand slot. Use the wordmark where there is room for it: sign-in screens, the sidebar header and the loading
 screen.
 
 - Use the outlined SVGs in `brand/`. Never set the name in a font or redraw the l.
-- Use the light artwork on light backgrounds and the inverse artwork on dark ones. Do not recolour, outline, add
-  shadows or stretch either artwork. Single-colour versions exist only where a platform requires a silhouette
+- Use the light artwork on light backgrounds and the inverse artwork on dark ones. Do not recolor, outline, add
+  shadows or stretch either artwork. Single-color versions exist only where a platform requires a silhouette
   (Android themed and notification icons, the iOS widget template).
 - Keep clear space of at least the e's height around the wordmark. The smallest sizes in use are a 14 px wordmark
   (sidebar) and a 16 px mark (timeline rows and the favicon).
 
-## Colours
+## Colors
 
 | Name | Hex | Role |
 | --- | --- | --- |
@@ -39,7 +38,7 @@ screen.
 | Gold | `#B8902A` | The l, and accents on dark backgrounds |
 | Gold strong | `#85671B` | Gold accents on light backgrounds that must meet WCAG AA |
 
-Greys are Tailwind's neutral scale with no blue, green or warm tint. The light theme uses neutral 50 to 900 and
+Grays are Tailwind's neutral scale with no blue, green or warm tint. The light theme uses neutral 50 to 900 and
 the dark theme neutral 950 to 100.
 
 Gold on white is 2.97:1, too low for text or a focus indicator. **Gold strong** keeps gold's OKLCH hue
@@ -56,7 +55,7 @@ surfaces use it unchanged.
 | Gold on `#0A0A0A` / `#111111` | 6.66 / 6.35 | Dark focus ring, the l on dark |
 | Gold on Paper | 2.97 | The l only; logos are exempt from contrast minimums |
 
-Gold is an accent, not a theme colour. It appears in exactly these places:
+Gold is an accent, not a theme color. It appears in exactly these places:
 
 1. The l in every logo, mark and icon.
 2. The keyboard focus ring: gold strong in light mode, gold in dark mode.
@@ -64,10 +63,10 @@ Gold is an accent, not a theme colour. It appears in exactly these places:
    theme's preview swatch. It also sets the Android notification accent, which Android adjusts for contrast.
 
 Primary actions, checked controls, switches, selected states and progress bars use ink, matching the wordmark.
-Gold is not used for fills, text, links, backgrounds or borders. Its hue sits next to the amber warning colour,
+Gold is not used for fills, text, links, backgrounds or borders. Its hue sits next to the amber warning color,
 so gold controls would read as warnings. Content links keep the info blue (`#1447E6` light, `#51A2FF` dark) on
 web and mobile. Text selection keeps the operating system's highlight. "Update available" notices use the info
-colour, not the action colour.
+color, not the action color.
 
 ## Tokens
 
@@ -83,7 +82,7 @@ colour, not the action colour.
 | `--ring` | `var(--brand-accent-strong)` | `var(--brand-accent)` |
 | `--update`, `--update-foreground` | `var(--info)`, `var(--info-foreground)` | same; the dark info foreground is blue 400 |
 | `--sidebar` (`:root` and `[data-app-sidebar]`) | `var(--color-neutral-50)` | `var(--card)` |
-| Light greys (`:root`, `[data-app-sidebar]`) | `--color-neutral-*` | `--color-neutral-*` |
+| Light grays (`:root`, `[data-app-sidebar]`) | `--color-neutral-*` | `--color-neutral-*` |
 | `[data-app-sidebar]` dark foreground / accent foreground / accent | — | `#f5f5f5` / `#fafafa` / `#1a1a1a` |
 | Near-white step | `--color-neutral-25: oklch(99.2% 0 0)` | — |
 
@@ -92,7 +91,7 @@ The brand marks use `--brand-accent`; the focus ring is the only other use of th
 ### Default palettes (`app/packages/shared/src/themePalettes.ts`)
 
 `T3_CODE_LIGHT_THEME_COLORS` and `T3_CODE_DARK_THEME_COLORS` feed custom-theme completion on web, the server's HTML
-renderer and every mobile token. The light palette's greys are Tailwind neutral values: `#262626` text, `#737373`
+renderer and every mobile token. The light palette's grays are Tailwind neutral values: `#262626` text, `#737373`
 muted text, `#e5e5e5` borders, `#d4d4d4` inputs, `#f5f5f5` surfaces and `#171717` strong text. These roles carry
 the brand:
 
@@ -109,14 +108,14 @@ the brand:
 | `sidebar` | `#fafafa` | `#000000` |
 | `sidebarForeground` | `#262626` | `#f5f5f5` |
 
-Terminal colours and the named built-in themes (T3 Chat, Grove and the others) keep their upstream values.
+Terminal colors and the named built-in themes (T3 Chat, Grove and the others) keep their upstream values.
 
 ### Mobile (`app/apps/mobile`)
 
 Mobile tokens come from the palettes through `src/lib/mobileTheme.ts`. From `app/`,
 `pnpm --filter @t3tools/mobile run generate` rewrites `generated-uniwind-*` and `clerk-theme.json`. The generated files must have no hand edits. `--color-md-link` uses the
 web's info blue for each appearance (`#1447e6` light, `#51a2ff` dark), adjusted for contrast against the canvas
-like the other text tokens. It does not use the action colour.
+like the other text tokens. It does not use the action color.
 
 ## Assets
 
@@ -124,10 +123,10 @@ like the other text tokens. It does not use the action colour.
 `0 0 1432.7 1511`. `app/scripts/export-baskule-assets.ts` (`vp run icons:export` in `app/`) generates everything else.
 `vp run icons:check` fails when an output is stale. Edit `brand/` or the generator, never an output.
 
-App icon rule: the mark's true bounding box is centred on the tile, and the mark spans 58 % of the tile's width.
+App icon rule: the mark's true bounding box is centered on the tile, and the mark spans 58 % of the tile's width.
 The tile is Ink with an Ink-inverse e, and a rounded tile's corner radius is 0.2237 × its side. Platform variants keep
 the 58 % proportion of the area the platform shows. Every variant stays inside its safe zone. The mark's farthest
-point is 0.716 × its width from its centre.
+point is 0.716 × its width from its center.
 
 | File (`app/assets/baskule/` unless noted) | Content | Used by |
 | --- | --- | --- |
@@ -155,7 +154,7 @@ point is 0.716 × its width from its centre.
 ## Where the brand is applied
 
 Each entry gives the file path and its brand state. A surface that is not listed shows no brand
-artwork or brand colour.
+artwork or brand color.
 
 **Shared and web**
 
@@ -211,9 +210,7 @@ artwork or brand colour.
 
 - Assets: `vp run icons:check` in `app/`, which runs `node scripts/export-baskule-assets.ts --check`.
   Render `icon-square-1024.png` and confirm two things: the bounding box of
-  non-tile pixels is centred at (512, 512), and it spans 58 % of the width.
-- Leftovers: `git grep -n -i -E 'd90429|baskule-red|f5f1ea|17181a|bd0424|fce7eb|ff646f|craie|(baskule|brand)/symbol'
-  -- ':!docs/branding.md'` and `git grep -n basKule -- ':!docs/branding.md'` find nothing.
+  non-tile pixels is centered at (512, 512), and it spans 58 % of the width.
 - Tokens: the focused unit tests for `themePalette`, `vscodeThemeImport`, `mobileTheme` and
   `build-desktop-artifact`, plus `scripts/check` for the diff. Run `pnpm --filter @t3tools/mobile run generate`, then confirm
   that `git diff` shows no hand edits to the generated files.
@@ -224,12 +221,11 @@ artwork or brand colour.
   maskable icons have no alpha channel. Confirm the Expo config resolves with
   `pnpm --filter mobile exec expo config --type public`.
 
-## Left unchanged
+## Upstream assets and functional colors
 
-- Copy and app names keep "Baskule" (the owner's decision).
-- Upstream T3 Code artwork that Baskule does not ship stays: `app/assets/{dev,nightly,prod}`,
+- Retain upstream T3 Code artwork that Baskule does not ship: `app/assets/{dev,nightly,prod}`,
   `app/apps/mobile/assets/android-icon-*`, and the unused upstream exporters
   `export-brand-icons.ts` and `export-android-icons.ts`.
-- Functional colours stay: error, warning, success, info, the guest fuchsia, diff colours, terminal colours, the
-  named themes, the user-selectable "Teal" project colour, the boot script's unused splash accent and the desktop
-  title-bar symbol colours.
+- Preserve functional color roles: error, warning, success, info, the guest fuchsia, diff colors, terminal colors, the
+  named themes, the user-selectable "Teal" project color, the boot script's unused splash accent and the desktop
+  title-bar symbol colors.

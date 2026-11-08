@@ -1,23 +1,26 @@
 ---
 name: verify-baskule
-description: Drive and verify Baskule's real worktree app with scripts/stack, T3 preview or Playwright journeys. Use for behaviour checks and evidence after a feature change.
+description: Drive and verify Baskule's worktree app with scripts/stack, a browser, and Playwright journeys. Use for behavior checks and evidence after a feature change.
 ---
 # Verify Baskule
 
 ## Launch
 
-From the worktree root, `source scripts/env.sh`, then opt in to the SpaceCell build with `scripts/worktree runtime` (also after changing `app/`). Install the browser once with `(cd e2e && pnpm exec playwright install chromium)` if absent, then `scripts/stack up --profile full` (other features may declare another profile).
+From the worktree root, `source scripts/env.sh`. Build SpaceCell with `scripts/worktree runtime` before local app/runtime checks and after changing `app/`. Before `scripts/stack up --profile full` or `scripts/check agent`, `computerd`, or `features`, build the local images and bundles with `deploy/build.sh --no-deploy`. Install the browser once with `(cd e2e && pnpm exec playwright install chromium)` if absent, then `scripts/stack up --profile full` (other features may declare another profile).
+
+The optional HTTPS proxy requires root, global `portless`, and `libnss3-tools` for browser trust. Startup falls back to direct loopback HTTP with one notice when root or Portless is unavailable. `BASKULE_STACK_PROXY=0` disables the proxy; `1` requires it.
+
 Use `scripts/stack url` for the browser URL. `.run/stack/stack.json` contains service ports, instance id and local admin credentials; read credentials privately, never print or commit them. `scripts/stack status --json` describes this instance. Use `scripts/stack up --profile light` for features that do not need computerd. Each feature declares its profile or custom checks in [the feature map](features/README.md).
 
 ## Doctor
 
-Run `scripts/stack doctor` before driving, and whenever anything looks wrong. It must pass; diagnose its named service instead of retrying a journey against a broken stack. Never substitute staging.
+Run `scripts/stack doctor` before driving, and whenever anything looks wrong. It must pass; diagnose its named service instead of retrying a journey against a broken stack. Use this worktree's disposable installation. Never use another installation as a fallback.
 
 ## Drive
 
 Read the feature file first. `scripts/check feature:personal-chat` runs the personal chat journey in desktop and phone projects. `scripts/check journey:personal-chat` runs that file alone. `scripts/check journey:@feature:personal-chat` selects a tag. Journeys create independent fresh users through the real admin API and use only the fake LLM. Tests close their clients and retain their fresh worlds for inspection; every world is stopped while its data is retained. Use `scripts/stack down --purge` to remove this worktree stack and its test data.
 
-For manual driving, use T3 `preview_status`, then `preview_open` if no usable preview exists. Navigate to `scripts/stack url`; sign in with the local admin from stack.json. Inspect a snapshot for real locators. The login labels are `Email`, `Password`, and button `Sign in`. On the home screen, the combobox `Run on` selects `Personal` or a team. When the account has only Personal, the picker is omitted and the draft is already personal. The composer is `[contenteditable="true"]`; fill `Skill proof [[fake:text verified chat]]` and press Enter. Wait for `[data-message-role="assistant"]` containing `verified chat`; capture the sent message and answer. On phones, close the drawer before editing and use the button `Expand composer` when the editor is compact. `Toggle main sidebar` opens the drawer; `baskule-new-chat` starts a new chat. Use snapshots to resolve changing controls. Never drive a human-owned preview tab.
+For manual verification, open an isolated browser context at the URL from `scripts/stack url`. Sign in with this stack's local admin from `.run/stack/stack.json` (read it privately), or with disposable users it creates (Admin → People, or the `e2e/journeys/api.mjs` helpers). Inspect the page for accessible labels and locators. The login labels are `Email`, `Password`, and button `Sign in`. On the home screen, the combobox `Run on` selects `Personal` or a team. When the account has only Personal, the picker is omitted and the draft is already personal. The composer is `[contenteditable="true"]`; fill `Skill proof [[fake:text verified chat]]` and press Enter. Wait for `[data-message-role="assistant"]` containing `verified chat`; capture the sent message and answer. On phones, close the drawer before editing and use the button `Expand composer` when the editor is compact. `Toggle main sidebar` opens the drawer; `baskule-new-chat` starts a new chat. Re-inspect the accessibility tree to resolve changing controls. Never use another person's account or browser profile.
 
 API clients and browser setup are in `e2e/journeys/fixtures.mjs` and `api.mjs`. API helpers support sign-in, fresh people, team creation, RPC chat, stream observation and commands. Do not forge identity headers or mutate internal state. Wait on visible state, RPC completion or an explicit condition, never a fixed sleep.
 
@@ -27,7 +30,7 @@ Create `.run/evidence/<YYYY-MM-DD>/` and save screenshots of the action and resu
 
 ## Cleanup
 
-Close preview tabs you opened. Run `scripts/stack down` for a stack you started (use `--purge` to remove its disposable test data). Never stop another worktree or staging. Check `scripts/stack status --json` and confirm the files under `.run/evidence/<YYYY-MM-DD>/` still exist after cleanup. Cleanup must preserve evidence.
+Close browser contexts and tabs you opened. Run `scripts/stack down` for a stack you started (use `--purge` to remove its disposable test data). Never stop a stack or installation used by someone else. Check `scripts/stack status --json` and confirm the files under `.run/evidence/<YYYY-MM-DD>/` still exist after cleanup. Cleanup must preserve evidence.
 
 ## Helpers
 

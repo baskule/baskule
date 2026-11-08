@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a reproducible problem in Baskule.
+body:
+  - type: markdown
+    attributes:
+      value: Report vulnerabilities privately using the repository's security policy.
+  - type: input
+    id: version
+    attributes:
+      label: Baskule version
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Installation method, operating system, and client or browser version. Omit secrets and personal data.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true

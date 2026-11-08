@@ -2,9 +2,12 @@
 
 Run `scripts/worktree setup` to prepare the pinned toolchain and dependencies. `up` and `reload` use that
 same command to refresh dependencies and the embedded bundle, with unchanged inputs skipped.
-Stacks run as root on the development host, using its single portless proxy.
-Install `portless` globally and `libnss3-tools` on the host. Profiles with computers also require the existing
-Docker socket access and local `baskule-computerd:local` (guard) and `baskule-computer:local` images.
+The optional HTTPS proxy runs when root and a globally installed `portless` are available;
+it also requires `libnss3-tools` for Chromium certificate trust. When root or Portless is
+unavailable, startup prints one notice and uses direct loopback HTTP. `BASKULE_STACK_PROXY=0` disables the proxy; `1` requires it.
+Profiles with computers require Docker socket access and local `baskule-computerd:local` (guard)
+and `baskule-computer:local` images. Build them with `deploy/build.sh --no-deploy` before
+`--profile full` or `scripts/check agent`, `computerd`, or `features`.
 
 ```sh
 scripts/stack up                         # real hosted app, fake model, real computers
@@ -29,7 +32,7 @@ still building. A killed startup is reclaimed by `gc` or the next `up`.
 
 `full` is the default, `light` omits computers, and `rustfs` runs production-mode celld against
 the shared development RustFS bucket with an instance-specific prefix. Full stacks use the Docker backend and a worktree-scoped computer bridge.
-The guard requires Docker's iptables DOCKER-USER chain. `--set COMPUTER_GUARD_IMAGE=...`
+The guard requires Docker's iptables DOCKER-USER chain and a helper with host NET_ADMIN. Docker access grants host administration privileges. `--set COMPUTER_GUARD_IMAGE=...`
 and `--set COMPUTER_IMAGE=...` select locally available images; `COMPUTER_DNS` accepts public DNS IPs.
 `down` stops owned computers and retains disks; `down --purge` deletes owned containers and disks.
 Node clients of the HTTPS front use `NODE_EXTRA_CA_CERTS=~/.portless/ca.pem`; `portless trust` installs the CA
