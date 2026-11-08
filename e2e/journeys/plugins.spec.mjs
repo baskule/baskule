@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { test, expect, signIn, startChat, assistant, phoneOptions, navigateApp } from "./fixtures.mjs";
+import { test, expect, signIn, startChat, sendMessage, assistant, phoneOptions, navigateApp } from "./fixtures.mjs";
 
 import { fakeMcp } from "../../platform/test/fixtures/mcp.mjs";
 import { fakeOAuth } from "../../platform/test/fixtures/oauth.mjs";
+import { modelSkillId } from "../../platform/test/fixtures/skills.mjs";
 
 const portable = fileURLToPath(new URL("../../platform/test/fixtures/plugins/portable/", import.meta.url));
 function skillsArchive() {
@@ -67,7 +68,13 @@ test("assigned skills are ready without activation and leave a team when its con
     await expect(memberPage.getByRole("switch", { name: /^Use / })).toHaveCount(0);
     await memberPage.screenshot({ path: test.info().outputPath("plugin-ready.png") });
     await memberPage.goto(stack.urls.front);
-    await startChat(memberPage, `Use the assigned skill [[fake:tool skill {"id":"${plugin.id}/hello"}]]`);
+    const discovery = `Discover assigned skills ${crypto.randomUUID()} [[fake:text skills ready]]`;
+    await startChat(memberPage, discovery);
+    await expect(assistant(memberPage)).toContainText("skills ready", { timeout: 90_000 });
+    const request = (await fakeLlm.requests()).find(r => r.tools?.length && r.messages.some(m => m.role === "user" && JSON.stringify(m.content).includes(discovery)));
+    const skillId = modelSkillId(request.messages, "hello");
+    expect(skillId).toMatch(/^[\w-]{21}$/);
+    await sendMessage(memberPage, `Use the assigned skill [[fake:tool skill ${JSON.stringify({ id: skillId })}]]`);
     await expect(assistant(memberPage)).toContainText("Say hello.", { timeout: 90_000 });
     await expect.poll(async () => (await fakeLlm.requests()).some(r => r.messages.some(m => m.role === "tool" && typeof m.content === "string" && m.content.includes("Say hello."))), { message: "the model receives the assigned skill instructions" }).toBe(true);
 
@@ -466,7 +473,13 @@ test("skills can be written, versioned and reverted on the computer, and pinned 
       try {
         await expect.poll(() => ready.ready).toBe(true);
         const projectId = (await channel.ok("projects.ensureScratch", {})).projectId;
-        const id = await api.launch(channel, projectId, `${marker} [[fake:tool skill ${JSON.stringify({ id: `${plugin.id}/${slug}` })}]]`, "Skill versions", { generateTitle: false });
+        const discovery = await api.launch(channel, projectId, `${marker} [[fake:text skills ready]]`, "Discover skill", { generateTitle: false });
+        const catalog = api.watchThread(channel, discovery);
+        try { await api.waitRun(catalog); } finally { catalog.stop(); }
+        const request = (await fakeLlm.requests()).find(r => r.tools?.length && r.messages.some(m => m.role === "user" && JSON.stringify(m.content).includes(marker)));
+        const skillId = modelSkillId(request.messages, slug);
+        expect(skillId).toMatch(/^[\w-]{21}$/);
+        const id = await api.launch(channel, projectId, `${marker} [[fake:tool skill ${JSON.stringify({ id: skillId })}]]`, "Skill versions", { generateTitle: false });
         const state = api.watchThread(channel, id);
         try { await api.waitRun(state); return state.assistantText(); } finally { state.stop(); }
       } finally { ready.stop(); channel.close(); await channel.closed; }
@@ -501,7 +514,7 @@ test("skills can be written, versioned and reverted on the computer, and pinned 
     expect(tree).not.toContain(`${plugin.id}/team-decisions/`);
     expect(await computerOutput(stack, api.personalSpace(people.alice), ["cat", `/sandbox/space/plugins/${plugin.id}/team-notes/SKILL.md`])).toContain(originalBody);
     const request = (await fakeLlm.requests()).find(r => r.messages.some(m => m.role === "user" && JSON.stringify(m.content).includes(marker)));
-    expect(JSON.stringify(request.messages)).toContain(`<id>${plugin.id}/team-notes</id>`);
+    expect(modelSkillId(request.messages, "team-notes")).toMatch(/^[\w-]{21}$/);
     expect(JSON.stringify(request.messages)).toContain(originalDescription);
     expect(JSON.stringify(request.messages)).not.toContain("<name>team-decisions</name>");
     pinned = await api.admin.json("POST", "/api/baskule/admin/plugins", { groups: [], plugin: {

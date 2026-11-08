@@ -109,6 +109,12 @@ export const plugin = sqliteTable("plugin", {
   storedBytes: integer("stored_bytes").notNull(),
 });
 
+export const pluginSkill = sqliteTable("plugin_skill", {
+  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  id: text("id").notNull().unique(),
+}, t => [primaryKey({ columns: [t.pluginId, t.name] })]);
+
 export const pluginVersion = sqliteTable("plugin_version", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
   version: integer("version").notNull(),

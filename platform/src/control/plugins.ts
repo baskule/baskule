@@ -2,6 +2,7 @@ import { catalogService, catalogVendor, type CatalogService, type CatalogVendor 
 import type { ConnectionCipher } from "./connection-crypto";
 import { checkMcpUrl, connectMcp, serverNetwork } from "../shared/plugin-outbound";
 import { z } from "zod";
+import { nanoid } from "nanoid";
 import type { Plugin, PluginInput, PluginUpdate, PluginServer, SpacePlugins, SpacePluginSettings, MemberPlugin, PluginStatus, CredentialMode, ServerInput, PluginTool, SkillHistory, PluginFolder } from "../../../app/packages/contracts/src/baskule-plugins";
 import { HttpError, pluginError, json, notFound } from "../shared/http";
 import type { StorageLike } from "./service";
@@ -167,10 +168,14 @@ export class Plugins {
     }
     return {
       servers,
-      skills: plugins.filter(p => members.some(userId => this.canUse(userId, spaceId, p.id).allowed)).flatMap(p => {
-        const row = this.rows("select skill_files from plugin where id=?", p.id)[0];
-        return JSON.parse(row.skill_files as string).map((s: SpacePlugins["skills"][number]) => ({ ...s, pluginId: p.id }));
-      }),
+      skills: this.storage.transactionSync(() => plugins.filter(p => members.some(userId => this.canUse(userId, spaceId, p.id).allowed)).flatMap(p =>
+        this.skills(p.id).map(s => {
+          const existing = this.rows("select id from plugin_skill where plugin_id=? and name=?", p.id, s.name)[0];
+          const id = existing ? String(existing.id) : nanoid();
+          if (!existing) this.rows("insert into plugin_skill(plugin_id,name,id) values (?,?,?)", p.id, s.name, id);
+          return { ...s, pluginId: p.id, id };
+        }),
+      )),
     };
   }
 
