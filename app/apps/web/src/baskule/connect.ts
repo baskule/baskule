@@ -1,4 +1,4 @@
-// baskule: connection links (0.3). A link names the server and carries a one-time code, so a device needs no
+// baskule: connection links. A link names the server and carries a one-time code, so a device needs no
 // built-in server address: `<origin>/link#code=…` (QR code, paste) and `baskule://connect?server=…&code=…` (the
 // desktop app's protocol handler). The code travels in the fragment, so it never reaches a server log.
 export function connectLink(origin: string, code: string): string {

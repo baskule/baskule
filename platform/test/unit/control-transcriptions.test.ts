@@ -170,8 +170,8 @@ describe("transcriptions", () => {
 
   it("lets a member transcribe raw audio through multipart and trims the returned text", async () => {
     const { h, admin } = await configured();
-    await createUser(h, admin.creds, "member@os.test", "Member");
-    const member = await signIn(h, "member@os.test", "user-password-1");
+    await createUser(h, admin.creds, "member@baskule.test", "Member");
+    const member = await signIn(h, "member@baskule.test", "user-password-1");
     expect(member.status).toBe(200);
     const upstream = vi.fn<typeof fetch>(async (url, init) => {
       expect(url).toBe("https://transcribe.example.test/v1/audio/transcriptions");
@@ -252,7 +252,7 @@ describe("transcriptions", () => {
     const { h, admin } = await configured();
     const users = [admin];
     for (let i = 0; i < 8; i++) {
-      const email = `voice-${i}@os.test`;
+      const email = `voice-${i}@baskule.test`;
       await createUser(h, admin.creds, email, `Voice ${i}`);
       users.push(await signIn(h, email, "user-password-1"));
     }

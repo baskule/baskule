@@ -139,7 +139,7 @@ export function effectiveShortcutsForCommand(
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
     if (!binding) continue;
-    if (!isKeybindingCommandEnabled(binding.command)) continue; // baskule: M1 allowlist
+    if (!isKeybindingCommandEnabled(binding.command)) continue; // baskule: product command allowlist
     if (!matchesWhenClause(binding.whenAst, context)) continue;
 
     const shortcut = shortcutForContext(binding, context);
@@ -185,7 +185,7 @@ export function resolveShortcutCommand(
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
     if (!binding) continue;
-    if (!isKeybindingCommandEnabled(binding.command)) continue; // baskule: M1 allowlist
+    if (!isKeybindingCommandEnabled(binding.command)) continue; // baskule: product command allowlist
     if (!matchesWhenClause(binding.whenAst, context)) continue;
     if (!matchesKeybindingShortcut(event, shortcutForContext(binding, context), platform)) continue;
     return binding.command;

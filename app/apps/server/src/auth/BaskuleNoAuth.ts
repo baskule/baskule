@@ -31,7 +31,8 @@ export const BASKULE_NO_AUTH_EXPIRES_AT = DateTime.makeUnsafe("9999-12-31T23:59:
 // Not a secret: in this mode presenting no credential grants the same session.
 const BASKULE_NO_AUTH_CREDENTIAL = "baskule-no-auth";
 
-// Review M1/M5: the shared no-auth session must not reach features outside the alpha's scope.
+// The shared owner session excludes terminals, source-control writes, preview operation,
+// relay access, access changes, provider management and environment maintenance.
 // Terminals are a shell inside the server container (not the agent's computer); access management
 // could revoke the one session every device shares. The UI already gates on these scopes.
 const BASKULE_NO_AUTH_DROPPED_SCOPES: ReadonlySet<string> = new Set([
@@ -101,7 +102,7 @@ export const resetBaskuleNoAuthSession = Effect.gen(function* () {
 
 export const warnBaskuleNoAuth = (host: string | undefined) =>
   Effect.logWarning(
-    `BASKULE_AUTH_MODE=none: authentication is DISABLED. Anyone who can reach ${host ?? "this server"} has full owner access. Bind only to a private or Tailscale address.`,
+    `BASKULE_AUTH_MODE=none: authentication is DISABLED. Anyone who can reach ${host ?? "this server"} acts as the owner (terminals and access management excluded). Restrict access with network controls or an authenticating proxy.`,
   );
 
 /**

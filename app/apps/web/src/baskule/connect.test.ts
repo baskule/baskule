@@ -12,17 +12,17 @@ import { isBaskulePublicPath } from "./session";
 
 describe("connection links", () => {
   it("round-trips the code through the link's fragment", () => {
-    const link = new URL(connectLink("https://os.example", "a-b_c"));
-    expect(link.origin + link.pathname).toBe("https://os.example/link");
+    const link = new URL(connectLink("https://baskule.example", "a-b_c"));
+    expect(link.origin + link.pathname).toBe("https://baskule.example/link");
     expect(codeFromHash(link.hash)).toBe("a-b_c");
     expect(codeFromHash("#token=x")).toBeNull();
     expect(isBaskulePublicPath(link.pathname)).toBe(true);
   });
 
   it("hands the server and the code to the desktop app", () => {
-    const link = new URL(desktopConnectLink("https://os.example:8443", "abc"));
+    const link = new URL(desktopConnectLink("https://baskule.example:8443", "abc"));
     expect(link.protocol).toBe("baskule:");
-    expect(link.searchParams.get("server")).toBe("https://os.example:8443");
+    expect(link.searchParams.get("server")).toBe("https://baskule.example:8443");
     expect(link.searchParams.get("code")).toBe("abc");
   });
 

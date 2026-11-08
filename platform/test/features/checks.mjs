@@ -10,9 +10,9 @@ export const checks = [
     fn: async (ctx) => {
       const s = await world(ctx);
       const shell = watchShell(s.cb);
-      const threadId = await launch(s.ca, s.projectId, "Hello WPF [[fake:text pong-wpf]]", "Baseline");
+      const threadId = await launch(s.ca, s.projectId, "Hello [[fake:text pong]]", "Baseline");
       const t = watchThread(s.ca, threadId);
-      await waitFor("answer", () => t.assistantText().includes("pong-wpf"), 90_000);
+      await waitFor("answer", () => t.assistantText().includes("pong"), 90_000);
       await waitFor("bob sees the chat", () => shell.threads.has(threadId), 20_000);
       t.stop();
       shell.stop();

@@ -1,4 +1,4 @@
-// Debug helper: node test/wpf/inspect.mjs <spaceId> [title-substring]  (as admin's view? no: as the run's Alice)
+// Debug helper: node test/features/inspect.mjs <spaceId> [title-substring]  (as the run's Alice)
 import { Person, watchShell, waitFor, projection } from "./lib.mjs";
 const [spaceId, title = "", email, password] = process.argv.slice(2);
 const p = await Person.signIn(email, password);

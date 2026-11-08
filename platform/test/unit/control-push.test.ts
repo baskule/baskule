@@ -277,7 +277,7 @@ describe("Baskule background push", () => {
           },
         });
       const first = await put(enrollment);
-      const bob = await createUser(h, a.creds, "push-bob@os.test", "Bob");
+      const bob = await createUser(h, a.creds, "push-bob@baskule.test", "Bob");
       const b = await signIn(h, bob.email, "user-password-1");
       const transferred = await put(enrollment, b.creds);
       expect(transferred.status).toBe(200);

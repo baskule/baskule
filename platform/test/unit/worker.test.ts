@@ -5,8 +5,8 @@ import type { Env } from "../../src/env";
 import type { Identity } from "../../src/shared/contract";
 import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "../../../app/packages/contracts/src/baskule";
 
-const O = "http://os.test";
-const ALICE: Identity = { userId: "u_alice", name: "Alice", email: "alice@os.test", role: "member", sessionId: "s_alice", spaceRole: "member" };
+const O = "http://baskule.test";
+const ALICE: Identity = { userId: "u_alice", name: "Alice", email: "alice@baskule.test", role: "member", sessionId: "s_alice", spaceRole: "member" };
 
 function fakeEnv(extra: Partial<Env> = {}) {
   const controlCalls: Request[] = [];
@@ -69,7 +69,7 @@ describe("identity header", () => {
   });
 });
 
-describe("Origin check (review H4)", () => {
+describe("Origin check", () => {
   const env = fakeEnv().env;
   const t = (method: string, headers: Record<string, string>) => checkOrigin(req("/s/acme/x", { method, headers }), env)?.status ?? 200;
   it("lets safe methods through", () => expect(t("GET", { origin: "http://evil.test" })).toBe(200));
@@ -84,9 +84,9 @@ describe("Origin check (review H4)", () => {
   });
   it("refuses other origins, other ports of the same host, and null", () => {
     expect(t("POST", { origin: "http://evil.test" })).toBe(403);
-    expect(t("POST", { origin: "http://os.test:32400" })).toBe(403);
+    expect(t("POST", { origin: "http://baskule.test:32400" })).toBe(403);
     expect(t("POST", { origin: "null" })).toBe(403);
-    expect(t("DELETE", { origin: "https://os.test" })).toBe(403);
+    expect(t("DELETE", { origin: "https://baskule.test" })).toBe(403);
   });
   it("applies to WebSocket upgrades even with GET", () => {
     expect(t("GET", { upgrade: "websocket", origin: "http://evil.test" })).toBe(403);

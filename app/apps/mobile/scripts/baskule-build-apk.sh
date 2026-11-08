@@ -9,7 +9,7 @@
 #   BASKULE_KEYSTORE_PROPERTIES  a properties file with storeFile, storePassword, keyAlias, keyPassword:
 #                                 required: the release APK is explicitly signed with that key.
 #   BASKULE_ABIS                 comma-separated ABIs (default arm64-v8a: every phone of the last years)
-#   BASKULE_GRADLE_WORKERS       Gradle workers (default 2: the build host is shared)
+#   BASKULE_GRADLE_WORKERS       Gradle workers (default 2: conservative limit; raise for your build machine)
 #   OUT                           where to copy the APK (default apps/mobile/build-out/)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)

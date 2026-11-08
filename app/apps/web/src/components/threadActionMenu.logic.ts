@@ -119,7 +119,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
-  // baskule: Rename / Archive / Delete only (scope Part 2).
+  // baskule: filter chat controls for the active product mode and use Baskule labels.
   const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = baskuleThreadMenuItems([
     ...(state.canFind
       ? [{ id: "find" as const, label: t("Find in thread"), icon: "text-search" }]

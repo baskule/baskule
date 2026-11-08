@@ -227,9 +227,6 @@ import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation
 import { pendingDraftWork } from "./pendingDraftWork";
 import { importComposerThreadAttachment } from "./composerThreadImport";
 import { observeResize } from "~/lib/observeResize";
-// baskule:
-// baskule: M2, M3
-// baskule: M3
 
 const isEnvironmentRequestInvalidError = Schema.is(EnvironmentRequestInvalidError);
 import { toastManager } from "../ui/toast";
@@ -884,7 +881,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderEntry === undefined && multipleModelSelections === null;
   const providerCatalogPending = noProviderAvailable && !providerCatalogKnown;
   const showProviderUnavailable = noProviderAvailable && !providerCatalogPending;
-  useBaskuleProviderRetry(environmentId, showProviderUnavailable); // baskule: M3
+  useBaskuleProviderRetry(environmentId, showProviderUnavailable); // baskule: provider availability feedback
   const providerSetupInstanceId = noProviderAvailable
     ? (unavailableProviderInstanceId ??
       (lockedProvider === null
@@ -3056,7 +3053,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 >
                   {prompt.trim() ||
                     (showProviderUnavailable
-                      ? PROVIDER_UNAVAILABLE_SHORT // baskule: M3
+                      ? PROVIDER_UNAVAILABLE_SHORT // baskule: provider availability feedback
                       : baskule.plainChat // baskule:
                         ? t("Message Baskule")
                         : t("Ask anything..."))}
@@ -3223,7 +3220,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             : projectSelectionRequired
                               ? t("Choose a project above to start a thread")
                               : showProviderUnavailable
-                                ? PROVIDER_UNAVAILABLE_PLACEHOLDER // baskule: M3
+                                ? PROVIDER_UNAVAILABLE_PLACEHOLDER // baskule: provider availability feedback
                                 : baskule.plainChat
                                   ? t("Message Baskule")
                                   : DEFAULT_COMPOSER_PLACEHOLDER

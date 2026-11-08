@@ -14,7 +14,7 @@ const unavailable = (name) => () => {
   throw new Error(`node:net.${name} is unavailable in a space cell`);
 };
 export const createServer = unavailable("createServer");
-// baskule(wp-h): client sockets are refused asynchronously, like a closed port, instead of throwing: upstream port
+// baskule: client sockets are refused asynchronously, like a closed port, instead of throwing: upstream port
 // probes (RemoteOpenTargets' sshd check in loadServerConfig) treat a refusal as "no listener"; a throw was an
 // unhandled defect that broke `subscribeServerConfig`, so the web client never left "Opening your spaces…".
 class RefusedSocket {

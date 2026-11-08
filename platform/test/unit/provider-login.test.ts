@@ -29,13 +29,13 @@ describe("OIDC admission", () => {
       }] }) });
       const login = async (email: string, verified = true, aud?: string) => call(h, "POST", "/auth/sign-in/social", { body: { provider: "company", requestSignUp: true, idToken: { token: await idToken(email, verified, aud), accessToken: "oidc-fixture-access", refreshToken: "oidc-fixture-refresh" } } });
       // The configured OIDC provider remains invitation-only even with matching Google signup domains.
-      h.storage.sql.exec("insert into kv(key,value) values ('product_settings', ?)", JSON.stringify({ ...defaultSettings, googleSignupDomains: ["os.test"] }));
-      const unknown = await login("outsider@os.test");
+      h.storage.sql.exec("insert into kv(key,value) values ('product_settings', ?)", JSON.stringify({ ...defaultSettings, googleSignupDomains: ["baskule.test"] }));
+      const unknown = await login("outsider@baskule.test");
       expect(unknown.status).not.toBe(200);
-      expect(h.storage.sql.exec("select id from user where email='outsider@os.test'").toArray()).toEqual([]);
-      expect((await login("admin@os.test", false)).status).not.toBe(200);
-      expect((await login("admin@os.test", true, "another-app")).status).not.toBe(200);
-      const admin = await login("admin@os.test");
+      expect(h.storage.sql.exec("select id from user where email='outsider@baskule.test'").toArray()).toEqual([]);
+      expect((await login("admin@baskule.test", false)).status).not.toBe(200);
+      expect((await login("admin@baskule.test", true, "another-app")).status).not.toBe(200);
+      const admin = await login("admin@baskule.test");
       expect(admin.status, JSON.stringify(admin.body)).toBe(200);
       const me = await call(h, "GET", "/api/baskule/me", { creds: { cookie: cookieFrom(admin) } });
       expect(me.body.user.role).toBe("admin");
@@ -44,7 +44,7 @@ describe("OIDC admission", () => {
       expect(account.refresh_token).not.toBe("oidc-fixture-refresh");
       expect(account.id_token).toBeNull();
       expect((await h.svc.auth.api.getAccessToken({ body: { accountId: account.id as string, userId: account.user_id as string } })).accessToken).toBe("oidc-fixture-access");
-      expect((await call(h, "POST", "/auth/sign-in/email", { body: { email: "admin@os.test", password: "admin-password-1" } })).status).not.toBe(200);
+      expect((await call(h, "POST", "/auth/sign-in/email", { body: { email: "admin@baskule.test", password: "admin-password-1" } })).status).not.toBe(200);
     } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
   });
 });

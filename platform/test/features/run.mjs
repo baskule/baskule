@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Platform feature runner: the thin-server capabilities (docs/development-workflow.md)
+// Platform feature runner: product capabilities (docs/development-workflow.md)
 // end to end on the real platform app (scripts/stack: celld dev + real computers + fake LLM).
-//   node test/wpf/run.mjs [--only a,b] [--list]
-// Every check prints PASS/FAIL with evidence; the summary is written to test/wpf/.run/results.json.
+//   node test/features/run.mjs [--only a,b] [--list]
+// Every check prints PASS/FAIL with evidence; the summary is written to test/features/.run/results.json.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,7 @@ if (args.includes("--list")) {
   process.exit(0);
 }
 
-const run = process.env.WPF_RUN ?? Date.now().toString(36);
+const run = process.env.BASKULE_FEATURE_RUN ?? Date.now().toString(36);
 const ctx = { run, state: {} };
 const results = [];
 for (const c of checks) {

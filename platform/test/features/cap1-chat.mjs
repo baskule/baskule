@@ -79,7 +79,7 @@ export const chatChecks = [
       b.stop();
       // A command retried with the same id does not duplicate the message.
       const commandId = crypto.randomUUID();
-      const messageId = `message:wpf:${crypto.randomUUID()}`;
+      const messageId = `message:test:${crypto.randomUUID()}`;
       const cmd = { type: "message.dispatch", commandId, createdBy: "user", creationSource: "web", threadId: id, messageId, text: `retry once ${ctx.run} [[fake:text ok]]`, attachments: [], dispatchMode: { type: "queue_after_active" } };
       await s.ca.call("orchestration.dispatchCommand", cmd);
       await s.ca.call("orchestration.dispatchCommand", cmd);

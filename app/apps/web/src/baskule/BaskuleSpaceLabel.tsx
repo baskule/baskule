@@ -1,4 +1,4 @@
-// baskule: which space a chat belongs to (scope Part 2), shown once a person has several spaces.
+// baskule: which space a chat belongs to, shown once a person has several spaces.
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { baskule } from "./flags";

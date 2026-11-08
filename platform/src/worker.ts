@@ -30,7 +30,7 @@ export default {
         if (o) return o;
         const r = await control(env).fetch(toControl(req, url));
         if (p !== "/auth/sign-out" || !r.ok) return r;
-        // Review M2: one origin = one browser storage for every user of a profile; wipe it on sign-out
+        // One origin = one browser storage for every user of a profile; wipe it on sign-out
         // (browsers honour this on HTTPS and localhost only; the web client also clears its caches).
         const h = new Headers(r.headers);
         h.set("clear-site-data", '"cache", "storage"');
@@ -93,7 +93,7 @@ function allowedOrigins(req: Request, env: Env): string[] {
 }
 
 /**
- * Review H4: for state-changing methods and WebSocket upgrades, an Origin header must exactly match the request's own
+ * For state-changing methods and WebSocket upgrades, an Origin header must exactly match the request's own
  * origin or one of PUBLIC_ORIGINS ("null" is refused). Without an Origin header the request is only accepted when it
  * carries no session cookie (a native client using a bearer token: no ambient credential, so no CSRF).
  * Returns a 403 response when refused, else null.

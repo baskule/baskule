@@ -84,7 +84,7 @@ export const kv = sqliteTable("kv", {
   value: text("value").notNull(),
 });
 
-/** No foreign keys: billed history survives deletion of an alpha user or space. */
+/** No foreign keys: billed history survives deletion of a user or space. */
 export const usageRecord = sqliteTable("usage_record", {
   spaceId: text("space_id").notNull(), messageId: text("message_id").notNull(),
   occurredAt: integer("occurred_at").notNull(), record: text("record").notNull(),

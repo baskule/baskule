@@ -15,7 +15,7 @@ export const AssetResource = Schema.Union([
   Schema.TaggedStruct("workspace-file", {
     threadId: ThreadId,
     path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
-    // baskule: "attachment" serves any file type as a download (Files out, M7).
+    // baskule: "attachment" serves any file type as a download.
     disposition: Schema.optionalKey(Schema.Literal("attachment")),
   }),
   Schema.TaggedStruct("media-file", {

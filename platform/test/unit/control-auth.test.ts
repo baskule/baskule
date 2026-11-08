@@ -35,7 +35,7 @@ describe("database invariants", () => {
   it("a personal space has exactly one member, its owner (CHECK + triggers)", async () => {
     const h = await makeService();
     const a = await asAdmin(h);
-    const bob = await createUser(h, a.creds, "bob@os.test", "Bob");
+    const bob = await createUser(h, a.creds, "bob@baskule.test", "Bob");
     const personal = personalSpaceOf(h, bob.id);
     const sql = h.storage.sql;
     expect(() => sql.exec("insert into space_member(space_id, user_id, role, created_at) values (?, ?, 'member', 1)", personal, a.userId).toArray()).toThrow(/personal space/);
@@ -62,7 +62,7 @@ describe("sessions", () => {
   it("public sign-up and Better Auth's own admin routes are not reachable", async () => {
     const h = await makeService();
     const a = await asAdmin(h);
-    expect((await call(h, "POST", "/auth/sign-up/email", { body: { email: "x@os.test", password: "password-123", name: "X" } })).status).toBe(404);
+    expect((await call(h, "POST", "/auth/sign-up/email", { body: { email: "x@baskule.test", password: "password-123", name: "X" } })).status).toBe(404);
     expect((await call(h, "POST", "/auth/admin/set-user-password", { creds: a.creds, body: { userId: a.userId, newPassword: "aaaaaaaaaa" } })).status).toBe(404);
     expect((await call(h, "POST", "/auth/admin/impersonate-user", { creds: a.creds, body: { userId: a.userId } })).status).toBe(404);
   });
@@ -80,17 +80,17 @@ describe("authorization (Worker → ControlCell)", () => {
   it("returns the contract identity for members, 404 for unknown/non-member/malformed, 401 without session", async () => {
     const h = await makeService();
     const a = await asAdmin(h);
-    await createUser(h, a.creds, "alice@os.test", "Alice");
-    const alice = await signIn(h, "alice@os.test", "user-password-1");
+    await createUser(h, a.creds, "alice@baskule.test", "Alice");
+    const alice = await signIn(h, "alice@baskule.test", "user-password-1");
     if (alice.status !== 200) throw new Error("sign-in");
     const alicePersonal = alice.me.spaces[0].id;
     const r = await authorize(h, alice.creds, alicePersonal);
     expect(r.status).toBe(200);
     expect(r.body.identity).toEqual({
-      userId: alice.userId, name: "Alice", email: "alice@os.test", role: "member", sessionId: alice.sessionId, spaceRole: "owner",
+      userId: alice.userId, name: "Alice", email: "alice@baskule.test", role: "member", sessionId: alice.sessionId, spaceRole: "owner",
     });
     expect((await authorize(h, { bearer: alice.creds.bearer }, alicePersonal)).status).toBe(200);
-    // the admin cannot enter Alice's personal space (scope Part 2)
+    // the admin cannot enter Alice's personal space
     expect((await authorize(h, a.creds, alicePersonal)).status).toBe(404);
     expect((await call(h, "GET", `/api/baskule/spaces/${alicePersonal}`, { creds: a.creds })).status).toBe(404);
     expect((await authorize(h, alice.creds, "does-not-exist")).status).toBe(404);
@@ -165,8 +165,8 @@ describe("connecting a device (connect codes, discovery)", () => {
     h.storage.sql.exec("update verification set expires_at = ?", Date.now() - 1000).toArray();
     expect((await call(h, "POST", "/auth/connect/redeem", { body: { code: expired.body.code }, origin: null })).status).toBe(404);
 
-    await createUser(h, a.creds, "bob@os.test", "Bob");
-    const bob = await signIn(h, "bob@os.test", "user-password-1");
+    await createUser(h, a.creds, "bob@baskule.test", "Bob");
+    const bob = await signIn(h, "bob@baskule.test", "user-password-1");
     const code = (await call(h, "POST", "/auth/connect/code", { creds: bob.creds })).body.code;
     expect((await call(h, "POST", `/api/baskule/admin/users/${bob.userId}/deactivate`, { creds: a.creds })).status).toBe(200);
     expect((await call(h, "POST", "/auth/connect/redeem", { body: { code }, origin: null })).status).toBe(404);

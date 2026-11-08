@@ -4,4 +4,4 @@ dist/
 .dev.vars
 test/.run/
 dev/.run/
-test/wpf/.run/
+test/features/.run/

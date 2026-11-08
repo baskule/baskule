@@ -1,4 +1,4 @@
-// baskule: the HTTP routes a space serves (E8, deny by default). The selected features use
+// baskule: the HTTP routes a space serves (deny by default). The selected features use
 // T3's WebSocket RPC plus a few HTTP routes; T3's pairing, OAuth, cloud, pull-request, static,
 // device routes are not reachable in a space. Browser streams are authenticated and forwarded
 // separately by spaceServer.ts to the computer bridge.

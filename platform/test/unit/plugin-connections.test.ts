@@ -147,7 +147,7 @@ describe("MCP OAuth connections", () => {
     const f = await fakeOAuth();
     try {
       const h = await makeService(); const x = await install(h, f.resource);
-      const bob = await createUser(h, x.a.creds, "bob@os.test", "Bob");
+      const bob = await createUser(h, x.a.creds, "bob@baskule.test", "Bob");
       const b = await signIn(h, bob.email, "user-password-1");
       const callback = await authorized(await x.start());
       expect((await call(h, "GET", callback, { creds: b.creds })).headers.get("location")).toContain("connectionError=invalid_oauth_state");
@@ -311,7 +311,7 @@ describe("ready-member discovery and account reloads", () => {
     const f = await fakeOAuth();
     try {
       const h = await makeService(); const x = await install(h, f.resource);
-      const bob = await createUser(h, x.a.creds, "discovery@os.test", "Discovery");
+      const bob = await createUser(h, x.a.creds, "discovery@baskule.test", "Discovery");
       const b = await signIn(h, bob.email, "user-password-1");
       const team = (await call(h, "POST", `${API}/spaces`, { creds: x.a.creds, body: { name: "Discovery", members: [{ userId: bob.id }] } })).body.space.id;
       await call(h, "PUT", `${API}/spaces/${team}/plugins`, { creds: x.a.creds, body: { personalPluginsAllowed: true, disabled: [] } });
@@ -336,7 +336,7 @@ describe("ready-member discovery and account reloads", () => {
     const f = await fakeOAuth(); f.state.shortLived = true;
     try {
       const h = await makeService(); const x = await install(h, f.resource);
-      const bob = await createUser(h, x.a.creds, "reload@os.test", "Reload");
+      const bob = await createUser(h, x.a.creds, "reload@baskule.test", "Reload");
       const team = (await call(h, "POST", `${API}/spaces`, { creds: x.a.creds, body: { name: "Reload", members: [{ userId: bob.id }] } })).body.space.id;
       const callback = await authorized(await x.start());
       h.calls.length = 0;

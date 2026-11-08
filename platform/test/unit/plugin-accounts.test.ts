@@ -37,7 +37,7 @@ describe("several plugin accounts", () => {
       expect(accounts.filter((a: { default: boolean }) => a.default).map((a: { label: string }) => a.label)).toEqual(["Work"]);
       expect((await x.credential()).body.account.label).toBe("Work");
       expect((await x.credential("second")).body.account.label).toBe("Second");
-      const bob = await createUser(h, x.a.creds, "account-bob@os.test", "Bob");
+      const bob = await createUser(h, x.a.creds, "account-bob@baskule.test", "Bob");
       expect((await x.credential("Work", bob.id)).body).toEqual({ error: "connect" });
       const b = await signIn(h, bob.email, "user-password-1");
       await x.connect("Bob private", undefined, b.creds);
@@ -71,7 +71,7 @@ describe("several plugin accounts", () => {
     try {
       const h = await makeService(); const x = await setup(h, f.resource);
       await x.connect("Work"); const [work] = await x.accounts();
-      const bob = await createUser(h, x.a.creds, "account-owner@os.test", "Bob");
+      const bob = await createUser(h, x.a.creds, "account-owner@baskule.test", "Bob");
       const b = await signIn(h, bob.email, "user-password-1");
       expect((await x.change(work.id, { label: "Stolen", default: true }, b.creds)).status).toBe(404);
       expect((await x.remove(work.id, undefined, b.creds)).status).toBe(404);
@@ -130,7 +130,7 @@ describe("several plugin accounts", () => {
     const f = await fakeOAuth(); f.state.shortLived = true;
     try {
       const h = await makeService(); const x = await setup(h, f.resource);
-      const bob = await createUser(h, x.a.creds, "admin-test-bob@os.test", "Bob");
+      const bob = await createUser(h, x.a.creds, "admin-test-bob@baskule.test", "Bob");
       const b = await signIn(h, bob.email, "user-password-1");
       await x.connect("Bob account", undefined, b.creds);
       const tools = () => call(h, "GET", `${API}/admin/plugins/${x.id}/tools?server=remote`, { creds: x.a.creds });

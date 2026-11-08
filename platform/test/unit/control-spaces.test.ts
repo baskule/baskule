@@ -12,9 +12,9 @@ describe("team spaces", () => {
   it("admin creates a team space; members need permission; membership changes revoke", async () => {
     const h = await makeService();
     const a = await asAdmin(h);
-    const alice = await createUser(h, a.creds, "alice@os.test", "Alice");
-    const bob = await createUser(h, a.creds, "bob@os.test", "Bob");
-    const bs = await signIn(h, "bob@os.test", "user-password-1");
+    const alice = await createUser(h, a.creds, "alice@baskule.test", "Alice");
+    const bob = await createUser(h, a.creds, "bob@baskule.test", "Bob");
+    const bs = await signIn(h, "bob@baskule.test", "user-password-1");
     if (bs.status !== 200) throw new Error("sign-in");
 
     // Bob may not create spaces until the admin allows it
@@ -22,17 +22,17 @@ describe("team spaces", () => {
     await call(h, "POST", "/api/baskule/admin/groups", { creds: a.creds, body: { name: "Space creators", members: [bob.id], permissions: { canCreateSpaces: true }, plugins: [] } });
     expect((await call(h, "POST", "/api/baskule/spaces", { creds: bs.creds, body: { name: "Bobs" } })).status).toBe(201);
 
-    const c = await call(h, "POST", "/api/baskule/spaces", { creds: a.creds, body: { name: "Acme", members: [{ email: "alice@os.test" }, { userId: bob.id, role: "member" }] } });
+    const c = await call(h, "POST", "/api/baskule/spaces", { creds: a.creds, body: { name: "Acme", members: [{ email: "alice@baskule.test" }, { userId: bob.id, role: "member" }] } });
     expect(c.status).toBe(201);
     const acme = c.body.space.id as string;
-    expect(c.body.members.map((m: any) => [m.email, m.role]).sort()).toEqual([["admin@os.test", "owner"], ["alice@os.test", "member"], ["bob@os.test", "member"]]);
+    expect(c.body.members.map((m: any) => [m.email, m.role]).sort()).toEqual([["admin@baskule.test", "owner"], ["alice@baskule.test", "member"], ["bob@baskule.test", "member"]]);
 
     const me = await call(h, "GET", "/api/baskule/me", { creds: bs.creds });
     expect(me.body.spaces.map((s: any) => s.name)).toEqual(["Personal", "Acme", "Bobs"]);
     expect((await authorize(h, bs.creds, acme)).body.identity.spaceRole).toBe("member");
 
     // A plain member cannot manage members
-    expect((await call(h, "POST", `/api/baskule/spaces/${acme}/members`, { creds: bs.creds, body: { email: "admin@os.test" } })).status).toBe(403);
+    expect((await call(h, "POST", `/api/baskule/spaces/${acme}/members`, { creds: bs.creds, body: { email: "admin@baskule.test" } })).status).toBe(403);
     expect((await call(h, "DELETE", `/api/baskule/spaces/${acme}/members/${alice.id}`, { creds: bs.creds })).status).toBe(403);
 
     // The admin removes Bob: revoke {userId} sent to Acme, access is gone at once
@@ -51,7 +51,7 @@ describe("team spaces", () => {
 
     // Personal spaces cannot get members
     const bobPersonal = personalSpaceOf(h, bob.id);
-    expect((await call(h, "POST", `/api/baskule/spaces/${bobPersonal}/members`, { creds: bs.creds, body: { email: "alice@os.test" } })).status).toBe(409);
+    expect((await call(h, "POST", `/api/baskule/spaces/${bobPersonal}/members`, { creds: bs.creds, body: { email: "alice@baskule.test" } })).status).toBe(409);
 
     // Deleting a team space wipes the SpaceCell first, then the rows
     h.calls.length = 0;
@@ -72,8 +72,8 @@ describe("team spaces", () => {
   it("the admin can only delete a personal space; it is wiped and replaced by a fresh one", async () => {
     const h = await makeService();
     const a = await asAdmin(h);
-    const alice = await createUser(h, a.creds, "alice@os.test", "Alice");
-    const as = await signIn(h, "alice@os.test", "user-password-1");
+    const alice = await createUser(h, a.creds, "alice@baskule.test", "Alice");
+    const as = await signIn(h, "alice@baskule.test", "user-password-1");
     if (as.status !== 200) throw new Error("sign-in");
     const old = personalSpaceOf(h, alice.id);
     expect((await call(h, "DELETE", `/api/baskule/spaces/${old}`, { creds: as.creds })).status).toBe(403);
@@ -90,15 +90,15 @@ describe("invitations", () => {
     const h = await makeService();
     const a = await asAdmin(h);
     const team = (await call(h, "POST", "/api/baskule/spaces", { creds: a.creds, body: { name: "Acme" } })).body.space.id;
-    await createUser(h, a.creds, "bob@os.test", "Bob");
-    const bs = await signIn(h, "bob@os.test", "user-password-1");
+    await createUser(h, a.creds, "bob@baskule.test", "Bob");
+    const bs = await signIn(h, "bob@baskule.test", "user-password-1");
     if (bs.status !== 200) throw new Error("sign-in");
-    expect((await call(h, "POST", "/api/baskule/invitations", { creds: bs.creds, body: { email: "carol@os.test" } })).status).toBe(403);
-    expect((await call(h, "POST", "/api/baskule/invitations", { creds: a.creds, body: { email: "bob@os.test" } })).status).toBe(409);
+    expect((await call(h, "POST", "/api/baskule/invitations", { creds: bs.creds, body: { email: "carol@baskule.test" } })).status).toBe(403);
+    expect((await call(h, "POST", "/api/baskule/invitations", { creds: a.creds, body: { email: "bob@baskule.test" } })).status).toBe(409);
 
-    const inv = await call(h, "POST", "/api/baskule/invitations", { creds: a.creds, body: { email: "Carol@OS.test", spaces: [{ spaceId: team, role: "member" }] } });
+    const inv = await call(h, "POST", "/api/baskule/invitations", { creds: a.creds, body: { email: "Carol@BASKULE.test", spaces: [{ spaceId: team, role: "member" }] } });
     expect(inv.status).toBe(201);
-    expect(inv.body.url).toMatch(/^http:\/\/os\.test\/invite#token=/);
+    expect(inv.body.url).toMatch(/^http:\/\/baskule\.test\/invite#token=/);
     const token = inv.body.token as string;
     // the token is only stored hashed
     const stored = h.storage.sql.exec("select token_hash from invitation").toArray()[0].token_hash as string;
@@ -108,28 +108,28 @@ describe("invitations", () => {
     expect(JSON.stringify((await call(h, "GET", "/api/baskule/invitations", { creds: a.creds })).body)).not.toContain(token);
 
     const look = await call(h, "POST", "/api/baskule/invitations/lookup", { body: { token }, origin: null });
-    expect(look.body).toMatchObject({ email: "carol@os.test", spaces: [{ id: team, name: "Acme" }] });
+    expect(look.body).toMatchObject({ email: "carol@baskule.test", spaces: [{ id: team, name: "Acme" }] });
     expect(look.headers.get("referrer-policy")).toBe("no-referrer");
 
     // email-bound: another email is refused, and the token stays usable
-    expect((await call(h, "POST", "/api/baskule/invitations/accept", { body: { token, name: "Mallory", password: "mallory-pass-1", email: "mallory@os.test" } })).status).toBe(400);
+    expect((await call(h, "POST", "/api/baskule/invitations/accept", { body: { token, name: "Mallory", password: "mallory-pass-1", email: "mallory@baskule.test" } })).status).toBe(400);
     const acc = await call(h, "POST", "/api/baskule/invitations/accept", { body: { token, name: "Carol", password: "carol-pass-1" }, origin: null, headers: { cookie: "" } });
     expect(acc.status).toBe(201);
-    expect(acc.body.user.email).toBe("carol@os.test");
+    expect(acc.body.user.email).toBe("carol@baskule.test");
     expect(acc.body.spaces.map((s: any) => s.name)).toEqual(["Personal", "Acme"]);
     expect(acc.headers.getSetCookie().join()).toMatch(/baskule\.session_token=/);
     expect(acc.headers.get("set-auth-token")).toBeTruthy();
     // single use
     expect((await call(h, "POST", "/api/baskule/invitations/accept", { body: { token, name: "Carol2", password: "carol-pass-2" } })).status).toBe(404);
     expect((await call(h, "POST", "/api/baskule/invitations/lookup", { body: { token } })).status).toBe(404);
-    expect((await signIn(h, "carol@os.test", "carol-pass-1")).status).toBe(200);
-    expect((await signIn(h, "carol@os.test", "carol-pass-2")).status).toBe(401);
+    expect((await signIn(h, "carol@baskule.test", "carol-pass-1")).status).toBe(200);
+    expect((await signIn(h, "carol@baskule.test", "carol-pass-2")).status).toBe(401);
 
     // revoked and expired invitations are refused; garbage tokens too
-    const inv2 = await call(h, "POST", "/api/baskule/invitations", { creds: a.creds, body: { email: "dave@os.test" } });
+    const inv2 = await call(h, "POST", "/api/baskule/invitations", { creds: a.creds, body: { email: "dave@baskule.test" } });
     await call(h, "DELETE", `/api/baskule/invitations/${inv2.body.id}`, { creds: a.creds });
     expect((await call(h, "POST", "/api/baskule/invitations/accept", { body: { token: inv2.body.token, name: "D", password: "dave-pass-12" } })).status).toBe(404);
-    const inv3 = await call(h, "POST", "/api/baskule/invitations", { creds: a.creds, body: { email: "erin@os.test" } });
+    const inv3 = await call(h, "POST", "/api/baskule/invitations", { creds: a.creds, body: { email: "erin@baskule.test" } });
     h.storage.sql.exec("update invitation set expires_at = 1 where id = ?", inv3.body.id).toArray();
     expect((await call(h, "POST", "/api/baskule/invitations/accept", { body: { token: inv3.body.token, name: "E", password: "erin-pass-123" } })).status).toBe(404);
     expect((await call(h, "POST", "/api/baskule/invitations/accept", { body: { token: "x".repeat(43), name: "E", password: "erin-pass-123" } })).status).toBe(404);

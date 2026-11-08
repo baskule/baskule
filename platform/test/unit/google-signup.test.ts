@@ -17,7 +17,7 @@ it("admits only verified Google Workspace users from admin-approved domains, imm
     const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
     const payload = `${encode({ alg: "RS256", kid: "google-fixture" })}.${encode({ iss: "https://accounts.google.com", aud: "google-test", sub: email, email, email_verified: true, hd: "company.test", name: "New member", iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 600, ...claims })}`;
     exchangedToken = `${payload}.fixture-signature`;
-    const start = await call(h, "POST", "/auth/sign-in/social", { body: { provider: "google", callbackURL: "http://os.test/", disableRedirect: true } });
+    const start = await call(h, "POST", "/auth/sign-in/social", { body: { provider: "google", callbackURL: "http://baskule.test/", disableRedirect: true } });
     expect(start.status).toBe(200);
     const state = new URL(start.body.url).searchParams.get("state");
     const callback = await call(h, "GET", `/auth/callback/google?code=fixture-code&state=${state}`, { creds: { cookie: cookieFrom(start) } });

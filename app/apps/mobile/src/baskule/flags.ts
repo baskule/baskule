@@ -1,7 +1,7 @@
 /**
  * Baskule feature flags for the mobile client.
  *
- * The app keeps T3 Code's code paths; these flags only hide entry points that are outside the alpha's
+ * The app keeps T3 Code's code paths; these flags only hide entry points that are outside Baskule's
  * scope (a ChatGPT-like chat app: chat list with new/archive/delete, thread view, files). Flip a flag to
  * bring an upstream feature back without touching the call sites.
  */

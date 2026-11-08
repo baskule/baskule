@@ -116,7 +116,7 @@ describe("ControlCell plugins and groups", () => {
 
   it("starts member revocation before waiting for the space's plugin reload", async () => {
     const h = await makeService(); const a = await asAdmin(h);
-    const bob = await createUser(h, a.creds, "removed@os.test", "Removed");
+    const bob = await createUser(h, a.creds, "removed@baskule.test", "Removed");
     const team = await call(h, "POST", `${API}/spaces`, { creds: a.creds, body: { name: "Team", members: [{ userId: bob.id }] } });
     let markStarted!: () => void;
     const started = new Promise<void>(resolve => { markStarted = resolve; });
@@ -137,8 +137,8 @@ describe("ControlCell plugins and groups", () => {
 
   it("starts empty, derives space creation from groups, and protects Everyone", async () => {
     const h = await makeService(); const a = await asAdmin(h);
-    const bob = await createUser(h, a.creds, "bob@os.test", "Bob");
-    const b = await signIn(h, "bob@os.test", "user-password-1");
+    const bob = await createUser(h, a.creds, "bob@baskule.test", "Bob");
+    const b = await signIn(h, "bob@baskule.test", "user-password-1");
     const admin = { creds: a.creds };
     expect((await call(h, "GET", `${API}/admin/plugins`, admin)).body).toEqual({ plugins: [], folder: null });
     const groups = (await call(h, "GET", `${API}/admin/groups`, admin)).body.groups;
@@ -159,7 +159,7 @@ describe("ControlCell plugins and groups", () => {
 
   it("enforces user grants and all switches; organization secrets stay write-only and are deleted with the plugin", async () => {
     const h = await makeService(); const a = await asAdmin(h);
-    const bob = await createUser(h, a.creds, "bob@os.test", "Bob"); const b = await signIn(h, "bob@os.test", "user-password-1");
+    const bob = await createUser(h, a.creds, "bob@baskule.test", "Bob"); const b = await signIn(h, "bob@baskule.test", "user-password-1");
     const admin = { creds: a.creds }; const member = { creds: b.creds };
     expect((await call(h, "POST", `${API}/admin/plugins`, { ...member, body: { groups: [], plugin: input } })).status).toBe(403);
     const installed = await call(h, "POST", `${API}/admin/plugins`, { ...admin, body: { groups: [], plugin: { ...input, name: "Docs" } } });
@@ -202,7 +202,7 @@ describe("ControlCell plugins and groups", () => {
 
   it("space settings are owner-only; personal servers default off in team spaces and skills remain space-scoped", async () => {
     const h = await makeService(); const a = await asAdmin(h);
-    const bob = await createUser(h, a.creds, "bob@os.test", "Bob"); const b = await signIn(h, "bob@os.test", "user-password-1");
+    const bob = await createUser(h, a.creds, "bob@baskule.test", "Bob"); const b = await signIn(h, "bob@baskule.test", "user-password-1");
     const admin = { creds: a.creds }; const member = { creds: b.creds };
     const team = (await call(h, "POST", `${API}/spaces`, { ...admin, body: { name: "Team", members: [{ userId: bob.id }] } })).body.space.id;
     const installed = await call(h, "POST", `${API}/admin/plugins`, { ...admin, body: { groups: [], plugin: input } });
@@ -318,7 +318,7 @@ describe("assignment and member status", () => {
 
   it("serves only the owner's assigned skills and the team's non-banned union; membership changes reload", async () => {
     const h = await makeService(); const a = await asAdmin(h);
-    const bob = await createUser(h, a.creds, "skills@os.test", "Skills");
+    const bob = await createUser(h, a.creds, "skills@baskule.test", "Skills");
     const admin = { creds: a.creds };
     const team = (await call(h, "POST", `${API}/spaces`, { ...admin, body: { name: "Team", members: [{ userId: bob.id }] } })).body.space.id;
     const group = (await call(h, "POST", `${API}/admin/groups`, { ...admin, body: { name: "Skill users", members: [bob.id], permissions: { canCreateSpaces: false }, plugins: [] } })).body;

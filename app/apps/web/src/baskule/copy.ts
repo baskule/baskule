@@ -1,4 +1,4 @@
-// baskule: user-facing copy says "chat", not "thread" (E2E UX review). Applied at a few seams
+// baskule: user-facing copy says "chat", not "thread". Applied at a few seams
 // (confirm dialogs, toasts, empty states) rather than by editing every upstream string.
 import { BASKULE_HOSTED, BASKULE_UI } from "./flags";
 
