@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared install and journey used by kind and the authorized ephemeral cloud run.
+# Shared Helm install, upgrade checks and journey for a test cluster.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
@@ -83,13 +83,6 @@ spec:
   ports: [{port: 47601}]
 YAML
 kubectl -n "$BASKULE_K8S_NAMESPACE" rollout status deployment/fake-llm --timeout=180s
-if [[ ${BASKULE_K8S_CHECK_INGRESS:-} == 1 ]]; then
-  # GKE-only transport probe: the product WebSocket still uses the celld backend.
-  kubectl -n "$BASKULE_K8S_NAMESPACE" annotate service fake-llm \
-    'cloud.google.com/neg={"ingress":true}' 'cloud.google.com/backend-config={"default":"stream-probe"}' >/dev/null
-  kubectl -n "$BASKULE_K8S_NAMESPACE" patch ingress "$BASKULE_K8S_RELEASE" --type=json \
-    -p '[{"op":"add","path":"/spec/rules/0/http/paths/-","value":{"path":"/v1/chat/completions","pathType":"Exact","backend":{"service":{"name":"fake-llm","port":{"number":47601}}}}}]' >/dev/null
-fi
 if [[ ${BASKULE_K8S_JOURNEY:-full} != upgrade ]]; then
   node e2e/kubernetes-journey.mjs | tee "$BASKULE_K8S_EVIDENCE/journey.log"
 fi

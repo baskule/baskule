@@ -88,8 +88,9 @@ jobs:
         if: github.event_name == 'push'
         env:
           TRANSLATION_API_KEY: ${{ secrets.TRANSLATION_API_KEY }}
-          TRANSLATION_MODEL: ${{ vars.TRANSLATION_MODEL }}
-          TRANSLATION_BASE_URL: ${{ vars.TRANSLATION_BASE_URL }}
+          # The project's release translation provider; override with repository or environment variables.
+          TRANSLATION_MODEL: ${{ vars.TRANSLATION_MODEL || 'gpt-6-luna' }}
+          TRANSLATION_BASE_URL: ${{ vars.TRANSLATION_BASE_URL || 'https://api.openai.com/v1' }}
         run: node app/scripts/localization.ts translate
       - name: Check release catalogs
         if: github.event_name == 'push'

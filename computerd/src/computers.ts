@@ -262,7 +262,7 @@ export class Computers {
 
   /**
    * Drops regenerable caches from the per-space volume before an idle stop: a space lives for years, and these grow
-   * with every install and every page browsed (41 of the 45 MB browser profile in the 2026-10-24 study). Best effort,
+   * with every install and every page browsed. Best effort,
    * bounded: a failure or a slow volume never blocks the stop. The pnpm store is kept: projects hard-link from it.
    */
   private async clearCaches(sandbox: string, spaceId: string) {

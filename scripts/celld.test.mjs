@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
 test("celld writes temporary cache files inside each worktree", () => {
-  const base = mkdtempSync(join(tmpdir(), "osdev-celld-launcher-"));
+  const base = mkdtempSync(join(tmpdir(), "baskule-dev-celld-launcher-"));
   const shared = join(base, "shared-tmp");
   mkdirSync(shared);
   try {

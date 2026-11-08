@@ -1,4 +1,4 @@
-// Real-model subset (E2E_REAL=1, mistral-large-4 through the router, metered and logged): a plain question with no
+// Real-model subset (E2E_REAL=1, the configured provider through the router, metered and logged): a plain question with no
 // computer, and a shell task whose output file is checked on the computer.
 import { readFileSync } from "node:fs";
 
@@ -9,7 +9,7 @@ import { REAL, ROOT, RUN, composer, computerStatus, cx, metric, newDevice, route
 const S = "13-real-model";
 test.skip(!REAL, "real-model subset: E2E_REAL=1");
 
-test("(real) plain question: answered by mistral-large-4, no computer", { tag: ["@real"] }, async ({ browser }) => {
+test("(real) plain question: answered by the configured provider, no computer", { tag: ["@real"] }, async ({ browser }) => {
   const w = await world();
   const before = routerUsage();
   const a = await newDevice(browser);

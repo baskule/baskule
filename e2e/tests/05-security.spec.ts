@@ -1,4 +1,4 @@
-// (e) Isolation and the front's security checks (ported from spike path-c's security.sh to the front):
+// (e) Isolation and the front's security checks:
 // Bob cannot see Alice's personal space (API + UI); forged identity, cross-origin requests and WebSockets,
 // internal routes, path tricks, other-space RPCs and admin-only actions are refused. Each check is a soft
 // assertion, so one run reports all of them (artifacts/05-security/checks.json).
@@ -107,7 +107,7 @@ test("(e) isolation and front security checks", { tag: ["@security", "@auth"] },
     const project = await spaceRpc(alice, ap, "projects.ensureScratch", {});
     await spaceRpc(alice, ap, "orchestration.launchThread", {
       commandId: crypto.randomUUID(), projectId: project.value.projectId, title: "Security control", runtimeMode: "full-access", interactionMode: "default",
-      modelSelection: { instanceId: "opencode", model: `custom/${process.env.E2E_MODEL ?? "mistral-large-4"}` }, workspaceStrategy: { type: "root" },
+      modelSelection: { instanceId: "opencode", model: `custom/${process.env.E2E_MODEL ?? "fake-model"}` }, workspaceStrategy: { type: "root" },
       initialMessage: { text: "control [[fake:text ok]]", attachments: [] },
     });
     aliceChats = await until(async () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared host tools and per-worktree dependencies. Run from any directory in the checkout.
+# Shared tool cache and per-worktree dependencies. Run from any directory in the checkout.
 set -Eeuo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # New linked worktrees inherit the primary checkout's prepared host tools.

@@ -37,7 +37,7 @@ if [[ "${NATIVE_SIGN:-false}" == true ]]; then
     done
   fi
   args+=(--signed)
-  status=owner-signed
+  status=signed
 fi
 pnpm exec vp run dist:desktop:artifact "${args[@]}"
 # On native Windows this executes the Electron fff native-load probe and the

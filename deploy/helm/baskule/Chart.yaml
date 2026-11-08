@@ -4,3 +4,11 @@ description: Baskule clustered platform and Kubernetes computers
 type: application
 version: 0.0.0
 appVersion: "0.0.0"
+home: https://github.com/baskule/baskule
+sources:
+  - https://github.com/baskule/baskule
+kubeVersion: ">=1.31.0"
+maintainers:
+  - name: Baskule contributors
+    url: https://github.com/baskule/baskule
+icon: https://raw.githubusercontent.com/baskule/baskule/main/brand/mark.svg

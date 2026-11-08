@@ -13,12 +13,14 @@ export const DEPLOY_DIR = path.join(ROOT, "deploy");
 export const ARTIFACTS = path.resolve(import.meta.dirname, "../artifacts");
 export const DESKTOP = { width: 1440, height: 900 };
 export const PHONE = { width: 390, height: 844 };
-/** Real-model subset enabled (E2E_REAL=1): messages tagged [[real]] go to mistral-large-4 through the router. */
+/** Real-model subset enabled (E2E_REAL=1): messages tagged [[real]] go to the configured provider through the router. */
 export const REAL = process.env.E2E_REAL === "1";
 
 // ---- .env (never logged) ---------------------------------------------------------------------------------------
 export function envGet(key: string): string {
-  const line = readFileSync(path.join(DEPLOY_DIR, ".env"), "utf8")
+  const file = path.join(DEPLOY_DIR, ".env");
+  if (!existsSync(file)) return "";
+  const line = readFileSync(file, "utf8")
     .split("\n")
     .filter((l) => l.startsWith(`${key}=`))
     .pop();

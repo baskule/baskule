@@ -27,7 +27,7 @@ if [[ "${NATIVE_SIGN:-false}" == true ]]; then
   chmod 600 "$signing"/*
   BASKULE_KEYSTORE_PROPERTIES="$signing/keystore.properties" OUT="$OUT" \
     BASKULE_ABIS=arm64-v8a BASKULE_GRADLE_WORKERS=2 ./scripts/baskule-build-apk.sh
-  status=owner-key-signed
+  status=release-key-signed
 else
   pnpm exec expo prebuild --clean --platform android --no-install
   (cd android && ./gradlew assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a)
