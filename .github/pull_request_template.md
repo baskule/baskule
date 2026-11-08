@@ -4,14 +4,11 @@
 
 ## What changed
 
-Removed:
-Kept (and why):
+Compatibility and retained code:
 
-## Scope
+Migration or deployment steps (or none):
 
-## Blast radius
-
-Data wipe and deploy steps (or none):
+Limits of the change:
 
 ## Verification
 

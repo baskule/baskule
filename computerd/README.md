@@ -69,7 +69,7 @@ All `/v1` routes need `Authorization: Bearer <COMPUTERD_TOKEN>`. `:id` is the sp
 Frames are `{"t":"o"|"e","d":"<base64>"}`, then `{"t":"x","code":N}` or `{"t":"err","msg":"…"}`.
 Commands are argv only (no shell built from caller input; argv is capped at 200 KiB). Caller environment
 is filtered by an allowlist in [exec.ts](src/exec.ts); `LD_*` is always refused.
-Commands do not start a container process each (`runc exec` costs about 100 ms). On first use computerd
+Commands share a backend exec session. On first use computerd
 opens one backend exec running `/usr/local/bin/node` with a small agent ([agent.mjs](src/agent/agent.mjs),
 sent with the command, so images cannot drift from computerd), and multiplexes every later command, stdin,
 kill and exit status over it ([session.ts](src/session.ts)). Custom computer images need `/usr/local/bin/node`.
@@ -113,6 +113,12 @@ know, so a restart never leaves them running forever.
 Docker compares computer image IDs; Kubernetes compares image references, so use immutable tags.
 
 Run `scripts/check computerd` from the repository root after [setup](../docs/building.md).
-Benchmarks are opt-in: use `BENCH=1 bash computerd/test/integration.sh` for Docker or `BASKULE_K8S_BENCH=1 e2e/kubernetes-ephemeral.sh run` for Kubernetes.
-Computers on Docker start in about a second on a warm host; on Kubernetes cold start
-is dominated by image pull, which the pre-pull DaemonSet removes.
+Benchmarks are opt-in: use `BENCH=1 bash computerd/test/integration.sh` for Docker or the configured-cluster helper for Kubernetes:
+
+```sh
+BASKULE_K8S_NAMESPACE=baskule BASKULE_K8S_RELEASE=baskule \
+  BENCH_OUT=/path/to/bench.json bash computerd/test/bench-kubernetes.sh
+```
+
+Run it only on a test installation you operate. Kubernetes image pre-pulling avoids
+pulling the computer image on its first use; measure startup with your storage and node configuration.

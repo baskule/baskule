@@ -1,6 +1,6 @@
 # Hosted checks and artifact builds
 
-The public repository uses standard GitHub-hosted runners. No self-hosted runner, Blacksmith runner or Expo Cloud service is required by these workflows. Deployment to an existing installation is separate.
+Workflows run on standard GitHub-hosted runners. Deployment to an existing installation is separate.
 
 ## Pull requests and main
 
@@ -10,7 +10,7 @@ The public repository uses standard GitHub-hosted runners. No self-hosted runner
 - `Tests` runs platform, Baskule server, hosted-web unit, and shared client package tests.
 - `Mobile tests` runs the mobile unit/React tests, the longest suite, on its own runner.
 
-Each suite has its own step. Once setup succeeds, later suites still run after an earlier failure unless the run is cancelled. `CI required` succeeds only when all three jobs succeed. The platform, server, web, mobile, and shared Vitest commands use up to four workers, one per hosted-runner vCPU.
+Each suite has its own step. Once setup succeeds, later suites still run after an earlier failure unless the run is canceled. `CI required` succeeds only when all three jobs succeed. The platform, server, web, mobile, and shared Vitest commands use up to four workers, one per hosted-runner vCPU.
 
 All jobs restore pinned tools and package stores using the same key. Only `Checks` saves a missing key, after installation. PR runs can reuse the default branch's cache. Dependency installation still uses frozen lockfiles.
 
@@ -39,11 +39,11 @@ Computer and computerd build in `backend-runtime` after version and source-CI va
 
 The release factory builds `backend-<version>` once, then downloads the same archive artifact into isolated GitHub-hosted runners. Each consumer checks `SHA256SUMS`, loads the three published image archives, checks their IDs against `images.txt`, and restores the packaged SpaceCell bundle. Install checks use the packaged Compose assets through `BASKULE_INSTALL_ASSETS`, without checkout mounts or regenerated operator files.
 
-The `backend` job gates publishing and the manual factory status. It requires the build, every component, journey and install shard, upstream server and web suites, and `CI required` on the exact source SHA. A failed, skipped or cancelled dependency fails the gate. Run ordinary CI before dispatching a factory for a temporary source commit.
+The `backend` job gates publishing and the manual factory status. It requires the build, every component, journey and install shard, upstream server and web suites, and `CI required` on the exact source SHA. A failed, skipped or canceled dependency fails the gate. Run ordinary CI before dispatching a factory for a temporary source commit.
 
 Ordinary CI already covers lint, feature-map coverage, harness tests, Baskule unit tests and typechecks in `Checks`, `Tests` and `Mobile tests`. Hosted web covers the web component; Linux apps covers desktop checks and verifies the packaged AppImage. Release retains Worker, SpaceCell, computerd, agent and platform feature contracts once each. Upstream server and web suites run on separate runners while packaging runs.
 
-`scripts/check release:journeys --shard N/M` uses Playwright to partition individual journey tests across runners, grouped by stack profile. Each runner keeps one worker to protect shared stack state. Uncovered custom commands are assigned once by feature. The planner removes only declared component commands covered by the release jobs and desktop checks covered by Linux apps. Full components cover named selections. Unknown commands remain in the plan, and owner-run deployed checks remain excluded. Normal `feature:<name>` checks still run all their declared checks. Local `release` still runs its unit and component tiers, then uses the same deduplicated feature plan.
+`scripts/check release:journeys --shard N/M` uses Playwright to partition individual journey tests across runners, grouped by stack profile. Each runner keeps one worker to protect shared stack state. Uncovered custom commands are assigned once by feature. The planner removes only declared component commands covered by the release jobs and desktop checks covered by Linux apps. Full components cover named selections. Unknown commands remain in the plan, and live-installation checks remain excluded. Normal `feature:<name>` checks still run all their declared checks. Local `release` still runs its unit and component tiers, then uses the same deduplicated feature plan.
 
 Build caches accelerate packaging but do not replace verification. Every release exercises the resulting archives.
 
@@ -69,11 +69,11 @@ Versions and source revisions are recorded with the outputs. Use a versioned tag
 
 ## Production signing
 
-Signing is a separate, explicit native-workflow dispatch from the default branch. Configure the `native-release` GitHub environment with required reviewers and deployment branch restrictions before adding owner credentials. The unsigned `native-ci` environment needs no credentials. Missing signing inputs fail a requested signed build.
+Signing is a separate, explicit native-workflow dispatch from the default branch. Configure the `native-release` GitHub environment with required reviewers and deployment branch restrictions before adding publisher signing credentials. The unsigned `native-ci` environment needs no credentials. Missing signing inputs fail a requested signed build.
 
-Android needs an owner keystore and its passwords/alias. macOS needs Apple signing/notarization credentials, an owned team/profile and the relying-party domains required by the inherited signing contract. Windows uses the inherited Azure Trusted Signing provider. Enter credentials through the supported secret channel and GitHub environment secrets; never commit signing files or paste credentials into logs.
+Android needs a publisher-controlled keystore, its passwords, and its alias. macOS needs Apple signing/notarization credentials, an Apple team and provisioning profile and the relying-party domains required by the inherited signing contract. Windows uses the inherited Azure Trusted Signing provider. Store credentials in GitHub environment secrets; never commit signing files or paste credentials into logs.
 
-iOS device archives, provisioning, TestFlight and App Store submission require their own owner configuration. The current iOS lane verifies the simulator build only.
+iOS device archives, TestFlight and App Store submission need the publisher's Apple provisioning profiles and credentials. The current iOS lane verifies the simulator build only.
 
 ## Inspect evidence
 
@@ -81,7 +81,7 @@ Use a run's job logs and artifacts to inspect failures, checksums, package statu
 
 ## First image release
 
-The owner must enable Actions package publishing and allow `GITHUB_TOKEN` to write packages for this repository.
+Repository administrators must enable Actions package publishing and allow `GITHUB_TOKEN` to write packages for this repository.
 After the first publishing run, make these GHCR packages public once in each
 package's settings: `baskule-celld`, `baskule-computerd`, `baskule-computer`, and the OCI chart `charts/baskule`. The workflow links
 their source to this repository. The separate `public-packages` job checks anonymous

@@ -10,7 +10,7 @@ T3 → env.SPACE.getByName(spaceId).fetch("http://agent/_baskule/agent/oc/<path>
    → the SAME SpaceCell → embedded AgentRuntime → OpenCode
 ```
 
-The self-request gives every agent call a live native I/O event on stock celld (issue #258), including calls that T3
+The self-request gives every agent call a live native I/O event on stock celld ([issue #258](https://github.com/denoland/celld/issues/258)), including calls that T3
 makes from background fibers after a restart. It does not allocate another cell. The public Worker rejects
 `/_baskule/*` paths before forwarding requests.
 
@@ -44,7 +44,7 @@ SpaceCell calls `stop()` (interrupt active sessions) and `dispose()` directly.
 | `sample-app.ts` | the bundled interactive MCP app (`decision`) |
 | `plugin-mcp.ts`, `turn-author.ts` | remote plugin tools through an in-isolate proxy; ControlCell policy per call; persisted turn identity |
 | `plugin-skills.ts` | managed computer skill tree and the location skill catalog |
-| `config.ts` | OpenCode config (the installation's single provider and model, capabilities, policies, agents and the assistant prompt) |
+| `config.ts` | OpenCode config (the installation's single provider and model, capabilities, policies, agents and the assistant prompt). Until an administrator chooses a provider, it offers an unreachable placeholder model and `index.ts` refuses every turn with `ai_not_configured` |
 | `session.ts` | pure session-create preparation (strip nulls, `/sandbox` paths, permissions) and the model rule: a chat whose model the installation no longer offers runs on the installation's model (session create, model switch, and a session's first turn per boot) |
 | (in `index.ts`) | per new chat folder: the config's MCP tools start connecting when a session is created there (its first prompt and T3's MCP registration wait for that); `GET /api/model` is answered once per boot |
 | `fs-shim.js`, `node-url.js` | celld gaps: in-memory `fs.createWriteStream/createReadStream`; `pathToFileURL`/`fileURLToPath` (build plugin in `scripts/build.mjs`) |
@@ -81,8 +81,16 @@ From the repository root, run `scripts/check agent` for the embedded runtime thr
 SpaceCell, computerd and Docker computers with the fake LLM. Use `scripts/check plan`
 to select a smaller check for the current diff.
 
-Each run uses fresh space ids and deletes its computers at the end. Feature-level behaviour across members (queue,
-delegation, MCP apps) is `platform/test/wpf`; the deployed fleet (restart/failover with real nodes) is `e2e`.
+The standalone `test/devstack.sh` also defaults to the fake LLM. Paid-provider checks require explicit
+authorization and `REAL_LLM=1` with all of `REAL_LLM_BASE_URL`, `REAL_LLM_MODEL`,
+`REAL_LLM_PROVIDER` and `REAL_LLM_API_KEY` set. `REAL_LLM_PROVIDER` accepts `openai`,
+`anthropic`, `mistral`, `opencode` or `custom`, as defined by `BASKULE_AI_PROVIDERS`.
+There is no real-provider default. The API key is passed only to the settings generator,
+not inherited by build tools, computerd or celld. Pass the key through
+private environment configuration; do not commit it or the generated harness state.
+
+Each run uses fresh space ids and deletes its computers at the end. Feature-level behavior across members (queue,
+delegation, MCP apps) is `platform/test/features`; the deployed fleet (restart/failover with real nodes) is `e2e`.
 Which loop to run for a change: [development workflow](../../../docs/development-workflow.md).
 
 Remote plugin MCP servers use only in-isolate config URLs. Each call resolves the T3 turn author (including delegated

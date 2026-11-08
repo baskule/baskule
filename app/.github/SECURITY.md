@@ -1,3 +1,6 @@
+For Baskule security reporting, follow the [root SECURITY.md](../../SECURITY.md).
+The rest of this file is retained upstream T3 Code text.
+
 # Security policy
 
 Report security vulnerabilities affecting T3 Code or T3 Tools-operated infrastructure to

@@ -10,11 +10,11 @@ checks: ["scripts/check features:6-plugins worker web"]
 
 Curated catalog by area, import review and repair before saving, pinned GitHub links, zip export, installation, vendor setup, runtime tools, connection lifecycle.
 
-## How to get to it (user POV)
+## Open the feature
 
 Administrators add plugins under Admin → Plugins and choose groups. Members open Settings → Plugins to see readiness and connect accounts. Assigned skills require no member activation.
 
-## Driving it with T3 preview or Playwright
+## Verification
 
 Run `scripts/check feature:plugins`. The plugins journey uploads portable skills, verifies Ready without activation, loads a skill in a fake-model personal chat, and checks that deactivating the sole contributor removes team skill files. The static-client journey shows Needs setup, saves the vendor client through the admin UI, then connects the member. A two-member OAuth journey boots the team before connection, connects the second member, and checks that tools become available while the unconnected author receives the account prompt and makes no vendor call. The connected author then calls successfully. The import journey reviews a Claude package without creating a plugin, fills its address and encrypted key, confirms member readiness, downloads a zip and reviews it again. The focused runtime check covers encrypted-key delivery and call-time policy; worker covers OAuth.
 
@@ -22,4 +22,4 @@ The folder journey uses the feature's full profile and a desktop viewport. It wr
 
 ## Gotchas
 
-Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Do not assume existing users, spaces or computers. Legacy checks may own fixed ports; do not kill another run to free them.
+Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Use disposable accounts, spaces, and computers created for the check. If a port is busy, identify the process using it; never stop another run or worktree to free it.

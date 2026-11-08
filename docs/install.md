@@ -166,15 +166,16 @@ keeps passwords enabled alongside OIDC. Use `"password":false` for SSO only, the
 setup link without a password and sign in through SSO with that email. Use
 [installation settings](installation-settings.md#authentication-file) for providers and callbacks. Environment
 references such as `{"env":"OIDC_SECRET"}` resolve from the optional `.env`. Run `docker compose up -d` after edits.
-Changing between anonymous and authenticated modes currently has no migration. It needs the owner's explicit
-approval and documented deployment steps before any data is removed.
+Switching between anonymous and authenticated modes has no migration. Back up first and follow the release's
+documented steps; existing data must be removed.
 
 ## External S3
 
 Before first start, set all five storage values in the example. The local RustFS container stays idle while the
 platform uses the external endpoint. Bootstrap waits only for that configured endpoint; local RustFS health does
-not block external storage. The bucket must support celld's conditional writes and consistency. The
-bootstrap job creates it if absent; pre-create it if credentials forbid creation. Changing buckets selects another
+not block external storage. The bucket must support celld's conditional writes and consistency. Verify it with
+`celld diagnose` as described in [S3 conditional-write compatibility](storage-conformance.md). The bootstrap job
+creates it if absent; pre-create it if credentials forbid creation. Changing buckets selects another
 installation. Computer disks stay local. Back up the external bucket separately.
 
 ## Backup and restore
@@ -190,7 +191,7 @@ docker compose run --rm -T backup > backup.tar.gz
 ```
 
 Save the archive, compose file, and optional `.env` off the machine. The archive includes generated secrets,
-local RustFS and every host `baskule-space-*` disk labelled `baskule.managed=true` and
+local RustFS and every host `baskule-space-*` disk labeled `baskule.managed=true` and
 `baskule.instance=$COMPUTERD_INSTANCE`. Compose defaults the instance to its project name;
 keep that name (or an explicit `COMPUTERD_INSTANCE`) unchanged on restore. Node caches are
 disposable. Snapshot external S3 separately while services are stopped. Protect backups like credentials.
@@ -210,29 +211,39 @@ Stop computer containers as well as Compose services before backup; they are man
 Backup and restore mount the Docker socket read-only, which still grants Docker API administration.
 They use temporary network-disabled containers, removed on exit, and temporary local archive space
 large enough for all disks. Only standard local Docker volumes are supported for restore.
-Unmigrated legacy disks are included alongside migrated computer disks. This archive format requires the matching release’s restore command. Files under `/sandbox/space` persist;
+This archive format requires the matching release's restore command. Files under `/sandbox/space` persist;
 other computer files are temporary. Restore the same release before updating.
 
 ## Update
 
 Read release notes for migrations and the declared client/server compatibility window. Back up first and keep
-the old compose file with the backup. Changes without a migration need the owner's explicit approval.
+the old compose file with the backup. Release notes list changes that cannot migrate existing data, with the affected data and deployment steps. Follow them before updating.
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
 docker compose up -d --remove-orphans
 ```
 
-For upgrades from 0.5.0, `--remove-orphans` removes the privileged OpenShell service and its old computers
-before migration reads the legacy volume.
-
 The compose file selects the released version. Keep your optional `.env`; no version edit or secret regeneration
 is needed. Updates can interrupt chats and commands. Check sign-in and a computer command after reconnecting.
 `docker compose down` stops services and retains data. `docker compose down -v` deletes Compose volumes and secrets.
 Computers and their disks are separate: in a source checkout, `deploy/down.sh --purge` also removes
-this installation’s labelled computer containers, disks, and computers network. Use the same
-Compose project name and `COMPUTERD_INSTANCE` as the installation. External S3 is not deleted by Compose. Only for a wipe explicitly approved by the owner, preserve backups, remove volumes, empty external S3
-if used, and start the new release with a fresh setup link.
+this installation’s labeled computer containers, disks, and computers network. Use the same
+Compose project name and `COMPUTERD_INSTANCE` as the installation. External S3 is not deleted by Compose.
+To wipe the installation, preserve backups, remove the volumes, empty external S3 if used, then start the new
+release with a fresh setup link.
+
+## Upgrade from 0.5.0
+
+The update command's `--remove-orphans` removes the privileged OpenShell service and its computers before disk migration.
+Keep the `baskule-openshell-docker` Compose volume until every space disk has migrated and its files are verified.
+`COMPUTER_LEGACY_VOLUME` selects this volume; Compose supplies its project-prefixed name. On first ensure, a
+network-disabled helper copies `volumes/baskule-space-<suffix>/_data` to the host disk and writes `.baskule-migrated`.
+
+Backups include migrated computer disks and unmigrated legacy disks. Backup and restore jobs must use the same
+`COMPUTER_LEGACY_VOLUME` as computerd. Restore recreates that store for lazy migration and refuses an existing
+legacy volume. Compose does not mount it, so `docker compose down -v` retains it. Keep a backup and delete the
+volume only after verifying every migrated disk, or as part of a full installation wipe.
 
 ## Troubleshooting
 
@@ -241,22 +252,9 @@ if used, and start the new release with a fresh setup link.
 - `docker compose logs baskule-celld-a baskule-celld-b` shows platform errors.
 - `docker compose logs baskule-computerd` shows computer startup errors.
 - A new platform node cannot become healthy before the first deployment. Check the deploy job and S3 first.
-- A GHCR permission error means your account cannot read the release packages.
+- A GHCR permission error can come from stale credentials. Run `docker logout ghcr.io`, then retry the pull.
 
 For optional traces, set `COMPOSE_PROFILES=traces`, `BASKULE_CELLD_OTEL=http://baskule-traces:4318`,
 `BASKULE_OTLP_TRACES_URL=http://baskule-traces:4318/v1/traces` in `.env`. The trace UI defaults to `127.0.0.1:47098`;
 `BASKULE_TRACES_BIND` and `BASKULE_TRACES_PORT` change it independently of the edge. Restarting it clears traces.
 Starting with `--profile '*'` is unsupported: it also starts the edge inheritance templates. Use named profiles such as `traces`.
-
-### Upgrade from 0.5.0
-
-OpenShell is removed. Keep the legacy `baskule-openshell-docker` Compose volume until every space disk is migrated.
-`COMPUTER_LEGACY_VOLUME` selects that volume; Compose supplies its project-prefixed name.
-On first ensure, a no-network helper copies `volumes/baskule-space-<suffix>/_data`
-into the host disk and writes `.baskule-migrated`. Keep a backup of the legacy volume
-until migration and file contents are checked. The regular backup includes migrated `baskule-space-*` volumes and unmigrated
-legacy disks. Set `COMPUTER_LEGACY_VOLUME` on backup and restore jobs to the same
-legacy volume used by computerd. Restore recreates that store for lazy migration
-and refuses to overwrite an existing legacy volume.
-
-Compose no longer mounts the legacy volume, so `docker compose down -v` keeps it. Delete it only after every space has migrated and its files have been verified, with a backup retained, or during an explicitly authorized full purge.

@@ -1,7 +1,7 @@
-# UX review loop: brief for the reviewer sub-agent
+# UX review checklist
 
-You review the usability of Baskule (a multi-user, ChatGPT-like assistant with an agent computer per space)
-as a careful product designer would, on the **real stack**. You do not fix code: you produce findings.
+Review Baskule usability on the configured test installation. Use the screenshots and text
+snapshots to record findings that a person or automated reviewer can reproduce.
 
 ## Inputs
 
@@ -24,7 +24,7 @@ as a careful product designer would, on the **real stack**. You do not fix code:
 
 ## What to look at
 
-For each step, open the screenshot (Read tool) and the text snapshot. Judge:
+For each step, open the screenshot and the text snapshot. Judge:
 - **Comprehension:** is it clear where I am, what this space is, who wrote what, what is running, what happened?
 - **Leaks and noise:** developer vocabulary, internal ids, spurious warnings or toasts, debug text, raw markers.
 - **Feedback:** loading/empty/error states, progress of a run, the computer starting, failures explained.
@@ -32,7 +32,7 @@ For each step, open the screenshot (Read tool) and the text snapshot. Judge:
 - **Layout:** overflow, truncation that hides meaning, overlapping elements, tap targets on the phone, alignment.
 - **Consistency:** the same thing named the same way everywhere (chat vs thread, space vs project).
 
-Messages in the journeys contain fake-model markers such as `[[fake:text …]]`: those are test scaffolding, not
+Messages in the journeys contain fake-model markers such as `[[fake:text …]]`: those are test fixtures, not
 findings.
 
 ## Output
@@ -47,4 +47,4 @@ Severity:
 - **low**: polish.
 
 Be concrete (quote the text you saw, name the screenshot). No more than ~25 findings; merge duplicates. End with a
-3-line summary. Return the path of the findings file and the counts per severity.
+3-line summary. Report the path of the findings file and the counts per severity.

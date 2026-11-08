@@ -1,3 +1,6 @@
+For Baskule contributions, follow the [root CONTRIBUTING.md](../CONTRIBUTING.md).
+The rest of this file is retained upstream T3 Code text.
+
 # Contributing
 
 ## Developer setup

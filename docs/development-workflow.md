@@ -1,6 +1,6 @@
 # Choose checks for a change
 
-Use the smallest check that proves the behavior you changed. These commands describe the available local tools; public CI configuration is separate.
+Use the smallest check that proves the behavior you changed. These commands describe the available local tools. See [hosted checks](ci.md) for CI.
 
 ## Prepare the checkout
 
@@ -39,15 +39,17 @@ For client behavior, use the affected feature from [the feature map](../.agents/
 
 ## Drive the local app
 
-The [verification skill](../.agents/skills/verify-baskule/SKILL.md) documents feature-specific profiles, browser actions, and evidence. For a stack that needs computers:
+The [verification skill](../.agents/skills/verify-baskule/SKILL.md) documents feature-specific profiles, browser actions, and evidence. For a stack that needs computers, build the local images before launching `--profile full` or running `scripts/check agent`, `computerd`, or `features`:
 
 ```sh
-scripts/worktree runtime
+deploy/build.sh --no-deploy
 (cd e2e && pnpm exec playwright install chromium)
 scripts/stack up --profile full
 scripts/stack doctor
 scripts/stack url
 ```
+
+The optional HTTPS proxy runs when root and a global `portless` installation are available; it also needs `libnss3-tools` for browser trust. When root or Portless is unavailable, startup prints a notice and uses direct loopback HTTP. Set `BASKULE_STACK_PROXY=0` or `1` to disable or require the proxy explicitly.
 
 Use `--profile light` when the feature needs no computerd. Read local credentials privately from `.run/stack/stack.json`. Do not print or commit that file. `scripts/stack logs <service>` helps diagnose the service named by `doctor`.
 
@@ -55,16 +57,16 @@ Save screenshots, traces, commands, and observed outcomes under `.run/evidence/<
 
 ## Respond to failures
 
-Classify each failure before retrying. Fix product or harness defects, or resolve the named environment problem, then rerun the failing selection. If a port is busy, identify its owner; do not stop another worktree's process.
+Classify each failure before retrying. Fix product or harness defects, or resolve the named environment problem, then rerun the failing selection. If a port is busy, identify the process using it; do not stop another worktree's process.
 
 Use condition-based waits with timeouts. Run long commands once and wait for completion. The check runner uses host locks for shared component resources. Direct harness commands may bypass those locks.
 
-The runner can reuse evidence recorded on `origin` for unchanged committed inputs. Dirty inputs run again without recording reusable evidence. `--fresh` forces a new run. A passing record remains useful until a relevant input changes.
+The runner can reuse evidence recorded on `origin` for unchanged committed inputs. Publishing new evidence records is opt-in. `BASKULE_CHECK_RECORD=1` pushes passing records to `refs/evidence/*` on `origin` and needs push access there. A fork's `origin` does not provide Baskule's shared records. Ordinary checks do not publish records. Dirty inputs run again without recording reusable evidence. `--fresh` forces a new run. A passing record remains useful until a relevant input changes.
 
 ## Check a deployed installation
 
-Run deployed-stack checks only when the installation owner asks. `scripts/check e2e:<tags>`, `infra`, and `acceptance --live` exercise the deployed build, not the working tree. They can change provider routing, restart services, or create and remove data.
+Run deployed-stack checks only with authorization from the installation's operator. `scripts/check e2e:<tags>`, `infra`, and `acceptance --live` exercise the deployed build, not the working tree. They can change provider routing, restart services, or create and remove data.
 
-Use the fake LLM for ordinary checks. Real-provider checks tagged `@real` and measurements tagged `@perf` need explicit authorization. Lifecycle checks belong to changes in lifecycle, storage, routing, or alarms and to release verification.
+Use the fake LLM for ordinary checks. Real-provider checks tagged `@real` and measurements tagged `@perf` require explicit opt-in. Lifecycle checks belong to changes in lifecycle, storage, routing, or alarms and to release verification.
 
 For packaged desktop changes, follow [the desktop build instructions](../desktop/README.md). Native packages need their own verification; a web journey does not prove the packaged client.

@@ -5,16 +5,25 @@ checks: ["scripts/check kubernetes"]
 ---
 # Kubernetes installation
 
-The check creates its own kind cluster with Calico and Agent Sandbox, uses branch images,
-runs a test-only RustFS fixture and installs the Helm chart with normal S3 values, and runs setup, fake streamed chat, computer exec,
-PVC persistence and celld takeover. It removes the cluster on exit and keeps evidence
-under `.run/evidence/kind/<timestamp>/`. Build images as described in
-[the Kubernetes guide](../../../../docs/install-kubernetes.md) first.
+## Sub-features
 
-`e2e/kubernetes-ephemeral.sh run` repeats the journey on zonal GKE Standard, including
-a tagged Scaleway S3 bucket, cross-node PD reattachment and WebSocket streaming through GKE Ingress. It requires
-the owner's explicit authorization, authenticated gcloud and `BASKULE_GKE_PROJECT`
-matching the active project, plus private `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and
-`SCW_DEFAULT_PROJECT_ID` for bucket management. The cluster requires separate
-`BASKULE_S3_ACCESS_KEY` and `BASKULE_S3_SECRET_KEY` from an application limited to
-Object Storage. It is never selected by ordinary checks.
+Helm installation and upgrades, streamed fake chat, computer execution, PVC persistence,
+network isolation, and celld takeover.
+
+## Open the feature
+
+Build the branch images as described in the
+[Kubernetes guide](../../../../docs/install-kubernetes.md#verify-a-source-change).
+The check creates its own disposable kind cluster and application installation.
+
+## Verification
+
+Run `scripts/check feature:kubernetes`. The check installs Calico and Agent Sandbox,
+runs a test-only RustFS fixture outside the Helm chart, and installs the chart with
+normal S3 values. It removes the cluster on exit and keeps diagnostics under
+`.run/evidence/kind/<timestamp>/`.
+
+## Gotchas
+
+The local PVC fixture stays on one node and does not prove external CSI snapshot restore.
+If a port is busy, identify the process using it; never stop another run or worktree to free it.

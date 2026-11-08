@@ -10,14 +10,14 @@ checks: ["scripts/check worker space web"]
 
 Create and delete team spaces, manage members and roles, inspect personal spaces.
 
-## How to get to it (user POV)
+## Open the feature
 
-Open Admin → Spaces for team and personal space lists. Open a team’s space menu to manage its members.
+Open Admin → Spaces for team and personal space lists. Open a team's space menu to manage its members.
 
-## Driving it with T3 preview or Playwright
+## Verification
 
-Run `scripts/check feature:spaces`. Create a team with two members, verify both can select it in Run on, remove one member and verify access is revoked. Delete the disposable team and verify it leaves the list. The declared legacy checks currently cover these boundaries.
+This feature has no dedicated journey; `feature:spaces` runs the worker, SpaceCell, and web checks. Create a team with two members, verify both can select it in Run on, remove one member and verify access is revoked. Delete the disposable team and verify it leaves the list.
 
 ## Gotchas
 
-Deleting a space wipes its alpha data. Use only a space created for this check on the worktree stack.
+Deleting a space deletes its data. Use only a space created for this check on the worktree stack. If a port is busy, identify the process using it; never stop another run or worktree to free it.

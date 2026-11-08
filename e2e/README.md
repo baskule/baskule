@@ -1,107 +1,109 @@
-# e2e — Baskule end-to-end feedback loops
+# Baskule end-to-end checks
 
-The deployed checks run against the **real stack** (`deploy`, `http://127.0.0.1:47090`), signed in, with
-system Chrome. No LLM spend by default. These loops own the seams only the deployed stack has (edge, two-node fleet,
-real computers, the browser UI on real cells); lower loops prove the rest. **Which loop to run for a change:
-[development workflow](../docs/development-workflow.md)**. These checks change deployment state: run them only when
-the owner asks, and then one area (`scripts/check e2e:<tag>`), not the whole suite.
+Use the [development workflow](../docs/development-workflow.md) to select focused checks.
+[Worktree journeys](journeys/README.md) run against disposable local app stacks. The
+`tests/`, `infra/`, `ux/`, and `perf/` runners exercise a test installation managed by
+the installation's operator, using the source Compose services, normally at
+`http://127.0.0.1:47090`.
+These checks create accounts and data, change organization settings, and can restart
+services. Run them only with permission from the installation's operator.
 
-Complete the one-time setup first. For owner-authorized deployed checks, supply an existing admin account through
-`E2E_LOGIN_EMAIL` and `E2E_LOGIN_PASSWORD`. These are test credentials, not first-boot installation settings.
-The worktree and release-install harnesses generate their own setup tokens and create the admin through the API.
+Prepare the [build environment](../docs/building.md), the source Compose installation,
+and system Chrome. Supply an existing administrator through `E2E_LOGIN_EMAIL` and
+`E2E_LOGIN_PASSWORD`; `E2E_BASE_URL` selects its browser origin. The optional `deploy/.env`
+can supply credentials and the bind address. Environment-only configuration works too.
+The worktree and release-install checks create their own administrators through setup.
 
-| Loop | Command | Time |
-|---|---|---|
-| One area | `scripts/check e2e:chat` (= `e2e/run.sh --grep @chat`) | 0.5–3 min |
-| One spec | `e2e/run.sh tests/05-security.spec.ts` (any spec runs alone) | 0.5–2 min |
-| Parallel phase only | `scripts/check e2e` (= `E2E_SLOW=0 e2e/run.sh`) | see the workflow doc |
-| Acceptance (both phases) | `e2e/run.sh` | see the workflow doc |
-| Infrastructure smoke | `scripts/check infra` (= `e2e/infra-smoke.sh --no-up`) | 2–4 min |
-| Computer isolation (development stack) | `e2e/computer-isolation.sh` (starts and stops the full fake-LLM stack) | 3–5 min |
-| Real model | `E2E_REAL=1 e2e/run.sh --grep @real` | ≈ 1 min, ≈ $0.002 |
-| Build + deploy + suite | `BUILD=1 [T3_APP_DIR=…] e2e/run.sh` | + build |
-| Performance samples | `e2e/run.sh --project perf`, `e2e/perf/run.sh <label> 5` | minutes |
-| UX journeys (for the reviewer) | `e2e/ux/run.sh [journey…]`, then a reviewer agent with `ux/BRIEF.md` | ≈ 5 min |
+## Run a selection
 
-`run.sh` takes the stack lock (`deploy/.stack-lock`), changes the organization AI endpoint to the LLM router through the admin API and shortens the idle policy (`E2E_IDLE_MINUTES`, default 1.5), runs Playwright in two
-phases — `main` (every independent spec, `E2E_WORKERS` parallel slots, default 2) then `lifecycle` (`@slow`, one at
-a time, after `main`; `E2E_SLOW=0` skips it) — logs real-model spend to `.run/llm-spend.md`, then
-restores the saved organization AI and idle settings ( `KEEP_ROUTER=1` keeps the router between the runs of an iteration
-session; `RESTORE=0` restores nothing). Any Playwright selection (files, `--grep`) applies to both phases; `--project
-<name>` runs one project only. The suite tests the **deployed** build: a test-only change needs no redeploy.
-Artifacts: `e2e/artifacts/` (screenshots per scenario, `metrics.jsonl`, `results-main.json`,
-`results-lifecycle.json`, `05-security/checks.json`, traces of failures, `world*.json`).
+```sh
+e2e/run.sh tests/05-security.spec.ts
+e2e/run.sh --grep @chat
+E2E_SLOW=0 e2e/run.sh               # skip serial lifecycle checks
+scripts/check infra               # source Compose infrastructure smoke checks
+```
 
-The shared Playwright dependencies live in `package.json`. Worktree application journeys live in
-[`journeys/`](journeys/README.md).
+`run.sh` holds `deploy/.stack-lock`, starts the source stack if needed, points organization
+AI settings at the fake LLM router, and sets idle stop to `E2E_IDLE_MINUTES`, default 1.5.
+`BUILD=1` builds and deploys first. The normal run executes `main` with `E2E_WORKERS`
+workers, default two, followed by serial `lifecycle` checks tagged `@slow`. File and grep
+selections apply to both phases; `--project <name>` selects one project.
 
-## LLM router (`llm/`)
+The runner restores saved AI and idle settings on exit. `KEEP_ROUTER=1` retains the
+router between iterations; restore it with `e2e/llm/llm.sh restore` when finished.
+`RESTORE=0` also leaves settings changed. Checks exercise the deployed build, so deploy
+source changes before claiming they are covered.
 
-Real-model runs require `E2E_REAL_API_KEY` supplied privately with a Mistral key; fake runs need no provider key.
-The router connection uses `custom/<model ID>` and has its own credential slot, leaving the normal provider key
-untouched when settings are restored.
+Artifacts under `e2e/artifacts/` include screenshots, traces, results, metrics, and fixture
+worlds. They may contain test credentials and sessions; keep them private. Set
+`E2E_WORLD_FILE` to a separate path for an independent run. Fixture reuse requires the
+same `E2E_RUN`; worker slots above zero use their own world files.
 
-`llm/router.mjs` runs as container `baskule-e2e-llm` on `baskule-net` (`llm/llm.sh router|restore|usage|status`):
-- every chat completion goes to the platform fake LLM (`platform/dev/fake-llm`, markers `[[fake:text …]]`,
-  `[[fake:tool <name> <json>]]`, `[[fake:long N]]`, `[[fake:delay ms]]`, `[[fake:describe]]`);
-- a request whose last user message contains **`[[real]]`** goes to Mistral (mistral-large-4) with the caller's key (the
-  embedded agent's, from ControlCell), the marker stripped; usage is metered per request; a budget (default $0.25 per
-  router volume) answers 429 beyond it;
-- T3's chat-title prompts always get a fake title (no tool runs twice, no spend).
+## Opt into a real provider
 
-OpenCode's tool names for fake tool calls: `shell {command}`, `read`, `glob`, `grep`, `patch`, `question`,
-`*preview_open {url}`, … (the `*` resolves the dynamic T3 MCP prefix) The exact tool set depends on the thread’s registered MCP servers and enabled skills; inspect the captured
-request’s `tools` list rather than assuming a fixed count.
+Fake routing is the default and needs no provider key. For a paid run, explicitly set
+all of the following environment variables:
 
-Chat and conversation lifecycle run on the worktree stack: `scripts/check feature:personal-chat`, `feature:team-chat`, and `feature:conversation-controls`.
+| Variable | Required value |
+| --- | --- |
+| `E2E_REAL` | `1` to enable real requests |
+| `REAL_BASE_URL` | OpenAI-compatible provider endpoint, including `/v1` if required |
+| `E2E_MODEL` | Provider model ID |
+| `E2E_REAL_API_KEY` | Provider credential, supplied privately |
+| `PRICE_IN`, `PRICE_OUT` | USD per million input/output tokens; explicit zero is allowed |
+| `E2E_REAL_BUDGET` | Optional metered budget, default USD 0.25 |
 
-## Scenarios (`tests/`)
+Then run `e2e/run.sh --grep @real`. Choose a model supporting the selected checks,
+including tools and native PDF input when applicable. The test configuration declares
+image/PDF input and context/output limits; it does not discover provider capabilities.
 
-Every spec is independent: it uses the API-created fixture world of its worker slot (`lib.ts` `world()`: Alice, Bob,
-team space Acme; slot 0 keeps `world.json`), or its own people (01, 10b). Specs that change memberships (06, 15)
-restore them. Tags select areas (`--grep @files`); `@slow` specs form the serial `lifecycle` phase.
+`llm/llm.sh` forwards the endpoint, model, prices, and real-mode flag into the router
+container. Source or configuration changes recreate the container and retain its usage
+volume. `RESET=1` explicitly resets that volume and its budget history.
 
-| File | Tags | Scope item |
-|---|---|---|
-| `01-admin-onboarding` | `@auth @admin` | (a) admin sign-in after setup, Alice with a temporary password, Bob by invitation (single use), team space Acme with both (its own people) |
-| `03-tool-files` | `@files @computer`, `@browser` | (c) a shell task starts the computer; output file in the files panel, download byte-identical; the agent's browser reads example.com |
-| `04-team-live-queue` | `@chat @team` | (d) Bob watches Alice's run stream live with her name; his message during the run is queued (visible to both) and answered next |
-| `05-security` | `@security @auth` | (e) 52 checks through the deployed edge: other personal space (HTTP, WS, API, UI), admin cannot read personal spaces, no enumeration, forged identity headers, unsigned bearer, cross-origin WS/POST/sign-in, `Origin: null`, internal `_baskule` routes in 5 encodings, path and static traversal, closed Better Auth admin/sign-up routes, member vs admin actions, RPC confinement (T3 home, `..`, other space's chats, terminal, settings writes), no secrets in the server config. It creates its own positive-control chat when Alice has none |
-| `06-member-removal` | `@security @team` | (f) admin removes Bob: his socket closes (< 5 s) and Acme leaves his open tab (< 15 s); Bob re-added |
-| `07-idle-wake` | `@lifecycle @slow @computer` | (g) idle computer stops (computerd idle stop lowered to `E2E_IDLE_WAKE_MINUTES`, 0.5, for this test); the next task wakes it; files kept |
-| `08-restart` | `@lifecycle @slow` | (h) `down.sh` + `up.sh`: sessions, accounts, chats, files kept |
-| `09-failover` | `@lifecycle @slow` | (i) kill each celld node in turn between turns: the chat continues |
-| `10-uploads` | `@files @chat` (`@computer`) | (j) image/PDF → native model parts without a computer; CSV → on the computer |
-| `12-phone` | `@ui @phone` | (l) phone viewport: sign-in, drawer, chat, files, admin; no horizontal overflow |
-| `13-real-model` | `@real` | mistral-large-4: plain answer and actual PDF text with no computer; shell task file checked on the computer (`E2E_REAL=1`) |
-| `14-file-search` | `@files` | filename and content search through the authenticated computer boundary; whole-word ranges, invalid-regex fallback, forbidden root rejected |
-| `15-shared-browser` | `@browser @team @security` | two viewers hand off browser control; human ownership blocks agent navigation; membership revocation closes the viewer stream |
-| `16-admin-health` | `@admin @computer` | start a real computer, compare its phase with admin status and the displayed running-computer count |
-| `17-agent-core` | `@lifecycle @slow` (a), `@chat @computer` (b), `@perf` (c) | (a) the same chat keeps its tools across a rolling celld restart — the regression the merged suite found, keep it unweakened; (b) plain chat and its deletion never start a computer; (c) cold/warm timings (on request) |
-| `18-direct-provider` | `@real` | the configured real provider: greeting without a computer, then DOCX/PDF in the same chat (`E2E_DIRECT_REAL=1`) |
+Only messages whose last user turn contains `[[real]]` reach the real provider. The
+router strips the marker, forwards the caller's credential, requests streaming usage,
+and meters cost. A request is refused once recorded cost reaches the budget. This is
+a usage-based guard, not a provider-side hard spending cap. Metered spend is appended
+to `.run/llm-spend.md`; `llm/llm.sh usage` returns totals. Chat-title requests always use
+the fake model.
 
-**Stability rules.** No blanket retries. Known host artifacts only: one reload on `net::ERR_NETWORK_CHANGED` (Chrome on
-the Docker host), and waiting out the front's sign-in rate limit (10/min per address; the suite reuses sessions by
-cookie, `tests/lib.ts` `personApi`/`signInBrowser`). Timeouts allow for a loaded host.
+Ordinary checks use `custom/fake-model`. The settings helper saves and restores the
+organization configuration and selects the test model explicitly. Fake markers include
+`[[fake:text ...]]`, `[[fake:tool shell {"command":"..."}]]`, `[[fake:long N]]`,
+and `[[fake:delay ms]]`. Inspect captured requests for the available tools rather than
+assuming a fixed tool count.
 
-## UX loop (`ux/`)
+## Coverage
 
-`ux/journeys.mjs` drives six journeys (admin onboarding, member first chat, team collaboration, file round-trip,
-schedule setup, phone layout) and saves per step a screenshot and the visible text + accessibility snapshot in
-`artifacts/ux/<journey>/`. A reviewer sub-agent follows `ux/BRIEF.md` and writes `artifacts/ux/findings.md` (severity
-high/medium/low). Fix high/medium findings in the active task branch, then rerun the affected journeys.
+| Specs | Behavior |
+| --- | --- |
+| `01`, `05`, `06` | Administrator onboarding, authentication, space isolation, origin checks, membership revocation |
+| `03`, `10`, `14` | Computer tools, file bytes, uploads, native attachments, search and path confinement |
+| `04`, `15` | Team streaming and queueing, shared browser control and viewer revocation |
+| `07`, `08`, `09`, `17` | Idle wake, restart persistence, celld failover, tools/files in the same resumed chat, lazy computer creation |
+| `12`, `16` | Phone layout and administrator computer-health status |
+| `13` | Explicit real-provider arithmetic, shell/file output, and native PDF input |
+| `18` | Direct configured-provider greeting and DOCX/PDF creation in one chat |
 
-Partial runs reuse fixtures only when `E2E_RUN` matches the saved world. `E2E_WORLD_FILE=/absolute/path.json`
-keeps a separate fixture world for independent acceptance runs (slots > 0 add `-w<n>`); the default remains
-`artifacts/world.json`. A zero-directory security control is a failed setup, not a security pass. The space picker uses the accessible
-`combobox` named `Run on`, with `option` items. File attachments are inline editor tokens: fill the message before
-attaching, or type without replacing the editor contents afterward.
+`E2E_RESTART_THREAD_ID` optionally selects a test chat for the same-chat restart drill.
+A security positive control must create real fixture data; an empty directory does not
+prove isolation. The suite uses no blanket retries. Its bounded exceptions cover
+Chromium network-change recovery and authentication rate-limit backoff.
 
+The direct-provider spec requires `E2E_DIRECT_REAL=1` and the installation's explicitly
+configured provider. Restore router settings first, hold the stack lock, and invoke
+Playwright directly with a fresh run/world. `run.sh` installs the router and is unsuitable
+for that selection. Remove only the fixture accounts and spaces after the check.
 
-## Release gates
+## Review UX and measure performance
 
-`17-agent-core` (a) checks the same chat's tools before and after restarting both nodes and (b) plain-chat deletion
-without a computer wake; (c) records cold/warm timings (`--project perf`). `perf/run.sh <label> 5` records repeated
-sign-in timings and node memory; compare host load and cell counts alongside medians.
+`e2e/ux/run.sh [journey...]` captures onboarding, first chat, collaboration, files,
+schedules, and phone layout. A person or automated reviewer can follow
+[the UX checklist](ux/BRIEF.md) to record findings against screenshots and text snapshots.
+Rerun affected journeys after fixes.
 
-`18-direct-provider` checks a greeting followed by DOCX/PDF creation in the same chat against the configured real provider. Restore the normal endpoint with `llm/llm.sh restore`, hold the stack lock, and invoke Playwright directly with `E2E_DIRECT_REAL=1` and a fresh `E2E_RUN`/`E2E_WORLD_FILE` (do not use `run.sh`, which enables the fake router). Supply the admin password privately through `E2E_LOGIN_PASSWORD`. The test rejects an active `.run/e2e-product-settings.json` settings backup, verifies no computer for the greeting, then validates the actual DOCX ZIP/XML and PDF signature produced by the model. Remove only the fixture accounts/spaces afterward.
+Performance runs are explicit selections: `e2e/run.sh --project perf` or
+`e2e/perf/run.sh <label> 5`. They restart services and record timings, memory, and host
+load. Supply `PERF_EMAIL` and `PERF_PASSWORD` to use an account directly, or select an
+existing fixture with `PERF_WORLD`. Compare measurements under equivalent conditions.

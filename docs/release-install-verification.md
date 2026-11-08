@@ -1,6 +1,6 @@
 # Verify released installation assets
 
-Build the backend images from the current source using [the build environment](building.md), with source tag
+Build the backend images with `deploy/build.sh --no-deploy` using [the build environment](building.md), with source tag
 `:local`. Keep test tags separate from an installation. The source celld image only contains tools; build the
 `release` target to include the generated platform bundle, then tag the other two host images:
 
@@ -8,7 +8,7 @@ Build the backend images from the current source using [the build environment](b
 source scripts/env.sh
 export BASKULE_INSTALL_REGISTRY=ghcr.io/baskule
 export BASKULE_INSTALL_VERSION=local
-docker build --network host --target release -f deploy/celld/Dockerfile \
+scripts/docker-build.sh celld --network host --target release -f deploy/celld/Dockerfile \
   -t "$BASKULE_INSTALL_REGISTRY/baskule-celld:$BASKULE_INSTALL_VERSION" .
 for name in computerd computer; do
   docker tag "baskule-$name:local" "$BASKULE_INSTALL_REGISTRY/baskule-$name:$BASKULE_INSTALL_VERSION"
@@ -35,11 +35,11 @@ or the shared development stack. Evidence, logs, the backup, and private generat
 `.run/`; treat them as private. The release factory runs the driver on its disposable runner before image publishing.
 
 Before submitting a change, also run `BASKULE_CHECK_RECORD=0 scripts/check plan`, its selected checks with
-`BASKULE_CHECK_RECORD=0` to disable evidence-ref reads and pushes, `actionlint` on the release
+`BASKULE_CHECK_RECORD=0` to disable evidence reuse (publishing is opt-in with `BASKULE_CHECK_RECORD=1`), `actionlint` on the release
 workflow, and Compose configuration checks for the release and source definitions and their profiles. Config validation may use `--profile '*'`;
 starting every profile is unsupported because it includes the edge inheritance templates. A verification-only factory run can prove
 the full packaging path. Anonymous GHCR pulls, public release downloads, and real multi-machine operation require
-separate owner-controlled verification after publication.
+separate verification against published endpoints and the target topology.
 
 Pass `folder` for a fresh zero-config install with the optional plugins mount, scoped-secret checks, and a
 browser assertion that the folder plugin appears in Admin → Plugins after setup.
@@ -60,7 +60,7 @@ Caddy's data volume and `--connect-to` to preserve the public domain, SNI, and o
 HTTPS setup link, setup, Secure cookies, sign-in, foreign Origin refusal, private computerd settings, UDP 443 publication,
 IPv4/IPv6 listeners, and CA persistence after forcing edge recreation and resolving the new container ID.
 No `PUBLIC_ORIGINS` is set. This exercises TLS and certificate storage without obtaining a public ACME certificate;
-public DNS, ACME challenges, and renewal still need owner-controlled verification on a published domain.
+public DNS, ACME challenges, and renewal still need verification on the installation's public domain.
 
 The `proxy` target runs a host-local forwarding proxy in front of the released HTTP edge. With default empty
 `BASKULE_TRUSTED_PROXIES`, setup rejects the forwarded HTTPS origin until `PUBLIC_ORIGINS` allows it. Setup and
@@ -91,5 +91,4 @@ with normal S3 values, and checks admin setup, streamed chat, computer execution
 network isolation, celld takeover and stable tokens after a Helm upgrade. The release
 factory runs it in a separate `install-kubernetes` job with the retained image archives.
 Kubernetes pulls the computer image directly; Compose pulls it through the pull-only `baskule-computer-image` service; the pre-pull DaemonSet caches it on each node.
-See [the Kubernetes guide](install-kubernetes.md#verify-a-source-change) for local and
-owner-authorized ephemeral GKE Standard runs.
+See [the Kubernetes guide](install-kubernetes.md#verify-a-source-change) for local source verification with kind.

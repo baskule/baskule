@@ -1,0 +1,15 @@
+name: Question
+description: Ask about installing, using, or contributing to Baskule.
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to do, and what have you tried?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Baskule version
+      description: Release or commit, if relevant.

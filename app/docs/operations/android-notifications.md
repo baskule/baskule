@@ -1,5 +1,17 @@
 # Android notifications
 
+This page documents the retained upstream T3 Code notification module and its T3 Connect relay
+procedures. Baskule's Android build disables T3 Connect and Clerk cloud sign-in; its account
+and space setup is in [the Baskule Android guide](../../apps/mobile/BASKULE-ANDROID.md).
+The Clerk and hosted-relay/stage steps below apply only to a separately configured upstream
+integration. Named deployment stages are upstream examples, not Baskule infrastructure.
+The Firebase app-build steps also apply to Baskule push: supply matching `google-services.json`
+through `T3CODE_ANDROID_GOOGLE_SERVICES_FILE` at prebuild, build a new native binary and run
+the native-module checks below. Configure FCM delivery credentials in Baskule admin settings
+as described in [Background notifications](../../../docs/background-push-integration.md).
+Application identifiers use this fork's values. Commands use working directories relative to
+`app/`, not the Baskule repository root.
+
 The Android app receives Firebase Cloud Messaging (FCM) data messages. The relay sends them directly through FCM HTTP v1; an Expo Push account is not required.
 
 ## Android compatibility and automated checks

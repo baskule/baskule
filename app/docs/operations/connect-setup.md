@@ -1,5 +1,12 @@
 # T3 Connect setup
 
+This page retains upstream T3 Code relay and Clerk configuration procedures. Baskule uses its
+own server accounts and space connections; these steps do not configure Baskule sign-in.
+The Baskule mobile build explicitly disables the relay and Clerk configuration described here.
+See [the Baskule Android guide](../../apps/mobile/BASKULE-ANDROID.md) for its connection flow.
+Application identifiers below use this fork's values. Repository-root paths on this page mean
+`app/`; no upstream service account or hosting credentials are included.
+
 Deployment and client configuration for T3 Connect. The [architecture note](../internals/t3-connect.md)
 explains the trust boundaries; the [relay README](../../infra/relay/README.md#deployment) owns relay
 provisioning instructions.

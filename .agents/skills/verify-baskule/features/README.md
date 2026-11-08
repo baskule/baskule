@@ -1,6 +1,9 @@
 # Feature map
 
-Front matter is JSON-valued YAML: `paths`, `journeys`, `profile`, optional `checks` and `ownerRun`. The map drives `scripts/check feature:<name>` and `scripts/check plan`. `journeys` defaults to `@feature:<name>` when no custom checks are declared. Check-only features can omit it or set it to null. Keep paths and commands current when changing a feature.
+Front matter is JSON-valued YAML: `paths`, `journeys`, `profile`, optional `checks` and `liveOnly`. The map drives `scripts/check feature:<name>` and `scripts/check plan`. `journeys` defaults to `@feature:<name>` when no custom checks are declared. Check-only features can omit it or set it to null. Keep paths and commands current when changing a feature.
+
+`liveOnly: true` requires `--live` for a feature run and excludes the feature from disposable release plans.
+
 - [Sign in and sessions](sign-in-sessions.md)
 - [Invitations and people](invitations-people.md)
 - [Groups](groups.md)

@@ -18,7 +18,7 @@ Wrappers in `/usr/local/bin` (`bin/`):
 - `baskule-browser-bridge`: starts T3's browser bridge (the browser members watch and the agent drives) with uBlock
   Origin Lite, loaded from a writable copy in `/tmp/baskule-browser/ublock-lite`: Chromium writes an unpacked
   extension's indexed rules into its directory, and `/opt` is read-only. The managed policy names the extension id
-  derived from that path. The extension adds ~1 s to a browser start (measured; ~2.5 s before pruning).
+  derived from that path. The build prunes unused rule lists.
 - `baskule-browser ensure|status|stop`: the computer's shared headless Chromium, DevTools on `127.0.0.1:9222`,
   profile in `~/.baskule/chromium` (persistent). Used by computerd's CDP tunnel.
 - `playwright-mcp`: Playwright MCP over stdio, attached to the shared browser (`--cdp-endpoint`);

@@ -9,14 +9,14 @@ profile: "full"
 
 Draft home, space picker, streaming, follow-up and lazy computer startup.
 
-## How to get to it (user POV)
+## Open the feature
 
 New chat → Run on → Personal.
 
-## Driving it with T3 preview or Playwright
+## Verification
 
-Run `scripts/check feature:personal-chat`. `e2e/journeys/personal-chat.spec.mjs` checks home, the Run on picker (Personal first), streaming and a second turn. `chat-contracts.spec.mjs` checks the configured catalog, retired selection, stamped author, title and session startup. In preview: choose Personal, send `Hello [[fake:text hello back]]`, and wait for the assistant answer. The sidebar must group the new row under Personal; the computer must remain stopped.
+Run `scripts/check feature:personal-chat`. `e2e/journeys/personal-chat.spec.mjs` checks home, the Run on picker (Personal first), streaming and a second turn. `chat-contracts.spec.mjs` checks the configured catalog, retired selection, stamped author, title and session startup. In an isolated browser, choose Personal, send `Hello [[fake:text hello back]]`, and wait for the assistant answer. The sidebar must group the new row under Personal; the computer must remain stopped.
 
 ## Gotchas
 
-Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Do not assume existing users, spaces or computers. Legacy checks may own fixed ports; do not kill another run to free them.
+Use fake LLM markers from `platform/dev/fake-llm/server.mjs`. Use disposable accounts, spaces, and computers created for the check. If a port is busy, identify the process using it; never stop another run or worktree to free it.

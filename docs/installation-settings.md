@@ -2,9 +2,11 @@
 
 The installer owns authentication and infrastructure. An organization administrator owns product settings in
 the admin area: **Admin → General → Organization** (organization name, computer idle timeout) and **Admin → AI →
-Models** (the AI provider: Mistral, OpenAI, Anthropic, OpenCode (free), or a custom OpenAI-compatible endpoint;
+Models** (the AI provider: Anthropic, Mistral, OpenAI, OpenCode (free), or a custom OpenAI-compatible endpoint;
 its endpoint and key; the model for chats, chosen from the models the key can use). The installation offers exactly
-one provider and model. A change saves only after the provider accepts the key and the model; the ControlCell
+one provider and model. A new installation has none: until an administrator saves one, the Models page starts with
+no provider selected and chats answer that an administrator needs to choose an AI provider.
+A change saves only after the provider accepts the key and the model; the ControlCell
 checks again before storing it. OpenCode (free) uses DeepSeek V4.1 Flash Free without an API key. Prompts go to
 OpenCode's servers under its terms. The model's image/PDF inputs, context window and maximum output in tokens are
 prefilled when the provider or models.dev knows them. Set them to the model's actual limits: OpenCode uses them to
@@ -56,8 +58,8 @@ answers finish. Chats using a model no longer offered then run on the new defaul
 
 Run `docker compose up -d` after Compose authentication changes, or `helm upgrade` with the updated values for Kubernetes. The server rejects invalid files instead of silently
 falling back to password or anonymous access. Keep stable provider IDs: accounts are bound to those IDs.
-Switching between authenticated and anonymous modes currently has no migration; it needs the owner's explicit
-approval and documented deployment steps before any data is removed.
+Switching between authenticated and anonymous modes has no migration. Back up first and follow the release's
+documented steps; existing data must be removed.
 
 ## Authentication file
 
@@ -169,7 +171,6 @@ server may only point to public HTTPS addresses. Requests refuse redirects; MCP 
 These checks inspect URLs, not DNS answers. Deployment egress rules must deny private and reserved destination
 addresses for public hostnames, including DNS rebinding; this is not full SSRF protection.
 
-
 The administrator installs and grants plugins; users connect their own accounts. Connections are per user and
 plugin server across spaces. Personal-account servers are refused in team spaces until an owner enables
 personal-account plugins for that space. This owner-controlled switch is not per-account team consent.
@@ -227,7 +228,7 @@ losing it invalidates sessions and encrypted credentials.
 
 ## Invitations and native clients
 
-Normal installations are invitation-only by default. In **Administration → General → Authentication**, admins can allow Google signup for exact email domains. Separate domains with commas; leave the list empty to require invitations again. Google must verify the email and return a matching Workspace domain (`hd`). New accounts are regular members with a personal workspace; team membership still requires an invitation or an admin. Changes apply immediately and persist across restarts. Other providers and email/password remain invitation-only. Accepting an invitation with an external
+Normal installations are invitation-only by default. In **Admin → General → Authentication**, admins can allow Google signup for exact email domains. Separate domains with commas; leave the list empty to require invitations again. Google must verify the email and return a matching Workspace domain (`hd`). New accounts are regular members with a personal workspace; team membership still requires an invitation or an admin. Changes apply immediately and persist across restarts. Other providers and email/password remain invitation-only. Accepting an invitation with an external
 provider creates a passwordless local account, consumes the email-bound invitation, and grants the invited
 memberships. It does **not** issue a session: the selected provider must then prove the invited identity.
 If that login is interrupted, the account exists; sign in again with the invited address. Enabling a provider alone
@@ -256,12 +257,12 @@ See [background push integration](background-push-integration.md) to configure m
 ## Infrastructure stays in deployment configuration
 
 Listener/bind address, ports, public origins, TLS/proxy settings, storage credentials, internal service tokens,
-CPU/memory limits, celld heap/timeouts, and the setup token stay in `.env`/Compose. computerd reads the
+CPU/memory limits, celld heap/timeouts, and the setup token stay in `.env`/Compose or Helm values. computerd reads the
 current idle policy through its authenticated runtime-settings endpoint. If that read fails, that idle check
 does not stop computers using a guessed policy.
 
 ## Upgrade
 
-Back up and update the installation using the [installation update procedure](install.md#update).
-Follow the release's forward migration steps, then configure the product in the admin area. A change that cannot
-be migrated needs the owner's explicit approval and documented deployment steps.
+Back up and update the installation using the [Compose update procedure](install.md#update) or [Kubernetes upgrade procedure](install-kubernetes.md#upgrade-and-scale).
+Release notes list changes that cannot migrate existing data, with the affected data and deployment steps.
+Follow them before updating, then configure the product in the admin area.
