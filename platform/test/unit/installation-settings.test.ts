@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { asAdmin, call, makeService, createUser, signIn } from "../support/harness";
 import { ControlService } from "../../src/control/service";
 import { parseAuthConfig } from "../../src/control/auth-config";
-import { BASKULE_AI_PROVIDERS } from "../../../app/packages/contracts/src/baskule";
+import { BASKULE_AI_PROVIDERS, type BaskuleAIProviderId } from "../../../app/packages/contracts/src/baskule";
 import { defaultSettings } from "../../src/control/settings";
 import { INTERNAL_HEADER } from "../../src/shared/contract";
 
@@ -72,7 +72,51 @@ function providers(status = 200) {
   return { calls, [Symbol.dispose]: () => stub.mockRestore() };
 }
 
+const builtIn = BASKULE_AI_PROVIDERS.mistral;
+/** An installation whose admin chose a built-in provider and its suggested model. */
+const configured = { ...defaultSettings, ai: { providerId: "mistral" as BaskuleAIProviderId, baseUrl: builtIn.baseUrl, model: builtIn.models[0]! } };
+
 describe("organization settings", () => {
+  it("starts a new installation without an AI provider and keeps settings saved before", async () => {
+    using api = providers();
+    const h = await makeService();
+    const admin = await asAdmin(h);
+    const settingsPath = "/api/baskule/admin/settings";
+    const internal = async () => (await call(h, "POST", "/_baskule/settings", {
+      headers: { [INTERNAL_HEADER]: "1" }, body: { spaceId: admin.me.spaces[0].id },
+    })).body;
+    expect((await call(h, "GET", settingsPath, { creds: admin.creds })).body).toMatchObject({ ai: null, apiKeyConfigured: false });
+    expect(await internal()).toMatchObject({ ai: null, apiKey: "" });
+    h.calls.length = 0;
+    // Other settings save without a provider; a chat key has no connection to belong to.
+    const renamed = await call(h, "PATCH", settingsPath, { creds: admin.creds, body: { ...defaultSettings, organizationName: "Renamed", apiKey: "orphan-key" } });
+    expect(renamed.body).toMatchObject({ organizationName: "Renamed", ai: null, apiKeyConfigured: false });
+    expect(h.storage.sql.exec("select key from kv where key like 'llm_api_key:%'").toArray()).toEqual([]);
+    expect(api.calls).toEqual([]);
+    expect(h.calls).toEqual([]);
+    // Choosing one is checked like any change and reloads the spaces onto it.
+    const chosen = await call(h, "PATCH", settingsPath, { creds: admin.creds, body: { ...configured, organizationName: "Renamed", apiKey: "chat-key" } });
+    expect(chosen.body).toMatchObject({ ai: { providerId: "mistral", model: { id: builtIn.models[0]!.id } }, apiKeyConfigured: true });
+    expect(api.calls).toHaveLength(1);
+    expect(h.calls.map(c => c.path)).toEqual(["/_baskule/reconfigure"]);
+    expect(await internal()).toMatchObject({ ai: chosen.body.ai, apiKey: "chat-key" });
+    // Once chosen, a provider can be replaced but not removed.
+    h.calls.length = 0;
+    const removed = await call(h, "PATCH", settingsPath, { creds: admin.creds, body: { ...defaultSettings, organizationName: "Must not persist" } });
+    expect(removed.status).toBe(400);
+    expect(removed.body).toEqual({ error: "ai_required", message: "Choose a provider; the AI configuration can be changed but not removed" });
+    expect((await call(h, "GET", settingsPath, { creds: admin.creds })).body).toMatchObject({ organizationName: "Renamed", ai: chosen.body.ai });
+    expect(h.calls).toEqual([]);
+
+    // Settings and keys stored by an earlier release are read as they are.
+    const earlier = await makeService();
+    const earlierAdmin = await asAdmin(earlier);
+    earlier.storage.sql.exec("insert into kv(key, value) values ('product_settings', ?)", JSON.stringify(configured));
+    earlier.storage.sql.exec("insert into kv(key, value) values (?, 'earlier-key')", `llm_api_key:${JSON.stringify(["mistral", builtIn.baseUrl])}`);
+    await earlier.svc.init();
+    expect((await call(earlier, "GET", settingsPath, { creds: earlierAdmin.creds })).body).toMatchObject({ ai: configured.ai, apiKeyConfigured: true });
+  });
+
   it("restricts updates to admins, validates them, persists them and keeps keys private", async () => {
     using _providers = providers();
     const h = await makeService({ COMPUTERD_TOKEN: "internal-computerd-secret" });
@@ -80,8 +124,8 @@ describe("organization settings", () => {
     await createUser(h, admin.creds, "member@example.test", "Member");
     const member = await signIn(h, "member@example.test", "user-password-1");
     expect((await call(h, "GET", "/api/baskule/admin/settings")).status).toBe(401);
-    expect((await call(h, "PATCH", "/api/baskule/admin/settings", { creds: member.creds, body: defaultSettings })).status).toBe(403);
-    const settings = { ...defaultSettings, organizationName: "Our company", idleMinutes: 25 };
+    expect((await call(h, "PATCH", "/api/baskule/admin/settings", { creds: member.creds, body: configured })).status).toBe(403);
+    const settings = { ...configured, organizationName: "Our company", idleMinutes: 25 };
     const saved = await call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: { ...settings, apiKey: "private-llm-key" } });
     expect(saved.status).toBe(200);
     expect(saved.body.apiKeyConfigured).toBe(true);
@@ -103,13 +147,13 @@ describe("organization settings", () => {
     using _providers = providers();
     const h = await makeService();
     const admin = await asAdmin(h);
-    const save = (ai: typeof defaultSettings.ai, apiKey?: string) => call(h, "PATCH", "/api/baskule/admin/settings", {
+    const save = (ai: typeof configured.ai, apiKey?: string) => call(h, "PATCH", "/api/baskule/admin/settings", {
       creds: admin.creds, body: { ...defaultSettings, ai, ...(apiKey === undefined ? {} : { apiKey }) },
     });
     const key = async () => (await call(h, "POST", "/_baskule/settings", {
       headers: { [INTERNAL_HEADER]: "1" }, body: { spaceId: admin.me.spaces[0].id },
     })).body.apiKey;
-    const original = defaultSettings.ai;
+    const original = configured.ai;
     expect((await save(original, "mistral-secret")).status).toBe(200);
     const renamedModel = { ...original, model: { ...original.model, id: "another-model" } };
     expect((await save(renamedModel)).body.apiKeyConfigured).toBe(true);
@@ -150,7 +194,7 @@ describe("organization settings", () => {
     await h.svc.init();
     expect((await call(h, "GET", "/api/baskule/admin/settings", { creds: admin.creds })).body.apiKeyConfigured).toBe(true);
     expect(api.calls).toEqual([{ method: "POST", url: `${provider.baseUrl}/chat/completions`, authorization: "Bearer public" }]);
-    const switched = await call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: defaultSettings });
+    const switched = await call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: configured });
     expect(switched.body.error).toBe("ai_key_missing");
   });
 
@@ -159,7 +203,7 @@ describe("organization settings", () => {
     const h = await makeService();
     const admin = await asAdmin(h);
     const save = (body: Record<string, unknown>) => call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body });
-    const rejected = await save({ ...defaultSettings, apiKey: "wrong-key" });
+    const rejected = await save({ ...configured, apiKey: "wrong-key" });
     expect(rejected.status).toBe(400);
     expect(rejected.body.error).toBe("ai_key_rejected");
     expect(JSON.stringify(rejected.body)).not.toContain("wrong-key");
@@ -175,9 +219,9 @@ describe("organization settings", () => {
     const admin = await asAdmin(h);
     const save = (ai: unknown) => call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: { ...defaultSettings, ai, apiKey: "key" } });
     const small = BASKULE_AI_PROVIDERS.mistral.models[1]!;
-    const forged = await save({ ...defaultSettings.ai, model: { ...small, cost: { input: 99, output: 99 } } });
+    const forged = await save({ ...configured.ai, model: { ...small, cost: { input: 99, output: 99 } } });
     expect(forged.body.ai.model.cost).toEqual(small.cost);
-    const unpriced = await save({ ...defaultSettings.ai, model: { ...small, id: "unlisted-model", cost: { input: 1, output: 1 } } });
+    const unpriced = await save({ ...configured.ai, model: { ...small, id: "unlisted-model", cost: { input: 1, output: 1 } } });
     expect(unpriced.body.ai.model).not.toHaveProperty("cost");
     const cost = { input: 1, output: 2, cache_read: 0.5, cache_write: 3 };
     const custom = await save({ providerId: "custom", baseUrl: "https://llm.example.test/v1", model: { ...small, id: "local", cost } });
@@ -192,7 +236,7 @@ describe("organization settings", () => {
     const member = await signIn(h, "member@example.test", "user-password-1");
     const connection = { providerId: "mistral", baseUrl: BASKULE_AI_PROVIDERS.mistral.baseUrl };
     expect((await call(h, "POST", "/api/baskule/admin/ai/models", { creds: member.creds, body: connection })).status).toBe(403);
-    await call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: { ...defaultSettings, apiKey: "saved-key" } });
+    await call(h, "PATCH", "/api/baskule/admin/settings", { creds: admin.creds, body: { ...configured, apiKey: "saved-key" } });
     const listed = await call(h, "POST", "/api/baskule/admin/ai/models", { creds: admin.creds, body: connection });
     expect(listed.body.models).toEqual([{ id: "listed-model", name: "listed-model" }]);
     const checked = await call(h, "POST", "/api/baskule/admin/ai/verify", { creds: admin.creds, body: { ...connection, modelId: "mistral-small-2603", apiKey: "typed-key" } });
@@ -213,7 +257,7 @@ describe("organization settings", () => {
     expect((await poll()).body).toEqual({ token: null });
     expect((await call(h, "POST", "/api/baskule/native-login/poll", { body: { id, secret: "wrong" } })).status).toBe(404);
     const form = new FormData(); form.set("request", id);
-    const approved = await h.svc.handle(new Request("http://os.test/api/baskule/native-login/approve", { method: "POST", headers: { cookie: admin.creds.cookie! }, body: form }));
+    const approved = await h.svc.handle(new Request("http://baskule.test/api/baskule/native-login/approve", { method: "POST", headers: { cookie: admin.creds.cookie! }, body: form }));
     expect(approved.status).toBe(200);
     const complete = await poll();
     expect(complete.status).toBe(200);

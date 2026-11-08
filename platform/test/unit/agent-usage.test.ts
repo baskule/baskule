@@ -42,7 +42,8 @@ async function setup() {
     received.push(...records);
     return Response.json({ accepted: records.map(r => r.messageId) });
   });
-  const ai = { ...defaultSettings.ai, model: { ...defaultSettings.ai.model, cost: { input: 2, output: 4 } } };
+  const ai = { providerId: "custom" as const, baseUrl: "https://llm.example.test/v1",
+    model: { id: "test-model", name: "Test model", image: true, pdf: true, limit: { context: 200_000, output: 16_000 }, settings: {}, cost: { input: 2, output: 4 } } };
   const reporter = (prices = configPrices(opencodeConfig({ AI: { ...ai, apiKey: "test-key" } }, "runtime-key"))) => new UsageReporter(sql, "space", prices, { enabled: true, rules: [] }, control, retry);
   const assistant = (id: string, seq = 2, sessionId = "session", model: ModelRef = { id: ai.model.id, providerID: ai.providerId }) => exec("insert into session_message values(?,?,?,?,?,?)", [id, sessionId, "assistant", seq, Date.now(), JSON.stringify({ model, time: { created: Date.now(), completed: Date.now() }, tokens: { input: 10, output: 20, reasoning: 5, cache: { read: 3, write: 2 } } })]);
   return { db, exec, reporter, assistant, received, control, state, retry, ai };
@@ -52,7 +53,7 @@ describe("SpaceCell usage reporter", () => {
   it("prices each assistant by its model and still records free-model tokens", async () => {
     const h = await setup();
     const provider = BASKULE_AI_PROVIDERS.opencode;
-    const freeAI = parseSettings({ ...defaultSettings, ai: { providerId: "opencode", baseUrl: provider.baseUrl, model: provider.models[0] } }).ai;
+    const freeAI = parseSettings({ ...defaultSettings, ai: { providerId: "opencode", baseUrl: provider.baseUrl, model: provider.models[0] } }).ai!;
     // Exercise per-message pricing independently of the installation's single-provider configuration.
     const prices = {
       ...configPrices(opencodeConfig({ AI: { ...h.ai, apiKey: "test-key" } }, "runtime-key")),

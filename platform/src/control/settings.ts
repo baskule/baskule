@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_BASKULE_TRANSCRIPTION, BASKULE_AI_PROVIDERS } from "../../../app/packages/contracts/src/baskule";
+import { DEFAULT_BASKULE_TRANSCRIPTION } from "../../../app/packages/contracts/src/baskule";
 import { HttpError } from "../shared/http";
 
 const endpoint = z.url().refine(value => {
@@ -33,11 +33,12 @@ const connectionCheckSchema = z.object({
 export const settingsSchema = z.object({
   organizationName: z.string().trim().min(1).max(100),
   googleSignupDomains: z.array(z.string().trim().toLowerCase().max(253).regex(/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/, "Use an email domain such as company.com")).max(30).default([]),
+  // Null until an administrator saves a provider and model.
   ai: z.object({
     providerId,
     baseUrl: endpoint,
     model: modelSchema,
-  }).strict(),
+  }).strict().nullable(),
   transcription: z.object({
     enabled: z.boolean(),
     providerId: z.enum(["openai", "custom"]),
@@ -47,12 +48,13 @@ export const settingsSchema = z.object({
   idleMinutes: z.number().min(0.1).max(1440),
 }).strict();
 export type ProductSettings = z.infer<typeof settingsSchema>;
+export type AISettings = NonNullable<ProductSettings["ai"]>;
 
+/** A new installation's settings: no AI provider is preselected. */
 export const defaultSettings: ProductSettings = {
   organizationName: "Baskule",
   googleSignupDomains: [],
-  ai: { providerId: "mistral", baseUrl: BASKULE_AI_PROVIDERS.mistral.baseUrl,
-    model: modelSchema.parse(BASKULE_AI_PROVIDERS.mistral.models[0]) },
+  ai: null,
   transcription: DEFAULT_BASKULE_TRANSCRIPTION,
   idleMinutes: 10,
 };

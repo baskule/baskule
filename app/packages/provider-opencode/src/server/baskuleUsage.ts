@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { BASKULE_AI_NOT_CONFIGURED } from "@t3tools/contracts/baskule";
 import { UsageWindowStatusSchema } from "@t3tools/contracts/baskule-usage";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 
@@ -30,4 +31,21 @@ export function baskuleUsageFailure(cause: unknown) {
   } catch {
     return undefined;
   }
+}
+
+/** The installation has no AI provider yet: the turn names who can fix it instead of a generic provider error. */
+export function baskuleSetupFailure(cause: unknown) {
+  if (
+    typeof cause !== "object" ||
+    cause === null ||
+    !("kind" in cause) ||
+    cause.kind !== BASKULE_AI_NOT_CONFIGURED.kind
+  )
+    return undefined;
+  return makeProviderFailure({
+    class: "provider_error",
+    code: BASKULE_AI_NOT_CONFIGURED.kind,
+    retryable: false,
+    message: BASKULE_AI_NOT_CONFIGURED.message,
+  });
 }

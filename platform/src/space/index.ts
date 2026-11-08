@@ -14,7 +14,7 @@
 //   OpenCode keeps its own deadline on the same alarm (./alarms.ts).
 import { DurableObject } from "cloudflare:workers";
 import { AgentRuntime } from "../agent/index";
-import type { AgentEnv } from "../agent/config";
+import { UNCONFIGURED_AI, type AgentEnv } from "../agent/config";
 import { SpaceAlarms } from "./alarms";
 import { BASE_HEADER, SPACE_CONTROL, type RevokeRequest, type SpaceStatus } from "../shared/contract";
 import { RECHECK_INTERVAL_MS, recheckSockets, type ControlNamespace } from "../shared/recheck";
@@ -50,6 +50,7 @@ interface SpaceEnv extends Omit<AgentEnv, "AI"> {
 interface CachedStatus {
   activeRuns: number;
   nextWakeAt: number | null;
+  updatedAt: number;
 }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
@@ -88,7 +89,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
     console.log(JSON.stringify({ event: "space.agent_start", phase: "database", spaceId: id }));
     const settings = await this.loadSettings(id);
     return this.agent ??= new AgentRuntime(this.alarms.forAgent(), { ...this.env,
-      AI: { ...settings.ai, apiKey: settings.apiKey }, PLUGINS: settings.plugins,
+      AI: settings.ai && { ...settings.ai, apiKey: settings.apiKey }, PLUGINS: settings.plugins,
     }, id, database.client, { fetch: (req) => this.fetch(req) }, promise => this.ctx.waitUntil(promise), {
       settings: settings.usageLimits ?? { enabled: false, rules: [] },
       control: (path, body) => this.env.CONTROL.getByName("control").fetch(new Request(`http://control${path}`, {
@@ -205,8 +206,8 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       computerdUrl: this.env.COMPUTERD_URL,
       computerdToken: this.env.COMPUTERD_TOKEN,
       otlpTracesUrl: this.env.OTLP_TRACES_URL || undefined,
-      llmModel: settings.ai.model.id,
-      llmProviderId: settings.ai.providerId,
+      llmModel: (settings.ai ?? UNCONFIGURED_AI).model.id,
+      llmProviderId: (settings.ai ?? UNCONFIGURED_AI).providerId,
       publicOrigin: this.env.PUBLIC_ORIGINS?.split(",").map((o) => o.trim()).find(Boolean),
       logLevel: (this.env.BASKULE_LOG_LEVEL as "Info" | undefined) ?? "Warn",
       onStorageLost: () => {
@@ -269,11 +270,8 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
   }
 
   private async cacheStatus(server: SpaceServer): Promise<CachedStatus> {
-    const cached = await this.ctx.storage.get<CachedStatus>("baskule:status");
-    const status = { activeRuns: server.activeRuns(), nextWakeAt: server.nextWakeAt() };
-    if (cached?.activeRuns !== status.activeRuns || cached?.nextWakeAt !== status.nextWakeAt) {
-      await this.ctx.storage.put("baskule:status", status);
-    }
+    const status = { activeRuns: server.activeRuns(), nextWakeAt: server.nextWakeAt(), updatedAt: Date.now() };
+    await this.ctx.storage.put("baskule:status", status);
     return status;
   }
 
@@ -287,7 +285,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       if (server.sockets().length > 0) candidates.push(now + RECHECK_INTERVAL_MS);
       if (status.activeRuns > 0) candidates.push(now + RUN_HEARTBEAT_MS);
       if (status.nextWakeAt !== null) candidates.push(Math.max(status.nextWakeAt, now + 1_000));
-      if (server.sockets().length === 0 && status.activeRuns === 0) candidates.push(this.lastActivity + IDLE_DISPOSE_MS);
+      candidates.push(this.lastActivity + IDLE_DISPOSE_MS);
     } else {
       const cached = await this.ctx.storage.get<CachedStatus>("baskule:status");
       if (cached?.nextWakeAt != null) candidates.push(Math.max(cached.nextWakeAt, now + 1_000));

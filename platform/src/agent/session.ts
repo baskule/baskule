@@ -40,6 +40,17 @@ export function offeredModel(model: unknown, models: Models): ModelRef {
     : models.fallback;
 }
 
+/** The OpenCode 2.1.3 routes that start a chat turn or a model call (protocol groups `session`, `generate`, `voice`).
+ *  Without a configured provider they are refused; permission and form replies only resume work these started. */
+const MODEL_WORK = /^\/api\/(?:session\/[^/]+\/(?:prompt|command|shell|synthetic|compact|generate)|experimental\/session\/[^/]+\/skill|experimental\/generate|experimental\/voice\/session)$/;
+export function startsModelWork(method: string, path: string, body?: unknown): boolean {
+  if (method === "POST") return MODEL_WORK.test(path);
+  // An empty title asks OpenCode to generate one with the model.
+  const update = body as { title?: unknown } | null | undefined;
+  return method === "PATCH" && SESSION.test(path) && update?.title !== undefined && !update.title;
+}
+const SESSION = /^\/api\/session\/[^/]+$/;
+
 export function prepareSessionCreate(body: unknown, workspaceID: string, defaultDirectory: string, models: Models): Prepared {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "body must be a JSON object" };
   const input = stripNulls(body as Record<string, unknown>);
