@@ -475,7 +475,7 @@ test("shared browser: metadata headers reach the cell before any heartbeat", asy
 
 test("instance config: optional, valid label values only", () => {
   assert.equal(loadConfig({ COMPUTERD_TOKEN: TOKEN }).instance, "");
-  for (const instance of ["", "a", "osdev-u2a", "worktree_1.dev"]) {
+  for (const instance of ["", "a", "baskule-dev-u2a", "worktree_1.dev"]) {
     assert.equal(loadConfig({ COMPUTERD_TOKEN: TOKEN, COMPUTERD_INSTANCE: instance }).instance, instance);
   }
   for (const instance of ["x,baskule.managed=false", " a", "-a", "a-", "a=b", "x".repeat(64)]) {
@@ -484,11 +484,11 @@ test("instance config: optional, valid label values only", () => {
 });
 
 test("instance names: the same space has distinct sandbox and volume names", () => {
-  const a = namesFor("sp1", "osdev-a");
-  const b = namesFor("sp1", "osdev-b");
+  const a = namesFor("sp1", "baskule-dev-a");
+  const b = namesFor("sp1", "baskule-dev-b");
   assert.notEqual(a.sandbox, b.sandbox);
   assert.notEqual(a.volume, b.volume);
-  const pairs = [["osdev-a", "sp1"], ["x".repeat(63), "S".repeat(64)], ["A_b.c", "sp1"],
+  const pairs = [["baskule-dev-a", "sp1"], ["x".repeat(63), "S".repeat(64)], ["A_b.c", "sp1"],
     ["a-b", "c"], ["a", "b-c"]];
   const names = pairs.map(([instance, space]) => namesFor(space, instance));
   assert.equal(new Set(names.map(n => n.sandbox)).size, pairs.length);
@@ -501,8 +501,8 @@ test("instance names: the same space has distinct sandbox and volume names", () 
 });
 
 test("instance scoping: two computerds create, adopt and idle only their own sandboxes", async () => {
-  const configA = { ...cfg, instance: loadConfig({ COMPUTERD_TOKEN: TOKEN, COMPUTERD_INSTANCE: "osdev-a" }).instance, idleMs: 1000 };
-  const configB = { ...configA, instance: "osdev-b" };
+  const configA = { ...cfg, instance: loadConfig({ COMPUTERD_TOKEN: TOKEN, COMPUTERD_INSTANCE: "baskule-dev-a" }).instance, idleMs: 1000 };
+  const configB = { ...configA, instance: "baskule-dev-b" };
   const a = new Computers(backend, configA);
   const b = new Computers(backend, configB);
   const namesA = namesFor("sp1", configA.instance);
@@ -520,7 +520,7 @@ test("instance scoping: two computerds create, adopt and idle only their own san
     assert.ok(fake.disks.has(namesB.volume));
     await computers.ensure("scoped-legacy");
     // Same instance label on an unmanaged sandbox must not make it eligible for adoption.
-    fake.sandboxes.set("os-unmanaged", { name: "os-unmanaged", labels: { "baskule.instance": "osdev-a" },
+    fake.sandboxes.set("os-unmanaged", { name: "os-unmanaged", labels: { "baskule.instance": "baskule-dev-a" },
       phase: "ready", image: "", error: null });
     const restartedA = new Computers(backend, configA);
     const restartedB = new Computers(backend, configB);
@@ -534,12 +534,12 @@ test("instance scoping: two computerds create, adopt and idle only their own san
     await restartedB.idleTick(Date.now() + 2000);
     assert.equal((await backend.get(resultB.sandbox))?.phase, "stopped");
     assert.equal((await backend.get("os-scoped-legacy"))?.phase, "ready");
-    for (const [name, instance] of [[resultA.sandbox, "osdev-a"], [resultB.sandbox, "osdev-b"]]) {
+    for (const [name, instance] of [[resultA.sandbox, "baskule-dev-a"], [resultB.sandbox, "baskule-dev-b"]]) {
       const sandbox = fake.sandboxes.get(name)!;
       assert.deepEqual(sandbox.labels, { "baskule.managed": "true", "baskule.instance": instance });
     }
     assert.deepEqual(fake.sandboxes.get("os-scoped-legacy")!.labels, { "baskule.managed": "true" });
-    fake.sandboxes.set(foreign.sandbox, { name: foreign.sandbox, labels: { "baskule.managed": "true", "baskule.instance": "osdev-b" },
+    fake.sandboxes.set(foreign.sandbox, { name: foreign.sandbox, labels: { "baskule.managed": "true", "baskule.instance": "baskule-dev-b" },
       phase: "ready", image: "", error: null });
     fake.sandboxes.set(legacy.sandbox, { name: legacy.sandbox, labels: { "baskule.managed": "true" },
       phase: "ready", image: "", error: null });

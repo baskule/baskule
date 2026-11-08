@@ -27,7 +27,8 @@ case "$suite" in
     run node scripts/feature-map.mjs
     run node --test scripts/check-lock.test.mjs scripts/check-evidence.test.mjs scripts/release-plan.test.mjs scripts/celld.test.mjs scripts/lint.test.mjs scripts/stack.test.mjs scripts/worktree.test.mjs scripts/feature-map.test.mjs platform/dev/fake-llm/server.test.mjs deploy/celld/sync-plugins.test.mjs
     run node --test e2e/secrets.test.mjs
-    run node --test scripts/ci/kubernetes-ephemeral.test.mjs
+    run node --test scripts/ci/llm.test.mjs
+    run node --test scripts/ci/kubernetes.test.mjs
     run node --test scripts/ci/publish-images.test.mjs
     ;;
   platform)

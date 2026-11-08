@@ -78,7 +78,7 @@ export function createApi(stack) {
   /** Creates a fresh person with a temporary password and signs them in. */
   async function person(name, run) {
     const a = await adminSession();
-    const email = `${name.toLowerCase()}-${run}@wpf.test`;
+    const email = `${name.toLowerCase()}-${run}@baskule.test`;
     const password = `pw-${name}-${run}-0123456789`;
     const r = await a.http("POST", "/api/baskule/admin/users", { email, name, password });
     if (!r.ok) throw new Error(`create ${email}: ${r.status} ${await r.text()}`);
@@ -141,7 +141,7 @@ export function createApi(stack) {
     return state;
   }
 
-  async function launch(client, projectId, text, title = "WP-F chat", extra = {}) {
+  async function launch(client, projectId, text, title = "Journey chat", extra = {}) {
     const launched = await client.ok("orchestration.launchThread", {
       commandId: crypto.randomUUID(),
       projectId,
@@ -158,7 +158,7 @@ export function createApi(stack) {
 
   const dispatch = (client, command) => client.ok("orchestration.dispatchCommand", { commandId: crypto.randomUUID(), ...command });
   const send = (client, threadId, text, mode = { type: "queue_after_active" }, extra = {}) =>
-    dispatch(client, { type: "message.dispatch", createdBy: "user", creationSource: "web", threadId, messageId: `message:wpf:${crypto.randomUUID()}`, text, attachments: [], dispatchMode: mode, ...extra });
+    dispatch(client, { type: "message.dispatch", createdBy: "user", creationSource: "web", threadId, messageId: `message:journey:${crypto.randomUUID()}`, text, attachments: [], dispatchMode: mode, ...extra });
 
   const createUser = (details) => adminSession().then((a) => a.json("POST", "/api/baskule/admin/users", details));
   const createInvitation = (details) => adminSession().then((a) => a.json("POST", "/api/baskule/invitations", details));

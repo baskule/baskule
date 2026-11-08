@@ -1,5 +1,5 @@
 // Agent core (docs/development-workflow.md):
-//  (a) an existing chat resumed after a celld restart keeps the Baskule toolset (live incident, chat 8e340400);
+//  (a) an existing chat resumed after a celld restart keeps the Baskule toolset;
 //  (b) a plain chat, and deleting it, never create or start a computer;
 //  (c) timings: cold sign-in → composer, new chat first answer, warm turn; celld CPU per turn and memory. A measurement,
 //      not a correctness check: tagged @perf, it runs only on request (`e2e/run.sh --project perf`).
@@ -53,7 +53,7 @@ function celldMemory(): { workingSetMiB: number; inUseMiB: number } {
   return { workingSetMiB: Math.round(ws / 2 ** 20), inUseMiB: Math.round(inUse / 2 ** 20) };
 }
 
-// The same-chat restart regression found by the merged full suite (background-event lifetime): keep it unweakened.
+// Tools and persisted files must survive a restart in the same chat.
 test("(a) a chat resumed after a celld restart keeps the Baskule toolset", { tag: ["@lifecycle", "@slow"] }, async ({ browser }) => {
   test.setTimeout(900_000);
   const w = await world();
@@ -103,7 +103,7 @@ test("(b) a plain chat and its deletion never start a computer", { tag: ["@chat"
   const project = await spaceRpc(bob, w.bob.personal, "projects.ensureScratch", {});
   const launched = await spaceRpc(bob, w.bob.personal, "orchestration.launchThread", {
     commandId: crypto.randomUUID(), projectId: project.value.projectId, title: "Plain", runtimeMode: "full-access", interactionMode: "default",
-    modelSelection: { instanceId: "opencode", model: `custom/${process.env.E2E_MODEL ?? "mistral-large-4"}` }, workspaceStrategy: { type: "root" },
+    modelSelection: { instanceId: "opencode", model: `custom/${process.env.E2E_MODEL ?? "fake-model"}` }, workspaceStrategy: { type: "root" },
     initialMessage: { text: "bonjour [[fake:text Bonjour !]]", attachments: [] },
   });
   expect(launched._tag, JSON.stringify(launched).slice(0, 300)).toBe("Success");

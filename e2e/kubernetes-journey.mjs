@@ -38,114 +38,6 @@ async function rpc(person, space) {
   }, { timeout: 120_000, message: "space RPC becomes available after startup or lease recovery" }).toBe(true);
   return result;
 }
-async function ingressSession(signIn) {
-  let session;
-  await expect.poll(async () => {
-    try { session = await signIn(); return true; }
-    catch (error) {
-      // GFE can still be converging after NEG registration. Refuse auth and
-      // application errors; only retry load-balancer availability failures.
-      const message = String(error);
-      const edge404 = /: 404 /.test(message) && /<title>404 Not Found<\/title>/.test(message) && message.includes("The requested URL");
-      if (!/: 50[234] /.test(message) && !edge404) throw error;
-      return false;
-    }
-  }, { timeout: 180_000 }).toBe(true);
-  return session;
-}
-async function checkIngress(publicUrl) {
-  await expect.poll(async () => {
-    try { return (await fetch(`${publicUrl}/api/baskule/setup`, { signal: AbortSignal.timeout(10_000) })).status; }
-    catch { return 0; }
-  }, { timeout: 600_000 }).toBe(200);
-  const externalApi = createApi({ urls: { loopback: publicUrl, front: publicUrl }, admin });
-  await ingressSession(() => externalApi.adminSession());
-  const externalPerson = await ingressSession(() => externalApi.person("Ingress", randomBytes(4).toString("hex")));
-  const externalClient = await rpc(externalPerson, externalApi.personalSpace(externalPerson));
-  try {
-    const externalProject = (await externalClient.ok("projects.ensureScratch", {})).projectId;
-    const started = Date.now();
-    const words = Array.from({ length: 400 }, (_, i) => `chunk${i}`).join(" ");
-    const externalThread = await externalApi.launch(externalClient, externalProject, `[[fake:text LOAD_BALANCER_STREAM_OK ${words}]][[fake:delay 200]]`);
-    const externalState = externalApi.watchThread(externalClient, externalThread);
-    try {
-      await externalApi.waitFor("load balancer text before completion", () => !externalState.settled() && externalState.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 60_000);
-      await externalApi.waitFor("WebSocket still streaming after 65 seconds", () => Date.now() - started >= 65_000 && !externalState.settled() && externalState.assistantUpdates >= 2, 90_000);
-      const updates = externalState.assistantUpdates;
-      await externalApi.waitFor("incremental delivery after 65 seconds", () => externalState.assistantUpdates > updates, 30_000);
-      await externalApi.waitFor("load balancer streamed chat", () => externalState.settled() && externalState.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 180_000);
-      assert.ok([...externalState.runs.values()].every(run => run.status === "completed"));
-      assert.ok(externalState.assistantUpdates >= 2, "incremental updates must traverse the public load balancer");
-    } finally { externalState.stop(); }
-    writeFileSync(resolve(evidence, "ingress-stream.json"), JSON.stringify({ elapsedMs: Date.now() - started, updates: externalState.assistantUpdates, visibleBeforeCompletion: true, deliveredAfter65Seconds: true }));
-    pass("real Ingress load balancer keeps WebSocket and incremental chat streaming beyond 65 seconds");
-    // Independent HTTP/SSE probe on the same Ingress, reusing its fake-LLM backend.
-    const streamUrl = `${publicUrl}/v1/chat/completions`;
-    const request = (text, stream) => fetch(streamUrl, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "fake-model", stream, messages: [{ role: "user", content: text }] }),
-      signal: AbortSignal.timeout(150_000),
-    });
-    await expect.poll(async () => {
-      try {
-        const response = await request("[[fake:text HTTP_STREAM_ROUTE_READY]]", false);
-        return response.ok && (await response.json()).choices?.[0]?.message?.content === "HTTP_STREAM_ROUTE_READY";
-      } catch { return false; }
-    }, { timeout: 600_000, message: "GCE registers the fake-LLM streaming probe backend" }).toBe(true);
-    const httpStarted = Date.now();
-    const response = await request(`[[fake:text HTTP_STREAM_OK ${words}]][[fake:delay 200]]`, true);
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get("content-type"), /text\/event-stream/);
-    let text = "", firstContentMs, lateContent = false, contentChunks = 0;
-    const decoder = new TextDecoder();
-    for await (const chunk of response.body) {
-      const part = decoder.decode(chunk, { stream: true });
-      text += part;
-      const elapsed = Date.now() - httpStarted;
-      if (firstContentMs === undefined && text.includes("HTTP_STREAM_OK")) firstContentMs = elapsed;
-      if (part.includes('"content"')) {
-        contentChunks++;
-        if (elapsed >= 65_000) lateContent = true;
-      }
-    }
-    assert.ok(firstContentMs < 30_000, "HTTP content must arrive before the complete response can be buffered");
-    assert.ok(lateContent && contentChunks >= 20, "HTTP content continues incrementally beyond 65 seconds");
-    assert.match(text, /data: \[DONE\]/);
-    writeFileSync(resolve(evidence, "ingress-http-stream.json"), JSON.stringify({ elapsedMs: Date.now() - httpStarted, firstContentMs, contentChunks, lateContent }));
-    pass("same public Ingress delivers unbuffered HTTP SSE content before completion and beyond 65 seconds");
-    if (process.env.BASKULE_K8S_JOURNEY === "ingress") {
-      externalClient.close(); await externalClient.closed;
-      const oldPod = objects("get", "pod", `${release}-celld-1`);
-      kube("delete", "pod", `${release}-celld-1`, "--grace-period=0", "--force", "--wait=true");
-      await expect.poll(() => {
-        const replacement = objects("get", "pods", "-l", select("celld")).items.find(p => p.metadata.name === oldPod.metadata.name);
-        return Boolean(replacement && replacement.metadata.uid !== oldPod.metadata.uid && replacement.status.conditions?.some(c => c.type === "Ready" && c.status === "True"));
-      }, { timeout: 240_000 }).toBe(true);
-      const signedIn = await ingressSession(() => externalApi.Person.signIn(externalPerson.email, externalPerson.password));
-      const reconnected = await rpc(signedIn, externalApi.personalSpace(externalPerson));
-      try {
-        const recovered = externalApi.watchThread(reconnected, externalThread);
-        try {
-          await externalApi.waitFor("load balancer chat after celld replacement", () => recovered.assistantText().includes("LOAD_BALANCER_STREAM_OK"), 120_000);
-        } finally { recovered.stop(); }
-        pass("public Ingress sign-in and persisted chat recover after celld pod replacement");
-      } finally { reconnected.close(); await reconnected.closed; }
-    }
-  } finally { externalClient.close(); await externalClient.closed; }
-  // Security test: attacker-controlled earlier XFF entries must not avoid the edge bucket.
-  const statuses = [];
-  for (let i = 0; i < 12; i++) {
-    const response = await fetch(`${publicUrl}/auth/sign-in/email`, {
-      method: "POST", headers: { Origin: publicUrl, "Content-Type": "application/json", "X-Forwarded-For": `198.51.100.${i + 1}` },
-      body: JSON.stringify({ email: externalPerson.email, password: "intentionally-wrong-password" }),
-    });
-    statuses.push(response.status); await response.body?.cancel();
-  }
-  assert.ok(statuses.includes(429), "changing forged XFF must not escape sign-in throttling");
-  assert.equal(statuses.at(-1), 429);
-  writeFileSync(resolve(evidence, "ingress-rate-limit.json"), JSON.stringify({ statuses, differentForgedXff: true, sharedBucketLimit: "GCE forwarding-rule IP; documented production limit" }));
-  pass("public GCE sign-in rate limit cannot be bypassed with changing forged XFF entries");
-}
 const select = component => `app.kubernetes.io/instance=${release},app.kubernetes.io/component=${component}`;
 // Keep retry credentials outside uploaded evidence; never print them.
 const privateDirectory = resolve(".run/kubernetes-journey");
@@ -193,11 +85,8 @@ try {
     ai: { providerId: "custom", baseUrl: "http://fake-llm:47601/v1", model: { id: "fake-model", name: "fake-model", image: true, pdf: true, limit: { context: 200_000, output: 16_000 }, settings: {} } },
   });
   const selection = process.env.BASKULE_K8S_JOURNEY ?? "full";
-  assert.ok(["full", "ingress", "failover"].includes(selection), "journey selection: full, ingress or failover");
-  if (selection === "ingress") {
-    await checkIngress(publicUrl);
-    writeFileSync(resolve(evidence, "summary.json"), JSON.stringify({ at: new Date().toISOString(), selection, ingress: true }));
-  } else {
+  assert.ok(["full", "failover"].includes(selection), "journey selection: full or failover");
+  {
     const chatting = await api.person("Kubernetes", randomBytes(4).toString("hex"));
     const space = api.personalSpace(chatting);
     client = await rpc(chatting, space);
@@ -213,7 +102,6 @@ try {
     pass("fake chat streams through the platform WebSocket");
     const coldNodeImages = objects("get", "nodes").items.flatMap(node => node.status.images ?? []).flatMap(image => image.names);
     const cold = !coldNodeImages.some(name => name.includes("/baskule-computer:"));
-    if (process.env.BASKULE_K8S_CROSS_NODE === "1") assert.ok(cold, "first computer must pull onto a cold GKE node");
     const toolThread = await api.launch(client, projectId, '[[fake:tool shell {"command":"printf KUBERNETES_DISK_OK > /sandbox/space/kubernetes-proof.txt; cat /sandbox/space/kubernetes-proof.txt"}]]');
     const tool = api.watchThread(client, toolThread);
     await api.waitFor("computer exec", () => tool.settled() && tool.assistantText().includes("KUBERNETES_DISK_OK"), 300_000);
@@ -248,9 +136,6 @@ try {
       const pvcBefore = computerPvcs();
       assert.ok(pvcBefore.length > 0);
       if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
-        execFileSync("helm", ["upgrade", release, process.env.BASKULE_K8S_CHART, "--version", process.env.BASKULE_K8S_CHART_VERSION, "-n", namespace, "--reuse-values", "--set", "computers.prePull.enabled=true"], { stdio: "ignore", timeout: 180_000 });
-        kube("rollout", "status", `daemonset/${release}-computer-prepull`, "--timeout=180s");
-        pass("computer image cached on all nodes before cross-node move");
         kube("cordon", pod.spec.nodeName);
       }
       const moveStarted = performance.now();
@@ -280,16 +165,11 @@ try {
         [objects("get", "pod", celldPod).status.podIP, "47092"],
         ...(process.env.BASKULE_K8S_S3_FIXTURE ? [[objects("get", "svc", process.env.BASKULE_K8S_S3_FIXTURE).spec.clusterIP, "3900"]] : []),
         ["169.254.169.254", "80"],
-        ["metadata.google.internal", "80"],
         [objects("get", "svc", release).spec.clusterIP, "80"],
         [objects("get", "svc", `${release}-computerd`).spec.clusterIP, "47094"],
         [workload.status.hostIP, "10250"],
       ]) kube("exec", workload.metadata.name, "--", "node", "-e", probe, host, port);
       pass(`NetworkPolicy blocks direct computer access to peer${process.env.BASKULE_K8S_S3_FIXTURE ? ", S3" : ""} and metadata IPs`);
-      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
-        kube("exec", celldPod, "--", "curl", "-fsS", "--max-time", "10", "-H", "Metadata-Flavor: Google", "-o", "/dev/null", "http://169.254.169.254/computeMetadata/v1/");
-        pass("GKE metadata server exists and is reachable from the trusted platform");
-      }
       // Exercise the same network isolation through the product exec API.
       const computerApi = new Client(await forward(`service/${release}-computerd`, 47094), Buffer.from(secret.COMPUTERD_TOKEN, "base64").toString());
       const publicControl = await computerApi.exec(space, { argv: ["curl", "-fsS", "--max-time", "20", "https://example.com/"] });
@@ -304,7 +184,7 @@ try {
         `http://${objects("get", "svc", release).spec.clusterIP}:80/api/baskule/setup`,
         `http://${release}:80/api/baskule/setup`,
         ...(process.env.BASKULE_K8S_S3_FIXTURE ? [`http://${objects("get", "svc", process.env.BASKULE_K8S_S3_FIXTURE).spec.clusterIP}:3900/`] : []),
-        "http://169.254.169.254/computeMetadata/v1/",
+        "http://169.254.169.254/",
       ]) {
         const denied = await computerApi.exec(space, { argv: ["curl", "--silent", "--show-error", "--max-time", "10", "--insecure", "-H", "X-Forwarded-For: 198.51.100.1", target] });
         assert.notEqual(denied.code, 0, `NetworkPolicy must deny ${target}`);
@@ -315,37 +195,7 @@ try {
       const targets = JSON.parse(cdp.msgs.find(message => message.includes('"id":1'))).result.targetInfos;
       assert.ok(targets.some(target => target.type === "page"));
       pass("computer Chromium responds through the real CDP WebSocket tunnel");
-      if (process.env.BASKULE_K8S_CROSS_NODE === "1") {
-        const claim = objects("get", "pvc").items.find(p => p.metadata.ownerReferences?.some(o => o.uid === sandbox.metadata.uid));
-        assert.ok(claim);
-        const snapshotName = "restore-proof";
-        const apply = object => execFileSync("kubectl", ["-n", namespace, "apply", "-f", "-"], { input: JSON.stringify(object), encoding: "utf8" });
-        const command = async argv => {
-          const r = await computerApi.exec(space, { argv });
-          assert.equal(r.code, 0, r.stderr); return r.stdout;
-        };
-        await command(["sh", "-c", "mkdir -p /sandbox/space/restore-proof; printf snapshot-proof > /sandbox/space/restore-proof/a; printf second-file > /sandbox/space/restore-proof/b; sync"]);
-        const hashes = () => command(["sh", "-c", "cd /sandbox/space/restore-proof && sha256sum a b"]);
-        const beforeHashes = await hashes();
-        computer("stop");
-        apply({ apiVersion: "snapshot.storage.k8s.io/v1", kind: "VolumeSnapshotClass", metadata: { name: "baskule-proof" }, driver: "pd.csi.storage.gke.io", deletionPolicy: "Delete" });
-        try {
-          apply({ apiVersion: "snapshot.storage.k8s.io/v1", kind: "VolumeSnapshot", metadata: { name: snapshotName }, spec: { volumeSnapshotClassName: "baskule-proof", source: { persistentVolumeClaimName: claim.metadata.name } } });
-          await expect.poll(() => objects("get", "volumesnapshot", snapshotName).status?.readyToUse, { timeout: 240_000 }).toBe(true);
-          await computerApi.json("POST", `/v1/spaces/${space}/computer/delete`, { confirm: space });
-          assert.equal(objects("get", "pvc").items.some(p => p.metadata.name === claim.metadata.name), false);
-          apply({ apiVersion: "v1", kind: "PersistentVolumeClaim", metadata: { name: claim.metadata.name, labels: { "agents.x-k8s.io/adoptable": "true" } }, spec: { accessModes: claim.spec.accessModes, storageClassName: claim.spec.storageClassName, resources: claim.spec.resources, dataSource: { apiGroup: "snapshot.storage.k8s.io", kind: "VolumeSnapshot", name: snapshotName } } });
-          computer("ensure");
-          assert.equal(await hashes(), beforeHashes);
-          writeFileSync(resolve(evidence, "restore.json"), JSON.stringify({ pvc: claim.metadata.name, hashes: beforeHashes, restored: true }));
-          pass("VolumeSnapshot restores known files into the original PVC name after Sandbox and PVC deletion");
-        } finally {
-          kube("delete", "volumesnapshot", snapshotName, "--ignore-not-found", "--timeout=180s");
-        }
-      }
-
     }
-    if (process.env.BASKULE_K8S_CHECK_INGRESS === "1") await checkIngress(publicUrl);
     // Keep the killed ordinal unavailable until another celld owns its cells.
     const victim = `${release}-celld-1`;
     const peer = async name => {

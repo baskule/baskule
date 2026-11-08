@@ -70,7 +70,7 @@ for (const killed of [false, true]) {
 }
 
 test("CI can keep its locks in its own shared root", (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "osdev-ci-lock-"));
+  const directory = mkdtempSync(join(tmpdir(), "baskule-dev-ci-lock-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", `import { acquireHostLock } from ${JSON.stringify(moduleURL)}; const release = await acquireHostLock("ci-proof"); release();`], { encoding: "utf8", env: { ...process.env, BASKULE_CHECK_LOCK_DIR: directory } });
   assert.equal(r.status, 0, r.stderr); assert(existsSync(join(directory, "ci-proof.lock")));

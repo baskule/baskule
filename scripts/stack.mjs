@@ -139,7 +139,7 @@ export function environment(s) {
     FAKE_LLM_KEY: "fake-llm-key", CELLD_ESBUILD: join(ROOT, "platform/node_modules/.bin/esbuild"),
     ...(s.definition.mode === "dev" ? { CELLD_TTL_MS: process.env.CELLD_TTL_MS || "60000" } : {}),
     CELLD_OTEL: "0", DO_NOT_TRACK: "1", CELLD_FETCH_TIMEOUT_S: "3600", CELLD_V8_HEAP_LIMIT_MB: "1024",
-    AWS_ACCESS_KEY_ID: "osdev", AWS_SECRET_ACCESS_KEY: "osdev-only-secret", AWS_REGION: "us-east-1",
+    AWS_ACCESS_KEY_ID: "baskule-dev", AWS_SECRET_ACCESS_KEY: "baskule-dev-only-secret", AWS_REGION: "us-east-1",
   };
   const pending = { ...s.definition.env, ...s.overrides };
   const resolving = new Set();
@@ -221,7 +221,7 @@ function trustBrowserCA() {
   const database = existsSync(legacy) ? legacy : join(process.env.XDG_DATA_HOME || join(homedir(), ".local/share"), "pki/nssdb");
   if (spawnSync("certutil", ["-H"], { stdio: "ignore" }).error) throw new Error("Chromium CA trust requires certutil. Install libnss3-tools, then retry scripts/stack up.");
   mkdirSync(database, { recursive: true, mode: 0o700 });
-  const db = `sql:${database}`, nickname = "osdev-portless";
+  const db = `sql:${database}`, nickname = "baskule-dev-portless";
   if (!existsSync(join(database, "cert9.db"))) run("certutil", ["-N", "--empty-password", "-d", db]);
   const current = spawnSync("certutil", ["-L", "-a", "-d", db, "-n", nickname], { encoding: "utf8" });
   const same = current.status === 0 && new X509Certificate(current.stdout).fingerprint256 === new X509Certificate(readFileSync(ca)).fingerprint256;
@@ -237,17 +237,17 @@ async function sharedServices(s) {
     const release = await lock(`stack-shared-${service}`);
     try {
       if (service === "rustfs") {
-        const running = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", "osdev-rustfs"], { encoding: "utf8" });
+        const running = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", "baskule-dev-rustfs"], { encoding: "utf8" });
         if (running.stdout?.trim() !== "true") {
-          if (running.status === 0) run("docker", ["start", "osdev-rustfs"]);
-          else run("docker", ["run", "-d", "--name", "osdev-rustfs", "-p", "127.0.0.1:47490:9000", "-v", "osdev-rustfs:/data", "-e", "RUSTFS_ADDRESS=0.0.0.0:9000", "-e", "RUSTFS_CONSOLE_ENABLE=false", "-e", "RUSTFS_ACCESS_KEY=osdev", "-e", "RUSTFS_SECRET_KEY=osdev-only-secret", "rustfs/rustfs:latest", "/data"]);
+          if (running.status === 0) run("docker", ["start", "baskule-dev-rustfs"]);
+          else run("docker", ["run", "-d", "--name", "baskule-dev-rustfs", "-p", "127.0.0.1:47490:9000", "-v", "baskule-dev-rustfs:/data", "-e", "RUSTFS_ADDRESS=0.0.0.0:9000", "-e", "RUSTFS_CONSOLE_ENABLE=false", "-e", "RUSTFS_ACCESS_KEY=baskule-dev", "-e", "RUSTFS_SECRET_KEY=baskule-dev-only-secret", "rustfs/rustfs:latest", "/data"]);
         }
         await until("shared RustFS", () => probe("http://127.0.0.1:47490/health/ready"));
-        run("node", ["platform/dev/s3-mkbucket.mjs", "http://127.0.0.1:47490", "osdev"], { env: environment(s), stdio: ["ignore", 2, 2] });
+        run("node", ["platform/dev/s3-mkbucket.mjs", "http://127.0.0.1:47490", "baskule-dev"], { env: environment(s), stdio: ["ignore", 2, 2] });
       }
     } finally { release(); }
   }
-  if (process.env.BASKULE_STACK_PROXY === "0") return;
+  if (!s.urls.front.startsWith("https:")) return;
   const release = await lock("stack-shared-portless");
   try {
     run("portless", ["proxy", "start"], { stdio: ["ignore", 2, 2] });
@@ -292,7 +292,7 @@ async function build(s) {
     } else notice(`Reusing hosted web client ${key.slice(0, 12)}`);
     run("node", ["scripts/build.mjs"], { cwd: join(ROOT, "platform"), env: { ...env, BASKULE_OUT: join(RUN, "app"), BASKULE_WEB_DIR: cached }, stdio: ["ignore", 2, 2] });
     const w = load(join(ROOT, "platform/wrangler.json"));
-    w.name = `osdev-${s.id}`;
+    w.name = `baskule-dev-${s.id}`;
     w.main = "worker.js"; w.assets.directory = "web";
     Object.assign(w.vars, {
       PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, SETUP_TOKEN: s.setupToken, PLUGIN_SYNC_TOKEN: s.pluginSyncToken,
@@ -308,10 +308,10 @@ function celldRecipe(s) {
   const cmd = process.env.CELLD_BIN || join(ROOT, "scripts/celld.sh");
   if (s.definition.mode === "dev") return { command: cmd, args: ["dev", ".", "--port", String(s.ports.celld), "--no-watch", "--logs"], cwd: join(RUN, "app") };
   const env = environment(s);
-  const bucket = `s3://osdev/${s.bucketPrefix}`;
+  const bucket = `s3://baskule-dev/${s.bucketPrefix}`;
   run(cmd, ["deploy", join(RUN, "app/wrangler.json"), "--bucket", bucket, "--endpoint", "http://127.0.0.1:47490"], { env, stdio: ["ignore", 2, 2] });
   mkdirSync(join(RUN, "node"), { recursive: true });
-  return { command: cmd, args: ["--bucket", bucket, "--endpoint", "http://127.0.0.1:47490", "--listen", `127.0.0.1:${s.ports.celld}`, "--internal-listen", `127.0.0.1:${s.ports.internal}`, "--advertise", `127.0.0.1:${s.ports.internal}`], cwd: join(RUN, "app"), env: { CELLD_WATCH: join(RUN, "node"), CELLD_NODE: `osdev-${s.id}` } };
+  return { command: cmd, args: ["--bucket", bucket, "--endpoint", "http://127.0.0.1:47490", "--listen", `127.0.0.1:${s.ports.celld}`, "--internal-listen", `127.0.0.1:${s.ports.internal}`, "--advertise", `127.0.0.1:${s.ports.internal}`], cwd: join(RUN, "app"), env: { CELLD_WATCH: join(RUN, "node"), CELLD_NODE: `baskule-dev-${s.id}` } };
 }
 async function startService(s, name) {
   const env = environment(s);
@@ -368,7 +368,7 @@ export async function cleanupComputers(s, purge, execute = run) {
 function purgeBucket(s) {
   const env = environment(s);
   const curl = ["--fail", "--silent", "--show-error", "--max-time", "120", "--aws-sigv4", "aws:amz:us-east-1:s3", "--user", `${env.AWS_ACCESS_KEY_ID}:${env.AWS_SECRET_ACCESS_KEY}`];
-  const base = "http://127.0.0.1:47490/osdev";
+  const base = "http://127.0.0.1:47490/baskule-dev";
   for (;;) {
     const listing = run("curl", [...curl, `${base}?encoding-type=url&list-type=2&max-keys=100&prefix=${encodeURIComponent(s.bucketPrefix + "/")}`]);
     const keys = [...listing.matchAll(/<Key>(.*?)<\/Key>/g)].map((m) => decodeURIComponent(m[1]));
@@ -443,11 +443,20 @@ export function stackIdentity(branch, worktree) {
   return { id: `${slug}-${createHash("sha256").update(worktree).digest("hex").slice(0, 8)}`, alias: `${slug}.baskule` };
 }
 
+export function stackProxy({ override = process.env.BASKULE_STACK_PROXY, uid = process.getuid(), checkPortless = () => {
+  const result = spawnSync("portless", ["--version"], { encoding: "utf8", env: portlessEnvironment() });
+  return !result.error && result.status === 0;
+}, report = notice } = {}) {
+  if (override === "0") return false;
+  const reason = uid !== 0 ? "root access is unavailable" : !checkPortless() ? "portless is unavailable" : null;
+  if (!reason) return true;
+  if (override === "1") throw new Error(`BASKULE_STACK_PROXY=1 requires root and a working global portless installation: ${reason}.`);
+  report(`Using direct loopback HTTP because ${reason}. BASKULE_STACK_PROXY=0/1 explicitly disables/enables the HTTPS proxy.`);
+  return false;
+}
+
 async function up() {
-  const proxy = process.env.BASKULE_STACK_PROXY !== "0";
-  if (proxy && process.getuid() !== 0) throw new Error("Non-root stacks require BASKULE_STACK_PROXY=0 (direct loopback HTTP).");
-  const portless = spawnSync("portless", ["--version"], { encoding: "utf8", env: portlessEnvironment() });
-  if (proxy && portless.error) throw new Error("portless is missing. With scripts/env.sh sourced, run pnpm add -g portless, then scripts/stack up.");
+  const proxy = stackProxy();
   const requested = args.includes("--profile") ? args[args.indexOf("--profile") + 1] : null;
   const old = existsSync(STATE) ? state() : null;
   const selected = requested || old?.profile || "full";

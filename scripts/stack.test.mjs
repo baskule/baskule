@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, cpSync, readFileSync, rmSync, writeFileSync, ex
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { cleanupComputers, environment, stackIdentity, portlessEnvironment } from "./stack.mjs";
+import { cleanupComputers, environment, stackIdentity, portlessEnvironment, stackProxy } from "./stack.mjs";
 
 const stack = { id: "test-instance", ports: { "fake-llm": 12345 }, urls: { loopback: "http://127.0.0.1:12346", front: "https://test.baskule.localhost" }, definition: { env: { FIRST: "${PORT_FAKE_LLM}", SECOND: "${FIRST}" } }, overrides: { THIRD: "${SECOND}", COMPUTERD_INSTANCE: "other" } };
 test("profile and --set values resolve runtime ports and references", () => {
@@ -20,7 +20,7 @@ test("cyclic profile variables fail clearly", () => {
 });
 
 test("gc removes old web builds and keeps recent builds", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "osdev-build-cache-"));
+  const root = mkdtempSync(join(tmpdir(), "baskule-dev-build-cache-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const oldName = `hosted-web-${"a".repeat(64)}`, recentName = `hosted-web-${"b".repeat(64)}`;
   const old = join(root, "cache/builds", oldName), recent = join(root, "cache/builds", recentName);
@@ -40,7 +40,7 @@ test("colliding branch slugs keep separate resource identities", () => {
   assert.notEqual(one.id, two.id); assert.deepEqual(one, stackIdentity("feat/x", "/worktree/one"));
 });
 test("gc keeps malformed registry entries without blocking other cleanup", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "osdev-bad-registry-"));
+  const root = mkdtempSync(join(tmpdir(), "baskule-dev-bad-registry-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const dir = join(root, "run/stacks"); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, "broken.json"), "{");
   const r = spawnSync(process.execPath, ["scripts/stack.mjs", "gc", "--json"], { encoding: "utf8", env: { ...process.env, BASKULE_SHARED: root } });
@@ -49,7 +49,7 @@ test("gc keeps malformed registry entries without blocking other cleanup", (t) =
 });
 
 for (const command of [["reload"], ["restart", "celld"]]) test(`${command.join(" ")} refuses a stopped stack without registering or launching`, (t) => {
-  const root = mkdtempSync(join(tmpdir(), "osdev-stopped-stack-"));
+  const root = mkdtempSync(join(tmpdir(), "baskule-dev-stopped-stack-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, "scripts")); mkdirSync(join(root, ".run/stack"), { recursive: true });
   cpSync("scripts/stack.mjs", join(root, "scripts/stack.mjs"));
@@ -95,3 +95,18 @@ test("computer purge removes scoped networks before guard garbage collection", a
   assert.equal(calls[removal + 1][0], "run");
   assert(calls[removal + 1].at(-1).includes("guardGcScript()"));
 });
+
+for (const uid of [0, 1000]) for (const available of [false, true]) {
+  test(`proxy defaults to root with Portless (uid=${uid}, portless=${available})`, () => {
+    const notices = [];
+    assert.equal(stackProxy({ override: "", uid, checkPortless: () => available, report: (message) => notices.push(message) }), uid === 0 && available);
+    assert.equal(notices.length, uid === 0 && available ? 0 : 1);
+    if (notices.length) assert.match(notices[0], /direct loopback HTTP/);
+  });
+  test(`explicit proxy overrides remain authoritative (uid=${uid}, portless=${available})`, () => {
+    const options = { uid, checkPortless: () => available, report: () => assert.fail("explicit overrides must not print fallback notices") };
+    assert.equal(stackProxy({ ...options, override: "0", checkPortless: () => assert.fail("disabled proxy must not probe Portless") }), false);
+    if (uid === 0 && available) assert.equal(stackProxy({ ...options, override: "1" }), true);
+    else assert.throws(() => stackProxy({ ...options, override: "1" }), /requires root and a working global portless/);
+  });
+}

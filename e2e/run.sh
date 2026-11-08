@@ -6,10 +6,10 @@
 #   e2e/run.sh tests/05-*.ts          files, --grep, ... go to `playwright test`
 #   E2E_SLOW=0 e2e/run.sh             skip the lifecycle phase (idle/restart/failover/same-chat restart)
 #   e2e/run.sh --project perf         one project only (perf = @perf measurements, never in acceptance)
-#   E2E_REAL=1 e2e/run.sh             also the real-model subset (mistral-large-4, metered, logged in the ledger)
+#   E2E_REAL=1 e2e/run.sh             also the real-model subset (configured provider, metered, logged in the ledger)
 #
 # What it does:
-#   1. takes the stack lock (deploy/.stack-lock; waits STACK_LOCK_WAIT seconds, default 600, for another owner);
+#   1. takes the stack lock (deploy/.stack-lock; waits STACK_LOCK_WAIT seconds, default 600, for another runner);
 #   2. BUILD=1: deploy/build.sh first (T3_APP_DIR selects the fork checkout); otherwise starts the stack if down;
 #   3. points the cells at the e2e LLM router (e2e/llm: fake by default, real for "[[real]]" messages, budget
 #      E2E_REAL_BUDGET, default $0.25 per router lifetime; no redeploy when already pointed at it) and sets computerd's
@@ -25,10 +25,18 @@ set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 . "$ROOT/deploy/lib.sh"
-export STACK_LOCK_OWNER=${STACK_LOCK_OWNER:-wp-h-e2e}
+export STACK_LOCK_OWNER=${STACK_LOCK_OWNER:-baskule-e2e}
 export STACK_LOCK_WAIT=${STACK_LOCK_WAIT:-600}
 source "$ROOT/scripts/env.sh"
 say() { printf '\033[1m[e2e %s]\033[0m %s\n' "$(date +%T)" "$*"; }
+
+if [ "${E2E_REAL:-0}" = 1 ]; then
+  : "${REAL_BASE_URL:?Real runs require REAL_BASE_URL}" "${E2E_MODEL:?Real runs require E2E_MODEL}"
+  : "${PRICE_IN:?Real runs require PRICE_IN}" "${PRICE_OUT:?Real runs require PRICE_OUT}"
+  : "${E2E_REAL_API_KEY:?Real runs require E2E_REAL_API_KEY}"
+else
+  export E2E_MODEL=fake-model
+fi
 
 stack_lock_acquire $$ "e2e/run.sh $*" || exit 1
 RC=0
@@ -41,7 +49,7 @@ cleanup() {
       const B = JSON.parse(b || "{}"), A = JSON.parse(a || "{}");
       const d = (k) => (A[k] ?? 0) - (B[k] ?? 0);
       if (d("requests") <= 0) process.exit(0);
-      const line = `| ${new Date().toISOString().slice(0, 10)} | WP-H e2e/run.sh (run ${run}): real-model subset through the e2e LLM router, ${d("requests")} chat completions, mistral-large-4 metered by the router | ${d("input")} in (${d("cached")} cached) / ${d("output")} out | ~$${d("upperBoundUsd").toFixed(4)} (upper bound, all input at $1.36/M) |\n`;
+      const line = `| ${new Date().toISOString().slice(0, 10)} | e2e/run.sh (run ${run}): real-model subset through the e2e LLM router, ${d("requests")} chat completions, ${process.env.E2E_MODEL} metered by the router | ${d("input")} in (${d("cached")} cached) / ${d("output")} out | ~$${d("upperBoundUsd").toFixed(4)} (upper bound, input $${process.env.PRICE_IN}/M, output $${process.env.PRICE_OUT}/M) |\n`;
       require("fs").mkdirSync(require("path").dirname(ledger), { recursive: true });
       require("fs").appendFileSync(ledger, line);
       console.log("real-model spend logged: " + line.trim());' "${before:-{\}}" "$after" "$ROOT/.run/llm-spend.md" "$E2E_RUN" || true

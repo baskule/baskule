@@ -75,7 +75,7 @@ export async function navigateApp(page, navigate, ready = composer(page).or(page
       const loadError = page.locator("#boot-error");
       await expect(ready.or(loadError).filter({ visible: true }).first()).toBeVisible({ timeout: 90_000 });
       if (!await loadError.isVisible() || !networkChanged || attempt > 0) break;
-      // Shared-host interface changes can abort Chromium's bootstrap assets; retry only the navigation.
+      // Network interface changes can abort Chromium's bootstrap assets; retry only the navigation.
       console.warn("Bootstrap assets hit ERR_NETWORK_CHANGED; repeating this navigation once");
       networkChanged = false;
     }

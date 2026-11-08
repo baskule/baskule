@@ -27,7 +27,7 @@ test("conditional skip and fixme annotations are not additional journeys", () =>
   assert.deepEqual(journeyTags('test.skip("not covered", () => {});', "example.spec.mjs"), [[]]);
 });
 
-test("local journeys do not select the owner-run deployed stack", () => {
+test("local journeys do not select the explicitly configured deployed stack", () => {
   const selected = (path) => touchedFeatures([path]).some((f) => f.name === "deployed-seams");
   assert.equal(selected("e2e/journeys/fixtures.mjs"), false);
   for (const path of ["deploy/docker-compose.yml", "e2e/README.md", "e2e/tests/08-restart.spec.ts", "e2e/run.sh", "e2e/infra/probe.sh"]) assert.equal(selected(path), true, path);

@@ -17,8 +17,8 @@ test("release shards cover all local journeys and uncovered custom checks exactl
   assert.deepEqual(shards.map((f) => f.name).sort(), whole.map((f) => f.name).sort());
   assert.deepEqual(releaseFeatures([...map].reverse(), "2/4").map((f) => f.name), releaseFeatures(map, "2/4").map((f) => f.name));
   assert.equal(new Set(shards.map((f) => f.name)).size, whole.length);
-  assert.ok(whole.every((f) => !f.ownerRun));
-  for (const feature of map.filter((f) => !f.ownerRun)) {
+  assert.ok(whole.every((f) => !f.liveOnly));
+  for (const feature of map.filter((f) => !f.liveOnly)) {
     assert.equal(whole.includes(feature), Boolean(feature.journeys || remainingFeatureChecks(feature, releaseCoverage).length));
   }
   assert.throws(() => releaseFeatures(map, "0/4"));
@@ -29,6 +29,13 @@ test("release CLI schedules journeys without redundant component checks", () => 
   const result = spawnSync(process.execPath, ["scripts/check.mjs", "release:journeys", "--shard", "2/4", "--fresh", "--dry-run"], { encoding: "utf8", env: { ...process.env, BASKULE_CHECK_RECORD: "0" } });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /--shard 2\/4 --fully-parallel --workers 1/);
-  for (const feature of features().filter((f) => !f.ownerRun && f.journeys)) assert.ok(result.stdout.includes(feature.journeys));
+  for (const feature of features().filter((f) => !f.liveOnly && f.journeys)) assert.ok(result.stdout.includes(feature.journeys));
   assert.doesNotMatch(result.stdout, /release stack cleanup|feature:deployed-seams|feature:groups/);
+});
+
+test("live-only features require the explicit live gate", () => {
+  const result = spawnSync(process.execPath, ["scripts/run-feature.mjs", "deployed-seams"], { encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Live-installation feature:.*--live/);
+  assert.deepEqual(releaseFeatures([{ name: "live", liveOnly: true, checks: ["echo live"] }]), []);
 });

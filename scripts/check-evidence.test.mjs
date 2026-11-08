@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const scripts = fileURLToPath(new URL("./", import.meta.url));
 function fixture(t, recordEvidence = "1") {
-  const directory = mkdtempSync(join(tmpdir(), "osdev-evidence-"));
+  const directory = mkdtempSync(join(tmpdir(), "baskule-dev-evidence-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const repo = join(directory, "repo"), origin = join(directory, "origin.git");
   mkdirSync(join(repo, "scripts"), { recursive: true });
@@ -32,8 +32,11 @@ function fixture(t, recordEvidence = "1") {
   writeFileSync(join(repo, "platform/input.txt"), "initial");
   git("add", "."); git("commit", "-qm", "initial");
   const initial = git("rev-parse", "HEAD");
-  return { repo, initial, git, map, run: (...args) => {
-    const result = spawnSync(process.execPath, [join(repo, "scripts/check.mjs"), ...args], { cwd: repo, encoding: "utf8", env: { ...process.env, GIT_TRACE: join(directory, "git-trace"), BASKULE_CHECK_RECORD: recordEvidence } });
+  return { repo, initial, git, map, recording: value => { recordEvidence = value; }, run: (...args) => {
+    const env = { ...process.env, GIT_TRACE: join(directory, "git-trace") };
+    if (recordEvidence === null) delete env.BASKULE_CHECK_RECORD;
+    else env.BASKULE_CHECK_RECORD = recordEvidence;
+    const result = spawnSync(process.execPath, [join(repo, "scripts/check.mjs"), ...args], { cwd: repo, encoding: "utf8", env });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     return result.stdout;
   } };
@@ -101,4 +104,16 @@ test("a mapped custom check can acquire the parent's released gateway lock", (t)
   });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.ok(result.stdout.indexOf("released host lock gateway") < result.stdout.indexOf("▶ feature:first"), result.stdout);
+});
+
+test("default checks reuse evidence but never publish it", (t) => {
+  const f = fixture(t, null);
+  f.run("feature:first", "--fresh");
+  assert.equal(f.git("ls-remote", "origin", "refs/evidence/*"), "");
+  assert.doesNotMatch(readFileSync(join(f.repo, "../git-trace"), "utf8"), /built-in: git push\b/);
+  f.recording("1");
+  f.run("feature:first", "--fresh");
+  f.recording(null);
+  assert.match(f.run("feature:first"), /kept/);
+  assert.equal(readFileSync(join(f.repo, ".run/hits"), "utf8"), "xx");
 });

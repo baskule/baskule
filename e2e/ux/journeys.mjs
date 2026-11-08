@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Scripted UX journeys for the reviewer sub-agent (see BRIEF.md). Each step saves <n>-<name>.png (screenshot),
+// Scripted UX journeys for the UX review (see BRIEF.md). Each step saves <n>-<name>.png (screenshot),
 // <n>-<name>.txt (visible text + accessibility snapshot) in e2e/artifacts/ux/<journey>/. A failing step is
 // recorded (<n>-<name>.error.txt) and the journey goes on where it can: the reviewer sees what a user would.
 //   node e2e/ux/journeys.mjs [journey...]      env: E2E_BASE_URL, UX_RUN, E2E_CHROME
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,7 +13,8 @@ const { chromium } = await import(path.join(ROOT, "e2e/node_modules/playwright/i
 const BASE = process.env.E2E_BASE_URL ?? "http://127.0.0.1:47090";
 const RUN = process.env.UX_RUN ?? `ux${Date.now().toString(36).slice(-5)}`;
 const OUT = path.join(ROOT, "e2e/artifacts/ux");
-const env = readFileSync(path.join(ROOT, "deploy/.env"), "utf8");
+const envFile = path.join(ROOT, "deploy/.env");
+const env = existsSync(envFile) ? readFileSync(envFile, "utf8") : "";
 const envGet = (k) => (env.match(new RegExp(`^${k}=(.*)$`, "m")) ?? [])[1] ?? "";
 const ADMIN = { email: process.env.E2E_LOGIN_EMAIL || envGet("E2E_LOGIN_EMAIL") || "admin@baskule.local", password: process.env.E2E_LOGIN_PASSWORD || envGet("E2E_LOGIN_PASSWORD") };
 const P = {

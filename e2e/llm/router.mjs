@@ -3,8 +3,8 @@
 // The organization AI endpoint is set to http://baskule-e2e-llm:47098/v1 during an e2e run.
 //
 //  - Default: every chat completion goes to the fake LLM (platform/dev/fake-llm, started here on 127.0.0.1:47099).
-//  - A request whose LAST user message contains "[[real]]" goes to the real provider (REAL_BASE_URL, default
-//    https://api.mistral.ai/v1) with the caller's own Authorization header (the key the cell got from ControlCell;
+//  - With E2E_REAL=1, a request whose LAST user message contains "[[real]]" goes to REAL_BASE_URL
+//    with the caller's own Authorization header (the key the cell got from ControlCell;
 //    the router never stores it), the marker stripped, and stream usage requested. Usage is metered per request in
 //    /data/usage.jsonl and served at GET /_router/usage, so every real-model run is logged exactly.
 //  - A budget guard: when the metered upper-bound cost reaches REAL_BUDGET_USD, real requests answer 429.
@@ -16,11 +16,20 @@ import { appendFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 
 const PORT = Number(process.env.ROUTER_PORT ?? 47098);
 const FAKE_PORT = 47099;
-const REAL_BASE = new URL(process.env.REAL_BASE_URL ?? "https://api.mistral.ai/v1");
+const REAL = process.env.E2E_REAL === "1";
+let real;
+if (REAL) {
+  for (const name of ["REAL_BASE_URL", "E2E_MODEL", "PRICE_IN", "PRICE_OUT"]) {
+    if (!process.env[name]?.trim()) throw new Error(`Real runs require ${name}`);
+  }
+  const endpoint = new URL(process.env.REAL_BASE_URL);
+  if (!["http:", "https:"].includes(endpoint.protocol)) throw new Error("REAL_BASE_URL must use HTTP or HTTPS");
+  const input = Number(process.env.PRICE_IN), output = Number(process.env.PRICE_OUT);
+  if (![input, output].every(price => Number.isFinite(price) && price >= 0)) throw new Error("PRICE_IN and PRICE_OUT must be nonnegative USD prices per million tokens");
+  real = { endpoint, model: process.env.E2E_MODEL, input: input / 1e6, output: output / 1e6 };
+}
 const BUDGET = Number(process.env.REAL_BUDGET_USD ?? 0.5);
-// mistral-large-4 list prices used for the ledger's upper bound (all input billed at the input price).
-const PRICE_IN = Number(process.env.PRICE_IN ?? 1.36) / 1e6;
-const PRICE_OUT = Number(process.env.PRICE_OUT ?? 4.18) / 1e6;
+if (!Number.isFinite(BUDGET) || BUDGET <= 0) throw new Error("REAL_BUDGET_USD must be positive");
 const DATA = process.env.ROUTER_DATA ?? "/data";
 mkdirSync(DATA, { recursive: true });
 const USAGE = `${DATA}/usage.jsonl`;
@@ -39,8 +48,8 @@ function usageTotals() {
     if (!line.trim()) continue;
     const u = JSON.parse(line);
     t.requests++; t.input += u.input; t.cached += u.cached; t.output += u.output;
+    t.upperBoundUsd += u.upperBoundUsd ?? (u.input * (real?.input ?? 0) + u.output * (real?.output ?? 0));
   }
-  t.upperBoundUsd = t.input * PRICE_IN + t.output * PRICE_OUT;
   return t;
 }
 
@@ -103,6 +112,11 @@ http
         return pipeTo(req, res, out, new URL(`http://127.0.0.1:${FAKE_PORT}${url.pathname}`), headers);
       }
       if (msg && textOf(msg.content).includes(MARK)) {
+        if (!real) {
+          res.writeHead(403, { "content-type": "application/json" });
+          return res.end(JSON.stringify({ error: { message: "Real requests require E2E_REAL=1 and explicit endpoint, model and prices" } }));
+        }
+        body.model = real.model;
         if (usageTotals().upperBoundUsd >= BUDGET) {
           res.writeHead(429, { "content-type": "application/json" });
           return res.end(JSON.stringify({ error: { message: `e2e real-model budget of $${BUDGET} reached`, type: "budget" } }));
@@ -111,14 +125,15 @@ http
         for (const m of body.messages) if (m?.role === "user") stripMarker(m);
         if (body.stream) body.stream_options = { ...(body.stream_options ?? {}), include_usage: true };
         const out = Buffer.from(JSON.stringify(body));
-        const target = new URL(REAL_BASE.pathname.replace(/\/$/, "") + url.pathname.replace(/^\/v1/, "") + url.search, REAL_BASE);
+        const target = new URL(real.endpoint.pathname.replace(/\/$/, "") + url.pathname.replace(/^\/v1/, "") + url.search, real.endpoint);
         let tail = "";
         let usage = null;
         const record = () => {
           if (usage) {
             appendFileSync(USAGE, JSON.stringify({ at: new Date().toISOString(), model: body.model,
               input: usage.prompt_tokens ?? 0, cached: usage.prompt_tokens_details?.cached_tokens ?? 0,
-              output: usage.completion_tokens ?? 0 }) + "\n");
+              output: usage.completion_tokens ?? 0,
+              upperBoundUsd: (usage.prompt_tokens ?? 0) * real.input + (usage.completion_tokens ?? 0) * real.output }) + "\n");
             usage = null;
           }
         };
@@ -145,4 +160,4 @@ http
       res.end(JSON.stringify({ error: { message: String(e) } }));
     }
   })
-  .listen(PORT, "0.0.0.0", () => console.error(`e2e LLM router on :${PORT} (fake on :${FAKE_PORT}, real ${REAL_BASE.origin}, budget $${BUDGET})`));
+  .listen(PORT, "0.0.0.0", () => console.error(`e2e LLM router on :${PORT} (fake on :${FAKE_PORT}, real ${real?.endpoint.origin ?? "disabled"}, budget $${BUDGET})`));

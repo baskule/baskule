@@ -13,7 +13,7 @@ on:
         type: string
         default: ''
       sign:
-        description: Sign Android/desktop with owner credentials (default branch and protected native-release environment only)
+        description: Sign Android/desktop with publisher signing credentials (default branch and protected native-release environment only)
         type: boolean
         default: false
       windows_test_package:
@@ -236,7 +236,7 @@ jobs:
           $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
           $proc = Start-Process -FilePath $setupExe -ArgumentList 'modify', '--installPath', "`"$installPath`"", '--add', 'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre', '--quiet', '--norestart' -Wait -PassThru -NoNewWindow
           if ($null -eq $proc -or $proc.ExitCode -ne 0) { throw 'Visual Studio Spectre library installation failed' }
-      - name: Prepare owner Windows signing provider
+      - name: Prepare Windows signing provider
         if: runner.os == 'Windows' && inputs.sign
         shell: pwsh
         run: |

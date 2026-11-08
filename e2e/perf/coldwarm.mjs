@@ -20,7 +20,8 @@ const HERE = import.meta.dirname;
 const BASE = process.env.E2E_BASE_URL ?? "http://127.0.0.1:47090";
 const label = process.argv[2] ?? "run";
 const runs = Number(process.argv[3] ?? 3);
-const world = JSON.parse(readFileSync(process.env.PERF_WORLD ?? path.join(HERE, "../artifacts/world.json"), "utf8"));
+const world = process.env.PERF_EMAIL && process.env.PERF_PASSWORD ? null
+  : JSON.parse(readFileSync(process.env.PERF_WORLD ?? path.join(HERE, "../artifacts/world.json"), "utf8"));
 const who = { email: process.env.PERF_EMAIL ?? world.alice.email, password: process.env.PERF_PASSWORD ?? world.alice.password };
 const NODES = ["baskule-celld-a", "baskule-celld-b"];
 const sh = (cmd, args, timeout = 300_000) => execFileSync(cmd, args, { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 << 20 });

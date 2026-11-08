@@ -33,14 +33,14 @@ Tiers
   upstream[:server|web] T3's own unit suites in the fork (server ~2 200 tests, web): before a public release only
   plan              print what fast runs and which component loop(s) the diff needs next (runs nothing)
   acceptance        wide local verification: unit + every component loop, in two parallel lanes (~10 min);
-                    --live adds the full live suite incl. @slow (release candidates, when the owner asks)
+                    --live adds the full live suite incl. @slow (release candidates, when explicitly selected)
 
 Component loops (local, no live stack; wait for a host lock, then check ports)
   worker    Worker + ControlCell on celld dev, stub SpaceCell: auth, sessions, origin, routing, revocation   ~30 s
   space     merged SpaceCell + embedded OpenCode, fake computerd + fake LLM: files, webhook,
             schedule alarm, restart persistence, isolation                                                  ~1.5 min
   agent     embedded agent runtime through the SpaceCell, real computerd + Docker computers           ~2 min
-  features  real platform app (wpf) + real computers: queue/steer, inbox, snooze, questions, delegation,
+  features  real platform app + real computers: queue/steer, inbox, snooze, questions, delegation,
             webhook schedules, MCP app                                                                      ~6 min
   migration forward computer-volume migration
   kubernetes disposable kind cluster: Helm install, RustFS, fake chat, computers, PVCs and celld takeover
@@ -48,8 +48,8 @@ Component loops (local, no live stack; wait for a host lock, then check ports)
   web       hosted web client: unit tests, (build), mock stack page checks + screenshots                    ~1.5-3.5 min
   <loop>:<checks>   only some checks of worker, space, agent or features, e.g. worker:transcriptions
 
-Live end-to-end: the owner's deployed stack (deploy). Only when the owner asks, or for a seam that exists only
-there (edge, two-node fleet, deploy config, computer image). Takes the stack lock, swaps in the fake LLM, tests the
+Live end-to-end: an explicitly selected test installation (deploy), managed by the installation's operator.
+Exercises edge routing, the two-node fleet, deployment configuration and the computer image. Takes the stack lock, swaps in the fake LLM, tests the
 DEPLOYED build (BUILD=1 deploys first)
   e2e                      every non-@slow scenario (parallel phase)
   e2e:<tag>[,<tag>...]     one area, e.g. e2e:chat, e2e:security,files, e2e:lifecycle (tags: auth security chat
@@ -67,8 +67,8 @@ Options
   --dry-run      print the steps without running them
 
 Evidence: a step that passed is not run again while its inputs are unchanged. Its key is the committed tree of
-its input directories (Markdown excluded, except the feature map) and scripts/; a pass is recorded as the ref refs/evidence/<id>/<key> on
-origin. Inputs with uncommitted changes are
+its input directories (Markdown excluded, except the feature map) and scripts/; with BASKULE_CHECK_RECORD=1, a pass is recorded as refs/evidence/<id>/<key> on
+origin. Recording is off by default; existing records can still be reused. BASKULE_CHECK_RECORD=0 disables reuse too. Inputs with uncommitted changes are
 always run and never recorded. Inputs changed during a run are not recorded either.
 `;
 
@@ -97,7 +97,7 @@ const LOOPS = {
     ports: [], isolated: true,
     run: (only) => [
       ["scripts/stack", ["up", "--profile", "full", "--clean"], "."],
-      ["node", ["test/wpf/run.mjs", ...(only ? ["--only", only] : [])], "platform", { env: process.env.BASKULE_STACK_PROXY === "0" ? {} : { NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS || join(process.env.PORTLESS_STATE_DIR || join(homedir(), ".portless"), "ca.pem") }, always: ["bash", ["-c", 'mkdir -p .run/check/feature-stack; for log in .run/stack/*.log; do [ ! -f "$log" ] || cp "$log" .run/check/feature-stack/; done; scripts/stack down --purge'], "."] }],
+      ["node", ["test/features/run.mjs", ...(only ? ["--only", only] : [])], "platform", { env: process.env.BASKULE_STACK_PROXY === "0" ? {} : { NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS || join(process.env.PORTLESS_STATE_DIR || join(homedir(), ".portless"), "ca.pem") }, always: ["bash", ["-c", 'mkdir -p .run/check/feature-stack; for log in .run/stack/*.log; do [ ! -f "$log" ] || cp "$log" .run/check/feature-stack/; done; scripts/stack down --purge'], "."] }],
     ],
   },
   migration: { ports: [], run: () => [["test/migration.sh", [], "computerd"]] },
@@ -164,7 +164,7 @@ function plan(files, base) {
   if (has(/^platform\/src\/space\/(index|alarms)\.ts$/)) tags.add("lifecycle");
   if (has(/^platform\/src\/agent\//)) { loops.add("agent"); tags.add("chat").add("computer"); }
   if (has(/^platform\/src\/agent\/index\.ts$/)) tags.add("lifecycle");
-  if (has(/^platform\/test\/wpf\/|^scripts\/stack(?:[.-]|$)|^stack\//)) loops.add("features");
+  if (has(/^platform\/test\/features\/|^scripts\/stack(?:[.-]|$)|^stack\//)) loops.add("features");
   if (has(/^computerd\/|^(?:package\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$/)) {
     add("computerd: unit tests (fake backend)", "pnpm", ["test"], "computerd", { evidence: ev(COMPUTERD_IN, ["computerd-unit"], "computerd-unit") });
     add("computerd: typecheck", "pnpm", ["exec", "tsc", "--noEmit"], "computerd", { evidence: ev(COMPUTERD_IN, ["computerd-tsc"], "computerd-tsc") });
@@ -183,8 +183,7 @@ function plan(files, base) {
   for (const pkg of pkgs) {
     if (!existsSync(join(ROOT, pkg, "package.json"))) continue;
     const pj = JSON.parse(readFileSync(join(ROOT, pkg, "package.json"), "utf8"));
-    // Baskule-owned tests only: on a wide fork diff, "related" pulls in T3's whole upstream suite (2 174 server
-    // tests, ~30 min on nas). Upstream suites run in `scripts/check upstream`, before a public release.
+    // Keep related checks scoped to Baskule. Run the broad upstream suites with `scripts/check upstream`.
     const short = pkg.split("/").pop();
     if (pj.scripts?.test && BASKULE_TESTS[pkg]) add(`${pkg}: Baskule unit tests related to the change`, join(ROOT, "app/node_modules/.bin/vp"), ["test", "run", "--changed", base, "--passWithNoTests", ...BASKULE_TESTS[pkg]], pkg, { evidence: ev(["app"], [`${short}-baskule`]) });
     if (pkg === "app/apps/web") add("app/apps/web: typecheck", join(ROOT, "app/node_modules/.bin/tsc"), ["--noEmit"], pkg, { evidence: ev(["app"], ["web-tsc"], "web-tsc") });
@@ -201,11 +200,12 @@ function plan(files, base) {
   if (mjs.length) add("scripts: syntax", "bash", ["-c", mjs.map((f) => `node --check '${f}'`).join(" && ")], ".");
   if (has(/^scripts\/worktree(?:[.-]|$)/)) add("worktree: setup regression tests", "node", ["--test", "scripts/worktree.test.mjs"], ".");
   if (has(/^scripts\/(?:check(?:[.-]|$)|stack(?:[.-]|$)|celld(?:[.-]|$)|lint(?:[.-]|$)|feature-map(?:[.-]|$)|run-feature\.mjs$|release-plan(?:[.-]|$)|no-fixed-sleep\.mjs$)|^platform\/dev\/fake-llm\/|^\.oxlintrc\.json$/)) add("scripts/check: harness tests", "node", ["--test", "scripts/check-lock.test.mjs", "scripts/check-evidence.test.mjs", "scripts/release-plan.test.mjs", "scripts/celld.test.mjs", "scripts/lint.test.mjs", "scripts/stack.test.mjs", "scripts/feature-map.test.mjs", "platform/dev/fake-llm/server.test.mjs"], ".");
+  if (has(/^e2e\/llm\/|^scripts\/ci\/llm\.test\.mjs$/)) add("LLM router: configuration checks", "node", ["--test", "scripts/ci/llm.test.mjs"], ".");
   if (has(/^deploy\/(?:docker-compose|\.env\.example)|^scripts\/check-compose\.sh$/)) add("deploy: compose config", "bash", ["scripts/check-compose.sh"], ".");
   if (has(/^deploy\/celld\//)) add("deploy: startup jobs", "node", ["--test", "deploy/celld/jobs.test.mjs", "deploy/celld/sync-plugins.test.mjs"], ".");
   if (has(/^deploy\/helm\/|^scripts\/helm-package\.sh$/)) add("Kubernetes: chart rendering", "bash", ["e2e/kubernetes-local.sh", "lint"], ".");
   if (has(/^scripts\/ci\/(publish-images|check-public-images|image-config-id)|^scripts\/release-backend\.sh$/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
-  if (has(/^e2e\/kubernetes-ephemeral\.sh$|^scripts\/ci\/kubernetes-ephemeral\.test\.mjs$/)) add("Kubernetes: ephemeral cleanup guard", "node", ["--test", "scripts/ci/kubernetes-ephemeral.test.mjs"], ".");
+  if (has(/^e2e\/kubernetes|^scripts\/ci\/kubernetes\.test\.mjs$/)) add("Kubernetes: harness tests", "node", ["--test", "scripts/ci/kubernetes.test.mjs"], ".");
   if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
   if (has(/^(deploy|computer)\//)) tags.add("infra");
   const docs = files.filter((f) => /\.md$/.test(f)).filter((f) => existsSync(join(ROOT, f)) && !f.startsWith("vendor/") && !f.startsWith("app/"));
@@ -220,9 +220,9 @@ function nextHint(p) {
   const f = p.tags.filter((x) => x.startsWith("file:")).map((x) => x.slice(5));
   if (f.length > 3) lines.push(`${f.length} specs changed: the live suite in the next release acceptance (scripts/check acceptance --live)`);
   else if (f.length) lines.push(`changed specs, alone, against the deployed build: e2e/run.sh ${f.join(" ")}`);
-  if (p.tags.includes("infra")) lines.push("deploy-only seam: after the owner agrees to a deploy, scripts/check infra");
+  if (p.tags.includes("infra")) lines.push("deploy-only seam: after deploying to the selected test installation, scripts/check infra");
   const t = p.tags.filter((x) => !x.startsWith("file:") && x !== "infra");
-  if (t.length) lines.push(`live coverage of this area (only when the owner asks): scripts/check e2e:${t.join(",")}`);
+  if (t.length) lines.push(`live coverage of this area (only when explicitly selected): scripts/check e2e:${t.join(",")}`);
   return lines.join("\n");
 }
 
@@ -274,9 +274,10 @@ function inputsKey(inputs) {
 }
 let evidenceRefs = null;
 const recorded = [];
-const recordEvidence = process.env.BASKULE_CHECK_RECORD !== "0";
+const recordEvidence = process.env.BASKULE_CHECK_RECORD === "1";
+const reuseEvidence = process.env.BASKULE_CHECK_RECORD !== "0";
 function onRecord(ref) {
-  if (!recordEvidence) return false;
+  if (!reuseEvidence) return false;
   if (evidenceRefs === null) {
     const r = spawnSync("git", ["ls-remote", "origin", "refs/evidence/*"], { cwd: ROOT, encoding: "utf8", timeout: 20000 });
     evidenceRefs = new Set((r.status === 0 ? r.stdout : "").split("\n").map((l) => l.split("\t")[1]).filter(Boolean));
@@ -285,7 +286,7 @@ function onRecord(ref) {
 }
 /** The evidence ref that already covers this step, if any. */
 function priorPass(e) {
-  if (!e || !recordEvidence) return null;
+  if (!e || !reuseEvidence) return null;
   treeKeys.delete([...e.inputs, "scripts"].join(" "));
   const key = inputsKey(e.inputs);
   if (FRESH || !key) return null;
@@ -542,7 +543,7 @@ for (const target of targets) {
         }
       }
     } else if (live) { warnStaleDeploy(); runE2e([]); }
-    else console.log("\nlive suite not run (it tests the owner's deployed stack): add --live for a release candidate");
+    else console.log("\nlive suite not run (it tests the configured deployed installation): add --live for a release candidate");
   } else if (target === "infra") {
     run({ label: "live infrastructure smoke", cmd: "e2e/infra-smoke.sh", args: ["--no-up"], cwd: "." });
   } else if (target === "e2e") {

@@ -3,7 +3,7 @@ import { remainingFeatureChecks } from "./release-plan.mjs";
 import { features, root } from "./feature-map.mjs";
 const feature = features().find((f) => f.name === process.argv[2]);
 if (!feature) throw new Error(`Unknown feature ${process.argv[2]}`);
-if (feature.ownerRun && !process.argv.includes("--live")) throw new Error("Owner-run feature: explicit owner authorization and --live required");
+if (feature.liveOnly && !process.argv.includes("--live")) throw new Error("Live-installation feature: explicitly configure the installation and pass --live");
 function run(command, args, cwd = root) {
   const result = spawnSync(command, args, { cwd, stdio: "inherit", env: { ...process.env, JOURNEY_PROFILE: feature.profile } });
   if (result.error) throw result.error;
