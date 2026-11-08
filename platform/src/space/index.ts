@@ -269,8 +269,8 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
   }
 
   private async cacheStatus(server: SpaceServer): Promise<CachedStatus> {
-    const status = { activeRuns: server.activeRuns(), nextWakeAt: server.nextWakeAt() };
     const cached = await this.ctx.storage.get<CachedStatus>("baskule:status");
+    const status = { activeRuns: server.activeRuns(), nextWakeAt: server.nextWakeAt() };
     if (cached?.activeRuns !== status.activeRuns || cached?.nextWakeAt !== status.nextWakeAt) {
       await this.ctx.storage.put("baskule:status", status);
     }
