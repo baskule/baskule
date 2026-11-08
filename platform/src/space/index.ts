@@ -50,7 +50,6 @@ interface SpaceEnv extends Omit<AgentEnv, "AI"> {
 interface CachedStatus {
   activeRuns: number;
   nextWakeAt: number | null;
-  updatedAt: number;
 }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
@@ -270,8 +269,11 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
   }
 
   private async cacheStatus(server: SpaceServer): Promise<CachedStatus> {
-    const status = { activeRuns: server.activeRuns(), nextWakeAt: server.nextWakeAt(), updatedAt: Date.now() };
-    await this.ctx.storage.put("baskule:status", status);
+    const status = { activeRuns: server.activeRuns(), nextWakeAt: server.nextWakeAt() };
+    const cached = await this.ctx.storage.get<CachedStatus>("baskule:status");
+    if (cached?.activeRuns !== status.activeRuns || cached?.nextWakeAt !== status.nextWakeAt) {
+      await this.ctx.storage.put("baskule:status", status);
+    }
     return status;
   }
 
@@ -285,7 +287,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       if (server.sockets().length > 0) candidates.push(now + RECHECK_INTERVAL_MS);
       if (status.activeRuns > 0) candidates.push(now + RUN_HEARTBEAT_MS);
       if (status.nextWakeAt !== null) candidates.push(Math.max(status.nextWakeAt, now + 1_000));
-      candidates.push(this.lastActivity + IDLE_DISPOSE_MS);
+      if (server.sockets().length === 0 && status.activeRuns === 0) candidates.push(this.lastActivity + IDLE_DISPOSE_MS);
     } else {
       const cached = await this.ctx.storage.get<CachedStatus>("baskule:status");
       if (cached?.nextWakeAt != null) candidates.push(Math.max(cached.nextWakeAt, now + 1_000));
