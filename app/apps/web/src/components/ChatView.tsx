@@ -1559,7 +1559,7 @@ export default function ChatView(props: ChatViewProps) {
   if (providerStatusBannerKey === null && dismissedProviderStatusBannerKey !== null) {
     setDismissedProviderStatusBannerKey(null);
   }
-  // baskule(wp-h): the model connection is installation-managed: members cannot act on OpenCode's provider
+  // baskule: the model connection is installation-managed: members cannot act on OpenCode's provider
   // status ("did not list any models yet", "couldn't reach http://agent/oc"), so the hosted build does not show it.
   const visibleProviderStatus =
     !baskule.hosted &&
@@ -1579,7 +1579,7 @@ export default function ChatView(props: ChatViewProps) {
       rememberCheckoutIsRepo(environmentId, gitStatusCwd, liveIsGitRepo);
     }
   }, [environmentId, gitStatusCwd, liveIsGitRepo]);
-  // baskule(wp-h): a space has no git (its git RPCs are off, so the status is unknown): never show
+  // baskule: a space has no git (its git RPCs are off, so the status is unknown): never show
   // worktree/branch/ref controls, which the unknown status would otherwise default to.
   const isGitRepo = baskule.hosted
     ? false

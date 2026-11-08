@@ -10,9 +10,12 @@
 #   ./devstack.sh reload            rebuild the harness and restart celld (after a code change)
 #   ./devstack.sh stop              stop celld, fake LLM, computerd
 #   ./devstack.sh down              stop all processes
-#   REAL_LLM=1 ./devstack.sh start  computerd serves the real key (LLM_ENV_FILE) and the cells use Mistral Large 4
-#                                   Spend must be logged.
+#   REAL_LLM=1 ./devstack.sh start  use explicit REAL_LLM_BASE_URL, REAL_LLM_MODEL, REAL_LLM_PROVIDER,
+#                                   REAL_LLM_API_KEY. Requires authorization for paid model checks.
+#   REAL_LLM_PROVIDER: openai, anthropic, mistral, opencode or custom (BASKULE_AI_PROVIDERS).
 set -euo pipefail
+# Keep the provider key out of build, computerd and celld child environments.
+export -n REAL_LLM_API_KEY
 T=$(cd "$(dirname "$0")" && pwd)
 P=$(cd "$T/../../.." && pwd)          # platform/
 ROOT=$(cd "$P/.." && pwd)
@@ -20,7 +23,18 @@ RUN=$T/.run
 mkdir -p "$RUN"
 source "$ROOT/scripts/env.sh"
 CELLD_BIN=${CELLD_BIN:-$ROOT/scripts/celld.sh}
-CD_TOKEN=wpd-computerd-token-0123456789
+CD_TOKEN=dev-computerd-token-0123456789
+
+# Validate paid-provider configuration before starting processes or rebuilding the harness.
+if [[ "${REAL_LLM:-0}" = 1 && ( "${1:-}" = start || "${1:-}" = reload ) ]]; then
+  for name in REAL_LLM_BASE_URL REAL_LLM_MODEL REAL_LLM_PROVIDER REAL_LLM_API_KEY; do
+    if [[ -z "${!name:-}" ]]; then
+      echo "REAL_LLM=1 requires $name; set REAL_LLM_BASE_URL, REAL_LLM_MODEL, REAL_LLM_PROVIDER and REAL_LLM_API_KEY explicitly." >&2
+      exit 1
+    fi
+  done
+  export REAL_LLM_BASE_URL REAL_LLM_MODEL REAL_LLM_PROVIDER
+fi
 
 pidkill() {
   [ -f "$RUN/$1.pid" ] && kill "$(cat "$RUN/$1.pid")" 2>/dev/null || true; rm -f "$RUN/$1.pid"
@@ -42,14 +56,14 @@ build_harness() {
   mkdir -p "$out"
   (cd "$P" && BASKULE_ENTRY=src/agent/test/harness/entry.ts BASKULE_OUT="$out" nice -n 10 node scripts/build.mjs)
   local llm_url=http://127.0.0.1:47651/v1 model=fake-model settings='{}'
-  if [ "${REAL_LLM:-0}" = 1 ]; then llm_url=https://api.mistral.ai/v1 model=mistral-large-4 settings='{}'; fi
-  node -e '
+  if [ "${REAL_LLM:-0}" = 1 ]; then llm_url=$REAL_LLM_BASE_URL model=$REAL_LLM_MODEL; fi
+  REAL_LLM_API_KEY="${REAL_LLM_API_KEY:-}" node -e '
     const [out, url, model, settings, token] = process.argv.slice(1);
     const w = JSON.parse(require("fs").readFileSync(process.argv[6], "utf8"));
     w.main = "worker.js"; delete w.assets;
     const product = JSON.parse(w.vars.TEST_PRODUCT_SETTINGS);
     product.ai.baseUrl = url; product.ai.model.id = model; product.ai.model.settings = JSON.parse(settings);
-    if (process.env.REAL_LLM === "1") { product.ai.providerId = "mistral"; product.apiKey = process.env.MISTRAL_API_KEY; }
+    if (process.env.REAL_LLM === "1") { product.ai.providerId = process.env.REAL_LLM_PROVIDER; product.apiKey = process.env.REAL_LLM_API_KEY; }
     Object.assign(w.vars, { TEST_PRODUCT_SETTINGS: JSON.stringify(product), COMPUTERD_TOKEN: token });
     require("fs").writeFileSync(out + "/wrangler.json", JSON.stringify(w, null, 2));
   ' "$out" "$llm_url" "$model" "$settings" "$CD_TOKEN" "$T/harness/wrangler.json"
@@ -65,16 +79,13 @@ case "${1:-}" in
   start)
     if [ "${REAL_LLM:-0}" != 1 ]; then
       FAKE_LLM_KEY=fake-llm-key setsid node "$P/dev/fake-llm/server.mjs" --port 47651 >> "$RUN/fake-llm.log" 2>&1 < /dev/null & echo $! > "$RUN/fake-llm.pid"
-    else
-      KEY=$(set -a; . "${LLM_ENV_FILE:?Set LLM_ENV_FILE to a private provider env file}"; printf %s "$MISTRAL_API_KEY")
-      export MISTRAL_API_KEY="$KEY"
     fi
     env COMPUTERD_INSTANCE=loop-agent COMPUTERD_TOKEN=$CD_TOKEN COMPUTERD_PORT=47652 COMPUTERD_HOST=127.0.0.1 COMPUTER_BACKEND=docker COMPUTER_NETWORK=baskule-loop-agent \
       IDLE_MINUTES=${IDLE_MINUTES:-3} LOG_LEVEL=info \
       setsid node "$ROOT/computerd/src/main.ts" >> "$RUN/computerd.log" 2>&1 < /dev/null & echo $! > "$RUN/computerd.pid"
     wait_http http://127.0.0.1:47652/healthz 30
     build_harness
-    unset KEY MISTRAL_API_KEY
+    unset REAL_LLM_API_KEY
     start_celld "${2:-}"
     echo "agent dev stack up: celld :47650, fake LLM :47651, computerd :47652" ;;
   restart-celld)

@@ -23,6 +23,8 @@ it("accepts reordered placeholders but rejects missing, duplicated, or broken pl
 
 it("sends product and source context and validates the exact set of generated messages", async () => {
   vi.stubEnv("TRANSLATION_API_KEY", "test-key");
+  vi.stubEnv("TRANSLATION_BASE_URL", "https://translation.baskule.example/v1/");
+  vi.stubEnv("TRANSLATION_MODEL", "translation-model");
   try {
     const entries: [string, { text: string; locations: string[] }][] = [
       [
@@ -49,6 +51,10 @@ it("sends product and source context and validates the exact set of generated me
       "Hello {{name}}": "Bonjour {{name}}",
     });
     const body = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
+    expect(request.mock.calls[0]?.[0]).toBe(
+      "https://translation.baskule.example/v1/chat/completions",
+    );
+    expect(body.model).toBe("translation-model");
     expect(body.messages[0].content).toContain("Baskule product context");
     expect(body.messages[1].content).toContain("LoginView.tsx:12 (LoginView)");
     expect(Object.keys(body.response_format.json_schema.schema.properties)).toEqual(["m0"]);
@@ -69,6 +75,8 @@ it("sends product and source context and validates the exact set of generated me
 
 it("fails closed on truncated output and does not echo a provider error body", async () => {
   vi.stubEnv("TRANSLATION_API_KEY", "private-test-key");
+  vi.stubEnv("TRANSLATION_BASE_URL", "https://translation.baskule.example/v1/");
+  vi.stubEnv("TRANSLATION_MODEL", "translation-model");
   try {
     const request = vi
       .fn<typeof fetch>()
@@ -93,6 +101,8 @@ it.each([false, true])(
   "keeps valid translations after batch retries and fails if individual retries stay invalid (%s)",
   async (permanentlyInvalid) => {
     vi.stubEnv("TRANSLATION_API_KEY", "test-key");
+    vi.stubEnv("TRANSLATION_BASE_URL", "https://translation.baskule.example/v1/");
+    vi.stubEnv("TRANSLATION_MODEL", "translation-model");
     using _warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const entries: [string, { text: string; locations: string[] }][] = [
@@ -152,6 +162,25 @@ it.each([false, true])(
       });
       expect(individualAttempts).toBe(3);
       expect(request).toHaveBeenCalledTimes(8);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  },
+);
+
+it.each(["TRANSLATION_API_KEY", "TRANSLATION_BASE_URL", "TRANSLATION_MODEL"])(
+  "requires explicit %s before contacting the provider",
+  async (missing) => {
+    vi.stubEnv("TRANSLATION_API_KEY", "test-key");
+    vi.stubEnv("TRANSLATION_BASE_URL", "https://translation.baskule.example/v1");
+    vi.stubEnv("TRANSLATION_MODEL", "translation-model");
+    vi.stubEnv(missing, "");
+    try {
+      const request = vi.fn<typeof fetch>();
+      await expect(translateBatch("fr", [], "context", request)).rejects.toThrow(
+        `Set ${missing} to generate translations`,
+      );
+      expect(request).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
     }

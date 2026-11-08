@@ -1,4 +1,4 @@
-// baskule: message authorship in shared spaces (scope Part 3). The server stamps `author` from
+// baskule: message authorship in shared spaces. The server stamps `author` from
 // the signed-in identity; the client names everyone except the reader, like a group chat.
 import { useBaskuleMe } from "./session";
 

@@ -32,7 +32,7 @@ export function useNavigationTabOrder() {
   return resolveWorkspaceTabOrder(saved);
 }
 
-// baskule: sections outside the product scope are never shown (Usage was a hidden settings page).
+// baskule: hide Usage when extended settings are disabled.
 const BASKULE_HIDDEN_TABS: readonly NavigationTab[] = BASKULE_FLAGS.extendedSettings
   ? []
   : (["usage"] as const);

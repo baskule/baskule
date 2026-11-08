@@ -35,7 +35,7 @@ export function BaskuleIndexLanding() {
   }, [t]);
   const isStillOnIndex = useEffectEvent(() => router.state.location.pathname === "/");
   const running = useRef(false);
-  // Review M4: a failed start (scratch project unavailable, transient RPC error) must not leave
+  // A failed start (scratch project unavailable, transient RPC error) must not leave
   // a blank page. Show it and retry on a timer, on reconnect, or on demand.
   const [failures, setFailures] = useState(0);
   const start = useEffectEvent(() => {

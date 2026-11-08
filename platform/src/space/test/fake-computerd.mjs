@@ -10,7 +10,7 @@ import path from "node:path";
 const args = process.argv.slice(2);
 const arg = (n, d) => (args.includes(`--${n}`) ? args[args.indexOf(`--${n}`) + 1] : d);
 const PORT = Number(arg("port", 47552));
-const ROOT = path.resolve(arg("root", "/tmp/baskule-wpb-computers"));
+const ROOT = path.resolve(arg("root", "/tmp/baskule-computers"));
 const TOKEN = arg("token", "test-computerd-token");
 const calls = [];
 const state = new Map();

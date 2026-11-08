@@ -3,8 +3,8 @@ import { ControlService } from "../../src/control/service";
 import { fakeStorage } from "./fake-storage";
 import type { Env } from "../../src/env";
 
-export const ORIGIN = "http://os.test";
-export const ADMIN = { email: "admin@os.test", password: "admin-password-1" };
+export const ORIGIN = "http://baskule.test";
+export const ADMIN = { email: "admin@baskule.test", password: "admin-password-1" };
 
 export interface SpaceCall {
   spaceId: string;

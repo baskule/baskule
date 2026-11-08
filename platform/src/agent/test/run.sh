@@ -4,7 +4,7 @@
 # 1. dev stack up (devstack.sh: Docker backend + computerd + fake LLM + celld dev with the merged SpaceCell);
 # 2. the runtime checks (run.mjs);  3. all harness processes stopped.
 # Unit tests are not repeated here: they are part of `pnpm test` (scripts/check fast).
-# --real-llm runs the one real-model smoke turn instead of the fake-LLM checks (spend: log it in llm-spend.md).
+# --real-llm runs one real-model smoke turn (requires REAL_LLM_* configuration; see src/agent/README.md).
 set -euo pipefail
 T=$(cd "$(dirname "$0")" && pwd)
 P=$(cd "$T/../../.." && pwd)

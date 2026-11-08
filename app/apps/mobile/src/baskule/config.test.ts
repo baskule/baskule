@@ -46,22 +46,22 @@ describe("space URLs", () => {
 
 describe("parseConnectTarget", () => {
   it("reads connection links, invitations and addresses", () => {
-    expect(parseConnectTarget("https://os.example/link#code=abc")).toEqual({
+    expect(parseConnectTarget("https://baskule.example/link#code=abc")).toEqual({
       kind: "code",
-      serverUrl: "https://os.example",
+      serverUrl: "https://baskule.example",
       code: "abc",
     });
     expect(
-      parseConnectTarget("baskule-dev://connect?server=https%3A%2F%2Fos.example%3A8443&code=xyz"),
-    ).toEqual({ kind: "code", serverUrl: "https://os.example:8443", code: "xyz" });
-    expect(parseConnectTarget("https://os.example/invite#token=t0k")).toEqual({
+      parseConnectTarget("baskule-dev://connect?server=https%3A%2F%2Fbaskule.example%3A8443&code=xyz"),
+    ).toEqual({ kind: "code", serverUrl: "https://baskule.example:8443", code: "xyz" });
+    expect(parseConnectTarget("https://baskule.example/invite#token=t0k")).toEqual({
       kind: "invitation",
-      serverUrl: "https://os.example",
-      url: "https://os.example/invite#token=t0k",
+      serverUrl: "https://baskule.example",
+      url: "https://baskule.example/invite#token=t0k",
     });
-    expect(parseConnectTarget("os.example")).toEqual({
+    expect(parseConnectTarget("baskule.example")).toEqual({
       kind: "address",
-      serverUrl: "https://os.example",
+      serverUrl: "https://baskule.example",
     });
   });
 

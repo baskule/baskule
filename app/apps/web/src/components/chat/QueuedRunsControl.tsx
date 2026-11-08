@@ -128,7 +128,7 @@ export function QueuedRunsControl({
   const optimisticQueued = props.optimisticMessages.filter(
     (message) => message.inputIntent === "queued_turn" && !acknowledgedMessageIds.has(message.id),
   );
-  // baskule(wp-h): in a shared space, name who queued a message (not on your own, as in the timeline).
+  // baskule: in a shared space, name who queued a message (not on your own, as in the timeline).
   const me = useBaskuleMe();
   const queuedAuthorOf = (messageId: string) =>
     otherAuthor(

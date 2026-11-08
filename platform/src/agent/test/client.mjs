@@ -2,7 +2,7 @@
 // embedded runtime of SpaceCell <spaceId>; /space/<spaceId>/... reaches the SpaceCell itself).
 export const HARNESS = process.env.AGENT_HARNESS ?? "http://127.0.0.1:47650";
 export const COMPUTERD = process.env.AGENT_COMPUTERD ?? "http://127.0.0.1:47652";
-export const COMPUTERD_TOKEN = process.env.AGENT_COMPUTERD_TOKEN ?? "wpd-computerd-token-0123456789";
+export const COMPUTERD_TOKEN = process.env.AGENT_COMPUTERD_TOKEN ?? "dev-computerd-token-0123456789";
 export const FAKE_LLM = process.env.AGENT_FAKE_LLM ?? "http://127.0.0.1:47651";
 
 export async function http(method, url, body, headers = {}) {

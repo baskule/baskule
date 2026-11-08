@@ -9,7 +9,7 @@ import type { ThreadInspectorMode } from "./thread-inspector-content-stack";
 import { useThreadHeaderOptions } from "./useThreadHeaderOptions";
 import { useWorkspaceBackNavigation } from "../workspace/useAndroidWorkspaceNavigation";
 
-// baskule: header actions follow the alpha scope (files and merge-back, no terminal or git).
+// baskule: header actions offer files and merge-back, with no terminal or git.
 import { BASKULE_FLAGS } from "../../baskule/flags";
 
 export function ThreadHeader(

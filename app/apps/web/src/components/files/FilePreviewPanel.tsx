@@ -1331,7 +1331,7 @@ export default function FilePreviewPanel({
               <WrapTextIcon className="size-3.5" />
             </FileSurfaceAction>
           ) : null}
-          {/* baskule: download any workspace file (Files out, M7). */}
+          {/* baskule: download any workspace file. */}
           {baskule.plainChat && previewPath && absolutePath && attachment === undefined ? (
             <WorkspaceFileDownloadAction
               {...{ environmentId, threadRef, draft, absolutePath, workspaceRoot: cwd }}

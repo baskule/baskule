@@ -127,7 +127,7 @@ export const REVOKED_CLOSE_CODE = 4401;
 export const isSpaceSocketUrl = (url: string) => /\/s\/[^/?#]+\/ws(?:[?#]|$)/.test(url);
 
 /**
- * baskule(wp-h): when the front revokes a socket (removed from a space, signed out elsewhere, deactivated), refresh
+ * baskule: when the front revokes a socket (removed from a space, signed out elsewhere, deactivated), refresh
  * `/me` at once: the space then leaves the UI with its cached chats within a second instead of at the next minute
  * tick. The sockets are opened by T3's transport, so this observes them through a WebSocket subclass.
  */
@@ -153,7 +153,7 @@ const LAST_USER_KEY = "baskule:last-user";
 /**
  * One origin serves every person, so a shared browser profile must not keep the previous
  * person's cached chats. The front sends `Clear-Site-Data` on sign-out, but browsers ignore it
- * over plain HTTP (the Tailscale deployment), so the client clears its own storage too.
+ * over plain HTTP, so the client clears its own storage too.
  */
 export async function clearLocalAppData() {
   try {

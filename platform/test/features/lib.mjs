@@ -101,7 +101,7 @@ export async function adminSession() {
 /** Creates (or reuses) a person with a temporary password and signs them in. */
 export async function person(name, run) {
   const a = await adminSession();
-  const email = `${name.toLowerCase()}-${run}@wpf.test`;
+  const email = `${name.toLowerCase()}-${run}@features.test`;
   const password = `pw-${name}-${run}-0123456789`;
   const r = await a.http("POST", "/api/baskule/admin/users", { email, name, password });
   if (!r.ok && r.status !== 409) throw new Error(`create ${email}: ${r.status} ${await r.text()}`);
@@ -164,7 +164,7 @@ export function watchThread(client, threadId) {
   return state;
 }
 
-export async function launch(client, projectId, text, title = "WP-F chat", extra = {}) {
+export async function launch(client, projectId, text, title = "Test chat", extra = {}) {
   const launched = await client.ok("orchestration.launchThread", {
     commandId: crypto.randomUUID(),
     projectId,
@@ -181,7 +181,7 @@ export async function launch(client, projectId, text, title = "WP-F chat", extra
 
 export const dispatch = (client, command) => client.ok("orchestration.dispatchCommand", { commandId: crypto.randomUUID(), ...command });
 export const send = (client, threadId, text, mode = { type: "queue_after_active" }, extra = {}) =>
-  dispatch(client, { type: "message.dispatch", createdBy: "user", creationSource: "web", threadId, messageId: `message:wpf:${crypto.randomUUID()}`, text, attachments: [], dispatchMode: mode, ...extra });
+  dispatch(client, { type: "message.dispatch", createdBy: "user", creationSource: "web", threadId, messageId: `message:test:${crypto.randomUUID()}`, text, attachments: [], dispatchMode: mode, ...extra });
 
 // ---- computerd / fake LLM ---------------------------------------------------------------------------------------
 

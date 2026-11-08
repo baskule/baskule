@@ -22,7 +22,7 @@ describe("shouldHandleAppLink", () => {
 
   it("leaves Baskule connection links to the sign-in screen", () => {
     expect(
-      shouldHandleAppLink("baskule://connect?server=https%3A%2F%2Fos.example&code=x", false),
+      shouldHandleAppLink("baskule://connect?server=https%3A%2F%2Fbaskule.example&code=x", false),
     ).toBe(false);
   });
 

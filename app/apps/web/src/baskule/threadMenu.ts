@@ -1,13 +1,12 @@
-// baskule: the chat menu offers the chat controls in scope: Rename, Archive and Delete (0.1), plus
-// Pin, Snooze and Mark unread in the hosted 0.2 build. Everything else (branches, settle, copy
-// paths, project settings) stays hidden.
+// baskule: the chat menu offers Rename, Archive and Delete, plus Pin, Snooze and Mark unread
+// in hosted mode. Branches, settlement, copied paths and project settings stay hidden.
 import type { ContextMenuItem } from "@t3tools/contracts";
 
 import { BASKULE_HOSTED, BASKULE_UI } from "./flags";
 
 const BASKULE_THREAD_MENU: Readonly<Record<string, string>> = BASKULE_HOSTED
   ? {
-      // 0.2 chat controls (thin-server scope 1): pin, snooze, unread.
+      // Hosted chat controls: pin, snooze, unread.
       pin: "Pin",
       unpin: "Unpin",
       snooze: "Snooze",

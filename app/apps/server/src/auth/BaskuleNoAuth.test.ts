@@ -43,7 +43,7 @@ it.layer(NodeServices.layer)("Baskule no-auth mode", (it) => {
       const session = yield* auth.authenticateHttpRequest(request());
       expect(session.sessionId).toBe(BASKULE_NO_AUTH_SESSION_ID);
       expect(session.scopes).toEqual(BASKULE_NO_AUTH_SCOPES);
-      // Review M1: no shell inside the server container, no access management.
+      // No shell inside the server container, no access management.
       expect(session.scopes).not.toContain(AuthTerminalOperateScope);
       expect(session.scopes).not.toContain(AuthAccessWriteScope);
 
@@ -117,7 +117,7 @@ it.layer(NodeServices.layer)("Baskule no-auth mode", (it) => {
     }).pipe(Effect.provide(layerAuth(NO_AUTH))),
   );
 
-  it.effect("keeps working after the shared owner session is revoked (review M5)", () =>
+  it.effect("keeps working after the shared owner session is revoked", () =>
     Effect.gen(function* () {
       const auth = yield* EnvironmentAuth.EnvironmentAuth;
       const sessions = yield* SessionStore.SessionStore;

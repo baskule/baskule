@@ -43,7 +43,7 @@ import {
   resolveNewTaskScratchOption,
 } from "./new-task-project-selection";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
-// baskule: alpha scope flags.
+// baskule: product feature flags.
 import { BASKULE_FLAGS } from "../../baskule/flags";
 
 type NewTaskRouteParams = {

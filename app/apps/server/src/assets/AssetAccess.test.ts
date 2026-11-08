@@ -1457,7 +1457,7 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
-  // baskule: Files out (M7): any workspace file type, as a download with Range.
+  // baskule: Any workspace file type, as a download with Range.
   it.effect("serves any workspace file as a ranged download when asked for an attachment", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

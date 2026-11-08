@@ -64,7 +64,7 @@ export const DEFAULT_MAIN_WINDOW_SIZE = {
 } as const;
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
-  localEnvironmentEnabled: false, // baskule: hosted alpha; keep the upstream backend for future local work.
+  localEnvironmentEnabled: false, // baskule: connect to a hosted installation by default.
   linuxPasswordStore: DEFAULT_LINUX_PASSWORD_STORE,
   mainWindowBounds: null,
   mainWindowMaximized: false,

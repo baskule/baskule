@@ -134,13 +134,17 @@ export async function translateBatch(
 ): Promise<Catalog> {
   const apiKey = process.env.TRANSLATION_API_KEY;
   if (!apiKey) throw new Error("Set TRANSLATION_API_KEY to generate translations");
-  const base = (process.env.TRANSLATION_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const baseUrl = process.env.TRANSLATION_BASE_URL;
+  if (!baseUrl) throw new Error("Set TRANSLATION_BASE_URL to generate translations");
+  const model = process.env.TRANSLATION_MODEL;
+  if (!model) throw new Error("Set TRANSLATION_MODEL to generate translations");
+  const base = baseUrl.replace(/\/$/, "");
   const response = await request(`${base}/chat/completions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     signal: AbortSignal.timeout(120_000),
     body: JSON.stringify({
-      model: process.env.TRANSLATION_MODEL || "gpt-6-luna",
+      model,
       reasoning_effort: "none",
       messages: [
         {

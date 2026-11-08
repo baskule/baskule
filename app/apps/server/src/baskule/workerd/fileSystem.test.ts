@@ -13,7 +13,7 @@ import { makeFakeComputerd } from "./testing/fakeComputerd.ts";
 import { makeFakeDoStorage } from "./testing/fakeDoStorage.ts";
 
 const setup = () => {
-  const host = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baskule-wpb-fs-"));
+  const host = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baskule-fs-"));
   const computerd = makeFakeComputerd(host);
   const storage = makeFakeDoStorage();
   const make = () =>

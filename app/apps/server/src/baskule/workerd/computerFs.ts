@@ -90,7 +90,7 @@ export interface ComputerFs {
   readonly mkdir: (path: string, options?: { readonly recursive?: boolean }) => Promise<void>;
   readonly remove: (path: string, options?: { readonly recursive?: boolean }) => Promise<void>;
   readonly rename: (from: string, to: string) => Promise<void>;
-  /** baskule(wp-h): the computer's phase (`GET /computer`, never starts it); "absent" on errors. */
+  /** baskule: the computer's phase (`GET /computer`, never starts it); "absent" on errors. */
   readonly phase: () => Promise<string>;
   readonly exec: (
     argv: ReadonlyArray<string>,

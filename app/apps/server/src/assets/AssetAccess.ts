@@ -121,7 +121,7 @@ const AssetClaimsSchema = Schema.Union([
     relativePath: Schema.String,
     expiresAt: Schema.Number,
   }),
-  // baskule: any workspace file, served as a download (Files out, M7).
+  // baskule: any workspace file, served as a download.
   Schema.Struct({
     version: Schema.Literal(1),
     kind: Schema.Literal("workspace-file-download"),
@@ -1002,7 +1002,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
         } satisfies ResolvedAsset)
       : null;
   }
-  // baskule: Files out (M7). Same confinement as workspace-file-exact, any type, as an attachment.
+  // baskule: Same confinement as workspace-file-exact, any type, as an attachment.
   if (claims.kind === "workspace-file-download") {
     if (decodedPath !== path.basename(claims.relativePath)) return null;
     const downloadFile = yield* resolveCanonicalWorkspaceFileForRequest(claims);

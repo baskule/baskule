@@ -8,13 +8,13 @@ source scripts/env.sh
 scripts/check features
 # Or select checks against a stack you started:
 scripts/stack up --profile full --clean
-NODE_EXTRA_CA_CERTS="$HOME/.portless/ca.pem" node platform/test/wpf/run.mjs --only 6-plugins
+NODE_EXTRA_CA_CERTS="$HOME/.portless/ca.pem" node platform/test/features/run.mjs --only 6-plugins
 scripts/stack down --purge
 ```
 
 The runner reads URLs, ports, the computerd token and admin credentials from `.run/stack/stack.json`.
 See [stack profiles and prerequisites](../../../stack/README.md). `--list` lists checks; `--only name,capability`
-selects them. Results are written to `platform/test/wpf/.run/results-<run>.json` and `results.json`.
+selects them. Results are written to `platform/test/features/.run/results-<run>.json` and `results.json`.
 Stack logs and state are under `.run/stack/`. Each run uses its own ports, including its MCP fixture server.
 
 Checks cover cross-member chat search, queue edit/reorder/cancel/steer, command

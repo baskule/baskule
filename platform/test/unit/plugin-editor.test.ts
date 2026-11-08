@@ -40,7 +40,7 @@ describe("admin MCP editor", () => {
     const f = await fakeMcp({ key: "Bearer test-key", paginate: true });
     try {
       const h = await makeService(); const a = await asAdmin(h);
-      const bob = await createUser(h, a.creds, "mcp-test@os.test", "Bob");
+      const bob = await createUser(h, a.creds, "mcp-test@baskule.test", "Bob");
       const b = await signIn(h, bob.email, "user-password-1");
       const body = { server: { name: "notes", url: f.resource, credential: "organization" }, headers: { Authorization: "Bearer test-key" } };
       expect((await call(h, "POST", `${root}/test`, { creds: b.creds, body })).status).toBe(403);

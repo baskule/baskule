@@ -81,9 +81,7 @@ const RELEASE_ASSETS = {
   androidNotificationColor: "#B8902A",
 } as const;
 
-// baskule: rebranded identifiers (Android-first). No Clerk relying party (no T3 cloud sign-in), so
-// iOS associated domains are empty. Upstream values: "T3 Code*", "t3code*", "com.t3tools.t3code*",
-// relyingParty "clerk.t3.codes".
+// baskule: app identifiers and schemes. iOS associated domains are empty because T3 cloud sign-in is disabled.
 const VARIANT_CONFIG = {
   development: {
     appName: "Baskule Dev",
@@ -185,7 +183,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 const config: ExpoConfig = {
   locales: nativeLocales,
   name: variant.appName,
-  slug: "baskule", // baskule: was "t3-code"
+  slug: "baskule",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version:
@@ -198,7 +196,7 @@ const config: ExpoConfig = {
   orientation: "portrait",
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
-  // baskule: no OTA updates from T3's EAS project; opt in with an own EXPO_UPDATES_URL.
+  // baskule: OTA updates require an operator-configured EXPO_UPDATES_URL.
   updates: {
     enabled: Boolean(repoEnv.EXPO_UPDATES_URL) && repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
     ...(repoEnv.EXPO_UPDATES_URL ? { url: repoEnv.EXPO_UPDATES_URL } : {}),
@@ -212,7 +210,7 @@ const config: ExpoConfig = {
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
     // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
-    // baskule: T3's team id only applies to T3's signing; set APPLE_TEAM_ID for an own team.
+    // baskule: set APPLE_TEAM_ID to your signing team.
     ...(repoEnv.APPLE_TEAM_ID ? { appleTeamId: repoEnv.APPLE_TEAM_ID } : {}),
     associatedDomains: variant.relyingParty
       ? [`applinks:${variant.relyingParty}`, `webcredentials:${variant.relyingParty}`]
@@ -408,7 +406,7 @@ const config: ExpoConfig = {
   extra: {
     appVariant: APP_VARIANT,
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
-    // baskule: no T3 Connect relay and no Clerk cloud sign-in (scope: no auth, no accounts).
+    // baskule: use Baskule server accounts; T3 Connect and Clerk cloud sign-in are disabled.
     relay: {
       url: null,
     },
@@ -421,7 +419,7 @@ const config: ExpoConfig = {
     EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID,
     EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID,
     EXPO_PUBLIC_CLERK_GOOGLE_IOS_URL_SCHEME: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_IOS_URL_SCHEME,
-    // baskule: T3's EAS project id and owner removed; `eas init` writes your own if you use EAS.
+    // baskule: EAS builds use an operator-configured project and account.
     ...(repoEnv.EAS_PROJECT_ID ? { eas: { projectId: repoEnv.EAS_PROJECT_ID } } : {}),
   },
   ...(repoEnv.EAS_OWNER ? { owner: repoEnv.EAS_OWNER } : {}),
