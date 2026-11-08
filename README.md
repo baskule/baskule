@@ -8,8 +8,15 @@
 <h3 align="center">Self-hosted AI agents for your whole team.</h3>
 
 Baskule is an open-source agent platform that you run on your own servers. Your team chats with agents from the web,
-desktop and mobile apps. Each agent has a sandboxed computer, so it can work on files, run code, browse the web and
-produce documents instead of only answering. You choose the model.
+desktop and mobile apps.
+
+- **Agents that do the work.** Each agent has its own sandboxed computer to work on files, run code, browse the web and
+  produce documents.
+- **You choose the model.** OpenAI, Anthropic, Mistral, or any OpenAI-compatible endpoint, including your own private
+  local model.
+- **You choose the hosting.** One machine with Docker Compose, or a Kubernetes cluster. Your data stays on your
+  infrastructure.
+- **Fork it, change it.** MIT-licensed, from the clients to the platform.
 
 > [!NOTE]
 > Baskule is under active development. Expect breaking changes between releases.
@@ -21,8 +28,6 @@ produce documents instead of only answering. You choose the model.
   </picture>
 </p>
 
-Use the [Kubernetes installation](docs/install-kubernetes.md) for clusters. Compose supports single-machine installs.
-
 ## How it works
 
 Baskule has three parts:
@@ -30,11 +35,11 @@ Baskule has three parts:
 - **Clients.** Web, desktop and mobile apps built on [T3 Code](https://github.com/pingdotgg/t3code). One account,
   the same conversations on every device.
 - **Agent platform.** People, groups, personal and team spaces, plugins and usage. It runs an
-  [OpenCode](https://github.com/anomalyco/opencode) agent for every conversation. Several platform nodes can run
-  side by side, and when one stops another takes over.
+  [OpenCode](https://github.com/anomalyco/opencode) agent for every conversation. It scales with your usage, from a
+  single computer to a cluster.
 - **Computers.** Each space gets an isolated Linux computer with a shell, Python, Node, a browser and office tools,
   managed by Docker on one machine or agent-sandbox on Kubernetes. It starts when an agent needs it and stops
-  when idle. It can reach the internet, never your private network.
+  when idle.
 
 <p align="center">
   <picture>
@@ -47,26 +52,32 @@ What Baskule connects to in your environment:
 
 | | |
 | --- | --- |
-| Model | Mistral, OpenAI, Anthropic, or any OpenAI-compatible endpoint, including your own GPUs. Admins change it in the app. |
-| Sign-in | Google, Microsoft, GitHub or any OIDC provider, or passwords. No SAML. |
+| Model | OpenAI, Anthropic, Mistral, or any OpenAI-compatible endpoint, including your own private local model. |
+| Sign-in | Google, Microsoft, GitHub or any OIDC provider, or passwords. |
 | Tools | MCP servers and plugins, using the organization's account or each person's own. |
 | Storage | All data lives in one S3-compatible bucket, or on the machine's disk. |
 | Network | One HTTP port, behind your HTTPS reverse proxy. |
-| Monitoring | OpenTelemetry traces, with a bundled Jaeger. |
-
-## What it does
-
-| Area | Today |
-| --- | --- |
-| Clients | Web app, Linux desktop and Android. macOS and Windows build from source, unsigned. No iOS app yet. |
-| Agents | Files, shell, a browser that people can watch, Office and PDF documents, scheduled tasks, voice input. |
-| Organization | Personal and team spaces, groups and permissions, invitations. |
-| Plugins | Connectors, skills and bundles from public catalogs or your own address, off until an admin enables them for a group. |
-| Usage | By person, model and space, with CSV export and per-person limits. |
-
-Not yet: several models in one organization.
+| Monitoring | OpenTelemetry traces. |
 
 ## Install
+
+### The clients
+
+Most people only need a client. Ask your administrator for your server's address, then sign in from any of these:
+
+| Client | Status | Download |
+| --- | --- | --- |
+| Web | Available | Served by your Baskule server at its address |
+| Linux | Available | [AppImage (x64)](https://github.com/baskule/baskule/releases/latest) |
+| Android | Preview | [APK (arm64)](https://github.com/baskule/baskule/releases/latest/download/Baskule-android-arm64-release-debug-signed.apk) |
+| macOS | Preview, unsigned | [DMG (Apple silicon or Intel)](https://github.com/baskule/baskule/releases/latest) |
+| Windows | Preview, unsigned | [Installer (x64)](https://github.com/baskule/baskule/releases/latest) |
+| iOS | Not available yet | — |
+
+_The macOS, Windows and Android apps are not signed yet, and no app is published on an app store. Your system will
+warn before opening them. There is no iOS app yet._
+
+### The server
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
@@ -77,30 +88,6 @@ docker compose logs setup        # prints the one-time link that creates the fir
 Open the setup link to create the first admin; see [configuration and built-in HTTPS](docs/install.md), or the [Kubernetes guide](docs/install-kubernetes.md) for several machines.
 
 Optional: [sync plugins from a folder](docs/install.md#plugins-folder).
-
-## Develop
-
-```sh
-scripts/worktree setup         # pinned toolchain and dependencies
-source scripts/env.sh
-scripts/worktree runtime       # build the chat engine bundle
-scripts/stack up --profile light
-scripts/stack url
-```
-
-The `light` profile runs the platform with a fake model and no computers; `full` adds computers.
-[Building from source](docs/building.md) lists the prerequisites, and the
-[development workflow](docs/development-workflow.md) explains how to choose checks.
-
-| Directory | Contents |
-| --- | --- |
-| `app/` | Web, desktop and mobile clients and the chat engine, forked from T3 Code |
-| `platform/` | The agent platform: sign-in, organization, spaces, plugins and the OpenCode agent |
-| `computer/`, `computerd/` | The computer image and the service that manages computers |
-| `deploy/` | Docker Compose deployment, build container and operation scripts |
-| `desktop/` | Desktop packaging |
-| `e2e/` | End-to-end tests |
-| `scripts/`, `stack/` | Toolchain setup, development stacks and check selection |
 
 ## Built on
 
