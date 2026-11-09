@@ -22,6 +22,25 @@ Mobile component tests use the existing mocked native test environment. They do 
 gh workflow run ci.yml --repo baskule/baskule --ref main
 ```
 
+## Release workflow structure
+
+`release.yml` is the coordinator. A version tag starts publication; manual dispatch defaults to verification only. Both paths use the same reusable workflows from the triggering commit:
+
+| Workflow | Responsibility |
+| --- | --- |
+| `release-translations.yml` | Prepare the catalogs shared by all packages |
+| `release-runtime.yml` | Build computer and computerd archives |
+| `release-web.yml` | Build and verify the hosted web bundle |
+| `release-upstream.yml` | Run the upstream server and web suites |
+| `release-backend.yml` | Package celld and verify backend archives with component, journey and install checks |
+| `release-linux.yml` | Package and verify the Linux desktop |
+| `native.yml` | Select native lanes; call `native-desktop.yml` and `native-mobile.yml` |
+| `release-publish.yml` | Assemble and checksum release assets; optionally publish images, draft, and release |
+
+The coordinator uses `needs` to order these calls within one Actions run. Runtime images start after exact-source CI; web and native builds start after translations. Backend packaging waits for runtime images and verified web, while Linux packaging also consumes that web bundle. Upstream checks run alongside packaging. The `verified` gate requires every selected component before assembly. Publication still requires all native packages.
+
+The reusable workflows exchange artifacts within the same run. They do not trigger independent releases or deploy installations. Keep dependencies in the coordinator and artifact names stable when moving jobs. `native.yml` retains its independent manual platform selection for targeted native builds. Reusable implementation files have only `workflow_call` triggers.
+
 ## Verify the complete factory
 
 For local role and installation checks, use [released installation verification](release-install-verification.md).
@@ -39,11 +58,11 @@ Computer and computerd build in `backend-runtime` after version and source-CI va
 
 The release factory builds `backend-<version>` once, then downloads the same archive artifact into isolated GitHub-hosted runners. Each consumer checks `SHA256SUMS`, loads the three published image archives, checks their IDs against `images.txt`, and restores the packaged SpaceCell bundle. Install checks use the packaged Compose assets through `BASKULE_INSTALL_ASSETS`, without checkout mounts or regenerated operator files.
 
-The `backend` job gates publishing and the manual factory status. It requires the build, every component, journey and install shard, upstream server and web suites, and `CI required` on the exact source SHA. A failed, skipped or canceled dependency fails the gate. Run ordinary CI before dispatching a factory for a temporary source commit.
+The `verified` job gates release assembly and publication. It requires the backend build, every component, journey and install shard, upstream server and web suites, Linux and selected native packages, and `CI required` on the exact source SHA. A failed, skipped or canceled required dependency fails the gate. Native jobs may be skipped only for an explicitly partial verification-only run. Run ordinary CI before dispatching a factory for a temporary source commit.
 
 Ordinary CI already covers lint, feature-map coverage, harness tests, Baskule unit tests and typechecks in `Checks`, `Tests` and `Mobile tests`. Hosted web covers the web component; Linux apps covers desktop checks and verifies the packaged AppImage. Release retains Worker, SpaceCell, computerd, agent and platform feature contracts once each. Upstream server and web suites run on separate runners while packaging runs.
 
-`scripts/check release:journeys --shard N/M` uses Playwright to partition individual journey tests across runners, grouped by stack profile. Each runner keeps one worker to protect shared stack state. Uncovered custom commands are assigned once by feature. The planner removes only declared component commands covered by the release jobs and desktop checks covered by Linux apps. Full components cover named selections. Unknown commands remain in the plan, and live-installation checks remain excluded. Normal `feature:<name>` checks still run all their declared checks. Local `release` still runs its unit and component tiers, then uses the same deduplicated feature plan.
+`scripts/check release:journeys --shard N/M` uses Playwright to partition individual journey tests across runners, grouped by stack profile. Each runner keeps one worker to protect shared stack state. The runner stops the stack after each profile group and uncovered custom check, including failures, before another profile can start. Stack data is retained until the CI driver cleans up its disposable runner. Uncovered custom commands are assigned once by feature. The planner removes only declared component commands covered by the release jobs and desktop checks covered by Linux apps. Full components cover named selections. Unknown commands remain in the plan, and live-installation checks remain excluded. Normal `feature:<name>` checks still run all their declared checks. Local `release` still runs its unit and component tiers, then uses the same deduplicated feature plan.
 
 Build caches accelerate packaging but do not replace verification. Every release exercises the resulting archives.
 
@@ -52,10 +71,10 @@ Run the verify-only factory on `main` before tagging to populate caches visible 
 App installers remain GitHub release assets. Settings → Desktop app derives its download links from the running `/version.json`; the current list offers Linux x64, with other platforms added when their installable assets are published. No app archives or download manifest are embedded in celld.
 
 Verified image archives and checksums pass to a separate publish job after backend, Linux app, and requested native
-checks pass. Only that job holds `packages: write`. Tag pushes or manual runs with `verify_only=false` publish the
+checks pass. Only the image-publication job and its reusable-workflow caller request `packages: write`. Tag pushes or manual runs with `verify_only=false` publish the
 images and the OCI chart listed below. Compose and Kubernetes pull the computer image from GHCR. Publication skips existing tags whose contents match, refuses
 differing ones, and fails on registry authentication or transport errors.
-Verification-only runs never log in or push, including manual runs on tag refs.
+Verification-only runs never log in to GHCR, push packages, or create a GitHub release, including manual runs on tag refs. They execute the same checksum validation and asset assembly as publishing runs and retain `release-assets-<version>` as an Actions artifact. Set `include_native=false` only for a partial backend/Linux verification; its assembled assets omit native packages and cannot be published through the factory.
 
 The native workflow compiles Android arm64, an iOS simulator app, macOS arm64/x64 and Windows x64. Windows packaging executes the existing native-load and server-archive probes. iOS includes a simulator install/launch smoke. Android does not add an emulator lane. Optional upstream Windows package diagnostics remain manual.
 
@@ -95,7 +114,7 @@ iOS device archives, TestFlight and App Store submission need the publisher's Ap
 
 ## Inspect evidence
 
-Use a run's job logs and artifacts to inspect failures, checksums, package status and source provenance. Classify a failure before rerunning only the affected jobs. Keep package/browser/unit evidence distinct from physical-device acceptance. Verification artifacts are retained for one day; a verified GitHub release is the durable distribution record.
+The always-running `factory-status` job writes a summary with the source SHA, version, publication/native selections, each component result, and links to the run artifacts and successful release. Manual runs also set the `Release factory` commit status, which requires verification and asset assembly to succeed. Use a run's job logs and artifacts to inspect failures, checksums, package status and source provenance. Classify a failure before rerunning only the affected jobs. Keep package/browser/unit evidence distinct from physical-device acceptance. Verification artifacts are retained for one day; a verified GitHub release is the durable distribution record.
 
 ## First image release
 

@@ -1,0 +1,140 @@
+name: Release assembly and publication
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        default: false
+      include_native:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Require native packages for publication
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          INCLUDE_NATIVE: ${{ inputs.include_native }}
+        run: test "$PUBLISH" != true || test "$INCLUDE_NATIVE" = true
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-${{ inputs.version }}
+          path: artifacts/backend
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-apps-${{ inputs.version }}
+          path: artifacts/linux-apps
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.include_native
+        with:
+          pattern: native-*-${{ inputs.version }}
+          path: artifacts/native
+      - name: Verify transferred assets and assemble release
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: scripts/ci/assemble-release.sh
+      - name: Retain assembled release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets-${{ inputs.version }}
+          path: release/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: assemble
+    if: inputs.publish
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: release-images-${{ inputs.version }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-${{ inputs.version }}
+          path: artifacts/backend
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.0
+      - name: Publish verified archives without overwriting release tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: scripts/ci/publish-images.sh artifacts/backend
+
+  public-packages:
+    needs: publish
+    if: always() && needs.publish.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-${{ inputs.version }}
+          path: artifacts/backend
+      - name: Check anonymous package access (rerun after making packages public)
+        run: bash scripts/ci/check-public-images.sh artifacts/backend
+
+  draft-release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets-${{ inputs.version }}
+          path: release
+      - name: Verify assembled assets
+        run: cd release && sha256sum -c SHA256SUMS
+      - name: Create draft after every verification job passes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          gh release create "v$VERSION" release/* --draft --target "$SOURCE_COMMIT" \
+            --title "Baskule $VERSION" \
+            --notes 'Install the server with docker-compose.yml (images on GHCR) or the Helm chart. Apps: Linux AppImage, Windows, macOS and Android (unsigned previews). Built and verified on GitHub-hosted runners with a fake LLM.'
+
+  release:
+    needs: [draft-release, public-packages]
+    if: always() && needs.draft-release.result == 'success' && needs.public-packages.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the verified draft as the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: gh release edit "v$VERSION" --draft=false --latest

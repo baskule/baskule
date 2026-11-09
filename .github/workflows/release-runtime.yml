@@ -1,0 +1,80 @@
+name: Release runtime images
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-runtime:
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BASKULE_VERSION: ${{ inputs.version }}
+      BASKULE_STACK_PROXY: '0'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Make room for the native and musl builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ $RUNNER_ENVIRONMENT == github-hosted ]]
+          df -h .
+          # These are unrelated preinstalled SDKs on this disposable VM.
+          if (( $(df --output=avail -B1 . | tail -1) < 35000000000 )); then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          fi
+          df -h .
+          available=$(df --output=avail -B1 . | tail -1)
+          (( available >= 35000000000 )) || { echo 'Need 35 GB free for the cold backend build.' >&2; exit 1; }
+      - id: buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Export BuildKit cache credentials
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL']) {
+              core.exportVariable(key, process.env[key]);
+              core.setSecret(process.env[key]);
+            }
+      - uses: ./.github/actions/setup
+      - name: Build backend archives once
+        env:
+          BASKULE_DOCKER_CACHE: '1'
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: scripts/ci/backend.sh runtime
+      - name: Upload backend artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-runtime-${{ inputs.version }}
+          path: .run/release/runtime/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve backend evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-runtime-evidence-${{ inputs.version }}
+          path: |
+            .run/evidence/release/
+            .run/evidence/release-install/
+            .run/evidence/kubernetes/
+            !.run/evidence/kubernetes/**/*.private
+            !.run/evidence/release-install/*.tar.gz
+            .run/check/
+            .run/web-mock/artifacts/
+            e2e/test-results/
+            .run/journeys/results/**/test-failed-*.png
+            .run/journeys/results/**/error-context.md
+          if-no-files-found: warn
+          retention-days: 1
