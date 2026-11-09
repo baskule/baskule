@@ -121,7 +121,7 @@ export interface PluginFile {
 export interface SpacePlugins {
   /** Catalog discovery uses an allowed member; tool calls always use the turn author. */
   servers: (PluginServer & { pluginId: string; pluginName: string; catalogUserId: string; privateNetwork: boolean; defaultAccountOnly: boolean })[];
-  skills: { pluginId: string; name: string; description: string; files: PluginFile[] }[];
+  skills: { id: string; pluginId: string; name: string; description: string; files: PluginFile[] }[];
 }
 export type PluginCredential =
   | { headers: Record<string, string>; expiresAt: number; account?: { id: string; label: string } }

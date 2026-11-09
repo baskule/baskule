@@ -199,12 +199,12 @@ describe("plugin proxy", () => {
   });
 });
 
-const skill = { pluginId: "p", name: "hello", description: "Greeting", files: [{ path: "SKILL.md", encoding: "base64" as const, content: Buffer.from("---\nname: hello\n---\nHello").toString("base64") }] };
+const skill = { id: "skill-id", pluginId: "p", name: "hello", description: "Greeting", files: [{ path: "SKILL.md", encoding: "base64" as const, content: Buffer.from("---\nname: hello\n---\nHello").toString("base64") }] };
 describe("skill sync planning", () => {
   it("namespaces duplicate names, preserves binary payloads and replaces the entire set", () => {
     expect(planSkills([skill, { ...skill, pluginId: "other" }]).map(f => f.path)).toEqual(["other/hello/SKILL.md", "p/hello/SKILL.md"]);
     expect(planSkills([])).toEqual([]);
-    expect(skillCatalog([skill])[0]).toMatchObject({ id: "p/hello", content: "Hello", path: "/sandbox/space/plugins/p/hello/SKILL.md", files: ["/sandbox/space/plugins/p/hello/SKILL.md"] });
+    expect(skillCatalog([skill])[0]).toMatchObject({ id: skill.id, content: "Hello", path: "/sandbox/space/plugins/p/hello/SKILL.md", files: ["/sandbox/space/plugins/p/hello/SKILL.md"] });
   });
   it.each(["../outside", "/absolute", "a/../../b", "a\\..\\b", "a//b"])("rejects unsafe paths: %s", path => {
     expect(() => planSkills([{ ...skill, files: [{ ...skill.files[0], path }] }])).toThrow("Invalid skill path");

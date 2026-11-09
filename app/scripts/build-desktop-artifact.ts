@@ -1227,7 +1227,14 @@ function normalizePasskeyRpDomain(value: string): string {
 
 export function resolveMacPasskeySigningConfiguration(
   env: Readonly<Record<string, string | undefined>>,
-): MacPasskeySigningConfiguration {
+): MacPasskeySigningConfiguration | undefined {
+  if (
+    !env.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() &&
+    !env.T3CODE_CLERK_PASSKEY_RP_DOMAINS?.trim() &&
+    !env.T3CODE_MACOS_PROVISIONING_PROFILE?.trim()
+  ) {
+    return undefined;
+  }
   const teamId = env.T3CODE_APPLE_TEAM_ID?.trim().toUpperCase() ?? "";
   if (!APPLE_TEAM_ID_PATTERN.test(teamId)) {
     throw new InvalidAppleTeamIdError({ teamId });
@@ -2812,7 +2819,13 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           role: "Viewer",
         },
       ],
-      ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
+      ...(signed
+        ? {
+            sign: path.join(repoRoot, "scripts/sign-macos.ts"),
+            forceCodeSigning: true,
+            entitlements: path.join(repoRoot, "apps/desktop/resources/entitlements.mac.plist"),
+          }
+        : { notarize: false }),
       ...(macPasskeySigning
         ? {
             entitlements: macPasskeySigning.entitlementsPath,
@@ -3930,6 +3943,8 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     delete buildEnv.APPLE_API_KEY;
     delete buildEnv.APPLE_API_KEY_ID;
     delete buildEnv.APPLE_API_ISSUER;
+    delete buildEnv.APPLE_ID;
+    delete buildEnv.APPLE_APP_SPECIFIC_PASSWORD;
   }
 
   if (hostPlatform === "win32") {

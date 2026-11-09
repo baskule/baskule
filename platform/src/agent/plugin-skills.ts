@@ -62,7 +62,7 @@ export function skillCatalog(skills: SpacePlugins["skills"]) {
     const file = skill.files.find(f => f.path === "SKILL.md");
     if (!file) throw new Error("Skill has no SKILL.md");
     const directory = `${PLUGIN_SKILLS_PATH}/${encodeURIComponent(skill.pluginId)}/${encodeURIComponent(skill.name)}`;
-    return { files: skill.files.map(f => `${directory}/${f.path}`), id: `${skill.pluginId}/${skill.name}`, name: skill.name, description: skill.description,
+    return { files: skill.files.map(f => `${directory}/${f.path}`), id: skill.id, name: skill.name, description: skill.description,
       path: `${directory}/SKILL.md`,
       content: Buffer.from(file.content, "base64").toString("utf8").replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "") };
   });

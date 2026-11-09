@@ -14,7 +14,7 @@ on:
         type: boolean
         default: true
       include_native:
-        description: 'Also build Android, iOS simulator, macOS and Windows packages'
+        description: 'Include native packages in verification-only runs (always included for publishing)'
         type: boolean
         default: true
 
@@ -565,12 +565,13 @@ jobs:
 
   native:
     needs: [version, translate]
-    if: github.ref_type == 'tag' || inputs.include_native == true
+    if: github.event_name == 'push' || inputs.verify_only == false || inputs.include_native == true
     uses: ./.github/workflows/native.yml
     with:
       version: ${{ needs.version.outputs.version }}
       platform: all
       sign: false
+      sign_macos: ${{ github.event_name == 'push' || inputs.verify_only == false }}
       translations: true
     secrets: inherit
 
@@ -606,7 +607,7 @@ jobs:
     if: >-
       always() && needs.version.result == 'success' && needs.backend.result == 'success' &&
       needs.linux-apps.result == 'success' &&
-      (needs.native.result == 'success' || (github.ref_type != 'tag' && inputs.include_native == false && needs.native.result == 'skipped')) &&
+      needs.native.result == 'success' &&
       (github.event_name == 'push' || inputs.verify_only == false)
     runs-on: ubuntu-24.04
     concurrency:
@@ -654,7 +655,7 @@ jobs:
     if: >-
       always() && needs.publish.result == 'success' && needs.version.result == 'success' && needs.backend.result == 'success' &&
       needs.linux-apps.result == 'success' &&
-      (needs.native.result == 'success' || (github.ref_type != 'tag' && inputs.include_native == false && needs.native.result == 'skipped')) &&
+      needs.native.result == 'success' &&
       (github.event_name == 'push' || inputs.verify_only == false)
     runs-on: ubuntu-24.04
     permissions:

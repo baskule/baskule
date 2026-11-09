@@ -2,6 +2,7 @@ import { rejects } from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
 import { zipSync } from "fflate";
+import { modelSkillId } from "../fixtures/skills.mjs";
 import { MODEL, adminSession, assert, cx, fakeRequests, launch, projection, reconnect, waitFor, watchShell, watchThread, world } from "./lib.mjs";
 
 export const pluginChecks = [{ name: "plugin-runtime", capability: "6-plugins", fn: async ctx => {
@@ -40,7 +41,14 @@ export const pluginChecks = [{ name: "plugin-runtime", capability: "6-plugins", 
     group = await admin.json("POST", "/api/baskule/admin/groups", { name: `Allowed-${ctx.run}`, members: [s.alice.me.user.id], permissions: { canCreateSpaces: false }, plugins: [plugin.id] });
     await s.alice.json("PUT", `/api/baskule/spaces/${s.team}/plugins`, { personalPluginsAllowed: true, disabled: [] });
     await reconnect(ctx);
-    const prompt = `[[fake:tool *org_lookup {}]] [[fake:tool skill {"id":"${plugin.id}/greeting"}]] [[fake:tool shell {"command":"cat /sandbox/space/plugins/*/greeting/SKILL.md; stat -c %a /sandbox/space/plugins/*/greeting/SKILL.md"}]]`;
+    const discovery = `Discover assigned skills ${ctx.run} [[fake:text skills ready]]`;
+    const catalogId = await launch(s.ca, s.projectId, discovery, "Discover skills");
+    const catalog = watchThread(s.ca, catalogId);
+    try { await waitFor("skill catalog", () => catalog.settled(), 120_000); } finally { catalog.stop(); }
+    const request = (await fakeRequests()).find(r => r.tools?.length && r.messages.some(m => m.role === "user" && JSON.stringify(m.content).includes(discovery)));
+    const skillId = modelSkillId(request.messages, "greeting");
+    assert(/^[\w-]{21}$/.test(skillId), `skill ID is not a NanoID: ${skillId}`);
+    const prompt = `[[fake:tool *org_lookup {}]] [[fake:tool skill ${JSON.stringify({ id: skillId })}]] [[fake:tool shell {"command":"cat /sandbox/space/plugins/*/greeting/SKILL.md; stat -c %a /sandbox/space/plugins/*/greeting/SKILL.md"}]]`;
     const id = await launch(s.ca, s.projectId, prompt, "Allowed plugin call");
     const a = watchThread(s.ca, id);
     await waitFor("Alice plugin turn", () => a.settled(), 120_000);

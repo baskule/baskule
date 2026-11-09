@@ -11,6 +11,7 @@ import m0008 from './0008_catalog_plugins.sql';
 import m0009 from './0009_sad_captain_flint.sql';
 import m0010 from './0010_plugin_review.sql';
 import m0011 from './0011_plugin_versions.sql';
+import m0012 from './0012_plugin_skill_ids.sql';
 
   export default {
     journal,
@@ -26,7 +27,8 @@ m0007,
 m0008,
 m0009,
 m0010,
-m0011
+m0011,
+m0012
     }
   }
   

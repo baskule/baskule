@@ -10,13 +10,8 @@
 Baskule is an open-source agent platform that you run on your own servers. Your team chats with agents from the web,
 desktop and mobile apps.
 
-- **Agents that do the work.** Each agent has its own sandboxed computer to work on files, run code, browse the web and
-  produce documents.
-- **You choose the model.** OpenAI, Anthropic, Mistral, or any OpenAI-compatible endpoint, including your own private
-  local model.
-- **You choose the hosting.** One machine with Docker Compose, or a Kubernetes cluster. Your data stays on your
-  infrastructure.
-- **Fork it, change it.** MIT-licensed, from the clients to the platform.
+Pick any model provider or run your own local model, host it anywhere from one machine to a cluster, and fork and
+customize it under the MIT licence.
 
 > [!NOTE]
 > Baskule is under active development. Expect breaking changes between releases.
