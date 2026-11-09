@@ -186,13 +186,13 @@
       --color-foreground-muted: #838383;
       --color-foreground-tertiary: #818181;
       --color-border: #191919;
-      --color-focus: #b8902a;
+      --color-focus: #c79a1e;
       --color-border-subtle: rgba(25, 25, 25, 0.7);
       --color-separator: rgba(25, 25, 25, 0.55);
       --color-subtle: #111111;
       --color-subtle-strong: #111111;
       --color-inline-skill-background: #141414;
-      --color-inline-skill-border: rgba(184, 144, 42, 0.42);
+      --color-inline-skill-border: rgba(199, 154, 30, 0.42);
       --color-inline-skill-foreground: #f5f5f5;
       --color-primary: #f5f5f5;
       --color-prominent-action: #f5f5f5;

@@ -1,4 +1,8 @@
 <p align="center">
+  <img alt="" src="brand/github-avatar.png" width="80">
+</p>
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="brand/wordmark-inverse.svg">
     <img alt="Baskule" src="brand/wordmark.svg" width="300">

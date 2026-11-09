@@ -25,8 +25,7 @@ const source = NodePath.join(root, "brand");
 const output = NodePath.join(root, "app/assets/baskule");
 
 const INK = "#111111";
-const INK_INVERSE = "#F5F5F5";
-const ACCENT = "#B8902A";
+const ACCENT = "#C79A1E";
 const WHITE = "#FFFFFF";
 
 for (const name of ["wordmark", "wordmark-inverse", "mark", "mark-inverse"]) {
@@ -38,20 +37,22 @@ const [markWidth, markHeight] = mark
   .match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/)!
   .slice(1)
   .map(Number) as [number, number];
-const markPaths = (e: string, l: string) =>
+const markPaths = (foreground: string, accent: string, muted = "#C9C9C9") =>
   mark
     .replace(/^<svg[^>]*>/, "")
     .replace(/<\/svg>\s*$/, "")
-    .replace(`fill="${INK}"`, `fill="${e}"`)
-    .replace(`fill="${ACCENT}"`, `fill="${l}"`);
+    .replace(`fill="${INK}"`, `fill="${foreground}"`)
+    .replace(`fill="${ACCENT}"`, `fill="${accent}"`)
+    .replace(`fill="#C9C9C9"`, `fill="${muted}"`);
 
 const round = (value: number) => Number(value.toFixed(2));
-// The mark's bounding box is centred and spans `markFraction` of the canvas width. A tile covers
+// The source square includes the pivot's spacing. `markFraction` scales that square; a tile covers
 // `tileFraction` of the canvas; a rounded tile has corner radius 0.2237 of its side.
 function compose(options: {
   readonly markFraction: number;
-  readonly e: string;
-  readonly l: string;
+  readonly foreground: string;
+  readonly accent: string;
+  readonly muted?: string;
   readonly tile?: string;
   readonly tileFraction?: number;
   readonly rounded?: boolean;
@@ -64,20 +65,23 @@ function compose(options: {
   const tile = options.tile
     ? `<rect x="${round(x + inset)}" y="${round(y + inset)}" width="${round(side)}" height="${round(side)}"${options.rounded ? ` rx="${round(side * 0.2237)}"` : ""} fill="${options.tile}"/>`
     : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${[x, y, canvas, canvas].map(round).join(" ")}">${tile}${markPaths(options.e, options.l)}</svg>\n`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${[x, y, canvas, canvas].map(round).join(" ")}">${tile}${markPaths(options.foreground, options.accent, options.muted)}</svg>\n`;
 }
 const png = (svg: string, size: number, opaque = false) => {
   const image = sharp(Buffer.from(svg.replace("<svg ", `<svg width="${size}" height="${size}" `)));
   return (opaque ? image.removeAlpha() : image).png().toBuffer();
 };
 
-// App icon: light mark on a dark rounded tile, 58% of the tile width.
-const icon = compose({ markFraction: 0.58, e: INK_INVERSE, l: ACCENT, tile: INK, rounded: true });
+// The selected pivot on a white tile, with the spacing drawn in brand/mark.svg.
+const icon = compose({
+  markFraction: 1,
+  foreground: INK,
+  accent: ACCENT,
+  tile: WHITE,
+  rounded: true,
+});
 await write(NodePath.join(output, "icon.svg"), icon);
-await write(
-  NodePath.join(output, "icon-light.svg"),
-  compose({ markFraction: 0.58, e: INK, l: ACCENT, tile: WHITE, rounded: true }),
-);
+await write(NodePath.join(output, "icon-light.svg"), icon);
 for (const size of [16, 32, 192, 512, 1024]) {
   await write(NodePath.join(output, `icon-${size}.png`), await png(icon, size));
 }
@@ -90,12 +94,12 @@ await write(
   ),
 );
 // iOS and apple-touch icons are opaque squares; the system draws the corners.
-const square = compose({ markFraction: 0.58, e: INK_INVERSE, l: ACCENT, tile: INK });
+const square = compose({ markFraction: 1, foreground: INK, accent: ACCENT, tile: WHITE });
 for (const size of [180, 1024]) {
   await write(NodePath.join(output, `icon-square-${size}.png`), await png(square, size, true));
 }
 // PWA maskable icons keep the mark inside the 80% safe circle.
-const maskable = compose({ markFraction: 0.54, e: INK_INVERSE, l: ACCENT, tile: INK });
+const maskable = compose({ markFraction: 0.8, foreground: INK, accent: ACCENT, tile: WHITE });
 for (const size of [192, 512]) {
   await write(NodePath.join(output, `icon-maskable-${size}.png`), await png(maskable, size, true));
 }
@@ -104,10 +108,10 @@ await write(
   NodePath.join(output, "icon-macos-1024.png"),
   await png(
     compose({
-      markFraction: (0.58 * 824) / 1024,
-      e: INK_INVERSE,
-      l: ACCENT,
-      tile: INK,
+      markFraction: 824 / 1024,
+      foreground: INK,
+      accent: ACCENT,
+      tile: WHITE,
       tileFraction: 824 / 1024,
       rounded: true,
     }),
@@ -116,29 +120,46 @@ await write(
 );
 
 // Android shows the central 72dp of the 108dp adaptive canvas, and the Android 12 splash the
-// central 192dp of 288dp; the mark keeps the app icon's 58% of that visible width.
-const adaptive = (72 / 108) * 0.58;
+// central 192dp of 288dp; the source square fills that visible area.
+const adaptive = 72 / 108;
 await write(
   NodePath.join(output, "android-foreground.png"),
-  await png(compose({ markFraction: adaptive, e: INK_INVERSE, l: ACCENT }), 432),
+  await png(compose({ markFraction: adaptive, foreground: INK, accent: ACCENT }), 432),
 );
 await write(
   NodePath.join(output, "android-monochrome.png"),
-  await png(compose({ markFraction: adaptive, e: WHITE, l: WHITE }), 432),
+  await png(
+    compose({ markFraction: adaptive, foreground: WHITE, accent: WHITE, muted: WHITE }),
+    432,
+  ),
 );
 await write(
   NodePath.join(output, "android-notification.png"),
-  await png(compose({ markFraction: (0.8 * markWidth) / markHeight, e: WHITE, l: WHITE }), 96),
+  await png(
+    compose({
+      markFraction: (0.8 * markWidth) / markHeight,
+      foreground: WHITE,
+      accent: WHITE,
+      muted: WHITE,
+    }),
+    96,
+  ),
 );
-const splash = (192 / 288) * 0.58;
-await write(
-  NodePath.join(output, "splash.png"),
-  await png(compose({ markFraction: splash, e: INK, l: ACCENT }), 1152),
+const splash = 192 / 288;
+const splashPng = await png(
+  compose({
+    markFraction: splash,
+    foreground: INK,
+    accent: ACCENT,
+    tile: WHITE,
+    tileFraction: splash,
+    rounded: true,
+  }),
+  1152,
 );
-await write(
-  NodePath.join(output, "splash-inverse.png"),
-  await png(compose({ markFraction: splash, e: INK_INVERSE, l: ACCENT }), 1152),
-);
+for (const name of ["splash", "splash-inverse"]) {
+  await write(NodePath.join(output, `${name}.png`), splashPng);
+}
 
 for (const name of ["wordmark", "wordmark-inverse"]) {
   await write(
@@ -170,6 +191,31 @@ await write(
   NodePath.join(root, "app/apps/server/src/mcp/baskuleIcon.ts"),
   `// Generated by export-baskule-assets.ts from brand/mark.svg.\nexport const BASKULE_MCP_ICON =\n  ${JSON.stringify("data:image/svg+xml;base64," + Buffer.from(icon).toString("base64"))};\n`,
 );
+for (const channel of ["latest", "nightly"]) {
+  const file = NodePath.join(root, `app/apps/desktop/resources/dmg/dmg-background-${channel}.svg`);
+  const background = await NodeFSP.readFile(file, "utf8");
+  const artwork = await NodeFSP.readFile(
+    NodePath.join(source, channel === "nightly" ? "mark-inverse.svg" : "mark.svg"),
+    "utf8",
+  );
+  await write(
+    file,
+    background.replace(
+      /<svg x="32" y="23"[^>]*>[\s\S]*?<\/svg>/,
+      artwork.trim().replace("<svg ", '<svg x="32" y="23" width="18" height="18" '),
+    ),
+  );
+}
+
+// GitHub organization avatar and repository social preview use opaque white artwork.
+await write(NodePath.join(source, "github-avatar.png"), await png(square, 1024, true));
+const wordmark = await NodeFSP.readFile(NodePath.join(source, "wordmark.svg"), "utf8");
+const social = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640"><rect width="1280" height="640" fill="${WHITE}"/>${mark.trim().replace("<svg ", '<svg x="512" y="96" width="256" height="256" ')}${wordmark.trim().replace("<svg ", '<svg x="340" y="400" width="600" height="129" ')}</svg>`;
+await write(
+  NodePath.join(source, "github-social-preview.png"),
+  await sharp(Buffer.from(social)).removeAlpha().png().toBuffer(),
+);
+
 if (stale.length) throw new Error(`Stale Baskule assets:\n${stale.join("\n")}`);
 console.log(
   check ? "Baskule assets are current." : "Updated Baskule web, desktop, mobile and MCP assets.",
