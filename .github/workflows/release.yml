@@ -685,18 +685,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir release
+          # Publish only what people install or update from. Image archives and bundles stay CI artifacts;
+          # Compose and Helm pull the images from GHCR.
           for kind in backend linux-apps; do
-            directory="artifacts/$kind"
-            (cd "$directory" && sha256sum -c SHA256SUMS)
-            tar -czf "release/$kind-$VERSION-metadata.tar.gz" --exclude='*.tar.gz' --exclude='*.AppImage' -C "$directory" .
+            (cd "artifacts/$kind" && sha256sum -c SHA256SUMS)
           done
-          cp artifacts/backend/*.tar.gz artifacts/linux-apps/*.tar.gz artifacts/linux-apps/*.AppImage artifacts/linux-apps/*.yml artifacts/linux-apps/compatibility.json release/
+          tar -czf "release/backend-$VERSION-metadata.tar.gz" --exclude='*.tar.gz' -C artifacts/backend .
+          cp artifacts/linux-apps/*.AppImage artifacts/linux-apps/*.yml artifacts/linux-apps/compatibility.json release/
           cp artifacts/backend/*.yml artifacts/backend/*.env.example artifacts/backend/baskule-*.tgz release/
           if [[ -d artifacts/native ]]; then
             for directory in artifacts/native/*; do
               (cd "$directory" && sha256sum -c SHA256SUMS)
-              tar -czf "release/$(basename "$directory")-metadata.tar.gz" \
-                --exclude='*.apk' --exclude='*.dmg' --exclude='*.exe' --exclude='*.zip' -C "$directory" .
+              [[ $directory != *ios-simulator* ]] || continue
               while IFS= read -r -d '' package; do
                 if [[ $package == */latest-mac.yml || $package == */nightly-mac.yml ]]; then continue; fi
                 destination="release/$(basename "$package")"
@@ -726,7 +726,7 @@ jobs:
         run: |
           gh release create "v$VERSION" release/* --draft --target "$SOURCE_COMMIT" \
             --title "Baskule $VERSION" \
-            --notes 'Backend and Linux apps built and verified on GitHub-hosted Ubuntu 24.04. Includes single-machine Compose assets, the Kubernetes Helm chart, versioned GHCR platform and computer images, Worker, SpaceCell, hosted web and a Linux x64 AppImage. The web app links to versioned GitHub release assets; app installers are not embedded in celld. When native verification is included, the release also contains Windows x64, macOS arm64/x64, Android arm64 and iOS Simulator packages. Native STATUS metadata states signing and verification limits; the simulator ZIP is not an installable iPhone IPA. Checks use a fake LLM and disposable local stacks; no live installation or real provider was exercised.'
+            --notes 'Install the server with docker-compose.yml (images on GHCR) or the Helm chart. Apps: Linux AppImage, Windows, macOS and Android (unsigned previews). Built and verified on GitHub-hosted runners with a fake LLM.'
 
   release:
     needs: [version, draft-release, public-packages]
