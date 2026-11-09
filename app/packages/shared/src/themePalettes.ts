@@ -106,10 +106,10 @@ export type ThemeDefinition = Readonly<{
 }>;
 
 export const T3_CODE_LIGHT_THEME_COLORS: ThemeColors = {
-  searchMatchBackground: "#ffde8b",
-  searchMatchForeground: "#21180a",
-  searchMatchActiveBackground: "#eea52b",
-  searchMatchActiveForeground: "#21180a",
+  searchMatchBackground: "#ebdcae",
+  searchMatchForeground: "#111111",
+  searchMatchActiveBackground: "#c79a1e",
+  searchMatchActiveForeground: "#111111",
   canvas: "#fcfcfc",
   chrome: "#fcfcfc",
   toolbar: "#fcfcfc",
@@ -125,8 +125,8 @@ export const T3_CODE_LIGHT_THEME_COLORS: ThemeColors = {
   textMuted: "#737373",
   border: "#e5e5e5",
   input: "#d4d4d4",
-  focus: "#85671b",
-  accent: "#85671b",
+  focus: "#856714",
+  accent: "#856714",
   accentForeground: "#ffffff",
   secondary: "#fafafa",
   secondaryForeground: "#262626",
@@ -170,10 +170,10 @@ export const T3_CODE_LIGHT_THEME_COLORS: ThemeColors = {
 };
 
 export const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
-  searchMatchBackground: "#8c6c1f",
+  searchMatchBackground: "#544519",
   searchMatchForeground: "#f5f5f5",
-  searchMatchActiveBackground: "#eea52b",
-  searchMatchActiveForeground: "#21180a",
+  searchMatchActiveBackground: "#c79a1e",
+  searchMatchActiveForeground: "#111111",
   canvas: "#0a0a0a",
   chrome: "#0a0a0a",
   toolbar: "#0a0a0a",

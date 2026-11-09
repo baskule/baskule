@@ -405,21 +405,18 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 /* Paint find results without changing rendered markdown or copied text. */
 ::highlight(t3-thread-find) {
-  color: var(--app-theme-search-match-foreground, oklch(0.216164 0.028283 77.423));
-  background-color: var(--app-theme-search-match-background, oklch(0.915 0.11 85));
+  color: var(--app-theme-search-match-foreground, #111111);
+  background-color: var(--app-theme-search-match-background, #ebdcae);
 
   @variant dark {
     color: var(--app-theme-search-match-foreground, oklch(0.970151 0 0));
-    background-color: var(--app-theme-search-match-background, oklch(0.55 0.1 85));
+    background-color: var(--app-theme-search-match-background, #544519);
   }
 }
 
 ::highlight(t3-thread-find-active) {
-  color: var(--app-theme-search-match-active-foreground, oklch(0.216164 0.028283 77.423));
-  background-color: var(
-    --app-theme-search-match-active-background,
-    oklch(0.774202 0.151946 74.331)
-  );
+  color: var(--app-theme-search-match-active-foreground, #111111);
+  background-color: var(--app-theme-search-match-active-background, var(--brand-accent));
 }
 
 @utility dialog-glass {
@@ -1113,7 +1110,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 :root {
   --brand-muted: #c9c9c9;
   --brand-accent: #c79a1e;
-  --brand-accent-strong: #85671b;
+  --brand-accent-strong: #856714;
   color-scheme: light;
   --radius: 0.5rem;
   --background: var(--color-neutral-25);

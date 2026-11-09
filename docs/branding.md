@@ -34,11 +34,11 @@ The smallest shipped sizes are a 14 px wordmark and a 16 px mark.
 | Ink inverse | `#F5F5F5` | Dark wordmark and middle pivot card on dark surfaces |
 | Gray | `#C9C9C9` | Rear pivot card |
 | Old gold | `#C79A1E` | Wordmark l, front pivot card, dark focus ring and accent |
-| Gold strong | `#85671B` | Accessible focus ring and accent on light surfaces |
+| Gold strong | `#856714` | Accessible focus ring and accent on light surfaces |
 
 Old gold is a logo color and dark-surface accent. It is not suitable for text or focus indicators on white.
-The darker Gold strong remains the light theme's accessible accent. Primary actions, checked controls,
-switches, selected states, and progress bars use ink. Content links use info blue (`#1447E6` light,
+Gold strong is a darker shade of Old gold and remains the light theme's accessible accent. Primary actions,
+checked controls, switches, selected states, and progress bars use ink. Content links use info blue (`#1447E6` light,
 `#51A2FF` dark). Text selection keeps the operating system's highlight.
 
 Default grays use Tailwind's neutral scale. Functional colors, terminal colors, and named built-in themes
@@ -46,12 +46,14 @@ keep their existing values. Gold does not replace error, warning, success, or in
 
 ## Theme tokens
 
-`app/apps/web/src/index.css` defines `--brand-muted: #c9c9c9`, `--brand-accent: #c79a1e`, and `--brand-accent-strong: #85671b`.
+`app/apps/web/src/index.css` defines `--brand-muted: #c9c9c9`, `--brand-accent: #c79a1e`, and `--brand-accent-strong: #856714`.
 The default focus ring uses Gold strong in light mode and Old gold in dark mode.
 
 `app/packages/shared/src/themePalettes.ts` supplies web custom-theme completion, server-rendered HTML,
-and mobile tokens. Its light `focus` and `accent` remain `#85671b`; the dark values are `#c79a1e`.
-Primary action and message-action roles remain ink and inverse ink.
+and mobile tokens. Its light `focus` and `accent` use `#856714`; the dark values are `#c79a1e`.
+Primary action and message-action roles remain ink and inverse ink. Search matches use a pale gold tint
+(`#ebdcae`) in light mode and a dark gold tint (`#544519`) in dark mode. The active match uses Old gold
+with Ink text in both modes.
 
 Mobile theme files are generated. From `app/`, run `pnpm --filter @t3tools/mobile run generate` to refresh
 `generated-uniwind-*` and `clerk-theme.json`. Do not edit these outputs by hand. Android's notification accent
