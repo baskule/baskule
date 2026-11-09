@@ -84,7 +84,7 @@ The web and mobile `BaskuleMark` components draw the same three outlines. Keep t
 | `android-foreground.png` | Transparent 432 px canvas; source square fits the central 72 dp of the 108 dp canvas; white adaptive background |
 | `android-monochrome.png` | White silhouette with transparent gaps, same adaptive geometry |
 | `android-notification.png` | White silhouette on a transparent 96 px canvas |
-| `splash.png`, `splash-inverse.png` | Same white tile in both appearances, fitted to the central 192 dp of a 288 dp canvas |
+| `splash.png`, `splash-inverse.png` | Transparent 1152 px canvas; `wordmark.svg` and `wordmark-inverse.svg` at 60 % width, inside the central 192 dp of a 288 dp canvas |
 | `wordmark.png`, `wordmark-inverse.png` | 1200 px wide, for mobile |
 | `app/apps/web/public/` brand images | Copies for favicons, the manifest, and boot-screen wordmarks |
 | `app/apps/server/src/mcp/baskuleIcon.ts` | Embedded SVG app icon |

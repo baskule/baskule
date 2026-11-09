@@ -145,21 +145,20 @@ await write(
     96,
   ),
 );
-const splash = 192 / 288;
-const splashPng = await png(
-  compose({
-    markFraction: splash,
-    foreground: INK,
-    accent: ACCENT,
-    tile: WHITE,
-    tileFraction: splash,
-    rounded: true,
-  }),
-  1152,
-);
-for (const name of ["splash", "splash-inverse"]) {
-  await write(NodePath.join(output, `${name}.png`), splashPng);
-}
+// The splash shows the full wordmark. Android 12+ masks the splash icon to the central 192dp circle
+// of its 288dp canvas; at 60% of the canvas width the wordmark's corners stay inside that circle.
+const wordmarkSplash = async (name: string) => {
+  const svg = await NodeFSP.readFile(NodePath.join(source, `${name}.svg`), "utf8");
+  const [width, height] = svg
+    .match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/)!
+    .slice(1)
+    .map(Number) as [number, number];
+  const canvas = width / 0.6;
+  const viewBox = [width / 2 - canvas / 2, height / 2 - canvas / 2, canvas, canvas].map(round);
+  return png(svg.replace(/viewBox="[^"]*"/, `viewBox="${viewBox.join(" ")}"`), 1152);
+};
+await write(NodePath.join(output, "splash.png"), await wordmarkSplash("wordmark"));
+await write(NodePath.join(output, "splash-inverse.png"), await wordmarkSplash("wordmark-inverse"));
 
 for (const name of ["wordmark", "wordmark-inverse"]) {
   await write(

@@ -360,7 +360,7 @@ const config: ExpoConfig = {
           backgroundColor: "#0a0a0a",
         },
         android: {
-          // Android 12+ masks the central two thirds of the 288dp canvas; the transparent mark stays inside it.
+          // Android 12+ masks the central two thirds of the 288dp canvas; the transparent wordmark stays inside it.
           image: variant.assets.splashIcon,
           imageWidth: 288,
           dark: { image: variant.assets.splashIconInverse },
