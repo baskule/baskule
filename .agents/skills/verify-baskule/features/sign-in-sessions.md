@@ -1,14 +1,14 @@
 ---
-paths: ["platform/src/control/**", "platform/src/worker.ts", "app/apps/web/src/baskule/session.ts", "app/apps/web/src/baskule/connect.ts", "app/apps/web/src/baskule/views/LoginView.tsx", "app/apps/web/src/baskule/views/Connect*", "app/apps/web/src/baskule/views/BrowserSignInButton.tsx", "app/apps/web/src/routes/login.tsx", "app/apps/web/src/routes/reset-password.tsx", "app/apps/web/src/routes/setup.tsx", "app/apps/web/src/baskule/views/SetupView*", "app/apps/web/src/routes/link.tsx", "app/apps/web/src/routes/connect*"]
-journeys: null
-profile: "full"
+paths: ["e2e/journeys/native-login.spec.mjs", "platform/src/control/**", "platform/src/worker.ts", "app/apps/web/src/baskule/session.ts", "app/apps/web/src/baskule/connect.ts", "app/apps/web/src/baskule/views/LoginView.tsx", "app/apps/web/src/baskule/views/Connect*", "app/apps/web/src/baskule/views/BrowserSignInButton.tsx", "app/apps/web/src/routes/login.tsx", "app/apps/web/src/routes/reset-password.tsx", "app/apps/web/src/routes/setup.tsx", "app/apps/web/src/baskule/views/SetupView*", "app/apps/web/src/routes/link.tsx", "app/apps/web/src/routes/connect*"]
+journeys: "@feature:sign-in-sessions"
+profile: "light"
 checks: ["scripts/check worker web"]
 ---
 # Sign in and sessions
 
 ## Sub-features
 
-First-admin setup, sign in, sign out, session revocation and password reset.
+First-admin setup, sign in, native browser approval, sign out, session revocation and password reset.
 
 ## Open the feature
 
@@ -16,7 +16,7 @@ Open the app URL; sign in with Email and Password.
 
 ## Verification
 
-This feature has no dedicated journey; `feature:sign-in-sessions` runs the worker and web checks.
+The native login journey submits the approval form in a browser and verifies that the initiating client receives a working session exactly once. `feature:sign-in-sessions` also runs the worker and web checks for the remaining authentication flows.
 
 ## Gotchas
 
