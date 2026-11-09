@@ -1,8 +1,15 @@
 # Install Baskule
 
-Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. Start with 4 CPU cores,
-24 GiB RAM, and 80 GB free disk. computerd uses the host Docker socket.
+Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. computerd uses the host Docker socket.
 For several machines, use the [Kubernetes installation](install-kubernetes.md), the only cluster install.
+
+To try one space, use 2 CPU cores, 8 GiB RAM, and 20 GB free disk. Set `CELLD_MEMORY=1g` and
+`COMPUTER_MEMORY=2Gi` in `.env` before starting. For a team, use at least 4 CPU cores and budget
+8 GiB RAM for the host and services, plus 3 GiB per running computer. Allow more disk for files and backups.
+Larger tasks can need higher computer limits and more RAM.
+
+With release 0.5.1, set `services.baskule-rustfs.mem_limit` to `2g` in the downloaded Compose file before starting.
+Its `1g` limit can cause an out-of-memory restart.
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
