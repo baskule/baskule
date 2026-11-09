@@ -59,7 +59,7 @@ Verification-only runs never log in or push, including manual runs on tag refs.
 
 The native workflow compiles Android arm64, an iOS simulator app, macOS arm64/x64 and Windows x64. Windows packaging executes the existing native-load and server-archive probes. iOS includes a simulator install/launch smoke. Android does not add an emulator lane. Optional upstream Windows package diagnostics remain manual.
 
-Each artifact includes checksums and verification/signing status. Android's default release build uses a debug certificate; desktop output is unsigned by default; the iOS simulator ZIP is not an installable iPhone IPA. These outputs prove the named build and smoke checks, not store readiness or complete native product acceptance.
+Each artifact includes checksums and verification/signing status. Android's default release build uses a debug certificate; standalone desktop verification output is unsigned by default; production macOS output is signed and notarized; the iOS simulator ZIP is not an installable iPhone IPA. These outputs prove the named build and smoke checks, not store readiness or complete native product acceptance.
 
 ## Tags and releases
 
@@ -69,9 +69,27 @@ Versions and source revisions are recorded with the outputs. Use a versioned tag
 
 ## Production signing
 
-Signing is a separate, explicit native-workflow dispatch from the default branch. Configure the `native-release` GitHub environment with required reviewers and deployment branch restrictions before adding publisher signing credentials. The unsigned `native-ci` environment needs no credentials. Missing signing inputs fail a requested signed build.
+Production release runs (tag pushes or `verify_only=false`) always build both macOS architectures with Developer ID signing and notarization, independently of Android and Windows signing. Verification-only factory runs remain unsigned. For an explicit signed check, dispatch Native clients from `main` with `platform=desktop` and `sign_macos=true`; `sign=true` retains the all-platform signing option. Do not dispatch a signed build until credentials and local signing validation are ready.
 
-Android needs a publisher-controlled keystore, its passwords, and its alias. macOS needs Apple signing/notarization credentials, an Apple team and provisioning profile and the relying-party domains required by the inherited signing contract. Windows uses the inherited Azure Trusted Signing provider. Store credentials in GitHub environment secrets; never commit signing files or paste credentials into logs.
+Configure `native-release` before adding credentials: require a maintainer reviewer, disable administrator bypass, and allow only branch `main` and tag pattern `v*` (separate branch/tag rules). The source-validation job runs before signing jobs enter this environment: a signing dispatch must use `main`; a tag must match `VERSION`, be valid SemVer, and point to a commit on `origin/main`. Reviewers must also verify the source and workflow before releasing credentials; the tag pattern alone cannot enforce ancestry. The unsigned `native-ci` environment needs no credentials.
+
+Store these macOS secrets in `native-release`:
+
+| Secret | Value |
+| --- | --- |
+| `CSC_LINK` | Base64-encoded Developer ID Application certificate and private key exported as a `.p12` |
+| `CSC_KEY_PASSWORD` | Password protecting that `.p12` |
+| `APPLE_TEAM_ID` | Expected 10-character Developer Team ID; checked against both packaged apps |
+| `APPLE_ID` | Apple account email for password-based notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for that Apple account |
+
+Alternatively, omit the two Apple account secrets and configure `APPLE_API_KEY` (raw `.p8` contents), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. A complete Apple account pair takes precedence if both methods are configured; incomplete credentials fail before packaging. This uses [electron-builder's supported notarization credentials](https://www.electron.build/v26/docs/features/code-signing/notarization/). Never commit signing files or paste credentials into logs.
+
+Baskule's hosted renderer disables Clerk. Ordinary Developer ID signing needs no provisioning profile: the app retains its Electron runtime, camera, and microphone entitlements. Configured passkey builds still require `MACOS_PROVISIONING_PROFILE` (base64-encoded profile) plus the environment variable `MACOS_PASSKEY_RP_DOMAINS` (comma-separated domains the publisher owns and has configured). Those inputs preserve associated-domain and profile-authorized browser passkey/Touch ID entitlements. Do not supply invented domains to satisfy signing. A profile without domain configuration, or domains without a profile, fails instead of silently dropping passkeys.
+
+Before upload, each macOS lane copies the app from its final DMG and extracts its final updater ZIP. Both must pass deep/strict signature verification, Developer ID authority and Team ID checks, notarization-ticket validation, and Gatekeeper assessment. Missing credentials or failed checks block publication; these checks do not replace a launch test on a Mac.
+
+Android needs a publisher-controlled keystore, its passwords, and its alias. Windows uses the inherited Azure Trusted Signing provider. Their signing remains an explicit `sign=true` dispatch from `main`.
 
 iOS device archives, TestFlight and App Store submission need the publisher's Apple provisioning profiles and credentials. The current iOS lane verifies the simulator build only.
 

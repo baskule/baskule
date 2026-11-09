@@ -37,6 +37,8 @@ import {
   InvalidMacPasskeyPublishableKeyError,
   UnsupportedDesktopBuildArchitectureError,
   MacPasskeySigningConfigurationResolutionError,
+  MissingMacPasskeyDomainConfigurationError,
+  InvalidAppleTeamIdError,
   MissingMacPasskeyProvisioningProfileError,
   packWindowsServerAsar,
   preflightWindowsDesktopBuild,
@@ -1326,6 +1328,67 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ),
   );
 
+  it("allows Developer ID signing without passkey configuration", () => {
+    assert.isUndefined(resolveMacPasskeySigningConfiguration({}));
+    assert.isUndefined(
+      resolveMacPasskeySigningConfiguration({
+        T3CODE_APPLE_TEAM_ID: "ABC1234567",
+        T3CODE_CLERK_PUBLISHABLE_KEY: "",
+        T3CODE_CLERK_PASSKEY_RP_DOMAINS: " ",
+        T3CODE_MACOS_PROVISIONING_PROFILE: "",
+      }),
+    );
+  });
+
+  it.effect("keeps ordinary signed macOS capabilities without requiring a profile", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "mac",
+        "dmg",
+        "1.2.3",
+        true,
+        false,
+        undefined,
+        undefined,
+      );
+      assert.nestedPropertyVal(config, "mac.forceCodeSigning", true);
+      assert.nestedPropertyVal(
+        config,
+        "mac.entitlements",
+        "apps/desktop/resources/entitlements.mac.plist",
+      );
+      assert.notNestedProperty(config, "mac.provisioningProfile");
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const entitlements = yield* fs.readFileString(
+        path.join(import.meta.dirname, "../apps/desktop/resources/entitlements.mac.plist"),
+      );
+      for (const capability of [
+        "cs.allow-jit",
+        "cs.allow-unsigned-executable-memory",
+        "cs.disable-library-validation",
+        "device.camera",
+        "device.audio-input",
+      ]) {
+        assert.include(entitlements, `<key>com.apple.security.${capability}</key>`);
+      }
+      assert.notInclude(entitlements, "com.apple.developer.");
+      assert.notInclude(entitlements, "com.apple.application-identifier");
+      assert.notInclude(entitlements, "keychain-access-groups");
+
+      const passkeys = yield* createBuildConfig("mac", "dmg", "1.2.3", true, false, undefined, {
+        entitlementsPath: "/configured/entitlements.plist",
+        provisioningProfilePath: "/configured/profile.provisionprofile",
+      });
+      assert.nestedPropertyVal(passkeys, "mac.entitlements", "/configured/entitlements.plist");
+      assert.nestedPropertyVal(
+        passkeys,
+        "mac.provisioningProfile",
+        "/configured/profile.provisionprofile",
+      );
+    }),
+  );
+
   it("derives macOS passkey signing configuration from the Clerk publishable key", () => {
     const configuration = resolveMacPasskeySigningConfiguration({
       T3CODE_APPLE_TEAM_ID: "abc1234567",
@@ -1348,6 +1411,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       T3CODE_CLERK_PASSKEY_RP_DOMAINS:
         " Clerk.Example.com,example.clerk.accounts.dev,clerk.example.com ",
     });
+    assert.ok(configuration);
     const entitlements = renderMacPasskeyEntitlements(configuration, {
       touchIdKeychainAccessGroup: undefined,
       browserPasskeys: false,
@@ -1452,6 +1516,20 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(
       missingProfileError.message,
       "T3CODE_MACOS_PROVISIONING_PROFILE must point to an Associated Domains provisioning profile.",
+    );
+
+    assert.instanceOf(
+      captureError({
+        T3CODE_APPLE_TEAM_ID: "ABC1234567",
+        T3CODE_MACOS_PROVISIONING_PROFILE: "/tmp/t3code.provisionprofile",
+      }),
+      MissingMacPasskeyDomainConfigurationError,
+    );
+    assert.instanceOf(
+      captureError({
+        T3CODE_CLERK_PUBLISHABLE_KEY: `pk_test_${btoa("example.clerk.accounts.dev$")}`,
+      }),
+      InvalidAppleTeamIdError,
     );
 
     const unsafeDomain =

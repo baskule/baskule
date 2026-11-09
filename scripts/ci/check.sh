@@ -30,6 +30,7 @@ case "$suite" in
     run node --test scripts/ci/llm.test.mjs
     run node --test scripts/ci/kubernetes.test.mjs
     run node --test scripts/ci/publish-images.test.mjs
+    run node --test scripts/ci/native-signing.test.mjs
     ;;
   platform)
     cd platform
