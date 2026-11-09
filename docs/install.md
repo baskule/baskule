@@ -1,8 +1,27 @@
 # Install Baskule
 
-Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. Start with 4 CPU cores,
-24 GiB RAM, and 80 GB free disk. computerd uses the host Docker socket.
+Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. computerd uses the host Docker socket.
 For several machines, use the [Kubernetes installation](install-kubernetes.md), the only cluster install.
+
+To try one running computer at a time, use at least 2 CPU cores, 8 GiB RAM, and 20 GB free disk.
+Set these limits in `.env` next to the Compose file:
+
+```dotenv
+CELLD_MEMORY=2g
+COMPUTER_MEMORY=2Gi
+```
+
+For a team, use at least 4 CPU cores and budget 10 GiB RAM for the host and services,
+plus 3 GiB per running computer at the default limits. Tested installations used about 3 GiB with three
+computers running; the team budget also covers every service reaching its limit.
+Larger tasks or optional services need more RAM.
+
+Start with 20 GB free disk for either size. Released images use about 4.8 GB, and a small tested installation
+used about 0.3 GB in volumes. Allow more for files, backups and their temporary copies, up to 2 GiB of local
+cache per platform node, and retained image sets after updates. Prune old images after verifying an update.
+
+For 0.5.1 and earlier, under `baskule-rustfs` in the downloaded Compose file, change `mem_limit: 1g`
+to `mem_limit: 2g` to avoid out-of-memory restarts.
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
@@ -218,6 +237,9 @@ other computer files are temporary. Restore the same release before updating.
 
 Read release notes for migrations and the declared client/server compatibility window. Back up first and keep
 the old compose file with the backup. Release notes list changes that cannot migrate existing data, with the affected data and deployment steps. Follow them before updating.
+
+For 0.5.1 and earlier, under `baskule-rustfs`, change `mem_limit: 1g` to `mem_limit: 2g` in the downloaded
+Compose file. Re-downloading those versions resets this edit. Apply it again before `docker compose up -d`.
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
