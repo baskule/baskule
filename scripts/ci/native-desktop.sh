@@ -20,17 +20,36 @@ esac
 status=unsigned
 if [[ "${NATIVE_SIGN:-false}" == true ]]; then
   if [[ "$PLATFORM" == mac ]]; then
-    for key in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER APPLE_TEAM_ID MACOS_PROVISIONING_PROFILE T3CODE_CLERK_PASSKEY_RP_DOMAINS; do
+    for key in CSC_LINK CSC_KEY_PASSWORD APPLE_TEAM_ID; do
       [[ -n "${!key:-}" ]] || { echo "Missing signing configuration: $key" >&2; exit 1; }
     done
+    [[ $APPLE_TEAM_ID =~ ^[A-Z0-9]{10}$ ]] || { echo 'Invalid APPLE_TEAM_ID' >&2; exit 1; }
     signing=$(mktemp -d)
     trap 'rm -rf "$signing"' EXIT
     chmod 700 "$signing"
-    printf '%s' "$APPLE_API_KEY" > "$signing/AuthKey.p8"
-    printf '%s' "$MACOS_PROVISIONING_PROFILE" | base64 -D > "$signing/profile.provisionprofile"
-    chmod 600 "$signing"/*
-    security cms -D -i "$signing/profile.provisionprofile" >/dev/null
-    export APPLE_API_KEY="$signing/AuthKey.p8" T3CODE_APPLE_TEAM_ID="$APPLE_TEAM_ID" T3CODE_MACOS_PROVISIONING_PROFILE="$signing/profile.provisionprofile"
+    if [[ -n ${APPLE_ID:-}${APPLE_APP_SPECIFIC_PASSWORD:-} ]]; then
+      for key in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD; do
+        [[ -n "${!key:-}" ]] || { echo "Missing notarization configuration: $key" >&2; exit 1; }
+      done
+      unset APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER
+    else
+      for key in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+        [[ -n "${!key:-}" ]] || { echo "Missing notarization configuration: $key (or configure APPLE_ID and APPLE_APP_SPECIFIC_PASSWORD)" >&2; exit 1; }
+      done
+      (umask 077; printf '%s' "$APPLE_API_KEY" > "$signing/AuthKey.p8")
+      export APPLE_API_KEY="$signing/AuthKey.p8"
+    fi
+    if [[ -n ${T3CODE_CLERK_PASSKEY_RP_DOMAINS:-} && -z ${MACOS_PROVISIONING_PROFILE:-} ]]; then
+      echo 'Configured passkey domains require MACOS_PROVISIONING_PROFILE' >&2
+      exit 1
+    fi
+    if [[ -n ${MACOS_PROVISIONING_PROFILE:-} ]]; then
+      [[ -n ${T3CODE_CLERK_PASSKEY_RP_DOMAINS:-} ]] || { echo 'Configured profile requires T3CODE_CLERK_PASSKEY_RP_DOMAINS' >&2; exit 1; }
+      (umask 077; printf '%s' "$MACOS_PROVISIONING_PROFILE" | base64 -D > "$signing/profile.provisionprofile")
+      security cms -D -i "$signing/profile.provisionprofile" >/dev/null
+      export T3CODE_MACOS_PROVISIONING_PROFILE="$signing/profile.provisionprofile"
+    fi
+    export T3CODE_APPLE_TEAM_ID="$APPLE_TEAM_ID"
   else
     for key in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TRUSTED_SIGNING_ENDPOINT AZURE_TRUSTED_SIGNING_ACCOUNT_NAME AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME AZURE_TRUSTED_SIGNING_PUBLISHER_NAME; do
       [[ -n "${!key:-}" ]] || { echo "Missing signing configuration: $key" >&2; exit 1; }
@@ -40,6 +59,10 @@ if [[ "${NATIVE_SIGN:-false}" == true ]]; then
   status=signed
 fi
 pnpm exec vp run dist:desktop:artifact "${args[@]}"
+if [[ "$PLATFORM" == mac && "$status" == signed ]]; then
+  bash "$ROOT/scripts/ci/verify-macos.sh" "$OUT/Baskule-$VERSION-$ARCH.dmg" "$OUT/Baskule-$VERSION-$ARCH.zip"
+  status='Developer ID signed; notarization ticket and Gatekeeper verified from DMG and ZIP'
+fi
 # On native Windows this executes the Electron fff native-load probe and the
 # server.asar self-containment probe inside validateWindowsPackagedPayload.
 printf 'Desktop %s/%s: %s. T3 native packager; Windows includes packaged runtime probes. WSL archive omitted for the hosted beta.\n' "$PLATFORM" "$ARCH" "$status" | tee "$OUT/STATUS.txt" >> "$GITHUB_STEP_SUMMARY"
