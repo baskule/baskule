@@ -2823,7 +2823,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         ? {
             sign: path.join(repoRoot, "scripts/sign-macos.ts"),
             forceCodeSigning: true,
-            entitlements: "apps/desktop/resources/entitlements.mac.plist",
+            entitlements: path.join(repoRoot, "apps/desktop/resources/entitlements.mac.plist"),
           }
         : { notarize: false }),
       ...(macPasskeySigning

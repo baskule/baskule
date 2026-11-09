@@ -78,6 +78,9 @@ const encodeModuleUrl = Schema.encodeEffect(Schema.fromJsonString(Schema.String)
 const decodePackageVersion = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
 );
+const decodeMacSigningConfig = Schema.decodeUnknownEffect(
+  Schema.Struct({ mac: Schema.Struct({ entitlements: Schema.String }) }),
+);
 
 // Keeps pnpm from auto-installing TypeScript, a types-only peer, into the app.
 
@@ -1352,17 +1355,12 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         undefined,
       );
       assert.nestedPropertyVal(config, "mac.forceCodeSigning", true);
-      assert.nestedPropertyVal(
-        config,
-        "mac.entitlements",
-        "apps/desktop/resources/entitlements.mac.plist",
-      );
       assert.notNestedProperty(config, "mac.provisioningProfile");
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const entitlements = yield* fs.readFileString(
-        path.join(import.meta.dirname, "../apps/desktop/resources/entitlements.mac.plist"),
-      );
+      const { mac } = yield* decodeMacSigningConfig(config);
+      assert.isTrue(path.isAbsolute(mac.entitlements));
+      const entitlements = yield* fs.readFileString(mac.entitlements);
       for (const capability of [
         "cs.allow-jit",
         "cs.allow-unsigned-executable-memory",
