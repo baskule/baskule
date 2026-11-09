@@ -21,6 +21,50 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
 import { flushCallbacks, makeHarness } from "./updatesTestHarness.ts";
 
 describe("DesktopUpdates", () => {
+  it.effect.each(["darwin", "win32", "linux"] satisfies ReadonlyArray<NodeJS.Platform>)(
+    "offers a compatible update and waits for download/install actions on %s",
+    (platform) => {
+      const harness = makeHarness({ platform, packageType: "deb" });
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const updates = yield* DesktopUpdates.DesktopUpdates;
+          yield* updates.configure;
+          const { changes } = yield* updates.subscribe;
+          yield* updates.check("startup");
+          assert.deepEqual(harness.feedUrls().at(-1), {
+            provider: "generic",
+            url: "http://localhost:4141/v1.2.5/",
+          });
+          harness.emit("update-available", { version: "1.2.5" });
+          yield* changes.pipe(
+            Stream.filter((state) => state.status === "available"),
+            Stream.runHead,
+          );
+          assert.deepEqual(harness.automaticUpdates(), {
+            autoDownload: false,
+            autoInstallOnAppQuit: false,
+          });
+          assert.equal(harness.downloadCount(), 0);
+          assert.equal(harness.quitAndInstalls(), 0);
+
+          assert.isTrue((yield* updates.download).completed);
+          assert.equal(harness.downloadCount(), 1);
+          harness.emit("update-downloaded", { version: "1.2.5" });
+          yield* changes.pipe(
+            Stream.filter((state) => state.status === "downloaded"),
+            Stream.runHead,
+          );
+          assert.equal(harness.quitAndInstalls(), 0);
+
+          assert.isTrue((yield* updates.install).accepted);
+          assert.equal(harness.quitAndInstalls(), 1);
+          const state = yield* DesktopState.DesktopState;
+          assert.isTrue(yield* Ref.get(state.quitting));
+        }),
+      ).pipe(Effect.provide(harness.layer));
+    },
+  );
+
   it.effect(
     "follows index redirects, uses the compatible feed and discards an installer on installation changes",
     () => {

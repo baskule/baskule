@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
-import { render } from "../../../test/render";
+import { render, stubGlobal } from "../../../test/render";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
 const mocks = vi.hoisted(() => {
@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
   return {
     update: null as DesktopUpdateState | null,
     hasUpdates: false,
+    confirm: vi.fn<() => Promise<boolean>>(),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -20,6 +21,10 @@ const mocks = vi.hoisted(() => {
     },
   };
 });
+vi.mock("../../localApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../localApi")>()),
+  ensureLocalApi: () => ({ dialogs: { confirm: mocks.confirm } }),
+}));
 vi.mock("../../state/desktopUpdate", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../state/desktopUpdate")>()),
   useDesktopUpdateState: (await import("react")).useSyncExternalStore.bind(
@@ -47,9 +52,71 @@ vi.mock("./useUpdateEverything", () => ({
 function setup(update: DesktopUpdateState | null, { hasUpdates = false } = {}) {
   mocks.update = update;
   mocks.hasUpdates = hasUpdates;
+  mocks.confirm.mockReset();
 }
 
 describe("SidebarUpdatePill update everything", () => {
+  it("downloads on click and installs only after restart confirmation", async () => {
+    const available: DesktopUpdateState = {
+      enabled: true,
+      status: "available",
+      channel: "latest",
+      currentVersion: "0.5.1",
+      hostArch: "arm64",
+      appArch: "arm64",
+      runningUnderArm64Translation: false,
+      availableVersion: "0.5.2",
+      downloadedVersion: null,
+      releaseNotes: [],
+      omittedReleaseCount: 0,
+      downloadPercent: null,
+      checkedAt: null,
+      message: null,
+      errorContext: null,
+      canRetry: false,
+    };
+    const downloaded: DesktopUpdateState = {
+      ...available,
+      status: "downloaded",
+      downloadedVersion: "0.5.2",
+      downloadPercent: 100,
+    };
+    setup(available);
+    mocks.confirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const downloadUpdate = vi.fn(async () => {
+      mocks.update = downloaded;
+      mocks.notify();
+      return { accepted: true, completed: true, state: downloaded };
+    });
+    const installUpdate = vi.fn(async () => ({
+      accepted: true,
+      completed: false,
+      state: downloaded,
+    }));
+    using _bridge = stubGlobal("desktopBridge", { downloadUpdate, installUpdate });
+    await using screen = await render(<SidebarUpdatePill />);
+    const downloadButton = screen.getByRole("button", { name: "Update 0.5.2 ready to download" });
+    await expect.element(downloadButton).toBeVisible();
+    expect(downloadUpdate).not.toHaveBeenCalled();
+    expect(installUpdate).not.toHaveBeenCalled();
+
+    await userEvent.click(downloadButton);
+    const restartButton = screen.getByRole("button", {
+      name: "Update 0.5.2 downloaded. Click to restart and install.",
+    });
+    await expect.element(restartButton).toBeEnabled();
+    expect(downloadUpdate).toHaveBeenCalledOnce();
+    expect(installUpdate).not.toHaveBeenCalled();
+
+    await userEvent.click(restartButton);
+    await vi.waitFor(() => expect(mocks.confirm).toHaveBeenCalledOnce());
+    await expect.element(restartButton).toBeEnabled();
+    expect(installUpdate).not.toHaveBeenCalled();
+
+    await userEvent.click(restartButton);
+    await vi.waitFor(() => expect(installUpdate).toHaveBeenCalledOnce());
+  });
+
   it("does not refocus the update button after a pointer cancel", async () => {
     setup(null, { hasUpdates: true });
     await using screen = await render(<SidebarUpdatePill />);
