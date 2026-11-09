@@ -3,13 +3,24 @@
 Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. computerd uses the host Docker socket.
 For several machines, use the [Kubernetes installation](install-kubernetes.md), the only cluster install.
 
-To try one space, use 2 CPU cores, 8 GiB RAM, and 20 GB free disk. Set `CELLD_MEMORY=1g` and
-`COMPUTER_MEMORY=2Gi` in `.env` before starting. For a team, use at least 4 CPU cores and budget
-8 GiB RAM for the host and services, plus 3 GiB per running computer. Allow more disk for files and backups.
-Larger tasks can need higher computer limits and more RAM.
+To try one running computer at a time, use 2 CPU cores, 10 GiB RAM, and 20 GB free disk.
+Set these limits in `.env` next to the Compose file:
 
-With release 0.5.1, set `services.baskule-rustfs.mem_limit` to `2g` in the downloaded Compose file before starting.
-Its `1g` limit can cause an out-of-memory restart.
+```dotenv
+CELLD_MEMORY=2g
+COMPUTER_MEMORY=2Gi
+```
+
+For a team, use at least 4 CPU cores and budget 10 GiB RAM for the host and services,
+plus 3 GiB per running computer at the default limits. Both RAM budgets cover service caps and host headroom.
+Larger tasks or optional services need more RAM.
+
+Start with 20 GB free disk for either size. Released images use about 4.8 GB, and a small tested installation
+used about 0.3 GB in volumes. Allow more for files, backups and their temporary copies, up to 2 GiB of local
+cache per platform node, and retained image sets after updates. Prune old images after verifying an update.
+
+For 0.5.1 and earlier, under `baskule-rustfs` in the downloaded Compose file, change `mem_limit: 1g`
+to `mem_limit: 2g` to avoid out-of-memory restarts.
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
@@ -225,6 +236,9 @@ other computer files are temporary. Restore the same release before updating.
 
 Read release notes for migrations and the declared client/server compatibility window. Back up first and keep
 the old compose file with the backup. Release notes list changes that cannot migrate existing data, with the affected data and deployment steps. Follow them before updating.
+
+For 0.5.1 and earlier, under `baskule-rustfs`, change `mem_limit: 1g` to `mem_limit: 2g` in the downloaded
+Compose file. Re-downloading those versions resets this edit. Apply it again before `docker compose up -d`.
 
 ```sh
 curl -fLO https://github.com/baskule/baskule/releases/latest/download/docker-compose.yml
