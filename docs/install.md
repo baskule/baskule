@@ -3,7 +3,7 @@
 Use a Linux x86-64 machine with Docker Engine 25+, Compose 2.24.4+, and curl. computerd uses the host Docker socket.
 For several machines, use the [Kubernetes installation](install-kubernetes.md), the only cluster install.
 
-To try one running computer at a time, use 2 CPU cores, 10 GiB RAM, and 20 GB free disk.
+To try one running computer at a time, use at least 2 CPU cores, 8 GiB RAM, and 20 GB free disk.
 Set these limits in `.env` next to the Compose file:
 
 ```dotenv
@@ -12,7 +12,8 @@ COMPUTER_MEMORY=2Gi
 ```
 
 For a team, use at least 4 CPU cores and budget 10 GiB RAM for the host and services,
-plus 3 GiB per running computer at the default limits. Both RAM budgets cover service caps and host headroom.
+plus 3 GiB per running computer at the default limits. Tested installations used about 3 GiB with three
+computers running; the team budget also covers every service reaching its limit.
 Larger tasks or optional services need more RAM.
 
 Start with 20 GB free disk for either size. Released images use about 4.8 GB, and a small tested installation
