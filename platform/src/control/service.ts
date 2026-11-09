@@ -945,7 +945,7 @@ export class ControlService {
     const approved = path.endsWith("/approve");
     const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
     return new Response(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Baskule · Connect app</title></head><body style="font:16px system-ui;max-width:440px;margin:80px auto;padding:24px"><h1>${approved ? "App connected" : "Connect your app?"}</h1><p>${approved ? "Return to Baskule on your device. You can close this page." : `Connect the app that opened this page as ${esc(session.user.email)}. Continue only if you started this sign-in.`}</p>${approved ? "" : `<form method="POST" action="/api/baskule/native-login/approve"><input type="hidden" name="request" value="${id}"><button type="submit">Connect app</button></form>`}</body></html>`, {
-      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" },
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "same-origin", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" },
     });
   }
 
