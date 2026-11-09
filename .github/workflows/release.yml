@@ -566,6 +566,9 @@ jobs:
   native:
     needs: [version, translate]
     if: github.event_name == 'push' || inputs.verify_only == false || inputs.include_native == true
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/native.yml
     with:
       version: ${{ needs.version.outputs.version }}
