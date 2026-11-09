@@ -2544,7 +2544,27 @@ describe("plugins from the plugins folder", () => {
       .not.toBeInTheDocument();
   });
 
-  it("lists what the folder couldn't use above the plugins", async () => {
+  it("keeps skipped package contents in the plugin details, without a page alert", async () => {
+    const omitted = [{ code: "other_files", subject: "assets" }] as const;
+    const control = fakeControl({
+      "GET /api/baskule/admin/plugins": () => ({
+        plugins: [{ ...acme, omitted }],
+        folder: {
+          syncedAt: 0,
+          problems: [{ path: "plugins/acme-sales", message: "other_files: assets" }],
+        },
+      }),
+      "GET /api/baskule/admin/groups": () => ({ groups }),
+    });
+    using _fetch = control.stub;
+    await using screen = await render(<InstalledPage />);
+    await expect.element(screen.getByRole("link", { name: "Acme Sales" })).toBeVisible();
+    expect(screen.getByRole("alert").query()).toBeNull();
+    await using detail = await render(<PluginDetailPage id="p1" />);
+    await expect.element(detail.getByText("Not used, and why")).toBeVisible();
+  });
+
+  it("keeps actual folder import failures visible", async () => {
     const control = fakeControl({
       "GET /api/baskule/admin/plugins": () => ({
         plugins: [acme],
