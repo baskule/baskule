@@ -20,6 +20,10 @@ on:
         description: Sign and notarize macOS only (protected native-release environment)
         type: boolean
         default: false
+      sign_windows:
+        description: Sign Windows only using Azure OIDC (main branch and protected native-release environment)
+        type: boolean
+        default: false
       windows_test_package:
         description: Optional Windows diagnostic workspace; empty runs all non-server only when platform=windows-tests
         type: string
@@ -43,6 +47,9 @@ on:
         type: boolean
         default: false
       sign_macos:
+        type: boolean
+        default: false
+      sign_windows:
         type: boolean
         default: false
       windows_test_package:
@@ -74,14 +81,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        if: inputs.sign || inputs.sign_macos
+        if: inputs.sign || inputs.sign_macos || inputs.sign_windows
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: Validate source before entering the signing environment
-        if: inputs.sign || inputs.sign_macos
+        if: inputs.sign || inputs.sign_macos || inputs.sign_windows
         env:
-          SIGN_ALL: ${{ inputs.sign }}
+          SIGN_ALL: ${{ inputs.sign || inputs.sign_windows }}
         run: bash scripts/ci/native-signing-source.sh
 
   android:
@@ -195,6 +202,9 @@ jobs:
   desktop:
     needs: signing-source
     if: inputs.platform == 'all' || inputs.platform == 'desktop'
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -213,9 +223,9 @@ jobs:
             rust_target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
-    environment: ${{ (inputs.sign || (matrix.platform == 'mac' && inputs.sign_macos)) && 'native-release' || 'native-ci' }}
+    environment: ${{ (inputs.sign || (matrix.platform == 'mac' && inputs.sign_macos) || (matrix.platform == 'win' && inputs.sign_windows)) && 'native-release' || 'native-ci' }}
     env:
-      NATIVE_SIGN: ${{ inputs.sign || (matrix.platform == 'mac' && inputs.sign_macos) }}
+      NATIVE_SIGN: ${{ inputs.sign || (matrix.platform == 'mac' && inputs.sign_macos) || (matrix.platform == 'win' && inputs.sign_windows) }}
     defaults:
       run:
         shell: bash
@@ -253,7 +263,7 @@ jobs:
           $proc = Start-Process -FilePath $setupExe -ArgumentList 'modify', '--installPath', "`"$installPath`"", '--add', 'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre', '--quiet', '--norestart' -Wait -PassThru -NoNewWindow
           if ($null -eq $proc -or $proc.ExitCode -ne 0) { throw 'Visual Studio Spectre library installation failed' }
       - name: Prepare Windows signing provider
-        if: runner.os == 'Windows' && inputs.sign
+        if: runner.os == 'Windows' && env.NATIVE_SIGN == 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -272,6 +282,13 @@ jobs:
       - name: Ensure Electron runtime
         working-directory: app
         run: pnpm exec vp run --filter @t3tools/desktop ensure:electron
+      - name: Authenticate Windows signing with Azure OIDC
+        if: runner.os == 'Windows' && env.NATIVE_SIGN == 'true'
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Package native Electron client and run T3 payload probes
         env:
           CSC_LINK: ${{ matrix.platform == 'mac' && env.NATIVE_SIGN == 'true' && secrets.CSC_LINK || '' }}
@@ -284,13 +301,12 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'mac' && env.NATIVE_SIGN == 'true' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           MACOS_PROVISIONING_PROFILE: ${{ matrix.platform == 'mac' && env.NATIVE_SIGN == 'true' && secrets.MACOS_PROVISIONING_PROFILE || '' }}
           T3CODE_CLERK_PASSKEY_RP_DOMAINS: ${{ matrix.platform == 'mac' && env.NATIVE_SIGN == 'true' && vars.MACOS_PASSKEY_RP_DOMAINS || '' }}
-          AZURE_TENANT_ID: ${{ inputs.sign && secrets.AZURE_TENANT_ID || '' }}
-          AZURE_CLIENT_ID: ${{ inputs.sign && secrets.AZURE_CLIENT_ID || '' }}
-          AZURE_CLIENT_SECRET: ${{ inputs.sign && secrets.AZURE_CLIENT_SECRET || '' }}
-          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ inputs.sign && secrets.AZURE_TRUSTED_SIGNING_ENDPOINT || '' }}
-          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ inputs.sign && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME || '' }}
-          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ inputs.sign && secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME || '' }}
-          AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ inputs.sign && secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME || '' }}
+          AZURE_TENANT_ID: ${{ matrix.platform == 'win' && env.NATIVE_SIGN == 'true' && vars.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ matrix.platform == 'win' && env.NATIVE_SIGN == 'true' && vars.AZURE_CLIENT_ID || '' }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ matrix.platform == 'win' && env.NATIVE_SIGN == 'true' && vars.AZURE_TRUSTED_SIGNING_ENDPOINT || '' }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ matrix.platform == 'win' && env.NATIVE_SIGN == 'true' && vars.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME || '' }}
+          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ matrix.platform == 'win' && env.NATIVE_SIGN == 'true' && vars.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME || '' }}
+          AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ matrix.platform == 'win' && env.NATIVE_SIGN == 'true' && vars.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME || '' }}
         run: scripts/ci/native-desktop.sh '${{ matrix.platform }}' '${{ matrix.arch }}'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

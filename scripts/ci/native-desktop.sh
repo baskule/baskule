@@ -51,9 +51,10 @@ if [[ "${NATIVE_SIGN:-false}" == true ]]; then
     fi
     export T3CODE_APPLE_TEAM_ID="$APPLE_TEAM_ID"
   else
-    for key in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TRUSTED_SIGNING_ENDPOINT AZURE_TRUSTED_SIGNING_ACCOUNT_NAME AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME AZURE_TRUSTED_SIGNING_PUBLISHER_NAME; do
+    for key in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_TRUSTED_SIGNING_ENDPOINT AZURE_TRUSTED_SIGNING_ACCOUNT_NAME AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME AZURE_TRUSTED_SIGNING_PUBLISHER_NAME; do
       [[ -n "${!key:-}" ]] || { echo "Missing signing configuration: $key" >&2; exit 1; }
     done
+    az account get-access-token --resource https://codesigning.azure.net --tenant "$AZURE_TENANT_ID" --output none
   fi
   args+=(--signed)
   status=signed

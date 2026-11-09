@@ -89,7 +89,25 @@ Baskule's hosted renderer disables Clerk. Ordinary Developer ID signing needs no
 
 Before upload, each macOS lane copies the app from its final DMG and extracts its final updater ZIP. Both must pass deep/strict signature verification, Developer ID authority and Team ID checks, notarization-ticket validation, and Gatekeeper assessment. Missing credentials or failed checks block publication; these checks do not replace a launch test on a Mac.
 
-Android needs a publisher-controlled keystore, its passwords, and its alias. Windows uses the inherited Azure Trusted Signing provider. Their signing remains an explicit `sign=true` dispatch from `main`.
+Android needs a publisher-controlled keystore, its passwords, and its alias. Its signing remains an explicit `sign=true` dispatch from `main`.
+
+Windows uses Azure Artifact Signing (formerly Trusted Signing). Dispatch Native clients from `main` with `platform=desktop` and `sign_windows=true` to sign Windows independently; `sign=true` still signs every selected platform. Windows signing remains opt-in while company identity validation is being completed.
+
+Configure a Microsoft Entra application with a federated credential whose issuer is `https://token.actions.githubusercontent.com`, audience is `api://AzureADTokenExchange`, and subject is `repo:baskule/baskule:environment:native-release`. Grant its service principal **Artifact Signing Certificate Profile Signer** on the intended certificate profile. GitHub's protected environment controls which runs can authenticate. The desktop job and its reusable-workflow caller grant `id-token: write`; `azure/login` exchanges that token for an Azure CLI session that the existing TrustedSigning PowerShell provider uses. No `AZURE_CLIENT_SECRET` is needed.
+
+Set these **environment variables** in `native-release`:
+
+| Variable | Value |
+| --- | --- |
+| `AZURE_TENANT_ID` | Directory containing the signing application |
+| `AZURE_CLIENT_ID` | Application/client ID of the CI identity |
+| `AZURE_SUBSCRIPTION_ID` | Subscription containing the signing account |
+| `AZURE_TRUSTED_SIGNING_ENDPOINT` | Regional signing endpoint from the account |
+| `AZURE_TRUSTED_SIGNING_ACCOUNT_NAME` | Signing account name |
+| `AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME` | Completed Public Trust certificate profile |
+| `AZURE_TRUSTED_SIGNING_PUBLISHER_NAME` | Exact publisher name from the verified certificate profile |
+
+Create the account and complete organization identity validation in the [Azure portal](https://portal.azure.com/) before creating its Public Trust profile. Identity validation requires the explicit **Artifact Signing Identity Verifier** role, even for an Owner. Copy the verified publisher name rather than inventing one. The build requires all signing configuration and a working Azure CLI token before packaging. See Microsoft's [setup guide](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart) and [OIDC integration](https://github.com/Azure/artifact-signing-action/blob/main/docs/OIDC.md).
 
 iOS device archives, TestFlight and App Store submission need the publisher's Apple provisioning profiles and credentials. The current iOS lane verifies the simulator build only.
 

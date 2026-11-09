@@ -17,7 +17,7 @@ function fixture(t) {
   writeFileSync(resolve(root, "VERSION"), "1.2.3\n");
   const env = { ...process.env, PATH: `${root}/bin:${process.env.PATH}`, TMPDIR: root };
   for (const key of Object.keys(env)) {
-    if (/^(APPLE_|CSC_|MACOS_|T3CODE_CLERK_|T3CODE_MACOS_|NATIVE_|GITHUB_|SIGN_ALL)/.test(key)) delete env[key];
+    if (/^(APPLE_|AZURE_|CSC_|MACOS_|T3CODE_CLERK_|T3CODE_MACOS_|NATIVE_|GITHUB_|SIGN_ALL)/.test(key)) delete env[key];
   }
   const run = (command, args, extra = {}) => spawnSync(command, args, { cwd: root, env: { ...env, ...extra }, encoding: "utf8" });
   const stub = (name, content) => writeFileSync(resolve(root, "bin", name), `#!/usr/bin/env bash\nset -euo pipefail\n${content}\n`, { mode: 0o755 });
@@ -82,6 +82,36 @@ exit 42`);
     assert.equal(build(extra).status, 1);
     assert.equal(existsSync(resolve(root, "build-inputs")), false, "invalid signing input must never reach packaging");
   }
+});
+
+test("Windows signing uses Azure CLI authentication without a client secret and fails before packaging on missing access", t => {
+  const { root, run, stub } = fixture(t);
+  stub("az", '[[ $* == "account get-access-token --resource https://codesigning.azure.net --tenant test-tenant --output none" ]]; exit "${AZURE_TEST_EXIT:-0}"');
+  stub("pnpm", 'printf "%s\\n" "$*" > "$TMPDIR/build-inputs"; exit 42');
+  const base = {
+    NATIVE_SIGN: "true",
+    AZURE_TENANT_ID: "test-tenant",
+    AZURE_CLIENT_ID: "test-client",
+    AZURE_TRUSTED_SIGNING_ENDPOINT: "https://neu.codesigning.azure.net",
+    AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: "test-account",
+    AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: "test-profile",
+    AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: "Test Publisher",
+  };
+  const build = extra => run("bash", ["scripts/ci/native-desktop.sh", "win", "x64"], { ...base, ...extra });
+  const signed = build({});
+  assert.equal(signed.status, 42, signed.stderr);
+  assert.match(readFileSync(resolve(root, "build-inputs"), "utf8"), /--signed/);
+  for (const extra of [
+    ...Object.keys(base).filter(key => key.startsWith("AZURE_")).map(key => ({ [key]: "" })),
+    { AZURE_TEST_EXIT: "1" },
+  ]) {
+    rmSync(resolve(root, "build-inputs"), { force: true });
+    assert.equal(build(extra).status, 1);
+    assert.equal(existsSync(resolve(root, "build-inputs")), false, "incomplete configuration or failed authentication must never reach packaging");
+  }
+  const unsigned = run("bash", ["scripts/ci/native-desktop.sh", "win", "x64"], { AZURE_TEST_EXIT: "1" });
+  assert.equal(unsigned.status, 42, unsigned.stderr);
+  assert.doesNotMatch(readFileSync(resolve(root, "build-inputs"), "utf8"), /--signed/);
 });
 
 test("verification checks both containers and rejects bad signatures, teams, tickets and Gatekeeper failures", t => {
