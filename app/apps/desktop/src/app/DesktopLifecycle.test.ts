@@ -15,6 +15,13 @@ import * as DesktopLifecycle from "./DesktopLifecycle.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+import { makeHarness } from "../updates/updatesTestHarness.ts";
+import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+
+const layerDesktopUpdates = Layer.effect(
+  DesktopUpdates.DesktopUpdates,
+  DesktopUpdates.DesktopUpdates,
+).pipe(Layer.provide(makeHarness().layer));
 
 function layerElectronApp(
   appListeners: Map<string, (...args: readonly unknown[]) => void>,
@@ -116,6 +123,7 @@ describe("DesktopLifecycle", () => {
       } as DesktopEnvironment.DesktopEnvironment["Service"]);
 
       const layer = DesktopLifecycle.layer.pipe(
+        Layer.provideMerge(layerDesktopUpdates),
         Layer.provideMerge(layerElectronApp(appListeners)),
         Layer.provideMerge(layerElectronTheme),
         Layer.provideMerge(
@@ -194,6 +202,19 @@ describe("DesktopLifecycle", () => {
       } as DesktopEnvironment.DesktopEnvironment["Service"]);
 
       const layer = DesktopLifecycle.layer.pipe(
+        Layer.provideMerge(
+          Layer.effect(
+            DesktopUpdates.DesktopUpdates,
+            DesktopUpdates.DesktopUpdates.pipe(
+              Effect.map((updates) => ({
+                ...updates,
+                prepareForQuit: Effect.sync(() => {
+                  events.push("prepare-update");
+                }),
+              })),
+            ),
+          ).pipe(Layer.provide(layerDesktopUpdates)),
+        ),
         Layer.provideMerge(layerElectronApp(appListeners, quit)),
         Layer.provideMerge(layerElectronTheme),
         Layer.provideMerge(layerElectronWindow(destroyAll)),
@@ -216,8 +237,8 @@ describe("DesktopLifecycle", () => {
           yield* Deferred.succeed(allowShutdown, undefined);
           yield* Deferred.await(quitRequested);
 
-          assert.deepEqual(eventsBeforeCleanup, ["flush", "destroy", "request"]);
-          assert.deepEqual(events, ["flush", "destroy", "request", "quit"]);
+          assert.deepEqual(eventsBeforeCleanup, ["prepare-update", "flush", "destroy", "request"]);
+          assert.deepEqual(events, ["prepare-update", "flush", "destroy", "request", "quit"]);
         }),
       ).pipe(Effect.provide(layer));
     }),
@@ -236,6 +257,7 @@ describe("DesktopLifecycle", () => {
         isDevelopment: false,
       } as DesktopEnvironment.DesktopEnvironment["Service"]);
       const layer = DesktopLifecycle.layer.pipe(
+        Layer.provideMerge(layerDesktopUpdates),
         Layer.provideMerge(layerElectronApp(appListeners, Effect.void, exit)),
         Layer.provideMerge(layerElectronTheme),
         Layer.provideMerge(layerElectronWindow()),
@@ -289,6 +311,7 @@ describe("DesktopLifecycle", () => {
         isDevelopment: false,
       } as DesktopEnvironment.DesktopEnvironment["Service"]);
       const layer = DesktopLifecycle.layer.pipe(
+        Layer.provideMerge(layerDesktopUpdates),
         Layer.provideMerge(layerElectronApp(appListeners)),
         Layer.provideMerge(layerElectronTheme),
         Layer.provideMerge(layerElectronWindow()),

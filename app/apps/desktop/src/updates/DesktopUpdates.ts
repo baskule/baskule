@@ -196,6 +196,7 @@ export class DesktopUpdates extends Context.Service<
     readonly check: (reason: string) => Effect.Effect<DesktopUpdateCheckResult>;
     readonly download: Effect.Effect<DesktopUpdateActionResult>;
     readonly install: Effect.Effect<DesktopUpdateActionResult>;
+    readonly prepareForQuit: Effect.Effect<void>;
     readonly installPrepared: (
       expectedVersion: string,
     ) => Effect.Effect<DesktopPreparedUpdateInstallResult>;
@@ -598,6 +599,7 @@ export const make = Effect.gen(function* () {
       yield* electronUpdater.setAllowDowngrade(false);
       yield* logUpdaterInfo("selected compatible release", { version: target.version });
       yield* Ref.set(checkRevision, revision);
+      yield* Ref.set(downloadRevision, revision);
       return yield* electronUpdater.checkForUpdates.pipe(
         Effect.as(true),
         Effect.catchTags({
@@ -964,7 +966,10 @@ export const make = Effect.gen(function* () {
     raw: unknown,
   ) {
     const revision = yield* Ref.get(checkRevision);
-    if (revision !== null && revision !== (yield* Ref.get(installationRevision))) return;
+    if (revision !== null && revision !== (yield* Ref.get(installationRevision))) {
+      yield* updateState((state) => ({ ...state, status: "downloading" }));
+      return;
+    }
     yield* decodeUpdateInfo(raw).pipe(
       Effect.flatMap(
         Effect.fn("desktop.updates.applyUpdateAvailable")(function* (info) {
@@ -995,6 +1000,9 @@ export const make = Effect.gen(function* () {
               omittedReleaseCount,
             ),
           );
+          if ((yield* Ref.get(updateStateRef)).status === "available") {
+            yield* updateState(reduceDesktopUpdateStateOnDownloadStart);
+          }
           const server = yield* Ref.get(installation);
           if (server && compareReleaseVersions(environment.appVersion, server.minClient) < 0) {
             yield* updateState((current) => ({
@@ -1055,17 +1063,23 @@ export const make = Effect.gen(function* () {
       return;
     }
 
-    if (Option.isNone(activeAction)) {
+    if (Option.isNone(activeAction) || activeAction.value === "check") {
       const checkedAt = yield* currentIsoTimestamp;
-      yield* updateState((current) => ({
-        ...current,
-        status: "error",
-        message: error.message,
-        checkedAt,
-        downloadPercent: null,
-        errorContext: current.errorContext,
-        canRetry: getCanRetryFromState(current),
-      }));
+      yield* updateState((current) =>
+        current.status === "downloading"
+          ? reduceDesktopUpdateStateOnDownloadFailure(current, error.message)
+          : Option.isSome(activeAction)
+            ? current
+            : {
+                ...current,
+                status: "error",
+                message: error.message,
+                checkedAt,
+                downloadPercent: null,
+                errorContext: current.errorContext,
+                canRetry: getCanRetryFromState(current),
+              },
+      );
     }
 
     yield* logUpdaterError(error.message, {
@@ -1114,7 +1128,10 @@ export const make = Effect.gen(function* () {
     raw: unknown,
   ) {
     const revision = yield* Ref.get(downloadRevision);
-    if (revision !== null && revision !== (yield* Ref.get(installationRevision))) return;
+    if (revision !== null && revision !== (yield* Ref.get(installationRevision))) {
+      yield* updateState((state) => ({ ...state, status: "idle" }));
+      return;
+    }
     yield* decodeUpdateInfo(raw).pipe(
       Effect.flatMap(
         Effect.fn("desktop.updates.applyUpdateDownloaded")(function* (info) {
@@ -1156,7 +1173,8 @@ export const make = Effect.gen(function* () {
         omittedReleaseCount: 0,
         errorContext: null,
         canRetry: false,
-        status: state.enabled ? "idle" : "disabled",
+        status:
+          state.status === "downloading" ? "downloading" : state.enabled ? "idle" : "disabled",
         message: !state.enabled
           ? state.message
           : descriptor === null
@@ -1167,7 +1185,12 @@ export const make = Effect.gen(function* () {
         yield* checkForUpdates("installation-change").pipe(Effect.forkIn(scope));
     }),
     getState: Ref.get(updateStateRef),
-    isActionActive: activeUpdateAction.pipe(Effect.map(Option.isSome)),
+    isActionActive: Effect.gen(function* () {
+      return (
+        Option.isSome(yield* activeUpdateAction) ||
+        (yield* Ref.get(updateStateRef)).status === "downloading"
+      );
+    }),
     isInstallActive: activeUpdateAction.pipe(
       Effect.map((action) => Option.isSome(action) && action.value === "install"),
     ),
@@ -1213,7 +1236,8 @@ export const make = Effect.gen(function* () {
       }
       yield* Ref.set(updaterConfiguredRef, true);
 
-      yield* electronUpdater.setAutoDownload(false);
+      yield* electronUpdater.setAutoDownload(true);
+      // Stage native installation only at quit; an installation switch can invalidate this download.
       yield* electronUpdater.setAutoInstallOnAppQuit(false);
       yield* applyAutoUpdaterChannel(settings.updateChannel);
       yield* electronUpdater.setDisableDifferentialDownload(
@@ -1255,6 +1279,12 @@ export const make = Effect.gen(function* () {
       nextChannel: DesktopUpdateChannel,
     ) {
       yield* Effect.annotateCurrentSpan({ channel: nextChannel });
+      if ((yield* Ref.get(updateStateRef)).status === "downloading") {
+        return yield* new DesktopUpdateActionInProgressError({
+          action: "download",
+          requestedChannel: nextChannel,
+        });
+      }
       const activeAction = yield* tryStartChannelChange;
       if (Option.isSome(activeAction)) {
         return yield* new DesktopUpdateActionInProgressError({
@@ -1314,6 +1344,24 @@ export const make = Effect.gen(function* () {
     install: installWithExpectedVersion().pipe(
       Effect.map(({ accepted, completed, state }) => ({ accepted, completed, state })),
     ),
+    prepareForQuit: Effect.gen(function* () {
+      const state = yield* Ref.get(updateStateRef);
+      if (
+        !(yield* Ref.get(updaterConfiguredRef)) ||
+        !state.downloadedVersion ||
+        Option.isSome(yield* activeUpdateAction) ||
+        !(yield* isCompatibleTarget(state.downloadedVersion))
+      )
+        return;
+      yield* writeInstallRecord(state.downloadedVersion);
+      yield* electronUpdater.prepareInstallOnQuit.pipe(
+        Effect.catch((error) =>
+          logUpdaterWarning("Could not prepare the update on quit.", {
+            cause: describeUpdateErrorCause(error.cause),
+          }),
+        ),
+      );
+    }).pipe(Effect.withSpan("desktop.updates.prepareForQuit")),
     installPrepared: Effect.fn("DesktopUpdates.installPrepared")(function (expectedVersion) {
       return installWithExpectedVersion(expectedVersion);
     }),

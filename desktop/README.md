@@ -75,6 +75,13 @@ meets the installation's `minClient`. It never downgrades. A client below `minCl
 requires an update; a client ahead of the supported window reports that the installation
 needs an update. Desktop does not change the server.
 
+Compatible updates download in the background. A completed download installs when the
+user quits the app; the update control can still restart and install immediately. Closing
+the last window on macOS leaves the app running, so use Quit to apply the update.
+Before quitting, desktop rechecks compatibility and prepares the cached installer. This
+keeps a download from an earlier installation from being applied after switching servers.
+Native preparation has a 30-second timeout; a failed preparation allows normal quit.
+
 Linux AppImage updates use the release's generic feed, YAML, and embedded blockmap.
 macOS also needs the ZIP and merged arm64/x64 YAML; updates require Developer ID signing
 and notarization. Windows updates depend on signing, with the publisher supplied through

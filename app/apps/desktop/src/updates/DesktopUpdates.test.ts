@@ -21,6 +21,97 @@ import * as DesktopUpdates from "./DesktopUpdates.ts";
 import { flushCallbacks, makeHarness } from "./updatesTestHarness.ts";
 
 describe("DesktopUpdates", () => {
+  it.effect("downloads in the background and prepares a compatible update only on quit", () => {
+    const harness = makeHarness();
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        assert.isTrue(harness.autoDownload());
+        const { changes } = yield* updates.subscribe;
+        yield* updates.check("startup");
+        harness.emit("update-available", { version: "1.2.5" });
+        yield* changes.pipe(
+          Stream.filter((state) => state.status === "downloading"),
+          Stream.runHead,
+        );
+        assert.isFalse((yield* updates.check("poll")).checked);
+        yield* updates.prepareForQuit;
+        assert.equal(harness.preparedForQuit(), 0);
+
+        harness.emit("update-downloaded", { version: "1.2.5" });
+        yield* changes.pipe(
+          Stream.filter((state) => state.status === "downloaded"),
+          Stream.runHead,
+        );
+        assert.equal(harness.quitAndInstalls(), 0);
+        assert.equal(harness.preparedForQuit(), 0);
+        const desktopState = yield* DesktopState.DesktopState;
+        yield* Ref.set(desktopState.quitting, true);
+        yield* updates.prepareForQuit;
+        assert.equal(harness.preparedForQuit(), 1);
+        assert.equal(harness.quitAndInstalls(), 0);
+      }),
+    ).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect.each([false, true])(
+    "discards a background download after switching installations (before availability: %s)",
+    (switchBeforeAvailable) => {
+      const harness = makeHarness();
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const updates = yield* DesktopUpdates.DesktopUpdates;
+          yield* updates.configure;
+          const { changes } = yield* updates.subscribe;
+          yield* updates.check("startup");
+          if (switchBeforeAvailable) yield* updates.setInstallation(null);
+          harness.emit("update-available", { version: "1.2.5" });
+          yield* changes.pipe(
+            Stream.filter((state) => state.status === "downloading"),
+            Stream.runHead,
+          );
+          if (!switchBeforeAvailable) yield* updates.setInstallation(null);
+          assert.isFalse((yield* updates.check("poll")).checked);
+          harness.emit("update-downloaded", { version: "1.2.5" });
+          yield* changes.pipe(
+            Stream.filter((state) => state.status === "idle"),
+            Stream.runHead,
+          );
+          assert.isNull((yield* updates.getState).downloadedVersion);
+          yield* updates.prepareForQuit;
+          assert.equal(harness.preparedForQuit(), 0);
+        }),
+      ).pipe(Effect.provide(harness.layer));
+    },
+  );
+
+  it.effect("lets quit continue when native update preparation fails", () => {
+    const harness = makeHarness({
+      prepareInstallOnQuit: Effect.fail(
+        new ElectronUpdater.ElectronUpdaterDownloadUpdateError({
+          channel: "latest",
+          cause: new Error("native staging failed"),
+        }),
+      ),
+    });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        const { changes } = yield* updates.subscribe;
+        harness.emit("update-downloaded", { version: "1.2.5" });
+        yield* changes.pipe(
+          Stream.filter((state) => state.status === "downloaded"),
+          Stream.runHead,
+        );
+        yield* updates.prepareForQuit;
+        assert.equal(harness.preparedForQuit(), 1);
+        assert.equal(harness.quitAndInstalls(), 0);
+      }),
+    ).pipe(Effect.provide(harness.layer));
+  });
+
   it.effect(
     "follows index redirects, uses the compatible feed and discards an installer on installation changes",
     () => {
@@ -40,6 +131,8 @@ describe("DesktopUpdates", () => {
           assert.isNull((yield* updates.getState).downloadedVersion);
           assert.isFalse((yield* updates.install).accepted);
           assert.equal(harness.quitAndInstalls(), 0);
+          yield* updates.prepareForQuit;
+          assert.equal(harness.preparedForQuit(), 0);
         }),
       ).pipe(Effect.provide(harness.layer));
     },
@@ -155,7 +248,7 @@ describe("DesktopUpdates", () => {
         yield* flushCallbacks;
 
         const state = yield* updates.getState;
-        assert.equal(state.status, "available");
+        assert.equal(state.status, "downloading");
         assert.equal(state.availableVersion, "1.2.5");
         assert.isNull(state.downloadedVersion);
       }),
@@ -358,6 +451,8 @@ describe("DesktopUpdates", () => {
         yield* updates.configure;
         harness.emit("update-available", { version: "1.2.4" });
         yield* flushCallbacks;
+        harness.emit("error", new Error("background download failed"));
+        yield* flushCallbacks;
 
         const result = yield* updates.download;
         assert.isTrue(result.accepted);
@@ -397,6 +492,8 @@ describe("DesktopUpdates", () => {
           yield* updates.configure;
           harness.emit("update-available", { version: "1.2.4" });
           yield* flushCallbacks;
+          harness.emit("error", new Error("background download failed"));
+          yield* flushCallbacks;
 
           const downloadFiber = yield* updates.download.pipe(Effect.forkScoped);
           yield* Deferred.await(actionStarted);
@@ -404,7 +501,7 @@ describe("DesktopUpdates", () => {
 
           const interruptedState = yield* updates.getState;
           assert.equal(interruptedState.status, "available");
-          assert.isNull(interruptedState.message);
+          assert.equal(interruptedState.errorContext, "download");
 
           const retry = yield* updates.download;
           assert.isTrue(retry.accepted);
@@ -506,7 +603,7 @@ describe("DesktopUpdates", () => {
         harness.emit("update-available", { version: "1.2.4" });
         yield* flushCallbacks;
         const state = yield* updates.getState;
-        assert.equal(state.status, "available");
+        assert.equal(state.status, "downloading");
         assert.equal(state.notAppliedVersion, "1.2.4");
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
