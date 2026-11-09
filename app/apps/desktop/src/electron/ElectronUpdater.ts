@@ -1,13 +1,10 @@
 import * as Context from "effect/Context";
-import * as HostProcess from "@t3tools/shared/HostProcess";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import { autoUpdater } from "electron-updater";
-import { autoUpdater as nativeUpdater } from "electron";
 
 type AutoUpdater = typeof autoUpdater;
 
@@ -72,7 +69,6 @@ export class ElectronUpdater extends Context.Service<
     readonly setDisableDifferentialDownload: (value: boolean) => Effect.Effect<void>;
     readonly checkForUpdates: Effect.Effect<void, ElectronUpdaterCheckForUpdatesError>;
     readonly downloadUpdate: Effect.Effect<void, ElectronUpdaterDownloadUpdateError>;
-    readonly prepareInstallOnQuit: Effect.Effect<void, ElectronUpdaterDownloadUpdateError>;
     readonly quitAndInstall: (options: {
       readonly isSilent: boolean;
       readonly isForceRunAfter: boolean;
@@ -140,11 +136,7 @@ export const make = ElectronUpdater.of({
   checkForUpdates: Effect.suspend(() => {
     const channel = autoUpdater.channel;
     return Effect.tryPromise({
-      try: async () => {
-        const result = await autoUpdater.checkForUpdates();
-        // Download errors are reported through the updater's error event.
-        void result?.downloadPromise?.catch(() => {});
-      },
+      try: () => autoUpdater.checkForUpdates(),
       catch: (cause) => new ElectronUpdaterCheckForUpdatesError({ channel, cause }),
     }).pipe(Effect.asVoid);
   }),
@@ -155,44 +147,6 @@ export const make = ElectronUpdater.of({
       catch: (cause) => new ElectronUpdaterDownloadUpdateError({ channel, cause }),
     }).pipe(Effect.asVoid);
   }),
-  prepareInstallOnQuit: Effect.scoped(
-    Effect.gen(function* () {
-      const platform = yield* HostProcess.Platform;
-      // Finish any background download before reusing its cache with installation enabled.
-      yield* Effect.tryPromise(() => autoUpdater.downloadUpdate());
-      // Squirrel must finish staging the cached ZIP before macOS can quit.
-      const staged = yield* Deferred.make<void, Error>();
-      if (platform === "darwin") {
-        const context = yield* Effect.context<never>();
-        const downloaded = () => Effect.runSyncWith(context)(Deferred.succeed(staged, undefined));
-        const failed = (error: Error) => Effect.runSyncWith(context)(Deferred.fail(staged, error));
-        yield* Effect.acquireRelease(
-          Effect.sync(() => {
-            nativeUpdater.once("update-downloaded", downloaded);
-            nativeUpdater.once("error", failed);
-          }),
-          () =>
-            Effect.sync(() => {
-              nativeUpdater.removeListener("update-downloaded", downloaded);
-              nativeUpdater.removeListener("error", failed);
-            }),
-        );
-      }
-      autoUpdater.autoInstallOnAppQuit = true;
-      yield* Effect.tryPromise(() => autoUpdater.downloadUpdate());
-      if (platform === "darwin") yield* Deferred.await(staged);
-    }),
-  ).pipe(
-    Effect.timeout("30 seconds"),
-    Effect.tapError(() =>
-      Effect.sync(() => {
-        autoUpdater.autoInstallOnAppQuit = false;
-      }),
-    ),
-    Effect.mapError(
-      (cause) => new ElectronUpdaterDownloadUpdateError({ channel: autoUpdater.channel, cause }),
-    ),
-  ),
   quitAndInstall: Effect.fn("ElectronUpdater.quitAndInstall")(function ({
     isSilent,
     isForceRunAfter,

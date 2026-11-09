@@ -33,10 +33,6 @@ export interface UpdatesHarnessOptions {
   readonly setUpdateChannelError?: DesktopAppSettings.DesktopSettingsWriteError;
   readonly setDisableDifferentialDownload?: Effect.Effect<void>;
   readonly downloadUpdate?: Effect.Effect<void>;
-  readonly prepareInstallOnQuit?: Effect.Effect<
-    void,
-    ElectronUpdater.ElectronUpdaterDownloadUpdateError
-  >;
   readonly quitAndInstall?: Effect.Effect<void, ElectronUpdater.ElectronUpdaterQuitAndInstallError>;
   readonly stopBackend?: Effect.Effect<void>;
   readonly startBackend?: Effect.Effect<void>;
@@ -52,10 +48,10 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
   let checkCount = 0;
   let quitAndInstallCount = 0;
   let downloadCount = 0;
-  let autoDownload = false;
-  let preparedForQuit = 0;
   let allowDowngrade = false;
   let fullChangelog = false;
+  let autoDownload = true;
+  let autoInstallOnAppQuit = true;
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
   const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
   const sentStates: DesktopUpdateState[] = [];
@@ -87,7 +83,10 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
       Effect.sync(() => {
         autoDownload = value;
       }),
-    setAutoInstallOnAppQuit: () => Effect.void,
+    setAutoInstallOnAppQuit: (value) =>
+      Effect.sync(() => {
+        autoInstallOnAppQuit = value;
+      }),
     setChannel: () => Effect.void,
     setAllowPrerelease: () => Effect.void,
     allowDowngrade: Effect.sync(() => allowDowngrade),
@@ -106,9 +105,6 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     downloadUpdate: Effect.sync(() => {
       downloadCount += 1;
     }).pipe(Effect.andThen(options.downloadUpdate ?? Effect.void)),
-    prepareInstallOnQuit: Effect.sync(() => {
-      preparedForQuit += 1;
-    }).pipe(Effect.andThen(options.prepareInstallOnQuit ?? Effect.void)),
     quitAndInstall: () =>
       Effect.sync(() => {
         quitAndInstallCount += 1;
@@ -345,8 +341,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     installRecords,
     previousInstallRecord: () => previousInstallRecord,
     downloadCount: () => downloadCount,
-    autoDownload: () => autoDownload,
-    preparedForQuit: () => preparedForQuit,
+    automaticUpdates: () => ({ autoDownload, autoInstallOnAppQuit }),
     feedUrls: (): ElectronUpdater.ElectronUpdaterFeedUrl[] => feedUrls,
     fullChangelog: () => fullChangelog,
     listenerCount: () =>

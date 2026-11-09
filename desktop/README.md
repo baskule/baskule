@@ -2,8 +2,12 @@
 
 Baskule desktop uses the T3 Code Electron app in [`app/apps/desktop`](../app/apps/desktop),
 with a bundled renderer, preload, IPC, native menus, browser, and packaged backend.
-Local-server startup is disabled by default for hosted use. Automatic updates select
+Local-server startup is disabled by default for hosted use. The updater selects
 the latest compatible published Baskule release for the selected installation.
+
+Release checks run automatically. Use the update control to download an offered update,
+then confirm restart and installation. Downloading does not restart the app, and quitting
+does not install a downloaded update. This follows T3 Code's desktop update flow.
 
 On first launch, enter a server address or paste a connection link from
 **Settings → Desktop app → Connect a device**. `baskule://connect` links use the queued
@@ -74,13 +78,6 @@ Desktop selects a newer client only when its `minServer` is satisfied and its ve
 meets the installation's `minClient`. It never downgrades. A client below `minClient`
 requires an update; a client ahead of the supported window reports that the installation
 needs an update. Desktop does not change the server.
-
-Compatible updates download in the background. A completed download installs when the
-user quits the app; the update control can still restart and install immediately. Closing
-the last window on macOS leaves the app running, so use Quit to apply the update.
-Before quitting, desktop rechecks compatibility and prepares the cached installer. This
-keeps a download from an earlier installation from being applied after switching servers.
-Native preparation has a 30-second timeout; a failed preparation allows normal quit.
 
 Linux AppImage updates use the release's generic feed, YAML, and embedded blockmap.
 macOS also needs the ZIP and merged arm64/x64 YAML; updates require Developer ID signing
