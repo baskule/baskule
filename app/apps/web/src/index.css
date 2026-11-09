@@ -1111,7 +1111,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 :root {
-  --brand-accent: #b8902a;
+  --brand-muted: #c9c9c9;
+  --brand-accent: #c79a1e;
   --brand-accent-strong: #85671b;
   color-scheme: light;
   --radius: 0.5rem;

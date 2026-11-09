@@ -47,12 +47,12 @@ const DEVELOPMENT_ASSETS = {
   iosIcon: fromRepoRoot("assets/baskule/icon-square-1024.png"),
   splashIcon: fromRepoRoot("assets/baskule/splash.png"),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#111111",
+  androidAdaptiveBackgroundColor: "#FFFFFF",
   androidAdaptiveBackgroundImage: undefined,
   splashIconInverse: fromRepoRoot("assets/baskule/splash-inverse.png"),
   androidMonochromeIcon: fromRepoRoot("assets/baskule/android-monochrome.png"),
   androidNotificationIcon: fromRepoRoot("assets/baskule/android-notification.png"),
-  androidNotificationColor: "#B8902A",
+  androidNotificationColor: "#C79A1E",
 } as const;
 
 const PREVIEW_ASSETS = {
@@ -60,12 +60,12 @@ const PREVIEW_ASSETS = {
   iosIcon: fromRepoRoot("assets/baskule/icon-square-1024.png"),
   splashIcon: fromRepoRoot("assets/baskule/splash.png"),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#111111",
+  androidAdaptiveBackgroundColor: "#FFFFFF",
   androidAdaptiveBackgroundImage: undefined,
   splashIconInverse: fromRepoRoot("assets/baskule/splash-inverse.png"),
   androidMonochromeIcon: fromRepoRoot("assets/baskule/android-monochrome.png"),
   androidNotificationIcon: fromRepoRoot("assets/baskule/android-notification.png"),
-  androidNotificationColor: "#B8902A",
+  androidNotificationColor: "#C79A1E",
 } as const;
 
 const RELEASE_ASSETS = {
@@ -73,12 +73,12 @@ const RELEASE_ASSETS = {
   iosIcon: fromRepoRoot("assets/baskule/icon-square-1024.png"),
   splashIcon: fromRepoRoot("assets/baskule/splash.png"),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#111111",
+  androidAdaptiveBackgroundColor: "#FFFFFF",
   androidAdaptiveBackgroundImage: undefined,
   splashIconInverse: fromRepoRoot("assets/baskule/splash-inverse.png"),
   androidMonochromeIcon: fromRepoRoot("assets/baskule/android-monochrome.png"),
   androidNotificationIcon: fromRepoRoot("assets/baskule/android-notification.png"),
-  androidNotificationColor: "#B8902A",
+  androidNotificationColor: "#C79A1E",
 } as const;
 
 // baskule: app identifiers and schemes. iOS associated domains are empty because T3 cloud sign-in is disabled.
