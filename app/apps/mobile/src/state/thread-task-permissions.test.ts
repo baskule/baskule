@@ -20,7 +20,6 @@ import {
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import type { PendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
 import { sendApprovalFeedback } from "@t3tools/client-runtime/state/thread-requests";
-import { DateTime } from "effect";
 import { AsyncResult, type Atom } from "effect/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -38,7 +37,6 @@ const state = vi.hoisted(() => ({
   pendingRequests: { approvals: [], userInputs: [] } as PendingThreadRequests,
   enqueue: vi.fn(async () => undefined),
   freshPending: false,
-  compactDue: false,
   setFreshPending: vi.fn(),
   clearDraft: vi.fn(),
   approve: vi.fn(),
@@ -78,10 +76,6 @@ vi.mock("react", () => ({
   ],
 }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => "uuid" }));
-vi.mock("@t3tools/client-runtime/state/context-window", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@t3tools/client-runtime/state/context-window")>()),
-  shouldCompactBeforeSend: () => state.compactDue,
-}));
 vi.mock("../lib/attachmentUpload", () => ({ prepareTurnAttachments: vi.fn() }));
 vi.mock("../lib/uuid", () => ({ uuidv4: () => "uuid" }));
 vi.mock("./queued-run-edit", () => ({
@@ -204,7 +198,6 @@ beforeEach(() => {
     runtimeMode: undefined,
   };
   state.freshPending = false;
-  state.compactDue = false;
   state.thread.latestRun = null;
   state.projection = null;
   state.serverConfig = {
@@ -287,46 +280,6 @@ describe("mobile task permissions", () => {
     expect(await composer.onSendMessage()).toBe("message");
     expect(state.enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ freshContext: true }));
     expect(state.setFreshPending).toHaveBeenCalledWith("secondary:thread", false);
-  });
-
-  it("compacts a stale thread before sending unless a fresh session is armed", async () => {
-    state.grantedEnvironments.add("secondary");
-    state.projection = {
-      thread: {
-        ...state.thread,
-        activeProviderThreadId: null,
-        lineage: { rootThreadId: "thread", parentThreadId: null, relationshipToParent: null },
-      },
-      runs: [],
-      attempts: [],
-      nodes: [],
-      subagents: [],
-      providerSessions: [],
-      providerThreads: [],
-      providerTurns: [],
-      runtimeRequests: [],
-      messages: [],
-      plans: [],
-      turnItems: [],
-      checkpointScopes: [],
-      checkpoints: [],
-      contextHandoffs: [],
-      contextTransfers: [],
-      visibleTurnItems: [],
-      updatedAt: DateTime.makeUnsafe(0),
-    } as unknown as OrchestrationV2ThreadProjection;
-    state.compactDue = true;
-    const composer = useThreadComposerState(NO_SIDE_CHATS);
-    await composer.onSendMessage();
-    expect(state.enqueue).toHaveBeenLastCalledWith(
-      expect.objectContaining({ compactBeforeSend: true }),
-    );
-    state.freshPending = true;
-    await composer.onSendMessage();
-    expect(state.enqueue).toHaveBeenLastCalledWith(
-      expect.not.objectContaining({ compactBeforeSend: true }),
-    );
-    expect(state.enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ freshContext: true }));
   });
 
   it("sends a typed /clear with an approval redirect as that reply's text", async () => {

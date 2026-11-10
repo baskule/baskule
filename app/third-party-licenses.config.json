@@ -230,6 +230,13 @@
   ],
   "packageOverrides": [
     {
+      "name": "@react-native-async-storage/async-storage",
+      "version": "3.1.1",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/react-native-async-storage/async-storage/blob/4535ff0728207221a5831ed59dcebab1e4fba33e/LICENSE",
+      "noticeFile": "third-party-licenses/async-storage-3.1.1.LICENSE"
+    },
+    {
       "name": "entities",
       "version": "8.1.0",
       "license": "BSD-2-Clause",

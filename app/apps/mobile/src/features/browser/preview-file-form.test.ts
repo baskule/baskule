@@ -5,6 +5,10 @@ import { convertFormDataAsync } from "expo/src/winter/fetch/convertFormData";
 import { appendPreviewFile } from "./preview-file-form";
 import { PREVIEW_UPLOAD_FILENAME_ENCODING_FIELD, previewUploadFileName } from "@t3tools/contracts";
 
+// Load Node's lazy fetch constructors before the native Blob replacement test.
+const NodeRequest = Request;
+const NodeFormData = FormData;
+
 class NativeFormData {
   readonly _parts: Array<[string, string | Blob]> = [];
 }
@@ -42,7 +46,7 @@ it("encodes picker filenames, MIME metadata and original binary bytes without na
     expect(boundary).toBe("native-upload-boundary");
     expect(encoded).toContain('name="file"; filename="report%20one.csv"\r\ncontent-type: text/csv');
     const parsed = await parseMultipart(
-      new Request("https://front.test/upload", {
+      new NodeRequest("https://front.test/upload", {
         method: "POST",
         body: Uint8Array.from(body).buffer,
         headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
@@ -74,10 +78,10 @@ it("encodes picker filenames, MIME metadata and original binary bytes without na
 });
 
 it("preserves ordinary browser filenames and rejects malformed native metadata", async () => {
-  const form = new FormData();
+  const form = new NodeFormData();
   form.append("file", new Blob(["hello"], { type: "text/plain" }), "literal%20.txt");
   const parsed = await parseMultipart(
-    new Request("https://front.test/upload", {
+    new NodeRequest("https://front.test/upload", {
       method: "POST",
       body: form,
     }),

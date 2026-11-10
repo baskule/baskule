@@ -40,6 +40,9 @@ vi.mock("../../state/atom-registry", () => ({
       mocks.registry().set(atom, value),
   },
 }));
+vi.mock("../../baskule/spaces", () => ({
+  useSpaceEnvironments: () => [{ kind: "personal", environmentId: "one" }],
+}));
 vi.mock("../../state/entities", () => ({
   useProjects: mocks.projects,
   useThreadShells: () => [],

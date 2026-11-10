@@ -652,7 +652,8 @@ describe("synchronized mobile model visibility", () => {
       expect(isModelSelectionUnavailable(config, disallowed, null)).toBe(true);
       expect(describeUnavailableModelSelection(config, disallowed, null)).toEqual({
         title: "Provider not allowed",
-        detail: "Example Corp's policy does not allow the Claude provider. Choose another model.",
+        detail:
+          "Example Corp's policy does not allow the claudeAgent provider. Choose another model.",
       });
     });
   });
