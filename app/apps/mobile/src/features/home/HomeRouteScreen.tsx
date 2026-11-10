@@ -37,7 +37,7 @@ import { usePendingTaskListActions } from "./usePendingTaskListActions";
 import { useThreadListActions } from "./useThreadListActions";
 import { getConnectionAwareBrandHeaderOptions } from "./WorkspaceConnectionTitle";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
-import { openSettings } from "../settings/settings-navigation";
+import { openConnectionSettings } from "../settings/settings-navigation";
 import { useSelectWorkspaceTab } from "../workspace/useSelectWorkspaceTab";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 
@@ -182,7 +182,7 @@ export function HomeRouteScreen() {
         {Platform.OS === "ios" ? (
           <Toolbar placement="left">
             <Toolbar.Button
-              accessibilityLabel={t("New task")}
+              accessibilityLabel={t("New chat")}
               icon="square.and.pencil"
               onPress={startNewTask}
             />
@@ -192,7 +192,7 @@ export function HomeRouteScreen() {
         <WorkspaceEmptyDetail
           onAddConnection={
             Platform.OS === "android" && !catalogState.hasConnections
-              ? () => openSettings(navigation, "SettingsEnvironmentNew")
+              ? () => openConnectionSettings(navigation)
               : undefined
           }
           onStartNewTask={
@@ -217,7 +217,7 @@ export function HomeRouteScreen() {
               ...getConnectionAwareBrandHeaderOptions({
                 headerWidth,
                 trailingItemCount: nativePrimaryColumn && deviceType === "pad" ? 2 : 1,
-                onOpenEnvironments: () => openSettings(navigation, "SettingsEnvironments"),
+                onOpenEnvironments: () => openConnectionSettings(navigation),
               }),
               headerShown: Platform.OS !== "android",
             }}
@@ -231,7 +231,7 @@ export function HomeRouteScreen() {
           selectedProjectKey={selectedProjectKey}
           onEnvironmentChange={setSelectedEnvironmentId}
           onProjectChange={setSelectedProjectKey}
-          onOpenEnvironments={() => openSettings(navigation, "SettingsEnvironments")}
+          onOpenEnvironments={() => openConnectionSettings(navigation)}
           onOpenSettings={() => selectTab("settings")}
           onSearchQueryChange={setSearchQuery}
           onStartNewTask={startNewTask}
@@ -240,7 +240,7 @@ export function HomeRouteScreen() {
         <HomeScreen
           catalogState={catalogState}
           environments={environments}
-          onAddConnection={() => openSettings(navigation, "SettingsEnvironmentNew")}
+          onAddConnection={() => openConnectionSettings(navigation)}
           onArchiveThread={archiveThread}
           onDeleteThread={confirmDeleteThread}
           onSettleThread={settleThread}

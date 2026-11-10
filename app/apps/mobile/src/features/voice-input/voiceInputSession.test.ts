@@ -40,7 +40,7 @@ function createSession(
   overrides?: Partial<
     Pick<
       VoiceInputSessionDependencies,
-      "configureRecording" | "releaseRecording" | "sampleRecording"
+      "configureRecording" | "releaseRecording" | "sampleRecording" | "requestPermission"
     >
   >,
 ) {
@@ -58,6 +58,7 @@ function createSession(
     transcribe: async () => "spoken text",
   }));
   const session = new VoiceInputSession({
+    initiallyActive: true,
     recorder,
     getTranscriber: () => ({ prepare }),
     requestPermission: async () => ({ granted: true, canAskAgain: true }),
@@ -74,6 +75,152 @@ function createSession(
 
 describe("global voice input", () => {
   beforeEach(() => resetVoiceInputGlobalsForTests());
+
+  it.each([
+    { state: "background", resumeFirst: true },
+    { state: "background", resumeFirst: false },
+    { state: "inactive", resumeFirst: true },
+    { state: "inactive", resumeFirst: false },
+  ] as const)(
+    "starts after microphone permission and foreground return ($state, resume first: $resumeFirst)",
+    async ({ state, resumeFirst }) => {
+      const permission = Promise.withResolvers<{ granted: boolean; canAskAgain: boolean }>();
+      const { session, recorder, prepare } = createSession({
+        requestPermission: () => permission.promise,
+      });
+      const starting = session.start(
+        createTarget("first", () => "", vi.fn(), { start: 0, end: 0 }),
+      );
+      session.appStateChanged(state);
+      if (resumeFirst) session.appStateChanged("active");
+      permission.resolve({ granted: true, canAskAgain: true });
+      await permission.promise;
+      if (!resumeFirst) {
+        expect(session.controller.currentState.phase).toBe("preparing");
+        expect(prepare).not.toHaveBeenCalled();
+        expect(recorder.record).not.toHaveBeenCalled();
+        session.appStateChanged("active");
+      }
+      await starting;
+      expect(session.controller.currentState.phase).toBe("recording");
+      expect(recorder.record).toHaveBeenCalledOnce();
+      await session.controller.stop();
+    },
+  );
+
+  it.each([true, false])("reports denied permission with canAskAgain=%s", async (canAskAgain) => {
+    const permission = Promise.withResolvers<{ granted: boolean; canAskAgain: boolean }>();
+    const { session, recorder } = createSession({ requestPermission: () => permission.promise });
+    const starting = session.start(createTarget("first", () => "", vi.fn(), { start: 0, end: 0 }));
+    session.appStateChanged("background");
+    permission.resolve({ granted: false, canAskAgain });
+    await starting;
+    expect(session.controller.currentState).toEqual({
+      phase: "error",
+      error: "Microphone access is required for voice input.",
+      errorAction: canAskAgain ? "retry" : "settings",
+    });
+    expect(recorder.record).not.toHaveBeenCalled();
+  });
+
+  it.each(["permission", "foreground"] as const)(
+    "can cancel and retry while waiting for %s without reviving the old recording",
+    async (waitingFor) => {
+      const permission = Promise.withResolvers<{ granted: boolean; canAskAgain: boolean }>();
+      const requestPermission = vi
+        .fn(async () => ({ granted: true, canAskAgain: true }))
+        .mockImplementationOnce(() => permission.promise);
+      const { session, recorder } = createSession({ requestPermission });
+      const firstCommit = vi.fn();
+      const nextCommit = vi.fn();
+      const starting = session.start(
+        createTarget("first", () => "", firstCommit, { start: 0, end: 0 }),
+      );
+      session.appStateChanged("background");
+      if (waitingFor === "foreground") {
+        permission.resolve({ granted: true, canAskAgain: true });
+        await permission.promise;
+      }
+      session.cancel("first");
+      session.appStateChanged("active");
+      const retrying = session.start(
+        createTarget("next", () => "", nextCommit, { start: 0, end: 0 }),
+      );
+      permission.resolve({ granted: true, canAskAgain: true });
+      await starting;
+      await retrying;
+      expect(recorder.record).toHaveBeenCalledOnce();
+      await session.controller.stop();
+      expect(firstCommit).not.toHaveBeenCalled();
+      expect(nextCommit).toHaveBeenCalledWith("spoken text", { start: 11, end: 11 });
+    },
+  );
+
+  it("never captures if the app stays backgrounded or loses foreground again before resuming", async () => {
+    const permission = Promise.withResolvers<{ granted: boolean; canAskAgain: boolean }>();
+    const { session, recorder, prepare } = createSession({
+      requestPermission: () => permission.promise,
+    });
+    const starting = session.start(createTarget("first", () => "", vi.fn(), { start: 0, end: 0 }));
+    session.appStateChanged("background");
+    permission.resolve({ granted: true, canAskAgain: true });
+    await permission.promise;
+    session.appStateChanged("active");
+    await session.appStateChanged("background");
+    expect(prepare).not.toHaveBeenCalled();
+    expect(recorder.record).not.toHaveBeenCalled();
+    session.dispose();
+    await starting;
+    session.appStateChanged("active");
+    expect(session.controller.currentState.phase).toBe("idle");
+    expect(recorder.record).not.toHaveBeenCalled();
+  });
+
+  it.each(["transcriber", "audio session", "recorder"] as const)(
+    "cancels actual backgrounding during %s preparation",
+    async (stage) => {
+      const entered = Promise.withResolvers<void>();
+      const pending = Promise.withResolvers<void>();
+      const pause = () => {
+        entered.resolve();
+        return pending.promise;
+      };
+      const releaseRecording = vi.fn(async () => {});
+      const { session, recorder, prepare } = createSession({
+        ...(stage === "audio session" ? { configureRecording: pause } : {}),
+        releaseRecording,
+      });
+      if (stage === "transcriber") {
+        prepare.mockImplementationOnce(async () => {
+          await pause();
+          return { locale: "en-US", transcribe: async () => "spoken text" };
+        });
+      }
+      if (stage === "recorder") recorder.prepareToRecordAsync.mockImplementationOnce(pause);
+      const starting = session.start(
+        createTarget("first", () => "", vi.fn(), { start: 0, end: 0 }),
+      );
+      await entered.promise;
+      session.appStateChanged("background");
+      pending.resolve();
+      await starting;
+      session.appStateChanged("active");
+      expect(session.controller.currentState.error).toContain("moved to the background");
+      expect(recorder.record).not.toHaveBeenCalled();
+      expect(releaseRecording).toHaveBeenCalledTimes(stage === "transcriber" ? 0 : 1);
+    },
+  );
+
+  it("discards capture on actual backgrounding after permission has completed", async () => {
+    const { session, recorder, releaseKeepAwake } = createSession();
+    const commit = vi.fn();
+    await session.start(createTarget("first", () => "", commit, { start: 0, end: 0 }));
+    await session.appStateChanged("background");
+    expect(recorder.stop).toHaveBeenCalledOnce();
+    expect(releaseKeepAwake).toHaveBeenCalledOnce();
+    expect(session.controller.currentState.phase).toBe("error");
+    expect(commit).not.toHaveBeenCalled();
+  });
 
   it.each(["retry", "takeover"])(
     "handles failed deactivation with %s without notifying a released owner",

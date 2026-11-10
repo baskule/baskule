@@ -42,7 +42,6 @@ import { BASKULE_FLAGS } from "../../baskule/flags";
 import { signOutOfBaskule, useBaskuleSession } from "../../baskule/session";
 import * as Dialog from "../../components/ui/Dialog";
 import { useState } from "react";
-import type { BaskuleManagementDestination } from "@t3tools/contracts/baskule";
 import { openBaskuleManagement } from "../../baskule/management";
 
 export function SettingsRouteScreen() {
@@ -155,7 +154,14 @@ function LocalSettingsRouteScreen() {
   const t = useTranslation();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const accountRows = useBaskuleAccountRows(Object.keys(savedConnectionsById).length);
-  return <SettingsList connections={{ title: t("Account"), rows: accountRows }} />;
+  const signOut = useSignOutRow();
+  const session = useBaskuleSession();
+  return (
+    <SettingsList
+      connections={{ title: t("Account"), rows: accountRows }}
+      trailing={session.status === "signed-in" ? [{ rows: [signOut] }] : []}
+    />
+  );
 }
 
 function environmentsRow(label: string, count: number): SettingsListRow {
@@ -169,7 +175,10 @@ function environmentsRow(label: string, count: number): SettingsListRow {
   };
 }
 
-function SettingsList(props: { readonly connections: SettingsListSection }) {
+function SettingsList(props: {
+  readonly connections: SettingsListSection;
+  readonly trailing?: readonly SettingsListSection[];
+}) {
   const t = useTranslation();
   // UIKit's scroll-edge material takes the scroll view's own color; like the chat list, match
   // the sidebar's surface so the bar doesn't darken over content at rest.
@@ -183,7 +192,7 @@ function SettingsList(props: { readonly connections: SettingsListSection }) {
   const overflowRows = useOverflowRows();
   const indexSections = useSettingsIndexSections();
   const sections = filterSettingsSections(
-    [{ rows: overflowRows }, props.connections, ...indexSections],
+    [{ rows: overflowRows }, props.connections, ...indexSections, ...(props.trailing ?? [])],
     query,
   );
 
@@ -224,65 +233,94 @@ function SettingsList(props: { readonly connections: SettingsListSection }) {
   );
 }
 
-// baskule: the account (server, person, spaces) and sign-out. The server address is chosen on the
-// sign-in screen: a session belongs to one server, so changing it means signing out first.
+// baskule: the person, their server and what they manage natively. The server address is chosen
+// on the sign-in screen: a session belongs to one server, so changing it means signing out first.
 function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
   const session = useBaskuleSession();
   if (session.status !== "signed-in") return [];
   const me = session.me;
-  const anonymous = me?.authentication.mode === "anonymous";
-  return [
+  const anonymous = session.kind === "anonymous";
+  const account: SettingsListRow[] = [
     {
       id: "account",
       icon: "person.crop.circle",
-      label: me?.user.name ?? t("Signed in"),
+      label: me.user.name || t("Signed in"),
       value: anonymous
         ? t("Shared test workspace")
-        : me
-          ? `${me.user.email}${me.user.role === "admin" ? ` · ${t("admin")}` : ""}`
-          : undefined,
+        : `${me.user.email}${me.user.role === "admin" ? ` · ${t("admin")}` : ""}`,
     },
     {
       id: "server",
       icon: "server.rack",
-      label: me?.organization.name ?? t("Server"),
+      label: me.organization.name || t("Server"),
       value: session.serverUrl,
     },
-    environmentsRow(t("Spaces"), spaceCount),
+  ];
+  if (BASKULE_FLAGS.extendedSettings) return [...account, environmentsRow(t("Spaces"), spaceCount)];
+  if (anonymous) return account;
+  return [
+    ...account,
+    ...(me.authentication.password
+      ? [
+          {
+            id: "SettingsPassword",
+            icon: "lock" as const,
+            label: t("Change password"),
+            target: "SettingsPassword" as const,
+          },
+        ]
+      : []),
     {
-      id: "sign-out",
-      icon: "arrow.right",
-      label: anonymous ? t("Disconnect") : t("Sign out"),
-      onPress: () =>
-        Dialog.confirm({
-          title: anonymous ? t("Disconnect?") : t("Sign out?"),
-          message: anonymous
-            ? t("Return to server selection. The shared workspace stays on the server.")
-            : t("This phone forgets your session. Your chats stay on the server."),
-          confirmText: anonymous ? t("Disconnect") : t("Sign out"),
-          destructive: true,
-          onConfirm: () => void signOutOfBaskule(),
-        }),
+      id: "SettingsAccountUsage",
+      icon: "chart.bar.xaxis",
+      label: t("Usage and limits"),
+      target: "SettingsAccountUsage",
+    },
+    {
+      id: "SettingsPlugins",
+      icon: "link",
+      label: t("Plugins and accounts"),
+      target: "SettingsPlugins",
     },
   ];
+}
+
+function useSignOutRow(): SettingsListRow {
+  const session = useBaskuleSession();
+  const anonymous = session.status === "signed-in" && session.kind === "anonymous";
+  return {
+    id: "sign-out",
+    icon: "arrow.right",
+    label: anonymous ? t("Disconnect") : t("Sign out"),
+    onPress: () =>
+      Dialog.confirm({
+        title: anonymous ? t("Disconnect?") : t("Sign out?"),
+        message: anonymous
+          ? t("Return to server selection. The shared workspace stays on the server.")
+          : t("This phone forgets your session. Your chats stay on the server."),
+        confirmText: anonymous ? t("Disconnect") : t("Sign out"),
+        destructive: true,
+        onConfirm: () => void signOutOfBaskule(),
+      }),
+  };
 }
 
 function useSettingsIndexSections(): SettingsListSection[] {
   const session = useBaskuleSession();
   const [opening, setOpening] = useState(false);
-  const open = (destination: BaskuleManagementDestination) =>
+  const openAdministration = () =>
     Dialog.confirm({
-      title: t("Open in browser?"),
+      title: t("Open administration in the browser?"),
       message: t(
-        "Manage your Baskule account in the browser. It signs in independently and stays signed in when you sign out of this phone.",
+        "Administration is only available in the browser. It signs in independently and stays signed in when you sign out of this phone.",
       ),
       confirmText: t("Open browser"),
       onConfirm: () => {
         setOpening(true);
-        void openBaskuleManagement(destination)
+        void openBaskuleManagement("/admin")
           .catch((error: unknown) =>
             Dialog.alert(
-              t("Could not open settings"),
+              t("Could not open the browser"),
               error instanceof Error ? error.message : t("Try again."),
             ),
           )
@@ -313,57 +351,12 @@ function useSettingsIndexSections(): SettingsListSection[] {
   ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
   const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
     page(target, icon, label, { disabled: noServerTargets });
-  // baskule: the rest is read-only app info.
   if (!BASKULE_FLAGS.extendedSettings) {
+    const admin = session.status === "signed-in" && session.me.user.role === "admin";
     return [
-      {
-        title: t("Manage in browser"),
-        rows: [
-          {
-            id: "manage-account",
-            icon: "person.crop.circle",
-            label: t("Change password"),
-            disabled: opening,
-            onPress: () => open("/settings/password"),
-          },
-          {
-            id: "manage-spaces",
-            icon: "desktopcomputer",
-            label: t("Manage spaces"),
-            disabled: opening,
-            onPress: () => open("/settings/spaces"),
-          },
-          {
-            id: "manage-plugins",
-            icon: "link",
-            label: t("Plugins and connected accounts"),
-            disabled: opening,
-            onPress: () => open("/settings/plugins"),
-          },
-          {
-            id: "manage-usage",
-            icon: "chart.bar.xaxis",
-            label: t("Usage and limits"),
-            disabled: opening,
-            onPress: () => open("/settings/usage"),
-          },
-          ...(session.status === "signed-in" && session.me.user.role === "admin"
-            ? [
-                {
-                  id: "manage-admin",
-                  icon: "gearshape" as const,
-                  label: t("Administration"),
-                  disabled: opening,
-                  onPress: () => open("/admin"),
-                },
-              ]
-            : []),
-        ],
-      },
       {
         title: t("Chats"),
         rows: [
-          page("SettingsArchive", "archivebox", t("Archived chats")),
           page("SettingsScheduledTasks", "clock", t("Scheduled tasks")),
           page("SettingsNotifications", "bell.badge", t("Notifications")),
         ],
@@ -371,10 +364,28 @@ function useSettingsIndexSections(): SettingsListSection[] {
       {
         title: t("App"),
         rows: [
-          page("SettingsAppearance", "gearshape", t("General")),
+          page("SettingsAppearance", "paintbrush", t("Appearance")),
           page("SettingsAbout", "info.circle", t("About")),
         ],
       },
+      ...(admin
+        ? [
+            {
+              title: t("Administration"),
+              rows: [
+                {
+                  id: "manage-admin",
+                  icon: "gearshape" as const,
+                  label: t("Administration"),
+                  value: t("Opens in the browser"),
+                  disabled: opening,
+                  onPress: () => openAdministration(),
+                },
+              ],
+            },
+          ]
+        : []),
+      { rows: [page("SettingsArchive", "archivebox", t("Archived chats"))] },
     ];
   }
   // The same pages and groups as Settings on web, minus what mobile has no setting for.

@@ -1,3 +1,4 @@
+import { BASKULE_FLAGS } from "../../../baskule/flags";
 import { createContext, startTransition, use, useMemo, type ReactNode } from "react";
 import { AppState, Appearance, Platform, useColorScheme } from "react-native";
 
@@ -362,5 +363,7 @@ export function useAppearancePreferences(): AppearancePreferencesContextValue {
 
 export function useAndroidFloatingTabs() {
   const { androidNavigationStyle } = useAppearancePreferences();
-  return Platform.OS === "android" && androidNavigationStyle === "one-ui";
+  return (
+    BASKULE_FLAGS.workspaceTabs && Platform.OS === "android" && androidNavigationStyle === "one-ui"
+  );
 }

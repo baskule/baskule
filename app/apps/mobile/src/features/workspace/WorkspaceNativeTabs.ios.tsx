@@ -30,6 +30,7 @@ import { useDeviceType } from "../../native/native-layout-metrics";
 import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 
 /** Retain each native controller tree; removing its root can leave RNS's stack empty. */
 function RetainedWorkspaceTab(props: {
@@ -148,7 +149,8 @@ export function WorkspaceNativeTabs(props: {
           );
         })}
       </Tabs.Host>
-      {(deviceType === "pad" ||
+      {BASKULE_FLAGS.workspaceTabs &&
+      (deviceType === "pad" ||
         compactTabs ||
         (layout.primarySidebarOverlaysContent &&
           !workspaceUsesColumns(selectedTab, workspace.settingsOpen))) &&

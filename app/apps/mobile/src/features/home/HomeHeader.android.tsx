@@ -1,58 +1,14 @@
-import { useTranslation } from "../../i18n";
-
-import type { MenuAction } from "@react-native-menu/menu";
+import { listFilterMenuActions } from "./home-list-filter-menu";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { ThreadListToolbar } from "./ThreadListToolbar";
 import type { HomeHeaderProps } from "./HomeHeader.types";
 
 export type { HomeHeaderEnvironment } from "./HomeHeader.types";
 
-function checkedMenuState(checked: boolean) {
-  return checked ? ("on" as const) : undefined;
-}
-
 export function HomeHeader(props: HomeHeaderProps) {
-  const t = useTranslation();
   const hasCustomListOptions =
     props.selectedEnvironmentId !== null || props.selectedProjectKey !== null;
-  const menuActions: MenuAction[] = [
-    {
-      id: "environment",
-      title: t("Environment"),
-      subactions: [
-        {
-          id: "environment:all",
-          title: t("All environments"),
-          state: checkedMenuState(props.selectedEnvironmentId === null),
-        },
-        ...props.environments.map((environment) => ({
-          id: `environment:${environment.environmentId}`,
-          title: environment.label,
-          state: checkedMenuState(props.selectedEnvironmentId === environment.environmentId),
-        })),
-      ],
-    },
-    ...(props.projects.length === 0
-      ? []
-      : ([
-          {
-            id: "project",
-            title: t("Project"),
-            subactions: [
-              {
-                id: "project:all",
-                title: t("All projects"),
-                state: checkedMenuState(props.selectedProjectKey === null),
-              },
-              ...props.projects.map((project) => ({
-                id: `project:${project.key}`,
-                title: project.label,
-                state: checkedMenuState(props.selectedProjectKey === project.key),
-              })),
-            ],
-          },
-        ] satisfies MenuAction[])),
-  ];
+  const menuActions = listFilterMenuActions(props);
   const handleMenuAction = (event: { nativeEvent: { event: string } }) => {
     const id = event.nativeEvent.event;
     if (id === "environment:all") {
@@ -95,6 +51,7 @@ export function HomeHeader(props: HomeHeaderProps) {
         filterCustomized={hasCustomListOptions}
         onFilterAction={handleMenuAction}
         onOpenEnvironments={props.onOpenEnvironments}
+        onOpenSettings={props.onOpenSettings}
       />
     </>
   );

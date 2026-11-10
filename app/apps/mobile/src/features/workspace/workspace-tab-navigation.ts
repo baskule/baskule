@@ -4,6 +4,7 @@ import {
   type SettingsPageTarget,
 } from "../settings/components/settings-page-targets";
 import { settingsNavigationState } from "../settings/settings-navigation";
+import { BASKULE_FLAGS, isMobileRouteEnabled } from "../../baskule/flags";
 import type { WorkspaceTab } from "./workspace-tabs-state";
 
 type RouteLike = {
@@ -14,7 +15,9 @@ type RouteLike = {
 type ThreadSelection = NonNullable<WorkspaceSelections["threads"]>;
 
 /** Opened when Settings has columns and none of its pages has been opened yet. */
-export const DEFAULT_SETTINGS_PAGE = "SettingsEnvironments" satisfies SettingsPageTarget;
+export const DEFAULT_SETTINGS_PAGE: SettingsPageTarget = BASKULE_FLAGS.extendedSettings
+  ? "SettingsEnvironments"
+  : "SettingsAppearance";
 
 export function workspaceTabColumns(
   platform: string,
@@ -27,7 +30,9 @@ export function workspaceTabColumns(
 // Pages a Settings row opens, minus Project overview: it shows the project chosen in the
 // Settings scope, which resets whenever Settings closes.
 const REMEMBERED_SETTINGS_PAGES: ReadonlySet<string> = new Set(
-  SETTINGS_PAGE_TARGETS.filter((page) => page !== "SettingsProjectOverview"),
+  SETTINGS_PAGE_TARGETS.filter(
+    (page) => page !== "SettingsProjectOverview" && isMobileRouteEnabled(page),
+  ),
 );
 
 export function rememberedSettingsPage(selections: WorkspaceSelections): SettingsPageTarget {

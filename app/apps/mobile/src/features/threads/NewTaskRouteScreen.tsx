@@ -356,6 +356,39 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     });
   }, [incomingShare, isFocused, reservedDestinationProject, selectDetail]);
 
+  if (!BASKULE_FLAGS.projects && !incomingShare) {
+    // baskule: the route only resolves the scratch project, so it never shows a picker.
+    return (
+      <View collapsable={false} className="flex-1 bg-sheet">
+        <AppBar
+          title={t("New chat")}
+          sidebar={false}
+          options={{ headerBackVisible: true }}
+          hideBottomBorder
+          onBack={() =>
+            navigation.canGoBack() ? navigation.goBack() : navigation.getParent()?.goBack()
+          }
+        />
+        <View className="flex-1 items-center justify-center gap-4 px-8">
+          {canStartScratch ? (
+            <>
+              <AppActivityIndicator colorClassName="accent-icon-muted" />
+              <Text className="text-center text-base text-foreground-muted">
+                {t("Starting a new chat…")}
+              </Text>
+            </>
+          ) : (
+            <Text className="text-center text-base text-foreground-muted">
+              {selectedEnvironmentId === null
+                ? t("Your spaces are still loading.")
+                : t("This space is not connected. Try again when it is back online.")}
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       <NewTaskHeader

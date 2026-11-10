@@ -20,6 +20,7 @@ import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands
 import { WorkspaceListToolbarRow } from "../workspace/WorkspaceListToolbarRow";
 import { useWorkspaceConnectionState } from "../../state/workspace";
 import { useToolbarLayout } from "../../components/ui/useToolbarLayout";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 
 export function ThreadListToolbar(props: {
   readonly searchQuery: string;
@@ -28,6 +29,7 @@ export function ThreadListToolbar(props: {
   readonly filterCustomized: boolean;
   readonly onFilterAction: NonNullable<ComponentProps<typeof Menu>["onPressAction"]>;
   readonly onOpenEnvironments: () => void;
+  readonly onOpenSettings?: () => void;
   readonly sidebar?: boolean;
   readonly onLayout?: (event: LayoutChangeEvent) => void;
   readonly onRequestVisibility?: () => void;
@@ -91,17 +93,18 @@ export function ThreadListToolbar(props: {
       onChangeText={onSearchQueryChange}
     />
   );
-  const filterButton = connectionState.hasConnections ? (
-    <AndroidAnchoredMenu actions={props.filterActions} onPressAction={props.onFilterAction}>
-      {(open) => (
-        <AndroidHeaderIconButton
-          accessibilityLabel={t("Filter threads")}
-          icon={filterIcon}
-          onPress={open}
-        />
-      )}
-    </AndroidAnchoredMenu>
-  ) : null;
+  const filterButton =
+    connectionState.hasConnections && props.filterActions.length > 0 ? (
+      <AndroidAnchoredMenu actions={props.filterActions} onPressAction={props.onFilterAction}>
+        {(open) => (
+          <AndroidHeaderIconButton
+            accessibilityLabel={t("Filter threads")}
+            icon={filterIcon}
+            onPress={open}
+          />
+        )}
+      </AndroidAnchoredMenu>
+    ) : null;
 
   return (
     <View
@@ -114,10 +117,19 @@ export function ThreadListToolbar(props: {
         searchField={searchField}
         onCloseSearch={closeSearch}
         onOpenSearch={openSearch}
-        searchAccessibilityLabel="Search threads"
-        titleAccessibilityLabel="T3 Code, Threads"
+        searchAccessibilityLabel={t("Search chats")}
+        titleAccessibilityLabel={t("Baskule, Chats")}
         onOpenEnvironments={props.onOpenEnvironments}
         filter={filterButton}
+        settings={
+          props.onOpenSettings && !BASKULE_FLAGS.workspaceTabs ? (
+            <AndroidHeaderIconButton
+              accessibilityLabel={t("Settings")}
+              icon="gearshape"
+              onPress={props.onOpenSettings}
+            />
+          ) : null
+        }
       />
     </View>
   );

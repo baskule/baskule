@@ -39,17 +39,21 @@ export function createSidebarHeaderItems(input: {
   readonly onOpenSettings: () => void;
 }): NativeStackHeaderItem[] {
   return [
-    withNativeGlassHeaderItem({
-      type: "menu",
-      axisBehavior: "horizontalOnly",
-      label: "",
-      accessibilityLabel: t("Filter threads"),
-      icon: sfSymbolIcon(input.filterIcon),
-      menu: {
-        title: input.filterMenu.title,
-        items: toNativeHeaderMenuItems(input.filterMenu.items),
-      },
-    }),
+    ...(input.filterMenu.items.length === 0
+      ? []
+      : [
+          withNativeGlassHeaderItem({
+            type: "menu",
+            axisBehavior: "horizontalOnly",
+            label: "",
+            accessibilityLabel: t("Filter threads"),
+            icon: sfSymbolIcon(input.filterIcon),
+            menu: {
+              title: input.filterMenu.title,
+              items: toNativeHeaderMenuItems(input.filterMenu.items),
+            },
+          }),
+        ]),
     withNativeGlassHeaderItem({
       type: "button",
       axisBehavior: "horizontalOnly",

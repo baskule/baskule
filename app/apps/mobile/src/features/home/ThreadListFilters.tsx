@@ -4,6 +4,7 @@ import { Pressable, ScrollView } from "react-native";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ListFilterMenu } from "../workspace/ListFilterMenu";
 import type { HomeHeaderProps } from "./HomeHeader.types";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 
 export function ThreadListFilters(
   props: Pick<
@@ -34,13 +35,18 @@ export function ThreadListFilters(
       contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, gap: 8 }}
     >
       <ListFilterMenu
-        label={selectedEnvironment?.label ?? t("All environments")}
-        accessibilityLabel={t("Filter threads by environment")}
+        label={
+          selectedEnvironment?.label ??
+          (BASKULE_FLAGS.projects ? t("All environments") : t("All spaces"))
+        }
+        accessibilityLabel={
+          BASKULE_FLAGS.projects ? t("Filter threads by environment") : t("Filter chats by space")
+        }
         active={selectedEnvironment !== undefined}
         actions={[
           {
             id: "all",
-            title: "All environments",
+            title: BASKULE_FLAGS.projects ? t("All environments") : t("All spaces"),
             state: props.selectedEnvironmentId === null ? "on" : "off",
           },
           ...props.environments.map((environment) => ({
@@ -62,32 +68,34 @@ export function ThreadListFilters(
           }
         }}
       />
-      <ListFilterMenu
-        label={selectedProject?.label ?? t("All projects")}
-        accessibilityLabel={t("Filter threads by project")}
-        active={selectedProject !== undefined}
-        actions={[
-          {
-            id: "all",
-            title: "All projects",
-            state: props.selectedProjectKey === null ? "on" : "off",
-          },
-          ...props.projects.map((project) => ({
-            id: JSON.stringify(project.key),
-            title: project.label,
-            state: project.key === props.selectedProjectKey ? ("on" as const) : ("off" as const),
-          })),
-        ]}
-        onSelect={(id) => {
-          if (id === "all") props.onProjectChange(null);
-          else {
-            const project = props.projects.find(
-              (candidate) => JSON.stringify(candidate.key) === id,
-            );
-            if (project) props.onProjectChange(project.key);
-          }
-        }}
-      />
+      {BASKULE_FLAGS.projects ? (
+        <ListFilterMenu
+          label={selectedProject?.label ?? t("All projects")}
+          accessibilityLabel={t("Filter threads by project")}
+          active={selectedProject !== undefined}
+          actions={[
+            {
+              id: "all",
+              title: "All projects",
+              state: props.selectedProjectKey === null ? "on" : "off",
+            },
+            ...props.projects.map((project) => ({
+              id: JSON.stringify(project.key),
+              title: project.label,
+              state: project.key === props.selectedProjectKey ? ("on" as const) : ("off" as const),
+            })),
+          ]}
+          onSelect={(id) => {
+            if (id === "all") props.onProjectChange(null);
+            else {
+              const project = props.projects.find(
+                (candidate) => JSON.stringify(candidate.key) === id,
+              );
+              if (project) props.onProjectChange(project.key);
+            }
+          }}
+        />
+      ) : null}
       {props.selectedEnvironmentId !== null || props.selectedProjectKey !== null ? (
         <Pressable
           accessibilityRole="button"

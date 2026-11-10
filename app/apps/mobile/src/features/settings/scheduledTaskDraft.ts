@@ -1,3 +1,4 @@
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { isWebhookDedupeTemplate } from "@t3tools/contracts";
 import type {
   ModelSelection,
@@ -250,7 +251,8 @@ export function createDraft(
     modelSelection,
     modelSelectionIsExplicit: false,
     schedule: DEFAULT_SCHEDULE,
-    workspace: "worktree",
+    // baskule: chats run in the space's scratch project, which has no worktrees.
+    workspace: BASKULE_FLAGS.sourceControl ? "worktree" : "root",
     baseRef: "main",
     checkoutPath: "",
     enabled: true,

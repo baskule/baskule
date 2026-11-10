@@ -8,6 +8,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 
 import { ConnectionStatusDot } from "../connection/ConnectionStatusDot";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 
 export function DraftEnvironmentControl(props: {
   readonly label: string;
@@ -21,21 +22,32 @@ export function DraftEnvironmentControl(props: {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={t("Choose environment, {{label}}, {{status}}", {
-        label: props.label,
-        status: disconnected ? t("Offline") : t("Connected"),
-      })}
+      accessibilityLabel={
+        BASKULE_FLAGS.projects
+          ? t("Choose environment, {{label}}, {{status}}", {
+              label: props.label,
+              status: disconnected ? t("Offline") : t("Connected"),
+            })
+          : t("Choose space, {{label}}, {{status}}", {
+              label: props.label,
+              status: disconnected ? t("Offline") : t("Connected"),
+            })
+      }
       disabled={props.disabled}
       onPress={props.onChooseEnvironment}
       className="flex-row items-center gap-1.5 rounded-xl px-3 py-2 active:opacity-65"
     >
-      <EnvironmentMachineSymbol
-        kind={props.machineKind}
-        size={13}
-        tintColorClassName="accent-icon-muted"
-      />
+      {BASKULE_FLAGS.projects ? (
+        <EnvironmentMachineSymbol
+          kind={props.machineKind}
+          size={13}
+          tintColorClassName="accent-icon-muted"
+        />
+      ) : null}
       <Text className="shrink text-sm text-foreground-muted" numberOfLines={1}>
-        {t("on {{selectedEnvironmentLabel}}", { selectedEnvironmentLabel: props.label })}
+        {BASKULE_FLAGS.projects
+          ? t("on {{selectedEnvironmentLabel}}", { selectedEnvironmentLabel: props.label })
+          : t("in {{space}}", { space: props.label })}
       </Text>
       <SymbolView name="chevron.right" size={11} tintColorClassName="accent-icon-muted" />
       {disconnected ? <ConnectionStatusDot state="error" pulse={false} size={6} /> : null}

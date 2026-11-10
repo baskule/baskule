@@ -54,3 +54,6 @@ Generated bundles, dependencies, downloaded packages, and local evidence stay ig
 Use [the desktop guide](../desktop/README.md) to build the T3-based Electron client with `desktop/build.sh`. It documents native dependencies and packaged-client checks. Desktop builds bundle the renderer and native IPC. Automatic updates select the latest release compatible with the selected installation; see the desktop guide.
 
 Mobile source lives in `app/apps/mobile/`. Follow its [README](../app/apps/mobile/README.md) for the Android and iOS toolchains. Source availability does not imply that packages exist or have passed device verification. Keep native signing material outside the checkout's tracked files.
+
+Use [native mobile verification](mobile-verification.md) to exercise the app on a device with
+a disposable fake-model backend, including a remote emulator host when the build host lacks KVM.

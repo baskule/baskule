@@ -18,6 +18,7 @@ import {
   createMobileThemeSelectionPatch,
   createMobileThemeVariables,
   DEFAULT_MOBILE_THEME_ID,
+  normalizeMobileThemeMode,
   flattenThemeColor,
   getMobileThemeVariables,
   resolveMobileThemeIds,
@@ -57,6 +58,16 @@ function compositeOver(overlay: string, background: string): string {
 }
 
 describe("mobile themes", () => {
+  it.each([
+    [undefined, "system"],
+    ["unknown", "system"],
+    ["system", "system"],
+    ["light", "light"],
+    ["dark", "dark"],
+  ] as const)("resolves the stored theme mode %s to %s", (stored, expected) => {
+    expect(normalizeMobileThemeMode(stored)).toBe(expected);
+  });
+
   it("declares every runtime theme variable in the static stylesheet", () => {
     const generatedVariables = createMobileThemeVariables(T3_CHAT_THEME.colors, "light");
     expect(Object.keys(readDefaultMobileThemeVariables("light")).sort()).toEqual(

@@ -59,7 +59,8 @@ import {
 import { parseActiveThreadPath, type HardwareKeyboardCommand } from "./hardwareKeyboardCommands";
 import { threadJumpIndex } from "./threadKeyboardShortcuts";
 
-import { openSettings } from "../settings/settings-navigation";
+import { openSettings, openConnectionSettings } from "../settings/settings-navigation";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { useSelectWorkspaceTab } from "../workspace/useSelectWorkspaceTab";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 
@@ -301,7 +302,7 @@ export function CommandPalette(props: {
         kind: "action",
         title: t("Manage environments"),
         searchTerms: ["connections", "server", "remote"],
-        run: () => openSettings(navigation, "SettingsEnvironments"),
+        run: () => openConnectionSettings(navigation),
       },
       {
         key: "scheduledTasks",
@@ -331,7 +332,38 @@ export function CommandPalette(props: {
     const activeProject = activeThread
       ? projectByKey.get(scopedProjectKey(activeThread.environmentId, activeThread.projectId))
       : null;
-    if (activeProject) {
+    if (!BASKULE_FLAGS.extendedSettings) {
+      // baskule: the palette offers only what the app ships.
+      const hidden = new Set(["addProject", "environments", "usage"]);
+      actions.splice(
+        0,
+        actions.length,
+        ...actions
+          .filter((action) => !hidden.has(action.key))
+          .map((action) =>
+            action.key === "newTask"
+              ? { ...action, title: t("New chat") }
+              : action.key === "archive"
+                ? { ...action, title: t("Archived chats") }
+                : action,
+          ),
+        {
+          key: "accountUsage",
+          kind: "action",
+          title: t("Usage and limits"),
+          searchTerms: ["usage", "limits", "quota"],
+          run: () => openSettings(navigation, "SettingsAccountUsage"),
+        },
+        {
+          key: "plugins",
+          kind: "action",
+          title: t("Plugins and accounts"),
+          searchTerms: ["plugins", "accounts", "connections"],
+          run: () => openSettings(navigation, "SettingsPlugins"),
+        },
+      );
+    }
+    if (activeProject && BASKULE_FLAGS.projects) {
       actions.unshift({
         key: "newThread",
         kind: "action",
@@ -354,9 +386,15 @@ export function CommandPalette(props: {
     if (activeThreadRef) {
       const threadActions = [
         ["files", t("Go to file"), ["open", "files", "browse", "search"]],
-        ["terminal", t("Open terminal"), ["shell", "console"]],
-        ["review", t("Review changes"), ["diff", "git", t("pull request")]],
-        ["copyThreadReference", t("Copy PR link or thread ID"), ["reference", "clipboard"]],
+        ...(BASKULE_FLAGS.terminal
+          ? ([["terminal", t("Open terminal"), ["shell", "console"]]] as const)
+          : []),
+        ...(BASKULE_FLAGS.sourceControl
+          ? ([
+              ["review", t("Review changes"), ["diff", "git", t("pull request")]],
+              ["copyThreadReference", t("Copy PR link or thread ID"), ["reference", "clipboard"]],
+            ] as const)
+          : []),
       ] as const;
       actions.push(
         ...threadActions.map(([command, title, searchTerms]) => ({
@@ -368,7 +406,9 @@ export function CommandPalette(props: {
         })),
       );
     }
-    const openProjects = projects.filter((project) => project.archivedAt == null);
+    const openProjects = BASKULE_FLAGS.projects
+      ? projects.filter((project) => project.archivedAt == null)
+      : [];
     const projectItems: CommandPaletteItem[] = [
       ...openProjects.filter((project) => project.pinnedAt != null),
       ...openProjects.filter((project) => project.pinnedAt == null),

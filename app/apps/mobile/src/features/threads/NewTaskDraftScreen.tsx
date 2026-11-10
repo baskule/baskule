@@ -20,7 +20,12 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
-import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import {
+  isAtomCommandInterrupted,
+  runAtomCommand,
+  settlePromise,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import {
   CommonActions,
   StackActions,
@@ -29,7 +34,7 @@ import {
   usePreventRemove,
   useRoute,
 } from "@react-navigation/native";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { KeyboardController } from "react-native-keyboard-controller";
@@ -58,7 +63,7 @@ import {
   updateComposerDraftSettings,
   scheduleUnusedComposerAttachmentCleanup,
 } from "../../state/use-composer-drafts";
-import { useEnvironmentServerConfig, useProjects } from "../../state/entities";
+import { useEnvironmentServerConfig, useProjects, useServerConfigs } from "../../state/entities";
 import { useProjectClone } from "../../state/projectClones";
 import { projectEnvironment } from "../../state/projects";
 import { sourceControlEnvironment } from "../../state/sourceControl";
@@ -71,16 +76,21 @@ import {
 } from "../../lib/modelOptions";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import {
+  useRemoteConnectionStatus,
   useRemoteConnections,
   useRemoteEnvironmentRuntime,
 } from "../../state/use-remote-environment-registry";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { useNewTaskFlow } from "./new-task-flow-provider";
 import {
   nextEnvironmentId,
   useHardwareKeyboardCommand,
 } from "../keyboard/hardwareKeyboardCommands";
 import { resolveProjectThreadCreationBranch } from "./projectThreadCreationValidation";
-import { resolveDraftProjectSelection } from "./new-task-project-selection";
+import {
+  resolveDraftProjectSelection,
+  resolveNewTaskScratchOption,
+} from "./new-task-project-selection";
 import {
   resolveNewTaskBranchLabel,
   resolveNewTaskWorkspaceLabel,
@@ -391,6 +401,29 @@ export function NewTaskDraftScreen(props: {
 
   const lastInitialProjectRefRef = useRef(props.initialProjectRef);
   const initialPickerRef = useRef<"open" | "dismissed" | null>(null);
+  // baskule: a draft without a project (a link, a restored route) takes its space's scratch
+  // project in place; the space comes from the draft and never falls back to another one.
+  const serverConfigs = useServerConfigs();
+  const { connectedEnvironments } = useRemoteConnectionStatus();
+  const scratchOption = BASKULE_FLAGS.projects
+    ? null
+    : resolveNewTaskScratchOption({
+        environments: connectedEnvironments,
+        serverConfigs,
+        selectedEnvironmentId: flow.selectedEnvironmentId,
+      });
+  const readyScratchEnvironmentId = scratchOption?.ready ? scratchOption.environmentId : null;
+  const scratchRequestRef = useRef<string | null>(null);
+  const failScratch = useEffectEvent((error: unknown) =>
+    Dialog.alert(
+      t("Could not start a new chat"),
+      error instanceof Error ? error.message : t("Try again."),
+    ),
+  );
+  const finishScratch = useEffectEvent((project: (typeof projects)[number]) => {
+    if (project.environmentId === flow.selectedEnvironmentId && flow.selectedProjectKey === null)
+      setProject(project);
+  });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the route or catalog project to the draft once projects load, or opens the picker in the navigator
   useEffect(() => {
@@ -475,6 +508,28 @@ export function NewTaskDraftScreen(props: {
       goBack();
       return;
     }
+    if (!BASKULE_FLAGS.projects) {
+      if (
+        readyScratchEnvironmentId === null ||
+        scratchRequestRef.current === readyScratchEnvironmentId
+      )
+        return;
+      scratchRequestRef.current = readyScratchEnvironmentId;
+      void runAtomCommand(
+        appAtomRegistry,
+        projectEnvironment.openScratch,
+        { environmentId: readyScratchEnvironmentId, input: {} },
+        { reportFailure: false },
+      ).then((result) => {
+        if (result._tag === "Success") {
+          finishScratch(result.value);
+          return;
+        }
+        scratchRequestRef.current = null;
+        if (!isAtomCommandInterrupted(result)) failScratch(squashAtomCommandFailure(result));
+      });
+      return;
+    }
     // Open the first picker once; catalog updates must not push it again over a cancelled draft.
     if (initialPickerRef.current !== null) {
       return;
@@ -491,6 +546,7 @@ export function NewTaskDraftScreen(props: {
     props.incomingShareId,
     props.draftId,
     navigation,
+    readyScratchEnvironmentId,
     selectedProject,
     selectedProjectKey,
     setProject,
@@ -712,15 +768,17 @@ export function NewTaskDraftScreen(props: {
     navigation.navigate(routeName);
   };
 
-  const environmentControl = (
-    <DraftEnvironmentControl
-      connectionState={connectionState}
-      label={selectedEnvironmentLabel}
-      machineKind={resolveEnvironmentMachineKind(selectedEnvironmentServerConfig)}
-      disabled={isComposerInteractionLocked}
-      onChooseEnvironment={() => openContextPicker("NewTaskEnvironment")}
-    />
-  );
+  // baskule: the space is the only context to choose, and only when there are several.
+  const environmentControl =
+    !BASKULE_FLAGS.projects && environments.length < 2 ? null : (
+      <DraftEnvironmentControl
+        connectionState={connectionState}
+        label={selectedEnvironmentLabel}
+        machineKind={resolveEnvironmentMachineKind(selectedEnvironmentServerConfig)}
+        disabled={isComposerInteractionLocked}
+        onChooseEnvironment={() => openContextPicker("NewTaskEnvironment")}
+      />
+    );
   const shareUnavailableNotice = isIncomingShareUnavailable ? (
     <Text textRole="footnote" className="text-center text-foreground-muted">
       {t("The shared content is no longer in the inbox. You can continue editing this task draft.")}
@@ -732,15 +790,17 @@ export function NewTaskDraftScreen(props: {
         {t("What should we work on?")}
       </Text>
       <View className="flex-row flex-wrap items-center justify-center gap-x-1">
-        <ComposerInlineControl
-          accessibilityHint={t("Opens the project picker")}
-          accessibilityLabel={t("No project")}
-          chevronDirection="right"
-          disabled={isComposerInteractionLocked}
-          icon="folder"
-          label={t("No project")}
-          onPress={chooseProject}
-        />
+        {BASKULE_FLAGS.projects ? (
+          <ComposerInlineControl
+            accessibilityHint={t("Opens the project picker")}
+            accessibilityLabel={t("No project")}
+            chevronDirection="right"
+            disabled={isComposerInteractionLocked}
+            icon="folder"
+            label={t("No project")}
+            onPress={chooseProject}
+          />
+        ) : null}
         {environmentControl}
       </View>
       {shareUnavailableNotice}
@@ -856,7 +916,7 @@ export function NewTaskDraftScreen(props: {
       <ThreadScreenFallback
         header={
           <AppBar
-            title={t("New thread")}
+            title={t("New chat")}
             sidebar={false}
             onBack={goBack}
             options={{

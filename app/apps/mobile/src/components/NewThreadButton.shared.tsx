@@ -16,7 +16,7 @@ export function NewThreadButton(props: {
   const t = useTranslation();
   return (
     <Pressable
-      accessibilityLabel={t("New thread")}
+      accessibilityLabel={t("New chat")}
       accessibilityRole="button"
       onPress={props.onPress}
       className={cn(
@@ -36,7 +36,7 @@ export function NewThreadButton(props: {
       />
       {props.extended && props.expanded !== false ? (
         <AppText className="text-[16px] font-t3-medium text-primary-foreground">
-          {t("New thread")}
+          {t("New chat")}
         </AppText>
       ) : null}
     </Pressable>

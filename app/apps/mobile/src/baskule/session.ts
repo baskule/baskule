@@ -7,6 +7,7 @@ import { AppState } from "react-native";
 import * as Api from "./api";
 import { normalizeServerUrl } from "./config";
 import { decodeSavedConnection, type SavedConnection } from "./saved-connection";
+import { changeBaskulePassword } from "./settings-api";
 
 const TOKEN_KEY = "baskule.session-token";
 const CONNECTION_KEY = "baskule.connection";
@@ -26,6 +27,8 @@ export type BaskuleSession =
 let state: BaskuleSession = { status: "loading" };
 let revision = 0;
 let writes: Promise<void> = Promise.resolve();
+/** The server revokes the current token while a password change runs; refreshes must not sign out. */
+let rotations = 0;
 const listeners = new Set<() => void>();
 
 function publish(next: BaskuleSession) {
@@ -115,7 +118,7 @@ export function loadBaskuleSession(): Promise<void> {
 export async function refreshBaskuleMe(): Promise<void> {
   const current = state;
   const expected = revision;
-  if (current.status !== "signed-in") return;
+  if (current.status !== "signed-in" || rotations > 0) return;
   try {
     const me = await Api.fetchMe(current.serverUrl, current.token);
     if (revision !== expected || state !== current) return;
@@ -126,6 +129,7 @@ export async function refreshBaskuleMe(): Promise<void> {
     if (
       revision === expected &&
       state === current &&
+      rotations === 0 &&
       error instanceof Api.BaskuleApiError &&
       error.kind === "signed-out"
     ) {
@@ -194,6 +198,51 @@ export async function signOutOfBaskule(): Promise<void> {
   publish(next);
   await commit(next, expected);
   if (current.kind === "authenticated") await Api.signOut(current.serverUrl, current.token);
+}
+
+/** Better Auth revokes every session on a password change; the signed replacement takes over. */
+export async function changeBaskuleSessionPassword(input: {
+  readonly currentPassword: string;
+  readonly newPassword: string;
+}): Promise<void> {
+  const current = state;
+  if (current.status !== "signed-in" || current.kind !== "authenticated") return;
+  const expected = revision;
+  rotations++;
+  let token: string;
+  try {
+    token = await changeBaskulePassword(
+      { serverUrl: current.serverUrl, token: current.token },
+      input,
+    );
+  } catch (error) {
+    if (error instanceof Api.BaskuleApiError && error.kind === "signed-out" && state === current) {
+      const next = {
+        status: "signed-out",
+        serverUrl: current.serverUrl,
+        notice: error.message,
+      } as const;
+      publish(next);
+      await commit(next, ++revision);
+      return;
+    }
+    throw error;
+  } finally {
+    rotations--;
+  }
+  if (revision !== expected || state !== current) return;
+  const next = { ...current, token };
+  try {
+    await commit(next, expected);
+  } catch {
+    if (revision === expected && state === current) publish(next);
+    throw new Api.BaskuleApiError(
+      "server",
+      t(
+        "Password changed, but this phone could not save the new sign-in. Sign in again after restarting the app.",
+      ),
+    );
+  }
 }
 
 let refreshing = false;

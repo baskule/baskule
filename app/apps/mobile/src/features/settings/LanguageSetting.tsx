@@ -1,6 +1,7 @@
 import { languageNames, locales, useTranslation } from "../../i18n";
 import { setLanguagePreference, useLanguagePreference } from "../../languagePreferences";
 import { useState } from "react";
+import { View } from "react-native";
 import { SettingsSection } from "./components/SettingsSection";
 import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
@@ -23,11 +24,12 @@ export function LanguageSetting({ compact = false }: { readonly compact?: boolea
       .finally(() => setSaving(false));
   };
   if (compact) {
+    const current = preference === "auto" ? t("System language") : languageNames[preference];
     return (
-      <SettingsSection title={t("Language")}>
+      <View className="items-center gap-2">
         <Menu
           accessible
-          accessibilityLabel={t("Language")}
+          accessibilityLabel={t("Language: {{language}}", { language: current })}
           accessibilityRole="button"
           actions={[
             {
@@ -45,15 +47,10 @@ export function LanguageSetting({ compact = false }: { readonly compact?: boolea
             if (!saving && isLanguagePreference(nativeEvent.event)) void select(nativeEvent.event);
           }}
         >
-          <Button
-            label={preference === "auto" ? t("Use system language") : languageNames[preference]}
-            fullWidth
-            disabled={saving}
-            onPress={() => {}}
-          />
+          <Button label={current} icon="globe" tone="text" disabled={saving} onPress={() => {}} />
         </Menu>
         {error ? <ErrorBanner message={t("Could not save the language. Try again.")} /> : null}
-      </SettingsSection>
+      </View>
     );
   }
   return (

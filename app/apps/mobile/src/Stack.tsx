@@ -1,5 +1,5 @@
 import { t, useTranslation } from "./i18n";
-import { isMobileRouteEnabled } from "./baskule/flags";
+import { BASKULE_FLAGS, isMobileRouteEnabled } from "./baskule/flags";
 
 import { isDraftThreadRoute } from "./features/threads/thread-route-state";
 import { ComponentCatalogScreen } from "./features/development/ComponentCatalogScreen";
@@ -119,6 +119,11 @@ import { SettingsProjectOverviewRouteScreen } from "./features/settings/Settings
 import { UsageLimitAccountScreen } from "./features/usage/UsageLimitsPooled";
 import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
 import { SettingsAboutRouteScreen } from "./features/settings/SettingsAboutRouteScreen";
+import {
+  SettingsAccountUsageRouteScreen,
+  SettingsPasswordRouteScreen,
+  SettingsPluginsRouteScreen,
+} from "./features/settings/BaskuleAccountSettingsScreens";
 import { SettingsNotificationsRouteScreen } from "./features/settings/SettingsNotificationsRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsLabsRouteScreen } from "./features/settings/ThreadSettingsSections";
@@ -223,6 +228,7 @@ const SETTINGS_PAGE_OPTIONS = SHEET_GLASS_HEADER_OPTIONS;
 
 const SETTINGS_SCREENS = {
   Settings: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("Settings"),
     screen: SettingsRouteScreen,
     linking: "settings",
     options: {
@@ -230,14 +236,50 @@ const SETTINGS_SCREENS = {
       get title() {
         return t("Settings");
       },
-      ...(Platform.OS === "android" ? { animation: "none" as const } : {}),
+      ...(Platform.OS === "android" && BASKULE_FLAGS.workspaceTabs
+        ? { animation: "none" as const }
+        : {}),
       // Android draws its own app bar here. Hidden only from inside the screen, the native one
       // showed for the first frame of the Settings tab and pushed the page down.
       headerShown: Platform.OS !== "android",
       headerBackVisible: false,
     },
   }),
+  SettingsPassword: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsPassword"),
+    screen: SettingsPasswordRouteScreen,
+    linking: "settings/password",
+    options: {
+      ...SETTINGS_PAGE_OPTIONS,
+      get title() {
+        return t("Change password");
+      },
+    },
+  }),
+  SettingsAccountUsage: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsAccountUsage"),
+    screen: SettingsAccountUsageRouteScreen,
+    linking: "settings/usage-limits",
+    options: {
+      ...SETTINGS_PAGE_OPTIONS,
+      get title() {
+        return t("Usage and limits");
+      },
+    },
+  }),
+  SettingsPlugins: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsPlugins"),
+    screen: SettingsPluginsRouteScreen,
+    linking: "settings/plugins",
+    options: {
+      ...SETTINGS_PAGE_OPTIONS,
+      get title() {
+        return t("Plugins and accounts");
+      },
+    },
+  }),
   SettingsEnvironments: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsEnvironments"),
     screen: SettingsEnvironmentsRouteScreen,
     linking: "settings/environments",
     options: {
@@ -248,6 +290,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsEnvironmentDetail: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsEnvironmentDetail"),
     screen: SettingsEnvironmentDetailRouteScreen,
     linking: "settings/environments/:environmentId",
     options: {
@@ -259,6 +302,7 @@ const SETTINGS_SCREENS = {
   }),
   // Old links to New threads and Agent behavior open Threads, which absorbed them.
   SettingsEnvironmentNewThreads: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsEnvironmentNewThreads"),
     screen: SettingsThreadsRouteScreen,
     linking: "settings/new-threads",
     options: {
@@ -269,6 +313,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsEnvironmentSourceControl: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsEnvironmentSourceControl"),
     screen: SettingsEnvironmentSourceControlRouteScreen,
     linking: "settings/source-control",
     options: {
@@ -279,6 +324,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsEnvironmentAgentBehavior: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsEnvironmentAgentBehavior"),
     screen: SettingsThreadsRouteScreen,
     linking: "settings/agent-behavior",
     options: {
@@ -289,6 +335,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsWorktrees: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsWorktrees"),
     screen: SettingsWorktreesRouteScreen,
     linking: "settings/worktrees",
     options: {
@@ -299,6 +346,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsLabs: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsLabs"),
     screen: SettingsLabsRouteScreen,
     linking: "settings/labs",
     options: {
@@ -309,6 +357,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsProviderAccounts: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsProviderAccounts"),
     screen: SettingsProviderAccountsRouteScreen,
     linking: "settings/provider-accounts",
     options: {
@@ -319,6 +368,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsEnvironmentMaintenance: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsEnvironmentMaintenance"),
     screen: SettingsEnvironmentMaintenanceRouteScreen,
     linking: "settings/maintenance",
     options: {
@@ -329,6 +379,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsNotifications: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsNotifications"),
     screen: SettingsNotificationsRouteScreen,
     linking: "settings/notifications",
     options: {
@@ -339,6 +390,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsThreads: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsThreads"),
     screen: SettingsThreadsRouteScreen,
     linking: "settings/thread-preferences",
     options: {
@@ -349,6 +401,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsAbout: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsAbout"),
     screen: SettingsAboutRouteScreen,
     linking: "settings/about",
     options: {
@@ -359,6 +412,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsEnvironmentNew: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsEnvironmentNew"),
     screen: ConnectionsNewRouteScreen,
     linking: "settings/environment-new",
     options: {
@@ -369,6 +423,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsArchive: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsArchive"),
     screen: ArchivedThreadsRouteScreen,
     linking: "settings/archive",
     options: {
@@ -379,6 +434,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsNavigation: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsNavigation"),
     screen: SettingsNavigationRouteScreen,
     linking: "settings/navigation-tabs",
     options: {
@@ -389,6 +445,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsAppearance: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsAppearance"),
     screen: SettingsAppearanceRouteScreen,
     linking: "settings/appearance",
     options: {
@@ -399,6 +456,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsProjectGrouping: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsProjectGrouping"),
     screen: SettingsProjectGroupingRouteScreen,
     linking: "settings/project-grouping",
     options: {
@@ -409,6 +467,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsOrganization: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsOrganization"),
     screen: SettingsProjectGroupingRouteScreen,
     linking: "settings/organization",
     options: {
@@ -419,6 +478,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsProjectOverview: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsProjectOverview"),
     screen: SettingsProjectOverviewRouteScreen,
     linking: "settings/project",
     options: {
@@ -429,6 +489,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsKeyboard: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsKeyboard"),
     screen: SettingsKeyboardRouteScreen,
     linking: "settings/keyboard",
     options: {
@@ -439,6 +500,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsMicrophone: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsMicrophone"),
     screen: SettingsMicrophoneRouteScreen,
     linking: "settings/microphone",
     options: {
@@ -449,6 +511,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsFollowUp: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsFollowUp"),
     screen: SettingsFollowUpRouteScreen,
     linking: "settings/follow-ups",
     options: {
@@ -459,6 +522,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsScheduledTasks: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsScheduledTasks"),
     screen: SettingsScheduledTasksRouteScreen,
     linking: "settings/scheduled-tasks",
     options: {
@@ -470,6 +534,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsScheduledTaskNew: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsScheduledTaskNew"),
     screen: SettingsScheduledTaskNewRouteScreen,
     linking: "settings/scheduled-tasks/new",
     options: {
@@ -480,6 +545,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsScheduledTaskEdit: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsScheduledTaskEdit"),
     screen: SettingsScheduledTaskEditRouteScreen,
     options: {
       ...SETTINGS_PAGE_OPTIONS,
@@ -489,6 +555,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsScheduledTaskBranch: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsScheduledTaskBranch"),
     screen: ScheduledTaskBranchPickerRouteScreen,
     options: {
       ...SETTINGS_PAGE_OPTIONS,
@@ -498,6 +565,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsScheduledTaskModel: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsScheduledTaskModel"),
     screen: ScheduledTaskModelPickerRouteScreen,
     options: {
       ...SETTINGS_PAGE_OPTIONS,
@@ -510,6 +578,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsClientStorage: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsClientStorage"),
     screen: SettingsClientStorageRouteScreen,
     linking: "settings/client-storage",
     options: {
@@ -520,6 +589,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsDiagnostics: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsDiagnostics"),
     screen: SettingsDiagnosticsRouteScreen,
     linking: "settings/diagnostics",
     options: {
@@ -532,6 +602,7 @@ const SETTINGS_SCREENS = {
   // These params snapshot the tap time, local filters, and freshly aggregated pools.
   // A linking path would round-trip them as URL query strings and preserve stale values.
   SettingsUsageAccount: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsUsageAccount"),
     screen: UsageLimitAccountScreen,
     options: {
       ...SETTINGS_PAGE_OPTIONS,
@@ -541,6 +612,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsOpenSourceLicenses: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsOpenSourceLicenses"),
     screen: SettingsOpenSourceLicensesRouteScreen,
     linking: "settings/open-source-licenses",
     options: {
@@ -551,6 +623,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsOpenSourceLicense: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsOpenSourceLicense"),
     screen: SettingsOpenSourceLicenseRouteScreen,
     linking: "settings/open-source-licenses/:entryKey",
     options: {
@@ -561,6 +634,7 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsUsage: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsUsage"),
     screen: UsageRouteScreen,
     linking: "settings/usage",
     options: {
@@ -571,11 +645,13 @@ const SETTINGS_SCREENS = {
     },
   }),
   SettingsAuth: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsAuth"),
     screen: SettingsAuthRouteScreen,
     linking: "settings/auth",
     options: { headerShown: false, presentation: "modal" },
   }),
   SettingsWaitlist: createNativeStackScreen({
+    if: () => isMobileRouteEnabled("SettingsWaitlist"),
     screen: SettingsAuthRouteScreen,
     linking: "settings/waitlist",
     options: { headerShown: false, presentation: "modal" },
@@ -759,11 +835,12 @@ const RootStackConfig = createWorkspaceStackNavigator({
       options: {
         ...GLASS_HEADER_OPTIONS,
         get title() {
-          return t("Environment");
+          return BASKULE_FLAGS.projects ? t("Environment") : t("Space");
         },
       },
     }),
     NewTaskBranch: createNativeStackScreen({
+      if: () => isMobileRouteEnabled("NewTaskBranch"),
       linking: "new/draft/branch",
       screen: NewTaskBranchPickerRouteScreen,
       options: {
@@ -774,6 +851,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       },
     }),
     AddProject: createNativeStackScreen({
+      if: () => isMobileRouteEnabled("AddProject"),
       linking: "new/add-project",
       screen: AddProjectSourceRoute,
 
@@ -785,21 +863,25 @@ const RootStackConfig = createWorkspaceStackNavigator({
       },
     }),
     AddProjectRepository: createNativeStackScreen({
+      if: () => isMobileRouteEnabled("AddProjectRepository"),
       linking: "new/add-project/repository",
       screen: AddProjectRepositoryRoute,
       options: GLASS_HEADER_OPTIONS,
     }),
     AddProjectDestination: createNativeStackScreen({
+      if: () => isMobileRouteEnabled("AddProjectDestination"),
       linking: "new/add-project/destination",
       screen: AddProjectDestinationRoute,
       options: GLASS_HEADER_OPTIONS,
     }),
     AddProjectLocal: createNativeStackScreen({
+      if: () => isMobileRouteEnabled("AddProjectLocal"),
       linking: "new/add-project/local",
       screen: AddProjectLocalRoute,
       options: GLASS_HEADER_OPTIONS,
     }),
     AddProjectNew: createNativeStackScreen({
+      if: () => isMobileRouteEnabled("AddProjectNew"),
       linking: "new/add-project/new",
       screen: AddProjectNewRoute,
       options: GLASS_HEADER_OPTIONS,
@@ -820,6 +902,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       options: SOLID_HEADER_OPTIONS,
     }),
     NewTaskThreadSettings: createNativeStackScreen({
+      if: () => isMobileRouteEnabled("NewTaskThreadSettings"),
       screen: NewTaskThreadSettingsRouteScreen,
       linking: "new/draft/settings",
       options: {
@@ -913,6 +996,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       options: SOLID_HEADER_OPTIONS,
     }),
     ThreadSettingsSheet: createNativeStackScreen({
+      if: () => isMobileRouteEnabled("ThreadSettingsSheet"),
       screen: ExistingThreadSettingsRouteScreen,
       options: {
         gestureEnabled: true,

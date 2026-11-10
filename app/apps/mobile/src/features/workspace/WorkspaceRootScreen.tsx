@@ -45,8 +45,10 @@ import {
   useSidebarWorkspaceTabs,
   useSystemWorkspaceTabBar,
 } from "./useSystemWorkspaceTabBar";
-import { openSettings } from "../settings/settings-navigation";
+import { openConnectionSettings } from "../settings/settings-navigation";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
+import { BASKULE_FLAGS } from "../../baskule/flags";
+import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 
 const TAB_TITLES = WORKSPACE_TAB_LABELS;
 
@@ -110,7 +112,7 @@ function WorkspaceRootContent() {
   const renderHeaderTitle = () => (
     <WorkspaceRootTitle
       columnWidth={width}
-      onOpenEnvironments={() => openSettings(navigation, "SettingsEnvironments")}
+      onOpenEnvironments={() => openConnectionSettings(navigation)}
     />
   );
   const tab = state.tabs[settingsOpen ? "settings" : state.selectedTab];
@@ -124,7 +126,10 @@ function WorkspaceRootContent() {
           ? workspaceDockBottomClearance({ bottomInset: insets.bottom, keyboardHeight })
           : Platform.OS === "ios"
             ? Math.max(insets.bottom, keyboardHeight) +
-              (systemTabBar || sidebarTabs || tab.searchMode !== "resting"
+              (!BASKULE_FLAGS.workspaceTabs ||
+              systemTabBar ||
+              sidebarTabs ||
+              tab.searchMode !== "resting"
                 ? sidebarPicker
                   ? 80
                   : 16
@@ -162,7 +167,31 @@ function WorkspaceRootContent() {
               ...(enabled.length === 0
                 ? { headerSearchBarOptions: undefined, unstable_headerRightItems: () => [] }
                 : {}),
-              unstable_headerLeftItems: () => [],
+              unstable_headerLeftItems: () =>
+                BASKULE_FLAGS.workspaceTabs
+                  ? []
+                  : [
+                      withNativeGlassHeaderItem(
+                        settingsOpen
+                          ? {
+                              type: "button" as const,
+                              label: "",
+                              accessibilityLabel: t("Back to chats"),
+                              icon: {
+                                type: "sfSymbol" as const,
+                                name: "chevron.backward" as const,
+                              },
+                              onPress: () => selectTab("threads"),
+                            }
+                          : {
+                              type: "button" as const,
+                              label: "",
+                              accessibilityLabel: t("Settings"),
+                              icon: { type: "sfSymbol" as const, name: "gearshape" as const },
+                              onPress: () => selectTab("settings"),
+                            },
+                      ),
+                    ],
               // Beside a detail column the tab bar names the tab and the detail header the page,
               // so the sidebar keeps the brand.
               headerTitle:

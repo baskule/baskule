@@ -1,4 +1,5 @@
 import { useBaskuleSession } from "../../baskule/session";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { useSpaceEnvironments } from "../../baskule/spaces";
 import { t, useTranslation } from "../../i18n";
 
@@ -797,6 +798,11 @@ function TaskForm({
       );
       return;
     }
+    if (!BASKULE_FLAGS.projects && (!draft.projectId || !draft.modelSelection)) {
+      // The space's chat project and configured model are chosen for the person.
+      Dialog.alert(t("Space not ready"), t("This space is still starting. Try again in a moment."));
+      return;
+    }
     if (
       !draft.title.trim() ||
       !draft.prompt.trim() ||
@@ -866,39 +872,45 @@ function TaskForm({
 
         {environmentUnavailable ? (
           <Text className="px-1 text-base text-danger-foreground">
-            {t("This environment is disconnected. Reconnect before saving.")}
+            {BASKULE_FLAGS.projects
+              ? t("This environment is disconnected. Reconnect before saving.")
+              : t("This space is not connected. Try again when it is back online.")}
           </Text>
         ) : null}
-        <SettingsSection>
-          <SelectRow
-            label={t("Runs on")}
-            value={environmentLabel}
-            valueIcon={
-              <EnvironmentMachineSymbol
-                kind={resolveEnvironmentMachineKind(config)}
-                size={18}
-                tintColorClassName="accent-foreground-muted"
-              />
-            }
-            actions={
-              draft.task || saving || dictationPending
-                ? []
-                : availableTargets.map((target) => ({
-                    id: target.environmentId,
-                    title: target.label,
-                    image:
-                      ENVIRONMENT_MACHINE_SYMBOLS[
-                        resolveEnvironmentMachineKind(target.serverConfig)
-                      ],
-                    state: target.environmentId === environmentId ? "on" : undefined,
-                  }))
-            }
-            onSelect={(id) => {
-              const target = availableTargets.find((entry) => entry.environmentId === id);
-              if (target) onChangeEnvironment(target);
-            }}
-          />
-        </SettingsSection>
+        {BASKULE_FLAGS.projects || availableTargets.length > 1 ? (
+          <SettingsSection>
+            <SelectRow
+              label={BASKULE_FLAGS.projects ? t("Runs on") : t("Space")}
+              value={environmentLabel}
+              valueIcon={
+                BASKULE_FLAGS.projects ? (
+                  <EnvironmentMachineSymbol
+                    kind={resolveEnvironmentMachineKind(config)}
+                    size={18}
+                    tintColorClassName="accent-foreground-muted"
+                  />
+                ) : undefined
+              }
+              actions={
+                draft.task || saving || dictationPending
+                  ? []
+                  : availableTargets.map((target) => ({
+                      id: target.environmentId,
+                      title: target.label,
+                      image:
+                        ENVIRONMENT_MACHINE_SYMBOLS[
+                          resolveEnvironmentMachineKind(target.serverConfig)
+                        ],
+                      state: target.environmentId === environmentId ? "on" : undefined,
+                    }))
+              }
+              onSelect={(id) => {
+                const target = availableTargets.find((entry) => entry.environmentId === id);
+                if (target) onChangeEnvironment(target);
+              }}
+            />
+          </SettingsSection>
+        ) : null}
         <SettingsSection title={t("Task")}>
           <FormField
             label={t("Name")}
@@ -910,112 +922,120 @@ function TaskForm({
           {promptField}
         </SettingsSection>
 
-        <SettingsSection title={t("Context")}>
-          <SelectRow
-            label={t("Project")}
-            value={
-              projects.find((project) => project.id === draft.projectId)?.title ??
-              (projects.length ? "Choose project" : "No projects available")
-            }
-            actions={projects.map((project) => ({
-              id: project.id,
-              title: project.title,
-              state: project.id === draft.projectId ? "on" : undefined,
-            }))}
-            onSelect={(id) => {
-              const project = projects.find((item) => item.id === id);
-              if (!project) return;
-              const keepsExplicitModel =
-                draft.modelSelectionIsExplicit &&
-                (draft.modelSelection === null ||
-                  !config?.settings ||
-                  resolveProjectProviderInstanceEnabled(
-                    config.settings,
-                    project.id,
-                    draft.modelSelection.instanceId,
-                  ));
-              setDraft({
-                ...draft,
-                projectId: project.id,
-                modelSelection: keepsExplicitModel
-                  ? draft.modelSelection
-                  : scheduledTaskDefaultModel(config, project),
-                modelSelectionIsExplicit: keepsExplicitModel,
-              });
-            }}
-          />
-          <PickerRow
-            label={t("Model")}
-            borderTop
-            value={
-              modelOptions.find(
-                (option) =>
-                  option.selection.instanceId === draft.modelSelection?.instanceId &&
-                  option.selection.model === draft.modelSelection?.model,
-              )?.label ??
-              draft.modelSelection?.model ??
-              (modelOptions.length ? "Choose model" : "No models available")
-            }
-            onPress={() => navigation.navigate("SettingsScheduledTaskModel")}
-            disabled={saving || dictationPending || environmentUnavailable}
-          />
-        </SettingsSection>
+        {BASKULE_FLAGS.projects || BASKULE_FLAGS.modelSelection ? (
+          <SettingsSection title={t("Context")}>
+            {BASKULE_FLAGS.projects ? (
+              <SelectRow
+                label={t("Project")}
+                value={
+                  projects.find((project) => project.id === draft.projectId)?.title ??
+                  (projects.length ? "Choose project" : "No projects available")
+                }
+                actions={projects.map((project) => ({
+                  id: project.id,
+                  title: project.title,
+                  state: project.id === draft.projectId ? "on" : undefined,
+                }))}
+                onSelect={(id) => {
+                  const project = projects.find((item) => item.id === id);
+                  if (!project) return;
+                  const keepsExplicitModel =
+                    draft.modelSelectionIsExplicit &&
+                    (draft.modelSelection === null ||
+                      !config?.settings ||
+                      resolveProjectProviderInstanceEnabled(
+                        config.settings,
+                        project.id,
+                        draft.modelSelection.instanceId,
+                      ));
+                  setDraft({
+                    ...draft,
+                    projectId: project.id,
+                    modelSelection: keepsExplicitModel
+                      ? draft.modelSelection
+                      : scheduledTaskDefaultModel(config, project),
+                    modelSelectionIsExplicit: keepsExplicitModel,
+                  });
+                }}
+              />
+            ) : null}
+            {BASKULE_FLAGS.modelSelection ? (
+              <PickerRow
+                label={t("Model")}
+                borderTop
+                value={
+                  modelOptions.find(
+                    (option) =>
+                      option.selection.instanceId === draft.modelSelection?.instanceId &&
+                      option.selection.model === draft.modelSelection?.model,
+                  )?.label ??
+                  draft.modelSelection?.model ??
+                  (modelOptions.length ? "Choose model" : "No models available")
+                }
+                onPress={() => navigation.navigate("SettingsScheduledTaskModel")}
+                disabled={saving || dictationPending || environmentUnavailable}
+              />
+            ) : null}
+          </SettingsSection>
+        ) : null}
 
-        <SettingsSection title={t("Workspace")}>
-          <SelectRow
-            label={t("Run in")}
-            value={
-              draft.workspace === "worktree"
-                ? t("New worktree")
-                : draft.workspace === "root"
-                  ? t("Project checkout")
-                  : t("Specific checkout")
-            }
-            actions={[
-              {
-                id: "worktree",
-                title: t("New worktree"),
-                state: draft.workspace === "worktree" ? "on" : undefined,
-              },
-              {
-                id: "root",
-                title: t("Project checkout"),
-                state: draft.workspace === "root" ? "on" : undefined,
-              },
-              {
-                id: "existing_worktree",
-                title: t("Specific checkout"),
-                state: draft.workspace === "existing_worktree" ? "on" : undefined,
-              },
-            ]}
-            onSelect={(id) => {
-              if (id === "worktree" || id === "root" || id === "existing_worktree")
-                setDraft({ ...draft, workspace: id });
-            }}
-          />
-          {draft.workspace === "worktree" ? (
-            <PickerRow
-              label={t("Base branch")}
-              value={resolveNewTaskBranchLabel({
-                branchName: draft.baseRef,
-                startFromOrigin: draft.startFromOrigin,
-                workspaceMode: "worktree",
-              })}
-              borderTop
-              disabled={!draft.projectId || saving || dictationPending || environmentUnavailable}
-              onPress={() => navigation.navigate("SettingsScheduledTaskBranch")}
+        {BASKULE_FLAGS.sourceControl ? (
+          <SettingsSection title={t("Workspace")}>
+            <SelectRow
+              label={t("Run in")}
+              value={
+                draft.workspace === "worktree"
+                  ? t("New worktree")
+                  : draft.workspace === "root"
+                    ? t("Project checkout")
+                    : t("Specific checkout")
+              }
+              actions={[
+                {
+                  id: "worktree",
+                  title: t("New worktree"),
+                  state: draft.workspace === "worktree" ? "on" : undefined,
+                },
+                {
+                  id: "root",
+                  title: t("Project checkout"),
+                  state: draft.workspace === "root" ? "on" : undefined,
+                },
+                {
+                  id: "existing_worktree",
+                  title: t("Specific checkout"),
+                  state: draft.workspace === "existing_worktree" ? "on" : undefined,
+                },
+              ]}
+              onSelect={(id) => {
+                if (id === "worktree" || id === "root" || id === "existing_worktree")
+                  setDraft({ ...draft, workspace: id });
+              }}
             />
-          ) : null}
-          {draft.workspace === "existing_worktree" ? (
-            <FormField
-              label={t("Checkout path")}
-              disabled={saving}
-              value={draft.checkoutPath}
-              borderTop
-              onChange={(checkoutPath) => setDraft({ ...draft, checkoutPath })}
-            />
-          ) : null}
-        </SettingsSection>
+            {draft.workspace === "worktree" ? (
+              <PickerRow
+                label={t("Base branch")}
+                value={resolveNewTaskBranchLabel({
+                  branchName: draft.baseRef,
+                  startFromOrigin: draft.startFromOrigin,
+                  workspaceMode: "worktree",
+                })}
+                borderTop
+                disabled={!draft.projectId || saving || dictationPending || environmentUnavailable}
+                onPress={() => navigation.navigate("SettingsScheduledTaskBranch")}
+              />
+            ) : null}
+            {draft.workspace === "existing_worktree" ? (
+              <FormField
+                label={t("Checkout path")}
+                disabled={saving}
+                value={draft.checkoutPath}
+                borderTop
+                onChange={(checkoutPath) => setDraft({ ...draft, checkoutPath })}
+              />
+            ) : null}
+          </SettingsSection>
+        ) : null}
 
         <SettingsSection title={t("Schedule")}>
           <View className="px-4 py-3">
@@ -1269,7 +1289,13 @@ function WebhookScheduleDetails({
       <Text className="text-sm text-foreground-muted">
         {t(
           "The prompt can use {{bodyField}}, {{headerField}}, {{queryField}}, {{body}} and {{request}}. The filled-in prompt is all the agent sees.",
-          { bodyField: "{{body.a.b}}", headerField: "{{headers.name}}", queryField: "{{query.name}}", body: "{{body}}", request: "{{request}}" },
+          {
+            bodyField: "{{body.a.b}}",
+            headerField: "{{headers.name}}",
+            queryField: "{{query.name}}",
+            body: "{{body}}",
+            request: "{{request}}",
+          },
         )}
       </Text>
       {task === null || resolved === null ? (

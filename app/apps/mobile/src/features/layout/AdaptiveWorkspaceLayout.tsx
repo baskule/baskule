@@ -1,5 +1,6 @@
 import { useTranslation } from "../../i18n";
 
+import { startBaskuleNewChat } from "../threads/baskule-new-chat";
 import { BASKULE_FLAGS } from "../../baskule/flags";
 import {
   WorkspaceColumnsRendererContext,
@@ -99,7 +100,7 @@ import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 import { AndroidHingeObserver } from "../../native/AndroidHingeObserver";
 import { WindowHingeContext } from "../../native/window-hinge-context";
 import { useAndroidWorkspaceRoot } from "../workspace/AndroidWorkspaceTabsProvider";
-import { openSettings } from "../settings/settings-navigation";
+import { openConnectionSettings } from "../settings/settings-navigation";
 import { dispatchRootStackReset, rootStackState } from "../../lib/root-stack-reset";
 import {
   currentWorkspaceSelections,
@@ -591,8 +592,12 @@ function AdaptiveWorkspaceLayoutContent(
     handleSelectDetail({ name: "Thread", params });
 
   const projects = useProjects();
+  // Without workspace tabs, Settings is an ordinary page with nothing drawn below it.
   const compactAndroidSettings =
-    Platform.OS === "android" && androidSettingsOpen && !layout.usesSplitView;
+    BASKULE_FLAGS.workspaceTabs &&
+    Platform.OS === "android" &&
+    androidSettingsOpen &&
+    !layout.usesSplitView;
   // Reads the open page when pressed, so the layout context doesn't change on every navigation.
   const handleStartNewTask = () => {
     const state = rootStackState(navigation);
@@ -618,16 +623,22 @@ function AdaptiveWorkspaceLayoutContent(
         : undefined;
     const preferences = appAtomRegistry.get(mobilePreferencesAtom);
     const saved = AsyncResult.isSuccess(preferences) ? preferences.value : undefined;
+    if (!BASKULE_FLAGS.projects) {
+      // The list's space filter is saved with each change, so it names the space on screen.
+      void startBaskuleNewChat(
+        saved?.threadListFilters?.environmentId ?? null,
+        handleSelectThreadRoute,
+      );
+      return;
+    }
     handleSelectThreadRoute(
-      BASKULE_FLAGS.projects
-        ? newTaskDestination({
-            projects,
-            requestId: uuidv4(),
-            useLastProject: saved?.useLastProjectForNewThreads,
-            currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,
-            lastProject: saved?.lastThreadProject,
-          })
-        : { draft: { requestId: uuidv4() } },
+      newTaskDestination({
+        projects,
+        requestId: uuidv4(),
+        useLastProject: saved?.useLastProjectForNewThreads,
+        currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,
+        lastProject: saved?.lastThreadProject,
+      }),
     );
   };
 
@@ -638,7 +649,7 @@ function AdaptiveWorkspaceLayoutContent(
 
   // Create at root: the iOS sidebar renders in an independent navigation tree.
   const handleOpenEnvironmentSettings = () => {
-    openSettings(navigation, "SettingsEnvironments");
+    openConnectionSettings(navigation);
   };
   const { openPendingTask: handleOpenPendingTask } =
     usePendingTaskListActions(handleSelectThreadRoute);

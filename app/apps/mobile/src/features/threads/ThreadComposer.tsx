@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { useTranslation } from "../../i18n";
 
 import { useSidebarWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
@@ -764,7 +765,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     </>
   ) : null;
 
-  const modelControl = (
+  const modelControl = !BASKULE_FLAGS.modelSelection ? null : (
     <View className="min-w-0 shrink">
       <ComposerModelControl
         size={usesLargeControls ? "large" : "regular"}
@@ -828,11 +829,17 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           </Text>
         ) : null}
         {modelUnavailable ? (
-          <Button
-            label={t("Model unavailable. Open model settings.")}
-            tone="text"
-            onPress={openSettings}
-          />
+          BASKULE_FLAGS.modelSelection ? (
+            <Button
+              label={t("Model unavailable. Open model settings.")}
+              tone="text"
+              onPress={openSettings}
+            />
+          ) : (
+            <Text className="px-3 py-2 text-xs text-foreground-muted">
+              {t("The assistant's model is unavailable. Ask your administrator to check it.")}
+            </Text>
+          )
         ) : null}
 
         <ComposerSurface

@@ -1,5 +1,6 @@
 import { t, useTranslation } from "../../i18n";
 
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import * as Dialog from "../../components/ui/Dialog";
 import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import {
@@ -583,7 +584,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
               </Text>
             ) : null}
           </Text>
-          {props.environmentLabel && props.environmentMachine ? (
+          {props.environmentLabel && props.environmentMachine && BASKULE_FLAGS.projects ? (
             <EnvironmentMachineSymbol
               kind={props.environmentMachine}
               size={11}
@@ -1261,7 +1262,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </Text>
         ) : props.environmentLabel ? (
           <View className="min-w-0 flex-1 flex-row items-center gap-1">
-            {props.environmentMachine ? (
+            {props.environmentMachine && BASKULE_FLAGS.projects ? (
               <EnvironmentMachineSymbol
                 kind={props.environmentMachine}
                 size={machineIconSize}
@@ -1288,7 +1289,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           <View className="flex-1" />
         )}
 
-        {providerInstance ? (
+        {providerInstance && BASKULE_FLAGS.modelSelection ? (
           <View className="flex-row items-center">
             {providerDrivers.slice(0, -1).map(
               (driver, index) => (

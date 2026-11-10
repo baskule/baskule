@@ -229,6 +229,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   macstudio: IconDeviceDesktop,
   magnifyingglass: IconSearch,
   mic: IconMicrophone,
+  lock: IconLock,
   paintbrush: IconPalette,
   pencil: IconPencil,
   "person.crop.circle": IconUserCircle,

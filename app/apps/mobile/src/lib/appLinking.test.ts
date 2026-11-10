@@ -63,18 +63,34 @@ describe("shouldHandleAppLink", () => {
     expect(shouldHandleAppLink(`baskule://${path}`)).toBe(true);
     expect(shouldHandleAppLink(`t3code://${path}`)).toBe(true);
   });
-  it.each(["ThreadTerminal", "GitOverview", "ThreadReview", "ThreadDevicePreview"])(
-    "rejects direct navigation to %s",
-    (route) => {
-      expect(isMobileRouteEnabled(route)).toBe(false);
-    },
-  );
+  it.each([
+    "ThreadTerminal",
+    "GitOverview",
+    "ThreadReview",
+    "ThreadDevicePreview",
+    "SettingsEnvironments",
+    "SettingsEnvironmentNew",
+    "SettingsProviderAccounts",
+    "SettingsUsage",
+    "SettingsScheduledTaskModel",
+    "SettingsScheduledTaskBranch",
+    "AddProject",
+    "NewTaskBranch",
+  ])("rejects direct navigation to %s", (route) => {
+    expect(isMobileRouteEnabled(route)).toBe(false);
+  });
   it.each([
     "Thread",
     "ThreadFiles",
     "ThreadBrowserPreview",
     "ScheduledTasks",
     "ScheduledTaskEditor",
+    "Settings",
+    "SettingsPassword",
+    "SettingsAccountUsage",
+    "SettingsPlugins",
+    "SettingsScheduledTaskEdit",
+    "SettingsArchive",
   ])("keeps direct route %s", (route) => {
     expect(isMobileRouteEnabled(route)).toBe(true);
   });

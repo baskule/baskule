@@ -63,6 +63,10 @@ Use condition-based waits with timeouts. Run long commands once and wait for com
 
 The runner can reuse evidence recorded on `origin` for unchanged committed inputs. Publishing new evidence records is opt-in. `BASKULE_CHECK_RECORD=1` pushes passing records to `refs/evidence/*` on `origin` and needs push access there. A fork's `origin` does not provide Baskule's shared records. Ordinary checks do not publish records. Dirty inputs run again without recording reusable evidence. `--fresh` forces a new run. A passing record remains useful until a relevant input changes.
 
+For native Android and iOS changes, use [the mobile verification workflow](mobile-verification.md)
+and [its skill](../.agents/skills/verify-baskule-mobile/SKILL.md). Device acceptance is separate
+from the phone-sized web journeys.
+
 ## Check a deployed installation
 
 Run deployed-stack checks only with authorization from the installation's operator. `scripts/check e2e:<tags>`, `infra`, and `acceptance --live` exercise the deployed build, not the working tree. They can change provider routing, restart services, or create and remove data.

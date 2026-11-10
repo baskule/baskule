@@ -34,6 +34,7 @@ vi.mock("./api", async (original) => ({
   fetchInstance: vi.fn(),
   signOut: vi.fn(),
 }));
+vi.mock("./settings-api", () => ({ changeBaskulePassword: vi.fn() }));
 
 const me = {
   authentication: { mode: "anonymous", password: false, providers: [] },
@@ -202,5 +203,67 @@ describe("device connection", () => {
       token: "token-b",
     });
     expect(storage.token).toBe("token-b");
+  });
+
+  it("keeps the rotated password credential when a refresh with the revoked token fails", async () => {
+    const { api, session } = await setup();
+    const settings = await import("./settings-api");
+    vi.mocked(api.fetchMe).mockResolvedValueOnce(me);
+    await session.completeBaskuleSignIn("https://a.example", "token-a");
+    let finish!: (token: string) => void;
+    vi.mocked(settings.changeBaskulePassword).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const change = session.changeBaskuleSessionPassword({ currentPassword: "a", newPassword: "b" });
+    vi.mocked(api.fetchMe).mockRejectedValueOnce(new api.BaskuleApiError("signed-out", "revoked"));
+    await session.refreshBaskuleMe();
+    finish("token-b");
+    await change;
+    expect(settings.changeBaskulePassword).toHaveBeenCalledWith(
+      { serverUrl: "https://a.example", token: "token-a" },
+      { currentPassword: "a", newPassword: "b" },
+    );
+    expect(session.readBaskuleSession()).toMatchObject({ status: "signed-in", token: "token-b" });
+    expect(storage.token).toBe("token-b");
+  });
+
+  it("signs out when the password changed but no replacement credential arrived", async () => {
+    const { api, session } = await setup();
+    const settings = await import("./settings-api");
+    vi.mocked(api.fetchMe).mockResolvedValueOnce(me);
+    await session.completeBaskuleSignIn("https://a.example", "token-a");
+    vi.mocked(settings.changeBaskulePassword).mockRejectedValueOnce(
+      new api.BaskuleApiError("signed-out", "Sign in again."),
+    );
+    await session.changeBaskuleSessionPassword({ currentPassword: "a", newPassword: "b" });
+    expect(session.readBaskuleSession()).toEqual({
+      status: "signed-out",
+      serverUrl: "https://a.example",
+      notice: "Sign in again.",
+    });
+    expect(storage.token).toBeNull();
+  });
+
+  it("lets a sign-out during a password change win", async () => {
+    const { api, session } = await setup();
+    const settings = await import("./settings-api");
+    vi.mocked(api.fetchMe).mockResolvedValueOnce(me);
+    await session.completeBaskuleSignIn("https://a.example", "token-a");
+    let finish!: (token: string) => void;
+    vi.mocked(settings.changeBaskulePassword).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const change = session.changeBaskuleSessionPassword({ currentPassword: "a", newPassword: "b" });
+    await session.signOutOfBaskule();
+    finish("token-b");
+    await change;
+    expect(session.readBaskuleSession().status).toBe("signed-out");
+    expect(storage.token).toBeNull();
   });
 });

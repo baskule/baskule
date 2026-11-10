@@ -30,6 +30,7 @@ type Confirm = {
 };
 type Methods = { readonly serverUrl: string; readonly config: BaskuleAuthConfig };
 type Pending = { readonly id: string; readonly secret: string; readonly serverUrl: string };
+type Action = "continue" | "connect" | "password" | "browser";
 
 const errorMessage = (cause: unknown, fallback: string) =>
   cause instanceof BaskuleApiError ? cause.message : fallback;
@@ -47,7 +48,10 @@ export function BaskuleLoginScreen(props: {
   const [server, setServer] = useState(props.serverUrl ?? "");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [action, setAction] = useState<Action | null>(null);
+  const busy = action !== null;
+  // A second tap can land before the disabled state renders.
+  const runningRef = useRef(false);
   const [error, setError] = useState<string | null>(props.notice ?? null);
   const [info, setInfo] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
@@ -66,9 +70,11 @@ export function BaskuleLoginScreen(props: {
     [],
   );
 
-  const run = (work: () => Promise<void>, fallback: string) => {
+  const run = (kind: Action, work: () => Promise<void>, fallback: string) => {
+    if (runningRef.current) return;
     const expected = requestRevision.current;
-    setBusy(true);
+    runningRef.current = true;
+    setAction(kind);
     setError(null);
     setInfo(null);
     work()
@@ -76,8 +82,14 @@ export function BaskuleLoginScreen(props: {
         if (requestRevision.current === expected) setError(errorMessage(cause, fallback));
       })
       .finally(() => {
-        if (requestRevision.current === expected) setBusy(false);
+        if (requestRevision.current !== expected) return;
+        runningRef.current = false;
+        setAction(null);
       });
+  };
+  const resetRun = () => {
+    runningRef.current = false;
+    setAction(null);
   };
 
   const handleLink = (value: string) => {
@@ -88,6 +100,7 @@ export function BaskuleLoginScreen(props: {
     }
     requestRevision.current++;
     cancelBaskuleSignIn();
+    resetRun();
     setConfirm(null);
     setMethods(null);
     setPending(null);
@@ -102,11 +115,15 @@ export function BaskuleLoginScreen(props: {
       return;
     }
     const expected = requestRevision.current;
-    run(async () => {
-      const instance = await fetchInstance(target.serverUrl);
-      if (requestRevision.current !== expected) return;
-      setConfirm({ target, name: instance.name, config: instance.authentication });
-    }, t("Cannot reach this server."));
+    run(
+      "continue",
+      async () => {
+        const instance = await fetchInstance(target.serverUrl);
+        if (requestRevision.current !== expected) return;
+        setConfirm({ target, name: instance.name, config: instance.authentication });
+      },
+      t("Cannot reach this server."),
+    );
   };
 
   const receiveOpenedLink = useEffectEvent(handleLink);
@@ -175,20 +192,28 @@ export function BaskuleLoginScreen(props: {
       return;
     }
     const expected = requestRevision.current;
-    run(async () => {
-      await signInToBaskule({ serverUrl: methods.serverUrl, email, password });
-      if (requestRevision.current === expected) props.onConnected?.();
-    }, t("Sign-in failed."));
+    run(
+      "password",
+      async () => {
+        await signInToBaskule({ serverUrl: methods.serverUrl, email, password });
+        if (requestRevision.current === expected) props.onConnected?.();
+      },
+      t("Sign-in failed."),
+    );
   };
 
   const signInInBrowser = (serverUrl: string) => {
     const expected = requestRevision.current;
-    run(async () => {
-      const login = await requestBrowserLogin(serverUrl);
-      if (requestRevision.current !== expected) return;
-      setPending({ id: login.id, secret: login.secret, serverUrl });
-      await Linking.openURL(login.url);
-    }, t("Could not open the browser."));
+    run(
+      "browser",
+      async () => {
+        const login = await requestBrowserLogin(serverUrl);
+        if (requestRevision.current !== expected) return;
+        setPending({ id: login.id, secret: login.secret, serverUrl });
+        await Linking.openURL(login.url);
+      },
+      t("Could not open the browser."),
+    );
   };
 
   const cancel = () => {
@@ -197,34 +222,59 @@ export function BaskuleLoginScreen(props: {
     setConfirm(null);
     setPending(null);
     setMethods(null);
-    setBusy(false);
+    resetRun();
     props.onCancel?.();
   };
 
   const connect = ({ target, config }: Confirm) => {
     const expected = requestRevision.current;
-    run(async () => {
-      if (target.kind === "code") {
-        await connectToBaskule(target);
-        if (requestRevision.current === expected) props.onConnected?.();
-      } else if (config.mode === "anonymous") {
-        await connectAnonymously(target.serverUrl);
-        if (requestRevision.current === expected) props.onConnected?.();
-      } else {
-        setConfirm(null);
-        setMethods({ serverUrl: target.serverUrl, config });
-      }
-    }, t("Connection failed."));
+    run(
+      "connect",
+      async () => {
+        if (target.kind === "code") {
+          await connectToBaskule(target);
+          if (requestRevision.current === expected) props.onConnected?.();
+        } else if (config.mode === "anonymous") {
+          await connectAnonymously(target.serverUrl);
+          if (requestRevision.current === expected) props.onConnected?.();
+        } else {
+          setConfirm(null);
+          setMethods({ serverUrl: target.serverUrl, config });
+        }
+      },
+      t("Connection failed."),
+    );
   };
 
   const back = () => {
     requestRevision.current++;
     cancelBaskuleSignIn();
-    setBusy(false);
+    resetRun();
     setMethods(null);
     setPending(null);
     setError(null);
   };
+
+  const submitServer = () => {
+    if (!runningRef.current) handleLink(server);
+  };
+  const title = confirm
+    ? t("Connect to {{name}}?", { name: confirm.name })
+    : methods
+      ? t("Sign in")
+      : t("Connect to your server");
+  const subtitle = confirm
+    ? t(
+        props.switching
+          ? "Replace this phone’s current connection with {{server}}?"
+          : "This phone will connect to {{server}}.",
+        { server: confirm.target.serverUrl },
+      )
+    : methods
+      ? methods.serverUrl
+      : t(
+          "Enter the address of your Baskule server, or scan the QR code from Baskule on your computer (Apps → Connect a device).",
+        );
 
   return (
     <KeyboardAvoidingView
@@ -233,148 +283,145 @@ export function BaskuleLoginScreen(props: {
     >
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerClassName="flex-grow justify-center gap-6 px-6"
-        contentContainerStyle={{ paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }}
+        contentContainerClassName="flex-grow justify-center px-6"
+        contentContainerStyle={{ paddingTop: insets.top + 24, paddingBottom: insets.bottom + 16 }}
       >
-        <View className="gap-2">
-          <BaskuleWordmark />
-          <AppText className="text-3xl font-t3-bold">
-            {confirm
-              ? t("Connect to {{name}}?", { name: confirm.name })
-              : methods
-                ? t("Sign in")
-                : t("Connect")}
-          </AppText>
-          <AppText className="text-base text-foreground-muted">
-            {confirm
-              ? t(
-                  props.switching
-                    ? "Replace this phone’s current connection with {{server}}?"
-                    : "This phone will connect to {{server}}.",
-                  { server: confirm.target.serverUrl },
-                )
-              : methods
-                ? methods.serverUrl
-                : t(
-                    "Scan the QR code from Baskule on your computer (Apps → Connect a device), or enter the server address.",
-                  )}
-          </AppText>
-        </View>
-        {props.switching && !confirm ? (
-          <Button label={t("Cancel")} tone="text" fullWidth onPress={cancel} />
-        ) : null}
-        {error ? <ErrorBanner message={error} /> : null}
-        {info ? <AppText className="text-sm text-foreground-muted">{info}</AppText> : null}
-        {confirm ? (
+        <View className="w-full max-w-[420px] gap-5 self-center">
           <View className="gap-3">
-            <Button
-              label={t("Connect")}
-              tone="primary"
-              fullWidth
-              loading={busy}
-              onPress={() => connect(confirm)}
-            />
-            <Button label={t("Cancel")} tone="text" fullWidth onPress={cancel} />
-          </View>
-        ) : scanning ? (
-          <View className="gap-3">
-            <View className="overflow-hidden rounded-[26px]" style={{ aspectRatio: 1 }}>
-              <CameraView
-                active
-                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                onBarcodeScanned={onScan}
-                style={StyleSheet.absoluteFill}
-              />
+            <BaskuleWordmark height={22} />
+            <View className="gap-1">
+              <AppText className="text-2xl font-t3-bold">{title}</AppText>
+              <AppText className="text-sm text-foreground-muted">{subtitle}</AppText>
             </View>
-            <Button label={t("Cancel")} tone="text" fullWidth onPress={() => setScanning(false)} />
           </View>
-        ) : pending ? (
-          <View className="gap-3">
-            <AppText>
-              {t("Finish signing in and approve the connection in your browser, then return here.")}
-            </AppText>
-            <Button label={t("Cancel browser sign-in")} tone="text" fullWidth onPress={cancel} />
-          </View>
-        ) : methods ? (
-          <>
-            {methods.config.password ? (
-              <View className="gap-4">
-                <ConnectionFormField
-                  label={t("Email")}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  keyboardType="email-address"
-                  textContentType="username"
-                  returnKeyType="next"
-                  editable={!busy}
-                />
-                <ConnectionFormField
-                  label={t("Password")}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  autoComplete="current-password"
-                  textContentType="password"
-                  returnKeyType="go"
-                  onSubmitEditing={signIn}
-                  editable={!busy}
-                />
-                <Button
-                  label={t("Sign in")}
-                  tone="primary"
-                  fullWidth
-                  loading={busy}
-                  onPress={signIn}
+          {error ? <ErrorBanner message={error} /> : null}
+          {info ? <AppText className="text-sm text-foreground-muted">{info}</AppText> : null}
+          {confirm ? (
+            <View className="gap-2">
+              <Button
+                label={t("Connect")}
+                tone="primary"
+                fullWidth
+                loading={action === "connect"}
+                disabled={busy}
+                onPress={() => connect(confirm)}
+              />
+              <Button label={t("Cancel")} tone="text" fullWidth onPress={cancel} />
+            </View>
+          ) : scanning ? (
+            <View className="gap-2">
+              <View className="overflow-hidden rounded-[20px]" style={{ aspectRatio: 1 }}>
+                <CameraView
+                  active
+                  barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                  onBarcodeScanned={onScan}
+                  style={StyleSheet.absoluteFill}
                 />
               </View>
-            ) : null}
-            {methods.config.providers.length > 0 ? (
               <Button
-                label={t("Sign in in browser")}
-                tone={methods.config.password ? "secondary" : "primary"}
+                label={t("Cancel")}
+                tone="text"
                 fullWidth
-                loading={busy}
-                onPress={() => signInInBrowser(methods.serverUrl)}
+                onPress={() => setScanning(false)}
               />
-            ) : null}
-            <Button label={t("Use another server")} tone="text" fullWidth onPress={back} />
-            <AppText className="text-sm text-foreground-muted">
-              {t("No account yet? Ask your administrator for an invitation link.")}
-            </AppText>
-          </>
-        ) : (
-          <>
-            <Button
-              label={t("Scan a QR code")}
-              tone="primary"
-              fullWidth
-              disabled={busy}
-              onPress={() => void startScan()}
-            />
-            <ConnectionFormField
-              label={t("Server or connection link")}
-              value={server}
-              onChangeText={setServer}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              placeholder="https://baskule.example.com"
-              returnKeyType="go"
-              onSubmitEditing={() => handleLink(server)}
-              editable={!busy}
-            />
-            <Button
-              label={t("Continue")}
-              tone="secondary"
-              fullWidth
-              loading={busy}
-              onPress={() => handleLink(server)}
-            />
-            <LanguageSetting compact />
-          </>
-        )}
+            </View>
+          ) : pending ? (
+            <View className="gap-2">
+              <AppText className="text-base">
+                {t(
+                  "Finish signing in and approve the connection in your browser, then return here.",
+                )}
+              </AppText>
+              <Button label={t("Cancel browser sign-in")} tone="text" fullWidth onPress={cancel} />
+            </View>
+          ) : methods ? (
+            <View className="gap-3">
+              {methods.config.password ? (
+                <>
+                  <ConnectionFormField
+                    label={t("Email")}
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    keyboardType="email-address"
+                    textContentType="username"
+                    returnKeyType="next"
+                    editable={!busy}
+                  />
+                  <ConnectionFormField
+                    label={t("Password")}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    autoComplete="current-password"
+                    textContentType="password"
+                    returnKeyType="go"
+                    onSubmitEditing={signIn}
+                    editable={!busy}
+                  />
+                  <Button
+                    label={t("Sign in")}
+                    tone="primary"
+                    fullWidth
+                    loading={action === "password"}
+                    disabled={busy}
+                    onPress={signIn}
+                  />
+                </>
+              ) : null}
+              {methods.config.providers.length > 0 ? (
+                <Button
+                  label={t("Sign in in browser")}
+                  tone={methods.config.password ? "secondary" : "primary"}
+                  fullWidth
+                  loading={action === "browser"}
+                  disabled={busy}
+                  onPress={() => signInInBrowser(methods.serverUrl)}
+                />
+              ) : null}
+              <Button label={t("Use another server")} tone="text" fullWidth onPress={back} />
+              <AppText className="text-center text-sm text-foreground-muted">
+                {t("No account yet? Ask your administrator for an invitation link.")}
+              </AppText>
+            </View>
+          ) : (
+            <View className="gap-3">
+              <ConnectionFormField
+                label={t("Server address")}
+                value={server}
+                onChangeText={setServer}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                placeholder="https://baskule.example.com"
+                returnKeyType="go"
+                onSubmitEditing={submitServer}
+                editable={!busy}
+              />
+              <Button
+                label={t("Continue")}
+                tone="primary"
+                fullWidth
+                loading={action === "continue"}
+                disabled={busy || server.trim() === ""}
+                onPress={submitServer}
+              />
+              <Button
+                label={t("Scan a QR code")}
+                icon="qrcode.viewfinder"
+                tone="secondary"
+                fullWidth
+                disabled={busy}
+                onPress={() => void startScan()}
+              />
+              {props.switching ? (
+                <Button label={t("Cancel")} tone="text" fullWidth onPress={cancel} />
+              ) : null}
+            </View>
+          )}
+          {!confirm && !scanning && !pending && !methods ? <LanguageSetting compact /> : null}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
