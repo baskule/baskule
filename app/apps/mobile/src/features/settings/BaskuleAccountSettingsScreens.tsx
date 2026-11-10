@@ -558,7 +558,7 @@ export function SettingsPluginsRouteScreen() {
                 plugin.status !== "unavailable" &&
                 plugin.servers.some((server) => server.credential === "user-oauth"),
             ) ? (
-              <Text textRole="footnote" className="px-2 text-foreground-muted">
+              <Text textRole="footnote" className="px-4 text-foreground-muted">
                 {t(
                   "Plugins that use your account act as you. In a team space, only your default account is used, and only if the space owner allows it. Everyone in that space can see the results.",
                 )}
