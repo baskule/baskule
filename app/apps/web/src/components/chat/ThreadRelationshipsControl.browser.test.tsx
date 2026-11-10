@@ -263,7 +263,7 @@ it("shows a side chat's full title in its tooltip", async () => {
   );
 });
 
-it("shows a remote subagent's full title in its tooltip even when its environment is unavailable", async () => {
+it("does not offer linked-environment navigation for retained remote subagent metadata", async () => {
   setup();
   const longTitle = "Investigate a remote subagent issue across linked environments";
   const remoteEnvId = EnvironmentId.make("remote-env");
@@ -310,25 +310,19 @@ it("shows a remote subagent's full title in its tooltip even when its environmen
     { router: "/environment/fork" },
   );
 
-  // A finished remote task sits with the other finished agents, not in its own list.
   await expect
     .element(screen.getByRole("button", { name: new RegExp(longTitle) }))
     .not.toBeInTheDocument();
-  await screen.getByRole("button", { name: /Previous agents/ }).click();
-  const row = screen.getByRole("button", { name: new RegExp(longTitle) });
-  await userEvent.hover(row);
-  await vi.waitFor(() =>
-    expect(document.querySelector('[data-slot="tooltip-popup"]')?.textContent).toContain(longTitle),
-  );
-  expect(document.querySelector('[data-slot="tooltip-popup"]')?.textContent).toContain(
-    "Runs on Remote VM. Connect to it to open the thread there.",
-  );
-
-  await row.click({ force: true });
+  await expect
+    .element(screen.getByRole("button", { name: /Previous agents/ }))
+    .not.toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Merge back to source conversation" }))
+    .toBeVisible();
   expect(screen.router?.state.location.pathname).toBe("/environment/fork");
 });
 
-it("shows a delegated-from thread's full title in its tooltip even when its environment is unavailable", async () => {
+it("does not offer linked-environment navigation for retained delegation metadata", async () => {
   setup();
   const longTitle = "Parent task delegated from another machine that has a long description";
   state.projection = {
@@ -352,16 +346,12 @@ it("shows a delegated-from thread's full title in its tooltip even when its envi
     { router: "/environment/fork" },
   );
 
-  const row = screen.getByRole("button", { name: new RegExp(longTitle) });
-  await userEvent.hover(row);
-  await vi.waitFor(() =>
-    expect(document.querySelector('[data-slot="tooltip-popup"]')?.textContent).toContain(longTitle),
-  );
-  expect(document.querySelector('[data-slot="tooltip-popup"]')?.textContent).toContain(
-    "Delegated from a linked environment. Connect to it to open the parent thread.",
-  );
-
-  await row.click({ force: true });
+  await expect
+    .element(screen.getByRole("button", { name: new RegExp(longTitle) }))
+    .not.toBeInTheDocument();
+  await expect
+    .element(screen.getByRole("button", { name: "Merge back to source conversation" }))
+    .toBeVisible();
   expect(screen.router?.state.location.pathname).toBe("/environment/fork");
 });
 

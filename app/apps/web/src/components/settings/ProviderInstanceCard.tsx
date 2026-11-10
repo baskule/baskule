@@ -458,6 +458,7 @@ export function ProviderEnvironmentSection(props: {
                         type="button"
                         size="icon-micro"
                         variant="ghost-muted"
+                        disabled={variable.valueRedacted === true}
                         onClick={() => {
                           const sensitive = !variable.sensitive;
                           updateVariable(variable.id, {

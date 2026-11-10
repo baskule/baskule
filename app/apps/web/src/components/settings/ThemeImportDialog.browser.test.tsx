@@ -56,11 +56,13 @@ describe("ThemeImportDialog", () => {
 
     await userEvent.type(page.getByLabelText("Search Open VSX themes"), "night");
 
-    await expect.element(page.getByRole("heading", { name: "Nightfall" })).toBeVisible();
-    expect(searchOpenVsxThemes).toHaveBeenCalledWith(
-      "night",
-      expect.objectContaining({ sortBy: "downloadCount" }),
+    await vi.waitFor(() =>
+      expect(searchOpenVsxThemes).toHaveBeenCalledWith(
+        "night",
+        expect.objectContaining({ sortBy: "downloadCount" }),
+      ),
     );
+    await expect.element(page.getByRole("heading", { name: "Nightfall" })).toBeVisible();
   });
 });
 
