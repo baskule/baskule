@@ -46,7 +46,11 @@ New migrations run forward:
 - 080 adds and backfills scheduled-task `thread_mode`.
 
 No migration is empty, falsely marked as applied, or used to reset the schema. The
-released compatibility window remains version 0.5.2 with minimum client/server 0.5.1.
+new source version is 0.5.3, with minimum client and server 0.5.3. Older clients cannot
+decode one-shot schedules, and older servers lack the thread-title lookup used by the new
+clients. Upgrade backend and clients together; existing installations still migrate forward
+without a data reset. This PR prepares that compatibility boundary but does not publish or
+deploy a release.
 
 `BaskuleUpgrade.test.ts` uses a frozen manifest from the actual Baskule main history,
 not a truncated new manifest. A separate test-only upstream-076 fixture includes the
