@@ -240,9 +240,10 @@ const scenarios = {
       const composer = await openComposer(page);
       await composer.pressSequentially("Hello", { delay: 5 });
       const start = page.getByRole("button", { name: "Start voice input" });
-      const stop = page.getByRole("button", { name: "Stop and insert" });
+      const stop = page.getByRole("button", { name: "Finish voice input" });
+      const recording = page.getByRole("status", { name: "Recording" });
       await start.click();
-      await page.getByRole("timer").filter({ hasText: "0:01" }).waitFor();
+      await recording.filter({ hasText: "0:01" }).waitFor();
       await shot(page, `${device}-composer-recording`);
       check(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -266,7 +267,7 @@ const scenarios = {
       await shot(page, `${device}-composer-transcribed`);
 
       await start.click();
-      await page.getByRole("timer").waitFor();
+      await recording.waitFor();
       await page.keyboard.press("Escape");
       await start.waitFor();
       check(
@@ -287,7 +288,7 @@ const scenarios = {
       );
 
       await start.click();
-      await page.getByRole("timer").filter({ hasText: "0:01" }).waitFor();
+      await recording.filter({ hasText: "0:01" }).waitFor();
       await page.getByRole("button", { name: "Submit message" }).click();
       await page.waitForURL((url) => !url.pathname.startsWith("/draft") && url.pathname !== "/", {
         timeout: 60_000,
