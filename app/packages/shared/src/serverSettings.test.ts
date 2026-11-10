@@ -20,7 +20,6 @@ import {
   resolveModelPreferences,
   isModelSelectionProviderEnabled,
   parsePersistedServerObservabilitySettings,
-  resolveReviewGuideModelSelection,
   resolveSourceControlWriterModelSelection,
   resolveSpeechPostProcessingModelSelection,
 } from "./serverSettings.ts";
@@ -31,10 +30,10 @@ const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const FOLDED_SERVER_SETTINGS = { ...DEFAULT_SERVER_SETTINGS, projectSettingsFolded: true };
 
 describe("fallbackTextGenerationModelSelection", () => {
-  it("uses Big Pickle when only OpenCode is enabled", () => {
+  it("uses the Baskule text generation model when OpenCode is enabled", () => {
     expect(
       fallbackTextGenerationModelSelection({}, (instanceId) => instanceId === "opencode"),
-    ).toEqual({ instanceId: "opencode", model: "opencode/big-pickle" });
+    ).toEqual({ instanceId: "opencode", model: "openai/gpt-5" });
   });
 
   it("replaces and clears the fallback without carrying model options", () => {
@@ -391,45 +390,6 @@ describe("serverSettings helpers", () => {
       settings.textGenerationModelSelection,
     );
     expect(settings.sourceControlWriterModelSelection).toBe(sourceControlWriterModelSelection);
-  });
-
-  it("routes every text task but review guides to a text generator, until it is turned off", () => {
-    const generatorId = ProviderInstanceId.make("openrouter");
-    const selection = createModelSelection(generatorId, "openai/gpt-5-mini");
-    const settings = (enabled: boolean) => ({
-      ...DEFAULT_SERVER_SETTINGS,
-      textGenerators: {
-        [generatorId]: {
-          kind: "openaiCompatible" as const,
-          baseUrl: "https://openrouter.ai/api/v1",
-          apiKey: "",
-          enabled,
-        },
-      },
-      sourceControlWriterModelSelection: selection,
-      reviewGuideModelSelection: selection,
-      speechPostProcessingModelSelection: selection,
-    });
-    // A text generator has no provider snapshot; an empty list must not read as unusable.
-    const on = settings(true);
-    expect(resolveSourceControlWriterModelSelection(on, [], null)).toBe(selection);
-    expect(resolveSpeechPostProcessingModelSelection(on, [])).toBe(selection);
-    expect(resolveReviewGuideModelSelection(on, [], null)).toBe(selection);
-    expect(
-      resolveReviewGuideModelSelection(
-        { ...on, sourceControlWriterModelSelection: null },
-        [],
-        null,
-      ),
-    ).toBe(on.textGenerationModelSelection);
-
-    const off = settings(false);
-    expect(resolveSourceControlWriterModelSelection(off, [], null)).toBe(
-      off.textGenerationModelSelection,
-    );
-    expect(resolveSpeechPostProcessingModelSelection(off, [])).toBe(
-      off.textGenerationModelSelection,
-    );
   });
 
   it("falls back from a writer provider a project turned off, keeping it for other projects", () => {
@@ -978,11 +938,22 @@ describe("synchronized model preferences", () => {
 
 describe("resolveSpeechPostProcessingModelSelection", () => {
   it("follows the text generation model until a usable cleanup model is set", () => {
-    const textGeneration = createModelSelection(ProviderInstanceId.make("codex"), "gpt-6-luna");
-    const cleanup = createModelSelection(ProviderInstanceId.make("claudeAgent"), "claude-haiku", [
+    const instanceId = ProviderInstanceId.make("opencode");
+    const textGeneration = createModelSelection(instanceId, "openai/gpt-5");
+    const cleanup = createModelSelection(instanceId, "anthropic/claude-haiku", [
       { id: "effort", value: "low" },
     ]);
-    const base = { ...DEFAULT_SERVER_SETTINGS, textGenerationModelSelection: textGeneration };
+    const base = {
+      ...DEFAULT_SERVER_SETTINGS,
+      textGenerationModelSelection: textGeneration,
+      providerInstances: {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("opencode"),
+          enabled: true,
+          config: {},
+        },
+      },
+    };
     expect(resolveSpeechPostProcessingModelSelection(base)).toBe(textGeneration);
     const pinned = applyServerSettingsPatch(base, { speechPostProcessingModelSelection: cleanup });
     expect(resolveSpeechPostProcessingModelSelection(pinned)).toEqual(cleanup);
@@ -990,8 +961,8 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
       resolveSpeechPostProcessingModelSelection({
         ...pinned,
         providerInstances: {
-          [ProviderInstanceId.make("claudeAgent")]: {
-            driver: ProviderDriverKind.make("claudeAgent"),
+          [instanceId]: {
+            driver: ProviderDriverKind.make("opencode"),
             enabled: false,
             config: {},
           },
@@ -1001,12 +972,20 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
     expect(
       resolveSpeechPostProcessingModelSelection(pinned, [
         {
-          instanceId: "claudeAgent",
+          instanceId,
+          driver: ProviderDriverKind.make("opencode"),
           enabled: true,
           installed: true,
           supportsTextGeneration: false,
-        },
-      ] as never),
+          version: null,
+          status: "ready",
+          auth: { status: "authenticated" },
+          checkedAt: "2026-07-27T00:00:00.000Z",
+          models: [],
+          slashCommands: [],
+          skills: [],
+        } satisfies ServerProvider,
+      ]),
     ).toBe(textGeneration);
     expect(
       applyServerSettingsPatch(pinned, { speechPostProcessingModelSelection: null })
