@@ -7,13 +7,21 @@ import * as NodePath from "node:path";
 export const nativeEffectContinuations = {
   name: "celld-effect-continuations",
   setup(build) {
-    build.onLoad({ filter: /\/effect\/dist\/internal\/effect\.js$/ }, ({ path }) => {
+    build.onLoad({ filter: /\/effect\/dist\/(?:internal\/effect|Scheduler)\.js$/ }, ({ path }) => {
       const { version } = JSON.parse(
-        NodeFS.readFileSync(NodePath.resolve(NodePath.dirname(path), "../../package.json"), "utf8"),
+        NodeFS.readFileSync(NodePath.resolve(NodePath.dirname(path), path.endsWith("/Scheduler.js") ? "../package.json" : "../../package.json"), "utf8"),
       );
       if (!["4.0.1", "4.0.5", "4.1.2"].includes(version))
         throw new Error(`Review native Effect continuation compatibility for ${version}`);
       let contents = NodeFS.readFileSync(path, "utf8");
+      if (path.endsWith("/Scheduler.js")) {
+        const before = "defaultValue: () => new MixedScheduler()";
+        if (contents.split(before).length !== 2)
+          throw new Error(`Effect ${version} default scheduler changed: ${path}`);
+        // Request-owned scheduler timers can be discarded after a handler returns (celld #258).
+        contents = contents.replace(before, 'defaultValue: () => new MixedScheduler("sync")');
+        return { contents, loader: "js", resolveDir: NodePath.dirname(path) };
+      }
       const before = `      let resumed = false;
       let yielded = false;`;
       const after = `      let resumed = false;

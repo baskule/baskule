@@ -284,13 +284,31 @@ export class AgentRuntime {
    * folder in this cell's lifetime) and reloads its tool registry after a server's tools change. Wait for connection
    * completion and publication of its actual catalog, including plugins with no tools until an account connects.
    */
-  private async waitForTools(oc: OpenCode, ref: { directory: string; workspaceID: string }, servers: string[], listed = true): Promise<number> {
-    const t0 = Date.now();
-    while (Date.now() - t0 < 10_000) {
-      if (await oc.mcpReady(ref, servers, listed)) return Date.now() - t0;
-      await new Promise((r) => setTimeout(r, 20));
-    }
-    throw new Error(`MCP catalog did not settle: ${servers.join(", ")}`);
+  private waitForTools(oc: OpenCode, ref: { directory: string; workspaceID: string }, servers: string[], listed = true): Promise<number> {
+    return oc.inBootEvent(async () => {
+      const t0 = Date.now();
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`MCP catalog did not settle at ${ref.directory}: ${servers.join(", ")}`);
+          reject(error);
+          controller.abort(error);
+        }, 10_000);
+      });
+      try {
+        return await Promise.race([deadline, (async () => {
+          while (true) {
+            controller.signal.throwIfAborted();
+            if (await oc.mcpReady(ref, servers, listed, controller.signal)) return Date.now() - t0;
+            await new Promise((r) => setTimeout(r, 20));
+          }
+        })()]);
+      } finally {
+        clearTimeout(timer);
+        controller.abort();
+      }
+    });
   }
 
   /** A session's first turn in this boot: its model must still be offered (an admin may have replaced it), and its
@@ -472,7 +490,11 @@ export class AgentRuntime {
           const body = await request.clone().json().catch(() => ({})) as { id?: string };
           const refused = await this.usage?.beforeTurn(decodeURIComponent(turn[1]!), body.id);
           if (refused) return refused;
-          await this.prepareSession(oc, turn[1]!);
+          try {
+            await this.prepareSession(oc, turn[1]!);
+          } catch (error) {
+            return json({ _tag: "InvalidRequestError", message: String((error as Error)?.message ?? error) }, 400);
+          }
         }
         const switching = /^\/api\/session\/([^/]+)\/model$/.exec(ocPath);
         if (switching) {
