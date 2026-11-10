@@ -22,6 +22,8 @@ import { openCode2ResumeAfterRestartInput } from "./opencode2_resume_after_resta
 import { assertOpenCode2ResumeAfterRestartOutput } from "./opencode2_resume_after_restart/output.ts";
 import { openCode2SimpleInput } from "./opencode2_simple/input.ts";
 import { assertOpenCode2SimpleOutput } from "./opencode2_simple/output.ts";
+import { assertOpenCode2MissingStepUsageOutput } from "./opencode2_missing_step_usage/output.ts";
+import { assertCodexModelRerouteOutput } from "./codex_model_reroute/output.ts";
 import { openCode2ToolCallInput } from "./opencode2_tool_call/input.ts";
 import { assertOpenCode2ToolCallOutput } from "./opencode2_tool_call/output.ts";
 import { OPENCODE2_MODEL_SELECTION, type OrchestratorReplayFixture } from "./shared.ts";

@@ -1,10 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import {
-  AudioModule,
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  type RecordingStatus,
-} from "expo-audio";
+import { AudioModule, RecordingPresets, type RecordingStatus } from "expo-audio";
 import { File } from "expo-file-system";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { useSyncExternalStore } from "react";
@@ -13,11 +8,12 @@ import { Atom, AsyncResult } from "effect/reactivity";
 import { makeMutable } from "react-native-reanimated";
 
 import {
+  type MicrophoneEntry,
   microphoneOrder,
   preferredMicrophoneInput,
   rememberMicrophones,
 } from "../../lib/microphonePriority";
-import { getBaskuleVoiceTranscriber } from "../../native/voiceTranscription";
+import { getBaskuleVoiceTranscriber } from "../../baskule/transcription";
 import {
   readBaskuleSession,
   subscribeBaskuleSession,
@@ -25,10 +21,14 @@ import {
 } from "../../baskule/session";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
-import { voiceInputBlocksSubmission } from "@t3tools/client-runtime/voice-input";
+import {
+  voiceInputBlocksSubmission,
+  type VoiceTranscriber,
+} from "@t3tools/client-runtime/voice-input";
 import { createLazyVoiceRecorder } from "./lazyVoiceRecorder";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 import { VoiceInputSession } from "./voiceInputSession";
+import { createVoiceRecordingPermission } from "./voiceRecordingPermission";
 import {
   acquireAudioSession,
   activateAudioSession,
@@ -54,6 +54,9 @@ function keepScreenAwake(tag: string): () => void {
   return () => void activation.then(() => deactivateKeepAwake(tag)).catch(() => {});
 }
 
+export const deviceMicrophoneOrder = (saved?: ReadonlyArray<MicrophoneEntry>) =>
+  microphoneOrder(saved, Platform.OS === "android" ? "android" : "ios");
+
 /**
  * The app has one microphone and one dictation at a time, so the session
  * lives for the registry's lifetime rather than any screen's.
@@ -68,7 +71,11 @@ const voiceInputAtom = Atom.make((get) => {
   );
   let keepAwakeSequence = 0;
   let audioToken: ReturnType<typeof acquireAudioSession> | null = null;
+  const permission = createVoiceRecordingPermission(() => {
+    void session.controller.appMovedToBackground();
+  });
   const recorder = createLazyVoiceRecorder({
+    getDestination: () => "environment",
     create: () => new AudioModule.AudioRecorder(VOICE_RECORDING_OPTIONS),
     onStatus: (status: RecordingStatus) => {
       session.controller.handleRecorderStatus({
@@ -82,12 +89,12 @@ const voiceInputAtom = Atom.make((get) => {
     selectInput: (inputs) => {
       const preferences = registry.get(mobilePreferencesAtom);
       if (!AsyncResult.isSuccess(preferences)) return null;
-      const known = microphoneOrder(preferences.value.microphones);
+      const known = deviceMicrophoneOrder(preferences.value.microphones);
       const order = rememberMicrophones(known, inputs);
       if (order !== known) {
         registry.set(updateMobilePreferencesAtom, {
           transform: (current) => ({
-            microphones: rememberMicrophones(microphoneOrder(current.microphones), inputs),
+            microphones: rememberMicrophones(deviceMicrophoneOrder(current.microphones), inputs),
           }),
         });
       }
@@ -98,10 +105,7 @@ const voiceInputAtom = Atom.make((get) => {
     initiallyActive: AppState.currentState === "active",
     recorder,
     getTranscriber: getBaskuleVoiceTranscriber,
-    requestPermission: async () => {
-      const permission = await requestRecordingPermissionsAsync();
-      return { granted: permission.granted, canAskAgain: permission.canAskAgain };
-    },
+    requestPermission: permission.requestPermission,
     configureRecording: async () => {
       const token = acquireAudioSession("recording");
       audioToken = token;
@@ -142,7 +146,9 @@ const voiceInputAtom = Atom.make((get) => {
       session.controller.cancel();
     account = next;
   });
+
   get.addFinalizer(() => {
+    permission.dispose();
     unsubscribeAccount();
     appStateSubscription.remove();
     session.dispose();
@@ -160,6 +166,7 @@ export function useGlobalVoiceInput() {
     isAvailable:
       (account.status === "signed-in" && account.me.voiceInput === true) ||
       getNativeShowcaseScene() !== null,
+
     audioLevels,
     isBusy: voiceInputBlocksSubmission(snapshot.state),
     session,

@@ -13,6 +13,7 @@ import { connectionStatusTitle } from "@t3tools/client-runtime/connection";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
+  settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -47,6 +48,7 @@ import {
   useToggleEnvironmentModelFavorite,
 } from "../../hooks/useSettings";
 import { useStableCallback } from "../../hooks/useStableCallback";
+import { ensureLocalApi } from "../../localApi";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { cn } from "../../lib/utils";
 import { resolveAppModelSelectionState } from "../../modelSelection";
@@ -83,19 +85,14 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "../ui/empty";
-import {
-  NumberField,
-  NumberFieldDecrement,
-  NumberFieldGroup,
-  NumberFieldIncrement,
-  NumberFieldInput,
-} from "../ui/number-field";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
+import { useManagedPolicy } from "~/state/managedPolicy";
 import { ExpandableText } from "./ExpandableText";
+import { IntervalSecondsField } from "./IntervalSecondsField";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { providerClients } from "./providerDriverMeta";
@@ -104,7 +101,6 @@ import {
   backgroundActivityOverrideSettings,
   buildProviderInstanceUpdatePatch,
   durationToSeconds,
-  normalizeIntervalSeconds,
   PROVIDER_HEALTH_INTERVAL_STEP_SECONDS,
 } from "./SettingsPanels.logic";
 import {
@@ -125,6 +121,25 @@ import {
   resolveRemoteOperateAccess,
   resolveSelectedProviderEnvironmentId,
 } from "./ProviderSettingsPanel.logic";
+function providerInstanceName(instance: ProviderInstanceConfig): string {
+  return (
+    instance.displayName?.trim() ||
+    providerClients.get(instance.driver)?.label ||
+    String(instance.driver)
+  );
+}
+
+async function confirmProviderInstanceRemoval(
+  question: string,
+  consequence = "",
+): Promise<boolean> {
+  const message = `${question}\nIts saved settings, including any custom binary path, will be removed.${consequence}`;
+  const confirmed = await settlePromise(() =>
+    ensureLocalApi().dialogs.confirm(message, { variant: "destructive" }),
+  );
+  return confirmed._tag === "Success" && confirmed.value;
+}
+
 function modelListChanges(current: ReadonlyArray<string>, next: ReadonlyArray<string>) {
   const currentSet = new Set(current);
   const nextSet = new Set(next.map((model) => model.trim()).filter(Boolean));
@@ -321,13 +336,17 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
       hasServerConfig: environment.serverConfig !== null,
     }),
   )?.environmentId;
-  // A search jump to a setting the selected device cannot show switches to one that can.
-  const searchRedirectEnvironmentId =
-    !target.scoped &&
-    searchTargetId === searchableSetting("provider-health-check-interval").id &&
-    !selectedEnvironmentCanRenderSettings
-      ? searchableEnvironmentId
-      : undefined;
+  let searchRedirectEnvironmentId: EnvironmentId | undefined;
+  {
+    if (
+      !target.scoped &&
+      searchTargetId === searchableSetting("provider-health-check-interval").id &&
+      !selectedEnvironmentCanRenderSettings &&
+      searchableEnvironmentId !== undefined
+    ) {
+      searchRedirectEnvironmentId = searchableEnvironmentId;
+    }
+  }
   if (
     searchRedirectEnvironmentId !== undefined &&
     searchRedirectEnvironmentId !== selectedEnvironmentId
@@ -513,6 +532,10 @@ export function EnvironmentProviderSettings({
 }) {
   const t = useTranslation();
   const settings = useEnvironmentSettings(environmentId);
+  const managedPolicy = useManagedPolicy(environmentId);
+  // A policy that allows no provider leaves nothing to add.
+  const canAddProvider =
+    !readOnly && managedPolicy?.limits?.providers?.allowedDrivers?.length !== 0;
   const canWriteSettings = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
   const canRefreshProviders = useEnvironmentScope(environmentId, AuthOrchestrationReadScope);
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
@@ -756,6 +779,10 @@ export function EnvironmentProviderSettings({
   );
 
   const deleteInstance = useStableCallback(async (instanceId: ProviderInstanceId) => {
+    const confirmed = await confirmProviderInstanceRemoval(
+      `Remove the ${instanceId} provider instance?`,
+    );
+    if (!confirmed) return;
     const updateResult = await persistProviderInstance({
       operation: "remove",
       instanceId,
@@ -774,10 +801,17 @@ export function EnvironmentProviderSettings({
   });
 
   const resetDefaultInstance = useStableCallback(async (driverKind: ProviderDriverKind) => {
-    const result = await persistProviderInstance({
-      operation: "remove",
-      instanceId: defaultInstanceIdForDriver(driverKind),
-    });
+    const instanceId = defaultInstanceIdForDriver(driverKind);
+    const instance = settings.providerInstances?.[instanceId] ?? { driver: driverKind };
+    const turnsOff =
+      resolveProviderInstanceEnabled(instance) &&
+      !resolveProviderInstanceEnabled({ driver: driverKind });
+    const confirmed = await confirmProviderInstanceRemoval(
+      `Reset the ${providerInstanceName(instance)} provider to its defaults?`,
+      turnsOff ? " It will also be turned off." : "",
+    );
+    if (!confirmed) return;
+    const result = await persistProviderInstance({ operation: "remove", instanceId });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       toastManager.add({
@@ -868,7 +902,7 @@ export function EnvironmentProviderSettings({
         {...searchableSetting("providers")}
         variant="plain"
         titleAction={
-          !readOnly ? (
+          canAddProvider ? (
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -946,7 +980,7 @@ export function EnvironmentProviderSettings({
             >
               <div className="divide-y divide-border/50">
                 {rows.map((row) => renderProviderInstance(row, "list"))}
-                {!readOnly ? (
+                {canAddProvider ? (
                   <button
                     type="button"
                     className="flex w-full cursor-pointer items-center gap-3 px-3 py-3 text-left text-sm text-muted-foreground transition-colors outline-none hover:bg-muted/25 hover:text-foreground focus-visible:bg-muted/25 focus-visible:text-foreground sm:px-4"
@@ -1025,32 +1059,22 @@ export function EnvironmentProviderSettings({
                 !canWriteSettings && "opacity-50 select-none",
               )}
             >
-              <NumberField
+              <IntervalSecondsField
+                label="provider health check interval"
                 value={providerHealthRefreshIntervalSeconds}
                 min={0}
                 step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
-                size="sm"
-                className="w-32"
-                onValueChange={(value) =>
+                onCommit={(seconds, options) =>
                   updateSettings(
                     backgroundActivityOverrideSettings(
                       settings.backgroundActivity,
                       resolvedBackgroundActivity,
-                      {
-                        providerHealthRefreshInterval: Duration.seconds(
-                          normalizeIntervalSeconds(value),
-                        ),
-                      },
+                      { providerHealthRefreshInterval: Duration.seconds(seconds) },
                     ),
+                    options,
                   )
                 }
-              >
-                <NumberFieldGroup>
-                  <NumberFieldDecrement aria-label={t("Decrease provider health check interval")} />
-                  <NumberFieldInput aria-label={t("Provider health check interval in seconds")} />
-                  <NumberFieldIncrement aria-label={t("Increase provider health check interval")} />
-                </NumberFieldGroup>
-              </NumberField>
+              />
               <span className="text-xs text-muted-foreground">{t("seconds")}</span>
             </div>
           }

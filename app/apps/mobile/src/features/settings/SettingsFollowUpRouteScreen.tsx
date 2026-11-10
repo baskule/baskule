@@ -3,7 +3,7 @@ import { t, useTranslation } from "../../i18n";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Platform, View } from "react-native";
+import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -71,17 +71,12 @@ export function SettingsFollowUpRouteScreen() {
       </SettingsSection>
       <Text className="px-2 text-sm text-foreground-muted">
         {t(
-          "Long-press the send button to use the other option for a single message. With a hardware keyboard, hold Command while sending.",
+          "Long-press the send button to use the other option for a single message. With a hardware keyboard, hold {{modifier}} while sending.",
+          { modifier: Platform.OS === "android" ? "Ctrl" : "Command" },
         )}
       </Text>
     </ScrollView>
   );
 
-  return Platform.OS === "android" ? (
-    <SettingsScreen title={t("Chat")}>{content}</SettingsScreen>
-  ) : (
-    <View collapsable={false} className="flex-1 bg-sheet">
-      {content}
-    </View>
-  );
+  return <SettingsScreen title={t("Chat")}>{content}</SettingsScreen>;
 }

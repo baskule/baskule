@@ -16,6 +16,11 @@ export const ORCHESTRATION_PROTOCOL_VERSION_TEXT = "2";
 export const ORCHESTRATION_PROTOCOL_QUERY_PARAM = "orchestrationProtocol";
 export const ORCHESTRATION_PROTOCOL_HEADER = "x-t3-orchestration-protocol";
 
+/** Wire shapes a client understands, comma-separated; a client that omits one gets the older shape. */
+export const CLIENT_CAPABILITIES_QUERY_PARAM = "clientCapabilities";
+/** Secret fields may hold a secret provider reference instead of a string. */
+export const SETTINGS_SECRET_REFERENCES_CAPABILITY = "settingsSecretReferences";
+
 export const ExecutionEnvironmentPlatformOs = Schema.Literals([
   "darwin",
   "linux",
@@ -71,6 +76,7 @@ export const ServerSelfUpdateCapability = Schema.Literals([
 export type ServerSelfUpdateCapability = typeof ServerSelfUpdateCapability.Type;
 
 export const ExecutionEnvironmentCapabilities = Schema.Struct({
+  mcpApprovalCodes: Schema.optional(Schema.Boolean),
   repositoryIdentity: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   connectionProbe: Schema.optionalKey(Schema.Boolean),
   attachmentUploads: Schema.optionalKey(Schema.Boolean),
@@ -84,6 +90,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   pullRequestChecks: Schema.optionalKey(Schema.Boolean),
   /** Side chats: hidden `lineage.sideChat` forks. Older servers ignore the fork flag. */
   sideChats: Schema.optionalKey(Schema.Boolean),
+  vcsBranchStatus: Schema.optionalKey(Schema.Boolean),
   /** Every protocol-2 server sends this; older mobile builds still read it. */
   inlineMessageContext: Schema.optionalKey(Schema.Boolean),
   requiredWorktreeBootstrap: Schema.optionalKey(Schema.Boolean),
@@ -96,6 +103,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   projectWorktreeCleanup: Schema.optionalKey(Schema.Boolean),
   settledWorktreeCleanup: Schema.optionalKey(Schema.Boolean),
   worktreesDirectory: Schema.optionalKey(Schema.Boolean),
+  /** Sent by macOS servers, which honor the fastWorktreeCheckout setting. */
+  fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
   threadAutoSettlementScope: Schema.optionalKey(Schema.Boolean),
   threadRestartContinuation: Schema.optionalKey(Schema.Boolean),
   projectSettingsOverrides: Schema.optionalKey(Schema.Boolean),
@@ -108,6 +117,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   environmentThemes: Schema.optionalKey(Schema.Boolean),
   /** Honors `workspaceSnapshotsOnDemand`; older servers send every snapshot and drop them in the stream. */
   providerWorkspaceSnapshotsOnDemand: Schema.optionalKey(Schema.Boolean),
+  /** Honors `modelCatalogOnly`; older servers drop the field and probe every provider. */
+  modelCatalogRefresh: Schema.optionalKey(Schema.Boolean),
   usagePriceOverrides: Schema.optionalKey(Schema.Boolean),
   usageModelAliases: Schema.optionalKey(Schema.Boolean),
   threadPinning: Schema.optionalKey(Schema.Boolean),
@@ -141,6 +152,15 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   commandOutputStreaming: Schema.optionalKey(Schema.Boolean),
   /** Hosts headless Chromium tabs streamed over /api/preview-stream for clients without a local runtime. */
   serverBrowser: Schema.optionalKey(Schema.Boolean),
+  /** Server accepts `{ type: "once" }` scheduled tasks; older servers reject them on save. */
+  oneTimeSchedules: Schema.optionalKey(Schema.Boolean),
+  /** Server honors `freshContext` on sends; older servers ignore it and keep the old context. */
+  freshContext: Schema.optionalKey(Schema.Boolean),
+  /** Server saves and runs scheduled task `threadMode`; older servers ignore it. */
+  scheduledTaskThreadModes: Schema.optionalKey(Schema.Boolean),
+  /** Server can transcribe 16 kHz mono PCM audio on the environment machine. */
+  voiceTranscription: Schema.optionalKey(Schema.Boolean),
+  cloudVoiceTranscription: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 
@@ -149,6 +169,7 @@ export const ExecutionEnvironmentDescriptor = Schema.Struct({
   label: TrimmedNonEmptyString,
   platform: ExecutionEnvironmentPlatform,
   serverVersion: TrimmedNonEmptyString,
+  databaseMigration: Schema.optionalKey(Schema.Int),
   minClient: ReleaseVersion,
   orchestrationProtocolVersion: Schema.optionalKey(Schema.Int),
   capabilities: ExecutionEnvironmentCapabilities,

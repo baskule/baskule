@@ -9,6 +9,7 @@ import {
 import {
   type ProjectEntry,
   type ProviderDriverKind,
+  type ProviderInstanceId,
   type ScopedThreadRef,
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
@@ -29,6 +30,7 @@ import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../compo
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { PierreEntryIcon } from "./PierreEntryIcon";
+import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ComposerBanner } from "./ComposerBanner";
 
 export type ComposerCommandItem =
@@ -68,6 +70,16 @@ export type ComposerCommandItem =
       id: string;
       type: "thread";
       thread: ScopedThreadRef;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "model";
+      instanceId: ProviderInstanceId;
+      model: string;
+      driverKind: ProviderDriverKind;
+      providerDisplayName: string;
       label: string;
       description: string;
     };
@@ -135,7 +147,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
           <div className="px-5 pt-3.5 pb-7">
             <p className="text-secondary-label text-xs">
               {props.isLoading
-                ? props.triggerKind === "skill"
+                ? props.triggerKind === "skill" || props.triggerKind === "slash-command"
                   ? t("Searching workspace skills...")
                   : t("Searching workspace files...")
                 : (props.emptyStateText ??
@@ -193,7 +205,6 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "thread" ? (
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
-
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
           {isSlashSkill ? (

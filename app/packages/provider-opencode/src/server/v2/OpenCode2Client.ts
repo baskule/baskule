@@ -4,13 +4,13 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as HttpClientError from "effect/http/HttpClientError";
 import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Sse from "effect/encoding/Sse";
 import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
@@ -74,6 +74,7 @@ export class OpenCode2Client extends Context.Service<
 
 // Heartbeats arrive every 10-15 seconds; longer silence means stuck, not idle.
 const SILENT_STREAM_TIMEOUT = "45 seconds";
+const SUBSCRIPTION_TIMEOUT = "10 seconds";
 
 const decodeEvent = Schema.decodeUnknownResult(Schema.fromJsonString(OpenCodeEvent));
 const decodeEnvelope = Schema.decodeUnknownOption(
@@ -158,7 +159,9 @@ export const make = Effect.gen(function* () {
           events: readEvents.pipe(
             Effect.provideService(
               HttpClient.HttpClient,
-              HttpClient.mapRequest(authenticated, HttpClientRequest.prependUrl(baseUrl)),
+              HttpClient.mapRequest(authenticated, HttpClientRequest.prependUrl(baseUrl)).pipe(
+                HttpClient.timeout(SUBSCRIPTION_TIMEOUT),
+              ),
             ),
           ),
         })),

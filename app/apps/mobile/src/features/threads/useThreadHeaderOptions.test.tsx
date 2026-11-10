@@ -1,176 +1,99 @@
-import type { VcsStatusResult } from "@t3tools/contracts";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { createRoot } from "react-dom/client";
+import { describe, expect, it, vi } from "vite-plus/test";
+import type { AppBarProps } from "../../components/ui/AppBar.types";
+import type { VcsStatusResult } from "@t3tools/contracts";
 
-// Native header item factories are only read when options are applied, so the fake
-// navigation snapshots the right items at each setOptions, as native-stack does.
 const harness = vi.hoisted(() => ({
-  setOptionsCalls: 0,
-  splitView: false,
-  renderedRightItems: [] as Array<ReadonlyArray<Record<string, unknown>>>,
-  navigatedRoutes: [] as string[],
+  bar: null as AppBarProps | null,
+  auxiliaryPaneVisible: false,
+  toggleAuxiliaryPane: vi.fn(),
+  openFiles: vi.fn(),
 }));
-
-vi.mock("expo-glass-effect", () => ({
-  GlassContainer: ({ children }: { children?: import("react").ReactNode }) => <>{children}</>,
+vi.mock("../../i18n", () => ({ useTranslation: () => (text: string) => text }));
+vi.mock("../../components/ui/AppBar", () => ({
+  AppBar: (props: AppBarProps) => {
+    harness.bar = props;
+    return null;
+  },
 }));
-vi.mock("../workspace/WorkspaceTabsContext", () => ({ useWorkspaceTabs: () => null }));
-vi.mock("@react-navigation/native", async () => {
-  const { createContext } = await import("react");
-  const navigation = {
-    canGoBack: () => true,
-    dispatch: () => {},
-    goBack: () => {},
-    navigate: (route: string) => {
-      harness.navigatedRoutes.push(route);
-    },
-    addListener: () => () => {},
-    setOptions: (options: { unstable_headerRightItems?: () => Array<Record<string, unknown>> }) => {
-      harness.setOptionsCalls += 1;
-      harness.renderedRightItems.push(options.unstable_headerRightItems?.() ?? []);
-    },
-  };
-  return {
-    NavigationRouteContext: createContext(undefined),
-    NavigationContext: createContext(navigation),
-    StackActions: { replace: () => ({}) },
-    useNavigation: () => navigation,
-  };
-});
-
+vi.mock("@react-navigation/native", () => ({ useNavigation: () => ({ navigate: vi.fn() }) }));
 vi.mock("../../state/session", () => ({ useEnvironmentScope: () => true }));
-vi.mock("../../components/ui/AppBar", async () => {
-  const { NativeStackScreenOptions } = await import("../../native/StackHeader");
-  return {
-    AppBar: (props: import("../../components/ui/AppBar.types").AppBarProps) => (
-      <NativeStackScreenOptions options={props.options} optionsVersion={props.optionsVersion} />
-    ),
-  };
-});
-vi.mock("react-native", () => ({ Alert: { alert: () => {} }, Linking: {}, Platform: {} }));
 vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
   useAdaptiveWorkspaceLayout: () => ({
-    layout: { usesSplitView: harness.splitView },
-    panes: { primarySidebarVisible: false, auxiliaryPaneVisible: false },
-    togglePrimarySidebar: () => {},
-    toggleAuxiliaryPane: () => {},
+    panes: { auxiliaryPaneVisible: harness.auxiliaryPaneVisible },
+    toggleAuxiliaryPane: harness.toggleAuxiliaryPane,
+    composerKeyboardActive: false,
+    startNewTask: vi.fn(),
   }),
 }));
-vi.mock("../layout/native-mail-search-toolbar", () => ({
-  NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED: true,
-  createNativeMailSearchToolbarItem: () => ({}),
+vi.mock("../layout/workspace/useAndroidWorkspaceNavigation", () => ({
+  useWorkspaceBackNavigation: () => vi.fn(),
 }));
-vi.mock("../settings/appearance/AppearancePreferencesProvider", () => ({
-  useAppearancePreferences: () => ({ themeVariables: {} }),
-}));
+vi.mock("../../components/ui/Dialog", () => ({ alert: vi.fn() }));
 
 import { ThreadHeader } from "./ThreadHeader";
 
-const projectScripts: never[] = [];
-
-function status(
-  files: ReadonlyArray<string>,
-  overrides: Partial<VcsStatusResult> = {},
-): VcsStatusResult {
-  return {
-    isRepo: true,
-    hasPrimaryRemote: false,
-    isDefaultRef: true,
-    refName: "master",
-    hasWorkingTreeChanges: files.length > 0,
-    workingTree: {
-      files: files.map((path) => ({ path, insertions: 0, deletions: 0 })),
-      insertions: 0,
-      deletions: 0,
-    },
-    hasUpstream: false,
-    aheadCount: 0,
-    behindCount: 0,
-    pr: null,
-    ...overrides,
-  } as unknown as VcsStatusResult;
-}
-
-function Header(props: { readonly gitStatus: VcsStatusResult | null; readonly title?: string }) {
-  return (
-    <ThreadHeader
-      title={props.title ?? "Thread"}
-      subtitle=""
-      headerColor="#000"
-      usesNativeHeaderGlass
-      gitControls={{
-        environmentId: "environment-1",
-        threadId: "thread-1",
-        currentBranch: "master",
-        gitStatus: props.gitStatus,
-        gitOperationLabel: null,
-        onPull: async () => {},
-        onRunAction: async () => null,
-        canOpenTerminal: true,
-        canOperateTerminal: true,
-        canOpenFiles: true,
-        projectScripts,
-        terminalSessions: [],
-        onOpenTerminal: () => {},
-        onOpenNewTerminal: () => {},
-        onRunProjectScript: async () => {},
-      }}
-      hasThreadCwd
-      hasWorkspaceRoot
-      fileInspectorSupported={false}
-      inspectorMode={null}
-      onToggleInspector={() => {}}
-      onOpenGitInspector={() => {}}
-      onOpenFilesInspector={() => {}}
-    />
-  );
-}
-
-let root: Root | null = null;
-
-function render(element: React.ReactElement) {
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  root ??= createRoot(document.createElement("div"));
-  act(() => root!.render(element));
-}
-
-afterEach(() => {
-  act(() => root?.unmount());
-  root = null;
-  harness.setOptionsCalls = 0;
-  harness.splitView = false;
-  harness.renderedRightItems = [];
-  harness.navigatedRoutes = [];
-});
-
-describe("ThreadHeader", () => {
+describe("Baskule thread header", () => {
   it.each([false, true])(
-    "keeps Files and excludes Git and Terminal with split view %s",
-    (splitView) => {
-      harness.splitView = splitView;
-      render(<Header gitStatus={status(["audit.txt"])} />);
-      const items = harness.renderedRightItems.at(-1) ?? [];
-      expect(items.map((item) => item.identifier)).toEqual(["thread-right-files"]);
+    "keeps files accessible and excludes Git and Terminal with an open files pane %s",
+    (filesOpen) => {
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+      harness.auxiliaryPaneVisible = filesOpen;
+      harness.openFiles.mockClear();
+      harness.toggleAuxiliaryPane.mockClear();
+      const root = createRoot(document.createElement("div"));
+      using cleanup = { [Symbol.dispose]: () => act(() => root.unmount()) };
+      const render = (gitStatus: VcsStatusResult | null) =>
+        act(() =>
+          root.render(
+            <ThreadHeader
+              title="Chat"
+              subtitle=""
+              hasThreadCwd
+              inspectorMode={filesOpen ? "files" : null}
+              onOpenFilesInspector={harness.openFiles}
+              gitControls={{
+                environmentId: "space",
+                threadId: "thread",
+                currentBranch: "main",
+                gitStatus,
+                gitOperationLabel: null,
+                onPull: async () => {},
+                onRunAction: async () => null,
+                canOpenTerminal: true,
+                canOperateTerminal: true,
+                canOpenFiles: true,
+                projectScripts: [],
+                terminalSessions: [],
+                onOpenTerminal: vi.fn(),
+                onOpenNewTerminal: vi.fn(),
+                onRunProjectScript: async () => {},
+              }}
+            />,
+          ),
+        );
+      render(null);
+      expect(harness.bar?.menus).toEqual([]);
+      expect(harness.bar?.actions?.map((action) => action.accessibilityLabel)).toEqual([
+        filesOpen ? "Close files" : "Open files",
+      ]);
+      harness.bar?.actions?.[0]?.onPress();
+      expect(filesOpen ? harness.toggleAuxiliaryPane : harness.openFiles).toHaveBeenCalledOnce();
+      render({
+        isRepo: true,
+        hasPrimaryRemote: true,
+        isDefaultRef: false,
+        refName: "feature",
+        hasWorkingTreeChanges: true,
+        hasUpstream: true,
+        pr: null,
+        aheadCount: 1,
+        behindCount: 0,
+        workingTree: { files: [], insertions: 1, deletions: 0 },
+      });
+      expect(harness.bar?.menus).toEqual([]);
+      expect(harness.bar?.actions).toHaveLength(1);
     },
   );
-
-  it("does not re-apply options for re-renders with equivalent header content", () => {
-    render(<Header gitStatus={status([])} />);
-    const applied = harness.setOptionsCalls;
-
-    for (let index = 0; index < 20; index += 1) {
-      render(<Header gitStatus={status([])} />);
-    }
-    expect(harness.setOptionsCalls).toBe(applied);
-  });
-
-  it("keeps excluded controls hidden as repository state changes", () => {
-    render(<Header gitStatus={status([])} />);
-    render(<Header gitStatus={status(["audit.txt"], { isDefaultRef: false, aheadCount: 1 })} />);
-    expect((harness.renderedRightItems.at(-1) ?? []).map((item) => item.identifier)).toEqual([
-      "thread-right-files",
-    ]);
-    expect(harness.navigatedRoutes).toEqual([]);
-  });
 });

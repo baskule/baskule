@@ -26,6 +26,7 @@ import {
   ProviderAuthCompleteInput,
   ProviderAuthState,
   ProviderAuthStartInput,
+  ProviderAuthRemoveMethodInput,
   ProviderAuthRespondInput,
   ProviderSetupError,
   ProviderSetupInput,
@@ -86,6 +87,7 @@ import {
   VcsRemoveWorktreeInput,
   GitRunStackedActionInput,
   VcsStatusInput,
+  VcsBranchStatus,
   VcsStatusSubscriptionInput,
   VcsStatusResult,
   VcsStatusStreamEvent,
@@ -112,7 +114,6 @@ import {
   GuestShareCreateInput,
   GuestShareCreateResult,
 } from "./guestShare.ts";
-
 import {
   RelayClientInstallFailedError,
   RelayClientInstallProgressEventSchema,
@@ -239,6 +240,7 @@ import {
 import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import {
   StorageCleanupReport,
+  DatabaseReclaimError,
   DatabaseStorageStatus,
   ServerSettings,
   ServerSettingsError,
@@ -310,6 +312,7 @@ export const WS_METHODS = {
   providerAuthComplete: "provider.auth.complete",
   providerAuthRespond: "provider.auth.respond",
   providerAuthCancel: "provider.auth.cancel",
+  providerAuthRemoveMethod: "provider.auth.removeMethod",
   providerAuthLogout: "provider.auth.logout",
   providerAuthSubscribe: "provider.auth.subscribe",
 
@@ -367,6 +370,7 @@ export const WS_METHODS = {
   serverRunStorageCleanup: "server.runStorageCleanup",
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetDatabaseStorage: "server.getDatabaseStorage",
+  serverReclaimDatabaseSpace: "server.reclaimDatabaseSpace",
   serverUpdateSettings: "server.updateSettings",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -400,6 +404,8 @@ export const WS_METHODS = {
   subscribeProjectClones: "subscribeProjectClones",
 
   subscribeVcsStatus: "subscribeVcsStatus",
+  subscribeVcsBranch: "subscribeVcsBranch",
+  vcsRefreshBranch: "vcs.refreshBranch",
   subscribeWorktreeSetup: "subscribeWorktreeSetup",
   worktreeSetupCancel: "worktreeSetup.cancel",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
@@ -443,6 +449,11 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
     /** Bypass model caches; explicit rediscovery may open sessions, background refreshes must not. */
     refreshModels: Schema.optional(Schema.Boolean),
     /**
+     * A model picker opened: refetch a model manifest older than a few minutes and probe providers
+     * only when it changed. The other fields are ignored and the config stream carries the result.
+     */
+    modelCatalogOnly: Schema.optional(Schema.Boolean),
+    /**
      * Reply without snapshots, or with only the requested instance's cwd snapshot. Snapshots then
      * reach the client only through these replies, so another client's scan shows on its next
      * refresh, at most one TTL later.
@@ -450,6 +461,8 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
     workspaceSnapshotsOnDemand: Schema.optional(Schema.Boolean),
     /** As on `subscribeServerConfig`: add /usage-limits to the replied snapshot. */
     usageLimitsCommand: Schema.optional(Schema.Boolean),
+    /** As on `subscribeServerConfig`: a failed cwd scan replies with the machine catalog as a pending snapshot. */
+    providerCatalogsOnDemand: Schema.optional(Schema.Boolean),
   }),
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([EnvironmentAuthorizationError, ProviderSetupError]),
@@ -489,6 +502,12 @@ const WsProviderAuthCompleteRpc = Rpc.make(WS_METHODS.providerAuthComplete, {
 
 const WsProviderAuthCancelRpc = Rpc.make(WS_METHODS.providerAuthCancel, {
   payload: ProviderAuthCancelInput,
+  success: ProviderAuthState,
+  error: ProviderSetupRpcError,
+});
+
+const WsProviderAuthRemoveMethodRpc = Rpc.make(WS_METHODS.providerAuthRemoveMethod, {
+  payload: ProviderAuthRemoveMethodInput,
   success: ProviderAuthState,
   error: ProviderSetupRpcError,
 });
@@ -542,6 +561,11 @@ const WsServerGetDatabaseStorageRpc = Rpc.make(WS_METHODS.serverGetDatabaseStora
   success: Schema.NullOr(DatabaseStorageStatus),
   stream: true,
   error: EnvironmentAuthorizationError,
+});
+
+const WsServerReclaimDatabaseSpaceRpc = Rpc.make(WS_METHODS.serverReclaimDatabaseSpace, {
+  payload: Schema.Struct({}),
+  error: Schema.Union([DatabaseReclaimError, EnvironmentAuthorizationError]),
 });
 
 const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSettings, {
@@ -639,6 +663,8 @@ const WsSourceControlCloneRepositoryRpc = Rpc.make(WS_METHODS.sourceControlClone
   success: SourceControlCloneRepositoryResult,
   error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
 });
+
+// Stars the repository as the server's forge account. False when the forge refused or cannot star.
 
 // Returns when the project exists and cloning starts; progress uses the subscription.
 const WsProjectCloneStartRpc = Rpc.make(WS_METHODS.projectCloneStart, {
@@ -797,6 +823,19 @@ const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, 
   payload: ProviderUploadFeedbackInput,
   success: ProviderUploadFeedbackResult,
   error: Schema.Union([ProviderUploadFeedbackError, EnvironmentAuthorizationError]),
+});
+
+const WsSubscribeVcsBranchRpc = Rpc.make(WS_METHODS.subscribeVcsBranch, {
+  payload: VcsStatusInput,
+  success: VcsBranchStatus,
+  error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsVcsRefreshBranchRpc = Rpc.make(WS_METHODS.vcsRefreshBranch, {
+  payload: VcsStatusInput,
+  success: Schema.Void,
+  error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
 });
 
 const WsSubscribeVcsStatusRpc = Rpc.make(WS_METHODS.subscribeVcsStatus, {
@@ -1102,6 +1141,21 @@ const WsOrchestrationV2GetThreadFamilyRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS
   error: Schema.Union([OrchestrationV2GetShellSnapshotError, EnvironmentAuthorizationError]),
 });
 
+const WsOrchestrationV2GetThreadTitlesRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.getThreadTitles, {
+  payload: OrchestrationV2RpcSchemas.getThreadTitles.input,
+  success: OrchestrationV2RpcSchemas.getThreadTitles.output,
+  error: Schema.Union([OrchestrationV2GetShellSnapshotError, EnvironmentAuthorizationError]),
+});
+
+const WsOrchestrationV2GetThreadLinkMetadataRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.getThreadLinkMetadata,
+  {
+    payload: OrchestrationV2RpcSchemas.getThreadLinkMetadata.input,
+    success: OrchestrationV2RpcSchemas.getThreadLinkMetadata.output,
+    error: Schema.Union([OrchestrationV2GetShellSnapshotError, EnvironmentAuthorizationError]),
+  },
+);
+
 const WsOrchestrationV2GetWorktreeThreadIdsRpc = Rpc.make(
   ORCHESTRATION_V2_WS_METHODS.getWorktreeThreadIds,
   {
@@ -1186,6 +1240,16 @@ const WsOrchestrationV2SubscribeCommandOutputRpc = Rpc.make(
   },
 );
 
+const WsOrchestrationV2SubscribePromptSuggestionRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.subscribePromptSuggestion,
+  {
+    payload: OrchestrationV2RpcSchemas.subscribePromptSuggestion.input,
+    success: OrchestrationV2RpcSchemas.subscribePromptSuggestion.output,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
+
 const WsSubscribeTerminalMetadataRpc = Rpc.make(WS_METHODS.subscribeTerminalMetadata, {
   payload: Schema.Struct({}),
   success: TerminalMetadataStreamEvent,
@@ -1201,6 +1265,8 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
     usageLimitsCommand: Schema.optional(Schema.Boolean),
     /** Omit per-cwd provider snapshots; the client fetches its cwd through `server.refreshProviders`. */
     workspaceSnapshotsOnDemand: Schema.optional(Schema.Boolean),
+    /** With on-demand snapshots, also omit machine slash commands and skills a cwd snapshot replaces. */
+    providerCatalogsOnDemand: Schema.optional(Schema.Boolean),
   }),
   success: ServerConfigStreamEvent,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
@@ -1313,6 +1379,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProviderAuthCompleteRpc,
   WsProviderAuthRespondRpc,
   WsProviderAuthCancelRpc,
+  WsProviderAuthRemoveMethodRpc,
   WsProviderAuthLogoutRpc,
   WsProviderAuthSubscribeRpc,
   WsServerUpdateServerRpc,
@@ -1323,6 +1390,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRunStorageCleanupRpc,
   WsServerGetStorageCleanupReportRpc,
   WsServerGetDatabaseStorageRpc,
+  WsServerReclaimDatabaseSpaceRpc,
   WsServerUpdateSettingsRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,
@@ -1374,6 +1442,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpAppsUpdateModelContextRpc,
   WsProviderUploadFeedbackRpc,
   WsSubscribeVcsStatusRpc,
+  WsSubscribeVcsBranchRpc,
+  WsVcsRefreshBranchRpc,
   WsSubscribeWorktreeSetupRpc,
   WsWorktreeSetupCancelRpc,
   WsVcsPullRpc,
@@ -1431,6 +1501,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SearchThreadStreamRpc,
   WsOrchestrationV2GetArchivedShellSnapshotRpc,
   WsOrchestrationV2GetThreadFamilyRpc,
+  WsOrchestrationV2GetThreadTitlesRpc,
+  WsOrchestrationV2GetThreadLinkMetadataRpc,
   WsOrchestrationV2GetWorktreeThreadIdsRpc,
   WsOrchestrationV2GetOlderSettledThreadsRpc,
   WsOrchestrationV2GetThreadProjectionRpc,
@@ -1438,4 +1510,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeShellRpc,
   WsOrchestrationV2SubscribeThreadRpc,
   WsOrchestrationV2SubscribeCommandOutputRpc,
+  WsOrchestrationV2SubscribePromptSuggestionRpc,
 ).middleware(RpcScopeAuthorization);

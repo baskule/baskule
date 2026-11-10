@@ -1,6 +1,7 @@
 import { CheckpointScopeId, RunId, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
@@ -94,6 +95,7 @@ export const layerObserver = Layer.effect(
     const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
     const vcsStatus = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
     const baskule = yield* isBaskuleSpace; // baskule:
+    const pullRequestLookups = yield* FiberMap.make<string>();
     return {
       refresh: Effect.fn("RunFinalizationService.refresh")(
         function* ({ cwd }) {

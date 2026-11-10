@@ -23,6 +23,7 @@ import type {
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
+import { formatBytes } from "../../lib/formatBytes";
 import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
 import { useOpenInPreferredEditor } from "../../editorPreferences";
@@ -53,21 +54,6 @@ function formatDuration(value: number): string {
   if (value < 1_000) return t("{{value1}} ms", { value1: Math.round(value) });
   return t("{{value1}} s", {
     value1: (value / 1_000).toFixed(value >= 10_000 ? 1 : 2).replace(/\.0+$/, ""),
-  });
-}
-
-function formatBytes(value: number): string {
-  if (value < 1024) return t("{{value}} B", { value: value });
-  const units = ["KB", "MB", "GB"] as const;
-  let unitIndex = -1;
-  let next = value;
-  do {
-    next /= 1024;
-    unitIndex += 1;
-  } while (next >= 1024 && unitIndex < units.length - 1);
-  return t("{{value1}} {{value2}}", {
-    value1: next.toFixed(next >= 10 ? 1 : 2),
-    value2: units[unitIndex],
   });
 }
 

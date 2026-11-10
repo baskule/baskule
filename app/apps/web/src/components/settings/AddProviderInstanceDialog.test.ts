@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
+
 import { resolveWizardNavigation } from "./AddProviderInstanceDialog.logic";
+
 describe("resolveWizardNavigation", () => {
   const invalidId = { instanceIdError: "Instance ID is required." };
 

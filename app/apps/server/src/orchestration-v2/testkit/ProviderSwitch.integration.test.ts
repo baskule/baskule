@@ -32,7 +32,7 @@ import * as EventStore from "../EventStore.ts";
 import * as LegacyV1ThreadImporter from "../legacy/LegacyV1ThreadImporter.ts";
 import * as Orchestrator from "../Orchestrator.ts";
 import * as EffectWorker from "../EffectWorker.ts";
-import * as ProjectionMaintenance from "../ProjectionMaintenance.ts";
+import * as ProjectionReplay from "./ProjectionReplay.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
@@ -97,6 +97,8 @@ function makeTestAdapter(input: {
   readonly subagentOnlyBackgroundWork?: boolean;
   readonly holdFirstTurn?: Deferred.Deferred<void>;
   readonly releaseFirstTurn?: Deferred.Deferred<void>;
+  readonly backgroundWork?: Ref.Ref<boolean>;
+  readonly closedSessions?: Ref.Ref<ReadonlyArray<string>>;
 }): ProviderAdapter.ProviderAdapterV2["Service"] {
   return {
     instanceId: input.instanceId,
@@ -106,6 +108,12 @@ function makeTestAdapter(input: {
     openSession: (sessionInput) =>
       Effect.gen(function* () {
         const events = yield* PubSub.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+        if (input.closedSessions !== undefined) {
+          const closedSessions = input.closedSessions;
+          yield* Effect.addFinalizer(() =>
+            Ref.update(closedSessions, (ids) => [...ids, sessionInput.providerSessionId]),
+          );
+        }
         const now = yield* DateTime.now;
         const providerSession: OrchestrationV2ProviderSession = {
           id: sessionInput.providerSessionId,
@@ -140,6 +148,14 @@ function makeTestAdapter(input: {
           ...(input.canReuseContextUsage === undefined
             ? {}
             : { canReuseContextUsage: input.canReuseContextUsage }),
+          ...(input.backgroundWork === undefined
+            ? {}
+            : {
+                // Like Claude: native subagents are visible only to the session-wide
+                // probe, never to the per-thread roster probe.
+                hasPendingBackgroundWork: Ref.get(input.backgroundWork),
+                hasPendingBackgroundWorkForThread: () => Effect.succeed(false),
+              }),
           ensureThread: (threadInput) =>
             Effect.gen(function* () {
               const createdAt = yield* DateTime.now;
@@ -429,7 +445,7 @@ describe("orchestration v2 provider switching", () => {
         const layerImporterProvided = LegacyV1ThreadImporter.layer.pipe(
           Layer.provide(Layer.mergeAll(layerStoresProvided, layerEventSinkProvided)),
         );
-        const layerMaintenanceProvided = ProjectionMaintenance.layer.pipe(
+        const layerMaintenanceProvided = ProjectionReplay.layer.pipe(
           Layer.provide(layerStoresProvided),
         );
         const layerOrchestratorProvided = ProviderReplayHarness.layerWithRegistry(
@@ -458,7 +474,7 @@ describe("orchestration v2 provider switching", () => {
         const projection = yield* Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           const importer = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
-          const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+          const maintenance = yield* ProjectionReplay.ProjectionReplay;
           const orchestrator = yield* Orchestrator.OrchestratorV2;
           const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
 

@@ -1,3 +1,4 @@
+import * as Context from "effect/Context";
 // @effect-diagnostics nodeBuiltinImport:off -- integration fixtures use native Node I/O.
 import * as NodeFSP from "node:fs/promises";
 import * as NodeSqlite from "node:sqlite";
@@ -5,6 +6,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
@@ -20,6 +22,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Scheduler from "effect/Scheduler";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
@@ -83,17 +86,23 @@ const layerService = (input: {
   readonly environment?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
   readonly hostname?: string;
+  readonly secretStore?: Partial<ServerSecretStore.ServerSecretStore["Service"]>;
 }) =>
   Layer.empty.pipe(
     Layer.provideMerge(Layer.empty),
     Layer.provideMerge(ProviderHostLive.layer),
     Layer.provideMerge(Layer.empty),
     Layer.provideMerge(Layer.mock(BackgroundPolicy.BackgroundPolicy)({})),
-    Layer.provideMerge(Layer.mock(ServerSecretStore.ServerSecretStore)({})),
+    Layer.provideMerge(
+      Layer.mock(ServerSecretStore.ServerSecretStore)({
+        get: () => Effect.succeedNone,
+        ...input.secretStore,
+      }),
+    ),
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), NodePath.join(input.home, input.prefix)),
     ),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provideMerge(Layer.succeed(HostProcess.Platform, input.platform ?? "linux")),
     Layer.provideMerge(Layer.succeed(HostProcess.Hostname, input.hostname ?? "usage-test-host")),
     Layer.provideMerge(ServerSettings.layerTest(input.settings)),

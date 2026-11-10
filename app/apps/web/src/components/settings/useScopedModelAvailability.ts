@@ -26,6 +26,7 @@ export function useScopedModelDisabledReason(
       const environment = environments.find(
         (entry) => entry.environmentId === candidate.environmentId,
       );
+      const unavailable = `This model is unavailable on ${environment?.label ?? "a selected environment"}. Select that environment to choose its model separately.`;
       const providers = providersByEnvironment.get(candidate.environmentId);
       if (!environment?.serverConfig || !providers) continue;
       const entry = applyProviderInstanceSettings(
@@ -43,10 +44,7 @@ export function useScopedModelDisabledReason(
         entry.driverKind !== sourceEntry?.driverKind ||
         !options?.some((option) => option.slug === model && !option.isUnavailable)
       ) {
-        return t(
-          "This model is unavailable on {{value1}}. Select that environment to choose its model separately.",
-          { value1: environment?.label ?? "a selected environment" },
-        );
+        return unavailable;
       }
     }
     return null;

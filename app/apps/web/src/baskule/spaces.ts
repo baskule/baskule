@@ -164,9 +164,10 @@ const buildRegistrations = Effect.gen(function* () {
   }
   if (activeSpaceWasRemoved(spaceEnvironments, me.spaces, window.location.pathname)) {
     // A full navigation clears the mounted conversation and its actionable composer immediately.
-    yield* Effect.try(() =>
-      window.sessionStorage.setItem("baskule:space-access-removed", "1"),
-    ).pipe(Effect.ignore);
+    yield* Effect.try({
+      try: () => window.sessionStorage.setItem("baskule:space-access-removed", "1"),
+      catch: () => "session-storage-unavailable" as const,
+    }).pipe(Effect.ignore);
     window.location.replace("/");
     return [] as ReadonlyArray<PlatformConnectionRegistration>;
   }

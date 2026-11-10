@@ -66,9 +66,9 @@ describe.skipIf(serverUrl === null || email === "")("Baskule front-session (real
     const credentials = new Map<string, ConnectionCredential>();
     const layerDependencies = Layer.mergeAll(
       layerRemoteHttpClient(fetch),
-      NodeSocket.layerWebSocketConstructorWS,
+      NodeSocket.layerWebSocketConstructor,
       Layer.succeed(ConnectionProfileStore.ConnectionProfileStore, {
-        get: () => Effect.succeed(Option.none()),
+        get: () => Effect.succeedNone,
         put: () => Effect.void,
         remove: () => Effect.void,
       }),
@@ -78,12 +78,13 @@ describe.skipIf(serverUrl === null || email === "")("Baskule front-session (real
         remove: (id) => Effect.sync(() => void credentials.delete(id)),
       }),
       Layer.succeed(ClientCapabilities.PrimaryEnvironmentAuth, {
-        bearerToken: Effect.succeed(Option.none()),
+        bearerToken: Effect.succeedNone,
       }),
       Layer.succeed(ClientCapabilities.ClientPresentation, {
         metadata: { label: "Baskule test", deviceType: "mobile", surface: "mobile" },
       }),
       Layer.succeed(RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization, {
+        rememberCheckedDescriptor: () => Effect.void,
         authorizeBearer: unused,
         authorizeDpop: unused,
         authorizeDpopHttp: unused,

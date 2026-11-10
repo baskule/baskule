@@ -1,9 +1,6 @@
 import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import {
-  getOnboardingProviderState,
-  selectOnboardingProvidersByDriver,
-} from "./providerReadiness.logic";
+import { getOnboardingProviderState } from "./providerReadiness.logic";
 const readyOpenCode: ServerProvider = {
   instanceId: ProviderInstanceId.make("opencode"),
   driver: ProviderDriverKind.make("opencode"),
@@ -62,50 +59,5 @@ describe("getOnboardingProviderState", () => {
     expect(
       getOnboardingProviderState({ ...readyOpenCode, installed: false, status: "error" }),
     ).toBe("install");
-  });
-});
-
-describe("selectOnboardingProvidersByDriver", () => {
-  it("prefers a ready instance with unknown authentication to an unauthenticated instance", () => {
-    const signedOutOpenCode: ServerProvider = {
-      ...readyOpenCode,
-      instanceId: ProviderInstanceId.make("opencode_work"),
-      status: "error",
-      auth: { status: "unauthenticated" },
-    };
-
-    expect(
-      selectOnboardingProvidersByDriver([signedOutOpenCode, readyOpenCode]).get("opencode"),
-    ).toBe(readyOpenCode);
-  });
-
-  it("prefers a provider with an actionable sign-in over a failed provider", () => {
-    const failedOpenCode: ServerProvider = { ...readyOpenCode, status: "error" };
-    const signedOutOpenCode: ServerProvider = {
-      ...readyOpenCode,
-      instanceId: ProviderInstanceId.make("opencode_work"),
-      status: "error",
-      auth: { status: "unauthenticated" },
-    };
-
-    expect(
-      selectOnboardingProvidersByDriver([failedOpenCode, signedOutOpenCode]).get("opencode"),
-    ).toBe(signedOutOpenCode);
-  });
-
-  it("prefers installed providers over missing or disabled instances", () => {
-    const disabledOpenCode: ServerProvider = { ...readyOpenCode, enabled: false };
-    const missingOpenCode: ServerProvider = {
-      ...readyOpenCode,
-      instanceId: ProviderInstanceId.make("opencode_work"),
-      installed: false,
-      status: "error",
-    };
-
-    expect(
-      selectOnboardingProvidersByDriver([disabledOpenCode, missingOpenCode, readyOpenCode]).get(
-        "opencode",
-      ),
-    ).toBe(readyOpenCode);
   });
 });

@@ -2,21 +2,21 @@ import { t, useTranslation } from "../../i18n";
 
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
-import { useNavigation } from "@react-navigation/native";
 import { AsyncResult } from "effect/reactivity";
-import { Platform, View } from "react-native";
+import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
 import { AppText as Text } from "../../components/ui/AppText";
-import { NativeStackScreenOptions } from "../../native/StackHeader";
 import {
   DEFAULT_COMPOSER_ENTER_BEHAVIOR,
   type ComposerEnterBehavior,
 } from "../../lib/composerEnterBehavior";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
+import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
+
+const SEND_MODIFIER = Platform.OS === "android" ? "Ctrl" : "Command";
 
 const ENTER_BEHAVIOR_OPTIONS: ReadonlyArray<{
   readonly behavior: ComposerEnterBehavior;
@@ -34,18 +34,12 @@ const ENTER_BEHAVIOR_OPTIONS: ReadonlyArray<{
   },
   {
     behavior: "newline",
-    get label() {
-      return t("Insert new line");
-    },
-    get description() {
-      return t("Return inserts a new line. Command-Return sends the message.");
-    },
+    label: "Insert new line",
+    description: `Return inserts a new line. ${SEND_MODIFIER}-Return sends the message.`,
   },
 ];
 
 export function SettingsKeyboardRouteScreen() {
-  const t = useTranslation();
-  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
@@ -55,13 +49,7 @@ export function SettingsKeyboardRouteScreen() {
     : null;
 
   return (
-    <View collapsable={false} className="flex-1 bg-sheet">
-      {Platform.OS === "android" ? (
-        <>
-          <NativeStackScreenOptions options={{ headerShown: false }} />
-          <AndroidScreenHeader title={t("Keyboard")} onBack={() => navigation.goBack()} />
-        </>
-      ) : null}
+    <SettingsScreen title={t("Keyboard")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -86,6 +74,6 @@ export function SettingsKeyboardRouteScreen() {
           {t("Applies to the composer when a hardware keyboard is connected.")}
         </Text>
       </ScrollView>
-    </View>
+    </SettingsScreen>
   );
 }

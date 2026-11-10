@@ -1,3 +1,5 @@
+import * as Schema from "effect/Schema";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off globalConsole:off preferSchemaOverJson:off - Private Node transport around upstream Effect services.
 // Runs inside the space computer. The authenticated computerd tunnel is its only ingress.
 import * as NodeHttp from "node:http";
@@ -47,7 +49,10 @@ const dependencies = Layer.mergeAll(
     installed: Effect.succeedSome(process.env.CHROME_PATH ?? "/usr/local/bin/chromium-baskule"),
   }),
   Desktop.layer.pipe(Layer.provide(config)),
-).pipe(Layer.provideMerge(config), Layer.provideMerge(NodeServices.layer));
+).pipe(
+  Layer.provideMerge(config),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+);
 const runtime = ManagedRuntime.make(Browser.layer.pipe(Layer.provideMerge(dependencies)));
 const profileScope = await runtime.runPromise(Scope.make());
 const services = await runtime.runPromise(
@@ -92,10 +97,13 @@ const server = NodeHttp.createServer(async (req, res) => {
       res.flushHeaders();
       const fiber = runtime.runFork(
         Stream.runForEach(services.manager.events, (event) =>
-          Effect.sync(() => {
-            if (!res.write(JSON.stringify(event) + "\n") && res.writableLength > 1024 * 1024)
-              res.destroy();
-          }),
+          Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(event).pipe(
+            Effect.flatMap((json) =>
+              Effect.sync(() => {
+                if (!res.write(json + "\n") && res.writableLength > 1024 * 1024) res.destroy();
+              }),
+            ),
+          ),
         ),
       );
       const timer = setInterval(() => res.write("\n"), 10000);
@@ -260,7 +268,7 @@ server.on("upgrade", (req, socket, head) => {
         Effect.forever(
           Queue.take(viewer.output).pipe(
             Effect.flatMap((output) =>
-              Effect.sync(() => {
+              Effect.gen(function* () {
                 if (ws.readyState !== ws.OPEN) return;
                 if (ws.bufferedAmount > 8 * 1024 * 1024) {
                   ws.close(1013, "Viewer too slow");
@@ -268,14 +276,19 @@ server.on("upgrade", (req, socket, head) => {
                 }
                 if (output._tag === "frame") {
                   if (ack) {
-                    if (pending) Effect.runFork(pending.ack);
+                    if (pending) yield* pending.ack.pipe(Effect.forkIn(scope));
                     pending = output;
                   } else frame(output);
                 } else if (output._tag === "gone") ws.close(4404, "Tab closed");
                 else if (output._tag === "reconnect") ws.close(1012, "Reconnect");
                 else {
                   const { _tag: type, ...data } = output;
-                  ws.send(JSON.stringify({ type, ...data }));
+                  ws.send(
+                    yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+                      type,
+                      ...data,
+                    }),
+                  );
                 }
               }),
             ),

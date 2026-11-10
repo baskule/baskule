@@ -40,6 +40,7 @@ export function createTranscriptJsonSelector(schema: { readonly ast: SchemaAST.A
   return (path: JsonPath) => includes(ast, path, 0);
 }
 
+// @effect-diagnostics-next-line extendsNativeError:off -- The synchronous streaming parser throws this sentinel; its reader maps it to the typed scan failure.
 export class TranscriptJsonLimitError extends Error {}
 
 export function createTranscriptJsonReader(

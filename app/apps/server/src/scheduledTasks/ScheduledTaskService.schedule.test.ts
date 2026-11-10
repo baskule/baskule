@@ -1,3 +1,5 @@
+import { liveThreadShell } from "../mcp/McpToolAccess.testkit.ts";
+import { ProjectId } from "@t3tools/contracts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
@@ -16,6 +18,7 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 
 const taskActor = { id: "alice", name: "Alice" };
 
@@ -26,6 +29,7 @@ it.effect("rejects a stale form save after deletion while preserving explicit-id
     const layerDependencies = Layer.mergeAll(
       NodeCrypto.layer,
       Scheduler.layer,
+      ManagedPolicy.layerTest(),
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
@@ -66,7 +70,7 @@ it.effect("rejects a stale form save after deletion while preserving explicit-id
 
       expect((yield* service.upsert(input, taskActor)).task.id).toBe(created.task.id);
     }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
-  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+  }).pipe(Effect.provide(Layer.merge(SqlitePersistence.layerMemory, ManagedPolicy.layerTest()))),
 );
 
 it.effect("preserves a due run when a save only pads the scheduled hour", () =>
@@ -80,6 +84,7 @@ it.effect("preserves a due run when a save only pads the scheduled hour", () =>
     const layerDependencies = Layer.mergeAll(
       NodeCrypto.layer,
       Scheduler.layer,
+      ManagedPolicy.layerTest(),
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
@@ -128,7 +133,7 @@ it.effect("preserves a due run when a save only pads the scheduled hour", () =>
         DateTime.formatIso(DateTime.toUtc(DateTime.add(dueAt, { minutes: 30 }))),
       );
     }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
-  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+  }).pipe(Effect.provide(Layer.merge(SqlitePersistence.layerMemory, ManagedPolicy.layerTest()))),
 );
 
 it.effect("keeps the task list order when a toggle or edit rewrites updated_at", () =>
@@ -137,6 +142,7 @@ it.effect("keeps the task list order when a toggle or edit rewrites updated_at",
     const layerDependencies = Layer.mergeAll(
       NodeCrypto.layer,
       Scheduler.layer,
+      ManagedPolicy.layerTest(),
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
@@ -182,7 +188,7 @@ it.effect("keeps the task list order when a toggle or edit rewrites updated_at",
       yield* service.upsert(yield* decodeUpsertInput({ ...edit, enabled: false }), taskActor);
       expect(yield* listedIds).toEqual(order);
     }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
-  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+  }).pipe(Effect.provide(Layer.merge(SqlitePersistence.layerMemory, ManagedPolicy.layerTest()))),
 );
 
 it.effect("refuses every cross-author control without changing the persisted task or secret", () =>
@@ -195,7 +201,14 @@ it.effect("refuses every cross-author control without changing the persisted tas
         namedProjectsRoot: "/projects",
         isScratchProject: () => Effect.succeed(false),
       }),
-      Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+      Layer.mock(ThreadManagementService.ThreadManagementService)({
+        getThreadShell: (id) =>
+          Effect.succeed({
+            ...liveThreadShell(id),
+            projectId: ProjectId.make("project-authority"),
+            author: { id: "bob", name: "Bob" },
+          }),
+      }),
       Layer.mock(SecretRequests.SecretRequests)({}),
     );
     yield* Effect.gen(function* () {
@@ -285,7 +298,7 @@ it.effect("refuses every cross-author control without changing the persisted tas
       yield* service.delete({ id: task.id }, owner);
       expect(yield* persisted).toEqual([]);
     }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(dependencies))));
-  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+  }).pipe(Effect.provide(Layer.merge(SqlitePersistence.layerMemory, ManagedPolicy.layerTest()))),
 );
 
 it.effect(
@@ -297,6 +310,7 @@ it.effect(
       const layerDependencies = Layer.mergeAll(
         NodeCrypto.layer,
         Scheduler.layer,
+        ManagedPolicy.layerTest(),
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({
           launch: (input) =>
             Deferred.succeed(launched, input.title).pipe(
@@ -348,5 +362,5 @@ it.effect(
         yield* TestClock.adjust("60 seconds");
         expect(yield* Deferred.await(launched)).toBe(created.task.title);
       }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
-    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+    }).pipe(Effect.provide(Layer.merge(SqlitePersistence.layerMemory, ManagedPolicy.layerTest()))),
 );

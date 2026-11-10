@@ -2,10 +2,10 @@ import { t, useTranslation } from "../../i18n";
 
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import type {
-  ProviderInstanceId,
-  ServerSettings,
-  SourceControlWritingStyleMode,
+import {
+  type ProviderInstanceId,
+  type ServerSettings,
+  type SourceControlWritingStyleMode,
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -19,6 +19,7 @@ import {
 import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { providerInstanceEntriesFor } from "../../providerInstances";
+import { textGenerationTargets } from "../../textGenerationTargets";
 import {
   getCustomModelOptionsByInstance,
   resolveAppModelSelectionState,
@@ -116,12 +117,21 @@ export function SourceControlWritingSettingsSection() {
     settings,
     target?.projectId ?? null,
   );
+  // Text generators may write source control text, but never review guides.
+  const writerTargets = textGenerationTargets({
+    environmentId,
+    settings,
+    providers: textGenerationProviders,
+    projectId: target?.projectId ?? null,
+    selections: [settings.sourceControlWriterModelSelection, settings.textGenerationModelSelection],
+  });
+  const writerEntries = writerTargets.entries;
   const projectEnabledInstanceIds = new Set(
-    instanceEntries
+    writerEntries
       .filter((entry) => entry.enabled && entry.isAvailable)
       .map((entry) => entry.instanceId),
   );
-  const projectEffectiveTextGenerationProviders = textGenerationProviders.filter((provider) =>
+  const projectEffectiveTextGenerationProviders = writerTargets.providers.filter((provider) =>
     projectEnabledInstanceIds.has(provider.instanceId),
   );
   const defaultModelSelection = resolveAppModelSelectionState(
@@ -140,7 +150,7 @@ export function SourceControlWritingSettingsSection() {
     },
     projectEffectiveTextGenerationProviders,
   );
-  const canEnableDedicatedModel = instanceEntries.some(
+  const canEnableDedicatedModel = writerEntries.some(
     (entry) =>
       entry.instanceId === defaultModelSelection.instanceId && entry.enabled && entry.isAvailable,
   );
@@ -150,8 +160,8 @@ export function SourceControlWritingSettingsSection() {
     activeSelection.instanceId,
     activeSelection.model,
   );
-  const writerModelDisabledReason = useScopedModelDisabledReason(settings, instanceEntries);
-  const writerInstanceEntry = instanceEntries.find(
+  const writerModelDisabledReason = useScopedModelDisabledReason(settings, writerEntries);
+  const writerInstanceEntry = writerEntries.find(
     (entry) => entry.instanceId === activeSelection.instanceId,
   );
 
@@ -280,7 +290,7 @@ export function SourceControlWritingSettingsSection() {
           settingKeys={["sourceControlWriterModelSelection"]}
           {...searchableSetting("source-control-writer-model")}
           description={t(
-            "Model for source control text and branch or bookmark names. Off uses the environment's text generation model.",
+            "Model for source control text and branch or bookmark names. When disabled, use the text generation model configured for this environment.",
           )}
           control={
             !hasServerTargets ? (
@@ -300,7 +310,7 @@ export function SourceControlWritingSettingsSection() {
                     activeInstanceId={activeSelection.instanceId}
                     model={activeSelection.model}
                     lockedProvider={null}
-                    instanceEntries={instanceEntries}
+                    instanceEntries={writerEntries}
                     modelOptionsByInstance={modelOptionsByInstance}
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     triggerAriaLabel={t("Source control writer model")}
@@ -341,9 +351,7 @@ export function SourceControlWritingSettingsSection() {
                     models={writerInstanceEntry.models}
                     model={activeSelection.model}
                     modelOptions={activeSelection.options ?? []}
-                    planModeEnabled={
-                      settings.planModeEnabled || selectsPlanAgent(activeSelection.options)
-                    }
+                    includePlanAgent={selectsPlanAgent(activeSelection.options)}
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     onModelOptionsChange={(options) =>
                       updateSettings({

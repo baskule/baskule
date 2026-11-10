@@ -12,7 +12,7 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import { formatThreadLink } from "@t3tools/shared/threadLinks";
+import { formatThreadLink, hostedThreadLink } from "@t3tools/shared/threadLinks";
 
 const ALL_MCP_CAPABILITIES = [
   "preview",
@@ -35,8 +35,9 @@ export interface McpClientCaller {
   readonly sessionId: string;
   readonly label: string;
   readonly access: AuthMcpClientAccess;
-  /** The origin an outside client reached; its thread links open the web app there. */
+  /** An outside client's thread links go through this hosted app, as Copy thread's do. */
   readonly webOrigin?: string | undefined;
+  readonly narrowedTo?: ClientModes | undefined;
 }
 
 export interface ClientModes {
@@ -44,12 +45,64 @@ export interface ClientModes {
   readonly interactionMode: ProviderInteractionMode;
 }
 
-/** Read-only clients cannot write; other clients keep the modes approved at sign-in. */
-export const clientModeCeiling = (client: McpClientCaller | undefined): ClientModes => ({
-  runtimeMode:
-    client === undefined || client.access === "read-only" ? "approval-required" : client.access,
-  interactionMode: "default",
-});
+const runtimeModeRank: Record<RuntimeMode, number> = {
+  "approval-required": 0,
+  "auto-accept-edits": 1,
+  auto: 2,
+  "full-access": 3,
+};
+const interactionModeRank: Record<ProviderInteractionMode, number> = { plan: 0, default: 1 };
+
+/**
+ * The modes a client caller's writes are capped at: what it was approved
+ * with, narrowed by what it asked for on this request. A read-only client
+ * never reaches a write (`McpToolAccess` refuses it first), so it maps to the
+ * lowest runtime mode rather than to nothing.
+ */
+export const clientModeCeiling = (client: McpClientCaller | undefined): ClientModes => {
+  const approved: ClientModes = {
+    runtimeMode:
+      client === undefined || client.access === "read-only" ? "approval-required" : client.access,
+    interactionMode: "default",
+  };
+  const asked = client?.narrowedTo;
+  if (asked === undefined) return approved;
+  return {
+    runtimeMode:
+      runtimeModeRank[asked.runtimeMode] < runtimeModeRank[approved.runtimeMode]
+        ? asked.runtimeMode
+        : approved.runtimeMode,
+    interactionMode:
+      interactionModeRank[asked.interactionMode] < interactionModeRank[approved.interactionMode]
+        ? asked.interactionMode
+        : approved.interactionMode,
+  };
+};
+
+/**
+ * A client approved above an administrator's runtime-mode ceiling acts as if it had narrowed
+ * itself to the ceiling, so what it starts and schedules is not refused for a mode it never chose.
+ */
+export const withRuntimeModeCeiling = (
+  scope: McpInvocationScope,
+  ceiling: RuntimeMode | undefined,
+): McpInvocationScope => {
+  if (ceiling === undefined || scope.client === undefined) return scope;
+  const asked = scope.client.narrowedTo;
+  return {
+    ...scope,
+    client: {
+      ...scope.client,
+      narrowedTo: {
+        runtimeMode:
+          asked !== undefined && runtimeModeRank[asked.runtimeMode] < runtimeModeRank[ceiling]
+            ? asked.runtimeMode
+            : ceiling,
+        interactionMode: asked?.interactionMode ?? "default",
+      },
+    },
+  };
+};
 
 /** Thread callers default to their own thread; client callers need thread for tools that act as the caller. */
 export interface McpInvocationScope {
@@ -63,15 +116,17 @@ export interface McpInvocationScope {
 
 /**
  * T3 Code renders `t3-thread://` links as thread chips. Other MCP clients cannot open them, so
- * they get a web URL on the origin they reached instead.
+ * they get the hosted link Copy thread copies, which opens the thread in either app or a browser.
+ * A known `title` labels the chip for clients that cannot load this environment's threads.
  */
 export const threadLinkFor = (
   scope: Pick<McpInvocationScope, "environmentId" | "client">,
   threadId: ThreadId,
+  title?: string,
 ): string => {
   const origin = scope.client?.webOrigin;
   return origin === undefined
-    ? formatThreadLink(threadId, threadId)
+    ? formatThreadLink({ environmentId: scope.environmentId, threadId }, title)
     : `${origin}/${encodeURIComponent(scope.environmentId)}/${encodeURIComponent(threadId)}`;
 };
 

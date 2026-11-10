@@ -88,7 +88,6 @@ export function deriveProviderEntriesByEnvironment(
   const byEnvironment = new Map<string, ReadonlyMap<string, ProviderInstanceEntry>>();
   for (const [environmentId, providers] of providersByEnvironment) {
     const derived = deriveProviderInstanceEntries(providers);
-    // The snapshot includes instances enabled by any project; machine settings alone do not.
     const entries = derived;
     byEnvironment.set(
       environmentId,

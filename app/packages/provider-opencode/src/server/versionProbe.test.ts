@@ -174,9 +174,9 @@ describe("OpenCode version probe", () => {
     }),
   );
 
-  it.effect("remembers a probed runtime but never a failure", () =>
+  it.effect("remembers a probed 2.x runtime but re-probes 1.x and failures", () =>
     Effect.gen(function* () {
-      const outputs = ["", "opencode v2.0.18\n", "opencode v2.1.2\n"];
+      const outputs = ["", "opencode v2.0.18\n", "opencode v2.1.2\n", "1.18.32\n"];
       let calls = 0;
       const runtime = {
         runOpenCodeCommand: () => {
@@ -200,8 +200,9 @@ describe("OpenCode version probe", () => {
       assert.strictEqual((yield* probe.get).version, "2.0.18");
       assert.strictEqual(calls, 2);
       assert.strictEqual((yield* probe.refresh).version, "2.1.2");
-      assert.strictEqual((yield* probe.get).version, "2.1.2");
       assert.strictEqual(calls, 3);
+      assert.strictEqual((yield* probe.get).version, "2.1.2");
+      assert.strictEqual(calls, 4);
     }),
   );
 });

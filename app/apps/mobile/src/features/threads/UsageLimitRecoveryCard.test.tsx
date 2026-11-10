@@ -1,5 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId } from "@t3tools/contracts";
+import * as Clipboard from "expo-clipboard";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -8,8 +9,16 @@ import { describe, expect, it, vi } from "vite-plus/test";
 type ButtonProps = { label: string; disabled?: boolean; onPress: () => void };
 
 vi.mock("react-native", () => ({
+  Linking: { openURL: vi.fn() },
+  Pressable: ({ children, disabled, onPress }: ButtonProps & { children: ReactNode }) => (
+    <button type="button" disabled={disabled} onClick={onPress}>
+      {children}
+    </button>
+  ),
   View: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
+vi.mock("expo-clipboard", () => ({ setStringAsync: vi.fn() }));
+vi.mock("../../components/ProviderIcon", () => ({ ProviderIcon: () => null }));
 vi.mock("../../components/ui/AppText", () => ({
   AppText: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }));
@@ -27,14 +36,18 @@ import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function failedThread(resetAt: string): EnvironmentThreadShell {
+function failedThread(
+  resetAt: string | null,
+  lastErrorCode?: string,
+  lastErrorClass = "usage_limit",
+): EnvironmentThreadShell {
   return {
     id: "thread-1",
     updatedAt: new Date(0).toISOString(),
     snoozedUntil: null,
     latestRun: { runId: "run-1", completedAt: new Date(0).toISOString() },
     limitRecovery: null,
-    runtime: { status: "failed", lastErrorClass: "usage_limit", usageLimitResetAt: resetAt },
+    runtime: { status: "failed", lastErrorClass, lastErrorCode, usageLimitResetAt: resetAt },
   } as unknown as EnvironmentThreadShell;
 }
 

@@ -1,13 +1,21 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Clock from "effect/Clock";
+import * as Schema from "effect/Schema";
+import { verifyRelayJwt } from "@t3tools/shared/relayJwt";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
-import { getOrCreateEnvironmentKeyPairFromSecretStore } from "./environmentKeys.ts";
+import {
+  EnvironmentSigningKey,
+  getOrCreateEnvironmentKeyPairFromSecretStore,
+  layer,
+} from "./environmentKeys.ts";
 
 const layerServerSecretStore = () =>
   ServerSecretStore.layer.pipe(
@@ -16,75 +24,110 @@ const layerServerSecretStore = () =>
 
 const unusedSecretStoreOperation = () => Effect.die("unused secret-store operation");
 
-it.layer(NodeServices.layer)("getOrCreateEnvironmentKeyPairFromSecretStore", (it) => {
-  it.effect("persists one atomic keypair secret and reuses it", () =>
-    Effect.gen(function* () {
-      const secretStore = yield* ServerSecretStore.ServerSecretStore;
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "getOrCreateEnvironmentKeyPairFromSecretStore",
+  (it) => {
+    it.effect("persists one atomic keypair secret and reuses it", () =>
+      Effect.gen(function* () {
+        const secretStore = yield* ServerSecretStore.ServerSecretStore;
 
-      const first = yield* getOrCreateEnvironmentKeyPairFromSecretStore(secretStore);
-      const second = yield* getOrCreateEnvironmentKeyPairFromSecretStore(secretStore);
+        const first = yield* getOrCreateEnvironmentKeyPairFromSecretStore(secretStore);
+        const second = yield* getOrCreateEnvironmentKeyPairFromSecretStore(secretStore);
 
-      assert.deepEqual(second, first);
-      assert.isTrue(Option.isSome(yield* secretStore.get("cloud-link-ed25519-key-pair")));
-      assert.isTrue(Option.isNone(yield* secretStore.get("cloud-link-ed25519-private-key")));
-      assert.isTrue(Option.isNone(yield* secretStore.get("cloud-link-ed25519-public-key")));
-    }).pipe(Effect.provide(layerServerSecretStore())),
-  );
+        assert.deepEqual(second, first);
+        const signingKey = yield* EnvironmentSigningKey.pipe(Effect.provide(layer));
+        const issuedAt = Math.floor((yield* Clock.currentTimeMillis) / 1_000);
+        const token = yield* signingKey.sign({
+          typ: "test+jwt",
+          payload: {
+            sub: "connection",
+            iss: "environment",
+            aud: "client",
+            iat: issuedAt,
+            exp: issuedAt + 60,
+          },
+        });
+        assert.deepEqual(
+          yield* verifyRelayJwt(Schema.Struct({ sub: Schema.String }), {
+            publicKey: second.publicKey,
+            token,
+            typ: "test+jwt",
+            issuer: "environment",
+            audience: "client",
+          }),
+          { sub: "connection" },
+        );
 
-  it.effect("migrates a legacy keypair into the atomic secret", () =>
-    Effect.gen(function* () {
-      const secretStore = yield* ServerSecretStore.ServerSecretStore;
-      yield* secretStore.set("cloud-link-ed25519-private-key", new TextEncoder().encode("private"));
-      yield* secretStore.set("cloud-link-ed25519-public-key", new TextEncoder().encode("public"));
+        assert.isTrue(Option.isSome(yield* secretStore.get("cloud-link-ed25519-key-pair")));
+        assert.isTrue(Option.isNone(yield* secretStore.get("cloud-link-ed25519-private-key")));
+        assert.isTrue(Option.isNone(yield* secretStore.get("cloud-link-ed25519-public-key")));
+      }).pipe(Effect.provide(layerServerSecretStore())),
+    );
 
-      assert.deepEqual(yield* getOrCreateEnvironmentKeyPairFromSecretStore(secretStore), {
-        privateKey: "private",
-        publicKey: "public",
-      });
-      assert.isTrue(Option.isSome(yield* secretStore.get("cloud-link-ed25519-key-pair")));
-    }).pipe(Effect.provide(layerServerSecretStore())),
-  );
+    it.effect("migrates a legacy keypair into the atomic secret", () =>
+      Effect.gen(function* () {
+        const secretStore = yield* ServerSecretStore.ServerSecretStore;
+        yield* secretStore.set(
+          "cloud-link-ed25519-private-key",
+          new TextEncoder().encode("private"),
+        );
+        yield* secretStore.set("cloud-link-ed25519-public-key", new TextEncoder().encode("public"));
 
-  it.effect("uses the persisted keypair when a concurrent creator wins", () =>
-    Effect.gen(function* () {
-      const winner = new TextEncoder().encode(
-        '{"privateKey":"winner-private","publicKey":"winner-public"}',
-      );
-      let createAttempted = false;
-      const secretStore = {
-        get: (name) =>
-          Effect.sync(() =>
-            name === "cloud-link-ed25519-key-pair" && createAttempted
-              ? Option.some(winner)
-              : Option.none(),
-          ),
-        set: unusedSecretStoreOperation,
-        create: () =>
-          Effect.sync(() => {
-            createAttempted = true;
-          }).pipe(
-            Effect.flatMap(() =>
-              Effect.fail(
-                new ServerSecretStore.SecretStorePersistError({
-                  resource: "environment signing key pair",
-                  cause: PlatformError.systemError({
-                    _tag: "AlreadyExists",
-                    module: "FileSystem",
-                    method: "open",
-                    pathOrDescriptor: "cloud-link-ed25519-key-pair.bin",
+        assert.deepEqual(yield* getOrCreateEnvironmentKeyPairFromSecretStore(secretStore), {
+          privateKey: "private",
+          publicKey: "public",
+        });
+        assert.isTrue(Option.isSome(yield* secretStore.get("cloud-link-ed25519-key-pair")));
+
+        // Unparseable key material must fail signing, not the layer every server starts.
+        const signingKey = yield* EnvironmentSigningKey.pipe(Effect.provide(layer));
+        assert.strictEqual(signingKey.publicKey, "public");
+        const error = yield* Effect.flip(signingKey.sign({ typ: "test+jwt", payload: {} }));
+        assert.strictEqual(error._tag, "RelayJwtError");
+      }).pipe(Effect.provide(layerServerSecretStore())),
+    );
+
+    it.effect("uses the persisted keypair when a concurrent creator wins", () =>
+      Effect.gen(function* () {
+        const winner = new TextEncoder().encode(
+          '{"privateKey":"winner-private","publicKey":"winner-public"}',
+        );
+        let createAttempted = false;
+        const secretStore = {
+          get: (name) =>
+            Effect.sync(() =>
+              name === "cloud-link-ed25519-key-pair" && createAttempted
+                ? Option.some(winner)
+                : Option.none(),
+            ),
+          set: unusedSecretStoreOperation,
+          create: () =>
+            Effect.sync(() => {
+              createAttempted = true;
+            }).pipe(
+              Effect.flatMap(() =>
+                Effect.fail(
+                  new ServerSecretStore.SecretStorePersistError({
+                    resource: "environment signing key pair",
+                    cause: PlatformError.systemError({
+                      _tag: "AlreadyExists",
+                      module: "FileSystem",
+                      method: "open",
+                      pathOrDescriptor: "cloud-link-ed25519-key-pair.bin",
+                    }),
                   }),
-                }),
+                ),
               ),
             ),
-          ),
-        getOrCreateRandom: unusedSecretStoreOperation,
-        remove: unusedSecretStoreOperation,
-      } satisfies ServerSecretStore.ServerSecretStore["Service"];
+          getOrCreateRandom: unusedSecretStoreOperation,
+          remove: unusedSecretStoreOperation,
+        } satisfies ServerSecretStore.ServerSecretStore["Service"];
 
-      assert.deepEqual(yield* getOrCreateEnvironmentKeyPairFromSecretStore(secretStore), {
-        privateKey: "winner-private",
-        publicKey: "winner-public",
-      });
-    }),
-  );
-});
+        assert.deepEqual(yield* getOrCreateEnvironmentKeyPairFromSecretStore(secretStore), {
+          privateKey: "winner-private",
+          publicKey: "winner-public",
+        });
+      }),
+    );
+  },
+);

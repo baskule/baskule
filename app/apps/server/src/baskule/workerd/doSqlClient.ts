@@ -488,6 +488,7 @@ export const make = Effect.fn("DoSqlClient.make")(function* (storage: DoSqlStora
     });
 
   const base = yield* SqlClient.make({
+    driver: "baskule-workerd",
     acquirer,
     transactionAcquirer,
     transactionService: DoSqlTransaction,

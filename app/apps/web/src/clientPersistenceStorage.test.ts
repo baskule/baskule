@@ -79,3 +79,28 @@ describe("clientPersistenceStorage", () => {
     expect(write).not.toHaveBeenCalled();
   });
 });
+
+it("defaults legacy settings to hidden tools and preserves every explicit choice across reload and reset", async () => {
+  const testWindow = getTestWindow();
+  testWindow.localStorage.setItem(
+    "t3code:client-settings:v1",
+    JSON.stringify({ timestampFormat: "12-hour" }),
+  );
+  const { readBrowserClientSettings, writeBrowserClientSettings } =
+    await import("./clientPersistenceStorage");
+  expect(readBrowserClientSettings()).toMatchObject({
+    toolCallVisibility: "hideAll",
+    timestampFormat: "12-hour",
+  });
+  for (const toolCallVisibility of ["showAll", "hideSuccessful", "hideAll", "zen"] as const) {
+    writeBrowserClientSettings({ ...DEFAULT_CLIENT_SETTINGS, toolCallVisibility });
+    vi.resetModules();
+    const reloaded = await import("./clientPersistenceStorage");
+    expect(reloaded.readBrowserClientSettings()?.toolCallVisibility).toBe(toolCallVisibility);
+  }
+  writeBrowserClientSettings(DEFAULT_CLIENT_SETTINGS);
+  vi.resetModules();
+  expect(
+    (await import("./clientPersistenceStorage")).readBrowserClientSettings()?.toolCallVisibility,
+  ).toBe("hideAll");
+});

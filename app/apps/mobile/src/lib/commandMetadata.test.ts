@@ -1,3 +1,4 @@
+// @effect-diagnostics cryptoRandomUUID:off -- Native UUID mock runs outside an Effect runtime.
 import { expect, it, vi } from "vite-plus/test";
 
 vi.mock("expo-crypto", () => ({

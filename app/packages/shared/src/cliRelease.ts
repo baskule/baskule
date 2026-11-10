@@ -45,6 +45,22 @@ export function cliReleaseDownloadBaseUrl(
   return `${(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
 }
 
+/** `segments` added to `baseUrl`'s path, keeping its query, such as a signed mirror URL's token. */
+export function releaseAssetUrl(baseUrl: string, ...segments: ReadonlyArray<string>): string {
+  const url = new URL(baseUrl);
+  url.pathname = [url.pathname.replace(/\/+$/, ""), ...segments.map(encodeURIComponent)].join("/");
+  return url.toString();
+}
+
+/** A file of release `version`, from `baseUrl` laid out as GitHub's release downloads. */
+export function cliReleaseAssetUrl(
+  version: string,
+  fileName: string,
+  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
+): string {
+  return releaseAssetUrl(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL, `v${version}`, fileName);
+}
+
 export function parseChecksums(text: string): ReadonlyMap<string, string> {
   const checksums = new Map<string, string>();
   for (const line of text.split(/\r?\n/)) {
@@ -88,4 +104,15 @@ export function newestCliReleaseVersion(
     if (cliReleaseChannelOf(version) === channel) return version;
   }
   return undefined;
+}
+
+export function updateFeedFileName(
+  channel: "latest" | "nightly",
+  platform: NodeJS.Platform,
+  arch: string,
+): string {
+  if (platform === "darwin") return `${channel}-mac.yml`;
+  if (platform === "linux")
+    return arch === "arm64" ? `${channel}-linux-arm64.yml` : `${channel}-linux.yml`;
+  return `${channel}.yml`;
 }

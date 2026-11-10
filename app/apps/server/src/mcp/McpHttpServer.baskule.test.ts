@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 // baskule: a space registers only the MCP tools its policy allows (rpcPolicy.ts `mcpTools`); toolkits are filtered
 // before registration, so the refused tools are never decoded or described (boot time in a SpaceCell).
 import { expect, it } from "@effect/vitest";
@@ -15,13 +16,13 @@ import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
 
 const layerFor = (mcpTools: ReadonlySet<string> | undefined) =>
   McpHttpServer.layerPreviewToolkit.pipe(
-    Layer.provideMerge(McpServer.McpServer.layer),
+    Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provideMerge(McpToolAccessTestkit.liveThreadsLayer),
     Layer.provideMerge(PreviewAutomationBroker.layer),
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-baskule-policy-test-" }),
     ),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.merge(NodeServices.layer, NodeCrypto.layer)),
     Layer.provide(
       Layer.succeed(
         BaskuleRpcPolicy,

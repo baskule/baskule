@@ -1,3 +1,4 @@
+import { SourceControlProviderKind } from "@t3tools/contracts";
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import {
@@ -5,6 +6,7 @@ import {
   ProjectId,
   EventId,
   ProviderInstanceId,
+  RuntimeRequestId,
   ThreadId,
   type OrchestrationProjectShell,
   type OrchestrationV2AppThread,
@@ -16,11 +18,13 @@ import {
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -248,10 +252,7 @@ describe("autoSettlementSettingsKey", () => {
 
 type AutoSettleCommand = Extract<OrchestrationV2Command, { readonly type: "thread.auto-settle" }>;
 
-const testCrypto = Crypto.make({
-  randomBytes: (size) => new Uint8Array(size).fill(1),
-  digest: (_algorithm, data) => Effect.succeed(data),
-});
+const testCrypto = SecureRandom.make((size) => new Uint8Array(size).fill(1));
 
 function makeProject(
   id: ProjectId = PROJECT_ID,
@@ -301,6 +302,7 @@ interface HarnessOptions {
   readonly snapshot: SettlementSnapshot;
   readonly settings?: ContractServerSettings;
   readonly existingWorktreePaths?: ReadonlyArray<string>;
+  readonly unreadablePaths?: ReadonlyArray<string>;
   readonly onDispatch?: (command: AutoSettleCommand) => Effect.Effect<void>;
   readonly onScriptRun?: (
     input: ProjectSetupScriptRunner.ProjectSetupScriptRunnerInput,
@@ -316,6 +318,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
   const snapshotReads = yield* Queue.unbounded<number>();
   const candidateReads = yield* Ref.make<ReadonlyArray<string | undefined>>([]);
   const settings = yield* Ref.make(options.settings ?? DEFAULT_SERVER_SETTINGS);
+  const settingsReadCount = yield* Ref.make(0);
   const settingsChanges = yield* PubSub.unbounded<ContractServerSettings>();
   const commands = yield* Ref.make<ReadonlyArray<AutoSettleCommand>>([]);
   const domainEvents = yield* PubSub.unbounded<OrchestrationV2DomainEvent>();
@@ -344,7 +347,9 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
   const serverSettings = ServerSettings.ServerSettingsService.of({
     start: Effect.void,
     ready: Effect.void,
-    getSettings: Ref.get(settings),
+    getSettings: Ref.update(settingsReadCount, (count) => count + 1).pipe(
+      Effect.andThen(Ref.get(settings)),
+    ),
     updateSettings,
     updateProviderInstance: () => Effect.die("Unexpected provider mutation"),
     withSettingsSnapshot: (use) => Ref.get(settings).pipe(Effect.flatMap(use)),
@@ -382,7 +387,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
       dispatch,
     }),
     Layer.mock(TerminalManager.TerminalManager)({
-      closeIdle: (input) =>
+      closeOnSettle: (input) =>
         Queue.offer(closedIdle, input).pipe(Effect.andThen(options.onCloseIdle?.() ?? Effect.void)),
     }),
     Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
@@ -394,16 +399,28 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     }),
     Layer.succeed(ServerSettings.ServerSettingsService, serverSettings),
     Layer.succeed(ServerActivation.ServerActivation, Deferred.await(activation)),
-    Layer.succeed(Crypto.Crypto, testCrypto),
+    Layer.succeed(SecureRandom.SecureRandom, testCrypto),
     FileSystem.layerNoop({
-      exists: (path) => Effect.succeed(options.existingWorktreePaths?.includes(path) ?? false),
+      exists: (path) =>
+        options.unreadablePaths?.includes(path)
+          ? Effect.fail(
+              PlatformError.systemError({
+                _tag: "PermissionDenied",
+                module: "FileSystem",
+                method: "exists",
+                pathOrDescriptor: path,
+              }),
+            )
+          : Effect.succeed(options.existingWorktreePaths?.includes(path) ?? false),
     }),
+    Path.layer,
   );
 
   return {
     activation,
     snapshots,
     snapshotReadCount,
+    settingsReadCount,
     snapshotReads,
     candidateReads,
     commands,
@@ -430,6 +447,36 @@ const startHarness = Effect.fn("startThreadSettlementHarness")(function* (
 });
 
 describe("ThreadSettlementServiceV2 worker", () => {
+  it.effect("skips settings and PR decisions for recent branchless threads", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const threads = Array.from({ length: 32 }, (_, index) =>
+          makeThread(`recent-${index}`, {
+            updatedAt: DateTime.makeUnsafe(NOW),
+            latestUserMessageAt: DateTime.makeUnsafe(Date.parse(NOW) - 2 * DAY_MS),
+          }),
+        );
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot(threads),
+          settings: { ...DEFAULT_SERVER_SETTINGS, sidebarAutoSettleAfterDays: 3 },
+        });
+        yield* Effect.gen(function* () {
+          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+          assert.deepEqual(yield* Ref.get(fixture.commands), []);
+          assert.equal(yield* Ref.get(fixture.settingsReadCount), 2);
+          yield* fixture.updateSettings({ sidebarAutoSettleAfterDays: 1 });
+          yield* Queue.take(fixture.snapshotReads);
+          yield* service.drain;
+          assert.deepEqual(
+            new Set((yield* Ref.get(fixture.commands)).map((command) => command.threadId)),
+            new Set(threads.map((thread) => thread.id)),
+          );
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
   it.effect("settles an idle thread with an open persisted link on the inactivity sweep", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -678,6 +725,37 @@ describe("ThreadSettlementServiceV2 terminals", () => {
 
 describe("isSnoozed", () => {
   const snoozed = { snoozedAt: at(-2 * DAY_MS), snoozedUntil: at(DAY_MS) };
+  it("defers existing input while new questions and approvals wake the thread", () => {
+    const request = {
+      id: RuntimeRequestId.make("question"),
+      kind: "user_input" as const,
+      createdAt: snoozed.snoozedAt,
+    };
+    expect(
+      ThreadSettlementService.isSnoozed(
+        shell({ ...snoozed, pendingRuntimeRequest: request }),
+        NOW_MS,
+      ),
+    ).toBe(true);
+    expect(
+      ThreadSettlementService.isSnoozed(
+        shell({ ...snoozed, pendingRuntimeRequest: { ...request, createdAt: at(-DAY_MS) } }),
+        NOW_MS,
+      ),
+    ).toBe(false);
+    expect(
+      ThreadSettlementService.isSnoozed(
+        shell({ ...snoozed, pendingRuntimeRequest: { ...request, kind: "command" } }),
+        NOW_MS,
+      ),
+    ).toBe(false);
+    expect(
+      ThreadSettlementService.isSnoozed(
+        shell({ ...snoozed, snoozedAt: null, pendingRuntimeRequest: request }),
+        NOW_MS,
+      ),
+    ).toBe(false);
+  });
   it("keeps a run requested and completed after snoozing parked until the timer", () => {
     const thread = shell({
       ...snoozed,

@@ -1,7 +1,7 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { assetImageSource } from "./assetImageSource";
+import { assetImageCacheKey, assetImageSource } from "./assetImageSource";
 
 const environmentId = EnvironmentId.make("environment-1");
 
@@ -46,13 +46,41 @@ describe("assetImageSource", () => {
     expect(left.cacheKey).not.toBe(right.cacheKey);
   });
 
-  it("keeps workspace files keyed by URL because they can change on disk", () => {
-    const source = assetImageSource(
+  it("keys host files by the revision the server read, and by URL without one", () => {
+    const resource = {
+      _tag: "media-file",
+      threadId: ThreadId.make("thread-1"),
+      path: "docs/shot.png",
+    } as const;
+    const first = assetImageSource(
       environmentId,
-      { _tag: "draft-workspace-file", cwd: "/repo", path: "logo.png" },
-      "https://host/api/assets/token-a/logo.png",
+      resource,
+      "https://host/api/assets/token-a/shot.png",
+      "1:2:5:1000:1000",
     );
 
-    expect(source).toStrictEqual({ uri: "https://host/api/assets/token-a/logo.png" });
+    expect(first.cacheKey).toBeDefined();
+    expect(
+      assetImageSource(
+        environmentId,
+        resource,
+        "https://host/api/assets/token-b/shot.png",
+        "1:2:5:1000:1000",
+      ),
+    ).toStrictEqual({ uri: "https://host/api/assets/token-b/shot.png", cacheKey: first.cacheKey });
+    expect(assetImageCacheKey(environmentId, resource, "1:2:5:2000:2000")).not.toBe(first.cacheKey);
+    expect(
+      assetImageCacheKey(environmentId, { ...resource, path: "docs/other.png" }, "1:2:5:1000:1000"),
+    ).not.toBe(first.cacheKey);
+    expect(
+      assetImageCacheKey(EnvironmentId.make("environment-2"), resource, "1:2:5:1000:1000"),
+    ).not.toBe(first.cacheKey);
+    expect(
+      assetImageSource(
+        environmentId,
+        { _tag: "draft-workspace-file", cwd: "/repo", path: "logo.png" },
+        "https://host/api/assets/token-a/logo.png",
+      ),
+    ).toStrictEqual({ uri: "https://host/api/assets/token-a/logo.png" });
   });
 });

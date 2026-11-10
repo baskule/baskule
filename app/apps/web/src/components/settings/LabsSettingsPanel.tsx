@@ -1,29 +1,21 @@
 import { useTranslation } from "../../i18n";
 
-import { useAuth } from "@clerk/react";
-import { Link } from "@tanstack/react-router";
-import { hasCloudPublicConfig } from "~/cloud/publicConfig";
-import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
-import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
-import { LegacyFeaturesSection } from "./SettingsPanels";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+import { useSettingsScope } from "./SettingsScopeContext";
 
-/** Features still settling in, and legacy behavior kept for people who rely on it. */
+/** Features still settling in. */
 export function LabsSettingsPanel() {
   const t = useTranslation();
   return (
     <SettingsPageContainer>
       <SettingsSection id="beta" title={t("Beta")}>
         <BoringSidebarRow />
-        <BoringSidebarMultilineRow />
-        {/* Clerk is only mounted when this build has T3 Connect. */}
-        {hasCloudPublicConfig() ? <GuestLinksRowWithSignIn /> : <GuestLinksRow />}
+        <FastWorktreeCheckoutRow />
       </SettingsSection>
-      <LegacyFeaturesSection />
     </SettingsPageContainer>
   );
 }
@@ -45,7 +37,13 @@ function BoringSidebarRow() {
           aria-label={t("Boring sidebar (group by project)")}
         />
       }
-    />
+    >
+      {settings.boringSidebarEnabled ? (
+        <div className="mt-2 mb-2 border-l-2 border-border/60 ps-3">
+          <BoringSidebarMultilineRow />
+        </div>
+      ) : null}
+    </SettingsRow>
   );
 }
 
@@ -56,9 +54,8 @@ function BoringSidebarMultilineRow() {
   return (
     <SettingsRow
       {...searchableSetting("boring-sidebar-multiline")}
-      description={t(
-        "In the boring sidebar, show folder threads on two lines: the title, then the branch, pull request, and agent.",
-      )}
+      className="px-0 py-2 sm:px-0"
+      description={t("Show folder threads on two lines: the title, then the branch and agent.")}
       control={
         <Switch
           checked={settings.boringSidebarMultilineRows}
@@ -72,54 +69,33 @@ function BoringSidebarMultilineRow() {
   );
 }
 
-/** Signed out of T3 Connect, the row offers to sign in instead of its switch. */
-function GuestLinksRowWithSignIn() {
-  const t = useTranslation();
-  const { isSignedIn } = useAuth();
-  const { openAuthPrompt } = useT3ConnectAuthPrompt();
-  // `isSignedIn` is undefined until Clerk loads.
-  if (isSignedIn !== false) return <GuestLinksRow />;
-  return (
-    <SettingsRow
-      {...searchableSetting("guest-links")}
-      description={t(
-        "Share a thread with a guest who watches it live in their browser and sends messages you approve. Sign in to T3 Connect to use guest links.",
-      )}
-      control={
-        <Button size="sm" variant="outline" onClick={openAuthPrompt}>
-          {t("Sign in")}
-        </Button>
-      }
-    />
-  );
-}
-
-function GuestLinksRow() {
-  const t = useTranslation();
+/** Shows only when every machine in scope is a Mac, since only macOS servers honor it. */
+function FastWorktreeCheckoutRow() {
+  const { scope, connectedEnvironments } = useSettingsScope();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  if (
+    scope.kind === "project" ||
+    scope.kind === "checkout" ||
+    connectedEnvironments.length === 0 ||
+    connectedEnvironments.some(
+      (environment) =>
+        environment.serverConfig?.environment.capabilities.fastWorktreeCheckout !== true,
+    )
+  )
+    return null;
   return (
     <SettingsRow
       serverScoped
-      {...searchableSetting("guest-links")}
-      settingKeys={["guestSharingEnabled"]}
-      description={
-        <>
-          {t(
-            "Share a thread with a guest who watches it live in their browser and sends messages you approve. Needs T3 Connect: sign in and link this machine in",
-          )}{" "}
-          <Link to="/settings/access" className="underline underline-offset-2">
-            {t("Sharing & access")}
-          </Link>
-          {t(". While it is off, every guest link stops working.")}
-        </>
-      }
+      {...searchableSetting("worktree-fast-checkout")}
+      settingKeys={["fastWorktreeCheckout"]}
+      description="On a Mac, clone new worktrees from a checkout cached in the T3 home folder instead of writing every file. Uses Git’s normal checkout when it can’t. Turning it off deletes the cache."
       control={
         <ScopedSwitch
-          settingKeys={["guestSharingEnabled"]}
-          checked={settings.guestSharingEnabled}
-          onCheckedChange={(checked) => updateSettings({ guestSharingEnabled: Boolean(checked) })}
-          aria-label={t("Guest links")}
+          settingKeys={["fastWorktreeCheckout"]}
+          checked={settings.fastWorktreeCheckout}
+          onCheckedChange={(checked) => updateSettings({ fastWorktreeCheckout: Boolean(checked) })}
+          aria-label="Fast worktree checkout"
         />
       }
     />

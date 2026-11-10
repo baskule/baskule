@@ -9,6 +9,7 @@ import {
   extractMarkdownLinkHrefs,
   inlineCodeFilePathCandidate,
 } from "@t3tools/shared/markdownLinks";
+import { taskListMarkerOffset } from "@t3tools/shared/markdownTaskList";
 import { isHostPath, resolveWorkspaceFilePath } from "@t3tools/shared/path";
 
 import { AuthFilesystemReadScope, AuthOrchestrationOperateScope } from "@t3tools/contracts";
@@ -115,6 +116,7 @@ import { useRenderedAppearance } from "../hooks/useTheme";
 import { useClientSettings } from "../hooks/useSettings";
 import { chatMarkdownClipboardPayload } from "../markdown-clipboard";
 import {
+  isLocalEditorFileHref,
   resolveInlineCodeFileLinkMeta,
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
@@ -161,7 +163,7 @@ import {
   openFileInPreview,
   openUrlInPreview,
   BrowserPreviewUnavailableError,
-  BrowserSettingsReadError,
+  isBrowserSettingsReadError,
 } from "../browser/openFileInPreview";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { baskule } from "../baskule/flags";
@@ -221,6 +223,8 @@ interface ChatMarkdownProps {
   /** Keep one list per configuration (a module constant): it keys the shared parse cache. */
   extraRemarkPlugins?: NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
   renderContextReference?: ((reference: ChatMarkdownContextReference) => ReactNode) | undefined;
+  /** The change request's repository, when it can differ from the checkout at `cwd`. */
+  sourceControlMediaRepository?: string | undefined;
   headingLevelOffset?: number | undefined;
 }
 
@@ -234,17 +238,6 @@ const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 const EMPTY_REMARK_PLUGINS: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [];
 
 const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
-
-function findTaskListMarkerOffset(markdown: string, listItemStart: number): number | null {
-  const firstLineEnd = markdown.indexOf("\n", listItemStart);
-  const firstLine = markdown.slice(
-    listItemStart,
-    firstLineEnd === -1 ? markdown.length : firstLineEnd,
-  );
-  const match = firstLine.match(/^(?:\s*(?:[-+*]|\d+[.)])\s+)(\[[ xX]\])/);
-  if (!match?.[1]) return null;
-  return listItemStart + firstLine.indexOf(match[1]);
-}
 
 function orderedListGutterStyle(
   itemCount: number,
@@ -331,6 +324,7 @@ function markdownUrlTransform(href: string) {
   if (parseComposerContextHref(href)) return href;
   if (parseThreadLinkHref(href)) return href;
   if (isWindowsDrivePathHref(href)) return href;
+  if (isLocalEditorFileHref(href)) return href;
   return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
 }
 
@@ -424,6 +418,7 @@ function useChatMarkdownState({
   onImageExpand,
   renderContextReference,
   headingLevelOffset = 0,
+  sourceControlMediaRepository,
 }: ChatMarkdownProps) {
   const t = useTranslation();
   const resolvedTheme = useRenderedAppearance();
@@ -620,7 +615,7 @@ function useChatMarkdownState({
       if (result._tag === "Success") recordVisitForThread(threadRef, url);
       else if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
-        if (error instanceof BrowserSettingsReadError) {
+        if (isBrowserSettingsReadError(error)) {
           toastManager.add(
             stackedThreadToast({
               type: "error",
@@ -801,6 +796,7 @@ function useChatMarkdownState({
     environmentId,
     expandMedia,
     fileLinkChip,
+    sourceControlMediaRepository,
     renderContextReference,
     headingLevelOffset,
     imageBaseDir,
@@ -869,8 +865,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
     return <div {...props}>{children}</div>;
   },
   p: function MarkdownParagraph({ node: _node, children, ...props }) {
-    const { skills, threadRef } = use(ChatMarkdownRendererContext);
-    return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills, threadRef)}</p>;
+    const { skills, threadRef, environmentId } = use(ChatMarkdownRendererContext);
+    return (
+      <p {...props}>
+        {renderSkillInlineMarkdownChildren(children, skills, threadRef, environmentId)}
+      </p>
+    );
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
     const alert =
@@ -905,12 +905,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   li: function MarkdownListItem({ node, children, ...props }) {
-    const { skills, threadRef } = use(ChatMarkdownRendererContext);
+    const { skills, threadRef, environmentId } = use(ChatMarkdownRendererContext);
     // Resolve checkbox markers by offset to avoid rerendering list items on every streamed token.
     const isTaskItem = String(props.className ?? "").includes("task-list-item");
     return (
       <li {...props} data-list-item-offset={isTaskItem ? node?.position?.start.offset : undefined}>
-        {renderSkillInlineMarkdownChildren(children, skills, threadRef)}
+        {renderSkillInlineMarkdownChildren(children, skills, threadRef, environmentId)}
       </li>
     );
   },
@@ -923,7 +923,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
         <input
           {...props}
           type={type}
-          checked={checked}
+          checked={type === "checkbox" ? checked === true : checked}
           disabled={_disabled}
           readOnly={type === "checkbox"}
         />
@@ -935,11 +935,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
         type="checkbox"
         name="markdown-task"
         aria-label={t("Toggle task")}
-        checked={checked}
+        checked={checked === true}
         onChange={(event) => {
           const listItemStart = Number(event.currentTarget.closest("li")?.dataset.listItemOffset);
           if (!Number.isSafeInteger(listItemStart)) return;
-          const markerOffset = findTaskListMarkerOffset(text, listItemStart);
+          const markerOffset = taskListMarkerOffset(text, listItemStart);
           if (markerOffset === null) return;
           onTaskListChange({ markerOffset, checked: event.currentTarget.checked });
         }}
@@ -965,9 +965,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
     if (citation) return <AssistantCitationChip citation={citation} />;
     const linkedThreadId = href ? parseThreadLinkHref(href) : null;
     if (linkedThreadId) {
-      const label = hastPlainTextDeep(node) || linkedThreadId;
+      const label = hastPlainTextDeep(node) || linkedThreadId.threadId;
       return environmentId ? (
-        <MarkdownThreadLink environmentId={environmentId} threadId={linkedThreadId} label={label} />
+        <MarkdownThreadLink environmentId={environmentId} link={linkedThreadId} label={label} />
       ) : (
         <span>{label}</span>
       );
@@ -1063,7 +1063,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
                 { operation: "open-link-in-preview", target: href },
                 result.cause,
               );
-              if (squashAtomCommandFailure(result) instanceof BrowserSettingsReadError) return;
+              if (isBrowserSettingsReadError(squashAtomCommandFailure(result))) return;
               void readLocalApi()?.shell.openExternal(href);
             });
           }}
@@ -1174,11 +1174,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const {
       expandMedia,
       cwd,
+      sourceControlMediaRepository,
       imageBaseDir,
       threadRef,
       workspaceMutationId,
       renderContextReference,
       fileLinkChip,
+      resolvedTheme,
     } = use(ChatMarkdownRendererContext);
     const imageExpand = use(MarkdownLinkContext) ? undefined : expandMedia;
     const contextReference = typeof src === "string" ? parseComposerContextHref(src) : null;
@@ -1190,10 +1192,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
         <span>{label}</span>
       );
     }
-    const localSrc = node?.properties?.dataLocalSrc;
+    // A `<picture>`'s source for this theme, resolved like any other image.
+    const themeSrc = node?.properties?.[resolvedTheme === "dark" ? "dataDarkSrc" : "dataLightSrc"];
+    const localSrc = typeof themeSrc === "string" ? undefined : node?.properties?.dataLocalSrc;
     const markdownTitle = node?.properties?.dataMarkdownTitle;
     const standalone = node?.properties?.dataStandalone === true;
-    const authoredSrc = typeof localSrc === "string" ? localSrc : src;
+    const authoredSrc =
+      typeof themeSrc === "string" ? themeSrc : typeof localSrc === "string" ? localSrc : src;
     const authoredTitle = typeof markdownTitle === "string" ? markdownTitle : title;
     const srcString =
       typeof authoredSrc === "string" ? normalizeMarkdownLinkDestination(authoredSrc) : "";
@@ -1381,7 +1386,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
           fenceTitle={fenceTitle}
           theme={resolvedTheme}
           isStreaming={isStreaming && !isClosedCodeFence(node, text, codeBlock.code)}
-          onExpand={(src) => expandMedia({ images: [{ src, name: "Mermaid diagram" }], index: 0 })}
+          onExpand={(src) =>
+            expandMedia({
+              images: [{ src, name: "Mermaid diagram", mimeType: "image/svg+xml" }],
+              index: 0,
+            })
+          }
         >
           {highlightedCode}
         </MarkdownMermaidCodeBlock>

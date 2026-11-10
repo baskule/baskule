@@ -6,9 +6,12 @@ import {
   createAssetEnvironmentAtoms,
   createProjectFaviconUrlAtomFamily,
   EMPTY_ASSET_URL_ATOM,
+  makeRevisionedAssetUrlFamily,
 } from "@t3tools/client-runtime/state/assets";
 import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { Atom, AsyncResult } from "effect/reactivity";
 import {
   AuthOrchestrationReadScope,
@@ -138,9 +141,16 @@ export const projectFaviconUrlAtom = createProjectFaviconUrlAtomFamily({
   projectClones: environmentProjectCloneListAtom,
 });
 
+const revisionedAssetUrl = makeRevisionedAssetUrlFamily(assetEnvironment.createUrl);
+
+/**
+ * Pass `revision` for a host file whose bytes can change under the same path; each new
+ * revision re-mints the URL so the image reloads.
+ */
 export function useAssetUrlState(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
+  revision?: string | null,
 ): AssetUrlState {
   const fileAccessSession = useEnvironmentQuery(
     environmentId === null ? null : environmentSession.sessionStateAtom(environmentId),
@@ -158,7 +168,9 @@ export function useAssetUrlState(
   const result = useAtomValue(
     blocked !== null || environmentId === null || resource === null
       ? EMPTY_ASSET_URL_ATOM
-      : assetEnvironment.createUrl({ environmentId, input: { resource } }),
+      : revision === undefined
+        ? assetEnvironment.createUrl({ environmentId, input: { resource } })
+        : revisionedAssetUrl({ environmentId, input: { resource }, revision }),
   );
   const shared =
     blocked ??
@@ -300,6 +312,14 @@ interface FreshAssetUrlKey {
   readonly revision: number;
 }
 
+class AssetUrlUnavailableError extends Schema.TaggedError<AssetUrlUnavailableError>()(
+  "AssetUrlUnavailableError",
+  {
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
 // Plain-object keys compare structurally (Effect `Equal`/`Hash`).
 const freshAssetUrlFamily = Atom.family((key: FreshAssetUrlKey) =>
   Atom.make(
@@ -309,29 +329,41 @@ const freshAssetUrlFamily = Atom.family((key: FreshAssetUrlKey) =>
     ).pipe(
       Effect.flatMap((controller) =>
         Effect.tryPromise({
-          try: async (signal): Promise<AuthorizedAssetUrl> => {
-            const url =
-              key.environmentId === null
-                ? null
-                : await refreshAssetUrl(
-                    key.environmentId,
-                    key.resource,
-                    AbortSignal.any([signal, controller.signal]),
-                  );
-            if (!url) throw new Error("Reconnect to this environment and try again.");
-            return { url, authorizedAt: Date.now() };
-          },
+          try: async (signal) =>
+            key.environmentId === null
+              ? null
+              : await refreshAssetUrl(
+                  key.environmentId,
+                  key.resource,
+                  AbortSignal.any([signal, controller.signal]),
+                ),
           catch: (cause) =>
-            cause instanceof Error ? cause : new Error("The attachment is unavailable."),
-        }),
+            new AssetUrlUnavailableError({
+              message: cause instanceof Error ? cause.message : "The attachment is unavailable.",
+              cause,
+            }),
+        }).pipe(
+          Effect.flatMap((url) =>
+            url
+              ? Effect.map(Clock.currentTimeMillis, (authorizedAt): AuthorizedAssetUrl => ({
+                  url,
+                  authorizedAt,
+                }))
+              : Effect.fail(
+                  new AssetUrlUnavailableError({
+                    message: "Reconnect to this environment and try again.",
+                  }),
+                ),
+          ),
+        ),
       ),
     ),
   ).pipe(Atom.withLabel("fresh-asset-url")),
 );
 
-const noFreshAssetUrl = Atom.make(AsyncResult.initial<AuthorizedAssetUrl, Error>()).pipe(
-  Atom.withLabel("fresh-asset-url:none"),
-);
+const noFreshAssetUrl = Atom.make(
+  AsyncResult.initial<AuthorizedAssetUrl, AssetUrlUnavailableError>(),
+).pipe(Atom.withLabel("fresh-asset-url:none"));
 const noSessionGeneration = Atom.make(0);
 
 /**

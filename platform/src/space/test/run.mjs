@@ -208,7 +208,7 @@ async function main() {
     for (const [method, path] of [["POST", "/oauth/token"], ["POST", "/api/auth/browser-session"], ["GET", "/api/auth/pairing-links"], ["GET", "/api/connect/link-state"], ["GET", "/"], ["GET", "/api/pull-requests/diff"]]) {
       const r = await http(`/s/sp1${path}`, { method, headers: as(alice) });
       const body = await r.text();
-      assert(r.status === 404 && body.includes("unsupported in Baskule"), `${method} ${path} → ${r.status} ${body.slice(0, 120)}`);
+      assert(r.status === 404 && body.includes("unsupported in Baskule"), `${method} ${path} → ${r.status} ${body.slice(0, 2000)}`);
     }
     const env = await http("/s/sp1/.well-known/t3/environment", { headers: as(alice) });
     assert(env.ok, `descriptor ${env.status}`);

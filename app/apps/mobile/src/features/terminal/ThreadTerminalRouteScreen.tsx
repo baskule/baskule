@@ -13,6 +13,7 @@ import { type KnownTerminalSession } from "@t3tools/client-runtime/state/termina
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppBar } from "../../components/ui/AppBar";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
+import { useContentTopInset } from "../../components/ui/useBarInset";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useAtomMount } from "@effect/atom-react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -26,7 +27,6 @@ import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import {
   KeyboardController,
-  KeyboardEvents,
   KeyboardStickyView,
   useKeyboardState,
 } from "react-native-keyboard-controller";
@@ -91,6 +91,7 @@ import {
 } from "./terminalInput";
 import { createTerminalPasteSession } from "./terminalPaste";
 import { cacheTerminalGridSize, getCachedTerminalGridSize } from "./terminalUiState";
+import { getKeyboardShowEpoch, subscribeKeyboardShowing } from "./terminalKeyboardShowing";
 
 function TerminalHeader(props: {
   readonly subtitle: string;
@@ -209,7 +210,6 @@ class TerminalClipboardReadError extends Schema.TaggedError<TerminalClipboardRea
 type TerminalToolbarAction =
   | { readonly kind: "send"; readonly key: string; readonly label: string; readonly data: string }
   | { readonly kind: "clear"; readonly key: string; readonly label: string }
-  | { readonly kind: "paste"; readonly key: string; readonly label: string }
   | {
       readonly kind: "modifier";
       readonly key: string;
@@ -370,26 +370,6 @@ function readLiveTerminalSessions(
     }));
 }
 
-// `useKeyboardState` only flips on willShow and didHide; the accessory must
-// leave as soon as the keyboard starts hiding, so it follows the will-events.
-let keyboardShowing = KeyboardController.isVisible();
-function subscribeKeyboardShowing(onChange: () => void) {
-  keyboardShowing = KeyboardController.isVisible();
-  const willShow = KeyboardEvents.addListener("keyboardWillShow", () => {
-    keyboardShowing = true;
-    onChange();
-  });
-  const willHide = KeyboardEvents.addListener("keyboardWillHide", () => {
-    keyboardShowing = false;
-    onChange();
-  });
-  return () => {
-    willShow.remove();
-    willHide.remove();
-  };
-}
-const getKeyboardShowing = () => keyboardShowing;
-
 function ThreadTerminal(props: {
   readonly params: ThreadTerminalRouteScreenProps["route"]["params"];
   readonly routeEnvironmentId: EnvironmentId | null;
@@ -416,6 +396,7 @@ function ThreadTerminal(props: {
   } = props.knownSessions;
   const insets = useSafeAreaInsets();
   const nativeColumnMetrics = useNativeColumnLayoutMetrics();
+  const contentTopInset = useContentTopInset();
   const navigation = useNavigation();
   const writeTerminal = useAtomCommand(terminalEnvironment.write, "terminal write");
   const clearTerminal = useAtomCommand(terminalEnvironment.clear, "terminal clear");
@@ -524,6 +505,7 @@ function ThreadTerminal(props: {
             cols: initialAttachGridSize.cols,
             rows: initialAttachGridSize.rows,
             ...(pendingLaunch?.env ? { env: pendingLaunch.env } : {}),
+            ...(pendingLaunch ? { stopOnSettle: pendingLaunch.stopOnSettle ?? false } : {}),
             ...(pendingLaunch ? { restartIfNotRunning: true } : {}),
           }
         : null,
@@ -595,8 +577,7 @@ function ThreadTerminal(props: {
       { kind: "send", key: "right", label: "→", data: "\u001b[C" },
       { kind: "send", key: "esc", label: t("esc"), data: "\u001b" },
       ...modifierActions,
-      { kind: "send", key: "tab", label: t("tab"), data: "\t" },
-      { kind: "paste", key: "paste", label: t("paste") },
+      { kind: "send", key: t("tab"), label: t("tab"), data: "\t" },
       { kind: "clear", key: "clear", label: t("clear") },
       { kind: "send", key: "tilde", label: "~", data: "~" },
       { kind: "send", key: "pipe", label: "|", data: "|" },
@@ -604,28 +585,25 @@ function ThreadTerminal(props: {
       { kind: "send", key: "dash", label: "-", data: "-" },
     ];
   }, [t, hostPlatform]);
-  const keyboardState = useKeyboardState((state) => ({
-    height: state.height,
-    isVisible: state.isVisible,
-  }));
-  const keyboardShowing = useSyncExternalStore(subscribeKeyboardShowing, getKeyboardShowing);
+  const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
+  const keyboardHeight = useKeyboardState((state) => state.height);
+  const keyboardShowEpoch = useSyncExternalStore(subscribeKeyboardShowing, getKeyboardShowEpoch);
   // The accessory follows the keyboard, except that the dismiss and show
   // buttons flip it ahead of the keyboard animation.
-  const [accessory, setAccessory] = useState({ keyboardShowing, dismissed: false });
-  if (accessory.keyboardShowing !== keyboardShowing) {
-    setAccessory({ keyboardShowing, dismissed: !keyboardShowing });
+  const [accessory, setAccessory] = useState({ keyboardShowEpoch, dismissed: false });
+  if (accessory.keyboardShowEpoch !== keyboardShowEpoch) {
+    setAccessory({ keyboardShowEpoch, dismissed: keyboardShowEpoch === 0 });
   }
   const isAccessoryDismissed = accessory.dismissed;
-  const isAccessoryVisible = canOperateTerminal && keyboardState.isVisible && !isAccessoryDismissed;
+  const isAccessoryVisible = canOperateTerminal && isKeyboardVisible && !isAccessoryDismissed;
   // Android's terminal owns an EditText; turning off autoFocus also clears its native focus.
   const terminalAutoFocus =
     Platform.OS === "android"
       ? !isAccessoryDismissed &&
-        (!SHOWCASE_ENABLED || keyboardFocusRequest > 0 || keyboardState.isVisible)
+        (!SHOWCASE_ENABLED || keyboardFocusRequest > 0 || isKeyboardVisible)
       : !SHOWCASE_ENABLED;
   const terminalBottomInset =
-    (keyboardState.isVisible ? keyboardState.height : 0) +
-    (isAccessoryVisible ? TERMINAL_ACCESSORY_HEIGHT : 0);
+    (isKeyboardVisible ? keyboardHeight : 0) + (isAccessoryVisible ? TERMINAL_ACCESSORY_HEIGHT : 0);
 
   const terminalMenuSessions: ReadonlyArray<TerminalMenuSession> = buildTerminalMenuSessions({
     knownSessions: knownSessions ?? [],
@@ -659,9 +637,9 @@ function ThreadTerminal(props: {
     return result._tag === "Success";
   };
 
-  const pasteFromClipboard = async () => {
+  const pasteText = async (readText: () => Promise<string>) => {
     await pasteSession.paste({
-      readText: Clipboard.getStringAsync,
+      readText,
       write: writeInput,
       onReadError: (cause) => {
         console.error(new TerminalClipboardReadError({ terminalId, cause }));
@@ -682,7 +660,7 @@ function ThreadTerminal(props: {
       hostPlatform,
     });
     if (resolved.kind === "paste") {
-      void pasteFromClipboard();
+      void pasteText(Clipboard.getStringAsync);
       return;
     }
     void writeInput(resolved.data);
@@ -787,18 +765,22 @@ function ThreadTerminal(props: {
       return;
     }
 
+    // Toolbar input bypasses the native field, so a syllable it holds must not be recomposed.
+    surfaceRef.current?.resetInput();
+
     if (action.kind === "clear") {
       handleClearTerminal();
       return;
     }
 
-    if (action.kind === "paste") {
-      setPendingModifier(null);
-      void pasteFromClipboard();
-      return;
-    }
-
     writeModifiedInput(action.data);
+  };
+
+  const handlePaste = (readText: () => Promise<string>) => {
+    // Pasted text bypasses the native field, so a syllable it holds must not be recomposed.
+    surfaceRef.current?.resetInput();
+    setPendingModifier(null);
+    void pasteText(readText);
   };
 
   const handleDismissKeyboard = () => {
@@ -879,10 +861,8 @@ function ThreadTerminal(props: {
                 ? themeVariables["--color-card-alt"]
                 : terminalTheme.background,
             // Measured top reservation is zero when UIKit already inset the body or moved the bar.
-            paddingTop:
-              Platform.OS === "ios" ? (nativeColumnMetrics?.safeArea.top ?? insets.top) : 0,
-            paddingBottom:
-              Platform.OS === "android" && !keyboardState.isVisible ? insets.bottom : 0,
+            paddingTop: contentTopInset,
+            paddingBottom: Platform.OS === "android" && !isKeyboardVisible ? insets.bottom : 0,
           }}
         >
           {!isEnvironmentReady ? (
@@ -976,6 +956,7 @@ function ThreadTerminal(props: {
                       Dialog.alert("No terminal output", "There is no visible output to attach.");
                   }}
                   onInput={handleInput}
+                  onPaste={(text) => handlePaste(async () => text)}
                   onResize={handleResize}
                   style={{ flex: 1 }}
                   terminalKey={terminalKey}
@@ -983,7 +964,7 @@ function ThreadTerminal(props: {
                 />
               </View>
 
-              {Platform.OS === "android" && !keyboardState.isVisible ? (
+              {Platform.OS === "android" && !isKeyboardVisible ? (
                 <View className="min-h-14 flex-row items-center gap-2 bg-card-alt px-2">
                   {hasNativeTerminalSurface() ? (
                     <Button label={t("Attach output")} tone="text" onPress={requestCapture} />
@@ -1003,7 +984,14 @@ function ThreadTerminal(props: {
                     KeyboardController.dismiss();
                     requestCapture();
                   }}
-                  className="px-4 py-2"
+                  className="px-4 pt-2"
+                  style={{
+                    paddingBottom:
+                      8 +
+                      (isKeyboardVisible
+                        ? 0
+                        : (nativeColumnMetrics?.safeArea.bottom ?? insets.bottom)),
+                  }}
                 >
                   <Text style={{ color: terminalTheme.foreground }}>
                     {t("Attach visible output")}
@@ -1052,6 +1040,12 @@ function ThreadTerminal(props: {
                         })}
                       </ComposerToolbarScroller>
                       <ComposerToolbarButton
+                        accessibilityLabel={t("Paste")}
+                        icon={{ ios: "doc.on.clipboard", android: "content_paste" }}
+                        onPress={() => handlePaste(Clipboard.getStringAsync)}
+                        showChevron={false}
+                      />
+                      <ComposerToolbarButton
                         accessibilityLabel={t("Dismiss keyboard")}
                         icon={{ ios: "keyboard.chevron.compact.down", android: "keyboard_hide" }}
                         onPress={handleDismissKeyboard}
@@ -1060,7 +1054,7 @@ function ThreadTerminal(props: {
                     </ComposerToolbarRow>
                   </View>
                 </KeyboardStickyView>
-              ) : canOperateTerminal && !keyboardState.isVisible && Platform.OS !== "android" ? (
+              ) : canOperateTerminal && !isKeyboardVisible && Platform.OS !== "android" ? (
                 <Pressable
                   accessibilityLabel={t("Show keyboard")}
                   accessibilityRole="button"

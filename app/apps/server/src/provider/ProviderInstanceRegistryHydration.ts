@@ -8,6 +8,7 @@ import {
   type ProviderInstanceConfigMap,
   ServerSettings,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as Effect from "effect/Effect";
 
@@ -15,6 +16,7 @@ import * as Layer from "effect/Layer";
 
 import * as Stream from "effect/Stream";
 
+import * as ManagedProviders from "../policy/managedProviders.ts";
 import * as Settings from "../serverSettings.ts";
 import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "./builtInDrivers.ts";
 import * as ProviderInstanceRegistry from "./ProviderInstanceRegistry.ts";
@@ -70,7 +72,11 @@ export const deriveProviderInstanceConfigMap = (
   return merged as ProviderInstanceConfigMap;
 };
 
-const layerSettingsWatcher = (settingsChanges: Stream.Stream<ServerSettings>) =>
+export const layerSettingsWatcher = (
+  settingsChanges: Stream.Stream<ServerSettings>,
+  // The settings the registry was built from: a change queued during startup differs from these.
+  initialSettings: ServerSettings | undefined,
+) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const mutator = yield* ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator;
@@ -110,14 +116,26 @@ export const layer: Layer.Layer<
         ? ({} as ProviderInstanceConfigMap)
         : deriveProviderInstanceConfigMap(initialSettings);
 
+    // Drivers launch from the host environment, minus launch overrides a policy ignores.
+    const hostEnvironment = ManagedProviders.providerHostEnvironment(
+      serverSettings.managedPolicy,
+      yield* HostProcess.Environment,
+    );
+    // Instances of drivers the policy leaves out stay listed, as unavailable, so their threads
+    // explain why instead of losing their provider.
     const layerMutable = ProviderInstanceRegistry.layer({
       drivers: BUILT_IN_DRIVERS,
       configMap: initialConfigMap,
+      blockedReason: (driver) =>
+        ManagedProviders.disallowedDriverReason(serverSettings.managedPolicy, driver),
     }).pipe(
       Layer.provide(ProviderOrchestrationAdapterInfrastructure.layer),
       Layer.provide(ProviderHostLive.layer),
+      Layer.provide(Layer.succeed(HostProcess.Environment, hostEnvironment)),
     );
 
-    return layerSettingsWatcher(settingsChanges).pipe(Layer.provideMerge(layerMutable));
+    return layerSettingsWatcher(settingsChanges, initialSettings).pipe(
+      Layer.provideMerge(layerMutable),
+    );
   }),
 );

@@ -63,6 +63,7 @@ export type BaskuleApiErrorKind =
   | "network"
   | "server";
 
+// @effect-diagnostics-next-line extendsNativeError:off -- This Promise/React API error is converted at Effect callers, and native clients inspect its HTTP status.
 export class BaskuleApiError extends Error {
   constructor(
     readonly kind: BaskuleApiErrorKind,

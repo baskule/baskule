@@ -1,6 +1,6 @@
-import { GitMergeIcon } from "lucide-react";
 import { t, useTranslation } from "../../i18n";
-
+import { useAtomValue } from "@effect/atom-react";
+import { threadKey } from "@t3tools/client-runtime/state/entities";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
@@ -48,6 +48,7 @@ import {
   ChevronDownIcon,
   CornerLeftUpIcon,
   GitForkIcon,
+  GitMergeIcon,
   MessagesSquareIcon,
   MoreHorizontalIcon,
   PlusIcon,
@@ -62,11 +63,19 @@ import {
   useProjects,
   useThreadProjection,
   useThreadRelationshipShells,
+  useHiddenThreadKeys,
+  useAnyEnvironmentHiding,
 } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
+import { serverEnvironment } from "../../state/server";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+} from "../../providerInstances";
 import { threadEnvironment } from "../../state/threads";
 import { orchestrationEnvironment } from "../../state/orchestration";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useEnvironmentQuery } from "../../state/query";
 import { AgentElapsed } from "./AgentElapsed";
 import { ThreadRelationshipIcon, threadRelationshipStatusLabel } from "./ThreadRelationshipIcon";
 import { ThreadLineageWorkflowRow } from "./ThreadLineageWorkflowRow";
@@ -125,19 +134,26 @@ function ThreadLineageRowList(props: {
   );
 }
 
-function ThreadLineageGroup(props: {
+type LineageRow = ThreadRelationshipWalkRow;
+const lineageRowStatus = (row: LineageRow) => row.edge.status;
+
+const isFinishedAgentStatus = (status: string | null | undefined) =>
+  ["completed", "failed", "error", "cancelled", "interrupted", "idle"].includes(status ?? "");
+
+function ThreadLineageGroup<Row extends LineageRow>(props: {
   readonly label: string | null;
-  readonly rows: ReadonlyArray<ThreadRelationshipWalkRow>;
+  readonly rows: ReadonlyArray<Row>;
   readonly expanded: boolean;
-  readonly children: (rows: ReadonlyArray<ThreadRelationshipWalkRow>) => ReactNode;
+  readonly children: (rows: ReadonlyArray<Row>) => ReactNode;
 }) {
   const t = useTranslation();
   const [expanded, setExpanded] = useState(props.expanded);
   const [visibleCount, setVisibleCount] = useState(THREAD_LINEAGE_INITIAL_COUNT);
   const { visibleRows, hiddenCount } = resolveThreadLineageWindow(props.rows, visibleCount);
-  const failedCount = props.rows.filter(
-    ({ edge }) => edge.status === "failed" || edge.status === "error",
-  ).length;
+  const failedCount = props.rows.filter((row) => {
+    const status = lineageRowStatus(row);
+    return status === "failed" || status === "error";
+  }).length;
   if (props.rows.length === 0) return null;
   return (
     <div>
@@ -195,6 +211,16 @@ function relationshipThreadTitle(input: {
   return formatSubagentDisplayTitle(input.title);
 }
 
+/** The full title, since the row truncates it, with what a click does. */
+function LineageTooltipContent(props: { readonly title: string; readonly hint: string }) {
+  return (
+    <>
+      <span className="block font-medium">{props.title}</span>
+      <span className="block text-muted-foreground">{props.hint}</span>
+    </>
+  );
+}
+
 function currentSubagent<Agent extends RuntimeSubagent>(
   agent: Agent | undefined,
   childThread: OrchestrationV2ThreadShell | null | undefined,
@@ -236,7 +262,10 @@ export function ThreadRelationshipsPanel(props: {
   const ref = scopeThreadRef(props.environmentId, props.threadId);
   const projection = useThreadProjection(ref)?.projection ?? null;
   const providersByEnvironment = useEnvironmentProviders();
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(props.environmentId));
   const relationshipShells = useThreadRelationshipShells(ref);
+  const hiddenKeys = useHiddenThreadKeys();
+  const hidingAnywhere = useAnyEnvironmentHiding();
   const allProjects = useProjects();
   const archived = useArchivedThreadSnapshots([props.environmentId]);
   const archivedShells = archived.snapshots.find(
@@ -270,6 +299,14 @@ export function ThreadRelationshipsPanel(props: {
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   // Derive graphs after hooks to preserve their compiler cache.
   const providers = providersByEnvironment.get(props.environmentId);
+  const derivedProviderEntries = deriveProviderInstanceEntries(providers ?? []);
+  const providerEntries = settings
+    ? applyProviderInstanceSettings(
+        derivedProviderEntries,
+        settings,
+        currentThread?.projectId ?? null,
+      )
+    : derivedProviderEntries;
   const projects = allProjects.filter((project) => project.environmentId === props.environmentId);
   const parentNativeStatus = parentProjection
     ? deriveProviderSubagentStatus(parentProjection)?.status
@@ -304,6 +341,14 @@ export function ThreadRelationshipsPanel(props: {
     ...(archivedShells ?? []),
   ];
   const graph = deriveThreadRelationshipGraph({ threads: shells, projection });
+  const isHiddenRelation = (threadId: ThreadId) =>
+    hiddenKeys.has(threadKey({ environmentId: props.environmentId, threadId }));
+  // While hiding, an unloaded parent, fork or transfer may be hidden; unloaded subagent
+  // children (idle, left out of the shell) follow this visible thread, so they stay.
+  const isHiddenUnloadedRelation = (row: { threadId: ThreadId; edge: ThreadRelationshipEdge }) =>
+    hidingAnywhere &&
+    graph.nodes.get(row.threadId)?.missing === true &&
+    (row.edge.kind !== "subagent" || isParentThreadRelationship(row.edge, props.threadId));
   const currentProject = projects.find((project) => project.id === currentThread?.projectId);
   const latestMergeBackRun = projection === null ? null : resolveLatestMergeBackRun(projection);
   const mergeTargetThreadId = resolveMergeBackTargetThreadId(projection);
@@ -312,17 +357,45 @@ export function ThreadRelationshipsPanel(props: {
     rows: immediateThreadRelationships(graph, props.threadId),
     currentThreadId: props.threadId,
     mergeTargetThreadId,
-  }).map((row) => {
-    const agent =
-      row.edge.kind === "subagent" && !isParentThreadRelationship(row.edge, props.threadId)
-        ? subagentsByThreadId.get(row.threadId)
-        : undefined;
-    const workflowGroup = agent === undefined ? undefined : workflowGroupsById.get(agent.id);
-    return workflowGroup === undefined
-      ? row
-      : { ...row, edge: { ...row.edge, status: workflowGroup.workflow.status } };
-  });
+  })
+    // The graph rebuilds missing parents from lineage, so filter the rows it returns.
+    .filter((row) => !isHiddenRelation(row.threadId) && !isHiddenUnloadedRelation(row))
+    .map((row) => {
+      const agent =
+        row.edge.kind === "subagent" && !isParentThreadRelationship(row.edge, props.threadId)
+          ? subagentsByThreadId.get(row.threadId)
+          : undefined;
+      const workflowGroup = agent === undefined ? undefined : workflowGroupsById.get(agent.id);
+      return workflowGroup === undefined
+        ? row
+        : { ...row, edge: { ...row.edge, status: workflowGroup.workflow.status } };
+    });
   const canMerge = mergeTargetThreadId !== null && latestMergeBackRun !== null;
+  const unlistedThreadIds = relationshipRows
+    .filter(
+      ({ threadId, edge }) =>
+        !relationshipShells.some((thread) => thread.id === threadId) &&
+        (edge.kind !== "subagent" || !subagentsByThreadId.get(threadId)?.title),
+    )
+    .map(({ threadId }) => threadId);
+  const threadTitles = useEnvironmentQuery(
+    unlistedThreadIds.length === 0
+      ? null
+      : orchestrationEnvironment.threadTitles({
+          environmentId: props.environmentId,
+          input: { threadIds: unlistedThreadIds },
+        }),
+  );
+  const resolvedThreadTitles = threadTitles.data ?? {};
+  // Omitted and archived threads remain reachable; only a settled lookup proves one is gone.
+  const visibleRelationships = relationshipRows.filter(
+    ({ threadId, edge }) =>
+      edge.kind === "subagent" ||
+      !unlistedThreadIds.includes(threadId) ||
+      !threadTitles.isSuccess ||
+      threadTitles.isPending ||
+      Object.hasOwn(resolvedThreadTitles, threadId),
+  );
   const canDetach = projection ? canDetachThreadProviderSession(projection) : false;
 
   const {
@@ -330,21 +403,27 @@ export function ThreadRelationshipsPanel(props: {
     active = [],
     previous = [],
     sideChats = [],
-  } = groupBy(relationshipRows, ({ threadId, edge }) => {
+  } = groupBy(visibleRelationships, ({ threadId, edge }) => {
     const isParent = isParentThreadRelationship(edge, props.threadId);
     if (!isParent && graph.nodes.get(threadId)?.thread?.lineage.sideChat === true)
       return "sideChats";
     if (edge.kind !== "subagent" || isParent) return "related";
-    return ["completed", "failed", "error", "cancelled", "interrupted", "idle"].includes(
-      edge.status ?? "",
-    )
-      ? "previous"
-      : "active";
+    return isFinishedAgentStatus(edge.status) ? "previous" : "active";
   });
-  const groups = [
+  const groups: ReadonlyArray<{
+    id: string;
+    label: string | null;
+    rows: ReadonlyArray<LineageRow>;
+    expanded: boolean;
+  }> = [
     { id: "related", label: null, rows: related, expanded: true },
     { id: "active", label: null, rows: active, expanded: true },
-    { id: "previous", label: t("Previous agents"), rows: previous, expanded: false },
+    {
+      id: "previous",
+      label: t("Previous agents"),
+      rows: previous,
+      expanded: false,
+    },
   ];
   const runningCount =
     (projection?.subagents.filter(
@@ -366,6 +445,7 @@ export function ThreadRelationshipsPanel(props: {
     return null;
   }
 
+  // Idle children can be omitted from the shell; opening one loads its own detail.
   const openThread = (threadId: ThreadId) => {
     if (openSideChatTab(ref, graph.nodes.get(threadId)?.thread ?? null)) return;
     void navigate({
@@ -452,7 +532,9 @@ export function ThreadRelationshipsPanel(props: {
   const parentTitle =
     mergeTargetThreadId === null
       ? null
-      : (graph.nodes.get(mergeTargetThreadId)?.thread?.title ?? null);
+      : isHiddenRelation(mergeTargetThreadId)
+        ? null
+        : (graph.nodes.get(mergeTargetThreadId)?.thread?.title ?? null);
 
   const renderRelationshipRow = ({ threadId, edge }: ThreadRelationshipWalkRow) => {
     const node = graph.nodes.get(threadId);
@@ -492,7 +574,14 @@ export function ThreadRelationshipsPanel(props: {
       ["pending", "running", "waiting"].includes(agent.status);
     const threadTitle = relationshipThreadTitle({
       title:
-        workflowGroup?.workflow.workflowName ?? node?.thread?.title ?? agent?.title ?? threadId,
+        workflowGroup?.workflow.workflowName ??
+        // Fresher than an archived snapshot's copy.
+        (Object.hasOwn(resolvedThreadTitles, threadId)
+          ? resolvedThreadTitles[threadId]
+          : undefined) ??
+        node?.thread?.title ??
+        agent?.title ??
+        threadId,
       isSubagent,
     });
     const provider = providers?.find(
@@ -529,13 +618,14 @@ export function ThreadRelationshipsPanel(props: {
         childProject={project}
       />
     ) : (
-      relationshipHint
+      <LineageTooltipContent title={threadTitle} hint={relationshipHint} />
     );
     const relationshipContent = (
       <>
         <ThreadRelationshipIcon
           driver={isSubagent && !isParent ? providerDriver : undefined}
           provider={provider}
+          providerEntries={providerEntries}
           fallbackIcon={RelationshipIcon}
           status={rowStatus}
         />
@@ -575,7 +665,6 @@ export function ThreadRelationshipsPanel(props: {
               size="sm"
               variant="ghost"
               part={workflowGroup ? "primary" : "row"}
-              disabled={node?.missing === true}
               onClick={() => openThread(threadId)}
             />
           }
@@ -593,11 +682,9 @@ export function ThreadRelationshipsPanel(props: {
           providerInstanceId={agent.providerInstanceId}
           provider={provider}
           providers={providers}
+          providerEntries={providerEntries}
           driver={providerDriver}
           onOpenThread={(memberThreadId) => openThread(memberThreadId as ThreadId)}
-          isThreadAvailable={(memberThreadId) =>
-            graph.nodes.get(memberThreadId as ThreadId)?.missing === false
-          }
           onStop={canStopWorkflow ? () => void stopWorkflow(agent.id) : undefined}
           stopping={stoppingId === agent.id}
           stopDisabled={stoppingId !== null}
@@ -618,7 +705,6 @@ export function ThreadRelationshipsPanel(props: {
                     variant="ghost"
                     part="primary"
                     aria-label={`${threadTitle} ${threadRelationshipStatusLabel(rowStatus)}`}
-                    disabled={node?.missing === true}
                     onClick={() => openThread(threadId)}
                   />
                 }
@@ -703,11 +789,7 @@ export function ThreadRelationshipsPanel(props: {
       {lineageVisible ? (
         <ThreadDetailsSection
           headingId="thread-details-lineage-heading"
-          title={
-            runningCount > 0
-              ? t("Lineage · {{runningCount}} running", { runningCount: runningCount })
-              : t("Lineage")
-          }
+          title={runningCount > 0 ? `Lineage · ${runningCount} running` : "Lineage"}
           // A lone "Previous agents" row names itself; the heading returns for status or actions.
           showHeading={runningCount > 0 || canDetach || related.length > 0 || active.length > 0}
           data-thread-relationships-panel

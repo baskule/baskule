@@ -51,6 +51,7 @@ const CODES: Partial<Record<PlatformError.SystemErrorTag, string>> = {
 };
 
 /** Carries both Effect's error tag and Node's errno code (for the HostFileSystem view). */
+// @effect-diagnostics-next-line extendsNativeError:off -- The same exception serves native HostFileSystem callbacks and is mapped to PlatformError at the Effect boundary.
 export class FsError extends Error {
   readonly tag: PlatformError.SystemErrorTag;
   readonly path: string;
@@ -816,16 +817,6 @@ export const makeSpaceFileSystem = (config: SpaceFileSystemConfig): SpaceFileSys
     copyFile: (from, to) => lift("copyFile", from, async () => writeFile(to, await readFile(from))),
     chmod: () => Effect.void,
     chown: () => Effect.void,
-    glob: (pattern) =>
-      Effect.fail(
-        PlatformError.systemError({
-          _tag: "Unknown",
-          module: "FileSystem",
-          method: "glob",
-          pathOrDescriptor: pattern,
-          description: "glob is not supported in a space cell",
-        }),
-      ),
     link: (from, to) => lift("link", from, async () => writeFile(to, await readFile(from))),
     makeDirectory: (path, options) =>
       lift("makeDirectory", path, () => mkdir(path, options?.recursive === true)),
@@ -868,6 +859,7 @@ export const makeSpaceFileSystem = (config: SpaceFileSystemConfig): SpaceFileSys
       );
     },
     open: (path, options) => open(path, options?.flag ?? "r"),
+    readDirectoryEntries: (path) => lift("readDirectoryEntries", path, () => list(path)),
     readDirectory: (path, options) =>
       lift("readDirectory", path, async () => {
         if (!options?.recursive) return (await list(path)).map((d) => d.name);
@@ -910,6 +902,11 @@ export const makeSpaceFileSystem = (config: SpaceFileSystemConfig): SpaceFileSys
           : (eff) => eff,
       ),
     rename: (from, to) => lift("rename", from, () => rename(from, to)),
+    lstat: (path) =>
+      Effect.map(
+        lift("lstat", path, () => stat(path)),
+        toInfo,
+      ),
     stat: (path) =>
       Effect.map(
         lift("stat", path, () => stat(path)),

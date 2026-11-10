@@ -84,6 +84,16 @@ export class ProjectNotEmptyError extends Schema.TaggedError<ProjectNotEmptyErro
   }
 }
 
+/** A change the project's rules refuse, such as an invalid script ID: the caller's input is wrong, nothing failed. */
+export class ProjectInvalidError extends Schema.TaggedError<ProjectInvalidError>()(
+  "ProjectInvalidError",
+  { projectId: ProjectId, detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
 export class ProjectOperationError extends Schema.TaggedError<ProjectOperationError>()(
   "ProjectOperationError",
   {
@@ -109,6 +119,7 @@ export type ProjectServiceError =
   | ProjectNotFoundError
   | ProjectConflictError
   | ProjectNotEmptyError
+  | ProjectInvalidError
   | ProjectOperationError;
 
 export class ProjectService extends Context.Service<
@@ -132,6 +143,13 @@ export class ProjectService extends Context.Service<
       options?: { readonly includeDeleted?: boolean },
     ) => Effect.Effect<Option.Option<Project>, ProjectOperationError>;
     readonly snapshot: Effect.Effect<ProjectSnapshot, ProjectOperationError>;
+    readonly listPage: (input: {
+      readonly cursor: number;
+      readonly limit: number;
+    }) => Effect.Effect<
+      { readonly projects: ReadonlyArray<Project>; readonly nextCursor: number | null },
+      ProjectOperationError
+    >;
     readonly getShell: (
       projectId: ProjectId,
     ) => Effect.Effect<Option.Option<OrchestrationProjectShell>, ProjectOperationError>;
@@ -281,6 +299,8 @@ export const make = Effect.gen(function* () {
         });
       case "ProjectCommandMissingProjectError":
         return yield* new ProjectNotFoundError({ projectId });
+      case "ProjectCommandInvariantError":
+        return yield* new ProjectInvalidError({ projectId, detail: rejection.detail });
       default:
         return yield* dispatchError(
           rejection ?? receipt.error ?? "The command was previously rejected.",
@@ -544,20 +564,41 @@ export const make = Effect.gen(function* () {
     return yield* Effect.forEach(shells, enrichShell, { concurrency: 16 });
   });
 
+  const listRows = projects
+    .list()
+    .pipe(
+      Effect.mapError((cause) => new ProjectOperationError({ operation: "list-projects", cause })),
+    );
+
   const snapshot = Effect.gen(function* () {
-    const rows = yield* projects
-      .list()
-      .pipe(
-        Effect.mapError(
-          (cause) => new ProjectOperationError({ operation: "list-projects", cause }),
-        ),
-      );
+    const rows = yield* listRows;
     const hydrated = yield* Effect.forEach(rows, hydrate, { concurrency: 8 });
     return {
       projects: hydrated,
       updatedAt: DateTime.formatIso(yield* DateTime.now),
     } satisfies ProjectSnapshot;
   });
+
+  const listPage: ProjectService["Service"]["listPage"] = Effect.fn("ProjectService.listPage")(
+    function* ({ cursor, limit }) {
+      const rows = (yield* listRows).filter((project) => project.deletedAt === null);
+      const projects = yield* Effect.forEach(
+        rows.slice(cursor, cursor + limit),
+        (row) =>
+          hydrate(row).pipe(
+            Effect.filterOrElse(
+              (project) => project.repositoryIdentity !== null,
+              (project) =>
+                projectEnrichment
+                  .readRepositoryIdentity(project.workspaceRoot)
+                  .pipe(Effect.map((repositoryIdentity) => ({ ...project, repositoryIdentity }))),
+            ),
+          ),
+        { concurrency: 8 },
+      );
+      return { projects, nextCursor: cursor + limit < rows.length ? cursor + limit : null };
+    },
+  );
 
   return ProjectService.of({
     create,
@@ -567,6 +608,7 @@ export const make = Effect.gen(function* () {
     getById,
     getByWorkspaceRoot,
     snapshot,
+    listPage,
     getShell,
     listShells,
   });

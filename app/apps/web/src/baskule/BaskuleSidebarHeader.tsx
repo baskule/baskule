@@ -9,7 +9,6 @@ import { SidebarInput, SidebarMenuButton } from "~/components/ui/sidebar";
 import type { SidebarThreadHeaderProps } from "~/components/sidebar/SidebarThreadHeader";
 
 export function BaskuleSidebarHeader({
-  searchFieldRef,
   onNewThread,
   newThreadDisabled,
   newThreadShortcutLabel,
@@ -41,10 +40,7 @@ export function BaskuleSidebarHeader({
           </span>
         ) : null}
       </SidebarMenuButton>
-      <div
-        ref={searchFieldRef}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-(--control-radius) px-(--sidebar-row-content-inset) py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-      >
+      <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-(--control-radius) px-(--sidebar-row-content-inset) py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
         <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
         <SidebarInput
           ref={searchInputRef}

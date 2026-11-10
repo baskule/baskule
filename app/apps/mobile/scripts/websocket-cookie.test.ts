@@ -8,7 +8,7 @@ import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 const androidPath =
   "ReactAndroid/src/main/java/com/facebook/react/modules/websocket/WebSocketModule.kt";
 const iosPath = "React/CoreModules/RCTWebSocketModule.mm";
-const patchUrl = new URL("../../../patches/react-native@0.88.0.patch", import.meta.url);
+const patchUrl = new URL("../../../patches/react-native@0.88.1.patch", import.meta.url);
 let directory: string;
 let ios: string;
 

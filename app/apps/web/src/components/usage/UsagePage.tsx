@@ -94,7 +94,12 @@ import {
   resolveUsageShortcut,
   type UsageMetric,
 } from "./usageShortcuts";
-import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
+import {
+  PROVIDER_ORDER,
+  PROVIDER_PRESENTATION,
+  providersWithUsage,
+  rankProvidersByMetric,
+} from "./usageProviders";
 import {
   readUsagePagePreferences,
   saveUsagePagePreferences,
@@ -240,7 +245,7 @@ export function UsagePage() {
     if (nextMetric === "limits") setLimitsNow(Date.now());
     updatePreferences({ metric: nextMetric });
   };
-  const refreshLimits = (automatic = false, afterPending = false) =>
+  const refreshLimits = (automatic = false) =>
     // Settled so the timestamp still advances when a refresh throws.
     settlePromise(() =>
       Promise.all(
@@ -251,7 +256,6 @@ export function UsagePage() {
               environmentId,
               () => refreshProviders({ environmentId, input: {} }),
               automatic,
-              afterPending,
             );
           }
         }),
@@ -544,7 +548,6 @@ export function UsagePage() {
                 selectedEnvironments={selectedEnvironments}
                 hiddenProviders={hiddenProviders}
                 refreshingUsage={refreshingUsage}
-
                 onSelectModel={selectUsageModel}
               />
             )}
@@ -592,7 +595,6 @@ function UsageOverview({
   selectedEnvironments,
   hiddenProviders,
   refreshingUsage,
-
   onSelectModel,
 }: {
   readonly merged: MergedUsage;
@@ -605,7 +607,6 @@ function UsageOverview({
   readonly selectedEnvironments: readonly EnvironmentUsageStatus[];
   readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
   readonly refreshingUsage: boolean;
-
   readonly onSelectModel: (key: string) => void;
 }) {
   const t = useTranslation();
@@ -690,7 +691,7 @@ function UsageOverview({
             </span>
           </div>
 
-          {activeProviders.map((provider) => {
+          {rankProvidersByMetric(activeProviders, merged.providers, metric).map((provider) => {
             const totals = merged.providers.find((entry) => entry.provider === provider);
             const share = metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
             const providerSessions = totals?.sessions ?? 0;
@@ -871,11 +872,11 @@ function UsageOverview({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-right text-xs text-muted-foreground">
-                <th className="py-2 pr-3 text-left font-normal">#</th>
+                <th className="py-2 pr-3 pl-2 text-left font-normal">#</th>
                 <th className="w-full py-2 text-left font-normal">{t("Model")}</th>
                 <th className="py-2 pl-6 font-normal">{t("Cost")}</th>
                 <th className="hidden py-2 pl-6 font-normal sm:table-cell">{t("Share")}</th>
-                <th className="py-2 pl-6 font-normal">{t("Tokens")}</th>
+                <th className="py-2 pr-2 pl-6 font-normal">{t("Tokens")}</th>
               </tr>
             </thead>
             <tbody>
@@ -897,7 +898,7 @@ function UsageOverview({
                       key={key}
                       className="relative border-b border-border/50 text-right whitespace-nowrap text-muted-foreground tabular-nums transition-colors hover:bg-muted/50 has-focus-visible:bg-muted/50"
                     >
-                      <td className="py-2.5 pr-3 text-left text-xs">{index + 1}</td>
+                      <td className="py-2.5 pr-3 pl-2 text-left text-xs">{index + 1}</td>
                       <td className="py-2.5 text-left whitespace-normal">
                         <button
                           type="button"
@@ -932,7 +933,7 @@ function UsageOverview({
                       <td className={cn("hidden py-2.5 pl-6 sm:table-cell", rowFigures)}>
                         {share === null ? "" : formatPercent(share)}
                       </td>
-                      <td className={cn("py-2.5 pl-6", rowFigures)}>
+                      <td className={cn("py-2.5 pr-2 pl-6", rowFigures)}>
                         {formatTokens(model.totalTokens)}
                       </td>
                     </tr>
@@ -954,14 +955,14 @@ function UsageOverview({
               </colgroup>
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="py-2 font-normal">{shownHourly ? t("Hour") : t("Day")}</th>
+                  <th className="py-2 pl-2 font-normal">{shownHourly ? t("Hour") : t("Day")}</th>
                   {activeProviders.map((provider) => (
                     <th key={provider} className="py-2 pl-4 text-right font-normal">
                       {PROVIDER_PRESENTATION[provider].label}
                     </th>
                   ))}
                   <th className="py-2 pl-4 text-right font-normal">{t("Total")}</th>
-                  <th className="py-2 pl-4 text-right font-normal">{t("Tokens")}</th>
+                  <th className="py-2 pr-2 pl-4 text-right font-normal">{t("Tokens")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -980,7 +981,7 @@ function UsageOverview({
                       key={"hourStart" in period ? period.hourStart : period.day}
                       className="border-b border-border/50 transition-colors hover:bg-muted/50"
                     >
-                      <td className="py-2 text-foreground">
+                      <td className="py-2 pl-2 text-foreground">
                         {"hourStart" in period
                           ? formatHourShort(period.hourStart, shownWindow.timeZone, hour12)
                           : formatDayShort(period.day)}
@@ -1006,7 +1007,7 @@ function UsageOverview({
                       </td>
                       <td
                         className={cn(
-                          "py-2 pl-4 text-right text-muted-foreground tabular-nums",
+                          "py-2 pr-2 pl-4 text-right text-muted-foreground tabular-nums",
                           figureClass(loadingPartial),
                         )}
                       >

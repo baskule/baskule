@@ -1,6 +1,9 @@
-import { t } from "../../i18n";
-
-import type { RuntimeMode } from "@t3tools/contracts";
+import { t, useTranslation } from "../../i18n";
+import {
+  managedRuntimeModeDenial,
+  type ManagedPolicySummary,
+  type RuntimeMode,
+} from "@t3tools/contracts";
 import { type LucideIcon, LockIcon, PenLineIcon, ShieldOffIcon, SparklesIcon } from "lucide-react";
 
 export const runtimeModeConfig: Record<
@@ -58,4 +61,15 @@ export function resolveCompatibleRuntimeMode(
       ? runtimeModeOptions.filter((mode) => supportedRuntimeModes.includes(mode))
       : runtimeModeOptions;
   return { modes, mode: modes.includes(runtimeMode) ? runtimeMode : (modes[0] ?? runtimeMode) };
+}
+
+export function resolveRuntimeModeOptions(
+  modes: ReadonlyArray<RuntimeMode>,
+  managedPolicy: ManagedPolicySummary | undefined,
+) {
+  return modes.map((mode) => {
+    const option = { mode, ...runtimeModeConfig[mode] };
+    const disabledReason = managedRuntimeModeDenial(managedPolicy, mode);
+    return disabledReason === undefined ? option : { ...option, disabledReason };
+  });
 }

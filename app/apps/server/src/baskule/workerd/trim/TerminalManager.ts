@@ -1,4 +1,3 @@
-import * as Stream from "effect/Stream";
 // baskule: workerd replacement for `terminal/Manager.ts` (see build.mjs). A space cell runs no processes, so it
 // has no terminals: the `terminal.*` RPCs are off (rpcPolicy.ts) and the agent's shell runs on the space computer.
 // The services that still hold a TerminalManager (setup scripts, thread settlement and cleanup, storage cleanup)
@@ -22,6 +21,7 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 
 import type * as Real from "../../../terminal/Manager.ts";
 
@@ -62,6 +62,7 @@ const inert: Service = {
   resize: notRunning,
   clear: notRunning,
   close: () => Effect.void,
+  closeOnSettle: () => Effect.void,
   closeIdle: () => Effect.void,
   subscribe: () => Effect.succeed(noop),
   subscribeMetadata: () => Effect.succeed(noop),

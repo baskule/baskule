@@ -1,4 +1,4 @@
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -126,8 +126,8 @@ const upsertAnonymousId = Effect.gen(function* () {
     return existing.value;
   }
 
-  const anonymousId = yield* Crypto.Crypto.pipe(
-    Effect.flatMap((crypto) => crypto.randomUUIDv4()),
+  const anonymousId = yield* SecureRandom.SecureRandom.pipe(
+    Effect.flatMap((crypto) => crypto.uuidV4()),
     Effect.mapError(
       (cause) =>
         new TelemetryAnonymousIdGenerationError({

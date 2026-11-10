@@ -30,7 +30,7 @@ vi.mock("../baskule/session", () => ({
   },
 }));
 
-import { getBaskuleVoiceTranscriber } from "./voiceTranscription";
+import { getBaskuleVoiceTranscriber } from "../baskule/transcription";
 
 function setup(token = "session-one") {
   mocks.fetch.mockReset().mockResolvedValue(Response.json({ text: " Hello phone. " }));

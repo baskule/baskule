@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -41,7 +42,7 @@ const layerIdentity = (prefix: string, logs?: CapturedLog[]) =>
     ),
   );
 
-it.layer(NodeServices.layer)("telemetry identity", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("telemetry identity", (it) => {
   it.effect("leaves no torn anonymous id behind when its write fails midway", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
