@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import worker, { checkOrigin, isControlPath, splitSpacePath, stripBaskuleHeaders } from "../../src/worker";
 import { decodeIdentity, encodeIdentity } from "../../src/shared/identity";
 import type { Env } from "../../src/env";
@@ -8,7 +8,7 @@ import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "../../../app/packages/contracts
 const O = "http://baskule.test";
 const ALICE: Identity = { userId: "u_alice", name: "Alice", email: "alice@baskule.test", role: "member", sessionId: "s_alice", spaceRole: "member" };
 
-function fakeEnv(extra: Partial<Env> = {}) {
+function fakeEnv(extra: Partial<Env> = {}, responses: { control?: Response; space?: Response; assets?: Response } = {}) {
   const controlCalls: Request[] = [];
   const spaceCalls: { name: string; req: Request }[] = [];
   const stub = (name: string, handler: (r: Request) => Promise<Response>) => ({ fetch: (r: Request) => handler(r), name });
@@ -32,18 +32,19 @@ function fakeEnv(extra: Partial<Env> = {}) {
             const { spaceId } = (await req.json()) as { spaceId: string };
             return Response.json({ exists: spaceId === "acme" });
           }
-          return Response.json({ control: url.pathname });
+          return responses.control ?? Response.json({ control: url.pathname });
         }),
     },
     SPACE: {
       getByName: (name: string) =>
         stub(name, async (req) => {
           spaceCalls.push({ name, req });
-          return Response.json({ space: name });
+          return responses.space ?? Response.json({ space: name });
         }),
     },
     ASSETS: {
       fetch: async (req: Request) => {
+        if (responses.assets) return responses.assets;
         const p = new URL(req.url).pathname;
         if (p === "/version.json") return Response.json({ version: "0.5.0" });
         return new Response("<html>spa</html>", { headers: { "content-type": "text/html" } });
@@ -221,5 +222,120 @@ describe("Worker routing", () => {
     const { env } = fakeEnv();
     expect(await (await worker.fetch(req("/version.json"), env)).json()).toEqual({ version: "0.5.0" });
     expect(await (await worker.fetch(req("/some/spa/route"), env)).text()).toContain("spa");
+  });
+});
+
+
+describe("Worker cache policy", () => {
+  it.each([
+    ["/", 200],
+    ["/some/spa/route", 200],
+    ["/version.json", 200],
+    ["/.well-known/baskule", 200],
+    ["/auth/get-session", 200],
+    ["/api/baskule/me", 200],
+    ["/s/acme/.well-known/t3/environment", 200],
+    ["/hooks/acme/task/token", 200],
+    ["/api/unknown", 404],
+    ["/s/other/.well-known/t3/environment", 404],
+  ])("does not cache %s", async (path, status) => {
+    const { env } = fakeEnv();
+    const response = await worker.fetch(req(path, { headers: aliceCookie }), env);
+    expect(response.status).toBe(status);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("does not cache authentication and origin errors", async () => {
+    const { env } = fakeEnv();
+    const unauthenticated = await worker.fetch(req("/s/acme/.well-known/t3/environment"), env);
+    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.headers.get("cache-control")).toBe("no-store");
+    const refused = await worker.fetch(req("/auth/sign-out", { method: "POST", headers: aliceCookie }), env);
+    expect(refused.status).toBe(403);
+    expect(refused.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it.each(["GET", "HEAD"])("caches successful hashed static assets for %s", async (method) => {
+    const { env } = fakeEnv({}, { assets: new Response(method === "HEAD" ? null : "export {}", {
+      headers: { "content-type": "text/javascript", "cache-control": "max-age=60" },
+    }) });
+    const response = await worker.fetch(req("/assets/index-B_qwZ7m_.js", { method }), env);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(await response.text()).toBe(method === "HEAD" ? "" : "export {}");
+  });
+
+  it.each([
+    ["/assets/missing-Abcdef12.js", "text/html; charset=utf-8", 200, "GET"],
+    ["/assets/missing-Abcdef12.js", "application/xhtml+xml", 200, "GET"],
+    ["/assets/missing-Abcdef12.js", "text/javascript", 404, "GET"],
+    ["/assets/index.js", "text/javascript", 200, "GET"],
+    ["/assets/index-Abcdef12.js", "text/javascript", 200, "POST"],
+    ["/version.json", "application/json", 200, "GET"],
+  ])("does not cache %s (%s, %i, %s)", async (path, contentType, status, method) => {
+    const { env } = fakeEnv({}, { assets: new Response("fallback", {
+      status, headers: { "content-type": contentType, "cache-control": "public, max-age=14400" },
+    }) });
+    const response = await worker.fetch(req(path, { method }), env);
+    expect(response.status).toBe(status);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("replaces upstream descriptor caching", async () => {
+    const { env } = fakeEnv({}, { space: Response.json({ version: "0.5.2" }, {
+      headers: { "cache-control": "public, max-age=14400" },
+    }) });
+    const response = await worker.fetch(req("/s/acme/.well-known/t3/environment", { headers: aliceCookie }), env);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ version: "0.5.2" });
+  });
+
+  it("preserves redirects, status text, and separate authentication cookies", async () => {
+    const headers = new Headers({ location: "/", "cache-control": "public, max-age=14400" });
+    headers.append("set-cookie", "baskule.session_token=alice; Path=/; HttpOnly");
+    headers.append("set-cookie", "baskule.session_data=data; Path=/; HttpOnly");
+    const { env } = fakeEnv({}, { control: new Response(null, { status: 302, statusText: "Auth redirect", headers }) });
+    const response = await worker.fetch(req("/auth/callback/google"), env);
+    expect(response.status).toBe(302);
+    expect(response.statusText).toBe("Auth redirect");
+    expect(response.headers.get("location")).toBe("/");
+    expect(response.headers.getSetCookie()).toEqual(headers.getSetCookie());
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("returns an open stream without reading or buffering it", async () => {
+    const pull = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ pull }, { highWaterMark: 0 });
+    const { env } = fakeEnv({}, { space: new Response(body, { headers: { "content-type": "text/event-stream" } }) });
+    const response = await worker.fetch(req("/s/acme/api/events", { headers: aliceCookie }), env);
+    expect(response.body).toBe(body);
+    expect(pull).not.toHaveBeenCalled();
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await response.body?.cancel();
+  });
+
+  it("returns the runtime's WebSocket upgrade response unchanged", async () => {
+    // Node cannot construct status 101; model the response supplied by the celld runtime.
+    const upgrade = new Response(null);
+    Object.defineProperty(upgrade, "status", { value: 101 });
+    Object.defineProperty(upgrade, "webSocket", { value: {} });
+    const { env } = fakeEnv({}, { space: upgrade });
+    const response = await worker.fetch(req("/s/acme/ws", {
+      headers: { ...aliceCookie, upgrade: "websocket", origin: O },
+    }), env);
+    expect(response).toBe(upgrade);
+  });
+
+  it("does not cache unexpected failures", async () => {
+    const { env } = fakeEnv();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(env.ASSETS, "fetch").mockRejectedValueOnce(new Error("asset failure"));
+    try {
+      const response = await worker.fetch(req("/assets/index-Abcdef12.js"), env);
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await response.json()).toEqual({ error: "internal_error" });
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 });
