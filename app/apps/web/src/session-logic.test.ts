@@ -17,6 +17,7 @@ import {
   type OrchestrationV2RunAttempt,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import type { ToolCallVisibility } from "@t3tools/contracts/settings";
 import type { ThreadRuntimeSummary } from "@t3tools/client-runtime/state/shell";
 import { deriveMessagesTimelineRows } from "./components/chat/MessagesTimeline.logic";
 import * as DateTime from "effect/DateTime";
@@ -1250,9 +1251,14 @@ describe("HTML renders in the timeline", () => {
       optimisticMessages: [],
     });
   };
-  const rowsFor = (entries: TimelineEntry[], expanded: boolean) =>
+  const rowsFor = (
+    entries: TimelineEntry[],
+    expanded: boolean,
+    toolCallVisibility?: ToolCallVisibility,
+  ) =>
     deriveMessagesTimelineRows({
       timelineEntries: entries,
+      ...(toolCallVisibility === undefined ? {} : { toolCallVisibility }),
       latestRun: {
         runId,
         status: "completed",
@@ -1275,8 +1281,15 @@ describe("HTML renders in the timeline", () => {
       runId,
       htmlRender,
     });
-    expect(rowsFor(entries, false)).toEqual(["message", "turn-fold", "html-render", "message"]);
-    expect(rowsFor(entries, true)).toEqual([
+    expect(rowsFor(entries, false)).toEqual(["message", "html-render", "message"]);
+    expect(rowsFor(entries, true)).toEqual(["message", "html-render", "message"]);
+    expect(rowsFor(entries, false, "showAll")).toEqual([
+      "message",
+      "turn-fold",
+      "html-render",
+      "message",
+    ]);
+    expect(rowsFor(entries, true, "showAll")).toEqual([
       "message",
       "turn-fold",
       "work",
@@ -1302,7 +1315,13 @@ describe("HTML renders in the timeline", () => {
       itemId: "render",
       mcpApp,
     });
-    expect(rowsFor(entries, false)).toEqual(["message", "turn-fold", "mcp-app", "message"]);
+    expect(rowsFor(entries, false)).toEqual(["message", "mcp-app", "message"]);
+    expect(rowsFor(entries, false, "showAll")).toEqual([
+      "message",
+      "turn-fold",
+      "mcp-app",
+      "message",
+    ]);
   });
 
   it("hosts an MCP app whose call failed, as a form-deferring write does", () => {
@@ -1341,7 +1360,13 @@ describe("HTML renders in the timeline", () => {
     ).map((entry) =>
       entry.kind === "message" && entry.message.role === "user" ? entry : { ...entry, attempt },
     );
-    expect(rowsFor(entries, true)).toEqual(["message", "turn-fold", "attempt-fold", "html-render"]);
+    expect(rowsFor(entries, true)).toEqual(["message", "html-render", "attempt-fold"]);
+    expect(rowsFor(entries, true, "showAll")).toEqual([
+      "message",
+      "turn-fold",
+      "attempt-fold",
+      "html-render",
+    ]);
   });
 
   it.each([

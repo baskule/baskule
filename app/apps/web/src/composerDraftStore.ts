@@ -1084,7 +1084,10 @@ export function deriveEffectiveComposerModelState(input: {
     : undefined;
   // Legacy driver-keyed drafts belong to the default instance.
   const legacySelection =
-    input.draft?.modelSelectionByProvider?.[ProviderInstanceId.make(input.selectedProvider)];
+    input.selectedInstanceId == null ||
+    input.selectedInstanceId === defaultInstanceIdForDriver(input.selectedProvider)
+      ? input.draft?.modelSelectionByProvider?.[ProviderInstanceId.make(input.selectedProvider)]
+      : undefined;
   const activeSelection = instanceSelection ?? legacySelection;
   const activeSelectionInstanceId = instanceSelection
     ? (input.selectedInstanceId ?? ProviderInstanceId.make(input.selectedProvider))

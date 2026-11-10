@@ -19,10 +19,10 @@ describe("projectPendingUserInputAnswer", () => {
     "Reference work",
   );
 
-  it("sends thread chips as readable links with the actual thread ID", () => {
+  it("sends thread chips as readable links with their environment and thread ID", () => {
     const answer = `Compare ${formatInlineContextReference(threadContextReference(record))}`;
     expect(projectPendingUserInputAnswer(answer, [record])).toBe(
-      "Compare [Reference work](t3-thread://v1/reference-thread)",
+      "Compare [Reference work](t3-thread://v2/env-answer/reference-thread)",
     );
   });
 

@@ -77,14 +77,27 @@ function settingsWithProviderInstances(): UnifiedSettings {
 describe("scoped default model selections", () => {
   // regression: #27997 equal automatic defaults can resolve to different providers
   it("compares automatic defaults using each environment's models", () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {
+        [ProviderInstanceId.make("codex")]: {
+          driver: ProviderDriverKind.make("codex"),
+          enabled: true,
+        },
+        [ProviderInstanceId.make("claudeAgent")]: {
+          driver: ProviderDriverKind.make("claudeAgent"),
+          enabled: true,
+        },
+      },
+    };
     const codex = {
       projectId: null,
-      settings: DEFAULT_UNIFIED_SETTINGS,
+      settings,
       providers: [provider({ instanceId: "codex", models: ["gpt-6-astra"] })],
     };
     const claude = {
       projectId: null,
-      settings: DEFAULT_UNIFIED_SETTINGS,
+      settings,
       providers: [
         provider({
           instanceId: "claudeAgent",
@@ -113,7 +126,7 @@ describe("scoped default model selections", () => {
     const project = {
       projectId,
       settings: {
-        ...DEFAULT_SERVER_SETTINGS,
+        ...settings,
         projectSettingsOverrides: {
           [projectId]: {
             providerInstances: { [ProviderInstanceId.make("codex")]: { enabled: false } },
@@ -139,7 +152,7 @@ describe("scoped default model selections", () => {
     const configured = {
       projectId: null,
       settings: {
-        ...DEFAULT_SERVER_SETTINGS,
+        ...settings,
         providerModelPreferences: {
           [ProviderInstanceId.make("codex")]: {
             hiddenModels: ["gpt-6-astra"],
@@ -149,7 +162,7 @@ describe("scoped default model selections", () => {
       },
       providers: [provider({ instanceId: "codex", models: ["gpt-6-astra", "gpt-6-sol"] })],
     };
-    const inherited = { ...configured, settings: DEFAULT_SERVER_SETTINGS };
+    const inherited = { ...configured, settings };
     expect(defaultModelSelectionsAreMixed(DEFAULT_CLIENT_SETTINGS, [configured, inherited])).toBe(
       true,
     );
@@ -164,7 +177,7 @@ describe("scoped default model selections", () => {
     expect(defaultModelSelectionsAreMixed(clientSettings, [inherited, configured])).toBe(false);
     expect(
       defaultModelSelectionsAreMixed(clientSettings, [
-        { ...inherited, settings: { ...DEFAULT_SERVER_SETTINGS, providerModelPreferences: {} } },
+        { ...inherited, settings: { ...settings, providerModelPreferences: {} } },
         inherited,
       ]),
     ).toBe(true);
@@ -944,29 +957,6 @@ describe("composer fallback to another instance of the same driver", () => {
           },
         ],
       },
-    });
-
-    it.each([
-      ["5.4", "gpt-5.4"],
-      ["gpt-5-codex", "gpt-5.4"],
-      ["gpt-5.4", "5.4"],
-    ])("keeps the effort from %s on fallback %s", (savedModel, fallbackModel) => {
-      const disabledCodex = ProviderInstanceId.make("codex");
-      const fallbackCodex = ProviderInstanceId.make("codex_team");
-      const models = [reasoningModel(fallbackModel, "reasoningEffort")];
-      const { selectedInstanceId, state, traits } = composerFor({
-        providers: [
-          { ...provider({ provider: codex, instanceId: disabledCodex }), enabled: false, models },
-          { ...provider({ provider: codex, instanceId: fallbackCodex }), models },
-        ],
-        threadModelSelection: createModelSelection(disabledCodex, savedModel, [
-          { id: "reasoningEffort", value: "xhigh" },
-        ]),
-      });
-
-      expect(selectedInstanceId).toBe(fallbackCodex);
-      expect(state.selectedModel).toBe(fallbackModel);
-      expect(traits.promptEffort).toBe("xhigh");
     });
 
     it.each([

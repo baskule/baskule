@@ -2154,17 +2154,20 @@ describe("composerDraftStore model seed migration", () => {
 
       await useComposerDraftStore.persist.rehydrate();
 
-      const upgraded = modelSelection(OPENCODE_INSTANCE, "gpt-5.4", {
+      const legacyInstance = ProviderInstanceId.make("codex");
+      const upgraded = modelSelection(legacyInstance, "gpt-5.4", {
         reasoningEffort: "high",
         fastMode: true,
       });
       expect(draftByKey(serverThreadKey)).toMatchObject({
         prompt: "keep this draft",
-        modelSelectionByProvider: { [OPENCODE_INSTANCE]: upgraded },
+        modelSelectionByProvider: { [legacyInstance]: upgraded },
+        activeProvider: legacyInstance,
       });
       expect(useComposerDraftStore.getState().stickyModelSelectionByProvider).toEqual({
-        [OPENCODE_INSTANCE]: upgraded,
+        [legacyInstance]: upgraded,
       });
+      expect(useComposerDraftStore.getState().stickyActiveProvider).toBe(legacyInstance);
     } finally {
       vi.useRealTimers();
     }
