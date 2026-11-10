@@ -209,39 +209,45 @@ export async function changeBaskuleSessionPassword(input: {
   if (current.status !== "signed-in" || current.kind !== "authenticated") return;
   const expected = revision;
   rotations++;
-  let token: string;
   try {
-    token = await changeBaskulePassword(
-      { serverUrl: current.serverUrl, token: current.token },
-      input,
-    );
-  } catch (error) {
-    if (error instanceof Api.BaskuleApiError && error.kind === "signed-out" && state === current) {
-      const next = {
-        status: "signed-out",
-        serverUrl: current.serverUrl,
-        notice: error.message,
-      } as const;
-      publish(next);
-      await commit(next, ++revision);
-      return;
+    let token: string;
+    try {
+      token = await changeBaskulePassword(
+        { serverUrl: current.serverUrl, token: current.token },
+        input,
+      );
+    } catch (error) {
+      if (
+        error instanceof Api.BaskuleApiError &&
+        error.kind === "signed-out" &&
+        state === current
+      ) {
+        const next = {
+          status: "signed-out",
+          serverUrl: current.serverUrl,
+          notice: error.message,
+        } as const;
+        publish(next);
+        await commit(next, ++revision);
+        return;
+      }
+      throw error;
     }
-    throw error;
+    if (revision !== expected || state !== current) return;
+    const next = { ...current, token };
+    try {
+      await commit(next, expected);
+    } catch {
+      if (revision === expected && state === current) publish(next);
+      throw new Api.BaskuleApiError(
+        "server",
+        t(
+          "Password changed, but this phone could not save the new sign-in. Sign in again after restarting the app.",
+        ),
+      );
+    }
   } finally {
     rotations--;
-  }
-  if (revision !== expected || state !== current) return;
-  const next = { ...current, token };
-  try {
-    await commit(next, expected);
-  } catch {
-    if (revision === expected && state === current) publish(next);
-    throw new Api.BaskuleApiError(
-      "server",
-      t(
-        "Password changed, but this phone could not save the new sign-in. Sign in again after restarting the app.",
-      ),
-    );
   }
 }
 

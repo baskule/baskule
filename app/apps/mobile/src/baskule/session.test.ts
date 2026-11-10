@@ -205,29 +205,75 @@ describe("device connection", () => {
     expect(storage.token).toBe("token-b");
   });
 
-  it("keeps the rotated password credential when a refresh with the revoked token fails", async () => {
+  it.each(["request", "save"])(
+    "keeps the password rotation through %s when a revoked refresh fails",
+    async (phase) => {
+      const { api, session } = await setup();
+      const settings = await import("./settings-api");
+      const secureStore = await import("expo-secure-store");
+      vi.mocked(api.fetchMe).mockResolvedValueOnce(me);
+      await session.completeBaskuleSignIn("https://a.example", "token-a");
+      const refresh = Promise.withResolvers<typeof me>();
+      vi.mocked(api.fetchMe).mockImplementationOnce(() => refresh.promise);
+      const refreshing = session.refreshBaskuleMe();
+      const replacement = Promise.withResolvers<string>();
+      vi.mocked(settings.changeBaskulePassword).mockImplementationOnce(() => replacement.promise);
+      const saving = Promise.withResolvers<void>();
+      const saved = Promise.withResolvers<void>();
+      using _save = vi
+        .spyOn(secureStore, "setItemAsync")
+        .mockImplementationOnce(async (_key, token) => {
+          saving.resolve();
+          await saved.promise;
+          storage.token = token;
+        });
+      const change = session.changeBaskuleSessionPassword({
+        currentPassword: "a",
+        newPassword: "b",
+      });
+      try {
+        if (phase === "save") {
+          replacement.resolve("token-b");
+          await saving.promise;
+        }
+        refresh.reject(new api.BaskuleApiError("signed-out", "revoked"));
+        await refresh.promise.catch(() => undefined);
+        expect(session.readBaskuleSession()).toMatchObject({
+          status: "signed-in",
+          token: "token-a",
+        });
+      } finally {
+        replacement.resolve("token-b");
+        saved.resolve();
+        await Promise.all([change, refreshing]);
+      }
+      expect(settings.changeBaskulePassword).toHaveBeenCalledWith(
+        { serverUrl: "https://a.example", token: "token-a" },
+        { currentPassword: "a", newPassword: "b" },
+      );
+      expect(session.readBaskuleSession()).toMatchObject({ status: "signed-in", token: "token-b" });
+      expect(storage.token).toBe("token-b");
+      vi.mocked(api.fetchMe).mockResolvedValueOnce(me);
+      await session.refreshBaskuleMe();
+      expect(api.fetchMe).toHaveBeenLastCalledWith("https://a.example", "token-b");
+    },
+  );
+
+  it("keeps the rotated credential in memory and resumes refreshes after a failed save", async () => {
     const { api, session } = await setup();
     const settings = await import("./settings-api");
     vi.mocked(api.fetchMe).mockResolvedValueOnce(me);
     await session.completeBaskuleSignIn("https://a.example", "token-a");
-    let finish!: (token: string) => void;
-    vi.mocked(settings.changeBaskulePassword).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const change = session.changeBaskuleSessionPassword({ currentPassword: "a", newPassword: "b" });
-    vi.mocked(api.fetchMe).mockRejectedValueOnce(new api.BaskuleApiError("signed-out", "revoked"));
-    await session.refreshBaskuleMe();
-    finish("token-b");
-    await change;
-    expect(settings.changeBaskulePassword).toHaveBeenCalledWith(
-      { serverUrl: "https://a.example", token: "token-a" },
-      { currentPassword: "a", newPassword: "b" },
-    );
+    vi.mocked(settings.changeBaskulePassword).mockResolvedValueOnce("token-b");
+    storage.failWrite = true;
+    await expect(
+      session.changeBaskuleSessionPassword({ currentPassword: "a", newPassword: "b" }),
+    ).rejects.toThrow("Password changed, but this phone could not save the new sign-in.");
     expect(session.readBaskuleSession()).toMatchObject({ status: "signed-in", token: "token-b" });
-    expect(storage.token).toBe("token-b");
+    expect(storage.token).toBe("token-a");
+    vi.mocked(api.fetchMe).mockResolvedValueOnce(me);
+    await session.refreshBaskuleMe();
+    expect(api.fetchMe).toHaveBeenLastCalledWith("https://a.example", "token-b");
   });
 
   it("signs out when the password changed but no replacement credential arrived", async () => {
