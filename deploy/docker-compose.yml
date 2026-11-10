@@ -343,9 +343,6 @@ configs:
                   header Content-Type model/gltf-binary*
               }
           }
-          # Vite assets are content-hashed: cache them for good (the HTML still revalidates).
-          @assets path /assets/*
-          header @assets >Cache-Control "public, max-age=31536000, immutable"
           reverse_proxy {$$BASKULE_NODES_WORKER} {
               lb_policy round_robin
               # Retry another node when a dial fails (node down, before the active check notices).
