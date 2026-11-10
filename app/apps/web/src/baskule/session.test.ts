@@ -3,12 +3,116 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { BaskuleApiError, baskuleApi, type BaskuleMe } from "./api";
 import {
+  __setBaskuleMeForTests,
   ensureSignedInAs,
   isBaskulePublicPath,
   loginPathFor,
   orderSpaces,
+  readBaskuleMe,
+  refreshBaskuleMe,
+  refreshBaskuleMeAfterMutation,
   safeNextPath,
 } from "./session";
+
+const sessionWithSpaces = (spaces: BaskuleMe["spaces"]): BaskuleMe => ({
+  authentication: { mode: "authenticated", password: true, providers: [] },
+  user: { id: "ada", name: "Ada", email: "ada@example.com", role: "member" },
+  organizationName: null,
+  spaces,
+  canCreateSpaces: false,
+  voiceInput: false,
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("session revalidation after a mutation", () => {
+  it("does not reuse a pre-mutation membership response and coalesces invalidations", async () => {
+    __setBaskuleMeForTests(null);
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => __setBaskuleMeForTests(null));
+    const before = sessionWithSpaces([
+      { id: "team", name: "Team", kind: "team", role: "member", base: "/s/team" },
+    ]);
+    const after = sessionWithSpaces([]);
+    const pending = deferred<BaskuleMe>();
+    using me = vi
+      .spyOn(baskuleApi, "me")
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue(after);
+
+    const refresh = refreshBaskuleMe();
+    const first = refreshBaskuleMeAfterMutation();
+    const second = refreshBaskuleMeAfterMutation();
+    pending.resolve(before);
+
+    await expect(refresh).resolves.toEqual(before);
+    await expect(Promise.all([first, second])).resolves.toEqual([after, after]);
+    expect(readBaskuleMe()).toEqual(after);
+    expect(me).toHaveBeenCalledTimes(2);
+  });
+
+  it("still reads current membership when the older request fails", async () => {
+    __setBaskuleMeForTests(null);
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => __setBaskuleMeForTests(null));
+    const after = sessionWithSpaces([]);
+    const pending = deferred<BaskuleMe>();
+    using me = vi
+      .spyOn(baskuleApi, "me")
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue(after);
+
+    const refresh = expect(refreshBaskuleMe()).rejects.toThrow("offline");
+    const revalidation = refreshBaskuleMeAfterMutation();
+    pending.reject(new Error("offline"));
+
+    await refresh;
+    await expect(revalidation).resolves.toEqual(after);
+    expect(readBaskuleMe()).toEqual(after);
+    expect(me).toHaveBeenCalledTimes(2);
+  });
+
+  it("revalidates again for a mutation made while the follow-up request is pending", async () => {
+    __setBaskuleMeForTests(null);
+    using cleanup = new DisposableStack();
+    cleanup.defer(() => __setBaskuleMeForTests(null));
+    const before = sessionWithSpaces([]);
+    const afterFirst = { ...before, canCreateSpaces: true };
+    const afterSecond = { ...before, voiceInput: true };
+    const initial = deferred<BaskuleMe>();
+    const followUp = deferred<BaskuleMe>();
+    const followUpStarted = deferred<void>();
+    using me = vi
+      .spyOn(baskuleApi, "me")
+      .mockReturnValueOnce(initial.promise)
+      .mockImplementationOnce(() => {
+        followUpStarted.resolve();
+        return followUp.promise;
+      })
+      .mockResolvedValue(afterSecond);
+
+    const refresh = refreshBaskuleMe();
+    const first = refreshBaskuleMeAfterMutation();
+    initial.resolve(before);
+    await followUpStarted.promise;
+    const second = refreshBaskuleMeAfterMutation();
+    followUp.resolve(afterFirst);
+
+    await expect(refresh).resolves.toEqual(before);
+    await expect(first).resolves.toEqual(afterFirst);
+    await expect(second).resolves.toEqual(afterSecond);
+    expect(readBaskuleMe()).toEqual(afterSecond);
+    expect(me).toHaveBeenCalledTimes(3);
+  });
+});
 
 describe("Baskule session helpers", () => {
   it("knows the pages that need no session", () => {
