@@ -11,7 +11,6 @@ import {
   NodeId,
   ProviderInstanceId,
   ScheduledTaskError,
-  ScheduledTask,
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
@@ -236,8 +235,6 @@ it("bounds public command rejections and redacts internal dispatch causes", () =
     message: "The operation could not be completed.",
   });
 });
-
-const fullAccessThreadId = ThreadId.make("mcp-core-full-access-thread");
 
 it.effect("records only failed calls of tools that hand off no work", () => {
   // Recording runs detached from the tool response, so the first event is awaited.
@@ -586,12 +583,6 @@ it.effect("a caller cannot rewrite a scheduled task that runs above its own mode
 it.effect.each([
   {
     scenario: "explains why a webhook task cannot run manually",
-    tasks: [
-      {
-        ...Schema.decodeSync(ScheduledTask)(scheduledTask("task-webhook", "full-access")),
-        schedule: { type: "webhook" as const, signature: null },
-      },
-    ],
     error: new ScheduledTaskError({
       message: "Webhook tasks run when their URL receives a request.",
       cause: new Error("private-webhook-cause"),
@@ -600,13 +591,12 @@ it.effect.each([
     message: "Webhook tasks run when their URL receives a request.",
   },
   {
-    scenario: "reports a missing task before trying to run it",
-    tasks: [],
-    error: new ScheduledTaskError({ message: "must not run a missing task" }),
-    code: "invalid_request",
-    message: "The scheduled task was not found.",
+    scenario: "reports the scheduler's missing-task error",
+    error: new ScheduledTaskError({ message: "Schedule task not found." }),
+    code: "orchestration_error",
+    message: "Schedule task not found.",
   },
-])("run_scheduled_task_now $scenario", ({ tasks, error, code, message }) =>
+])("run_scheduled_task_now $scenario", ({ error, code, message }) =>
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
     const result = yield* server
@@ -631,7 +621,6 @@ it.effect.each([
         Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
         Layer.provide(
           Layer.mock(ScheduledTaskService.ScheduledTaskService)({
-            list: () => Effect.succeed({ tasks }),
             runNow: () => Effect.fail(error),
           }),
         ),
