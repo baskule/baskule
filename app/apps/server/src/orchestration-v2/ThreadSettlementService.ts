@@ -19,7 +19,6 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
 import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
@@ -191,7 +190,6 @@ export const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const random = yield* SecureRandom.SecureRandom;
   const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const terminals = yield* TerminalManager.TerminalManager;
   const projectScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   // Repeated thread.settled retains settledAt; run the action only once per settlement.
@@ -205,11 +203,20 @@ export const make = Effect.gen(function* () {
       candidates,
       (thread) =>
         Effect.gen(function* () {
+          const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
+          const initialSettings = resolveProjectSettings(settings, thread.projectId).settings;
+          if (
+            resolveAutoSettlementAt({
+              thread,
+              nowMs,
+              autoSettleAfterDays: initialSettings.sidebarAutoSettleAfterDays,
+            }) === null
+          )
+            return;
           const currentSettings = resolveProjectSettings(
             yield* settingsService.getSettings,
             thread.projectId,
           ).settings;
-          const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
           const settledAt = resolveAutoSettlementAt({
             thread,
             nowMs,
