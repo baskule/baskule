@@ -1,6 +1,6 @@
 // Unit tests of the embedded agent's pure parts (no celld, no computer): session interception, OpenCode config and the
 // remote spawner over a fake computerd.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Effect, Stream } from "effect";
 import { ChildProcess } from "effect/process";
 import { computerPath, type Models, offeredModel, prepareSessionCreate, startsModelWork, stripNulls } from "../../session";
@@ -222,5 +222,46 @@ describe("remote spawner", () => {
     const spawner = makeRemoteSpawner({ exec: async () => new Response('{"error":"too many"}', { status: 429 }), kill: async () => ({}) });
     const r = await run(Effect.exit(spawner.spawn(ChildProcess.make("ls", []))));
     expect(JSON.stringify(r)).toMatch(/429/);
+  });
+});
+
+describe("location readiness", () => {
+  it("fails a turn when location acquisition wedges, then permits a recovered turn", async () => {
+    vi.useFakeTimers();
+    const location = { directory: "/sandbox/space/chats/wedged" };
+    const model = models.fallback;
+    const fetch = vi.fn(async () => Response.json({ data: { model, location } }));
+    let signal: AbortSignal | undefined;
+    const mcpReady = vi.fn((_ref: unknown, _servers: unknown, _listed: boolean, currentSignal: AbortSignal) => {
+      signal = currentSignal;
+      return new Promise<boolean>(() => {});
+    });
+    const runtime = new AgentRuntime({
+      get: async () => "workspace", put: async () => {}, getAlarm: async () => 0,
+    } as never, { AI: { providerId: "custom", baseUrl: "http://fake/v1", apiKey: "unused", model: {
+      id: "m1", name: "M1", image: false, pdf: false, limit: { context: 128_000, output: 8_000 }, settings: {},
+    } } }, "space", {}, { fetch }, () => {});
+    Reflect.set(runtime, "models", models);
+    Reflect.set(runtime, "configServers", ["decision"]);
+    vi.spyOn(runtime, "boot").mockResolvedValue({ fetch, mcpReady, inBootEvent: (run: () => Promise<number>) => run() } as never);
+    const prompt = () => runtime.fetch(new Request("http://agent/oc/api/session/ses_1/prompt", { method: "POST", body: "{}" }));
+    try {
+      const pending = prompt();
+      await vi.advanceTimersByTimeAsync(10_000);
+      let response: Response | undefined;
+      void pending.then(value => { response = value; });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(response, "the turn must finish when the readiness deadline expires").toBeDefined();
+      expect(response?.status).toBe(400);
+      expect(await response?.json()).toMatchObject({ _tag: "InvalidRequestError", message: "MCP catalog did not settle at /sandbox/space/chats/wedged: decision" });
+      expect(signal?.aborted).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      mcpReady.mockResolvedValue(true);
+      expect((await prompt()).ok).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });

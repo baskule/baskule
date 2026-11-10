@@ -130,6 +130,8 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
     return Effect.void;
   })));
   return {
+    /** Readiness prewarming also needs a native owner after session creation returns. */
+    inBootEvent,
     /** OpenCode's own HTTP API (the full router). */
     fetch: (req) => inBootEvent(async () => {
       const response = await host.fetch(req);
@@ -176,7 +178,7 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
         ),
       ),
     /** Connection completion and catalog publication are separate; an empty catalog is valid. */
-    mcpReady: (ref, servers, listed = true) => runPromise(Effect.gen(function* () {
+    mcpReady: (ref, servers, listed = true, signal) => runPromise(Effect.gen(function* () {
       const mcp = yield* McpService;
       const tools = yield* Tool.Service;
       const ids = (yield* tools.list()).map(t => t.id);
@@ -191,7 +193,7 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
       }
       const expected = (yield* mcp.tools()).filter(t => servers.includes(t.server));
       return published.length === expected.length && expected.every(t => published.includes(McpTool.name(t.server, t.name)));
-    }).pipe(Effect.provide(LocationServiceMap.get(ref)))),
+    }).pipe(Effect.provide(LocationServiceMap.get(ref))), { signal }),
     /** MCP tools of a location (with their `_meta`), for MCP apps. */
     mcpTools: (ref) => runPromise(Effect.flatMap(McpService, (mcp) => mcp.tools()).pipe(Effect.provide(LocationServiceMap.get(ref)))),
     mcpCall: (ref, input) => runPromise(Effect.flatMap(McpService, m => m.callTool(input)).pipe(Effect.provide(LocationServiceMap.get(ref)))),
