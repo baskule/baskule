@@ -105,8 +105,11 @@ The exporter also produces these opaque PNGs:
 
 Upload the avatar in the Baskule organization's **Settings → Profile → Profile picture**. Upload the social
 preview in the repository's **Settings → General → Social preview**. GitHub stores these settings separately
-from Git; merging asset changes does not update them. The repository README uses the generated avatar and
-the light and inverse wordmarks directly.
+from Git; merging asset changes does not update them.
+
+The repository README header uses the generated [`brand/lockup.svg`](../brand/lockup.svg) and
+[`brand/lockup-inverse.svg`](../brand/lockup-inverse.svg): the pivot beside the wordmark on a transparent
+background, switched by GitHub's light or dark theme.
 
 ## Verification
 

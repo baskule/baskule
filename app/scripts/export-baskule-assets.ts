@@ -206,6 +206,17 @@ for (const channel of ["latest", "nightly"]) {
   );
 }
 
+// The README header lockup: pivot beside the wordmark, light and inverse, on a transparent background.
+// The 1700-unit pivot square puts its cards' height on the wordmark's ascender-to-baseline span.
+for (const suffix of ["", "-inverse"]) {
+  const pivot = await NodeFSP.readFile(NodePath.join(source, `mark${suffix}.svg`), "utf8");
+  const type = await NodeFSP.readFile(NodePath.join(source, `wordmark${suffix}.svg`), "utf8");
+  await write(
+    NodePath.join(source, `lockup${suffix}.svg`),
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="248 105 8650.5 1511">${pivot.trim().replace("<svg ", '<svg width="1700" height="1700" ')}${type.trim().replace("<svg ", '<svg x="1850" y="105" width="7048.5" height="1511" ')}</svg>\n`,
+  );
+}
+
 // GitHub organization avatar and repository social preview use opaque white artwork.
 await write(NodePath.join(source, "github-avatar.png"), await png(square, 1024, true));
 const wordmark = await NodeFSP.readFile(NodePath.join(source, "wordmark.svg"), "utf8");
