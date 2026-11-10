@@ -48,8 +48,8 @@ import { RpcSchema } from "effect/rpc";
 
 export const ENVIRONMENT_ID = EnvironmentId.make("environment-render");
 export const PROJECT_ID = ProjectId.make("project-render");
-const CODEX = ProviderInstanceId.make("codex");
-const MODEL = { instanceId: CODEX, model: "gpt-5.4" };
+const OPENCODE = ProviderInstanceId.make("opencode");
+const MODEL = { instanceId: OPENCODE, model: "gpt-5.4" };
 const AT = DateTime.makeUnsafe("2026-03-17T19:12:28.000Z");
 
 const descriptor = {
@@ -79,8 +79,8 @@ const serverConfig: ServerConfig = {
     issues: [],
     providers: [
       {
-        instanceId: CODEX,
-        driver: "codex",
+        instanceId: OPENCODE,
+        driver: "opencode",
         enabled: true,
         installed: true,
         version: "1.0.0",
@@ -100,7 +100,7 @@ const serverConfig: ServerConfig = {
       otlpTracesEnabled: false,
       otlpMetricsEnabled: false,
     },
-    settings: {},
+    settings: { providerInstances: { opencode: { driver: "opencode", enabled: true } } },
     threadSnapshotPagination: true,
     threadResumeCompletionMarker: true,
     shellResumeCompletionMarker: true,
@@ -172,7 +172,7 @@ function run(threadId: ThreadId, id: RunId, ordinal: number, userMessageId: stri
     id,
     threadId,
     ordinal,
-    providerInstanceId: CODEX,
+    providerInstanceId: OPENCODE,
     modelSelection: MODEL,
     providerThreadId: null,
     userMessageId: MessageId.make(userMessageId),
@@ -225,7 +225,7 @@ function shellOf(thread: FakeThread): OrchestrationV2ThreadShell {
     id: thread.id,
     projectId: PROJECT_ID,
     title: thread.title,
-    providerInstanceId: CODEX,
+    providerInstanceId: OPENCODE,
     modelSelection: MODEL,
     runtimeMode: "full-access",
     interactionMode: "default",

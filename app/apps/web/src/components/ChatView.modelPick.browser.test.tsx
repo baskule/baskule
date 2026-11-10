@@ -52,7 +52,7 @@ it("a model picked for an existing thread reaches the server before any message 
   });
   await expect.element(page.getByText("Answer 0 for thread-model-pick.")).toBeVisible();
 
-  await page.getByRole("button", { name: "GPT-5.4", exact: true }).click();
+  await page.getByRole("button", { name: /^GPT-5\.4(?:,|$)/ }).click();
   await page.getByRole("option", { name: /GPT-5\.5/ }).click();
   await vi.waitFor(() =>
     expect(
@@ -60,7 +60,7 @@ it("a model picked for an existing thread reaches the server before any message 
     ).toEqual([
       expect.objectContaining({
         threadId: thread.id,
-        modelSelection: expect.objectContaining({ instanceId: "codex", model: "gpt-5.5" }),
+        modelSelection: expect.objectContaining({ instanceId: "opencode", model: "gpt-5.5" }),
       }),
     ]),
   );
