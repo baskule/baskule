@@ -10,18 +10,16 @@ done
 tar -czf "release/backend-$VERSION-metadata.tar.gz" --exclude='*.tar.gz' -C artifacts/backend .
 cp artifacts/linux-apps/*.AppImage artifacts/linux-apps/*.yml artifacts/linux-apps/compatibility.json release/
 cp artifacts/backend/*.yml artifacts/backend/*.env.example artifacts/backend/baskule-*.tgz release/
-if [[ -d artifacts/native ]]; then
-  for directory in artifacts/native/*; do
-    (cd "$directory" && sha256sum -c SHA256SUMS)
-    [[ $directory != *ios-simulator* ]] || continue
-    while IFS= read -r -d '' package; do
-      if [[ $package == */latest-mac.yml || $package == */nightly-mac.yml ]]; then continue; fi
-      destination="release/$(basename "$package")"
-      [[ ! -e $destination ]] || { echo "Duplicate release asset: $destination" >&2; exit 1; }
-      cp "$package" "$destination"
-    done < <(find "$directory" -type f \( -name '*.apk' -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' -o -name '*.blockmap' -o -name '*.yml' \) -print0)
-  done
-fi
+for directory in artifacts/native/*; do
+  (cd "$directory" && sha256sum -c SHA256SUMS)
+  [[ $directory != *ios-simulator* ]] || continue
+  while IFS= read -r -d '' package; do
+    if [[ $package == */latest-mac.yml || $package == */nightly-mac.yml ]]; then continue; fi
+    destination="release/$(basename "$package")"
+    [[ ! -e $destination ]] || { echo "Duplicate release asset: $destination" >&2; exit 1; }
+    cp "$package" "$destination"
+  done < <(find "$directory" -type f \( -name '*.apk' -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' -o -name '*.blockmap' -o -name '*.yml' \) -print0)
+done
 for channel in latest nightly; do
   if [[ -f artifacts/native/native-desktop-mac-arm64-$VERSION/$channel-mac.yml ]]; then
     node app/scripts/merge-update-manifests.ts --platform mac \

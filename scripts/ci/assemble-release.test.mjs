@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,10 +42,9 @@ test("verification assembles installable assets with verifiable checksums, exclu
   assert.doesNotMatch(metadata.stdout, /computer.tar.gz/);
 });
 
-test("a partial verification assembles Linux and server assets without native artifacts", t => {
+test("assembly rejects missing native artifacts", t => {
   const f = fixture(t);
-  assert.equal(f.run().status, 0);
-  assert.match(readFileSync(join(f.root, "release/SHA256SUMS"), "utf8"), /Baskule.AppImage/);
+  assert.notEqual(f.run().status, 0);
 });
 
 test("corrupted build artifacts fail assembly", t => {

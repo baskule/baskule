@@ -1,23 +1,164 @@
-name: Release backend
+name: Backend verification
 
 on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/backend.yml'
+      - 'scripts/ci/backend.sh'
   workflow_call:
     inputs:
       version:
         type: string
-        required: true
+        default: ''
+      translations:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  backend-build:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: echo "version=${INPUT_VERSION:-$(<VERSION)}" >> "$GITHUB_OUTPUT"
+
+  backend-runtime:
+    needs: version
     permissions:
       contents: read
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      BASKULE_VERSION: ${{ inputs.version }}
+      BASKULE_VERSION: ${{ needs.version.outputs.version }}
+      BASKULE_STACK_PROXY: '0'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Make room for the native and musl builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ $RUNNER_ENVIRONMENT == github-hosted ]]
+          df -h .
+          # These are unrelated preinstalled SDKs on this disposable VM.
+          if (( $(df --output=avail -B1 . | tail -1) < 35000000000 )); then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          fi
+          df -h .
+          available=$(df --output=avail -B1 . | tail -1)
+          (( available >= 35000000000 )) || { echo 'Need 35 GB free for the cold backend build.' >&2; exit 1; }
+      - id: buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Export BuildKit cache credentials
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL']) {
+              core.exportVariable(key, process.env[key]);
+              core.setSecret(process.env[key]);
+            }
+      - uses: ./.github/actions/setup
+      - name: Build backend archives once
+        env:
+          BASKULE_DOCKER_CACHE: '1'
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+        run: scripts/ci/backend.sh runtime
+      - name: Upload backend artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-runtime-${{ needs.version.outputs.version }}
+          path: .run/release/runtime/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve backend evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-runtime-evidence-${{ needs.version.outputs.version }}
+          path: |
+            .run/evidence/release/
+            .run/evidence/release-install/
+            .run/evidence/kubernetes/
+            !.run/evidence/kubernetes/**/*.private
+            !.run/evidence/release-install/*.tar.gz
+            .run/check/
+            .run/web-mock/artifacts/
+            e2e/test-results/
+            .run/journeys/results/**/test-failed-*.png
+            .run/journeys/results/**/error-context.md
+          if-no-files-found: warn
+          retention-days: 1
+
+  hosted-web:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASKULE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.translations
+        with:
+          name: translations
+          path: app
+      - uses: ./.github/actions/setup
+      - name: Build and verify hosted web
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/env.sh
+          mkdir -p .run/evidence/release .run/release/hosted-web
+          (cd e2e && pnpm exec playwright install --with-deps chromium)
+          (cd app/apps/web && pnpm exec playwright install chromium)
+          scripts/check web --fresh 2>&1 | tee .run/evidence/release/web.log
+          tar -czf .run/release/hosted-web/hosted-web.tar.gz -C app/apps/web/dist .
+          (cd .run/release/hosted-web && sha256sum hosted-web.tar.gz > SHA256SUMS)
+      - name: Upload verified hosted web
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hosted-web-${{ needs.version.outputs.version }}
+          path: .run/release/hosted-web/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve hosted web evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hosted-web-evidence-${{ needs.version.outputs.version }}
+          path: |
+            .run/evidence/release/
+            .run/web-mock/artifacts/
+            .run/web-mock-build.log
+          if-no-files-found: warn
+          retention-days: 1
+
+  backend-build:
+    needs: [version, backend-runtime, hosted-web]
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BASKULE_VERSION: ${{ needs.version.outputs.version }}
       BASKULE_STACK_PROXY: '0'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -25,18 +166,19 @@ jobs:
           persist-credentials: false
       - name: Download release translations
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.translations
         with:
           name: translations
           path: app
       - name: Download the verified hosted web bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: hosted-web-${{ inputs.version }}
+          name: hosted-web-${{ needs.version.outputs.version }}
           path: .run/release/hosted-web
       - name: Download runtime image archives
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: backend-runtime-${{ inputs.version }}
+          name: backend-runtime-${{ needs.version.outputs.version }}
           path: .run/release/runtime
       - id: buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -60,7 +202,7 @@ jobs:
       - name: Upload backend artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: backend-${{ inputs.version }}
+          name: backend-${{ needs.version.outputs.version }}
           path: .run/release/backend/
           compression-level: 0
           if-no-files-found: error
@@ -69,7 +211,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: backend-evidence-${{ inputs.version }}
+          name: backend-evidence-${{ needs.version.outputs.version }}
           path: |
             .run/evidence/release/
             .run/evidence/release-install/
@@ -85,7 +227,7 @@ jobs:
           retention-days: 1
 
   backend-checks:
-    needs: backend-build
+    needs: [version, backend-build]
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ matrix.suite == 'kubernetes' && 45 || 30 }}
     strategy:
@@ -132,7 +274,7 @@ jobs:
             suite: install
             selection: external
     env:
-      BASKULE_VERSION: ${{ inputs.version }}
+      BASKULE_VERSION: ${{ needs.version.outputs.version }}
       BASKULE_STACK_PROXY: '0'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -147,6 +289,7 @@ jobs:
           fi
           df -h .
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.translations
         with:
           name: translations
           path: app
@@ -154,7 +297,7 @@ jobs:
       - name: Download the archives that will be published
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: backend-${{ inputs.version }}
+          name: backend-${{ needs.version.outputs.version }}
           path: .run/release/backend
       - uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
         if: matrix.suite == 'kubernetes'
@@ -177,7 +320,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: backend-evidence-${{ inputs.version }}-${{ matrix.name }}
+          name: backend-evidence-${{ needs.version.outputs.version }}-${{ matrix.name }}
           path: |
             .run/evidence/release/
             .run/evidence/release-install/
