@@ -49,3 +49,15 @@ export function baskuleSetupFailure(cause: unknown) {
     message: BASKULE_AI_NOT_CONFIGURED.message,
   });
 }
+
+/** A location build can be retried after the cell invalidates its cached tools. */
+export function baskuleLocationFailure(cause: unknown) {
+  if (typeof cause !== "object" || cause === null || !("kind" in cause) || cause.kind !== "location_tools_unavailable")
+    return undefined;
+  return makeProviderFailure({
+    class: "provider_error",
+    code: "location_tools_unavailable",
+    retryable: true,
+    message: "Chat tools could not finish connecting. Please try again.",
+  });
+}

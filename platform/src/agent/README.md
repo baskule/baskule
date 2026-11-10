@@ -17,9 +17,12 @@ makes from background fibers after a restart. It does not allocate another cell.
 The boot event is retained with `waitUntil` until OpenCode closes, alongside its keepalive interval. SDK operations
 and response-body pulls enter through a Promise-woken dispatcher captured in that event. Operations start
 concurrently. This gives long-lived SDK services a native owner that outlives individual HTTP handlers. The workerd
-build preserves native callback origins and uses microtasks for Effect's default scheduler, so a retired request's
-timer cannot strand shared fibers. SQL transaction bodies keep their critical-section driver separate from the caller.
-Location tool readiness has a 10-second deadline that also bounds location acquisition; a timeout fails the turn.
+build preserves native callback origins and binds Effect scheduler dispatch to the retained boot event. Dispatch
+uses macrotask timers so Code Mode busy loops still yield to interruption and host I/O; other request-owned timers
+(such as Effect.sleep) are not moved. SQL transaction bodies keep their critical-section driver separate from the caller.
+Location tool readiness and MCP add/remove each have a boot-owned 10-second deadline bounding the caller's wait,
+including location acquisition. A timeout aborts the waiter and invalidates the cached location so a later call can
+rebuild it; it does not guarantee completion of a stuck build's cleanup. Turn preparation failures are retryable.
 
 OpenCode only creates its schema in an empty database. In a new space, SpaceCell therefore boots OpenCode before T3
 creates its own tables; afterwards OpenCode stays lazy until the first agent request.

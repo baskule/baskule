@@ -153,21 +153,22 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
     createWorkspace: (provider) => runPromise(host.workspace.create({ provider })),
     /** Creates a session in-process (the public HTTP schema strips `location.workspaceID`). */
     createSession: (input) => runPromise(host.sessions.create(input)),
+    invalidate: ref => runPromise(Effect.flatMap(LocationServiceMap, locations => locations.invalidate(ref))),
     /**
      * OpenCode's HTTP MCP routes act on a bare `{directory}` location, but sessions live in
      * `{directory, workspaceID}` locations (the computer workspace), so a server added over HTTP is never seen by a
      * session. These run the same MCP service operations in-process on the workspace location.
      * @param {{ directory: string, workspaceID: string }} ref
      */
-    mcpAdd: (ref, server, config) =>
+    mcpAdd: (ref, server, config, signal) =>
       runPromise(
         Effect.flatMap(McpService, (mcp) => mcp.add(server, Schema.decodeUnknownSync(McpSchema.ServerConfig)(config))).pipe(
           Effect.provide(LocationServiceMap.get(ref)),
-        ),
+        ), { signal },
       ),
-    mcpRemove: (ref, server) =>
+    mcpRemove: (ref, server, signal) =>
       runPromise(
-        Effect.flatMap(McpService, (mcp) => mcp.remove(server)).pipe(Effect.ignore, Effect.provide(LocationServiceMap.get(ref))),
+        Effect.flatMap(McpService, (mcp) => mcp.remove(server)).pipe(Effect.ignore, Effect.provide(LocationServiceMap.get(ref))), { signal },
       ),
     /** The tool ids a location's registry offers right now (what the next model step lists, before permissions). */
     toolIds: (ref) =>

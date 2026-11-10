@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  baskuleLocationFailure,
   baskuleSetupFailure,
   baskuleUsageFailure,
 } from "../../../../packages/provider-opencode/src/server/baskuleUsage.ts";
@@ -48,6 +49,13 @@ describe("usage attribution and errors", () => {
     });
     expect(baskuleSetupFailure({ kind: "usage_limit_reached" })).toBeUndefined();
     expect(baskuleSetupFailure(new Error("other provider error"))).toBeUndefined();
+  });
+  it("makes location tool failures readable and retryable", () => {
+    expect(baskuleLocationFailure({ _tag: "InvalidRequestError", kind: "location_tools_unavailable" })).toEqual({
+      class: "provider_error", code: "location_tools_unavailable", retryable: true,
+      message: "Chat tools could not finish connecting. Please try again.",
+    });
+    expect(baskuleLocationFailure(new Error("other provider error"))).toBeUndefined();
   });
   it("assigns agent-created schedules to the active turn author, even after someone else queues a message", () => {
     const author = { id: "alice", name: "Alice" };
