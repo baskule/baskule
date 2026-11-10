@@ -11,10 +11,6 @@ import { VoiceSettingsPanel } from "./VoiceSettingsPanel";
 import { SettingsScopeProvider } from "./SettingsScopeContext";
 
 vi.mock(import("../../state/session"), { spy: true });
-vi.mock("../../env", async (original) => ({
-  ...(await original<typeof import("../../env")>()),
-  isSecretsFeatureEnabled: true,
-}));
 vi.mock("../../state/environments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../state/environments")>()),
   useEnvironments: () => ({
@@ -24,12 +20,6 @@ vi.mock("../../state/environments", async (importOriginal) => ({
         label: "Laptop",
         connection: { phase: "available" },
         serverConfig: {
-          secretReferences: true,
-          settings: {
-            secretProviders: {
-              work: { kind: "one_password", label: "Work vault", config: { account: "work" } },
-            },
-          },
           environment: {
             platform: { os: "linux", arch: "x64" },
             capabilities: { voiceTranscription: true, cloudVoiceTranscription: true },
@@ -97,20 +87,20 @@ it("enables the chosen provider only after a successful setup and keeps its gran
           expect(writes).toEqual([]);
           await destination.click();
           await page.getByRole("option", { name: "OpenAI via Laptop" }).click();
-          await dialog.getByRole("combobox", { name: "OpenAI API key source" }).click();
-          await page.getByRole("option", { name: "Work vault" }).click();
-          await dialog.getByLabelText("OpenAI API key reference").fill("op://Work/Voice/key");
+          await dialog.getByLabelText("OpenAI API key", { exact: true }).fill("fixture-key");
           await userEvent.keyboard("{Enter}");
           await expect.element(dialog.getByRole("alert")).toBeVisible();
           expect(writes).toEqual([]);
           await expect
             .element(dialog.getByRole("button", { name: "Save and enable" }))
             .toBeEnabled();
-          await dialog.getByLabelText("OpenAI API key reference").click();
+          await dialog.getByLabelText("OpenAI API key", { exact: true }).click();
           await userEvent.keyboard("{Enter}");
           await expect.element(dialog).not.toBeInTheDocument();
-          await expect.element(destination).toHaveTextContent("OpenAI via Laptop");
-          expect(writes).toEqual([{ key: { provider: "work", reference: "op://Work/Voice/key" } }]);
+          await vi.waitFor(() =>
+            expect(destination.element().textContent).toContain("OpenAI via Laptop"),
+          );
+          expect(writes).toEqual([{ key: "fixture-key" }]);
           const grant = window.localStorage.getItem("t3code:voice-audio-grant:v1");
           await screen.getByRole("button", { name: "Manage key" }).click();
           await dialog.getByLabelText("OpenAI API key", { exact: true }).fill("replacement");
@@ -121,7 +111,9 @@ it("enables the chosen provider only after a successful setup and keeps its gran
           await destination.click();
           await page.getByRole("option", { name: "Grok Voice Transcribe via Laptop" }).click();
           await dialog.getByRole("button", { name: "Use Grok Voice Transcribe" }).click();
-          await expect.element(destination).toHaveTextContent("Grok Voice Transcribe via Laptop");
+          await vi.waitFor(() =>
+            expect(destination.element().textContent).toContain("Grok Voice Transcribe via Laptop"),
+          );
           await destination.click();
           await page.getByRole("option", { name: "Off", exact: true }).click();
           await expect.element(destination).toHaveTextContent("Off");
