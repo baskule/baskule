@@ -132,43 +132,15 @@ There is no manual `/compact` action or idle compaction worker.
 
 ## Take a new upstream release
 
-1. Compare the recorded upstream tag with the target stable tag in a separate upstream clone.
-   Apply the delta within `app/`, preserving Baskule behavior, generic fixes and licenses.
-2. Use `app/scripts/filter-upstream.py` to prepare a filtered target from local upstream objects.
-   Supply the source clone, base tag, target tag, disposable output and selected exclusions explicitly:
+Follow [Upgrade the T3 Code base](../docs/upstream-upgrades.md).
+Start from the complete new stable upstream release and selectively reapply the
+Baskule behavior still needed from the latest `origin/main`. Adapt retained changes
+to upstream's current design and remove custom implementations that upstream replaces.
+Disable or remove unwanted product features as explicit changes to the new base.
 
-   ```sh
-   python3 app/scripts/filter-upstream.py --upstream /path/to/t3code \
-     --from-ref <base-tag> --to-ref <target-tag> --output .run/filtered-t3 \
-     --exclude-pr <excluded-feature-pr>
-   ```
-
-   Exit 2 requires conflict review. Inspect `git diff --cc` and Git's three conflict stages.
-   Keep independent fixes in overlapping changes. Stage each resolution and run
-   `git -c gc.auto=0 revert --continue`; the output is a `--shared` clone.
-   The output checkout's `.git/baskule-filter.json` records inputs and conflicts.
-3. For each path, merge the starting Baskule `app/<path>`, old upstream `<path>` and reviewed
-   filtered target `<path>`. Normalize all three with the pinned `vp fmt --stdin-filepath <path>`
-   before `git merge-file -p --diff3`. Review add/add, modify/delete, binary changes and executable modes.
-4. Audit excluded paths from the repository root:
-
-   ```sh
-   node app/scripts/audit-upstream-paths.mjs /path/to/t3code <base-tag> <target-tag> <starting-baskule-commit>
-   ```
-
-   Check both deleted paths touched upstream and new files in excluded directories.
-   Review baseline code as well as the filtered delta. Do not restore excluded features.
-5. Review authentication, telemetry, downloads, streaming, authorship, managed settings, branding,
-   mobile configuration and workerd trims. Compare RPC policy with changed contracts and actual callers.
-   Grep `platform/` harnesses for removed RPC method names and extend the hosted-policy behavior
-   test in `apps/server/src/baskule/rpcPolicy.test.ts`.
-   Keep cell SQL, alarm and native-I/O ownership invariants intact.
-6. Apply the migration rules below. Keep Node and pnpm pins in `scripts/env.sh` equal to upstream
-   pins. Regenerate lockfiles from reviewed manifests and sync third-party notices.
-7. Run affected tests, lint and typechecks, frozen installs, web and SpaceCell builds, and a disposable
-   fake-model journey. Run `scripts/check space` for hosted policy and restart coverage, and
-   `scripts/check upstream` for T3's own suites. Verify native packages separately.
-   Translation generation needs explicit credentials.
+Keep the release summary short and grouped by product area. Confirm the stable
+release and explain the gap first. Report only changes included in the released tag.
+The guide covers migration checks, integration boundaries, verification, and PR review.
 
 ### Migration boundary
 
