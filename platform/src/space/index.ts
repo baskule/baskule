@@ -145,7 +145,13 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
   }
 
   private boot(spaceId: string): Promise<SpaceServer> {
-    if (this.closing) return this.closing.then(() => this.boot(spaceId));
+    if (this.closing) {
+      // #258: a client can disconnect while queued; retain its event before the boot starts.
+      const timer = setInterval(() => {}, 5_000);
+      const queued = this.closing.then(() => this.boot(spaceId)).finally(() => clearInterval(timer));
+      this.ctx.waitUntil(queued.then(() => {}, () => {}));
+      return queued;
+    }
     if (this.booting) return this.booting;
     // #258: this event creates T3's long-lived continuations; keep its driver alive while booted.
     const timer = setInterval(() => {}, 5_000);

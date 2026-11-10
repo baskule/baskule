@@ -68,7 +68,7 @@ describe("SpaceCell boot/dispose overlap", () => {
     expect(order).toEqual(["disposed", "alarm completed"]);
   });
 
-  it("a replacement waits for the shared runtime to close and keeps its own timer", async () => {
+  it("retains both events while a replacement waits for the shared runtime to close", async () => {
     vi.useFakeTimers();
     const closing = deferred();
     createServer.mockResolvedValueOnce(server(vi.fn(() => closing.promise))).mockResolvedValueOnce(server());
@@ -82,14 +82,16 @@ describe("SpaceCell boot/dispose overlap", () => {
     const replacement = c.boot("space");
     await Promise.resolve();
     expect(createServer).toHaveBeenCalledTimes(1);
-    expect(vi.getTimerCount()).toBe(1);
+    expect(lifetimes).toHaveLength(2);
+    expect(vi.getTimerCount()).toBe(2);
     expect(oldEnded).toBe(false);
     closing.resolve();
     await oldDispose;
     await replacement;
     expect(oldEnded).toBe(true);
     let replacementEnded = false;
-    void lifetimes[1]!.then(() => { replacementEnded = true; });
+    await lifetimes[1];
+    void lifetimes[2]!.then(() => { replacementEnded = true; });
     expect(vi.getTimerCount()).toBe(1);
     expect(c.server).not.toBeNull();
     expect(c.releaseBootKeepAlive).toBeTypeOf("function");
@@ -97,6 +99,26 @@ describe("SpaceCell boot/dispose overlap", () => {
     await c.dispose();
     expect(vi.getTimerCount()).toBe(0);
     expect(replacementEnded).toBe(true);
+  });
+
+  it("releases the queued event when the replacement boot fails", async () => {
+    vi.useFakeTimers();
+    const disposing = deferred(), release = deferred();
+    createServer.mockResolvedValueOnce(server(vi.fn(async () => { disposing.resolve(); await release.promise; })))
+      .mockRejectedValueOnce(new Error("boot failed"));
+    const lifetimes: Promise<unknown>[] = [];
+    const c = cell(undefined, undefined, promise => { lifetimes.push(promise); });
+    await c.boot("space");
+    const closing = c.dispose();
+    await disposing.promise;
+    const replacement = c.boot("space");
+    const rejected = expect(replacement).rejects.toThrow("boot failed");
+    release.resolve();
+    await closing;
+    await rejected;
+    await Promise.all(lifetimes);
+    expect(c.booting).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("holds new requests behind a reconfigure that is waiting for the current boot", async () => {

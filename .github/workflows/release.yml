@@ -4,19 +4,6 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'SemVer without v; blank uses VERSION'
-        type: string
-        required: false
-      verify_only:
-        description: 'Verify artifacts without publishing images or a GitHub release'
-        type: boolean
-        default: true
-      include_native:
-        description: 'Include native packages in verification-only runs (always included for publishing)'
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -39,8 +26,6 @@ jobs:
           persist-credentials: false
       - id: version
         name: Derive and validate source version
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -48,7 +33,7 @@ jobs:
             version=${GITHUB_REF_NAME#v}
             [[ "$version" == "$(<VERSION)" ]] || { echo 'Tag version must match VERSION.' >&2; exit 1; }
           else
-            version=${INPUT_VERSION:-$(<VERSION)}
+            version=$(<VERSION)
           fi
           VERSION="$version" python3 - <<'PY'
           import os
@@ -71,6 +56,9 @@ jobs:
             -f state=pending -f context='Release factory' \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             -f description='Full artifact verification is running.' --silent
+
+  source-ci:
+    uses: ./.github/workflows/ci.yml
 
   translate:
     needs: version
@@ -125,161 +113,12 @@ jobs:
           git push --force origin "HEAD:refs/heads/$branch"
           echo "[Review translations and create a PR]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$branch?expand=1)" >> "$GITHUB_STEP_SUMMARY"
 
-  backend-runtime:
-    needs: [version, source-ci]
-    permissions:
-      contents: read
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      BASKULE_VERSION: ${{ needs.version.outputs.version }}
-      BASKULE_STACK_PROXY: '0'
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - name: Make room for the native and musl builds
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ $RUNNER_ENVIRONMENT == github-hosted ]]
-          df -h .
-          # These are unrelated preinstalled SDKs on this disposable VM.
-          if (( $(df --output=avail -B1 . | tail -1) < 35000000000 )); then
-            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-          fi
-          df -h .
-          available=$(df --output=avail -B1 . | tail -1)
-          (( available >= 35000000000 )) || { echo 'Need 35 GB free for the cold backend build.' >&2; exit 1; }
-      - id: buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - name: Export BuildKit cache credentials
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL']) {
-              core.exportVariable(key, process.env[key]);
-              core.setSecret(process.env[key]);
-            }
-      - uses: ./.github/actions/setup
-      - name: Build backend archives once
-        env:
-          BASKULE_DOCKER_CACHE: '1'
-          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
-        run: scripts/ci/backend.sh runtime
-      - name: Upload backend artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: backend-runtime-${{ needs.version.outputs.version }}
-          path: .run/release/runtime/
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 1
-      - name: Preserve backend evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: backend-runtime-evidence-${{ needs.version.outputs.version }}
-          path: |
-            .run/evidence/release/
-            .run/evidence/release-install/
-            .run/evidence/kubernetes/
-            !.run/evidence/kubernetes/**/*.private
-            !.run/evidence/release-install/*.tar.gz
-            .run/check/
-            .run/web-mock/artifacts/
-            e2e/test-results/
-            .run/journeys/results/**/test-failed-*.png
-            .run/journeys/results/**/error-context.md
-          if-no-files-found: warn
-          retention-days: 1
-
-  backend-build:
-    needs: [version, translate, hosted-web, backend-runtime]
-    permissions:
-      contents: read
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      BASKULE_VERSION: ${{ needs.version.outputs.version }}
-      BASKULE_STACK_PROXY: '0'
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - name: Download release translations
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: translations
-          path: app
-      - name: Download the verified hosted web bundle
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: hosted-web-${{ needs.version.outputs.version }}
-          path: .run/release/hosted-web
-      - name: Download runtime image archives
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: backend-runtime-${{ needs.version.outputs.version }}
-          path: .run/release/runtime
-      - id: buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - name: Export BuildKit cache credentials
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL']) {
-              core.exportVariable(key, process.env[key]);
-              core.setSecret(process.env[key]);
-            }
-      - uses: ./.github/actions/setup
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
-        with:
-          version: v3.19.0
-      - name: Package celld with verified web and retained runtime archives
-        env:
-          BASKULE_DOCKER_CACHE: '1'
-          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
-        run: scripts/ci/backend.sh package
-      - name: Upload backend artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: backend-${{ needs.version.outputs.version }}
-          path: .run/release/backend/
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 1
-      - name: Preserve backend evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: backend-evidence-${{ needs.version.outputs.version }}
-          path: |
-            .run/evidence/release/
-            .run/evidence/release-install/
-            .run/evidence/kubernetes/
-            !.run/evidence/kubernetes/**/*.private
-            !.run/evidence/release-install/*.tar.gz
-            .run/check/
-            .run/web-mock/artifacts/
-            e2e/test-results/
-            .run/journeys/results/**/test-failed-*.png
-            .run/journeys/results/**/error-context.md
-          if-no-files-found: warn
-          retention-days: 1
-
-  source-ci:
-    runs-on: ubuntu-24.04
-    permissions:
-      checks: read
-    steps:
-      - name: Require ordinary CI for this exact commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
-            --jq '.check_runs[] | select(.name == "CI required" and .app.slug == "github-actions" and .conclusion == "success") | .id' > passed
-          test -s passed || { echo 'Run CI on this exact source commit before releasing.' >&2; exit 1; }
+  backend:
+    needs: [version, translate]
+    uses: ./.github/workflows/backend.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      translations: true
 
   upstream:
     needs: translate
@@ -316,172 +155,8 @@ jobs:
           path: .run/evidence/release/
           retention-days: 1
 
-  backend-checks:
-    needs: [version, backend-build]
-    runs-on: ubuntu-24.04
-    timeout-minutes: ${{ matrix.suite == 'kubernetes' && 45 || 30 }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: worker-space
-            suite: components
-            selection: worker space
-          - name: computerd
-            suite: components
-            selection: computerd agent
-          - name: contracts
-            suite: components
-            selection: features
-          - name: journeys-1
-            suite: journeys
-            selection: 1/4
-          - name: journeys-2
-            suite: journeys
-            selection: 2/4
-          - name: journeys-3
-            suite: journeys
-            selection: 3/4
-          - name: journeys-4
-            suite: journeys
-            selection: 4/4
-          - name: install-kubernetes
-            suite: kubernetes
-            selection: kubernetes
-          - name: install-single
-            suite: install
-            selection: single
-          - name: install-folder
-            suite: install
-            selection: folder
-          - name: install-proxy
-            suite: install
-            selection: proxy
-          - name: install-https
-            suite: install
-            selection: https
-          - name: install-external
-            suite: install
-            selection: external
-    env:
-      BASKULE_VERSION: ${{ needs.version.outputs.version }}
-      BASKULE_STACK_PROXY: '0'
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - name: Make room for image verification
-        shell: bash
-        run: |
-          [[ $RUNNER_ENVIRONMENT == github-hosted ]]
-          if (( $(df --output=avail -B1 . | tail -1) < 35000000000 )); then
-            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-          fi
-          df -h .
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: translations
-          path: app
-      - uses: ./.github/actions/setup
-      - name: Download the archives that will be published
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: backend-${{ needs.version.outputs.version }}
-          path: .run/release/backend
-      - uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
-        if: matrix.suite == 'kubernetes'
-        with:
-          install_only: true
-          version: v0.30.0
-          kubectl_version: v1.34.1
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
-        if: matrix.suite == 'kubernetes'
-        with:
-          version: v3.19.0
-      - name: Run isolated fake-model checks
-        env:
-          SUITE: ${{ matrix.suite }}
-          SELECTION: ${{ matrix.selection }}
-        run: |
-          read -ra selection <<< "$SELECTION"
-          scripts/ci/backend.sh "$SUITE" "${selection[@]}"
-      - name: Preserve backend evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: backend-evidence-${{ needs.version.outputs.version }}-${{ matrix.name }}
-          path: |
-            .run/evidence/release/
-            .run/evidence/release-install/
-            .run/evidence/kubernetes/
-            !.run/evidence/kubernetes/**/*.private
-            !.run/evidence/release-install/*.tar.gz
-            .run/check/
-            e2e/test-results/
-            .run/journeys/results/
-          if-no-files-found: warn
-          retention-days: 1
-
-  # Preserve the publication dependency: archives exist earlier, but are usable only
-  # after every consumer and the exact source commit's ordinary CI have passed.
-  backend:
-    needs: [source-ci, backend-build, backend-checks, upstream]
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Require every backend verification job
-        env:
-          RESULTS: ${{ toJSON(needs) }}
-        run: |
-          jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
-
-  hosted-web:
-    needs: [version, translate]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      BASKULE_VERSION: ${{ needs.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: translations
-          path: app
-      - uses: ./.github/actions/setup
-      - name: Build and verify hosted web
-        shell: bash
-        run: |
-          set -euo pipefail
-          source scripts/env.sh
-          mkdir -p .run/evidence/release .run/release/hosted-web
-          (cd e2e && pnpm exec playwright install --with-deps chromium)
-          (cd app/apps/web && pnpm exec playwright install chromium)
-          scripts/check web --fresh 2>&1 | tee .run/evidence/release/web.log
-          tar -czf .run/release/hosted-web/hosted-web.tar.gz -C app/apps/web/dist .
-          (cd .run/release/hosted-web && sha256sum hosted-web.tar.gz > SHA256SUMS)
-      - name: Upload verified hosted web
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: hosted-web-${{ needs.version.outputs.version }}
-          path: .run/release/hosted-web/
-          if-no-files-found: error
-          retention-days: 1
-      - name: Preserve hosted web evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: hosted-web-evidence-${{ needs.version.outputs.version }}
-          path: |
-            .run/evidence/release/
-            .run/web-mock/artifacts/
-            .run/web-mock-build.log
-          if-no-files-found: warn
-          retention-days: 1
-
   linux-apps:
-    needs: [version, translate, hosted-web]
+    needs: [version, translate]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -505,13 +180,6 @@ jobs:
           sudo locale-gen en_US.UTF-8
           rustup toolchain install 1.95.0 --profile minimal
           rustup override set 1.95.0
-      - name: Download the verified hosted web bundle
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: hosted-web-${{ needs.version.outputs.version }}
-          path: .run/release/linux-apps
-      - name: Verify hosted web transfer
-        run: cd .run/release/linux-apps && sha256sum -c SHA256SUMS
       - name: Generate cumulative release compatibility
         env:
           GH_TOKEN: ${{ github.token }}
@@ -519,7 +187,7 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p .run/compatibility
+          mkdir -p .run/compatibility .run/release/linux-apps
           if gh api --include "repos/$GH_REPO/releases/latest" > .run/compatibility/previous-response; then
             sed '1,/^\r\?$/d' .run/compatibility/previous-response > .run/compatibility/previous-release.json
             previous=$(jq -er .tag_name .run/compatibility/previous-release.json)
@@ -565,50 +233,64 @@ jobs:
 
   native:
     needs: [version, translate]
-    if: github.event_name == 'push' || inputs.verify_only == false || inputs.include_native == true
     uses: ./.github/workflows/native.yml
     with:
       version: ${{ needs.version.outputs.version }}
       platform: all
       sign: false
-      sign_macos: ${{ github.event_name == 'push' || inputs.verify_only == false }}
+      sign_macos: ${{ github.event_name == 'push' }}
       translations: true
     secrets: inherit
 
-  factory-status:
-    needs: [version, backend, linux-apps, native]
-    if: always() && github.event_name == 'workflow_dispatch'
+  verified:
+    needs: [version, source-ci, translate, upstream, backend, linux-apps, native]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every verification job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'to_entries | all(.[]; .value.result == "success")' <<< "$RESULTS"
+
+  assemble:
+    needs: [version, verified]
     runs-on: ubuntu-24.04
     permissions:
-      statuses: write
+      contents: read
     steps:
-      - name: Report the complete manual factory result
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-${{ needs.version.outputs.version }}
+          path: artifacts/backend
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-apps-${{ needs.version.outputs.version }}
+          path: artifacts/linux-apps
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: native-*-${{ needs.version.outputs.version }}
+          path: artifacts/native
+      - name: Verify transferred assets and assemble release
         env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION_RESULT: ${{ needs.version.result }}
-          BACKEND_RESULT: ${{ needs.backend.result }}
-          LINUX_RESULT: ${{ needs.linux-apps.result }}
-          NATIVE_RESULT: ${{ needs.native.result }}
-          INCLUDE_NATIVE: ${{ inputs.include_native }}
+          VERSION: ${{ needs.version.outputs.version }}
         shell: bash
-        run: |
-          state=failure
-          if [[ $VERSION_RESULT == success && $BACKEND_RESULT == success && $LINUX_RESULT == success &&
-                ($NATIVE_RESULT == success || ($INCLUDE_NATIVE == false && $NATIVE_RESULT == skipped)) ]]; then
-            state=success
-          fi
-          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -f "state=$state" -f context='Release factory' \
-            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            -f description="Full artifact verification: $state." --silent
+        run: scripts/ci/assemble-release.sh
+      - name: Retain assembled release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets-${{ needs.version.outputs.version }}
+          path: release/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
 
   publish:
-    needs: [version, backend, linux-apps, native]
-    if: >-
-      always() && needs.version.result == 'success' && needs.backend.result == 'success' &&
-      needs.linux-apps.result == 'success' &&
-      needs.native.result == 'success' &&
-      (github.event_name == 'push' || inputs.verify_only == false)
+    needs: [version, assemble]
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     concurrency:
       group: release-images-${{ needs.version.outputs.version }}
@@ -651,72 +333,17 @@ jobs:
         run: bash scripts/ci/check-public-images.sh artifacts/backend
 
   draft-release:
-    needs: [version, backend, linux-apps, native, publish]
-    if: >-
-      always() && needs.publish.result == 'success' && needs.version.result == 'success' && needs.backend.result == 'success' &&
-      needs.linux-apps.result == 'success' &&
-      needs.native.result == 'success' &&
-      (github.event_name == 'push' || inputs.verify_only == false)
+    needs: [version, publish]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: backend-${{ needs.version.outputs.version }}
-          path: artifacts/backend
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: linux-apps-${{ needs.version.outputs.version }}
-          path: artifacts/linux-apps
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: needs.native.result == 'success'
-        with:
-          pattern: native-*-${{ needs.version.outputs.version }}
-          path: artifacts/native
-      - name: Verify transferred assets and assemble release
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir release
-          # Publish only what people install or update from. Image archives and bundles stay CI artifacts;
-          # Compose and Helm pull the images from GHCR.
-          for kind in backend linux-apps; do
-            (cd "artifacts/$kind" && sha256sum -c SHA256SUMS)
-          done
-          tar -czf "release/backend-$VERSION-metadata.tar.gz" --exclude='*.tar.gz' -C artifacts/backend .
-          cp artifacts/linux-apps/*.AppImage artifacts/linux-apps/*.yml artifacts/linux-apps/compatibility.json release/
-          cp artifacts/backend/*.yml artifacts/backend/*.env.example artifacts/backend/baskule-*.tgz release/
-          if [[ -d artifacts/native ]]; then
-            for directory in artifacts/native/*; do
-              (cd "$directory" && sha256sum -c SHA256SUMS)
-              [[ $directory != *ios-simulator* ]] || continue
-              while IFS= read -r -d '' package; do
-                if [[ $package == */latest-mac.yml || $package == */nightly-mac.yml ]]; then continue; fi
-                destination="release/$(basename "$package")"
-                [[ ! -e $destination ]] || { echo "Duplicate release asset: $destination" >&2; exit 1; }
-                cp "$package" "$destination"
-              done < <(find "$directory" -type f \( -name '*.apk' -o -name '*.dmg' -o -name '*.exe' -o -name '*.zip' -o -name '*.blockmap' -o -name '*.yml' \) -print0)
-            done
-          fi
-          for channel in latest nightly; do
-            if [[ -f artifacts/native/native-desktop-mac-arm64-$VERSION/$channel-mac.yml ]]; then
-              node app/scripts/merge-update-manifests.ts --platform mac \
-                "artifacts/native/native-desktop-mac-arm64-$VERSION/$channel-mac.yml" \
-                "artifacts/native/native-desktop-mac-x64-$VERSION/$channel-mac.yml" "release/$channel-mac.yml"
-            fi
-          done
-          (cd release && sha256sum * > SHA256SUMS)
-          find release -type f -size +2147483647c -print -quit | while read -r oversized; do
-            echo "Release asset exceeds GitHub's 2 GiB limit: $oversized" >&2
-            exit 1
-          done
+          name: release-assets-${{ needs.version.outputs.version }}
+          path: release
+      - name: Verify assembled assets
+        run: cd release && sha256sum -c SHA256SUMS
       - name: Create draft after every verification job passes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -741,3 +368,49 @@ jobs:
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.version.outputs.version }}
         run: gh release edit "v$VERSION" --draft=false --latest
+
+  factory-status:
+    needs: [version, source-ci, translate, upstream, backend, linux-apps, native, verified, assemble, publish, public-packages, draft-release, release]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      statuses: write
+    steps:
+      - name: Summarize the release factory
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          VERSION: ${{ needs.version.outputs.version }}
+          VERIFIED: ${{ needs.verified.result }}
+          ASSEMBLY: ${{ needs.assemble.result }}
+          RELEASE: ${{ needs.release.result }}
+          PUBLISH: ${{ github.event_name == 'push' }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          state=failure
+          if [[ $VERIFIED == success && $ASSEMBLY == success && ( $PUBLISH == false || $RELEASE == success ) ]]; then state=success; fi
+          {
+            echo "## Release factory: $state"
+            echo "Source: $GITHUB_SHA; version: $VERSION; publish: $PUBLISH"
+            echo
+            echo '| Component | Result |'
+            echo '| --- | --- |'
+            jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<< "$RESULTS"
+            echo
+            echo "[Jobs and retained artifacts]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
+            if [[ $PUBLISH == true && $state == success ]]; then
+              echo "[Published release]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v$VERSION)"
+            elif [[ $PUBLISH == false ]]; then
+              echo 'Verification only: no packages or GitHub release were published.'
+            else
+              echo 'Publication did not complete successfully; inspect the publication jobs before resuming.'
+            fi
+            echo 'Build artifacts and evidence are retained for one day.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ $GITHUB_EVENT_NAME == workflow_dispatch ]]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+              -f "state=$state" -f context='Release factory' \
+              -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              -f description="Artifact verification and assembly: $state." --silent
+          fi
+          test "$state" = success
