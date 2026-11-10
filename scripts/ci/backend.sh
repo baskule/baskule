@@ -48,6 +48,9 @@ case "$suite" in
   journeys|install)
     (cd e2e && pnpm exec playwright install --with-deps chromium)
     if [[ $suite == journeys ]]; then
+      # New Docker veth IPv6 addresses make host Chromium abort unrelated loopback requests.
+      # This disposable runner uses IPv4; leave existing interfaces and their routes intact.
+      sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
       scripts/check release:journeys --shard "${1:?N/M}" --fresh 2>&1 | tee .run/evidence/release/journeys.log
     else
       BASKULE_INSTALL_ASSETS="$ROOT/.run/release/backend" BASKULE_INSTALL_VERSION=${BASKULE_VERSION//+/_} \
