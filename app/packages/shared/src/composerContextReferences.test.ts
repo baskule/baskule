@@ -15,6 +15,7 @@ import {
   projectComposerContextForProvider,
   restoreAttachmentOnlyBootstrapPrompt,
   stripAttachmentOnlyBootstrapPrompt,
+  threadContextRecord,
   threadContextsOutsideEnvironment,
   threadLinkContextReferences,
   toComposerContextId,
