@@ -225,7 +225,7 @@ describe("Android Settings tab", () => {
 
   it("opens a default Settings page beside the category list in wide layouts", () => {
     const settings = openTab(legacyHistory(), "settings", true);
-    expect(names(settings)).toEqual(["Home", "Settings", "SettingsEnvironments"]);
+    expect(names(settings)).toEqual(["Home", "Settings", "SettingsAppearance"]);
     expect(names(apply(settings, StackActions.pop()))).toEqual(["Home", "Settings"]);
   });
 

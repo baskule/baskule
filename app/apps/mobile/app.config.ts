@@ -332,7 +332,7 @@ const config: ExpoConfig = {
       "expo-audio",
       {
         microphonePermission: "Allow Baskule to use your microphone for voice input.",
-        recordAudioAndroid: false,
+        recordAudioAndroid: true,
         enableBackgroundPlayback: false,
         enableBackgroundRecording: false,
       },
@@ -342,12 +342,18 @@ const config: ExpoConfig = {
       {
         cameraPermission:
           "Allow Baskule to access your camera so you can scan connection QR codes.",
-        microphonePermission: false,
+        microphonePermission: "Allow Baskule to use your microphone for voice input.",
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,
       },
     ],
-    ["expo-image-picker", { photosPermission: false, microphonePermission: false }],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: false,
+        microphonePermission: "Allow Baskule to use your microphone for voice input.",
+      },
+    ],
     [
       "expo-splash-screen",
       {

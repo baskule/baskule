@@ -135,6 +135,11 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
   default: { getItem: async () => null, setItem: async () => {} },
 }));
 vi.mock("react-native", () => ({}));
+vi.mock("expo/fetch", () => ({
+  fetch: () => {
+    throw new Error("Unexpected native fetch in the composer draft test");
+  },
+}));
 vi.mock("expo-secure-store", () => ({
   getItemAsync: async () => null,
   setItemAsync: async () => {},

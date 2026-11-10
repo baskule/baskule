@@ -80,6 +80,11 @@ the installed release. From `app/apps/mobile/`, start Metro with `pnpm run dev:c
 the process you started and use the actual port from its output. Read the
 [mobile README](../app/apps/mobile/README.md) for cache and build diagnostics.
 
+For dictation, verify the installed Android package requests `android.permission.RECORD_AUDIO`.
+The audio, camera and image-picker config plugins share microphone permissions; disabling one
+plugin's permission can remove it for the whole app. `app.config.test.ts` checks their combined
+manifest. Permission changes require a rebuilt native client; a Metro refresh cannot apply them.
+
 When forwarding Metro over loopback, use the development command's equivalent with
 `--localhost --port <port>` instead of `--lan`. If localhost resolves to IPv6 while the
 Android reverse mapping targets IPv4, set `NODE_OPTIONS=--dns-result-order=ipv4first`.
