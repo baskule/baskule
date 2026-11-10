@@ -38,6 +38,7 @@ function publishMapping(owner: string | null, mapping: ReadonlyArray<SpaceEnviro
 subscribeBaskuleSession(() => {
   if (mappingOwner !== sessionOwner()) publishMapping(null, []);
 });
+export const readSpaceEnvironments = () => spaceEnvironments;
 export function useSpaceEnvironments() {
   return useSyncExternalStore(
     (listener) => {

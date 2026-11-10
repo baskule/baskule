@@ -1,4 +1,6 @@
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
+import { BASKULE_FLAGS } from "../../baskule/flags";
+import { useSpaceEnvironments } from "../../baskule/spaces";
 import { useTranslation } from "../../i18n";
 
 import * as Dialog from "../../components/ui/Dialog";
@@ -106,7 +108,7 @@ import {
   useAndroidWorkspaceBack,
   useWorkspaceBackNavigation,
 } from "../workspace/useAndroidWorkspaceNavigation";
-import { openSettings } from "../settings/settings-navigation";
+import { openConnectionSettings } from "../settings/settings-navigation";
 import {
   InspectorContentScope,
   ThreadInspectorHeader,
@@ -345,7 +347,7 @@ function LiveThreadRouteController(props: ThreadRouteScreenProps) {
           onReconnectEnvironment(environmentId);
           return;
         }
-        openSettings(navigation, "SettingsEnvironments");
+        openConnectionSettings(navigation);
       }}
     />,
   );
@@ -517,12 +519,17 @@ function ThreadRouteContent(
     : null;
 
   const usesNativeHeaderGlass = NATIVE_LIQUID_GLASS_SUPPORTED;
-  const headerSubtitle = [
-    selectedThreadProject?.title ?? null,
-    selectedEnvironmentConnection?.environmentLabel ?? null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const spaceCount = useSpaceEnvironments().length;
+  const headerSubtitle = BASKULE_FLAGS.projects
+    ? [
+        selectedThreadProject?.title ?? null,
+        selectedEnvironmentConnection?.environmentLabel ?? null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : spaceCount > 1
+      ? (selectedEnvironmentConnection?.environmentLabel ?? "")
+      : "";
   const gitStatus = useEnvironmentQuery(
     selectedThread !== null && selectedThreadCwd !== null
       ? vcsEnvironment.status({

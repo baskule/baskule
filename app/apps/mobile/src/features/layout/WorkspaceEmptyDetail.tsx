@@ -70,7 +70,7 @@ export function WorkspaceEmptyDetail(props: {
                 onPress={props.onStartNewTask}
               >
                 <Text className="text-base font-t3-bold text-primary-foreground">
-                  {t("New thread")}
+                  {t("New chat")}
                 </Text>
               </Pressable>
             )

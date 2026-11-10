@@ -50,7 +50,7 @@ export function DraftThreadHeader(props: {
   return (
     <ThreadHeader
       draft
-      title={t("New thread")}
+      title={t("New chat")}
       subtitle=""
       headerColor={themeVariables["--color-header"]}
       usesNativeHeaderGlass={NATIVE_LIQUID_GLASS_SUPPORTED}

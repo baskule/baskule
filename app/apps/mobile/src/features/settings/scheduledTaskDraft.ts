@@ -1,3 +1,4 @@
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { isWebhookDedupeTemplate } from "@t3tools/contracts";
 import type {
   ModelSelection,
@@ -5,9 +6,11 @@ import type {
   ProjectId,
   RuntimeMode,
   ScheduledTask,
+  ScheduledTaskUpsertInput,
   ScheduledTaskUpsertSchedule,
   ScheduledTaskWebhookSignature,
 } from "@t3tools/contracts";
+import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 import {
@@ -250,7 +253,8 @@ export function createDraft(
     modelSelection,
     modelSelectionIsExplicit: false,
     schedule: DEFAULT_SCHEDULE,
-    workspace: "worktree",
+    // baskule: chats run in the space's scratch project, which has no worktrees.
+    workspace: BASKULE_FLAGS.sourceControl ? "worktree" : "root",
     baseRef: "main",
     checkoutPath: "",
     enabled: true,
@@ -281,4 +285,90 @@ export function editDraft(task: ScheduledTask): ScheduledTaskDraft {
         : true,
     runtimeMode: task.runtimeMode,
   };
+}
+
+type DraftProject = {
+  readonly id: ProjectId;
+  readonly workspaceRoot: string;
+  readonly pinnedAt?: string | null;
+  readonly archivedAt?: string | null;
+  readonly isScratch?: true;
+};
+
+/** The project a new task starts in; Baskule hides the picker, so it is the space's chat project. */
+export function defaultScheduledTaskProject<P extends DraftProject>(
+  projects: ReadonlyArray<P>,
+  options: {
+    readonly scratchWorkspaceRoot: string | null | undefined;
+    readonly isPreferred?: (project: P) => boolean;
+  },
+): P | null {
+  if (!BASKULE_FLAGS.projects) {
+    // A fresh space has none yet; saving opens it.
+    return (
+      projects.find(
+        (project) =>
+          project.isScratch === true || isScratchProject(project, options.scratchWorkspaceRoot),
+      ) ?? null
+    );
+  }
+  return (
+    (options.isPreferred ? projects.find(options.isPreferred) : undefined) ??
+    projects.find((project) => project.pinnedAt != null && project.archivedAt == null) ??
+    projects.find((project) => project.archivedAt == null) ??
+    null
+  );
+}
+
+/** Without source control every task runs in its project root, including older worktree tasks. */
+export function scheduledTaskWorkspaceStrategy(
+  draft: Pick<ScheduledTaskDraft, "workspace" | "checkoutPath" | "baseRef" | "startFromOrigin">,
+): ScheduledTaskUpsertInput["workspaceStrategy"] {
+  if (!BASKULE_FLAGS.sourceControl || draft.workspace === "root") return { type: "root" };
+  if (draft.workspace === "existing_worktree") {
+    return { type: "existing_worktree", worktreePath: draft.checkoutPath.trim() };
+  }
+  return {
+    type: "worktree",
+    baseRef: draft.baseRef.trim() || "main",
+    startFromOrigin: draft.startFromOrigin,
+  };
+}
+
+export type ScheduledTaskSaveTarget =
+  | {
+      readonly _tag: "ready";
+      readonly projectId: ProjectId;
+      readonly modelSelection: ModelSelection;
+    }
+  | { readonly _tag: "project-unavailable" }
+  | { readonly _tag: "space-not-ready" };
+
+/**
+ * Resolves the project and model a save sends. A task keeps a project that still exists; with the
+ * project picker hidden, anything else goes to the space's chat project, opened on demand, and
+ * the hidden model picker falls back to the space default for that project.
+ */
+export async function resolveScheduledTaskSaveTarget<P extends DraftProject>(input: {
+  readonly draft: Pick<
+    ScheduledTaskDraft,
+    "projectId" | "modelSelection" | "modelSelectionIsExplicit"
+  >;
+  readonly projects: ReadonlyArray<P>;
+  readonly openScratchProject: () => Promise<P | null>;
+  readonly defaultModel: (project: P) => ModelSelection | null;
+}): Promise<ScheduledTaskSaveTarget> {
+  let project = input.projects.find((candidate) => candidate.id === input.draft.projectId) ?? null;
+  if (project === null) {
+    if (BASKULE_FLAGS.projects) return { _tag: "project-unavailable" };
+    project = await input.openScratchProject();
+    if (project === null) return { _tag: "space-not-ready" };
+  }
+  // An implicit model was chosen before the project was known; resolve it for the real one.
+  const modelSelection =
+    BASKULE_FLAGS.modelSelection || input.draft.modelSelectionIsExplicit
+      ? input.draft.modelSelection
+      : (input.defaultModel(project) ?? input.draft.modelSelection);
+  if (modelSelection === null) return { _tag: "space-not-ready" };
+  return { _tag: "ready", projectId: project.id, modelSelection };
 }

@@ -18,7 +18,6 @@ import type {
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import { THREAD_SIDEBAR_ROW_LAYOUT } from "./threadListAnimations";
-import type { MenuAction } from "@react-native-menu/menu";
 import { useAtomValue } from "@effect/atom-react";
 import { useMemo, useRef, useState } from "react";
 import type { LayoutChangeEvent, TextInputInstance } from "react-native";
@@ -52,7 +51,7 @@ import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
 import { requestThreadMessageJump } from "./threadMessageJump";
 import { useThreadListSearchMatches } from "./useThreadListSearchMatches";
 import { useHomeListOptions } from "../home/home-list-options";
-import { buildHomeListFilterMenu } from "../home/home-list-filter-menu";
+import { buildHomeListFilterMenu, listFilterMenuActions } from "../home/home-list-filter-menu";
 import { buildHomeProjectScopes } from "../home/homeThreadList";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
 import { usePendingTaskListActions } from "../home/usePendingTaskListActions";
@@ -341,49 +340,12 @@ function ThreadNavigationSidebarPane(
           },
         ]
       : threadListV2Items;
-  const listMenuActions = [
-    {
-      id: "environment",
-      title: t("Environment"),
-      subactions: [
-        {
-          id: "environment:all",
-          title: t("All environments"),
-          subtitle: t("Show threads from every environment"),
-          state: options.selectedEnvironmentId === null ? "on" : "off",
-        },
-        ...environments.map((environment) => ({
-          id: `environment:${environment.environmentId}`,
-          title: environment.label,
-          state:
-            options.selectedEnvironmentId === environment.environmentId
-              ? ("on" as const)
-              : ("off" as const),
-        })),
-      ],
-    },
-    ...(projectFilterOptions.length === 0
-      ? []
-      : ([
-          {
-            id: "project",
-            title: t("Project"),
-            subactions: [
-              {
-                id: "project:all",
-                title: t("All projects"),
-                subtitle: t("Show threads from every project"),
-                state: selectedProjectKey === null ? "on" : "off",
-              },
-              ...projectFilterOptions.map((project) => ({
-                id: `project:${project.key}`,
-                title: project.label,
-                state: selectedProjectKey === project.key ? ("on" as const) : ("off" as const),
-              })),
-            ],
-          },
-        ] satisfies MenuAction[])),
-  ] satisfies MenuAction[];
+  const listMenuActions = listFilterMenuActions({
+    environments,
+    projects: projectFilterOptions,
+    selectedEnvironmentId: options.selectedEnvironmentId,
+    selectedProjectKey,
+  });
   const handleListMenuAction = ({
     nativeEvent,
   }: {
@@ -848,6 +810,7 @@ function ThreadNavigationSidebarPane(
           filterCustomized={filterCustomized}
           onFilterAction={handleListMenuAction}
           onOpenEnvironments={props.onOpenEnvironmentSettings}
+          onOpenSettings={props.onOpenSettings}
           onRequestVisibility={props.onRequestVisibility}
         />
       ) : (
@@ -870,9 +833,11 @@ function ThreadNavigationSidebarPane(
               }
             />
             <View className="flex-row items-center gap-2.5">
-              <Menu actions={listMenuActions} onPressAction={handleListMenuAction}>
-                <SidebarFilterButton accessibilityLabel={t("Filter threads")} icon={filterIcon} />
-              </Menu>
+              {listMenuActions.length > 0 ? (
+                <Menu actions={listMenuActions} onPressAction={handleListMenuAction}>
+                  <SidebarFilterButton accessibilityLabel={t("Filter chats")} icon={filterIcon} />
+                </Menu>
+              ) : null}
               <SidebarHeaderActions onOpenSettings={props.onOpenSettings} />
             </View>
           </View>

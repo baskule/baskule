@@ -11,6 +11,7 @@ import { useWorkspaceSurface } from "../../workspace/useWorkspaceSurface";
 import { useDeviceType } from "../../../native/native-layout-metrics";
 import { useCompactWorkspaceTabs } from "../../workspace/useSystemWorkspaceTabBar";
 import { useAdaptiveWorkspaceLayout } from "../../layout/adaptive-workspace-context";
+import { BASKULE_FLAGS } from "../../../baskule/flags";
 import {
   ScreenScrollViewBottomInset,
   ScreenScrollViewSurface,
@@ -36,7 +37,10 @@ export function SettingsScreen(
   // Android opens Settings as a workspace tab; its root page has nothing to go back to.
   const workspaceRoot =
     props.workspaceRoot ||
-    (Platform.OS === "android" && workspace !== null && route.name === "Settings");
+    (BASKULE_FLAGS.workspaceTabs &&
+      Platform.OS === "android" &&
+      workspace !== null &&
+      route.name === "Settings");
 
   // Settings' grouped cards only lift off the screen surface, so the folded Duo doesn't take
   // the workspace's drawer surface here.

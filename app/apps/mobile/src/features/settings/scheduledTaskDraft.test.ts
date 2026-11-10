@@ -7,7 +7,11 @@ import {
   ProjectId,
 } from "@t3tools/contracts";
 import {
+  createDraft,
+  defaultScheduledTaskProject,
+  resolveScheduledTaskSaveTarget,
   scheduledTaskDefaultModel,
+  scheduledTaskWorkspaceStrategy,
   DEFAULT_SCHEDULE,
   scheduleDraftForTask,
   scheduleFromDraft,
@@ -210,4 +214,105 @@ it("rejects dedupe keys without valid request placeholders", () => {
   expect(
     scheduleFromDraft({ ...DEFAULT_SCHEDULE, mode: "webhook", coalesceKey: "{{body.bad" }),
   ).toBeNull();
+});
+
+// Baskule hides project, model and checkout controls; these run with those flags off.
+describe("Baskule scheduled task project", () => {
+  const instanceId = ProviderInstanceId.make("opencode");
+  const spaceModel = { instanceId, model: "space-model" };
+  const scratchModel = { instanceId, model: "scratch-model" };
+  const pinned = {
+    id: ProjectId.make("pinned"),
+    workspaceRoot: "/work/pinned",
+    pinnedAt: "2026-01-01T00:00:00.000Z",
+    archivedAt: null,
+  };
+  const scratch = { id: ProjectId.make("scratch"), workspaceRoot: "/scratch", archivedAt: null };
+  const defaultModel = (project: { id: ProjectId }) =>
+    project.id === scratch.id ? scratchModel : spaceModel;
+
+  it("starts new tasks in the space's chat project, never another pinned project", () => {
+    expect(
+      defaultScheduledTaskProject([pinned, scratch], { scratchWorkspaceRoot: "/scratch" }),
+    ).toBe(scratch);
+    expect(defaultScheduledTaskProject([pinned], { scratchWorkspaceRoot: "/scratch" })).toBeNull();
+  });
+
+  it("opens the chat project of a fresh space on save, with its default model", async () => {
+    const draft = createDraft(null, spaceModel);
+    const opened: string[] = [];
+    const target = await resolveScheduledTaskSaveTarget({
+      draft,
+      projects: [pinned],
+      openScratchProject: async () => {
+        opened.push("scratch");
+        return scratch;
+      },
+      defaultModel,
+    });
+    expect(target).toEqual({ _tag: "ready", projectId: scratch.id, modelSelection: scratchModel });
+    expect(opened).toEqual(["scratch"]);
+  });
+
+  it("reuses the chat project already in the draft without opening it again", async () => {
+    const target = await resolveScheduledTaskSaveTarget({
+      draft: createDraft(scratch.id, null),
+      projects: [pinned, scratch],
+      openScratchProject: () => Promise.reject(new Error("must not open")),
+      defaultModel,
+    });
+    expect(target).toEqual({ _tag: "ready", projectId: scratch.id, modelSelection: scratchModel });
+  });
+
+  it("keeps an edited task's project and explicit model, and moves it only once the project is gone", async () => {
+    const draft = {
+      projectId: pinned.id,
+      modelSelection: spaceModel,
+      modelSelectionIsExplicit: true,
+    };
+    const openScratchProject = async () => scratch;
+    await expect(
+      resolveScheduledTaskSaveTarget({
+        draft,
+        projects: [pinned],
+        openScratchProject,
+        defaultModel,
+      }),
+    ).resolves.toEqual({ _tag: "ready", projectId: pinned.id, modelSelection: spaceModel });
+    await expect(
+      resolveScheduledTaskSaveTarget({ draft, projects: [], openScratchProject, defaultModel }),
+    ).resolves.toEqual({ _tag: "ready", projectId: scratch.id, modelSelection: spaceModel });
+  });
+
+  it("reports a space that cannot open its chat project or has no model yet", async () => {
+    await expect(
+      resolveScheduledTaskSaveTarget({
+        draft: createDraft(null, spaceModel),
+        projects: [],
+        openScratchProject: async () => null,
+        defaultModel,
+      }),
+    ).resolves.toEqual({ _tag: "space-not-ready" });
+    await expect(
+      resolveScheduledTaskSaveTarget({
+        draft: createDraft(null, null),
+        projects: [],
+        openScratchProject: async () => scratch,
+        defaultModel: () => null,
+      }),
+    ).resolves.toEqual({ _tag: "space-not-ready" });
+  });
+
+  it("runs every task in the project root, including older worktree tasks", () => {
+    for (const workspace of ["worktree", "existing_worktree", "root"] as const) {
+      expect(
+        scheduledTaskWorkspaceStrategy({
+          workspace,
+          checkoutPath: "",
+          baseRef: "main",
+          startFromOrigin: true,
+        }),
+      ).toEqual({ type: "root" });
+    }
+  });
 });

@@ -1,5 +1,6 @@
 import { useTranslation } from "../../i18n";
 
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 import { SearchField } from "../../components/ui/SearchField";
 import { Button } from "../../components/ui/Button";
@@ -194,12 +195,12 @@ export function NewTaskEnvironmentPickerRouteScreen() {
       <NativeStackScreenOptions
         options={{
           headerShown: Platform.OS !== "android",
-          title: "Environment",
+          title: BASKULE_FLAGS.projects ? t("Environment") : t("Space"),
         }}
       />
       {Platform.OS === "android" ? (
         <AndroidScreenHeader
-          title={t("Environment")}
+          title={BASKULE_FLAGS.projects ? t("Environment") : t("Space")}
           hideBottomBorder
           onBack={() => navigation.goBack()}
         />

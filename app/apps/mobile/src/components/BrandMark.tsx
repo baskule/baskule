@@ -7,10 +7,9 @@ import { View } from "react-native";
 import { AppText as Text } from "./ui/AppText";
 import { BaskuleWordmark } from "./BaskuleBrand";
 import { BASKULE_BRAND_MARK_SOURCE } from "./brandAssets";
+import { resolveMobileStageLabel } from "../lib/mobileBranding";
 
-const appVariant = Constants.expoConfig?.extra?.appVariant;
-const DEFAULT_STAGE_LABEL =
-  appVariant === "development" ? "Dev" : appVariant === "preview" ? "Preview" : "Alpha";
+const DEFAULT_STAGE_LABEL = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
 
 export function BrandMark(props: { readonly compact?: boolean; readonly stageLabel?: string }) {
   const t = useTranslation();
@@ -31,11 +30,13 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
       <View className="gap-1">
         <View className="flex-row items-center gap-2">
           <BaskuleWordmark />
-          <View className="rounded-full bg-subtle px-2 py-1">
-            <Text className="text-3xs font-t3-bold tracking-[1.1px] uppercase text-foreground-muted">
-              {stageLabel}
-            </Text>
-          </View>
+          {stageLabel ? (
+            <View className="rounded-full bg-subtle px-2 py-1">
+              <Text className="text-3xs font-t3-bold tracking-[1.1px] uppercase text-foreground-muted">
+                {stageLabel}
+              </Text>
+            </View>
+          ) : null}
         </View>
         {!compact ? (
           <Text className="text-xs font-medium text-foreground-muted">

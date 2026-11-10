@@ -52,8 +52,7 @@ function normalizeMobileThemeId(value: unknown): MobileThemeId {
 }
 
 export function normalizeMobileThemeMode(value: unknown): MobileThemeMode {
-  // baskule: light by default; dark/system are chosen explicitly in Appearance settings.
-  return value === "light" || value === "dark" || value === "system" ? value : "light";
+  return value === "light" || value === "dark" ? value : "system";
 }
 
 export function resolveMobileThemeIds(preferences: {

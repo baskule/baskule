@@ -1,4 +1,5 @@
 import { t } from "../../../i18n";
+import { BASKULE_FLAGS } from "../../../baskule/flags";
 import { useTranslation } from "../../../i18n";
 
 import type { NativeStackHeaderItem } from "@react-navigation/native-stack";
@@ -27,6 +28,15 @@ export function SettingsEnvironmentFilterHeader(props: {
     selectProject,
   } = useSettingsEnvironmentFilter();
   if (Platform.OS !== "ios") return null;
+  // baskule: Settings has no environment or project scope to choose.
+  if (!BASKULE_FLAGS.extendedSettings) {
+    return props.trailingItems ? (
+      <NativeStackScreenOptions
+        optionsVersion={JSON.stringify(props.trailingItems)}
+        options={{ unstable_headerRightItems: () => [...(props.trailingItems ?? [])] }}
+      />
+    ) : null;
+  }
 
   const filterIcon =
     selectedIds === null && selectedProjectKey === null
@@ -135,6 +145,7 @@ export function AndroidSettingsEnvironmentFilter() {
     selectedIds === null && selectedProjectKey === null
       ? "line.3.horizontal.decrease"
       : "line.3.horizontal.decrease.circle.fill";
+  if (!BASKULE_FLAGS.extendedSettings) return null;
 
   return (
     <Menu

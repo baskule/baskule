@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
+import { compileModsAsync, withPlugins } from "expo/config-plugins";
 
 // Keep config parsing independent of local env files and build credentials.
 vi.mock("../../scripts/lib/public-config.ts", () => ({
@@ -30,4 +31,25 @@ it.each([
   const config = await loadConfig(value);
   expect(config.ios?.bundleIdentifier).toBe(identifier);
   expect(config.android?.package).toBe(identifier);
+});
+
+it("keeps dictation permissions after the audio, camera and image picker plugins run", async () => {
+  const config = await loadConfig("development");
+  const mediaPlugins = new Set(["expo-audio", "expo-camera", "expo-image-picker"]);
+  const plugins: Parameters<typeof withPlugins>[1] = [];
+  for (const plugin of config.plugins ?? []) {
+    const name = typeof plugin === "string" ? plugin : plugin[0];
+    if (name && mediaPlugins.has(name)) {
+      plugins.push(typeof plugin === "string" ? plugin : [name, plugin[1]]);
+    }
+  }
+  const result = await compileModsAsync(
+    withPlugins({ ...config, _internal: { projectRoot: import.meta.dirname } }, plugins),
+    { projectRoot: import.meta.dirname, platforms: ["android", "ios"], introspect: true },
+  );
+  const native = result._internal?.modResults;
+  expect(native?.android.manifest.manifest["uses-permission"]).toContainEqual({
+    $: { "android:name": "android.permission.RECORD_AUDIO" },
+  });
+  expect(native?.ios.infoPlist.NSMicrophoneUsageDescription).toBeTruthy();
 });

@@ -24,6 +24,7 @@ const reactTests = [
   "src/features/threads/ThreadMarkdownImage.test.tsx",
   "src/features/threads/UsageLimitRecoveryCard.test.tsx",
   "src/features/threads/NewTaskDraftRouteScreen.test.tsx",
+  "src/features/threads/NewTaskRouteScreen.test.tsx",
   "src/features/threads/use-visible-second-clock.test.tsx",
   "src/features/threads/useThreadHeaderOptions.test.tsx",
   "src/lib/assetImageDimensions.test.tsx",

@@ -1,4 +1,5 @@
 import { useBaskuleSession } from "../../baskule/session";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { useSpaceEnvironments } from "../../baskule/spaces";
 import { t, useTranslation } from "../../i18n";
 
@@ -36,7 +37,7 @@ import {
   WEBHOOK_FILTER_OPS,
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AppState, Platform, Pressable, TextInput as RNTextInput, View } from "react-native";
@@ -61,6 +62,7 @@ import { buildModelOptions } from "../../lib/modelOptions";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useProjects, useEnvironmentServerConfig } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
+import { projectEnvironment } from "../../state/projects";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
@@ -77,7 +79,9 @@ import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-en
 import {
   editDraft,
   parseIntervalMinutes,
+  resolveScheduledTaskSaveTarget,
   scheduledTaskDefaultModel,
+  scheduledTaskWorkspaceStrategy,
   scheduleFromDraft,
   type ScheduledTaskDraft as Draft,
 } from "./scheduledTaskDraft";
@@ -155,12 +159,13 @@ function describeSchedule(task: ScheduledTask): string {
   return t("{{days}} at {{value2}}", { days: days, value2: formatTime(task.schedule.timeOfDay) });
 }
 
+// Baskule spaces run fixed-time schedules on the server clock, which is UTC (the web says so too).
+// The picker edits that wall-clock value as is; only "Next run" converts to the device's time.
 function formatTime(value: string): string {
   const [hours, minutes] = value.split(":").map(Number);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return value;
-  const time = new Date();
-  time.setHours(hours ?? 9, minutes ?? 0, 0, 0);
-  return time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return `${value} UTC`;
+  const time = new Date(Date.UTC(1970, 0, 1, hours ?? 9, minutes ?? 0));
+  return `${time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC`;
 }
 
 function timePickerValue(value: string): Date {
@@ -737,7 +742,16 @@ function TaskForm({
     label: t("scheduled task upsert"),
     reportFailure: false,
   });
+  const openScratch = useAtomCommand(projectEnvironment.openScratch, { reportFailure: false });
   const submissionPending = useRef(false);
+  const mounted = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tracks mount so a save that awaits the space's chat project stops after the form closes
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const taskMissing =
     draft.task !== null &&
@@ -797,56 +811,77 @@ function TaskForm({
       );
       return;
     }
+    const workspaceStrategy = scheduledTaskWorkspaceStrategy(draft);
+    // Only visible fields are named; the hidden project and model are resolved below.
     if (
       !draft.title.trim() ||
       !draft.prompt.trim() ||
-      !draft.projectId ||
-      !draft.modelSelection ||
       !schedule ||
-      (draft.workspace === "existing_worktree" && !draft.checkoutPath.trim())
+      (BASKULE_FLAGS.projects && !draft.projectId) ||
+      (BASKULE_FLAGS.modelSelection && !draft.modelSelection) ||
+      (workspaceStrategy.type === "existing_worktree" && !workspaceStrategy.worktreePath)
     ) {
       Dialog.alert(
         t("Incomplete task"),
-        t("Add a name, prompt, project, model, valid schedule, and checkout path if needed."),
+        BASKULE_FLAGS.projects
+          ? t("Add a name, prompt, project, model, valid schedule, and checkout path if needed.")
+          : t("Add a name, prompt, and valid schedule."),
       );
       return;
     }
-    if (!projects.some((project) => project.id === draft.projectId)) {
-      Dialog.alert(t("Project unavailable"), t("Choose a project in this environment."));
+    submissionPending.current = true;
+    setSaving(true);
+    const finish = () => {
+      submissionPending.current = false;
+      setSaving(false);
+    };
+    const scratch: { failure: AtomCommandResult<unknown, unknown> | null } = { failure: null };
+    const target = await resolveScheduledTaskSaveTarget({
+      draft,
+      projects,
+      openScratchProject: async () => {
+        const opened = await openScratch({ environmentId, input: {} });
+        if (opened._tag === "Success") return opened.value;
+        scratch.failure = opened;
+        return null;
+      },
+      defaultModel: (project) => scheduledTaskDefaultModel(config, project),
+    });
+    // The space's form closed or switched while its chat project was opening.
+    if (!mounted.current) return finish();
+    if (target._tag !== "ready") {
+      finish();
+      if (scratch.failure) failure(t("Could not save task"), scratch.failure);
+      else if (target._tag === "project-unavailable")
+        Dialog.alert(t("Project unavailable"), t("Choose a project in this environment."));
+      else
+        Dialog.alert(
+          t("Space not ready"),
+          t("This space is still starting. Try again in a moment."),
+        );
       return;
     }
     const input: ScheduledTaskUpsertInput = {
       ...(draft.task ? { id: draft.task.id, requireExisting: true } : {}),
       title: draft.title.trim(),
       prompt: draft.prompt.trim(),
-      projectId: draft.projectId,
-      modelSelection: draft.modelSelection,
+      projectId: target.projectId,
+      modelSelection: target.modelSelection,
       schedule,
       enabled: draft.enabled,
       threadId: draft.task?.threadId ?? null,
-      workspaceStrategy:
-        draft.workspace === "root"
-          ? { type: "root" }
-          : draft.workspace === "existing_worktree"
-            ? { type: "existing_worktree", worktreePath: draft.checkoutPath.trim() }
-            : {
-                type: "worktree",
-                baseRef: draft.baseRef.trim() || "main",
-                startFromOrigin: draft.startFromOrigin,
-              },
+      workspaceStrategy,
       runtimeMode: draft.runtimeMode,
       interactionMode: draft.task?.interactionMode ?? "default",
       creationSource: draft.task?.creationSource ?? "mobile",
     };
-    submissionPending.current = true;
-    setSaving(true);
     const result = await upsert({ environmentId, input });
-    setSaving(false);
     if (result._tag === "Failure") {
-      submissionPending.current = false;
+      finish();
       failure(t("Could not save task"), result);
       return;
     }
+    setSaving(false);
     onSaved();
   };
 
@@ -866,39 +901,45 @@ function TaskForm({
 
         {environmentUnavailable ? (
           <Text className="px-1 text-base text-danger-foreground">
-            {t("This environment is disconnected. Reconnect before saving.")}
+            {BASKULE_FLAGS.projects
+              ? t("This environment is disconnected. Reconnect before saving.")
+              : t("This space is not connected. Try again when it is back online.")}
           </Text>
         ) : null}
-        <SettingsSection>
-          <SelectRow
-            label={t("Runs on")}
-            value={environmentLabel}
-            valueIcon={
-              <EnvironmentMachineSymbol
-                kind={resolveEnvironmentMachineKind(config)}
-                size={18}
-                tintColorClassName="accent-foreground-muted"
-              />
-            }
-            actions={
-              draft.task || saving || dictationPending
-                ? []
-                : availableTargets.map((target) => ({
-                    id: target.environmentId,
-                    title: target.label,
-                    image:
-                      ENVIRONMENT_MACHINE_SYMBOLS[
-                        resolveEnvironmentMachineKind(target.serverConfig)
-                      ],
-                    state: target.environmentId === environmentId ? "on" : undefined,
-                  }))
-            }
-            onSelect={(id) => {
-              const target = availableTargets.find((entry) => entry.environmentId === id);
-              if (target) onChangeEnvironment(target);
-            }}
-          />
-        </SettingsSection>
+        {BASKULE_FLAGS.projects || availableTargets.length > 1 ? (
+          <SettingsSection>
+            <SelectRow
+              label={BASKULE_FLAGS.projects ? t("Runs on") : t("Space")}
+              value={environmentLabel}
+              valueIcon={
+                BASKULE_FLAGS.projects ? (
+                  <EnvironmentMachineSymbol
+                    kind={resolveEnvironmentMachineKind(config)}
+                    size={18}
+                    tintColorClassName="accent-foreground-muted"
+                  />
+                ) : undefined
+              }
+              actions={
+                draft.task || saving || dictationPending
+                  ? []
+                  : availableTargets.map((target) => ({
+                      id: target.environmentId,
+                      title: target.label,
+                      image:
+                        ENVIRONMENT_MACHINE_SYMBOLS[
+                          resolveEnvironmentMachineKind(target.serverConfig)
+                        ],
+                      state: target.environmentId === environmentId ? "on" : undefined,
+                    }))
+              }
+              onSelect={(id) => {
+                const target = availableTargets.find((entry) => entry.environmentId === id);
+                if (target) onChangeEnvironment(target);
+              }}
+            />
+          </SettingsSection>
+        ) : null}
         <SettingsSection title={t("Task")}>
           <FormField
             label={t("Name")}
@@ -910,112 +951,120 @@ function TaskForm({
           {promptField}
         </SettingsSection>
 
-        <SettingsSection title={t("Context")}>
-          <SelectRow
-            label={t("Project")}
-            value={
-              projects.find((project) => project.id === draft.projectId)?.title ??
-              (projects.length ? "Choose project" : "No projects available")
-            }
-            actions={projects.map((project) => ({
-              id: project.id,
-              title: project.title,
-              state: project.id === draft.projectId ? "on" : undefined,
-            }))}
-            onSelect={(id) => {
-              const project = projects.find((item) => item.id === id);
-              if (!project) return;
-              const keepsExplicitModel =
-                draft.modelSelectionIsExplicit &&
-                (draft.modelSelection === null ||
-                  !config?.settings ||
-                  resolveProjectProviderInstanceEnabled(
-                    config.settings,
-                    project.id,
-                    draft.modelSelection.instanceId,
-                  ));
-              setDraft({
-                ...draft,
-                projectId: project.id,
-                modelSelection: keepsExplicitModel
-                  ? draft.modelSelection
-                  : scheduledTaskDefaultModel(config, project),
-                modelSelectionIsExplicit: keepsExplicitModel,
-              });
-            }}
-          />
-          <PickerRow
-            label={t("Model")}
-            borderTop
-            value={
-              modelOptions.find(
-                (option) =>
-                  option.selection.instanceId === draft.modelSelection?.instanceId &&
-                  option.selection.model === draft.modelSelection?.model,
-              )?.label ??
-              draft.modelSelection?.model ??
-              (modelOptions.length ? "Choose model" : "No models available")
-            }
-            onPress={() => navigation.navigate("SettingsScheduledTaskModel")}
-            disabled={saving || dictationPending || environmentUnavailable}
-          />
-        </SettingsSection>
+        {BASKULE_FLAGS.projects || BASKULE_FLAGS.modelSelection ? (
+          <SettingsSection title={t("Context")}>
+            {BASKULE_FLAGS.projects ? (
+              <SelectRow
+                label={t("Project")}
+                value={
+                  projects.find((project) => project.id === draft.projectId)?.title ??
+                  (projects.length ? "Choose project" : "No projects available")
+                }
+                actions={projects.map((project) => ({
+                  id: project.id,
+                  title: project.title,
+                  state: project.id === draft.projectId ? "on" : undefined,
+                }))}
+                onSelect={(id) => {
+                  const project = projects.find((item) => item.id === id);
+                  if (!project) return;
+                  const keepsExplicitModel =
+                    draft.modelSelectionIsExplicit &&
+                    (draft.modelSelection === null ||
+                      !config?.settings ||
+                      resolveProjectProviderInstanceEnabled(
+                        config.settings,
+                        project.id,
+                        draft.modelSelection.instanceId,
+                      ));
+                  setDraft({
+                    ...draft,
+                    projectId: project.id,
+                    modelSelection: keepsExplicitModel
+                      ? draft.modelSelection
+                      : scheduledTaskDefaultModel(config, project),
+                    modelSelectionIsExplicit: keepsExplicitModel,
+                  });
+                }}
+              />
+            ) : null}
+            {BASKULE_FLAGS.modelSelection ? (
+              <PickerRow
+                label={t("Model")}
+                borderTop
+                value={
+                  modelOptions.find(
+                    (option) =>
+                      option.selection.instanceId === draft.modelSelection?.instanceId &&
+                      option.selection.model === draft.modelSelection?.model,
+                  )?.label ??
+                  draft.modelSelection?.model ??
+                  (modelOptions.length ? "Choose model" : "No models available")
+                }
+                onPress={() => navigation.navigate("SettingsScheduledTaskModel")}
+                disabled={saving || dictationPending || environmentUnavailable}
+              />
+            ) : null}
+          </SettingsSection>
+        ) : null}
 
-        <SettingsSection title={t("Workspace")}>
-          <SelectRow
-            label={t("Run in")}
-            value={
-              draft.workspace === "worktree"
-                ? t("New worktree")
-                : draft.workspace === "root"
-                  ? t("Project checkout")
-                  : t("Specific checkout")
-            }
-            actions={[
-              {
-                id: "worktree",
-                title: t("New worktree"),
-                state: draft.workspace === "worktree" ? "on" : undefined,
-              },
-              {
-                id: "root",
-                title: t("Project checkout"),
-                state: draft.workspace === "root" ? "on" : undefined,
-              },
-              {
-                id: "existing_worktree",
-                title: t("Specific checkout"),
-                state: draft.workspace === "existing_worktree" ? "on" : undefined,
-              },
-            ]}
-            onSelect={(id) => {
-              if (id === "worktree" || id === "root" || id === "existing_worktree")
-                setDraft({ ...draft, workspace: id });
-            }}
-          />
-          {draft.workspace === "worktree" ? (
-            <PickerRow
-              label={t("Base branch")}
-              value={resolveNewTaskBranchLabel({
-                branchName: draft.baseRef,
-                startFromOrigin: draft.startFromOrigin,
-                workspaceMode: "worktree",
-              })}
-              borderTop
-              disabled={!draft.projectId || saving || dictationPending || environmentUnavailable}
-              onPress={() => navigation.navigate("SettingsScheduledTaskBranch")}
+        {BASKULE_FLAGS.sourceControl ? (
+          <SettingsSection title={t("Workspace")}>
+            <SelectRow
+              label={t("Run in")}
+              value={
+                draft.workspace === "worktree"
+                  ? t("New worktree")
+                  : draft.workspace === "root"
+                    ? t("Project checkout")
+                    : t("Specific checkout")
+              }
+              actions={[
+                {
+                  id: "worktree",
+                  title: t("New worktree"),
+                  state: draft.workspace === "worktree" ? "on" : undefined,
+                },
+                {
+                  id: "root",
+                  title: t("Project checkout"),
+                  state: draft.workspace === "root" ? "on" : undefined,
+                },
+                {
+                  id: "existing_worktree",
+                  title: t("Specific checkout"),
+                  state: draft.workspace === "existing_worktree" ? "on" : undefined,
+                },
+              ]}
+              onSelect={(id) => {
+                if (id === "worktree" || id === "root" || id === "existing_worktree")
+                  setDraft({ ...draft, workspace: id });
+              }}
             />
-          ) : null}
-          {draft.workspace === "existing_worktree" ? (
-            <FormField
-              label={t("Checkout path")}
-              disabled={saving}
-              value={draft.checkoutPath}
-              borderTop
-              onChange={(checkoutPath) => setDraft({ ...draft, checkoutPath })}
-            />
-          ) : null}
-        </SettingsSection>
+            {draft.workspace === "worktree" ? (
+              <PickerRow
+                label={t("Base branch")}
+                value={resolveNewTaskBranchLabel({
+                  branchName: draft.baseRef,
+                  startFromOrigin: draft.startFromOrigin,
+                  workspaceMode: "worktree",
+                })}
+                borderTop
+                disabled={!draft.projectId || saving || dictationPending || environmentUnavailable}
+                onPress={() => navigation.navigate("SettingsScheduledTaskBranch")}
+              />
+            ) : null}
+            {draft.workspace === "existing_worktree" ? (
+              <FormField
+                label={t("Checkout path")}
+                disabled={saving}
+                value={draft.checkoutPath}
+                borderTop
+                onChange={(checkoutPath) => setDraft({ ...draft, checkoutPath })}
+              />
+            ) : null}
+          </SettingsSection>
+        ) : null}
 
         <SettingsSection title={t("Schedule")}>
           <View className="px-4 py-3">
@@ -1051,7 +1100,7 @@ function TaskForm({
                 className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
               >
                 <Text textRole="body" className="text-foreground">
-                  {t("Time")}
+                  {t("Time (UTC)")}
                 </Text>
                 <Text
                   textRole="footnote"
@@ -1226,7 +1275,7 @@ function TaskForm({
         </SettingsSection>
         {draft.schedule.mode === "fixed_time" ? (
           <Text className="px-2 text-sm text-foreground-muted">
-            {t("Time uses the environment's time zone, which may differ from your phone's.")}
+            {t("Times are in UTC, which may differ from your phone's time zone.")}
           </Text>
         ) : null}
       </View>
@@ -1269,7 +1318,13 @@ function WebhookScheduleDetails({
       <Text className="text-sm text-foreground-muted">
         {t(
           "The prompt can use {{bodyField}}, {{headerField}}, {{queryField}}, {{body}} and {{request}}. The filled-in prompt is all the agent sees.",
-          { bodyField: "{{body.a.b}}", headerField: "{{headers.name}}", queryField: "{{query.name}}", body: "{{body}}", request: "{{request}}" },
+          {
+            bodyField: "{{body.a.b}}",
+            headerField: "{{headers.name}}",
+            queryField: "{{query.name}}",
+            body: "{{body}}",
+            request: "{{request}}",
+          },
         )}
       </Text>
       {task === null || resolved === null ? (

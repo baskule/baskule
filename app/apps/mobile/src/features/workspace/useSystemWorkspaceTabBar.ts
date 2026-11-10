@@ -5,6 +5,7 @@ import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context
 import { useDeviceType, useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { workspaceUsesColumns } from "./workspace-tabs-state";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 
 function useWorkspacePage() {
   const workspace = useWorkspaceTabs();
@@ -18,7 +19,8 @@ export function useSidebarWorkspaceTabs(): "picker" | "toolbar" | null {
   const deviceType = useDeviceType();
   const metrics = useNativeLayoutMetrics();
   const page = useWorkspacePage();
-  if (Platform.OS !== "ios" || !layout.usesSplitView || page) return null;
+  if (!BASKULE_FLAGS.workspaceTabs || Platform.OS !== "ios" || !layout.usesSplitView || page)
+    return null;
   if (deviceType === "pad") return null;
   // Portrait Duo has no system rail; keep its tabs in the sidebar like iPad.
   if (deviceType === "duo-unfolded" && (metrics?.verticalBarEdge ?? "none") === "none")
@@ -31,6 +33,7 @@ export function useCompactWorkspaceTabs() {
   const deviceType = useDeviceType();
   // The compact glass picker reserves the trailing edge for a separate compose button.
   return (
+    BASKULE_FLAGS.workspaceTabs &&
     Platform.OS === "ios" &&
     deviceType !== "pad" &&
     !layout.usesSplitView &&
@@ -45,6 +48,7 @@ export function useFloatingWorkspaceTabs() {
   const deviceType = useDeviceType();
   const compactTabs = useCompactWorkspaceTabs();
   return (
+    BASKULE_FLAGS.workspaceTabs &&
     NATIVE_LIQUID_GLASS_SUPPORTED &&
     (compactTabs || (deviceType === "pad" && !layout.usesSplitView))
   );
@@ -56,6 +60,7 @@ export function useSystemWorkspaceTabBar() {
   const sidebarTabs = useSidebarWorkspaceTabs();
   const compactTabs = useCompactWorkspaceTabs();
   return (
+    BASKULE_FLAGS.workspaceTabs &&
     Platform.OS === "ios" &&
     deviceType !== "pad" &&
     !layout.primarySidebarOverlaysContent &&

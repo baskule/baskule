@@ -1,7 +1,4 @@
-export type MobileStageLabel = "Alpha" | "Dev" | "Nightly";
-
-export function resolveMobileStageLabel(appVariant: unknown): MobileStageLabel {
-  if (appVariant === "development") return "Dev";
-  if (appVariant === "preview") return "Nightly";
-  return "Alpha";
+/** Only development builds carry a stage badge; installed builds show the plain brand. */
+export function resolveMobileStageLabel(appVariant: unknown): "Dev" | null {
+  return appVariant === "development" ? "Dev" : null;
 }

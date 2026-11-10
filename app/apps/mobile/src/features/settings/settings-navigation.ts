@@ -7,6 +7,8 @@ import {
   type RootStackNavigation,
 } from "../../lib/root-stack-reset";
 
+import { BASKULE_FLAGS } from "../../baskule/flags";
+
 type RootParams = ReactNavigation.RootParamList;
 
 /** Settings routes that open as modals over whatever is on screen, not as Settings pages. */
@@ -116,4 +118,10 @@ export function leaveSettingsPage(
   } else {
     navigation.goBack();
   }
+}
+
+/** Where a connection problem is explained: Baskule names its one server on the Settings list. */
+export function openConnectionSettings(navigation: RootStackNavigation) {
+  if (BASKULE_FLAGS.extendedSettings) openSettings(navigation, "SettingsEnvironments");
+  else resetRootStack(navigation, (state) => settingsNavigationState(state, undefined));
 }

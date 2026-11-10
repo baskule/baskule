@@ -58,10 +58,10 @@ export function useThreadHeaderOptions(props: {
     ...(!usesDuoHeader && !props.draft
       ? [
           withNativeGlassHeaderItem({
-            accessibilityLabel: t("New task"),
+            accessibilityLabel: t("New chat"),
             icon: { name: "square.and.pencil", type: "sfSymbol" as const },
             identifier: "thread-left-new-task",
-            label: t("New task"),
+            label: t("New chat"),
             onPress: startNewTask,
             type: "button" as const,
           }),

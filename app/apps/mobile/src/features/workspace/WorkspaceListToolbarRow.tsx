@@ -23,6 +23,8 @@ export function WorkspaceListToolbarRow(props: {
   readonly onOpenEnvironments: () => void;
   /** Stays trailing while searching, so it never moves and still narrows the results. */
   readonly filter: ReactNode;
+  /** Trailing, outside search. */
+  readonly settings?: ReactNode;
 }) {
   const t = useTranslation();
   const { height } = useToolbarLayout();
@@ -59,6 +61,7 @@ export function WorkspaceListToolbarRow(props: {
             onPress={props.onOpenSearch}
           />
           {props.filter}
+          {props.settings}
         </>
       )}
     </View>

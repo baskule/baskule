@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { isMobileRouteEnabled } from "../../baskule/flags";
 import { useDeadlinePassed } from "../../lib/clock";
 import {
   type AppUpdateCheckState,
@@ -125,12 +126,16 @@ function AppSettingsSection() {
 
   return (
     <SettingsSection title={t("App")}>
-      <SettingsRow
-        icon="internaldrive"
-        label={t("Client Storage")}
-        target="SettingsClientStorage"
-      />
-      <SettingsRow icon="stethoscope" label={t("Diagnostics")} target="SettingsDiagnostics" />
+      {isMobileRouteEnabled("SettingsClientStorage") ? (
+        <SettingsRow
+          icon="internaldrive"
+          label={t("Client Storage")}
+          target="SettingsClientStorage"
+        />
+      ) : null}
+      {isMobileRouteEnabled("SettingsDiagnostics") ? (
+        <SettingsRow icon="stethoscope" label={t("Diagnostics")} target="SettingsDiagnostics" />
+      ) : null}
       <SettingsRow
         icon="doc.on.doc"
         label={t("Open source licenses")}

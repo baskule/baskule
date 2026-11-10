@@ -4,7 +4,8 @@
 //   node dev/fake-llm/server.mjs [--port 47601] [--host 127.0.0.1]     (env: FAKE_LLM_PORT, FAKE_LLM_HOST, FAKE_LLM_KEY)
 //
 // Endpoints: POST /v1/chat/completions (stream or not), GET /v1/models[/<id>], GET /_fake/requests (last 50 request bodies),
-// POST /_fake/reset, GET /health. The `/v1` prefix is optional.
+// POST /audio/transcriptions (multipart audio → fixed test transcript), POST /_fake/reset, GET /health.
+// The `/v1` prefix is optional. Transcription requests retain only file metadata, never audio bytes.
 //
 // T3 title-generation prompts receive valid title/needsRefinement JSON independently of nested chat markers.
 // Behaviour is chosen by markers in the LAST user message (falls back to the system prompt):
@@ -200,7 +201,7 @@ function readBody(req, limit = 64 * 1024 * 1024) {
     const parts = [];
     let n = 0;
     req.on("data", (c) => { n += c.length; if (n > limit) { reject(new Error("body too large")); req.destroy(); } else parts.push(c); });
-    req.on("end", () => resolve(Buffer.concat(parts).toString("utf8")));
+    req.on("end", () => resolve(Buffer.concat(parts)));
     req.on("error", reject);
   });
 }
@@ -230,8 +231,27 @@ export function createServer() {
         return res.end(JSON.stringify(recent));
       }
       if (req.method === "POST" && path === "/_fake/reset") { recent.length = 0; counter = 0; return res.end("ok\n"); }
+      if (req.method === "POST" && path === "/audio/transcriptions") {
+        let form;
+        try {
+          form = await new Response(await readBody(req), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          return res.end(JSON.stringify({ error: { message: "expected multipart audio", type: "invalid_request_error" } }));
+        }
+        const file = form.get("file");
+        const model = form.get("model");
+        if (!(file instanceof File) || file.size === 0 || typeof model !== "string" || !model.trim()) {
+          res.writeHead(400, { "content-type": "application/json" });
+          return res.end(JSON.stringify({ error: { message: "nonempty file and model required", type: "invalid_request_error" } }));
+        }
+        recent.push({ kind: "transcription", model, filename: file.name, type: file.type, bytes: file.size });
+        if (recent.length > 50) recent.shift();
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ text: "Voice input verified." }));
+      }
       if (req.method === "POST" && path === "/chat/completions") {
-        const raw = await readBody(req);
+        const raw = (await readBody(req)).toString("utf8");
         let body;
         try { body = JSON.parse(raw); } catch {
           res.writeHead(400, { "content-type": "application/json" });

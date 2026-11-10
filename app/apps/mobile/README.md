@@ -1,5 +1,10 @@
 # T3 Code Mobile
 
+This directory retains upstream T3 Code mobile development guidance. For Baskule's product
+adaptations and supported capabilities, see [mobile product boundaries](../../../docs/mobile-product.md).
+Use [native mobile verification](../../../docs/mobile-verification.md) for device acceptance
+against a disposable Baskule backend.
+
 > [!WARNING]
 > T3 Code Mobile is currently in development and is not distributed yet. If you want to try it out, you can build it from source.
 

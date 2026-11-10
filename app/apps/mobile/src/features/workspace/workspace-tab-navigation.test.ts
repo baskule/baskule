@@ -43,7 +43,7 @@ describe("opening a workspace tab", () => {
         },
       );
     expect(names(open(false))).toEqual(["Home", "Settings"]);
-    expect(names(open(true))).toEqual(["Home", "Settings", "SettingsEnvironments"]);
+    expect(names(open(true))).toEqual(["Home", "Settings", "SettingsAppearance"]);
   });
 
   it("keeps Android list tabs and iOS remembered-detail navigation unchanged", () => {
@@ -131,7 +131,7 @@ describe("opening a workspace tab", () => {
           columns,
         ),
       ),
-    ).toEqual(["Home", "Settings", "SettingsEnvironments"]);
+    ).toEqual(["Home", "Settings", "SettingsAppearance"]);
   });
 
   it("keeps an open sheet on top", () => {

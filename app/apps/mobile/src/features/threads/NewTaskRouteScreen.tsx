@@ -1,4 +1,7 @@
 import { t, useTranslation } from "../../i18n";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { EnvironmentId } from "@t3tools/contracts";
 
 import { isDraftThreadRoute } from "./thread-route-state";
 import * as Dialog from "../../components/ui/Dialog";
@@ -30,6 +33,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { useProjects, useServerConfigs } from "../../state/entities";
 import { projectEnvironment } from "../../state/projects";
+import { environmentShell } from "../../state/shell";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
 import type { WorkspaceState } from "../../state/workspaceModel";
@@ -45,6 +49,8 @@ import {
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 // baskule: product feature flags.
 import { BASKULE_FLAGS } from "../../baskule/flags";
+
+const NO_DESTINATION_SNAPSHOT = Atom.make(false);
 
 type NewTaskRouteParams = {
   readonly incomingShareId?: string | string[];
@@ -172,6 +178,13 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     ? route.params.incomingShareId[0]
     : route.params?.incomingShareId;
   const incomingShare = routeShareId ? getShare(routeShareId) : null;
+  const destinationHasSnapshot = useAtomValue(
+    incomingShare?.destination
+      ? environmentShell.hasSnapshotAtom(
+          EnvironmentId.make(incomingShare.destination.environmentId),
+        )
+      : NO_DESTINATION_SNAPSHOT,
+  );
   const incomingShareSubtitle = incomingShare
     ? incomingShare.attachments.length === 0
       ? t("Choose a project for what you shared")
@@ -355,6 +368,63 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
       },
     });
   }, [incomingShare, isFocused, reservedDestinationProject, selectDetail]);
+
+  if (!BASKULE_FLAGS.projects) {
+    // baskule: the route only resolves the scratch project (or a share's reserved draft), so it
+    // never shows a picker. A reservation whose project is gone offers a fresh chat instead.
+    const staleShareDestination =
+      Boolean(incomingShare?.destination) &&
+      reservedDestinationProject === null &&
+      (destinationHasSnapshot ||
+        (!catalogState.isLoadingConnections &&
+          !connectedEnvironments.some(
+            (environment) =>
+              environment.isEnabled &&
+              environment.environmentId === incomingShare?.destination?.environmentId,
+          )));
+    const starting =
+      reservedDestinationProject !== null || (canStartScratch && !staleShareDestination);
+    return (
+      <View collapsable={false} className="flex-1 bg-sheet">
+        <AppBar
+          title={t("New chat")}
+          sidebar={false}
+          options={{ headerBackVisible: true }}
+          hideBottomBorder
+          onBack={() =>
+            navigation.canGoBack() ? navigation.goBack() : navigation.getParent()?.goBack()
+          }
+        />
+        <View className="flex-1 items-center justify-center gap-4 px-8">
+          {starting ? (
+            <>
+              <AppActivityIndicator colorClassName="accent-icon-muted" />
+              <Text className="text-center text-base text-foreground-muted">
+                {t("Starting a new chat…")}
+              </Text>
+            </>
+          ) : staleShareDestination && canStartScratch ? (
+            <>
+              <Text className="text-center text-base text-foreground-muted">
+                {t("The chat you shared to is no longer available.")}
+              </Text>
+              <Button
+                label={t("Start a new chat")}
+                tone="primary"
+                onPress={() => void startScratch()}
+              />
+            </>
+          ) : (
+            <Text className="text-center text-base text-foreground-muted">
+              {selectedEnvironmentId === null
+                ? t("Your spaces are still loading.")
+                : t("This space is not connected. Try again when it is back online.")}
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">

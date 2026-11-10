@@ -1,6 +1,6 @@
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { use, type ComponentProps } from "react";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 
 import { ListRow } from "../../../components/ui/ListRow";
 import { ListRowLayout } from "../../../components/ui/ListRowLayout";
@@ -57,6 +57,18 @@ export function SettingsRow(props: {
       >
         <ListRowLayout {...content} />
       </RowPressable>
+    );
+  }
+  if (!props.target && !props.fullScreenTarget && !props.onPress) {
+    // A read-only value row: no chevron or press feedback suggesting it opens something.
+    return (
+      <View
+        accessible
+        accessibilityLabel={[props.label, props.value].filter(Boolean).join(", ")}
+        className="bg-grouped-card"
+      >
+        <ListRowLayout {...content} />
+      </View>
     );
   }
   return <ListRow {...content} onPress={onPress} />;

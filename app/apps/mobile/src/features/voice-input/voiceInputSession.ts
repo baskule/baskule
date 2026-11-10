@@ -7,6 +7,7 @@ import {
   type VoiceInputPhase,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
+import type { AppStateStatus } from "react-native";
 
 import { normalizeVoiceInputDecibels, VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 
@@ -39,6 +40,7 @@ export type VoiceInputSessionDependencies = Omit<
   VoiceInputControllerDependencies,
   "readDraft" | "commitDraft" | "onStateChange"
 > & {
+  readonly initiallyActive: boolean;
   /** Reads the live recorder, or null when it is not capturing. */
   readonly sampleRecording: () => VoiceRecordingSample | null;
   /** Levels change every metering tick, so they bypass React state. */
@@ -96,11 +98,15 @@ export class VoiceInputSession {
   private audioLevels = SILENT_LEVELS;
   private releaseKeepAwake: (() => void) | null = null;
   private meteringInterval: ReturnType<typeof setInterval> | null = null;
+  private appIsActive: boolean;
+  private permissionRequest: { resume: (() => void) | null } | null = null;
 
   constructor(dependencies: VoiceInputSessionDependencies) {
     this.dependencies = dependencies;
+    this.appIsActive = dependencies.initiallyActive;
     this.controller = new VoiceInputController({
       ...dependencies,
+      requestPermission: () => this.requestPermission(),
       onStateChange: (state) => this.handleStateChange(state),
       readDraft: () => this.target?.readDraft() ?? null,
       commitDraft: (text, selection) => this.target?.commitDraft(text, selection),
@@ -138,6 +144,15 @@ export class VoiceInputSession {
     return this.target ? this.start(this.target) : Promise.resolve();
   }
 
+  appStateChanged(state: AppStateStatus): Promise<void> | void {
+    this.appIsActive = state === "active";
+    if (this.permissionRequest) {
+      if (state === "active") this.permissionRequest.resume?.();
+      return;
+    }
+    if (state === "background") return this.controller.appMovedToBackground();
+  }
+
   start(target: VoiceInputTarget): Promise<void> {
     if (voiceInputBlocksSubmission(this.controller.currentState)) return Promise.resolve();
     this.target = target;
@@ -154,6 +169,10 @@ export class VoiceInputSession {
   }
 
   private handleStateChange(state: VoiceInputState): void {
+    if (state.phase !== "preparing") {
+      this.permissionRequest?.resume?.();
+      this.permissionRequest = null;
+    }
     if (!voiceInputBlocksSubmission(state)) {
       this.unsubscribe?.();
       this.unsubscribe = null;
@@ -176,6 +195,24 @@ export class VoiceInputSession {
     });
     if (state.phase === "recording" && previousPhase !== "recording") {
       this.startRecordingActivity();
+    }
+  }
+
+  private async requestPermission() {
+    const request: NonNullable<VoiceInputSession["permissionRequest"]> = { resume: null };
+    this.permissionRequest = request;
+    try {
+      const permission = await this.dependencies.requestPermission();
+      // Android permission activities report background; iOS dialogs report inactive.
+      // Neither may start capture until the app has actually resumed.
+      while (permission.granted && this.permissionRequest === request && !this.appIsActive) {
+        await new Promise<void>((resolve) => {
+          request.resume = resolve;
+        });
+      }
+      return permission;
+    } finally {
+      if (this.permissionRequest === request) this.permissionRequest = null;
     }
   }
 

@@ -16,6 +16,7 @@ import { FLOATING_TABS, floatingTabsMetrics } from "./floating-workspace-tabs";
 import { WorkspaceTabsContext, useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { WorkspaceTabPanes } from "./WorkspaceTabPanes";
 import type { WorkspaceTab } from "./workspace-tabs-state";
+import { BASKULE_FLAGS } from "../../baskule/flags";
 
 const TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER;
 
@@ -60,7 +61,9 @@ export function WorkspaceRootScreen() {
                 ? tab === "usage"
                   ? { ...insets, bottom: context.bottomClearance }
                   : insets
-                : { ...insets, bottom: 0 }
+                : BASKULE_FLAGS.workspaceTabs
+                  ? { ...insets, bottom: 0 }
+                  : insets
           }
         >
           {enabled.length === 0 ? (
@@ -79,7 +82,7 @@ export function WorkspaceRootScreen() {
             />
           )}
         </SafeAreaInsetsContext>
-        {layout.usesSplitView ? null : floatingTabsEnabled ? (
+        {layout.usesSplitView || !BASKULE_FLAGS.workspaceTabs ? null : floatingTabsEnabled ? (
           <FloatingWorkspaceTabs fillWidth onNewThread={startNewTask} />
         ) : (
           <AndroidWorkspaceNavigation onNewThread={startNewTask} />
