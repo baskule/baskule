@@ -1,4 +1,3 @@
-import { MICROPHONE_PERMISSION_ERROR } from "@t3tools/client-runtime/voice-input";
 import { useNavigate } from "@tanstack/react-router";
 import { RotateCcwIcon, SettingsIcon, XIcon } from "lucide-react";
 
@@ -8,8 +7,10 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { VoiceInputPill } from "./VoiceInputPill";
 
 const VOICE_ERROR_LABELS: Record<string, string> = {
-  [MICROPHONE_PERMISSION_ERROR]: msg("Microphone access needed"),
-  [msg("Microphone access is required for voice input.")]: msg("Microphone access needed"),
+  [msg(
+    "Microphone access is required for voice input. Allow access in your browser or system settings and try again.",
+  )]: msg("Microphone blocked"),
+  [msg("Microphone access is required for voice input.")]: msg("Microphone blocked"),
   [msg("This draft is no longer available.")]: msg("Draft unavailable"),
   [msg("Another voice recording is already active.")]: msg("Another recording active"),
   [msg("Voice transcription is not available.")]: msg("Voice input unavailable"),
@@ -26,7 +27,7 @@ const VOICE_ERROR_LABELS: Record<string, string> = {
   [msg("The draft changed while voice input was running. The transcript was not added.")]:
     msg("Draft changed"),
   [msg("No speech was detected.")]: msg("No speech detected"),
-  [msg("Microphone processing failed.")]: msg("Microphone processing failed"),
+  [msg("Microphone processing failed.")]: msg("Microphone error"),
   [msg("The microphone disconnected.")]: msg("Microphone disconnected"),
 };
 
