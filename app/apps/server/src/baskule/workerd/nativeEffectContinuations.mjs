@@ -20,7 +20,7 @@ export const nativeEffectContinuations = {
           throw new Error(`Effect ${version} dispatcher implementation changed: ${path}`);
         const helper = JSON.stringify(NodePath.join(import.meta.dirname, "bootScheduler.mjs"));
         contents = `import { bindBootScheduler } from ${helper};\n` + contents.replace(before,
-          'return new MixedSchedulerDispatcher(this.setImmediate === setImmediate ? bindBootScheduler(this.setImmediate) : this.setImmediate);');
+          'return new MixedSchedulerDispatcher(this.setImmediate === setImmediate ? bindBootScheduler() : this.setImmediate);');
         return { contents, loader: "js", resolveDir: NodePath.dirname(path) };
       }
       const before = `      let resumed = false;

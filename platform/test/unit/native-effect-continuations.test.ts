@@ -5,7 +5,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 import { nativeEffectContinuations } from "../../../app/apps/server/src/baskule/workerd/nativeEffectContinuations.mjs";
-import { withBootScheduler } from "../../../app/apps/server/src/baskule/workerd/bootScheduler.mjs";
+import { bindBootScheduler, withBootScheduler } from "../../../app/apps/server/src/baskule/workerd/bootScheduler.mjs";
 
 const bundle = async (contents: string, resolveDir: string) => (await build({
   stdin: { contents, resolveDir }, bundle: true, format: "esm", platform: "neutral", write: false,
@@ -22,7 +22,17 @@ it.each(["../../", "../../../app/apps/server/"])("keeps %s's dispatcher timers i
   const { scheduler, pinned } = await import(/* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
   const events = new AsyncLocalStorage<string>();
   const timers: { owner: string | undefined; run: () => void }[] = [];
-  vi.stubGlobal("setTimeout", (run: () => void) => timers.push({ owner: events.getStore(), run }));
+  let expected = 3;
+  let scheduled!: () => void;
+  let ready = new Promise<void>(resolve => { scheduled = resolve; });
+  const capture = (run: () => void) => {
+    const inOrigin = AsyncLocalStorage.snapshot();
+    timers.push({ owner: events.getStore(), run: () => inOrigin(run) });
+    if (timers.length === expected) scheduled();
+  };
+  vi.stubGlobal("setImmediate", capture);
+  vi.stubGlobal("clearImmediate", () => {});
+  vi.stubGlobal("setTimeout", capture);
   vi.stubGlobal("clearTimeout", () => {});
   try {
     const first = events.run("boot-1", () => withBootScheduler(() => scheduler.makeDispatcher()));
@@ -31,20 +41,33 @@ it.each(["../../", "../../../app/apps/server/"])("keeps %s's dispatcher timers i
     const crossBoot = events.run("boot-2", () => withBootScheduler(() => pinnedFirst.makeDispatcher()));
     const observed: number[] = [];
     events.run("retired-request", () => {
-      first.scheduleTask(() => observed.push(1), 0);
+      first.scheduleTask(() => {
+        expect(scheduler.makeDispatcher()).toBeDefined();
+        observed.push(1);
+      }, 0);
       second.scheduleTask(() => observed.push(2), 0);
       crossBoot.scheduleTask(() => observed.push(4), 0);
     });
-    await Promise.resolve();
+    await ready;
     expect(observed).toEqual([]);
     expect(timers.map(timer => timer.owner)).toEqual(["boot-1", "boot-2", "boot-1"]);
     for (const timer of timers.splice(0)) events.run(timer.owner!, timer.run);
+    expected = 1;
+    ready = new Promise<void>(resolve => { scheduled = resolve; });
     first.scheduleTask(() => observed.push(3), 0);
-    await Promise.resolve();
+    await ready;
     expect(timers.map(timer => timer.owner)).toEqual(["boot-1"]);
     timers[0]!.run();
     expect(observed).toEqual([1, 2, 4, 3]);
   } finally { vi.unstubAllGlobals(); }
+});
+
+it("fails fast when the OpenCode scheduler owner is absent or closed", () => {
+  expect(() => bindBootScheduler()).toThrow("context is missing");
+  const controller = new AbortController();
+  const schedule = withBootScheduler(() => bindBootScheduler(), controller.signal);
+  controller.abort();
+  expect(() => schedule(() => {})).toThrow("scheduler is closed");
 });
 
 it("keeps busy Code Mode interruptible and lets a polling program's host tool complete", async () => {
@@ -53,7 +76,7 @@ it("keeps busy Code Mode interruptible and lets a polling program's host tool co
   const source = await bundle(`import { CodeMode, Tool } from "@opencode/codemode";
     import { Effect, Exit, Schema } from "effect";
     import assert from "node:assert/strict";
-    import { withBootScheduler } from ${JSON.stringify(scheduler)};
+    import { bindBootScheduler, withBootScheduler } from ${JSON.stringify(scheduler)};
     await withBootScheduler(async () => {
       const controller = new AbortController();
       const events = [];

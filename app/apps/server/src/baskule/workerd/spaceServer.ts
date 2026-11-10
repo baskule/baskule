@@ -13,7 +13,7 @@ import { endpoint as browserEndpoint, stateLayer as browserStateLayer } from "..
 // - Captured HTTP/WebSocket transport; front identity auth; RPC and route allowlists; no host processes.
 // - OpenCode uses the same-cell agentFetch. SpaceCell owns boot, keepalive, multiplexed alarms and disposal.
 import "./runtimeGlobals.ts";
-import { bindBootScheduler, withBootScheduler } from "./bootScheduler.mjs";
+import { makeRuntimeScheduler } from "./runtimeScheduler.ts";
 
 import { CommandId, ThreadId } from "@t3tools/contracts";
 import { ManagedOpenCodeRuntime } from "@t3tools/provider-opencode/server/OpenCodeRuntime";
@@ -280,13 +280,10 @@ export const createSpaceSqlClient = async (
       },
     },
   };
-  return Effect.runPromise(DoSql.make(storage));
+  return Effect.runPromise(DoSql.make(storage), { scheduler: new Scheduler.MixedScheduler("sync") });
 };
 
-export const createSpaceServer = (config: SpaceServerConfig): Promise<SpaceServer> =>
-  withBootScheduler(() => createSpaceServerInBoot(config));
-
-const createSpaceServerInBoot = async (config: SpaceServerConfig): Promise<SpaceServer> => {
+export const createSpaceServer = async (config: SpaceServerConfig): Promise<SpaceServer> => {
   const startedAt = performance.now();
   const { client: sqlClient, stats: sqlStats } =
     config.database ?? (await createSpaceSqlClient(config.storage, config.onStorageLost));
@@ -324,6 +321,7 @@ const createSpaceServerInBoot = async (config: SpaceServerConfig): Promise<Space
       );
       yield* files.fileSystem.writeFileString(`${baseDir}/userdata/keybindings.json`, "[]");
     }),
+    { scheduler: new Scheduler.MixedScheduler("sync") },
   );
 
   installGlobalAgentRouter();
@@ -453,18 +451,19 @@ const createSpaceServerInBoot = async (config: SpaceServerConfig): Promise<Space
     Layer.provide(ManagedPolicy.layer),
     Layer.provideMerge(serverConfig),
     Layer.provideMerge(platform),
-    // HTTP fibers start in request events but share this boot-owned scheduler with long-lived services.
-    Layer.provideMerge(Layer.succeed(Scheduler.Scheduler, new Scheduler.MixedScheduler("async", bindBootScheduler()))),
+    // T3 has no Code Mode work: microtasks survive request and OpenCode boot retirement.
+    Layer.provideMerge(makeRuntimeScheduler()),
   );
 
   const scope = Scope.makeUnsafe();
   const built = await Effect.runPromiseExit(
     Layer.buildWithScope(app, scope).pipe(Effect.provide(Logger.layer([Logger.consolePretty()]))),
+    { scheduler: new Scheduler.MixedScheduler("sync") },
   );
   if (Exit.isFailure(built)) {
     unregisterAttachments();
     if (agentRoutes.get(config.spaceId) === config.agentFetch) agentRoutes.delete(config.spaceId);
-    await Effect.runPromise(Scope.close(scope, built));
+    await Effect.runPromise(Scope.close(scope, built), { scheduler: new Scheduler.MixedScheduler("sync") });
     throw new Error(`The space server failed to start: ${String(built.cause).slice(0, 2000)}`);
   }
   const context = built.value as Context.Context<never>;
@@ -687,7 +686,7 @@ const createSpaceServerInBoot = async (config: SpaceServerConfig): Promise<Space
     dispose: async () => {
       // celld's WebSocket.close accepts 1000 or application codes, not the reserved 1001.
       for (const socket of sockets) socket.close(4000, "space restarting");
-      await Effect.runPromise(Scope.close(scope, Exit.void));
+      await Effect.runPromise(Scope.close(scope, Exit.void), { scheduler: new Scheduler.MixedScheduler("sync") });
       unregisterAttachments();
       if (agentRoutes.get(config.spaceId) === config.agentFetch) agentRoutes.delete(config.spaceId);
     },

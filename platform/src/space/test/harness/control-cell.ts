@@ -4,7 +4,7 @@ import { UsageService } from "../../../control/usage";
 import usageSchema from "../../../control/migrations/0002_complex_moondragon.sql";
 import { DurableObject } from "cloudflare:workers";
 import type { SpacePlugins } from "../../../../../app/packages/contracts/src/baskule-plugins";
-import { Effect, Fiber } from "effect";
+import { Effect, Fiber, Scheduler } from "effect";
 
 export class TestControlCell extends DurableObject<{ TEST_PRODUCT_SETTINGS: string; SPACE: DurableObjectNamespace }> {
   private continuations = new Map<string, {
@@ -60,7 +60,7 @@ export class TestControlCell extends DurableObject<{ TEST_PRODUCT_SETTINGS: stri
         entry.fiber = Effect.runFork(program.pipe(
           Effect.catchCause(cause => Effect.sync(() => { entry.phase = "failed"; entry.error = String(cause); })),
           Effect.ensuring(Effect.sync(() => clearInterval(entry.timer))),
-        ));
+        ), { scheduler: new Scheduler.MixedScheduler("sync") });
       }
       const entry = this.continuations.get(id);
       if (operation === "release") {
@@ -71,7 +71,7 @@ export class TestControlCell extends DurableObject<{ TEST_PRODUCT_SETTINGS: stri
       if (operation === "stop" && entry) {
         clearInterval(entry.timer);
         entry.releaseCleanup?.();
-        if (entry.fiber) await Effect.runPromise(Fiber.interrupt(entry.fiber));
+        if (entry.fiber) await Effect.runPromise(Fiber.interrupt(entry.fiber), { scheduler: new Scheduler.MixedScheduler("sync") });
         this.continuations.delete(id);
       }
       return Response.json({ phase: entry?.phase, output: entry?.output, error: entry?.error });

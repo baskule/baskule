@@ -1,3 +1,4 @@
+import { acquireLocation } from "../../location-acquisition";
 // Unit tests of the embedded agent's pure parts (no celld, no computer): session interception, OpenCode config and the
 // remote spawner over a fake computerd.
 import { describe, expect, it, vi } from "vitest";
@@ -229,23 +230,24 @@ describe("remote spawner", () => {
 });
 
 describe("location readiness", () => {
-  it.each(["prompt", "PUT", "DELETE"])("invalidates a wedged LayerMap entry after %s times out and rebuilds it on retry", async operation => {
-    vi.useFakeTimers();
+  it.each(["prompt", "PUT", "DELETE", "concurrent", "slow", "permanent"])("recovers location readiness safely: %s", async scenario => {
+    const operation = ["concurrent", "slow", "permanent"].includes(scenario) ? "prompt" : scenario;
     const scope = Scope.makeUnsafe();
     const started = Deferred.makeUnsafe<void>();
     let builds = 0;
     const ToolsReady = Context.Service<{ ready: boolean }>("test/ToolsReady");
     const locations = await Effect.runPromise(Effect.provideService(LayerMap.make((_key: string) => Layer.effect(ToolsReady, Effect.gen(function* () {
       builds++;
-      if (builds === 1) {
+      if (builds === 1 && scenario !== "slow" && scenario !== "permanent") {
         yield* Deferred.succeed(started, undefined);
         yield* Effect.never;
       }
       return { ready: true };
     })), { idleTimeToLive: Duration.infinity }), Scope.Scope, scope));
     const refKey = (ref: { directory: string; workspaceID: string }) => `${ref.workspaceID}:${ref.directory}`;
+    const recoveries = new WeakMap<AbortSignal, Effect.Effect<void>>();
     const acquire = (ref: { directory: string; workspaceID: string }, signal: AbortSignal) => Effect.runPromise(
-      Effect.scoped(locations.contextEffect(refKey(ref))).pipe(Effect.as(true)), { signal });
+      Effect.scoped(acquireLocation(locations, refKey(ref), invalidate => recoveries.set(signal, invalidate))).pipe(Effect.as(true)), { signal });
     const signals: AbortSignal[] = [];
     const connect = (ref: { directory: string; workspaceID: string }, signal: AbortSignal) => {
       signals.push(signal);
@@ -254,14 +256,19 @@ describe("location readiness", () => {
     const fetch = vi.fn(async (request: Request) => Response.json({ data: request.url.endsWith("/active") ? {} : {
       model: { providerID: "custom", id: "m1" }, location: { directory: "/sandbox/space/chats/wedged" },
     } }));
-    const invalidate = vi.fn((ref: { directory: string; workspaceID: string }) => Effect.runPromise(locations.invalidate(refKey(ref))));
+    const invalidate = vi.fn((ref: { directory: string; workspaceID: string }, signal?: AbortSignal) => Effect.runPromise(
+      signal ? recoveries.get(signal) ?? Effect.void : locations.invalidate(refKey(ref))));
     const close = vi.fn();
     const unused = async () => { throw new Error("Unexpected OpenCode operation"); };
     vi.mocked(bootOpenCode).mockImplementation(async ({ enter, closeEntry }) => ({
       fetch, invalidate, inBootEvent: enter,
       createWorkspace: unused, createSession: unused,
       toolIds: unused, mcpTools: unused, mcpCall: unused, mcpResource: unused,
-      mcpReady: (ref, _servers, _listed, signal) => connect(ref, signal!),
+      mcpReady: async (ref, _servers, _listed, signal) => {
+        await connect(ref, signal!);
+        if (scenario === "permanent") throw new Error("MCP server plugin-0: failed");
+        return scenario !== "slow";
+      },
       mcpAdd: async (ref, _server, _config, signal) => { await connect(ref, signal!); },
       mcpRemove: async (ref, _server, signal) => { await connect(ref, signal!); },
       close: async () => { close(); closeEntry(); },
@@ -272,15 +279,34 @@ describe("location readiness", () => {
     } as never, { AI: { providerId: "custom", baseUrl: "http://fake/v1", apiKey: "unused", model: {
       id: "m1", name: "M1", image: false, pdf: false, limit: { context: 128_000, output: 8_000 }, settings: {},
     } } }, "space", {}, { fetch }, () => {});
-    const call = () => runtime.fetch(operation === "prompt"
+    const call = (method = operation) => runtime.fetch(method === "prompt"
       ? new Request("http://agent/oc/api/session/ses_1/prompt", { method: "POST", body: "{}" })
       : new Request("http://agent/oc/api/experimental/mcp/t3-code-test?location[directory]=/sandbox/space/chats/wedged", {
-        method: operation, ...(operation === "PUT" ? { body: JSON.stringify({ config: { type: "remote", url: "http://fake/mcp" } }) } : {}),
+        method, ...(method === "PUT" ? { body: JSON.stringify({ config: { type: "remote", url: "http://fake/mcp" } }) } : {}),
       }));
     try {
+      vi.useFakeTimers();
+      if (scenario === "permanent") {
+        expect(await (await call()).json()).toMatchObject({ kind: "location_tools_failed" });
+        expect(invalidate).not.toHaveBeenCalled();
+        return;
+      }
       const pending = call();
+      let stale: Promise<Response> | undefined;
+      if (scenario === "slow") {
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect((await pending).status).toBe(400);
+        const context = await Effect.runPromise(Effect.scoped(locations.contextEffect("workspace:/sandbox/space/chats/wedged")));
+        expect(Context.get(context, ToolsReady).ready).toBe(true);
+        expect(builds).toBe(1);
+        return;
+      }
       await Effect.runPromise(Deferred.await(started));
-      await vi.advanceTimersByTimeAsync(10_000);
+      if (scenario === "concurrent") {
+        await vi.advanceTimersByTimeAsync(5_000);
+        stale = call("PUT");
+        await vi.advanceTimersByTimeAsync(5_000);
+      } else await vi.advanceTimersByTimeAsync(10_000);
       const response = await pending;
       expect(response.status).toBe(400);
       if (operation === "prompt") expect(await response.json()).toMatchObject({ _tag: "InvalidRequestError", kind: "location_tools_unavailable" });
@@ -289,6 +315,12 @@ describe("location readiness", () => {
       expect(builds).toBe(1);
       expect((await call()).ok).toBe(true);
       expect(builds).toBe(2);
+      if (stale) {
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect((await stale).status).toBe(400);
+        expect((await call("PUT")).ok).toBe(true);
+        expect(builds).toBe(2);
+      }
       await vi.advanceTimersByTimeAsync(IDLE_DISPOSE_MS);
       await runtime.alarm();
       expect(close).toHaveBeenCalledOnce();

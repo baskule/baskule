@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Scheduler } from "effect";
 import type { SqlClient } from "effect/sql/SqlClient";
 import type { UsageLimitSettings, UsagePrices, UsageRecord, UsageTokens, UsageWindowStatus } from "../../../app/packages/contracts/src/baskule-usage";
 import { usageCost } from "../control/usage-windows";
@@ -20,7 +20,7 @@ export class UsageReporter {
     private settings: UsageLimitSettings,
     private control: (path: string, body: unknown) => Promise<Response>,
     private retry: () => Promise<void>) {}
-  private all(q: string, ...p: (string | number | null)[]): Promise<readonly Row[]> { return Effect.runPromise(this.sql.unsafe<Row>(q, p)); }
+  private all(q: string, ...p: (string | number | null)[]): Promise<readonly Row[]> { return Effect.runPromise(this.sql.unsafe<Row>(q, p), { scheduler: new Scheduler.MixedScheduler("sync") }); }
   private init() {
     return this.ready ??= (async () => {
       await this.all(`create table if not exists baskule_usage_context (
