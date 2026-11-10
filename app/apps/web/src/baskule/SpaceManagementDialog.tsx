@@ -29,7 +29,7 @@ import {
 import { Spinner } from "../components/ui/spinner";
 import { BaskuleApiError, type SpaceDetails, type SpaceRole, baskuleApi } from "./api";
 import { SpacePluginSettings } from "./plugins/SpacePluginSettings";
-import { refreshBaskuleMe, useBaskuleMe } from "./session";
+import { refreshBaskuleMeAfterMutation, useBaskuleMe } from "./session";
 import { Avatar, confirmAction, errorText, FormField, notifyError, notifySuccess } from "./ui";
 
 type DialogTarget =
@@ -65,8 +65,6 @@ export function SpaceManagementDialogHost() {
   if (current.kind !== "closed" && current !== visible) setVisible(current);
   const close = () => {
     if (visible.kind !== "closed") visible.onDone?.();
-    // Spaces may have been added, renamed or left: refresh the sidebar's environments.
-    void refreshBaskuleMe().catch(() => undefined);
     publish({ kind: "closed" });
   };
   return (
@@ -105,19 +103,24 @@ function CreateSpaceContent({
         if (!name.trim() || submitting) return;
         setSubmitting(true);
         setError(null);
-        baskuleApi.createSpace({ name: name.trim() }).then(
-          (space) => {
-            notifySuccess(
-              t("{{name}} created", { name: space.name }),
-              t("Add the people who work in it."),
-            );
-            onCreated(space);
-          },
-          (cause: unknown) => {
-            setError(errorText(cause, "The space could not be created."));
-            setSubmitting(false);
-          },
-        );
+        baskuleApi
+          .createSpace({ name: name.trim() })
+          .then(
+            (space) => {
+              notifySuccess(
+                t("{{name}} created", { name: space.name }),
+                t("Add the people who work in it."),
+              );
+              onCreated(space);
+            },
+            (cause: unknown) => {
+              setError(errorText(cause, "The space could not be created."));
+              setSubmitting(false);
+            },
+          )
+          .finally(() => {
+            void refreshBaskuleMeAfterMutation().catch(() => undefined);
+          });
       }}
     >
       <DialogHeader>
@@ -226,6 +229,7 @@ function ManageSpaceContent({
       })
       .finally(() => {
         setBusy(false);
+        void refreshBaskuleMeAfterMutation().catch(() => undefined);
       });
   };
 

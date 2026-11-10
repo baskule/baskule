@@ -94,6 +94,11 @@ export function refreshBaskuleMe(): Promise<BaskuleMe | null> {
   return inflight;
 }
 
+export async function refreshBaskuleMeAfterMutation(): Promise<BaskuleMe | null> {
+  if (inflight) await inflight.catch(() => undefined);
+  return refreshBaskuleMe();
+}
+
 export function readBaskuleMe(): BaskuleMe | null {
   return current;
 }
