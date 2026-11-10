@@ -17,12 +17,18 @@ makes from background fibers after a restart. It does not allocate another cell.
 The boot event is retained with `waitUntil` until OpenCode closes, alongside its keepalive interval. SDK operations
 and response-body pulls enter through a Promise-woken dispatcher captured in that event. Operations start
 concurrently. This gives long-lived SDK services a native owner that outlives individual HTTP handlers. The workerd
-build preserves native callback origins and binds Effect scheduler dispatch to the retained boot event. Dispatch
-uses macrotask timers so Code Mode busy loops still yield to interruption and host I/O; other request-owned timers
-(such as Effect.sleep) are not moved. SQL transaction bodies keep their critical-section driver separate from the caller.
+build preserves native callback origins and binds OpenCode's default Effect scheduler dispatch to the retained
+boot event. Dispatch uses macrotasks (`setImmediate` where available) so Code Mode busy loops still yield to
+interruption and host I/O. Other request-owned timers (such as Effect.sleep) are not moved. T3 and direct SQL
+callers use explicit microtask schedulers; they do not need Code Mode preemption. SQL transaction bodies keep
+their critical-section driver separate from the caller.
 Location tool readiness and MCP add/remove each have a boot-owned 10-second deadline bounding the caller's wait,
-including location acquisition. A timeout aborts the waiter and invalidates the cached location so a later call can
-rebuild it; it does not guarantee completion of a stuck build's cleanup. Turn preparation failures are retryable.
+including location acquisition. A timeout aborts the waiter and evicts only its still-current, unbuilt entry;
+a completed location or a replacement build survives. Cleanup of a stuck build is not guaranteed. Only readiness
+timeouts become retryable turn refusals; permanent MCP failures produce a non-retryable refusal.
+MCP app operations also bound location acquisition to 10 seconds, while healthy tools may run longer. OpenCode's
+raw HTTP routes retain SDK cancellation and streaming lifetimes: a whole-response deadline would break event
+streams and long tools. Their cached location can still be recovered by the bounded readiness operations.
 
 OpenCode only creates its schema in an empty database. In a new space, SpaceCell therefore boots OpenCode before T3
 creates its own tables; afterwards OpenCode stays lazy until the first agent request.

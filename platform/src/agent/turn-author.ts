@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Scheduler } from "effect";
 import type { SqlClient } from "effect/sql/SqlClient";
 
 export interface TurnAuthor { id: string; name: string }
@@ -7,7 +7,7 @@ type Query = (sql: string, bindings: readonly unknown[]) => Promise<readonly Row
 
 /** Reads through the cell's shared SQL client, including its transaction semaphore. */
 export function authorQuery(client: unknown): Query {
-  return (sql, bindings) => Effect.runPromise((client as SqlClient).unsafe<Row>(sql, bindings));
+  return (sql, bindings) => Effect.runPromise((client as SqlClient).unsafe<Row>(sql, bindings), { scheduler: new Scheduler.MixedScheduler("sync") });
 }
 
 async function runAuthor(runId: unknown, query: Query): Promise<TurnAuthor | undefined> {

@@ -20,6 +20,8 @@ import { Mcp as McpSchema } from "@opencode/schema/mcp";
 import { make as workerdProfile } from "../../node_modules/@opencode/sdk/dist/internal/workerd.js";
 import { create as hostCreate } from "../../node_modules/@opencode/sdk/dist/internal/host.js";
 import { makeRemoteSpawner } from "./remote-spawner.js";
+import { acquireLocation, LocationToolsTimeout } from "./location-acquisition";
+import { canonical as canonicalLocation } from "@opencode/core/location-service-map";
 import { shimFiles } from "./fs-shim.js";
 
 export const OPENCODE_VERSION = "2.1.3";
@@ -123,6 +125,20 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
   // Dispatch starts every operation without waiting for previous operations to finish.
   /** @type {typeof host.runtime.runPromise} */
   const runPromise = (effect, options) => inBootEvent(() => host.runtime.runPromise(effect, options));
+  const recoveries = new WeakMap();
+  const atLocation = (ref, effect, signal) => runPromise(Effect.scoped(Effect.gen(function* () {
+    const locations = yield* LocationServiceMap;
+    let recovery = Effect.void;
+    let acquisition = acquireLocation(locations, canonicalLocation(ref), invalidate => {
+      recovery = invalidate;
+      if (signal) recoveries.set(signal, invalidate);
+    });
+    // MCP calls may run for minutes. Bound acquisition, not execution of a healthy tool.
+    if (!signal) acquisition = acquisition.pipe(Effect.timeout("10 seconds"), Effect.catchTag("TimeoutError", () =>
+      recovery.pipe(Effect.forkIn(host.runtime.scope), Effect.andThen(Effect.fail(new LocationToolsTimeout(ref.directory))))));
+    const context = yield* acquisition;
+    return yield* Effect.provide(effect, context);
+  })), { signal });
   // The durable message projection is the source; the listener only accelerates the existing alarm scan.
   if (onUsage) await runPromise(Effect.flatMap(Bus.Service, bus => bus.listen(event => {
     if (["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted", "session.step.ended", "session.step.failed"].includes(event.type))
@@ -153,7 +169,7 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
     createWorkspace: (provider) => runPromise(host.workspace.create({ provider })),
     /** Creates a session in-process (the public HTTP schema strips `location.workspaceID`). */
     createSession: (input) => runPromise(host.sessions.create(input)),
-    invalidate: ref => runPromise(Effect.flatMap(LocationServiceMap, locations => locations.invalidate(ref))),
+    invalidate: (_ref, signal) => runPromise(recoveries.get(signal) ?? Effect.void),
     /**
      * OpenCode's HTTP MCP routes act on a bare `{directory}` location, but sessions live in
      * `{directory, workspaceID}` locations (the computer workspace), so a server added over HTTP is never seen by a
@@ -161,15 +177,9 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
      * @param {{ directory: string, workspaceID: string }} ref
      */
     mcpAdd: (ref, server, config, signal) =>
-      runPromise(
-        Effect.flatMap(McpService, (mcp) => mcp.add(server, Schema.decodeUnknownSync(McpSchema.ServerConfig)(config))).pipe(
-          Effect.provide(LocationServiceMap.get(ref)),
-        ), { signal },
-      ),
+      atLocation(ref, Effect.flatMap(McpService, (mcp) => mcp.add(server, Schema.decodeUnknownSync(McpSchema.ServerConfig)(config))), signal),
     mcpRemove: (ref, server, signal) =>
-      runPromise(
-        Effect.flatMap(McpService, (mcp) => mcp.remove(server)).pipe(Effect.ignore, Effect.provide(LocationServiceMap.get(ref))), { signal },
-      ),
+      atLocation(ref, Effect.flatMap(McpService, (mcp) => mcp.remove(server)).pipe(Effect.ignore), signal),
     /** The tool ids a location's registry offers right now (what the next model step lists, before permissions). */
     toolIds: (ref) =>
       runPromise(
@@ -179,7 +189,7 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
         ),
       ),
     /** Connection completion and catalog publication are separate; an empty catalog is valid. */
-    mcpReady: (ref, servers, listed = true, signal) => runPromise(Effect.gen(function* () {
+    mcpReady: (ref, servers, listed = true, signal) => atLocation(ref, Effect.gen(function* () {
       const mcp = yield* McpService;
       const tools = yield* Tool.Service;
       const ids = (yield* tools.list()).map(t => t.id);
@@ -194,11 +204,11 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
       }
       const expected = (yield* mcp.tools()).filter(t => servers.includes(t.server));
       return published.length === expected.length && expected.every(t => published.includes(McpTool.name(t.server, t.name)));
-    }).pipe(Effect.provide(LocationServiceMap.get(ref))), { signal }),
+    }), signal),
     /** MCP tools of a location (with their `_meta`), for MCP apps. */
-    mcpTools: (ref) => runPromise(Effect.flatMap(McpService, (mcp) => mcp.tools()).pipe(Effect.provide(LocationServiceMap.get(ref)))),
-    mcpCall: (ref, input) => runPromise(Effect.flatMap(McpService, m => m.callTool(input)).pipe(Effect.provide(LocationServiceMap.get(ref)))),
-    mcpResource: (ref, input) => runPromise(Effect.flatMap(McpService, m => m.readResource(input)).pipe(Effect.provide(LocationServiceMap.get(ref)))),
+    mcpTools: (ref, signal) => atLocation(ref, Effect.flatMap(McpService, m => m.tools()), signal),
+    mcpCall: (ref, input, signal) => atLocation(ref, Effect.flatMap(McpService, m => m.callTool(input)), signal),
+    mcpResource: (ref, input, signal) => atLocation(ref, Effect.flatMap(McpService, m => m.readResource(input)), signal),
     close: () => inBootEvent(() => host.close()).finally(closeEntry),
   };
 }

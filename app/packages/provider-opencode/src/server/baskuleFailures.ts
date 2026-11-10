@@ -52,12 +52,15 @@ export function baskuleSetupFailure(cause: unknown) {
 
 /** A location build can be retried after the cell invalidates its cached tools. */
 export function baskuleLocationFailure(cause: unknown) {
-  if (typeof cause !== "object" || cause === null || !("kind" in cause) || cause.kind !== "location_tools_unavailable")
+  if (typeof cause !== "object" || cause === null || !("kind" in cause) ||
+    (cause.kind !== "location_tools_unavailable" && cause.kind !== "location_tools_failed"))
     return undefined;
   return makeProviderFailure({
     class: "provider_error",
-    code: "location_tools_unavailable",
-    retryable: true,
-    message: "Chat tools could not finish connecting. Please try again.",
+    code: cause.kind,
+    retryable: cause.kind === "location_tools_unavailable",
+    message: cause.kind === "location_tools_unavailable"
+      ? "Chat tools could not finish connecting. Please try again."
+      : "Chat tools could not connect. Contact an administrator.",
   });
 }

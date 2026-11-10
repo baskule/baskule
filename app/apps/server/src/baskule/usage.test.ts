@@ -3,7 +3,7 @@ import {
   baskuleLocationFailure,
   baskuleSetupFailure,
   baskuleUsageFailure,
-} from "../../../../packages/provider-opencode/src/server/baskuleUsage.ts";
+} from "../../../../packages/provider-opencode/src/server/baskuleFailures.ts";
 import { usageAuthor } from "./usageAuthor.ts";
 import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 
@@ -54,6 +54,9 @@ describe("usage attribution and errors", () => {
     expect(baskuleLocationFailure({ _tag: "InvalidRequestError", kind: "location_tools_unavailable" })).toEqual({
       class: "provider_error", code: "location_tools_unavailable", retryable: true,
       message: "Chat tools could not finish connecting. Please try again.",
+    });
+    expect(baskuleLocationFailure({ kind: "location_tools_failed" })).toMatchObject({
+      code: "location_tools_failed", retryable: false,
     });
     expect(baskuleLocationFailure(new Error("other provider error"))).toBeUndefined();
   });

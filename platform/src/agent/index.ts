@@ -14,6 +14,7 @@
 //   regardless of background work). After IDLE_DISPOSE_MS with no request, stream or active session, OpenCode is
 //   closed and the keepalives cleared, so the cell can be evicted; the computer is left to computerd's idle stop.
 import "./fs-shim.js";
+import { LocationToolsTimeout } from "./location-acquisition";
 import { withBootScheduler } from "../../../app/apps/server/src/baskule/workerd/bootScheduler.mjs";
 import type { bootOpenCode } from "./opencode.js";
 import { Computerd } from "./computerd";
@@ -153,10 +154,11 @@ export class AgentRuntime {
   /** Boots OpenCode (once; concurrent callers share the boot). */
   boot(): Promise<OpenCode> {
     if (this.oc) return this.oc;
-    return withBootScheduler(() => this.bootInEvent());
+    const controller = new AbortController();
+    return withBootScheduler(() => this.bootInEvent(controller), controller.signal);
   }
 
-  private bootInEvent(): Promise<OpenCode> {
+  private bootInEvent(controller: AbortController): Promise<OpenCode> {
     // #258: this event creates OpenCode's long-lived continuations; keep its driver alive while booted.
     this.bootKeepalive = setInterval(() => {}, HEARTBEAT_MS);
     const lifetime = new Promise<void>(resolve => { this.finishBootEvent = resolve; });
@@ -179,7 +181,7 @@ export class AgentRuntime {
       pending.push(() => { try { resolve(run()); } catch (error) { reject(error); } });
       wake();
     });
-    const closeEntry = () => { nativeClosed = true; wake(); };
+    const closeEntry = () => { nativeClosed = true; controller.abort(); wake(); };
     const t0 = Date.now();
     this.oc = enter(async () => {
       this.log("boot phase: key");
@@ -284,21 +286,16 @@ export class AgentRuntime {
     this.log(`disposed (${reason})`);
   }
 
-  /**
-   * OpenCode connects a location's MCP servers asynchronously when the location loads (the first touch of a chat
-   * folder in this cell's lifetime) and reloads its tool registry after a server's tools change. Wait for connection
-   * completion and publication of its actual catalog, including plugins with no tools until an account connects.
-   */
   private locationOperation<A>(oc: OpenCode, ref: { directory: string; workspaceID: string }, run: (signal: AbortSignal) => Promise<A>): Promise<A> {
     return oc.inBootEvent(async () => {
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          const error = new Error(`Location tools did not settle at ${ref.directory}`);
+          const error = new LocationToolsTimeout(ref.directory);
           reject(error);
-          // Invalidation drops the cached build even if its scope cleanup cannot finish.
-          void oc.invalidate(ref).catch(error => this.log(`location invalidation: ${error}`));
+          // Evict only this waiter's still-pending build; completed or replacement builds survive.
+          void oc.invalidate(ref, controller.signal).catch(error => this.log(`location invalidation: ${error}`));
           controller.abort(error);
         }, 10_000);
       });
@@ -311,6 +308,11 @@ export class AgentRuntime {
     });
   }
 
+  /**
+   * OpenCode connects a location's MCP servers asynchronously when the location loads (the first touch of a chat
+   * folder in this cell's lifetime) and reloads its tool registry after a server's tools change. Wait for connection
+   * completion and publication of its actual catalog, including plugins with no tools until an account connects.
+   */
   private waitForTools(oc: OpenCode, ref: { directory: string; workspaceID: string }, servers: string[], listed = true): Promise<number> {
     return this.locationOperation(oc, ref, async signal => {
       const t0 = Date.now();
@@ -505,7 +507,9 @@ export class AgentRuntime {
             await this.prepareSession(oc, turn[1]!);
           } catch (error) {
             this.log(`session ${turn[1]} preparation failed: ${error}`);
-            return json({ _tag: "InvalidRequestError", kind: "location_tools_unavailable", message: "Chat tools could not finish connecting. Please try again." }, 400);
+            if (error instanceof LocationToolsTimeout)
+              return json({ _tag: "InvalidRequestError", kind: "location_tools_unavailable", message: "Chat tools could not finish connecting. Please try again." }, 400);
+            return json({ _tag: "InvalidRequestError", kind: "location_tools_failed", message: "Chat tools could not connect. Contact an administrator." }, 400);
           }
         }
         const switching = /^\/api\/session\/([^/]+)\/model$/.exec(ocPath);

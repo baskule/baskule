@@ -2,7 +2,7 @@
 // platform's space bridge (src/agent/space-bridge.ts) and the fork's BASKULE_MCP_ENDPOINT; T3 registers only the tools
 // its policy allows (fork: BASKULE_ALLOWED_MCP_TOOLS, whose content policy.test.ts checks).
 import {
-  assert, restartCelld, warm, disconnect, fakeRequests, launch, log, projection, reconnect, send, sleep, spaceStatus, waitFor,
+  adminSession, assert, restartCelld, warm, disconnect, fakeRequests, launch, log, projection, reconnect, send, sleep, spaceStatus, waitFor,
   watchShell, watchThread, world,
 } from "./lib.mjs";
 import { BASKULE_ALLOWED_MCP_TOOLS } from "../../../app/apps/server/src/baskule/rpcPolicy.ts";
@@ -127,12 +127,21 @@ export const delegationChecks = [
       await sleep(8000); // no-fixed-sleep-allow: Observe redelivery after the second restart to detect duplicates.
       const d2 = await deliveries(s.ca, parentId, taskId);
       assert(d2.length === 1, `expected exactly one delivery after two restarts, got ${d2.length}`);
+      await idle(s.team, 90_000);
+      disconnect(ctx);
+      const admin = await adminSession();
+      await admin.http("POST", `/api/baskule/admin/spaces/${s.team}/stop`, {});
+      const stopped = await spaceStatus(s.team);
+      assert(stopped.status.awake === false, "stop must dispose the space before reboot");
+      await reconnect(ctx);
+      const afterReboot = await deliveries(s.ca, parentId, taskId);
+      assert(afterReboot.length === 1, "same-isolate dispose/reboot must answer RPCs without redelivery");
       await warm(ctx);
       const shell2 = watchShell(s.ca);
       await waitFor("child shell snapshot", () => shell2.ready, 20_000);
       const status = shell2.threads.get(child?.id)?.status;
       shell2.stop();
-      return `child ${child?.id?.slice(-12)} was running when celld restarted; with no client connected the space recovered and the task ended "${status}"; parent got exactly 1 delivery, still 1 after a second restart`;
+      return `child ${child?.id?.slice(-12)} was running when celld restarted; with no client connected the space recovered and the task ended "${status}"; parent got exactly 1 delivery, still 1 after a second restart and an explicit same-isolate dispose/reboot`;
     },
   },
   {

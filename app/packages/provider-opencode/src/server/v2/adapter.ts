@@ -1,4 +1,4 @@
-import { baskuleLocationFailure, baskuleSetupFailure, baskuleUsageFailure } from "../baskuleUsage.ts";
+import { baskuleLocationFailure, baskuleSetupFailure, baskuleUsageFailure } from "../baskuleFailures.ts";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as NodeURL from "node:url";
 

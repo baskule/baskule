@@ -1760,7 +1760,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
-  it.effect("reports a usage refusal as a typed terminal and keeps the chat reusable", () =>
+  it.effect.each(["usage_limit_reached", "location_tools_unavailable", "location_tools_failed"] as const)("reports %s as a typed terminal and keeps the chat reusable", kind =>
     Effect.gen(function* () {
       const status = {
         window: "daily" as const,
@@ -1775,11 +1775,13 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
           status: 400,
           body: {
             _tag: "InvalidRequestError",
-            kind: "usage_limit_reached",
+            kind,
             field: JSON.stringify(status),
             message: "Daily usage limit reached",
           },
         }),
+        out("message.list", { sessionID: SESSION, order: "asc", limit: "100" }),
+        reply("message.list", { data: [], cursor: {} }),
         out("session.prompt", { sessionID: SESSION, text: "<any>" }),
         promptAccepted,
         event("session.execution.succeeded", { sessionID: SESSION }),
@@ -1787,13 +1789,19 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       const ended = yield* terminals(runtime, 2);
       // Returning a failed start would make orchestration cancel ingestion and replace this typed terminal.
       yield* runtime.startTurn(turnInput(thread));
+      const snapshot = yield* runtime.readThreadSnapshot({ providerThread: thread });
+      const activeRuns = snapshot.providerTurns.filter(turn => turn.status === "running").length;
+      assert.equal(activeRuns, 0);
       yield* runtime.startTurn(secondTurn(thread));
       const [refused, next] = yield* Fiber.join(ended);
-      assert.equal(refused?.failure?.code, "usage_limit_reached");
-      assert.equal(refused?.failure?.class, "usage_limit");
-      assert.deepEqual(refused?.failure?.usageWindowStatus, status);
-      assert.equal(refused?.failure?.resetAt, status.resetsAt);
-      assert.include(refused?.failure?.message, "usage limit");
+      assert.equal(refused?.failure?.code, kind);
+      assert.equal(refused?.failure?.retryable, kind === "location_tools_unavailable");
+      if (kind === "usage_limit_reached") {
+        assert.equal(refused?.failure?.class, "usage_limit");
+        assert.deepEqual(refused?.failure?.usageWindowStatus, status);
+        assert.equal(refused?.failure?.resetAt, status.resetsAt);
+        assert.include(refused?.failure?.message, "usage limit");
+      }
       assert.equal(next?.status, "completed");
     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
