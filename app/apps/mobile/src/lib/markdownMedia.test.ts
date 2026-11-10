@@ -158,6 +158,7 @@ describe("resolveMarkdownMediaPreview", () => {
     "src/main.tsx",
     "report.txt",
     "report.md",
+    ".report.md",
     "report.html",
     "package.json",
     "report.csv",
@@ -170,7 +171,7 @@ describe("resolveMarkdownMediaPreview", () => {
     "main.zig",
     "Containerfile",
   ])("routes text and table links and embeds to the file screen: %s", (name) => {
-    for (const href of [name, "." + name, "/tmp/" + name, "file:///tmp/" + name]) {
+    for (const href of [name, "./" + name, "/tmp/" + name, "file:///tmp/" + name]) {
       for (const imageEmbed of [false, true]) {
         expect(resolveMarkdownMediaPreview(href, { ...input, imageEmbed })).toMatchObject({
           kind: "file",

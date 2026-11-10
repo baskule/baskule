@@ -938,7 +938,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             } satisfies MenuAction,
           ]
         : [],
-    [props.canMoveDown, props.canMoveUp, props.reorderSupported],
+    [props.canMoveDown, props.canMoveUp, props.reorderSupported, t],
   );
   const pinMenuItems = useMemo<MenuAction[]>(
     () =>
@@ -949,7 +949,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               : { id: "pin", title: t("Pin"), image: "pin" },
           ]
         : [],
-    [props.pinningSupported, thread.pinnedAt],
+    [props.pinningSupported, thread.pinnedAt, t],
   );
   const autoSettleMenuItems = useMemo<MenuAction[]>(
     () =>

@@ -36,6 +36,7 @@ vi.mock("react-native", () => ({
     </button>
   ),
 }));
+vi.mock("../../components/ui/Dialog", () => ({ alert: mocks.alert }));
 vi.mock("@effect/atom-react", () => ({
   useAtomValue: () => AsyncResult.success({}),
   useAtomSet: () => () => {},
@@ -56,6 +57,7 @@ vi.mock("../../state/session", () => ({
         .filter((environmentId) => !mocks.readOnly.has(environmentId)),
     ),
 }));
+vi.mock("../../state/environments", () => ({ useEnvironments: () => mocks.targets }));
 vi.mock("../../state/server", () => ({ serverEnvironment: { updateSettings: {} } }));
 vi.mock("../../state/use-atom-command", () => ({
   useAtomCommand: () => mocks.updateSettings,
