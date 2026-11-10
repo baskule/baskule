@@ -1,4 +1,6 @@
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import { FetchHttpClient } from "effect/http";
 
 import { environmentEndpointUrl } from "./endpoint.ts";
 import { executeEnvironmentHttpRequest, makeEnvironmentHttpApiGroupClient } from "../rpc/http.ts";
@@ -9,9 +11,15 @@ export const fetchRemoteEnvironmentDescriptor = Effect.fn(
   "clientRuntime.environment.fetchRemoteEnvironmentDescriptor",
 )(function* (input: { readonly httpBaseUrl: string; readonly timeoutMs?: number }) {
   const client = yield* makeEnvironmentHttpApiGroupClient(input.httpBaseUrl, "metadata");
+  const requestInit = yield* Effect.serviceOption(FetchHttpClient.RequestInit);
   return yield* executeEnvironmentHttpRequest(
     environmentEndpointUrl(input.httpBaseUrl, "/.well-known/t3/environment"),
     input.timeoutMs ?? DEFAULT_REMOTE_REQUEST_TIMEOUT_MS,
-    client.descriptor(),
+    client.descriptor().pipe(
+      Effect.provideService(FetchHttpClient.RequestInit, {
+        ...Option.getOrElse(requestInit, () => ({})),
+        cache: "no-store",
+      }),
+    ),
   );
 });
