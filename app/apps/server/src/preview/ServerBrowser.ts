@@ -367,6 +367,7 @@ const AGENT_TAB_LIMIT = 8;
 const SERVER_TAB_LIMIT = 32;
 // A forgotten tab keeps running its page (ads, sockets, CPU) on a computer every chat of the space shares.
 const AGENT_TAB_IDLE_MS = 10 * 60 * 1000;
+const AGENT_TAB_EVICTION_IDLE_MS = 30 * 60 * 1000;
 const IDLE_SWEEP_INTERVAL = "1 minute";
 
 const DOWNLOAD_LIMIT = 20;
@@ -1438,7 +1439,7 @@ const make = Effect.gen(function* () {
     tab.viewers.size > 0 || (tab.desktop !== null && desktopChannel.isShown(tab));
 
   const idleAgentTabs = () => {
-    const cutoff = Date.now() - AGENT_TAB_IDLE_MS;
+    const cutoff = Date.now() - AGENT_TAB_EVICTION_IDLE_MS;
     return [...tabs.values()].filter(
       (tab) => tab.control.agentId !== null && !isVisible(tab) && tab.usedAt < cutoff,
     );
@@ -1507,7 +1508,11 @@ const make = Effect.gen(function* () {
   // so these idle signals only apply to headless tabs. A viewer keeps a tab
   // alive by using it (input marks it used), not by merely being attached.
   const closeIdleAgentTabs = () => {
-    for (const tab of idleAgentTabs()) if (tab.desktop === null) dropTab(tab, true);
+    const cutoff = Date.now() - AGENT_TAB_IDLE_MS;
+    for (const tab of tabs.values()) {
+      if (tab.control.agentId !== null && tab.desktop === null && tab.usedAt < cutoff)
+        dropTab(tab, true);
+    }
   };
 
   const latestThreadTab = (threadId: string, agentSessionId?: string) => {

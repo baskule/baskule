@@ -2691,29 +2691,44 @@ it.effect("records a finished run as failed when its ownership check cannot be r
   }),
 );
 
-it.effect("records a provider's input rejection at turn start in the terminal error", () =>
-  Effect.gen(function* () {
-    const rejection = "goal objective must be at most 4000 characters";
-    const { written, observed } = yield* captureRootRunTermination({
-      key: "start-failure:input-rejected",
-      shouldFinalizeRun: () => Effect.succeed(true),
-      events: () => Stream.never,
-      afterStart: (closed) => Deferred.succeed(closed, undefined),
-      startTurn: (turnInput) =>
-        Effect.fail(
-          new ProviderAdapter.ProviderAdapterTurnStartError({
-            driver,
-            threadId: turnInput.threadId,
-            providerThreadId: turnInput.providerThread.id,
-            runId: turnInput.runId,
-            cause: new Error(rejection),
-          }),
-        ),
-    });
-    assert.deepEqual(observed, ["run:failed"]);
-    const error = written.find((item) => item.type === "error");
-    assert.include(error?.failure.message ?? "", rejection);
-  }),
+it.effect.each(["structured", "unstructured"] as const)(
+  "records a safe terminal error for a %s turn-start rejection",
+  (shape) =>
+    Effect.gen(function* () {
+      const detail = "private provider diagnostic";
+      const { written, observed } = yield* captureRootRunTermination({
+        key: `start-failure:input-rejected:${shape}`,
+        shouldFinalizeRun: () => Effect.succeed(true),
+        events: () => Stream.never,
+        afterStart: (closed) => Deferred.succeed(closed, undefined),
+        startTurn: (turnInput) =>
+          Effect.fail(
+            new ProviderAdapter.ProviderAdapterTurnStartError({
+              driver,
+              threadId: turnInput.threadId,
+              providerThreadId: turnInput.providerThread.id,
+              runId: turnInput.runId,
+              cause:
+                shape === "structured"
+                  ? new ProviderAdapter.ProviderAdapterProtocolError({
+                      driver,
+                      reason: "attachment_unreadable",
+                      detail,
+                    })
+                  : new Error(detail),
+            }),
+          ),
+      });
+      assert.deepEqual(observed, ["run:failed"]);
+      const error = written.find((item) => item.type === "error");
+      assert.equal(
+        error?.failure.message,
+        shape === "structured"
+          ? "The provider could not start this turn: an attachment could not be read. Retry the turn; if it keeps failing, check the provider setup and server logs."
+          : "The provider could not start this turn. Retry the turn; if it keeps failing, check the provider setup and server logs.",
+      );
+      assert.notInclude(error?.failure.message ?? "", detail);
+    }),
 );
 
 it.effect.each(["failure", "defect", "interrupt-failure", "ownership-lost"] as const)(

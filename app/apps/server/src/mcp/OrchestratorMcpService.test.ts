@@ -1132,7 +1132,6 @@ describe("OrchestratorMcpService provider resolution", () => {
   const taskId = NodeId.make("node:mcp-providers-task");
   const projectId = ProjectId.make("project:mcp-providers");
   const codexInstanceId = ProviderInstanceId.make("codex");
-  const antigravityInstanceId = ProviderInstanceId.make("antigravity");
 
   const scope: McpInvocationScope = {
     environmentId: EnvironmentId.make("environment:mcp-providers"),
@@ -1391,9 +1390,13 @@ describe("OrchestratorMcpService provider resolution", () => {
     "advertises orchestration capability from registered adapters rather than a driver allowlist",
     () =>
       Effect.gen(function* () {
-        const disabledAntigravityInstanceId = ProviderInstanceId.make("antigravity-alt");
-        const disabledWithoutAdapterInstanceId = ProviderInstanceId.make("codex-without-adapter");
-        const projectDisabledInstanceId = ProviderInstanceId.make("codex-project-off");
+        const openCodeInstanceId = ProviderInstanceId.make("opencode");
+        const customOpenCodeInstanceId = ProviderInstanceId.make("opencode-work");
+        const disabledOpenCodeInstanceId = ProviderInstanceId.make("opencode-alt");
+        const disabledWithoutAdapterInstanceId = ProviderInstanceId.make(
+          "opencode-without-adapter",
+        );
+        const projectDisabledInstanceId = ProviderInstanceId.make("opencode-project-off");
         const forkOnlyInstanceId = ProviderInstanceId.make("forkOnly");
         const forkShadow = yield* buildUnavailableProviderSnapshot({
           driverKind: "forkOnly",
@@ -1403,46 +1406,31 @@ describe("OrchestratorMcpService provider resolution", () => {
         });
         let providers: ReadonlyArray<ServerProvider> = [
           providerSnapshot({
-            instanceId: codexInstanceId,
-            driver: ProviderDriverKind.make("codex"),
-            model: "gpt-5.4",
+            instanceId: openCodeInstanceId,
+            driver: ProviderDriverKind.make("opencode"),
+            model: "openai/gpt-5.4",
           }),
           providerSnapshot({
-            instanceId: ProviderInstanceId.make("claudeAgent"),
-            driver: ProviderDriverKind.make("claudeAgent"),
-            model: "claude-sonnet-4-6",
+            instanceId: customOpenCodeInstanceId,
+            driver: ProviderDriverKind.make("opencode"),
+            model: "anthropic/claude-sonnet-4-6",
           }),
           providerSnapshot({
-            instanceId: ProviderInstanceId.make("pi"),
-            driver: ProviderDriverKind.make("pi"),
-            model: "pi-model",
-          }),
-          providerSnapshot({
-            instanceId: ProviderInstanceId.make("acpRegistry"),
-            driver: ProviderDriverKind.make("acpRegistry"),
-            model: "acp-model",
-          }),
-          providerSnapshot({
-            instanceId: antigravityInstanceId,
-            driver: ProviderDriverKind.make("antigravity"),
-            model: "ant-model",
-          }),
-          providerSnapshot({
-            instanceId: disabledAntigravityInstanceId,
-            driver: ProviderDriverKind.make("antigravity"),
-            model: "ant-model",
+            instanceId: disabledOpenCodeInstanceId,
+            driver: ProviderDriverKind.make("opencode"),
+            model: "anthropic/claude-sonnet-4-6",
             enabled: false,
           }),
           providerSnapshot({
             instanceId: disabledWithoutAdapterInstanceId,
-            driver: ProviderDriverKind.make("codex"),
-            model: "gpt-5.4",
+            driver: ProviderDriverKind.make("opencode"),
+            model: "openai/gpt-5.4",
             enabled: false,
           }),
           providerSnapshot({
             instanceId: projectDisabledInstanceId,
-            driver: ProviderDriverKind.make("codex"),
-            model: "gpt-5.4",
+            driver: ProviderDriverKind.make("opencode"),
+            model: "openai/gpt-5.4",
           }),
           forkShadow,
         ];
@@ -1454,19 +1442,15 @@ describe("OrchestratorMcpService provider resolution", () => {
           }),
           ServerSettings.layerTest({
             providerInstances: {
-              [ProviderInstanceId.make("pi")]: {
-                driver: ProviderDriverKind.make("pi"),
+              [openCodeInstanceId]: { driver: ProviderDriverKind.make("opencode"), enabled: true },
+              [customOpenCodeInstanceId]: {
+                driver: ProviderDriverKind.make("opencode"),
                 enabled: true,
               },
-              [ProviderInstanceId.make("acpRegistry")]: {
-                driver: ProviderDriverKind.make("acpRegistry"),
+              [projectDisabledInstanceId]: {
+                driver: ProviderDriverKind.make("opencode"),
                 enabled: true,
               },
-              [antigravityInstanceId]: {
-                driver: ProviderDriverKind.make("antigravity"),
-                enabled: true,
-              },
-              [projectDisabledInstanceId]: { driver: ProviderDriverKind.make("codex") },
             },
             projectSettingsOverrides: {
               [projectId]: {
@@ -1478,13 +1462,10 @@ describe("OrchestratorMcpService provider resolution", () => {
             getProviders: Effect.sync(() => providers),
           }),
           adapterRegistryLayer([
-            codexInstanceId,
+            openCodeInstanceId,
             projectDisabledInstanceId,
-            ProviderInstanceId.make("claudeAgent"),
-            ProviderInstanceId.make("pi"),
-            ProviderInstanceId.make("acpRegistry"),
-            antigravityInstanceId,
-            disabledAntigravityInstanceId,
+            customOpenCodeInstanceId,
+            disabledOpenCodeInstanceId,
           ]),
           Layer.mock(ProjectService.ProjectService)({}),
           Layer.mock(SecretRequests.SecretRequests)({}),
@@ -1526,13 +1507,7 @@ describe("OrchestratorMcpService provider resolution", () => {
             );
           }
 
-          for (const instanceId of [
-            codexInstanceId,
-            ProviderInstanceId.make("claudeAgent"),
-            ProviderInstanceId.make("pi"),
-            ProviderInstanceId.make("acpRegistry"),
-            antigravityInstanceId,
-          ]) {
+          for (const instanceId of [openCodeInstanceId, customOpenCodeInstanceId]) {
             const entry = byId.get(instanceId);
             assert.isDefined(entry);
             assert.isTrue(
@@ -1543,7 +1518,7 @@ describe("OrchestratorMcpService provider resolution", () => {
             assert.deepEqual(entry!.constraints, []);
           }
 
-          const disabled = byId.get(disabledAntigravityInstanceId);
+          const disabled = byId.get(disabledOpenCodeInstanceId);
           assert.isDefined(disabled);
           assert.isFalse(disabled!.canRunChildTask);
           assert.isFalse(disabled!.canRunCrossProviderChildTask);
@@ -3554,7 +3529,10 @@ describe("OrchestratorMcpService thread list", () => {
         projectId: ProjectId.make("project:a"),
         snoozed: true,
       });
-      assert.equal(listed.threads[0]?.link, "[thread:a-snoozed](t3-thread://v1/thread:a-snoozed)");
+      assert.equal(
+        listed.threads[0]?.link,
+        "[thread:a-snoozed](t3-thread://v2/environment:thread-list/thread:a-snoozed)",
+      );
       const external = yield* mcp.listThreads(
         { ...client, client: { ...client.client!, webOrigin: "https://box.example.ts.net" } },
         { allProjects: true, snoozed: true },

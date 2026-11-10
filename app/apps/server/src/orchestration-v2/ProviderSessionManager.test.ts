@@ -229,6 +229,7 @@ function makeThreadCreatedEvent(input: {
   readonly now: DateTime.Utc;
   readonly projectId?: ProjectId;
   readonly delegatedBy?: ThreadId;
+  readonly nativeThreadId?: string;
 }) {
   return Effect.gen(function* () {
     const projectId =
@@ -238,7 +239,7 @@ function makeThreadCreatedEvent(input: {
       }));
     const providerThreadId = input.idAllocator.derive.providerThread({
       driver: CODEX_DRIVER,
-      nativeThreadId: "native-thread",
+      nativeThreadId: input.nativeThreadId ?? "native-thread",
     });
     const thread: OrchestrationV2AppThread = {
       createdBy: "user",
@@ -3715,7 +3716,12 @@ it.effect(
         yield* eventSink.write({
           events: [
             yield* makeThreadCreatedEvent({ idAllocator, threadId: firstThreadId, now }),
-            yield* makeThreadCreatedEvent({ idAllocator, threadId: secondThreadId, now }),
+            yield* makeThreadCreatedEvent({
+              idAllocator,
+              threadId: secondThreadId,
+              now,
+              nativeThreadId: "native-thread-b",
+            }),
           ],
         });
         const firstProviderThread = makeProviderThread({
@@ -3729,6 +3735,19 @@ it.effect(
           threadId: secondThreadId,
           providerSessionId,
           now,
+          nativeThreadId: "native-thread-b",
+        });
+        yield* eventSink.write({
+          events: [
+            {
+              id: yield* idAllocator.allocate.event({ threadId: secondThreadId }),
+              type: "provider-thread.updated",
+              threadId: secondThreadId,
+              driver: CODEX_DRIVER,
+              occurredAt: now,
+              payload: secondProviderThread,
+            },
+          ],
         });
         const firstRunId = idAllocator.derive.run({ threadId: firstThreadId, ordinal: 1 });
         yield* eventSink.write({
@@ -3822,6 +3841,8 @@ it.effect(
         );
 
         yield* manager.detach({ providerSessionId, threadId: secondThreadId });
+        assert.equal((yield* Ref.get(state)).resumeCount, 3);
+        assert.equal((yield* Ref.get(state)).interruptCount, 0);
         yield* manager.open({
           threadId: secondThreadId,
           providerSessionId,
@@ -3829,16 +3850,18 @@ it.effect(
           runtimePolicy,
         });
         yield* resumeSecondThread;
-        assert.equal((yield* Ref.get(state)).resumeCount, 5);
+        assert.equal((yield* Ref.get(state)).resumeCount, 4);
+        yield* resumeSecondThread;
+        assert.equal((yield* Ref.get(state)).resumeCount, 4);
 
-        assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, ["native-thread"]);
+        assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, ["native-thread-b"]);
 
         yield* manager.detach({ providerSessionId, threadId: firstThreadId });
         assert.isTrue(Option.isSome(yield* manager.get(providerSessionId)));
         assert.equal((yield* Ref.get(state)).closeCount, 0);
         assert.equal((yield* Ref.get(state)).interruptCount, 1);
         assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, [
-          "native-thread",
+          "native-thread-b",
           "native-thread",
         ]);
 
