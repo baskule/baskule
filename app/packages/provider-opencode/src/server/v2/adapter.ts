@@ -1,4 +1,4 @@
-import { baskuleSetupFailure, baskuleUsageFailure } from "../baskuleUsage.ts";
+import { baskuleLocationFailure, baskuleSetupFailure, baskuleUsageFailure } from "../baskuleUsage.ts";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as NodeURL from "node:url";
 
@@ -3879,7 +3879,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             Effect.catchTags({
               // The outer start-error handler cancels event ingestion. Deliver Baskule refusals as terminal events.
               InvalidRequestError: (cause) => {
-                const failure = baskuleUsageFailure(cause) ?? baskuleSetupFailure(cause);
+                const failure = baskuleUsageFailure(cause) ?? baskuleSetupFailure(cause) ?? baskuleLocationFailure(cause);
                 return failure === undefined
                   ? Effect.fail(cause)
                   : finishTurn(state, { status: "failed", failure });

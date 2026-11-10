@@ -1,8 +1,8 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-// AsyncResource restores ALS but not celld's native event token. An Effect callback invoked by another request
-// otherwise moves the fiber to that request; a later native Promise can retain its already-retired event (`celld #258`).
+// Preserve callback origins and boot-owned macrotask scheduler dispatch on celld (#258).
+// Macrotask yields are required for Code Mode interruption and host I/O.
 // Apply only to workerd artifacts, leaving the Node runtimes and shared installed dependencies untouched.
 export const nativeEffectContinuations = {
   name: "celld-effect-continuations",
@@ -15,11 +15,12 @@ export const nativeEffectContinuations = {
         throw new Error(`Review native Effect continuation compatibility for ${version}`);
       let contents = NodeFS.readFileSync(path, "utf8");
       if (path.endsWith("/Scheduler.js")) {
-        const before = "defaultValue: () => new MixedScheduler()";
+        const before = "return new MixedSchedulerDispatcher(this.setImmediate);";
         if (contents.split(before).length !== 2)
-          throw new Error(`Effect ${version} default scheduler changed: ${path}`);
-        // Request-owned scheduler timers can be discarded after a handler returns (celld #258).
-        contents = contents.replace(before, 'defaultValue: () => new MixedScheduler("sync")');
+          throw new Error(`Effect ${version} dispatcher implementation changed: ${path}`);
+        const helper = JSON.stringify(NodePath.join(import.meta.dirname, "bootScheduler.mjs"));
+        contents = `import { bindBootScheduler } from ${helper};\n` + contents.replace(before,
+          'return new MixedSchedulerDispatcher(this.setImmediate === setImmediate ? bindBootScheduler(this.setImmediate) : this.setImmediate);');
         return { contents, loader: "js", resolveDir: NodePath.dirname(path) };
       }
       const before = `      let resumed = false;

@@ -14,6 +14,7 @@
 //   regardless of background work). After IDLE_DISPOSE_MS with no request, stream or active session, OpenCode is
 //   closed and the keepalives cleared, so the cell can be evicted; the computer is left to computerd's idle stop.
 import "./fs-shim.js";
+import { withBootScheduler } from "../../../app/apps/server/src/baskule/workerd/bootScheduler.mjs";
 import type { bootOpenCode } from "./opencode.js";
 import { Computerd } from "./computerd";
 import { configModels, configPrices, opencodeConfig, type AgentEnv } from "./config";
@@ -152,6 +153,10 @@ export class AgentRuntime {
   /** Boots OpenCode (once; concurrent callers share the boot). */
   boot(): Promise<OpenCode> {
     if (this.oc) return this.oc;
+    return withBootScheduler(() => this.bootInEvent());
+  }
+
+  private bootInEvent(): Promise<OpenCode> {
     // #258: this event creates OpenCode's long-lived continuations; keep its driver alive while booted.
     this.bootKeepalive = setInterval(() => {}, HEARTBEAT_MS);
     const lifetime = new Promise<void>(resolve => { this.finishBootEvent = resolve; });
@@ -284,29 +289,35 @@ export class AgentRuntime {
    * folder in this cell's lifetime) and reloads its tool registry after a server's tools change. Wait for connection
    * completion and publication of its actual catalog, including plugins with no tools until an account connects.
    */
-  private waitForTools(oc: OpenCode, ref: { directory: string; workspaceID: string }, servers: string[], listed = true): Promise<number> {
+  private locationOperation<A>(oc: OpenCode, ref: { directory: string; workspaceID: string }, run: (signal: AbortSignal) => Promise<A>): Promise<A> {
     return oc.inBootEvent(async () => {
-      const t0 = Date.now();
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          const error = new Error(`MCP catalog did not settle at ${ref.directory}: ${servers.join(", ")}`);
+          const error = new Error(`Location tools did not settle at ${ref.directory}`);
           reject(error);
+          // Invalidation drops the cached build even if its scope cleanup cannot finish.
+          void oc.invalidate(ref).catch(error => this.log(`location invalidation: ${error}`));
           controller.abort(error);
         }, 10_000);
       });
       try {
-        return await Promise.race([deadline, (async () => {
-          while (true) {
-            controller.signal.throwIfAborted();
-            if (await oc.mcpReady(ref, servers, listed, controller.signal)) return Date.now() - t0;
-            await new Promise((r) => setTimeout(r, 20));
-          }
-        })()]);
+        return await Promise.race([deadline, run(controller.signal)]);
       } finally {
         clearTimeout(timer);
         controller.abort();
+      }
+    });
+  }
+
+  private waitForTools(oc: OpenCode, ref: { directory: string; workspaceID: string }, servers: string[], listed = true): Promise<number> {
+    return this.locationOperation(oc, ref, async signal => {
+      const t0 = Date.now();
+      while (true) {
+        signal.throwIfAborted();
+        if (await oc.mcpReady(ref, servers, listed, signal)) return Date.now() - t0;
+        await new Promise((resolve) => setTimeout(resolve, 20));
       }
     });
   }
@@ -493,7 +504,8 @@ export class AgentRuntime {
           try {
             await this.prepareSession(oc, turn[1]!);
           } catch (error) {
-            return json({ _tag: "InvalidRequestError", message: String((error as Error)?.message ?? error) }, 400);
+            this.log(`session ${turn[1]} preparation failed: ${error}`);
+            return json({ _tag: "InvalidRequestError", kind: "location_tools_unavailable", message: "Chat tools could not finish connecting. Please try again." }, 400);
           }
         }
         const switching = /^\/api\/session\/([^/]+)\/model$/.exec(ocPath);
@@ -551,7 +563,7 @@ export class AgentRuntime {
     const ref = { directory, workspaceID: await this.workspaceID(oc) };
     try {
       if (request.method === "DELETE") {
-        await oc.mcpRemove(ref, server);
+        await this.locationOperation(oc, ref, signal => oc.mcpRemove(ref, server, signal));
         this.t3Mcp.delete(server);
         unregisterLazyMcp(`${this.spaceId}-${server}`);
         // T3 removes and re-adds its server when a turn's credential changes: let the removal settle in the registry,
@@ -581,7 +593,7 @@ export class AgentRuntime {
         }
         const configTools = this.configToolsAt(oc, directory);
         // Keep MCP tools directly callable by the model instead of routing them through Code Mode.
-        await oc.mcpAdd(ref, server, { ...config, codemode: false });
+        await this.locationOperation(oc, ref, signal => oc.mcpAdd(ref, server, { ...config, codemode: false }, signal));
         // The connection settles asynchronously: the turn T3 starts next must offer the server's tools (and the
         // configured ones) at its first step.
         const ms = await this.waitForTools(oc, ref, [server]);

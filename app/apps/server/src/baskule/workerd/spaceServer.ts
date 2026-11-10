@@ -13,7 +13,7 @@ import { endpoint as browserEndpoint, stateLayer as browserStateLayer } from "..
 // - Captured HTTP/WebSocket transport; front identity auth; RPC and route allowlists; no host processes.
 // - OpenCode uses the same-cell agentFetch. SpaceCell owns boot, keepalive, multiplexed alarms and disposal.
 import "./runtimeGlobals.ts";
-import { makeRuntimeScheduler } from "./runtimeScheduler.ts";
+import { bindBootScheduler, withBootScheduler } from "./bootScheduler.mjs";
 
 import { CommandId, ThreadId } from "@t3tools/contracts";
 import { ManagedOpenCodeRuntime } from "@t3tools/provider-opencode/server/OpenCodeRuntime";
@@ -32,6 +32,7 @@ import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as References from "effect/References";
 import * as Scope from "effect/Scope";
+import * as Scheduler from "effect/Scheduler";
 import * as Stdio from "effect/Stdio";
 import * as Queue from "effect/Queue";
 import * as Terminal from "effect/Terminal";
@@ -282,7 +283,10 @@ export const createSpaceSqlClient = async (
   return Effect.runPromise(DoSql.make(storage));
 };
 
-export const createSpaceServer = async (config: SpaceServerConfig): Promise<SpaceServer> => {
+export const createSpaceServer = (config: SpaceServerConfig): Promise<SpaceServer> =>
+  withBootScheduler(() => createSpaceServerInBoot(config));
+
+const createSpaceServerInBoot = async (config: SpaceServerConfig): Promise<SpaceServer> => {
   const startedAt = performance.now();
   const { client: sqlClient, stats: sqlStats } =
     config.database ?? (await createSpaceSqlClient(config.storage, config.onStorageLost));
@@ -449,8 +453,8 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     Layer.provide(ManagedPolicy.layer),
     Layer.provideMerge(serverConfig),
     Layer.provideMerge(platform),
-    // Retain the scheduler in the captured HTTP context as well as all shared services.
-    Layer.provideMerge(makeRuntimeScheduler()),
+    // HTTP fibers start in request events but share this boot-owned scheduler with long-lived services.
+    Layer.provideMerge(Layer.succeed(Scheduler.Scheduler, new Scheduler.MixedScheduler("async", bindBootScheduler()))),
   );
 
   const scope = Scope.makeUnsafe();

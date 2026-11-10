@@ -1,13 +1,16 @@
 // Unit tests of the embedded agent's pure parts (no celld, no computer): session interception, OpenCode config and the
 // remote spawner over a fake computerd.
 import { describe, expect, it, vi } from "vitest";
-import { Effect, Stream } from "effect";
+import { Context, Deferred, Duration, Effect, Exit, Layer, LayerMap, Scope, Stream } from "effect";
+import { bootOpenCode } from "../../opencode.js";
+
+vi.mock("../../opencode.js", () => ({ bootOpenCode: vi.fn() }));
 import { ChildProcess } from "effect/process";
 import { computerPath, type Models, offeredModel, prepareSessionCreate, startsModelWork, stripNulls } from "../../session";
 import { defaultSettings, parseSettings } from "../../../control/settings";
 import { BASKULE_AI_NOT_CONFIGURED, BASKULE_AI_PROVIDERS } from "../../../../../app/packages/contracts/src/baskule";
 import { configModels, configPrices, opencodeConfig, TEST_PATCH_MODEL, UNCONFIGURED_AI } from "../../config";
-import { AgentRuntime } from "../../index";
+import { AgentRuntime, IDLE_DISPOSE_MS } from "../../index";
 import { makeRemoteSpawner } from "../../remote-spawner.js";
 
 const ndjson = (frames: object[]) =>
@@ -226,42 +229,75 @@ describe("remote spawner", () => {
 });
 
 describe("location readiness", () => {
-  it("fails a turn when location acquisition wedges, then permits a recovered turn", async () => {
+  it.each(["prompt", "PUT", "DELETE"])("invalidates a wedged LayerMap entry after %s times out and rebuilds it on retry", async operation => {
     vi.useFakeTimers();
-    const location = { directory: "/sandbox/space/chats/wedged" };
-    const model = models.fallback;
-    const fetch = vi.fn(async () => Response.json({ data: { model, location } }));
-    let signal: AbortSignal | undefined;
-    const mcpReady = vi.fn((_ref: unknown, _servers: unknown, _listed: boolean, currentSignal: AbortSignal) => {
-      signal = currentSignal;
-      return new Promise<boolean>(() => {});
-    });
+    const scope = Scope.makeUnsafe();
+    const started = Deferred.makeUnsafe<void>();
+    let builds = 0;
+    const ToolsReady = Context.Service<{ ready: boolean }>("test/ToolsReady");
+    const locations = await Effect.runPromise(Effect.provideService(LayerMap.make((_key: string) => Layer.effect(ToolsReady, Effect.gen(function* () {
+      builds++;
+      if (builds === 1) {
+        yield* Deferred.succeed(started, undefined);
+        yield* Effect.never;
+      }
+      return { ready: true };
+    })), { idleTimeToLive: Duration.infinity }), Scope.Scope, scope));
+    const refKey = (ref: { directory: string; workspaceID: string }) => `${ref.workspaceID}:${ref.directory}`;
+    const acquire = (ref: { directory: string; workspaceID: string }, signal: AbortSignal) => Effect.runPromise(
+      Effect.scoped(locations.contextEffect(refKey(ref))).pipe(Effect.as(true)), { signal });
+    const signals: AbortSignal[] = [];
+    const connect = (ref: { directory: string; workspaceID: string }, signal: AbortSignal) => {
+      signals.push(signal);
+      return acquire(ref, signal);
+    };
+    const fetch = vi.fn(async (request: Request) => Response.json({ data: request.url.endsWith("/active") ? {} : {
+      model: { providerID: "custom", id: "m1" }, location: { directory: "/sandbox/space/chats/wedged" },
+    } }));
+    const invalidate = vi.fn((ref: { directory: string; workspaceID: string }) => Effect.runPromise(locations.invalidate(refKey(ref))));
+    const close = vi.fn();
+    const unused = async () => { throw new Error("Unexpected OpenCode operation"); };
+    vi.mocked(bootOpenCode).mockImplementation(async ({ enter, closeEntry }) => ({
+      fetch, invalidate, inBootEvent: enter,
+      createWorkspace: unused, createSession: unused,
+      toolIds: unused, mcpTools: unused, mcpCall: unused, mcpResource: unused,
+      mcpReady: (ref, _servers, _listed, signal) => connect(ref, signal!),
+      mcpAdd: async (ref, _server, _config, signal) => { await connect(ref, signal!); },
+      mcpRemove: async (ref, _server, signal) => { await connect(ref, signal!); },
+      close: async () => { close(); closeEntry(); },
+    }));
     const runtime = new AgentRuntime({
-      get: async () => "workspace", put: async () => {}, getAlarm: async () => 0,
+      get: async (key: string) => key === "baskule:workspaceID" ? "workspace" : undefined,
+      put: async () => {}, delete: async () => true, getAlarm: async () => 0,
     } as never, { AI: { providerId: "custom", baseUrl: "http://fake/v1", apiKey: "unused", model: {
       id: "m1", name: "M1", image: false, pdf: false, limit: { context: 128_000, output: 8_000 }, settings: {},
     } } }, "space", {}, { fetch }, () => {});
-    Reflect.set(runtime, "models", models);
-    Reflect.set(runtime, "configServers", ["decision"]);
-    vi.spyOn(runtime, "boot").mockResolvedValue({ fetch, mcpReady, inBootEvent: (run: () => Promise<number>) => run() } as never);
-    const prompt = () => runtime.fetch(new Request("http://agent/oc/api/session/ses_1/prompt", { method: "POST", body: "{}" }));
+    const call = () => runtime.fetch(operation === "prompt"
+      ? new Request("http://agent/oc/api/session/ses_1/prompt", { method: "POST", body: "{}" })
+      : new Request("http://agent/oc/api/experimental/mcp/t3-code-test?location[directory]=/sandbox/space/chats/wedged", {
+        method: operation, ...(operation === "PUT" ? { body: JSON.stringify({ config: { type: "remote", url: "http://fake/mcp" } }) } : {}),
+      }));
     try {
-      const pending = prompt();
+      const pending = call();
+      await Effect.runPromise(Deferred.await(started));
       await vi.advanceTimersByTimeAsync(10_000);
-      let response: Response | undefined;
-      void pending.then(value => { response = value; });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(response, "the turn must finish when the readiness deadline expires").toBeDefined();
-      expect(response?.status).toBe(400);
-      expect(await response?.json()).toMatchObject({ _tag: "InvalidRequestError", message: "MCP catalog did not settle at /sandbox/space/chats/wedged: decision" });
-      expect(signal?.aborted).toBe(true);
-      expect(fetch).toHaveBeenCalledTimes(1);
-      mcpReady.mockResolvedValue(true);
-      expect((await prompt()).ok).toBe(true);
-      expect(fetch).toHaveBeenCalledTimes(3);
+      const response = await pending;
+      expect(response.status).toBe(400);
+      if (operation === "prompt") expect(await response.json()).toMatchObject({ _tag: "InvalidRequestError", kind: "location_tools_unavailable" });
+      expect(invalidate).toHaveBeenCalled();
+      expect(signals[0]?.aborted).toBe(true);
+      expect(builds).toBe(1);
+      expect((await call()).ok).toBe(true);
+      expect(builds).toBe(2);
+      await vi.advanceTimersByTimeAsync(IDLE_DISPOSE_MS);
+      await runtime.alarm();
+      expect(close).toHaveBeenCalledOnce();
     } finally {
+      await runtime.dispose("test");
+      await Effect.runPromise(Scope.close(scope, Exit.void));
       vi.clearAllTimers();
       vi.useRealTimers();
+      vi.mocked(bootOpenCode).mockReset();
     }
   });
 });
