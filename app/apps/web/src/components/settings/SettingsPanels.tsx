@@ -1,4 +1,4 @@
-import { t, useTranslation } from "../../i18n";
+import { msg, t, useTranslation } from "../../i18n";
 
 import { NotificationSettings } from "./NotificationSettings";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
@@ -8,7 +8,6 @@ import { useRef, useState } from "react";
 import {
   type DesktopUpdateChannel,
   managedUpdatesDenial,
-  managedUpdatesMessage,
   ProviderDriverKind,
   type ProviderInstanceId,
   type SidebarProjectGroupingMode,
@@ -60,7 +59,7 @@ import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
-import { managedTelemetryOffMessage, usePrimaryManagedPolicy } from "../../state/managedPolicy";
+import { usePrimaryManagedPolicy } from "../../state/managedPolicy";
 import {
   getCustomModelOptionsByInstance,
   resolveAppModelSelectionState,
@@ -1231,25 +1230,29 @@ export function ChatSettingsPanel() {
 }
 
 const TOOL_CALL_VISIBILITY_LABELS: Record<ToolCallVisibility, string> = {
-  showAll: "Show all",
-  hideSuccessful: "Hide successful",
-  hideAll: "Hide all",
-  zen: "Zen",
+  showAll: msg("Show all"),
+  hideSuccessful: msg("Hide successful"),
+  hideAll: msg("Hide all"),
+  zen: msg("Zen"),
 };
 
 const isToolCallVisibility = Schema.is(ToolCallVisibility);
 
-function ToolCallVisibilityRow() {
+export function ToolCallVisibilityRow() {
+  const t = useTranslation();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...searchableSetting("tool-call-visibility")}
-      description="Hide the commands, edits, and searches agents run. Hide successful keeps failures. Zen shows only final answers. Approvals, questions, and errors always show."
+      title={t("Tool calls in chat")}
+      description={t(
+        "Hide the commands, edits, and searches agents run. Hide successful keeps failures. Zen shows only final answers. Approvals, questions, and errors always show.",
+      )}
       resetAction={
         settings.toolCallVisibility !== DEFAULT_UNIFIED_SETTINGS.toolCallVisibility ? (
           <SettingResetButton
-            label="tool calls in chat"
+            label={t("tool calls in chat")}
             onClick={() =>
               updateSettings({ toolCallVisibility: DEFAULT_UNIFIED_SETTINGS.toolCallVisibility })
             }
@@ -1263,13 +1266,13 @@ function ToolCallVisibilityRow() {
             if (isToolCallVisibility(value)) updateSettings({ toolCallVisibility: value });
           }}
         >
-          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Tool calls in chat">
-            <SelectValue>{TOOL_CALL_VISIBILITY_LABELS[settings.toolCallVisibility]}</SelectValue>
+          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label={t("Tool calls in chat")}>
+            <SelectValue>{t(TOOL_CALL_VISIBILITY_LABELS[settings.toolCallVisibility])}</SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {ToolCallVisibility.literals.map((value) => (
               <SelectItem key={value} value={value}>
-                {TOOL_CALL_VISIBILITY_LABELS[value]}
+                {t(TOOL_CALL_VISIBILITY_LABELS[value])}
               </SelectItem>
             ))}
           </SelectPopup>
@@ -1983,7 +1986,6 @@ export function AboutSettingsPanel() {
   const primaryPolicy = usePrimaryManagedPolicy();
   // The Welcome page sets up this computer, so it needs one.
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const telemetryOff = managedTelemetryOffMessage(primaryPolicy);
   const t = useTranslation();
   return (
     <SettingsPageContainer>
