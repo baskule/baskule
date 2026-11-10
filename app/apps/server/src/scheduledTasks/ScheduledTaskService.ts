@@ -651,9 +651,10 @@ export const layer = Layer.effect(
     });
 
     // Run transitions own run-state columns; settings saves must not overwrite them.
-    // Check existence in the write so edits cannot undo concurrent deletion.
+    // Match the observed owner and generation so edits cannot overwrite a replacement.
     const saveTask = (
       task: ScheduledTask,
+      existingTask: ScheduledTask | null,
       requireExisting: boolean,
       /** The schedule this save read, when it left the schedule unchanged. */
       keptSchedule: ScheduledTask["schedule"] | null,
@@ -663,7 +664,7 @@ export const layer = Layer.effect(
         readonly secretChanged: boolean;
       },
     ) =>
-      sql<{ task_id: string }>`
+      sql<ScheduledTaskRow>`
         INSERT INTO scheduled_tasks (
           task_id,
           title,
@@ -715,7 +716,7 @@ export const layer = Layer.effect(
           ${task.runCount},
           ${webhook.token},
           ${webhook.secret}
-        WHERE ${requireExisting ? 0 : 1} = 1
+        WHERE ${requireExisting || existingTask !== null ? 0 : 1} = 1
            OR EXISTS (SELECT 1 FROM scheduled_tasks WHERE task_id = ${task.id})
         ON CONFLICT (task_id)
         DO UPDATE SET
@@ -760,16 +761,23 @@ export const layer = Layer.effect(
             WHEN ${webhook.secretChanged ? 1 : 0} = 1 THEN excluded.webhook_secret
             ELSE scheduled_tasks.webhook_secret
           END
-        RETURNING task_id
+        WHERE ${existingTask !== null ? 1 : 0} = 1
+          AND scheduled_tasks.created_at = ${existingTask?.createdAt ?? null}
+          AND json_extract(scheduled_tasks.author_json, '$.id') = ${existingTask?.author?.id ?? null}
+        RETURNING *
       `.pipe(
         Effect.mapError((cause) =>
           taskError("Could not save schedule task.", { taskId: task.id, cause }),
         ),
-        Effect.flatMap((rows) =>
-          rows.length > 0
-            ? Effect.void
-            : taskError("Schedule task not found.", { taskId: task.id }),
-        ),
+        Effect.flatMap((rows) => {
+          const row = rows[0];
+          return row === undefined
+            ? taskError("Schedule task not found.", { taskId: task.id })
+            : readWebhookOrigin.pipe(
+                Effect.flatMap((origin) => decodeRow(row, origin)),
+                Effect.map(withPolicy),
+              );
+        }),
       );
 
     const deleteRow = (id: ScheduledTaskId) =>
@@ -1487,14 +1495,15 @@ export const layer = Layer.effect(
         lastRunError: existingTask?.lastRunError ?? null,
         runCount: existingTask?.runCount ?? 0,
       };
-      yield* saveTask(
+      const saved = yield* saveTask(
         task,
+        existingTask,
         input.requireExisting === true,
         scheduleUnchanged ? existingTask.schedule : null,
         webhook,
       );
       yield* notifyChanged;
-      return { task: (yield* findTask(id)) ?? task };
+      return { task: saved };
     });
 
     const setEnabled: ScheduledTaskService["Service"]["setEnabled"] = Effect.fn(
@@ -1532,6 +1541,8 @@ export const layer = Layer.effect(
               next_run_at = ${next},
               updated_at = ${iso(now)}
           WHERE task_id = ${input.id}
+            AND created_at = ${existing.createdAt}
+            AND json_extract(author_json, '$.id') IS ${existing.author?.id ?? null}
           RETURNING task_id
         `.pipe(
         Effect.mapError((cause) =>

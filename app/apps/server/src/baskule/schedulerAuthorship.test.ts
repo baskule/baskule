@@ -8,12 +8,15 @@ import {
   ProjectId,
   ProviderInstanceId,
   RunId,
+  ScheduledTaskId,
   ThreadId,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -33,6 +36,123 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 
 const taskActor = { id: "alice", name: "Alice" };
+
+const raceTask = {
+  id: ScheduledTaskId.make("task:authorship-race"),
+  title: "Owned task",
+  prompt: "Original prompt",
+  enabled: false,
+  schedule: { type: "webhook", signature: null },
+  projectId: ProjectId.make("project:test"),
+  workspaceStrategy: { type: "root" },
+  modelSelection: { instanceId: ProviderInstanceId.make("opencode"), model: "test-model" },
+  runtimeMode: "full-access",
+  interactionMode: "default",
+} as const;
+
+const raceTaskLayer = (
+  checkScratch: Effect.Effect<boolean> = Effect.succeed(false),
+  readOrigin: Effect.Effect<{ readonly relayHookBaseUrl: null }> = Effect.succeed({
+    relayHookBaseUrl: null,
+  }),
+) =>
+  ScheduledTasks.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        NodeCrypto.layer,
+        ManagedPolicy.layerTest(),
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+        Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+          namedProjectsRoot: "/projects",
+          isScratchProject: () => checkScratch,
+        }),
+        Layer.succeed(Scheduler.Scheduler, { register: () => Effect.void }),
+        Layer.succeed(ScheduledTasks.ScheduledTaskWebhookOrigin, readOrigin),
+      ),
+    ),
+  );
+
+it.effect.each(["created by another author", "replaced by another author", "recreated", "deleted"])(
+  "an in-flight save cannot overwrite a task %s",
+  (change) =>
+    Effect.gen(function* () {
+      const checked = yield* Deferred.make<void>();
+      const proceed = yield* Deferred.make<void>();
+      const checkScratch = Deferred.succeed(checked, undefined).pipe(
+        Effect.andThen(Deferred.await(proceed)),
+        Effect.as(false),
+      );
+      yield* Effect.gen(function* () {
+        const tasks = yield* ScheduledTasks.ScheduledTaskService;
+        if (change !== "created by another author") yield* tasks.upsert(raceTask, taskActor);
+        const save = yield* Effect.forkChild(
+          tasks
+            .upsert(
+              {
+                ...raceTask,
+                prompt: "Stale writer's prompt",
+                workspaceStrategy: { type: "worktree", baseRef: "main" },
+              },
+              taskActor,
+            )
+            .pipe(Effect.result),
+        );
+        yield* Deferred.await(checked);
+        if (change !== "created by another author") {
+          yield* tasks.delete({ id: raceTask.id }, taskActor);
+        }
+        const replacementActor = change === "recreated" ? taskActor : { id: "bob", name: "Bob" };
+        if (change === "recreated") yield* TestClock.adjust("1 second");
+        const replacement =
+          change === "deleted"
+            ? null
+            : (yield* tasks.upsert({ ...raceTask, prompt: "Replacement prompt" }, replacementActor))
+                .task;
+        yield* Deferred.succeed(proceed, undefined);
+        const result = yield* Fiber.join(save);
+        const remaining = (yield* tasks.list(replacementActor)).tasks;
+        expect(remaining).toEqual(replacement === null ? [] : [replacement]);
+        expect(result._tag).toBe("Failure");
+      }).pipe(Effect.provide(raceTaskLayer(checkScratch)));
+    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect.each(["another author", "a new generation"])(
+  "an in-flight enable cannot mutate a replacement owned by %s",
+  (change) =>
+    Effect.gen(function* () {
+      const checked = yield* Deferred.make<void>();
+      const proceed = yield* Deferred.make<void>();
+      const pauseRead = yield* Ref.make(false);
+      const readOrigin = Effect.gen(function* () {
+        if (yield* Ref.getAndSet(pauseRead, false)) {
+          yield* Deferred.succeed(checked, undefined);
+          yield* Deferred.await(proceed);
+        }
+        return { relayHookBaseUrl: null };
+      });
+      yield* Effect.gen(function* () {
+        const tasks = yield* ScheduledTasks.ScheduledTaskService;
+        yield* tasks.upsert(raceTask, taskActor);
+        yield* Ref.set(pauseRead, true);
+        const enable = yield* Effect.forkChild(
+          tasks.setEnabled({ id: raceTask.id, enabled: true }, taskActor).pipe(Effect.result),
+        );
+        yield* Deferred.await(checked);
+        yield* tasks.delete({ id: raceTask.id }, taskActor);
+        const replacementActor =
+          change === "a new generation" ? taskActor : { id: "bob", name: "Bob" };
+        if (change === "a new generation") yield* TestClock.adjust("1 second");
+        const { task: replacement } = yield* tasks.upsert(raceTask, replacementActor);
+        yield* Deferred.succeed(proceed, undefined);
+        const result = yield* Fiber.join(enable);
+        expect((yield* tasks.list(replacementActor)).tasks).toEqual([replacement]);
+        expect(result._tag).toBe("Failure");
+      }).pipe(Effect.provide(raceTaskLayer(undefined, readOrigin)));
+    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
 
 it.effect.each(["on time", "after restart"])(
   "runs Scheduled Tasks and a persisted limit retry through the same scheduler %s",
