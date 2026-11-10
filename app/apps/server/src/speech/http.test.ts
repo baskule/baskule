@@ -194,10 +194,10 @@ effectIt.effect(
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ key }),
         });
-      expect((yield* setReference(reference)).status).toBe(204);
-      expect(save).toHaveBeenLastCalledWith("xai", reference);
+      expect((yield* setReference(reference)).status).toBe(400);
       expect((yield* setReference(reference.reference)).status).toBe(400);
-      expect(save).toHaveBeenCalledTimes(2);
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save).not.toHaveBeenCalledWith("xai", expect.anything());
       const failed = yield* call("openai/transcribe", {
         method: "POST",
         headers: { "content-type": "application/octet-stream" },
