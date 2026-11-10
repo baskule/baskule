@@ -5,8 +5,11 @@
 // `HttpServer` captures the app when T3 calls `serve`, and the cell's `fetch` hands requests to
 // it. A WebSocket upgrade gets a `WebSocketPair`; T3's `/ws` route calls `request.upgrade`,
 // which accepts the server end, answers 101 with the client end and runs Effect RPC on it.
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { HttpEffect, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -36,6 +39,7 @@ export interface Transport {
 }
 
 export interface SocketHooks {
+  readonly scope: Scope.Scope;
   readonly waitUntil: (promise: Promise<unknown>) => void;
   /** Called in the event that accepted the socket; the returned function runs on close. */
   readonly onOpen: (close: (code: number, reason: string) => void) => () => void;
@@ -116,17 +120,23 @@ export const handleUpgrade = (
       Effect.map((response) => {
         if (!upgraded) resolve(HttpServerResponse.toWeb(response));
       }),
-      Effect.catchCause((cause) =>
-        Effect.sync(() => {
-          if (!upgraded)
-            resolve(failure(500, `WebSocket handler failed: ${String(cause).slice(0, 300)}`));
-        }),
-      ),
       Effect.scoped,
+      Effect.forkIn(hooks.scope),
+      Effect.flatMap(Fiber.await),
     );
     const releaseKeepAlive = keepAlive();
     hooks.waitUntil(
-      Effect.runPromiseWith(context)(run as Effect.Effect<void>).finally(releaseKeepAlive),
+      Effect.runPromiseWith(context)(run)
+        .then((exit) => {
+          if (!upgraded && Exit.isFailure(exit)) {
+            resolve(
+              Cause.hasInterrupts(exit.cause)
+                ? failure(503, "Space restarting")
+                : failure(500, `WebSocket handler failed: ${String(exit.cause).slice(0, 300)}`),
+            );
+          }
+        })
+        .finally(releaseKeepAlive),
     );
   });
 };
