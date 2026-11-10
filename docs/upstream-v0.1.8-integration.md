@@ -1,5 +1,8 @@
 # T3 Code v0.1.8 application integration
 
+T3 Code published stable [v0.1.8](https://github.com/pingdotgg/t3code/releases/tag/v0.1.8)
+on 9 November 2026. This integration advances Baskule from v0.1.6 by two stable releases.
+
 The application starts from the complete released T3 Code tag `v0.1.8`, commit
 `bf469bb19669671d0df2efda74ed73867a7137c0`. Baskule customizations were selected from
 `a1c37528c020c96bfda99621563cd6c414d6c371`, including the mobile UX and native connection
@@ -23,7 +26,7 @@ of that package metadata.
 | OpenCode | App client/protocol/schema and platform runtime packages use 2.1.3. This advances the previous app SDK 2.1.2 and keeps the existing platform runtime 2.1.3; upstream's 2.0.28 pin is not imported. Remove the obsolete 2.0 compaction response shim. Decode supported history directly with the matching SDK. |
 | Authentication, teams and spaces | Retain Baskule login, teams, space membership, authorship, per-space computers, plugin connections and server-held credentials. Preserve hosted path and WebSocket identity routing. New desktop administration and excluded product RPCs remain outside SpaceCell's allowed surface. Export newly generated signing keys directly to PEM; avoid the new JWK re-import that rejects workerd's alternate Ed25519 PKCS#8 encoding. Existing key records are preserved. |
 | Scheduling | Adopt released thread-mode and interval/one-shot behavior while retaining actor checks. Owners with stop-others permission receive redacted task data after changing another author's task, including the enabled-state update path. |
-| Voice | Use released dictation controller, composer UI and browser PCM capture. Encode browser PCM as a WAV Blob for the existing `/api/baskule/transcriptions` route. Native recording uses its supported recorder and the same hosted route. Remove superseded local voice controls and native model settings. Cancel on chat/account changes and discard late results. Sending during recording finishes transcription, commits the text and sends once. |
+| Voice | Use released dictation controller, composer UI and browser PCM capture. Encode browser PCM as a WAV Blob for the existing `/api/baskule/transcriptions` route. Native recording uses its supported recorder and the same hosted route. Remove superseded local voice controls and native model settings. Web dictation cancels on chat/account changes and discards late results. Sending during web recording finishes transcription, commits the text and sends once. Native dictation retains its existing off-screen recording behavior and requires a separate Send tap. |
 | Transcription boundary | Keep ControlCell's bounded 25 MiB upload, upload and provider timeouts, per-user/global concurrency, server-held credentials and redirect refusal. No new service or client-side provider key is introduced. |
 | Tool visibility and Labs | Default the shared `ClientSettingsSchema` to `hideAll`. Missing legacy settings and reset use that default; explicit `showAll`, `hideSuccessful`, `hideAll` and `zen` survive persistence/reload. Main and side-chat fallback behavior agrees. Approval/question handling and errors remain available. Use upstream Labs cleanup and remove excluded linked-environment options. |
 | Localization | The released tag has marketing localization but no shared application catalog. Keep Baskule's shared localization module, web/mobile adapters and en/de/es/fr/it/nl catalogs, and translate newly retained strings. Keep translation CI coverage; no unreleased i18n proposal is imported. |
@@ -49,19 +52,21 @@ released compatibility window remains version 0.5.2 with minimum client/server 0
 not a truncated new manifest. A separate test-only upstream-076 fixture includes the
 real retired migrations and their layouts; those files do not enter the runtime
 manifest. Tests cover fresh databases, both historical manifests, repeated startup,
-strict missing/conflicting-history rejection, auth/chat/authorship preservation and
+rejection of missing or conflicting required V2 history, auth/chat/authorship preservation and
 bound/unbound scheduled-task backfills.
 
 ## Verification
 
-Temporary command output belongs under `.run/evidence/upstream-v018/` in the implementation
-worktree. Focused evidence covers contracts and settings persistence, migration histories,
+Temporary command output belongs under `.run/evidence/upstream-v0.1.8/` in the integration
+worktree. The `implementation/` directory preserves the initial reconstruction checks. Focused evidence covers contracts and settings persistence, migration histories,
 auth/secrets and task authorship, project pagination, hosted transcription, browser voice
 cancellation/send races, native protected previews, shared SQL and native I/O ownership.
 The bundled OpenCode adapter is exercised in workerd with the fake provider, including
 plain chat without a computer, browser/computer tool registration, cancellation and SDK
 stream cleanup; checking package versions alone is insufficient.
 
-Final PR, independent review, native package installation, visual verification and the
-maintainer's preserved current-main database upgrade journey are separate acceptance
-gates. Nothing in these local checks authorizes deployment or changes to an installation.
+A disposable installation seeded on current main was restarted with the upgraded runtime.
+Authentication, conversation content, authorship, and both scheduled-task backfill branches
+passed through the hosted APIs. Independent review and client verification track additional
+findings separately; the PR records their final status and any native-platform limits.
+Nothing in these local checks authorizes deployment or changes to an installation.

@@ -16,6 +16,8 @@ export const BASKULE_ALLOWED_METHODS: ReadonlySet<string> = new Set<string>([
   O.launchThread,
   O.forceStopThread,
   O.getThreadProjection,
+  O.getThreadLinkMetadata,
+  O.getThreadTitles,
   O.subscribeShell,
   O.subscribeThread,
   O.getArchivedShellSnapshot,

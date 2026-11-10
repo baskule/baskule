@@ -1,10 +1,14 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { pcmRecording, transcribeBaskulePcm } from "./transcription";
+import { BaskuleApiError } from "./api";
 
 const transcribe = vi.hoisted(() =>
   vi.fn<(recording: Blob, signal?: AbortSignal) => Promise<string>>(),
 );
-vi.mock("./api", () => ({ baskuleApi: { transcribe } }));
+vi.mock("./api", async (importOriginal) => {
+  const { BaskuleApiError } = await importOriginal<typeof import("./api")>();
+  return { BaskuleApiError, baskuleApi: { transcribe } };
+});
 afterEach(() => {
   vi.unstubAllGlobals();
   transcribe.mockReset();
@@ -63,4 +67,20 @@ it("discards a transcript returned after sign-out", async () => {
   await expect(
     transcribeBaskulePcm("blob:recording", new AbortController().signal, () => authorized),
   ).rejects.toMatchObject({ code: "unavailable" });
+});
+
+it.each([
+  [404, "voice_input_disabled", "Voice input is disabled. Ask an admin to enable it."],
+  [502, "transcription_key_rejected", "Ask an admin to check the transcription API key."],
+  [429, "usage_limit", "Your usage limit has been reached."],
+])("preserves the safe hosted error message for HTTP %s", async (status, code, message) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Float32Array([0]).buffer)));
+  transcribe.mockRejectedValue(new BaskuleApiError(status, message, code));
+  await expect(
+    transcribeBaskulePcm("blob:recording", new AbortController().signal, () => true),
+  ).rejects.toMatchObject({
+    _tag: "VoiceTranscriptionError",
+    code: "transcription-failed",
+    message,
+  });
 });
