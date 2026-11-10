@@ -287,15 +287,15 @@ describe("EnvironmentProviderSettings instance removal", () => {
       ...DEFAULT_UNIFIED_SETTINGS,
       providerInstances: {
         [opencodeId]: {
-          driver: ProviderDriverKind.make("codex"),
+          driver: ProviderDriverKind.make("opencode"),
           enabled: true,
-          config: { binaryPath: "/opt/codex/bin/codex" },
+          config: { binaryPath: "/opt/opencode/bin/opencode" },
         },
       },
     };
     await setProviders([provider()]);
     await using _screen = await render(panel({ targetInstanceId: opencodeId }));
-    const reset = page.getByRole("button", { name: "Reset Codex provider settings to default" });
+    const reset = page.getByRole("button", { name: "Reset OpenCode provider settings to default" });
     await userEvent.click(reset);
 
     expect(state.mutateProviderInstance).not.toHaveBeenCalled();
@@ -313,20 +313,18 @@ describe("EnvironmentProviderSettings instance removal", () => {
 
   it("warns that resetting an enabled default-off provider turns it off", async () => {
     await setup();
-    const antigravityId = ProviderInstanceId.make("antigravity");
-    const antigravity = ProviderDriverKind.make("antigravity");
     state.settings = {
       ...DEFAULT_UNIFIED_SETTINGS,
       providerInstances: {
-        [antigravityId]: {
-          driver: antigravity,
+        [opencodeId]: {
+          driver: ProviderDriverKind.make("opencode"),
           enabled: true,
-          config: { binaryPath: "/opt/antigravity/bin/agy" },
+          config: { binaryPath: "/opt/opencode/bin/opencode" },
         },
       },
     };
-    await setProviders([{ ...provider(), instanceId: antigravityId, driver: antigravity }]);
-    await using _screen = await render(panel({ targetInstanceId: antigravityId }));
+    await setProviders([provider()]);
+    await using _screen = await render(panel({ targetInstanceId: opencodeId }));
     await userEvent.click(page.getByRole("button", { name: /^Reset .* provider settings/ }));
 
     expect(state.confirm).toHaveBeenCalledWith(

@@ -25,6 +25,7 @@ describe("long active tool groups", () => {
       }));
       const rows = deriveMessagesTimelineRows({
         timelineEntries,
+        toolCallVisibility: "showAll",
         isWorking: true,
         runningRunId: runId,
         activeTurnStartedAt: createdAt,

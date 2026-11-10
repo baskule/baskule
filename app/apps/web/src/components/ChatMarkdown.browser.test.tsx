@@ -44,9 +44,9 @@ vi.mock(import("../state/server"), async (original) => {
     settings: { providerInstances: {} },
     providers: [
       {
-        instanceId: "codex",
-        driver: "codex",
-        displayName: "Codex",
+        instanceId: "opencode",
+        driver: "opencode",
+        displayName: "OpenCode",
         models: [{ slug: "gpt-6.1", name: "GPT-6.1", isCustom: false, capabilities: {} }],
       },
     ],
@@ -435,9 +435,12 @@ describe("ChatMarkdown skill chips", () => {
 
   it("names a mentioned model as its provider does, without a thread", async () => {
     setup();
-    await using screen = await renderText("Ask (model:codex/gpt-6.1), not model:openai/gpt-4o.", {
-      environmentId: EnvironmentId.make("models"),
-    });
+    await using screen = await renderText(
+      "Ask (model:opencode/gpt-6.1), not model:openai/gpt-4o.",
+      {
+        environmentId: EnvironmentId.make("models"),
+      },
+    );
 
     await expect
       .element(screen.getByRole("button", { name: "Model GPT-6.1. Show details" }))
