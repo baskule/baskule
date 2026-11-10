@@ -19,39 +19,61 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    const url = new URL(req.url);
-    const p = url.pathname;
+    let response: Response;
+    let cacheControl = "no-store";
     try {
-      if (p === "/auth" || p.startsWith("/auth/")) {
-        // OAuth form_post callbacks (including Apple) arrive from the IdP. Better Auth verifies their state.
-        const callback = /^\/auth\/callback\/([a-z][a-z0-9-]*)$/.exec(p);
-        const providerPost = req.method === "POST" && callback && parseAuthConfig(env.AUTH_CONFIG).providers.some(provider => provider.id === callback[1]);
-        const o = providerPost ? null : checkOrigin(req, env);
-        if (o) return o;
-        const r = await control(env).fetch(toControl(req, url));
-        if (p !== "/auth/sign-out" || !r.ok) return r;
-        // One origin = one browser storage for every user of a profile; wipe it on sign-out
-        // (browsers honour this on HTTPS and localhost only; the web client also clears its caches).
-        const h = new Headers(r.headers);
-        h.set("clear-site-data", '"cache", "storage"');
-        return new Response(r.body, { status: r.status, headers: h });
+      const routed = await route(req, env);
+      if (routed !== null) {
+        response = routed;
+      } else {
+        response = await env.ASSETS.fetch(req);
+        const contentType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+        if ((req.method === "GET" || req.method === "HEAD") && response.ok &&
+          /^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9.]+$/.test(new URL(req.url).pathname) &&
+          contentType && contentType !== "text/html" && contentType !== "application/xhtml+xml") {
+          cacheControl = "public, max-age=31536000, immutable";
+        }
       }
-      if (p === WELL_KNOWN_PATH) return await control(env).fetch(toControl(req, url));
-      if (p.startsWith("/api/baskule/")) {
-        const o = checkOrigin(req, env);
-        if (o) return o;
-        return await control(env).fetch(toControl(req, url));
-      }
-      if (p === "/api" || p.startsWith("/api/")) return notFound();
-      if (p === "/s" || p.startsWith("/s/")) return await spaceRoute(req, env, url);
-      if (p.startsWith("/hooks/")) return await webhookRoute(req, env, url);
-      return env.ASSETS.fetch(req);
     } catch (e) {
       console.error("worker error", e);
-      return json({ error: "internal_error" }, 500);
+      response = json({ error: "internal_error" }, 500);
     }
+    // Reconstructing a WebSocket upgrade would discard its runtime-owned socket.
+    if (response.status === 101) return response;
+    const headers = new Headers(response.headers);
+    headers.set("cache-control", cacheControl);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   },
 };
+
+async function route(req: Request, env: Env): Promise<Response | null> {
+  const url = new URL(req.url);
+  const p = url.pathname;
+  if (p === "/auth" || p.startsWith("/auth/")) {
+    // OAuth form_post callbacks (including Apple) arrive from the IdP. Better Auth verifies their state.
+    const callback = /^\/auth\/callback\/([a-z][a-z0-9-]*)$/.exec(p);
+    const providerPost = req.method === "POST" && callback && parseAuthConfig(env.AUTH_CONFIG).providers.some(provider => provider.id === callback[1]);
+    const o = providerPost ? null : checkOrigin(req, env);
+    if (o) return o;
+    const r = await control(env).fetch(toControl(req, url));
+    if (p !== "/auth/sign-out" || !r.ok) return r;
+    // One origin = one browser storage for every user of a profile; wipe it on sign-out
+    // (browsers honour this on HTTPS and localhost only; the web client also clears its caches).
+    const h = new Headers(r.headers);
+    h.set("clear-site-data", '"cache", "storage"');
+    return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
+  }
+  if (p === WELL_KNOWN_PATH) return await control(env).fetch(toControl(req, url));
+  if (p.startsWith("/api/baskule/")) {
+    const o = checkOrigin(req, env);
+    if (o) return o;
+    return await control(env).fetch(toControl(req, url));
+  }
+  if (p === "/api" || p.startsWith("/api/")) return notFound();
+  if (p === "/s" || p.startsWith("/s/")) return await spaceRoute(req, env, url);
+  if (p.startsWith("/hooks/")) return await webhookRoute(req, env, url);
+  return null;
+}
 
 const control = (env: Env) => env.CONTROL.getByName(CONTROL_CELL_NAME);
 

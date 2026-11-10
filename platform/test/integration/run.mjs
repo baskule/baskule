@@ -297,8 +297,12 @@ async function phase1() {
   // 12. static assets
   const version = await req("GET", "/version.json");
   check("running version is available to the web client", version.status === 200 && typeof version.json.version === "string");
+  check("running version cannot be cached", version.headers.get("cache-control") === "no-store");
   const spa = await req("GET", "/some/client/route");
   check("SPA fallback serves the web bundle", spa.status === 200 && spa.text.includes("<title>Baskule</title>"));
+  check("SPA fallback cannot be cached", spa.headers.get("cache-control") === "no-store");
+  const missingAsset = await req("GET", "/assets/missing-12345678.js");
+  check("missing asset cannot cache fallback HTML", missingAsset.headers.get("cache-control") === "no-store");
   check("unknown /api path → 404 JSON", (await req("GET", "/api/nope")).status === 404);
 
   writeFileSync(STATE, JSON.stringify({ acme, aliceCookie: alice.cookie, alicePersonal }));
