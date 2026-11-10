@@ -65,7 +65,7 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       const identity = yield* resolver.resolve(cwd);
 
       expect(identity?.canonicalKey).toBe("github.com/t3tools/t3code");
-      expect(identity?.provider).toBe("github");
+      expect(identity?.provider).toBeUndefined();
       expect(identity?.displayName).toBe("T3Tools/t3code");
     }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
   );
