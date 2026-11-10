@@ -1,4 +1,7 @@
 import { t, useTranslation } from "../../i18n";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { EnvironmentId } from "@t3tools/contracts";
 
 import { isDraftThreadRoute } from "./thread-route-state";
 import * as Dialog from "../../components/ui/Dialog";
@@ -30,6 +33,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { useProjects, useServerConfigs } from "../../state/entities";
 import { projectEnvironment } from "../../state/projects";
+import { environmentShell } from "../../state/shell";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
 import type { WorkspaceState } from "../../state/workspaceModel";
@@ -45,6 +49,8 @@ import {
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 // baskule: product feature flags.
 import { BASKULE_FLAGS } from "../../baskule/flags";
+
+const NO_DESTINATION_SNAPSHOT = Atom.make(false);
 
 type NewTaskRouteParams = {
   readonly incomingShareId?: string | string[];
@@ -172,6 +178,13 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     ? route.params.incomingShareId[0]
     : route.params?.incomingShareId;
   const incomingShare = routeShareId ? getShare(routeShareId) : null;
+  const destinationHasSnapshot = useAtomValue(
+    incomingShare?.destination
+      ? environmentShell.hasSnapshotAtom(
+          EnvironmentId.make(incomingShare.destination.environmentId),
+        )
+      : NO_DESTINATION_SNAPSHOT,
+  );
   const incomingShareSubtitle = incomingShare
     ? incomingShare.attachments.length === 0
       ? t("Choose a project for what you shared")
@@ -362,7 +375,13 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     const staleShareDestination =
       Boolean(incomingShare?.destination) &&
       reservedDestinationProject === null &&
-      catalogState.hasLoadedShellSnapshot;
+      (destinationHasSnapshot ||
+        (!catalogState.isLoadingConnections &&
+          !connectedEnvironments.some(
+            (environment) =>
+              environment.isEnabled &&
+              environment.environmentId === incomingShare?.destination?.environmentId,
+          )));
     const starting =
       reservedDestinationProject !== null || (canStartScratch && !staleShareDestination);
     return (

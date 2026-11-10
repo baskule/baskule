@@ -164,9 +164,8 @@ function describeSchedule(task: ScheduledTask): string {
 function formatTime(value: string): string {
   const [hours, minutes] = value.split(":").map(Number);
   if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return `${value} UTC`;
-  const time = new Date();
-  time.setHours(hours ?? 9, minutes ?? 0, 0, 0);
-  return `${time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} UTC`;
+  const time = new Date(Date.UTC(1970, 0, 1, hours ?? 9, minutes ?? 0));
+  return `${time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC`;
 }
 
 function timePickerValue(value: string): Date {
@@ -834,7 +833,7 @@ function TaskForm({
     setSaving(true);
     const finish = () => {
       submissionPending.current = false;
-      if (mounted.current) setSaving(false);
+      setSaving(false);
     };
     const scratch: { failure: AtomCommandResult<unknown, unknown> | null } = { failure: null };
     const target = await resolveScheduledTaskSaveTarget({
@@ -882,7 +881,7 @@ function TaskForm({
       failure(t("Could not save task"), result);
       return;
     }
-    if (mounted.current) setSaving(false);
+    setSaving(false);
     onSaved();
   };
 

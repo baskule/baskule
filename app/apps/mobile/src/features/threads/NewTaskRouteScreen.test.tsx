@@ -18,6 +18,8 @@ const harness = vi.hoisted(() => ({
     readonly title: string;
   }>,
   connectionState: "connected" as string,
+  destinationEnabled: false,
+  loadedEnvironmentIds: ["env-1"],
   openScratch: vi.fn(),
   selectDetail: vi.fn(),
   releaseShareReservation: vi.fn(),
@@ -80,10 +82,22 @@ vi.mock("../../state/entities", () => ({
   useServerConfigs: () => new Map([["env-1", { scratchWorkspaceRoot: "/scratch" }]]),
 }));
 vi.mock("../../state/projects", () => ({ projectEnvironment: { openScratch: {} } }));
+vi.mock("@effect/atom-react", () => ({
+  useAtomValue: (atom: { environmentId?: string }) =>
+    harness.loadedEnvironmentIds.includes(atom.environmentId ?? ""),
+}));
+vi.mock("../../state/shell", () => ({
+  environmentShell: { hasSnapshotAtom: (environmentId: string) => ({ environmentId }) },
+}));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => harness.openScratch }));
 vi.mock("../../state/use-remote-environment-registry", () => ({
   useRemoteConnectionStatus: () => ({
-    connectedEnvironments: [{ environmentId: "env-1", connectionState: harness.connectionState }],
+    connectedEnvironments: [
+      { environmentId: "env-1", connectionState: harness.connectionState, isEnabled: true },
+      ...(harness.destinationEnabled
+        ? [{ environmentId: "env-2", connectionState: "connecting", isEnabled: true }]
+        : []),
+    ],
   }),
 }));
 vi.mock("../../state/workspace", () => ({
@@ -125,11 +139,16 @@ const scratch = {
   title: "Scratch",
 };
 
-function setup(share: Share, options: { connectionState?: string } = {}) {
+function setup(
+  share: Share,
+  options: { connectionState?: string; destinationEnabled?: boolean } = {},
+) {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   harness.share = share;
   harness.projects = [scratch];
   harness.connectionState = options.connectionState ?? "connected";
+  harness.destinationEnabled = options.destinationEnabled ?? false;
+  harness.loadedEnvironmentIds = ["env-1"];
   harness.openScratch.mockReset().mockResolvedValue({ _tag: "Success", value: scratch });
   harness.selectDetail.mockReset();
   harness.releaseShareReservation.mockReset().mockResolvedValue(undefined);
@@ -208,4 +227,31 @@ it("explains an offline space instead of showing dead project controls", () => {
   );
   expect(screen.container.textContent).not.toMatch(/Add project|Search projects/);
   expect(harness.openScratch).not.toHaveBeenCalled();
+});
+
+it("waits for the reserved space even when another space already loaded", () => {
+  using screen = setup(
+    {
+      id: "share-team",
+      attachments: [],
+      destination: { environmentId: "env-2", projectId: "team-chat" },
+    },
+    { destinationEnabled: true },
+  );
+  expect(screen.container.textContent).toContain("Starting a new chat…");
+  expect(screen.container.textContent).not.toContain("no longer available");
+  expect(screen.container.querySelector("button")).toBeNull();
+  expect(harness.releaseShareReservation).not.toHaveBeenCalled();
+  expect(harness.openScratch).not.toHaveBeenCalled();
+});
+
+it("offers recovery when the reserved space is no longer enabled", () => {
+  using screen = setup({
+    id: "share-removed",
+    attachments: [],
+    destination: { environmentId: "env-2", projectId: "team-chat" },
+  });
+  expect(screen.container.textContent).toContain("no longer available");
+  expect(screen.container.querySelector("button")?.textContent).toBe("Start a new chat");
+  expect(harness.releaseShareReservation).not.toHaveBeenCalled();
 });
