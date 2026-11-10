@@ -1,15 +1,9 @@
-<p align="center">
-  <img alt="" src="brand/github-avatar.png" width="80">
-</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/lockup-inverse.svg">
+  <img alt="Baskule" src="brand/lockup.svg" width="260">
+</picture>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/wordmark-inverse.svg">
-    <img alt="Baskule" src="brand/wordmark.svg" width="300">
-  </picture>
-</p>
-
-<h3 align="center">Self-hosted AI agents for your whole team.</h3>
+### Self-hosted AI agents for your whole team.
 
 Baskule is an open-source agent platform that you run on your own servers. Your team chats with agents from the web,
 desktop and mobile apps.
@@ -49,7 +43,7 @@ Baskule has three parts:
 
 What Baskule connects to in your environment:
 
-| | |
+| Connection | Options |
 | --- | --- |
 | Model | OpenAI, Anthropic, Mistral, or any OpenAI-compatible endpoint, including your own private local model. |
 | Sign-in | Google, Microsoft, GitHub or any OIDC provider, or passwords. |
@@ -68,13 +62,13 @@ Most people only need a client. Ask your administrator for your server's address
 | --- | --- | --- |
 | Web | Available | Served by your Baskule server at its address |
 | Linux | Available | [AppImage (x64)](https://github.com/baskule/baskule/releases/latest) |
-| Android | Preview | [APK (arm64)](https://github.com/baskule/baskule/releases/latest/download/Baskule-android-arm64-release-debug-signed.apk) |
-| macOS | Preview, unsigned | [DMG (Apple silicon or Intel)](https://github.com/baskule/baskule/releases/latest) |
-| Windows | Preview, unsigned | [Installer (x64)](https://github.com/baskule/baskule/releases/latest) |
+| Android | Preview, Play Store upload pending | [APK (arm64)](https://github.com/baskule/baskule/releases/latest/download/Baskule-android-arm64-release-debug-signed.apk) |
+| macOS | Preview | [DMG (Apple silicon or Intel)](https://github.com/baskule/baskule/releases/latest) |
+| Windows | Preview, signing in progress | [Installer (x64)](https://github.com/baskule/baskule/releases/latest) |
 | iOS | Not available yet | — |
 
-_The macOS, Windows and Android apps are not signed yet, and no app is published on an app store. Your system will
-warn before opening them. There is no iOS app yet._
+_The Windows installer is not signed yet, so Windows will warn before opening it. The Android app installs from
+the APK until it reaches the Play Store. There is no iOS app yet._
 
 ### The server
 
@@ -87,16 +81,6 @@ docker compose logs setup        # prints the one-time link that creates the fir
 Open the setup link to create the first admin; see [configuration and built-in HTTPS](docs/install.md), or the [Kubernetes guide](docs/install-kubernetes.md) for several machines.
 
 Optional: [sync plugins from a folder](docs/install.md#plugins-folder).
-
-## Built on
-
-- [T3 Code](https://github.com/pingdotgg/t3code): the clients and the chat engine started as a fork (MIT).
-- [OpenCode](https://github.com/anomalyco/opencode): the agent.
-- [celld](https://github.com/denoland/celld): the runtime of the agent platform.
-- [Better Auth](https://github.com/better-auth/better-auth), [Drizzle ORM](https://github.com/drizzle-team/drizzle-orm),
-  [RustFS](https://github.com/rustfs/rustfs), [Caddy](https://github.com/caddyserver/caddy),
-  [Jaeger](https://github.com/jaegertracing/jaeger), [Playwright MCP](https://github.com/microsoft/playwright-mcp),
-  [LibreOffice](https://www.libreoffice.org) and [pandoc](https://pandoc.org).
 
 ## Licence
 
