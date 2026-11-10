@@ -8,6 +8,7 @@ import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoi
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { LanguageSetting } from "./LanguageSetting";
+import { ToolCallsAppearanceSection } from "./appearance/sections/ToolCallsAppearanceSection";
 
 export function PersonalSettingsRouteScreen() {
   const t = useTranslation();
@@ -51,6 +52,7 @@ export function PersonalSettingsRouteScreen() {
           ))}
         </SettingsSection>
         <LanguageSetting />
+        <ToolCallsAppearanceSection />
       </ScrollView>
     </SettingsScreen>
   );

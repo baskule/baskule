@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { VoiceInputErrorPill } from "./VoiceInputErrorPill";
 import { VoiceInputPill, VoiceWaveform } from "./VoiceInputPill";
+import { t, useTranslation } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -32,7 +33,7 @@ export function resolveSpeechPresentation(
       };
     case "error":
       return {
-        status: state.error ?? "Voice input failed",
+        status: state.error === null ? t("Voice input failed") : t(state.error),
         showsCancel: false,
         showsConfirm: false,
         confirmEnabled: false,
@@ -41,8 +42,10 @@ export function resolveSpeechPresentation(
     case "preparing":
       return {
         status: progress
-          ? `Downloading speech model ${Math.round((progress.downloaded / Math.max(1, progress.total)) * 100)}%`
-          : "Preparing",
+          ? t("Downloading speech model {{percent}}%", {
+              percent: Math.round((progress.downloaded / Math.max(1, progress.total)) * 100),
+            })
+          : t("Preparing"),
         showsCancel: true,
         showsConfirm: true,
         confirmEnabled: false,
@@ -50,7 +53,7 @@ export function resolveSpeechPresentation(
       };
     case "recording":
       return {
-        status: "Recording",
+        status: t("Recording"),
         showsCancel: true,
         showsConfirm: true,
         confirmEnabled: true,
@@ -58,7 +61,7 @@ export function resolveSpeechPresentation(
       };
     case "transcribing":
       return {
-        status: "Transcribing",
+        status: t("Transcribing"),
         showsCancel: true,
         showsConfirm: true,
         confirmEnabled: false,
@@ -66,7 +69,7 @@ export function resolveSpeechPresentation(
       };
     case "post-processing":
       return {
-        status: "Post-processing",
+        status: t("Post-processing"),
         showsCancel: true,
         showsConfirm: true,
         confirmEnabled: false,
@@ -146,8 +149,10 @@ function ComposerSpeechCancelButton(props: {
   shortcutLabel?: string | null;
   onCancel(): void;
 }) {
+  const t = useTranslation();
   if (props.state.phase === "idle") return null;
-  const label = props.state.phase === "error" ? "Dismiss voice input error" : "Cancel voice input";
+  const label =
+    props.state.phase === "error" ? t("Dismiss voice input error") : t("Cancel voice input");
 
   return (
     <Tooltip>
@@ -182,8 +187,9 @@ export function ComposerSpeechButton(props: {
   onStart(): void;
   onCancel(): void;
 }) {
+  const t = useTranslation();
   const presentation = resolveSpeechPresentation(props.state, props.progress);
-  const label = "Start voice input";
+  const label = t("Start voice input");
 
   if (presentation.showsConfirm || props.state.phase === "error") return null;
 
@@ -229,6 +235,7 @@ export function ComposerSpeechRecordingPill(props: {
   onCancel(): void;
   onSkipPostProcessing(): void;
 }) {
+  const t = useTranslation();
   const presentation = resolveSpeechPresentation(props.state, props.progress);
   if (props.state.phase === "error") {
     return (
@@ -245,8 +252,8 @@ export function ComposerSpeechRecordingPill(props: {
   if (!presentation.showsConfirm) return null;
 
   const label = presentation.confirmEnabled
-    ? "Finish voice input"
-    : (presentation.status ?? "Voice input is busy");
+    ? t("Finish voice input")
+    : (presentation.status ?? t("Voice input is busy"));
 
   return (
     <VoiceInputPill>
@@ -270,7 +277,7 @@ export function ComposerSpeechRecordingPill(props: {
           onClick={props.onSkipPostProcessing}
           className="shrink-0"
         >
-          Skip
+          {t("Skip")}
         </Button>
       ) : (
         <Tooltip>
