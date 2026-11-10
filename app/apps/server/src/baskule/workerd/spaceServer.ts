@@ -564,6 +564,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
       if (!upgrade) return captured.handler(request);
       const identity = parseBaskuleIdentity(request.headers.get(BASKULE_IDENTITY_HEADER));
       return handleUpgrade(captured, request, {
+        scope,
         waitUntil: config.waitUntil,
         onOpen: (closeSocket) => {
           const releaseHost = config.onSocketOpen?.() ?? (() => {});

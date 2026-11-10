@@ -47,6 +47,9 @@ case "$suite" in
     ;;
   journeys|install)
     (cd e2e && pnpm exec playwright install --with-deps chromium)
+    # New Docker veth IPv6 addresses make host Chromium abort unrelated loopback requests.
+    # These browser checks use IPv4; leave existing interfaces and their routes intact.
+    sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
     if [[ $suite == journeys ]]; then
       scripts/check release:journeys --shard "${1:?N/M}" --fresh 2>&1 | tee .run/evidence/release/journeys.log
     else

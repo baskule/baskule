@@ -205,6 +205,7 @@ function plan(files, base) {
   if (has(/^deploy\/celld\//)) add("deploy: startup jobs", "node", ["--test", "deploy/celld/jobs.test.mjs", "deploy/celld/sync-plugins.test.mjs"], ".");
   if (has(/^deploy\/helm\/|^scripts\/helm-package\.sh$/)) add("Kubernetes: chart rendering", "bash", ["e2e/kubernetes-local.sh", "lint"], ".");
   if (has(/^scripts\/ci\/(publish-images|check-public-images|image-config-id)|^scripts\/release-backend\.sh$/)) add("release: publication preflight", "node", ["--test", "scripts/ci/publish-images.test.mjs"], ".");
+  if (has(/^scripts\/ci\/assemble-release[.-]|^\.github\/workflows\/release/)) add("release: asset assembly", "node", ["--test", "scripts/ci/assemble-release.test.mjs"], ".");
   if (has(/^e2e\/kubernetes|^scripts\/ci\/kubernetes\.test\.mjs$/)) add("Kubernetes: harness tests", "node", ["--test", "scripts/ci/kubernetes.test.mjs"], ".");
   if (has(/^deploy\/(celld|docker-compose)/)) tags.add("lifecycle");
   if (has(/^(deploy|computer)\//)) tags.add("infra");
@@ -518,11 +519,11 @@ for (const target of targets) {
     // Playwright partitions individual tests, so one large feature cannot dominate a runner.
     for (const profile of new Set(map.filter((f) => f.journeys).map((f) => f.profile))) {
       const tags = map.filter((f) => f.journeys && f.profile === profile).map((f) => f.journeys);
-      run({ label: `release journeys: ${profile} ${shard}`, cmd: "pnpm", args: ["exec", "playwright", "test", "-c", "journeys/playwright.config.ts", "--grep", `(?:^| )(?:${tags.join("|")})(?: |$)`, "--shard", shard, "--fully-parallel", "--workers", "1", "--pass-with-no-tests"], cwd: "e2e", env: { JOURNEY_PROFILE: profile } });
+      run({ label: `release journeys: ${profile} ${shard}`, cmd: "pnpm", args: ["exec", "playwright", "test", "-c", "journeys/playwright.config.ts", "--grep", `(?:^| )(?:${tags.join("|")})(?: |$)`, "--shard", shard, "--fully-parallel", "--workers", "1", "--pass-with-no-tests", "--output", `../.run/journeys/results/${profile}`], cwd: "e2e", env: { JOURNEY_PROFILE: profile }, always: ["scripts/stack", ["down"], "."] });
     }
     for (const feature of releaseFeatures(map, shard)) {
       for (const command of remainingFeatureChecks(feature, releaseCoverage)) {
-        run({ label: `feature:${feature.name}: ${command}`, cmd: "bash", args: ["-c", command], cwd: ".", env: { JOURNEY_PROFILE: feature.profile } });
+        run({ label: `feature:${feature.name}: ${command}`, cmd: "bash", args: ["-c", command], cwd: ".", env: { JOURNEY_PROFILE: feature.profile }, always: ["scripts/stack", ["down"], "."] });
       }
     }
   } else if (["upstream", "upstream:server", "upstream:web"].includes(target)) {
