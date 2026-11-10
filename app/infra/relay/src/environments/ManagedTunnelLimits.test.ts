@@ -126,7 +126,10 @@ describe("ManagedTunnelLimits", () => {
         Effect.promise(() => PGlite.create()),
         (client) => Effect.promise(() => client.close()),
       );
-      const migrationsDir = new URL("../../migrations/postgres/", import.meta.url).pathname;
+      const path = yield* Path.Path;
+      const migrationsDir = yield* path.fromFileUrl(
+        new URL("../../migrations/postgres/", import.meta.url),
+      );
       const migrations = (yield* fs.readDirectory(migrationsDir)).toSorted();
       const applyMigrations = (names: ReadonlyArray<string>) =>
         Effect.forEach(names, (name) =>

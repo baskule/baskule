@@ -124,7 +124,7 @@ describe("provider compatibility", () => {
     const policy = ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility;
     const opencode = ProviderDriverKind.make("opencode");
     assert.strictEqual(
-      resolveProviderCompatibility(policy, opencode, "2.1.2")?.status,
+      resolveProviderCompatibility(policy, opencode, "2.1.3")?.status,
       "supported",
     );
     assert.strictEqual(resolveProviderCompatibility(policy, opencode, "1.18.33")?.status, "broken");
@@ -263,6 +263,7 @@ it.effect("a remote policy refresh preserves a newer health result on the regist
         current: Ref.get(manifest),
         refresh,
         forceRefresh: refresh,
+        refreshOnDemand: refresh,
         refreshInBackground: Effect.void,
       }),
       Layer.succeed(ProviderInstanceRegistry.ProviderInstanceRegistry, {

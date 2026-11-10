@@ -4,10 +4,10 @@ import { Button } from "../../components/ui/Button";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { limitRecoveryOwnsSnooze } from "@t3tools/client-runtime/state/thread-execution";
 import type { EnvironmentId } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
 import { useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { useDeadlinePassed } from "../../lib/clock";
 import { threadEnvironment } from "../../state/threads";
@@ -26,6 +26,7 @@ export function UsageLimitRecoveryCard({
   const [error, setError] = useState<string | null>(null);
   const resetAt = thread.runtime?.usageLimitResetAt ?? null;
   const canSchedule =
+    thread.settledOverride !== "settled" &&
     resetAt !== null &&
     Date.parse(resetAt) > Date.parse(thread.latestRun?.completedAt ?? thread.updatedAt);
   const resetPassed = useDeadlinePassed(resetAt === null ? null : Date.parse(resetAt));
@@ -33,19 +34,33 @@ export function UsageLimitRecoveryCard({
   const recovery = thread.limitRecovery;
   const scheduled =
     recovery?.runId === runId && recovery?.resetAt === resetAt && recovery?.autoResume;
+  const displayAt =
+    canSchedule &&
+    scheduled &&
+    resetAt &&
+    thread.snoozedUntil &&
+    Date.parse(thread.snoozedUntil) > Date.parse(resetAt)
+      ? thread.snoozedUntil
+      : resetAt;
   if (
     thread.runtime?.status !== "failed" ||
     thread.runtime.lastErrorClass !== "usage_limit" ||
     !runId
   )
     return null;
+  const resetText = displayAt
+    ? `${canSchedule && scheduled ? "Resumes" : "Resets"} ${new Date(displayAt).toLocaleString(
+        undefined,
+        { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" },
+      )}.`
+    : null;
   const snoozed =
-    recovery?.snooze === true &&
-    recovery.runId === runId &&
-    recovery.resetAt === resetAt &&
-    resetAt !== null &&
-    thread.snoozedUntil !== null &&
-    Date.parse(thread.snoozedUntil) === Date.parse(resetAt);
+    limitRecoveryOwnsSnooze({
+      runId,
+      resetAt,
+      recovery,
+      snoozedUntil: thread.snoozedUntil,
+    }) && !resetPassed;
   async function toggle(action: "resume" | "snooze") {
     if (!resetAt || !runId || !canSchedule) return;
     if (action === "snooze" && !snoozed && Date.parse(resetAt) <= Date.now()) {
@@ -73,36 +88,66 @@ export function UsageLimitRecoveryCard({
   }
   return (
     <View className="mx-3 mb-2 gap-2 rounded-xl border border-warning-foreground/25 bg-screen p-3">
-      <Text className="text-sm text-warning-foreground">
-        {resetAt
-          ? t("Usage limit resets {{value1}}.", {
-              value1: DateTime.toDateUtc(DateTime.makeUnsafe(resetAt)).toLocaleString(),
-            })
-          : t(
-              "The provider did not report a reset time. Retry manually when your limit is available.",
-            )}
-      </Text>
-      {canSchedule ? (
-        <View className="flex-row flex-wrap gap-2">
-          <Button
-            label={scheduled ? t("Cancel auto-resume") : t("Resume at reset")}
-            tone="secondary"
-            disabled={pending}
-            onPress={() => void toggle("resume")}
-          />
-          <Button
-            label={snoozed ? t("Wake now") : t("Snooze until reset")}
-            tone="secondary"
-            disabled={pending || (!snoozed && resetPassed)}
-            onPress={() => void toggle("snooze")}
-          />
-        </View>
-      ) : null}
-      {error ? (
-        <Text accessibilityRole="alert" className="text-sm text-destructive">
-          {error}
+      <View className="min-w-0 flex-1 gap-1">
+        <Text className="text-sm text-warning-foreground">
+          {resetText
+            ? `${t("Usage limit reached")} ${resetText}`
+            : t(
+                "The provider did not report a reset time. Retry manually when your limit is available.",
+              )}
         </Text>
-      ) : null}
+        {canSchedule ? (
+          <View className="-mb-3 -mt-2 flex-row flex-wrap gap-x-4">
+            {canSchedule ? (
+              <>
+                <RecoveryAction
+                  label={scheduled ? "Cancel auto-resume" : "Resume at reset"}
+                  disabled={pending}
+                  onPress={() => void toggle("resume")}
+                />
+                <RecoveryAction
+                  label={snoozed ? "Wake now" : "Snooze until reset"}
+                  disabled={pending || (!snoozed && resetPassed)}
+                  onPress={() => void toggle("snooze")}
+                />
+              </>
+            ) : null}
+          </View>
+        ) : null}
+        {error ? (
+          <Text accessibilityRole="alert" className="text-sm text-destructive">
+            {error}
+          </Text>
+        ) : null}
+      </View>
     </View>
+  );
+}
+
+function RecoveryAction(props: {
+  readonly label: string;
+  readonly role?: "button" | "link";
+  readonly disabled: boolean;
+  readonly onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole={props.role ?? "button"}
+      accessibilityState={{ disabled: props.disabled }}
+      disabled={props.disabled}
+      hitSlop={{ left: 8, right: 8 }}
+      onPress={props.onPress}
+      className="min-h-11 justify-center active:opacity-70"
+    >
+      <Text
+        className={
+          props.disabled
+            ? "text-sm font-t3-medium text-foreground-muted"
+            : "text-sm font-t3-medium text-primary"
+        }
+      >
+        {props.label}
+      </Text>
+    </Pressable>
   );
 }

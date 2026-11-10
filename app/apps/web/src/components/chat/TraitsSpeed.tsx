@@ -6,7 +6,6 @@ import { UltrafastIcon } from "../Icons";
 import { cn } from "~/lib/utils";
 import { ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
 export function getTraitsSpeedDisplay(
-  provider: ProviderDriverKind,
   descriptor: ProviderOptionDescriptor,
 ): { label: string; speedIcon: "fast" | "ultrafast" | null } | null {
   if (descriptor.id === "fastMode" && descriptor.type === "boolean") {

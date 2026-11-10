@@ -1,3 +1,4 @@
+import { act } from "../../../test/render";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -243,11 +244,4 @@ it("pairs with Local environment disabled, where there is no primary environment
   await vi.waitFor(() =>
     expect(state.connectPairing).toHaveBeenCalledExactlyOnceWith({ pairingUrl }),
   );
-});
-
-it("does not hold a PR link for project discovery that never settles with Local environment disabled", async () => {
-  setup();
-  state.localEnvironmentDisabled = true;
-  await using _coordinator = await mount(pullRequestUrl);
-  await vi.waitFor(() => expect(state.openScratchProject).toHaveBeenCalledOnce());
 });

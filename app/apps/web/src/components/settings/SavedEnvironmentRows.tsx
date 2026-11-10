@@ -1,3 +1,4 @@
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useTranslation } from "../../i18n";
 
 import { SessionPermissions } from "./SessionPermissions";
@@ -14,6 +15,7 @@ import {
   type EnvironmentId,
   connectReachabilityHelpUrl,
   formatConnectReachable,
+  managedCapabilityDenial,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import {
@@ -49,15 +51,13 @@ import {
 } from "~/versionSkew";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { isElectron } from "~/env";
+import { useT3ConnectTurnOn } from "~/cloud/useT3ConnectTurnOn";
 import { useCloudLinkController } from "~/cloud/useCloudLinkController";
 import { environmentCatalog } from "~/connection/catalog";
 import { readEnvironmentScope } from "~/state/session";
-import {
-  type EnvironmentPresentation,
-  useRelayEnvironmentDiscovery,
-  usePrimaryEnvironmentId,
-} from "~/state/environments";
+import { type EnvironmentPresentation, useRelayEnvironmentDiscovery } from "~/state/environments";
 import { APP_VERSION } from "~/branding";
+import { useManagedPolicy } from "~/state/managedPolicy";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "~/state/server";
 import {
@@ -469,12 +469,18 @@ function CloudLinkSwitch({
   );
 }
 
-function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: boolean }) {
+function ConfiguredCloudLinkRow({
+  environmentId,
+  canManageRelay,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly canManageRelay: boolean;
+}) {
   const t = useTranslation();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const {
     isSignedIn,
-    linkState: primaryCloudLinkState,
+    linkState: cloudLinkState,
     linkRevoked,
     managedTunnelActive,
     managedTunnelOutOfSync,
@@ -482,8 +488,13 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
     holdWebhooksWhileOffline,
     operationError,
     reconcileCloudState,
-  } = useCloudLinkController();
+  } = useCloudLinkController(environmentId);
   const { openAuthPrompt } = useT3ConnectAuthPrompt();
+  // The server unlinks and refuses relay changes under such a policy; unlinking stays possible.
+  const connectDenial = managedCapabilityDenial(useManagedPolicy(environmentId), "connect");
+  const turnOn = useT3ConnectTurnOn(environmentId);
+  // Turning on links from this desktop's own backend only; turning off works from anywhere.
+  const showSwitch = isElectron && (turnOn.kind !== "on-host" || managedTunnelActive);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUpdatingPreference, setIsUpdatingPreference] = useState(false);
 
@@ -494,8 +505,8 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
   const switchDisabled =
     !canManageRelay ||
     !isSignedIn ||
-    primaryCloudLinkState.data === null ||
-    primaryCloudLinkState.isPending ||
+    cloudLinkState.data === null ||
+    cloudLinkState.isPending ||
     isBusy;
   // `isSignedIn` is undefined until Clerk loads. Signed out, one row shows a
   // sign-in button instead of its switch; the onboarding dialog that opens after
@@ -506,7 +517,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
       {t("Sign in")}
     </Button>
   );
-  const refreshLinkState = useEffectEvent(primaryCloudLinkState.refresh);
+  const refreshLinkState = useEffectEvent(cloudLinkState.refresh);
   // The server rechecks reachability when the tunnel's 30 s readiness poll changes.
   // Poll while mounted, so a failed read does not stop later ones.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- 30 s interval that refreshes the cloud link reachability while mounted
@@ -514,7 +525,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
     const interval = window.setInterval(() => refreshLinkState(), 30_000);
     return () => window.clearInterval(interval);
   }, []);
-  const reachability = managedTunnelActive ? primaryCloudLinkState.data?.reachability : undefined;
+  const reachability = managedTunnelActive ? cloudLinkState.data?.reachability : undefined;
   const reachabilityStatus =
     reachability?.status === "reachable" ? (
       formatConnectReachable(reachability)
@@ -535,11 +546,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
     ) : null;
 
   const updateManagedTunnel = async (enabled: boolean) => {
-    if (
-      primaryEnvironmentId === null ||
-      !readEnvironmentScope(primaryEnvironmentId, AuthRelayWriteScope)
-    )
-      return;
+    if (!readEnvironmentScope(environmentId, AuthRelayWriteScope)) return;
     setIsUpdating(true);
     const ok = await reconcileCloudState({ managedTunnel: enabled, publish: publishAgentActivity });
     if (ok) {
@@ -561,11 +568,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
   };
 
   const updatePublishAgentActivity = async (enabled: boolean) => {
-    if (
-      primaryEnvironmentId === null ||
-      !readEnvironmentScope(primaryEnvironmentId, AuthRelayWriteScope)
-    )
-      return;
+    if (!readEnvironmentScope(environmentId, AuthRelayWriteScope)) return;
     setIsUpdatingPreference(true);
     const ok = await reconcileCloudState({ managedTunnel: managedTunnelActive, publish: enabled });
     if (ok) {
@@ -605,29 +608,34 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
 
   return (
     <>
-      {isElectron ? (
+      {showSwitch ? (
         <SettingsRow
           title={searchableSetting("t3-connect").title}
           description={
-            signedOut
-              ? t(
-                  "Sign in to make this environment available to your other devices through T3 Connect.",
-                )
-              : linkRevoked
-                ? t("This environment was removed from T3 Connect. Turn it on to link it again.")
-                : managedTunnelActive
-                  ? reachability?.status === "unreachable"
-                    ? t("T3 Connect is on, but other devices cannot reach this environment.")
-                    : reachability?.status === "reachable"
-                      ? "This environment is available to your other devices through T3 Connect."
-                      : "T3 Connect is on. Reachability has not been checked yet."
-                  : managedTunnelOutOfSync
-                    ? t(
-                        "T3 Connect is out of sync. This environment is linked only to publish agent activity, so other devices cannot connect. Turn T3 Connect on to repair it.",
-                      )
-                    : t("Make this environment available to your other devices through T3 Connect.")
+            connectDenial !== undefined && !managedTunnelActive
+              ? connectDenial
+              : signedOut
+                ? t(
+                    "Sign in to make this environment available to your other devices through T3 Connect.",
+                  )
+                : linkRevoked
+                  ? t("This environment was removed from T3 Connect. Turn it on to link it again.")
+                  : managedTunnelActive
+                    ? reachability?.status === "unreachable"
+                      ? t("T3 Connect is on, but other devices cannot reach this environment.")
+                      : reachability?.status === "reachable"
+                        ? "This environment is available to your other devices through T3 Connect."
+                        : "T3 Connect is on. Reachability has not been checked yet."
+                    : managedTunnelOutOfSync
+                      ? t(
+                          "T3 Connect is out of sync. This environment is linked only to publish agent activity, so other devices cannot connect. Turn T3 Connect on to repair it.",
+                        )
+                      : t(
+                          "Make this environment available to your other devices through T3 Connect.",
+                        )
           }
-          status={operationError ?? primaryCloudLinkState.error ?? reachabilityStatus}
+          status={operationError ?? cloudLinkState.error ?? reachabilityStatus}
+          managed={managedTunnelActive ? undefined : connectDenial}
           control={
             signedOut ? (
               signInButton
@@ -648,8 +656,13 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
             "This environment was removed from T3 Connect. Run `t3 connect link` on the host to link it again.",
           )}
         />
+      ) : isElectron ? (
+        <SettingsRow
+          title={searchableSetting("t3-connect").title}
+          description="Run `t3 connect link` on the host, then restart T3 Code there."
+        />
       ) : null}
-      {signedOut && isElectron ? null : (
+      {signedOut && showSwitch ? null : (
         <SettingsRow
           title={searchableSetting("publish-agent-activity").title}
           description={
@@ -657,6 +670,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
               ? t("Sign in to send activity to mobile notifications and Live Activities.")
               : t("Send activity to mobile notifications and Live Activities without T3 Connect.")
           }
+          managed={connectDenial}
           control={
             signedOut ? (
               signInButton
@@ -678,6 +692,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
           description={t(
             "Keep webhook requests for up to 24 hours while this environment is offline, then deliver them. Off: T3 Connect only forwards requests and stores nothing.",
           )}
+          managed={connectDenial}
           control={
             <CloudLinkSwitch
               ariaLabel="Hold webhook requests while this environment is offline"
@@ -694,9 +709,11 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
 }
 
 export function CloudLinkRow({
+  environmentId,
   canReadRelay,
   canManageRelay,
 }: {
+  readonly environmentId: EnvironmentId;
   readonly canReadRelay: boolean;
   readonly canManageRelay: boolean;
 }) {
@@ -712,7 +729,7 @@ export function CloudLinkRow({
       />
     );
   }
-  return <ConfiguredCloudLinkRow canManageRelay={canManageRelay} />;
+  return <ConfiguredCloudLinkRow environmentId={environmentId} canManageRelay={canManageRelay} />;
 }
 
 function EmptyRemoteEnvironments({ cloudEnabled = true }: { readonly cloudEnabled?: boolean }) {

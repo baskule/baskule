@@ -5,8 +5,8 @@
       "path": "app",
       "upstream": "https://github.com/pingdotgg/t3code",
       "license": "app/LICENSE",
-      "upstreamTag": "v0.1.6",
-      "upstreamCommit": "2359643cffa6ba9ee84d6f2694b935de54a8013e"
+      "upstreamTag": "v0.1.8",
+      "upstreamCommit": "bf469bb19669671d0df2efda74ed73867a7137c0"
     }
   ],
   "notes": [

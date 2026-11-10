@@ -1,10 +1,5 @@
-import { t, useTranslation } from "../../i18n";
 import { BASKULE_FLAGS } from "../../baskule/flags";
-
-import { Toolbar } from "../../components/ui/Toolbar";
 import * as Dialog from "../../components/ui/Dialog";
-
-import { createNativeHeaderMenu } from "../../components/ui/nativeHeaderMenu.ios";
 import type { AppBarMenu } from "../../components/ui/AppBar.types";
 import {
   AuthSourceControlWriteScope,
@@ -22,7 +17,6 @@ import {
 import { useNavigation } from "@react-navigation/native";
 
 import { useEnvironmentScope } from "../../state/session";
-
 import {
   basename,
   getTerminalStatusLabel,
@@ -69,13 +63,6 @@ function compactMenuStatus(gitStatus: VcsStatusResult | null): string {
   return parts.join(" · ");
 }
 
-type HeaderItem = Record<string, unknown>;
-type HeaderItems = HeaderItem[];
-type ThreadGitHeaderActionItems = {
-  readonly terminal: HeaderItem;
-  readonly files: HeaderItem;
-  readonly git: HeaderItem;
-};
 type QuickActionIcon =
   | "arrow.down.circle"
   | "arrow.up.right.circle"
@@ -96,25 +83,18 @@ export type ThreadGitMenuProps = {
   readonly onRunAction: (input: GitActionRequestInput) => Promise<GitRunStackedActionResult | null>;
 };
 
-type ThreadGitControlsProps = ThreadGitMenuProps & {
-  readonly auxiliaryPaneControl?: {
-    readonly accessibilityLabel: string;
-    readonly onPress: () => void;
-  };
+export type ThreadGitControlsProps = ThreadGitMenuProps & {
   readonly canOpenTerminal: boolean;
   readonly canOperateTerminal: boolean;
   readonly canOpenFiles: boolean;
   readonly projectScripts: ReadonlyArray<ProjectScript>;
   readonly terminalSessions: ReadonlyArray<TerminalMenuSession>;
-  readonly showActionControls?: boolean;
-  readonly showDirectFileControl?: boolean;
   readonly onOpenTerminal: (terminalId?: string | null) => void;
   readonly onOpenNewTerminal: () => void;
   readonly onRunProjectScript: (script: ProjectScript) => Promise<void>;
 };
 
 function useThreadGitControlModel(props: ThreadGitMenuProps) {
-  const t = useTranslation();
   const navigation = useNavigation();
   const environmentId = props.environmentId;
   const canWriteSourceControl = useEnvironmentScope(
@@ -133,10 +113,10 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   const quickAction = (() => {
     if (!isRepo) {
       return {
-        label: t("Git unavailable"),
+        label: "Git unavailable",
         disabled: true,
         kind: "show_hint" as const,
-        hint: t("This workspace is not a git repository."),
+        hint: "This workspace is not a git repository.",
       };
     }
     const action = resolveQuickAction(gitStatus, busy, isDefaultRef, hasPrimaryRemote);
@@ -144,7 +124,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
       ? {
           ...action,
           disabled: true,
-          hint: t("This connection cannot change source control."),
+          hint: "This connection cannot change source control.",
         }
       : action;
   })();
@@ -166,7 +146,10 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   const runActionWithPrompt = async (input: GitActionRequestInput) => {
     if (!canWriteSourceControl) return;
     const confirmableAction =
-      input.action === "push" || input.action === "commit_push" || input.action === "commit_push_pr"
+      input.action === "push" ||
+      input.action === "create_pr" ||
+      input.action === "commit_push" ||
+      input.action === "commit_push_pr"
         ? input.action
         : null;
     const branchName = gitStatus?.refName;
@@ -188,7 +171,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
         threadId: String(threadId),
         confirmAction: confirmableAction,
         branchName,
-        includesCommit: String(input.action === "commit_push"),
+        includesCommit: String(input.action === "commit_push" || input.action === "commit_push_pr"),
       });
       return;
     }
@@ -205,17 +188,6 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
     if (quickAction.kind === "run_action" && quickAction.action) {
       await runActionWithPrompt({ action: quickAction.action });
     }
-  };
-
-  const openFiles = () => {
-    if (props.onOpenFilesInspector) {
-      props.onOpenFilesInspector();
-      return;
-    }
-    navigation.navigate("ThreadFiles", {
-      environmentId: String(environmentId),
-      threadId: String(threadId),
-    });
   };
 
   const openReview = () => {
@@ -239,7 +211,6 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   return {
     currentBranchLabel,
     isRepo,
-    openFiles,
     openGitInspector,
     openReview,
     quickAction,
@@ -249,276 +220,65 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   };
 }
 
-function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGitHeaderActionItems {
-  const t = useTranslation();
-  const model = useThreadGitControlModel(props);
-
+export function threadTerminalMenu(props: ThreadGitControlsProps): AppBarMenu | null {
+  if (!BASKULE_FLAGS.terminal || !props.canOpenTerminal) return null;
   return {
-    terminal: {
-      accessibilityLabel: t("Open terminal"),
-      disabled: !props.canOpenTerminal,
-      icon: { name: "terminal", type: "sfSymbol" },
-      identifier: "thread-right-terminal",
-      label: t("Terminal"),
-      menu: {
-        items: [
-          ...props.projectScripts.map((script) => ({
-            description: script.command,
+    title: "Terminal",
+    icon: "terminal",
+    separateBackground: false,
+    items: [
+      ...(props.projectScripts.length > 0
+        ? props.projectScripts.map((script) => ({
+            id: `script-${script.id}`,
+            title: projectScriptMenuLabel(script),
+            icon: projectScriptMenuIcon(script.icon),
+            subtitle: script.command,
             disabled: !props.canOperateTerminal,
-            icon: { name: projectScriptMenuIcon(script.icon), type: "sfSymbol" as const },
-            label: projectScriptMenuLabel(script),
             onPress: () => void props.onRunProjectScript(script),
-            type: "action" as const,
-          })),
-          ...(props.projectScripts.length === 0
-            ? [
-                {
-                  description: t("This project has no saved scripts yet"),
-                  disabled: true,
-                  icon: { name: "play", type: "sfSymbol" as const },
-                  label: t("No project scripts"),
-                  onPress: () => {},
-                  type: "action" as const,
-                },
-              ]
-            : []),
-          ...props.terminalSessions.map((session) => ({
-            description: [
-              getTerminalStatusLabel({
-                status: session.status,
-                hasRunningSubprocess: session.hasRunningSubprocess,
-              }),
-              basename(session.cwd),
-            ]
-              .filter(Boolean)
-              .join(" · "),
-            icon: { name: "terminal", type: "sfSymbol" as const },
-            label: session.displayLabel,
-            onPress: () => props.onOpenTerminal(session.terminalId),
-            type: "action" as const,
-          })),
-          {
-            description: t("Start another shell for this thread"),
-            disabled: !props.canOperateTerminal,
-            icon: { name: "plus", type: "sfSymbol" },
-            label: t("Open new terminal"),
-            onPress: props.onOpenNewTerminal,
-            type: "action",
-          },
-        ],
-        title: t("Terminal"),
-      },
-      sharesBackground: true,
-      type: "menu",
-      variant: "plain",
-    },
-    files: {
-      accessibilityLabel: t("Open files"),
-      disabled: !props.canOpenFiles,
-      icon: { name: "folder", type: "sfSymbol" },
-      identifier: "thread-right-files",
-      label: t("Files"),
-      onPress: model.openFiles,
-      sharesBackground: true,
-      type: "button",
-      variant: "plain",
-    },
-    git: {
-      accessibilityLabel: t("Git actions"),
-      icon: { name: "point.topleft.down.curvedto.point.bottomright.up", type: "sfSymbol" },
-      identifier: "thread-right-git",
-      label: t("Git"),
-      menu: {
-        items: [
-          {
-            description: compactMenuStatus(props.gitStatus),
-            disabled: true,
-            icon: {
-              name: "point.topleft.down.curvedto.point.bottomright.up",
-              type: "sfSymbol",
+          }))
+        : [
+            {
+              id: "script-none",
+              title: "No project scripts",
+              icon: "play",
+              subtitle: "This project has no saved scripts yet",
+              disabled: true,
+              onPress: () => {},
             },
-            label: compactMenuBranchLabel(model.currentBranchLabel),
-            onPress: (): void => {},
-            type: "action",
-          },
-          {
-            description: model.quickActionHint ?? undefined,
-            disabled: model.quickAction.disabled,
-            icon: { name: model.quickActionIcon, type: "sfSymbol" },
-            label: model.quickAction.label,
-            onPress: (): void => void model.runQuickAction(),
-            type: "action",
-          },
-          {
-            description:
-              props.hasThread === false
-                ? t("Available after the first message")
-                : t("Turn diffs and worktree changes"),
-            disabled: !model.isRepo || props.hasThread === false,
-            icon: { name: "text.bubble", type: "sfSymbol" },
-            label: t("Review changes"),
-            onPress: model.openReview,
-            type: "action",
-          },
-          ...(props.onMergeBack
-            ? [
-                {
-                  description: t("Bring this thread's latest turn into its source"),
-                  icon: { name: "arrow.triangle.merge", type: "sfSymbol" as const },
-                  label: t("Merge back to source"),
-                  onPress: props.onMergeBack,
-                  type: "action" as const,
-                },
-              ]
-            : []),
-          {
-            description:
-              props.hasThread === false
-                ? t("Available after the first message")
-                : t("Commit, files, branches"),
-            disabled: props.hasThread === false,
-            icon: { name: "ellipsis", type: "sfSymbol" },
-            label: t("More"),
-            onPress: model.openGitInspector,
-            type: "action",
-          },
-        ],
-        title: t("Git"),
+          ]),
+      ...props.terminalSessions.map((session) => ({
+        id: `terminal-${session.terminalId}`,
+        title: session.displayLabel,
+        icon: "terminal",
+        subtitle: [
+          getTerminalStatusLabel({
+            status: session.status,
+            hasRunningSubprocess: session.hasRunningSubprocess,
+          }),
+          basename(session.cwd),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        onPress: () => props.onOpenTerminal(session.terminalId),
+      })),
+      {
+        id: "terminal-new",
+        title: "Open new terminal",
+        icon: "plus",
+        subtitle: "Start another shell for this thread",
+        disabled: !props.canOperateTerminal,
+        onPress: props.onOpenNewTerminal,
       },
-      sharesBackground: true,
-      type: "menu",
-      variant: "plain",
-    },
+    ],
   };
 }
 
-export function useThreadGitRightHeaderItems(props: ThreadGitControlsProps): HeaderItems {
-  const actionItems = useThreadGitHeaderActionItems(props);
-  return [
-    ...(BASKULE_FLAGS.sourceControl ? [actionItems.git] : []),
-    actionItems.files,
-    ...(BASKULE_FLAGS.terminal ? [actionItems.terminal] : []),
-  ];
-}
-
-export function useThreadGitCenterHeaderItems(props: ThreadGitControlsProps): HeaderItems {
-  const actionItems = useThreadGitHeaderActionItems(props);
-  return [
-    actionItems.files,
-    ...(BASKULE_FLAGS.sourceControl ? [actionItems.git] : []),
-    ...(BASKULE_FLAGS.terminal ? [actionItems.terminal] : []),
-  ];
-}
-
-export function ThreadGitControls(props: ThreadGitControlsProps) {
-  const t = useTranslation();
-  const model = useThreadGitControlModel(props);
-  const showActionControls = props.showActionControls ?? true;
-
-  if (!showActionControls) {
-    return null;
-  }
-
-  return (
-    <Toolbar placement="right">
-      {showActionControls && props.auxiliaryPaneControl ? (
-        <Toolbar.Button
-          accessibilityLabel={props.auxiliaryPaneControl.accessibilityLabel}
-          icon="sidebar.right"
-          onPress={props.auxiliaryPaneControl.onPress}
-          separateBackground
-        />
-      ) : null}
-      {showActionControls && BASKULE_FLAGS.terminal ? (
-        <Toolbar.Menu
-          accessibilityLabel={t("Open terminal")}
-          icon="terminal"
-          disabled={!props.canOpenTerminal}
-          separateBackground
-        >
-          {props.projectScripts.length > 0 ? (
-            props.projectScripts.map((script) => (
-              <Toolbar.MenuAction
-                key={script.id}
-                icon={projectScriptMenuIcon(script.icon)}
-                disabled={!props.canOperateTerminal}
-                onPress={() => void props.onRunProjectScript(script)}
-                subtitle={script.command}
-              >
-                <Toolbar.Label>{projectScriptMenuLabel(script)}</Toolbar.Label>
-              </Toolbar.MenuAction>
-            ))
-          ) : (
-            <Toolbar.MenuAction
-              icon="play"
-              disabled
-              onPress={() => {}}
-              subtitle={t("This project has no saved scripts yet")}
-            >
-              <Toolbar.Label>{t("No project scripts")}</Toolbar.Label>
-            </Toolbar.MenuAction>
-          )}
-          {props.terminalSessions.map((session) => (
-            <Toolbar.MenuAction
-              key={session.terminalId}
-              icon="terminal"
-              onPress={() => props.onOpenTerminal(session.terminalId)}
-              subtitle={[
-                getTerminalStatusLabel({
-                  status: session.status,
-                  hasRunningSubprocess: session.hasRunningSubprocess,
-                }),
-                basename(session.cwd),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            >
-              <Toolbar.Label>{session.displayLabel}</Toolbar.Label>
-            </Toolbar.MenuAction>
-          ))}
-          <Toolbar.MenuAction
-            icon="plus"
-            disabled={!props.canOperateTerminal}
-            onPress={props.onOpenNewTerminal}
-            subtitle={t("Start another shell for this thread")}
-          >
-            <Toolbar.Label>{t("Open new terminal")}</Toolbar.Label>
-          </Toolbar.MenuAction>
-        </Toolbar.Menu>
-      ) : null}
-      {showActionControls && props.showDirectFileControl ? (
-        <Toolbar.Button
-          accessibilityLabel={t("Open files")}
-          disabled={!props.canOpenFiles}
-          icon="folder"
-          onPress={model.openFiles}
-          separateBackground
-        />
-      ) : null}
-      {showActionControls && BASKULE_FLAGS.sourceControl
-        ? createNativeHeaderMenu(threadGitMenuDefinition(props, model))
-        : null}
-    </Toolbar>
-  );
-}
-
-export function ThreadGitMenu(props: ThreadGitMenuProps) {
-  const menu = useThreadGitMenuDefinition(props);
-  return menu ? createNativeHeaderMenu(menu) : null;
-}
-
-/** Returns menu data because native toolbars serialize direct items rather than rendering component children. */
+/** The thread's git menu, shared by the thread bar and Review. */
 export function useThreadGitMenuDefinition(props: ThreadGitMenuProps): AppBarMenu | null {
   const model = useThreadGitControlModel(props);
-  return BASKULE_FLAGS.sourceControl ? threadGitMenuDefinition(props, model) : null;
-}
-
-function threadGitMenuDefinition(
-  props: ThreadGitMenuProps,
-  model: ReturnType<typeof useThreadGitControlModel>,
-): AppBarMenu {
+  if (!BASKULE_FLAGS.sourceControl) return null;
   return {
-    title: t("Git controls"),
+    title: "Git controls",
     icon: "point.topleft.down.curvedto.point.bottomright.up",
     separateBackground: false,
     items: [
@@ -542,24 +302,35 @@ function threadGitMenuDefinition(
       },
       {
         id: "git-review",
-        title: t("Review changes"),
+        title: "Review changes",
         icon: "text.bubble",
         disabled: !model.isRepo || props.hasThread === false,
         subtitle:
           props.hasThread === false
-            ? t("Available after the first message")
-            : t("Turn diffs and worktree changes"),
+            ? "Available after the first message"
+            : "Turn diffs and worktree changes",
         onPress: model.openReview,
       },
+      ...(props.onMergeBack
+        ? [
+            {
+              id: "git-merge-back",
+              title: "Merge back to source",
+              icon: "arrow.triangle.merge",
+              subtitle: "Bring this thread's latest turn into its source",
+              onPress: props.onMergeBack,
+            },
+          ]
+        : []),
       {
         id: "git-more",
-        title: t("More"),
+        title: "More",
         icon: "ellipsis",
         disabled: props.hasThread === false,
         subtitle:
           props.hasThread === false
-            ? t("Available after the first message")
-            : t("Commit, files, branches"),
+            ? "Available after the first message"
+            : "Commit, files, branches",
         onPress: model.openGitInspector,
       },
     ],

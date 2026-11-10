@@ -1,10 +1,13 @@
 import {
   providerInstanceConfigEnabledFlag,
+  resolveProviderInstanceEnabled,
   ProviderInstanceId,
   type ProviderInstanceConfig,
   type ProviderInstanceConfigMap,
   type ProviderDriverKind,
   type ServerProvider,
+  type SettingsSecretSlot,
+  withSettingsSecrets,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -44,6 +47,9 @@ interface LiveEntry {
 interface RegistryState {
   readonly entries: Ref.Ref<ReadonlyMap<ProviderInstanceId, LiveEntry>>;
   readonly unavailable: Ref.Ref<ReadonlyMap<ProviderInstanceId, ServerProvider>>;
+  // Configs parked on an unreadable secret. A settings save that leaves one alone does not read
+  // its vault again, so a locked vault is not prompted for on every unrelated save.
+  readonly secretsUnreadable: Ref.Ref<ReadonlyMap<ProviderInstanceId, ProviderInstanceConfig>>;
   readonly changes: PubSub.PubSub<void>;
 }
 
@@ -59,19 +65,39 @@ const resolveEntryEnabled = (entry: ProviderInstanceConfig, typedConfig: unknown
   return entry.enabled ?? providerInstanceConfigEnabledFlag(typedConfig) ?? true;
 };
 
+type BlockedReason = (driver: ProviderDriverKind) => string | undefined;
+
 const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R>(input: {
   readonly driversById: ReadonlyMap<ProviderDriverKind, AnyProviderDriver<R>>;
+  readonly blockedReason: BlockedReason;
   readonly parentScope: Scope.Scope;
   readonly instanceId: ProviderInstanceId;
   readonly rawInstanceId: string;
   readonly entry: ProviderInstanceConfig;
 }): Effect.fn.Return<
   | { readonly kind: "live"; readonly live: LiveEntry }
-  | { readonly kind: "unavailable"; readonly snapshot: ServerProvider },
+  | {
+      readonly kind: "unavailable";
+      readonly snapshot: ServerProvider;
+      readonly secretsUnreadable?: true;
+    },
   never,
   R
 > {
   const { driversById, parentScope, instanceId, rawInstanceId, entry } = input;
+  const blocked = input.blockedReason(entry.driver);
+  if (blocked !== undefined) {
+    return {
+      kind: "unavailable" as const,
+      snapshot: yield* buildUnavailableProviderSnapshot({
+        driverKind: entry.driver,
+        instanceId,
+        displayName: entry.displayName,
+        accentColor: entry.accentColor,
+        reason: blocked,
+      }),
+    };
+  }
   const driver = driversById.get(entry.driver);
   if (!driver) {
     return {
@@ -117,7 +143,7 @@ const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R
       displayName: entry.displayName,
       accentColor: entry.accentColor,
       environment: entry.environment ?? [],
-      enabled: resolveEntryEnabled(entry, typedConfig),
+      enabled: resolveProviderInstanceEnabled(entry),
       config: typedConfig,
     })
     .pipe(Effect.provideService(Scope.Scope, childScope), Effect.result);
@@ -153,13 +179,15 @@ const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R
 const makeReconcile = <R>(input: {
   readonly state: RegistryState;
   readonly driversById: ReadonlyMap<ProviderDriverKind, AnyProviderDriver<R>>;
+  readonly blockedReason: BlockedReason;
   readonly parentScope: Scope.Scope;
 }): ((configMap: ProviderInstanceConfigMap) => Effect.Effect<void, never, R>) => {
-  const { state, driversById, parentScope } = input;
+  const { state, driversById, blockedReason, parentScope } = input;
   return (configMap: ProviderInstanceConfigMap) =>
     Effect.gen(function* () {
       const previousEntries = yield* Ref.get(state.entries);
       const previousUnavailable = yield* Ref.get(state.unavailable);
+      const previousSecretsUnreadable = yield* Ref.get(state.secretsUnreadable);
       const nextRaw = Object.entries(configMap);
       const nextKeys = new Set<ProviderInstanceId>(
         nextRaw.map(([raw]) => ProviderInstanceId.make(raw)),
@@ -191,8 +219,16 @@ const makeReconcile = <R>(input: {
         }
       }
 
+      const parkedSnapshot = (instanceId: ProviderInstanceId, entry: ProviderInstanceConfig) => {
+        const parked = previousSecretsUnreadable.get(instanceId);
+        return parked !== undefined && entryEqual(parked, entry)
+          ? previousUnavailable.get(instanceId)
+          : undefined;
+      };
+
       const builtEntries = new Map<ProviderInstanceId, LiveEntry>();
       const builtUnavailable = new Map<ProviderInstanceId, ServerProvider>();
+      const builtSecretsUnreadable = new Map<ProviderInstanceId, ProviderInstanceConfig>();
       let orderChanged = false;
       const previousOrder = [...previousEntries.keys()];
       const nextOrder: Array<ProviderInstanceId> = [];
@@ -206,9 +242,16 @@ const makeReconcile = <R>(input: {
           builtEntries.set(instanceId, existing);
           continue;
         }
+        const parked = parkedSnapshot(instanceId, entry);
+        if (parked !== undefined) {
+          builtUnavailable.set(instanceId, parked);
+          builtSecretsUnreadable.set(instanceId, entry);
+          continue;
+        }
 
         const result = yield* buildEntry({
           driversById,
+          blockedReason,
           parentScope,
           instanceId,
           rawInstanceId,
@@ -218,6 +261,7 @@ const makeReconcile = <R>(input: {
           builtEntries.set(instanceId, result.live);
         } else {
           builtUnavailable.set(instanceId, result.snapshot);
+          if (result.secretsUnreadable) builtSecretsUnreadable.set(instanceId, entry);
         }
       }
 
@@ -247,6 +291,7 @@ const makeReconcile = <R>(input: {
 
       yield* Ref.set(state.entries, builtEntries);
       yield* Ref.set(state.unavailable, builtUnavailable);
+      yield* Ref.set(state.secretsUnreadable, builtSecretsUnreadable);
 
       if (entriesChanged || unavailableChanged) {
         yield* PubSub.publish(state.changes, undefined);
@@ -259,6 +304,8 @@ export const makeProviderInstanceRegistry = Effect.fn(
 )(function* <R>(input: {
   readonly drivers: ReadonlyArray<AnyProviderDriver<R>>;
   readonly configMap: ProviderInstanceConfigMap;
+  /** A reason to show instead of running a driver, such as an administrator's policy. */
+  readonly blockedReason?: BlockedReason | undefined;
 }): Effect.fn.Return<
   {
     readonly registry: ProviderInstanceRegistry["Service"];
@@ -281,11 +328,19 @@ export const makeProviderInstanceRegistry = Effect.fn(
 
   const entries = yield* Ref.make<ReadonlyMap<ProviderInstanceId, LiveEntry>>(new Map());
   const unavailable = yield* Ref.make<ReadonlyMap<ProviderInstanceId, ServerProvider>>(new Map());
+  const secretsUnreadable = yield* Ref.make<
+    ReadonlyMap<ProviderInstanceId, ProviderInstanceConfig>
+  >(new Map());
   const changes = yield* PubSub.unbounded<void>();
   yield* Effect.addFinalizer(() => PubSub.shutdown(changes));
 
-  const state: RegistryState = { entries, unavailable, changes };
-  const reconcileWithR = makeReconcile({ state, driversById, parentScope });
+  const state: RegistryState = { entries, unavailable, secretsUnreadable, changes };
+  const reconcileWithR = makeReconcile({
+    state,
+    driversById,
+    blockedReason: input.blockedReason ?? (() => undefined),
+    parentScope,
+  });
   const reconcile: ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutatorShape["reconcile"] =
     (configMap) => reconcileWithR(configMap).pipe(Effect.provideContext(driverContext));
 
@@ -320,6 +375,7 @@ export const makeProviderInstanceRegistry = Effect.fn(
 export const layer = <R>(input: {
   readonly drivers: ReadonlyArray<AnyProviderDriver<R>>;
   readonly configMap: ProviderInstanceConfigMap;
+  readonly blockedReason?: BlockedReason | undefined;
 }): Layer.Layer<
   ProviderInstanceRegistry | ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator,
   never,

@@ -13,6 +13,10 @@ import { SettingsGroup } from "./SettingsGroup";
 import { SettingsRow } from "./settingsLayout";
 
 import { useState } from "react";
+import {
+  deriveAvailableInstanceId,
+  deriveInstanceId,
+} from "@t3tools/client-runtime/provider-instance-ids";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   AuthProvidersManageScope,
@@ -20,12 +24,14 @@ import {
   ProviderDriverKind,
   type EnvironmentId,
   type ProviderInstanceConfig,
+  isManagedDriverAllowed,
 } from "@t3tools/contracts";
 import {
   useEnvironmentSettings,
   usePersistEnvironmentProviderInstanceMutation,
 } from "../../hooks/useSettings";
 import { normalizeProviderAccentColor } from "../../providerInstances";
+import { managedInstanceLocks, useManagedPolicy } from "../../state/managedPolicy";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { Dialog } from "../ui/dialog";
 import { toastManager } from "../ui/toast";
@@ -34,27 +40,11 @@ import { ProviderSettingsForm, deriveProviderSettingsFields } from "./ProviderSe
 import { WizardPanel, WizardPopup, WizardHeader, WizardFooter } from "../ui/wizard";
 import {
   ADD_PROVIDER_WIZARD_STEPS,
-  deriveAvailableInstanceId,
   resolveWizardNavigation,
   type ProviderIdentityDraft,
   type WizardNavigation,
 } from "./AddProviderInstanceDialog.logic";
 import { AddProviderInstanceWizardSteps } from "./AddProviderInstanceWizardSteps";
-
-/** Limit the slug to 48 chars so the composed ProviderInstanceId fits its 64-char cap. */
-function slugifyLabel(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 48);
-}
-
-function deriveInstanceId(driver: ProviderDriverKind, label: string): string {
-  const slug = slugifyLabel(label);
-  return slug ? `${driver}_${slug}` : "";
-}
 
 const INSTANCE_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("opencode");
@@ -129,7 +119,9 @@ interface AddProviderInstanceDialogProps {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly onOpenChange: (open: boolean) => void;
-  readonly onCreated?: (instanceId: ProviderInstanceId) => void;
+  readonly onCreated?: (instanceId: ProviderInstanceId, driver: ProviderDriverKind) => void;
+  /** Opens with "Show more" expanded, so the ACP Registry search is in view. */
+  readonly showMoreProviders?: boolean;
 }
 
 export function AddProviderInstanceDialog({
@@ -138,6 +130,7 @@ export function AddProviderInstanceDialog({
   environmentLabel,
   onOpenChange,
   onCreated,
+  showMoreProviders: initialShowMoreProviders = false,
 }: AddProviderInstanceDialogProps) {
   const t = useTranslation();
   const settings = useEnvironmentSettings(environmentId);
@@ -146,11 +139,12 @@ export function AddProviderInstanceDialog({
 
   const [wizardStep, setWizardStep] = useState(0);
 
+  // Drivers the administrator's policy leaves out are not offered at all.
+  const managedPolicy = useManagedPolicy(environmentId);
   const [driver, setDriver] = useState<ProviderDriverKind>(DEFAULT_DRIVER_KIND);
   const [identityByDriver, setIdentityByDriver] = useState<Record<string, ProviderIdentityDraft>>(
     {},
   );
-
   const [configByDriver, setConfigByDriver] = useState<Record<string, Record<string, unknown>>>({});
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -221,6 +215,9 @@ export function AddProviderInstanceDialog({
     );
   };
 
+  // A policy that owns this driver's launch settings also rules out ChatGPT's own runtime.
+  const driverLocks = managedInstanceLocks(managedPolicy, driver);
+
   const handleSave = async () => {
     if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
     if (isSaving) return;
@@ -255,7 +252,7 @@ export function AddProviderInstanceDialog({
       });
       return;
     }
-    onCreated?.(brandedId);
+    onCreated?.(brandedId, driver);
 
     toastManager.add({
       type: "success",

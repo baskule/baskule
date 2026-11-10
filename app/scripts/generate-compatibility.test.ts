@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- This fixture runs the Node compatibility generator as a subprocess.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

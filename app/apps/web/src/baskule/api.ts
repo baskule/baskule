@@ -137,6 +137,7 @@ export interface Download {
   readonly version: string;
 }
 
+// @effect-diagnostics-next-line extendsNativeError:off -- This Promise/React API error is converted at Effect callers, and native clients inspect its HTTP status.
 export class BaskuleApiError extends Error {
   readonly status: number;
   readonly code: string | null;
@@ -267,11 +268,13 @@ export async function request<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
       method,
+      ...(signal ? { signal } : {}),
       credentials: "same-origin",
       headers:
         body === undefined
@@ -284,6 +287,7 @@ export async function request<T>(
       ...(body === undefined ? {} : { body: body instanceof Blob ? body : JSON.stringify(body) }),
     });
   } catch {
+    signal?.throwIfAborted();
     throw new BaskuleApiError(
       0,
       t("Can't reach the server. Check your connection and try again."),
@@ -383,7 +387,8 @@ export function releaseDownloads(version: unknown): ReadonlyArray<Download> {
   if (
     typeof version !== "string" ||
     !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)
-  ) return [];
+  )
+    return [];
   const apps: ReadonlyArray<Omit<Download, "id" | "url" | "version">> = [
     {
       platform: "linux",
@@ -489,9 +494,15 @@ export const baskuleApi = {
 
   me: async () => meFromWire(await request<WireMe>("GET", "/api/baskule/me")),
   /** The recording's MIME type travels as its content-type. */
-  transcribe: async (recording: Blob) =>
-    (await request<BaskuleTranscriptionResult>("POST", "/api/baskule/transcriptions", recording))
-      .text,
+  transcribe: async (recording: Blob, signal?: AbortSignal) =>
+    (
+      await request<BaskuleTranscriptionResult>(
+        "POST",
+        "/api/baskule/transcriptions",
+        recording,
+        signal,
+      )
+    ).text,
 
   // First administrator of a new installation (public; the token travels in the link's fragment).
   setupStatus: () => request<SetupStatus>("GET", "/api/baskule/setup"),
@@ -692,7 +703,9 @@ export const baskuleApi = {
     request<unknown>("POST", `/api/baskule/admin/spaces/${enc(spaceId)}/stop`, {}),
 
   downloads: async (): Promise<ReadonlyArray<Download>> =>
-    releaseDownloads((await request<{ readonly version: unknown }>("GET", "/version.json")).version),
+    releaseDownloads(
+      (await request<{ readonly version: unknown }>("GET", "/version.json")).version,
+    ),
 };
 
 /** `<origin><base>/`: where a space's T3 environment is served. */

@@ -126,7 +126,7 @@ vi.mock("./new-task-flow-provider", () => ({
     setProject: vi.fn(),
   }),
 }));
-vi.mock("../workspace/useSelectWorkspaceDetail", () => ({
+vi.mock("../layout/workspace/useSelectWorkspaceDetail", () => ({
   useSelectWorkspaceDetail: () => harness.selectDetail,
 }));
 

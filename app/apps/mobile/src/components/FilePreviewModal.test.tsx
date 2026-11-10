@@ -8,7 +8,7 @@ import {
   type AuthEnvironmentScope,
 } from "@t3tools/contracts";
 import type { AlertButton, AlertOptions } from "react-native";
-import type { FilePreviewSource } from "./FilePreviewModal.types";
+import type { FilePreviewSource } from "./ui/FilePreviewModal.types";
 
 const native = vi.hoisted(() => ({
   alert:
@@ -40,6 +40,9 @@ vi.mock("react-native-image-viewing", () => ({
     </div>
   ),
 }));
+vi.mock("./MediaPreviewHeader", () => ({ MediaPreviewHeader: () => null }));
+vi.mock("../state/mediaActions", () => ({ useMediaActions: () => ({}) }));
+vi.mock("./ui/SheetHeader", () => ({ SheetHeader: () => null }));
 vi.mock("./ui/Button", () => ({ Button: () => null }));
 vi.mock("./ui/ControlPill", () => ({ ControlPill: () => null }));
 vi.mock("./ui/AppText", () => ({
@@ -97,7 +100,7 @@ vi.mock("../state/assets", async () => {
   };
 });
 
-import { FilePreviewModal } from "./FilePreviewModal";
+import { FilePreviewModal } from "./ui/FilePreviewModal.android";
 
 const resource = {
   _tag: "workspace-file",

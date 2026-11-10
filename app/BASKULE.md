@@ -5,7 +5,7 @@ Keep `LICENSE` and third-party notices. [Source provenance](../source-provenance
 records the upstream source and licenses. The root [build guide](../docs/building.md)
 and [development workflow](../docs/development-workflow.md) cover the complete repository.
 
-Upstream base: T3 Code `v0.1.6` (`2359643cffa6ba9ee84d6f2694b935de54a8013e`).
+Upstream base: T3 Code `v0.1.8` (`bf469bb19669671d0df2efda74ed73867a7137c0`).
 Update this line with each upstream update.
 
 ## Build and run
@@ -82,6 +82,11 @@ T3 cloud sign-in, relay account or mobile telemetry. Operators can configure the
 project and OTA update source. Some mobile screens still use "thread" or "project";
 mobile file downloads are not available.
 
+Tool calls default to hidden through the shared client visibility setting; explicit saved
+choices are preserved. Hosted dictation uses the released upstream composer and controller
+with Baskule's existing transcription endpoint. Application localization remains Baskule's
+shared en/de/es/fr/it/nl catalogs; this upstream tag has no replacement application catalog.
+
 ## Authentication and telemetry
 
 Hosted SpaceCells use `BASKULE_AUTH_MODE=front`. The platform authenticates requests,
@@ -144,7 +149,9 @@ The guide covers migration checks, integration boundaries, verification, and PR 
 
 ### Migration boundary
 
-The application migration head is **076**. Peer-only migration IDs 070–072 are absent.
+The application migration head is **080**. Retired Codex index 065 and peer-only migration IDs
+070–072 remain absent from the Baskule manifest. Migrations 077–080 run forward from the
+released Baskule 076 history without resetting data.
 Inspect new upstream migrations for peer tables, fences, indexes and migration-head assumptions.
 Do not add empty migrations for excluded layouts. Preserve supported migration code and follow
 `packages/contracts/release-compatibility.json` when removing compatibility paths.

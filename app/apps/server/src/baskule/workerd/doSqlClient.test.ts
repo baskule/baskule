@@ -170,7 +170,10 @@ describe("DoSqlClient", () => {
     withClient((sql) =>
       Effect.gen(function* () {
         yield* sql`CREATE TABLE t (k TEXT)`;
-        const values = Array.from({ length: 150 }, (_, i) => ({ k: `v'${i}?` }));
+        const values = [
+          { k: "v'first?" },
+          ...Array.from({ length: 149 }, (_, i) => ({ k: `v'${i}?` })),
+        ] as const;
         yield* sql`INSERT INTO t ${sql.insert(values)}`;
         const rows = yield* sql<{ n: number }>`SELECT count(*) AS n FROM t WHERE k LIKE 'v''%?'`;
         expect(rows[0]!.n).toBe(150);

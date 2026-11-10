@@ -1,3 +1,4 @@
+import * as ManagedPolicy from "../../policy/ManagedPolicy.ts";
 // @effect-diagnostics globalFetch:off globalDate:off -- workerd lifecycle callbacks use native platform I/O and timestamps.
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { BaskulePushHost, currentPushNotification } from "../push.ts";
@@ -32,6 +33,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as References from "effect/References";
 import * as Scope from "effect/Scope";
 import * as Stdio from "effect/Stdio";
+import * as Queue from "effect/Queue";
 import * as Terminal from "effect/Terminal";
 import { Etag, FetchHttpClient, HttpPlatform, HttpRouter } from "effect/http";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -186,6 +188,7 @@ const notFoundSpawner = Layer.succeed(
 const noTerminal = Layer.succeed(
   Terminal.Terminal,
   Terminal.make({
+    size: Queue.unbounded<Terminal.Size>(),
     columns: Effect.succeed(80),
     rows: Effect.succeed(24),
     readInput: Effect.never,
@@ -403,8 +406,8 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     spaceId: config.spaceId,
   }).pipe(Layer.provide(platform));
 
-  const activation = Effect.runSync(Deferred.make<void>());
-  const routesReady = Effect.runSync(Deferred.make<void>());
+  const activation = Deferred.makeUnsafe<void>();
+  const routesReady = Deferred.makeUnsafe<void>();
   const deps = layerRuntimeDependencies.pipe(
     Layer.provideMerge(DocumentText.layer),
     Layer.provideMerge(VcsProcess.layer),
@@ -442,13 +445,15 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     Layer.provideMerge(deps),
     Layer.provide(Layer.succeed(ServerActivation.ServerActivation, Deferred.await(activation))),
     Layer.provide(layerApplicationObservability),
+    Layer.provide(ServiceLauncherClient.layer),
+    Layer.provide(ManagedPolicy.layer),
     Layer.provideMerge(serverConfig),
     Layer.provideMerge(platform),
     // Retain the scheduler in the captured HTTP context as well as all shared services.
     Layer.provideMerge(makeRuntimeScheduler()),
   );
 
-  const scope = Effect.runSync(Scope.make());
+  const scope = Scope.makeUnsafe();
   const built = await Effect.runPromiseExit(
     Layer.buildWithScope(app, scope).pipe(Effect.provide(Logger.layer([Logger.consolePretty()]))),
   );

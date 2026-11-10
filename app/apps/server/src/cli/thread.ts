@@ -1,5 +1,5 @@
 // @effect-diagnostics preferSchemaOverJson:off globalFetch:off -- the HTTP MCP transport relays foreign JSON-RPC payloads.
-import { discardResponseBody, responsePayloads } from "@t3tools/shared/mcpResponsePayloads";
+import { mcpToolSession, type McpToolSession } from "../mcp/McpToolSession.ts";
 import * as Scope from "effect/Scope";
 import {
   OrchestratorMcpFailure,
@@ -31,6 +31,7 @@ import { Argument, Command, Flag, GlobalFlag } from "effect/cli";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
+import { expandHomePath } from "../os-jank.ts";
 import { readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 
@@ -38,142 +39,6 @@ import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
  * Short enough that a run which stops to ask the user something is noticed
  * soon, since `t3_thread_wait` only returns on a terminal run.
  */
-class McpToolSessionError extends Error {
-  readonly _tag = "McpToolSessionError";
-}
-
-const bridgeError = (cause: unknown): McpToolSessionError =>
-  cause instanceof McpToolSessionError
-    ? cause
-    : new McpToolSessionError(cause instanceof Error ? cause.message : String(cause), { cause });
-
-interface JsonRpcEnvelope {
-  readonly id?: unknown;
-  readonly method?: unknown;
-  readonly error?: unknown;
-  readonly result?: unknown;
-}
-
-const MCP_PROTOCOL_VERSION = "2025-06-18";
-
-function asEnvelope(value: unknown): JsonRpcEnvelope | null {
-  return typeof value === "object" && value !== null ? (value as JsonRpcEnvelope) : null;
-}
-
-function protocolVersionOf(entry: unknown): string | null {
-  const result = asEnvelope(entry)?.result;
-  const version =
-    typeof result === "object" && result !== null
-      ? (result as { readonly protocolVersion?: unknown }).protocolVersion
-      : undefined;
-  return typeof version === "string" && version.length > 0 ? version : null;
-}
-
-interface McpToolSessionOptions {
-  readonly endpoint: string;
-  readonly authorization: string;
-  readonly clientName: string;
-  readonly fetchImplementation?: (url: string, init?: RequestInit) => Promise<Response>;
-}
-
-interface McpToolSession {
-  /** Resolves to the JSON-RPC `result` of `tools/call`, a `CallToolResult`. */
-  readonly call: (
-    tool: string,
-    args: Readonly<Record<string, unknown>>,
-  ) => Effect.Effect<unknown, McpToolSessionError>;
-}
-
-/**
- * One initialized MCP session over T3 Code's HTTP endpoint, terminated when
- * the scope closes. Used by `t3 thread`.
- */
-const mcpToolSession = (
-  options: McpToolSessionOptions,
-): Effect.Effect<McpToolSession, McpToolSessionError, Scope.Scope> => {
-  const fetchImplementation = options.fetchImplementation ?? fetch;
-  let sessionId: string | null = null;
-  let protocolVersion: string | null = null;
-  let nextId = 0;
-
-  const headers = () => ({
-    accept: "application/json, text/event-stream",
-    authorization: options.authorization,
-    ...(sessionId === null ? {} : { "mcp-session-id": sessionId }),
-    ...(protocolVersion === null ? {} : { "mcp-protocol-version": protocolVersion }),
-  });
-
-  const send = Effect.fn("cli.thread.mcp.send")(function* (
-    message: unknown,
-  ): Effect.fn.Return<ReadonlyArray<unknown>, McpToolSessionError> {
-    const response = yield* Effect.tryPromise({
-      try: (signal) =>
-        fetchImplementation(options.endpoint, {
-          method: "POST",
-          headers: { "content-type": "application/json", ...headers() },
-          body: JSON.stringify(message),
-          signal,
-        }),
-      catch: bridgeError,
-    });
-    sessionId = response.headers.get("mcp-session-id") ?? sessionId;
-    if (!response.ok) {
-      yield* discardResponseBody(response);
-      return yield* Effect.fail(
-        new McpToolSessionError(`T3 Code MCP endpoint responded with HTTP ${response.status}.`),
-      );
-    }
-    const payloads = yield* Stream.runCollect(responsePayloads(response, bridgeError));
-    for (const payload of payloads) {
-      protocolVersion = protocolVersionOf(payload) ?? protocolVersion;
-    }
-    return payloads;
-  });
-
-  const request = Effect.fn("cli.thread.mcp.request")(function* (
-    method: string,
-    params: unknown,
-  ): Effect.fn.Return<JsonRpcEnvelope, McpToolSessionError> {
-    const id = `t3-cli-${nextId++}`;
-    const responses = yield* send({ jsonrpc: "2.0", id, method, params });
-    const envelope = asEnvelope(responses.find((entry) => asEnvelope(entry)?.id === id));
-    if (envelope === null || envelope.error !== undefined) {
-      return yield* Effect.fail(
-        new McpToolSessionError(
-          `T3 Code MCP ${method} failed${envelope?.error === undefined ? "." : `: ${JSON.stringify(envelope.error)}`}`,
-        ),
-      );
-    }
-    return envelope;
-  });
-
-  const terminate = Effect.suspend(() =>
-    sessionId === null
-      ? Effect.void
-      : Effect.tryPromise(() =>
-          fetchImplementation(options.endpoint, { method: "DELETE", headers: headers() }),
-        ).pipe(Effect.flatMap(discardResponseBody), Effect.ignore),
-  );
-
-  // Registered before the handshake so a session the server opened is ended
-  // even when the handshake fails, and the handshake stays interruptible.
-  return Effect.gen(function* () {
-    yield* Effect.addFinalizer(() => terminate);
-    yield* request("initialize", {
-      protocolVersion: MCP_PROTOCOL_VERSION,
-      capabilities: {},
-      clientInfo: { name: options.clientName, version: "0.0.0" },
-    });
-    yield* send({ jsonrpc: "2.0", method: "notifications/initialized" });
-    return {
-      call: (tool, args) =>
-        request("tools/call", { name: tool, arguments: args }).pipe(
-          Effect.map((envelope) => envelope.result),
-        ),
-    } satisfies McpToolSession;
-  });
-};
-
 const WAIT_SLICE_MS = 15_000;
 const READ_PAGE_LIMIT = 100;
 const TITLE_MAX_CHARS = 80;
@@ -424,7 +289,9 @@ const resolveProject = Effect.fn("cli.thread.resolveProject")(function* (
   // through a symlink (macOS /tmp), so both sides compare as real paths.
   const realPath = (value: string) =>
     fileSystem.realPath(value).pipe(Effect.orElseSucceed(() => value));
-  const target = yield* realPath(path.resolve(yield* HostProcess.WorkingDirectory, identifier));
+  const target = yield* realPath(
+    path.resolve(yield* HostProcess.WorkingDirectory, yield* expandHomePath(identifier)),
+  );
   const roots = yield* Effect.forEach(projects, (project) =>
     Effect.map(realPath(project.workspaceRoot), (root) => ({ project, root })),
   );
@@ -645,11 +512,16 @@ const finishRun = Effect.fn("cli.thread.finishRun")(function* (
   }
 });
 
-const titleFromMessage = (message: string) => {
+export const titleFromMessage = (message: string) => {
   const firstLine = message.trim().split("\n")[0]?.trim() ?? "";
-  return firstLine.length > TITLE_MAX_CHARS
-    ? `${firstLine.slice(0, TITLE_MAX_CHARS - 1).trimEnd()}…`
-    : firstLine;
+  if (firstLine.length <= TITLE_MAX_CHARS) return firstLine;
+  let end = TITLE_MAX_CHARS - 1;
+  const previous = firstLine.charCodeAt(end - 1);
+  const next = firstLine.charCodeAt(end);
+  if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) {
+    end -= 1;
+  }
+  return `${firstLine.slice(0, end).trimEnd()}…`;
 };
 
 const launchWorkspaceStrategy = (input: {

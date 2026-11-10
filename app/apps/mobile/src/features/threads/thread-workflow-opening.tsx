@@ -4,6 +4,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   resolveWorkflowOpening,
+  workflowMemberModelSelection,
   workflowOpeningHeadline,
   workflowOpeningParentThreadId,
   type RuntimeSubagent,
@@ -65,6 +66,7 @@ function memberRowSubagent(
     threadId: coordinatorThreadId,
     childThreadId: member.childThreadId as ThreadId | null,
     model: member.model,
+    modelSelection: workflowMemberModelSelection(member, opening.providerInstanceId!),
     driver: opening.driver!,
     providerInstanceId: opening.providerInstanceId!,
     title: member.title,

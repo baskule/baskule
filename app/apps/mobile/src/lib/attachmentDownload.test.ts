@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
-import type { PreparedConnection } from "@t3tools/client-runtime/connection";
+import {
+  BearerConnectionTarget,
+  type PreparedConnection,
+} from "@t3tools/client-runtime/connection";
 
 const mocks = vi.hoisted(() => ({
   directories: new Set<string>(),
@@ -542,12 +545,11 @@ function protectedTransfer() {
     httpBaseUrl: "https://host.test",
     socketUrl: "wss://host.test/ws",
     httpAuthorization: null,
-    target: {
-      _tag: "BearerConnectionTarget",
+    target: new BearerConnectionTarget({
       connectionId: "owner",
       environmentId,
       label: "owner",
-    },
+    }),
   };
   mocks.connection = connection;
   return { environmentId, origin: { connection, serverUrl: null, token: null } };

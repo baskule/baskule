@@ -1,3 +1,4 @@
+import { URL } from "node:url";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { gzipSync, zipSync } from "fflate";

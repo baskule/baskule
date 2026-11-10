@@ -40,9 +40,9 @@ export const EasDeviceHostConfig = Schema.Struct({
   /** EAS project that sessions run under, when the project's app config does not name one. */
   appId: Schema.optional(TrimmedNonEmptyString),
   /**
-   * Expo access token, kept in the secret store. When empty the server uses
-   * EXPO_TOKEN, then the `eas login` session. This is `secretSetting` from
-   * settings.ts, which imports this module.
+   * Expo access token, kept in the secret store, or the secret provider to read
+   * it from. When empty the server uses EXPO_TOKEN, then the `eas login` session.
+   * This is `secretSetting` from settings.ts, which imports this module.
    */
   accessToken: TrimmedString.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
@@ -189,6 +189,7 @@ export const DeviceHostStatuses = Schema.Record(
     status: DeviceHostStatus,
     detail: Schema.optional(Schema.String),
     androidDiscoveryIncomplete: Schema.optional(Schema.Boolean),
+    incompletePlatforms: Schema.optional(Schema.Array(DevicePlatform)),
   }),
 );
 

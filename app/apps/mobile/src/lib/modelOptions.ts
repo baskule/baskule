@@ -14,7 +14,12 @@ import type {
   RuntimeMode,
   ServerConfig as T3ServerConfig,
 } from "@t3tools/contracts";
-import { isProviderDriverKind, resolveProjectProviderInstanceEnabled } from "@t3tools/contracts";
+import {
+  disallowedProviderMessage,
+  isManagedDriverAllowed,
+  isProviderDriverKind,
+  resolveProjectProviderInstanceEnabled,
+} from "@t3tools/contracts";
 import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
@@ -109,6 +114,25 @@ function isDisabledForProject(
   return provider !== undefined && !isProviderEnabledForProject(config, provider, projectId);
 }
 
+function selectionDriver(
+  config: T3ServerConfig | null | undefined,
+  instanceId: ModelSelection["instanceId"],
+): string | undefined {
+  return (
+    config?.providers.find((candidate) => candidate.instanceId === instanceId)?.driver ??
+    config?.settings?.providerInstances[instanceId]?.driver
+  );
+}
+
+/** Whether the environment's managed policy leaves this driver out; the server refuses its turns. */
+function isDriverDisallowed(config: T3ServerConfig | null | undefined, driver: string | undefined) {
+  return (
+    driver !== undefined &&
+    isProviderDriverKind(driver) &&
+    !isManagedDriverAllowed(config?.managedPolicy, driver)
+  );
+}
+
 function normalizeSelectionOptions(
   selection: ModelSelection,
   capabilities: ModelCapabilities | null,
@@ -149,7 +173,9 @@ export function isModelSelectionUnavailable(
   if (isDisabledForProject(config, provider, selection.instanceId, projectId)) {
     return true;
   }
-  return false;
+  const driver =
+    provider?.driver ?? config.settings?.providerInstances[selection.instanceId]?.driver;
+  return isDriverDisallowed(config, driver);
 }
 
 export function describeUnavailableModelSelection(
@@ -160,6 +186,20 @@ export function describeUnavailableModelSelection(
   const provider = config?.providers.find(
     (candidate) => candidate.instanceId === selection.instanceId,
   );
+  const driver = selectionDriver(config, selection.instanceId);
+  if (isDriverDisallowed(config, driver)) {
+    const label = providerDisplayLabel({
+      driver: driver ?? selection.instanceId,
+      displayName:
+        provider?.displayName ??
+        config?.settings?.providerInstances[selection.instanceId]?.displayName,
+      instanceId: selection.instanceId,
+    });
+    return {
+      title: "Provider not allowed",
+      detail: `${disallowedProviderMessage(config?.managedPolicy?.organization, label)} Choose another model.`,
+    };
+  }
   return isDisabledForProject(config, provider, selection.instanceId, projectId)
     ? {
         title: t("Model turned off for this project"),
@@ -271,6 +311,7 @@ export function buildModelOptions(
   for (const provider of config?.providers ?? []) {
     if (
       !matchesLockedProvider(provider) ||
+      isDriverDisallowed(config, provider.driver) ||
       !isProviderEnabledForProject(config, provider, projectId) ||
       !provider.installed ||
       provider.auth.status === "unauthenticated"

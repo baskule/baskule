@@ -6,15 +6,18 @@ import {
   secretRequestAnswerInput,
   secretRequestDisplay,
   secretRequestFailureMessage,
+  secretRequestLink,
   secretRequestPrivacyNote,
   type SecretRequestItem,
+  type SecretRequestReply,
 } from "@t3tools/client-runtime/secret-request";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, OrchestrationV2ProjectedTurnItem } from "@t3tools/contracts";
-import { CheckIcon, LockIcon, MinusIcon, ShieldCheckIcon } from "lucide-react";
+import { useAtomValue } from "@effect/atom-react";
+import { CheckIcon, ExternalLinkIcon, LockIcon, MinusIcon, ShieldCheckIcon } from "lucide-react";
 import { useId, useRef, useState, type FormEvent } from "react";
 
 import { serverEnvironment } from "../../state/server";
@@ -73,9 +76,7 @@ function PendingSecretRequestForm(props: {
   // Enter and click can both submit before a render.
   const inFlight = useRef(false);
 
-  const send = async (
-    reply: { readonly type: "save"; readonly secret: string } | { readonly type: "decline" },
-  ) => {
+  const send = async (reply: SecretRequestReply) => {
     const input = secretRequestAnswerInput(item, reply);
     if (input === null || inFlight.current) return;
     inFlight.current = true;
@@ -98,6 +99,9 @@ function PendingSecretRequestForm(props: {
     event.preventDefault();
     void send({ type: "save", secret });
   };
+  const draft = secret;
+  const link = secretRequestLink(item);
+  const describedBy = error !== null ? `${privacyId} ${errorId}` : privacyId;
 
   return (
     <form
@@ -123,13 +127,28 @@ function PendingSecretRequestForm(props: {
           <p className="text-sm wrap-anywhere text-muted-foreground">{item.reason}</p>
         ) : null}
       </div>
+      {link !== null ? (
+        <div className="flex min-w-0 flex-col items-start gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            render={<a href={link.href} target="_blank" rel="noopener noreferrer" />}
+          >
+            Open {link.host}
+            <ExternalLinkIcon aria-hidden />
+          </Button>
+          {/* A link found in the reason is already shown there. */}
+          {item.url !== undefined ? (
+            <p className="font-mono text-xs wrap-anywhere text-muted-foreground">{item.url}</p>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex min-w-0 items-center gap-2">
         <div className="min-w-0 flex-1">
           <Input
             id={inputId}
-            // Password fields prompt to save credentials; this secret is not a login.
-            type="text"
-            className="[-webkit-text-security:disc]"
+            // A CSS-masked text field still exposes its value to screen readers.
+            type="password"
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
@@ -141,11 +160,11 @@ function PendingSecretRequestForm(props: {
             value={secret}
             disabled={submitting}
             aria-invalid={error !== null || undefined}
-            aria-describedby={error !== null ? `${privacyId} ${errorId}` : privacyId}
+            aria-describedby={describedBy}
             onChange={(event) => setSecret(event.currentTarget.value)}
           />
         </div>
-        <Button type="submit" disabled={submitting || secret.trim().length === 0}>
+        <Button type="submit" disabled={submitting || draft.trim().length === 0}>
           {t("Save securely")}
         </Button>
       </div>

@@ -1,7 +1,14 @@
+import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
+import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
+import { type OrchestrationV2ThreadShell } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { CheckpointScopeId, RunId, ThreadId } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as CheckpointCapture from "./CheckpointCaptureService.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";

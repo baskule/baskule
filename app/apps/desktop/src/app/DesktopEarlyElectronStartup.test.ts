@@ -84,7 +84,6 @@ describe("DesktopEarlyElectronStartup", () => {
 
     assert.deepEqual(options, {
       isDevelopment: true,
-      linuxWmClass: "baskule-dev",
       linuxDesktopEntryName: "dev.baskule.Baskule.Development.desktop",
       passwordStore: "gnome-libsecret",
     });

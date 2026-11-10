@@ -1,3 +1,4 @@
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, expect, it } from "@effect/vitest";
 import {
@@ -183,5 +184,5 @@ it.effect.each(["on time", "after restart"])(
           text: "Continue where you left off.",
         });
       }).pipe(Effect.provide(layerWorkers));
-    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+    }).pipe(Effect.provide(Layer.merge(SqlitePersistence.layerMemory, ManagedPolicy.layerTest()))),
 );

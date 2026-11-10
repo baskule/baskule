@@ -1,7 +1,12 @@
 import { t } from "../../i18n";
 
 import type { ServerUpdateState } from "@t3tools/client-runtime/state/server";
-import type { EnvironmentId, ServerConfig } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  managedNightlyDeniedMessage,
+  managedUpdatesDenial,
+  type ServerConfig,
+} from "@t3tools/contracts";
 import { cliReleaseChannelOf } from "@t3tools/shared/cliRelease";
 
 import {
@@ -17,6 +22,7 @@ export interface UpdateEverythingMachine {
   readonly serverConfig: {
     readonly environment: ServerConfig["environment"];
     readonly settings: Pick<ServerConfig["settings"], "continueThreadsAfterServerUpdate">;
+    readonly managedPolicy?: ServerConfig["managedPolicy"];
   } | null;
   readonly connected: boolean;
   readonly hostedByThisApp: boolean;
@@ -95,6 +101,14 @@ export function collectServerUpdateTargets(
       continue;
     }
     const selfUpdate = resolveServerSelfUpdateCapability(config);
+    const managedDenial = managedMachineUpdateDenial(
+      config,
+      selfUpdate === "desktop-managed" ? undefined : targetVersion,
+    );
+    if (managedDenial !== undefined) {
+      skip(managedDenial);
+      continue;
+    }
     const desktopAppUpdate = supportsDesktopAppUpdate(config);
     if (selfUpdate === null) {
       skip("needs a manual update");
@@ -488,4 +502,20 @@ export function describeUpdateEverything(plan: UpdateEverythingPlan): {
     providerCount,
     rows: Array.from(rows.values()),
   };
+}
+
+function managedMachineUpdateDenial(
+  config: NonNullable<UpdateEverythingMachine["serverConfig"]>,
+  targetVersion: string | undefined,
+): string | undefined {
+  const policy = config.managedPolicy;
+  return (
+    managedUpdatesDenial(policy) ??
+    (policy !== undefined &&
+    policy.limits?.updates?.allowNightly === false &&
+    targetVersion !== undefined &&
+    cliReleaseChannelOf(targetVersion) !== "stable"
+      ? managedNightlyDeniedMessage(policy.organization)
+      : undefined)
+  );
 }

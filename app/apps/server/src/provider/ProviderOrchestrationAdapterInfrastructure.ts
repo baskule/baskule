@@ -5,9 +5,5 @@ import * as ProviderContinuationRequests from "@t3tools/provider-core/server/Pro
 
 export type ProviderOrchestrationAdapterInfrastructure = IdAllocator.IdAllocatorV2;
 
-/**
- * `providerContinuationRequestsLayer` must be the same layer reference the
- * orchestration runtime provides to its continuation worker so Effect layer
- * memoization yields one shared queue.
- */
+/** Reuse the continuation worker layer so both share its queue. */
 export const layer = Layer.mergeAll(IdAllocator.layer, ProviderContinuationRequests.layer);

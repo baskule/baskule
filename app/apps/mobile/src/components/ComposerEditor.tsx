@@ -23,10 +23,13 @@ import {
   setComposerDraftContext,
   setComposerContextImporting,
   useComposerDraft,
+  useComposerDraftResetGeneration,
 } from "../state/use-composer-drafts";
 import { importComposerContextClipboard } from "../lib/composerContextClipboard";
 import { startComposerDraftOperation } from "../state/composerDraftOperations";
 import { appAtomRegistry } from "../state/atom-registry";
+import { enrichedModelDetails, enrichedModelReference } from "../lib/enrichedLinkPresentation";
+import { useModelMentions } from "../state/model-mentions";
 import { mobilePreferencesAtom } from "../state/preferences";
 import { useOpenLinkedThread } from "../features/threads/useOpenLinkedThread";
 import { ComposerContextSheet } from "./ComposerContextSheet";
@@ -59,6 +62,7 @@ export function ComposerEditor({
 }: ComposerEditorProps) {
   const t = useTranslation();
   const draft = useComposerDraft(draftKey ?? null);
+  const readResetGeneration = useComposerDraftResetGeneration(draftKey ?? null);
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const preferredEnterBehavior = AsyncResult.isSuccess(preferencesResult)
     ? preferencesResult.value.composerEnterBehavior
@@ -80,6 +84,7 @@ export function ComposerEditor({
   const [selected, setSelected] = useState<{ source: string; start: number; end: number } | null>(
     null,
   );
+  const models = useModelMentions(environmentId ?? draft.project?.environmentId, props.value);
   const contextImports = useAtomValue(composerContextImportsAtom);
   const importing = draftKey ? contextImports[draftKey] === true : false;
   const pasteContext = async (
@@ -177,8 +182,10 @@ export function ComposerEditor({
       <NativeComposerEditor
         key={hidden ? "hidden" : "visible"}
         {...props}
+        models={models}
         enterBehavior={props.enterBehavior ?? preferredEnterBehavior}
         onChangeText={changeText}
+        readResetGeneration={readResetGeneration}
         readOnly={props.readOnly || importing}
         onSubmit={importing ? undefined : props.onSubmit}
         clipboardFragment={clipboardFragment ?? undefined}
@@ -192,6 +199,11 @@ export function ComposerEditor({
           const path = composerMentionPath(selection.source, draft.context);
           if (path && onOpenMention) {
             onOpenMention(path);
+            return;
+          }
+          const model = enrichedModelReference(selection.source, models);
+          if (model) {
+            Dialog.alert(model.label, enrichedModelDetails(model));
             return;
           }
           const document = composerDocumentAttachment(selection.source, draft.context);

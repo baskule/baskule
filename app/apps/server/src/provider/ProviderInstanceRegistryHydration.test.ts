@@ -1,14 +1,23 @@
+import { layerSettingsWatcher } from "./ProviderInstanceRegistryHydration.ts";
+import { it as effectIt } from "@effect/vitest";
+import { ServerSettingsService } from "../serverSettings.ts";
+import * as Layer from "effect/Layer";
+import * as Effect from "effect/Effect";
 import {
   DEFAULT_SERVER_SETTINGS,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  SecretProviderId,
   type ServerSettings,
 } from "@t3tools/contracts";
 
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
 
 import { deriveProviderInstanceConfigMap } from "./ProviderInstanceRegistryHydration.ts";
+import { ProviderInstanceRegistryMutator } from "./ProviderInstanceRegistryMutator.ts";
 
 const projectId = ProjectId.make("project-a");
 const instanceId = ProviderInstanceId.make("codex_work");

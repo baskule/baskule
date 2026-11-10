@@ -8,6 +8,7 @@ import {
   ClientSettingsSchema,
   ClientSettingsPatch,
   DEFAULT_SERVER_SETTINGS,
+  PROJECT_SCOPED_SERVER_SETTING_KEYS,
   requiredScopesForProjectMutation,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
@@ -110,6 +111,26 @@ describe("ServerSettings usage price overrides", () => {
       expect(() => decodeServerSettingsPatch({ usagePriceOverrides })).toThrow();
     }
   });
+
+  it("ignores an invalid model filter without dropping the other settings", () => {
+    const valid = { include: [{ provider: "newer-provider", model: "orbit-1" }] };
+    expect(decodeServerSettings({ usageModelFilter: valid }).usageModelFilter).toEqual(valid);
+    const settings = decodeServerSettings({
+      usageModelFilter: { exclude: [{ model: "" }] },
+      usageModelAliases: { "drift-9": "orbit-1" },
+    });
+    expect(settings.usageModelFilter).toBeUndefined();
+    expect(settings.usageModelAliases).toEqual({ "drift-9": "orbit-1" });
+  });
+});
+
+it("drops a hand-edited non-string hidden tag and keeps the rest of the settings", () => {
+  const settings = decodeServerSettings({
+    hiddenThreadTags: ["private", 123],
+    hideTaggedThreads: true,
+  });
+  expect(settings.hiddenThreadTags).toEqual(["private"]);
+  expect(settings.hideTaggedThreads).toBe(true);
 });
 
 describe("custom model settings", () => {
@@ -291,18 +312,6 @@ describe("ClientSettings sidebar", () => {
   });
 });
 
-describe("ClientSettings context window meter", () => {
-  it("defaults off and preserves an explicit legacy opt-in", () => {
-    expect(decodeClientSettings({}).contextWindowMeterEnabled).toBe(false);
-    expect(
-      decodeClientSettings({ contextWindowMeterEnabled: true }).contextWindowMeterEnabled,
-    ).toBe(true);
-    expect(
-      decodeClientSettingsPatch({ contextWindowMeterEnabled: true }).contextWindowMeterEnabled,
-    ).toBe(true);
-  });
-});
-
 describe("ClientSettings send shortcut", () => {
   it("defaults to Enter and validates the supported choices", () => {
     expect(decodeClientSettings({}).sendShortcut).toBe("enter");
@@ -328,9 +337,9 @@ describe("ClientSettings follow-up behavior", () => {
 });
 
 describe("ServerSettings thread settlement", () => {
-  it("defaults merge settlement on and inactivity settlement to three days", () => {
+  it("defaults merge settlement on and inactivity settlement to seven days", () => {
     const settings = decodeServerSettings({});
-    expect(settings.sidebarAutoSettleAfterDays).toBe(3);
+    expect(settings.sidebarAutoSettleAfterDays).toBe(7);
     expect(settings.sidebarAutoSettleOnMerge).toBe(true);
   });
 
@@ -768,6 +777,39 @@ describe("requiredScopesForProjectMutation", () => {
   });
 });
 
+describe("voice settings", () => {
+  it("does not import voice consent from ordinary device preferences", () => {
+    const imported = {
+      voiceTranscriptionEnvironmentId: "env-1",
+      voiceTranscriptionDestination: { kind: "environment", environmentId: "env-1" },
+      speechPostProcessingEnabled: true,
+    };
+    expect(decodeClientSettings({}).speechSilenceFiltering).toBe(true);
+    expect(decodeClientSettingsPatch({ speechSilenceFiltering: false })).toEqual({
+      speechSilenceFiltering: false,
+    });
+    for (const key of Object.keys(imported)) {
+      expect(decodeClientSettings(imported)).not.toHaveProperty(key);
+      expect(decodeClientSettingsPatch(imported)).not.toHaveProperty(key);
+    }
+  });
+
+  it("keeps the correction cue personal and project vocabulary on the environment", () => {
+    expect(decodeClientSettings({}).speechCorrectionWord).toBe("");
+    expect(() => decodeClientSettingsPatch({ speechCorrectionWord: "x".repeat(51) })).toThrow();
+    expect(DEFAULT_SERVER_SETTINGS.speechProjectCustomWords).toEqual([]);
+    expect(PROJECT_SCOPED_SERVER_SETTING_KEYS).toContain("speechProjectCustomWords");
+  });
+
+  it("stores the transcription model and resources on the environment", () => {
+    expect(DEFAULT_SERVER_SETTINGS).toMatchObject({
+      speechModelId: "handy-computer/parakeet-unified-en-0.6b-gguf",
+      speechAcceleration: "auto",
+      speechModelUnloadTimeout: "min_15",
+    });
+  });
+});
+
 describe("server model preferences", () => {
   it("decodes a visibility update scoped to a provider instance and model", () => {
     const patch = { setModelsHidden: [{ provider: "opencode_work", model: "sol", hidden: false }] };
@@ -797,4 +839,25 @@ describe("server model preferences", () => {
       migrateModelPreferences: input,
     });
   });
+});
+
+describe("Baskule tool-call visibility", () => {
+  it("hides tool calls for new and legacy settings without an explicit choice", () => {
+    expect(decodeClientSettings({}).toolCallVisibility).toBe("hideAll");
+    expect(decodeClientSettings({ contextWindowMeterEnabled: true }).toolCallVisibility).toBe(
+      "hideAll",
+    );
+  });
+  it.each(["showAll", "hideSuccessful", "hideAll", "zen"] as const)(
+    "preserves explicit %s across save and reload",
+    (toolCallVisibility) => {
+      const settings = decodeClientSettings({ toolCallVisibility });
+      expect(decodeClientSettings(encodeClientSettings(settings)).toolCallVisibility).toBe(
+        toolCallVisibility,
+      );
+      expect(decodeClientSettingsPatch({ toolCallVisibility }).toolCallVisibility).toBe(
+        toolCallVisibility,
+      );
+    },
+  );
 });

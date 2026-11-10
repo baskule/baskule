@@ -5,7 +5,7 @@ import {
   getTraitSelectChange,
   replaceDescriptorCurrentValue,
   selectableProviderOptionChoices,
-  REASONING_SELECT_DESCRIPTOR_IDS,
+  isReasoningSelect,
 } from "@t3tools/client-runtime/model-traits";
 import {
   type ModelSelection,
@@ -82,10 +82,13 @@ type TraitsPersistence =
   | {
       threadRef?: ScopedThreadRef;
       draftId?: DraftId;
+      /** Runs after a change is written to the draft. */
+      onDraftModelOptionsChange?: () => void;
       onModelOptionsChange?: never;
     }
   | {
       threadRef?: undefined;
+      onDraftModelOptionsChange?: never;
       onModelOptionsChange: (nextOptions: ProviderOptions | undefined) => void;
     };
 
@@ -102,15 +105,15 @@ function getSelectedTraits(
   models: ReadonlyArray<ServerProviderModel>,
   model: string | null | undefined,
   modelOptions: ProviderOptions | null | undefined,
-  planModeEnabled: boolean,
+  includePlanAgent: boolean | undefined,
 ) {
-  const caps = getProviderModelCapabilities(models, model, provider, planModeEnabled);
+  const caps = getProviderModelCapabilities(models, model, provider, includePlanAgent);
   const modelIsUnavailable =
     provider === "opencode" &&
     !models.some((candidate) => candidate.slug === normalizeModelSlug(model, provider));
   const descriptors = modelIsUnavailable
     ? buildUnavailableModelOptionDescriptors(
-        planModeEnabled
+        includePlanAgent
           ? modelOptions
           : modelOptions?.filter((option) => option.id !== "agent" || option.value !== "plan"),
       )
@@ -168,14 +171,14 @@ export function getTraitsSectionVisibility(input: {
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
   modelOptions?: ProviderOptions | null | undefined;
-  planModeEnabled: boolean;
+  includePlanAgent?: boolean | undefined;
 }) {
   const selected = getSelectedTraits(
     input.provider,
     input.models,
     input.model,
     input.modelOptions,
-    input.planModeEnabled,
+    input.includePlanAgent,
   );
 
   const showEffort = selected.primarySelectDescriptor !== null;
@@ -213,7 +216,7 @@ export function getReasoningTraitStep(input: {
   models: ReadonlyArray<ServerProviderModel>;
   modelOptions: ProviderOptions | undefined;
   reportedModelSelection: ModelSelection | null | undefined;
-  planModeEnabled: boolean;
+  includePlanAgent?: boolean | undefined;
   direction: 1 | -1;
 }) {
   const selected = getSelectedTraits(
@@ -221,12 +224,10 @@ export function getReasoningTraitStep(input: {
     input.models,
     input.model,
     input.modelOptions,
-    input.planModeEnabled,
+    input.includePlanAgent,
   );
   if (selected.modelIsUnavailable) return null;
-  const descriptor = selected.selectDescriptors.find((entry) =>
-    REASONING_SELECT_DESCRIPTOR_IDS.has(entry.id),
-  );
+  const descriptor = selected.selectDescriptors.find(isReasoningSelect);
   const choices = descriptor ? selectableProviderOptionChoices(descriptor) : [];
   if (!descriptor || choices.length < 2) return null;
   const current = getDescriptorStringValue(
@@ -253,7 +254,7 @@ export interface TraitsMenuContentProps {
   model: string | null | undefined;
   modelOptions?: ProviderOptions | null | undefined;
   reportedModelSelection?: ModelSelection | null | undefined;
-  planModeEnabled: boolean;
+  includePlanAgent?: boolean | undefined;
   triggerClassName?: string;
 }
 
@@ -267,7 +268,7 @@ export function useTraitsSelection({
   model,
   modelOptions,
   reportedModelSelection,
-  planModeEnabled,
+  includePlanAgent,
   triggerClassName: _triggerClassName,
   ...persistence
 }: TraitsSelectionInput) {
@@ -288,13 +289,14 @@ export function useTraitsSelection({
       model,
       persistSticky: true,
     });
+    persistence.onDraftModelOptionsChange?.();
   };
   const selected = getTraitsSectionVisibility({
     provider,
     models,
     model,
     modelOptions,
-    planModeEnabled,
+    includePlanAgent,
   });
   return {
     ...selected,
@@ -426,7 +428,6 @@ export const TraitsPicker = memo(function TraitsPicker({
     return null;
   }
   const { label: triggerLabel } = buildTraitsTriggerDisplay({
-    provider: props.provider,
     descriptors: traits.descriptors,
     modelSelection:
       props.instanceId && props.model

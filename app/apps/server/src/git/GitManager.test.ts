@@ -2,6 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 
@@ -15,6 +16,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 
+import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/process";
 import { expect } from "vite-plus/test";
 import type { ModelSelection } from "@t3tools/contracts";
@@ -151,10 +153,14 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    generateTranscriptionPostProcessing: () =>
+      Effect.succeed({ transcription: "processed transcript" }),
     ...overrides,
   };
 
   return {
+    generateTranscriptionPostProcessing: () =>
+      Effect.succeed({ transcription: "processed transcript" }),
     generateCommitMessage: (input) =>
       implementation.generateCommitMessage(input).pipe(
         Effect.mapError(
@@ -248,7 +254,7 @@ function makeManager(input?: {
             const args =
               command._tag === "StandardCommand" &&
               NodePath.parse(command.command).name.toLowerCase() === "git"
-                ? command.args
+                ? command.args.map(String)
                 : null;
             if (args !== null) gitCommands?.push(args.join(" "));
             if (args === null || gitSpawnGate === undefined || !gitSpawnGate.matches(args)) {
@@ -266,7 +272,7 @@ function makeManager(input?: {
               );
           });
         }),
-      ).pipe(Layer.provide(NodeServices.layer))
+      ).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)))
     : Layer.empty;
   const gitVcsDriver = input?.gitConfigReads
     ? Layer.effect(
@@ -287,7 +293,7 @@ function makeManager(input?: {
   const layerVcsDriver = (watchesGitSpawns ? Layer.fresh(gitVcsDriver) : gitVcsDriver).pipe(
     Layer.provide(layerGitDriverSpawner),
     Layer.provideMerge(VcsProcess.layer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provideMerge(layerServerConfig),
   );
 
@@ -303,7 +309,10 @@ function makeManager(input?: {
       },
     ),
     layerServerSettings,
-  ).pipe(Layer.provideMerge(layerVcsDriver), Layer.provideMerge(NodeServices.layer));
+  ).pipe(
+    Layer.provideMerge(layerVcsDriver),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  );
   const layerStores = Layer.merge(ProjectionStore.layer, ProjectStore.layer).pipe(
     Layer.provideMerge(SqlitePersistence.layerMemory),
   );
@@ -324,7 +333,7 @@ function makeManager(input?: {
 const layerGitManagerTest = GitVcsDriver.layer.pipe(
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-git-manager-test-" })),
   Layer.provideMerge(VcsProcess.layer),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 it.layer(layerGitManagerTest)("GitManager", (it) => {

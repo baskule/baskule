@@ -35,6 +35,7 @@ export type ComputerFsErrorKind =
   | "Unavailable"
   | "Failed";
 
+// @effect-diagnostics-next-line extendsNativeError:off -- Promise-based computer filesystem errors are mapped to PlatformError by the Effect filesystem adapter.
 export class ComputerFsError extends Error {
   readonly kind: ComputerFsErrorKind;
   constructor(kind: ComputerFsErrorKind, message: string) {

@@ -11,7 +11,7 @@ export const nativeEffectContinuations = {
       const { version } = JSON.parse(
         NodeFS.readFileSync(NodePath.resolve(NodePath.dirname(path), "../../package.json"), "utf8"),
       );
-      if (!["4.0.1", "4.0.5"].includes(version))
+      if (!["4.0.1", "4.0.5", "4.1.2"].includes(version))
         throw new Error(`Review native Effect continuation compatibility for ${version}`);
       let contents = NodeFS.readFileSync(path, "utf8");
       const before = `      let resumed = false;
@@ -25,7 +25,12 @@ export const nativeEffectContinuations = {
       });`;
       const resume = `        if (yielded) {
           fiber.evaluate(effect);`;
-      const cancel = `      fiber._yielded = () => {
+      // 4.1.2's yieldWith stores the same _yielded cancellation callback.
+      const cancel =
+        version === "4.1.2"
+          ? `      fiber.yieldWith(() => {
+        resumed = true;`
+          : `      fiber._yielded = () => {
         resumed = true;`;
       for (const fragment of [before, resume, cancel]) {
         if (contents.split(fragment).length !== 2)

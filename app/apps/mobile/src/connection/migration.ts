@@ -89,18 +89,21 @@ function migrateConnection(
   );
 }
 
+const decodeLegacyCatalogJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+
 export const migrateLegacyConnectionCatalog = Effect.fn(
   "mobile.connectionMigration.migrateCatalog",
 )(function* (raw: string) {
-  const parsed = yield* Effect.try({
-    try: () => JSON.parse(raw) as unknown,
-    catch: (cause) =>
-      new LegacyConnectionMigrationError({
-        message: t("Could not parse the legacy mobile connection catalog: {{value1}}", {
-          value1: String(cause),
+  const parsed = yield* decodeLegacyCatalogJson(raw).pipe(
+    Effect.mapError(
+      (cause) =>
+        new LegacyConnectionMigrationError({
+          message: t("Could not parse the legacy mobile connection catalog: {{value1}}", {
+            value1: String(cause),
+          }),
         }),
-      }),
-  });
+    ),
+  );
   const legacy = yield* decodeLegacyConnectionDocument(parsed).pipe(
     Effect.mapError(
       (cause) =>

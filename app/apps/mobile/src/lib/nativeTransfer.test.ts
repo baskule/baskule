@@ -1,5 +1,8 @@
 import * as NodeHttp from "node:http";
-import type { PreparedConnection } from "@t3tools/client-runtime/connection";
+import {
+  BearerConnectionTarget,
+  type PreparedConnection,
+} from "@t3tools/client-runtime/connection";
 import { EnvironmentId } from "@t3tools/contracts";
 import { beforeEach, expect, it, vi } from "vite-plus/test";
 import type { BaskuleSession } from "../baskule/session";
@@ -77,12 +80,11 @@ function connect(serverUrl = "https://front.test", token = "front-token") {
     socketUrl: `${serverUrl.replace(/^http/, "ws")}/s/space/ws`,
     httpAuthorization: token ? { _tag: "Bearer", token } : null,
     ...(token ? { socketHeaders: { authorization: `Bearer ${token}` } } : {}),
-    target: {
-      _tag: "BearerConnectionTarget",
+    target: new BearerConnectionTarget({
       connectionId: "front-space",
       environmentId,
       label: "space",
-    },
+    }),
   };
   return { environmentId, origin: captureTransferOrigin(environmentId) };
 }

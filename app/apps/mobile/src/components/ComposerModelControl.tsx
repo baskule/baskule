@@ -26,7 +26,6 @@ export function ComposerModelControl(props: {
   });
   const summary = props.provider
     ? buildTraitsTriggerDisplay({
-        provider: props.provider,
         descriptors,
         modelSelection: props.selection,
         reportedModelSelection: props.reportedSelection,

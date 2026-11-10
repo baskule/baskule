@@ -16,9 +16,8 @@ import {
 } from "../../themePalette";
 import {
   humanizeThemeName,
-  isVsCodeThemeFile,
   pairVsCodeThemes,
-  parseVsCodeThemeFile,
+  parseThemeImport,
   resolveThemeLabelCollisions,
 } from "../../vscodeThemeImport";
 import { Alert } from "../ui/alert";
@@ -265,10 +264,9 @@ function ThemeImportBody({
         continue;
       }
       try {
-        const value: unknown = JSON.parse(await file.text());
         parsed.push({
           sourceName: file.name,
-          theme: isVsCodeThemeFile(value) ? parseVsCodeThemeFile(value) : parseThemeFile(value),
+          theme: parseThemeImport(await file.text()),
         });
       } catch (cause) {
         failures.push(
@@ -406,10 +404,7 @@ function ThemeImportBody({
       return;
     }
     try {
-      const parsed: unknown = JSON.parse(json);
-      const theme = isVsCodeThemeFile(parsed)
-        ? parseVsCodeThemeFile(parsed)
-        : parseThemeFile(parsed);
+      const theme = parseThemeImport(json);
       if (getCustomThemes().some((existing) => existing.id === theme.id)) {
         setError(null);
         setConflicts([theme]);

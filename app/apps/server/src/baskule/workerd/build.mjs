@@ -30,6 +30,7 @@ const SHIMS = {
 // Host-bound modules replaced by a stub in ./trim (same exports and service keys, inert implementation): path of
 // the real module, relative to apps/server → stub file in ./trim. Each stub's header says why it is safe.
 const TRIM = {
+  "src/policy/ManagedPolicy.ts": "ManagedPolicy.ts",
   "src/provider/DocumentText.ts": "DocumentText.ts",
   "src/terminal/Manager.ts": "TerminalManager.ts",
   "src/preview/ServerBrowser.ts": "ServerBrowser.ts",

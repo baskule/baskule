@@ -12,6 +12,7 @@ import * as MobileSecureStorage from "./mobile-secure-storage";
 
 const AGENT_AWARENESS_DEVICE_ID_KEY = "t3code.agent-awareness.device-id";
 const RECENT_THREAD_SHORTCUTS_KEY = "t3code.recent-thread-shortcuts";
+const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
 export class MobileStorageDecodeError extends Schema.TaggedError<MobileStorageDecodeError>()(
   "MobileStorageDecodeError",
@@ -74,7 +75,7 @@ export class MobileStorage extends Context.Service<
       MobileSecureStorage.MobileSecureStorageError | MobileStorageEncodeError
     >;
   }
->()("@t3tools/mobile/persistence/MobileStorage") {}
+>()("@t3tools/mobile/persistence/mobile-storage/MobileStorage") {}
 
 export const make = Effect.fn("MobileStorage.make")(function* () {
   const secureStorage = yield* MobileSecureStorage.MobileSecureStorage;
@@ -99,10 +100,9 @@ export const make = Effect.fn("MobileStorage.make")(function* () {
   });
 
   const writeJson = Effect.fn("MobileStorage.writeJson")(function* (key: string, value: unknown) {
-    const encoded = yield* Effect.try({
-      try: () => JSON.stringify(value),
-      catch: (cause) => new MobileStorageEncodeError({ key, cause }),
-    });
+    const encoded = yield* encodeJson(value).pipe(
+      Effect.mapError((cause) => new MobileStorageEncodeError({ key, cause })),
+    );
     yield* secureStorage.setItem(key, encoded);
   });
 
@@ -143,7 +143,9 @@ export const make = Effect.fn("MobileStorage.make")(function* () {
     loadOrCreateAgentAwarenessDeviceId,
     loadAgentAwarenessDeviceId,
     loadRecentThreadShortcuts,
-    saveRecentThreadShortcuts: (threads) => writeJson(RECENT_THREAD_SHORTCUTS_KEY, { threads }),
+    saveRecentThreadShortcuts: Effect.fn("MobileStorage.saveRecentThreadShortcuts")((threads) =>
+      writeJson(RECENT_THREAD_SHORTCUTS_KEY, { threads }),
+    ),
   });
 });
 
