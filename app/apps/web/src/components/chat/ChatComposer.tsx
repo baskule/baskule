@@ -49,7 +49,6 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import * as Schema from "effect/Schema";
-import { formatComposerModelMention } from "@t3tools/client-runtime/composer-model-mentions";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
@@ -881,12 +880,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? undefined
       : clampManagedRuntimeMode(managedPolicy, compatibleRuntimeMode, compatibleRuntimeModes);
 
-  const sendDisabledReason =
+  const sendDisabledReason: string | null =
     externalSendDisabledReason ??
     (multipleModelSelections?.length === 0 ? t("Select at least one model.") : null) ??
     (activePendingProgress
       ? attachmentBlockReason
-      : (attachmentBlockReason ?? runtimeModeCeilingDenial));
+      : (attachmentBlockReason ?? runtimeModeCeilingDenial)) ??
+    null;
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const selectedProviderSkills = selectedProviderStatus

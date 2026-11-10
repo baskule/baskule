@@ -155,7 +155,6 @@ describe("provider usage reporting", () => {
           requestKind: "user",
           terminalStatus: "completed",
           lifecycleObserved: true,
-          model: "gpt-6-sol",
           effort: "xhigh",
           serviceTier: "fast",
           runtimeMode: "full-access",
@@ -243,13 +242,12 @@ describe("provider usage reporting", () => {
         { driver: "claudeAgent", context: opus, providerTurn: turn("t", usage) },
         label,
       );
-    expect(properties(complete(1, 1, { models: ["claude-haiku-4-5-20251001"] }))).toMatchObject({
-      model: "claude-opus-5-5",
-      observedModel: "claude-haiku-4-5",
-      mixedModels: false,
-    });
+    const observed = properties(complete(1, 1, { models: ["claude-haiku-4-5-20251001"] }));
+    expect(observed).toMatchObject({ mixedModels: false });
+    expect(observed).not.toHaveProperty("model");
+    expect(observed).not.toHaveProperty("observedModel");
     const unconfirmed = properties(complete(1, 1));
-    expect(unconfirmed).toMatchObject({ model: "claude-opus-5-5" });
+    expect(unconfirmed).not.toHaveProperty("model");
     expect(unconfirmed).not.toHaveProperty("mixedModels");
     expect(properties(complete(1, 1, { models: ["a", "b"] }))).toMatchObject({ mixedModels: true });
 
@@ -294,7 +292,7 @@ describe("provider usage reporting", () => {
     });
   });
 
-  it("reports routed catalog models and closed efforts only", () => {
+  it("omits untrusted routed model labels and reports only closed efforts", () => {
     const routed = (model: string, variant: string) =>
       providerTurnProperties(
         {
@@ -310,12 +308,9 @@ describe("provider usage reporting", () => {
         },
         label,
       );
-    expect(routed("my-proxy/claude-opus-5-5", "high")).toMatchObject({
-      model: "claude-opus-5-5",
-      observedModel: "claude-opus-5-5",
-      effort: "high",
-    });
+    expect(routed("my-proxy/claude-opus-5-5", "high")).toMatchObject({ effort: "high" });
     for (const local of [
+      routed("my-proxy/claude-opus-5-5", "high"),
       routed("ollama/acme-internal", "secret-variant"),
       routed("acme-azure-deployment", "high"),
     ]) {
