@@ -1,3 +1,5 @@
+import * as NodeFS from "node:fs";
+
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { modelChipIcon } from "./contextChipIconSource";
@@ -36,4 +38,14 @@ describe("modelChipIcon", () => {
       tintsIcon: true,
     });
   });
+});
+
+it("ships every image required by the generated native chip catalog", () => {
+  const catalog = new URL("./contextChipIcons.generated.ts", import.meta.url);
+  const source = NodeFS.readFileSync(catalog, "utf8");
+  const references = [...source.matchAll(/require\("([^"]+)"\)/g)];
+  expect(references.length).toBeGreaterThan(0);
+  for (const [, path] of references) {
+    expect(NodeFS.existsSync(new URL(path!, catalog)), path).toBe(true);
+  }
 });
