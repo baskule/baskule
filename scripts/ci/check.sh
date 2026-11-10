@@ -19,7 +19,7 @@ run() {
   if [[ "$dry" == false ]]; then "$@"; fi
 }
 vp="$ROOT/app/node_modules/.bin/vp"
-tc="$ROOT/app/node_modules/.bin/tsc"
+tc="$ROOT/app/node_modules/.bin/effect-tsgo"
 test_args=(test run --maxWorkers 4)
 case "$suite" in
   harness)
@@ -69,12 +69,12 @@ case "$suite" in
     ;;
   type-web|type-mobile)
     cd "app/apps/${suite#type-}"
-    run "$tc" --noEmit
+    run "$tc" tsrs --noEmit
     ;;
   type-shared)
     for package in client-runtime contracts shared; do
       cd "$ROOT/app/packages/$package"
-      run "$tc" --noEmit
+      run "$tc" tsrs --noEmit
     done
     ;;
   *) echo "Unknown suite: $suite" >&2; exit 2 ;;
