@@ -156,7 +156,7 @@ jobs:
           retention-days: 1
 
   linux-apps:
-    needs: [version, translate, backend]
+    needs: [version, translate]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -180,13 +180,6 @@ jobs:
           sudo locale-gen en_US.UTF-8
           rustup toolchain install 1.95.0 --profile minimal
           rustup override set 1.95.0
-      - name: Download the verified hosted web bundle
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: hosted-web-${{ needs.version.outputs.version }}
-          path: .run/release/linux-apps
-      - name: Verify hosted web transfer
-        run: cd .run/release/linux-apps && sha256sum -c SHA256SUMS
       - name: Generate cumulative release compatibility
         env:
           GH_TOKEN: ${{ github.token }}
@@ -194,7 +187,7 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p .run/compatibility
+          mkdir -p .run/compatibility .run/release/linux-apps
           if gh api --include "repos/$GH_REPO/releases/latest" > .run/compatibility/previous-response; then
             sed '1,/^\r\?$/d' .run/compatibility/previous-response > .run/compatibility/previous-release.json
             previous=$(jq -er .tag_name .run/compatibility/previous-release.json)

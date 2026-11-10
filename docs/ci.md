@@ -40,7 +40,7 @@ gh workflow run backend.yml --repo baskule/baskule --ref main
 gh workflow run native.yml --repo baskule/baskule --ref main -f platform=android
 ```
 
-Release reuses the same CI, backend and native workflows through `workflow_call`. Its internal translation, upstream, Linux, assembly and publication jobs stay together in `release.yml`. Release supplies the shared translation artifact to backend and native builds; standalone runs use their source catalogs. The backend workflow owns its runtime and web prerequisites and exchanges their artifacts within the same run. Linux packaging consumes that verified web bundle after backend verification completes.
+Release reuses the same CI, backend and native workflows through `workflow_call`. Its internal translation, upstream, Linux, assembly and publication jobs stay together in `release.yml`. Release supplies the shared translation artifact to backend and native builds; standalone runs use their source catalogs. The backend workflow owns its runtime and web prerequisites and exchanges their artifacts within the same run. Linux packaging builds its own desktop renderer and runs alongside backend verification.
 
 Manual release runs always verify and assemble the complete candidate. Only a version-tag push publishes. There are no partial-release or publication mode switches.
 
