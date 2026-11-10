@@ -3949,9 +3949,8 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
               time: { created: 2 },
               type: "compaction",
               status: "completed",
-              reason: "auto",
+              reason: "scheduled",
               summary: "First turn summary",
-              recent: 42,
             },
             { id: "msg_dropped", time: { created: 3 }, text: "second", type: "user" },
           ],
@@ -3983,7 +3982,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         })
         .pipe(Effect.flip);
       assert.equal(failure._tag, "ProviderAdapterRollbackThreadError");
-      assert.include(Cause.pretty(Cause.fail(failure)), '["recent"]');
+      assert.include(Cause.pretty(Cause.fail(failure)), '["reason"]');
     }).pipe(Effect.scoped),
   );
 

@@ -2507,7 +2507,7 @@ describe("storage cleanup reports and local file policies", () => {
     ["unchanged", "removed", "No commits beyond the project branch"],
     ["unmerged", "kept", "Has commits beyond the project branch"],
     ["detached", "kept", "Project branch is unavailable"],
-    ["merged-only", "kept", "No remote is configured for merged-worktree cleanup"],
+    ["merged-only", "kept", null],
   ] as const)("cleans archived local-only worktrees: %s", ([state, outcome, reason]) =>
     runCleanupTest(
       Effect.gen(function* () {
@@ -2525,7 +2525,11 @@ describe("storage cleanup reports and local file policies", () => {
         if (state === "detached") yield* command(repo, ["checkout", "--detach"]);
 
         const report = yield* service.runNow;
-        expect(report.entries[0]).toMatchObject({ outcome, reason });
+        if (state === "merged-only") {
+          expect(report.entries).toEqual([]);
+        } else {
+          expect(report.entries[0]).toMatchObject({ outcome, reason });
+        }
         expect(yield* fs.exists(worktree)).toBe(outcome === "kept");
         expect(
           (yield* command(repo, ["show-ref", "--verify", "refs/heads/feature"])).stdout,

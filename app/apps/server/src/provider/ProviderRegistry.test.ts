@@ -1,4 +1,3 @@
-import { vi } from "vite-plus/test";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -1025,6 +1024,7 @@ it.layer(
             skills: [],
           } as const satisfies ServerProvider;
           let cached = true;
+          let snapshot: ServerProvider = provider;
           return {
             instanceId,
             driverKind,
@@ -1047,7 +1047,7 @@ it.layer(
                     latestVersion: scenario === "selected defect" ? null : "2.0.0",
                   });
                 }),
-              getSnapshot: Effect.succeed(provider),
+              getSnapshot: Effect.sync(() => snapshot),
               refresh: Effect.sync(() => {
                 events.push(`probe:${id}`);
                 if (
@@ -1056,7 +1056,7 @@ it.layer(
                 ) {
                   throw new Error("Provider discovery failed");
                 }
-                return cached
+                snapshot = cached
                   ? provider
                   : {
                       ...provider,
@@ -1070,6 +1070,7 @@ it.layer(
                         },
                       ],
                     };
+                return snapshot;
               }),
               streamChanges: Stream.empty,
               applyUsageLimits: () => Effect.void,
@@ -1539,6 +1540,7 @@ it.layer(
           ],
         } as const satisfies ServerProvider;
         const catalogSnapshot = yield* Ref.make<ServerProvider>(recoveredOpenCodeProvider);
+        const currentOpenCodeSnapshot = yield* Ref.make<ServerProvider>(failedOpenCodeProvider);
         const instances = [
           {
             instanceId: exampleInstanceId,
@@ -1584,9 +1586,10 @@ it.layer(
                     packageName: null,
                   }),
                 ),
-              getSnapshot: Effect.succeed(failedOpenCodeProvider),
+              getSnapshot: Ref.get(currentOpenCodeSnapshot),
               refresh: Ref.update(openCodeRefreshCalls, (count) => count + 1).pipe(
                 Effect.andThen(Ref.get(catalogSnapshot)),
+                Effect.tap((snapshot) => Ref.set(currentOpenCodeSnapshot, snapshot)),
               ),
               streamChanges: Stream.empty,
               applyUsageLimits: () => Effect.void,
