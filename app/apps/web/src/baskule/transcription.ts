@@ -2,7 +2,8 @@ import {
   VoiceTranscriptionError,
   throwIfVoiceTranscriptionAborted,
 } from "@t3tools/client-runtime/voice-input";
-import { baskuleApi } from "./api";
+import { t } from "../i18n";
+import { BaskuleApiError, baskuleApi } from "./api";
 
 /** Upstream browser capture produces mono float PCM at 16 kHz; hosted transcription accepts a recording. */
 export function pcmRecording(samples: Float32Array): Blob {
@@ -39,7 +40,7 @@ export async function transcribeBaskulePcm(
   if (!authorized())
     throw new VoiceTranscriptionError({
       code: "unavailable",
-      message: "Sign in to use voice input.",
+      message: t("Sign in to use voice input."),
     });
   const response = await fetch(uri, { signal });
   const recording = pcmRecording(new Float32Array(await response.arrayBuffer()));
@@ -47,14 +48,26 @@ export async function transcribeBaskulePcm(
   if (!authorized())
     throw new VoiceTranscriptionError({
       code: "unavailable",
-      message: "Your voice input session changed.",
+      message: t("Your voice input session changed."),
     });
-  const text = await baskuleApi.transcribe(recording, signal);
+  let text: string;
+  try {
+    text = await baskuleApi.transcribe(recording, signal);
+  } catch (error) {
+    throwIfVoiceTranscriptionAborted(signal);
+    if (error instanceof BaskuleApiError) {
+      throw new VoiceTranscriptionError({
+        code: "transcription-failed",
+        message: error.message,
+      });
+    }
+    throw error;
+  }
   throwIfVoiceTranscriptionAborted(signal);
   if (!authorized())
     throw new VoiceTranscriptionError({
       code: "unavailable",
-      message: "Your voice input session changed.",
+      message: t("Your voice input session changed."),
     });
   return text;
 }

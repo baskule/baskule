@@ -20,6 +20,8 @@ describe("hosted client RPC policy", () => {
     W.previewReportStatus,
     W.subscribePreviewEvents,
     O.getArchivedShellSnapshot,
+    O.getThreadLinkMetadata,
+    O.getThreadTitles,
     O.subscribeThread,
     O.forceStopThread,
   ])("allows %s used by hosted clients", (method) => {

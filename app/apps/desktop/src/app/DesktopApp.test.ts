@@ -14,7 +14,24 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { vi } from "vite-plus/test";
 
-vi.mock("electron", () => ({}));
+vi.mock("electron", () => ({
+  ipcMain: {
+    on: vi.fn(),
+    handle: vi.fn(),
+    removeAllListeners: vi.fn(),
+    removeHandler: vi.fn(),
+  },
+  session: { defaultSession: { webRequest: { onBeforeSendHeaders: vi.fn() } } },
+}));
+vi.mock("./BaskuleConnection.ts", () => ({
+  baskuleConnection: async () => ({
+    getOrigin: () => null,
+    connect: async () => {},
+    proxy: async () => new Response(null, { status: 404 }),
+    socketHeaders: async () => null,
+  }),
+  isAppFrame: () => true,
+}));
 vi.mock("@clerk/electron", () => ({ createClerkBridge: vi.fn() }));
 vi.mock("@clerk/electron/storage", () => ({ storage: vi.fn() }));
 vi.mock("../ipc/DesktopIpcHandlers.ts", () => ({
@@ -69,14 +86,20 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as MacPermissions from "../permissions/MacPermissions.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 
-it.effect.each([false, true])(
-  "stops backends together before flushing history and cancels Linux registration, stop defect=%s",
-  (stopDefect) =>
+it.effect.each([
+  { stopDefect: false, localEnvironmentEnabled: false },
+  { stopDefect: true, localEnvironmentEnabled: false },
+  { stopDefect: false, localEnvironmentEnabled: true },
+  { stopDefect: true, localEnvironmentEnabled: true },
+])(
+  "starts only the enabled local environment and stops backends before flushing history: %j",
+  ({ stopDefect, localEnvironmentEnabled }) =>
     Effect.gen(function* () {
       const registrationStarted = yield* Deferred.make<void>();
       const releaseRegistration = yield* Deferred.make<void>();
       const registrationStopped = yield* Deferred.make<void>();
       const windowStarted = yield* Deferred.make<void>();
+      const cliInstalled = yield* Deferred.make<void>();
       const firstStopStarted = yield* Deferred.make<void>();
       const secondStopStarted = yield* Deferred.make<void>();
       const releaseStops = yield* Deferred.make<void>();
@@ -88,6 +111,9 @@ it.effect.each([false, true])(
         Effect.sync(() => {
           events.push(event);
         });
+      const showWindow = record("window").pipe(
+        Effect.andThen(Deferred.succeed(windowStarted, undefined)),
+      );
       const runApp = DesktopApp.program
         .pipe(
           Effect.provide(NodeCrypto.layer),
@@ -122,7 +148,7 @@ it.effect.each([false, true])(
           Effect.provideService(DesktopAppSettings.DesktopAppSettings, {
             load: Effect.void,
             get: Effect.succeed({
-              localEnvironmentEnabled: true,
+              localEnvironmentEnabled,
               serverExposureMode: "local-only",
             }),
           } as unknown as DesktopAppSettings.DesktopAppSettings["Service"]),
@@ -163,9 +189,8 @@ it.effect.each([false, true])(
             quitting,
           } as DesktopState.DesktopState["Service"]),
           Effect.provideService(DesktopWindow.DesktopWindow, {
-            ensureMain: record("window").pipe(
-              Effect.andThen(Deferred.succeed(windowStarted, undefined)),
-            ),
+            ensureMain: showWindow,
+            createMainIfBackendReady: showWindow,
           } as unknown as DesktopWindow.DesktopWindow["Service"]),
           Effect.provideService(DesktopBackendPool.DesktopBackendPool, {
             primary: Effect.succeed({
@@ -210,7 +235,9 @@ it.effect.each([false, true])(
           Layer.mergeAll(
             Layer.mock(BrowserImport.BrowserImport, {}),
             Layer.mock(DesktopBackendConfiguration.DesktopBackendConfiguration, {}),
-            Layer.mock(DesktopCliCommand.DesktopCliCommand, {}),
+            Layer.mock(DesktopCliCommand.DesktopCliCommand, {
+              installOnFirstLaunch: Deferred.succeed(cliInstalled, undefined).pipe(Effect.asVoid),
+            }),
             Layer.mock(DesktopClientSettings.DesktopClientSettings, {}),
             Layer.mock(DesktopConnectionCatalogStore.DesktopConnectionCatalogStore, {}),
             Layer.mock(DesktopIpc.DesktopIpc, {}),
@@ -244,7 +271,15 @@ it.effect.each([false, true])(
       );
       yield* Deferred.await(registrationStarted);
       yield* Deferred.await(windowStarted);
-      assert.deepEqual(events, ["identity", "ready", "identity", "backend", "window"]);
+      assert.deepEqual(events, [
+        "identity",
+        "ready",
+        "identity",
+        ...(localEnvironmentEnabled ? ["backend"] : []),
+        "window",
+      ]);
+      if (localEnvironmentEnabled) yield* Deferred.await(cliInstalled);
+      yield* Effect.yieldNow;
       assert.isFalse(yield* Deferred.isDone(registrationStopped));
       const shutdown = yield* DesktopShutdown.DesktopShutdown;
       yield* shutdown.request;
@@ -260,5 +295,6 @@ it.effect.each([false, true])(
       assert.equal(Exit.isFailure(result), stopDefect);
       assert.isTrue(yield* shutdown.isComplete);
       assert.isTrue(yield* Deferred.isDone(registrationStopped));
+      assert.equal(yield* Deferred.isDone(cliInstalled), localEnvironmentEnabled);
     }).pipe(Effect.provide(DesktopShutdown.layer)),
 );
