@@ -121,7 +121,7 @@ export async function refreshBaskuleMe(): Promise<void> {
   if (current.status !== "signed-in" || rotations > 0) return;
   try {
     const me = await Api.fetchMe(current.serverUrl, current.token);
-    if (revision !== expected || state !== current) return;
+    if (revision !== expected || state !== current || rotations > 0) return;
     if (JSON.stringify(me) !== JSON.stringify(current.me)) {
       await commit({ ...current, me }, expected);
     }
@@ -207,7 +207,7 @@ export async function changeBaskuleSessionPassword(input: {
 }): Promise<void> {
   const current = state;
   if (current.status !== "signed-in" || current.kind !== "authenticated") return;
-  const expected = revision;
+  const expected = ++revision;
   rotations++;
   try {
     let token: string;

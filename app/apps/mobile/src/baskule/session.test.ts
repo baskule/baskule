@@ -259,6 +259,51 @@ describe("device connection", () => {
     },
   );
 
+  it.each(["request", "save"])(
+    "keeps the password replacement when an older successful refresh is in %s",
+    async (phase) => {
+      const { api, session } = await setup();
+      const settings = await import("./settings-api");
+      const secureStore = await import("expo-secure-store");
+      vi.mocked(api.fetchMe).mockResolvedValueOnce(me);
+      await session.completeBaskuleSignIn("https://a.example", "token-a");
+      const refresh = Promise.withResolvers<typeof me>();
+      vi.mocked(api.fetchMe).mockImplementationOnce(() => refresh.promise);
+      const saving = Promise.withResolvers<void>();
+      const saved = Promise.withResolvers<void>();
+      using _save = vi
+        .spyOn(secureStore, "setItemAsync")
+        .mockImplementationOnce(async (_key, token) => {
+          saving.resolve();
+          await saved.promise;
+          storage.token = token;
+        });
+      const refreshedMe = { ...me, user: { ...me.user, name: "Updated name" } };
+      const refreshing = session.refreshBaskuleMe();
+      if (phase === "save") {
+        refresh.resolve(refreshedMe);
+        await saving.promise;
+      }
+      const replacement = Promise.withResolvers<string>();
+      vi.mocked(settings.changeBaskulePassword).mockImplementationOnce(() => replacement.promise);
+      const change = session.changeBaskuleSessionPassword({
+        currentPassword: "a",
+        newPassword: "b",
+      });
+      refresh.resolve(refreshedMe);
+      saved.resolve();
+      await refreshing;
+      replacement.resolve("token-b");
+      await change;
+      expect(session.readBaskuleSession()).toMatchObject({ status: "signed-in", token: "token-b" });
+      expect(storage.token).toBe("token-b");
+      vi.mocked(api.fetchMe).mockResolvedValueOnce(refreshedMe);
+      await session.refreshBaskuleMe();
+      expect(session.readBaskuleSession()).toMatchObject({ token: "token-b", me: refreshedMe });
+      expect(storage.token).toBe("token-b");
+    },
+  );
+
   it("keeps the rotated credential in memory and resumes refreshes after a failed save", async () => {
     const { api, session } = await setup();
     const settings = await import("./settings-api");
