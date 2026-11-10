@@ -1,4 +1,5 @@
 import {
+  DEFAULT_CLIENT_SETTINGS,
   EventId,
   GUEST_COMMAND_OUTPUT_ROUTE,
   GUEST_RENDER_ROUTE,
@@ -15,7 +16,7 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
@@ -23,6 +24,10 @@ import "~/index.css";
 import { render } from "../../../test/render";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
 import { GuestPage } from "./GuestPage";
+import {
+  __resetClientSettingsPersistenceForTests,
+  __setClientSettingsForTests,
+} from "../../hooks/useSettings";
 
 const SHARE_ID = "share-1";
 const encodeEvent = Schema.encodeSync(Schema.fromJsonString(Schema.toCodecJson(GuestStreamEvent)));
@@ -217,6 +222,8 @@ function visit(path: string): Disposable {
 
 describe("GuestPage", () => {
   it("shows the shared thread in the real timeline without opening an environment connection", async () => {
+    __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, toolCallVisibility: "showAll" });
+    onTestFinished(__resetClientSettingsPersistenceForTests);
     using _page = visit(`/guest?share=${SHARE_ID}`);
     using _session = vi
       .spyOn(window, "fetch")
