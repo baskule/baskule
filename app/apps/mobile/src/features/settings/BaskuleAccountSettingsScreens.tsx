@@ -24,6 +24,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { t, useLocale, useTranslation } from "../../i18n";
+import { subscribeAppActive } from "../../lib/appState";
 import { ConnectionFormField } from "../connection/ConnectionFormField";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -267,8 +268,10 @@ function UsageLimit(props: { readonly status: UsageWindowStatus }) {
           limit: formatUsd(status.limit.costUsd),
         }),
   ].filter(Boolean);
+  // Windows reset within a month, so month and day are never ambiguous without the year.
   const resets = new Date(status.resetsAt).toLocaleString(locale, {
-    weekday: "short",
+    month: "short",
+    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   });
@@ -380,6 +383,13 @@ export function SettingsPluginsRouteScreen() {
     t("Could not load your plugins."),
   );
   const [busy, setBusy] = useState(false);
+  // Android's browser call resolves once the tab opens, so returning to the app is what
+  // reveals a new connection. While busy, the pending action reloads when it settles.
+  const reloadOnReturn = useEffectEvent(() => {
+    if (!busy) reload();
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes accounts when the app returns from the browser consent page
+  useEffect(() => subscribeAppActive(() => reloadOnReturn()), []);
   if (!session) return <SignedInOnly title={t("Plugins and accounts")} />;
 
   const mutate = (work: () => Promise<void>) => {
@@ -491,56 +501,70 @@ export function SettingsPluginsRouteScreen() {
             detail={t("Plugins your administrator adds to your spaces appear here.")}
           />
         ) : (
-          state.value.map((plugin) => {
-            const oauthServers = plugin.servers.filter(
-              (server) => server.credential === "user-oauth",
-            );
-            const needsConnection = oauthServers.some(
-              (server) => server.status === "connect" || server.status === "reconnect",
-            );
-            return (
-              <SettingsSection
-                key={plugin.id}
-                title={plugin.name}
-                footer={pluginStatusText(plugin.status, plugin.name)}
-              >
-                {plugin.description ? (
-                  <Text className="px-4 py-3 text-sm text-foreground-muted">
-                    {plugin.description}
-                  </Text>
-                ) : null}
-                {oauthServers.flatMap((server) =>
-                  server.accounts.map((account) => (
+          <>
+            {state.value.map((plugin) => {
+              const blocked = plugin.status === "unavailable" || plugin.status === "needs_setup";
+              const oauthServers = plugin.servers.filter(
+                (server) => server.credential === "user-oauth",
+              );
+              const needsConnection = oauthServers.some(
+                (server) => server.status === "connect" || server.status === "reconnect",
+              );
+              return (
+                <SettingsSection
+                  key={plugin.id}
+                  title={plugin.name}
+                  footer={pluginStatusText(plugin.status, plugin.name)}
+                >
+                  {plugin.description ? (
+                    <Text className="px-4 py-3 text-sm text-foreground-muted">
+                      {plugin.description}
+                    </Text>
+                  ) : null}
+                  {oauthServers.flatMap((server) =>
+                    server.accounts.map((account) => (
+                      <SettingsRow
+                        key={`${server.name}:${account.id}`}
+                        icon="person.crop.circle"
+                        label={account.label}
+                        disabled={busy}
+                        value={[
+                          account.default ? t("Default") : null,
+                          account.status === "reconnect" ? t("Needs reconnecting") : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                        onPress={() => accountActions(plugin, account, server.accounts.length - 1)}
+                      />
+                    )),
+                  )}
+                  {oauthServers.length > 0 && !blocked ? (
                     <SettingsRow
-                      key={`${server.name}:${account.id}`}
-                      icon="person.crop.circle"
-                      label={account.label}
+                      icon="link"
+                      label={
+                        needsConnection
+                          ? t("Connect in browser")
+                          : t("Connect another account in browser")
+                      }
                       disabled={busy}
-                      value={[
-                        account.default ? t("Default") : null,
-                        account.status === "reconnect" ? t("Needs reconnecting") : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                      onPress={() => accountActions(plugin, account, server.accounts.length - 1)}
+                      onPress={connectInBrowser}
                     />
-                  )),
+                  ) : null}
+                </SettingsSection>
+              );
+            })}
+            {state.value.some(
+              (plugin) =>
+                plugin.status !== "unavailable" &&
+                plugin.servers.some((server) => server.credential === "user-oauth"),
+            ) ? (
+              <Text textRole="footnote" className="px-2 text-foreground-muted">
+                {t(
+                  "Plugins that use your account act as you. In a team space, only your default account is used, and only if the space owner allows it. Everyone in that space can see the results.",
                 )}
-                {oauthServers.length > 0 ? (
-                  <SettingsRow
-                    icon="link"
-                    label={
-                      needsConnection
-                        ? t("Connect in browser")
-                        : t("Connect another account in browser")
-                    }
-                    disabled={busy}
-                    onPress={connectInBrowser}
-                  />
-                ) : null}
-              </SettingsSection>
-            );
-          })
+              </Text>
+            ) : null}
+          </>
         )}
       </PageBody>
     </SettingsScreen>

@@ -356,8 +356,15 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     });
   }, [incomingShare, isFocused, reservedDestinationProject, selectDetail]);
 
-  if (!BASKULE_FLAGS.projects && !incomingShare) {
-    // baskule: the route only resolves the scratch project, so it never shows a picker.
+  if (!BASKULE_FLAGS.projects) {
+    // baskule: the route only resolves the scratch project (or a share's reserved draft), so it
+    // never shows a picker. A reservation whose project is gone offers a fresh chat instead.
+    const staleShareDestination =
+      Boolean(incomingShare?.destination) &&
+      reservedDestinationProject === null &&
+      catalogState.hasLoadedShellSnapshot;
+    const starting =
+      reservedDestinationProject !== null || (canStartScratch && !staleShareDestination);
     return (
       <View collapsable={false} className="flex-1 bg-sheet">
         <AppBar
@@ -370,12 +377,23 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
           }
         />
         <View className="flex-1 items-center justify-center gap-4 px-8">
-          {canStartScratch ? (
+          {starting ? (
             <>
               <AppActivityIndicator colorClassName="accent-icon-muted" />
               <Text className="text-center text-base text-foreground-muted">
                 {t("Starting a new chat…")}
               </Text>
+            </>
+          ) : staleShareDestination && canStartScratch ? (
+            <>
+              <Text className="text-center text-base text-foreground-muted">
+                {t("The chat you shared to is no longer available.")}
+              </Text>
+              <Button
+                label={t("Start a new chat")}
+                tone="primary"
+                onPress={() => void startScratch()}
+              />
             </>
           ) : (
             <Text className="text-center text-base text-foreground-muted">

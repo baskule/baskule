@@ -3,7 +3,11 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useMemo, useCallback, type Dispatch, type SetStateAction } from "react";
 
 import { useProjects, useServerConfigs } from "../../state/entities";
-import { createDraft, scheduledTaskDefaultModel } from "./scheduledTaskDraft";
+import {
+  createDraft,
+  defaultScheduledTaskProject,
+  scheduledTaskDefaultModel,
+} from "./scheduledTaskDraft";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 import { settingsTargetsForProject } from "./settings-environment-filter.logic";
 
@@ -31,21 +35,16 @@ export function useScheduledTaskEditor() {
       const environmentProjects = projects.filter(
         (project) => project.environmentId === environmentId,
       );
-      const project =
-        environmentProjects.find((project) =>
+      const config = configs.get(environmentId) ?? null;
+      const project = defaultScheduledTaskProject(environmentProjects, {
+        scratchWorkspaceRoot: config?.scratchWorkspaceRoot,
+        isPreferred: (project) =>
           selectedGroup?.members.some(
             (member) =>
               member.project.environmentId === environmentId && member.project.id === project.id,
-          ),
-        ) ??
-        environmentProjects.find(
-          (project) => project.pinnedAt != null && project.archivedAt == null,
-        ) ??
-        environmentProjects.find((project) => project.archivedAt == null);
-      return createDraft(
-        project?.id ?? null,
-        scheduledTaskDefaultModel(configs.get(environmentId) ?? null, project ?? null),
-      );
+          ) === true,
+      });
+      return createDraft(project?.id ?? null, scheduledTaskDefaultModel(config, project));
     },
     [configs, projects, selectedGroup],
   );

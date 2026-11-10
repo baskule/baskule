@@ -37,7 +37,7 @@ import {
   WEBHOOK_FILTER_OPS,
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AppState, Platform, Pressable, TextInput as RNTextInput, View } from "react-native";
@@ -62,6 +62,7 @@ import { buildModelOptions } from "../../lib/modelOptions";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useProjects, useEnvironmentServerConfig } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
+import { projectEnvironment } from "../../state/projects";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
@@ -78,7 +79,9 @@ import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-en
 import {
   editDraft,
   parseIntervalMinutes,
+  resolveScheduledTaskSaveTarget,
   scheduledTaskDefaultModel,
+  scheduledTaskWorkspaceStrategy,
   scheduleFromDraft,
   type ScheduledTaskDraft as Draft,
 } from "./scheduledTaskDraft";
@@ -156,12 +159,14 @@ function describeSchedule(task: ScheduledTask): string {
   return t("{{days}} at {{value2}}", { days: days, value2: formatTime(task.schedule.timeOfDay) });
 }
 
+// Baskule spaces run fixed-time schedules on the server clock, which is UTC (the web says so too).
+// The picker edits that wall-clock value as is; only "Next run" converts to the device's time.
 function formatTime(value: string): string {
   const [hours, minutes] = value.split(":").map(Number);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return value;
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return `${value} UTC`;
   const time = new Date();
   time.setHours(hours ?? 9, minutes ?? 0, 0, 0);
-  return time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} UTC`;
 }
 
 function timePickerValue(value: string): Date {
@@ -738,7 +743,16 @@ function TaskForm({
     label: t("scheduled task upsert"),
     reportFailure: false,
   });
+  const openScratch = useAtomCommand(projectEnvironment.openScratch, { reportFailure: false });
   const submissionPending = useRef(false);
+  const mounted = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tracks mount so a save that awaits the space's chat project stops after the form closes
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const taskMissing =
     draft.task !== null &&
@@ -798,61 +812,77 @@ function TaskForm({
       );
       return;
     }
-    if (!BASKULE_FLAGS.projects && (!draft.projectId || !draft.modelSelection)) {
-      // The space's chat project and configured model are chosen for the person.
-      Dialog.alert(t("Space not ready"), t("This space is still starting. Try again in a moment."));
-      return;
-    }
+    const workspaceStrategy = scheduledTaskWorkspaceStrategy(draft);
+    // Only visible fields are named; the hidden project and model are resolved below.
     if (
       !draft.title.trim() ||
       !draft.prompt.trim() ||
-      !draft.projectId ||
-      !draft.modelSelection ||
       !schedule ||
-      (draft.workspace === "existing_worktree" && !draft.checkoutPath.trim())
+      (BASKULE_FLAGS.projects && !draft.projectId) ||
+      (BASKULE_FLAGS.modelSelection && !draft.modelSelection) ||
+      (workspaceStrategy.type === "existing_worktree" && !workspaceStrategy.worktreePath)
     ) {
       Dialog.alert(
         t("Incomplete task"),
-        t("Add a name, prompt, project, model, valid schedule, and checkout path if needed."),
+        BASKULE_FLAGS.projects
+          ? t("Add a name, prompt, project, model, valid schedule, and checkout path if needed.")
+          : t("Add a name, prompt, and valid schedule."),
       );
       return;
     }
-    if (!projects.some((project) => project.id === draft.projectId)) {
-      Dialog.alert(t("Project unavailable"), t("Choose a project in this environment."));
+    submissionPending.current = true;
+    setSaving(true);
+    const finish = () => {
+      submissionPending.current = false;
+      if (mounted.current) setSaving(false);
+    };
+    const scratch: { failure: AtomCommandResult<unknown, unknown> | null } = { failure: null };
+    const target = await resolveScheduledTaskSaveTarget({
+      draft,
+      projects,
+      openScratchProject: async () => {
+        const opened = await openScratch({ environmentId, input: {} });
+        if (opened._tag === "Success") return opened.value;
+        scratch.failure = opened;
+        return null;
+      },
+      defaultModel: (project) => scheduledTaskDefaultModel(config, project),
+    });
+    // The space's form closed or switched while its chat project was opening.
+    if (!mounted.current) return finish();
+    if (target._tag !== "ready") {
+      finish();
+      if (scratch.failure) failure(t("Could not save task"), scratch.failure);
+      else if (target._tag === "project-unavailable")
+        Dialog.alert(t("Project unavailable"), t("Choose a project in this environment."));
+      else
+        Dialog.alert(
+          t("Space not ready"),
+          t("This space is still starting. Try again in a moment."),
+        );
       return;
     }
     const input: ScheduledTaskUpsertInput = {
       ...(draft.task ? { id: draft.task.id, requireExisting: true } : {}),
       title: draft.title.trim(),
       prompt: draft.prompt.trim(),
-      projectId: draft.projectId,
-      modelSelection: draft.modelSelection,
+      projectId: target.projectId,
+      modelSelection: target.modelSelection,
       schedule,
       enabled: draft.enabled,
       threadId: draft.task?.threadId ?? null,
-      workspaceStrategy:
-        draft.workspace === "root"
-          ? { type: "root" }
-          : draft.workspace === "existing_worktree"
-            ? { type: "existing_worktree", worktreePath: draft.checkoutPath.trim() }
-            : {
-                type: "worktree",
-                baseRef: draft.baseRef.trim() || "main",
-                startFromOrigin: draft.startFromOrigin,
-              },
+      workspaceStrategy,
       runtimeMode: draft.runtimeMode,
       interactionMode: draft.task?.interactionMode ?? "default",
       creationSource: draft.task?.creationSource ?? "mobile",
     };
-    submissionPending.current = true;
-    setSaving(true);
     const result = await upsert({ environmentId, input });
-    setSaving(false);
     if (result._tag === "Failure") {
-      submissionPending.current = false;
+      finish();
       failure(t("Could not save task"), result);
       return;
     }
+    if (mounted.current) setSaving(false);
     onSaved();
   };
 
@@ -1071,7 +1101,7 @@ function TaskForm({
                 className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
               >
                 <Text textRole="body" className="text-foreground">
-                  {t("Time")}
+                  {t("Time (UTC)")}
                 </Text>
                 <Text
                   textRole="footnote"
@@ -1246,7 +1276,7 @@ function TaskForm({
         </SettingsSection>
         {draft.schedule.mode === "fixed_time" ? (
           <Text className="px-2 text-sm text-foreground-muted">
-            {t("Time uses the environment's time zone, which may differ from your phone's.")}
+            {t("Times are in UTC, which may differ from your phone's time zone.")}
           </Text>
         ) : null}
       </View>

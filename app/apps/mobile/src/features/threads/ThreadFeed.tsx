@@ -2128,7 +2128,13 @@ function renderFeedEntry(
           />
         ) : null}
         {showAssistantMeta ? (
-          <View className="mt-1 flex-row items-center gap-1">
+          <View
+            className="mt-1 flex-row items-center gap-1"
+            // Pulls the first icon's glyph, not its larger touch target, onto the text edge.
+            style={{
+              marginLeft: -(props.replyActionSize.button - props.replyActionSize.icon) / 2,
+            }}
+          >
             <CopyTextButton
               accessibilityLabel={t("Copy message")}
               text={renderedText}
