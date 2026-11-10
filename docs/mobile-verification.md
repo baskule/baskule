@@ -135,6 +135,25 @@ under `.run/evidence/<date>/`. Redact credentials and private host details befor
 evidence. Record Android and iOS results separately; shared code alone does not establish that
 both native platforms passed. Run `scripts/check plan` and focused checks for the logic changed.
 
+## Diagnose connection failures
+
+Separate the backend, host tunnel, Android transport and app before changing product code.
+A native-style bearer request and WebSocket probe from the backend host establish server
+behaviour; repeating them through the emulator host's tunnel isolates that tunnel. Neither
+proves that the emulator can reach the service or that a native conversation completes.
+
+Android transport loss can remove reverse port mappings while Metro and the tunnel remain
+healthy. Inspect the selected device's inventory, transport logs and reverse mappings. After
+checking ownership, restore only missing mappings for that device. Record the interruption
+and repeat the affected journey; do not count a successful host probe as device acceptance.
+Do not restart a shared adb server or another emulator to repair an isolated test.
+
+If device tools fail, follow their recovery advice once and stop interaction if the failure
+persists. Diagnose the host infrastructure without bypassing the device tools. After a verified
+recovery, open a fresh owned session before continuing. Preserve timestamps and sanitized
+transport errors, not authorization headers or raw application traffic. Report an unknown
+reset trigger as unknown even if connectivity has returned.
+
 ## Finish
 
 Close device sessions opened for the run unless the user is using them. Stop Metro, tunnels
