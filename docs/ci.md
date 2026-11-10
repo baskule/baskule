@@ -114,7 +114,7 @@ iOS device archives, TestFlight and App Store submission need the publisher's Ap
 
 ## Inspect evidence
 
-The always-running `factory-status` job writes a summary with the source SHA, version, publication/native selections, each component result, and links to the run artifacts and successful release. Manual runs also set the `Release factory` commit status, which requires verification and asset assembly to succeed. Use a run's job logs and artifacts to inspect failures, checksums, package status and source provenance. Classify a failure before rerunning only the affected jobs. Keep package/browser/unit evidence distinct from physical-device acceptance. Verification artifacts are retained for one day; a verified GitHub release is the durable distribution record.
+The always-running `factory-status` job writes a summary with the source SHA, version, publication/native selections, each component result, and links to the run artifacts and successful release. Manual runs also set the `Release factory` commit status, which requires verification and asset assembly to succeed. Use a run's job logs and artifacts to inspect failures, checksums, package status and source provenance. Release journey traces and screenshots use separate `.run/journeys/results/<profile>/` directories so a later profile cannot erase a previous failure. Classify a failure before rerunning only the affected jobs. Keep package/browser/unit evidence distinct from physical-device acceptance. Verification artifacts are retained for one day; a verified GitHub release is the durable distribution record.
 
 ## First image release
 

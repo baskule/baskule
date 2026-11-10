@@ -56,6 +56,14 @@ set -eu
 test ! -f "$FIXTURE_ROOT/running" || { echo 'Stack already running with its saved configuration' >&2; exit 2; }
 echo "$JOURNEY_PROFILE" > "$FIXTURE_ROOT/running"
 echo "start $JOURNEY_PROFILE" >> "$FIXTURE_ROOT/events"
+output=../.run/journeys/results
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = --output ]; then output=$2; break; fi
+  shift
+done
+rm -rf "$output"
+mkdir -p "$output"
+echo "$JOURNEY_PROFILE" > "$output/evidence.txt"
 test "$JOURNEY_PROFILE" != "$FAIL_PROFILE"
 `, { mode: 0o755 });
   writeFileSync(join(root, "scripts/stack"), `#!/bin/sh
@@ -71,4 +79,5 @@ rm "$FIXTURE_ROOT/running"
   assert.equal(result.status, failProfile ? 1 : 0, result.stdout + result.stderr);
   assert.deepEqual(readFileSync(join(root, "events"), "utf8").trim().split("\n"), ["start full", "stop full", "start light", "stop light"]);
   assert.equal(existsSync(join(root, "running")), false);
+  for (const profile of ["full", "light"]) assert.equal(readFileSync(join(root, `.run/journeys/results/${profile}/evidence.txt`), "utf8").trim(), profile);
 });

@@ -519,7 +519,7 @@ for (const target of targets) {
     // Playwright partitions individual tests, so one large feature cannot dominate a runner.
     for (const profile of new Set(map.filter((f) => f.journeys).map((f) => f.profile))) {
       const tags = map.filter((f) => f.journeys && f.profile === profile).map((f) => f.journeys);
-      run({ label: `release journeys: ${profile} ${shard}`, cmd: "pnpm", args: ["exec", "playwright", "test", "-c", "journeys/playwright.config.ts", "--grep", `(?:^| )(?:${tags.join("|")})(?: |$)`, "--shard", shard, "--fully-parallel", "--workers", "1", "--pass-with-no-tests"], cwd: "e2e", env: { JOURNEY_PROFILE: profile }, always: ["scripts/stack", ["down"], "."] });
+      run({ label: `release journeys: ${profile} ${shard}`, cmd: "pnpm", args: ["exec", "playwright", "test", "-c", "journeys/playwright.config.ts", "--grep", `(?:^| )(?:${tags.join("|")})(?: |$)`, "--shard", shard, "--fully-parallel", "--workers", "1", "--pass-with-no-tests", "--output", `../.run/journeys/results/${profile}`], cwd: "e2e", env: { JOURNEY_PROFILE: profile }, always: ["scripts/stack", ["down"], "."] });
     }
     for (const feature of releaseFeatures(map, shard)) {
       for (const command of remainingFeatureChecks(feature, releaseCoverage)) {
