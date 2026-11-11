@@ -1,4 +1,4 @@
-// baskule: shared product flags for the Alpha UI and hosted front-session build.
+// baskule: shared product flags for the Baskule UI and hosted front-session build.
 // Upstream integration points use these flags; product behavior lives under baskule/.
 export const BASKULE_UI =
   (import.meta.env as unknown as Record<string, string | undefined>).VITE_BASKULE_UI !== "0";
