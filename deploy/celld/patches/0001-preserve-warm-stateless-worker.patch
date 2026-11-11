@@ -1,0 +1,58 @@
+diff --git a/crates/celld/pool.rs b/crates/celld/pool.rs
+index 18a8f98..f196f61 100644
+--- a/crates/celld/pool.rs
++++ b/crates/celld/pool.rs
+@@ -755,14 +755,14 @@ impl Pool {
+     /// and, until this existed, the reason it was dead code hiding a leak.
+     ///
+     /// Retire at most one isolate. Stateless pools use this paced maintenance
+-    /// so a quiet interval does not discard every warm compiled Worker.
++    /// and keep one compiled Worker warm across quiet intervals.
+     pub fn reap(&self) {
+         // Maintenance runs on a Tokio worker. Skip this pass when a blocking
+         // cell start is compiling an isolate instead of blocking the worker.
+         let Ok(_maintenance) = self.maintenance.try_write() else {
+             return;
+         };
+-        self.retire_one();
++        self.retire_one(1);
+         self.free_retired();
+     }
+ 
+@@ -798,7 +798,7 @@ impl Pool {
+             );
+             return;
+         };
+-        while self.retire_one() {}
++        while self.retire_one(0) {}
+         self.free_retired();
+     }
+ 
+@@ -829,8 +829,8 @@ impl Pool {
+             .all(|slot| slot.worker.try_lock().is_ok_and(|worker| worker.is_none()))
+     }
+ 
+-    fn retire_one(&self) -> bool {
+-        let Some(id) = celld_logic::isolate::retire(&self.load()) else {
++    fn retire_one(&self, minimum_live: usize) -> bool {
++        let Some(id) = celld_logic::isolate::retire(&self.load(), minimum_live) else {
+             return false;
+         };
+         let slot = self.get(id);
+diff --git a/crates/logic/isolate.rs b/crates/logic/isolate.rs
+index 8ef0ee0..f033c39 100644
+--- a/crates/logic/isolate.rs
++++ b/crates/logic/isolate.rs
+@@ -331,9 +331,10 @@ pub fn may_free(load: &IsolateLoad) -> bool {
+     load.retiring && load.turns == 0 && load.requests == 0 && load.cells == 0
+ }
+ 
+-pub fn retire(load: &PoolLoad) -> Option<IsolateId> {
++/// Preserve `minimum_live` warm isolates during routine maintenance.
++pub fn retire(load: &PoolLoad, minimum_live: usize) -> Option<IsolateId> {
+     let live = load.live().count();
+-    if live == 0 {
++    if live <= minimum_live {
+         return None;
+     }
+ 
