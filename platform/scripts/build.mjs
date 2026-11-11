@@ -1,25 +1,30 @@
 #!/usr/bin/env node
-// Builds the celld app: dist/worker.js (esbuild bundle) + dist/web (static bundle).
+// Builds the celld app: dist/runtime/index.js + lazy ESM chunks, and dist/web.
 //   BASKULE_WEB_DIR        directory of the web build to serve (default: web-placeholder/)
 //   BASKULE_ENTRY          Worker entry (default: src/worker.ts; the integration test uses its own)
 //   BASKULE_OUT            output dir (default: dist)
 //   BASKULE_MINIFY=1       minify the Worker, keeping function and class names (production: deploy/build.sh)
+//   BASKULE_METAFILE       optional esbuild dependency report path (outside the deployed runtime directory)
 import { build } from "esbuild";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { builtinModules, createRequire } from "node:module";
 import { nativeEffectContinuations } from "../../app/apps/server/src/baskule/workerd/nativeEffectContinuations.mjs";
+import { embeddedAgent } from "../src/agent/build.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, process.env.BASKULE_OUT ?? "dist");
 const entry = resolve(root, process.env.BASKULE_ENTRY ?? "src/worker.ts");
 const webDir = resolve(root, process.env.BASKULE_WEB_DIR ?? "web-placeholder");
-// Minified, a cold isolate parses ~20 MB instead of ~44 MB (celld deploy re-bundles it unminified: ~24 MB). Names
-// are kept so stack traces in the celld logs stay readable.
+// Names are kept so stack traces in celld remain readable. no_bundle preserves
+// these module boundaries when celld uploads the deployment.
 const minify = process.env.BASKULE_MINIFY === "1";
 
 mkdirSync(out, { recursive: true });
+const runtime = join(out, "runtime");
+rmSync(runtime, { recursive: true, force: true });
+rmSync(join(out, "worker.js"), { force: true });
 const t0 = Date.now();
 // Embedded OpenCode: the SDK imports more bare node builtins (net, http, child_process, …) on paths the workerd
 // profile never runs; keep them external like `celld deploy`'s own bundler does (BARE_NODE_BUILTINS). pkce-challenge
@@ -39,9 +44,12 @@ const celldCompat = {
       args.importer === nodeUrlShim ? { path: "node:url", external: true } : { path: nodeUrlShim });
   },
 };
-await build({
-  entryPoints: [entry],
-  outfile: join(out, "worker.js"),
+const result = await build({
+  entryPoints: { index: entry },
+  outdir: runtime,
+  chunkNames: "chunks/[name]-[hash]",
+  splitting: true,
+  metafile: Boolean(process.env.BASKULE_METAFILE),
   bundle: true,
   format: "esm",
   platform: "neutral",
@@ -49,7 +57,7 @@ await build({
   conditions: ["workerd", "worker", "import"],
   mainFields: ["module", "main"],
   external: ["cloudflare:*", "node:*", ...bareBuiltins],
-  plugins: [celldCompat, nativeEffectContinuations],
+  plugins: [embeddedAgent, celldCompat, nativeEffectContinuations],
   loader: { ".sql": "text" },
   // Better Auth / deps import bare node builtins in a few places: map them to node: (celld has nodejs_compat).
   alias: Object.fromEntries(aliased.map((m) => [m, `node:${m}`])),
@@ -57,7 +65,20 @@ await build({
   legalComments: "none",
   minify,
   keepNames: minify,
+  // no_bundle skips celld's esbuild pass, including its lexical bridge for
+  // CommonJS dependencies that require node builtins. Keep the same boundary.
+  banner: { js: `var require = (id) => {
+  const name = String(id);
+  const builtin = process.getBuiltinModule(name);
+  if (builtin === undefined) {
+    const error = new Error(\`Cannot find module '\${name}'\`);
+    error.code = "MODULE_NOT_FOUND";
+    throw error;
+  }
+  return builtin;
+};` },
 });
+if (process.env.BASKULE_METAFILE) writeFileSync(process.env.BASKULE_METAFILE, JSON.stringify(result.metafile));
 
 // Static web bundle.
 rmSync(join(out, "web"), { recursive: true, force: true });
@@ -66,4 +87,4 @@ cpSync(webDir, join(out, "web"), { recursive: true });
 
 const version = process.env.BASKULE_VERSION ?? readFileSync(join(root, "../VERSION"), "utf8").trim();
 writeFileSync(join(out, "web", "version.json"), JSON.stringify({ version }));
-console.error(`built ${out}/worker.js${minify ? " (minified)" : ""} + web (${webDir}) in ${Date.now() - t0} ms`);
+console.error(`built ${runtime}/index.js${minify ? " (minified)" : ""} + web (${webDir}) in ${Date.now() - t0} ms`);
