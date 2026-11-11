@@ -7,6 +7,13 @@
       "license": "app/LICENSE",
       "upstreamTag": "v0.1.8",
       "upstreamCommit": "bf469bb19669671d0df2efda74ed73867a7137c0"
+    },
+    {
+      "path": "deploy/celld/patches",
+      "upstream": "https://github.com/denoland/celld",
+      "license": "deploy/celld/upstream-LICENSE",
+      "upstreamTag": "v0.6.3",
+      "upstreamCommit": "8702f6d186c77698dbfb30cf29e3b1922a88f008"
     }
   ],
   "notes": [

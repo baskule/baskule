@@ -31,6 +31,9 @@ Rerun this command after changes to `app/`. It skips unchanged inputs. Focused u
 
 The local celld launcher uses `.tools/bin/celld`, then `celld` on `PATH`. `CELLD_BIN` selects an explicit executable. The setup script extracts celld 0.6.3 from a pinned official image layer and records its provenance beside the binary.
 
+Container builds apply the [celld warm-worker retention patch](celld-runtime-patch.md).
+That guide also explains how to test the patched binary in a native worktree.
+
 ## Build server, web, and images
 
 Before `scripts/stack up --profile full` or `scripts/check agent`, `computerd`, or `features`, build the hosted web app, SpaceCell, platform bundle, and computer, celld, and computerd images:
