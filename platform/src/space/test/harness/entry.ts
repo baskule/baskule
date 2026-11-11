@@ -4,7 +4,7 @@
 //   /hooks/<id>/<rest>  → SpaceCell(<id>) at /api/hooks/<rest>, no identity
 //   /control/<id>/<path>→ SpaceCell(<id>) control endpoints (/_baskule/*)
 //   /_test/*            → TestControlCell
-export { SpaceCell } from "../../../cells";
+export { SpaceCell } from "../../../space/index";
 export { TestControlCell } from "./control-cell";
 
 interface Env {

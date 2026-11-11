@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "../../src/control/settings";
 import { SpaceCell } from "../../src/space/index";
+import { fakeStorage } from "../support/fake-storage";
 
 const createServer = vi.hoisted(() => vi.fn());
 vi.mock("../../src/space/t3/space-cell.js", () => ({
@@ -26,6 +27,76 @@ const cell = (put = vi.fn(async () => {}), tables = ["session"], waitUntil: (pro
 } } as never, { CONTROL: control } as never) as any;
 
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
+
+describe("SpaceCell cold agent alarms", () => {
+  function setup() {
+    const sql = fakeStorage(), keys = new Map<string, unknown>();
+    let physicalAlarm: number | null = null;
+    const storage = { ...sql,
+      get: async (key: string) => keys.get(key),
+      put: async (key: string, value: unknown) => { keys.set(key, value); },
+      delete: async (key: string) => keys.delete(key),
+      setAlarm: async (at: number) => { physicalAlarm = at; },
+      deleteAlarm: async () => { physicalAlarm = null; },
+    };
+    const c = new SpaceCell({ storage } as never, {} as never) as any;
+    const alarm = vi.fn(async () => {});
+    c.createLocalAgent = vi.fn(async () => ({ alarm }));
+    return { c, storage, keys, alarm, physicalAlarm: () => physicalAlarm };
+  }
+
+  function usageSchema(storage: ReturnType<typeof fakeStorage>) {
+    storage.db.exec(`create table baskule_usage_outbox(message_id text primary key, record text);
+      create table baskule_usage_context(prompt_id text primary key, session_id text, context text);
+      create table session_message(id text primary key, session_id text, type text, data text);`);
+  }
+
+  it.each(["absent", "receipts", "unattributed"])("completes an idle agent claim without constructing the runtime, usage=%s", async usage => {
+    const h = setup();
+    try {
+      if (usage !== "absent") {
+        usageSchema(h.storage);
+        h.storage.db.exec(`insert into session_message values('answer','session','assistant','{"time":{"completed":1},"tokens":{}}');
+          insert into session_message values('running','session','assistant','{"time":{},"tokens":{}}');`);
+        if (usage === "receipts") h.storage.db.exec(`insert into baskule_usage_context values('turn','session','{}');
+          insert into baskule_usage_outbox values('answer',null);`);
+      }
+      const future = Date.now() + 60_000;
+      h.keys.set("baskule:status", { activeRuns: 0, nextWakeAt: future, updatedAt: Date.now() });
+      await h.c.alarms.set("space", future);
+      // A claim recovered from a process that stopped during an idle alarm is also idle.
+      h.keys.set("baskule:alarm-running:agent", true);
+      await h.c.alarm();
+      expect(h.c.createLocalAgent).not.toHaveBeenCalled();
+      expect(createServer).not.toHaveBeenCalled();
+      expect(h.keys.has("baskule:alarm-running:agent")).toBe(false);
+      // The space's own checks still run and retain its scheduled work.
+      expect(h.physicalAlarm()).toBe(future);
+    } finally { h.storage.db.close(); }
+  });
+
+  it.each(["busy", "outbox", "uncaptured", "child", "existing", "starting"])("runs the agent alarm for %s work", async work => {
+    const h = setup();
+    try {
+      if (work === "busy") h.keys.set("baskule:busy", true);
+      if (["outbox", "uncaptured", "child"].includes(work)) {
+        usageSchema(h.storage);
+        if (work === "outbox") h.storage.db.exec("insert into baskule_usage_outbox values('answer','{}')");
+        else h.storage.db.exec(`insert into baskule_usage_context values('turn','session','{}');
+          insert into session_message values('answer','${work === "child" ? "child-session" : "session"}','assistant','{"time":{"completed":1},"tokens":{}}');`);
+      }
+      if (work === "existing") h.c.agent = { alarm: h.alarm };
+      if (work === "starting") h.c.agentStarting = Promise.resolve({ alarm: h.alarm });
+      const retryAt = Date.now() + 5_000;
+      if (work === "outbox") h.alarm.mockImplementation(async () => h.c.alarms.set("agent", retryAt));
+      h.keys.set("baskule:alarm-running:agent", true);
+      await h.c.alarm();
+      expect(h.alarm).toHaveBeenCalledOnce();
+      expect(h.keys.has("baskule:alarm-running:agent")).toBe(false);
+      if (work === "outbox") expect(h.physicalAlarm()).toBe(retryAt);
+    } finally { h.storage.db.close(); }
+  });
+});
 
 describe("SpaceCell boot/dispose overlap", () => {
   it("finishes the agent alarm before reconfigure retires its shared database", async () => {
@@ -57,6 +128,7 @@ describe("SpaceCell boot/dispose overlap", () => {
     c.alarms = { due: async () => { delivered.resolve(); return ["agent"]; }, complete: async () => {}, sync: async () => {}, clear: async () => {} };
     c.spaceAlarm = async () => {};
     c.agent = { dispose: async () => { started.resolve(); await release.promise; order.push("disposed"); } };
+    c.ctx.storage.get.mockImplementation(async (key: string) => key === "baskule:busy" ? true : undefined);
     c.localAgent = async () => ({ alarm: async () => { order.push("alarm completed"); } });
     const reload = c.fetch(new Request("http://space/_baskule/reconfigure", { method: "POST" }));
     await started.promise;

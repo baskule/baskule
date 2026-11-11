@@ -306,13 +306,31 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
     if (current === null || current > next || current < now) await this.alarms.set("space", next);
   }
 
+  private async needsAgentAlarm(): Promise<boolean> {
+    if (this.agent || this.agentStarting || await this.ctx.storage.get<boolean>("baskule:busy")) return true;
+    // Check durable usage work before sharedDatabase imports T3. Receipts alone need no runtime, but a
+    // completed message may still need capturing (including a native subagent inheriting its parent's context).
+    const sql = this.ctx.storage.sql;
+    const tables = new Set(sql.exec<{ name: string }>(`select name from sqlite_master where type='table'
+      and name in ('baskule_usage_outbox','baskule_usage_context','session_message')`).toArray().map(row => row.name));
+    if (tables.has("baskule_usage_outbox") && sql.exec("select 1 from baskule_usage_outbox where record is not null limit 1").toArray().length) return true;
+    if (!tables.has("baskule_usage_context") || !tables.has("session_message")) return false;
+    if (!sql.exec("select 1 from baskule_usage_context limit 1").toArray().length) return false;
+    return sql.exec(`select 1 from session_message m where m.type='assistant'
+      and json_extract(m.data,'$.time.completed') is not null and json_extract(m.data,'$.tokens') is not null
+      ${tables.has("baskule_usage_outbox") ? "and not exists (select 1 from baskule_usage_outbox o where o.message_id=m.id)" : ""}
+      limit 1`).toArray().length > 0;
+  }
+
   async alarm(): Promise<void> {
     const due = await this.alarms.due();
     try {
       // The space's own checks run on every alarm; they reschedule themselves (scheduleAlarm).
       if (due.includes("agent")) {
         while (this.closing) await this.closing;
-        const pending = this.localAgent().then(agent => agent.alarm());
+        const pending = this.needsAgentAlarm().then(async needed => {
+          if (needed) await (await this.localAgent()).alarm();
+        });
         this.agentAlarm = pending;
         try { await pending; }
         finally { this.agentAlarm = null; }

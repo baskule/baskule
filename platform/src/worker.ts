@@ -1,17 +1,19 @@
-// Worker `baskule`: the stateless front on every celld node. One origin:
+// Worker `baskule`: backend routing and durable objects, reached through baskule-web's service binding:
 //   /auth/*            → Better Auth (ControlCell)
 //   /api/baskule/*    → me, people, spaces, members, invitations, admin (ControlCell)
 //   /s/<spaceId>/*     → Origin check + session + membership on EVERY request and upgrade → SpaceCell(<spaceId>)
 //   /hooks/<spaceId>/* → public T3 webhooks → SpaceCell(<spaceId>) at /api/hooks/* (T3 checks the hook's own token)
 //   /.well-known/baskule → the instance's discovery document (ControlCell)
-//   anything else      → the static web bundle (SPA fallback)
+//   anything else      → 404
 import type { Env } from "./env";
 import { BASE_HEADER, CLIENT_IP_HEADER, CONTROL_CELL_NAME, INTERNAL_HEADER, IDENTITY_HEADER, BASKULE_HEADER_PREFIX, WEBHOOK_HEADER, WELL_KNOWN_PATH, spaceBase, type Identity } from "./shared/contract";
 import { encodeIdentity } from "./shared/identity";
 import { SPACE_ID_RE, json, notFound } from "./shared/http";
 import { parseAuthConfig } from "./control/auth-config";
+import { withCacheControl } from "./shared/cache";
 
-export { ControlCell, SpaceCell } from "./cells";
+export { ControlCell } from "./control/index";
+export { SpaceCell } from "./space/index";
 
 const AUTH_COOKIE_PREFIX = /^(?:__Secure-)?baskule\./;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -19,29 +21,13 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     let response: Response;
-    let cacheControl = "no-store";
     try {
-      const routed = await route(req, env);
-      if (routed !== null) {
-        response = routed;
-      } else {
-        response = await env.ASSETS.fetch(req);
-        const contentType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
-        if ((req.method === "GET" || req.method === "HEAD") && response.ok &&
-          /^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9.]+$/.test(new URL(req.url).pathname) &&
-          contentType && contentType !== "text/html" && contentType !== "application/xhtml+xml") {
-          cacheControl = "public, max-age=31536000, immutable";
-        }
-      }
+      response = await route(req, env) ?? notFound();
     } catch (e) {
       console.error("worker error", e);
       response = json({ error: "internal_error" }, 500);
     }
-    // Reconstructing a WebSocket upgrade would discard its runtime-owned socket.
-    if (response.status === 101) return response;
-    const headers = new Headers(response.headers);
-    headers.set("cache-control", cacheControl);
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    return withCacheControl(response, "no-store");
   },
 };
 

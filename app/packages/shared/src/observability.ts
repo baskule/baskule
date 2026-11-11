@@ -615,7 +615,8 @@ class LocalFileSpan implements Tracer.Span {
       endTime,
       exit: traceExit,
     };
-    this.delegate.end(endTime, redactExitCredentials(traceExit));
+    // Unsampled spans are not serialized by either the local sink or the OTLP delegate.
+    this.delegate.end(endTime, this.sampled ? redactExitCredentials(traceExit) : traceExit);
 
     if (this.sampled) {
       this.push(spanToTraceRecord(this));

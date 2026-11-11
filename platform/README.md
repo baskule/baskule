@@ -1,10 +1,11 @@
 # platform/ — the Baskule celld app
 
-One celld app (`wrangler.json`, Worker `baskule`):
+One application deployed as two native celld Workers:
 
 | Part | Code |
 |---|---|
-| Worker `baskule` (front: static bundle, auth, routing) | `src/worker.ts` |
+| Worker `baskule-web` (static bundle and backend forwarding) | `src/web.ts`, `wrangler.web.json` |
+| Worker `baskule` (authorization and cell routing) | `src/worker.ts`, `wrangler.json` |
 | `ControlCell` (singleton DO `control`: Better Auth + spaces, members, invitations, plugins and groups) | `src/control/` |
 | `SpaceCell` (one active DO per space: T3 + embedded OpenCode, shared SQLite client and alarms) | `src/space/`, `src/agent/` |
 | Shared contract, identity codec, 60 s recheck helper | `src/shared/` |
@@ -15,7 +16,7 @@ runtime. This fresh request boundary keeps native I/O alive on stock celld; it d
 public Worker blocks these internal paths. In a new space OpenCode boots before T3, because it only creates its schema
 in an empty database. Details: [`src/agent/README.md`](src/agent/README.md).
 
-The public entry exports small cell facades from `src/cells.ts`. Each facade imports its implementation on first fetch or alarm using the same native cell context. The build emits ESM chunks, and celld compiles them on first import. One deployment still owns both cell classes and their existing storage identities.
+The public Worker forwards application requests and WebSocket upgrades through its native `BACKEND` service binding. The backend owns both cell classes and keeps their existing storage identities. Each Worker is a self-contained bundle; the public bundle imports no cell or agent code.
 
 ## Commands (one feedback loop each)
 
@@ -25,7 +26,7 @@ From the repository root, `scripts/check` picks these for a diff (`scripts/check
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm run build                 # dist/runtime/index.js + lazy ESM chunks (esbuild) + dist/web
+pnpm run build                 # dist/runtime/index.js + dist/web-worker/index.js + dist/web
 pnpm test                      # vitest: ControlCell, Worker security, recheck, SpaceCell lifecycle, agent runtime/migration
 pnpm run test:integration      # test/integration.sh: real celld dev on :47620, then stops
 node src/space/test/run.mjs   # SpaceCell runner: merged cell + fake computerd + fake LLM
@@ -38,7 +39,7 @@ pnpm run typecheck
 node dev/fake-llm/server.mjs --port 47601
 ```
 
-`CELLD_BIN` overrides the celld binary. The default launcher builds and caches Baskule's patched runtime using Docker; stock celld 0.6.3 cannot load the split deployment. See [runtime patches](../docs/celld-runtime-patch.md). The build takes
+`CELLD_BIN` overrides the celld binary. The default launcher builds and caches Baskule's patched runtime using Docker; its deployment CLI adds named-only service publication and local multi-service setup. See [runtime patches](../docs/celld-runtime-patch.md). The build takes
 `BASKULE_WEB_DIR` (the web bundle to serve; default `web-placeholder/`) and
 `BASKULE_ENTRY`/`BASKULE_OUT` (used by the integration test). `/version.json` identifies the running version;
 the web client links to matching GitHub release assets instead of serving app installers from the platform.

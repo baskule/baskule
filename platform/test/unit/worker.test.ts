@@ -8,7 +8,7 @@ import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "../../../app/packages/contracts
 const O = "http://baskule.test";
 const ALICE: Identity = { userId: "u_alice", name: "Alice", email: "alice@baskule.test", role: "member", sessionId: "s_alice", spaceRole: "member" };
 
-function fakeEnv(extra: Partial<Env> = {}, responses: { control?: Response; space?: Response; assets?: Response } = {}) {
+function fakeEnv(extra: Partial<Env> = {}, responses: { control?: Response; space?: Response } = {}) {
   const controlCalls: Request[] = [];
   const spaceCalls: { name: string; req: Request }[] = [];
   const stub = (name: string, handler: (r: Request) => Promise<Response>) => ({ fetch: (r: Request) => handler(r), name });
@@ -41,14 +41,6 @@ function fakeEnv(extra: Partial<Env> = {}, responses: { control?: Response; spac
           spaceCalls.push({ name, req });
           return responses.space ?? Response.json({ space: name });
         }),
-    },
-    ASSETS: {
-      fetch: async (req: Request) => {
-        if (responses.assets) return responses.assets;
-        const p = new URL(req.url).pathname;
-        if (p === "/version.json") return Response.json({ version: "0.5.0" });
-        return new Response("<html>spa</html>", { headers: { "content-type": "text/html" } });
-      },
     },
     ...extra,
   } as unknown as Env;
@@ -218,19 +210,20 @@ describe("Worker routing", () => {
     expect(spaceCalls).toHaveLength(1);
   });
 
-  it("serves the running version and falls back to the SPA for client routes", async () => {
+  it("leaves static content to the web worker", async () => {
     const { env } = fakeEnv();
-    expect(await (await worker.fetch(req("/version.json"), env)).json()).toEqual({ version: "0.5.0" });
-    expect(await (await worker.fetch(req("/some/spa/route"), env)).text()).toContain("spa");
+    for (const path of ["/", "/version.json", "/some/spa/route", "/assets/index-Abcdef12.js"]) {
+      expect((await worker.fetch(req(path), env)).status).toBe(404);
+    }
   });
 });
 
 
 describe("Worker cache policy", () => {
   it.each([
-    ["/", 200],
-    ["/some/spa/route", 200],
-    ["/version.json", 200],
+    ["/", 404],
+    ["/some/spa/route", 404],
+    ["/version.json", 404],
     ["/.well-known/baskule", 200],
     ["/auth/get-session", 200],
     ["/api/baskule/me", 200],
@@ -253,31 +246,6 @@ describe("Worker cache policy", () => {
     const refused = await worker.fetch(req("/auth/sign-out", { method: "POST", headers: aliceCookie }), env);
     expect(refused.status).toBe(403);
     expect(refused.headers.get("cache-control")).toBe("no-store");
-  });
-
-  it.each(["GET", "HEAD"])("caches successful hashed static assets for %s", async (method) => {
-    const { env } = fakeEnv({}, { assets: new Response(method === "HEAD" ? null : "export {}", {
-      headers: { "content-type": "text/javascript", "cache-control": "max-age=60" },
-    }) });
-    const response = await worker.fetch(req("/assets/index-B_qwZ7m_.js", { method }), env);
-    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
-    expect(await response.text()).toBe(method === "HEAD" ? "" : "export {}");
-  });
-
-  it.each([
-    ["/assets/missing-Abcdef12.js", "text/html; charset=utf-8", 200, "GET"],
-    ["/assets/missing-Abcdef12.js", "application/xhtml+xml", 200, "GET"],
-    ["/assets/missing-Abcdef12.js", "text/javascript", 404, "GET"],
-    ["/assets/index.js", "text/javascript", 200, "GET"],
-    ["/assets/index-Abcdef12.js", "text/javascript", 200, "POST"],
-    ["/version.json", "application/json", 200, "GET"],
-  ])("does not cache %s (%s, %i, %s)", async (path, contentType, status, method) => {
-    const { env } = fakeEnv({}, { assets: new Response("fallback", {
-      status, headers: { "content-type": contentType, "cache-control": "public, max-age=14400" },
-    }) });
-    const response = await worker.fetch(req(path, { method }), env);
-    expect(response.status).toBe(status);
-    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("replaces upstream descriptor caching", async () => {
@@ -328,9 +296,9 @@ describe("Worker cache policy", () => {
   it("does not cache unexpected failures", async () => {
     const { env } = fakeEnv();
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(env.ASSETS, "fetch").mockRejectedValueOnce(new Error("asset failure"));
+    vi.spyOn(env.CONTROL, "getByName").mockImplementationOnce(() => { throw new Error("binding failure"); });
     try {
-      const response = await worker.fetch(req("/assets/index-Abcdef12.js"), env);
+      const response = await worker.fetch(req("/api/baskule/me"), env);
       expect(response.status).toBe(500);
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(await response.json()).toEqual({ error: "internal_error" });

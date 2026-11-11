@@ -1,0 +1,215 @@
+--- a/crates/celld/deploy.rs
++++ b/crates/celld/deploy.rs
+@@ -200,6 +200,8 @@
+     pub endpoint: Option<String>,
+     pub region: Option<String>,
+     pub dry_run: bool,
++    /// Publish a service component without changing the public application selector.
++    pub named_only: bool,
+     pub json: bool,
+     /// Worker variables that override the `vars` of the config. `celld dev`
+     /// reads them from `.dev.vars` or the dotenv files; `celld deploy`
+@@ -234,7 +236,7 @@
+ USAGE:\n  celld deploy [PROJECT] --bucket [s3://|gs://|az://]NAME[/PREFIX] [OPTIONS]\n\n\
+ PROJECT is a directory or a Wrangler config; it defaults to the working\n\
+ directory, where celld looks for wrangler.jsonc or wrangler.json.\n\n\
+-OPTIONS:\n  --config PATH          Same as passing PROJECT positionally\n  --bucket [s3://|gs://|az://]NAME[/PREFIX]\n                         Fleet bucket and prefix; defaults to CELLD_BUCKET.\n                         gs:// selects a Google Cloud Storage bucket, az://\n                         an Azure Blob Storage container with its account in\n                         AZURE_STORAGE_ACCOUNT_NAME; celld then rejects\n                         --endpoint and ignores --region\n  --endpoint URL         S3-compatible endpoint; defaults to S3_ENDPOINT\n  --region REGION        Storage region; defaults to AWS_REGION\n  --dry-run              Bundle and print the version without writing\n  --json                 Print the deployment as one JSON object\n  -h, --help             Show this help\n\n\
++OPTIONS:\n  --config PATH          Same as passing PROJECT positionally\n  --bucket [s3://|gs://|az://]NAME[/PREFIX]\n                         Fleet bucket and prefix; defaults to CELLD_BUCKET.\n                         gs:// selects a Google Cloud Storage bucket, az://\n                         an Azure Blob Storage container with its account in\n                         AZURE_STORAGE_ACCOUNT_NAME; celld then rejects\n                         --endpoint and ignores --region\n  --endpoint URL         S3-compatible endpoint; defaults to S3_ENDPOINT\n  --region REGION        Storage region; defaults to AWS_REGION\n  --dry-run              Bundle and print the version without writing\n  --named-only           Publish a service without changing the public selector\n  --json                 Print the deployment as one JSON object\n  -h, --help             Show this help\n\n\
+ Credentials come from the standard AWS credential chain, from Google\n\
+ Application Default Credentials for a gs:// bucket, or from an Azure storage\n\
+ account key, managed identity, or workload identity for an az:// bucket.\n\n\
+@@ -260,6 +262,7 @@
+         endpoint: None,
+         region: None,
+         dry_run: false,
++        named_only: false,
+         local_images: false,
+         json: false,
+         vars: VarOverrides::None,
+@@ -269,6 +272,7 @@
+         match argument.as_str() {
+             "--help" | "-h" => return Ok(None),
+             "--dry-run" => options.dry_run = true,
++            "--named-only" => options.named_only = true,
+             "--json" => options.json = true,
+             "--config" => {
+                 options.config = Some(PathBuf::from(
+@@ -879,6 +883,18 @@
+ }
+ 
+ pub async fn write(bucket: &Bucket, built: &Built) -> anyhow::Result<()> {
++    write_deployment(bucket, built, false).await
++}
++
++pub async fn write_named(bucket: &Bucket, built: &Built) -> anyhow::Result<()> {
++    write_deployment(bucket, built, true).await
++}
++
++async fn write_deployment(
++    bucket: &Bucket,
++    built: &Built,
++    named_only: bool,
++) -> anyhow::Result<()> {
+     // Read every attachment before uploading immutable deployment objects.
+     // A competing consumer is a deploy refusal, so it must not leave a new
+     // version in the bucket that an operator can mistake for a published one.
+@@ -943,7 +959,9 @@
+         encoded.clone(),
+     )
+     .await?;
+-    put_pointer(bucket, "deploy/current.json", encoded).await?;
++    if !named_only {
++        put_pointer(bucket, "deploy/current.json", encoded).await?;
++    }
+     Ok(())
+ }
+ 
+--- a/crates/celld/fleet.rs
++++ b/crates/celld/fleet.rs
+@@ -605,7 +605,11 @@
+     validate_bucket(&store).await?;
+     crate::wake_format::ensure_ready(&store).await?;
+     let started = std::time::Instant::now();
+-    deploy::write(&store, &built).await?;
++    if options.named_only {
++        deploy::write_named(&store, &built).await?;
++    } else {
++        deploy::write(&store, &built).await?;
++    }
+     let location = format!(
+         "{}://{}/{}{}",
+         store.scheme(),
+@@ -625,7 +629,11 @@
+         location,
+         dry_run: false,
+     })?;
+-    note!("Nodes adopt this version at their next pointer poll, without a restart.");
++    if options.named_only {
++        note!("Service published; the public application selector is unchanged.");
++    } else {
++        note!("Nodes adopt this version at their next pointer poll, without a restart.");
++    }
+     out.finish()
+ }
+ 
+--- a/crates/celld/dev.rs
++++ b/crates/celld/dev.rs
+@@ -99,6 +99,7 @@
+     logs: bool,
+     watch: bool,
+     watch_ignores: Vec<Pattern>,
++    services: Vec<PathBuf>,
+ }
+ 
+ struct Store {
+@@ -343,11 +344,12 @@
+ as for wrangler dev. Without one, .env and then .env.local supply them, and\n\
+ an entry of these files that cannot be a binding is skipped with a warning.\n\
+ The entries override the vars of the config.\n\n\
+-OPTIONS:\n  --host IP              Worker listener host (default: 127.0.0.1)\n  --port PORT            Worker listener port (default: {DEFAULT_PORT})\n  --clean                Delete PROJECT/.celld/dev before the server starts\n  --logs                 Show the node warning and information logs\n  --no-watch             Do not rebuild when a project file changes\n  --watch-ignore PATTERN Ignore a project-relative glob; repeat as needed\n  -h, --help             Show this help"
++OPTIONS:\n  --host IP              Worker listener host (default: 127.0.0.1)\n  --port PORT            Worker listener port (default: {DEFAULT_PORT})\n  --clean                Delete PROJECT/.celld/dev before the server starts\n  --service PROJECT      Publish a service in the same local store; repeatable\n                         Paths resolve from the current working directory\n  --logs                 Show the node warning and information logs\n  --no-watch             Do not rebuild when a project file changes\n  --watch-ignore PATTERN Ignore a project-relative glob; repeat as needed\n  -h, --help             Show this help"
+         ),
+     )
+ }
+ 
++#[allow(clippy::disallowed_methods)] // Service resolution uses the operator's host filesystem.
+ fn options_from_arguments(arguments: Vec<String>) -> anyhow::Result<Option<Options>> {
+     let mut project = None;
+     let mut host = IpAddr::V4(Ipv4Addr::LOCALHOST);
+@@ -356,6 +358,7 @@
+     let mut logs = false;
+     let mut watch = true;
+     let mut watch_ignores = Vec::new();
++    let mut services = Vec::new();
+     let mut arguments = arguments.into_iter();
+     while let Some(argument) = arguments.next() {
+         match argument.as_str() {
+@@ -363,6 +366,13 @@
+             "--clean" => clean = true,
+             "--logs" => logs = true,
+             "--no-watch" => watch = false,
++            "--service" => {
++                let path = PathBuf::from(arguments.next().context("--service requires a value")?);
++                let config = deploy::resolve_config(Some(path))?;
++                services.push(std::fs::canonicalize(&config).with_context(|| {
++                    format!("resolve service config {}", config.display())
++                })?);
++            }
+             "--watch-ignore" => {
+                 let value = arguments
+                     .next()
+@@ -403,6 +413,7 @@
+             logs,
+             watch,
+             watch_ignores,
++            services,
+         },
+     }))
+ }
+@@ -582,7 +593,12 @@
+     None
+ }
+ 
+-async fn deploy_project(config: &Path, store: &Store, logs: bool) -> anyhow::Result<()> {
++async fn deploy_project(
++    config: &Path,
++    store: &Store,
++    logs: bool,
++    named_only: bool,
++) -> anyhow::Result<()> {
+     let bucket = open_local_bucket(&store.database)?;
+     let built = deploy::build(&deploy::Options {
+         config: Some(config.to_path_buf()),
+@@ -590,6 +606,7 @@
+         endpoint: None,
+         region: None,
+         dry_run: false,
++        named_only,
+         json: false,
+         vars: read_dev_vars(config)?,
+         local_images: true,
+@@ -598,7 +615,23 @@
+         built.report();
+     }
+     crate::wake_format::ensure_ready(&bucket).await?;
+-    deploy::write(&bucket, &built).await
++    if named_only {
++        deploy::write_named(&bucket, &built).await
++    } else {
++        deploy::write(&bucket, &built).await
++    }
++}
++
++async fn deploy_application(
++    config: &Path,
++    services: &[PathBuf],
++    store: &Store,
++    logs: bool,
++) -> anyhow::Result<()> {
++    for service in services {
++        deploy_project(service, store, logs, true).await?;
++    }
++    deploy_project(config, store, logs, false).await
+ }
+ 
+ async fn run_stack(
+@@ -623,7 +656,7 @@
+         .transpose()?;
+ 
+     console.progress("building the application");
+-    deploy_project(config, store, options.logs).await?;
++    deploy_application(config, &options.services, store, options.logs).await?;
+     let mut running = start_node(
+         state,
+         options.listener,
+@@ -649,7 +682,9 @@
+             }
+             NodeEvent::Reload => {
+                 console.progress("change detected; rebuilding the application");
+-                if let Err(error) = deploy_project(config, store, options.logs).await {
++                if let Err(error) =
++                    deploy_application(config, &options.services, store, options.logs).await
++                {
+                     console.failure(&format!("reload failed: {error:#}"));
+                     continue;
+                 }

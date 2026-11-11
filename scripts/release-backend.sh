@@ -52,7 +52,7 @@ case "$phase" in
     scripts/docker-build.sh celld -t baskule-celld:local -f deploy/celld/Dockerfile .
     cp .run/release/runtime/*.tar.gz .run/release/runtime/images.txt .run/release/backend/
     save_image baskule-celld .run/release/backend
-    tar -czf .run/release/backend/platform-worker.tar.gz -C platform/dist runtime
+    tar -czf .run/release/backend/platform-worker.tar.gz -C platform/dist runtime web-worker
     tar -czf .run/release/backend/space-cell.tar.gz -C platform/src/space/t3 space-cell.js BUILT_FROM
     scripts/release-install-assets.sh .run/release/backend
     scripts/helm-package.sh .run/release/backend

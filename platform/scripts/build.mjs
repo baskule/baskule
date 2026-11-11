@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds the celld app: dist/runtime/index.js + lazy ESM chunks, and dist/web.
+// Builds native celld workers: dist/runtime/index.js, dist/web-worker/index.js, and dist/web assets.
 //   BASKULE_WEB_DIR        directory of the web build to serve (default: web-placeholder/)
 //   BASKULE_ENTRY          Worker entry (default: src/worker.ts; the integration test uses its own)
 //   BASKULE_OUT            output dir (default: dist)
@@ -10,6 +10,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { builtinModules, createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import { nativeEffectContinuations } from "../../app/apps/server/src/baskule/workerd/nativeEffectContinuations.mjs";
 import { embeddedAgent } from "../src/agent/build.mjs";
 
@@ -17,13 +18,14 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, process.env.BASKULE_OUT ?? "dist");
 const entry = resolve(root, process.env.BASKULE_ENTRY ?? "src/worker.ts");
 const webDir = resolve(root, process.env.BASKULE_WEB_DIR ?? "web-placeholder");
-// Names are kept so stack traces in celld remain readable. no_bundle preserves
-// these module boundaries when celld uploads the deployment.
+// Names are kept so stack traces in celld remain readable. Each worker is one self-contained ESM file.
 const minify = process.env.BASKULE_MINIFY === "1";
 
 mkdirSync(out, { recursive: true });
 const runtime = join(out, "runtime");
+const webWorker = join(out, "web-worker");
 rmSync(runtime, { recursive: true, force: true });
+rmSync(webWorker, { recursive: true, force: true });
 rmSync(join(out, "worker.js"), { force: true });
 const t0 = Date.now();
 // Embedded OpenCode: the SDK imports more bare node builtins (net, http, child_process, …) on paths the workerd
@@ -47,8 +49,6 @@ const celldCompat = {
 const result = await build({
   entryPoints: { index: entry },
   outdir: runtime,
-  chunkNames: "chunks/[name]-[hash]",
-  splitting: true,
   metafile: Boolean(process.env.BASKULE_METAFILE),
   bundle: true,
   format: "esm",
@@ -80,6 +80,23 @@ const result = await build({
 });
 if (process.env.BASKULE_METAFILE) writeFileSync(process.env.BASKULE_METAFILE, JSON.stringify(result.metafile));
 
+// celld captures service versions in the frontend's deployment graph. Backend code changes must also change
+// the frontend artifact, even when its routing source is unchanged. Deployment handles backend vars separately.
+const backendHash = createHash("sha256").update(readFileSync(join(runtime, "index.js"))).digest("hex");
+await build({
+  entryPoints: { index: join(root, "src/web.ts") },
+  outdir: webWorker,
+  bundle: true,
+  format: "esm",
+  platform: "neutral",
+  target: "es2023",
+  logLevel: "warning",
+  legalComments: "none",
+  minify,
+  keepNames: minify,
+  banner: { js: `// Baskule backend artifact sha256: ${backendHash}` },
+});
+
 // Static web bundle.
 rmSync(join(out, "web"), { recursive: true, force: true });
 if (!existsSync(webDir)) throw new Error(`BASKULE_WEB_DIR not found: ${webDir}`);
@@ -87,4 +104,4 @@ cpSync(webDir, join(out, "web"), { recursive: true });
 
 const version = process.env.BASKULE_VERSION ?? readFileSync(join(root, "../VERSION"), "utf8").trim();
 writeFileSync(join(out, "web", "version.json"), JSON.stringify({ version }));
-console.error(`built ${runtime}/index.js${minify ? " (minified)" : ""} + web (${webDir}) in ${Date.now() - t0} ms`);
+console.error(`built ${runtime}/index.js + ${webWorker}/index.js${minify ? " (minified)" : ""} + web (${webDir}) in ${Date.now() - t0} ms`);

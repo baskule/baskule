@@ -2,7 +2,6 @@
 export interface Env {
   CONTROL: DurableObjectNamespace;
   SPACE: DurableObjectNamespace;
-  ASSETS: Fetcher;
 
   /** Comma-separated exact origins allowed for state-changing requests and WS upgrades, besides the request's own. */
   PUBLIC_ORIGINS?: string;
@@ -18,4 +17,10 @@ export interface Env {
 
   COMPUTERD_URL?: string;
   COMPUTERD_TOKEN?: string;
+}
+
+/** The public asset worker forwards backend routes through celld's native service binding. */
+export interface WebEnv {
+  ASSETS: Fetcher;
+  BACKEND: Fetcher;
 }

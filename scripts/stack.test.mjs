@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, cpSync, readFileSync, rmSync, writeFileSync, ex
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { cleanupComputers, environment, stackIdentity, portlessEnvironment, stackProxy } from "./stack.mjs";
+import { cleanupComputers, environment, stackIdentity, portlessEnvironment, stackProxy, stackWorkerConfigs, celldRecipe } from "./stack.mjs";
 
 const stack = { id: "test-instance", ports: { "fake-llm": 12345 }, urls: { loopback: "http://127.0.0.1:12346", front: "https://test.baskule.localhost" }, definition: { env: { FIRST: "${PORT_FAKE_LLM}", SECOND: "${FIRST}" } }, overrides: { THIRD: "${SECOND}", COMPUTERD_INSTANCE: "other" } };
 test("profile and --set values resolve runtime ports and references", () => {
@@ -17,6 +17,53 @@ test("unknown profile variable names the missing value", () => {
 });
 test("cyclic profile variables fail clearly", () => {
   assert.throws(() => environment({ ...stack, overrides: { FIRST: "${SECOND}" } }), /cycle/);
+});
+
+test("worker configs preserve backend identity and keep secrets out of the public worker", () => {
+  const backend = JSON.parse(readFileSync("platform/wrangler.json"));
+  const web = JSON.parse(readFileSync("platform/wrangler.web.json"));
+  const s = { ...stack, setupToken: "setup-secret", authSecret: "auth-secret", pluginSyncToken: "plugin-secret", computerdToken: "computer-secret" };
+  const configs = stackWorkerConfigs(s, environment(s), backend, web);
+  assert.equal(configs.backend.name, "baskule-dev-test-instance");
+  assert.equal(configs.backend.main, "runtime/index.js");
+  assert.deepEqual(configs.backend.durable_objects, backend.durable_objects);
+  assert.deepEqual(configs.backend.migrations, backend.migrations);
+  assert.equal(configs.web.name, "baskule-web-test-instance");
+  assert.equal(configs.web.main, "web-worker/index.js");
+  assert.equal(configs.web.assets.directory, "web");
+  assert.deepEqual(configs.web.services, [{ binding: "BACKEND", service: configs.backend.name }]);
+  assert.equal(configs.web.durable_objects, undefined);
+  for (const secret of [s.setupToken, s.authSecret, s.pluginSyncToken, s.computerdToken]) assert(!JSON.stringify(configs.web).includes(secret));
+  const changed = stackWorkerConfigs({ ...s, authSecret: "new-auth-secret" }, environment(s), backend, web);
+  assert.notEqual(configs.web.vars.BASKULE_BACKEND_CONFIG_SHA256, changed.web.vars.BASKULE_BACKEND_CONFIG_SHA256);
+  assert.equal(configs.backend.vars.AUTH_SECRET, s.authSecret);
+  assert.equal(backend.name, "baskule");
+  for (const length of [60, 63]) {
+    const id = "a".repeat(length - "baskule-dev-".length);
+    const named = stackWorkerConfigs({ ...s, id }, environment(s), backend, web);
+    assert.equal(named.backend.name, `baskule-dev-${id}`);
+    assert.equal(named.web.name, `baskule-web-${id}`);
+    assert.equal(named.backend.name.length, length);
+    assert.equal(named.web.name.length, length);
+    assert.deepEqual(named.web.services, [{ binding: "BACKEND", service: named.backend.name }]);
+  }
+});
+
+test("celld dev serves the public worker and registers the backend as a service", () => {
+  const recipe = celldRecipe({ ...stack, ports: { celld: 12346 }, definition: { mode: "dev" } });
+  assert.deepEqual(recipe.args, ["dev", "wrangler.web.json", "--service", "backend/wrangler.json", "--port", "12346", "--no-watch", "--logs"]);
+});
+
+test("RustFS deployment publishes the backend by name before adopting the public worker", () => {
+  const calls = [];
+  const s = { ...stack, bucketPrefix: "test-instance/", definition: { mode: "rustfs", env: {} }, overrides: {}, ports: { celld: 12346, internal: 12347 } };
+  const recipe = celldRecipe(s, (_command, args) => calls.push(args));
+  assert.equal(calls.length, 2);
+  assert(calls[0][1].endsWith("/app/backend/wrangler.json"));
+  assert(calls[0].includes("--named-only"));
+  assert(calls[1][1].endsWith("/app/wrangler.web.json"));
+  assert(!calls[1].includes("--named-only"));
+  assert.equal(recipe.env.CELLD_NODE, "baskule-dev-test-instance");
 });
 
 test("gc removes old web builds and keeps recent builds", (t) => {
