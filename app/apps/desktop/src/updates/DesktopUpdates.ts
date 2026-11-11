@@ -914,6 +914,11 @@ export const make = Effect.gen(function* () {
           yield* finishUpdateAction("install");
           return { accepted: false, completed: false, failed: false };
         }
+        yield* updateState((current) =>
+          current.errorContext === "install"
+            ? { ...current, message: null, errorContext: null }
+            : current,
+        );
         yield* Ref.set(desktopState.quitting, true);
         yield* Ref.set(installRunningBackendsRef, []);
 

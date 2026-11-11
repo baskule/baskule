@@ -746,14 +746,19 @@ describe("DesktopUpdates", () => {
   it.effect("holds the install reservation until failed-install recovery finishes", () => {
     const recoveryStarted = Deferred.makeUnsafe<void>();
     const releaseRecovery = Deferred.makeUnsafe<void>();
+    let installerCalls = 0;
     const harness = makeHarness({
-      quitAndInstall: Effect.fail(
-        new ElectronUpdater.ElectronUpdaterQuitAndInstallError({
-          channel: "latest",
-          isSilent: true,
-          isForceRunAfter: true,
-          cause: new Error("installer refused"),
-        }),
+      quitAndInstall: Effect.suspend(() =>
+        installerCalls++ === 0
+          ? Effect.fail(
+              new ElectronUpdater.ElectronUpdaterQuitAndInstallError({
+                channel: "latest",
+                isSilent: true,
+                isForceRunAfter: true,
+                cause: new Error("installer refused"),
+              }),
+            )
+          : Effect.void,
       ),
       startBackend: Deferred.succeed(recoveryStarted, undefined).pipe(
         Effect.andThen(Deferred.await(releaseRecovery)),
@@ -784,6 +789,7 @@ describe("DesktopUpdates", () => {
 
         const retry = yield* updates.install;
         assert.isTrue(retry.accepted);
+        assert.isNull(retry.state.errorContext);
         assert.equal(harness.quitAndInstalls(), 2);
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
