@@ -12,6 +12,7 @@ import { environmentSessionStatesAtom } from "~/state/session";
 import { getProviderUpdateRunOutcome } from "../ProviderUpdateLaunchNotification.logic";
 import { useProviderUpdates } from "../ProviderUpdatesAction";
 import { canUpdateServer, type ServerUpdateOutcome, useServerUpdate } from "../ServerUpdateAction";
+import type { ReportLocalUpdateError } from "../desktopUpdate.actions";
 import {
   closeFinishedUpdateRun,
   collectRestartingMachines,
@@ -32,8 +33,6 @@ import {
 } from "./updateEverythingRun";
 
 const UPDATE_RESTART_DELAY_MS = 5_000;
-
-export type ReportLocalUpdateError = (title: string, description: string) => void;
 
 export function useUpdateEverything(localUpdateVersion: string | null) {
   const targetVersion = localUpdateVersion ?? APP_VERSION;

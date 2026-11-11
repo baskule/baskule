@@ -26,6 +26,7 @@ function makeState(overrides: Partial<DesktopUpdateState> = {}): DesktopUpdateSt
     message: null,
     errorContext: null,
     canRetry: false,
+    requiredVersion: null,
     omittedReleaseCount: 0,
     ...overrides,
   };

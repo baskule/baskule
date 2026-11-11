@@ -150,15 +150,13 @@ export function getDesktopUpdateInstallConfirmationMessage(
   );
 }
 
+/** An accepted install never completes before the app quits, so only an error state counts. */
 export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
   if (!result.accepted || result.completed) return null;
-  if (typeof result.state.message !== "string") return null;
-  const message = result.state.message.trim();
-  return message.length > 0 ? message : null;
-}
-
-export function shouldToastDesktopUpdateActionResult(result: DesktopUpdateActionResult): boolean {
-  return getDesktopUpdateActionError(result) !== null;
+  const { state } = result;
+  if (state.status !== "error" && state.errorContext === null) return null;
+  const message = state.message?.trim();
+  return message ? message : null;
 }
 
 export function canCheckForUpdate(state: DesktopUpdateState | null): boolean {
@@ -186,4 +184,38 @@ export function getDesktopUpdateIdleTooltip(
   return disabledReason
     ? { title: t("Updates unavailable"), detail: disabledReason }
     : { title: t("Check for updates"), detail: null };
+}
+
+export type RequiredUpdateView =
+  | { readonly kind: "managed"; readonly detail: string }
+  | { readonly kind: "manual"; readonly detail: string | null }
+  | { readonly kind: "checking" }
+  | { readonly kind: "downloading"; readonly percent: number | null }
+  | {
+      readonly kind: "update";
+      readonly action: "download" | "install";
+      readonly error: string | null;
+    }
+  | { readonly kind: "retry"; readonly error: string | null };
+
+/** What the required-update dialog offers, or `null` while this app satisfies its installation. */
+export function resolveRequiredUpdateView(
+  state: DesktopUpdateState | null,
+  managedDenial: string | undefined,
+): RequiredUpdateView | null {
+  if (state?.requiredVersion == null) return null;
+  if (managedDenial !== undefined) return { kind: "managed", detail: managedDenial };
+  if (!state.enabled || state.status === "disabled") {
+    return { kind: "manual", detail: state.message };
+  }
+  if (state.status === "downloading") {
+    return { kind: "downloading", percent: state.downloadPercent };
+  }
+  // Without an error, the message only restates the requirement the dialog already shows.
+  const error = state.status === "error" || state.errorContext !== null ? state.message : null;
+  const action = resolveDesktopUpdateButtonAction(state);
+  if (action !== "none") return { kind: "update", action, error };
+  // An installation change starts a check right after resetting to idle.
+  if (state.status === "idle" || state.status === "checking") return { kind: "checking" };
+  return { kind: "retry", error };
 }

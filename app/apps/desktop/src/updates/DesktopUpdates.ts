@@ -312,6 +312,10 @@ function createBaseUpdateState(
   };
 }
 
+function requiredUpdateMessage(version: string): string {
+  return `You must update Baskule to ${version} or newer to use this installation.`;
+}
+
 function getCanRetryFromState(state: DesktopUpdateState): boolean {
   return state.availableVersion !== null || state.downloadedVersion !== null;
 }
@@ -414,22 +418,27 @@ export const make = Effect.gen(function* () {
     Effect.flatMap((state) => electronWindow.sendAll(IpcChannels.UPDATE_STATE_CHANNEL, state)),
   );
 
-  const setState = (state: DesktopUpdateState): Effect.Effect<void> =>
+  const requiredClientVersion = (server: ExecutionEnvironmentDescriptor | null) =>
+    server !== null && compareReleaseVersions(environment.appVersion, server.minClient) < 0
+      ? server.minClient
+      : null;
+
+  // Every write derives this from the installation, so no reducer can carry a stale requirement.
+  const setState = (state: DesktopUpdateState): Effect.Effect<DesktopUpdateState> =>
     stateMutex
       .withPermits(1)(
-        Ref.set(updateStateRef, state).pipe(Effect.andThen(PubSub.publish(stateChanges, state))),
+        Ref.get(installation).pipe(
+          Effect.map((server) => ({ ...state, requiredVersion: requiredClientVersion(server) })),
+          Effect.tap((next) => Ref.set(updateStateRef, next)),
+          Effect.tap((next) => PubSub.publish(stateChanges, next)),
+        ),
       )
-      .pipe(Effect.andThen(emitState));
+      .pipe(Effect.tap(() => emitState));
 
   const updateState = (
     f: (state: DesktopUpdateState) => DesktopUpdateState,
   ): Effect.Effect<DesktopUpdateState> =>
-    Ref.get(updateStateRef).pipe(
-      Effect.flatMap((state) => {
-        const nextState = f(state);
-        return setState(nextState).pipe(Effect.as(nextState));
-      }),
-    );
+    Ref.get(updateStateRef).pipe(Effect.flatMap((state) => setState(f(state))));
 
   const readAppUpdateYml = fileSystem.readFileString(environment.appUpdateYmlPath, "utf-8").pipe(
     Effect.option,
@@ -624,9 +633,9 @@ export const make = Effect.gen(function* () {
         serverVersion: server.serverVersion,
         minClient: server.minClient,
       });
-      const required = compareReleaseVersions(environment.appVersion, server.minClient) < 0;
-      const message = required
-        ? `You must update Baskule to ${server.minClient} or newer to use this installation.`
+      const requiredVersion = requiredClientVersion(server);
+      const message = requiredVersion
+        ? requiredUpdateMessage(requiredVersion)
         : compareReleaseVersions(server.serverVersion, BASKULE_RELEASE.minServer) < 0
           ? "This installation needs an update to work with this version of Baskule."
           : null;
@@ -1051,11 +1060,11 @@ export const make = Effect.gen(function* () {
               omittedReleaseCount,
             ),
           );
-          const server = yield* Ref.get(installation);
-          if (server && compareReleaseVersions(environment.appVersion, server.minClient) < 0) {
+          const requiredVersion = requiredClientVersion(yield* Ref.get(installation));
+          if (requiredVersion) {
             yield* updateState((current) => ({
               ...current,
-              message: `You must update Baskule to ${server.minClient} or newer to use this installation.`,
+              message: requiredUpdateMessage(requiredVersion),
             }));
           }
           yield* Ref.set(lastLoggedDownloadMilestoneRef, -1);

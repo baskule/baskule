@@ -281,6 +281,8 @@ export interface DesktopUpdateState {
   message: string | null;
   errorContext: "check" | "download" | "install" | null;
   canRetry: boolean;
+  /** The connected installation's minimum app version while this app is older and cannot connect. */
+  requiredVersion: string | null;
   notAppliedVersion?: string;
   /** Off only because a managed policy rules out this channel; switching channels turns it on. */
   channelBlockedByPolicy?: true;
@@ -323,6 +325,7 @@ export const DesktopUpdateStateSchema = Schema.Struct({
   message: Schema.NullOr(Schema.String),
   errorContext: Schema.NullOr(Schema.Literals(["check", "download", "install"])),
   canRetry: Schema.Boolean,
+  requiredVersion: Schema.NullOr(Schema.String),
   notAppliedVersion: Schema.optionalKey(Schema.String),
 });
 

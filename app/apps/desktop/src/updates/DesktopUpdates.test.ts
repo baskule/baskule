@@ -111,15 +111,46 @@ describe("DesktopUpdates", () => {
           const result = yield* updates.check("manual");
           assert.isNull(result.state.availableVersion);
           assert.include(result.state.message ?? "", "must update Baskule");
+          assert.equal(result.state.requiredVersion, "1.2.4");
           assert.equal(harness.checkCount(), 0);
           harness.emit("update-downloaded", { version: "1.2.4" });
           yield* flushCallbacks;
           assert.isFalse((yield* updates.install).accepted);
           assert.equal(harness.quitAndInstalls(), 0);
+
+          yield* updates.setInstallation(null);
+          assert.isNull((yield* updates.getState).requiredVersion);
+          assert.isNull(harness.sentStates.at(-1)?.requiredVersion);
         }),
       ).pipe(Effect.provide(harness.layer));
     },
   );
+
+  it.effect("reports a required client update while the updater is off", () => {
+    const harness = makeHarness({
+      env: { T3CODE_DISABLE_AUTO_UPDATE: "true" },
+      installation: {
+        environmentId: EnvironmentId.make("newer"),
+        label: "Newer",
+        platform: { os: "linux", arch: "x64" },
+        serverVersion: "1.2.5",
+        minClient: "1.2.5",
+        capabilities: { repositoryIdentity: true },
+      },
+    });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        const configured = yield* updates.getState;
+        assert.equal(configured.status, "disabled");
+        assert.equal(configured.requiredVersion, "1.2.5");
+
+        yield* updates.setChannel("nightly");
+        assert.equal((yield* updates.getState).requiredVersion, "1.2.5");
+      }),
+    ).pipe(Effect.provide(harness.layer));
+  });
 
   it.effect("updates Linux .deb installs and leaves other non-AppImage installs off", () =>
     Effect.gen(function* () {

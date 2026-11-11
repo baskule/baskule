@@ -74,6 +74,7 @@ describe("SidebarUpdatePill update everything", () => {
       message: null,
       errorContext: null,
       canRetry: false,
+      requiredVersion: null,
     };
     const downloaded: DesktopUpdateState = {
       ...available,
