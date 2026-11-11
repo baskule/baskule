@@ -113,4 +113,28 @@ describe("RequiredUpdateDialog", () => {
     await expect.element(page.getByText("The installer exited.")).toBeVisible();
     await expect.element(button).not.toHaveAttribute("aria-disabled");
   });
+
+  it("keeps an install failure that arrives before the install call returns", async () => {
+    const downloaded: DesktopUpdateState = {
+      ...available,
+      status: "downloaded",
+      downloadedVersion: "0.5.2",
+      downloadPercent: 100,
+      message: null,
+    };
+    setup(downloaded);
+    const installUpdate = vi.fn(async () => {
+      mocks.push({ ...downloaded, errorContext: "install", message: "The installer exited." });
+      await expect.element(page.getByText("The installer exited.")).toBeVisible();
+      return { accepted: true, completed: false, state: downloaded };
+    });
+    using _bridge = stubGlobal("desktopBridge", { installUpdate });
+    await using _screen = await render(<RequiredUpdateDialog />);
+
+    const button = page.getByRole("button", { name: "Update and restart" });
+    await userEvent.click(button);
+    await vi.waitFor(() => expect(installUpdate).toHaveResolved());
+    await expect.element(button).not.toHaveAttribute("aria-disabled");
+    expect(page.getByRole("button", { name: "Restarting…" }).query()).toBeNull();
+  });
 });
