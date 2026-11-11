@@ -52,6 +52,8 @@ Keep secrets outside Git and do not source `.env` as shell code.
 
 Generated bundles, dependencies, downloaded packages, and local evidence stay ignored. Builds use checked-in source and lockfiles. `source-provenance.json` records upstream sources and their licenses; `/version.json` and generated `BUILT_FROM` files identify built inputs.
 
+The hosted minifiers retain explicit Effect operation names and native stack positions, while shortening JavaScript function labels. See [Space cold starts](cold-start.md) for that tradeoff, idle-alarm eligibility, and measurement boundaries.
+
 ## Build native clients
 
 Use [the desktop guide](../desktop/README.md) to build the T3-based Electron client with `desktop/build.sh`. It documents native dependencies and packaged-client checks. Desktop builds bundle the renderer and native IPC. Automatic updates select the latest release compatible with the selected installation; see the desktop guide.

@@ -3,7 +3,7 @@
 //   BASKULE_WEB_DIR        directory of the web build to serve (default: web-placeholder/)
 //   BASKULE_ENTRY          Worker entry (default: src/worker.ts; the integration test uses its own)
 //   BASKULE_OUT            output dir (default: dist)
-//   BASKULE_MINIFY=1       minify the Worker, keeping function and class names (production: deploy/build.sh)
+//   BASKULE_MINIFY=1       minify the Worker (production: deploy/build.sh)
 //   BASKULE_METAFILE       optional esbuild dependency report path (outside the deployed runtime directory)
 import { build } from "esbuild";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,8 +17,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, process.env.BASKULE_OUT ?? "dist");
 const entry = resolve(root, process.env.BASKULE_ENTRY ?? "src/worker.ts");
 const webDir = resolve(root, process.env.BASKULE_WEB_DIR ?? "web-placeholder");
-// Names are kept so stack traces in celld remain readable. no_bundle preserves
-// these module boundaries when celld uploads the deployment.
+// no_bundle preserves these lazy module boundaries when celld uploads the deployment.
 const minify = process.env.BASKULE_MINIFY === "1";
 
 mkdirSync(out, { recursive: true });
@@ -64,7 +63,7 @@ const result = await build({
   logLevel: "warning",
   legalComments: "none",
   minify,
-  keepNames: minify,
+  keepNames: false,
   // no_bundle skips celld's esbuild pass, including its lexical bridge for
   // CommonJS dependencies that require node builtins. Keep the same boundary.
   banner: { js: `var require = (id) => {
