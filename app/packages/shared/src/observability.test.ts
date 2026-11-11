@@ -140,6 +140,40 @@ describe("truncateTraceAttributes", () => {
 });
 
 describe("observability", () => {
+  it.effect("leaves unsampled failures unformatted without an exporter", () =>
+    Effect.gen(function* () {
+      let stackReads = 0;
+      const error = new Error("expected unsupported operation");
+      Object.defineProperty(error, "stack", {
+        get() {
+          stackReads++;
+          return "Error: expected unsupported operation\n    at diagnostic-frame";
+        },
+      });
+      const records: Array<TraceRecord> = [];
+      const tracer = yield* makeLocalFileTracer({
+        filePath: "unused",
+        maxBytes: 1024,
+        maxFiles: 1,
+        batchWindowMs: 10_000,
+        sink: {
+          filePath: "unused",
+          push: (record) => records.push(record),
+          flush: Effect.void,
+          close: () => Effect.void,
+        },
+      });
+      const result = yield* Effect.fail(error).pipe(
+        Effect.withSpan("expected-failure", { sampled: false }),
+        Effect.provideService(Tracer.Tracer, tracer),
+        Effect.exit,
+      );
+      assert.isTrue(Exit.isFailure(result));
+      assert.deepStrictEqual(records, []);
+      assert.equal(stackReads, 0);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
   it.effect(
     "preserves successful results without retaining them in sampled or unsampled spans",
     () =>
@@ -370,71 +404,78 @@ describe("observability", () => {
       ),
     );
 
-    it.effect("keeps WebSocket credentials out of trace files and exported spans", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
-          const sink = yield* makeTraceSink({
-            filePath: tracePath,
-            maxBytes: 1024 * 1024,
-            maxFiles: 2,
-            batchWindowMs: 10_000,
-          });
-          const delegates: Array<Tracer.NativeSpan> = [];
-          const tracer = yield* makeLocalFileTracer({
-            filePath: tracePath,
-            maxBytes: 1024 * 1024,
-            maxFiles: 2,
-            batchWindowMs: 10_000,
-            sink,
-            delegate: Tracer.make({
-              span: (options) => {
-                const span = new Tracer.NativeSpan(options);
-                delegates.push(span);
-                return span;
-              },
-            }),
-          });
-          const url = "/ws?wsTicket=ticket-secret&dpop=proof-secret&clientSurface=web";
+    it.effect.each([false, true])(
+      "keeps WebSocket credentials out of traces (exporter=%s)",
+      (delegateEnabled) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fileSystem = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
+            const tracePath = path.join(tempDir, `shared-${delegateEnabled}.trace.ndjson`);
+            const sink = yield* makeTraceSink({
+              filePath: tracePath,
+              maxBytes: 1024 * 1024,
+              maxFiles: 2,
+              batchWindowMs: 10_000,
+            });
+            const delegates: Array<Tracer.NativeSpan> = [];
+            const tracer = yield* makeLocalFileTracer({
+              filePath: tracePath,
+              maxBytes: 1024 * 1024,
+              maxFiles: 2,
+              batchWindowMs: 10_000,
+              sink,
+              ...(delegateEnabled
+                ? {
+                    delegate: Tracer.make({
+                      span: (options) => {
+                        const span = new Tracer.NativeSpan(options);
+                        delegates.push(span);
+                        return span;
+                      },
+                    }),
+                  }
+                : {}),
+            });
+            const url = "/ws?wsTicket=ticket-secret&dpop=proof-secret&clientSurface=web";
 
-          yield* Effect.annotateCurrentSpan({
-            "url.full": `http://127.0.0.1:3773${url}`,
-            "url.query": url.slice(4),
-          }).pipe(
-            Effect.withSpan("GET", { kind: "server" }),
-            Effect.provideService(Tracer.Tracer, tracer),
-          );
-          yield* Effect.die(new Error(`RequestParseError (GET ${url})`)).pipe(
-            Effect.tapCause((cause) => Effect.logError(cause)),
-            Effect.withSpan("DeviceHubProxy.proxyWebSocket"),
-            Effect.provideService(Tracer.Tracer, tracer),
-            Effect.provide(Logger.layer([Logger.tracerLogger], { mergeWithExisting: false })),
-            Effect.exit,
-          );
-          yield* sink.close();
+            yield* Effect.annotateCurrentSpan({
+              "url.full": `http://127.0.0.1:3773${url}`,
+              "url.query": url.slice(4),
+            }).pipe(
+              Effect.withSpan("GET", { kind: "server" }),
+              Effect.provideService(Tracer.Tracer, tracer),
+            );
+            yield* Effect.die(new Error(`RequestParseError (GET ${url})`)).pipe(
+              Effect.tapCause((cause) => Effect.logError(cause)),
+              Effect.withSpan("DeviceHubProxy.proxyWebSocket"),
+              Effect.provideService(Tracer.Tracer, tracer),
+              Effect.provide(Logger.layer([Logger.tracerLogger], { mergeWithExisting: false })),
+              Effect.exit,
+            );
+            yield* sink.close();
 
-          const written = yield* fileSystem.readFileString(tracePath);
-          const exported = delegates.map((span) =>
-            JSON.stringify({
-              attributes: Object.fromEntries(span.attributes),
-              events: span.events.map(([, , attributes]) => attributes),
-              exit:
-                span.status._tag === "Ended" && Exit.isFailure(span.status.exit)
-                  ? Cause.pretty(span.status.exit.cause)
-                  : "",
-            }),
-          );
-          for (const text of [written, ...exported]) {
-            assert.notInclude(text, "ticket-secret");
-            assert.notInclude(text, "proof-secret");
-          }
-          assert.include(written, "wsTicket=<redacted>&dpop=<redacted>&clientSurface=web");
-          assert.include(exported.join("\n"), "effect.cause");
-        }),
-      ),
+            const written = yield* fileSystem.readFileString(tracePath);
+            const exported = delegates.map((span) =>
+              JSON.stringify({
+                attributes: Object.fromEntries(span.attributes),
+                events: span.events.map(([, , attributes]) => attributes),
+                exit:
+                  span.status._tag === "Ended" && Exit.isFailure(span.status.exit)
+                    ? Cause.pretty(span.status.exit.cause)
+                    : "",
+              }),
+            );
+            for (const text of [written, ...exported]) {
+              assert.notInclude(text, "ticket-secret");
+              assert.notInclude(text, "proof-secret");
+            }
+            assert.include(written, "wsTicket=<redacted>&dpop=<redacted>&clientSurface=web");
+            assert.include(written, "RequestParseError");
+            if (delegateEnabled) assert.include(exported.join("\n"), "effect.cause");
+          }),
+        ),
     );
 
     it.effect("drops only the invalid trace record when serialization fails", () =>
