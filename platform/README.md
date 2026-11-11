@@ -15,6 +15,8 @@ runtime. This fresh request boundary keeps native I/O alive on stock celld; it d
 public Worker blocks these internal paths. In a new space OpenCode boots before T3, because it only creates its schema
 in an empty database. Details: [`src/agent/README.md`](src/agent/README.md).
 
+The public entry exports small cell facades from `src/cells.ts`. Each facade imports its implementation on first fetch or alarm using the same native cell context. The build emits ESM chunks, and celld compiles them on first import. One deployment still owns both cell classes and their existing storage identities.
+
 ## Commands (one feedback loop each)
 
 From the repository root, `scripts/check` picks these for a diff (`scripts/check plan`; see
@@ -23,7 +25,7 @@ From the repository root, `scripts/check` picks these for a diff (`scripts/check
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm run build                 # dist/worker.js (esbuild) + dist/web
+pnpm run build                 # dist/runtime/index.js + lazy ESM chunks (esbuild) + dist/web
 pnpm test                      # vitest: ControlCell, Worker security, recheck, SpaceCell lifecycle, agent runtime/migration
 pnpm run test:integration      # test/integration.sh: real celld dev on :47620, then stops
 node src/space/test/run.mjs   # SpaceCell runner: merged cell + fake computerd + fake LLM
@@ -36,7 +38,7 @@ pnpm run typecheck
 node dev/fake-llm/server.mjs --port 47601
 ```
 
-`CELLD_BIN` overrides the celld binary (default `.tools/bin/celld` at the repository root, then `celld` on PATH; stock 0.6.3). Run `../scripts/worktree host-init` to extract the pinned official binary first. The build takes
+`CELLD_BIN` overrides the celld binary. The default launcher builds and caches Baskule's patched runtime using Docker; stock celld 0.6.3 cannot load the split deployment. See [runtime patches](../docs/celld-runtime-patch.md). The build takes
 `BASKULE_WEB_DIR` (the web bundle to serve; default `web-placeholder/`) and
 `BASKULE_ENTRY`/`BASKULE_OUT` (used by the integration test). `/version.json` identifies the running version;
 the web client links to matching GitHub release assets instead of serving app installers from the platform.

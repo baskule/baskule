@@ -4,7 +4,7 @@ Development requires Linux x86-64; `scripts/worktree` enforces this requirement.
 
 ## Install prerequisites
 
-Install Git, Bash, Python 3, curl, tar, xz, checksum tools, and `flock`. Docker with Compose is required for image builds and computer-backed development stacks. The current user must be able to use Docker. The optional local HTTPS proxy requires root, a globally installed `portless`, and `libnss3-tools` for browser certificate trust. Without root or Portless, `scripts/stack up` automatically uses direct loopback HTTP. Set `BASKULE_STACK_PROXY=0` or `1` to disable or require the proxy explicitly.
+Install Git, Bash, Python 3, curl, tar, xz, checksum tools, and `flock`. Docker with Compose is required for image builds and development stacks; the native celld launcher also uses Docker to build its patched binary on first use. The current user must be able to use Docker. The optional local HTTPS proxy requires root, a globally installed `portless`, and `libnss3-tools` for browser certificate trust. Without root or Portless, `scripts/stack up` automatically uses direct loopback HTTP. Set `BASKULE_STACK_PROXY=0` or `1` to disable or require the proxy explicitly.
 
 `scripts/worktree` installs checksum-verified Node 26.12.1, the pnpm version pinned in `package.json`, and celld 0.6.3. By default, setup uses `baskule` under `XDG_CACHE_HOME` or your home directory's `.cache`. An existing `.tools` link preserves its shared cache location. Set `BASKULE_SHARED` to select another writable directory. Run setup:
 
@@ -29,9 +29,9 @@ scripts/worktree runtime
 
 Rerun this command after changes to `app/`. It skips unchanged inputs. Focused unit checks that do not import the runtime need no bundle build. See [Choose checks for a change](development-workflow.md) for local app startup and verification.
 
-The local celld launcher uses `.tools/bin/celld`, then `celld` on `PATH`. `CELLD_BIN` selects an explicit executable. The setup script extracts celld 0.6.3 from a pinned official image layer and records its provenance beside the binary.
+The local celld launcher builds Baskule's pinned patched runtime with Docker on first use and caches its binary by build inputs. `CELLD_BIN` selects an explicit compatible executable. Setup also extracts the official celld 0.6.3 binary for standalone tooling; it cannot load Baskule's split modules.
 
-Container builds apply the [celld warm-worker retention patch](celld-runtime-patch.md).
+Container builds apply the [celld runtime patches](celld-runtime-patch.md).
 That guide also explains how to test the patched binary in a native worktree.
 
 ## Build server, web, and images

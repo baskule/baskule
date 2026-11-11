@@ -1,0 +1,66 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { BASKULE_AI_PROVIDERS } from "../../../app/packages/contracts/src/baskule.ts";
+
+const integration = fileURLToPath(new URL("./opencode.js", import.meta.url));
+const providerPackages = new Set(Object.values(BASKULE_AI_PROVIDERS).map(provider => provider.package));
+const registry = /var builtins = new Map\(\[([\s\S]*?)\n\]\);/g;
+const providerImport = /\(\) => import\("(@opencode\/ai\/providers\/[^"\n]+)"\)/g;
+const catalog = /\/\/ src\/models-dev\/snapshot\.txt\nvar snapshot_default = [^\n]+;\n/g;
+
+// Exclude the disabled model catalog and adapters outside the installation provider configuration.
+export const embeddedAgent = {
+  name: "baskule-embedded-agent",
+  setup(build) {
+    let integrationUsed = false;
+    let catalogFound = false;
+    let providersFound = false;
+    build.onStart(async () => {
+      integrationUsed = false;
+      catalogFound = false;
+      providersFound = false;
+      const source = await readFile(integration, "utf8");
+      if (!source.includes("models: { fetch: false, snapshot: false }")) {
+        throw new Error("Embedded OpenCode must disable the model catalog before excluding its bundled snapshot.");
+      }
+    });
+    build.onLoad({ filter: /[/\\]agent[/\\]opencode\.js$/ }, ({ path }) => {
+      if (path === integration) integrationUsed = true;
+    });
+    build.onEnd(() => {
+      if (integrationUsed && (!catalogFound || !providersFound)) {
+        throw new Error("Embedded OpenCode catalog or provider registry was not found; check the pinned SDK layout.");
+      }
+    });
+    build.onLoad({ filter: /[/\\]@opencode[/\\]core[/\\]dist[/\\]chunks[/\\][^/\\]+\.js$/ }, async ({ path }) => {
+      let source = await readFile(path, "utf8");
+      const hasRegistry = source.includes("var builtins = new Map([");
+      if (hasRegistry) {
+        const maps = [...source.matchAll(registry)];
+        if (maps.length !== 1) throw new Error(`OpenCode provider registry layout changed: ${path}`);
+        const entries = maps[0][1];
+        const loaders = [...entries.matchAll(providerImport)].map(match => match[1]);
+        if (loaders.length !== [...entries.matchAll(/\[\s*"[^"\n]+"\s*,/g)].length) {
+          throw new Error(`OpenCode provider loader layout changed: ${path}`);
+        }
+        for (const pkg of providerPackages) {
+          if (!loaders.includes(pkg)) throw new Error(`Baskule provider package is absent from the SDK registry: ${pkg}`);
+        }
+        source = source.replace(registry, (_, entries) => `var builtins = new Map([${entries.replace(providerImport, (loader, pkg) =>
+          [...providerPackages].some(allowed => pkg === allowed || pkg.startsWith(`${allowed}/`))
+            ? loader
+            : `() => Promise.reject(new Error(${JSON.stringify("Provider package " + pkg + " is unavailable in Baskule")}))`
+        )}\n]);`);
+        providersFound = true;
+      }
+      if (!source.includes("// src/models-dev/snapshot.txt")) {
+        if (hasRegistry) return { contents: source, loader: "js" };
+        return;
+      }
+      const matches = [...source.matchAll(catalog)];
+      if (matches.length !== 1) throw new Error(`OpenCode model catalog layout changed: ${path}`);
+      catalogFound = true;
+      return { contents: source.replace(catalog, 'var snapshot_default = "{}";\n'), loader: "js" };
+    });
+  },
+};

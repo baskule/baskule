@@ -6,7 +6,7 @@ D=$(cd "$(dirname "$0")" && pwd); ROOT=$(cd "$D/../../../.." && pwd); RUN=$D/.ru
 source "$ROOT/scripts/env.sh"
 build_harness() {
   BASKULE_ENTRY=src/space/test/harness/entry.ts BASKULE_OUT="$RUN/app" node "$ROOT/platform/scripts/build.mjs"
-  node -e 'const fs = require("node:fs"); const w = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); w.main = "worker.js"; delete w.assets; fs.writeFileSync(process.argv[2], JSON.stringify(w));' "$D/harness/wrangler.json" "$RUN/app/wrangler.json"
+  node -e 'const fs = require("node:fs"); const w = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); w.main = "runtime/index.js"; w.no_bundle = true; delete w.assets; fs.writeFileSync(process.argv[2], JSON.stringify(w));' "$D/harness/wrangler.json" "$RUN/app/wrangler.json"
 }
 case "${1:-}" in
   build) build_harness ;;

@@ -25,7 +25,7 @@ import { syncSkills } from "../agent/plugin-skills";
 import type { SpacePlugins } from "../../../app/packages/contracts/src/baskule-plugins";
 import type { ProductSettings } from "../control/settings";
 
-// The T3 bundle (~16 MB) is evaluated on the first boot, not when the Worker isolate starts.
+// T3 is compiled and evaluated on first boot, independently of the router and ControlCell.
 const loadBundle = () => import("./t3/space-cell.js");
 
 export const SPACE_STOP_PATH = "/_baskule/stop";
@@ -38,7 +38,7 @@ export const RUN_HEARTBEAT_MS = 10_000;
 /** How long an alarm that boots T3 for due work keeps the event open (T3's scheduler ticks every 5 s). */
 const DUE_WORK_WAIT_MS = 7_000;
 
-interface SpaceEnv extends Omit<AgentEnv, "AI"> {
+export interface SpaceEnv extends Omit<AgentEnv, "AI"> {
   CONTROL: ControlNamespace;
   SPACE: { getByName(name: string): { fetch(req: Request): Promise<Response> } };
   PUBLIC_ORIGINS?: string;

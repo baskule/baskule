@@ -1,15 +1,25 @@
 #!/usr/bin/env bash
-# Shared native celld launcher for local dev/test loops. CELLD_BIN overrides this launcher in callers.
+# Native launcher for Baskule's patched runtime. Callers may override CELLD_BIN.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-# Keep celld's asset-cache buckets local to this worktree.
 export TMPDIR="$ROOT/.run/celld-tmp"
-mkdir -p "$TMPDIR"
-if [ -x "$ROOT/.tools/bin/celld" ]; then
-  exec "$ROOT/.tools/bin/celld" "$@"
+mkdir -p "$TMPDIR" "$ROOT/.run/celld-runtime"
+runtime_key=$(cd "$ROOT" && sha256sum deploy/celld/Dockerfile deploy/celld/patches/*.patch deploy/celld/tests/*.rs | sha256sum | cut -d' ' -f1)
+runtime_dir="$ROOT/.run/celld-runtime/$runtime_key"
+if [[ ! -x "$runtime_dir/celld" ]]; then
+  (
+    flock 9
+    [[ ! -x "$runtime_dir/celld" ]] || exit 0
+    command -v docker >/dev/null || { echo 'Baskule requires its patched celld. Install Docker or set CELLD_BIN to a compatible binary.' >&2; exit 1; }
+    image="baskule-celld:dev-${runtime_key:0:16}"
+    echo 'Building the pinned Baskule runtime (cached for subsequent launches).' >&2
+    docker build --target source -f "$ROOT/deploy/celld/Dockerfile" -t "$image" "$ROOT" >&2
+    container=$(docker create "$image")
+    trap 'docker rm "$container" >/dev/null' EXIT
+    mkdir -p "$runtime_dir"
+    docker cp "$container:/usr/local/bin/celld" "$runtime_dir/celld.pending" >/dev/null
+    chmod 755 "$runtime_dir/celld.pending"
+    mv "$runtime_dir/celld.pending" "$runtime_dir/celld"
+  ) 9>"$ROOT/.run/celld-runtime/build.lock"
 fi
-if command -v celld >/dev/null 2>&1; then
-  exec celld "$@"
-fi
-echo "Stock celld 0.6.3 is missing. Run $ROOT/scripts/worktree host-init, install celld on PATH, or set CELLD_BIN." >&2
-exit 127
+exec "$runtime_dir/celld" "$@"

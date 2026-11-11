@@ -1,3 +1,4 @@
 app/packages/shared/src/locales/*.ts linguist-generated=true
 desktop/src/locales/*.json linguist-generated=true
 app/apps/mobile/locales/*.json linguist-generated=true
+deploy/celld/patches/*.patch whitespace=-blank-at-eol

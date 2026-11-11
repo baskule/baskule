@@ -1,6 +1,7 @@
 {
   "name": "baskule",
-  "main": "dist/worker.js",
+  "main": "dist/runtime/index.js",
+  "no_bundle": true,
   "compatibility_date": "2026-08-30",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {

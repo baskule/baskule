@@ -11,8 +11,7 @@ import { encodeIdentity } from "./shared/identity";
 import { SPACE_ID_RE, json, notFound } from "./shared/http";
 import { parseAuthConfig } from "./control/auth-config";
 
-export { ControlCell } from "./control/index";
-export { SpaceCell } from "./space/index";
+export { ControlCell, SpaceCell } from "./cells";
 
 const AUTH_COOKIE_PREFIX = /^(?:__Secure-)?baskule\./;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);

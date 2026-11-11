@@ -2,7 +2,7 @@
 // way T3 does (the production composition: one cell, one shared SQL client, SpaceCell-owned lifecycle and alarms):
 //   /a/<spaceId>/<rest>      →  SpaceCell(<spaceId>) at /_baskule/agent/<rest>   (rest = oc/… or _baskule/…)
 //   /space/<spaceId>/<path>  →  SpaceCell(<spaceId>) at /<path> (its own control routes, e.g. /_baskule/delete)
-export { SpaceCell } from "../../../space/index";
+export { SpaceCell } from "../../../cells";
 export { TestControlCell } from "../../../space/test/harness/control-cell";
 
 interface Env {

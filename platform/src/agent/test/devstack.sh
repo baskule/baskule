@@ -60,7 +60,7 @@ build_harness() {
   REAL_LLM_API_KEY="${REAL_LLM_API_KEY:-}" node -e '
     const [out, url, model, settings, token] = process.argv.slice(1);
     const w = JSON.parse(require("fs").readFileSync(process.argv[6], "utf8"));
-    w.main = "worker.js"; delete w.assets;
+    w.main = "runtime/index.js"; w.no_bundle = true; delete w.assets;
     const product = JSON.parse(w.vars.TEST_PRODUCT_SETTINGS);
     product.ai.baseUrl = url; product.ai.model.id = model; product.ai.model.settings = JSON.parse(settings);
     if (process.env.REAL_LLM === "1") { product.ai.providerId = process.env.REAL_LLM_PROVIDER; product.apiKey = process.env.REAL_LLM_API_KEY; }

@@ -293,7 +293,7 @@ async function build(s) {
     run("node", ["scripts/build.mjs"], { cwd: join(ROOT, "platform"), env: { ...env, BASKULE_OUT: join(RUN, "app"), BASKULE_WEB_DIR: cached }, stdio: ["ignore", 2, 2] });
     const w = load(join(ROOT, "platform/wrangler.json"));
     w.name = `baskule-dev-${s.id}`;
-    w.main = "worker.js"; w.assets.directory = "web";
+    w.main = "runtime/index.js"; w.assets.directory = "web";
     Object.assign(w.vars, {
       PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, SETUP_TOKEN: s.setupToken, PLUGIN_SYNC_TOKEN: s.pluginSyncToken,
       AUTH_SECRET: s.authSecret, COMPUTERD_URL: s.ports.computerd ? `http://127.0.0.1:${s.ports.computerd}` : "http://127.0.0.1:1",
