@@ -1,9 +1,5 @@
-import { t, useTranslation } from "../../i18n";
-import {
-  type DesktopBridge,
-  type DesktopUpdateState,
-  managedUpdatesDenial,
-} from "@t3tools/contracts";
+import { useTranslation } from "../../i18n";
+import { managedUpdatesDenial } from "@t3tools/contracts";
 import { TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -15,9 +11,13 @@ import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import { usePrimaryManagedPolicy } from "../../state/managedPolicy";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
+  checkLocalUpdate,
+  downloadLocalUpdate,
+  installLocalUpdate,
+} from "../desktopUpdate.actions";
+import {
   canCheckForUpdate,
   getArm64IntelBuildWarningDescription,
-  getDesktopUpdateActionError,
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateDownloadedVersion,
   getDesktopUpdateIdleTooltip,
@@ -25,9 +25,7 @@ import {
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
   shouldShowArm64IntelBuildWarning,
-  shouldToastDesktopUpdateActionResult,
 } from "../desktopUpdate.logic";
-import { showDesktopUpdateDownloadedToast } from "../desktopUpdate.toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { SidebarMenuItem } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -45,7 +43,7 @@ import {
   saveUpdateEverythingResult,
   useUpdateEverythingRun,
 } from "./updateEverythingRun";
-import { type ReportLocalUpdateError, useUpdateEverything } from "./useUpdateEverything";
+import { useUpdateEverything } from "./useUpdateEverything";
 
 function resolveSidebarUpdatePresentation({
   action,
@@ -103,61 +101,6 @@ function SidebarUpdateArchitectureWarningContent() {
       <AlertDescription>{description}</AlertDescription>
     </Alert>
   );
-}
-
-const toastUpdateError: ReportLocalUpdateError = (title, description) => {
-  toastManager.add(stackedThreadToast({ type: "error", title, description }));
-};
-
-async function downloadLocalUpdate(
-  bridge: DesktopBridge,
-  {
-    notifyDownloaded,
-    reportError = toastUpdateError,
-  }: { readonly notifyDownloaded: boolean; readonly reportError?: ReportLocalUpdateError },
-): Promise<boolean> {
-  try {
-    const result = await bridge.downloadUpdate();
-    if (result.completed && notifyDownloaded) {
-      showDesktopUpdateDownloadedToast(bridge, result.state);
-    }
-    const actionError = shouldToastDesktopUpdateActionResult(result)
-      ? getDesktopUpdateActionError(result)
-      : null;
-    if (actionError) reportError("Could not download update", actionError);
-    return result.completed;
-  } catch (error) {
-    reportError(
-      "Could not start update download",
-      error instanceof Error ? error.message : "An unexpected error occurred.",
-    );
-    return false;
-  }
-}
-
-async function installLocalUpdate(
-  bridge: DesktopBridge,
-  reportError: ReportLocalUpdateError = toastUpdateError,
-): Promise<boolean> {
-  try {
-    const result = await bridge.installUpdate();
-    if (!result.accepted) {
-      showDesktopUpdateDownloadedToast(bridge, result.state);
-      return false;
-    }
-    const actionError = shouldToastDesktopUpdateActionResult(result)
-      ? getDesktopUpdateActionError(result)
-      : null;
-    if (!actionError) return true;
-    reportError("Could not install update", actionError);
-    return false;
-  } catch (error) {
-    reportError(
-      "Could not install update",
-      error instanceof Error ? error.message : "An unexpected error occurred.",
-    );
-    return false;
-  }
 }
 
 export function SidebarUpdatePill() {
@@ -279,31 +222,9 @@ function SidebarUpdateControl() {
       setIsCheckAnimationLatched(true);
       setCheckAnimationKey((key) => key + 1);
     }
-    void bridge
-      .checkForUpdate()
-      .then((result) => {
-        if (result.checked) return;
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: t("Could not check for updates"),
-            description:
-              updatesDenial ??
-              result.state.message ??
-              "Automatic updates are not available in this build.",
-          }),
-        );
-      })
-      .catch((error) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: t("Could not check for updates"),
-            description: error instanceof Error ? error.message : t("Update check failed."),
-          }),
-        );
-      })
-      .finally(() => setIsActionPending(false));
+    void checkLocalUpdate(bridge, { unavailableReason: updatesDenial }).finally(() =>
+      setIsActionPending(false),
+    );
   };
 
   const runEverything = async () => {
@@ -319,7 +240,7 @@ function SidebarUpdateControl() {
             }
           : {}),
         ...(bridge && action !== "none"
-          ? { installLocal: (reportError) => installLocalUpdate(bridge, reportError) }
+          ? { installLocal: (reportError) => installLocalUpdate(bridge, { reportError }) }
           : {}),
       }),
     );

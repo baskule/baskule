@@ -68,7 +68,8 @@ refused rather than running half-upgraded:
 
 - An app newer than the server is blocked before connecting, with a notice telling you to update
   T3 Code on the machine named in the notice.
-- A server newer than your app refuses the connection with an update message.
+- A server newer than your app refuses the connection with an update message. The desktop app
+  shows **Update required**; **Update and restart** installs a compatible release in one step.
 
 Update the side the notice names, then reconnect.
 
