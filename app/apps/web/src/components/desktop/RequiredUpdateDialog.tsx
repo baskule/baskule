@@ -56,12 +56,16 @@ function viewDetail(view: RequiredUpdateView, requiredVersion: string): string |
       return t("Looking for a compatible update…");
     case "retry":
       return view.error === null
-        ? t("No compatible update is available yet. Check again later or use the releases page.")
+        ? t("No compatible update has been found yet. Check again or use the releases page.")
         : null;
     case "downloading":
     case "update":
       return null;
   }
+}
+
+interface UpdateAttempt {
+  readonly phase: "working" | "restarting" | "failed";
 }
 
 /** Blocks the app while it is older than its installation allows, and updates it in one step. */
@@ -70,15 +74,18 @@ export function RequiredUpdateDialog() {
   const state = useDesktopUpdateState();
   // The desktop updates this machine, whose policy the primary environment reports.
   const view = resolveRequiredUpdateView(state, managedUpdatesDenial(usePrimaryManagedPolicy()));
-  const [pending, setPending] = useState<"working" | "restarting" | null>(null);
+  const [attempt, setAttempt] = useState<UpdateAttempt | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
   const [seenState, setSeenState] = useState(state);
   if (seenState !== state) {
     setSeenState(state);
-    // The updater can fail after accepting the install; the app then keeps running.
-    if (pending === "restarting" && state?.errorContext === "install") setPending(null);
+    // The installer can fail before or after the install call returns; the failure wins either way.
+    if (attempt !== null && attempt.phase !== "failed" && state?.errorContext === "install") {
+      setAttempt({ phase: "failed" });
+    }
   }
+  const pending = attempt?.phase === "failed" ? null : (attempt?.phase ?? null);
 
   if (view === null || state?.requiredVersion == null) return null;
   const requiredVersion = state.requiredVersion;
@@ -88,7 +95,8 @@ export function RequiredUpdateDialog() {
 
   const runAction = async () => {
     if (!bridge || pending !== null) return;
-    setPending("working");
+    const current: UpdateAttempt = { phase: "working" };
+    setAttempt(current);
     setActionError(null);
     const reportError: ReportLocalUpdateError = (title, description) =>
       setActionError(`${title}: ${description}`);
@@ -103,11 +111,11 @@ export function RequiredUpdateDialog() {
           reportRefused: true,
         }));
       if (downloaded && (await installLocalUpdate(bridge, { reportError, reportRefused: true }))) {
-        setPending("restarting");
+        setAttempt((latest) => (latest === current ? { phase: "restarting" } : latest));
         return;
       }
     }
-    setPending(null);
+    setAttempt((latest) => (latest === current ? null : latest));
   };
   const openReleases = () =>
     void openDesktopUpdateReleaseNotes(bridge, getDesktopUpdateReleaseHistoryUrl());

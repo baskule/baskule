@@ -131,7 +131,25 @@ describe("resolveRequiredUpdateView", () => {
       undefined,
       { kind: "manual", detail: "Use the AppImage." },
     ],
-    ["the check right after an installation change", required, undefined, { kind: "checking" }],
+    [
+      "an updater a managed policy turns off",
+      {
+        ...required,
+        enabled: false,
+        status: "disabled",
+        message: "Acme manages T3 Code updates.",
+        blockedByPolicy: "updates",
+      },
+      undefined,
+      { kind: "managed", detail: "Acme manages T3 Code updates." },
+    ],
+    ["a check in progress", { ...required, status: "checking" }, undefined, { kind: "checking" }],
+    [
+      "an installation change whose check did not start",
+      required,
+      undefined,
+      { kind: "retry", error: null },
+    ],
     [
       "an available release",
       { ...required, status: "available", availableVersion: "1.1.0", message: "You must update." },

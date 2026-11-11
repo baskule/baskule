@@ -800,11 +800,15 @@ export const make = Effect.gen(function* () {
     Ref.get(notAppliedVersionRef).pipe(
       Effect.map((notAppliedVersion) => ({
         ...createBaseUpdateState(channel, disabledReason, environment),
-        // Callers fall back to the channel's reason only when nothing else turns updates off.
-        ...(Option.isSome(disabledReason) &&
-        disabledReason.value === Option.getOrUndefined(channelBlockedReason(channel))
-          ? { channelBlockedByPolicy: true as const }
-          : {}),
+        // A policy that turns updates off is the first disabled reason. Callers fall back to the
+        // channel's reason only when nothing else turns updates off.
+        ...(Option.isNone(disabledReason)
+          ? {}
+          : policy.mode === "off"
+            ? { blockedByPolicy: "updates" as const }
+            : disabledReason.value === Option.getOrUndefined(channelBlockedReason(channel))
+              ? { blockedByPolicy: "channel" as const }
+              : {}),
         ...Option.match(notAppliedVersion, {
           onNone: () => ({}),
           onSome: (version) => ({ notAppliedVersion: version }),

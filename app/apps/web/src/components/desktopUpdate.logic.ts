@@ -204,7 +204,10 @@ export function resolveRequiredUpdateView(
   managedDenial: string | undefined,
 ): RequiredUpdateView | null {
   if (state?.requiredVersion == null) return null;
-  if (managedDenial !== undefined) return { kind: "managed", detail: managedDenial };
+  // An unsupported connection may never deliver the server's policy; the desktop reads its own.
+  const policyDenial =
+    managedDenial ?? (state.blockedByPolicy === "updates" ? state.message : null);
+  if (policyDenial) return { kind: "managed", detail: policyDenial };
   if (!state.enabled || state.status === "disabled") {
     return { kind: "manual", detail: state.message };
   }
@@ -215,7 +218,7 @@ export function resolveRequiredUpdateView(
   const error = state.status === "error" || state.errorContext !== null ? state.message : null;
   const action = resolveDesktopUpdateButtonAction(state);
   if (action !== "none") return { kind: "update", action, error };
-  // An installation change starts a check right after resetting to idle.
-  if (state.status === "idle" || state.status === "checking") return { kind: "checking" };
+  // Idle can outlast an installation change whose check another action refused.
+  if (state.status === "checking") return { kind: "checking" };
   return { kind: "retry", error };
 }

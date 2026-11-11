@@ -284,8 +284,8 @@ export interface DesktopUpdateState {
   /** The connected installation's minimum app version while this app is older and cannot connect. */
   requiredVersion: string | null;
   notAppliedVersion?: string;
-  /** Off only because a managed policy rules out this channel; switching channels turns it on. */
-  channelBlockedByPolicy?: true;
+  /** Why a managed policy keeps updates off: all `updates`, or only this `channel` until switched. */
+  blockedByPolicy?: "updates" | "channel";
 }
 
 export interface DesktopUpdateReleaseNote {
@@ -327,6 +327,7 @@ export const DesktopUpdateStateSchema = Schema.Struct({
   canRetry: Schema.Boolean,
   requiredVersion: Schema.NullOr(Schema.String),
   notAppliedVersion: Schema.optionalKey(Schema.String),
+  blockedByPolicy: Schema.optionalKey(Schema.Literals(["updates", "channel"])),
 });
 
 export const DesktopCliCommandStateSchema = Schema.Struct({
