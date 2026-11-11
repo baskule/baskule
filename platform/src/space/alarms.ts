@@ -1,3 +1,22 @@
+/** Check recovery and usage before loading the shared T3 SQL client for a cold agent alarm. */
+export async function agentAlarmNeedsRuntime(storage: Pick<DurableObjectStorage, "get" | "sql">): Promise<boolean> {
+  if (await storage.get<boolean>("baskule:busy")) return true;
+  const tables = new Set(storage.sql.exec(
+    "select name from sqlite_master where type='table' and name in ('baskule_usage_outbox','baskule_usage_context','session_message')",
+  ).toArray().map(row => row.name));
+  if (tables.has("baskule_usage_outbox") && storage.sql.exec(
+    "select 1 from baskule_usage_outbox where record is not null limit 1",
+  ).toArray().length) return true;
+  if (!tables.has("baskule_usage_context") || !tables.has("session_message")) return false;
+  if (!storage.sql.exec("select 1 from baskule_usage_context limit 1").toArray().length) return false;
+  const receipts = tables.has("baskule_usage_outbox")
+    ? "and not exists (select 1 from baskule_usage_outbox o where o.message_id=m.id)"
+    : "";
+  return storage.sql.exec(`select 1 from session_message m where m.type='assistant'
+    and json_extract(m.data,'$.time.completed') is not null
+    and json_extract(m.data,'$.tokens') is not null ${receipts} limit 1`).toArray().length > 0;
+}
+
 /** A DO has one physical alarm. Persist each runtime's deadline so neither can cancel the other's work. */
 export class SpaceAlarms {
   private queue: Promise<unknown> = Promise.resolve();

@@ -55,6 +55,7 @@ describe("SpaceCell boot/dispose overlap", () => {
     const order: string[] = [];
     const c = cell();
     c.alarms = { due: async () => { delivered.resolve(); return ["agent"]; }, complete: async () => {}, sync: async () => {}, clear: async () => {} };
+    c.ctx.storage.get.mockImplementation(async (key: string) => key === "baskule:busy" ? true : undefined);
     c.spaceAlarm = async () => {};
     c.agent = { dispose: async () => { started.resolve(); await release.promise; order.push("disposed"); } };
     c.localAgent = async () => ({ alarm: async () => { order.push("alarm completed"); } });
@@ -66,6 +67,18 @@ describe("SpaceCell boot/dispose overlap", () => {
     release.resolve();
     await Promise.all([reload, alarm]);
     expect(order).toEqual(["disposed", "alarm completed"]);
+  });
+
+  it("completes a stale idle alarm without loading the agent or shared database", async () => {
+    const c = cell();
+    const complete = vi.fn(async () => {});
+    c.alarms = { due: async () => ["agent"], complete, sync: async () => {}, set: async () => {} };
+    c.localAgent = vi.fn(() => { throw new Error("idle alarm loaded T3"); });
+    c.spaceAlarm = vi.fn(async () => {});
+    await c.alarm();
+    expect(c.localAgent).not.toHaveBeenCalled();
+    expect(c.spaceAlarm).toHaveBeenCalledOnce();
+    expect(complete).toHaveBeenCalledWith(["agent"]);
   });
 
   it("retains both events while a replacement waits for the shared runtime to close", async () => {

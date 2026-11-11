@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { SpaceAlarms } from "../../src/space/alarms";
+import { agentAlarmNeedsRuntime, SpaceAlarms } from "../../src/space/alarms";
+import { fakeStorage } from "../support/fake-storage";
 
 function storage() {
   const keys = new Map<string, unknown>();
@@ -32,4 +33,32 @@ it("a claimed agent alarm survives process loss before its handler completes", a
   await restarted.complete(["agent"]);
   expect(await restarted.due()).toEqual([]);
   expect(await s.getAlarm()).toBeNull();
+});
+
+it("loads a cold agent only for recovery, unreported usage or an unacknowledged receipt", async () => {
+  const s = storage();
+  const sql = fakeStorage();
+  const state = { get: s.get.bind(s), sql: sql.sql } as Pick<DurableObjectStorage, "get" | "sql">;
+  try {
+    expect(await agentAlarmNeedsRuntime(state)).toBe(false);
+    await s.put("baskule:busy", true);
+    expect(await agentAlarmNeedsRuntime(state)).toBe(true);
+    await s.delete("baskule:busy");
+    sql.db.exec(`create table baskule_usage_outbox(message_id text primary key, record text);
+      create table baskule_usage_context(prompt_id text);
+      create table session_message(id text, type text, data text);`);
+    expect(await agentAlarmNeedsRuntime(state)).toBe(false);
+    sql.db.exec(`insert into baskule_usage_outbox values('pending','{}')`);
+    expect(await agentAlarmNeedsRuntime(state)).toBe(true);
+    sql.db.exec(`update baskule_usage_outbox set record=null`);
+    expect(await agentAlarmNeedsRuntime(state)).toBe(false);
+    sql.db.exec(`insert into baskule_usage_context values('prompt');
+      insert into session_message values('unfinished','assistant','{"time":{},"tokens":{}}');
+      insert into session_message values('user','user','{"time":{"completed":1},"tokens":{}}');`);
+    expect(await agentAlarmNeedsRuntime(state)).toBe(false);
+    sql.db.exec(`insert into session_message values('completed','assistant','{"time":{"completed":1},"tokens":{}}')`);
+    expect(await agentAlarmNeedsRuntime(state)).toBe(true);
+    sql.db.exec(`insert into baskule_usage_outbox values('completed',null)`);
+    expect(await agentAlarmNeedsRuntime(state)).toBe(false);
+  } finally { sql.db.close(); }
 });

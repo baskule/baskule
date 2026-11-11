@@ -15,7 +15,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { AgentRuntime } from "../agent/index";
 import { UNCONFIGURED_AI, type AgentEnv } from "../agent/config";
-import { SpaceAlarms } from "./alarms";
+import { agentAlarmNeedsRuntime, SpaceAlarms } from "./alarms";
 import { BASE_HEADER, SPACE_CONTROL, type RevokeRequest, type SpaceStatus } from "../shared/contract";
 import { RECHECK_INTERVAL_MS, recheckSockets, type ControlNamespace } from "../shared/recheck";
 import type { SpaceServer, SpaceDatabase } from "./t3/space-cell.js";
@@ -312,10 +312,12 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       // The space's own checks run on every alarm; they reschedule themselves (scheduleAlarm).
       if (due.includes("agent")) {
         while (this.closing) await this.closing;
-        const pending = this.localAgent().then(agent => agent.alarm());
-        this.agentAlarm = pending;
-        try { await pending; }
-        finally { this.agentAlarm = null; }
+        if (this.agent || this.agentStarting || await agentAlarmNeedsRuntime(this.ctx.storage)) {
+          const pending = this.localAgent().then(agent => agent.alarm());
+          this.agentAlarm = pending;
+          try { await pending; }
+          finally { this.agentAlarm = null; }
+        }
       }
       await this.spaceAlarm();
       await this.alarms.complete(due);
