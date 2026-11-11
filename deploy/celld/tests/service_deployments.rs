@@ -44,6 +44,7 @@ fn project(directory: &Path, name: &str, source: &str, services: Value) {
 
 #[tokio::test]
 async fn named_deployment_preserves_public_selector_and_uses_native_graph() {
+    celld::asyncrt::set_host_handle(tokio::runtime::Handle::current());
     let directory = tempfile::tempdir().unwrap();
     let backend = directory.path().join("backend");
     let web = directory.path().join("web");
