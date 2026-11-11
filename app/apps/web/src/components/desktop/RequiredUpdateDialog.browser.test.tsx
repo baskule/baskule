@@ -137,4 +137,44 @@ describe("RequiredUpdateDialog", () => {
     await expect.element(button).not.toHaveAttribute("aria-disabled");
     expect(page.getByRole("button", { name: "Restarting…" }).query()).toBeNull();
   });
+
+  it("ignores a stale reply from an earlier install attempt", async () => {
+    const downloaded: DesktopUpdateState = {
+      ...available,
+      status: "downloaded",
+      downloadedVersion: "0.5.2",
+      downloadPercent: 100,
+      message: null,
+    };
+    setup(downloaded);
+    let releaseFirst = () => {};
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const installUpdate = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        mocks.push({ ...downloaded, errorContext: "install", message: "The installer exited." });
+        await firstReleased;
+        throw new Error("stale reply");
+      })
+      .mockImplementationOnce(async () => {
+        mocks.push(downloaded);
+        return { accepted: true, completed: false, state: downloaded };
+      });
+    using _bridge = stubGlobal("desktopBridge", { installUpdate });
+    await using _screen = await render(<RequiredUpdateDialog />);
+
+    const button = page.getByRole("button", { name: "Update and restart" });
+    await userEvent.click(button);
+    await expect.element(page.getByText("The installer exited.")).toBeVisible();
+    await userEvent.click(button);
+    await expect.element(page.getByRole("button", { name: "Restarting…" })).toBeVisible();
+
+    releaseFirst();
+    await vi.waitFor(() => expect(installUpdate).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(installUpdate.mock.settledResults[0]?.type).toBe("rejected"));
+    expect(page.getByText(/stale reply/).query()).toBeNull();
+    await expect.element(page.getByRole("button", { name: "Restarting…" })).toBeVisible();
+  });
 });
