@@ -272,6 +272,23 @@ function webKey(env) {
   }
   return hash.digest("hex");
 }
+export function stackWorkerConfigs(s, env, backend, web) {
+  backend = structuredClone(backend);
+  web = structuredClone(web);
+  backend.name = `baskule-dev-${s.id}`;
+  backend.main = "runtime/index.js";
+  Object.assign(backend.vars, {
+    PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, SETUP_TOKEN: s.setupToken, PLUGIN_SYNC_TOKEN: s.pluginSyncToken,
+    AUTH_SECRET: s.authSecret, COMPUTERD_URL: s.ports.computerd ? `http://127.0.0.1:${s.ports.computerd}` : "http://127.0.0.1:1",
+    COMPUTERD_TOKEN: s.computerdToken, ...Object.fromEntries(Object.keys({ ...s.definition.env, ...s.overrides }).map((key) => [key, env[key]])),
+  });
+  web.name = `baskule-web-${s.id}`;
+  web.main = "web-worker/index.js";
+  web.assets.directory = "web";
+  web.services = [{ binding: "BACKEND", service: backend.name }];
+  web.vars = { ...web.vars, BASKULE_BACKEND_CONFIG_SHA256: createHash("sha256").update(JSON.stringify(backend)).digest("hex") };
+  return { backend, web };
+}
 async function build(s) {
   run(join(ROOT, "scripts/worktree"), ["setup"], { env: { ...process.env, CI: "1" }, stdio: ["ignore", 2, 2] });
   const env = environment(s);
@@ -291,25 +308,22 @@ async function build(s) {
       } finally { closeSync(fd); rmSync(temp, { recursive: true, force: true }); }
     } else notice(`Reusing hosted web client ${key.slice(0, 12)}`);
     run("node", ["scripts/build.mjs"], { cwd: join(ROOT, "platform"), env: { ...env, BASKULE_OUT: join(RUN, "app"), BASKULE_WEB_DIR: cached }, stdio: ["ignore", 2, 2] });
-    const w = load(join(ROOT, "platform/wrangler.json"));
-    w.name = `baskule-dev-${s.id}`;
-    w.main = "runtime/index.js"; w.assets.directory = "web";
-    Object.assign(w.vars, {
-      PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, SETUP_TOKEN: s.setupToken, PLUGIN_SYNC_TOKEN: s.pluginSyncToken,
-      AUTH_SECRET: s.authSecret, COMPUTERD_URL: s.ports.computerd ? `http://127.0.0.1:${s.ports.computerd}` : "http://127.0.0.1:1",
-      COMPUTERD_TOKEN: s.computerdToken, ...Object.fromEntries(Object.keys({ ...s.definition.env, ...s.overrides }).map((key) => [key, env[key]])),
-    });
-    save(join(RUN, "app/wrangler.json"), w);
+    const configs = stackWorkerConfigs(s, env, load(join(ROOT, "platform/wrangler.json")), load(join(ROOT, "platform/wrangler.web.json")));
+    save(join(RUN, "app/backend/wrangler.json"), configs.backend);
+    rmSync(join(RUN, "app/backend/runtime"), { recursive: true, force: true });
+    renameSync(join(RUN, "app/runtime"), join(RUN, "app/backend/runtime"));
+    save(join(RUN, "app/wrangler.web.json"), configs.web);
     s.webBuildKey = key;
     utimesSync(cached, new Date(), new Date());
   } finally { release(); }
 }
-function celldRecipe(s) {
+export function celldRecipe(s, execute = run) {
   const cmd = process.env.CELLD_BIN || join(ROOT, "scripts/celld.sh");
-  if (s.definition.mode === "dev") return { command: cmd, args: ["dev", ".", "--port", String(s.ports.celld), "--no-watch", "--logs"], cwd: join(RUN, "app") };
+  if (s.definition.mode === "dev") return { command: cmd, args: ["dev", "wrangler.web.json", "--service", "backend/wrangler.json", "--port", String(s.ports.celld), "--no-watch", "--logs"], cwd: join(RUN, "app") };
   const env = environment(s);
   const bucket = `s3://baskule-dev/${s.bucketPrefix}`;
-  run(cmd, ["deploy", join(RUN, "app/wrangler.json"), "--bucket", bucket, "--endpoint", "http://127.0.0.1:47490"], { env, stdio: ["ignore", 2, 2] });
+  execute(cmd, ["deploy", join(RUN, "app/backend/wrangler.json"), "--named-only", "--bucket", bucket, "--endpoint", "http://127.0.0.1:47490"], { env, stdio: ["ignore", 2, 2] });
+  execute(cmd, ["deploy", join(RUN, "app/wrangler.web.json"), "--bucket", bucket, "--endpoint", "http://127.0.0.1:47490"], { env, stdio: ["ignore", 2, 2] });
   mkdirSync(join(RUN, "node"), { recursive: true });
   return { command: cmd, args: ["--bucket", bucket, "--endpoint", "http://127.0.0.1:47490", "--listen", `127.0.0.1:${s.ports.celld}`, "--internal-listen", `127.0.0.1:${s.ports.internal}`, "--advertise", `127.0.0.1:${s.ports.internal}`], cwd: join(RUN, "app"), env: { CELLD_WATCH: join(RUN, "node"), CELLD_NODE: `baskule-dev-${s.id}` } };
 }

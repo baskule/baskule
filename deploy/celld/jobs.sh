@@ -152,10 +152,17 @@ case "${1:-}" in
        "/src/platform/wrangler.json" > "$work/wrangler.json"
     unset AUTH_CONFIG
     wait_s3
-    log "deploying platform"
-    celld deploy "$work/wrangler.json" --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT"
+    log "publishing backend service"
+    celld deploy "$work/wrangler.json" --named-only --json --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT" > "$work/backend-deployment.json"
+    backend_version=$(jq -er '.version | select(type == "string" and length > 0)' "$work/backend-deployment.json")
+    # The public version must change even when only backend vars change: celld
+    # resolves service pointers when adopting a new public deployment.
+    jq --arg version "$backend_version" '.vars = ((.vars // {}) + {BACKEND_VERSION:$version})' \
+       "/src/platform/wrangler.web.json" > "$work/wrangler.web.json"
+    log "activating public web Worker"
+    celld deploy "$work/wrangler.web.json" --bucket "$CELLD_BUCKET" --endpoint "$S3_ENDPOINT"
     for n in ${CELLD_NODES_INTERNAL:-}; do
-      curl -s -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
+      curl -fsS -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
     if [ -n "${PLUGIN_SYNC_TOKEN:-}" ] || [ -e /plugins ]; then
       # A cold Worker may not serve requests immediately after peer reload.

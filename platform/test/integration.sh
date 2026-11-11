@@ -25,14 +25,24 @@ BASKULE_ENTRY=test/integration/entry.ts BASKULE_OUT=test/.run/app/dist nice -n 1
 node -e '
   const fs=require("fs"); const w=JSON.parse(fs.readFileSync("wrangler.json","utf8"));
   w.vars.PUBLIC_ORIGINS="http://allowed.test:47090"; w.vars.AUTH_RATE_LIMIT="0";
-  fs.writeFileSync(process.argv[1]+"/wrangler.json", JSON.stringify(w,null,2));' "$APP"
-cat > "$APP/.dev.vars" <<VARS
+  w.main="runtime/index.js";
+  const app=process.argv[1]; fs.mkdirSync(app+"/backend",{recursive:true});
+  fs.renameSync(app+"/dist/runtime",app+"/backend/runtime");
+  fs.writeFileSync(app+"/backend/wrangler.json", JSON.stringify(w,null,2));
+  const web=JSON.parse(fs.readFileSync("wrangler.web.json","utf8"));
+  fs.writeFileSync(app+"/wrangler.web.json",JSON.stringify(web,null,2));' "$APP"
+cat > "$APP/backend/.dev.vars" <<VARS
 SETUP_TOKEN=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
 VARS
 
 PID=
 start() {
-  "$CELLD_BIN" dev "$APP" --port "$PORT" --no-watch --logs "$@" >> "$D/test/.run/celld.log" 2>&1 &
+  node -e '
+    const fs=require("fs"),crypto=require("crypto"),app=process.argv[1];
+    const web=JSON.parse(fs.readFileSync(app+"/wrangler.web.json","utf8"));
+    web.vars={...web.vars,BASKULE_BACKEND_CONFIG_SHA256:crypto.createHash("sha256").update(fs.readFileSync(app+"/backend/wrangler.json")).update(fs.readFileSync(app+"/backend/.dev.vars")).digest("hex")};
+    fs.writeFileSync(app+"/wrangler.web.json",JSON.stringify(web,null,2));' "$APP"
+  "$CELLD_BIN" dev "$APP/wrangler.web.json" --service "$APP/backend/wrangler.json" --port "$PORT" --no-watch --logs "$@" >> "$D/test/.run/celld.log" 2>&1 &
   PID=$!
   for i in $(seq 1 120); do
     curl -s -o /dev/null "http://127.0.0.1:$PORT/" && return 0
@@ -46,22 +56,22 @@ trap stop EXIT
 : > "$D/test/.run/celld.log"
 start --clean
 if [ -n "$ONLY" ]; then
-  SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase1 --only "$ONLY"
+  SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/backend/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase1 --only "$ONLY"
   stop
   [ "${KEEP:-0}" = 1 ] || rm -rf "$APP/.celld"
   echo "integration ($ONLY): OK"
   exit 0
 fi
-SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase1
+SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/backend/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase1
 stop
 start
-SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase2
+SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/backend/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase2
 stop
 node test/integration/oidc.mjs "$APP" "http://127.0.0.1:$PORT" "$CELLD_BIN"
-sed -i '/^AUTH_CONFIG=/d' "$APP/.dev.vars"
-printf '\nAUTH_CONFIG={"mode":"anonymous"}\n' >> "$APP/.dev.vars"
+sed -i '/^AUTH_CONFIG=/d' "$APP/backend/.dev.vars"
+printf '\nAUTH_CONFIG={"mode":"anonymous"}\n' >> "$APP/backend/.dev.vars"
 start --clean
-SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" anonymous
+SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/backend/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" anonymous
 stop
 [ "${KEEP:-0}" = 1 ] || rm -rf "$APP/.celld"
 echo "integration: OK"

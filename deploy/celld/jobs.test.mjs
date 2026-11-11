@@ -120,9 +120,19 @@ for (const kubernetes of [false, true]) test(`platform deploy preserves scoped s
     const source = resolve(work, "source");
     // Exercise the real deploy branch with a disposable app and offline tools.
     mkdirSync(`${source}/platform`, { recursive: true });
-    writeFileSync(`${source}/platform/wrangler.json`, '{"vars":{}}');
+    writeFileSync(`${source}/platform/wrangler.json`, '{"name":"baskule","vars":{}}');
+    writeFileSync(`${source}/platform/wrangler.web.json`, '{"name":"baskule-web","vars":{}}');
     writeFileSync(resolve(work, "jobs.sh"), readFileSync("deploy/celld/jobs.sh", "utf8").replaceAll("/src/", `${source}/`).replaceAll("/usr/local/bin/baskule-sync-plugins", resolve(work, "sync")));
-    writeFileSync(resolve(work, "celld"), '#!/bin/bash\ncp "$2" "$MOCK_WRANGLER"\n', { mode: 0o755 });
+    writeFileSync(resolve(work, "celld"), `#!/bin/bash
+set -eu
+if [[ "$*" == *--named-only* ]]; then
+  cp "$2" "$MOCK_WRANGLER"
+  echo '{"version":"backend-test-version"}'
+else
+  test -f "$MOCK_WRANGLER"
+  jq -e '.name == "baskule-web" and .vars.BACKEND_VERSION == "backend-test-version" and (.vars | has("PLUGIN_SYNC_TOKEN") | not)' "$2" >/dev/null
+fi
+`, { mode: 0o755 });
     writeFileSync(resolve(work, "sync"), '#!/bin/bash\n[[ "$PLUGIN_SYNC_TOKEN" == generated-folder-secret ]]\nif [[ "$MOCK_SETUP" == true ]]; then test -f "$MOCK_READY_FILE"; fi\n', { mode: 0o755 });
     mkdirSync(resolve(work, "platform"));
     writeFileSync(resolve(work, "platform/secrets"), 'export PLUGIN_SYNC_TOKEN=generated-folder-secret\n');
@@ -134,5 +144,33 @@ for (const kubernetes of [false, true]) test(`platform deploy preserves scoped s
     assert.ok(result.stderr.includes(`deployed platform`));
     assert.equal(JSON.parse(readFileSync(resolve(work, "deployed.json"), "utf8")).vars.PLUGIN_SYNC_TOKEN, "generated-folder-secret");
     assert.doesNotMatch(result.stdout + result.stderr, /setup|token=|test-token/);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+
+test("a failed backend publication cannot activate the web Worker or reload nodes", () => {
+  const work = mkdtempSync(resolve(tmpdir(), "deploy-stage-failure-"));
+  try {
+    const source = resolve(work, "source");
+    mkdirSync(`${source}/platform`, { recursive: true });
+    writeFileSync(`${source}/platform/wrangler.json`, '{"name":"baskule","vars":{}}');
+    writeFileSync(`${source}/platform/wrangler.web.json`, '{"name":"baskule-web"}');
+    writeFileSync(resolve(work, "jobs.sh"), readFileSync("deploy/celld/jobs.sh", "utf8").replaceAll("/src/", `${source}/`));
+    writeFileSync(resolve(work, "celld"), `#!/bin/bash
+printf '%s\n' "$*" >> "$MOCK_CALLS"
+exit 42
+`, { mode: 0o755 });
+    writeFileSync(resolve(work, "curl"), `#!/bin/bash
+if [[ "$*" == *reload* ]]; then echo reload >> "$MOCK_CALLS"; exit 99; fi
+echo 200
+`, { mode: 0o755 });
+    const result = spawnSync("bash", [resolve(work, "jobs.sh"), "deploy"], { encoding: "utf8", timeout: 3_000,
+      env: { ...process.env, PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: work,
+        MOCK_CALLS: resolve(work, "calls"), S3_ENDPOINT: "http://storage.test", CELLD_BUCKET: "s3://test", CELLD_NODES_INTERNAL: "node:47092" } });
+    assert.equal(result.status, 42, result.stderr);
+    const calls = readFileSync(resolve(work, "calls"), "utf8").trim().split("\n");
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /--named-only/);
+    assert.doesNotMatch(calls[0], /wrangler.web/);
   } finally { rmSync(work, { recursive: true, force: true }); }
 });

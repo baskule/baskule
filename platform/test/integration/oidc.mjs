@@ -1,8 +1,9 @@
-// Signed OIDC browser round-trip on stock celld; all processes and credentials are disposable.
+// Signed OIDC browser round-trip on native celld; all processes and credentials are disposable.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { appendFileSync, openSync, closeSync } from "node:fs";
+import { appendFileSync, openSync, closeSync, readFileSync, writeFileSync } from "node:fs";
 
 const [app, base, celld] = process.argv.slice(2);
 const keys = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
@@ -24,9 +25,16 @@ const idp = createServer(async (req, res) => {
 });
 await new Promise(resolve => idp.listen(0, "127.0.0.1", resolve));
 issuer = `http://127.0.0.1:${idp.address().port}`;
-appendFileSync(`${app}/.dev.vars`, `\nSETUP_TOKEN=${setupToken}\nAUTH_CONFIG=${JSON.stringify({ password: false, providers: [{ id: "company", name: "Company", type: "oidc", options: { clientId: "baskule-test", clientSecret: "fixture-secret", discoveryUrl: `${issuer}/.well-known/openid-configuration`, scopes: ["openid", "email", "profile"] } }] })}\n`);
+const varsPath = `${app}/backend/.dev.vars`;
+const webPath = `${app}/wrangler.web.json`;
+const originalVars = readFileSync(varsPath);
+const originalWeb = readFileSync(webPath);
+appendFileSync(varsPath, `\nSETUP_TOKEN=${setupToken}\nAUTH_CONFIG=${JSON.stringify({ password: false, providers: [{ id: "company", name: "Company", type: "oidc", options: { clientId: "baskule-test", clientSecret: "fixture-secret", discoveryUrl: `${issuer}/.well-known/openid-configuration`, scopes: ["openid", "email", "profile"] } }] })}\n`);
+const web = JSON.parse(originalWeb);
+web.vars = { ...web.vars, BASKULE_BACKEND_CONFIG_SHA256: createHash("sha256").update(readFileSync(`${app}/backend/wrangler.json`)).update(readFileSync(varsPath)).digest("hex") };
+writeFileSync(webPath, JSON.stringify(web, null, 2));
 const fd = openSync(`${app}/../oidc-celld.log`, "w");
-const child = spawn(celld, ["dev", app, "--port", new URL(base).port, "--no-watch", "--logs", "--clean"], { stdio: ["ignore", fd, fd] });
+const child = spawn(celld, ["dev", webPath, "--service", `${app}/backend/wrangler.json`, "--port", new URL(base).port, "--no-watch", "--logs", "--clean"], { stdio: ["ignore", fd, fd] });
 const exited = new Promise(resolve => child.once("exit", resolve));
 const cookies = new Map();
 const request = async (path, body, formPost = false) => {
@@ -74,8 +82,10 @@ try {
   assert.equal((await login("admin@it.test", true)).status, 302);
   assert.equal((await request("/api/baskule/me")).status, 200);
   assert.equal((await request("/auth/callback/unknown", { code: "forged", state: "forged" }, true)).status, 403);
-  console.log("OIDC: signed GET/form_post callbacks on stock celld admit the existing admin and refuse public registration");
+  console.log("OIDC: signed GET/form_post callbacks on native celld admit the existing admin and refuse public registration");
 } finally {
   child.kill("SIGTERM"); await exited; closeSync(fd);
+  writeFileSync(varsPath, originalVars);
+  writeFileSync(webPath, originalWeb);
   idp.closeAllConnections(); await new Promise(resolve => idp.close(resolve));
 }

@@ -9,6 +9,7 @@ import * as FileSystem from "effect/FileSystem";
 import { cast } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as References from "effect/References";
@@ -140,6 +141,70 @@ describe("truncateTraceAttributes", () => {
 });
 
 describe("observability", () => {
+  it.effect("formats failure stacks only for spans that meet the trace threshold", () =>
+    Effect.gen(function* () {
+      for (const level of ["Info", "Warn"] as const) {
+        let stackReads = 0;
+        const failure = new Error("Unsupported host process");
+        Object.defineProperty(failure, "stack", {
+          get() {
+            stackReads++;
+            return "Error: Unsupported host process\n    at host-process (worker.ts:1:1)";
+          },
+        });
+        const delegates: Array<Tracer.Span> = [];
+        const records: Array<TraceRecord> = [];
+        const tracer = yield* makeLocalFileTracer({
+          filePath: "unused",
+          maxBytes: 1024,
+          maxFiles: 1,
+          batchWindowMs: 10_000,
+          sink: {
+            filePath: "unused",
+            push: (record) => records.push(record),
+            flush: Effect.void,
+            close: () => Effect.void,
+          },
+          delegate: Tracer.make({
+            span: (options) => {
+              const span = new Tracer.NativeSpan(options);
+              delegates.push(span);
+              return span;
+            },
+          }),
+        });
+        const result = yield* Effect.fail(failure).pipe(
+          Effect.withSpan("host-process", { level }),
+          Effect.provideService(Tracer.MinimumTraceLevel, "Warn"),
+          Effect.provideService(Tracer.Tracer, tracer),
+          Effect.exit,
+        );
+        assert.isTrue(Exit.isFailure(result));
+        if (Exit.isFailure(result)) {
+          assert.strictEqual(Option.getOrUndefined(Cause.findErrorOption(result.cause)), failure);
+        }
+        const delegate = delegates[0]!;
+        assert.equal(delegate.sampled, level === "Warn");
+        assert.equal(delegate.status._tag, "Ended");
+        if (level === "Info") {
+          assert.equal(stackReads, 0);
+          assert.isEmpty(records);
+        } else {
+          assert.isAbove(stackReads, 0);
+          assert.lengthOf(records, 1);
+          const delegated =
+            delegate.status._tag === "Ended" && Exit.isFailure(delegate.status.exit)
+              ? Cause.pretty(delegate.status.exit.cause)
+              : "";
+          for (const text of [JSON.stringify(records), delegated]) {
+            assert.include(text, "Unsupported host process");
+            assert.include(text, "host-process (worker.ts:1:1)");
+          }
+        }
+      }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
   it.effect(
     "preserves successful results without retaining them in sampled or unsampled spans",
     () =>
@@ -399,6 +464,11 @@ describe("observability", () => {
             }),
           });
           const url = "/ws?wsTicket=ticket-secret&dpop=proof-secret&clientSurface=web";
+          const failure = new Error(`RequestParseError (GET ${url})`);
+          Object.defineProperty(failure, "stack", {
+            get: () =>
+              `Error: ${failure.message}\n    at diagnostic-frame (/ws?wsTicket=stack-ticket-secret&dpop=stack-proof-secret:1:1)`,
+          });
 
           yield* Effect.annotateCurrentSpan({
             "url.full": `http://127.0.0.1:3773${url}`,
@@ -407,7 +477,7 @@ describe("observability", () => {
             Effect.withSpan("GET", { kind: "server" }),
             Effect.provideService(Tracer.Tracer, tracer),
           );
-          yield* Effect.die(new Error(`RequestParseError (GET ${url})`)).pipe(
+          yield* Effect.die(failure).pipe(
             Effect.tapCause((cause) => Effect.logError(cause)),
             Effect.withSpan("DeviceHubProxy.proxyWebSocket"),
             Effect.provideService(Tracer.Tracer, tracer),
@@ -432,7 +502,9 @@ describe("observability", () => {
             assert.notInclude(text, "proof-secret");
           }
           assert.include(written, "wsTicket=<redacted>&dpop=<redacted>&clientSurface=web");
+          assert.include(written, "diagnostic-frame");
           assert.include(exported.join("\n"), "effect.cause");
+          assert.include(exported.join("\n"), "diagnostic-frame");
         }),
       ),
     );
