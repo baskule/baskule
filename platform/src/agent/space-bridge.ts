@@ -32,7 +32,7 @@ function patchFetch() {
 /** Registers this isolate's route from `spaceId`'s OpenCode to `spaceId`'s SpaceCell. */
 export function registerSpaceBridge(spaceId: string, space: { fetch(req: Request): Promise<Response> }) {
   patchFetch();
-  spaces.set(spaceId, (req) => {
+  const forward: Forward = (req) => {
     const headers = new Headers(req.headers);
     for (const h of [...headers.keys()]) if (h.startsWith("x-baskule-")) headers.delete(h);
     headers.set("x-baskule-base", `/s/${spaceId}`);
@@ -46,9 +46,7 @@ export function registerSpaceBridge(spaceId: string, space: { fetch(req: Request
         throw e;
       },
     );
-  });
-}
-
-export function unregisterSpaceBridge(spaceId: string) {
-  spaces.delete(spaceId);
+  };
+  spaces.set(spaceId, forward);
+  return () => { if (spaces.get(spaceId) === forward) spaces.delete(spaceId); };
 }

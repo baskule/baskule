@@ -24,12 +24,12 @@ function patchFetch() {
 
 const mcpUrl = (key: string) => `http://${MCP_HOST}/${encodeURIComponent(key)}/mcp`;
 
-export function registerLazyMcp(key: string, handler: Handler): string {
+export function registerLazyMcp(key: string, handler: Handler) {
   patchFetch();
-  handlers.set(key, handler);
-  return mcpUrl(key);
-}
-
-export function unregisterLazyMcp(key: string) {
-  handlers.delete(key);
+  const registered: Handler = (request) => handler(request);
+  handlers.set(key, registered);
+  return {
+    url: mcpUrl(key),
+    unregister: () => { if (handlers.get(key) === registered) handlers.delete(key); },
+  };
 }

@@ -13,16 +13,16 @@
 //   agent's alarm deadline (space/alarms.ts) beats every 5 s while sessions are active (celld evicts idle cells
 //   regardless of background work). After IDLE_DISPOSE_MS with no request, stream or active session, OpenCode is
 //   closed and the keepalives cleared, so the cell can be evicted; the computer is left to computerd's idle stop.
-import "./fs-shim.js";
+import { createCaptureScope } from "./fs-shim.js";
 import { LocationToolsTimeout } from "./location-acquisition";
 import { withBootScheduler } from "../../../app/apps/server/src/baskule/workerd/bootScheduler.mjs";
 import type { bootOpenCode } from "./opencode.js";
 import { Computerd } from "./computerd";
 import { configModels, configPrices, opencodeConfig, type AgentEnv } from "./config";
-import { registerLazyMcp, unregisterLazyMcp } from "./lazy-mcp";
+import { registerLazyMcp } from "./lazy-mcp";
 import { sampleAppHandler } from "./sample-app";
 import { type Models, offeredModel, prepareSessionCreate, startsModelWork } from "./session";
-import { SPACE_HOST, registerSpaceBridge, unregisterSpaceBridge } from "./space-bridge";
+import { SPACE_HOST, registerSpaceBridge } from "./space-bridge";
 import type { SqlClient } from "effect/sql/SqlClient";
 import { BASKULE_AI_NOT_CONFIGURED } from "../../../app/packages/contracts/src/baskule";
 import type { UsageLimitSettings } from "../../../app/packages/contracts/src/baskule-usage";
@@ -45,6 +45,11 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 
 export class AgentRuntime {
   // A key rotation must not overwrite the credentials of an older runtime finishing an answer in this isolate.
+  private released = false;
+  private releaseCaptures: () => void = () => {};
+  private unregisterBridge: () => void = () => {};
+  private mcpReleases = new Map<string, () => void>();
+  private closeBootEntry: () => void = () => {};
   private keyEnv = `BASKULE_LLM_KEY_${crypto.randomUUID().replace(/-/g, "")}`;
   private oc: Promise<OpenCode> | null = null;
   private booted: OpenCode | null = null;
@@ -153,18 +158,21 @@ export class AgentRuntime {
 
   /** Boots OpenCode (once; concurrent callers share the boot). */
   boot(): Promise<OpenCode> {
+    if (this.released) return Promise.reject(new Error("Space agent is released"));
     if (this.oc) return this.oc;
     const controller = new AbortController();
-    return withBootScheduler(() => this.bootInEvent(controller), controller.signal);
+    const captures = createCaptureScope(this.spaceId);
+    this.releaseCaptures = captures.release;
+    return captures.run(() => withBootScheduler(() => this.bootInEvent(controller, captures.release), controller.signal));
   }
 
-  private bootInEvent(controller: AbortController): Promise<OpenCode> {
+  private bootInEvent(controller: AbortController, releaseCaptures: () => void): Promise<OpenCode> {
     // #258: this event creates OpenCode's long-lived continuations; keep its driver alive while booted.
     this.bootKeepalive = setInterval(() => {}, HEARTBEAT_MS);
     const lifetime = new Promise<void>(resolve => { this.finishBootEvent = resolve; });
     this.waitUntil(lifetime);
     // Capture the dispatch continuation beside its keepalive, before any asynchronous bootstrap work.
-    let pending: (() => void)[] = [];
+    let pending: { run: () => void; reject: (error: Error) => void }[] = [];
     let wake = () => {};
     let nativeClosed = false;
     const arm = () => {
@@ -172,28 +180,38 @@ export class AgentRuntime {
         const batch = pending;
         pending = [];
         if (!nativeClosed) arm();
-        for (const run of batch) run();
+        for (const task of batch) {
+          if (nativeClosed) task.reject(new Error("OpenCode host is closed"));
+          else task.run();
+        }
       });
     };
     arm();
     const enter = <A>(run: () => A | PromiseLike<A>): Promise<A> => new Promise((resolve, reject) => {
       if (nativeClosed) { reject(new Error("OpenCode host is closed")); return; }
-      pending.push(() => { try { resolve(run()); } catch (error) { reject(error); } });
+      pending.push({ run: () => { try { resolve(run()); } catch (error) { reject(error); } }, reject });
       wake();
     });
-    const closeEntry = () => { nativeClosed = true; controller.abort(); wake(); };
+    const closeEntry = () => {
+      nativeClosed = true; controller.abort();
+      for (const task of pending) task.reject(new Error("OpenCode host is closed"));
+      pending = []; wake();
+    };
+    this.closeBootEntry = closeEntry;
     const t0 = Date.now();
     this.oc = enter(async () => {
       this.log("boot phase: key");
       await this.loadKey();
       this.log("boot phase: module");
       // T3's task and preview tools (and the bundled MCP apps) are served by this space's SpaceCell (space-bridge.ts).
-      registerSpaceBridge(this.spaceId, this.space);
+      this.unregisterBridge = registerSpaceBridge(this.spaceId, this.space);
       // OpenCode (~20 MB of JS) is evaluated on the first boot in an isolate, not when the Worker starts.
       const { bootOpenCode } = await import("./opencode.js");
+      if (this.released) throw new Error("Space agent is released");
       await this.prepareSkills();
       this.log("boot phase: cache");
       this.t3McpCache = await this.storage.get<Record<string, unknown>>("baskule:t3-mcp-cache");
+      if (this.released) throw new Error("Space agent is released");
       const pluginServers: Record<string, unknown> = {};
       for (const [index, server] of (this.env.PLUGINS?.servers ?? []).entries()) {
         // Keep MCP tool prefixes short enough for model providers with bounded function names.
@@ -209,9 +227,9 @@ export class AgentRuntime {
           return await response.json() as PluginCredential;
         });
         this.pluginMcp.set(key, proxy);
-        pluginServers[name] = { type: "remote", url: registerLazyMcp(key, proxy.handler), oauth: false, codemode: false };
+        pluginServers[name] = { type: "remote", url: this.registerMcp(key, proxy.handler), oauth: false, codemode: false };
       }
-      const config = opencodeConfig(this.env, this.keyEnv, registerLazyMcp(`${this.spaceId}-decision`, sampleAppHandler), pluginServers);
+      const config = opencodeConfig(this.env, this.keyEnv, this.registerMcp(`${this.spaceId}-decision`, sampleAppHandler), pluginServers);
       this.configServers = Object.keys((config.mcp as { servers: Record<string, unknown> }).servers);
       this.models = configModels(config);
       this.log("boot phase: host");
@@ -235,6 +253,7 @@ export class AgentRuntime {
           log: (l: string) => this.log(l),
         },
       });
+      if (this.released) { await oc.close(); throw new Error("Space agent is released"); }
       this.booted = oc;
       this.stats.boots++;
       this.stats.bootMs = Date.now() - t0;
@@ -246,9 +265,16 @@ export class AgentRuntime {
       this.oc = null;
       closeEntry();
       this.clearKeepalives();
+      releaseCaptures();
       delete globalThis.process.env[this.keyEnv];
     });
     return this.oc;
+  }
+
+  private registerMcp(key: string, handler: Parameters<typeof registerLazyMcp>[1]) {
+    const registration = registerLazyMcp(key, handler);
+    this.mcpReleases.set(key, registration.unregister);
+    return registration.url;
   }
 
   private clearKeepalives() {
@@ -260,21 +286,44 @@ export class AgentRuntime {
     this.turnKeepalives.clear();
   }
 
+  /** Synchronous cell-release cleanup; native eviction cannot await an application finalizer. */
+  release() {
+    this.released = true;
+    const failures: unknown[] = [];
+    const releases = [
+      this.unregisterBridge,
+      ...this.mcpReleases.values(),
+      () => this.releaseCaptures(),
+      () => { delete globalThis.process.env[this.keyEnv]; },
+      () => this.closeBootEntry(),
+      () => this.clearKeepalives(),
+    ];
+    try {
+      for (const release of releases) {
+        try { release(); } catch (error) { failures.push(error); }
+      }
+    } finally {
+      this.t3Mcp.clear(); this.pluginMcp.clear(); this.mcpReleases.clear();
+    }
+    if (failures.length) throw new AggregateError(failures, "Agent release failed");
+  }
+
   async dispose(reason: string) {
+    const releaseCaptures = this.releaseCaptures;
     const oc = this.booted ?? (this.oc ? await this.oc.catch(() => null) : null);
     this.oc = null;
     this.booted = null;
-    unregisterSpaceBridge(this.spaceId);
-    unregisterLazyMcp(`${this.spaceId}-decision`);
-    for (const server of this.t3Mcp.keys()) unregisterLazyMcp(`${this.spaceId}-${server}`);
+    this.unregisterBridge();
+    for (const unregister of this.mcpReleases.values()) unregister();
+    this.mcpReleases.clear();
     this.t3Mcp.clear();
-    for (const [key, proxy] of this.pluginMcp) {
-      unregisterLazyMcp(key);
+    for (const proxy of this.pluginMcp.values()) {
       await proxy.close();
     }
     this.pluginMcp.clear();
     this.skillsReady = null;
     if (oc) await oc.close().catch((e: unknown) => this.log(`close: ${e}`));
+    releaseCaptures();
     delete globalThis.process.env[this.keyEnv];
     this.clearKeepalives();
     this.dirsReady = null;
@@ -569,7 +618,9 @@ export class AgentRuntime {
       if (request.method === "DELETE") {
         await this.locationOperation(oc, ref, signal => oc.mcpRemove(ref, server, signal));
         this.t3Mcp.delete(server);
-        unregisterLazyMcp(`${this.spaceId}-${server}`);
+        const key = `${this.spaceId}-${server}`;
+        this.mcpReleases.get(key)?.();
+        this.mcpReleases.delete(key);
         // T3 removes and re-adds its server when a turn's credential changes: let the removal settle in the registry,
         // so the re-add below waits for the new connection, not the old tools.
         await this.waitForTools(oc, ref, [server], false);
@@ -593,7 +644,7 @@ export class AgentRuntime {
             this.t3Mcp.set(server, proxy);
           }
           // The same downstream config on every re-add, so OpenCode keeps its connection.
-          config = { type: "remote", url: registerLazyMcp(`${this.spaceId}-${server}`, proxy.handler), oauth: false };
+          config = { type: "remote", url: this.registerMcp(`${this.spaceId}-${server}`, proxy.handler), oauth: false };
         }
         const configTools = this.configToolsAt(oc, directory);
         // Keep MCP tools directly callable by the model instead of routing them through Code Mode.

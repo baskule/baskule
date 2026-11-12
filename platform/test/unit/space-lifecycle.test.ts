@@ -18,7 +18,7 @@ const server = (dispose = vi.fn(async () => {})) => ({
 });
 /** A cell whose database has these tables (default: an existing space, OpenCode's schema present). */
 const control = { getByName: () => ({ fetch: async () => Response.json({ ...defaultSettings, apiKey: "test", plugins: { servers: [], skills: [] } }) }) };
-const cell = (put = vi.fn(async () => {}), tables = ["session"], waitUntil: (promise: Promise<unknown>) => void = () => {}) => new SpaceCell({ waitUntil, storage: {
+const cell = (put = vi.fn(async () => {}), tables = ["session"], waitUntil: (promise: Promise<unknown>) => void = () => {}) => new SpaceCell({ id: { name: "test-space" }, waitUntil, storage: {
   put,
   get: vi.fn(async () => undefined),
   delete: vi.fn(async () => true),
@@ -96,6 +96,49 @@ describe("SpaceCell cold agent alarms", () => {
       if (work === "outbox") expect(h.physicalAlarm()).toBe(retryAt);
     } finally { h.storage.db.close(); }
   });
+});
+
+it("persists status changes used for recovery without rewriting an unchanged status", async () => {
+  let saved: unknown;
+  const c = cell();
+  const put = c.ctx.storage.put;
+  put.mockImplementation(async (_key: string, value: unknown) => { saved = value; });
+  c.ctx.storage.get.mockImplementation(async (key: string) => key === "baskule:status" ? saved : undefined);
+  let activeRuns = 0;
+  let nextWakeAt: number | null = null;
+  const runtime = { ...server(), activeRuns: () => activeRuns, nextWakeAt: () => nextWakeAt };
+  await c.cacheStatus(runtime);
+  await c.cacheStatus(runtime);
+  expect(put).toHaveBeenCalledTimes(1);
+  activeRuns = 1;
+  await c.cacheStatus(runtime);
+  expect(saved).toMatchObject({ activeRuns: 1, nextWakeAt: null });
+  nextWakeAt = 123;
+  await c.cacheStatus(runtime);
+  expect(saved).toMatchObject({ activeRuns: 1, nextWakeAt: 123 });
+  activeRuns = 0;
+  nextWakeAt = null;
+  await c.cacheStatus(runtime);
+  expect(saved).toMatchObject({ activeRuns: 0, nextWakeAt: null });
+  expect(put).toHaveBeenCalledTimes(4);
+});
+
+it("runs synchronous release cleanup on a forced native cell release", async () => {
+  vi.useFakeTimers();
+  const released = vi.fn();
+  createServer.mockImplementationOnce(async (config) => {
+    config.onRelease(released);
+    return server();
+  });
+  const c = cell();
+  await c.boot("released-space");
+  const releaseAgent = vi.fn();
+  c.agent = { release: releaseAgent };
+  c[Symbol.dispose]();
+  expect(released).toHaveBeenCalledOnce();
+  expect(releaseAgent).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
+  expect((await c.fetch(new Request("http://space/ws"))).status).toBe(503);
 });
 
 describe("SpaceCell boot/dispose overlap", () => {
@@ -407,4 +450,24 @@ it.each([false, true])("refreshes managed skills on an already running v2 comput
   expect((await c.fetch(new Request("http://space/_baskule/reconfigure", { method: "POST" }))).ok).toBe(true);
   expect(installed).toEqual([clear ? [] : [{ path: "plugin/notes/SKILL.md", content: btoa("Updated notes") }]]);
   expect(createServer).not.toHaveBeenCalled();
+});
+
+
+it("releases the agent and boot keepalive even when release callbacks throw", async () => {
+  vi.useFakeTimers();
+  const c = cell();
+  const second = vi.fn();
+  const releaseAgent = vi.fn(() => { throw new Error("agent release failed"); });
+  c.releaseCallbacks.add(() => { throw new Error("callback failed"); });
+  c.releaseCallbacks.add(second);
+  c.agent = { release: releaseAgent };
+  c.releaseBootKeepAlive = vi.fn();
+  const releaseBoot = c.releaseBootKeepAlive;
+  expect(() => c[Symbol.dispose]()).toThrow("Space release failed");
+  expect(second).toHaveBeenCalledOnce();
+  expect(releaseAgent).toHaveBeenCalledOnce();
+  expect(releaseBoot).toHaveBeenCalledOnce();
+  expect(c.agent).toBeNull();
+  expect(c.releaseBootKeepAlive).toBeNull();
+  expect(c.releaseCallbacks.size).toBe(0);
 });

@@ -3,7 +3,8 @@
 Baskule's container builds celld 0.6.3 from upstream commit
 `8702f6d186c77698dbfb30cf29e3b1922a88f008`, with
 [`0001-preserve-warm-stateless-worker.patch`](../deploy/celld/patches/0001-preserve-warm-stateless-worker.patch) and
-[`0002-service-deployments.patch`](../deploy/celld/patches/0002-service-deployments.patch).
+[`0002-service-deployments.patch`](../deploy/celld/patches/0002-service-deployments.patch), plus
+[`0003-preserve-warm-cell-isolate.patch`](../deploy/celld/patches/0003-preserve-warm-cell-isolate.patch).
 The source archive and Rust builder image are checksum-pinned in
 [`deploy/celld/Dockerfile`](../deploy/celld/Dockerfile). The official celld runtime
 image still supplies system dependencies and license notices.
@@ -17,16 +18,57 @@ node health checks for seconds.
 
 The patch gives the retirement decision a minimum live count. Routine stateless
 maintenance preserves one compiled worker per loaded script and current
-generation. Extra workers still retire one per maintenance pass. Empty cell
-pools still shrink to zero, and superseded generations still retire completely
-after their requests and resident cells drain. Admission, pressure handling,
-request limits, cell placement, and data formats are unchanged.
+generation. Extra workers still retire one per maintenance pass. Superseded
+generations retire completely after requests and resident cells drain.
 
 The tradeoff is the retained memory of one stateless worker per loaded script
 on each node. This is not an unbounded cache. There is no new setting, service,
-database migration, or change to T3 Code. A small vendored patch avoids
+database migration. A small vendored patch avoids
 maintaining a separate celld fork. Remove it when a tested upstream release
 provides equivalent behavior.
+
+## Bounded cell-isolate retention
+
+Patch 0003 retains at most one healthy empty cell heap per loaded script and current
+node generation. Module scope and `globalThis` survive eviction; cell instances and
+SQLite connections do not. Wake still constructs the cell and its per-Space services.
+Both Baskule cell classes share the backend pool. Budget roughly 130 MiB per node for
+the retained application heap, in addition to stateless workers and resident cells. Actual usage depends on the build.
+The memory and idle-eviction decisions are tracked in [#87](https://github.com/baskule/baskule/issues/87).
+
+After the last release, maintenance collects the empty heap on a blocking thread.
+Retention requires no resident cells, requests, turns, or open native cell storage.
+Used heap plus external memory must be at most 30% of the original heap limit, age
+must stay below six hours, and adoptions must stay below 1,024. Failed release, failed
+module graph, heap-limit failure, or terminated turn prevents empty retention.
+A busy worker lock skips that maintenance pass. Additional empty heaps, superseded
+generations, and pressure shedding retain no empty heap. Live isolates keep serving
+when an application catches an optional import failure.
+
+celld calls an optional synchronous `[Symbol.dispose]()` on cell release. The hook
+removes in-memory registrations without network or storage I/O. Native storage,
+facets, and stubs close even if it throws. Release cancels queued KV puts and rejects
+stale SQL and KV operations. The stricter KV guard also applies to upstream reset,
+explicit abort, and abandoned critical sections: stale access and delayed flushes
+reject instead of silently dropping writes. Stored data and persistence formats do
+not change.
+
+Release discards only unowned operations and operations owned by that cell. Other
+live events receive their operations through their existing driver mailboxes.
+Operations owned outside the isolate's registry stay queued for normal adoption.
+Maintenance does not pump application tasks or microtasks outside a request driver.
+
+Baskule releases T3 routes, attachment roots, MCP bridges, shell captures, and the
+agent environment key with the cell. Each cleanup step runs even if another fails.
+Capture owners use weak references and boot-scoped ownership so stale streams cannot
+write into a new Space incarnation. Keep this application cleanup and patch 0003
+in the same release; retaining module state without releasing Space references is unsafe.
+The shared SQL client, multiplexed alarm, and same-cell self-request are unchanged.
+
+Idle eviction remains disabled unless `CELLD_IDLE_EVICT_S` is configured. Shipped
+Helm, Compose, and worktree defaults do not enable it. Retention helps after eligible
+idle or operator eviction, or placement onto a warm node. Pressure eviction frees
+the heap. Enabling idle eviction requires the installation operator's choice.
 
 ## Native service deployment
 
@@ -81,12 +123,13 @@ retained imports and that accepted admin provider IDs match the package mapping.
 docker build --target source -f deploy/celld/Dockerfile -t baskule-celld:local .
 ```
 
-The build runs the warm-retention policy tests, a lifecycle test using real V8
-workers, and service publication tests before installing the release binary.
-They cover the stateless minimum, burst cleanup, retirement hysteresis,
-suspended requests, cell residency, empty cell pools, generation retirement,
-pressure handling, request caps, and named-only publication. These focused tests
-do not replace upstream's private test suite, absent from its public snapshot.
+The build runs the retention policy and native retention unit tests, a lifecycle
+test using real V8 workers, and native service-publication tests. Coverage includes
+retention floors, lock contention, foreign operations, stale storage after same-scope
+re-adoption, failed cleanup with another resident cell, CPU termination, eligibility
+bounds, generation drain, pressure policy, and named-only publication. These checks
+do not simulate fleet memory pressure or a six-hour soak. The pinned public upstream
+snapshot contains no reset or storage conformance suite; none is claimed as passing.
 
 The native launcher (`scripts/celld.sh`) builds the `source` target on first use
 and caches its binary by Dockerfile, patch and test contents. Subsequent launches

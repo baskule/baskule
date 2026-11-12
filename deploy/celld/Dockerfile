@@ -8,6 +8,7 @@ RUN tar -xzf /tmp/celld.tar.gz --strip-components=1 -C /src && rm /tmp/celld.tar
 COPY deploy/celld/patches/ /patches/
 RUN patch -p1 < /patches/0001-preserve-warm-stateless-worker.patch
 RUN patch -p1 < /patches/0002-service-deployments.patch
+RUN patch -p1 < /patches/0003-preserve-warm-cell-isolate.patch
 COPY deploy/celld/tests/retention.rs crates/logic/tests/baskule_retention.rs
 COPY deploy/celld/tests/pool_lifecycle.rs crates/celld/tests/baskule_pool_lifecycle.rs
 COPY deploy/celld/tests/service_deployments.rs crates/celld/tests/baskule_service_deployments.rs
@@ -15,6 +16,7 @@ RUN --mount=type=cache,id=baskule-celld-registry,target=/usr/local/cargo/registr
     --mount=type=cache,id=baskule-celld-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=baskule-celld-target,target=/src/target,sharing=locked \
     cargo test --release --locked -p celld-logic --test baskule_retention && \
+    cargo test --release --locked -p celld --lib cell_retention_tests -- --test-threads=1 && \
     cargo test --release --locked -p celld --test baskule_pool_lifecycle && \
     cargo test --release --locked -p celld --test baskule_service_deployments && \
     cargo build --release --locked -p celld --bin celld && \
@@ -25,7 +27,7 @@ RUN --mount=type=cache,id=baskule-celld-registry,target=/usr/local/cargo/registr
 # + jq and esbuild (the deploy job: `celld deploy` bundles with esbuild). The same image runs the nodes and the jobs.
 FROM ghcr.io/denoland/celld:0.6.3@sha256:22bca1b40a9e4c434cc149d8913d7eaafa9792961a8c05f9fecf921d416216dc AS source
 COPY --from=runtime-build /out/celld /usr/local/bin/celld
-LABEL dev.baskule.celld.revision="8702f6d186c77698dbfb30cf29e3b1922a88f008" dev.baskule.celld.patch="preserve-warm-stateless-worker-v1,service-deployments-v1"
+LABEL dev.baskule.celld.revision="8702f6d186c77698dbfb30cf29e3b1922a88f008" dev.baskule.celld.patch="preserve-warm-stateless-worker-v1,service-deployments-v1,warm-cell-v1"
 ARG ESBUILD_VERSION=0.28.2
 RUN apt-get update && apt-get install -y --no-install-recommends curl jq && rm -rf /var/lib/apt/lists/* \
  && curl -fsSL "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-${ESBUILD_VERSION}.tgz" | tar -xz -C /tmp \

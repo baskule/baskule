@@ -1,0 +1,738 @@
+diff --git a/crates/celld/actor.rs b/crates/celld/actor.rs
+index 13ebaee..9e2cd19 100644
+--- a/crates/celld/actor.rs
++++ b/crates/celld/actor.rs
+@@ -2719,8 +2719,15 @@ impl Actor {
+         live.resident_cells.store(occupied, Ordering::Relaxed);
+         live.host_websockets
+             .store(self.state.host_websockets(), Ordering::Relaxed);
+-        live.pressured
+-            .store(self.state.shedding(), Ordering::Relaxed);
++        let was_shedding = live
++            .pressured
++            .swap(self.state.shedding(), Ordering::Relaxed);
++        if self.state.shedding() && !was_shedding {
++            if let Some(CellHost::Engine(runtime)) = &self.host {
++                let runtime = runtime.clone();
++                tokio::task::spawn_blocking(move || runtime.reap_empty_cell_pools());
++            }
++        }
+         live.memory_headroom
+             .store(self.state.memory_headroom(), Ordering::Relaxed);
+         live.restoring
+diff --git a/crates/celld/asyncrt.rs b/crates/celld/asyncrt.rs
+index 51a7d3f..a8872fa 100644
+--- a/crates/celld/asyncrt.rs
++++ b/crates/celld/asyncrt.rs
+@@ -562,6 +562,22 @@ pub fn drain_spawns() -> Vec<(u64, OpFuture, OpLifetime, Option<u64>)> {
+     })
+ }
+ 
++/// Return operations belonging to a different isolate's continuation registry.
++pub(crate) fn return_spawns(spawns: Vec<(u64, OpFuture, OpLifetime, Option<u64>)>) {
++    SPAWNS.with(|queue| {
++        queue.borrow_mut().extend(
++            spawns
++                .into_iter()
++                .map(|(id, future, lifetime, owner)| Spawn {
++                    id,
++                    future,
++                    lifetime,
++                    owner,
++                }),
++        );
++    });
++}
++
+ pub use crate::__celld_domain_select as select;
+ pub use crate::__celld_domain_select_biased as select_biased;
+ 
+diff --git a/crates/celld/generation.rs b/crates/celld/generation.rs
+index e2bd8ff..c6597a3 100644
+--- a/crates/celld/generation.rs
++++ b/crates/celld/generation.rs
+@@ -402,9 +402,8 @@ impl Generation {
+             && self.cell_isolates.values().all(|pool| pool.is_drained())
+     }
+ 
+-    /// One maintenance pass over the cell pools: retire and free every empty
+-    /// isolate. An empty cell heap carries no warm request capacity worth
+-    /// preserving, unlike a stateless one.
++    /// Retain at most one healthy, bounded empty cell heap per current script.
++    /// Superseded generations and pressure still drain every empty heap.
+     pub(crate) fn reap_cell_pools(&self) {
+         for pool in self.cell_isolates.values() {
+             pool.reap_empty();
+diff --git a/crates/celld/js.rs b/crates/celld/js.rs
+index ec40b41..13c4c91 100644
+--- a/crates/celld/js.rs
++++ b/crates/celld/js.rs
+@@ -2371,6 +2371,7 @@ const HEAP_GC_NUDGE_INTERVAL: Duration = Duration::from_secs(1);
+ 
+ struct HeapLimitState {
+     excessively_exceeded: AtomicBool,
++    retention_failed: AtomicBool,
+     /// The limit V8 gave this isolate, before any emergency extension.
+     /// Recovery measures against this one because `near_heap_limit` raises
+     /// the current one.
+@@ -2823,6 +2824,9 @@ fn take_execution_termination_in_context(
+         .and_then(|state| state.termination.lock().ok()?.take());
+     let is_terminating = scope.is_execution_terminating();
+     if termination.is_some() || is_terminating {
++        if let Some(state) = scope.get_slot::<Arc<HeapLimitState>>() {
++            state.retention_failed.store(true, Ordering::Relaxed);
++        }
+         scope.cancel_terminate_execution();
+     }
+     if let Some(termination) = termination {
+@@ -2858,6 +2862,7 @@ extern "C" fn near_heap_limit(
+     // removes this callback before the isolate (and its slots) are destroyed.
+     let state = unsafe { &*(data as *const HeapLimitState) };
+     state.excessively_exceeded.store(true, Ordering::Relaxed);
++    state.retention_failed.store(true, Ordering::Relaxed);
+     // V8 fatally aborts the process if a near-limit callback does not extend
+     // the limit. This reserve lets JS observe condemnation and unwind.
+     //
+@@ -4168,6 +4173,38 @@ impl Worker {
+         })
+     }
+ 
++    /// Empty cell retention never recovers a failed or heap-limited realm.
++    pub(crate) fn retention_healthy(&self) -> bool {
++        let Some(inner) = &self.inner else {
++            return false;
++        };
++        if !inner.cells.is_empty() {
++            return false;
++        }
++        let (mut locker, _cells) = inner.lock();
++        if locker
++            .get_slot::<Arc<HeapLimitState>>()
++            .is_none_or(|state| {
++                state.retention_failed.load(Ordering::Relaxed)
++                    || state.excessively_exceeded.load(Ordering::Relaxed)
++            })
++        {
++            return false;
++        }
++        let heap = locker.get_heap_statistics();
++        if !cell_heap_within_retention_limit(
++            heap.used_heap_size(),
++            heap.external_memory(),
++            inner.original_heap_limit,
++        ) {
++            return false;
++        }
++        v8::scope!(let hs, &mut *locker);
++        let context = v8::Local::new(hs, &inner.realm.context);
++        let cs = &mut v8::ContextScope::new(hs, context);
++        !modules::has_errored_module(cs)
++    }
++
+     /// Run a request's first turn.
+     ///
+     /// Returns what is now in flight — `None` when nothing is, the reply
+@@ -5817,6 +5854,7 @@ impl Worker {
+         let original_heap_limit = isolate.get_heap_statistics().heap_size_limit();
+         let heap_limit_state = Arc::new(HeapLimitState {
+             excessively_exceeded: AtomicBool::new(false),
++            retention_failed: AtomicBool::new(false),
+             limit: original_heap_limit,
+             last_gc_nudge: Mutex::new(None),
+             #[cfg(celld_internal_tests)]
+@@ -6136,13 +6174,47 @@ impl Worker {
+         storage: Option<CellStorage<'_>>,
+     ) -> Result<celld_logic::wake::AlarmSnapshot> {
+         let compat = self.inner.as_ref().expect("live worker isolate").compat;
++        let runtime_state = self
++            .inner
++            .as_ref()
++            .expect("live worker isolate")
++            .runtime_state
++            .clone();
+         let (mut locker, _cells) = self.lock();
+         v8::scope!(let hs, &mut *locker);
+         let realm = self.realm(hs);
+         let context = realm.context;
+         let cs = &mut v8::ContextScope::new(hs, context);
+         let tc = std::pin::pin!(v8::TryCatch::new(cs));
+-        let alarm = adopt_cell(&mut tc.init(), cell, storage, compat)?;
++        let result = adopt_cell(&mut tc.init(), cell, storage, compat);
++        // Cleanup has no driver of its own. Foreign continuations can run here,
++        // however, and their operations still belong to their live request drivers.
++        let mut foreign = Vec::new();
++        for (id, future, lifetime, owner) in asyncrt::drain_spawns() {
++            if let Some(owner) = owner {
++                let Some(context) = runtime_state.io_context(owner) else {
++                    // The thread-local queue can also hold another isolate's ops.
++                    foreign.push((id, future, lifetime, Some(owner)));
++                    continue;
++                };
++                let releasing = context.egress.lock().unwrap().iter().any(|frame| {
++                    frame.storage == cell
++                        || frame.root.as_ref().is_some_and(|root| root.cell == cell)
++                });
++                if !releasing && context.hand_op(id, future, lifetime) {
++                    continue;
++                }
++            }
++            runtime_state.promises.lock().unwrap().remove(&id);
++        }
++        asyncrt::return_spawns(foreign);
++        if result.is_err() {
++            for facet in storage::embedded_facets(cell) {
++                storage::close(&facet);
++            }
++            storage::close(cell);
++        }
++        let alarm = result?;
+         // The source identity belongs to this installed SQLite turn. Reading
+         // it from the pool after this guard drops reaches no cell connection.
+         Ok(observe_alarm(cell, alarm))
+@@ -6156,6 +6228,13 @@ impl Worker {
+         settle_isolate_heap(&mut locker);
+     }
+ 
++    pub(crate) fn invalidate_retention(&self) {
++        let (locker, _cells) = self.lock();
++        if let Some(state) = locker.get_slot::<Arc<HeapLimitState>>() {
++            state.retention_failed.store(true, Ordering::Relaxed);
++        }
++    }
++
+     fn own_embedded_cell(
+         &mut self,
+         cell: &str,
+@@ -12680,3 +12759,120 @@ pub fn init_engine_for_tests() {
+ 
+ #[cfg(celld_internal_tests)]
+ include!(env!("CELLD_INTERNAL_JS_OBSERVERS"));
++
++fn cell_heap_within_retention_limit(used: usize, external: usize, limit: usize) -> bool {
++    used.saturating_add(external) <= limit.saturating_mul(3) / 10
++}
++
++#[cfg(test)]
++pub(crate) mod cell_retention_tests {
++    use super::*;
++
++    pub(crate) fn runtime() -> &'static tokio::runtime::Runtime {
++        static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
++        RUNTIME.get_or_init(|| {
++            let runtime = tokio::runtime::Runtime::new().unwrap();
++            asyncrt::set_host_handle(runtime.handle().clone());
++            runtime
++        })
++    }
++
++    pub(crate) fn config() -> Arc<WorkerConfig> {
++        Arc::new(WorkerConfig::new(WorkerConfigOptions {
++            src: "import {DurableObject} from 'cloudflare:workers'; export class Probe extends DurableObject { async fetch() { await new Promise(r=>setTimeout(r,1)); return new Response('survived'); } } export default { fetch() { return new Response('ok'); } };".into(),
++            script_name: "queued-cell-ops".into(), do_classes: vec!["Probe".into()],
++            bindings: vec![], r2_bindings: vec![], d1_bindings: vec![], kv_bindings: vec![],
++            queue_bindings: vec![], queue_consumers: vec![], workflow_bindings: vec![],
++            vars: vec![], node: "test".into(), modules: vec![], compat: Default::default(),
++        }))
++    }
++
++    #[test]
++    fn heap_share_includes_external_memory_and_exact_boundary() {
++        assert!(cell_heap_within_retention_limit(20, 10, 100));
++        assert!(!cell_heap_within_retention_limit(20, 11, 100));
++        assert!(!cell_heap_within_retention_limit(usize::MAX, 1, 100));
++    }
++
++    #[test]
++    fn release_preserves_another_cells_in_flight_operations() {
++        Engine::init();
++        let runtime = runtime();
++        let _entered = runtime.enter();
++        let directory = tempfile::tempdir().unwrap();
++        let a = format!("Probe:{}", "11".repeat(32));
++        let b = format!("Probe:{}", "22".repeat(32));
++        let mut worker = Worker::load_config(config()).unwrap();
++        for (scope, name) in [(&a, "a.sqlite"), (&b, "b.sqlite")] {
++            worker
++                .own_cell(
++                    scope,
++                    Some(CellStorage {
++                        path: directory.path().join(name).to_str().unwrap(),
++                        epoch: 1,
++                        replicated_wake: false,
++                        vfs: None,
++                    }),
++                )
++                .unwrap();
++        }
++        let (send, mut receive) = tokio::sync::oneshot::channel();
++        let (entry, ops) = worker.turn_begin_cell(
++            CellJob::Fetch {
++                request_id: None,
++                scope: b.clone(),
++                name: None,
++                url: "http://probe/".into(),
++                method: "GET".into(),
++                body: Vec::new().into(),
++                headers: vec![],
++                reply: send,
++                order: None,
++            },
++            None,
++        );
++        let mut entry = entry.unwrap();
++        assert!(!entry.finished());
++        assert!(
++            !ops.is_empty(),
++            "the second cell must have real in-flight I/O"
++        );
++        // Reproduce the queue left by a foreign continuation or an errored turn,
++        // without depending on V8's choice of automatic checkpoint placement.
++        let from = asyncrt::spawn_count();
++        let id = asyncrt::enqueue(async { Ok::<_, String>("foreign op".to_owned()) });
++        asyncrt::attribute_spawns(from, entry.context.continuation_id().unwrap());
++        let from = asyncrt::spawn_count();
++        let foreign_isolate =
++            asyncrt::enqueue(async { Ok::<_, String>("other isolate".to_owned()) });
++        asyncrt::attribute_spawns(from, u64::MAX);
++        worker.own_cell(&a, None).unwrap();
++        let handed = entry.take_handed_ops();
++        assert_eq!(
++            handed.len(),
++            1,
++            "release discarded the other live cell's queued operation"
++        );
++        assert_eq!(handed[0].0, id);
++        for (_, future) in handed {
++            runtime.block_on(future).unwrap();
++        }
++        let returned = asyncrt::drain_spawns();
++        assert_eq!(returned.len(), 1);
++        assert_eq!(
++            returned[0].0, foreign_isolate,
++            "another isolate's operation must remain queued"
++        );
++        for (id, future) in ops {
++            let value = runtime.block_on(future);
++            assert!(worker.turn_deliver(&mut entry, id, value).is_empty());
++        }
++        assert!(worker.turn_poll(&mut entry).is_empty());
++        assert_eq!(
++            String::from_utf8(receive.try_recv().unwrap().unwrap().body).unwrap(),
++            "survived"
++        );
++        entry.abandon();
++        worker.own_cell(&b, None).unwrap();
++    }
++}
+diff --git a/crates/celld/js/bootstrap.rs b/crates/celld/js/bootstrap.rs
+index b00dc8f..f4d6a0b 100644
+--- a/crates/celld/js/bootstrap.rs
++++ b/crates/celld/js/bootstrap.rs
+@@ -1007,18 +1007,20 @@ fn finish_cell_adoption(tc: &mut v8::PinScope, cell: &str, owned: bool) -> Resul
+     // persists the id name before writing it here, so the take-in below reads
+     // it back.
+     let source = format!("__celld.__cell.release({cell:?});");
+-    run_internal_snippet(tc, &source).ok_or_else(|| anyhow!("adopt failed"))?;
+-    if !owned {
++    let mut released = run_internal_snippet(tc, &source).ok_or_else(|| anyhow!("cell release failed"));
++    if !owned || released.is_err() {
+         // A facet of the root's own class lives in this isolate, and nothing
+         // else releases it: its realm and connection would outlive the root.
+         for facet in storage::embedded_facets(cell) {
+             let source = format!("__celld.__cell.release({facet:?});");
+-            run_internal_snippet(tc, &source).ok_or_else(|| anyhow!("release failed"))?;
++            if run_internal_snippet(tc, &source).is_none() {
++                released = Err(anyhow!("facet release failed"));
++            }
+             storage::close(&facet);
+             crate::ws_registry::ws_close_facet(&facet, "the parent Durable Object was released");
+         }
+         storage::close(cell);
+-        return Ok(None);
++        return released.map(|_| None);
+     }
+     let name = storage::get_actor_name(cell).context("read actor name")?;
+     register_actor_name(tc, cell, name.as_deref())?;
+diff --git a/crates/celld/js/harness.js b/crates/celld/js/harness.js
+index 074ea11..785248c 100644
+--- a/crates/celld/js/harness.js
++++ b/crates/celld/js/harness.js
+@@ -1402,8 +1402,8 @@ class SqlStorage {
+     this._storage._assertTransactionActive("sql.exec");
+     // A callback that outlived its block runs on an object that was reset,
+     // whose replacement uses the same connection: a statement from it
+-    // would land in the replacement's state. The KV surface drops such
+-    // writes silently; SQL refuses aloud, since a cursor can carry reads.
++    // would land in the replacement's state. Both KV and SQL reject access
++    // through aborted storage, including after reset and explicit abort.
+     if (this._state._aborted) {
+       throw new Error("the Durable Object was reset; this event's storage is closed");
+     }
+@@ -1581,6 +1581,7 @@ class DurableObjectStorage {
+     return status;
+   }
+   _assertTransactionActive(operation) {
++    if (this._state?._aborted) throw new Error("the Durable Object was reset; this event's storage is closed");
+     const status = this._transactionStatus();
+     // workerd's wording, which applications match on.
+     if (status === "committed")
+@@ -1594,7 +1595,7 @@ class DurableObjectStorage {
+     // An admitted put can resume after its boundary flushed and ended the
+     // transaction. Its promise completes without flushing a later scope.
+     if (this._transactionStatus()) return false;
+-    if (this._state && this._state._aborted) return false;
++    if (this._state?._aborted) throw new Error("the Durable Object was reset; this event's storage is closed");
+     __storage_flush_pending_puts(this._scope);
+     return true;
+   }
+@@ -3960,7 +3961,17 @@ const __actorBreak = (scope, reason) => {
+ // Storage is not here -- `stop_cell` closes it host-side -- and sockets
+ // live in the host registry, so a hibernated cell keeps them.
+ const __cellRelease = (scope) => {
+-  __cell.instances[scope]?.ctx?.facets?._release();
++  const instance = __cell.instances[scope];
++  if (instance?.__celldState) instance.__celldState._aborted = true;
++  __storage_cancel_pending_puts(scope);
++  let failure;
++  let failed = false;
++  try {
++    const release = instance?.[Symbol.dispose];
++    if (typeof release === "function") release.call(instance);
++  } catch (error) { failure = error; failed = true; }
++  finally {
++  try { instance?.ctx?.facets?._release(); } catch (error) { failure = error; failed = true; }
+   delete __cell.instances[scope];
+   delete __cell.idNames[scope];
+   delete __cell.facetConfigs[scope];
+@@ -3981,8 +3992,11 @@ const __cellRelease = (scope) => {
+     // Break in-flight ops as an abort would, but not through
+     // `__actorBreak`: that records the scope broken for the life of the
+     // isolate, which is the state this function drops.
+-    __ctxAbort(entry.ctx, new __ActorAbort(__releasedStubError()));
++    try { __ctxAbort(entry.ctx, new __ActorAbort(__releasedStubError())); }
++    catch (error) { failure = error; failed = true; }
++  }
+   }
++  if (failed) throw failure;
+ };
+ const __releasedStubError = () => new Error(
+   "The Durable Object that returned this RPC stub no longer runs on " +
+diff --git a/crates/celld/js/modules.rs b/crates/celld/js/modules.rs
+index 6865a85..ffb801a 100644
+--- a/crates/celld/js/modules.rs
++++ b/crates/celld/js/modules.rs
+@@ -1142,3 +1142,15 @@ pub(super) fn host_import_module_dynamically<'s>(
+     }
+     Some(promise)
+ }
++
++/// An evaluation error is permanent in this realm, including a terminated TLA.
++pub(super) fn has_errored_module(scope: &mut v8::PinScope) -> bool {
++    let registry = modreg(scope);
++    let modules = registry.modules.lock().unwrap();
++    modules.values().any(|module| {
++        matches!(
++            v8::Local::new(scope, module).get_status(),
++            v8::ModuleStatus::Errored | v8::ModuleStatus::Evaluating
++        )
++    })
++}
+diff --git a/crates/celld/pool.rs b/crates/celld/pool.rs
+index f196f61..5102ce5 100644
+--- a/crates/celld/pool.rs
++++ b/crates/celld/pool.rs
+@@ -26,6 +26,7 @@ use std::sync::atomic::Ordering;
+ use std::sync::Arc;
+ use std::sync::Mutex;
+ use std::sync::RwLock;
++use std::time::Duration;
+ 
+ use anyhow::Result;
+ use celld_logic::isolate::HeapId;
+@@ -200,6 +201,9 @@ pub struct Slot {
+     // Reservations can adopt out of order; only completed adoptions count
+     // toward the collection boundary. Residency drop retires both counts.
+     adopted_cells: AtomicUsize,
++    created_at: std::time::Instant,
++    total_adoptions: AtomicUsize,
++    needs_collection: AtomicBool,
+     retiring: AtomicBool,
+     #[cfg(celld_internal_tests)]
+     turn_observations: Mutex<Vec<String>>,
+@@ -333,6 +337,9 @@ impl Slot {
+             loaded_worker,
+             cells: AtomicUsize::new(0),
+             adopted_cells: AtomicUsize::new(0),
++            created_at: std::time::Instant::now(),
++            total_adoptions: AtomicUsize::new(0),
++            needs_collection: AtomicBool::new(false),
+             retiring: AtomicBool::new(false),
+             #[cfg(celld_internal_tests)]
+             turn_observations: Mutex::new(Vec::new()),
+@@ -365,6 +372,9 @@ impl Slot {
+             loaded_worker: false,
+             cells: AtomicUsize::new(0),
+             adopted_cells: AtomicUsize::new(0),
++            created_at: std::time::Instant::now(),
++            total_adoptions: AtomicUsize::new(0),
++            needs_collection: AtomicBool::new(false),
+             retiring: AtomicBool::new(false),
+             turn_observations: Mutex::new(Vec::new()),
+         })
+@@ -501,7 +511,7 @@ impl Residency {
+     /// Open a reserved cell's storage and return its residency with its alarm snapshot.
+     /// Collection follows the last completed adoption, because reservation
+     /// order can differ from the order in which activation futures resume.
+-    pub(crate) async fn adopt(
++    pub async fn adopt(
+         mut self,
+         cell: &str,
+         storage: js::CellStorage<'_>,
+@@ -510,7 +520,11 @@ impl Residency {
+         let slot = self.slot.clone();
+         let alarm = slot
+             .turn(|worker| -> Result<celld_logic::wake::AlarmSnapshot> {
+-                let alarm = worker.own_cell(cell, Some(storage))?;
++                let alarm = worker.own_cell(cell, Some(storage)).map_err(|error| {
++                    worker.invalidate_retention();
++                    error
++                })?;
++                slot.total_adoptions.fetch_add(1, Ordering::Relaxed);
+                 // There is no await between adoption and accounting. Cancellation
+                 // before this turn drops only the reservation; afterward the
+                 // residency owns both counters, including on an error unwind.
+@@ -525,6 +539,25 @@ impl Residency {
+             .await?;
+         Ok((self, alarm))
+     }
++
++    /// Release native and application state before returning the last cell's heap to retention.
++    pub async fn release(&mut self, cell: &str) -> Result<()> {
++        let slot = self.slot.clone();
++        slot.turn_cell(cell, |worker| {
++            let released = worker.own_cell(cell, None);
++            if released.is_err() {
++                worker.invalidate_retention();
++            }
++            if self.adopted {
++                self.adopted = false;
++                if slot.adopted_cells.fetch_sub(1, Ordering::Relaxed) == 1 {
++                    slot.needs_collection.store(true, Ordering::Relaxed);
++                }
++            }
++            released.map(|_| ())
++        })
++        .await
++    }
+ }
+ 
+ impl Drop for Residency {
+@@ -635,6 +668,9 @@ impl Pool {
+             loaded_worker: false,
+             cells: AtomicUsize::new(0),
+             adopted_cells: AtomicUsize::new(0),
++            created_at: std::time::Instant::now(),
++            total_adoptions: AtomicUsize::new(0),
++            needs_collection: AtomicBool::new(false),
+             retiring: AtomicBool::new(self.retired.load(Ordering::Relaxed)),
+             #[cfg(celld_internal_tests)]
+             turn_observations: Mutex::new(Vec::new()),
+@@ -788,8 +824,7 @@ impl Pool {
+         true
+     }
+ 
+-    /// Retire every empty isolate. Cell pools use this after eviction because
+-    /// an empty cell heap carries no warm request capacity worth preserving.
++    /// Keep at most one bounded, healthy empty cell heap outside memory pressure.
+     pub fn reap_empty(&self) {
+         let Ok(_maintenance) = self.maintenance.try_write() else {
+             tracing::debug!(
+@@ -798,7 +833,32 @@ impl Pool {
+             );
+             return;
+         };
+-        while self.retire_one(0) {}
++        let shedding = crate::ownership_store::node_is_shedding();
++        for slot in self.slots.read().expect("pool poisoned").iter() {
++            let load = slot.observe();
++            if load.cells == 0 && load.requests == 0 && load.turns == 0 {
++                // Census and drain probes can hold this lock without a JS turn.
++                // Contention says nothing about health; retry on the next pass.
++                let Ok(mut worker) = slot.worker.try_lock() else {
++                    continue;
++                };
++                let healthy = cell_retention_within_bounds(
++                    shedding,
++                    slot.created_at.elapsed(),
++                    slot.total_adoptions.load(Ordering::Relaxed),
++                ) && worker.as_mut().is_some_and(|worker| {
++                    if slot.needs_collection.swap(false, Ordering::Relaxed) {
++                        worker.settle_heap();
++                    }
++                    worker.retention_healthy()
++                });
++                if !healthy {
++                    slot.condemn("empty cell heap exceeded retention bounds");
++                }
++            }
++        }
++        let floor = usize::from(!shedding && !self.retired.load(Ordering::Relaxed));
++        while self.retire_one(floor) {}
+         self.free_retired();
+     }
+ 
+@@ -873,9 +933,8 @@ impl Pool {
+     /// The count an operator of a hibernation-heavy node needs and could
+     /// not get: a dormant cell keeps about 160 KB more than its own records
+     /// explain (GCE, 2026-09-03), and the one O(cells) structure
+-    /// that fits is the isolate. `live_empty` is what `reap_empty` retires
+-    /// on its next pass and `retiring` is what `may_free` still refuses, so
+-    /// either staying positive across passes names the leak.
++    /// that fits is the isolate. One healthy `live_empty` heap per current
++    /// script is expected; retiring heaps must still drain.
+     pub fn census(&self) -> PoolCensus {
+         let mut census = PoolCensus::default();
+         for slot in self.slots.read().expect("pool poisoned").iter() {
+@@ -927,3 +986,66 @@ const _: fn() = || {
+     assert_send_sync::<Slot>();
+     assert_send_sync::<Affiliation>();
+ };
++
++fn cell_retention_within_bounds(shedding: bool, age: Duration, adoptions: usize) -> bool {
++    !shedding && age < Duration::from_secs(6 * 60 * 60) && adoptions < 1024
++}
++
++#[cfg(test)]
++mod cell_retention_tests {
++    use super::*;
++
++    #[test]
++    fn locked_empty_worker_is_skipped_not_condemned() {
++        crate::runtime::init_v8();
++        let runtime = js::cell_retention_tests::runtime();
++        let _entered = runtime.enter();
++        let config = js::cell_retention_tests::config();
++        let pool = Pool::new(
++            PoolLimits {
++                grow_at: 2,
++                shrink_under: 1,
++                max_stateless: 1,
++                max_requests: None,
++                max_cells: 1,
++            },
++            Duration::from_millis(10),
++            Box::new(move || js::Worker::load_config(config.clone())),
++        );
++        let cell = pool.place_cell().unwrap();
++        let slot = cell.slot().clone();
++        drop(cell);
++        pool.reap_empty();
++        let guard = runtime.block_on(slot.worker.lock());
++        pool.reap_empty();
++        assert!(
++            !slot.is_retiring(),
++            "lock contention is not an unhealthy heap"
++        );
++        assert_eq!(pool.live(), 1);
++        drop(guard);
++        pool.reap_empty();
++        assert_eq!(pool.live(), 1);
++        pool.retire_all();
++        pool.reap_empty();
++        assert!(pool.is_drained());
++    }
++
++    #[test]
++    fn pressure_age_and_adoption_boundaries() {
++        let limit = Duration::from_secs(6 * 60 * 60);
++        assert!(cell_retention_within_bounds(
++            false,
++            limit - Duration::from_nanos(1),
++            1023
++        ));
++        assert!(!cell_retention_within_bounds(true, Duration::ZERO, 0));
++        assert!(!cell_retention_within_bounds(false, limit, 0));
++        assert!(!cell_retention_within_bounds(false, Duration::ZERO, 1024));
++        assert!(!cell_retention_within_bounds(
++            false,
++            Duration::MAX,
++            usize::MAX
++        ));
++    }
++}
+diff --git a/crates/celld/runtime.rs b/crates/celld/runtime.rs
+index 74941d5..d805630 100644
+--- a/crates/celld/runtime.rs
++++ b/crates/celld/runtime.rs
+@@ -857,6 +857,17 @@ impl RuntimeManager {
+         next
+     }
+ 
++    pub(crate) fn reap_empty_cell_pools(&self) {
++        let generations = self.generations.read().expect("generation lock poisoned");
++        let current = generations.current.clone();
++        let draining = generations.draining.clone();
++        drop(generations);
++        current.reap_cell_pools();
++        for generation in draining {
++            generation.reap_cell_pools();
++        }
++    }
++
+     /// Spawn the maintenance loop for one generation's cell pools.
+     ///
+     /// The loop holds a weak reference. A strong one would keep a superseded
+@@ -882,7 +893,8 @@ impl RuntimeManager {
+                 let Some(generation) = reaping.upgrade() else {
+                     return;
+                 };
+-                generation.reap_cell_pools();
++                let reaping = generation.clone();
++                let _ = tokio::task::spawn_blocking(move || reaping.reap_cell_pools()).await;
+                 if !generation.is_drained() {
+                     continue;
+                 }
+@@ -1437,7 +1449,7 @@ impl RuntimeManager {
+                 }
+             }
+         }
+-        for handle in stopped {
++        for mut handle in stopped {
+             // Give the cell back rather than shutting the isolate down: it
+             // serves other cells. Taking the isolate for this turn is the
+             // barrier — an event of this cell either finished its turn
+@@ -1447,16 +1459,16 @@ impl RuntimeManager {
+             // follows the turns already admitted for this cell, and it does
+             // not wait behind every stateless turn queued on the isolate. On
+             // a loaded node that queue held a handoff batch for minutes.
+-            let _ = handle
+-                .residency
+-                .slot()
+-                .turn_cell(cell, |worker| worker.own_cell(cell, None))
+-                .await;
++            if let Err(error) = handle.residency.release(cell).await {
++                tracing::warn!(scope=%cell, %error, "cell release failed; its heap will not be retained");
++            }
+             // Dropping the handle drops its residency, which is what gives
+             // the isolate its place back — and what lets `retire` reclaim
+             // the isolate once no cell is left in it.
+             drop(handle);
+         }
++        let runtime = self.clone();
++        tokio::task::spawn_blocking(move || runtime.reap_empty_cell_pools());
+         // After the give-back, so the root cannot start another facet call,
+         // and before the facet streams stop, so no write reaches a file that
+         // the facet's eviction unlinked.
+diff --git a/crates/celld/storage.rs b/crates/celld/storage.rs
+index 4b7a7b8..693f0af 100644
+--- a/crates/celld/storage.rs
++++ b/crates/celld/storage.rs
+@@ -216,6 +216,8 @@ thread_local! {
+ }
+ 
+ impl Cells {
++    pub(crate) fn is_empty(&self) -> bool { self.dbs.borrow().is_empty() }
++
+     /// Make these cells reachable by the storage API for one turn.
+     ///
+     /// Restores whatever was installed before, so a nested entry — which the

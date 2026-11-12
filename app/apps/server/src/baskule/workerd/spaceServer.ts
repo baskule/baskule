@@ -107,6 +107,7 @@ const installGlobalAgentRouter = () => {
 };
 
 export interface SpaceServerConfig {
+  readonly onRelease?: (release: () => void) => () => void;
   readonly push?: {
     deliver: (notification: PushNotification, environmentId: string) => Promise<void>;
     changed: () => Promise<void>;
@@ -304,6 +305,19 @@ const listening = Layer.effectDiscard(
 
 export const createSpaceServer = async (config: SpaceServerConfig): Promise<SpaceServer> => {
   const startedAt = performance.now();
+  let released = false;
+  let unregisterAttachments = () => {};
+  let unregisterRelease = () => {};
+  const release = () => {
+    released = true;
+    try {
+      unregisterAttachments();
+    } finally {
+      if (agentRoutes.get(config.spaceId) === config.agentFetch) agentRoutes.delete(config.spaceId);
+      unregisterRelease();
+    }
+  };
+  unregisterRelease = config.onRelease?.(release) ?? (() => {});
   const { client: sqlClient, stats: sqlStats } =
     config.database ?? (await createSpaceSqlClient(config.storage, config.onStorageLost));
   const sqlLayer = Layer.succeed(SqlClient.SqlClient, sqlClient);
@@ -353,6 +367,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     { scheduler: new Scheduler.MixedScheduler("sync") },
   );
 
+  if (released) throw new Error("Space cell is released");
   installGlobalAgentRouter();
   agentRoutes.set(config.spaceId, config.agentFetch);
   const agentFetch: typeof globalThis.fetch = (input, init) =>
@@ -360,7 +375,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
 
   const fileSystemLayer = Layer.succeed(FileSystem.FileSystem, files.fileSystem);
   const hostFileSystem = makeHostFileSystem(files, baseDir, computer);
-  const unregisterAttachments = registerAttachmentRoot(attachmentsDir, {
+  unregisterAttachments = registerAttachmentRoot(attachmentsDir, {
     existsSync: (path) => files.homeSync.stat(path) !== undefined,
     readdirSync: (path) => [...files.homeSync.list(path)],
     statSync: (path) => {
@@ -471,13 +486,16 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     Layer.buildWithScope(app, scope).pipe(Effect.provide(Logger.layer([Logger.consolePretty()]))),
     { scheduler: new Scheduler.MixedScheduler("sync") },
   );
-  if (Exit.isFailure(built)) {
+  if (Exit.isFailure(built) || released) {
     unregisterAttachments();
     if (agentRoutes.get(config.spaceId) === config.agentFetch) agentRoutes.delete(config.spaceId);
     await Effect.runPromise(Scope.close(scope, built), {
       scheduler: new Scheduler.MixedScheduler("sync"),
     });
-    throw new Error(`The space server failed to start: ${String(built.cause).slice(0, 2000)}`);
+    release();
+    throw new Error(
+      `The space server failed to start: ${Exit.isFailure(built) ? String(built.cause).slice(0, 2000) : "cell released"}`,
+    );
   }
   const context = built.value as Context.Context<never>;
   const captured = await transport.ready;
@@ -698,12 +716,21 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     },
     dispose: async () => {
       // celld's WebSocket.close accepts 1000 or application codes, not the reserved 1001.
-      for (const socket of sockets) socket.close(4000, "space restarting");
-      await Effect.runPromise(Scope.close(scope, Exit.void), {
-        scheduler: new Scheduler.MixedScheduler("sync"),
-      });
-      unregisterAttachments();
-      if (agentRoutes.get(config.spaceId) === config.agentFetch) agentRoutes.delete(config.spaceId);
+      try {
+        try {
+          for (const socket of sockets) {
+            try {
+              socket.close(4000, "space restarting");
+            } catch {}
+          }
+        } finally {
+          await Effect.runPromise(Scope.close(scope, Exit.void), {
+            scheduler: new Scheduler.MixedScheduler("sync"),
+          });
+        }
+      } finally {
+        release();
+      }
     },
   };
   return server;

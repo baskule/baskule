@@ -57,6 +57,27 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class SpaceCell extends DurableObject<SpaceEnv> {
+  private released = false;
+  private releaseCallbacks = new Set<() => void>();
+
+  [Symbol.dispose]() {
+    this.released = true;
+    const failures: unknown[] = [];
+    for (const release of this.releaseCallbacks) {
+      try { release(); } catch (error) { failures.push(error); }
+    }
+    this.releaseCallbacks.clear();
+    try {
+      try { this.agent?.release(); } catch (error) { failures.push(error); }
+    } finally {
+      try { this.releaseBootKeepAlive?.(); } finally {
+        this.releaseBootKeepAlive = null;
+        this.agent = null; this.server = null; this.booting = null; this.database = null; this.settings = null;
+      }
+    }
+    console.log(JSON.stringify({ event: "space.released", spaceId: this.spaceIdCache ?? this.ctx.id.name, failures: failures.length }));
+    if (failures.length) throw new AggregateError(failures, "Space release failed");
+  }
   private booting: Promise<SpaceServer> | null = null;
   private agent: AgentRuntime | null = null;
   private database: Promise<SpaceDatabase> | null = null;
@@ -88,6 +109,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
     const database = await this.sharedDatabase();
     console.log(JSON.stringify({ event: "space.agent_start", phase: "database", spaceId: id }));
     const settings = await this.loadSettings(id);
+    if (this.released) throw new Error("Space cell is released");
     return this.agent ??= new AgentRuntime(this.alarms.forAgent(), { ...this.env,
       AI: settings.ai && { ...settings.ai, apiKey: settings.apiKey }, PLUGINS: settings.plugins,
     }, id, database.client, { fetch: (req) => this.fetch(req) }, promise => this.ctx.waitUntil(promise), {
@@ -182,7 +204,14 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
     if (settings.plugins.skills.length || await this.ctx.storage.get("baskule:plugin-skills")) await (await this.localAgent()).prepareSkills();
     // A new space: OpenCode creates its schema in the still-empty database before T3 adds its tables.
     if (!this.hasOpenCodeSchema()) await (await this.localAgent()).boot();
-    return (await loadBundle()).createSpaceServer({
+    const bundle = await loadBundle();
+    if (this.released) throw new Error("Space cell is released");
+    return bundle.createSpaceServer({
+      onRelease: (release) => {
+        if (this.released) release();
+        else this.releaseCallbacks.add(release);
+        return () => { this.releaseCallbacks.delete(release); };
+      },
       database,
       push: {
         deliver: async (notification, environmentId) => {
@@ -372,6 +401,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
   }
 
   async fetch(req: Request): Promise<Response> {
+    if (this.released) return json({ error: "space_released" }, 503);
     const url = new URL(req.url);
     if (url.pathname.startsWith("/_baskule/agent/")) {
       // T3 reaches its agent only after a boot stored the space id; a direct internal caller (the agent test
