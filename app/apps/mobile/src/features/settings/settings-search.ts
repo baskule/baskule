@@ -38,12 +38,6 @@ const SETTINGS_SEARCH_TERMS = {
   SettingsVoice: [
     "microphone",
     "dictation",
-    "transcription",
-    "transcribe on",
-    "transcription model",
-    "this device",
-    "environment",
-    "on-device",
     "audio input",
     "preferred microphone",
     "microphone order",

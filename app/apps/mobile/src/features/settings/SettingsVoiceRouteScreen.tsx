@@ -21,10 +21,6 @@ import {
 } from "../../lib/microphonePriority";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { ListRowLayout } from "../../components/ui/ListRowLayout";
-import { ListChoiceRow } from "../../components/ui/ListChoiceRow";
-import * as Dialog from "../../components/ui/Dialog";
-import { useEnvironments, type EnvironmentPresentation } from "../../state/environments";
-import type { EnvironmentId } from "@t3tools/contracts";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
