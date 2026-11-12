@@ -21,3 +21,5 @@ export const createRequire = () => (id) => stub(id);
 export const builtinModules = [];
 export const isBuiltin = () => false;
 export default { createRequire, builtinModules, isBuiltin };
+
+export const flushCompileCache = () => {};

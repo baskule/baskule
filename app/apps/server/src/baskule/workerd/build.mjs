@@ -8,6 +8,9 @@ import * as NodeURL from "node:url";
 import * as esbuild from "esbuild";
 import { nativeEffectContinuations } from "./nativeEffectContinuations.mjs";
 
+import { sharedHttpCodecs } from "./sharedHttpCodecs.mjs";
+import { hostedComposition } from "./hostedComposition.mjs";
+
 const here = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const serverRoot = NodePath.resolve(here, "../../..");
 const args = process.argv.slice(2);
@@ -96,7 +99,8 @@ const result = await esbuild.build({
   keepNames: false,
   metafile: true,
   logLevel: "error",
-  plugins: [substitutions, nativeEffectContinuations],
+  logOverride: { "import-is-undefined": "error" },
+  plugins: [substitutions, nativeEffectContinuations, hostedComposition, sharedHttpCodecs],
   define: {
     "import.meta.dirname": '"/baskule/app"',
     "import.meta.filename": '"/baskule/app/space-cell.js"',
