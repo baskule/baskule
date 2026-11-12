@@ -2151,6 +2151,7 @@ describe("deriveMessagesTimelineRows", () => {
       }));
     const viewedImages = (settled: boolean, expandedRunIds?: ReadonlySet<RunId>) => {
       const rows = deriveMessagesTimelineRows({
+        toolCallVisibility: "showAll",
         timelineEntries: deriveTimelineEntriesFromVisibleTurnItems({
           visibleTurnItems: items(settled),
           optimisticMessages: [],
