@@ -5,8 +5,8 @@
       "path": "app",
       "upstream": "https://github.com/pingdotgg/t3code",
       "license": "app/LICENSE",
-      "upstreamTag": "v0.1.8",
-      "upstreamCommit": "bf469bb19669671d0df2efda74ed73867a7137c0"
+      "upstreamTag": "v0.1.9",
+      "upstreamCommit": "24e77473ecf41bc1f7142529c7911c1c1aae1d76"
     },
     {
       "path": "deploy/celld/patches",

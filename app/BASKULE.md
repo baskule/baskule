@@ -5,7 +5,7 @@ Keep `LICENSE` and third-party notices. [Source provenance](../source-provenance
 records the upstream source and licenses. The root [build guide](../docs/building.md)
 and [development workflow](../docs/development-workflow.md) cover the complete repository.
 
-Upstream base: T3 Code `v0.1.8` (`bf469bb19669671d0df2efda74ed73867a7137c0`).
+Upstream base: T3 Code `v0.1.9` (`24e77473ecf41bc1f7142529c7911c1c1aae1d76`).
 Update this line with each upstream update.
 
 ## Build and run
@@ -60,7 +60,9 @@ separate platform verification. See the [Android guide](apps/mobile/BASKULE-ANDR
 
 ## Supported product scope
 
-OpenCode 2 is the only bundled agent driver. Vendor models run through OpenCode.
+OpenCode 2 is the only bundled agent driver. The app client/protocol/schema and embedded
+core/schema/SDK/util use exactly 2.2.5; the upstream `@opencode-ai/sdk` dependency remains
+unchanged. Vendor models run through OpenCode.
 Local and external OpenCode instances use the provider adapter and instance contracts.
 Retired driver settings can decode for compatibility, but have no executable driver.
 They are not converted into OpenCode conversations.
@@ -73,7 +75,9 @@ policy disables Git RPCs and server-container terminals. Local-commit review req
 Baskule excludes linked environments and remote delegation, issue triage, port scanning
 and developer-server discovery, Simlock pool integration, forge PR workflows, publishing
 and review UI, GitHub app sign-in, external secret-provider packages, and T3 commercial
-plans and fleet channel switching. The upstream marketing site and its release jobs are
+plans and fleet channel switching. Upstream standalone dev-stack scenarios are excluded because
+Baskule verifies its hosted stack with the root fake-model journeys. The upstream marketing site and
+its release jobs are
 not part of Baskule. Stored metadata, redaction and supported migrations remain compatible
 with released data. Generic native connection and pairing contracts remain available.
 
@@ -83,7 +87,8 @@ project and OTA update source. Some mobile screens still use "thread" or "projec
 mobile file downloads are not available.
 
 Tool calls default to hidden through the shared client visibility setting; explicit saved
-choices are preserved. Hosted dictation uses the released upstream composer and controller
+choices are preserved, including settings saved by 0.5.3. Upstream screen-reader announcement levels
+remain available and localized. Hosted dictation uses the released upstream composer and controller
 with Baskule's existing transcription endpoint. Application localization remains Baskule's
 shared en/de/es/fr/it/nl catalogs; this upstream tag has no replacement application catalog.
 
@@ -132,12 +137,23 @@ Baskule UI switches in the retained client code; it does not restore excluded fe
 Baskule UI modules live under `apps/web/src/baskule/`; integration comments identify edits
 in upstream files. Keep flags and actual RPC capabilities aligned.
 
+Voice settings do not expose downloaded models, peer destinations or cloud-provider keys. The
+retired voice settings route redirects to personal settings; dictation uses the hosted transcription
+boundary.
+
+The embedded build adapts OpenCode 2.2.5’s Code Mode queue so completed host tools are not starved
+by polling jobs. Native goal controls refresh their state before settling because a command can
+finish before its goal notification is ingested. Hosted MCP reads retain upstream’s bounded caller
+reads; task ownership separately loads the human-input records needed for authorization.
+
 OpenCode compacts automatically. Set each model's real context limit in **Admin > AI > Models**.
 There is no manual `/compact` action or idle compaction worker.
 
 ## Take a new upstream release
 
 Follow [Upgrade the T3 Code base](../docs/upstream-upgrades.md).
+The current [integration review](../docs/upstream-v0.1.9-integration.md) records the release
+decisions and verification boundary.
 Start from the complete new stable upstream release and selectively reapply the
 Baskule behavior still needed from the latest `origin/main`. Adapt retained changes
 to upstream's current design and remove custom implementations that upstream replaces.
@@ -149,9 +165,10 @@ The guide covers migration checks, integration boundaries, verification, and PR 
 
 ### Migration boundary
 
-The application migration head is **080**. Retired Codex index 065 and peer-only migration IDs
-070–072 remain absent from the Baskule manifest. Migrations 077–080 run forward from the
-released Baskule 076 history without resetting data.
+The application migration head is **081**. Retired Codex index 065 and peer-only migration IDs
+070–072 remain absent from the Baskule manifest. Migrations 077–081 run forward from the
+released Baskule 076 and 080 histories without resetting data. Migration 081 adds readable citation
+search text and backfills the existing message index.
 Inspect new upstream migrations for peer tables, fences, indexes and migration-head assumptions.
 Do not add empty migrations for excluded layouts. Preserve supported migration code and follow
 `packages/contracts/release-compatibility.json` when removing compatibility paths.
