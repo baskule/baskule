@@ -3,7 +3,7 @@
 import { UsageService } from "../../../control/usage";
 import usageSchema from "../../../control/migrations/0002_complex_moondragon.sql";
 import { DurableObject } from "cloudflare:workers";
-import type { SpacePlugins } from "../../../../../app/packages/contracts/src/baskule-plugins";
+import type { PluginCredential, SpacePlugins } from "../../../../../app/packages/contracts/src/baskule-plugins";
 import { Effect, Fiber, Scheduler } from "effect";
 
 export class TestControlCell extends DurableObject<{ TEST_PRODUCT_SETTINGS: string; SPACE: DurableObjectNamespace }> {
@@ -90,7 +90,7 @@ export class TestControlCell extends DurableObject<{ TEST_PRODUCT_SETTINGS: stri
       this.ctx.storage.sql.exec("insert into kv(key,value) values(?,?) on conflict(key) do update set value=excluded.value", `plugins:${spaceId}`, JSON.stringify(plugins));
       return Response.json({ ok: true });
     }
-    if (url.pathname === "/_baskule/plugin-credential") return Response.json({ error: "connect" });
+    if (url.pathname === "/_baskule/plugin-credential") return Response.json({ ok: false, error: "sign_in_required", message: "Sign in first." } satisfies PluginCredential);
     // This harness has no registered push devices, like an unconfigured installation.
     if (url.pathname === "/_baskule/push/deliver") return Response.json({ ok: true });
     if (url.pathname === "/_baskule/settings") {

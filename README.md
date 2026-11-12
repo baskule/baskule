@@ -47,7 +47,7 @@ What Baskule connects to in your environment:
 | --- | --- |
 | Model | OpenAI, Anthropic, Mistral, or any OpenAI-compatible endpoint, including your own private local model. |
 | Sign-in | Google, Microsoft, GitHub or any OIDC provider, or passwords. |
-| Tools | MCP servers and plugins, using the organization's account or each person's own. |
+| Tools | Plugins from the Cursor and xAI catalogs, GitHub, any MCP server, Composio or Pipedream, with each person's own sign-in or the organization's key. |
 | Storage | All data lives in one S3-compatible bucket, or on the machine's disk. |
 | Network | One HTTP port, behind your HTTPS reverse proxy. |
 | Monitoring | OpenTelemetry traces. |
@@ -80,7 +80,7 @@ docker compose logs setup        # prints the one-time link that creates the fir
 
 Open the setup link to create the first admin; see [configuration and built-in HTTPS](docs/install.md), or the [Kubernetes guide](docs/install-kubernetes.md) for several machines.
 
-Optional: [sync plugins from a folder](docs/install.md#plugins-folder).
+After setup, add [plugins](docs/plugins.md) under Admin → Plugins.
 
 ## Licence
 

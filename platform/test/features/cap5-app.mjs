@@ -10,6 +10,6 @@ export const appChecks=[{name:'mcp-decision-app',capability:'5-mcp-app',fn:async
  const choice=await s.cb.ok('mcpApps.callTool',{...base,name:'choose',arguments:{choice:'Proceed'}});assert(!choice.isError,'choice failed');
  await s.cb.ok('mcpApps.updateModelContext',{...base,conversationThreadId:id,content:choice.content});
  await send(s.ca,id,'What did I choose?');await waitFor('next model turn',async()=>(await fakeRequests()).some(r=>JSON.stringify(r.messages).includes('User selected: Proceed')),60000);
- await waitFor('app follow-up finished before reconfiguring plugins',async()=>(await spaceStatus(s.team)).status.activeRuns===0,90000);
+ await waitFor('app follow-up finished',async()=>(await spaceStatus(s.team)).status.activeRuns===0,90000);
  t.stop();return 'A real MCP tool produced a durable app reference; another member loaded it, called choose, updated model context, and the next turn received the choice';
 }}];

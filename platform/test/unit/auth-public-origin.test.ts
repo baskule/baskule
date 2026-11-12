@@ -17,13 +17,13 @@ async function adminSession(h: H) {
   return { cookie };
 }
 
-async function install(h: H, creds: Awaited<ReturnType<typeof adminSession>>, resource: string, credential: "user-oauth") {
-  const added = await publicCall(h, "POST", `${API}/admin/plugins`, { creds, body: { groups: [], plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: resource, credential: "none" }] } } });
+async function install(h: H, creds: Awaited<ReturnType<typeof adminSession>>, resource: string) {
+  const ref = { kind: "custom", server: { displayName: "Test plugin", url: resource, auth: "oauth" } };
+  const preview = await publicCall(h, "POST", `${API}/admin/plugins/preview`, { creds, body: { ref } });
+  expect(preview.status).toBe(200);
+  const added = await publicCall(h, "POST", `${API}/admin/plugins`, { creds, body: { ref, digest: preview.body.digest, access: { kind: "everyone" }, values: {} } });
   expect(added.status).toBe(201);
-  const id = added.body.id;
-  expect((await publicCall(h, "PATCH", `${API}/admin/plugins/${id}`, { creds, body: { plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ url: resource, name: "remote", credential }] } } })).status).toBe(200);
-  expect((await publicCall(h, "PATCH", `${API}/admin/groups/everyone`, { creds, body: { plugins: [id] } })).status).toBe(200);
-  return id;
+  return { id: added.body.id as string, server: added.body.servers[0].id as string };
 }
 
 describe("installation public origin", () => {
@@ -119,8 +119,8 @@ describe("installation public origin", () => {
     try {
       const h = await configured();
       const creds = await adminSession(h);
-      const id = await install(h, creds, fixture.resource, "user-oauth");
-      const start = await publicCall(h, "GET", `${API}/plugins/${id}/connect?server=remote&returnTo=%2Fsettings%3Ftab%3Dplugins`, { creds });
+      const { id, server } = await install(h, creds, fixture.resource);
+      const start = await publicCall(h, "GET", `${API}/plugins/${id}/servers/${server}/connect?returnTo=%2Fsettings%3Ftab%3Dplugins`, { creds });
       expect(start.status).toBe(302);
       const authorization = new URL(start.headers.get("location")!);
       expect(authorization.searchParams.get("redirect_uri")).toBe(`${PUBLIC}${API}/plugins/oauth/callback`);
@@ -134,7 +134,7 @@ describe("installation public origin", () => {
       expect(returned.origin).toBe(PUBLIC);
       expect(returned.pathname).toBe("/settings");
       expect(returned.searchParams.get("tab")).toBe("plugins");
-      expect(returned.searchParams.get("pluginConnection")).toBe("connected");
+      expect(returned.searchParams.get("connection")).toBe("connected");
     } finally { await fixture.close(); }
   });
 });

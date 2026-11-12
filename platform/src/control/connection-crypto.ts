@@ -13,10 +13,18 @@ export async function pkce() {
 /** Domain-separated installation key; row identity is authenticated to prevent ciphertext swapping. */
 export class ConnectionCipher {
   private key: Promise<CryptoKey>;
+  private identityKey: Promise<CryptoKey>;
   constructor(secret: string) {
-    this.key = crypto.subtle.importKey("raw", enc.encode(secret), "HKDF", false, ["deriveKey"]).then(k =>
-      crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: enc.encode("Baskule/0.4.0"), info: enc.encode("plugin-connections") }, k,
-        { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]));
+    const root = crypto.subtle.importKey("raw", enc.encode(secret), "HKDF", false, ["deriveKey"]);
+    this.key = root.then(k => crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: enc.encode("Baskule/0.4.0"), info: enc.encode("plugin-connections") }, k,
+      { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]));
+    this.identityKey = root.then(k => crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: enc.encode("Baskule/0.6.0"), info: enc.encode("provider-identity") }, k,
+      { name: "HMAC", hash: "SHA-256", length: 256 }, false, ["sign"]));
+  }
+  /** A stable pseudonym for a person at a hosted app platform; changing the installation secret orphans their accounts. */
+  async identity(value: string): Promise<string> {
+    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", await this.identityKey, enc.encode(value)));
+    return `bsk_${Array.from(mac, b => b.toString(16).padStart(2, "0")).join("")}`;
   }
   async seal(value: unknown, context: string): Promise<string> {
     const iv = crypto.getRandomValues(new Uint8Array(12));

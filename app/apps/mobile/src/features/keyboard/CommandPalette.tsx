@@ -357,7 +357,7 @@ export function CommandPalette(props: {
         {
           key: "plugins",
           kind: "action",
-          title: t("Plugins and accounts"),
+          title: t("Plugins"),
           searchTerms: ["plugins", "accounts", "connections"],
           run: () => openSettings(navigation, "SettingsPlugins"),
         },

@@ -31,15 +31,7 @@
       "types": "./src/baskule-usage.ts",
       "import": "./src/baskule-usage.ts"
     },
-    "./baskulePush": "./src/baskulePush.ts",
-    "./baskule-catalog": {
-      "types": "./src/baskule-catalog.ts",
-      "import": "./src/baskule-catalog.ts"
-    },
-    "./baskule-plugin-formats": {
-      "types": "./src/baskule-plugin-formats.ts",
-      "import": "./src/baskule-plugin-formats.ts"
-    }
+    "./baskulePush": "./src/baskulePush.ts"
   },
   "scripts": {
     "typecheck": "effect-tsgo tsrs --noEmit",

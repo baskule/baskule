@@ -14,6 +14,12 @@
       "license": "deploy/celld/upstream-LICENSE",
       "upstreamTag": "v0.6.3",
       "upstreamCommit": "8702f6d186c77698dbfb30cf29e3b1922a88f008"
+    },
+    {
+      "path": "platform/src/control/plugins",
+      "upstream": "https://github.com/elie222/rakazo",
+      "license": "platform/src/control/plugins/rakazo-LICENSE",
+      "upstreamCommit": "4651bfd502bae6ba56625a952bd5f87de3625a8d"
     }
   ],
   "notes": [

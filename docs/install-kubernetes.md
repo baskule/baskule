@@ -276,9 +276,9 @@ the packaged version.
 | `computers.blockedCidrs` | `[]` | Additional IPv4/IPv6 destinations denied to computers |
 | `computers.ipv6` | `false` | Enable public IPv6 egress with exclusions |
 
-Helm generates `COMPUTERD_TOKEN`, `SETUP_TOKEN`, and `PLUGIN_SYNC_TOKEN` once, preserving
+Helm generates `COMPUTERD_TOKEN` and `SETUP_TOKEN` once, preserving
 them with server lookup on upgrades. For GitOps or repeated client-side rendering, set
-`existingSecret` to a Secret containing those three keys and manage it separately.
+`existingSecret` to a Secret containing those two keys and manage it separately.
 Client-side rendering cannot preserve generated tokens through lookup. Verify your
 GitOps controller's hook ordering before relying on it.
 

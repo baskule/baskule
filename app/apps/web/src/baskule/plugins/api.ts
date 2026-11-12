@@ -1,274 +1,113 @@
 import {
   PLUGIN_ERROR_CODES,
+  type AdminPlugin,
   type AdminPluginList,
-  type Group,
-  type GroupInput,
-  type MemberPlugin,
-  type Plugin,
-  type PluginCreate,
-  type PluginDraft,
+  type Catalog,
+  type MemberPluginList,
+  type MemberPluginUpdate,
+  type OAuthClientInput,
+  type OAuthClientSetup,
   type PluginErrorCode,
-  type PluginInspect,
-  type PluginSecretInput,
-  type PluginTool,
-  type PluginUpdate,
-  type ServerTestInput,
-  type ServerTestResult,
-  type SkillHistory,
-  type SpacePluginSettings,
+  type PluginInstallRequest,
+  type PluginPreview,
+  type PluginPreviewRequest,
+  type PluginUpdateRequest,
+  type ProviderId,
+  type ProviderInput,
 } from "@t3tools/contracts/baskule-plugins";
 import { toastManager } from "../../components/ui/toast";
 import { t } from "../../i18n";
-import { BaskuleApiError, messageFromBody, request } from "../api";
+import { BaskuleApiError, request } from "../api";
 
 const root = "/api/baskule";
 const enc = encodeURIComponent;
 
-/** One vendor's OAuth client. Write-only: the server only says whether one is saved. */
-export interface VendorClient {
-  clientId: string;
-  clientSecret?: string;
-  tokenEndpointAuthMethod: "none" | "client_secret_post" | "client_secret_basic";
-}
-
 export const pluginsApi = {
-  /** Installed plugins, and the mounted plugins folder as last read at startup. */
-  inventory: () => request<AdminPluginList>("GET", `${root}/admin/plugins`),
-  installed: async () => (await pluginsApi.inventory()).plugins,
-  /** Reads a package or GitHub link into a draft for review. Saves nothing. */
-  inspect: (input: PluginInspect) =>
-    request<PluginDraft>("POST", `${root}/admin/plugins/inspect`, input),
-  create: (input: PluginCreate) => request<Plugin>("POST", `${root}/admin/plugins`, input),
-  update: (id: string, input: PluginUpdate) =>
-    request<Plugin>("PATCH", `${root}/admin/plugins/${enc(id)}`, input),
-  /** A plugin's skills in full, to edit it as one `PluginInput`, and its earlier skill versions. */
-  skills: (id: string) => request<SkillHistory>("GET", `${root}/admin/plugins/${enc(id)}/skills`),
-  /** Saves an earlier version's skills as the current ones at once; servers and keys stay as they are. */
-  revert: (id: string, version: number) =>
-    request<SkillHistory>("POST", `${root}/admin/plugins/${enc(id)}/versions/${version}/revert`),
-  /** The plugin as a Claude/Codex package. */
-  exportZip: async (id: string): Promise<Blob> => {
-    let response: Response;
-    try {
-      response = await fetch(`${root}/admin/plugins/${enc(id)}/export`, {
-        credentials: "same-origin",
-      });
-    } catch {
-      throw new BaskuleApiError(
-        0,
-        t("Can't reach the server. Check your connection and try again."),
-        "network",
-      );
-    }
-    if (!response.ok) {
-      const body: unknown = await response.json().catch(() => null);
-      const { message, code } = messageFromBody(body, response.status);
-      throw new BaskuleApiError(response.status, message, code);
-    }
-    return response.blob();
-  },
-  /** Connects to a server that isn't saved yet, with only the keys sent here, and lists its tools. */
-  test: (input: ServerTestInput) =>
-    request<ServerTestResult>("POST", `${root}/admin/plugins/test`, input),
-  /** Every tool of a saved server, switched off or not, through its saved key or the admin's own account. */
-  tools: async (id: string, server: string) =>
-    (
-      await request<{ tools: PluginTool[] }>(
-        "GET",
-        `${root}/admin/plugins/${enc(id)}/tools?server=${enc(server)}`,
-      )
-    ).tools,
+  catalog: (refresh = false) =>
+    request<Catalog>("GET", `${root}/admin/catalog${refresh ? "?refresh=1" : ""}`),
+  installed: () => request<AdminPluginList>("GET", `${root}/admin/plugins`),
+  preview: (input: PluginPreviewRequest) =>
+    request<PluginPreview>("POST", `${root}/admin/plugins/preview`, input),
+  install: (input: PluginInstallRequest) =>
+    request<AdminPlugin>("POST", `${root}/admin/plugins`, input),
+  update: (id: string, input: PluginUpdateRequest) =>
+    request<AdminPlugin>("PATCH", `${root}/admin/plugins/${enc(id)}`, input),
   remove: (id: string) => request<{ ok: true }>("DELETE", `${root}/admin/plugins/${enc(id)}`),
-  secret: (id: string, input: PluginSecretInput) =>
-    request<{ ok: true }>("PUT", `${root}/admin/plugins/${enc(id)}/secret`, input),
-  vendorSetup: (vendor: string, client: VendorClient | null) =>
-    request<{ ok: true; configured: boolean }>(
-      "PUT",
-      `${root}/admin/vendors/${enc(vendor)}`,
-      client,
-    ),
-  mine: async () => (await request<{ plugins: MemberPlugin[] }>("GET", `${root}/plugins`)).plugins,
-  updateAccount: (id: string, account: string, patch: { label: string } | { default: true }) =>
-    request<{ ok: true }>("PATCH", `${root}/plugins/${enc(id)}/accounts/${enc(account)}`, patch),
-  /** Disconnecting the default while other accounts remain names the account that replaces it. */
-  disconnectAccount: (id: string, account: string, newDefault?: string) =>
-    request<{ ok: true }>(
-      "DELETE",
-      `${root}/plugins/${enc(id)}/accounts/${enc(account)}${newDefault ? `?default=${enc(newDefault)}` : ""}`,
-    ),
-  space: (id: string) => request<SpacePluginSettings>("GET", `${root}/spaces/${enc(id)}/plugins`),
-  saveSpace: (id: string, settings: SpacePluginSettings) =>
-    request<SpacePluginSettings>("PUT", `${root}/spaces/${enc(id)}/plugins`, settings),
-  groups: async () => (await request<{ groups: Group[] }>("GET", `${root}/admin/groups`)).groups,
-  group: (id: string) => request<Group>("GET", `${root}/admin/groups/${enc(id)}`),
-  createGroup: (input: GroupInput) => request<Group>("POST", `${root}/admin/groups`, input),
-  updateGroup: (id: string, input: Partial<GroupInput>) =>
-    request<Group>("PATCH", `${root}/admin/groups/${enc(id)}`, input),
-  removeGroup: (id: string) => request<{ ok: true }>("DELETE", `${root}/admin/groups/${enc(id)}`),
+  saveOAuthClient: (input: OAuthClientInput) =>
+    request<OAuthClientSetup>("PUT", `${root}/admin/oauth-clients`, input),
+  removeOAuthClient: (issuer: string) =>
+    request<unknown>("DELETE", `${root}/admin/oauth-clients?issuer=${enc(issuer)}`),
+  saveProvider: (input: ProviderInput) =>
+    request<unknown>("PUT", `${root}/admin/plugin-providers/${enc(input.provider)}`, input),
+  removeProvider: (provider: ProviderId) =>
+    request<unknown>("DELETE", `${root}/admin/plugin-providers/${enc(provider)}`),
+  mine: async () => (await request<MemberPluginList>("GET", `${root}/plugins`)).plugins,
+  switch: (id: string, input: MemberPluginUpdate) =>
+    request<unknown>("PUT", `${root}/plugins/${enc(id)}`, input),
+  disconnect: (id: string, serverId: string) =>
+    request<unknown>("DELETE", `${root}/plugins/${enc(id)}/servers/${enc(serverId)}/connection`),
 };
-
-/** A new account with its name, or a fresh sign-in for an account that keeps its name and default. */
-export type AccountConnection =
-  | { readonly type: "new"; readonly label: string }
-  | { readonly type: "reconnect"; readonly account: string };
 
 /**
- * Where the browser goes to connect one server of a plugin to the person's account. The endpoint
- * starts the sign-in and redirects; the person comes back to `returnTo` with `pluginConnection`.
- * Navigate to it: fetching it first would start a second sign-in.
+ * Where the browser goes to sign in to one server. The endpoint redirects to the service and
+ * the person comes back to `returnTo` with `plugin` and `connection` in the query. Navigate to
+ * it; fetching it would start a second sign-in.
  */
-export function accountConnectionUrl(
-  id: string,
-  server: string,
-  returnTo: string,
-  target: AccountConnection,
-): string {
-  const query = new URLSearchParams({ server, returnTo });
-  if (target.type === "new") query.set("label", target.label);
-  else query.set("account", target.account);
-  return `${root}/plugins/${enc(id)}/connect?${query}`;
+export function connectUrl(pluginId: string, serverId: string, returnTo = "/settings/plugins") {
+  return `${root}/plugins/${enc(pluginId)}/servers/${enc(serverId)}/connect?${new URLSearchParams({ returnTo })}`;
 }
 
-const tooLarge = () => t("It is too large to add (10 MB packed, 20 MB unpacked at most).");
-const cantOpen = () => t("This file can't be opened. Use a .zip or .tar.gz file.");
+/** The redirect URI administrators register with a service, before the server names it. */
+export function defaultCallbackUrl(): string {
+  const origin = window.desktopBridge?.getBaskuleServer?.() ?? window.location.origin;
+  return `${origin}/api/baskule/plugins/oauth/callback`;
+}
 
 const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
-  account_label_taken: () => t("You already have an account with this name."),
-  account_not_found: () => t("This account is no longer connected. Reload the page."),
-  default_account_required: () =>
-    t("Choose which account becomes your default before you disconnect this one."),
-  already_installed: () => t("It is already added. Open it from Installed."),
-  address_not_allowed: () =>
-    t(
-      "Baskule can't use this address. Enter the full https:// address of the server, without a password or placeholder in it.",
-    ),
-  address_placeholder: () => t("Fill in every part of the address in braces first."),
-  builtin_group: () => t("Everyone always includes every person, and keeps its name."),
-  catalog_not_available: () =>
-    t("This service can't be added yet. Its card in the catalog says why."),
-  catalog_unknown: () => t("The catalog no longer lists this service. Reload the page."),
-  connection_failed: () =>
-    t("The sign-in didn't finish. Try again. If it keeps failing, ask your admin."),
-  connection_not_allowed: () =>
-    t("The plugin changed or was paused in the meantime. Reload the page and try again."),
-  consent_denied: () => t("The sign-in was cancelled or permission was not granted."),
-  duplicate_plugin_path: () => t("It contains the same file twice."),
-  duplicate_skill_name: () => t("Two of its skills have the same name."),
-  empty_plugin: () => t("No skills or tools were found in it."),
-  empty_plugin_archive: () => t("This file is empty."),
-  forbidden: () => t("You don't have permission to do this."),
-  github_link_invalid: () =>
-    t("Enter a link to a public GitHub repository, or to a branch or folder in one."),
-  group_exists: () => t("A group with this name already exists."),
-  invalid_archive: cantOpen,
-  invalid_authorization_metadata: () =>
-    t("This service's sign-in is set up in a way Baskule can't use. Ask your admin."),
-  invalid_group: () => t("One of these groups no longer exists. Reload the page and try again."),
-  invalid_json: () => t("Baskule couldn't read what was sent. Reload the page and try again."),
-  invalid_oauth_client: () => t("Check the client ID and secret, then try again."),
-  invalid_oauth_code: () => t("The service refused the sign-in. Try again."),
-  invalid_oauth_resource: () =>
-    t("This server's address can't be used to sign in. Remove the part from “?” onwards."),
-  invalid_oauth_state: () =>
-    t(
-      "This sign-in expired or was started in another browser. Start again from Settings → Plugins.",
-    ),
-  invalid_oauth_token: () =>
-    t("The service answered the sign-in in a way Baskule can't use. Try again."),
-  invalid_plugin_input: () => t("Some details aren't valid. Check them and try again."),
-  invalid_plugin_manifest: () => t("Its plugin.json file can't be read."),
-  invalid_resource_metadata: () =>
-    t("This server's sign-in details can't be used. Ask the people who make it."),
-  invalid_return_url: () =>
-    t("The sign-in couldn't come back to Baskule. Start again from Settings → Plugins."),
-  invalid_secret_headers: () => t("This key can't be sent with that header name."),
-  invalid_skill: () =>
-    t("One of its skills doesn't follow the skill rules. Check its name and description."),
-  key_required: () => t("This server needs a key. Enter it, then try again."),
-  no_remote_servers: () =>
-    t(
-      "This server runs as a program on someone's computer. Baskule needs its web address; ask its maker whether it has one.",
-    ),
-  not_found: () => t("It no longer exists. Reload the page."),
-  not_editable: () =>
-    t(
-      "Its skills come from the catalog or GitHub and can't be changed here. Make your own copy to change them.",
-    ),
-  not_oauth_server: () => t("This server doesn't use each person's own account."),
-  not_organization_server: () => t("This server doesn't use an organization key."),
-  oauth_client_configuration_required: () => t("Your administrator needs to finish setting it up"),
-  oauth_grant_expired: () => t("Your sign-in expired. Reconnect your account."),
-  oauth_issuer_changed: () =>
-    t(
-      "This service now signs in somewhere other than where it was set up. Ask your admin to check its setup and save it again.",
-    ),
-  oauth_issuer_mismatch: () =>
-    t("The sign-in came back from another service than expected. Try again."),
-  oauth_registration_failed: () =>
-    t("The service didn't accept Baskule's sign-in. Ask your admin."),
-  oauth_resource_mismatch: () =>
-    t("This service's sign-in is for another address. Ask your admin."),
-  oauth_scope_missing: () =>
-    t(
-      "The sign-in didn't give the access this plugin needs. Try again and allow everything it asks.",
-    ),
-  oauth_unavailable: () => t("The service's sign-in didn't answer. Try again in a moment."),
-  plugin_from_folder: () => t("Edit this plugin in the plugins folder, then restart Baskule."),
-  plugin_links_unsupported: () =>
-    t("It contains links to other files. Put the files themselves in it instead."),
-  plugin_not_found: () =>
-    t("One of these plugins no longer exists. Reload the page and try again."),
-  plugin_server_required: () => t("Choose which of its servers to connect."),
-  plugin_skill_file_too_large: () => t("One of its skill files is too large."),
-  plugin_source_changed: () => t("Its source changed while it was being read. Try again."),
-  plugin_source_unavailable: () => t("Its source didn't answer. Try again in a moment."),
-  plugin_storage_limit: () =>
-    t("There is no room for more plugins. Remove one you don't use first."),
-  plugin_too_large: tooLarge,
-  plugin_tree_too_large: tooLarge,
-  proprietary_plugin: () => t("Its license doesn't allow using it here."),
-  server_unreachable: () =>
-    t("Baskule couldn't connect to this server. Check the server details and try again."),
-  too_many_plugin_files: () => t("It has too many files to add."),
-  unsafe_plugin_path: () =>
-    t(
-      "One of its file paths can't be used. Use names and folders like scripts/run.py, without .. or a leading /.",
-    ),
-  unsupported_archive: cantOpen,
-  unsupported_plugin_version: () => t("It uses a plugin format version Baskule can't read yet."),
-  user_not_found: () => t("One of these people no longer exists. Reload the page and try again."),
-  version_not_found: () => t("This version is no longer kept. Reload the page."),
-  vendor_unknown: () => t("Baskule no longer knows this service. Reload the page and try again."),
+  invalid_request: () => t("Some details aren't valid. Check them and try again."),
+  plugin_not_found: () => t("This plugin no longer exists. Reload the page."),
+  server_not_found: () => t("This app is no longer part of the plugin. Reload the page."),
+  plugin_changed: () =>
+    t("The plugin changed at its source since you opened it. Review it again before adding it."),
+  plugin_exists: () => t("This plugin is already added. Open it from Installed."),
+  plugin_empty: () => t("Baskule found no apps or skills it can use in this plugin."),
+  plugin_too_large: () => t("This plugin is too large to add."),
+  source_unreadable: () =>
+    t("Baskule couldn't read this plugin's files. Check the link and try again."),
+  source_not_github: () => t("Enter the link to a public repository on github.com."),
+  invalid_server: () =>
+    t("Baskule can't use this server address. Enter its full https:// address."),
+  missing_values: () => t("Fill in the values this plugin needs first."),
+  invalid_oauth_client: () => t("The service refused this client. Check its ID and secret."),
+  oauth_client_required: () => t("An administrator needs to set up sign-in to this service first."),
+  oauth_failed: () => t("The sign-in didn't finish. Try again."),
+  provider_not_configured: () => t("Connect this app platform under Sign-in and sources first."),
+  provider_rejected: () => t("The platform refused these credentials. Check them and try again."),
+  provider_unavailable: () => t("The platform didn't answer. Try again in a moment."),
+  group_not_found: () => t("One of these groups no longer exists. Reload the page and try again."),
 };
 
-/** A file as base64, the way plugin files travel to the server. */
-export async function base64Of(file: Blob): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
-  return btoa(binary);
-}
+/** Codes a sign-in can come back with, besides the plugin error codes. */
+const CONNECTION_ERRORS: Record<string, () => string> = {
+  access_denied: () => t("The sign-in was cancelled or permission was not granted."),
+  plugin_off: () => t("Switch the plugin on first."),
+  not_allowed: () => t("You can no longer use this plugin."),
+  setup_incomplete: () => t("An administrator needs to finish setting this plugin up."),
+  unavailable: () => t("The service didn't answer. Try again in a moment."),
+};
 
 const isPluginErrorCode = (code: string): code is PluginErrorCode =>
   (PLUGIN_ERROR_CODES as ReadonlyArray<string>).includes(code);
 
 /** A plugin error code in plain words. Anything else gets `fallback`, never the raw code. */
 export function pluginErrorCodeText(code: string | null | undefined, fallback: string): string {
-  return code && isPluginErrorCode(code) ? PLUGIN_ERRORS[code]() : fallback;
+  if (!code) return fallback;
+  if (isPluginErrorCode(code)) return PLUGIN_ERRORS[code]();
+  return CONNECTION_ERRORS[code]?.() ?? fallback;
 }
 
-/** The backend's error codes for plugins and groups, in plain words. */
 export function pluginErrorText(cause: unknown, fallback: string): string {
   return pluginErrorCodeText(cause instanceof BaskuleApiError ? cause.code : undefined, fallback);
-}
-
-/** Why a server's tools couldn't be listed. Without an account, the admin connects their own. */
-export function toolsErrorText(cause: unknown): string {
-  return cause instanceof BaskuleApiError && cause.code === "connection_not_allowed"
-    ? t("Connect your own account in Settings → Plugins to see its tools.")
-    : pluginErrorText(cause, t("Check the server details and try again."));
 }
 
 export function notifyPluginError(title: string, cause: unknown) {

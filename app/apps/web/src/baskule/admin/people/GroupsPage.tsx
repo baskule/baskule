@@ -1,7 +1,7 @@
 import { useTranslation } from "../../../i18n";
 // baskule: People → Groups: the built-in "Everyone" and the admin's own groups. A group gives
-// its people plugins and permissions; a person gets the sum of their groups.
-import type { Group } from "@t3tools/contracts/baskule-plugins";
+// its people permissions and plugin access; a person gets the sum of their groups.
+import type { Group } from "@t3tools/contracts/baskule";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, PlusIcon, UsersRoundIcon } from "lucide-react";
 import { useState } from "react";
@@ -19,13 +19,12 @@ import {
   DialogTitle,
 } from "../../../components/ui/dialog";
 import { Spinner } from "../../../components/ui/spinner";
-import { pluginErrorText, pluginsApi } from "../../plugins/api";
-import { groupName } from "../../plugins/presentation";
 import { FormField, RowIcon, useApiResource } from "../../ui";
 import { PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
+import { groupErrorText, groupName, groupsApi } from "./groups";
 
-const loadGroups = () => pluginsApi.groups();
+const loadGroups = () => groupsApi.list();
 
 export function groupSummary(group: Group, t: ReturnType<typeof useTranslation>): string {
   return [
@@ -35,7 +34,6 @@ export function groupSummary(group: Group, t: ReturnType<typeof useTranslation>)
           count: group.members.length,
           defaultValue_other: "{{count}} people",
         }),
-    t("{{count}} plugin", { count: group.plugins.length, defaultValue_other: "{{count}} plugins" }),
     ...(group.permissions.canCreateSpaces ? [t("Can create team spaces")] : []),
   ].join(" · ");
 }
@@ -138,12 +136,11 @@ function NewGroupDialog({
             if (!name.trim() || submitting) return;
             setSubmitting(true);
             setError(null);
-            pluginsApi
-              .createGroup({
+            groupsApi
+              .create({
                 name: name.trim(),
                 members: [],
                 permissions: { canCreateSpaces: false },
-                plugins: [],
               })
               .then(
                 (group) => {
@@ -157,7 +154,7 @@ function NewGroupDialog({
                 },
                 (cause: unknown) => {
                   setSubmitting(false);
-                  setError(pluginErrorText(cause, t("The group could not be created.")));
+                  setError(groupErrorText(cause, t("The group could not be created.")));
                 },
               );
           }}
@@ -165,7 +162,7 @@ function NewGroupDialog({
           <DialogHeader>
             <DialogTitle>{t("New group")}</DialogTitle>
             <DialogDescription>
-              {t("Then add its people, and choose the plugins and permissions it gives them.")}
+              {t("Then add its people and choose the permissions it gives them.")}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>

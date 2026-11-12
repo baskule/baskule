@@ -7,7 +7,6 @@ export interface Env {
   PUBLIC_ORIGINS?: string;
   /** First-boot bootstrap (ignored once an admin exists). */
   SETUP_TOKEN?: string;
-  PLUGIN_SYNC_TOKEN?: string;
   /** Validated installation-owned auth.json, resolved at deploy time. */
   AUTH_CONFIG?: string;
   /** Optional Better Auth secret; when empty ControlCell generates one at first boot and keeps it in its own SQLite. */

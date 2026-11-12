@@ -280,7 +280,7 @@ function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
     {
       id: "SettingsPlugins",
       icon: "link",
-      label: t("Plugins and accounts"),
+      label: t("Plugins"),
       target: "SettingsPlugins",
     },
   ];

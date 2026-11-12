@@ -5,12 +5,12 @@ import { randomBytes } from "node:crypto";
 import { appendFileSync, closeSync, existsSync, copyFileSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
-import { expect, chromium } from "@playwright/test";
+import { expect } from "@playwright/test";
 import { createApi } from "./journeys/api.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const target = process.argv[2] ?? "all";
-if (!["all", "single", "restore", "fresh", "proxy", "https", "external", "folder"].includes(target)) throw new Error("Choose all, single, proxy, https, external, restore, fresh, or folder");
+if (!["all", "single", "restore", "fresh", "proxy", "https", "external"].includes(target)) throw new Error("Choose all, single, proxy, https, external, restore, or fresh");
 const version = process.env.BASKULE_INSTALL_VERSION ?? "local";
 const registry = process.env.BASKULE_INSTALL_REGISTRY ?? "ghcr.io/baskule";
 const computerImage = `${registry}/baskule-computerd:${version}`;
@@ -146,7 +146,7 @@ function scopedSecrets(w) {
     const container = w.dc(["ps", "-q", service]);
     const names = command(["exec", ...(user ? ["--user", user] : []), container, "sh", "-c",
       'environ=$(tr "\\0" "\\n" < /proc/1/environ) && printf "%s\\n" "$environ" | cut -d= -f1']).split("\n");
-    expect(names.filter(name => /^(RUSTFS_(?:ACCESS_KEY|SECRET_KEY)|AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY)|S3_(?:ACCESS_KEY|SECRET_KEY)|SETUP_TOKEN|PLUGIN_SYNC_TOKEN|COMPUTERD_TOKEN|E2E_LOGIN_.*)$/.test(name)).sort()).toEqual(keys.sort());
+    expect(names.filter(name => /^(RUSTFS_(?:ACCESS_KEY|SECRET_KEY)|AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY)|S3_(?:ACCESS_KEY|SECRET_KEY)|SETUP_TOKEN|COMPUTERD_TOKEN|E2E_LOGIN_.*)$/.test(name)).sort()).toEqual(keys.sort());
     const mounts = JSON.parse(command(["inspect", "-f", "{{json .Mounts}}", container]));
     expect(mounts.filter(mount => mount.Name?.endsWith("-secrets")).map(mount => mount.Name)).toEqual([`${w.project}_baskule-${role}-secrets`]);
   }
@@ -411,44 +411,6 @@ async function persisted(base, previous) {
     expect(JSON.stringify(result)).toContain("RELEASE_INSTALL_DISK_OK");
   } finally { client.close(); await client.closed; }
 }
-async function folder() {
-  const base = "http://127.0.0.1:47090";
-  const w = world("single-folder", {});
-  const compose = resolve(w.directory, "docker-compose.yml");
-  writeFileSync(compose, readFileSync(compose, "utf8").replace("# - ./plugins:/plugins:ro", "- ./plugins:/plugins:ro"));
-  const skill = resolve(w.directory, "plugins/skills/release-folder");
-  mkdirSync(skill, { recursive: true });
-  writeFileSync(resolve(skill, "SKILL.md"), "---\nname: release-folder\ndescription: Fresh install folder proof\n---\nWrite clearly.");
-  expect(existsSync(w.file)).toBe(false);
-  w.dc(["up", "-d"]);
-  await health(w, ["baskule-celld-a", "baskule-celld-b", "baskule-computerd"]);
-  await ready(`${base}/version.json`);
-  scopedSecrets(w);
-  await completeSetup(w, base);
-  const person = await createApi({ urls: { loopback: base, front: base }, admin }).adminSession();
-  const inventory = await person.json("GET", "/api/baskule/admin/plugins");
-  expect(inventory.folder.problems).toEqual([]);
-  expect(inventory.plugins).toEqual(expect.arrayContaining([expect.objectContaining({ name: "release-folder", source: { type: "folder", path: "skills/release-folder" } })]));
-  const browser = await chromium.launch({ executablePath: process.env.E2E_CHROME, args: ["--no-sandbox"] });
-  try {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await context.tracing.start({ screenshots: true, snapshots: true });
-    await context.addCookies(person.cookie.split("; ").map(cookie => {
-      const [name, ...value] = cookie.split("=");
-      return { name, value: value.join("="), url: base };
-    }));
-    const page = await context.newPage();
-    await page.goto(`${base}/admin/plugins/installed`);
-    await expect(page.getByRole("heading", { name: /^Plugins/, level: 2 })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("release-folder", { exact: true })).toBeVisible({ timeout: 30_000 });
-    await page.screenshot({ path: resolve(evidence, "fresh-folder-installed.png") });
-    pass("fresh zero-config release install: mounted folder plugin appears in Admin → Plugins after setup; consumers retain scoped secrets");
-  } finally {
-    try {
-      for (const context of browser.contexts()) await context.tracing.stop({ path: resolve(evidence, "fresh-folder-trace.zip") });
-    } finally { await browser.close(); }
-  }
-}
 async function fresh() {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const p = await port();
@@ -536,7 +498,6 @@ try {
   if (target === "all" || target === "proxy") await proxy();
   if (target === "all" || target === "external") await external();
   if (target === "fresh") await fresh();
-  if (target === "folder") await folder();
   if (target === "restore") await restoreOnly();
   if (target === "all" || target === "single") await single();
 } finally {

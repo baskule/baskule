@@ -25,11 +25,12 @@ dictation on this disposable stack and writes credentials to `.run/mobile-fixtur
 new accounts, so reuse the file during one test run. A password-change test changes the fixture
 account's password; record its replacement only in private notes.
 
-The Personal account also receives a fake plugin with two connected accounts, Work and Personal.
-The helper exercises rename, default selection and disconnect with a separate verification user,
-then deactivates that user. It uses the real local OAuth redirect and token exchange to seed
-accounts, and closes the fake OAuth servers afterward. The retained accounts support native
-management checks; new OAuth connections or external tool calls need a running provider fixture.
+The Personal account also receives two fake plugins: one it is signed in to and one that uses an
+organization key, so nothing needs signing in. The helper exercises the on/off switch and
+disconnect with a separate verification user, then deactivates that user. It uses the real local
+OAuth redirect and token exchange to seed the sign-in, and closes the fake OAuth servers afterward.
+The retained sign-in supports native management checks; new sign-ins or external tool calls need a
+running provider fixture.
 
 The light profile is sufficient for native account and navigation checks. For journeys that
 execute computer tools, use the full profile and its image-build prerequisites from
@@ -117,7 +118,7 @@ build or a successful launch alone.
 | Team account | Space selection stays in the chosen space; offline selection does not silently send to another space |
 | Conversation | Header, composer, keyboard, scrolling, attachments and back navigation; no upstream provider badges or model picker |
 | Voice | First permission grant, denial, retry, cancel and background interruption; stop a recording and verify draft insertion and nonempty upload |
-| Settings | Top-bar entry and Back; system/light/dark preference; native usage, plugin accounts and password; scheduled tasks, notifications and archived chats |
+| Settings | Top-bar entry and Back; system/light/dark preference; native usage, plugins (switch and sign-ins) and password; scheduled tasks, notifications and archived chats |
 | Session lifecycle | Change password, remain signed in with the replacement session, sign out, then sign in with the new password |
 
 Fake dictation returns `Voice input verified.` for a nonempty multipart audio upload. Inspect
@@ -125,8 +126,8 @@ the fake service's `/_fake/requests` for `kind: "transcription"` and a positive 
 audio bytes are not retained there. This proves recording, upload and draft insertion, not
 speech-recognition accuracy. Real-provider testing requires explicit authorization.
 
-For plugin OAuth, the provider's consent flow is external; ordinary account listing, renaming,
-default selection and disconnection should stay native. Empty lists alone do not verify those
+For plugin OAuth, the provider's consent flow is external; listing plugins, the on/off switch and
+disconnection should stay native. Empty lists alone do not verify those
 mutations: use a disposable plugin fixture when changing them. Do not connect a real account
 as a substitute for a test fixture.
 

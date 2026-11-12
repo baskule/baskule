@@ -80,10 +80,19 @@ async function signIn(page, who) {
 }
 
 const shot = async (page, name) => {
+  await page.mouse.move(0, 0);
   const file = NodePath.join(OUT, `${name}.png`);
   await page.screenshot({ path: file });
   console.log(`  shot ${NodePath.relative(process.cwd(), file)}`);
 };
+
+/** The first logos finished loading, or failed, so shots draw them. Lazy ones below stay unloaded. */
+const logosLoaded = (page) =>
+  page.waitForFunction(
+    () => [...document.images].slice(0, 6).every((image) => image.complete),
+    undefined,
+    { timeout: 20_000 },
+  );
 
 /** The prompt editor, expanded first where a phone shows it collapsed. */
 async function openComposer(page) {
@@ -489,227 +498,171 @@ const scenarios = {
     }
   },
 
-  /** Admin: catalog, add, set up, groups. Then a person's plugins and a space owner's setting. */
+  /** Admin: browse, search, review and add, Google sign-in setup, installed, sources. Then a member's plugins. */
   async plugins(browser, device) {
-    // Each device adds its own catalog services and group: the mock keeps state between the two runs.
-    const services =
+    // Each device adds its own plugin: the mock keeps state between the two runs.
+    const [pick, field, value] =
       device === "desktop"
-        ? { linear: "Linear", gmail: "Gmail" }
-        : { notion: "Notion", "google-calendar": "Google Calendar" };
-    const [pick, google] = Object.values(services);
-    const groupName = `Support ${device}`;
+        ? ["NetSuite", "NETSUITE_MCP_URL", "https://acme.suitetalk.api.netsuite.com/mcp"]
+        : ["Calendly", null, null];
+    const fits = async (page, what) =>
+      check(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        `${device}: ${what} fits the viewport`,
+      );
     const admin = await newPage(browser, device);
     const page = admin.page;
-    await signIn(page, "admin");
-    // Start with them not added, also when this mock already ran the scenario.
-    for (const service of Object.keys(services))
-      await page.request.delete(`/api/baskule/admin/plugins/${service}`);
-    await page.goto("/admin/plugins/catalog");
-    await page.getByRole("button", { name: `Add ${pick}`, exact: true }).waitFor();
-    check(
-      (await page.getByRole("heading", { name: "Work management", exact: true }).count()) === 1 &&
-        (await page
-          .getByRole("heading", { name: "Mail, calendar and files", exact: true })
-          .count()) === 1 &&
-        (await page.getByRole("searchbox").count()) === 0,
-      `${device}: the catalog is grouped by area, without a search`,
-    );
-    const held = await Promise.all(
-      ["Figma", "Shopify", "Docusign", "Microsoft Teams"].map((name) =>
-        page.getByRole("button", { name: `Add ${name}`, exact: true }).count(),
-      ),
-    );
-    check(
-      held.every((count) => count === 0) &&
-        (await page.getByText(/Workspace MCP Developer Preview/).count()) === 0,
-      `${device}: catalog entries leave what a service needs off the list`,
-    );
-    await shot(page, `${device}-plugins-catalog`);
-    await page.getByRole("button", { name: "Shopify", exact: true }).click();
-    const unavailable = page.getByRole("dialog", { name: "Shopify", exact: true });
-    await unavailable.getByText("Not available yet", { exact: true }).waitFor();
-    check(
-      (await unavailable.getByText(/^Shopify must first approve Baskule/).count()) === 1 &&
-        (await unavailable.getByRole("button", { name: "Add plugin" }).count()) === 0,
-      `${device}: a service not available yet says why when opened, and can't be added`,
-    );
-    await shot(page, `${device}-plugins-catalog-unavailable`);
-    await unavailable.getByText("Close", { exact: true }).click();
-    await unavailable.waitFor({ state: "detached" });
+    try {
+      await signIn(page, "admin");
+      const listed = await (await page.request.get("/api/baskule/admin/plugins")).json();
+      for (const plugin of listed.plugins.filter((entry) => entry.displayName === pick))
+        await page.request.delete(`/api/baskule/admin/plugins/${plugin.id}`);
 
-    await page.getByRole("button", { name: `Add ${pick}`, exact: true }).click();
-    const choose = page.getByRole("dialog", { name: `Add ${pick}`, exact: true });
-    await choose.getByRole("checkbox", { name: "Everyone", exact: true }).waitFor();
-    check(
-      await choose.getByRole("checkbox", { name: "Everyone", exact: true }).isChecked(),
-      `${device}: Everyone is preselected`,
-    );
-    await choose.getByRole("button", { name: "Add plugin", exact: true }).click();
-    await page.getByRole("link", { name: pick, exact: true }).waitFor();
-    check(true, `${device}: a service that registers Baskule itself reads Added`);
-    await shot(page, `${device}-plugins-added`);
-
-    await page.getByRole("button", { name: `Add ${google}`, exact: true }).click();
-    const addGoogle = page.getByRole("dialog", { name: `Add ${google}`, exact: true });
-    await addGoogle.getByText("What it needs", { exact: true }).waitFor();
-    await shot(page, `${device}-plugins-add-dialog`);
-    await addGoogle.getByRole("button", { name: "Add plugin", exact: true }).click();
-    await page.getByRole("link", { name: google, exact: true }).click();
-    await page.waitForURL(/\/admin\/plugins\/installed\/[^/]+$/);
-    await page.getByRole("heading", { name: google, level: 1 }).waitFor();
-    const installedId = new URL(page.url()).pathname.split("/").at(-1);
-    const inventory = await (await page.request.get("/api/baskule/admin/plugins")).json();
-    const groups = (await (await page.request.get("/api/baskule/admin/groups")).json()).groups;
-    check(
-      inventory.plugins.some((plugin) => plugin.id === installedId && plugin.enabled) &&
-        groups.find((group) => group.builtin === "everyone").plugins.includes(installedId),
-      `${device}: the assigned plugin starts unpaused`,
-    );
-    check(
-      (await page.getByRole("combobox", { name: /signs in$/ }).count()) === 0 &&
-        (await page.getByRole("link", { name: "Setup instructions" }).getAttribute("target")) ===
-          "_blank",
-      `${device}: a catalog service signs in as listed, with its vendor's instructions`,
-    );
-    await page.getByRole("button", { name: `Pause ${google}`, exact: true }).click();
-    await page.getByRole("button", { name: `Resume ${google}`, exact: true }).click();
-    await page.getByRole("button", { name: `Pause ${google}`, exact: true }).waitFor();
-    await shot(page, `${device}-plugins-detail`);
-    await page.getByRole("list", { name: "Setup steps" }).scrollIntoViewIfNeeded();
-    await shot(page, `${device}-plugins-vendor-setup`);
-    await page.getByText("Technical details", { exact: true }).click();
-    await page.getByLabel("Callback address", { exact: true }).scrollIntoViewIfNeeded();
-    await shot(page, `${device}-plugins-technical-details`);
-
-    await page.goto("/admin/plugins/installed");
-    await page.getByRole("link", { name: "Brave Search" }).first().waitFor();
-    await shot(page, `${device}-plugins-installed`);
-    await page.getByRole("link", { name: "Brave Search" }).first().click();
-    // The key the other device's run saved is replaced.
-    const replaceKey = page.getByRole("button", { name: "Replace key", exact: true });
-    await page.getByRole("list", { name: "Setup steps" }).waitFor();
-    if (await replaceKey.count()) await replaceKey.click();
-    await page.getByLabel("Key", { exact: true }).fill(`Bearer mock-secret-${device}`);
-    await page.getByRole("button", { name: "Save key" }).click();
-    await page.getByText("Key saved").first().waitFor();
-    check(
-      !JSON.stringify(await (await page.request.get("/api/baskule/admin/plugins")).json()).includes(
-        "mock-secret",
-      ),
-      `${device}: an organization key is write-only`,
-    );
-    await shot(page, `${device}-plugins-key`);
-
-    await page.goto("/admin/people/groups");
-    await page.getByRole("link", { name: "Everyone", exact: true }).waitFor();
-    await shot(page, `${device}-groups`);
-    await page.getByRole("button", { name: "New group" }).click();
-    await page.getByRole("dialog").getByLabel("Name").fill(groupName);
-    await page.getByRole("button", { name: "Create group" }).click();
-    await page.getByRole("heading", { name: groupName, level: 1 }).waitFor();
-    await page.getByRole("combobox", { name: "Person to add" }).click();
-    await page.getByRole("option", { name: /Bob Durand/ }).click();
-    await page.getByRole("button", { name: "Add", exact: true }).click();
-    await page.getByRole("button", { name: "Remove Bob Durand from the group" }).waitFor();
-    await page.getByRole("switch", { name: `${groupName} can use Sales` }).click();
-    await page.getByRole("switch", { name: `${groupName} can use Sales`, checked: true }).waitFor();
-    await shot(page, `${device}-group-detail`);
-    await page.goto("/admin/people/groups/everyone");
-    await page.getByText("Everyone always includes every person").waitFor();
-    check(
-      (await page.getByRole("button", { name: "Delete group…" }).count()) === 0,
-      `${device}: Everyone can't be deleted`,
-    );
-    check(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-      `${device}: plugin admin pages fit the viewport`,
-    );
-    await admin.context.close();
-
-    const bob = await newPage(browser, device);
-    await signIn(bob.page, "bob");
-    await bob.page.goto("/settings/plugins");
-    await bob.page.getByText("Google Drive", { exact: true }).first().waitFor();
-    check(
-      (await bob.page.getByText("Sales", { exact: true }).count()) === 1,
-      `${device}: Bob sees his assigned Sales plugin`,
-    );
-    // The mock keeps the accounts from the other device's run.
-    const connectButton = bob.page.getByRole("button", {
-      name: "Connect your Google Drive account",
-      exact: true,
-    });
-    if (await connectButton.count()) {
-      await connectButton.click();
-      const naming = bob.page.getByRole("dialog", { name: "Connect your Google Drive account" });
-      const field = naming.getByRole("textbox", { name: "Account name", exact: true });
+      await page.goto("/admin/plugins/browse");
+      await page.getByRole("heading", { name: "Recommended", exact: true }).waitFor();
       check(
-        (await field.inputValue()) === "Google Drive",
-        `${device}: a first account is named after its plugin`,
+        (await page.getByRole("heading", { name: "Sales & CRM", exact: true }).count()) === 1 &&
+          (await page
+            .getByRole("heading", { name: "More apps from Composio", exact: true })
+            .count()) === 1,
+        `${device}: browse lists recommended plugins, categories and Composio apps`,
       );
-      await shot(bob.page, `${device}-settings-plugins-account-name`);
-      await naming.getByRole("button", { name: "Connect account", exact: true }).click();
-      await bob.page.waitForURL((url) => url.pathname === "/settings/plugins" && !url.search);
+      await logosLoaded(page);
+      await fits(page, "browse");
+      await shot(page, `${device}-plugins-browse`);
+
+      await page.getByRole("searchbox", { name: "Search plugins" }).fill("google");
+      await page.getByRole("link", { name: "Add Google Calendar", exact: true }).waitFor();
+      await logosLoaded(page);
+      check(
+        (await page.getByRole("heading", { name: "Recommended", exact: true }).count()) === 0,
+        `${device}: search replaces the sections with ranked results`,
+      );
+      await shot(page, `${device}-plugins-search`);
+      await page.getByRole("searchbox", { name: "Search plugins" }).fill("");
+      await page.getByRole("button", { name: "Finance", exact: true }).click();
+      await page.getByRole("link", { name: "Add Stripe", exact: true }).waitFor();
+      await logosLoaded(page);
+      check(
+        (await page
+          .getByRole("button", { name: "Finance", exact: true })
+          .getAttribute("aria-pressed")) === "true",
+        `${device}: a category chip filters the catalog`,
+      );
+      await shot(page, `${device}-plugins-category`);
+
+      await page.getByRole("button", { name: "All", exact: true }).click();
+      await page.getByRole("searchbox", { name: "Search plugins" }).fill(pick);
+      await page.getByRole("link", { name: `Add ${pick}`, exact: true }).click();
+      const add = page.getByRole("button", { name: "Add plugin", exact: true });
+      await add.waitFor();
+      await page.getByRole("radio", { name: "Only people in some groups", exact: true }).click();
+      await page.getByRole("checkbox", { name: "Sales" }).click();
+      if (field) await page.getByLabel(field, { exact: true }).fill(value);
+      await fits(page, "plugin review");
+      await shot(page, `${device}-plugins-review`);
+      await add.click();
+      await page.waitForURL((url) => /^\/admin\/plugins\/installed\/[^/]+$/.test(url.pathname));
+      await page.getByRole("button", { name: "Pause", exact: true }).waitFor();
+      const added = (
+        await (await page.request.get("/api/baskule/admin/plugins")).json()
+      ).plugins.find((entry) => entry.displayName === pick);
+      check(
+        added?.access.kind === "groups" &&
+          added.access.groups.join() === "g-sales" &&
+          added.status === "ready" &&
+          (!field || added.servers[0].variables[0].set),
+        `${device}: adding saves who can use it and the values it needs`,
+      );
+
+      await page.goto("/admin/plugins/installed/gmail");
+      const card = page.getByRole("form", { name: "Set up sign-in to Google" });
+      await card.waitFor();
+      const callback = await card.locator("output").textContent();
+      check(
+        callback === `${BASE}/api/baskule/plugins/oauth/callback` &&
+          (await card.getByLabel("Authorization parameters (optional)").inputValue()) ===
+            "access_type=offline&prompt=consent" &&
+          (await card
+            .getByRole("link", { name: "Enable gmailmcp.googleapis.com" })
+            .getAttribute("href")) ===
+            "https://console.cloud.google.com/apis/library/gmailmcp.googleapis.com",
+        `${device}: Google sign-in setup shows the callback URL, the API to enable and the default parameters`,
+      );
+      await card.scrollIntoViewIfNeeded();
+      await page.evaluate(() => window.scrollBy(0, -80));
+      await fits(page, "Google sign-in setup");
+      await shot(page, `${device}-plugins-google-setup`);
+      if (device === "phone") {
+        await card
+          .getByLabel("Client ID", { exact: true })
+          .fill("1234-mock.apps.googleusercontent.com");
+        await card.getByLabel("Client secret", { exact: true }).fill("mock-secret");
+        await card.getByRole("button", { name: "Save OAuth client", exact: true }).click();
+        await page.getByText("People sign in through your Google OAuth client.").waitFor();
+        const gmail = (
+          await (await page.request.get("/api/baskule/admin/plugins")).json()
+        ).plugins.find((entry) => entry.id === "gmail");
+        check(gmail?.status === "ready", `${device}: saving the Google client makes Gmail ready`);
+      }
+
+      await page.goto("/admin/plugins/installed");
+      await page.getByRole("link", { name: "Gmail", exact: true }).waitFor();
+      await fits(page, "installed plugins");
+      await shot(page, `${device}-plugins-installed`);
+
+      await page.goto("/admin/plugins/sign-in");
+      await page.getByRole("heading", { name: "Plugin registries", exact: true }).waitFor();
+      await logosLoaded(page);
+      await fits(page, "sign-in and sources");
+      await shot(page, `${device}-plugins-sign-in`);
+    } finally {
+      await admin.context.close();
     }
-    const driveAccounts = bob.page.getByRole("list", {
-      name: "Your Google Drive accounts",
-      exact: true,
-    });
-    await driveAccounts
-      .getByRole("button", { name: "Options for Google Drive", exact: true })
-      .waitFor();
-    check(true, `${device}: connecting an account returns to Settings → Plugins, connected`);
-    if (
-      !(await driveAccounts.getByRole("button", { name: "Options for Work", exact: true }).count())
-    ) {
-      await bob.page
-        .getByRole("button", { name: "Add another Google Drive account", exact: true })
-        .click();
-      const another = bob.page.getByRole("dialog", { name: "Add another Google Drive account" });
-      await another.getByRole("textbox", { name: "Account name", exact: true }).fill("Work");
-      await another.getByRole("button", { name: "Connect account", exact: true }).click();
-      await bob.page.waitForURL((url) => url.pathname === "/settings/plugins" && !url.search);
-    }
-    await driveAccounts.getByRole("button", { name: "Options for Work", exact: true }).waitFor();
-    check(
-      (await driveAccounts.getByRole("listitem").count()) === 2,
-      `${device}: a second account is added beside the default one`,
-    );
-    await shot(bob.page, `${device}-settings-plugins`);
-    await bob.context.close();
 
     const alice = await newPage(browser, device);
-    await signIn(alice.page, "alice");
-    await openSidebarOnPhone(alice.page, device);
-    await alice.page.getByTestId("baskule-user-menu").click();
-    await alice.page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-    await alice.page.getByRole("link", { name: "Spaces", exact: true }).click();
-    // Acme is Alice's only team space; it follows her personal space.
-    await alice.page.getByRole("button", { name: "Manage", exact: true }).last().click();
-    const personal = alice.page.getByRole("switch", { name: "Allow personal-account plugins" });
-    await personal.waitFor();
-    check(
-      !(await personal.isChecked()),
-      `${device}: personal-account plugins start off in a team space`,
-    );
-    await personal.click();
-    await alice.page
-      .getByRole("switch", { name: "Allow personal-account plugins", checked: true })
-      .waitFor();
-    const settings = await (
-      await alice.page.request.get("/api/baskule/spaces/acme/plugins")
-    ).json();
-    check(
-      settings.personalPluginsAllowed === true,
-      `${device}: a space owner allows personal accounts`,
-    );
-    await alice.page
-      .getByRole("dialog")
-      .getByText("Plugins", { exact: true })
-      .scrollIntoViewIfNeeded();
-    await shot(alice.page, `${device}-space-plugins`);
-    await personal.click();
-    await alice.context.close();
+    try {
+      await signIn(alice.page, "alice");
+      await alice.page.goto("/settings/plugins");
+      const linear = alice.page.getByRole("link", { name: "Sign in to Linear", exact: true });
+      await linear.waitFor();
+      check(
+        (await linear.getAttribute("href")) ===
+          "/api/baskule/plugins/linear/servers/linear/connect?returnTo=%2Fsettings%2Fplugins" &&
+          (await alice.page.getByText("Connected as alice@baskule.test").count()) === 1 &&
+          (await alice.page.getByRole("button", { name: /^Add|^Install/ }).count()) === 0,
+        `${device}: a member sees switches and sign-ins, never install controls`,
+      );
+      await logosLoaded(alice.page);
+      await fits(alice.page, "member plugins");
+      await shot(alice.page, `${device}-plugins-member`);
+      const toggle = alice.page.getByRole("switch", { name: "Use Linear", exact: true });
+      await toggle.click();
+      await alice.page.waitForFunction(
+        async () =>
+          (await (await fetch("/api/baskule/plugins")).json()).plugins.find(
+            (p) => p.id === "linear",
+          )?.on === false,
+      );
+      await toggle.click();
+      await linear.click();
+      await alice.page.getByText("Your account is connected.").waitFor();
+      check(
+        new URL(alice.page.url()).search === "" &&
+          (await alice.page
+            .getByRole("button", { name: "Disconnect Linear", exact: true })
+            .count()) === 1,
+        `${device}: signing in comes back connected and cleans the address`,
+      );
+      await alice.page.getByRole("button", { name: "Disconnect Linear", exact: true }).click();
+      await alice.page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: /Disconnect|Confirm|OK/ })
+        .click();
+      await linear.waitFor();
+    } finally {
+      await alice.context.close();
+    }
   },
 
   async passwords(browser, device) {
@@ -751,9 +704,15 @@ const scenarios = {
     await page.goto("/settings/desktop");
     await page.getByText("Baskule for Linux").first().waitFor();
     const download = page.getByRole("link", { name: "Download", exact: true });
-    check(await download.getAttribute("href") === "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
-      `${device}: app download points to the running version's GitHub release asset`);
-    check(await page.getByText("Apps · version 0.5.0", { exact: true }).isVisible(), `${device}: apps show the running version`);
+    check(
+      (await download.getAttribute("href")) ===
+        "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
+      `${device}: app download points to the running version's GitHub release asset`,
+    );
+    check(
+      await page.getByText("Apps · version 0.5.0", { exact: true }).isVisible(),
+      `${device}: apps show the running version`,
+    );
     await shot(page, `${device}-apps`);
     await page.getByRole("button", { name: "Show QR for another device", exact: true }).click();
     const link = await page

@@ -279,7 +279,7 @@ export function stackWorkerConfigs(s, env, backend, web) {
   backend.name = `baskule-dev-${s.id}`;
   backend.main = "runtime/index.js";
   Object.assign(backend.vars, {
-    PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, SETUP_TOKEN: s.setupToken, PLUGIN_SYNC_TOKEN: s.pluginSyncToken,
+    PUBLIC_ORIGINS: `${s.urls.front},${s.urls.loopback}`, SETUP_TOKEN: s.setupToken,
     AUTH_SECRET: s.authSecret, COMPUTERD_URL: s.ports.computerd ? `http://127.0.0.1:${s.ports.computerd}` : "http://127.0.0.1:1",
     COMPUTERD_TOKEN: s.computerdToken, ...Object.fromEntries(Object.keys({ ...s.definition.env, ...s.overrides }).map((key) => [key, env[key]])),
   });
@@ -344,9 +344,6 @@ async function startService(s, name) {
   if (r.health) await until(`${name} ready (${r.health})`, async () => {
     if (!alive(s.processes[name])) throw Object.assign(new Error(`${name} exited; inspect ${s.logs[name]}`), { code: "STACK_SERVICE_EXITED" });
     return probe(r.health);
-  });
-  if (name === "celld") run("bash", [join(ROOT, "deploy/celld/sync-plugins.sh"), process.env.BASKULE_PLUGINS_DIR || join(ROOT, ".run/plugins"), s.urls.loopback], {
-    env: { ...env, PLUGIN_SYNC_TOKEN: s.pluginSyncToken }, stdio: ["ignore", 2, 2],
   });
   s.processes[name].children = descendants(s.processes[name]).filter((p) => p.pid !== s.processes[name].pid);
   persist(s);
@@ -495,7 +492,6 @@ async function up() {
     alias, aliasRegistered: false, urls: { front: proxy ? `https://${alias}.localhost` : `http://127.0.0.1:${ports.celld}`, loopback: `http://127.0.0.1:${ports.celld}` },
     admin: old && !args.includes("--clean") ? old.admin : { email: `admin@${id}.test`, password: randomBytes(24).toString("base64url") },
     setupToken: old?.setupToken || randomBytes(32).toString("hex"),
-    pluginSyncToken: old?.pluginSyncToken || randomBytes(32).toString("hex"),
     authSecret: old?.authSecret || randomBytes(32).toString("hex"), computerdToken: old?.computerdToken || randomBytes(24).toString("hex"),
     bucketPrefix: old && !args.includes("--clean") ? old.bucketPrefix : `${id}/${randomBytes(8).toString("hex")}`,
     processes: {}, logs: Object.fromEntries(Object.keys(definition.services).map((n) => [n, join(RUN, `${n}.log`)])),

@@ -28,7 +28,6 @@ import {
 } from "../components/ui/select";
 import { Spinner } from "../components/ui/spinner";
 import { BaskuleApiError, type SpaceDetails, type SpaceRole, baskuleApi } from "./api";
-import { SpacePluginSettings } from "./plugins/SpacePluginSettings";
 import { refreshBaskuleMeAfterMutation, useBaskuleMe } from "./session";
 import { Avatar, confirmAction, errorText, FormField, notifyError, notifySuccess } from "./ui";
 
@@ -469,9 +468,6 @@ function ManageSpaceContent({
               </div>
             </div>
           </form>
-        )}
-        {isPersonal ? null : (
-          <SpacePluginSettings spaceId={space.id} isAdmin={me?.user.role === "admin"} />
         )}
       </DialogPanel>
       <DialogFooter>

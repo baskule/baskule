@@ -52,7 +52,7 @@ SpaceCell calls `stop()` (interrupt active sessions) and `dispose()` directly.
 | `t3-mcp.ts` | cached static tool list in front of T3's MCP server, so a chat's first step needs no round trip |
 | `lazy-mcp.ts` | in-isolate MCP registry (`baskule-mcp.internal`) for `t3-mcp.ts` proxies and the sample app |
 | `sample-app.ts` | the bundled interactive MCP app (`decision`) |
-| `plugin-mcp.ts`, `turn-author.ts` | remote plugin tools through an in-isolate proxy; ControlCell policy per call; persisted turn identity |
+| `plugin-mcp.ts`, `turn-author.ts` | remote plugin tools through an in-isolate proxy; ControlCell policy and the author's credential per call; persisted turn identity |
 | `plugin-skills.ts` | managed computer skill tree and the location skill catalog |
 | `config.ts` | OpenCode config (the installation's single provider and model, capabilities, policies, agents and the assistant prompt). Until an administrator chooses a provider, it offers an unreachable placeholder model and `index.ts` refuses every turn with `ai_not_configured` |
 | `session.ts` | pure session-create preparation (strip nulls, `/sandbox` paths, permissions) and the model rule: a chat whose model the installation no longer offers runs on the installation's model (session create, model switch, and a session's first turn per boot) |
@@ -103,10 +103,11 @@ Each run uses fresh space ids and deletes its computers at the end. Feature-leve
 delegation, MCP apps) is `platform/test/features`; the deployed fleet (restart/failover with real nodes) is `e2e`.
 Which loop to run for a change: [development workflow](../../../docs/development-workflow.md).
 
-Remote plugin MCP servers use only in-isolate config URLs. Each call resolves the T3 turn author (including delegated
-and scheduled work), rechecks policy through ControlCell and forwards the selected account's credential. Personal
-results include an account label. Plugin settings use the same reload lifecycle as AI settings. Skills live at
-`/sandbox/space/plugins`, with read-only file modes, and are also registered in OpenCode's location skill service
+Remote plugin MCP servers use only in-isolate config URLs. Tool lists are read as a space member whose connection
+works. Each call resolves the T3 turn author (including delegated and scheduled work) and asks ControlCell, which
+rechecks policy, for that author's own server address and headers; Composio and Pipedream give each person their own
+address. Plugin settings use the same reload lifecycle as AI settings. Skills live at
+`/sandbox/space/plugins/<plugin>/<skill>`, with read-only file modes, and are also registered in OpenCode's location skill service
 because its workerd profile disables disk config plugins. Computer files share the agent uid; these modes do not
 prevent a deliberate shell chmod.
 

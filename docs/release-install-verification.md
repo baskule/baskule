@@ -41,11 +41,8 @@ starting every profile is unsupported because it includes the edge inheritance t
 the full packaging path. Anonymous GHCR pulls, public release downloads, and real multi-machine operation require
 separate verification against published endpoints and the target topology.
 
-Pass `folder` for a fresh zero-config install with the optional plugins mount, scoped-secret checks, and a
-browser assertion that the folder plugin appears in Admin → Plugins after setup.
-
 Pass `fresh` to run three cold installs into empty volumes, checking first startup, health, version, and
-admin sign-in each time. Set `BASKULE_INSTALL_EVIDENCE` to choose an evidence directory.
+admin sign-in each time, and that RustFS and computerd receive only their own secrets. Set `BASKULE_INSTALL_EVIDENCE` to choose an evidence directory.
 
 Pass `single`, `https`, `proxy`, or `external` as the driver's last argument to rerun only that target after a classified failure.
 

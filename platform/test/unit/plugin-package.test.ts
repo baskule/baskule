@@ -1,98 +1,100 @@
+import { readFileSync } from "node:fs";
 import { URL } from "node:url";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { gzipSync, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
-import { IMPORT_LIMITS, inspectPackage, unpackArchive, exportPackage, skillFromInput } from "../../src/control/plugin-package";
+import { classifyIndexed, classifyPluginFiles, collectMcpServers, parseGithubUrl, parsePluginDirectory, type RepoFile } from "../../src/control/plugins/package";
 
-export function bundleFixture(name: string): Map<string, Uint8Array> {
-  const root = new URL(`../fixtures/plugins/${name}/`, import.meta.url);
-  return new Map(readdirSync(root, { recursive: true, withFileTypes: true }).filter(f => f.isFile()).map(f => {
-    const path = join(f.parentPath, f.name);
-    return [path.slice(root.pathname.length), new Uint8Array(readFileSync(path))];
-  }));
-}
+const fixture = (path: string) => readFileSync(new URL(`../fixtures/marketplace/${path}`, import.meta.url), "utf8");
+const vendored = (name: string): RepoFile[] => [
+  { path: ".cursor-plugin/plugin.json", content: fixture(`cursor/${name}/plugin.json`) },
+  { path: "mcp.json", content: fixture(`cursor/${name}/mcp.json`) },
+  { path: "assets/logo.svg", content: "" },
+  { path: "README.md", content: "" },
+];
+const decode = (base64: string) => Buffer.from(base64, "base64").toString("utf8");
 
-describe("bounded portable bundle importer", () => {
-  it("normalizes skills, binary assets, and remotes while omitting stdio, client extensions, and embedded credentials", () => {
-    const input = zipSync(Object.fromEntries(bundleFixture("portable")));
-    const p = inspectPackage(unpackArchive(input), { source: { type: "custom" } }).plugin;
-    expect(p.servers.map(s => s.name)).toEqual(["docs", "account", "secret"]);
-    expect(p.servers.find(s => s.name === "account")).toMatchObject({ credential: "user-oauth" });
-    expect(JSON.stringify(p.omitted)).toContain("local_program");
-    expect(JSON.stringify(p.omitted)).toContain("com.example.client");
-    expect(JSON.stringify(p)).not.toContain("DO-NOT-STORE");
-    expect(p.skills[0].description).toBe("Greet a teammate.\n");
-    expect(p.skills[0].files.find(f => f.path === "assets/pixel.bin")?.content).toBe("AP+AAA==");
-    expect(p.skills[0].files.some(f => f.path.startsWith("licenses/") && atob(f.content).includes("MIT"))).toBe(true);
+describe("plugin packages", () => {
+  it("turns ${VAR} placeholders into variables the administrator fills in", async () => {
+    const netsuite = await parsePluginDirectory(vendored("netsuite"), "netsuite");
+    expect(netsuite).toMatchObject({ name: "netsuite", displayName: "NetSuite", logo: "assets/logo.png", category: "integrations", skipped: [] });
+    expect(netsuite.servers).toEqual([{ name: "netsuite", url: "${NETSUITE_MCP_URL}", transport: "streamable-http", headers: {},
+      variables: [{ name: "NETSUITE_MCP_URL", description: expect.stringContaining("Account-specific AI Connector Service URL"), secret: false, where: "url" }] }]);
+    const github = await parsePluginDirectory(vendored("github"), "github");
+    expect(github.servers[0]).toEqual({ name: "github", url: "https://api.githubcopilot.com/mcp/", transport: "streamable-http",
+      headers: { Authorization: "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}" },
+      variables: [{ name: "GITHUB_PERSONAL_ACCESS_TOKEN", description: expect.stringContaining("Fine-grained or classic PAT"), secret: true, where: "header" }] });
+    const gmail = await parsePluginDirectory(vendored("gmail"), "gmail");
+    expect(gmail.servers).toEqual([{ name: "gmail", url: "https://gmailmcp.googleapis.com/mcp/v1", transport: "streamable-http", headers: {}, variables: [] }]);
+    expect(gmail.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(collectMcpServers({ mcpServers: { shared: { url: "${ADDRESS}", headers: { Authorization: "${ADDRESS}" } } } }).servers[0]!.variables)
+      .toEqual([{ name: "ADDRESS", secret: true, where: "url" }]);
+    expect((await parsePluginDirectory([...vendored("gmail"), { path: "docs/x.md", content: "" }], "gmail")).digest).not.toBe(gmail.digest);
   });
 
-  it.each(["claude", "codex", "bare"])("accepts the %s layout", name => {
-    const p = inspectPackage(bundleFixture(name), { source: { type: "custom" } }).plugin;
-    if (name === "claude") expect(JSON.stringify(p.omitted)).toContain("commands");
+  it("skips local programs, editor-only parts and vendor-only servers, and reports them", () => {
+    const { servers, skipped } = collectMcpServers({ mcpServers: {
+      local: { command: "npx", args: ["server"] },
+      ws: { type: "websocket", url: "wss://vendor.test" },
+      cursor: { type: "http", url: "https://api.cursor.com/mcp" },
+      branded: { type: "http", url: "https://vendor.test/mcp", headers: { "x-cursor-token": "1" } },
+      relay: { type: "http", url: "https://vendor.test/mcp", auth: { CLIENT_ID: "x" } },
+      plain: { type: "http", url: "http://vendor.test/mcp" },
+      query: { type: "http", url: "https://vendor.test/mcp?key=${KEY}" },
+      broken: { type: "http", url: "https://vendor.test/${BROKEN" },
+      host: { type: "sse", url: "https://${TENANT}.vendor.test/sse" },
+    } });
+    expect(servers.map(s => [s.name, s.transport, s.variables.map(v => v.name)])).toEqual([["host", "sse", ["TENANT"]]]);
+    expect(skipped).toEqual([
+      { kind: "local_program", subject: "local" }, { kind: "unsupported_transport", subject: "ws" }, { kind: "editor_only", subject: "cursor" },
+      { kind: "editor_only", subject: "branded" }, { kind: "editor_only", subject: "relay" }, { kind: "invalid_server", subject: "plain" },
+      { kind: "invalid_server", subject: "query" }, { kind: "invalid_server", subject: "broken" },
+    ]);
   });
 
-  it("omits bundled credentials and client configuration from a bare skill's files", () => {
-    const files = bundleFixture("bare");
-    files.set(".mcp.json", new TextEncoder().encode(JSON.stringify({ mcpServers: {
-      docs: { url: "https://docs.example/mcp", headers: { Authorization: "Bearer PRIVATE-BUNDLE-KEY" } },
-    } })));
-    files.set(".claude-plugin/plugin.json", new TextEncoder().encode(JSON.stringify({ name: "bare" })));
-    const p = inspectPackage(files, { source: { type: "custom" } }).plugin;
-    expect(p.servers[0].credential).toBe("organization");
-    expect(p.skills[0].files.map(f => f.path)).toEqual([]);
-    expect(JSON.stringify(p)).not.toContain("PRIVATE-BUNDLE-KEY");
+  it("collects skills, agents and commands as skills with canonical front matter", async () => {
+    const parsed = await parsePluginDirectory([
+      { path: "plugin.json", content: JSON.stringify({ name: "notes", description: "Team notes" }) },
+      { path: "skills/summarize/SKILL.md", content: "---\nname: summarize\ndescription: 'Summarize: briefly'\nlicense: MIT\n---\nKeep it short." },
+      { path: "skills/summarize/reference.md", content: "Reference" },
+      { path: "skills/runner/SKILL.md", content: "---\nname: runner\ndescription: Runs\n---\nRun." },
+      { path: "skills/runner/run.sh", content: "" },
+      { path: "skills/broken/SKILL.md", content: "No front matter" },
+      { path: "agents/reviewer.md", content: "---\nname: reviewer\ndescription: Reviews drafts\n---\nReview carefully." },
+      { path: "commands/standup.md", content: "# Write the standup\nUse $ARGUMENTS." },
+      { path: "commands/_shared.md", content: "Shared" },
+      { path: "hooks/hooks.json", content: "" },
+    ], "fallback");
+    expect(parsed.skills.map(s => [s.name, s.description, s.files.map(f => f.path)])).toEqual([
+      ["reviewer", "Reviews drafts", ["reviewer/SKILL.md"]],
+      ["standup", "Write the standup", ["standup/SKILL.md"]],
+      ["summarize", "Summarize: briefly", ["summarize/SKILL.md", "summarize/reference.md"]],
+    ]);
+    expect(decode(parsed.skills[2]!.files[0]!.base64)).toBe('---\nname: "summarize"\ndescription: "Summarize: briefly"\nlicense: MIT\n---\nKeep it short.');
+    expect(decode(parsed.skills[1]!.files[0]!.base64)).toContain("$ARGUMENTS is whatever the user wrote after /standup.");
+    expect(parsed.skipped).toEqual([{ kind: "editor_only", subject: "hooks/" }, { kind: "invalid_skill", subject: "runner" }, { kind: "invalid_skill", subject: "skills/broken/SKILL.md" }]);
+    await expect(parsePluginDirectory([{ path: "README.md", content: "" }], "empty")).rejects.toMatchObject({ code: "plugin_empty" });
+    expect((await parsePluginDirectory([{ path: "SKILL.md", content: "---\nname: Brand Voice\ndescription: Write in our voice\n---\nWrite." }], "Brand voice"))).toMatchObject({ name: "brand-voice", displayName: "Brand Voice" });
   });
 
-  it("accepts uploaded tar.gz skills and rejects tar/ZIP symbolic links", () => {
-    const read = (name: string) => new Uint8Array(readFileSync(new URL(`../fixtures/plugins/${name}`, import.meta.url)));
-    expect(inspectPackage(unpackArchive(read("bare.tar.gz")), { source: { type: "custom" } }).plugin.skills[0].name).toBe("bare");
-    for (const name of ["symlink.tar.gz", "symlink.zip"]) expect(() => unpackArchive(read(name))).toThrow("plugin_links_unsupported");
+  it("decides browse completeness from the file list like an install would", () => {
+    const sizes = new Map<string, number>();
+    const mcp = fixture("cursor/netsuite/mcp.json");
+    expect(classifyPluginFiles([".cursor-plugin/plugin.json", "mcp.json"], mcp, sizes)).toEqual({ hasServers: true, skillCount: 0 });
+    expect(classifyPluginFiles([".cursor-plugin/plugin.json", "mcp.json"], undefined, sizes)).toBeNull();
+    expect(classifyPluginFiles(["skills/a/SKILL.md", "hooks/hooks.json"], undefined, sizes)).toBe("incomplete");
+    expect(classifyPluginFiles(["skills/a/SKILL.md", "skills/a/run.py"], undefined, sizes)).toBe("incomplete");
+    expect(classifyPluginFiles(["skills/a/SKILL.md", "agents/b.md", "commands/c.md", "commands/_d.md"], undefined, sizes)).toEqual({ hasServers: false, skillCount: 3 });
+    expect(classifyPluginFiles(["mcp.json"], JSON.stringify({ mcpServers: { local: { command: "x" } } }), sizes)).toBe("incomplete");
+    expect(classifyIndexed({ mcpServers: [{ description: "http" }], skills: [{}, {}] })).toEqual({ hasServers: true, skillCount: 2 });
+    expect(classifyIndexed({ mcpServers: [{ description: "stdio" }] })).toBeNull();
+    expect(classifyIndexed({ hooks: [{}], skills: [{}] })).toBeNull();
   });
 
-  it("selects the pinned repository subdirectory", () => {
-    const input = new Map([...bundleFixture("portable")].map(([p, b]) => [`repo/pkg/${p}`, b]));
-    expect(inspectPackage(input, { stripRoot: true, path: "pkg", source: { type: "custom" } }).plugin.skills).toHaveLength(1);
-  });
-
-  it("accepts a folder of several skills and reports invalid fields before save", () => {
-    const encode = (text: string) => new TextEncoder().encode(text);
-    const draft = inspectPackage(new Map([
-      ["one/SKILL.md", encode("---\nname: one\ndescription: First skill\n---\nOne\n")],
-      ["two/SKILL.md", encode("---\nname: two\ndescription: Second skill\n---\nTwo\n")],
-      ["bad/SKILL.md", encode('---\nname: bad\ndescription: "   "\n---\nBad\n')],
-    ]), { source: { type: "custom" } });
-    expect(draft.plugin.skills.map(s => s.name)).toEqual(["one", "two"]);
-    expect(draft.omitted).toContainEqual({ code: "invalid_skill", subject: "bad" });
-  });
-
-  it("exports standard packages with placeholder keys and preserves skill files on re-import", () => {
-    const draft = inspectPackage(bundleFixture("portable"), { source: { type: "custom" } });
-    const zip = exportPackage(draft.plugin, draft.plugin.skills.map(skill => skillFromInput(skill, [])));
-    const roundtrip = inspectPackage(unpackArchive(zip), { source: { type: "custom" } });
-    expect(roundtrip.plugin.skills).toEqual(draft.plugin.skills);
-    expect(roundtrip.plugin.servers).toEqual(draft.plugin.servers);
-    expect(roundtrip.fixes).toContainEqual({ server: "secret", need: "key", headers: ["Authorization"] });
-    expect(JSON.stringify(roundtrip)).not.toContain("DO-NOT-STORE");
-  });
-
-  it("rejects traversal, bad archives, expansion bombs, and oversized skill files", () => {
-    expect(() => unpackArchive(zipSync({ "../escape/SKILL.md": new Uint8Array([1]) }))).toThrow("unsafe_plugin_path");
-    expect(() => unpackArchive(new Uint8Array([1, 2, 3]))).toThrow("Upload a ZIP");
-    expect(() => unpackArchive(gzipSync(new Uint8Array(IMPORT_LIMITS.expanded + 1)))).toThrow("plugin_too_large");
-    const files = bundleFixture("bare");
-    files.set("asset", new Uint8Array(IMPORT_LIMITS.skillFile + 1));
-    expect(() => inspectPackage(files, { source: { type: "custom" } }).plugin).toThrow("plugin_skill_file_too_large");
-  });
-
-  it("skips proprietary skills and malformed frontmatter without hiding usable remotes", () => {
-    const files = bundleFixture("portable");
-    files.set("skills/hello/LICENSE.txt", new TextEncoder().encode("Use governed by your agreement with Anthropic"));
-    const p = inspectPackage(files, { source: { type: "custom" } }).plugin;
-    expect(p.skills).toEqual([]);
-    expect(JSON.stringify(p.omitted)).toContain("skill_license");
-    files.delete("skills/hello/LICENSE.txt");
-    files.set("skills/hello/SKILL.md", new TextEncoder().encode("no frontmatter"));
-    expect(JSON.stringify(inspectPackage(files, { source: { type: "custom" } }).omitted)).toContain("invalid_skill");
-  });
+  it.each([
+    ["https://github.com/Acme/Plugins", { repo: "acme/plugins" }],
+    ["github.com/acme/plugins.git", { repo: "acme/plugins" }],
+    ["https://github.com/acme/plugins/tree/main/plugins/notes", { repo: "acme/plugins", ref: "main", path: "plugins/notes" }],
+    ["https://github.com/acme/plugins@v1#plugins/notes", { repo: "acme/plugins", ref: "v1", path: "plugins/notes" }],
+  ])("reads GitHub links: %s", (url, expected) => expect(parseGithubUrl(url)).toEqual(expected));
+  it.each(["https://gitlab.com/acme/plugins", "https://github.com/acme", "https://user:x@github.com/acme/plugins", "https://github.com/acme/plugins#../x", "https://github.com/acme/plugins?ref=main"])(
+    "refuses %s", url => expect(() => parseGithubUrl(url)).toThrow());
 });

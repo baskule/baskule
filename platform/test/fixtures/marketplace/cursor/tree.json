@@ -1,0 +1,237 @@
+{
+ "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce",
+ "truncated": false,
+ "tree": [
+  {
+   "path": "continual-learning/.cursor-plugin",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "continual-learning/.cursor-plugin/plugin.json",
+   "mode": "100644",
+   "type": "blob",
+   "size": 768
+  },
+  {
+   "path": "continual-learning/LICENSE",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1063
+  },
+  {
+   "path": "continual-learning/README.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 2301
+  },
+  {
+   "path": "continual-learning/agents",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "continual-learning/agents/agents-memory-updater.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1811
+  },
+  {
+   "path": "continual-learning/assets",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "continual-learning/assets/avatar.png",
+   "mode": "100644",
+   "type": "blob",
+   "size": 64347
+  },
+  {
+   "path": "continual-learning/hooks",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "continual-learning/hooks/continual-learning-stop.ts",
+   "mode": "100644",
+   "type": "blob",
+   "size": 7813
+  },
+  {
+   "path": "continual-learning/hooks/hooks.json",
+   "mode": "100644",
+   "type": "blob",
+   "size": 157
+  },
+  {
+   "path": "continual-learning/skills",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "continual-learning/skills/continual-learning",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "continual-learning/skills/continual-learning/SKILL.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 634
+  },
+  {
+   "path": "third_party/github",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/github/.cursor-plugin",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/github/.cursor-plugin/plugin.json",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1116
+  },
+  {
+   "path": "third_party/github/CHANGELOG.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 359
+  },
+  {
+   "path": "third_party/github/LICENSE",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1063
+  },
+  {
+   "path": "third_party/github/README.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 2291
+  },
+  {
+   "path": "third_party/github/assets",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/github/assets/logo.svg",
+   "mode": "100644",
+   "type": "blob",
+   "size": 934
+  },
+  {
+   "path": "third_party/github/mcp.json",
+   "mode": "100644",
+   "type": "blob",
+   "size": 214
+  },
+  {
+   "path": "third_party/gmail",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/gmail/.cursor-plugin",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/gmail/.cursor-plugin/plugin.json",
+   "mode": "100644",
+   "type": "blob",
+   "size": 663
+  },
+  {
+   "path": "third_party/gmail/CHANGELOG.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 280
+  },
+  {
+   "path": "third_party/gmail/LICENSE",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1063
+  },
+  {
+   "path": "third_party/gmail/README.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1106
+  },
+  {
+   "path": "third_party/gmail/assets",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/gmail/assets/logo.svg",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1392
+  },
+  {
+   "path": "third_party/gmail/mcp.json",
+   "mode": "100644",
+   "type": "blob",
+   "size": 123
+  },
+  {
+   "path": "third_party/netsuite",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/netsuite/.cursor-plugin",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/netsuite/.cursor-plugin/plugin.json",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1512
+  },
+  {
+   "path": "third_party/netsuite/CHANGELOG.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 647
+  },
+  {
+   "path": "third_party/netsuite/LICENSE",
+   "mode": "100644",
+   "type": "blob",
+   "size": 1063
+  },
+  {
+   "path": "third_party/netsuite/README.md",
+   "mode": "100644",
+   "type": "blob",
+   "size": 7755
+  },
+  {
+   "path": "third_party/netsuite/assets",
+   "mode": "040000",
+   "type": "tree"
+  },
+  {
+   "path": "third_party/netsuite/assets/logo.png",
+   "mode": "100644",
+   "type": "blob",
+   "size": 27625
+  },
+  {
+   "path": "third_party/netsuite/mcp.json",
+   "mode": "100644",
+   "type": "blob",
+   "size": 107
+  }
+ ]
+}

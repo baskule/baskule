@@ -12,18 +12,11 @@ OpenCode's servers under its terms. The model's image/PDF inputs, context window
 prefilled when the provider or models.dev knows them. Set them to the model's actual limits: OpenCode uses them to
 decide when to compact context automatically.
 People, invitations, roles and space membership are under **Admin → People** and **Admin → Spaces**.
-Groups (**Admin → People → Groups**; every person is in the built-in **Everyone**) grant plugins and permissions
-such as creating team spaces. Plugins are under **Admin → Plugins**: nothing is installed by default.
-An admin adds a plugin from the catalog or from its own web address, GitHub link or file, reviews its contents and fixes setup details before saving, and chooses the groups that may use it. New plugins are unpaused. Assigned skills and tools work after setup, with no
-member activation. Administrators can Pause and Resume a plugin. Members see readiness and connect accounts in
-**Settings → Plugins**. In a team
-space, plugins that act with a member's own account stay off until a space owner allows them in the space settings.
-
-The catalog lists reviewed vendor-hosted services by area; opening one shows its prerequisites and instructions. A vendor's
-sign-in app is set up once for its plugins. Adding a plugin asks which groups can use it; people then connect
-their accounts in Settings → Plugins. Unqualified services show Not available yet. This includes Microsoft
-Work IQ until its tenant-specific sign-in and permissions are qualified, as well as Shopify, Figma and Docusign.
-Catalog content stays pinned. Use a custom plugin to configure a different server.
+Groups (**Admin → People → Groups**; every person is in the built-in **Everyone**) grant permissions such as
+creating team spaces and can be given access to plugins. Plugins are under **Admin → Plugins**: nothing is
+installed by default. Administrators install them from the Anthropic, Cursor and xAI catalogs, a GitHub link, an MCP server
+address, or Composio and Pipedream, choose who may use them, and finish their setup; members sign in to plugin
+apps and switch plugins on or off in **Settings → Plugins**. See [plugins](plugins.md).
 
 The model's prices (USD per million tokens) turn token counts into estimated costs. Built-in providers' prices are
 read-only and come from Baskule's presets, then models.dev, or the built-in snapshot when it is unreachable; a custom
@@ -165,64 +158,29 @@ the file is authoritative. Do not recycle a provider ID for a different identity
 
 ## Plugin account connections
 
-Plugin outbound traffic requires HTTPS to public hosts. Admin-added servers may use private addresses and HTTP
-on those addresses. The in-isolate `baskule-mcp.internal` host is always refused. OAuth metadata for a public
-server may only point to public HTTPS addresses. Requests refuse redirects; MCP requests stay on their origin.
-These checks inspect URLs, not DNS answers. Deployment egress rules must deny private and reserved destination
-addresses for public hostnames, including DNS rebinding; this is not full SSRF protection.
+Members connect their own accounts; connections are per person and plugin app across spaces, one account per
+app, and never grant access beyond the plugin's access. Tool calls use the turn author's connection. Setup,
+sign-in clients and outbound rules: [plugins](plugins.md).
 
-The administrator installs and grants plugins; users connect their own accounts. Connections are per user and
-plugin server across spaces. Personal-account servers are refused in team spaces until an owner enables
-personal-account plugins for that space. This owner-controlled switch is not per-account team consent.
-Team calls use only the author's default account; selecting another account is unavailable there. Everyone in
-the team can read returned results. A connection never grants access beyond the group's plugin policy.
+For an app with member sign-in, ControlCell discovers protected-resource (RFC 9728) and authorization-server
+(RFC 8414) metadata, uses the administrator's client for that issuer or registers one dynamically (RFC 7591), and
+runs the authorization-code flow with S256 PKCE. It sends the resource the metadata declares as `resource`
+(RFC 8707) on authorization, token exchange and refresh, and checks the callback issuer (RFC 9207).
 
-In Settings → Plugins, people can connect several accounts, name or rename them, and choose one default per
-plugin server. These names are their own labels, not verified vendor identities. Personal-space tool calls may
-name an account with `baskule_account`; omitted arguments use the author's current default. The selector is
-removed before the vendor receives the call. Results identify the account used. Scheduled work also uses the
-author's default at run time when no account is named; changing the default changes those future calls.
-
-For an MCP server with `credential: "user-oauth"`, ControlCell discovers protected-resource and authorization-server
-metadata, registers a public client with DCR, and runs the authorization-code flow with S256 PKCE. It sends the
-configured resource identifier as `resource` on authorization, token exchange and refresh requests. Metadata must identify that
-same resource and issuer; callback issuer checks follow RFC 9207. Catalog recipes record a distinct resource
-identifier where vendor metadata requires one. Custom servers default to their MCP URL. Public servers require HTTPS; admin-added private servers may use HTTP.
-OAuth endpoints never follow redirects with credentials. A client-ID metadata document is not served by this version;
-servers without DCR use pre-registration.
-
-For a service without dynamic registration, open the plugin from Admin → Plugins and follow its Setup steps. Register
-Baskule's address with the vendor as the callback, then save the client ID and secret. Technical details shows the
-callback address and the client authentication method.
-Values are write-only and encrypted. Saving or removing setup disconnects accounts and cancels pending consent
-for every plugin using that vendor; other vendors are unaffected. The saved issuer is pinned: a resource that
-changes its authorization server is refused before Baskule sends the client secret. If resource metadata disappears
-after setup, the saved issuer supplies discovery. Catalog setup uses the vendor issuer from the reviewed recipe;
-custom setup initially requires resource metadata. Plugin accounts are separate from signing in to Baskule.
-
-Server settings accept `oauth: {scopes, params, resource, staticClient}` for `user-oauth` servers. Scopes default
-to the resource challenge or metadata; `params` adds vendor authorization parameters, and `resource: false`
-omits the resource parameter for vendors that refuse it. `staticClient: true` requires administrator setup.
-Protocol parameters such as the callback, state and PKCE cannot be overridden. Nothing uses OpenCode's per-space OAuth store.
-
-UI contract: navigate the signed-in browser to `GET /api/baskule/plugins/:id/connect?server=NAME&returnTo=/PATH&label=Work`
-(`server` can be omitted for a single account server; `returnTo` defaults to `/` and must remain on this origin).
-Use `account=CONNECTION_ID` instead of `label` to reconnect an existing account without changing its id, name or
-default. New connections become the default only when they are the person's first account on that server.
-The callback requires the initiating live user session and returns to that path with `pluginId`, `server`, and
-`pluginConnection=connected`, or `pluginConnection=error&connectionError=CODE`. Invalid, missing or expired state redirects to Settings → Plugins with `connectionError=invalid_oauth_state`. Callback state is single-use and expires after ten minutes. `GET /api/baskule/plugins` reports each server
-with one of `unavailable`, `needs_setup`, `connect`, `reconnect`, or `ready`. The plugin status is the highest-priority
-server status in that order, using the default account's readiness. Each server also lists the person's accounts
-with id, label, default and ready/reconnect status. A skills-only plugin is ready when assigned and unpaused.
-`PATCH /api/baskule/plugins/:id/accounts/:accountId` renames (`{label}`) or sets the default (`{default:true}`).
-`DELETE /api/baskule/plugins/:id/accounts/:accountId` immediately forgets that account and prevents an in-flight
-refresh or reconnect from restoring it. Deleting the default while other accounts remain requires
-`?default=OTHER_CONNECTION_ID` from the same person's server. Other people's accounts are never exposed.
-Initial Connect failures also return to Settings → Plugins with a plain error.
+UI contract: navigate the signed-in browser to
+`GET /api/baskule/plugins/:id/servers/:serverId/connect?returnTo=/PATH` (`returnTo` defaults to `/settings/plugins`
+and must stay on this origin). OAuth returns to `/api/baskule/plugins/oauth/callback`, Composio and Pipedream to
+`/api/baskule/plugins/provider/callback`. Both require the session that started the sign-in and redirect to
+`returnTo` with `plugin=<id>&connection=connected`, or `connection=error&code=CODE` where `CODE` is a plugin error
+code (`oauth_failed`, `oauth_client_required`, `provider_rejected`, `provider_unavailable`, `invalid_request`…)
+or a call refusal (`not_allowed`, `plugin_off`, `setup_incomplete`). Sign-in state is single-use and expires after
+ten minutes. Anonymous installations refuse member sign-in, because everyone reaching them is the same person.
+`DELETE /api/baskule/plugins/:id/servers/:serverId/connection` disconnects at once and revokes a Composio or
+Pipedream account.
 
 Better Auth's `account.encryptOAuthTokens: true` encrypts access and refresh tokens with the installation secret;
-login ID tokens are discarded after validation. Organization keys, plugin tokens, refresh data, pending PKCE verifiers and admin OAuth
-client secrets use AES-256-GCM with a domain-separated HKDF key derived from the same secret and authenticated row
+login ID tokens are discarded after validation. Plugin values, plugin tokens, pending PKCE verifiers, OAuth client
+secrets and Composio and Pipedream credentials use AES-256-GCM with a domain-separated HKDF key derived from the same secret and authenticated row
 identity. Backups containing both the database and its generated secret remain sensitive. ControlCell generates and persists the installation secret in its database;
 losing it invalidates sessions and encrypted credentials.
 

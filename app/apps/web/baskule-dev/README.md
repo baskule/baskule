@@ -10,7 +10,7 @@ SKIP_BUILD=1 ./check.sh admin   # reuse apps/web/dist, one scenario
 
 MOCK_WEB=dist ./up.sh       # serve apps/web/dist (build with VITE_BASKULE_HOSTED=1 first)
 MOCK_WEB=dev ./up.sh        # Vite dev server (HMR) behind the mock
-node shots.mjs [scenario…]  # login invite voice admin usage passwords apps
+node shots.mjs [scenario…]  # settings login invite voice admin usage plugins passwords apps
 ./down.sh                   # PURGE=1 also deletes baskule/.run/web-mock
 ```
 
@@ -27,6 +27,10 @@ node shots.mjs [scenario…]  # login invite voice admin usage passwords apps
   `/invite#token=demo-invitation-token-0123456789`. Spaces: personal ones, Acme (Alice owner, Bob),
   Lab (admin owner, Alice).
 - **API**: the mock mirrors the platform's `/api/baskule` and Better Auth routes (`platform/README.md`).
+- **Plugins**: `plugin-catalog.json` holds real Cursor and xAI registry entries, recorded once at pinned
+  commits with what a preview finds, plus Composio and Pipedream apps. Gmail starts installed and waiting
+  for a Google OAuth client; Intercom and Linear work, and Composio is connected. Sign-in comes back at
+  once. The `plugins` scenario saves the Google client on its phone pass, so run it on a fresh mock.
 - **Authorship**: the mock adds authors to user messages in team spaces (alternating Alice/Bob)
   on WebSocket frames and HTTP snapshots (`MOCK_INJECT_AUTHOR=0` turns it off).
 - State and logs: `baskule/.run/web-mock/`. Processes are tracked by PID files there.
