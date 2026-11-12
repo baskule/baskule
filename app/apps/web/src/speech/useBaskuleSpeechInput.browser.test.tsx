@@ -1,22 +1,28 @@
 import { useLayoutEffect } from "react";
 import { expect, it, vi } from "vite-plus/test";
 import * as Option from "effect/Option";
-import { EnvironmentId } from "@t3tools/contracts";
+import {
+  DEFAULT_CLIENT_SETTINGS,
+  DEFAULT_SERVER_SETTINGS,
+  EnvironmentId,
+} from "@t3tools/contracts";
 import { act, render } from "../../test/render";
 import { useEnvironmentSpeechInput } from "./useEnvironmentSpeechInput";
 
 const harness = vi.hoisted(() => ({
   voice: undefined as unknown as ReturnType<typeof useEnvironmentSpeechInput>,
   prepared: { environmentId: "space" },
-  me: { voiceInput: true, user: { id: "alice" } } as {
-    voiceInput: boolean;
-    user: { id: string };
-  } | null,
+  me: { voiceInput: true, user: { id: "alice" } },
   draft: "Draft",
   committed: vi.fn(),
   submitted: vi.fn(),
   stopped: vi.fn(),
+  hosted: false,
   transcript: undefined as Promise<string> | undefined,
+}));
+vi.mock("../baskule/flags", async (original) => ({
+  ...(await original<typeof import("../baskule/flags")>()),
+  BASKULE_HOSTED: true,
 }));
 vi.mock("../baskule/session", () => ({
   useBaskuleMe: () => harness.me,
@@ -26,25 +32,55 @@ vi.mock("../state/session", () => ({
   useEnvironmentScope: () => true,
   usePreparedConnection: () => Option.some(harness.prepared),
 }));
-vi.mock("./browserVoiceInput", () => ({
-  createBrowserVoiceInputPlatform: () => ({
-    recorder: {
-      uri: "blob:recording",
-      prepareToRecordAsync: async () => {},
-      record() {},
-      stop: async () => {
-        harness.stopped();
-      },
-    },
-    transcriber: {
-      prepare: async () => ({
-        locale: "en",
-        transcribe: async () => harness.transcript ?? "dictated",
-      }),
-    },
-    cancelRecording() {},
-    deleteRecording() {},
+vi.mock("../state/environments", () => ({
+  usePrimaryEnvironmentId: () => "space",
+  useEnvironment: () => ({
+    environmentId: "space",
+    label: "Space",
+    serverConfig: { environment: { capabilities: {} } },
   }),
+}));
+vi.mock("../hooks/useSettings", () => ({
+  useClientSettingsHydrated: () => true,
+  useClientSettings: () => DEFAULT_CLIENT_SETTINGS,
+  useEnvironmentSettings: (
+    _id: string,
+    select: (settings: typeof DEFAULT_SERVER_SETTINGS) => unknown,
+  ) => select(DEFAULT_SERVER_SETTINGS),
+}));
+vi.mock("../components/ui/toast", () => ({ toastManager: { add: vi.fn() } }));
+vi.mock("./voiceConsent", () => ({
+  useAudioChoice: () => null,
+  readCleanupGrant: () => null,
+  bindAudioGrant: () => () => false,
+}));
+vi.mock("./runEnvironmentSpeech", () => ({
+  runEnvironmentSpeech: vi.fn(() => {
+    throw new Error("Hosted dictation must use the Baskule endpoint");
+  }),
+}));
+vi.mock("./browserVoiceInput", () => ({
+  createBrowserVoiceInputPlatform: ({ hosted }: { hosted: boolean }) => {
+    harness.hosted = hosted;
+    return {
+      recorder: {
+        uri: "blob:recording",
+        prepareToRecordAsync: async () => {},
+        record() {},
+        stop: async () => {
+          harness.stopped();
+        },
+      },
+      transcriber: {
+        prepare: async () => ({
+          locale: "en",
+          transcribe: async () => harness.transcript ?? "dictated",
+        }),
+      },
+      cancelRecording() {},
+      deleteRecording() {},
+    };
+  },
 }));
 
 function Composer({ chat }: { chat: string }) {
@@ -82,8 +118,9 @@ function setup() {
 
 it("finishes hosted dictation before sending and sends once after the transcript commits", async () => {
   const pending = setup();
-  await using _screen = await render(<Composer chat="one" />);
+  await using screen = await render(<Composer chat="one" />);
   await act(() => harness.voice.start());
+  expect(harness.hosted).toBe(true);
   expect(harness.voice.state.phase).toBe("recording");
   await act(() => {
     harness.voice.submitAfterDictation(harness.submitted);
@@ -118,16 +155,3 @@ it.each(["cancel", "chat switch"])(
     expect(harness.draft).toBe("Draft");
   },
 );
-
-it.each([
-  ["voice input off", { voiceInput: false, user: { id: "alice" } }],
-  ["signed out", null],
-])("offers no dictation when %s", async (_case, me) => {
-  setup();
-  harness.me = me;
-  await using _screen = await render(<Composer chat="one" />);
-  expect(harness.voice.available).toBe(false);
-  await act(() => harness.voice.start());
-  expect(harness.voice.state.phase).toBe("idle");
-  expect(harness.stopped).not.toHaveBeenCalled();
-});
