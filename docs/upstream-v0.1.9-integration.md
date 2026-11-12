@@ -48,6 +48,15 @@ It adds readable search text, replaces search-index triggers and backfills citat
 in pages. Applied identifiers and the deliberate omissions 065 and 070–072 remain unchanged.
 No schema reset, empty placeholder or retired runtime table is introduced.
 
+Embedded OpenCode advances from 2.1.3 to 2.2.5 and applies nine additional migrations
+on the same SpaceCell SQLite client. A disposable `origin/main` space supplied real
+fake-model history, authorship and a persisted `job.background/%` row. Celld applied
+all nine migrations under its SQL authorizer (50 → 59 recorded migrations), consumed
+the legacy job row, preserved the messages and authors, and answered a new fake-model
+message in the existing thread. No installation or released data was touched.
+The managed runtime probe reports 2.2.5 so native-goal capability discovery matches
+the embedded version before the first turn.
+
 `BaskuleUpgrade.test.ts` freezes the actual Baskule main manifest through 080, alongside
 existing Baskule/upstream 076 fixtures. Both Node SQLite and the hosted SQL adapter prove
 fresh startup, forward upgrade, repeated startup, required-history rejection, preserved
@@ -93,28 +102,28 @@ are part of this verification.
 | `BaskuleUpgrade.test.ts`, hosted SQL tests and migration 081 tests | Passed; both SQL paths, frozen 080, repeated startup, preserved records and paginated FTS backfill. |
 | OpenCode driver, adapter and provider/orchestration selections | Driver 24 passed; native-goal replay 21 passed; corrected server selection 203 passed. |
 | Native Effect/Code Mode and embedded-build tests | Six passed, including busy polling, cancellation and retained callback ownership. |
+| Review goal/restart/native-child Stop selections; driver/version probes | 89 restored orchestration cases, three missing/false/true native-goal capability cases and 35 provider cases passed. |
+| Cookie-only OAuth and frozen 080 migration selection | 19 passed across OAuth, Node SQLite and the hosted SQL adapter. |
+| `scripts/check space:native-goals` with compatible celld | Passed: real workerd 2.2.5 capability, set and clear through native RPC/events. |
+| Existing SpaceCell OpenCode 2.1.3 → 2.2.5 | Nine migrations applied (50 → 59), legacy background row consumed, history/authorship preserved and a new fake-model continuation passed. |
 | `scripts/check space` | All 17 passed with the real 2.2.5 workerd bundle and fake provider. |
 | Mobile attachment/voice selection; asset-cache React selection | 45 and six tests passed respectively; other previously passing mobile selections retained. |
 | Desktop source regression suite and corrected update selection | Unchanged files passed; corrected update file passed all 41 tests. Packaged application not exercised. |
 | Hosted transcription/API/settings unit selection; browser PCM/hosted dictation | 20 unit tests, four voice browser tests and four live-region browser tests passed. |
+| PR CI after review fixes | Compatibility guard, harness, root/web/mobile/shared typechecks, desktop check, platform/server/web/shared/mobile tests and required gate all passed. |
 | `scripts/stack doctor`; `scripts/check journey:personal-chat` | Doctor passed; all four desktop/phone journeys passed; stack stopped and evidence retained. |
 | Retired/new upstream path audit | No reintroduced excluded paths. |
-| Full `scripts/check upstream` server | 4,531 passed, four failed, six skipped. The three failed files passed focused reruns: 203 tests plus seven permission tests with DAC bypass dropped. |
-| Full `scripts/check upstream` web | 4,529 passed, five failed. Both failed files passed all 123 tests after adapting explicit visibility and branding expectations; live-region browser tests also passed four cases. |
+| Full `scripts/check upstream` server | 4,553 passed in 382 files; six existing cases skipped. Root permission fixtures ran with DAC bypass dropped. |
+| Full `scripts/check upstream` web | 4,523 passed in 329 files after the voice-worker integration; earlier transport run passed 4,534 in 330 files. |
 
-Failures were classified before retry: dependency-install concurrency, unavailable Docker
-bridge networking, root bypass of chmod-based permission fixtures, and the optional HTTPS
-proxy were environment failures; SQL statement
-splitting, removed-provider, visibility-default and branding assumptions, missing test-session state and concurrent Vitest
-cache cleanup were harness failures. A later SpaceCell selection invocation completed all
-17 runner checks, then the wrapper rejected the unsupported `--only` flag; the supported
-`space:native-goals` entry point was used for the focused confirmation. The theme permission
-file passed all seven tests with DAC-bypass capabilities dropped for that process, preserving
-its assertions. Code Mode starvation, stale goal projections and
-missing desktop release metadata were product failures fixed and verified in their affected
-selections. Merge/type/lint errors were corrected before the final checks. Verbatim upstream
-generated highlighting C and dependency patch context retain their existing whitespace;
-hand-edited application changes pass the diff whitespace check with those files excluded.
+Failures were classified before retry. Root permission fixtures run with DAC bypass
+capabilities dropped, preserving their assertions. The earlier queued-goal-pause failure
+was a stale Claude rejection expectation; the current capability-based case passes.
+The upgrade check corrected an intermediate bundle and preserved a stable fake-model
+endpoint across stack restarts. Driver-probe coverage now explicitly refreshes a cached
+success before testing rejection and recovery. Docker bridge failures used the matching
+prebuilt celld binary. Detailed logs and failure classifications stay under
+`.run/evidence/upstream-v0.1.9/`. No real-model or performance check was run.
 
 ## Review corrections
 
