@@ -379,6 +379,7 @@ const make = Effect.gen(function* () {
       : environmentAuth.authenticateHttpRequest(request).pipe(
           Effect.flatMap((session) =>
             // Approving manages access, and a session may only hand out scopes it holds.
+            session.method === "browser-session-cookie" && // baskule: token cookies cannot approve clients.
             session.scopes.includes(AuthAccessWriteScope) &&
             session.scopes.includes(AuthOrchestrationReadScope)
               ? csrfToken(session.sessionId, authorization).pipe(
