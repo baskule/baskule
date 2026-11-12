@@ -145,6 +145,10 @@ describe.each([
         const sql = yield* SqlClient.SqlClient;
         yield* createBaskule080;
         assert.deepStrictEqual(yield* history, baskule080History);
+        const triggers = yield* sql<{ sql: string }>`
+          SELECT sql FROM sqlite_master WHERE name = 'orchestration_v2_message_search_update'
+        `;
+        assert.include(triggers[0]?.sql, "AFTER UPDATE OF payload_json, streaming, role ON");
         yield* sql`INSERT INTO auth_sessions (session_id, subject, scopes, method, issued_at, expires_at)
       VALUES ('session-main', 'person-main', '[]', 'baskule', '2026-11-01', '2027-11-01')`;
         yield* sql`INSERT INTO orchestration_v2_projection_threads
