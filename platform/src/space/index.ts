@@ -323,7 +323,9 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       if (server.sockets().length > 0) candidates.push(now + RECHECK_INTERVAL_MS);
       if (status.activeRuns > 0) candidates.push(now + RUN_HEARTBEAT_MS);
       if (status.nextWakeAt !== null) candidates.push(Math.max(status.nextWakeAt, now + 1_000));
-      candidates.push(this.lastActivity + IDLE_DISPOSE_MS);
+      // Only a cell without sockets or runs can go idle; socket messages do not touch lastActivity, so an idle
+      // deadline in the past would re-arm immediately on every alarm. Closing the last socket reschedules.
+      if (server.sockets().length === 0 && status.activeRuns === 0) candidates.push(Math.max(this.lastActivity + IDLE_DISPOSE_MS, now + 1_000));
     } else {
       const cached = await this.ctx.storage.get<CachedStatus>("baskule:status");
       if (cached?.nextWakeAt != null) candidates.push(Math.max(cached.nextWakeAt, now + 1_000));
