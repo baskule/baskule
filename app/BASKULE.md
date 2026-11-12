@@ -61,8 +61,8 @@ separate platform verification. See the [Android guide](apps/mobile/BASKULE-ANDR
 ## Supported product scope
 
 OpenCode 2 is the only bundled agent driver. The app client/protocol/schema and embedded
-core/schema/SDK/util use exactly 2.2.5; the upstream `@opencode-ai/sdk` dependency remains
-unchanged. Vendor models run through OpenCode.
+core/schema/SDK/util use exactly 2.2.5. The unused OpenCode 1 SDK is removed.
+Vendor models run through OpenCode.
 Local and external OpenCode instances use the provider adapter and instance contracts.
 Retired driver settings can decode for compatibility, but have no executable driver.
 They are not converted into OpenCode conversations.
