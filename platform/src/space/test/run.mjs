@@ -307,6 +307,64 @@ async function main() {
     return "DO SQLite 073–076: pin/archive persisted; portable side chat answered; Stop settled streaming run";
   });
 
+  await check("native-goals", async () => {
+    await seedPrimary();
+    const c = alicePrimary;
+    const projection = () => c.ok("orchestration.getThreadProjection", { threadId: firstThreadId });
+    const before = await projection();
+    assert(before.providerSessions.some(session => session.capabilities.turns.supportsNativeGoals === true), "OpenCode native goals were not advertised");
+    const info = await (await http("/control/sp1/_baskule/agent/oc/api/info")).json();
+    assert(info.version === "2.2.5", `embedded runtime version ${info.version}`);
+    const objective = "Goal round trip [[fake:long 500]] [[fake:delay 50]]";
+    const send = text => dispatch(c, { type: "message.dispatch", createdBy: "user", creationSource: "web", threadId: firstThreadId, messageId: `message:goal:${crypto.randomUUID()}`, text, attachments: [], deliveryIntent: "auto", dispatchMode: { type: "queue_after_active" } });
+    try {
+      await send(`/goal ${objective}`);
+      await waitFor("native goal projected", async () => (await projection()).providerThreads.some(thread => thread.goal?.objective === objective), 30_000);
+      await send("/goal clear");
+      await waitFor("native goal cleared", async () => (await projection()).providerThreads.every(thread => thread.goal == null), 30_000);
+      await waitFor("native goal control settled", async () => (await projection()).runs.at(-1)?.status === "completed", 10_000);
+      return "workerd OpenCode 2.2.5 advertised native goals; /goal set and clear synchronized through native RPC/events";
+    } finally {
+      const current = await projection();
+      const nativeThread = current.providerThreads.find(thread => thread.nativeThreadRef)?.nativeThreadRef?.nativeId;
+      const location = new URLSearchParams({ "location[directory]": current.thread.worktreePath });
+      const nativeGoal = await http(`/control/sp1/_baskule/agent/oc/api/rpc/opencode.goal/get?${location}`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input: { sessionID: nativeThread } }),
+      }).then(response => response.text());
+      appendFileSync(join(RUN, "native-goals.json"), JSON.stringify({ ...current, nativeGoal }));
+      for (const run of current.runs.filter(run => ["pending", "starting", "running", "waiting"].includes(run.status)))
+        await dispatch(c, { type: "run.interrupt", threadId: firstThreadId, runId: run.id }).catch(error => {
+          if (!String(error).includes("is not interruptible")) throw error;
+        });
+    }
+  });
+
+  await check("sdk-stream-cleanup", async () => {
+    const c = await RpcClient.open(BASE, "spstream", alice);
+    let thread;
+    let reader;
+    try {
+      const pid = (await c.ok("projects.ensureScratch", {})).projectId;
+      const tid = await launch(c, pid, "Stream cleanup [[fake:text cleanup ready]]");
+      thread = watchThread(c, tid);
+      await waitFor("cleanup chat settled", () => thread.settled(), 60_000);
+      const base = "/control/spstream/_baskule/agent";
+      const state = async () => (await http(`${base}/_baskule/debug/state`)).json();
+      const before = (await state()).openStreams;
+      const response = await http(`${base}/oc/api/event`, { signal: AbortSignal.timeout(15_000) });
+      reader = response.body.getReader();
+      assert(!(await reader.read()).done, "SDK event stream ended before disposal");
+      assert((await state()).openStreams === before + 1, "SDK did not register the stream");
+      const ended = (async () => { while (!(await reader.read()).done) {} })().catch(() => {});
+      const disposed = await http(`${base}/_baskule/debug/dispose`, { method: "POST", signal: AbortSignal.timeout(10_000) });
+      assert(disposed.ok, `SDK disposal failed: ${disposed.status}`);
+      await ended;
+      const after = await state();
+      assert(!after.booted && after.openStreams === 0, `SDK streams survived disposal: ${JSON.stringify(after)}`);
+      return "workerd SDK disposal closed its pending event streams and released the runtime";
+    } finally { await reader?.cancel().catch(() => {}); thread?.stop(); c.close(); }
+  });
+
   await check("force-stop", async () => {
     await seedPrimary();
     const c = alicePrimary;

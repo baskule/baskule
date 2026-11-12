@@ -5,11 +5,12 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 import { nativeEffectContinuations } from "../../../app/apps/server/src/baskule/workerd/nativeEffectContinuations.mjs";
+import { embeddedAgent } from "../../src/agent/build.mjs";
 import { bindBootScheduler, withBootScheduler } from "../../../app/apps/server/src/baskule/workerd/bootScheduler.mjs";
 
 const bundle = async (contents: string, resolveDir: string) => (await build({
   stdin: { contents, resolveDir }, bundle: true, format: "esm", platform: "neutral", write: false,
-  external: ["node:*"], plugins: [nativeEffectContinuations],
+  external: ["node:*"], plugins: [nativeEffectContinuations, embeddedAgent],
 })).outputFiles[0]!.text;
 
 it.each(["../../", "../../../app/apps/server/"])("keeps %s's dispatcher timers in each boot event after a foreign request retires", async directory => {
