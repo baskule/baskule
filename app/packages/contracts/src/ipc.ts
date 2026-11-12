@@ -1178,17 +1178,7 @@ export const DesktopPreviewAnnotationVoiceEventSchema = Schema.Struct({
   text: Schema.String.check(Schema.isMaxLength(100_000)),
   cursor: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   selectionEnd: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-  action: Schema.Literals([
-    "sync",
-    "start",
-    "stop",
-    "cancel",
-    "skip",
-    "settings",
-    "key",
-    "focus",
-    "blur",
-  ]),
+  action: Schema.Literals(["sync", "start", "stop", "cancel", "skip", "key", "focus", "blur"]),
   keyboard: Schema.optional(
     Schema.Struct({
       type: Schema.Literals(["keydown", "keyup"]),
