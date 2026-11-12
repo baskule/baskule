@@ -16,6 +16,7 @@ export interface SpaceDatabase { readonly client: unknown; readonly stats: Space
 export function createSpaceSqlClient(storage: DoSqlStorage, onStorageLost?: () => void): Promise<SpaceDatabase>;
 
 export interface SpaceServerConfig {
+  readonly onRelease?: (release: () => void) => () => void;
   readonly push?: { deliver: (notification: PushNotification, environmentId: string) => Promise<void>; changed: () => Promise<void> };
   readonly spaceId: string;
   readonly storage: DoSqlStorage;

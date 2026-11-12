@@ -6,7 +6,7 @@
 // --sync rebuilds the T3 bundle first (sync-bundle.sh; T3_APP_DIR selects the fork checkout).
 // Everything it started is stopped at the end, unless --keep.
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, openSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcClient, identityHeader, waitFor } from "./rpc-client.mjs";
@@ -177,6 +177,32 @@ async function main() {
     }, 10_000);
     thread.stop();
   }
+
+  await check("native-release", async () => {
+    const response = await http("/s/native-release/api/orchestration/shell", { headers: { ...as(alice), "x-t3-orchestration-protocol": "2" } });
+    assert(response.ok, `real Space failed to boot: ${response.status}`);
+    await response.arrayBuffer();
+    await waitFor("real agent boot", () => readFileSync(join(RUN, "celld.log"), "utf8").includes("[agent native-release] OpenCode booted in"), 60_000);
+    const stopped = await http("/control/native-release/_baskule/stop", { method: "POST" });
+    assert(stopped.ok, `Space stop failed: ${stopped.status}`);
+    await stopped.arrayBuffer();
+    const logs = () => readFileSync(join(RUN, "celld.log"), "utf8");
+    const address = logs().match(/internal listening on (\S+)/)?.[1];
+    assert(address, "native internal listener was not reported");
+    const state = () => fetch(`http://${address}/state`).then(response => response.json());
+    const scopes = Object.keys((await state()).deployment.cells).filter(scope => scope.startsWith("SpaceCell:"));
+    assert(scopes.length === 1, `expected only the release fixture Space: ${scopes.length}`);
+    await waitFor("native cell eviction", async () => {
+      const response = await fetch(`http://${address}/evict/${scopes[0]}`, { method: "POST" });
+      const detail = await response.text();
+      if (response.status === 409) return false;
+      assert(response.ok, `native eviction failed: ${response.status} ${detail}`);
+      return true;
+    }, 30_000);
+    await waitFor("real SpaceCell synchronous disposal", () => logs().includes('"event":"space.released","spaceId":"native-release","failures":0'), 10_000);
+    assert(!(scopes[0] in (await state()).deployment.cells), "native cell remained resident");
+    return "real T3 and OpenCode booted, stopped, and celld invoked SpaceCell[Symbol.dispose]";
+  });
 
   await check("identity-required", async () => {
     const none = await (await http("/s/sp1/api/auth/session")).json();

@@ -74,3 +74,17 @@ contents. Front-session upserts and Space recovery-status writes run only when t
 Authentication, authorization, revocation, startup recovery, and alarm deadlines retain their
 existing durable paths. No schema marker, data-layout change, credential cache, or extra SQL client
 is introduced. The multiplexed alarm and same-cell OpenCode request remain unchanged.
+
+## Wake after cell eviction
+
+The runtime retains one bounded, healthy empty backend cell heap so the evaluated module graph
+can serve another incarnation. Space-owned module registrations and captures are released with
+its cell. The [runtime patch guide](celld-runtime-patch.md#bounded-cell-isolate-retention) owns the
+memory budget, retention bounds, cleanup contract, and pressure behavior. Idle eviction remains
+an operator choice under [#87](https://github.com/baskule/baskule/issues/87).
+
+An ordinary-wake measurement first stops the application Space, then waits for ordinary idle
+eviction of both Control and Space. Native census must show zero resident cells, requests, turns,
+and retiring heaps, with one live empty heap on the patched runtime and none on stock main.
+Each trial uses a fresh process and private seed copy. This excludes preparation time and differs
+from process restart, pressure eviction, and spontaneous idle sleep without an application stop.

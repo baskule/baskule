@@ -1,0 +1,39 @@
+name: Celld patches
+
+# CI calls this when celld inputs change and requires it through `CI required`.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: '4'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Export BuildKit cache credentials
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            for (const key of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL']) {
+              core.exportVariable(key, process.env[key]);
+              core.setSecret(process.env[key]);
+            }
+      - name: Apply every patch and run all four Rust test targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .run
+          sed '/^WORKDIR \/src/a ENV CARGO_BUILD_JOBS=4' deploy/celld/Dockerfile > .run/celld-ci.Dockerfile
+          docker buildx build --progress=plain --target runtime-build \
+            --cache-from type=gha,scope=celld-runtime \
+            --cache-to type=gha,scope=celld-runtime,mode=max \
+            -f .run/celld-ci.Dockerfile .

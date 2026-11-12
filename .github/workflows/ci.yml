@@ -130,10 +130,39 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  celld-changes:
+    name: Celld inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Without a comparable base, build celld; its BuildKit cache keeps unchanged inputs cheap.
+        run: |
+          changed=true
+          if [[ "$EVENT" == pull_request || "$EVENT" == push ]] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            if git diff --quiet "$BASE_SHA" HEAD -- deploy/celld .github/workflows/celld.yml; then changed=false; fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+  celld:
+    name: Celld patches
+    needs: celld-changes
+    if: needs.celld-changes.outputs.changed == 'true'
+    uses: ./.github/workflows/celld.yml
+
   required:
     name: CI required
     if: always()
-    needs: [checks, tests, mobile]
+    needs: [checks, tests, mobile, celld-changes, celld]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every job to pass
@@ -141,4 +170,10 @@ jobs:
           CHECKS_RESULT: ${{ needs.checks.result }}
           TESTS_RESULT: ${{ needs.tests.result }}
           MOBILE_RESULT: ${{ needs.mobile.result }}
-        run: test "$CHECKS_RESULT" = success && test "$TESTS_RESULT" = success && test "$MOBILE_RESULT" = success
+          CELLD_CHANGES_RESULT: ${{ needs.celld-changes.result }}
+          CELLD_CHANGED: ${{ needs.celld-changes.outputs.changed }}
+          CELLD_RESULT: ${{ needs.celld.result }}
+        run: |
+          test "$CHECKS_RESULT" = success && test "$TESTS_RESULT" = success && test "$MOBILE_RESULT" = success
+          test "$CELLD_CHANGES_RESULT" = success
+          test "$CELLD_RESULT" = success || { test "$CELLD_RESULT" = skipped && test "$CELLD_CHANGED" = false; }

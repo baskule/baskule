@@ -16,7 +16,7 @@ fn pool(isolates: Vec<IsolateLoad>) -> PoolLoad {
 }
 
 #[test]
-fn idle_stateless_pool_shrinks_to_one_but_cell_pool_empties() {
+fn routine_retention_and_generation_drain_use_distinct_floors() {
     for floor in [0, 1] {
         let mut load = pool(vec![IsolateLoad::default(); 4]);
         for _ in 0..10 {
