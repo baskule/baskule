@@ -43,12 +43,12 @@ describe("OpenCode version probe", () => {
         binaryPath: "opencode",
         serverUrl: "http://agent/oc",
         serverPassword: "",
-        managedRuntime: { version: "2.1.3" },
+        managedRuntime: { version: "2.2.5" },
       }).pipe(
         Effect.provideService(HttpClient.HttpClient, broken),
         Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, noBinary),
       );
-      assert.deepStrictEqual(result, { version: "2.1.3" });
+      assert.deepStrictEqual(result, { version: "2.2.5" });
     }),
   );
 
@@ -176,7 +176,13 @@ describe("OpenCode version probe", () => {
 
   it.effect("remembers a probed 2.x runtime but re-probes 1.x and failures", () =>
     Effect.gen(function* () {
-      const outputs = ["", "opencode v2.0.18\n", "opencode v2.1.2\n", "1.18.32\n"];
+      const outputs = [
+        "",
+        "opencode v2.0.18\n",
+        "opencode v2.1.2\n",
+        "1.18.32\n",
+        "opencode v2.2.5\n",
+      ];
       let calls = 0;
       const runtime = {
         runOpenCodeCommand: () => {
@@ -202,7 +208,13 @@ describe("OpenCode version probe", () => {
       assert.strictEqual((yield* probe.refresh).version, "2.1.2");
       assert.strictEqual(calls, 3);
       assert.strictEqual((yield* probe.get).version, "2.1.2");
+      assert.strictEqual(calls, 3);
+      const old = yield* Effect.flip(probe.refresh);
+      assert.match(old.detail, /OpenCode v1\.18\.32 is not supported/);
       assert.strictEqual(calls, 4);
+      assert.strictEqual((yield* probe.get).version, "2.2.5");
+      assert.strictEqual((yield* probe.get).version, "2.2.5");
+      assert.strictEqual(calls, 5);
     }),
   );
 });

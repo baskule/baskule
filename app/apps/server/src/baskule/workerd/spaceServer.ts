@@ -280,7 +280,9 @@ export const createSpaceSqlClient = async (
       },
     },
   };
-  return Effect.runPromise(DoSql.make(storage), { scheduler: new Scheduler.MixedScheduler("sync") });
+  return Effect.runPromise(DoSql.make(storage), {
+    scheduler: new Scheduler.MixedScheduler("sync"),
+  });
 };
 
 export const createSpaceServer = async (config: SpaceServerConfig): Promise<SpaceServer> => {
@@ -387,7 +389,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     McpDeferredRegistrations.layer,
     Layer.succeed(FetchHttpClient.Fetch, agentFetch),
     // SpaceCell embeds both runtimes; a transient discovery error must never select legacy v1.
-    Layer.succeed(ManagedOpenCodeRuntime, { version: "2.1.3" }),
+    Layer.succeed(ManagedOpenCodeRuntime, { version: "2.2.5" }),
     Layer.succeed(HostFileSystem, hostFileSystem),
     sqlLayer,
     fileSystemLayer,
@@ -463,7 +465,9 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
   if (Exit.isFailure(built)) {
     unregisterAttachments();
     if (agentRoutes.get(config.spaceId) === config.agentFetch) agentRoutes.delete(config.spaceId);
-    await Effect.runPromise(Scope.close(scope, built), { scheduler: new Scheduler.MixedScheduler("sync") });
+    await Effect.runPromise(Scope.close(scope, built), {
+      scheduler: new Scheduler.MixedScheduler("sync"),
+    });
     throw new Error(`The space server failed to start: ${String(built.cause).slice(0, 2000)}`);
   }
   const context = built.value as Context.Context<never>;
@@ -686,7 +690,9 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     dispose: async () => {
       // celld's WebSocket.close accepts 1000 or application codes, not the reserved 1001.
       for (const socket of sockets) socket.close(4000, "space restarting");
-      await Effect.runPromise(Scope.close(scope, Exit.void), { scheduler: new Scheduler.MixedScheduler("sync") });
+      await Effect.runPromise(Scope.close(scope, Exit.void), {
+        scheduler: new Scheduler.MixedScheduler("sync"),
+      });
       unregisterAttachments();
       if (agentRoutes.get(config.spaceId) === config.agentFetch) agentRoutes.delete(config.spaceId);
     },
