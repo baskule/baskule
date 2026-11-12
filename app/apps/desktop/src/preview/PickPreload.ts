@@ -617,7 +617,6 @@ function startAnnotation(
   // Recording happens in the application renderer, which owns the microphone consent.
   // This guest only draws the controls, forwards trusted gestures, and mirrors state.
   let voicePhase: DesktopPreviewAnnotationVoiceState["phase"] = "idle";
-  let voiceSettings = false;
   let voiceBusy = false;
   let voiceAvailable = false;
   let voiceKeyCode: string | null = null;
@@ -717,10 +716,6 @@ function startAnnotation(
   // Page scripts cannot reach the closed shadow root, and a synthetic click never counts.
   voiceButton.addEventListener("click", (event) => {
     if (!event.isTrusted) return;
-    if (voiceSettings) {
-      sendVoice("settings");
-      return;
-    }
     if (!voiceAvailable || (voiceBusy && voicePhase !== "recording")) return;
     sendVoice(voicePhase === "recording" ? "stop" : "start");
   });
@@ -744,7 +739,6 @@ function startAnnotation(
     const submissionChanged = voiceBusy !== state.blocksSubmission;
     const previewChanged = voicePreview.textContent !== (state.preview ?? "");
     voicePhase = state.phase;
-    voiceSettings = state.errorAction === "settings";
     voiceBusy = state.blocksSubmission;
     voiceAvailable = state.available;
     comment.readOnly = state.freezesEditor;
@@ -759,9 +753,8 @@ function startAnnotation(
     const wasActive = voicePill.parentElement === composerRow;
     voiceButton.hidden = !state.available || active;
     voiceButton.disabled = voiceBusy;
-    const label = voiceSettings ? "Open voice settings" : "Start voice input";
-    voiceButton.title =
-      !voiceSettings && state.shortcutLabel ? `${label} (${state.shortcutLabel})` : label;
+    const label = "Start voice input";
+    voiceButton.title = state.shortcutLabel ? `${label} (${state.shortcutLabel})` : label;
     voiceButton.setAttribute("aria-label", label);
     // An active dictation takes the textarea's place; it takes focus once (sr-only) so Enter still attaches.
     voiceRow.hidden = state.phase === "idle" || active;
