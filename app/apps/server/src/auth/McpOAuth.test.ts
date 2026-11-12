@@ -10,6 +10,7 @@ import {
 import { expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -32,6 +33,7 @@ import * as McpOAuthHttp from "./mcpOAuthHttp.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import * as AuthHttp from "./http.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
+import { encodeBaskuleIdentity } from "../baskule/identity.ts";
 
 class AuthTestApi extends HttpApi.make("environment")
   .add(EnvironmentHttpApi.groups.auth)
@@ -108,6 +110,7 @@ type Handler = (request: Request) => Effect.Effect<Response>;
 const withRoutes = <A, E>(
   use: (handler: Handler, auth: EnvironmentAuth.EnvironmentAuth["Service"]) => Effect.Effect<A, E>,
   linkState = notLinked,
+  authMode?: "front",
 ) =>
   Effect.gen(function* () {
     const random = yield* SecureRandom.SecureRandom;
@@ -115,7 +118,13 @@ const withRoutes = <A, E>(
     let routerAuth: EnvironmentAuth.EnvironmentAuth["Service"] | undefined;
     const layerRoutes = makeLayerRoutes((auth) => {
       routerAuth = auth;
-    }, linkState);
+    }, linkState).pipe(
+      Layer.provide(
+        authMode === undefined
+          ? Layer.empty
+          : ConfigProvider.layer(ConfigProvider.fromEnvRecord({ BASKULE_AUTH_MODE: authMode })),
+      ),
+    );
     return yield* Effect.acquireUseRelease(
       Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
       (web) =>
@@ -347,66 +356,98 @@ it.live("signs in with a pairing code and issues a token only /mcp accepts", () 
   ),
 );
 
-it.live("signs in a hosted agent with an https callback that asked for a client secret", () =>
-  withRoutes((handler, auth) =>
-    Effect.gen(function* () {
-      const callbackUrl = "https://bot.example/oauth/callback";
-      const registered = yield* handler(
-        at("/oauth/mcp/register", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: encodeJson({
-            client_name: "Hosted bot",
-            redirect_uris: [callbackUrl],
-            token_endpoint_auth_method: "client_secret_post",
-          }),
+it.live.each([undefined, "front"] as const)(
+  "signs in a hosted agent with an https callback that asked for a client secret (auth mode: %s)",
+  (authMode) =>
+    withRoutes(
+      (handler, auth) =>
+        Effect.gen(function* () {
+          const identityHeaders =
+            authMode === "front"
+              ? {
+                  "x-baskule-identity": encodeBaskuleIdentity({
+                    userId: "hosted-user",
+                    name: "Hosted user",
+                    email: "hosted@example.test",
+                    role: "member",
+                    sessionId: "hosted-session",
+                    spaceRole: "owner",
+                  }),
+                }
+              : undefined;
+          if (identityHeaders !== undefined) {
+            const session = yield* auth.authenticateHttpRequest(
+              HttpServerRequest.fromWeb(at("/oauth/mcp/approval", { headers: identityHeaders })),
+            );
+            expect(session.method).toBe("browser-session-cookie");
+          }
+          const callbackUrl = "https://bot.example/oauth/callback";
+          const registered = yield* handler(
+            at("/oauth/mcp/register", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: encodeJson({
+                client_name: "Hosted bot",
+                redirect_uris: [callbackUrl],
+                token_endpoint_auth_method: "client_secret_post",
+              }),
+            }),
+          );
+          expect(registered.status).toBe(201);
+          const client = (yield* json<unknown>(registered)) as {
+            client_id: string;
+            token_endpoint_auth_method: string;
+          };
+          expect(client.token_endpoint_auth_method).toBe("none");
+
+          const params = authorizeParams(client.client_id, callbackUrl);
+          const details = yield* handler(
+            postJson("/oauth/mcp/approval", params, identityHeaders),
+          ).pipe(Effect.flatMap(json<Record<string, unknown>>));
+          expect(details).toMatchObject({ clientName: "Hosted bot", redirectHost: "bot.example" });
+          expect(details.csrfToken).toBeUndefined();
+          expect(details.oneClickAccess).toBeUndefined();
+
+          const pairing = yield* auth.issuePairingCredential();
+          const approved = yield* decide(
+            handler,
+            params,
+            {
+              _tag: "pairing-code",
+              access: "approval-required",
+              code: pairing.credential,
+            },
+            identityHeaders,
+          );
+          expect(approved.status).toBe(200);
+          const callback = new URL(approved.redirectTo!);
+          expect(`${callback.origin}${callback.pathname}`).toBe(callbackUrl);
+
+          const tokenResponse = yield* handler(
+            at(
+              "/oauth/mcp/token",
+              form({
+                grant_type: "authorization_code",
+                code: callback.searchParams.get("code")!,
+                redirect_uri: callbackUrl,
+                client_id: client.client_id,
+                client_secret: "unused",
+                code_verifier: verifier,
+              }),
+            ),
+          );
+          expect(tokenResponse.status).toBe(200);
+          const token = (yield* json<unknown>(tokenResponse)) as { access_token: string };
+          const signedIn = yield* auth.authenticateMcpClient(
+            HttpServerRequest.fromWeb(
+              at("/mcp", { headers: { authorization: `Bearer ${token.access_token}` } }),
+            ),
+          );
+          expect(signedIn).toMatchObject({ label: "Hosted bot", access: "approval-required" });
         }),
-      );
-      expect(registered.status).toBe(201);
-      const client = (yield* json<unknown>(registered)) as {
-        client_id: string;
-        token_endpoint_auth_method: string;
-      };
-      expect(client.token_endpoint_auth_method).toBe("none");
-
-      const params = authorizeParams(client.client_id, callbackUrl);
-      const details = yield* handler(postJson("/oauth/mcp/approval", params)).pipe(
-        Effect.flatMap(json<Record<string, unknown>>),
-      );
-      expect(details).toMatchObject({ clientName: "Hosted bot", redirectHost: "bot.example" });
-
-      const pairing = yield* auth.issuePairingCredential();
-      const approved = yield* decide(handler, params, {
-        _tag: "pairing-code",
-        access: "approval-required",
-        code: pairing.credential,
-      });
-      const callback = new URL(approved.redirectTo!);
-      expect(`${callback.origin}${callback.pathname}`).toBe(callbackUrl);
-
-      const tokenResponse = yield* handler(
-        at(
-          "/oauth/mcp/token",
-          form({
-            grant_type: "authorization_code",
-            code: callback.searchParams.get("code")!,
-            redirect_uri: callbackUrl,
-            client_id: client.client_id,
-            client_secret: "unused",
-            code_verifier: verifier,
-          }),
-        ),
-      );
-      expect(tokenResponse.status).toBe(200);
-      const token = (yield* json<unknown>(tokenResponse)) as { access_token: string };
-      const signedIn = yield* auth.authenticateMcpClient(
-        HttpServerRequest.fromWeb(
-          at("/mcp", { headers: { authorization: `Bearer ${token.access_token}` } }),
-        ),
-      );
-      expect(signedIn).toMatchObject({ label: "Hosted bot", access: "approval-required" });
-    }),
-  ),
+      notLinked,
+      authMode,
+    ),
 );
 
 it.live("rejects a wrong PKCE verifier and spends the code", () =>
@@ -655,7 +696,9 @@ it.live("one-click approves only access the browser session holds the scopes for
       );
       expect(new URL(readOnly.redirectTo!).searchParams.get("code")).toEqual(expect.any(String));
 
-      const bearer = `Bearer ${(yield* auth.issueSession({ scopes: [...AuthStandardClientScopes] })).token}`;
+      const bearerToken = (yield* auth.issueSession({ scopes: [...AuthStandardClientScopes] }))
+        .token;
+      const cookieName = admin.slice(0, admin.indexOf("="));
       const key = makeDpopKey();
       const pairing = yield* auth.issuePairingCredential({ scopes: [...AuthStandardClientScopes] });
       const exchanged = yield* auth.exchangeBootstrapCredentialForAccessToken(
@@ -666,7 +709,9 @@ it.live("one-click approves only access the browser session holds the scopes for
       );
       const iat = Math.floor((yield* Clock.currentTimeMillis) / 1_000);
       for (const credential of [
-        bearer,
+        `Bearer ${bearerToken}`,
+        { cookie: `${cookieName}=${bearerToken}` },
+        { cookie: `${cookieName}=${exchanged.access_token}` },
         {
           authorization: `DPoP ${exchanged.access_token}`,
           dpop: key.sign({
