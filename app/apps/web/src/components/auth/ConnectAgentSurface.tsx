@@ -113,11 +113,9 @@ function runApproval<A>(
 /** This environment's own page, approving with a code or this browser's session. */
 const primaryTransport: McpApprovalTransport = {
   load: (authorization) =>
-    runApproval((client) => client.mcpOAuth.approval({ headers: {}, payload: authorization })),
+    runApproval((client) => client.mcpOAuth.approval({ payload: authorization })),
   decide: (authorization, decision) =>
-    runApproval((client) =>
-      client.mcpOAuth.decision({ headers: {}, payload: { authorization, decision } }),
-    ),
+    runApproval((client) => client.mcpOAuth.decision({ payload: { authorization, decision } })),
 };
 
 const decodeAuthorizationRequest = Schema.decodeSync(AuthMcpAuthorizationRequest);
@@ -222,8 +220,7 @@ export function McpConsent({
         ? answer.message
         : answer.kind === "redirect"
           ? UNSAFE_REDIRECT
-          : t("The sign-in could not continue.",
-    ),
+          : t("The sign-in could not continue."),
     );
   };
 
