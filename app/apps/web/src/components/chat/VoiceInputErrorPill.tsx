@@ -1,5 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
-import { RotateCcwIcon, SettingsIcon, XIcon } from "lucide-react";
+import { RotateCcwIcon, XIcon } from "lucide-react";
 
 import { msg, useTranslation } from "../../i18n";
 import { Button } from "../ui/button";
@@ -44,13 +43,10 @@ export function VoiceInputErrorPill(props: {
   onDismiss(): void;
 }) {
   const t = useTranslation();
-  const navigate = useNavigate();
   const error = props.error === null ? t("Voice input failed") : t(props.error);
-  const openSettings = props.errorAction === "settings";
-  const actionLabel = openSettings
-    ? t("Open voice settings")
-    : props.error === "Could not transcribe this recording." ||
-        props.error === "Voice transcription on this environment failed."
+  const actionLabel =
+    props.error === "Could not transcribe this recording." ||
+    props.error === "Voice transcription on this environment failed."
       ? t("Retry transcription")
       : t("Record again");
   return (
@@ -90,7 +86,8 @@ export function VoiceInputErrorPill(props: {
         </TooltipTrigger>
         <TooltipPopup side="top">{error}</TooltipPopup>
       </Tooltip>
-      {props.errorAction ? (
+      {/* Web microphone prompts can always be retried, so a "settings" action never arrives. */}
+      {props.errorAction === "retry" ? (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -101,16 +98,9 @@ export function VoiceInputErrorPill(props: {
                 aria-label={actionLabel}
                 disabled={props.disabled}
                 onPointerDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  if (openSettings) {
-                    props.onDismiss();
-                    void navigate({ to: "/settings/voice" });
-                  } else {
-                    props.onRetry();
-                  }
-                }}
+                onClick={props.onRetry}
               >
-                {openSettings ? <SettingsIcon /> : <RotateCcwIcon />}
+                <RotateCcwIcon />
               </Button>
             }
           />
