@@ -40,7 +40,9 @@ function withVerb(work: WorkLogEntry, label: string) {
   if (work.itemType === "file_change") return t("Editing {{label}}", { label });
   if (work.itemType !== "file_search" && work.itemType !== "web_search") return label;
   if (/^search(?:ed|ing)?\s/i.test(label)) return label;
-  return work.itemType === "web_search" ? t("Searching the web for {{label}}", { label }) : t("Searching for {{label}}", { label });
+  return work.itemType === "web_search"
+    ? t("Searching the web for {{label}}", { label })
+    : t("Searching for {{label}}", { label });
 }
 
 type MessageEntry = Extract<TimelineEntry, { kind: "message" }>;
@@ -192,7 +194,9 @@ export function nextTurnDetailAnnouncement(
       )
       .map((message) =>
         message.text.length > MESSAGE_MAX_LENGTH
-          ? t("{{text}} More in the chat.", { text: markdownPlainText(message.text.slice(0, MESSAGE_MAX_LENGTH)) })
+          ? t("{{text}} More in the chat.", {
+              text: markdownPlainText(message.text.slice(0, MESSAGE_MAX_LENGTH)),
+            })
           : markdownPlainText(message.text),
       )
       .filter((text) => text !== "")
