@@ -136,11 +136,14 @@ Baskule UI switches in the retained client code; it does not restore excluded fe
 Baskule UI modules live under `apps/web/src/baskule/`; integration comments identify edits
 in upstream files. Keep flags and actual RPC capabilities aligned.
 
-Voice input keeps upstream's dictation controls, `VoiceInputController` lifecycle, browser
-PCM capture and mobile recorder. Every client sends the finished recording to the platform's
-`/api/baskule/transcriptions` route while the account has voice input. The clients
-have no local models, cloud-provider keys, speech streams, destination choices or web voice
-settings, and the web records with the browser's default microphone. Mobile **Settings → Voice**
+Voice input keeps upstream's dictation controls, `VoiceInputController` lifecycle and browser
+PCM capture. Upstream's local-model, cloud-provider and destination code stays in the web tree so
+later upgrades merge cleanly; `BASKULE_HOSTED` gates it off, and no Baskule build can grant it a
+destination. Hosted builds send each finished
+recording to the platform's `/api/baskule/transcriptions` route while the account has voice input,
+and record from the browser's default microphone because no Baskule web build can choose one. They
+show no voice settings route, search result, setup dialog or settings action. Mobile deletes
+upstream's `t3-voice-transcription` native module and uses the same route; **Settings → Voice**
 remains for microphone access and the preferred-microphone order its recorder applies.
 Saved speech settings still decode; no client calls the server's upstream speech endpoints.
 

@@ -29,7 +29,7 @@ release independently of that package metadata.
 | Runtime adaptation | Process completed Code Mode host calls before queued polling jobs, preventing polling starvation in workerd. Guard the transform against dependency-layout changes. Native cancellation, scheduler and stream-cleanup checks exercise the production transforms. Refresh native goal state after pause/clear so a delayed notification cannot leave stale UI state. |
 | Authentication, teams and spaces | Preserve platform login, team/space membership, authorship, server-held credentials, plugin connections, per-space computers and authenticated asset routing. OpenCode 2 remains the only executable agent driver. |
 | Goals | Use upstream native goal commands and version-gated capabilities. Keep commands separate from steering, prioritize queued goal controls and defer context delivery until a prompt turn. Remove clauses specific to excluded drivers. |
-| Voice | Reuse upstream dictation controls and lifecycle, with browser/native transcription routed through `/api/baskule/transcriptions`. Keep hosted credential and upload limits. Remove the client paths no hosted build reaches: model downloads and their setup dialog, cloud-provider keys, speech streams, destination choices, the mobile on-device transcription module and the desktop preview's voice-settings action. Mobile keeps its microphone settings for the native recorder. |
+| Voice | Reuse upstream dictation controls and lifecycle, with browser/native transcription routed through `/api/baskule/transcriptions`. Keep hosted credential and upload limits. Keep upstream's local-model, cloud-provider and destination paths in the web tree, gated off in hosted builds, so later upgrades merge cleanly. Hosted builds record from the browser default microphone and show no voice settings route, search result, setup dialog or settings action. Delete the mobile on-device transcription module and destination code; mobile keeps its microphone settings for the native recorder. |
 | Tool visibility and accessibility | Preserve `hideAll` for fresh settings and explicit saved choices from Baskule 0.5.3. Adopt upstream screen-reader announcement settings and localize the retained labels and announcements. |
 | Localization | Upstream supplies no application translation catalog. Preserve shared localization and en/de/es/fr/it/nl catalogs; extract and validate newly retained strings. No translation API key or paid translation call is used locally. |
 | Mobile and desktop | Adapt existing Baskule connection/navigation and protected-preview behavior to upstream APIs. Adopt file-link context, scrolling, downloads and desktop release metadata. Preserve required-update handling and hosted attachment authentication. |
@@ -110,7 +110,7 @@ are part of this verification.
 | Mobile attachment/voice selection; asset-cache React selection | 45 and six tests passed respectively; other previously passing mobile selections retained. |
 | Desktop source regression suite and corrected update selection | Unchanged files passed; corrected update file passed all 41 tests. Packaged application not exercised. |
 | Hosted transcription/API/settings unit selection; browser PCM/hosted dictation | 20 unit tests, four voice browser tests and four live-region browser tests passed. |
-| Voice cleanup: focused web/desktop/client-runtime/mobile selections; hosted dictation journey | 67 web, 67 desktop preview, 43 controller and 112 mobile tests passed. A fake-model stack recorded, transcribed and inserted text, cancelled without upload, showed a route error and retried the kept recording; all voice traffic used `/api/baskule/transcriptions`. |
+| Voice restore: focused web/desktop/client-runtime/contracts/mobile selections; hosted dictation journey | 112 web speech/citation/preview, 268 desktop preview, 48 client-runtime voice, one contracts IPC and 48 mobile voice tests passed, including upstream's speech hook suite under `VITE_BASKULE_UI=0` and the ten hosted mobile adapter cases. A fake-model stack recorded from the default microphone despite a stale saved device id, inserted the transcript, cancelled without upload, kept the draft on a route error and retried; all voice traffic used `/api/baskule/transcriptions`, and settings, deep links and first run showed no voice setup. |
 | PR CI after review fixes | Compatibility guard, harness, root/web/mobile/shared typechecks, desktop check, platform/server/web/shared/mobile tests and required gate all passed. |
 | `scripts/stack doctor`; `scripts/check journey:personal-chat` | Doctor passed; all four desktop/phone journeys passed; stack stopped and evidence retained. |
 | Retired/new upstream path audit | No reintroduced excluded paths. |
@@ -131,9 +131,8 @@ prebuilt celld binary. Detailed logs and failure classifications stay under
 
 ## Review corrections
 
-Contract changes are additive optional/defaulted fields, wider accepted inputs, internal
-search changes, and removal of the desktop preview's voice `settings` event, which no client
-version emits. Minimum client/server versions stay at 0.5.2; the `compatibility-noop` label
+Contract changes are additive optional/defaulted fields, wider accepted inputs, and internal
+search changes. Minimum client/server versions stay at 0.5.2; the `compatibility-noop` label
 records that reviewed decision. MCP approval accepts browser sessions only; bearer/DPoP
 approval for the excluded T3 Connect service is removed.
 
