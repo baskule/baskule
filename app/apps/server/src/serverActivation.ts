@@ -1,5 +1,4 @@
 import * as Context from "effect/Context";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import type * as Fiber from "effect/Fiber";
 import type * as Scope from "effect/Scope";
@@ -9,6 +8,7 @@ export class ServerActivation extends Context.Reference<Effect.Effect<void> | un
   { defaultValue: () => undefined },
 ) {}
 
+// baskule: register the scoped child immediately while the persistent activation gate parks its work.
 export const forkParkedFiber = Effect.fn("serverActivation.forkParkedFiber")(function* <A, E, R>(
   effect: Effect.Effect<A, E, R>,
 ): Effect.fn.Return<Fiber.Fiber<A, E>, never, Scope.Scope | R> {
@@ -16,12 +16,11 @@ export const forkParkedFiber = Effect.fn("serverActivation.forkParkedFiber")(fun
   if (activation === undefined) {
     return yield* Effect.forkScoped(effect);
   }
-  const parked = yield* Deferred.make<void>();
-  const fiber = yield* Effect.forkScoped(
-    Deferred.succeed(parked, undefined).pipe(Effect.andThen(activation), Effect.andThen(effect)),
-  );
-  yield* Deferred.await(parked);
-  return fiber;
+  // forkScoped registers the child in this scope before returning. Activation is a
+  // persistent gate, so the child cannot miss it even if it has not run yet.
+  return yield* Effect.forkScoped(activation.pipe(Effect.andThen(effect)), {
+    startImmediately: true,
+  });
 });
 
 export const forkParked = <A, E, R>(
