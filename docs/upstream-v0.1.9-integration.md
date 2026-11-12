@@ -119,7 +119,10 @@ are part of this verification.
 
 Failures were classified before retry. Root permission fixtures run with DAC bypass
 capabilities dropped, preserving their assertions. The earlier queued-goal-pause failure
-was a stale Claude rejection expectation; the current capability-based case passes.
+was a stale Claude rejection expectation. The OpenCode case now keeps a queued pause
+on the picked instance with native goals and refuses steering a goal command into a
+pre-2.2.5 instance without adding events. It does not assert that older runtimes reject
+queued goal commands.
 The upgrade check corrected an intermediate bundle and preserved a stable fake-model
 endpoint across stack restarts. Driver-probe coverage now explicitly refreshes a cached
 success before testing rejection and recovery. Docker bridge failures used the matching
