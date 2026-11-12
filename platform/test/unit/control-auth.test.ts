@@ -14,7 +14,9 @@ describe("boot", () => {
     const users = h.storage.sql.exec("select email, role from user").toArray();
     expect(users).toEqual([{ email: ADMIN.email, role: "admin" }]);
     expect((await call(h, "GET", "/api/baskule/setup")).body.required).toBe(false);
-    await h.svc.init(); // a second boot (new instance on the same storage) is idempotent
+    h.storage.db.exec("PRAGMA query_only = ON");
+    await h.svc.init(); // Returning Control boots must work without a database write.
+    h.storage.db.exec("PRAGMA query_only = OFF");
     expect(h.storage.sql.exec("select count(*) as n from user").toArray()[0].n).toBe(1);
     expect(h.storage.sql.exec("select name from organization").toArray()).toEqual([{ name: "Baskule" }]);
     // the admin got a personal space with exactly one owner

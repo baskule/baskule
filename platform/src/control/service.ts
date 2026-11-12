@@ -144,12 +144,17 @@ export class ControlService {
   // ---------------------------------------------------------------- boot
   /** Runs in blockConcurrencyWhile: migrations, auth secret, organisation. */
   async init(): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await migrate(this.db as any, migrations);
+    const historyExists = this.one("select name from sqlite_master where type='table' and name='__drizzle_migrations'");
+    const history = historyExists ? this.all("select created_at from __drizzle_migrations order by created_at") : [];
+    if (history.length !== migrations.journal.entries.length ||
+        history.some((row, index) => Number(row.created_at) !== migrations.journal.entries[index]?.when)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await migrate(this.db as any, migrations);
+    }
     this.groups.init();
     const mode = this.one("select value from kv where key='auth_mode'")?.value;
     if (mode && mode !== this.installation.mode) throw new Error("Changing authentication mode requires wiping alpha data");
-    this.run("insert or ignore into kv(key, value) values ('auth_mode', ?)", this.installation.mode);
+    if (!mode) this.run("insert or ignore into kv(key, value) values ('auth_mode', ?)", this.installation.mode);
     let secret = this.env.AUTH_SECRET || (this.one("select value from kv where key='auth_secret'")?.value as string | undefined);
     if (!secret) {
       secret = b64url(crypto.getRandomValues(new Uint8Array(32)));

@@ -23,6 +23,7 @@ export class Groups {
   private rows(q: string, ...p: unknown[]) { return this.storage.sql.exec(q, ...p).toArray(); }
 
   init() {
+    if (this.rows("select id from permission_group where id=?", EVERYONE_GROUP_ID).length) return;
     this.rows("insert or ignore into permission_group(id, name, builtin, can_create_spaces) values (?, 'Everyone', 'everyone', 0)", EVERYONE_GROUP_ID);
   }
 

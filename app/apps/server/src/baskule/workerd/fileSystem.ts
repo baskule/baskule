@@ -117,12 +117,23 @@ const CHUNK_BYTES = 1024 * 1024; // DO SQLite rejects blobs above ~2 MB.
 
 const makeSqlTable = (storage: Pick<DoSqlStorage, "sql">): NodeTable => {
   const exec = (q: string, ...p: ReadonlyArray<unknown>) => storage.sql.exec(q, ...p);
-  exec(
-    "CREATE TABLE IF NOT EXISTS baskule_fs_nodes (path TEXT PRIMARY KEY, type TEXT NOT NULL, size INTEGER NOT NULL, mtime_ms INTEGER NOT NULL)",
+  const existing = new Set(
+    [
+      ...storage.sql
+        .exec(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('baskule_fs_nodes', 'baskule_fs_chunks')",
+        )
+        .raw(),
+    ].map((row) => row[0]),
   );
-  exec(
-    "CREATE TABLE IF NOT EXISTS baskule_fs_chunks (path TEXT NOT NULL, idx INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (path, idx))",
-  );
+  if (!existing.has("baskule_fs_nodes"))
+    exec(
+      "CREATE TABLE baskule_fs_nodes (path TEXT PRIMARY KEY, type TEXT NOT NULL, size INTEGER NOT NULL, mtime_ms INTEGER NOT NULL)",
+    );
+  if (!existing.has("baskule_fs_chunks"))
+    exec(
+      "CREATE TABLE baskule_fs_chunks (path TEXT NOT NULL, idx INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (path, idx))",
+    );
   const rows = (q: string, ...p: ReadonlyArray<unknown>) => {
     const cursor = exec(q, ...p);
     const out: Array<Array<unknown>> = [];
@@ -356,9 +367,16 @@ const makeChatFolders = (
   chatsRoot: string,
   computer: Backend,
 ) => {
-  storage.sql.exec(
-    "CREATE TABLE IF NOT EXISTS baskule_chat_folders (path TEXT PRIMARY KEY, created_ms INTEGER NOT NULL, materialized INTEGER NOT NULL DEFAULT 0)",
-  );
+  if (
+    [
+      ...storage.sql
+        .exec("SELECT name FROM sqlite_master WHERE type='table' AND name='baskule_chat_folders'")
+        .raw(),
+    ].length === 0
+  )
+    storage.sql.exec(
+      "CREATE TABLE baskule_chat_folders (path TEXT PRIMARY KEY, created_ms INTEGER NOT NULL, materialized INTEGER NOT NULL DEFAULT 0)",
+    );
   const row = (path: string) => {
     for (const r of storage.sql
       .exec("SELECT created_ms, materialized FROM baskule_chat_folders WHERE path = ?", path)

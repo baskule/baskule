@@ -176,7 +176,7 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
 
   private async startServer(spaceId: string): Promise<SpaceServer> {
     const settings = await this.loadSettings(spaceId);
-    await this.ctx.storage.delete("baskule:settingsChanged");
+    if (await this.ctx.storage.get("baskule:settingsChanged")) await this.ctx.storage.delete("baskule:settingsChanged");
     const database = await this.sharedDatabase();
     // Prepare the managed tree before T3 can start the computer through files or browser routes.
     if (settings.plugins.skills.length || await this.ctx.storage.get("baskule:plugin-skills")) await (await this.localAgent()).prepareSkills();
@@ -277,7 +277,10 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
 
   private async cacheStatus(server: SpaceServer): Promise<CachedStatus> {
     const status = { activeRuns: server.activeRuns(), nextWakeAt: server.nextWakeAt(), updatedAt: Date.now() };
-    await this.ctx.storage.put("baskule:status", status);
+    const cached = await this.ctx.storage.get<CachedStatus>("baskule:status");
+    if (!cached || cached.activeRuns !== status.activeRuns || cached.nextWakeAt !== status.nextWakeAt) {
+      await this.ctx.storage.put("baskule:status", status);
+    }
     return status;
   }
 

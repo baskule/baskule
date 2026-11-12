@@ -97,26 +97,35 @@ export const withBaskuleFrontAuth = Effect.fn("BaskuleFrontAuth.make")(function*
     identity: BaskuleIdentity,
   ) {
     const sessionId = yield* frontSessionIdFor(identity.sessionId);
-    const now = DateTime.formatIso(yield* DateTime.now);
-    yield* sql`
-        INSERT INTO auth_sessions (
-          session_id, subject, method, scopes, client_label, client_device_type,
-          issued_at, expires_at, revoked_at
-        ) VALUES (
-          ${sessionId}, ${identity.userId}, 'browser-session-cookie',
-          ${encodeScopes(BASKULE_FRONT_SCOPES)}, ${identity.name || identity.email}, 'unknown',
-          ${now}, ${DateTime.formatIso(FRONT_EXPIRES_AT)}, NULL
-        )
-        ON CONFLICT (session_id) DO UPDATE SET
-          revoked_at = NULL,
-          subject = excluded.subject,
-          scopes = excluded.scopes,
-          client_label = excluded.client_label
-        WHERE auth_sessions.revoked_at IS NOT NULL
-          OR auth_sessions.subject IS NOT excluded.subject
-          OR auth_sessions.scopes IS NOT excluded.scopes
-          OR auth_sessions.client_label IS NOT excluded.client_label
-      `;
+    const scopes = encodeScopes(BASKULE_FRONT_SCOPES);
+    const label = identity.name || identity.email;
+    const current = yield* sql`
+      SELECT 1 FROM auth_sessions WHERE session_id = ${sessionId}
+        AND revoked_at IS NULL AND subject IS ${identity.userId}
+        AND scopes IS ${scopes} AND client_label IS ${label}
+    `;
+    if (current.length === 0) {
+      const now = DateTime.formatIso(yield* DateTime.now);
+      yield* sql`
+          INSERT INTO auth_sessions (
+            session_id, subject, method, scopes, client_label, client_device_type,
+            issued_at, expires_at, revoked_at
+          ) VALUES (
+            ${sessionId}, ${identity.userId}, 'browser-session-cookie',
+            ${scopes}, ${label}, 'unknown',
+            ${now}, ${DateTime.formatIso(FRONT_EXPIRES_AT)}, NULL
+          )
+          ON CONFLICT (session_id) DO UPDATE SET
+            revoked_at = NULL,
+            subject = excluded.subject,
+            scopes = excluded.scopes,
+            client_label = excluded.client_label
+          WHERE auth_sessions.revoked_at IS NOT NULL
+            OR auth_sessions.subject IS NOT excluded.subject
+            OR auth_sessions.scopes IS NOT excluded.scopes
+            OR auth_sessions.client_label IS NOT excluded.client_label
+        `;
+    }
     return {
       sessionId,
       subject: identity.userId,
