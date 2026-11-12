@@ -1,4 +1,3 @@
-import { VoiceInputSetup } from "./VoiceInputSetup";
 import { useOpenLink } from "~/browser/useOpenLink";
 import { useTranslation } from "../../i18n";
 
@@ -188,10 +187,7 @@ import { rememberCopiedComposerAttachments } from "~/lib/copiedComposerAttachmen
 import { useThreadContextDrop, threadContextDropTargetProps } from "./threadContextDrag";
 import { readThreadShell } from "~/state/entities";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
-import type {
-  ComposerContextRecord,
-  OrchestrationV2Run,
-} from "@t3tools/contracts";
+import type { ComposerContextRecord, OrchestrationV2Run } from "@t3tools/contracts";
 import { threadContextAttachment } from "~/lib/threadContextAttachment";
 import {
   type ComposerCommandItem,
@@ -409,7 +405,6 @@ export interface ChatComposerProps {
   activeThreadModelSelection: ModelSelection | null | undefined;
   reportedModelSelection?: ModelSelection | null;
   activeProjectId: ProjectId | null;
-  projectName?: string | undefined;
 
   resolvedTheme: "light" | "dark";
   settings: UnifiedSettings;
@@ -522,7 +517,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadModelSelection,
     reportedModelSelection,
     activeProjectId,
-    projectName,
     resolvedTheme,
     settings,
     keybindings,
@@ -1707,8 +1701,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
   const speechInput = useEnvironmentSpeechInput({
     environmentId,
-    projectId: activeProjectId,
-    projectName,
     ownerKey: questionAttachmentTarget ?? composerDraftTargetKey,
     draftText: prompt,
     disabled: dictationDisabled,
@@ -3362,16 +3354,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               message={providerInputSubmissionError ?? composerSubmissionError}
             />
 
-            {speechInput.preview ? (
-              <div
-                aria-label="Live transcription"
-                className="mx-3 mb-3 max-h-32 overflow-y-auto rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap sm:mx-4"
-              >
-                <span>{speechInput.preview.committed}</span>
-                <span className="text-muted-foreground">{speechInput.preview.tentative}</span>
-              </div>
-            ) : null}
-
             {isComposerCollapsedMobile && speechInput.state.phase === "idle" ? null : (
               <div
                 data-chat-composer-footer="true"
@@ -3465,21 +3447,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         />
                       </>
                     ) : null}
-                    <VoiceInputSetup
-                      environmentId={speechInput.transcriptionEnvironmentId}
-                      open={speechInput.setup.open}
-                      step={speechInput.setup.step}
-                      status={speechInput.status}
-                      model={speechInput.setup.model}
-                      language={speechInput.setup.language}
-                      downloading={speechInput.setup.downloading}
-                      error={speechInput.setup.error}
-                      onOpenChange={speechInput.setup.setOpen}
-                      onRetryCatalog={speechInput.setup.retryCatalog}
-                      onDownload={() => void speechInput.setup.download()}
-                      onCancelDownload={() => void speechInput.setup.cancelDownload()}
-                      onStartRecording={() => void speechInput.setup.startRecording()}
-                    />
                   </ComposerFooterPrimaryActions>
                 </div>
               </div>
