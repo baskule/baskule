@@ -146,8 +146,8 @@ const dispatch = (client, command) => client.ok("orchestration.dispatchCommand",
 
 async function main() {
   mkdirSync(RUN, { recursive: true });
-  if (args.includes("--sync")) {
-    const r = spawnSync(join(HERE, "../sync-bundle.sh"), [], { stdio: "inherit" });
+  if (args.includes("--sync") || process.env.BASKULE_MINIFY === "1") {
+    const r = spawnSync(join(HERE, "../sync-bundle.sh"), process.env.BASKULE_MINIFY === "1" ? ["--minify"] : [], { stdio: "inherit" });
     if (r.status !== 0) throw new Error("sync-bundle failed");
   }
   if (!existsSync(join(HERE, "../t3/space-cell.js"))) throw new Error("SpaceCell is not prepared. Run scripts/worktree runtime from the repository root (or pass --sync).");

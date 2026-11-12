@@ -1,7 +1,7 @@
 // baskule: build one workerd ESM bundle; run from apps/server:
 // node src/baskule/workerd/build.mjs [--minify] [--out <file>]
 // Missing celld built-ins and proper-lockfile use shims; host-only modules use TRIM stubs below.
-// Other node:* modules stay external for nodejs_compat. Minification preserves stack-trace names.
+// Other node:* modules stay external for nodejs_compat. Effect spans retain their explicit operation names.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
@@ -93,7 +93,7 @@ const result = await esbuild.build({
   external: ["cloudflare:*"],
   loader: { ".node": "empty", ".html": "text", ".md": "text", ".svg": "text", ".wasm": "binary" },
   minify,
-  keepNames: minify,
+  keepNames: false,
   metafile: true,
   logLevel: "error",
   plugins: [substitutions, nativeEffectContinuations],
