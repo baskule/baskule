@@ -43,7 +43,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as SessionStore from "../../auth/SessionStore.ts";
 import { revokeFrontSessions } from "../../auth/BaskuleFrontAuth.ts";
 import * as CloudLink from "../../cloud/CloudLink.ts";
-import * as ConnectReachability from "../../cloud/ConnectReachability.ts";
+import * as HostedTrims from "./hostedTrims.ts";
 import * as RelayTracing from "../../cloud/relayTracing.ts";
 import * as ServiceLauncherClient from "../../cloud/serviceLauncherClient.ts";
 import * as ServerConfig from "../../config.ts";
@@ -285,6 +285,23 @@ export const createSpaceSqlClient = async (
   });
 };
 
+const runtimeDependencies = layerRuntimeDependencies.pipe(
+  Layer.provideMerge(DocumentText.layer),
+  Layer.provideMerge(VcsProcess.layer),
+  Layer.provideMerge(AgentScopeLive.layer),
+  Layer.provideMerge(ProcessRunner.layer),
+  Layer.provideMerge(
+    McpSessionRegistry.layer.pipe(
+      Layer.provide(ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer))),
+    ),
+  ),
+  Layer.provideMerge(RelayTracing.layerServerRelayBroker),
+);
+
+const listening = Layer.effectDiscard(
+  Effect.flatMap(ServerRuntimeStartup.ServerRuntimeStartup, (startup) => startup.markHttpListening),
+);
+
 export const createSpaceServer = async (config: SpaceServerConfig): Promise<SpaceServer> => {
   const startedAt = performance.now();
   const { client: sqlClient, stats: sqlStats } =
@@ -309,19 +326,29 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
     computer,
   });
 
-  // Installation-managed settings: rewritten at every boot, read-only to members (RPC policy).
+  // Installation-managed files are read-only to members; retain identical contents across boots.
   await Effect.runPromise(
     Effect.gen(function* () {
       yield* files.fileSystem.makeDirectory(`${baseDir}/userdata`, { recursive: true });
-      yield* files.fileSystem.writeFileString(
-        `${baseDir}/userdata/settings.json`,
-        managedSettingsJson({
-          agentUrl: `${AGENT_ORIGIN}/${encodeURIComponent(config.spaceId)}/oc`,
-          model: config.llmModel,
-          providerId: config.llmProviderId,
-        }),
-      );
-      yield* files.fileSystem.writeFileString(`${baseDir}/userdata/keybindings.json`, "[]");
+      for (const [path, contents] of [
+        [
+          `${baseDir}/userdata/settings.json`,
+          managedSettingsJson({
+            agentUrl: `${AGENT_ORIGIN}/${encodeURIComponent(config.spaceId)}/oc`,
+            model: config.llmModel,
+            providerId: config.llmProviderId,
+          }),
+        ],
+        [`${baseDir}/userdata/keybindings.json`, "[]"],
+      ] as const) {
+        const previous = yield* files.fileSystem.readFileString(path).pipe(
+          Effect.catchIf(
+            (error) => error.reason._tag === "NotFound",
+            () => Effect.undefined,
+          ),
+        );
+        if (previous !== contents) yield* files.fileSystem.writeFileString(path, contents);
+      }
     }),
     { scheduler: new Scheduler.MixedScheduler("sync") },
   );
@@ -412,18 +439,6 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
 
   const activation = Deferred.makeUnsafe<void>();
   const routesReady = Deferred.makeUnsafe<void>();
-  const deps = layerRuntimeDependencies.pipe(
-    Layer.provideMerge(DocumentText.layer),
-    Layer.provideMerge(VcsProcess.layer),
-    Layer.provideMerge(AgentScopeLive.layer),
-    Layer.provideMerge(ProcessRunner.layer),
-    Layer.provideMerge(
-      McpSessionRegistry.layer.pipe(
-        Layer.provide(ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer))),
-      ),
-    ),
-    Layer.provideMerge(RelayTracing.layerServerRelayBroker),
-  );
   const routes = HttpRouter.serve(
     layerMakeRoutes.pipe(Layer.provide(ServiceLauncherClient.layer)),
     {
@@ -431,14 +446,8 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
       routerConfig: { maxParamLength: 512 },
     },
   ).pipe(Layer.tap(() => Deferred.succeed(routesReady, undefined)));
-  const listening = Layer.effectDiscard(
-    Effect.flatMap(
-      ServerRuntimeStartup.ServerRuntimeStartup,
-      (startup) => startup.markHttpListening,
-    ),
-  );
   const app = Layer.mergeAll(routes, listening).pipe(
-    Layer.provide(CloudLink.layer.pipe(Layer.provideMerge(ConnectReachability.layer))),
+    Layer.provide(CloudLink.layer.pipe(Layer.provideMerge(HostedTrims.layerConnectReachability))),
     Layer.provideMerge(
       ServerRuntimeStartup.layerWithOptions({
         activate: Deferred.succeed(activation, undefined).pipe(Effect.asVoid),
@@ -446,7 +455,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
         awaitAuxiliaryParked: Deferred.await(routesReady),
       }).pipe(Layer.provide(ServiceLauncherClient.layer)),
     ),
-    Layer.provideMerge(deps),
+    Layer.provideMerge(runtimeDependencies),
     Layer.provide(Layer.succeed(ServerActivation.ServerActivation, Deferred.await(activation))),
     Layer.provide(layerApplicationObservability),
     Layer.provide(ServiceLauncherClient.layer),

@@ -169,6 +169,37 @@ Keep the release summary short and grouped by product area. Confirm the stable
 release and explain the gap first. Report only changes included in the released tag.
 The guide covers migration checks, integration boundaries, verification, and PR review.
 
+### v0.1.9 bundle-time customizations
+
+Revalidate these customizations when T3, Effect or embedded OpenCode changes:
+
+- `hostedComposition.mjs` rewrites upstream `server.ts` at complete Layer expressions for
+  ProviderRegistry, keybindings/theme, command readiness, speech storage, native telemetry,
+  host power, managed endpoints, and analytics. The v0.1.9 speech store also exposes `link` and
+  `linkedFrom`; hosted mutations refuse local files and queries report absence. `hostedTrims.ts`
+  retains the hosted service keys;
+  `hostedLayers.ts` keeps per-Space acquisition and readiness policy.
+- The same plugin rewrites `environment/ServerEnvironment.ts` at machine-kind detection and
+  `environment/ServerEnvironmentLabel.ts` at the friendly-host probe. Upstream label normalization
+  and its hostname/cwd fallback remain. Cells use their adapter hostname without host probes.
+- It rewrites `auth/McpOAuth.ts` at signer construction and both sign/verify calls.
+  `deferredService.ts` captures Space dependencies, caches successes only, and owns first-use resources.
+  ProviderRegistry, EnvironmentTheme, and OAuth signing use it; lifetime services remain eager.
+- `sharedHttpCodecs.mjs` rewrites Effect 4.1.2's `dist/http-api/HttpApiBuilder.js` at
+  `handlerToHttpEffect` and its middleware/error boundaries. Only schema factories are shared.
+  The reviewed factory body, declarations, and file match are guarded; inspect the complete lifted
+  body before updating its fingerprint. Request contexts and handlers remain per Space.
+- Direct `baskule:` edits in `serverActivation.ts` park scoped children without a parent handshake.
+  `serverRuntimeStartup.ts` exposes recorded recovery failure to the hosted readiness adapter.
+
+The embedded OpenCode 2.2.5 build keeps its provider/catalog guards and Shell-finalizer cleanup.
+Its Code Mode inbox-priority adaptation remains as integrated on main; do not restore the 2.1.3 runner.
+
+Both rewrite plugins require every target to be visited. The hosted build treats missing namespace
+exports as errors. Run their bundle fixtures, the activation/startup suites, and a minified Space
+journey after changes. The startup/retention design is tracked in
+[#87](https://github.com/baskule/baskule/issues/87).
+
 ### Migration boundary
 
 The application migration head is **081**. Retired Codex index 065 and peer-only migration IDs

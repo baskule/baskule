@@ -697,3 +697,19 @@ it.effect("only the initiating author can answer a scheduled run's secret reques
     { protectedInput: true },
   ),
 );
+
+it.effect("boot removes an expired secret file without a secret operation", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "secret-boot-expiry-" });
+    const files = path.join(directory, "files");
+    yield* fs.makeDirectory(files);
+    const file = path.join(files, "0123456789abcdef0123456789abcdef");
+    yield* fs.writeFileString(file, "expired fixture");
+    const { mtime } = yield* fs.stat(file);
+    yield* TestClock.setTime(Option.getOrThrow(mtime).getTime() + SECRET_FILE_TTL_MS + 1);
+    yield* withService(() => Effect.void, { directory });
+    assert.isFalse(yield* fs.exists(file));
+  }).pipe(Effect.provide(NodeServices.layer)),
+);

@@ -26,6 +26,51 @@ A process restart against copied state can include expired-lease replica restora
 
 Compare builds against one offline synthetic seed with deployment objects removed before cloning it. Republish each build before starting its node, then verify that each trial contains one deployment manifest. Otherwise, old deployment BLOBs can change restore cost. Preserve the nondeployment seed records exactly.
 
-Alternate independent cold processes under the same CPU and memory limits. Keep builds and profilers outside measured runs. Report the complete authenticated Control-then-Space interval, its range and sample count, and the immediate follow-up request. Record the later OpenCode boot marker too. An earlier response alone does not establish an improvement if required initialization moves behind it.
+Alternate independent cold processes under the same CPU and memory limits. Keep builds and profilers outside measured runs. Measure from Control request start through completion of the following authenticated `GET /api/orchestration/shell`, validating its projects, threads, and snapshot sequence. Report the median, full range, sample count, and immediate follow-up requests. Record the later OpenCode boot marker too. An earlier response alone does not establish an improvement if required initialization moves behind it.
 
 Keep experiments, native timelines, and raw results under ignored `.run/evidence/`. Use fake models and disposable state. [The development workflow](development-workflow.md) describes the focused functional checks.
+
+## Hosted construction and first use
+
+The hosted build substitutes a narrow composition into the upstream server. ProviderRegistry,
+EnvironmentTheme, and the MCP OAuth signer acquire on first use through `deferredService`.
+Each captures its constructing Space's dependencies, shares concurrent acquisition, caches only
+success, and closes resources with that Space. Failed acquisitions retry on the next use.
+No acquired context, settings, identity, SQL client, or credentials are shared between Spaces.
+SecretRequests stays eager so its boot sweep expires saved secret files and its hourly sweep
+belongs to the retained boot event. Recovery, scheduling, usage, and storage cleanup remain eager.
+
+The hosted keybinding service provides the compiled defaults for the managed empty configuration.
+It does not watch or backfill the file; existing RPC policy refuses mutations. Analytics stays
+inert under the managed configuration. Native resource telemetry reports unavailable, host power
+retains its unknown state and client activity policy, and Connect remains unconfigured. Native
+speech files cannot be installed in a Space; transcription continues through the front service.
+Environment construction uses the adapter hostname instead of probing host files or processes.
+These adapters retain their service keys, supported behavior, and authorization boundaries.
+
+`sharedHttpCodecs.mjs` reuses immutable schema-only codec closures across Spaces in one isolate.
+Handlers, middleware, contexts, and request state remain per Space. Build guards require every
+rewrite target, complete source anchors, and the reviewed codec factory body. Missing namespace exports fail the hosted build.
+
+Descriptor and session reads can proceed while startup recovery is pending, and propagate a
+recorded recovery failure. Other HTTP routes and RPC commands retain command readiness gates.
+Descriptor latency therefore excludes command readiness; use the authenticated shell boundary
+above. First use and first chat can repay deferred work, so construction time alone proves no
+end-to-end gain.
+
+The activation helper registers and parks a scoped child immediately behind the persistent gate,
+without a second parent handshake. This also applies to Node. Closing the scope interrupts parked
+children, and the gate still prevents due work from running before recovery.
+
+## Returning-cell initialization
+
+T3 compares the complete stored migration history with its manifest. An exact match skips preview
+reconciliation and the migrator transaction. Control similarly compares every bundled journal
+timestamp. Any mismatch takes the original migration path, including collision checks.
+Authentication mode and Everyone-group bootstrap writes run only when their records are missing.
+
+Existing filesystem tables avoid repeated DDL. Managed settings and keybindings retain identical
+contents. Front-session upserts and Space recovery-status writes run only when their inputs change.
+Authentication, authorization, revocation, startup recovery, and alarm deadlines retain their
+existing durable paths. No schema marker, data-layout change, credential cache, or extra SQL client
+is introduced. The multiplexed alarm and same-cell OpenCode request remain unchanged.
