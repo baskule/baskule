@@ -81,7 +81,9 @@ export function ThreadFileNavigatorPane(props: {
   );
 
   return (
-    <View className="flex-1 ios:bg-sheet android:bg-header">
+    // Material drags target the first scroll view, so place content before the header.
+    <View className="flex-1 ios:bg-sheet android:bg-header android:flex-col-reverse">
+      <ScreenContent insetHorizontal>{fileTree}</ScreenContent>
       <AppBar
         title={t("Files")}
         subtitle={props.projectName}
@@ -92,7 +94,6 @@ export function ThreadFileNavigatorPane(props: {
         }}
         refresh={{ accessibilityLabel: t("Refresh files"), onPress: entriesQuery.refresh }}
       />
-      <ScreenContent insetHorizontal>{fileTree}</ScreenContent>
     </View>
   );
 }

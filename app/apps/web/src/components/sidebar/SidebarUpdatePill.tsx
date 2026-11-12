@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+import { useCheckProviderUpdates } from "../ProviderUpdatesAction";
 import { managedUpdatesDenial } from "@t3tools/contracts";
 import { TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
@@ -113,6 +114,8 @@ function SidebarUpdateControl() {
   // The desktop updates this machine, whose policy the primary environment reports.
   const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy());
   const [isActionPending, setIsActionPending] = useState(false);
+  const [providerCheck, setProviderCheck] = useState<"button" | "dialog" | null>(null);
+  const isCheckingProviders = providerCheck === "button";
   const [isConfirmingEverything, setIsConfirmingEverything] = useState(false);
   const [checkAnimationKey, setCheckAnimationKey] = useState(0);
 
@@ -140,12 +143,13 @@ function SidebarUpdateControl() {
   const localUpdateVersion =
     state && action !== "none" ? getDesktopUpdateDownloadedVersion(state) : null;
   const everything = useUpdateEverything(localUpdateVersion);
+  const checkProviderUpdates = useCheckProviderUpdates();
   const runsEverything = everything.hasUpdates && !isDownloading;
   const run = useUpdateEverythingRun();
   const isRunningEverything = run !== null;
   const showCheckIcon = shouldShowDesktopUpdateCheckIcon({
     isAnimationLatched: isCheckAnimationLatched,
-    isChecking: state?.status === "checking",
+    isChecking: state?.status === "checking" || isCheckingProviders,
     prefersReducedMotion,
   });
   const { iconStatus, showUpdateDetails, showUpdateIconState } = resolveSidebarUpdatePresentation({
@@ -180,6 +184,9 @@ function SidebarUpdateControl() {
 
     if (runsEverything) {
       setIsConfirmingEverything(true);
+      // Machines that still cache an older latest version add their rows while the dialog is open.
+      setProviderCheck("dialog");
+      void checkProviderUpdates({ quiet: true }).finally(() => setProviderCheck(null));
       return;
     }
 
@@ -260,7 +267,7 @@ function SidebarUpdateControl() {
   const handleCheckAnimationIteration = () => {
     setIsCheckAnimationLatched(
       shouldContinueDesktopUpdateCheckAnimation({
-        isChecking: state?.status === "checking",
+        isChecking: state?.status === "checking" || isCheckingProviders,
         prefersReducedMotion,
       }),
     );
@@ -285,6 +292,7 @@ function SidebarUpdateControl() {
       providerCount={everything.providerCount}
       rows={everything.rows}
       restarts={everything.restarts}
+      checking={providerCheck === "dialog"}
       onConfirm={() => void runEverything()}
     />
   );

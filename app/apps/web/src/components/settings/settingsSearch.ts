@@ -547,6 +547,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "screen-reader-announcements",
+    get title() { return t("Screen reader announcements"); },
+    to: "/settings/chat",
+    searchTerms: [
+      "accessibility a11y screen reader nvda jaws voiceover orca narrator speech announce read aloud messages activity steps",
+    ],
+  },
+  {
     id: "guest-links",
     get title() {
       return t("Guest links");
@@ -1232,11 +1240,11 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "source-control-writing-style",
     get title() {
-      return t("Source control writing style");
+      return t("Commit message writing");
     },
     to: "/settings/source-control",
     searchTerms: [
-      "repository conventions conventional commits custom instructions change descriptions request titles",
+      "repository conventions conventional commits custom instructions commit messages change pr pull request merge request titles descriptions body style prompt write my own",
     ],
     environmentOnly: true,
   },

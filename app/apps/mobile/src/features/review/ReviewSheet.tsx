@@ -37,7 +37,11 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { useThreadDraftForThread } from "../../state/use-thread-composer-state";
 import { EnvironmentConnectionNotice } from "../connection/EnvironmentConnectionNotice";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
-import { Inspector, useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import {
+  Inspector,
+  useAdaptiveWorkspaceLayout,
+  useWorkspacePaneState,
+} from "../layout/AdaptiveWorkspaceLayout";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useReviewCacheForThread } from "./reviewState";
 import {
@@ -69,7 +73,8 @@ function ReviewHeader(
   },
 ) {
   const t = useTranslation();
-  const { panes, toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
+  const { toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
+  const { panes } = useWorkspacePaneState();
   const presentation = useReviewHeaderPresentation(props);
   const sectionAction = (section: ReviewSectionItem | null, title: string): AppBarMenuItem => ({
     id: section ? `section:${section.id}` : `unavailable:${title}`,
@@ -368,7 +373,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const t = useTranslation();
   const reduceMotion = useReduceMotionEnabled();
   const { nativeReviewDiffStyle } = useAppearanceCodeSurface();
-  const { panes } = useAdaptiveWorkspaceLayout();
+  const { panes } = useWorkspacePaneState();
   const navigation = useNavigation();
   const selectDetail = useSelectWorkspaceDetail();
   const insets = useSafeAreaInsets();

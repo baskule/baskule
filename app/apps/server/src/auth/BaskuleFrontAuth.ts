@@ -192,7 +192,6 @@ export const withBaskuleFrontAuth = Effect.fn("BaskuleFrontAuth.make")(function*
         ),
       ),
     authenticateHttpRequest: authenticate,
-    authenticateBrowserSession: authenticate,
     authenticateWebSocketUpgrade,
     createBrowserSession: () => refused("Browser-session pairing"),
     exchangeBootstrapCredentialForAccessToken: () => refused("Token exchange"),

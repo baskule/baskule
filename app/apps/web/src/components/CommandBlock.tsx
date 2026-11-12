@@ -1,8 +1,7 @@
 import { useTranslation } from "../i18n";
 
-import { Check, Copy } from "lucide";
+import { CheckIcon, CopyIcon } from "lucide-react";
 
-import { MorphIcon } from "~/components/MorphIcon";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
 
@@ -40,7 +39,7 @@ export function CommandBlock({
         aria-label={t("Copy command")}
         onClick={() => copyToClipboard(command, undefined)}
       >
-        <MorphIcon className="size-3.5" icon={isCopied ? Check : Copy} />
+        {isCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
       </Button>
     </div>
   );

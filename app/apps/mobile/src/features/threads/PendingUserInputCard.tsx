@@ -1,15 +1,17 @@
+import { fileRoutePathSegments, resolveFileLinkPath, resolveWorkspaceRelativeFilePath } from "../files/filePath";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useTranslation } from "../../i18n";
 
 import { Button } from "../../components/ui/Button";
 import { QuestionAttachments } from "./QuestionAttachments";
-import type { RuntimeRequestId } from "@t3tools/contracts";
+import type { EnvironmentId, RuntimeRequestId, ThreadId } from "@t3tools/contracts";
 import type { ThreadUserInputQuestion } from "@t3tools/client-runtime/state/thread-requests";
 import {
   markdownProseDirection,
   textDirection,
   type TextDirection,
 } from "@t3tools/shared/textDirection";
+import { useNavigation } from "@react-navigation/native";
 import { useRef } from "react";
 import { Platform, Pressable, ScrollView, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
@@ -23,6 +25,7 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { cn } from "../../lib/cn";
+import { resolveMarkdownLinkPresentation } from "../../lib/markdownLinks";
 import { SelectableMarkdownText } from "../../native/SelectableMarkdownText";
 
 import { useMarkdownPreviewStyles } from "../files/FileMarkdownPreview";
@@ -33,6 +36,9 @@ import {
 import type { PendingUserInput } from "../../lib/threadActivity";
 
 export interface PendingUserInputCardProps {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly workspaceRoot: string | null;
   readonly canOperateThread: boolean;
   readonly pendingUserInput: PendingUserInput;
   readonly maxHeight: DerivedValue<number>;
@@ -68,11 +74,32 @@ function proseDirectionStyle(text: string, setDirection: TextDirection | undefin
 }
 
 function QuestionText(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly workspaceRoot: string | null;
   readonly markdown: string;
   readonly setDirection: TextDirection | undefined;
 }) {
   const styles = useMarkdownPreviewStyles();
-  const openLink = (url: string) => tryOpenExternalUrl(url, "markdown-link");
+  const navigation = useNavigation();
+  const openPullRequest = (url: string) => tryOpenExternalUrl(url, "markdown-link");
+  const openLink = (href: string) => {
+    const link = resolveMarkdownLinkPresentation(href);
+    if (link.kind !== "file") {
+      void openPullRequest(href);
+      return;
+    }
+    const path = resolveFileLinkPath(props.workspaceRoot, link.path);
+    if (path === null) return;
+    navigation.navigate("ThreadFile", {
+      environmentId: String(props.environmentId),
+      threadId: String(props.threadId),
+      path: fileRoutePathSegments(
+        resolveWorkspaceRelativeFilePath(props.workspaceRoot, path) ?? path,
+      ),
+      ...(link.line ? { line: String(link.line) } : {}),
+    });
+  };
   return (
     <SelectableMarkdownText
       markdown={props.markdown}
@@ -82,7 +109,7 @@ function QuestionText(props: {
       textAlign={
         Platform.OS === "android" ? undefined : props.setDirection === "rtl" ? "right" : "left"
       }
-      onLinkPress={(href) => void openLink(href)}
+      onLinkPress={openLink}
     />
   );
 }
@@ -242,7 +269,9 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
               >
                 {question.header}
               </Text>
-              <QuestionText markdown={question.question} setDirection={setDirection} />
+              <QuestionText environmentId={props.environmentId} markdown={question.question} threadId={props.threadId}
+                workspaceRoot={props.workspaceRoot}
+                setDirection={setDirection} />
               <View className="gap-2">
                 {question.options.map((option) => {
                   const optionValue = option.value ?? option.label.trim();

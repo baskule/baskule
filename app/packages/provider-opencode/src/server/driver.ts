@@ -20,6 +20,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import type * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import type * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import type * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import * as OpenCode2AdapterV2 from "./v2/adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { openCodeUsageReader, type OpenCodeUsageReaderEnv } from "./usage.ts";
@@ -45,6 +46,7 @@ import {
 } from "@t3tools/provider-core/server/driver";
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import { providerProbeEnvironment } from "@t3tools/provider-core/server/snapshotProbe";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makeCachedProviderMaintenanceResolution,
@@ -144,11 +146,13 @@ export const OpenCodeDriver: ProviderDriver<
       serverPassword: settingsSecretLiteral(config.serverPassword),
     } satisfies OpenCodeSettings;
     const managedRuntime = yield* OpenCodeRuntime.ManagedOpenCodeRuntime;
-    const runtimeProbe = yield* makeOpenCodeRuntimeProbe(
-      probeOpenCodeRuntime({ ...effectiveConfig, managedRuntime }, processEnv).pipe(
+    const probeRuntime = (probeEnv: NodeJS.ProcessEnv) =>
+      probeOpenCodeRuntime({ ...effectiveConfig, managedRuntime }, probeEnv).pipe(
         Effect.provideService(HttpClient.HttpClient, httpClient),
         Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, openCodeRuntime),
-      ),
+      );
+    const runtimeProbe = yield* makeOpenCodeRuntimeProbe(
+      probeRuntime(providerProbeEnvironment(processEnv)),
     );
     const noUpdate = makeManualOnlyProviderMaintenanceCapabilities({
       provider: DRIVER_KIND,
@@ -194,9 +198,25 @@ export const OpenCodeDriver: ProviderDriver<
         yield* OpenCode2Client.make.pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),
       ),
     );
-    const orchestrationAdapter = yield* OpenCode2AdapterV2.make(instanceId).pipe(
+    const nativeAdapter = yield* OpenCode2AdapterV2.make(instanceId).pipe(
       Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server),
     );
+    const orchestrationAdapter = {
+      ...nativeAdapter,
+      getCapabilities: Effect.fn("OpenCodeDriver.getCapabilities")(function* () {
+        const probed = Option.getOrUndefined(yield* runtimeProbe.lastSuccess);
+        const capabilities = yield* nativeAdapter.getCapabilities();
+        return {
+          ...capabilities,
+          turns: {
+            ...capabilities.turns,
+            supportsNativeGoals:
+              capabilities.turns.supportsNativeGoals ??
+              (probed !== undefined && compareSemverVersions(probed.version, "2.2.5") >= 0),
+          },
+        };
+      }),
+    };
     const loadOpenCode2Models = yield* makeOpenCode2ModelLoader(
       openCode2Server.withConnection(({ client }) => loadOpenCode2Catalog(client, host.paths.cwd)),
     );
@@ -313,12 +333,15 @@ export const OpenCodeDriver: ProviderDriver<
       accentColor,
       enabled,
       snapshot,
+      // A scan never installs OpenCode: without an offline probe result it fails and keeps the
+      // last inventory rather than guessing 1.x.
       snapshotForCwd: (cwd) =>
         !effectiveConfig.enabled
           ? snapshot.getSnapshot
           : Effect.all([
               snapshot.getSnapshot,
-              listOpenCode2Workspace(cwd).pipe(
+              runtimeProbe.get.pipe(
+                Effect.andThen(listOpenCode2Workspace(cwd)),
                 Effect.timeout("20 seconds"),
                 Effect.mapError(
                   (cause) =>

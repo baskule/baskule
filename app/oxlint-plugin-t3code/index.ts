@@ -15,6 +15,7 @@ import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-te
 import noMobileUniwindThemeEscapeHatches from "./rules/no-mobile-uniwind-theme-escape-hatches.ts";
 import noAmbiguousDetailNavigation from "./rules/no-ambiguous-detail-navigation.ts";
 import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
+import noSparklesIcon from "./rules/no-sparkles-icon.ts";
 import noUnreasonedStateSync from "./rules/no-unreasoned-state-sync.ts";
 import requireRegisteredListScroll from "./rules/require-registered-list-scroll.ts";
 import noOutsetStateIndicators from "./rules/no-outset-state-indicators.ts";
@@ -53,6 +54,7 @@ export default definePlugin({
     "no-mobile-uniwind-theme-escape-hatches": noMobileUniwindThemeEscapeHatches,
     "no-ambiguous-detail-navigation": noAmbiguousDetailNavigation,
     "no-native-title-tooltip": noNativeTitleTooltip,
+    "no-sparkles-icon": noSparklesIcon,
     "no-unreasoned-state-sync": noUnreasonedStateSync,
     "require-registered-list-scroll": requireRegisteredListScroll,
     "no-outset-state-indicators": noOutsetStateIndicators,

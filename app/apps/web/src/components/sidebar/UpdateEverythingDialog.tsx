@@ -48,6 +48,7 @@ interface UpdateEverythingDialogProps {
   readonly rows: ReadonlyArray<UpdateEverythingRow>;
   readonly restarts: ReadonlyArray<RestartingMachine>;
   readonly onConfirm: () => void;
+  readonly checking?: boolean;
 }
 
 type UpdateEverythingDialogContentProps = Omit<
@@ -84,6 +85,7 @@ const APP_LABELS = {
 } as const;
 
 function UpdateEverythingDialogContent({
+  checking = false,
   version,
   providerCount,
   rows,
@@ -131,6 +133,9 @@ function UpdateEverythingDialogContent({
           {version !== null && providerCount > 0 ? " · " : null}
           {providerCount > 0
             ? `${providerCount} provider ${providerCount === 1 ? "update" : "updates"}`
+            : null}
+          {checking
+            ? `${version !== null || providerCount > 0 ? " · " : ""}Checking for more…`
             : null}
         </AlertDialogDescription>
       </AlertDialogHeader>

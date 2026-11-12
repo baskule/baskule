@@ -39,6 +39,7 @@ import {
   buildMenuItems,
   formatGitActionElapsed,
   GIT_ACTION_SUCCESS_VISIBLE_MS,
+  hasUsableGitMenuContent,
   type GitActionProgressPresentation,
   type GitActionIconName,
   type GitActionMenuItem,
@@ -526,6 +527,24 @@ export default function GitActionsControl({
     isGitActionRunning,
     hasPrimaryRemote,
   );
+  const isDetachedHead = gitStatusForActions?.refName === null;
+  const isCleanAndBehind =
+    gitStatusForActions !== null &&
+    gitStatusForActions.refName !== null &&
+    !gitStatusForActions.hasWorkingTreeChanges &&
+    gitStatusForActions.behindCount > 0 &&
+    gitStatusForActions.aheadCount === 0;
+  const hasGitMenuContent = hasUsableGitMenuContent({
+    menuItems: gitActionMenuItems,
+    canWriteSourceControl,
+    canPublishRepository: false,
+    hasNotice: isDetachedHead || isCleanAndBehind || Boolean(gitStatusError),
+  });
+
+  // A disabled menu cannot refresh on open, and terminal edits or commits publish no status.
+  const refreshStatusForEmptyMenu = () =>
+    requestVcsStatusRefresh(refreshVcsStatus, activeEnvironmentId, gitCwd);
+
   const quickAction = resolveQuickAction(
     gitStatusForActions,
     isGitActionRunning,
@@ -857,20 +876,16 @@ export default function GitActionsControl({
         );
       })}
 
-      {gitStatusForActions?.refName === null && (
+      {isDetachedHead && (
         <p className="px-2 py-1.5 text-xs text-warning">
           {t("Detached HEAD: create and check out a branch to enable push actions.")}
         </p>
       )}
-      {gitStatusForActions &&
-        gitStatusForActions.refName !== null &&
-        !gitStatusForActions.hasWorkingTreeChanges &&
-        gitStatusForActions.behindCount > 0 &&
-        gitStatusForActions.aheadCount === 0 && (
-          <p className="px-2 py-1.5 text-xs text-warning">
+      {isCleanAndBehind && (
+        <p className="px-2 py-1.5 text-xs text-warning">
             {t("Behind upstream. Pull/rebase first.")}
           </p>
-        )}
+      )}
       {gitStatusError && <p className="px-2 py-1.5 text-xs text-destructive">{gitStatusError}</p>}
     </>
   );
@@ -898,6 +913,8 @@ export default function GitActionsControl({
           role="group"
           aria-label={t("Git actions")}
           ref={panelAnchorRef}
+          onPointerEnter={hasGitMenuContent ? undefined : refreshStatusForEmptyMenu}
+          onFocus={hasGitMenuContent ? undefined : refreshStatusForEmptyMenu}
           className={cn(
             "shrink-0",
             THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS,
@@ -1006,7 +1023,7 @@ export default function GitActionsControl({
                       panel
                     />
                   }
-                  disabled={isGitActionRunning}
+                  disabled={isGitActionRunning || !hasGitMenuContent}
                 >
                   <ChevronDownIcon
                     aria-hidden="true"

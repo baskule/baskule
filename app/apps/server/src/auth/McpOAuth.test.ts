@@ -4,9 +4,11 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   AuthStandardClientScopes,
   type AuthCreatePairingCredentialInput,
+  type EnvironmentCloudLinkStateResult,
   EnvironmentHttpApi,
 } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
@@ -19,7 +21,9 @@ import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as Schema from "effect/Schema";
 
+import * as CloudLink from "../cloud/CloudLink.ts";
 import * as ServerConfig from "../config.ts";
+import { makeDpopKey } from "./dpop.testkit.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
@@ -41,7 +45,17 @@ const layerEnvironmentAuth = EnvironmentAuth.layer.pipe(
   Layer.provideMerge(ServerEnvironment.layerIdentity),
   Layer.provide(layerConfig),
 );
-const makeLayerRoutes = (capture: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) => void) =>
+const notLinked: EnvironmentCloudLinkStateResult = {
+  linked: false,
+  cloudUserId: null,
+  relayUrl: null,
+  relayIssuer: null,
+  publishAgentActivity: false,
+};
+const makeLayerRoutes = (
+  capture: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) => void,
+  linkState: EnvironmentCloudLinkStateResult,
+) =>
   Layer.mergeAll(
     Layer.effectDiscard(
       EnvironmentAuth.EnvironmentAuth.pipe(Effect.tap((auth) => Effect.sync(() => capture(auth)))),
@@ -53,6 +67,9 @@ const makeLayerRoutes = (capture: (auth: EnvironmentAuth.EnvironmentAuth["Servic
           Layer.provide(McpOAuth.layer),
           Layer.provide(ServerSettings.layerTest()),
           Layer.provide(ManagedPolicy.layerTest()),
+          Layer.provide(
+            Layer.mock(CloudLink.CloudLink)({ linkState: () => Effect.succeed(linkState) }),
+          ),
         ),
       ),
       Layer.provide(AuthHttp.layerAuthenticatedAuth),
@@ -90,6 +107,7 @@ type Handler = (request: Request) => Effect.Effect<Response>;
 
 const withRoutes = <A, E>(
   use: (handler: Handler, auth: EnvironmentAuth.EnvironmentAuth["Service"]) => Effect.Effect<A, E>,
+  linkState = notLinked,
 ) =>
   Effect.gen(function* () {
     const random = yield* SecureRandom.SecureRandom;
@@ -97,7 +115,7 @@ const withRoutes = <A, E>(
     let routerAuth: EnvironmentAuth.EnvironmentAuth["Service"] | undefined;
     const layerRoutes = makeLayerRoutes((auth) => {
       routerAuth = auth;
-    });
+    }, linkState);
     return yield* Effect.acquireUseRelease(
       Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
       (web) =>
@@ -112,10 +130,20 @@ const withRoutes = <A, E>(
 
 const json = <A>(response: Response) => Effect.promise(() => response.json() as Promise<A>);
 
-const postJson = (path: string, body: unknown, cookie?: string) =>
+/** `credential` is a browser cookie, `Bearer <token>`, or the headers of a DPoP request. */
+const postJson = (path: string, body: unknown, credential?: string | Record<string, string>) =>
   at(path, {
     method: "POST",
-    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+    headers: {
+      "content-type": "application/json",
+      ...(credential === undefined
+        ? {}
+        : typeof credential !== "string"
+          ? credential
+          : credential.startsWith("Bearer ")
+            ? { authorization: credential }
+            : { cookie: credential }),
+    },
     body: encodeJson(body),
   });
 
@@ -123,7 +151,7 @@ const decide = (
   handler: Handler,
   authorization: Record<string, string>,
   decision: Record<string, string>,
-  cookie?: string,
+  cookie?: string | Record<string, string>,
 ) =>
   handler(postJson("/oauth/mcp/decision", { authorization, decision }, cookie)).pipe(
     Effect.flatMap((response) =>
@@ -557,6 +585,7 @@ it.live("an app approval code approves only an app sign-in, at its own level", (
   ),
 );
 
+
 it.live("one-click approves only access the browser session holds the scopes for", () =>
   withRoutes((handler, auth) =>
     Effect.gen(function* () {
@@ -626,6 +655,62 @@ it.live("one-click approves only access the browser session holds the scopes for
         reader,
       );
       expect(new URL(readOnly.redirectTo!).searchParams.get("code")).toEqual(expect.any(String));
+
+      // The hosted app approves with the owner's T3 Connect session, which sends no cookie.
+      const connect = `Bearer ${(yield* auth.issueSession({ scopes: [...AuthStandardClientScopes] })).token}`;
+      const connectDetails = yield* details(connect);
+      expect(connectDetails.oneClickAccess).toContain("full-access");
+      const viaConnect = yield* decide(
+        handler,
+        params,
+        { _tag: "browser-session", access: "auto", csrfToken: connectDetails.csrfToken! },
+        connect,
+      );
+      expect(new URL(viaConnect.redirectTo!).searchParams.get("code")).toEqual(expect.any(String));
+
+      // The hosted app may load and decide with two credentials minted for the same browser key.
+      const key = makeDpopKey();
+      const dpopSession = (thumbprint: string) =>
+        auth.issuePairingCredential({ scopes: [...AuthStandardClientScopes] }).pipe(
+          Effect.flatMap((pairing) =>
+            auth.exchangeBootstrapCredentialForAccessToken(
+              pairing.credential,
+              undefined,
+              { deviceType: "desktop" },
+              { proofKeyThumbprint: thumbprint },
+            ),
+          ),
+          Effect.map((exchanged) => exchanged.access_token),
+        );
+      const iat = Math.floor((yield* Clock.currentTimeMillis) / 1_000);
+      const dpopHeaders = (signer: typeof key, token: string, path: string) => ({
+        authorization: `DPoP ${token}`,
+        dpop: signer.sign({ method: "POST", url: `${ORIGIN}${path}`, token, iat }),
+      });
+      const loadedWith = yield* dpopSession(key.thumbprint);
+      const loaded = yield* handler(
+        postJson(
+          "/oauth/mcp/approval",
+          params,
+          dpopHeaders(key, loadedWith, "/oauth/mcp/approval"),
+        ),
+      ).pipe(Effect.flatMap(json<{ csrfToken?: string }>));
+      const renewed = yield* dpopSession(key.thumbprint);
+      const sameKey = yield* decide(
+        handler,
+        params,
+        { _tag: "browser-session", access: "auto", csrfToken: loaded.csrfToken! },
+        dpopHeaders(key, renewed, "/oauth/mcp/decision"),
+      );
+      expect(new URL(sameKey.redirectTo!).searchParams.get("code")).toEqual(expect.any(String));
+      const otherKey = makeDpopKey();
+      const elsewhere = yield* decide(
+        handler,
+        params,
+        { _tag: "browser-session", access: "auto", csrfToken: loaded.csrfToken! },
+        dpopHeaders(otherKey, yield* dpopSession(otherKey.thumbprint), "/oauth/mcp/decision"),
+      );
+      expect(elsewhere.status).toBe(400);
     }),
   ),
 );

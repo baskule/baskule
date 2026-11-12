@@ -1,6 +1,8 @@
 import { isLocalEditorFileUrl, LOCAL_FILE_LINK_SCHEMES } from "@t3tools/contracts";
 import type { Paragraph, PhrasingContent, Root, RootContent } from "mdast";
 import { remarkKeepWindowsPaths } from "./markdownWindowsPaths.ts";
+import { remarkKeepOrderedListNumbers } from "./markdownOrderedListNumbers.ts";
+export { remarkEnableOrderedListNumbers } from "./markdownOrderedListNumbers.ts";
 import { type PluggableList, type Processor, type Transformer, unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
@@ -224,6 +226,7 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
   remarkKeepAutolinkSuffixes,
   remarkKeepWindowsPaths,
   remarkGithubAlerts,
+  remarkKeepOrderedListNumbers,
   remarkNormalizeListItemIndentation,
   remarkBreakAroundImageLines,
   remarkPreserveCodeMeta,
@@ -235,6 +238,7 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS: PluggableList = [
   remarkKeepAutolinkSuffixes,
   remarkKeepWindowsPaths,
   remarkGithubAlerts,
+  remarkKeepOrderedListNumbers,
   remarkNormalizeListItemIndentation,
   remarkBreakAroundImageLines,
   remarkBreaks,

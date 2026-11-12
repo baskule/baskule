@@ -177,6 +177,7 @@ export const makeManager = Effect.gen(function* () {
   return {
     open: (input) => snapshot("open", { ...input, beforePublish: undefined, runtime: "server" }),
     markHeadless: (input) => run("markHeadless", input).pipe(Effect.asVoid),
+    announce: (input) => run("announce", input).pipe(Effect.asVoid),
     resize: (input) => snapshot("resize", input),
     adjust: (input) => snapshot("adjust", input),
     // Closing the tabs of a browser that is not running has nothing to do: deleting a chat (ResourceCleanupService)

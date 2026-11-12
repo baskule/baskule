@@ -36,7 +36,7 @@ function createCitationRouter(initialEntry = "/environment-one/thread-one") {
 describe("assistant citation navigation", () => {
   it("preserves encoded quote whitespace through router navigation and reload", async () => {
     const router = createCitationRouter();
-    await router.navigate(assistantCitationNavigation(citation));
+    await router.navigate(assistantCitationNavigation(citation, null));
 
     expect(assistantCitationFromLocation(router.state.location.href)).toEqual(citation);
     let href = router.history.location.href;
@@ -56,9 +56,9 @@ describe("assistant citation navigation", () => {
 
   it("reactivates an identical citation instead of deduplicating its navigation", async () => {
     const router = createCitationRouter();
-    await router.navigate(assistantCitationNavigation(citation));
+    await router.navigate(assistantCitationNavigation(citation, null));
     const previous = router.state.location;
-    await router.navigate(assistantCitationNavigation(citation));
+    await router.navigate(assistantCitationNavigation(citation, null));
 
     expect(router.state.location.href).toBe(previous.href);
     expect(router.state.location.state.assistantCitationActivation).not.toBe(

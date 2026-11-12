@@ -13,7 +13,7 @@ import {
   AssetWorkspaceResolutionError,
   AssetWorkspaceRootNormalizationError,
   ThreadId,
-  ToolActivityNativeAppReference,
+  NativeAppIconReference,
   TurnItemId,
 } from "@t3tools/contracts";
 import {
@@ -158,7 +158,7 @@ const AssetClaimsSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(1),
     kind: Schema.Literal("native-app-icon"),
-    app: ToolActivityNativeAppReference,
+    app: NativeAppIconReference,
     expiresAt: Schema.Number,
   }),
   Schema.Struct({

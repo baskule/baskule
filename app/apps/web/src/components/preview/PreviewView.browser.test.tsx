@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   addImage: vi.fn(),
   pictureInPicture: false,
   showEmptyState: false,
+  idleServerTab: false,
   loading: false,
   nativeServerTab: false,
   serverEpoch: null as string | null,
@@ -109,17 +110,29 @@ vi.mock(import("~/previewStateStore"), async (original) => ({
     recentlySeenUrls: [],
     sessions: mocks.showEmptyState
       ? {}
-      : {
-          "tab-1": {
-            threadId: "thread-1",
-            tabId: "tab-1",
-            runtime: mocks.nativeServerTab ? "server" : "desktop",
-            navStatus: { _tag: "Success", url: "http://example.com/", title: "Example" },
-            canGoBack: false,
-            canGoForward: false,
-            updatedAt: "2026-07-13T00:00:00.000Z",
+      : mocks.idleServerTab
+        ? {
+            "tab-1": {
+              threadId: "thread-1",
+              tabId: "tab-1",
+              runtime: "server",
+              navStatus: { _tag: "Idle" },
+              canGoBack: false,
+              canGoForward: false,
+              updatedAt: "2026-07-13T00:00:00.000Z",
+            },
+          }
+        : {
+            "tab-1": {
+              threadId: "thread-1",
+              tabId: "tab-1",
+              runtime: mocks.nativeServerTab ? "server" : "desktop",
+              navStatus: { _tag: "Success", url: "http://example.com/", title: "Example" },
+              canGoBack: false,
+              canGoForward: false,
+              updatedAt: "2026-07-13T00:00:00.000Z",
+            },
           },
-        },
   })) as never,
 }));
 vi.mock(import("~/state/environments"), async (original) => ({
@@ -144,6 +157,13 @@ vi.mock(import("~/browser/previewRuntime"), async (original) => ({
 }));
 
 vi.mock(import("~/browser/browserViewportActions"), { spy: true });
+// The real surface opens a preview stream to the server; only its box matters here.
+vi.mock(import("~/browser/ServerBrowserSurface"), async (original) => ({
+  ...(await original()),
+  ServerBrowserSurface: ((props: { className?: string }) => (
+    <div data-testid="server-browser-surface" className={props.className} />
+  )) as never,
+}));
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useBrowserPointerStore } from "~/browser/browserPointerStore";
@@ -194,6 +214,7 @@ function setup() {
   mocks.pickElement.mockReset();
   mocks.pictureInPicture = false;
   mocks.showEmptyState = false;
+  mocks.idleServerTab = false;
   mocks.loading = false;
   mocks.nativeServerTab = false;
   mocks.serverEpoch = null;
@@ -278,6 +299,7 @@ describe("PreviewView", () => {
     expect(mocks.addPreviewAnnotation).toHaveBeenCalledWith(TEST_THREAD_REF, sent);
     expect(mocks.addImage).not.toHaveBeenCalled();
   });
+
 
   it("focuses and selects the address from forwarded desktop actions only while visible", async () => {
     setup();

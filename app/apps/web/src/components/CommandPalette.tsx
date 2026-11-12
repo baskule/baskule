@@ -1,3 +1,5 @@
+import { useId } from "react";
+import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import { t, useTranslation } from "../i18n";
 
 import {
@@ -57,7 +59,6 @@ import {
   MonitorIcon,
   PinIcon,
   PinOffIcon,
-  PlugIcon,
   SquarePenIcon,
   TextSearchIcon,
   UserPlusIcon,
@@ -90,7 +91,6 @@ import {
 import { useClientSettings } from "../hooks/useSettings";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { readLocalApi } from "../localApi";
-import { configuredHostedAppUrl } from "../hostedPairing";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
@@ -112,14 +112,10 @@ import {
   usePrimaryEnvironmentId,
 } from "../state/environments";
 import {
-  useAnyEnvironmentHiding,
-  useHiddenThreadKeys,
-  useEnvironmentThreadRefs,
   useProjects,
   useVisibleThreadShells,
   waitForProject,
 } from "../state/entities";
-import { visibleLinkedThreads } from "@t3tools/client-runtime/state/threads";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
@@ -277,6 +273,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
 
   return (
     <ComposerHandleContext value={composerHandleRef}>
+      <ThreadContextDragGhost />
       <CommandDialog
         open={state.open}
         onOpenChange={(open, eventDetails) => {
@@ -384,8 +381,7 @@ function OpenCommandPaletteDialog(props: {
       },
   );
   // Rows were captured when the palette opened; drop any hidden since then.
-  const hiddenKeys = useHiddenThreadKeys();
-  const hidingAnywhere = useAnyEnvironmentHiding();
+
   const [searchState, dispatchSearch] = useReducer(reduceCommandPaletteSearchState, null, () => {
     const view = props.initialContext ? null : openIntentView(props.openIntent);
     return view
@@ -1721,7 +1717,7 @@ function OpenCommandPaletteDialog(props: {
   function getDefaultCloneDestination(
     environmentId: EnvironmentId,
     remoteUrl: string,
-    repository: string,
+    _repository?: string,
   ): string {
     const environment = environments.find((candidate) => candidate.environmentId === environmentId);
     return getCloneDestinationPath(
@@ -1819,12 +1815,11 @@ function OpenCommandPaletteDialog(props: {
       return;
     }
 
-    const projectId = newProjectId();
     setIsRemoteProjectCloning(true);
     const startResult = await startProjectClone({
       environmentId: addProjectCloneFlow.environmentId,
       input: {
-        projectId,
+        projectId: newProjectId(),
         title: inferProjectTitleFromPath(destinationPath),
         // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
         createdAt: new Date().toISOString(),
@@ -1846,7 +1841,10 @@ function OpenCommandPaletteDialog(props: {
       return;
     }
     setOpen(false);
-    const projectRef = scopeProjectRef(addProjectCloneFlow.environmentId, projectId);
+    const projectRef = scopeProjectRef(
+      addProjectCloneFlow.environmentId,
+      startResult.value.projectId,
+    );
     await waitForProject(projectRef, 3_000).catch(() => null);
     const navigationResult = await settlePromise(() => handleNewThread(projectRef));
     if (navigationResult._tag === "Failure") {
@@ -2249,6 +2247,7 @@ function OpenCommandPaletteDialog(props: {
       scrollCommandPaletteRowIntoView(
         resultListRef.current,
         resultRows.rowIndexByItemIndex[0] ?? 0,
+        true,
       );
       return;
     }
@@ -2386,9 +2385,17 @@ function OpenCommandPaletteDialog(props: {
     await handleAddProject(pickedPath);
   };
 
+  const submitButtonId = useId();
+  const browseSubmitLabel =
+    isCloneDestinationStep && !canCloneProject
+      ? "This connection needs permission to write source control and add projects."
+      : canCreateProject
+        ? `${submitActionLabel} (${addShortcutLabel})`
+        : "This connection cannot add projects.";
   const inputAccessory =
     newProjectFlow !== null ? (
       <CommandPaletteSubmitButton
+        id={submitButtonId}
         label={isCreatingNewProject ? t("Creating") : t("Create")}
         shortcutLabel={createShortcutLabel}
         ariaLabel={`Create (${createShortcutLabel})`}
@@ -2400,6 +2407,7 @@ function OpenCommandPaletteDialog(props: {
       />
     ) : addProjectCloneFlow?.step === "repository" ? (
       <CommandPaletteSubmitButton
+        id={submitButtonId}
         label={isRemoteProjectPending ? t("Working") : remoteProjectButtonLabel}
         shortcutLabel={t("Enter")}
         ariaLabel={`${remoteProjectButtonLabel ?? t("Continue")} (Enter)`}
@@ -2411,19 +2419,11 @@ function OpenCommandPaletteDialog(props: {
       />
     ) : isBrowsing ? (
       <CommandPaletteSubmitButton
+        id={submitButtonId}
         label={isCloneDestinationStep && isRemoteProjectPending ? t("Cloning") : submitActionLabel}
         shortcutLabel={addShortcutLabel}
-        ariaLabel={`${submitActionLabel} (${addShortcutLabel})`}
-        tooltip={
-          isCloneDestinationStep && !canCloneProject
-            ? t("This connection needs permission to write source control and add projects.")
-            : canCreateProject
-              ? t("{{submitActionLabel}} ({{addShortcutLabel}})", {
-                  submitActionLabel: submitActionLabel,
-                  addShortcutLabel: addShortcutLabel,
-                })
-              : t("This connection cannot add projects.")
-        }
+        ariaLabel={browseSubmitLabel}
+        tooltip={browseSubmitLabel}
         disabled={
           !canCreateProject ||
           !canCreateProjectInEnvironment(browseEnvironment?.connection.phase) ||
@@ -2489,6 +2489,7 @@ function OpenCommandPaletteDialog(props: {
                 })
               : undefined,
         placeholder: inputPlaceholder,
+        "aria-describedby": inputAccessory ? submitButtonId : undefined,
         ...(isSubmenu
           ? {
               startAddon: (
@@ -2516,7 +2517,11 @@ function OpenCommandPaletteDialog(props: {
         setHighlightedItemValue(typeof value === "string" ? value : null);
         const rowIndex = resultRows.rowIndexByItemIndex[eventDetails.index];
         if (eventDetails.reason === "keyboard" && rowIndex !== undefined) {
-          scrollCommandPaletteRowIntoView(resultListRef.current, rowIndex);
+          scrollCommandPaletteRowIntoView(
+            resultListRef.current,
+            rowIndex,
+            eventDetails.index === 0,
+          );
         }
       }}
       onValueChange={(nextQuery, { event }) => handleQueryChange(nextQuery, event.target)}

@@ -5,6 +5,8 @@ import { AsyncResult } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
+import "~/index.css";
+
 const state = vi.hoisted(() => ({
   projection: null as unknown,
   commandSucceeds: false,
@@ -295,18 +297,20 @@ it("does not offer linked-environment navigation for retained remote subagent me
         remoteChild: {
           environmentId: remoteEnvId,
           threadId: remoteThreadId,
-          label: "Remote VM",
+          label: "Remote VM with a long machine name in the office",
         },
       },
     ],
   };
   await using screen = await render(
-    <ThreadRelationshipsPanel
-      environmentId={environmentId}
-      threadId={threadId}
-      showLineage
-      showSideChats={false}
-    />,
+    <div style={{ width: 320 }}>
+      <ThreadRelationshipsPanel
+        environmentId={environmentId}
+        threadId={threadId}
+        showLineage
+        showSideChats={false}
+      />
+    </div>,
     { router: "/environment/fork" },
   );
 

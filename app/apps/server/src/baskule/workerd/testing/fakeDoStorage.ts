@@ -10,7 +10,7 @@ const REFUSED_PRAGMAS =
 const REFUSED = /^\s*(BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE|VACUUM)\b/i;
 
 const stripLiterals = (sql: string) =>
-  sql.replace(/'(?:[^']|'')*'|"[^"]*"|--[^\n]*|\/\*[\s\S]*?\*\//g, "''");
+  sql.replace(/'(?:[^']|'')*'|"[^"]*"|--[^\n]*|\/\*[\s\S]*?\*\//g, (match) => " ".repeat(match.length));
 
 /** Largest number of terms in any single compound SELECT (approximation by parenthesis level). */
 const maxCompoundTerms = (sql: string): number => {
@@ -37,10 +37,10 @@ const maxCompoundTerms = (sql: string): number => {
 };
 
 const splitStatements = (sql: string): Array<string> => {
+  if (/^\s*CREATE\s+TRIGGER\b/i.test(sql)) return [sql];
   const parts: Array<string> = [];
   let last = 0;
   const text = stripLiterals(sql);
-  // stripLiterals keeps positions only when literals contain no ';', which holds for tests.
   for (let i = 0; i < text.length; i++) {
     if (text[i] === ";") {
       parts.push(sql.slice(last, i));
