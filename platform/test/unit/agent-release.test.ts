@@ -18,7 +18,7 @@ it("releases the real agent's bridge, MCP, key, captures and pending event work"
     return { close: async () => {}, inBootEvent: options.enter, mcpReady: async () => true, mcpAdd: async () => {} };
   });
   const lifetimes: Promise<unknown>[] = [];
-  const runtime = new AgentRuntime({ get: async (key: string) => key === "baskule:workspaceID" ? "fixture" : undefined, getAlarm: async () => null, setAlarm: async () => {} } as never, { AI: null, PLUGINS: { skills: [], servers: [{ pluginId: "fixture", pluginName: "Fixture", catalogUserId: "member", privateNetwork: false, defaultAccountOnly: true, name: "fixture", url: "http://plugin.invalid/mcp", credential: "none", disabledTools: [] }] } }, "release-test", {},
+  const runtime = new AgentRuntime({ get: async (key: string) => key === "baskule:workspaceID" ? "fixture" : undefined, getAlarm: async () => null, setAlarm: async () => {} } as never, { AI: null, PLUGINS: { skills: [], servers: [{ pluginId: "fixture", serverId: "fixture", name: "fixture", displayName: "Fixture", listAs: "member" }] } }, "release-test", {},
     { fetch: async () => new Response("bridge") }, promise => { lifetimes.push(promise); });
   const bridge = "http://baskule-space.internal/release-test/mcp";
   const mcps = ["release-test-decision", "release-test-plugin-0", "release-test-t3-code-fixture"].map(key => `http://baskule-mcp.internal/${key}/mcp`);

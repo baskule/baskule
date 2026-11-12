@@ -1,268 +1,148 @@
-// baskule: the plugins and groups part of the mock front (shapes: packages/contracts/src/baskule-plugins.ts,
-// behaviour: platform/src/control/plugins.ts and groups.ts). In memory; catalog installs use the real list.
-// `/connect` signs an account in at once, a vendor app is only remembered as saved, a package reads as a fixed
-// draft to fix, the exported zip holds only plugin.json, and every server lists the same three tools.
+// baskule: the plugins and groups part of the mock front (shapes: packages/contracts/src/baskule-plugins.ts).
+// In memory. The catalog is plugin-catalog.json, real Cursor, xAI and app platform entries recorded once with
+// what a preview of each finds. Sign-in comes back at once as the member's email, and app platforms accept any
+// credentials except the API key "bad".
 import * as NodeCrypto from "node:crypto";
-import * as NodeZlib from "node:zlib";
+import * as NodeFS from "node:fs";
 
-import { catalogService, catalogVendor } from "../../../packages/contracts/src/baskule-catalog.ts";
-import { skillFieldErrors } from "../../../packages/contracts/src/baskule-plugin-formats.ts";
+import { ISSUER_DEFAULT_PARAMS } from "../../../packages/contracts/src/baskule-plugins.ts";
 
 const EVERYONE = "everyone";
-const id = () => NodeCrypto.randomUUID();
+const FIXTURE = JSON.parse(
+  NodeFS.readFileSync(new URL("./plugin-catalog.json", import.meta.url), "utf8"),
+);
 const at = (daysAgo) => new Date(Date.now() - daysAgo * 864e5).toISOString();
-
-/** As `pluginFromCatalog`: the service id is the plugin id, and its vendor is set up once. */
-function pluginFromCatalog(service) {
-  const signIn = catalogVendor(service.vendor).signIn;
-  return {
-    id: service.id,
-    vendor: service.vendor,
-    name: service.name,
-    description: service.description,
-    icon: service.icon,
-    source: { type: "catalog" },
-    skills: [],
-    servers: service.servers.map((server) => ({
-      name: server.name,
-      url: server.url,
-      transport: server.transport ?? "streamable-http",
-      disabledTools: [],
-      credential:
-        signIn.type === "account" ? "user-oauth" : signIn.type === "key" ? "organization" : "none",
-      ...(signIn.type === "account"
-        ? {
-            oauth: {
-              ...(server.scopes ? { scopes: server.scopes } : {}),
-              ...(signIn.client === "static" ? { staticClient: true } : {}),
-            },
-          }
-        : {}),
-    })),
-    omitted: [],
-    enabled: true,
-    createdAt: new Date().toISOString(),
-  };
-}
-
-/** A plugin an admin brought: a package, a GitHub folder or a server by its address. */
-function ownPlugin(fields) {
-  const pluginId = id();
-  return {
-    id: pluginId,
-    vendor: pluginId,
-    description: "",
-    skills: [],
-    servers: [],
-    omitted: [],
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    ...fields,
-  };
-}
-
-const skillInput = (skill) => ({ ...skill, instructions: `# ${skill.name}\n`, files: [] });
-const textFile = (path, text) => ({
-  path,
-  content: Buffer.from(text).toString("base64"),
-  encoding: "base64",
-});
-/** As `safePath` and `skillFromInput`: SKILL.md is the instructions, and no path repeats. */
-function skillsError(skills) {
-  for (const [index, skill] of skills.entries()) {
-    const others = skills.filter((_, at) => at !== index).map((entry) => entry.name);
-    if (skillFieldErrors(skill, others).length) return "invalid_skill";
-    const paths = new Set(["SKILL.md"]);
-    for (const file of skill.files ?? []) {
-      const path = String(file.path).replace(/^\.\//, "").replace(/\/$/, "");
-      if (
-        !path ||
-        path.length > 512 ||
-        /[\\\x00-\x1f:]/.test(path) ||
-        path.startsWith("/") ||
-        path.split("/").some((part) => !part || part === "." || part === "..")
-      )
-        return "unsafe_plugin_path";
-      if (paths.has(path)) return "duplicate_plugin_path";
-      paths.add(path);
-    }
+const digestOf = (value) =>
+  `sha256:${NodeCrypto.createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
+const slug = (text) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "plugin";
+const hostOf = (url) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
   }
-  return null;
-}
-/** As `validateServer`: switched-off tools are stored once each. */
-const savedServer = (server) => ({
-  ...server,
-  disabledTools: [...new Set(server.disabledTools ?? [])],
-});
-const toolsOf = (server) => [
-  { name: "search", description: `Search ${new URL(server.url).hostname}.` },
-  { name: "read_item", description: "Read one item." },
-  { name: "delete_item", description: "Delete an item." },
-];
-const summary = (skill) => ({ name: skill.name, description: skill.description });
-const placeholder = /\$?\{[^}]+\}/;
+};
 
-/** A zip with one stored file, enough for "Download as zip" to save something real. */
-function zipOf(path, text) {
-  const name = Buffer.from(path);
-  const data = Buffer.from(text);
-  const crc = NodeZlib.crc32(data);
-  const local = Buffer.alloc(30);
-  local.writeUInt32LE(0x04034b50, 0);
-  local.writeUInt16LE(20, 4);
-  local.writeUInt16LE(0x21, 12); // 1980-01-01, the earliest DOS date
-  local.writeUInt32LE(crc, 14);
-  local.writeUInt32LE(data.length, 18);
-  local.writeUInt32LE(data.length, 22);
-  local.writeUInt16LE(name.length, 26);
-  const central = Buffer.alloc(46);
-  central.writeUInt32LE(0x02014b50, 0);
-  central.writeUInt16LE(20, 4);
-  central.writeUInt16LE(20, 6);
-  central.writeUInt16LE(0x21, 14);
-  central.writeUInt32LE(crc, 16);
-  central.writeUInt32LE(data.length, 20);
-  central.writeUInt32LE(data.length, 24);
-  central.writeUInt16LE(name.length, 28);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(1, 8);
-  end.writeUInt16LE(1, 10);
-  end.writeUInt32LE(central.length + name.length, 12);
-  end.writeUInt32LE(local.length + name.length + data.length, 16);
-  return Buffer.concat([local, name, data, central, name, end]);
+/** What `POST /admin/plugins/preview` finds for a reference, or an error code. */
+function previewOf(ref) {
+  if (ref?.kind === "catalog") {
+    const recorded = FIXTURE.find((item) => item.entry.id === ref.entryId);
+    if (!recorded) return { error: "plugin_not_found", status: 404 };
+    const { entry, preview } = recorded;
+    return {
+      preview: {
+        name: entry.name,
+        displayName: entry.displayName,
+        description: entry.description,
+        logo: entry.logo,
+        homepage: entry.homepage,
+        category: entry.category,
+        origin: preview.origin,
+        digest: digestOf(recorded),
+        servers: preview.servers,
+        skills: preview.skills,
+        skipped: preview.skipped,
+      },
+    };
+  }
+  if (ref?.kind === "github") {
+    const match =
+      /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/tree\/[^/]+\/(.+?))?\/?$/.exec(
+        String(ref.url ?? "").trim(),
+      );
+    if (!match) return { error: "source_not_github", status: 400 };
+    const [, owner, repo, path] = match;
+    const name = slug(path?.split("/").at(-1) ?? repo);
+    const origin = {
+      kind: "github",
+      repo: `https://github.com/${owner}/${repo}`,
+      ...(path ? { path } : {}),
+      sha: NodeCrypto.createHash("sha1").update(ref.url).digest("hex"),
+    };
+    const preview = {
+      name,
+      displayName: name.replace(
+        /(^|-)(\w)/g,
+        (_, dash, letter) => `${dash ? " " : ""}${letter.toUpperCase()}`,
+      ),
+      description: `Skills from ${owner}/${repo}.`,
+      logo: null,
+      homepage: origin.repo,
+      category: null,
+      origin,
+      servers: [],
+      skills: [
+        { name: `${name}-guide`, description: "How the team works with this tool.", files: 2 },
+      ],
+      skipped: [{ kind: "editor_only", subject: "hooks/hooks.json" }],
+    };
+    return { preview: { ...preview, digest: digestOf(preview) } };
+  }
+  if (ref?.kind === "custom") {
+    const server = ref.server ?? {};
+    let url;
+    try {
+      url = new URL(String(server.url));
+    } catch {
+      return { error: "invalid_server", status: 400 };
+    }
+    if (url.protocol !== "https:" || !String(server.displayName ?? "").trim())
+      return { error: "invalid_server", status: 400 };
+    const header = server.auth === "header" ? String(server.headerName ?? "").trim() : "";
+    if (server.auth === "header" && !header) return { error: "invalid_request", status: 400 };
+    const auth =
+      server.auth === "none"
+        ? { kind: "none" }
+        : server.auth === "header"
+          ? { kind: "headers", headers: [header] }
+          : url.hostname.endsWith(".googleapis.com")
+            ? { kind: "oauth", issuer: "https://accounts.google.com", registration: "client" }
+            : { kind: "oauth", issuer: url.origin, registration: "dynamic" };
+    const name = slug(server.displayName);
+    const preview = {
+      name,
+      displayName: String(server.displayName).trim(),
+      description: String(server.description ?? "").trim(),
+      logo: null,
+      homepage: url.origin,
+      category: null,
+      origin: { kind: "custom" },
+      servers: [
+        {
+          name,
+          url: url.href,
+          transport: "streamable-http",
+          auth,
+          variables: header ? [{ name: header, secret: true, where: "header" }] : [],
+        },
+      ],
+      skills: [],
+      skipped: [],
+    };
+    return { preview: { ...preview, digest: digestOf(preview) } };
+  }
+  return { error: "invalid_request", status: 400 };
 }
 
-export function createPluginMock({ users, spaces }) {
+export function createPluginMock({ users }) {
   /** @type {Map<string, any>} */
   const plugins = new Map();
-  const seed = (fields) => {
-    const plugin = ownPlugin(fields);
-    plugins.set(plugin.id, plugin);
-    return plugin.id;
+  /** issuer -> { clientId, clientSecret, scopes, authorizationParams } */
+  const oauthClients = new Map();
+  const providers = {
+    composio: { configured: true },
+    pipedream: { configured: false, projectId: null, environment: null },
   };
-  const brave = seed({
-    name: "Brave Search",
-    description: "Web and news search through the Brave Search API.",
-    source: { type: "custom" },
-    servers: [
-      {
-        name: "brave-search",
-        url: "https://mcp.search.brave.com/mcp",
-        credential: "organization",
-        transport: "streamable-http",
-        disabledTools: [],
-      },
-    ],
-    createdAt: at(5),
-  });
-  const sales = seed({
-    name: "Sales",
-    description: "Prepare calls, research accounts and draft follow-ups, with your CRM connected.",
-    source: {
-      type: "github",
-      repo: "https://github.com/anthropics/knowledge-work-plugins",
-      sha: "8f14e45fceea167a5a36dedd4bea2543a1b2c3d4",
-      path: "sales",
-    },
-    skills: [
-      {
-        name: "call-prep",
-        description: "Prepare a sales call from the account's history and news.",
-      },
-      { name: "account-research", description: "Build a short brief on a company and its people." },
-    ],
-    servers: [
-      {
-        name: "hubspot",
-        url: "https://mcp.hubspot.com/anthropic",
-        credential: "organization",
-        transport: "streamable-http",
-        disabledTools: [],
-      },
-    ],
-    omitted: [
-      { code: "claude_commands", subject: "commands/forecast.md" },
-      { code: "hooks", subject: "hooks/hooks.json" },
-    ],
-    enabled: false,
-    createdAt: at(2),
-  });
-  // Added by address with its own sign-in app, already saved, so people can connect it at once.
-  const driveId = id();
-  const drive = {
-    id: driveId,
-    vendor: driveId,
-    name: "Google Drive",
-    description: "Find and read the files people can open in their own Google Drive.",
-    source: { type: "custom" },
-    skills: [],
-    servers: [
-      {
-        name: "drive",
-        url: "https://drivemcp.googleapis.com/mcp/v1",
-        credential: "user-oauth",
-        oauth: { staticClient: true },
-        transport: "streamable-http",
-        disabledTools: [],
-      },
-    ],
-    omitted: [],
-    enabled: true,
-    createdAt: at(4),
-  };
-  plugins.set(drive.id, drive);
-  /** Each plugin's skills in full, as `GET /admin/plugins/:id/skills` returns them. */
-  const skillsOf = new Map(
-    [...plugins.values()].map((plugin) => [plugin.id, plugin.skills.map(skillInput)]),
-  );
-  skillsOf.set(sales, [
-    {
-      name: "call-prep",
-      description: "Prepare a sales call from the account's history and news.",
-      instructions:
-        "# Call prep\n\n1. Find the account in the CRM and read its last three meetings.\n2. Run `/forecast` for the account's open deals.\n3. Write a one-page brief with **goals**, risks and questions.\n",
-      frontmatter: "license: Apache-2.0\n",
-      files: [textFile("templates/brief.md", "# Brief for {{account}}\n\n## Goals\n\n## Risks\n")],
-    },
-    {
-      name: "account-research",
-      description: "Build a short brief on a company and its people.",
-      instructions: "# Account research\n\nSearch the web for the company's recent news.\n",
-      frontmatter: "license: Apache-2.0\n",
-      files: [],
-    },
-  ]);
-  /** plugin id -> earlier skill versions; the current skills are only in `skillsOf`. */
-  const versionsOf = new Map();
-  /** As `saveSkills`: changed skills keep the previous ones as the next version, ten at most. */
-  const saveSkills = (plugin, skills, actor) => {
-    const previous = skillsOf.get(plugin.id) ?? [];
-    if (JSON.stringify(previous) !== JSON.stringify(skills)) {
-      const earlier = versionsOf.get(plugin.id) ?? [];
-      const version = Math.max(0, ...earlier.map((entry) => entry.version)) + 1;
-      versionsOf.set(
-        plugin.id,
-        [
-          { version, skills: previous, savedAt: new Date().toISOString(), savedBy: actor.name },
-          ...earlier,
-        ].slice(0, 10),
-      );
-    }
-    skillsOf.set(plugin.id, skills);
-    plugin.skills = skills.map(summary);
-  };
-  const history = (plugin) => ({
-    skills: skillsOf.get(plugin.id) ?? [],
-    editable: plugin.source.type === "custom" || plugin.source.type === "upload",
-    versions: (versionsOf.get(plugin.id) ?? []).map(({ version, savedAt, savedBy }) => ({
-      version,
-      savedAt,
-      savedBy,
-    })),
-  });
+  /** `${userId}\0${pluginId}` switched off */
+  const switchedOff = new Set();
+  /** `${userId}\0${pluginId}\0${serverId}` -> { account, connectedAt, expired } */
+  const connections = new Map();
 
-  /** @type {Array<{id: string, name: string, builtin?: "everyone", members: string[], permissions: {canCreateSpaces: boolean}, plugins: string[]}>} */
+  /** @type {Array<{id: string, name: string, builtin?: "everyone", members: string[], permissions: {canCreateSpaces: boolean}}>} */
   const groups = [
     {
       id: EVERYONE,
@@ -270,23 +150,15 @@ export function createPluginMock({ users, spaces }) {
       builtin: "everyone",
       members: [],
       permissions: { canCreateSpaces: false },
-      plugins: [brave, drive.id],
     },
+    { id: "g-sales", name: "Sales", members: ["u-alice"], permissions: { canCreateSpaces: true } },
     {
-      id: "g-sales",
-      name: "Sales",
-      members: ["u-alice"],
-      permissions: { canCreateSpaces: true },
-      plugins: [sales],
+      id: "g-support",
+      name: "Support",
+      members: ["u-bob"],
+      permissions: { canCreateSpaces: false },
     },
   ];
-  /** `${pluginId}\0${server}` with an organization key */
-  const secrets = new Set([`${brave}\u0000brave-search`]);
-  /** Vendor keys with a saved app. Drive's is saved so people can connect it at once. */
-  const vendors = new Set([drive.vendor]);
-  /** space id -> { personalPluginsAllowed, disabled } */
-  const spaceSettings = new Map();
-
   const listGroups = () =>
     groups.map((group) => ({
       ...group,
@@ -294,369 +166,298 @@ export function createPluginMock({ users, spaces }) {
         ? [...users.keys()].sort()
         : group.members.filter((member) => users.has(member)),
     }));
-  const grantsOf = (userId) => {
-    const applicable = listGroups().filter(
-      (group) => group.builtin || group.members.includes(userId),
+
+  const install = (
+    preview,
+    { access = { kind: "everyone" }, values = {}, by = "u-admin", daysAgo = 0 } = {},
+  ) => {
+    let id = preview.name;
+    for (let n = 2; plugins.has(id); n++) id = `${preview.name}-${n}`;
+    const plugin = {
+      id,
+      name: preview.name,
+      displayName: preview.displayName,
+      description: preview.description,
+      logo: preview.logo,
+      homepage: preview.homepage,
+      category: preview.category,
+      origin: preview.origin,
+      enabled: true,
+      access,
+      values,
+      servers: preview.servers.map((server) => ({ ...server, id: slug(server.name) })),
+      skills: preview.skills.map(({ name, description }) => ({ name, description })),
+      installedAt: at(daysAgo),
+      installedBy: by,
+    };
+    plugins.set(id, plugin);
+    return plugin;
+  };
+  const seed = (entryId, options) =>
+    install(previewOf({ kind: "catalog", entryId }).preview, options);
+  // Gmail waits for its Google OAuth client; Intercom and Linear work, and Alice signed in to Intercom.
+  seed("cursor:https://github.com/cursor/plugins#third_party/gmail", { daysAgo: 1 });
+  const intercom = seed("cursor:https://github.com/cursor/plugins#third_party/intercom", {
+    access: { kind: "groups", groups: ["g-sales", "g-support"] },
+    daysAgo: 6,
+  });
+  seed("composio:linear", { daysAgo: 3 });
+  connections.set(`u-alice\u0000${intercom.id}\u0000intercom`, {
+    account: "alice@baskule.test",
+    connectedAt: at(5),
+    expired: false,
+  });
+
+  const memberOf = (userId, plugin) =>
+    plugin.access.kind === "everyone" ||
+    listGroups().some(
+      (group) => plugin.access.groups.includes(group.id) && group.members.includes(userId),
     );
+  const serverSetup = (plugin, server) => {
+    const values = plugin.values[server.name] ?? {};
+    const missing = server.variables.filter((variable) => !values[variable.name]);
+    if (missing.length > 0)
+      return { state: "needs_values", variables: missing.map((variable) => variable.name) };
+    const { auth } = server;
+    if (
+      auth.kind === "oauth" &&
+      auth.registration === "client" &&
+      auth.issuer &&
+      !oauthClients.has(auth.issuer)
+    )
+      return { state: "needs_oauth_client", issuer: auth.issuer };
+    if (auth.kind === "provider" && !providers[auth.provider].configured)
+      return { state: "needs_provider", provider: auth.provider };
+    return { state: "ready" };
+  };
+  const connectionKey = (userId, plugin, server) => `${userId}\u0000${plugin.id}\u0000${server.id}`;
+  const memberConnection = (userId, plugin, server) => {
+    if (serverSetup(plugin, server).state !== "ready") return { state: "unavailable" };
+    if (server.auth.kind === "none" || server.auth.kind === "headers")
+      return { state: "not_required" };
+    const connection = connections.get(connectionKey(userId, plugin, server));
+    if (!connection) return { state: "not_connected" };
+    return connection.expired
+      ? { state: "expired" }
+      : { state: "connected", account: connection.account, connectedAt: connection.connectedAt };
+  };
+  const adminPlugin = (plugin) => {
+    const servers = plugin.servers.map((server) => ({
+      id: server.id,
+      name: server.name,
+      url: server.url,
+      auth: server.auth,
+      variables: server.variables.map((variable) => ({
+        ...variable,
+        set: Boolean(plugin.values[server.name]?.[variable.name]),
+      })),
+      setup: serverSetup(plugin, server),
+      connectedMembers: [...connections.keys()].filter((key) =>
+        key.endsWith(`\u0000${plugin.id}\u0000${server.id}`),
+      ).length,
+    }));
+    const { values: _values, ...shown } = plugin;
     return {
-      canCreateSpaces: applicable.some((group) => group.permissions.canCreateSpaces),
-      plugins: new Set(applicable.flatMap((group) => group.plugins)),
+      ...shown,
+      servers,
+      status: !plugin.enabled
+        ? "paused"
+        : servers.some((server) => server.setup.state !== "ready")
+          ? "needs_setup"
+          : "ready",
     };
   };
-  /** @type {Array<{id: string, userId: string, pluginId: string, server: string, label: string, default: boolean}>} */
-  let accounts = [];
-  const accountsOf = (userId, pluginId, server) =>
-    accounts.filter(
-      (entry) => entry.userId === userId && entry.pluginId === pluginId && entry.server === server,
-    );
-  const accountLabel = (value) => {
-    const label = typeof value === "string" ? value.trim() : "";
-    return label.length >= 1 && label.length <= 100 && !/\p{Cc}/u.test(label) ? label : null;
-  };
-  /** Whether the shared part of a server's sign-in is done: its organization key or its vendor's app. */
-  const setupDone = (plugin, server) =>
-    server.credential === "organization"
-      ? secrets.has(`${plugin.id}\u0000${server.name}`)
-      : server.credential !== "user-oauth" ||
-        !server.oauth?.staticClient ||
-        vendors.has(plugin.vendor);
-  /** A server's status follows the person's default account. */
-  const connectionState = (plugin, server, userId) =>
-    !plugin.enabled
-      ? "unavailable"
-      : !setupDone(plugin, server)
-        ? "needs_setup"
-        : server.credential !== "user-oauth" ||
-            accountsOf(userId, plugin.id, server.name).some((entry) => entry.default)
-          ? "ready"
-          : "connect";
-
-  /** The server's checks on a `PluginInput`, short of the address policy. */
-  function inputError(input) {
-    if (!input || typeof input.name !== "string" || !input.name.trim())
-      return "invalid_plugin_input";
-    if (!["github", "upload", "custom"].includes(input.source?.type)) return "invalid_plugin_input";
-    if (!Array.isArray(input.servers) || !Array.isArray(input.skills))
-      return "invalid_plugin_input";
-    if (input.servers.length === 0 && input.skills.length === 0) return "empty_plugin";
-    const skillError = skillsError(input.skills);
-    if (skillError) return skillError;
-    for (const server of input.servers) {
-      if (placeholder.test(String(server.url))) return "address_placeholder";
-      try {
-        if (new URL(String(server.url)).protocol !== "https:") return "address_not_allowed";
-      } catch {
-        return "address_not_allowed";
-      }
-    }
-    return null;
-  }
-
-  function install(body) {
-    if ("catalog" in body) {
-      const service = catalogService(String(body.catalog));
-      if (!service || Object.keys(body).some((key) => key !== "catalog" && key !== "groups"))
-        return [
-          service ? 400 : 404,
-          { error: service ? "invalid_plugin_input" : "catalog_unknown" },
-        ];
-      if (service.notYet) return [409, { error: "catalog_not_available" }];
-      if (plugins.has(service.id)) return [409, { error: "already_installed" }];
-      return [201, pluginFromCatalog(service)];
-    }
-    const error = inputError(body.plugin);
-    if (error) return [400, { error }];
-    const { name, description, icon, source, servers, skills, omitted } = body.plugin;
-    const plugin = ownPlugin({
-      name: name.trim(),
-      description: String(description ?? ""),
-      ...(icon ? { icon } : {}),
-      source,
-      servers: servers.map(savedServer),
-      skills: skills.map(summary),
-      omitted: omitted ?? [],
-    });
-    skillsOf.set(plugin.id, skills);
-    return [201, plugin];
-  }
-
-  /** What reading a package or GitHub link finds: a server to finish and parts left out. */
-  function inspect(body) {
-    if (typeof body.github === "string") {
-      const match =
-        /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?(?:\/tree\/[^/]+\/(.+?))?\/?$/.exec(
-          body.github.trim(),
-        );
-      if (!match) return [400, { error: "github_link_invalid" }];
-      const folder = match[3]?.split("/").at(-1);
-      const skillName = (folder ?? match[2]).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      return [
-        200,
-        {
-          plugin: {
-            name: folder ?? match[2],
-            description: "",
-            source: {
-              type: "github",
-              repo: `https://github.com/${match[1]}/${match[2]}`,
-              sha: NodeCrypto.createHash("sha1").update(body.github).digest("hex"),
-              ...(match[3] ? { path: match[3] } : {}),
-            },
-            servers: [],
-            skills: [skillInput({ name: skillName, description: "Imported from the repository." })],
-            omitted: [],
-          },
-          fixes: [],
-          omitted: [],
-        },
-      ];
-    }
-    const bytes = Buffer.from(String(body.archive ?? ""), "base64");
-    if (!bytes.length) return [400, { error: "empty_plugin_archive" }];
-    const omitted = [
-      { code: "claude_commands", subject: "commands/forecast.md" },
-      { code: "local_program", subject: "local-notes" },
-    ];
-    return [
-      200,
-      {
-        plugin: {
-          name: "Acme CRM",
-          description: "Accounts, contacts and deals from Acme CRM.",
-          source: {
-            type: "upload",
-            sha256: NodeCrypto.createHash("sha256").update(bytes).digest("hex"),
-          },
-          servers: [
-            {
-              name: "crm",
-              url: "https://{tenant}.crm.example.com/mcp",
-              credential: "organization",
-              transport: "streamable-http",
-            },
-          ],
-          skills: [
-            skillInput({ name: "call-prep", description: "Prepare a sales call from the CRM." }),
-          ],
-          omitted,
-        },
-        fixes: [
-          { server: "crm", need: "address", placeholders: ["{tenant}"] },
-          { server: "crm", need: "key", headers: ["X-Api-Key"] },
+  const callbackUrl = (url) => `${url.origin}/api/baskule/plugins/oauth/callback`;
+  const oauthClientList = (url) => {
+    const issuers = new Set(oauthClients.keys());
+    for (const plugin of plugins.values())
+      for (const server of plugin.servers)
+        if (
+          server.auth.kind === "oauth" &&
+          server.auth.registration === "client" &&
+          server.auth.issuer
+        )
+          issuers.add(server.auth.issuer);
+    return [...issuers].sort().map((issuer) => {
+      const client = oauthClients.get(issuer);
+      const using = [...plugins.values()].filter((plugin) =>
+        plugin.servers.some(
+          (server) => server.auth.kind === "oauth" && server.auth.issuer === issuer,
+        ),
+      );
+      return {
+        issuer,
+        configured: Boolean(client),
+        clientId: client?.clientId ?? null,
+        hasSecret: Boolean(client?.clientSecret),
+        scopes: client?.scopes ?? null,
+        authorizationParams: client?.authorizationParams ?? null,
+        callbackUrl: callbackUrl(url),
+        hosts: [
+          ...new Set(
+            using.flatMap((plugin) =>
+              plugin.servers
+                .filter((server) => server.auth.kind === "oauth" && server.auth.issuer === issuer)
+                .map((server) => hostOf(server.url)),
+            ),
+          ),
         ],
-        omitted,
+        usedBy: using.map((plugin) => ({ pluginId: plugin.id, displayName: plugin.displayName })),
+      };
+    });
+  };
+  const catalog = () => {
+    const installedFrom = (entry) =>
+      [...plugins.values()].find((plugin) =>
+        entry.source === "composio" || entry.source === "pipedream"
+          ? plugin.origin.kind === "provider" && plugin.origin.app === entry.name
+          : plugin.origin.kind === "registry" &&
+            `${plugin.origin.registry}:${plugin.origin.repo}#${plugin.origin.path ?? ""}` ===
+              entry.id,
+      )?.id ?? null;
+    const entries = FIXTURE.map((item) => item.entry)
+      .filter((entry) => !(entry.source in providers) || providers[entry.source].configured)
+      .map((entry) => ({ ...entry, installedPluginId: installedFrom(entry) }))
+      .toSorted(
+        (a, b) =>
+          Number(b.recommended) - Number(a.recommended) ||
+          Number(Boolean(b.logo)) - Number(Boolean(a.logo)) ||
+          a.displayName.localeCompare(b.displayName),
+      );
+    return {
+      entries,
+      unavailable: [],
+      refreshedAt: at(0.01),
+      providers: {
+        composio: providers.composio.configured,
+        pipedream: providers.pipedream.configured,
       },
-    ];
-  }
+    };
+  };
+  const validAccess = (access) =>
+    access?.kind === "everyone" ||
+    (access?.kind === "groups" &&
+      Array.isArray(access.groups) &&
+      access.groups.every((id) => groups.some((group) => group.id === id)));
+  /** Values merge per variable; an empty value keeps the saved one. */
+  const mergeValues = (plugin, values) => {
+    for (const [server, entries] of Object.entries(values ?? {})) {
+      if (!plugin.servers.some((candidate) => candidate.name === server)) return false;
+      for (const [name, value] of Object.entries(entries))
+        if (typeof value === "string" && value.trim())
+          plugin.values[server] = { ...plugin.values[server], [name]: value.trim() };
+    }
+    return true;
+  };
 
-  /** Answers the plugin and group routes; returns false for every other route. */
   async function handle({ req, res, url, api, me, isAdmin, send, fail, readBody }) {
     const method = req.method ?? "GET";
     let r;
-    if (
-      api.startsWith("/admin/plugins") ||
-      api.startsWith("/admin/groups") ||
-      api.startsWith("/admin/vendors")
-    ) {
-      if (!isAdmin) return (fail(res, 403, "forbidden"), true);
-    }
+    if (/^\/admin\/(plugins|groups|catalog|oauth-clients|plugin-providers)/.test(api) && !isAdmin)
+      return (fail(res, 403, "forbidden"), true);
+
+    if (api === "/admin/catalog" && method === "GET") return (send(res, 200, catalog()), true);
     if (api === "/admin/plugins" && method === "GET")
       return (
         send(res, 200, {
           plugins: [...plugins.values()]
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((plugin) => ({
-              ...plugin,
-              setup: plugin.servers.map((server) => ({
-                server: server.name,
-                done: setupDone(plugin, server),
-              })),
-              vendorConfigured: vendors.has(plugin.vendor),
-            })),
+            .sort((a, b) => a.displayName.localeCompare(b.displayName))
+            .map(adminPlugin),
+          oauthClients: oauthClientList(url),
+          providers,
         }),
         true
       );
-    if ((r = /^\/admin\/vendors\/([^/]+)$/.exec(api))) {
-      const vendor = decodeURIComponent(r[1]);
-      const owned = [...plugins.values()].filter((plugin) => plugin.vendor === vendor);
-      if (owned.length === 0) return (fail(res, 404, "vendor_unknown"), true);
-      if (method === "PUT") {
-        const body = await readBody(req);
-        if (body !== null) {
-          const auth = body?.tokenEndpointAuthMethod;
-          if (
-            typeof body?.clientId !== "string" ||
-            !body.clientId ||
-            !["none", "client_secret_post", "client_secret_basic"].includes(auth) ||
-            (auth !== "none") !== Boolean(body.clientSecret)
-          )
-            return (fail(res, 400, "invalid_oauth_client"), true);
-          vendors.add(vendor);
-        } else vendors.delete(vendor);
-        // Saving or removing an app disconnects every account of this vendor.
-        accounts = accounts.filter(
-          (entry) => !owned.some((plugin) => plugin.id === entry.pluginId),
-        );
-        return (send(res, 200, { ok: true, configured: vendors.has(vendor) }), true);
-      }
+    if (api === "/admin/plugins/preview" && method === "POST") {
+      const found = previewOf((await readBody(req)).ref);
+      return (
+        found.error ? fail(res, found.status, found.error) : send(res, 200, found.preview), true
+      );
     }
     if (api === "/admin/plugins" && method === "POST") {
-      const input = await readBody(req);
+      const body = await readBody(req);
+      const found = previewOf(body.ref);
+      if (found.error) return (fail(res, found.status, found.error), true);
+      if (found.preview.digest !== body.digest) return (fail(res, 409, "plugin_changed"), true);
+      if (!validAccess(body.access)) return (fail(res, 400, "group_not_found"), true);
       if (
-        !Array.isArray(input.groups) ||
-        input.groups.some((id) => !groups.some((g) => g.id === id))
+        body.ref.kind === "catalog" &&
+        catalog().entries.find((entry) => entry.id === body.ref.entryId)?.installedPluginId
       )
-        return (fail(res, 400, "invalid_group"), true);
-      const [status, body] = install(input);
-      if (status === 201) {
-        plugins.set(body.id, body);
-        for (const group of groups)
-          if (input.groups.includes(group.id)) group.plugins.push(body.id);
-      }
-      return (send(res, status, body), true);
-    }
-    if (
-      (r = /^\/admin\/plugins\/([^/]+)\/versions\/(\d+)\/revert$/.exec(api)) &&
-      method === "POST"
-    ) {
-      const plugin = plugins.get(r[1]);
-      if (!plugin) return (fail(res, 404, "not_found"), true);
-      if (plugin.source.type !== "custom" && plugin.source.type !== "upload")
-        return (fail(res, 409, "not_editable"), true);
-      const earlier = versionsOf.get(plugin.id)?.find((entry) => entry.version === Number(r[2]));
-      if (!earlier) return (fail(res, 404, "version_not_found"), true);
-      saveSkills(plugin, earlier.skills, me);
-      return (send(res, 200, history(plugin)), true);
-    }
-    if (api === "/admin/plugins/inspect" && method === "POST") {
-      const [status, body] = inspect(await readBody(req));
-      return (send(res, status, body), true);
-    }
-    // Tests a server that isn't saved: each person's sign-in, or a key that must be sent with it.
-    if (api === "/admin/plugins/test" && method === "POST") {
-      const { server, headers } = await readBody(req);
-      const error = inputError({
-        name: "test",
-        source: { type: "custom" },
-        servers: [server],
-        skills: [],
-      });
-      if (error) return (fail(res, 400, error), true);
-      if (server.credential === "user-oauth")
-        return (send(res, 200, { signIn: "account", staticClient: false }), true);
-      if (server.credential === "organization" && !Object.values(headers ?? {}).some(Boolean))
-        return (fail(res, 409, "key_required"), true);
-      return (send(res, 200, { tools: toolsOf(server) }), true);
-    }
-    if ((r = /^\/admin\/plugins\/([^/]+)(\/secret|\/skills|\/export|\/tools)?$/.exec(api))) {
-      const plugin = plugins.get(r[1]);
-      if (!plugin) return (fail(res, 404, "not_found"), true);
-      // Every tool, switched off or not, through the saved key or the admin's own default account.
-      if (r[2] === "/tools" && method === "GET") {
-        const server = plugin.servers.find(
-          (entry) => entry.name === url.searchParams.get("server"),
-        );
-        if (!server) return (fail(res, 400, "plugin_server_required"), true);
-        if (server.credential === "organization" && !setupDone(plugin, server))
-          return (fail(res, 409, "key_required"), true);
-        if (
-          server.credential === "user-oauth" &&
-          !accountsOf(me.id, plugin.id, server.name).some((entry) => entry.default)
-        )
-          return (fail(res, 409, "connection_not_allowed"), true);
-        return (send(res, 200, { tools: toolsOf(server) }), true);
-      }
-      if (r[2] === "/skills" && method === "GET") return (send(res, 200, history(plugin)), true);
-      if (r[2] === "/export" && method === "GET") {
-        if (plugin.source.type === "catalog") return (fail(res, 409, "not_editable"), true);
-        res.writeHead(200, {
-          "content-type": "application/zip",
-          "content-disposition": 'attachment; filename="plugin.zip"',
-          "cache-control": "no-store",
-        });
-        res.end(
-          zipOf(
-            ".claude-plugin/plugin.json",
-            JSON.stringify({ name: plugin.name, description: plugin.description }, null, 2),
-          ),
-        );
-        return true;
-      }
-      if (r[2] === "/secret" && method === "PUT") {
-        const body = await readBody(req);
-        if (
-          !plugin.servers.some(
-            (server) => server.name === body.server && server.credential === "organization",
-          )
-        )
-          return (fail(res, 400, "not_organization_server"), true);
-        const key = `${plugin.id}\u0000${body.server}`;
-        if (body.headers === null) secrets.delete(key);
-        else if (!body.headers || Object.keys(body.headers).length === 0)
-          return (fail(res, 400, "invalid_secret_headers"), true);
-        else secrets.add(key);
-        return (send(res, 200, { ok: true }), true);
-      }
-      if (method === "DELETE") {
-        // A catalog plugin's vendor setup is shared by the vendor's other services.
-        if (plugin.source.type !== "catalog") vendors.delete(plugin.vendor);
+        return (fail(res, 409, "plugin_exists"), true);
+      const plugin = install(found.preview, { access: body.access, by: me.id });
+      if (!mergeValues(plugin, body.values)) {
         plugins.delete(plugin.id);
-        accounts = accounts.filter((entry) => entry.pluginId !== plugin.id);
-        for (const group of groups)
-          group.plugins = group.plugins.filter((entry) => entry !== plugin.id);
+        return (fail(res, 400, "invalid_request"), true);
+      }
+      return (send(res, 201, adminPlugin(plugin)), true);
+    }
+    if ((r = /^\/admin\/plugins\/([^/]+)$/.exec(api))) {
+      const plugin = plugins.get(decodeURIComponent(r[1]));
+      if (!plugin) return (fail(res, 404, "plugin_not_found"), true);
+      if (method === "DELETE") {
+        plugins.delete(plugin.id);
+        for (const key of [...connections.keys()])
+          if (key.includes(`\u0000${plugin.id}\u0000`)) connections.delete(key);
         return (send(res, 200, { ok: true }), true);
       }
-      if (r[2] === undefined && method === "PATCH") {
-        const patch = await readBody(req);
-        if (typeof patch.enabled === "boolean" && Object.keys(patch).length === 1) {
-          plugin.enabled = patch.enabled;
-          return (send(res, 200, plugin), true);
+      if (method === "PATCH") {
+        const body = await readBody(req);
+        if (body.access !== undefined && !validAccess(body.access))
+          return (fail(res, 400, "group_not_found"), true);
+        if (body.enabled !== undefined) plugin.enabled = Boolean(body.enabled);
+        if (body.access !== undefined) plugin.access = body.access;
+        if (body.values !== undefined && !mergeValues(plugin, body.values))
+          return (fail(res, 400, "server_not_found"), true);
+        return (send(res, 200, adminPlugin(plugin)), true);
+      }
+    }
+    if (api === "/admin/oauth-clients" && method === "PUT") {
+      const body = await readBody(req);
+      const clientId = String(body.clientId ?? "").trim();
+      if (!body.issuer || !clientId) return (fail(res, 400, "invalid_oauth_client"), true);
+      const previous = oauthClients.get(body.issuer);
+      oauthClients.set(body.issuer, {
+        clientId,
+        clientSecret: body.clientSecret?.trim() || previous?.clientSecret || null,
+        scopes: body.scopes?.trim() || null,
+        authorizationParams:
+          body.authorizationParams?.trim() || ISSUER_DEFAULT_PARAMS[body.issuer] || null,
+      });
+      return (
+        send(
+          res,
+          200,
+          oauthClientList(url).find((entry) => entry.issuer === body.issuer),
+        ),
+        true
+      );
+    }
+    if ((r = /^\/admin\/plugin-providers\/(composio|pipedream)$/.exec(api))) {
+      const provider = r[1];
+      if (method === "DELETE") {
+        providers[provider] =
+          provider === "composio"
+            ? { configured: false }
+            : { configured: false, projectId: null, environment: null };
+        return (send(res, 200, providers), true);
+      }
+      if (method === "PUT") {
+        const body = await readBody(req);
+        if (provider === "composio") {
+          if (!String(body.apiKey ?? "").trim()) return (fail(res, 400, "invalid_request"), true);
+          if (body.apiKey === "bad") return (fail(res, 400, "provider_rejected"), true);
+          providers.composio = { configured: true };
+        } else {
+          if (!body.clientId || !body.clientSecret || !body.projectId)
+            return (fail(res, 400, "invalid_request"), true);
+          providers.pipedream = {
+            configured: true,
+            projectId: String(body.projectId),
+            environment: body.environment === "development" ? "development" : "production",
+          };
         }
-        // Only the servers named change their switches.
-        if (patch.disabledTools && Object.keys(patch).length === 1) {
-          const names = Object.keys(patch.disabledTools);
-          if (names.some((name) => !plugin.servers.some((server) => server.name === name)))
-            return (fail(res, 400, "plugin_server_required"), true);
-          plugin.servers = plugin.servers.map((server) =>
-            names.includes(server.name)
-              ? savedServer({ ...server, disabledTools: patch.disabledTools[server.name] })
-              : server,
-          );
-          return (send(res, 200, plugin), true);
-        }
-        const input = patch.plugin;
-        if (
-          plugin.source.type === "catalog" ||
-          JSON.stringify(plugin.source) !== JSON.stringify(input?.source) ||
-          (plugin.source.type === "github" &&
-            JSON.stringify(input.skills) !== JSON.stringify(skillsOf.get(plugin.id)))
-        )
-          return (fail(res, 409, "not_editable"), true);
-        const error = inputError(input);
-        if (error) return (fail(res, 400, error), true);
-        for (const server of plugin.servers) {
-          const next = input.servers.find((entry) => entry.name === server.name);
-          if (next?.credential !== "organization" || next.url !== server.url)
-            secrets.delete(`${plugin.id}\u0000${server.name}`);
-        }
-        Object.assign(plugin, {
-          name: input.name.trim(),
-          description: String(input.description ?? ""),
-          ...(input.icon ? { icon: input.icon } : {}),
-          servers: input.servers.map((server) => {
-            const previous = plugin.servers.find((entry) => entry.name === server.name);
-            return savedServer({
-              ...server,
-              ...(previous?.url === server.url && server.disabledTools === undefined
-                ? { disabledTools: previous.disabledTools }
-                : {}),
-            });
-          }),
-          omitted: input.omitted ?? [],
-        });
-        if (!input.icon) delete plugin.icon;
-        saveSkills(plugin, input.skills, me);
-        return (send(res, 200, plugin), true);
+        return (send(res, 200, providers), true);
       }
     }
     if ((r = /^\/admin\/groups(?:\/([^/]+))?$/.exec(api))) {
@@ -674,6 +475,12 @@ export function createPluginMock({ users, spaces }) {
       if (r[1] && method === "DELETE") {
         if (current.builtin) return (fail(res, 409, "builtin_group"), true);
         groups.splice(groups.indexOf(current), 1);
+        for (const plugin of plugins.values())
+          if (plugin.access.kind === "groups")
+            plugin.access = {
+              kind: "groups",
+              groups: plugin.access.groups.filter((id) => id !== current.id),
+            };
         return (send(res, 200, { ok: true }), true);
       }
       if ((!r[1] && method === "POST") || (r[1] && method === "PATCH")) {
@@ -688,18 +495,15 @@ export function createPluginMock({ users, spaces }) {
         if (groups.some((group) => group.name === name && group !== current))
           return (fail(res, 409, "group_exists"), true);
         const next = current ?? {
-          id: id(),
+          id: NodeCrypto.randomUUID(),
           name,
           members: [],
           permissions: { canCreateSpaces: false },
-          plugins: [],
         };
         next.name = name;
         if (body.members) next.members = [...new Set(body.members)];
         if (body.permissions)
           next.permissions = { canCreateSpaces: Boolean(body.permissions.canCreateSpaces) };
-        if (body.plugins)
-          next.plugins = [...new Set(body.plugins)].filter((entry) => plugins.has(entry));
         if (!current) groups.push(next);
         return (
           send(
@@ -711,148 +515,75 @@ export function createPluginMock({ users, spaces }) {
         );
       }
     }
-    if (api === "/plugins" && method === "GET") {
-      const allowed = grantsOf(me.id).plugins;
+
+    const mine = (pluginId) => {
+      const plugin = plugins.get(decodeURIComponent(pluginId));
+      return plugin && memberOf(me.id, plugin) ? plugin : null;
+    };
+    if (api === "/plugins" && method === "GET")
       return (
         send(res, 200, {
           plugins: [...plugins.values()]
-            .filter((plugin) => allowed.has(plugin.id))
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((plugin) => {
-              const servers = plugin.servers.map((server) => ({
+            .filter((plugin) => memberOf(me.id, plugin))
+            .sort((a, b) => a.displayName.localeCompare(b.displayName))
+            .map((plugin) => ({
+              id: plugin.id,
+              displayName: plugin.displayName,
+              description: plugin.description,
+              logo: plugin.logo,
+              category: plugin.category,
+              on: !switchedOff.has(`${me.id}\u0000${plugin.id}`),
+              enabled: plugin.enabled,
+              servers: plugin.servers.map((server) => ({
+                id: server.id,
                 name: server.name,
-                credential: server.credential,
-                status: connectionState(plugin, server, me.id),
-                accounts:
-                  server.credential === "user-oauth"
-                    ? accountsOf(me.id, plugin.id, server.name)
-                        .toSorted((a, b) => Number(b.default) - Number(a.default))
-                        .map((entry) => ({
-                          id: entry.id,
-                          label: entry.label,
-                          default: entry.default,
-                          status: "ready",
-                        }))
-                    : [],
-              }));
-              const status = !plugin.enabled
-                ? "unavailable"
-                : (["needs_setup", "connect", "reconnect", "ready"].find((s) =>
-                    servers.some((server) => server.status === s),
-                  ) ?? "ready");
-              return {
-                id: plugin.id,
-                name: plugin.name,
-                description: plugin.description,
-                icon: plugin.icon,
-                skills: plugin.skills,
-                status,
-                servers,
-              };
-            }),
+                connection: memberConnection(me.id, plugin, server),
+              })),
+              skillCount: plugin.skills.length,
+            })),
         }),
         true
       );
+    if ((r = /^\/plugins\/([^/]+)$/.exec(api)) && method === "PUT") {
+      const plugin = mine(r[1]);
+      if (!plugin) return (fail(res, 404, "plugin_not_found"), true);
+      const body = await readBody(req);
+      if (typeof body.on !== "boolean") return (fail(res, 400, "invalid_request"), true);
+      const key = `${me.id}\u0000${plugin.id}`;
+      if (body.on) switchedOff.delete(key);
+      else switchedOff.add(key);
+      return (send(res, 200, { ok: true }), true);
     }
-    if ((r = /^\/plugins\/([^/]+)\/connect$/.exec(api)) && method === "GET") {
-      const plugin = plugins.get(r[1]);
-      if (!plugin || !grantsOf(me.id).plugins.has(r[1])) return (fail(res, 404, "not_found"), true);
-      const target = plugin.servers.find(
-        (s) => s.name === url.searchParams.get("server") && s.credential === "user-oauth",
-      );
-      if (!target) return (fail(res, 400, "plugin_server_required"), true);
-      const own = accountsOf(me.id, plugin.id, target.name);
-      const reconnect = url.searchParams.get("account");
-      const label = accountLabel(url.searchParams.get("label") ?? plugin.name.slice(0, 100));
-      const back = new URL(url.searchParams.get("returnTo") ?? "/", url.origin);
-      // A refused start comes back like a failed sign-in.
-      const error =
-        reconnect !== null && url.searchParams.has("label")
-          ? "invalid_plugin_input"
-          : reconnect !== null && !own.some((entry) => entry.id === reconnect)
-            ? "account_not_found"
-            : reconnect === null && !label
-              ? "invalid_plugin_input"
-              : reconnect === null && own.some((entry) => entry.label === label)
-                ? "account_label_taken"
-                : !setupDone(plugin, target)
-                  ? "oauth_client_configuration_required"
-                  : null;
-      if (error) {
-        back.searchParams.set("pluginConnection", "error");
-        back.searchParams.set("connectionError", error);
-      } else {
-        // Reconnecting keeps the account's id, name and default.
-        if (reconnect === null)
-          accounts.push({
-            id: id(),
-            userId: me.id,
-            pluginId: plugin.id,
-            server: target.name,
-            label,
-            default: own.length === 0,
+    if ((r = /^\/plugins\/([^/]+)\/servers\/([^/]+)\/(connect|connection)$/.exec(api))) {
+      const plugin = mine(r[1]);
+      const server = plugin?.servers.find((entry) => entry.id === decodeURIComponent(r[2]));
+      if (!plugin || !server) return (fail(res, 404, "server_not_found"), true);
+      if (r[3] === "connection" && method === "DELETE") {
+        connections.delete(connectionKey(me.id, plugin, server));
+        return (send(res, 200, { ok: true }), true);
+      }
+      if (r[3] === "connect" && method === "GET") {
+        const back = new URL(url.searchParams.get("returnTo") || "/settings/plugins", url.origin);
+        if (back.origin !== url.origin) return (fail(res, 400, "invalid_request"), true);
+        back.searchParams.set("plugin", plugin.id);
+        const setup = serverSetup(plugin, server);
+        if (!plugin.enabled || setup.state !== "ready") {
+          back.searchParams.set("connection", "error");
+          back.searchParams.set(
+            "code",
+            setup.state === "needs_oauth_client" ? "oauth_client_required" : "setup_incomplete",
+          );
+        } else {
+          connections.set(connectionKey(me.id, plugin, server), {
+            account: users.get(me.id)?.email ?? null,
+            connectedAt: new Date().toISOString(),
+            expired: false,
           });
-        back.searchParams.set("pluginConnection", "connected");
-      }
-      res.writeHead(302, { location: back.pathname + back.search });
-      res.end();
-      return true;
-    }
-    if ((r = /^\/plugins\/([^/]+)\/accounts\/([^/]+)$/.exec(api))) {
-      if (!plugins.has(r[1]) || !grantsOf(me.id).plugins.has(r[1]))
-        return (fail(res, 404, "not_found"), true);
-      const owned = accounts.find(
-        (entry) => entry.id === r[2] && entry.userId === me.id && entry.pluginId === r[1],
-      );
-      if (!owned) return (fail(res, 404, "account_not_found"), true);
-      const siblings = accountsOf(me.id, owned.pluginId, owned.server).filter(
-        (entry) => entry !== owned,
-      );
-      if (method === "PATCH") {
-        const body = await readBody(req);
-        const label = body?.label === undefined ? undefined : accountLabel(body.label);
-        if (
-          label === null ||
-          (body?.default !== undefined && body.default !== true) ||
-          (label === undefined && body?.default === undefined)
-        )
-          return (fail(res, 400, "invalid_plugin_input"), true);
-        if (label !== undefined && siblings.some((entry) => entry.label === label))
-          return (fail(res, 409, "account_label_taken"), true);
-        if (label !== undefined) owned.label = label;
-        if (body.default) {
-          for (const entry of siblings) entry.default = false;
-          owned.default = true;
+          back.searchParams.set("connection", "connected");
         }
-        return (send(res, 200, { ok: true }), true);
-      }
-      if (method === "DELETE") {
-        const replacement = siblings.find((entry) => entry.id === url.searchParams.get("default"));
-        if (owned.default && siblings.length > 0 && !replacement)
-          return (fail(res, 409, "default_account_required"), true);
-        accounts = accounts.filter((entry) => entry !== owned);
-        if (owned.default && replacement) replacement.default = true;
-        return (send(res, 200, { ok: true }), true);
-      }
-    }
-    if ((r = /^\/spaces\/([^/]+)\/plugins$/.exec(api))) {
-      const space = spaces.get(r[1]);
-      const role = space?.members.find((member) => member.userId === me.id)?.role;
-      if (!space || (!role && !isAdmin)) return (fail(res, 404, "not_found"), true);
-      if (role !== "owner" && !isAdmin) return (fail(res, 403, "forbidden"), true);
-      const current = spaceSettings.get(space.id) ?? {
-        personalPluginsAllowed: false,
-        disabled: [],
-      };
-      if (method === "GET") return (send(res, 200, current), true);
-      if (method === "PUT") {
-        const body = await readBody(req);
-        const next = {
-          personalPluginsAllowed: Boolean(body.personalPluginsAllowed),
-          disabled: [...new Set(body.disabled ?? [])].filter((entry) => plugins.has(entry)).sort(),
-        };
-        spaceSettings.set(space.id, next);
-        return (send(res, 200, next), true);
+        res.writeHead(302, { location: back.pathname + back.search });
+        res.end();
+        return true;
       }
     }
     return false;
@@ -860,6 +591,11 @@ export function createPluginMock({ users, spaces }) {
 
   return {
     handle,
-    canCreateSpaces: (user) => user.role === "admin" || grantsOf(user.id).canCreateSpaces,
+    canCreateSpaces: (user) =>
+      user.role === "admin" ||
+      listGroups().some(
+        (group) =>
+          (group.builtin || group.members.includes(user.id)) && group.permissions.canCreateSpaces,
+      ),
   };
 }

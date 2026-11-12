@@ -56,7 +56,7 @@ const SECTIONS: ReadonlyArray<BaskuleSettingsSection> = [
   {
     path: "/settings/plugins",
     label: msg("Plugins"),
-    description: msg("The plugins you can use, and the accounts you connect to them."),
+    description: msg("The plugins you can use, your switch for each, and your sign-ins."),
     icon: BlocksIcon,
     hosted: true,
   },

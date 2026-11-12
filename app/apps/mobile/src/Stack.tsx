@@ -206,7 +206,7 @@ const SETTINGS_SCREENS = {
     options: {
       ...pageRoute({ itemStyle: "standard" }),
       get title() {
-        return t("Plugins and accounts");
+        return t("Plugins");
       },
     },
   }),

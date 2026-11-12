@@ -1,0 +1,1789 @@
+[
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/gmail",
+   "source": "cursor",
+   "name": "gmail",
+   "displayName": "Gmail",
+   "description": "Search, read, draft, and manage email.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/gmail/assets/logo.svg",
+   "homepage": "https://github.com/cursor/plugins/tree/main/third_party/gmail",
+   "domains": [],
+   "keywords": [],
+   "category": "communication",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "gmail",
+     "url": "https://gmailmcp.googleapis.com/mcp/v1",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://accounts.google.com",
+      "registration": "client"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/gmail",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/google-drive",
+   "source": "cursor",
+   "name": "google-drive",
+   "displayName": "Google Drive",
+   "description": "Search, read, create, and share files.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/google-drive/assets/logo.svg",
+   "homepage": "https://github.com/cursor/plugins/tree/main/third_party/google-drive",
+   "domains": [],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": false,
+   "hasServers": false,
+   "skillCount": 1
+  },
+  "preview": {
+   "servers": [],
+   "skills": [
+    {
+     "name": "google-drive",
+     "description": "Work with Google Drive through its MCP tools - search, read, create, organize, share, comment, and export files. Use when creating files in specific folders, moving or renaming, converting Markdown/CSV into Docs/Sheets, managing comments, or exporting a rendered PDF.",
+     "files": 1
+    }
+   ],
+   "skipped": [
+    {
+     "kind": "editor_only",
+     "subject": "google-drive"
+    }
+   ],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/google-drive",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/google-calendar",
+   "source": "cursor",
+   "name": "google-calendar",
+   "displayName": "Google Calendar",
+   "description": "Search events and schedule meetings.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/google-calendar/assets/logo.svg",
+   "homepage": "https://github.com/cursor/plugins/tree/main/third_party/google-calendar",
+   "domains": [],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "google-calendar",
+     "url": "https://calendarmcp.googleapis.com/mcp/v1",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://accounts.google.com",
+      "registration": "client"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/google-calendar",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/google-docs",
+   "source": "cursor",
+   "name": "google-docs",
+   "displayName": "Google Docs",
+   "description": "Read, create, and edit documents.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/google-docs/assets/logo.svg",
+   "homepage": "https://github.com/cursor/plugins/tree/main/third_party/google-docs",
+   "domains": [],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": false,
+   "hasServers": false,
+   "skillCount": 1
+  },
+  "preview": {
+   "servers": [],
+   "skills": [
+    {
+     "name": "google-docs",
+     "description": "Author and edit Google Docs with the google-docs tools - structured writing, character and paragraph styling, lists, tables, images, headers/footers. Use when creating a formatted document, editing document content, or applying styles.",
+     "files": 1
+    }
+   ],
+   "skipped": [
+    {
+     "kind": "editor_only",
+     "subject": "google-docs"
+    }
+   ],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/google-docs",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/google-sheets",
+   "source": "cursor",
+   "name": "google-sheets",
+   "displayName": "Google Sheets",
+   "description": "Read, write, and append spreadsheet data.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/google-sheets/assets/logo.svg",
+   "homepage": "https://github.com/cursor/plugins/tree/main/third_party/google-sheets",
+   "domains": [],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": false,
+   "hasServers": false,
+   "skillCount": 1
+  },
+  "preview": {
+   "servers": [],
+   "skills": [
+    {
+     "name": "google-sheets",
+     "description": "Build and edit Google Sheets with the google-sheets tools - values, formatting, charts, conditional formatting, structure, validation, named and protected ranges. Use when creating a spreadsheet or dashboard, formatting cells, adding or fixing charts, or reorganizing tabs and rows.",
+     "files": 1
+    }
+   ],
+   "skipped": [
+    {
+     "kind": "editor_only",
+     "subject": "google-sheets"
+    }
+   ],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/google-sheets",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/github",
+   "source": "cursor",
+   "name": "github",
+   "displayName": "GitHub",
+   "description": "Manage repos, issues, pull requests, and Actions.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/github/assets/logo.svg",
+   "homepage": "https://docs.github.com/en/copilot/how-tos/context/use-mcp/use-the-github-mcp-server",
+   "domains": [],
+   "keywords": [],
+   "category": "code",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "github",
+     "url": "https://api.githubcopilot.com/mcp/",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "headers",
+      "headers": [
+       "Authorization"
+      ]
+     },
+     "variables": [
+      {
+       "name": "GITHUB_PERSONAL_ACCESS_TOKEN",
+       "secret": true,
+       "where": "header"
+      }
+     ]
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/github",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/hubspot",
+   "source": "cursor",
+   "name": "hubspot",
+   "displayName": "HubSpot",
+   "description": "Search and update contacts, companies, deals, and tickets.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/hubspot/assets/logo.png",
+   "homepage": "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
+   "domains": [],
+   "keywords": [],
+   "category": "sales",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "hubspot",
+     "url": "https://mcp.hubspot.com",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.hubspot.com",
+      "registration": "client"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/hubspot",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/salesforce",
+   "source": "cursor",
+   "name": "salesforce",
+   "displayName": "Salesforce",
+   "description": "Query, create, and update records in your org.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/salesforce/assets/logo.svg",
+   "homepage": "https://developer.salesforce.com/docs/platform/hosted-mcp-servers/guide/cursor.html",
+   "domains": [],
+   "keywords": [],
+   "category": "sales",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "salesforce",
+     "url": "${SALESFORCE_MCP_URL}",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": null,
+      "registration": "client"
+     },
+     "variables": [
+      {
+       "name": "SALESFORCE_MCP_URL",
+       "description": "The Salesforce address for your organization.",
+       "secret": false,
+       "where": "url"
+      }
+     ]
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/salesforce",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/zoom",
+   "source": "cursor",
+   "name": "zoom",
+   "displayName": "Zoom",
+   "description": "Search meetings, pull transcripts, and work with Zoom Docs.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/zoom/assets/logo.png",
+   "homepage": "https://developers.zoom.us/docs/mcp/",
+   "domains": [],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "zoom",
+     "url": "https://mcp.zoom.us/mcp/zoom/streamable",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://zoom.us",
+      "registration": "client"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/zoom",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/intercom",
+   "source": "cursor",
+   "name": "intercom",
+   "displayName": "Intercom",
+   "description": "Search conversations, contacts, and Help Center articles.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/intercom/assets/logo.svg",
+   "homepage": "https://developers.intercom.com/docs/guides/mcp",
+   "domains": [],
+   "keywords": [],
+   "category": "communication",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "intercom",
+     "url": "https://mcp.intercom.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.intercom.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/intercom",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/attio",
+   "source": "cursor",
+   "name": "attio",
+   "displayName": "Attio",
+   "description": "Search and update CRM records, lists, notes, and tasks.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/attio/assets/logo.png",
+   "homepage": "https://docs.attio.com/mcp/overview",
+   "domains": [],
+   "keywords": [],
+   "category": "sales",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "attio",
+     "url": "https://mcp.attio.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.attio.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/attio",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/docusign",
+   "source": "cursor",
+   "name": "docusign",
+   "displayName": "Docusign",
+   "description": "Manage envelopes, templates, workflows, and agreements.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/docusign/assets/logo.png",
+   "homepage": "https://developers.docusign.com/platform/mcp-server/",
+   "domains": [],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "docusign",
+     "url": "https://mcp.docusign.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://account.docusign.com",
+      "registration": "client"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/docusign",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/calendly",
+   "source": "cursor",
+   "name": "calendly",
+   "displayName": "Calendly",
+   "description": "Check availability and book, cancel, or reschedule.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/calendly/assets/logo.png",
+   "homepage": "https://developer.calendly.com/calendly-mcp-server",
+   "domains": [],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "calendly",
+     "url": "https://mcp.calendly.com/",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.calendly.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/calendly",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/todoist",
+   "source": "cursor",
+   "name": "todoist",
+   "displayName": "Todoist",
+   "description": "Create, find, and complete tasks and projects.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/todoist/assets/logo.png",
+   "homepage": "https://github.com/Doist/todoist-mcp",
+   "domains": [],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "todoist",
+     "url": "https://ai.todoist.net/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://ai.todoist.net",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/todoist",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/quickbooks-online",
+   "source": "cursor",
+   "name": "quickbooks-online",
+   "displayName": "QuickBooks Online",
+   "description": "QuickBooks turns your business's financial data into clear, decision-ready insights, and now takes action on it too. Analyze profitability, cash flow, and balance sheet health, and benchmark your performance against similar businesses in your industry and region. See who owes you money and which bills are coming due with A/R and A/P aging, and break down sales by customer or product to find what is driving revenue. Create, update, send, duplicate, and schedule invoices and estimates. Add customers and products, generate, and send payment links and reminders, always with a clear preview and your confirmation before anything is sent. Get fast read-only answers on payroll and QuickBooks Capital. Look up payroll details, and when you need to, add an employee or set base pay. Check your QuickBooks Capital loans and peer lending benchmarks.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/quickbooks-online/assets/logo.png",
+   "homepage": "https://github.com/cursor/plugins/tree/main/third_party/quickbooks-online",
+   "domains": [],
+   "keywords": [],
+   "category": "finance",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "quickbooks-online",
+     "url": "https://mcp-e2e.quickbooks.intuit.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp-e2e.quickbooks.intuit.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/quickbooks-online",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/posthog-mcp",
+   "source": "cursor",
+   "name": "posthog-mcp",
+   "displayName": "PostHog MCP",
+   "description": "Work with PostHog from chat: query product analytics and run SQL, manage feature flags and experiments, triage error tracking issues, and review session replays, surveys, and dashboards (URL-only connector to PostHog's hosted MCP server).",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/posthog-mcp/assets/logo.png",
+   "homepage": "https://posthog.com/docs/model-context-protocol",
+   "domains": [],
+   "keywords": [],
+   "category": "data",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "posthog",
+     "url": "https://mcp.posthog.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.posthog.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/posthog-mcp",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/google-cloud-bigquery",
+   "source": "cursor",
+   "name": "google-cloud-bigquery",
+   "displayName": "Google Cloud BigQuery",
+   "description": "Explore datasets and tables and run SQL queries.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/google-cloud-bigquery/assets/logo.png",
+   "homepage": "https://docs.cloud.google.com/bigquery/docs/use-bigquery-mcp",
+   "domains": [],
+   "keywords": [],
+   "category": "data",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "google-cloud-bigquery",
+     "url": "https://bigquery.googleapis.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://accounts.google.com",
+      "registration": "client"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/google-cloud-bigquery",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/greenhouse",
+   "source": "cursor",
+   "name": "greenhouse",
+   "displayName": "Greenhouse",
+   "description": "Search candidates, jobs, and applications, and review scorecards in Greenhouse Recruiting.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/greenhouse/assets/logo.png",
+   "homepage": "https://support.greenhouse.io/hc/en-us/articles/52090956642075-Greenhouse-MCP",
+   "domains": [],
+   "keywords": [],
+   "category": "people",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "greenhouse",
+     "url": "https://mcp.us.greenhouse.io/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.us.greenhouse.io",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/greenhouse",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/klaviyo",
+   "source": "cursor",
+   "name": "klaviyo",
+   "displayName": "Klaviyo",
+   "description": "Manage profiles, segments, campaigns, and flows.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/klaviyo/assets/logo.png",
+   "homepage": "https://developers.klaviyo.com/en/docs/klaviyo_mcp_server",
+   "domains": [],
+   "keywords": [],
+   "category": "marketing",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "klaviyo",
+     "url": "https://mcp.klaviyo.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.klaviyo.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/klaviyo",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/semrush",
+   "source": "cursor",
+   "name": "semrush",
+   "displayName": "Semrush",
+   "description": "Research keywords, backlinks, traffic, and competitors.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/semrush/assets/logo.png",
+   "homepage": "https://developer.semrush.com/api/v4/introduction/semrush-mcp/",
+   "domains": [],
+   "keywords": [],
+   "category": "marketing",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "semrush",
+     "url": "https://mcp.semrush.com/v2/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.semrush.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/semrush",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/vanta",
+   "source": "cursor",
+   "name": "vanta",
+   "displayName": "Vanta",
+   "description": "Query and remediate compliance tests, controls, frameworks, risks, and vulnerabilities in Vanta.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/vanta/assets/logo.png",
+   "homepage": "https://www.vanta.com",
+   "domains": [],
+   "keywords": [],
+   "category": "ops",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "vanta",
+     "url": "https://${VANTA_MCP_HOST}/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": null,
+      "registration": "dynamic"
+     },
+     "variables": [
+      {
+       "name": "VANTA_MCP_HOST",
+       "description": "The Vanta address for your organization.",
+       "secret": false,
+       "where": "url"
+      }
+     ]
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/vanta",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/tailscale",
+   "source": "cursor",
+   "name": "tailscale",
+   "displayName": "Tailscale",
+   "description": "Let Grok Bot reach MCP servers on your private Tailscale network: connect your own tailnet, or your team's company tailnets turned on by a team admin, with each member using their own device.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/tailscale/assets/logo.svg",
+   "homepage": "https://tailscale.com",
+   "domains": [],
+   "keywords": [],
+   "category": "ops",
+   "recommended": false,
+   "hasServers": false,
+   "skillCount": 1
+  },
+  "preview": {
+   "servers": [],
+   "skills": [
+    {
+     "name": "tailscale-setup",
+     "description": "Connect Grok Bot to Tailscale on a company tailnet (a team admin enables it at cursor.com; each member authenticates their own device and an admin limits it with custom:grokbot postures) or a personal tailnet (one-click Connect when the member owns or administers the tailnet). Several tailnets can be connected at once. Use when the user asks to set up, troubleshoot, change the default tailnet, or disconnect Grok Bot's Tailscale connection.",
+     "files": 1
+    }
+   ],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/tailscale",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#third_party/netsuite",
+   "source": "cursor",
+   "name": "netsuite",
+   "displayName": "NetSuite",
+   "description": "Work with records, reports, saved searches, and SuiteQL queries in NetSuite.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/third_party/netsuite/assets/logo.png",
+   "homepage": "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_3200541651.html",
+   "domains": [],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "netsuite",
+     "url": "${NETSUITE_MCP_URL}",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": null,
+      "registration": "dynamic"
+     },
+     "variables": [
+      {
+       "name": "NETSUITE_MCP_URL",
+       "description": "The NetSuite address for your organization.",
+       "secret": false,
+       "where": "url"
+      }
+     ]
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "third_party/netsuite",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#teaching",
+   "source": "cursor",
+   "name": "teaching",
+   "displayName": "Teaching",
+   "description": "Skill mapping, practice plans, and learning retrospectives.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/teaching/assets/avatar.png",
+   "homepage": "https://github.com/cursor/plugins",
+   "domains": [],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": false,
+   "skillCount": 2
+  },
+  "preview": {
+   "servers": [],
+   "skills": [
+    {
+     "name": "create-learning-path",
+     "description": "Build a personalized learning roadmap with milestones and practice checkpoints",
+     "files": 1
+    },
+    {
+     "name": "run-learning-retrospective",
+     "description": "Evaluate learning progress, identify blockers, and adjust the learning plan",
+     "files": 1
+    }
+   ],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "teaching",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "cursor:https://github.com/cursor/plugins#create-plugin",
+   "source": "cursor",
+   "name": "create-plugin",
+   "displayName": "Create Plugin",
+   "description": "Scaffold and validate new agent plugins.",
+   "logo": "https://raw.githubusercontent.com/cursor/plugins/2eaf46574b25cdf7ef8c849837099b866b7438ce/create-plugin/assets/avatar.png",
+   "homepage": "https://github.com/cursor/plugins",
+   "domains": [],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": false,
+   "skillCount": 2
+  },
+  "preview": {
+   "servers": [],
+   "skills": [
+    {
+     "name": "create-plugin-scaffold",
+     "description": "Create a new Cursor plugin scaffold with a valid manifest, component directories, and marketplace wiring. Use when starting a new plugin or adding a plugin to a multi-plugin repository.",
+     "files": 1
+    },
+    {
+     "name": "review-plugin-submission",
+     "description": "Audit a Cursor plugin for marketplace readiness. Use when validating manifests, component metadata, discovery paths, and submission quality before publishing.",
+     "files": 1
+    }
+   ],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "cursor",
+    "repo": "https://github.com/cursor/plugins",
+    "path": "create-plugin",
+    "sha": "2eaf46574b25cdf7ef8c849837099b866b7438ce"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "xai:https://github.com/vercel/vercel-plugin#",
+   "source": "xai",
+   "name": "vercel",
+   "displayName": "Vercel",
+   "description": "Vercel deployment platform integration. Manage deployments, check build status, access logs, configure domains, and control your frontend infrastructure directly from Grok.",
+   "logo": "https://raw.githubusercontent.com/vercel/vercel-plugin/a51b34618683929ee83c5a6e001c2da8261b3479/assets/vercel.png",
+   "homepage": "https://github.com/vercel/vercel-plugin",
+   "domains": [
+    "vercel.com"
+   ],
+   "keywords": [
+    "vercel",
+    "vercel deploy",
+    "deploy to vercel"
+   ],
+   "category": "ops",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "vercel",
+     "url": "https://mcp.vercel.com",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.vercel.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "xai",
+    "repo": "https://github.com/vercel/vercel-plugin",
+    "sha": "a51b34618683929ee83c5a6e001c2da8261b3479"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "xai:https://github.com/getsentry/plugin-grok#",
+   "source": "xai",
+   "name": "sentry",
+   "displayName": "Sentry",
+   "description": "Sentry error monitoring integration. Access error reports, analyze stack traces, search issues by fingerprint, and debug production errors directly from your development environment.",
+   "logo": null,
+   "homepage": "https://github.com/getsentry/sentry-for-ai",
+   "domains": [
+    "sentry.io"
+   ],
+   "keywords": [
+    "sentry"
+   ],
+   "category": "ops",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "sentry",
+     "url": "https://mcp.sentry.dev/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.sentry.dev",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "xai",
+    "repo": "https://github.com/getsentry/plugin-grok",
+    "sha": "3b4ec482aa94a964b210d004c817bdce15cda8f7"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "xai:https://github.com/figma/mcp-server-guide#",
+   "source": "xai",
+   "name": "figma",
+   "displayName": "Figma",
+   "description": "Official Figma MCP server and skills for design-to-code workflows. Read design context from Figma files, implement designs, use Code Connect, write to the canvas, and generate Figma designs from web pages.",
+   "logo": "https://raw.githubusercontent.com/figma/mcp-server-guide/9d296d0768c3e29c813922b3b11e390f1e47d8aa/Figma Icon (Full-color).svg",
+   "homepage": "https://github.com/figma/mcp-server-guide",
+   "domains": [
+    "figma.com",
+    "www.figma.com"
+   ],
+   "keywords": [
+    "figma",
+    "figma mcp"
+   ],
+   "category": "design",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "figma",
+     "url": "https://mcp.figma.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.figma.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "xai",
+    "repo": "https://github.com/figma/mcp-server-guide",
+    "sha": "9d296d0768c3e29c813922b3b11e390f1e47d8aa"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "xai:https://github.com/stripe/ai#providers/grok/plugin",
+   "source": "xai",
+   "name": "stripe",
+   "displayName": "Stripe",
+   "description": "Stripe development plugin for Grok Build: best practices, API/SDK upgrade guidance, and the Stripe MCP server.",
+   "logo": null,
+   "homepage": "https://github.com/stripe/ai",
+   "domains": [
+    "stripe.com",
+    "docs.stripe.com",
+    "dashboard.stripe.com"
+   ],
+   "keywords": [
+    "stripe",
+    "stripe payments",
+    "stripe connect",
+    "stripe mcp",
+    "stripe billing"
+   ],
+   "category": "finance",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "stripe",
+     "url": "https://mcp.stripe.com",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.stripe.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "xai",
+    "repo": "https://github.com/stripe/ai",
+    "path": "providers/grok/plugin",
+    "sha": "8570d472fbc4ff2c84329af1d15030ecfdea3570"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "xai:https://github.com/cloudflare/skills#",
+   "source": "xai",
+   "name": "cloudflare",
+   "displayName": "Cloudflare",
+   "description": "Skills for the Cloudflare developer platform: Workers, Durable Objects, Agents SDK, MCP servers, Wrangler CLI, and web performance.",
+   "logo": "https://raw.githubusercontent.com/cloudflare/skills/1f2cd0a19588e2c6197c91dd7c71729df1fb6156/logo.svg",
+   "homepage": "https://github.com/cloudflare/skills",
+   "domains": [
+    "cloudflare.com"
+   ],
+   "keywords": [
+    "cloudflare",
+    "wrangler",
+    "cloudflare workers"
+   ],
+   "category": "code",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "cloudflare",
+     "url": "https://mcp.cloudflare.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.cloudflare.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "xai",
+    "repo": "https://github.com/cloudflare/skills",
+    "sha": "1f2cd0a19588e2c6197c91dd7c71729df1fb6156"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "xai:https://github.com/xai-org/plugin-marketplace#external_plugins/neon",
+   "source": "xai",
+   "name": "neon",
+   "displayName": "Neon",
+   "description": "Neon Serverless Postgres integration (MCP Server + Skills). Get started with Neon, manage projects and databases, pick connection methods, and create branches for migration testing and isolated development.",
+   "logo": "https://raw.githubusercontent.com/xai-org/plugin-marketplace/81e39dbf7a90dd6123e7b0cee616ba5ec91ea4e1/external_plugins/neon/assets/logo.svg",
+   "homepage": "https://neon.com",
+   "domains": [
+    "neon.tech",
+    "neon.com",
+    "console.neon.tech"
+   ],
+   "keywords": [
+    "neon",
+    "neon postgres",
+    "neon database",
+    "neon branch"
+   ],
+   "category": "data",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "neon",
+     "url": "https://mcp.neon.tech/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.neon.tech",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "xai",
+    "repo": "https://github.com/xai-org/plugin-marketplace",
+    "path": "external_plugins/neon",
+    "sha": "81e39dbf7a90dd6123e7b0cee616ba5ec91ea4e1"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "xai:https://github.com/xai-org/plugin-marketplace#external_plugins/calcom",
+   "source": "xai",
+   "name": "calcom",
+   "displayName": "Calcom",
+   "description": "Cal.com scheduling integration (hosted MCP server + skill). Check availability, book, reschedule and cancel meetings, manage event types, schedules, attendees and team memberships, and reach any Cal.com API v2 operation. Sign in with your Cal.com account; no API key needed.",
+   "logo": "https://raw.githubusercontent.com/xai-org/plugin-marketplace/81e39dbf7a90dd6123e7b0cee616ba5ec91ea4e1/external_plugins/calcom/assets/logo.svg",
+   "homepage": "https://cal.com/docs/mcp-server",
+   "domains": [
+    "cal.com",
+    "app.cal.com",
+    "mcp.cal.com",
+    "api.cal.com"
+   ],
+   "keywords": [
+    "cal.com",
+    "calcom",
+    "cal.com mcp",
+    "cal.com scheduling",
+    "cal.com booking"
+   ],
+   "category": "productivity",
+   "recommended": true,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "calcom",
+     "url": "https://mcp.cal.com/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.cal.com",
+      "registration": "dynamic"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "registry",
+    "registry": "xai",
+    "repo": "https://github.com/xai-org/plugin-marketplace",
+    "path": "external_plugins/calcom",
+    "sha": "81e39dbf7a90dd6123e7b0cee616ba5ec91ea4e1"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "composio:slack",
+   "source": "composio",
+   "name": "slack",
+   "displayName": "Slack",
+   "description": "Read channels, search messages and post as you.",
+   "logo": "https://logos.composio.dev/api/slack",
+   "homepage": "https://slack.com",
+   "domains": [
+    "slack.com"
+   ],
+   "keywords": [],
+   "category": "communication",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "slack",
+     "url": "https://backend.composio.dev/tool_router/slack/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "composio",
+      "app": "slack"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "composio",
+    "app": "slack"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "composio:notion",
+   "source": "composio",
+   "name": "notion",
+   "displayName": "Notion",
+   "description": "Search pages and databases, and write notes.",
+   "logo": "https://logos.composio.dev/api/notion",
+   "homepage": "https://notion.so",
+   "domains": [
+    "notion.so"
+   ],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "notion",
+     "url": "https://backend.composio.dev/tool_router/notion/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "composio",
+      "app": "notion"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "composio",
+    "app": "notion"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "composio:linear",
+   "source": "composio",
+   "name": "linear",
+   "displayName": "Linear",
+   "description": "Find, create and update issues and projects.",
+   "logo": "https://logos.composio.dev/api/linear",
+   "homepage": "https://linear.app",
+   "domains": [
+    "linear.app"
+   ],
+   "keywords": [],
+   "category": "code",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "linear",
+     "url": "https://backend.composio.dev/tool_router/linear/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "composio",
+      "app": "linear"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "composio",
+    "app": "linear"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "composio:jira",
+   "source": "composio",
+   "name": "jira",
+   "displayName": "Jira",
+   "description": "Search and update issues across your Jira projects.",
+   "logo": "https://logos.composio.dev/api/jira",
+   "homepage": "https://atlassian.com",
+   "domains": [
+    "atlassian.com"
+   ],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "jira",
+     "url": "https://backend.composio.dev/tool_router/jira/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "composio",
+      "app": "jira"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "composio",
+    "app": "jira"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "composio:asana",
+   "source": "composio",
+   "name": "asana",
+   "displayName": "Asana",
+   "description": "Track tasks and projects in Asana.",
+   "logo": "https://logos.composio.dev/api/asana",
+   "homepage": "https://asana.com",
+   "domains": [
+    "asana.com"
+   ],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "asana",
+     "url": "https://backend.composio.dev/tool_router/asana/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "composio",
+      "app": "asana"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "composio",
+    "app": "asana"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "composio:clickup",
+   "source": "composio",
+   "name": "clickup",
+   "displayName": "ClickUp",
+   "description": "Manage tasks, docs and goals in ClickUp.",
+   "logo": "https://logos.composio.dev/api/clickup",
+   "homepage": "https://clickup.com",
+   "domains": [
+    "clickup.com"
+   ],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "clickup",
+     "url": "https://backend.composio.dev/tool_router/clickup/mcp",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "composio",
+      "app": "clickup"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "composio",
+    "app": "clickup"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "pipedream:trello",
+   "source": "pipedream",
+   "name": "trello",
+   "displayName": "Trello",
+   "description": "Organize cards, lists and boards.",
+   "logo": "https://pipedream.com/s.v0/app_168hnX/logo/96",
+   "homepage": "https://trello.com",
+   "domains": [
+    "trello.com"
+   ],
+   "keywords": [],
+   "category": "productivity",
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "trello",
+     "url": "https://remote.mcp.pipedream.net/v3",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "pipedream",
+      "app": "trello"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "pipedream",
+    "app": "trello"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "pipedream:airtable_oauth",
+   "source": "pipedream",
+   "name": "airtable_oauth",
+   "displayName": "Airtable",
+   "description": "Read and update records in your bases.",
+   "logo": null,
+   "homepage": "https://airtable.com",
+   "domains": [
+    "airtable.com"
+   ],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "airtable_oauth",
+     "url": "https://remote.mcp.pipedream.net/v3",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "pipedream",
+      "app": "airtable_oauth"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "pipedream",
+    "app": "airtable_oauth"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "pipedream:zendesk",
+   "source": "pipedream",
+   "name": "zendesk",
+   "displayName": "Zendesk",
+   "description": "Look up and answer support tickets.",
+   "logo": null,
+   "homepage": "https://zendesk.com",
+   "domains": [
+    "zendesk.com"
+   ],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "zendesk",
+     "url": "https://remote.mcp.pipedream.net/v3",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "pipedream",
+      "app": "zendesk"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "pipedream",
+    "app": "zendesk"
+   }
+  }
+ },
+ {
+  "entry": {
+   "id": "pipedream:mailchimp",
+   "source": "pipedream",
+   "name": "mailchimp",
+   "displayName": "Mailchimp",
+   "description": "Manage audiences and email campaigns.",
+   "logo": null,
+   "homepage": "https://mailchimp.com",
+   "domains": [
+    "mailchimp.com"
+   ],
+   "keywords": [],
+   "category": null,
+   "recommended": false,
+   "hasServers": true,
+   "skillCount": 0
+  },
+  "preview": {
+   "servers": [
+    {
+     "name": "mailchimp",
+     "url": "https://remote.mcp.pipedream.net/v3",
+     "transport": "streamable-http",
+     "auth": {
+      "kind": "provider",
+      "provider": "pipedream",
+      "app": "mailchimp"
+     },
+     "variables": []
+    }
+   ],
+   "skills": [],
+   "skipped": [],
+   "origin": {
+    "kind": "provider",
+    "provider": "pipedream",
+    "app": "mailchimp"
+   }
+  }
+ }
+]

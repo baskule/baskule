@@ -244,3 +244,14 @@ export interface BaskuleAdminSettings extends BaskuleProductSettings {
   /** Returned by saves when one or more spaces could not acknowledge the refresh. */
   reloadPending?: boolean;
 }
+
+export interface Group {
+  id: string;
+  name: string;
+  builtin?: "everyone";
+  members: string[];
+  permissions: { canCreateSpaces: boolean };
+}
+export type GroupInput = Omit<Group, "id" | "builtin">;
+export const GROUP_ERROR_CODES = ["builtin_group", "group_exists", "invalid_group", "user_not_found"] as const;
+export type GroupErrorCode = (typeof GROUP_ERROR_CODES)[number];

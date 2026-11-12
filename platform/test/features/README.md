@@ -8,7 +8,7 @@ source scripts/env.sh
 scripts/check features
 # Or select checks against a stack you started:
 scripts/stack up --profile full --clean
-NODE_EXTRA_CA_CERTS="$HOME/.portless/ca.pem" node platform/test/features/run.mjs --only 6-plugins
+NODE_EXTRA_CA_CERTS="$HOME/.portless/ca.pem" node platform/test/features/run.mjs --only 5-app
 scripts/stack down --purge
 ```
 

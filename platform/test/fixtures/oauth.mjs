@@ -39,7 +39,10 @@ export async function fakeOAuth() {
         if (p.get("grant_type") === "authorization_code") {
           state.exchanges++;
           const c = codes.get(p.get("code")); codes.delete(p.get("code"));
-          if (!c || c.client_id !== p.get("client_id") || c.redirect_uri !== p.get("redirect_uri") || c.code_challenge !== createHash("sha256").update(p.get("code_verifier") ?? "").digest("base64url")) return json(res, { error: "invalid_grant" }, 400);
+          // client_secret_basic names the client in the Authorization header instead of the body.
+          const basic = req.headers.authorization?.match(/^Basic (.+)$/)?.[1];
+          const clientId = p.get("client_id") ?? (basic ? decodeURIComponent(atob(basic).split(":")[0]) : null);
+          if (!c || c.client_id !== clientId || c.redirect_uri !== p.get("redirect_uri") || c.code_challenge !== createHash("sha256").update(p.get("code_verifier") ?? "").digest("base64url")) return json(res, { error: "invalid_grant" }, 400);
           identity = c.identity;
           await state.onExchange?.();
         } else {

@@ -1,4 +1,4 @@
-import type { MemberPlugin } from "@t3tools/contracts/baskule-plugins";
+import { PLUGIN_CATEGORIES, type MemberPlugin } from "@t3tools/contracts/baskule-plugins";
 import { UsageWindowStatusSchema, type MyUsage } from "@t3tools/contracts/baskule-usage";
 import * as Schema from "effect/Schema";
 import { fetch } from "expo/fetch";
@@ -24,49 +24,38 @@ const myUsage = Schema.Struct({
     ),
   ),
 });
-const pluginStatus = Schema.Literals([
-  "unavailable",
-  "needs_setup",
-  "connect",
-  "reconnect",
-  "ready",
+const memberConnection = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("not_required") }),
+  Schema.Struct({ state: Schema.Literal("not_connected") }),
+  Schema.Struct({
+    state: Schema.Literal("connected"),
+    account: Schema.NullOr(Schema.String),
+    connectedAt: Schema.String,
+  }),
+  Schema.Struct({ state: Schema.Literal("expired") }),
+  Schema.Struct({ state: Schema.Literal("unavailable") }),
 ]);
 const memberPlugins = Schema.Struct({
   plugins: Schema.mutable(
     Schema.Array(
       Schema.Struct({
         id: Schema.String,
-        name: Schema.String,
+        displayName: Schema.String,
         description: Schema.String,
-        icon: Schema.optional(Schema.String),
-        skills: Schema.mutable(
-          Schema.Array(Schema.Struct({ name: Schema.String, description: Schema.String })),
-        ),
-        status: pluginStatus,
+        logo: Schema.NullOr(Schema.String),
+        category: Schema.NullOr(Schema.Literals(PLUGIN_CATEGORIES)),
+        on: Schema.Boolean,
+        enabled: Schema.Boolean,
         servers: Schema.mutable(
           Schema.Array(
-            Schema.Struct({
-              name: Schema.String,
-              credential: Schema.Literals(["none", "organization", "user-oauth"]),
-              status: pluginStatus,
-              accounts: Schema.mutable(
-                Schema.Array(
-                  Schema.Struct({
-                    id: Schema.String,
-                    label: Schema.String,
-                    default: Schema.Boolean,
-                    status: Schema.Literals(["ready", "reconnect"]),
-                  }),
-                ),
-              ),
-            }),
+            Schema.Struct({ id: Schema.String, name: Schema.String, connection: memberConnection }),
           ),
         ),
+        skillCount: Schema.Number,
       }),
     ),
   ),
 });
-const mutationResult = Schema.Struct({ ok: Schema.Literal(true) });
 const errorBody = Schema.Struct({
   code: Schema.optional(Schema.String),
   error: Schema.optional(Schema.String),
@@ -103,16 +92,9 @@ function errorMessage(status: number, code: string | undefined): string {
       return t("Use no more than 256 characters for your new password.");
     case "CREDENTIAL_ACCOUNT_NOT_FOUND":
       return t("This account does not have a password. Use your sign-in provider.");
-    case "account_label_taken":
-      return t("You already have an account with this name.");
-    case "account_not_found":
-      return t("This account is no longer connected. Reload the page.");
-    case "default_account_required":
-      return t("Choose which account becomes your default before you disconnect this one.");
-    case "connection_not_allowed":
-      return t("The plugin changed or was paused in the meantime. Reload the page and try again.");
-    case "invalid_plugin_input":
-      return t("Some details aren't valid. Check them and try again.");
+    case "plugin_not_found":
+    case "server_not_found":
+      return t("The plugin changed or was removed in the meantime. Reload and try again.");
     default:
       return t("The server answered HTTP {{status}}.", { status });
   }
@@ -192,37 +174,23 @@ export async function fetchMemberPlugins(session: SettingsSession): Promise<Memb
     .plugins;
 }
 
-export async function updatePluginAccount(
+/** The member's own switch: off keeps the assistant from using the plugin for them. */
+export async function setPluginOn(
   session: SettingsSession,
-  input: {
-    readonly pluginId: string;
-    readonly accountId: string;
-    readonly patch: { readonly label: string } | { readonly default: true };
-  },
+  input: { readonly pluginId: string; readonly on: boolean },
 ): Promise<void> {
-  await decodeResponse(
-    await request(
-      session,
-      `/api/baskule/plugins/${encodeURIComponent(input.pluginId)}/accounts/${encodeURIComponent(input.accountId)}`,
-      "PATCH",
-      input.patch,
-    ),
-    mutationResult,
-  );
+  await request(session, `/api/baskule/plugins/${encodeURIComponent(input.pluginId)}`, "PUT", {
+    on: input.on,
+  });
 }
 
-export async function disconnectPluginAccount(
+export async function disconnectPluginServer(
   session: SettingsSession,
-  input: { readonly pluginId: string; readonly accountId: string; readonly newDefault?: string },
+  input: { readonly pluginId: string; readonly serverId: string },
 ): Promise<void> {
-  const query =
-    input.newDefault === undefined ? "" : `?default=${encodeURIComponent(input.newDefault)}`;
-  await decodeResponse(
-    await request(
-      session,
-      `/api/baskule/plugins/${encodeURIComponent(input.pluginId)}/accounts/${encodeURIComponent(input.accountId)}${query}`,
-      "DELETE",
-    ),
-    mutationResult,
+  await request(
+    session,
+    `/api/baskule/plugins/${encodeURIComponent(input.pluginId)}/servers/${encodeURIComponent(input.serverId)}/connection`,
+    "DELETE",
   );
 }

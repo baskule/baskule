@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ACCOUNT_ARG, PluginMcpProxy, publishTools } from "../../plugin-mcp";
+import { PluginMcpProxy } from "../../plugin-mcp";
 import { planSkills, skillCatalog } from "../../plugin-skills";
 import { resolveTurnAuthor } from "../../turn-author";
 import type { PluginCredential, SpacePlugins } from "../../../../../app/packages/contracts/src/baskule-plugins";
@@ -81,112 +81,87 @@ describe("turn author", () => {
   });
 });
 
-const server: SpacePlugins["servers"][number] = { pluginId: "test", pluginName: "Test", name: "remote", url: "https://vendor.test/mcp", credential: "user-oauth", disabledTools: [], catalogUserId: "alice", privateNetwork: false, defaultAccountOnly: false };
+const server: SpacePlugins["servers"][number] = { pluginId: "test", serverId: "remote", name: "remote", displayName: "Test", listAs: "carol" };
 const rpc = async (proxy: PluginMcpProxy, method: string, user = "alice", args = {}) => {
   const r = await proxy.handler(new Request("http://proxy/mcp", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: { name: "lookup", arguments: args, _meta: { "ai.opencode/sessionID": user } } }) }));
   return r.json() as Promise<Record<string, any>>;
 };
+function fakeVendor(seen: { url: string; method: string; auth: string | null; params: any }[], onCall?: () => Promise<void>) {
+  vi.stubGlobal("fetch", async (url: unknown, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    seen.push({ url: String(url), method: body.method, auth: new Headers(init.headers).get("authorization"), params: body.params });
+    if (body.id === undefined) return new Response(null, { status: 202 });
+    if (body.method === "initialize") return Response.json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" } } });
+    if (body.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "lookup", inputSchema: { type: "object" } }] } });
+    await onCall?.();
+    return Response.json({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "found" }] } });
+  });
+}
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("plugin proxy", () => {
-  it("publishes an optional personal selector, hides collisions, and keeps team schemas default-only", () => {
-    const clean = { name: "lookup", inputSchema: { type: "object" as const, properties: { query: { type: "string" } }, required: ["query"] } };
-    const collided = { ...clean, name: "collision", inputSchema: { ...clean.inputSchema, properties: { [ACCOUNT_ARG]: { type: "number" } } } };
-    expect(publishTools(server, [clean, collided])).toEqual([{ ...clean, inputSchema: { ...clean.inputSchema, properties: { ...clean.inputSchema.properties, [ACCOUNT_ARG]: { type: "string", description: expect.any(String) } } } }]);
-    expect(publishTools({ ...server, disabledTools: ["lookup"] }, [clean])).toEqual([]);
-    expect(publishTools({ ...server, defaultAccountOnly: true }, [clean, collided])).toEqual([clean]);
-    expect(publishTools({ ...server, credential: "organization" }, [collided])).toEqual([collided]);
-  });
-  it("strips the selector, labels results, isolates connection ids with identical tokens, and bounds idle clients", async () => {
-    const seen: { method: string; params: any }[] = [];
-    vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
-      const body = JSON.parse(String(init.body)); seen.push(body);
-      if (body.id === undefined) return new Response(null, { status: 202 });
-      if (body.method === "initialize") return Response.json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" } } });
-      return Response.json({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "found" }] } });
-    });
-    let defaultLabel = "Work";
-    const credential = vi.fn(async (_user: string, call: { account?: string }): Promise<PluginCredential> => ({ headers: { Authorization: "same-token" }, expiresAt: Date.now() + 60_000, account: { id: call.account ?? defaultLabel, label: call.account ?? defaultLabel } }));
-    const proxy = new PluginMcpProxy(server, async () => alice, credential);
+  it("lists as the listing member, calls as each author with their own URL and headers, and never exposes them", async () => {
+    const seen: Parameters<typeof fakeVendor>[0] = [];
+    fakeVendor(seen);
+    let allowed = true;
+    const credential = vi.fn(async (id: string): Promise<PluginCredential> => allowed
+      ? { ok: true, network: "public", transport: "streamable-http", url: `https://vendor.test/${id}/mcp`, headers: { Authorization: `Bearer secret-${id}` } }
+      : { ok: false, error: "sign_in_required", message: "Sign in to Test in Settings → Plugins, then try again." });
+    const proxy = new PluginMcpProxy(server, async id => id === "alice" ? alice : bob, credential);
     try {
-      const result = await rpc(proxy, "tools/call", "alice", { [ACCOUNT_ARG]: "Second", query: "hello" });
-      expect(result.result.content[0].text).toBe("Account used: Second.");
-      expect(result.result._meta["baskule/account"]).toEqual({ connectionId: "Second", label: "Second", pluginId: "test", server: "remote" });
-      expect(seen.find(s => s.method === "tools/call")?.params.arguments).toEqual({ query: "hello" });
+      expect((await rpc(proxy, "tools/list")).result.tools.map((t: { name: string }) => t.name)).toEqual(["lookup"]);
+      const a = await rpc(proxy, "tools/call"); const b = await rpc(proxy, "tools/call", "bob");
+      expect([a.result.content[0].text, b.result.content[0].text]).toEqual(["found", "found"]);
+      expect(credential.mock.calls.map(([id]) => id)).toEqual(["carol", "alice", "bob"]);
+      expect(seen.filter(s => s.method === "tools/call").map(s => [s.url, s.auth])).toEqual([
+        ["https://vendor.test/alice/mcp", "Bearer secret-alice"], ["https://vendor.test/bob/mcp", "Bearer secret-bob"]]);
+      expect(seen.filter(s => s.method === "tools/call").every(s => s.params._meta === undefined)).toBe(true);
+      expect(JSON.stringify([a, b])).not.toContain("secret-");
       await rpc(proxy, "tools/call");
-      expect(seen.filter(s => s.method === "initialize")).toHaveLength(2);
-      defaultLabel = "Second";
-      expect((await rpc(proxy, "tools/call")).result.content[0].text).toBe("Account used: Second.");
-      expect(seen.filter(s => s.method === "initialize")).toHaveLength(2);
-      for (let i = 0; i < 9; i++) await rpc(proxy, "tools/call", "alice", { [ACCOUNT_ARG]: `Other ${i}` });
-      expect(seen.filter(s => s.method === "initialize")).toHaveLength(11);
-      await rpc(proxy, "tools/call", "alice", { [ACCOUNT_ARG]: "Second" });
-      expect(seen.filter(s => s.method === "initialize")).toHaveLength(12);
-      expect(credential).toHaveBeenCalledWith("alice", { account: "Second", tool: "lookup" });
+      expect(seen.filter(s => s.method === "initialize")).toHaveLength(3);
+      allowed = false;
+      const refused = await rpc(proxy, "tools/call");
+      expect(refused.result).toMatchObject({ isError: true, content: [{ text: "Sign in to Test in Settings → Plugins, then try again." }] });
+      expect(seen.filter(s => s.method === "tools/call")).toHaveLength(3);
     } finally { await proxy.close(); }
   });
-  it("refuses the in-isolate MCP host even for admin private servers", async () => {
+  it("opens a new client when a refreshed token changes the headers, and bounds idle clients", async () => {
+    const seen: Parameters<typeof fakeVendor>[0] = [];
+    fakeVendor(seen);
+    let token = 0;
+    const proxy = new PluginMcpProxy(server, async () => alice, async () => ({ ok: true, network: "public", transport: "streamable-http", url: "https://vendor.test/mcp", headers: { Authorization: `Bearer ${token}` } }));
+    try {
+      await rpc(proxy, "tools/call"); await rpc(proxy, "tools/call");
+      expect(seen.filter(s => s.method === "initialize")).toHaveLength(1);
+      for (token = 1; token <= 10; token++) await rpc(proxy, "tools/call");
+      expect(seen.filter(s => s.method === "initialize")).toHaveLength(11);
+      token = 0;
+      await rpc(proxy, "tools/call");
+      expect(seen.filter(s => s.method === "initialize")).toHaveLength(12);
+    } finally { await proxy.close(); }
+  });
+  it("lists no tools until a member's connection works", async () => {
+    const credential = vi.fn();
+    const proxy = new PluginMcpProxy({ ...server, listAs: null }, async () => alice, credential);
+    expect((await rpc(proxy, "tools/list")).result.tools).toEqual([]);
+    expect(credential).not.toHaveBeenCalled();
+  });
+  it("refuses the in-isolate MCP host", async () => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
-    const proxy = new PluginMcpProxy({ ...server, url: "https://baskule-mcp.internal/mcp", privateNetwork: true }, async () => alice, async () => ({ headers: {}, expiresAt: Date.now() + 60_000 }));
+    const proxy = new PluginMcpProxy(server, async () => alice, async () => ({ ok: true, network: "public", transport: "streamable-http", url: "https://baskule-mcp.internal/mcp", headers: {} }));
     expect((await rpc(proxy, "tools/call")).result.isError).toBe(true);
     expect(fetcher).not.toHaveBeenCalled();
     await proxy.close();
   });
-  it.each([false, true])("checks policy and calls the vendor with privateNetwork=%s", async privateNetwork => {
-    const seen: { url: string; method: string; auth: string | null; params: any }[] = [];
-    vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
-      const body = JSON.parse(String(init.body));
-      seen.push({ url: String(_url), method: body.method, auth: new Headers(init.headers).get("authorization"), params: body.params });
-      if (body.id === undefined) return new Response(null, { status: 202 });
-      if (body.method === "initialize") return Response.json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" } } });
-      if (body.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "lookup", inputSchema: { type: "object" } }] } });
-      return Response.json({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "found" }] } });
-    });
-    let allowed = true;
-    const originalExpiry = Date.now() + 60_000;
-    const credential = vi.fn(async (id: string): Promise<PluginCredential> => allowed ? { headers: { Authorization: `Bearer secret-${id}` }, account: { id: `${id}-work`, label: id === "alice" ? "Work" : "Bob work" }, expiresAt: Math.max(originalExpiry, Date.now() + 60_000) } : { error: "unavailable" });
-    const proxy = new PluginMcpProxy({ ...server, privateNetwork, url: privateNetwork ? "http://127.0.0.1/mcp" : `${server.url}?tools=all` }, async id => id === "alice" ? alice : bob, credential);
-    await rpc(proxy, "tools/list");
-    const a = await rpc(proxy, "tools/call"); const b = await rpc(proxy, "tools/call", "bob");
-    expect(a.result._meta["baskule/account"]).toMatchObject({ connectionId: "alice-work", label: "Work" });
-    expect(b.result.content[0].text).toContain("Bob work");
-    expect(seen.filter(s => s.method === "tools/call").map(s => s.auth)).toEqual(["Bearer secret-alice", "Bearer secret-bob"]);
-    expect(seen.filter(s => s.method === "tools/call").every(s => s.params._meta === undefined)).toBe(true);
-    expect(JSON.stringify([a, b])).not.toContain("secret-");
-    expect(seen.filter(s => s.method === "initialize")).toHaveLength(2);
-    if (!privateNetwork) expect(seen.every(s => new URL(s.url).searchParams.get("tools") === "all")).toBe(true);
-    vi.spyOn(Date, "now").mockReturnValue(originalExpiry + 60_000);
-    await rpc(proxy, "tools/call");
-    expect(seen.filter(s => s.method === "initialize")).toHaveLength(3);
-    allowed = false;
-    expect((await rpc(proxy, "tools/call")).result).toMatchObject({ isError: true });
-    expect(credential).toHaveBeenCalledTimes(5);
-    expect(seen.filter(s => s.method === "tools/call")).toHaveLength(3);
-    await proxy.close();
-  });
-  it.each(["unavailable", "needs_setup", "connect", "reconnect"] as const)("returns a clear %s tool error without contacting the vendor", async error => {
-    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
-    const proxy = new PluginMcpProxy(server, async () => alice, async () => ({ error }));
-    const result = await rpc(proxy, "tools/call");
-    expect(result.result.isError).toBe(true); expect(result.result.content[0].text).toMatch(/available|administrator|Connect|Reconnect/);
-    expect(fetcher).not.toHaveBeenCalled();
-  });
-  it("lets an in-flight call finish when another call renews an expired credential", async () => {
+  it("lets an in-flight call finish when another call renews the credential", async () => {
     let finish: (() => void) | undefined;
     let calls = 0;
-    const now = Date.now();
-    vi.spyOn(Date, "now").mockReturnValue(now);
-    vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
-      const body = JSON.parse(String(init.body));
-      if (body.id === undefined) return new Response(null, { status: 202 });
-      if (body.method === "initialize") return Response.json({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" } } });
-      if (++calls === 1) await new Promise<void>(resolve => { finish = resolve; });
-      return Response.json({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "finished" }] } });
-    });
-    const proxy = new PluginMcpProxy(server, async () => alice, async () => ({ headers: { Authorization: "key" }, expiresAt: Date.now() + 1000 }));
+    fakeVendor([], async () => { if (++calls === 1) await new Promise<void>(resolve => { finish = resolve; }); });
+    let token = "first";
+    const proxy = new PluginMcpProxy(server, async () => alice, async () => ({ ok: true, network: "public", transport: "streamable-http", url: "https://vendor.test/mcp", headers: { Authorization: token } }));
     const first = rpc(proxy, "tools/call");
     await vi.waitFor(() => expect(finish).toBeDefined());
-    vi.spyOn(Date, "now").mockReturnValue(now + 2000);
+    token = "second";
     expect((await rpc(proxy, "tools/call")).result.isError).not.toBe(true);
     finish!();
     expect((await first).result.isError).not.toBe(true);
@@ -199,15 +174,19 @@ describe("plugin proxy", () => {
   });
 });
 
-const skill = { id: "skill-id", pluginId: "p", name: "hello", description: "Greeting", files: [{ path: "SKILL.md", encoding: "base64" as const, content: Buffer.from("---\nname: hello\n---\nHello").toString("base64") }] };
+const md = (text: string) => Buffer.from(text).toString("base64");
+const skill = { path: "p/hello/SKILL.md", base64: md('---\nname: "hello"\ndescription: "Greeting: \\"hi\\""\nlicense: MIT\n---\nHello') };
 describe("skill sync planning", () => {
-  it("namespaces duplicate names, preserves binary payloads and replaces the entire set", () => {
-    expect(planSkills([skill, { ...skill, pluginId: "other" }]).map(f => f.path)).toEqual(["other/hello/SKILL.md", "p/hello/SKILL.md"]);
+  it("namespaces skills by plugin, keeps binary payloads and replaces the entire set", () => {
+    const asset = { path: "p/hello/assets/data.bin", base64: Buffer.from([0, 1, 255]).toString("base64") };
+    expect(planSkills([skill, { ...skill, path: "other/hello/SKILL.md" }, asset]).map(f => f.path)).toEqual(["other/hello/SKILL.md", "p/hello/assets/data.bin", "p/hello/SKILL.md"]);
+    expect(planSkills([asset])[0]!.content).toBe(asset.base64);
     expect(planSkills([])).toEqual([]);
-    expect(skillCatalog([skill])[0]).toMatchObject({ id: skill.id, content: "Hello", path: "/sandbox/space/plugins/p/hello/SKILL.md", files: ["/sandbox/space/plugins/p/hello/SKILL.md"] });
+    expect(skillCatalog([skill, asset])).toEqual([{ id: "p/hello", name: "hello", description: 'Greeting: "hi"', content: "Hello", path: "/sandbox/space/plugins/p/hello/SKILL.md",
+      files: ["/sandbox/space/plugins/p/hello/SKILL.md", "/sandbox/space/plugins/p/hello/assets/data.bin"] }]);
   });
-  it.each(["../outside", "/absolute", "a/../../b", "a\\..\\b", "a//b"])("rejects unsafe paths: %s", path => {
-    expect(() => planSkills([{ ...skill, files: [{ ...skill.files[0], path }] }])).toThrow("Invalid skill path");
+  it.each(["../outside/x/SKILL.md", "/absolute/x/SKILL.md", "a/../../b", "a\\..\\b/c", "a//b/c", "plugin/SKILL.md"])("rejects unsafe paths: %s", path => {
+    expect(() => planSkills([{ ...skill, path }])).toThrow("Invalid skill path");
   });
   it("rejects collisions", () => expect(() => planSkills([skill, skill])).toThrow("Duplicate skill path"));
 });

@@ -22,8 +22,6 @@
     "better-auth": "1.7.12",
     "drizzle-orm": "0.45.4",
     "effect": "4.0.6",
-    "fflate": "0.8.2",
-    "nanoid": "5.1.16",
     "yaml": "2.9.0",
     "zod": "4.6.7"
   },

@@ -1,8 +1,8 @@
 import { useTranslation } from "../../../i18n";
-// baskule: one group: its name, its people, the permissions and the plugins it gives them.
-// "Everyone" has every person automatically and keeps its name; its permissions and plugins change.
-import type { GroupInput } from "@t3tools/contracts/baskule-plugins";
-import { Link, Navigate, useNavigate } from "@tanstack/react-router";
+// baskule: one group: its name, its people and the permissions it gives them. Plugins choose
+// their groups on their own page. "Everyone" has every person automatically and keeps its name.
+import type { GroupInput } from "@t3tools/contracts/baskule";
+import { Navigate, useNavigate } from "@tanstack/react-router";
 import { UserPlusIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -18,13 +18,11 @@ import { Spinner } from "../../../components/ui/spinner";
 import { Switch } from "../../../components/ui/switch";
 import { baskuleApi } from "../../api";
 import { refreshBaskuleMe } from "../../session";
-import { notifyPluginError, pluginsApi } from "../../plugins/api";
-import { PluginIcon, PluginTitle } from "../../plugins/PluginParts";
-import { contentsKind, groupName } from "../../plugins/presentation";
 import { Avatar, confirmAction, FormField, notifySuccess, useApiResource } from "../../ui";
 import { PageMessage, PageRow, PageSection } from "../../views/BaskulePage";
 import { PageHeading } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
+import { groupName, groupsApi, notifyGroupError } from "./groups";
 import { groupSummary } from "./GroupsPage";
 
 export function GroupDetailPage({ id }: { readonly id: string }) {
@@ -33,13 +31,10 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
   // The parent remounts this per item (`key`), so one loader per mount keeps its identity.
   const [load] = useState(
     () => () =>
-      Promise.all([pluginsApi.groups(), baskuleApi.people(), pluginsApi.installed()]).then(
-        ([groups, people, plugins]) => ({
-          group: groups.find((entry) => entry.id === id) ?? null,
-          people,
-          plugins,
-        }),
-      ),
+      Promise.all([groupsApi.list(), baskuleApi.people()]).then(([groups, people]) => ({
+        group: groups.find((entry) => entry.id === id) ?? null,
+        people,
+      })),
   );
   const data = useApiResource(load);
   const [busy, setBusy] = useState<string | null>(null);
@@ -49,7 +44,7 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
   if (!data.data) {
     return <ResourceState error={data.error} loading={data.loading} empty emptyText="" />;
   }
-  const { group, people, plugins } = data.data;
+  const { group, people } = data.data;
   if (!group) {
     return (
       <Navigate to="/admin/$section/$page" params={{ section: "people", page: "groups" }} replace />
@@ -61,14 +56,14 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
   const save = async (key: string, patch: Partial<GroupInput>, failure: string) => {
     setBusy(key);
     return (async () => {
-      await pluginsApi.updateGroup(group.id, patch);
+      await groupsApi.update(group.id, patch);
       await data.reload();
       // The signed-in admin may have just gained or lost a permission.
       if (patch.permissions) void refreshBaskuleMe().catch(() => undefined);
       return true;
     })()
       .catch((cause: unknown) => {
-        notifyPluginError(failure, cause);
+        notifyGroupError(failure, cause);
         return false;
       })
       .finally(() => {
@@ -104,7 +99,7 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
                   if (!confirmed) return;
                   setBusy("delete");
                   try {
-                    await pluginsApi.removeGroup(group.id);
+                    await groupsApi.remove(group.id);
                     notifySuccess(t("{{name}} was deleted", { name: shownName }));
                     void navigate({
                       to: "/admin/$section/$page",
@@ -112,7 +107,7 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
                     });
                   } catch (cause) {
                     setBusy(null);
-                    notifyPluginError(t("Could not delete {{name}}", { name: shownName }), cause);
+                    notifyGroupError(t("Could not delete {{name}}", { name: shownName }), cause);
                   }
                 })
               }
@@ -267,70 +262,6 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
             {t("They become the owner of the spaces they create. Admins always can.")}
           </span>
         </PageRow>
-      </PageSection>
-
-      <PageSection
-        title={t("Plugins")}
-        description={t("Its people can use these plugins in their chats.")}
-      >
-        {plugins.length === 0 ? (
-          <PageMessage>
-            <span className="flex flex-col items-center gap-3">
-              {t("No plugins are installed yet.")}
-              <Button
-                size="sm"
-                variant="outline"
-                render={
-                  <Link
-                    to="/admin/$section/$page"
-                    params={{ section: "plugins", page: "catalog" }}
-                  />
-                }
-              >
-                {t("Find plugins")}
-              </Button>
-            </span>
-          </PageMessage>
-        ) : null}
-        {plugins.map((plugin) => {
-          const allowed = group.plugins.includes(plugin.id);
-          return (
-            <PageRow
-              key={plugin.id}
-              leading={<PluginIcon contents={contentsKind(plugin)} icon={plugin.icon} />}
-              trailing={
-                <>
-                  {busy === `plugin:${plugin.id}` ? <Spinner size="sm" tone="muted" /> : null}
-                  <Switch
-                    aria-label={t("{{group}} can use {{name}}", {
-                      group: shownName,
-                      name: plugin.name,
-                    })}
-                    checked={allowed}
-                    disabled={busy !== null}
-                    onCheckedChange={(checked) =>
-                      void save(
-                        `plugin:${plugin.id}`,
-                        {
-                          plugins: checked
-                            ? [...group.plugins, plugin.id]
-                            : group.plugins.filter((entry) => entry !== plugin.id),
-                        },
-                        t("Could not change the plugins of {{name}}", { name: shownName }),
-                      )
-                    }
-                  />
-                </>
-              }
-            >
-              <PluginTitle
-                name={plugin.name}
-                contents={contentsKind(plugin)}
-                extra={plugin.enabled ? null : t("Paused")}
-              />
-            </PageRow>
-          );
-        })}
       </PageSection>
     </>
   );

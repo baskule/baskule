@@ -13,7 +13,7 @@ export interface SpaceCall {
   body: any;
 }
 
-export async function makeService(env: Partial<Env> = {}, setup = true) {
+export async function makeService(env: Partial<Env> = {}, setup = true, fetcher?: typeof fetch) {
   const storage = fakeStorage();
   const calls: SpaceCall[] = [];
   let failDelete = false;
@@ -30,7 +30,7 @@ export async function makeService(env: Partial<Env> = {}, setup = true) {
     AUTH_RATE_LIMIT: "0",
     ...env,
   } as Env;
-  const svc = new ControlService(storage, fullEnv, callSpace);
+  const svc = new ControlService(storage, fullEnv, callSpace, fetcher);
   await svc.init();
   if (setup && svc.installation.mode !== "anonymous") {
     const response = await svc.handle(request("POST", "/api/baskule/setup", { body: { token: fullEnv.SETUP_TOKEN, name: "Admin", email: ADMIN.email, ...(svc.installation.password ? { password: ADMIN.password } : {}) } }));

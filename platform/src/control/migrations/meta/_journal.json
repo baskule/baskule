@@ -92,6 +92,13 @@
       "when": 1794175035533,
       "tag": "0012_plugin_skill_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794446677551,
+      "tag": "0013_marketplace_plugins",
+      "breakpoints": true
     }
   ]
 }

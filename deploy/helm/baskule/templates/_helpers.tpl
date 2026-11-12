@@ -15,7 +15,7 @@ app.kubernetes.io/part-of: baskule
 {{- if not (hasKey .Values "_secretData") -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace (include "baskule.secretName" .) -}}
 {{- $data := dict -}}
-{{- range $key := list "COMPUTERD_TOKEN" "SETUP_TOKEN" "PLUGIN_SYNC_TOKEN" -}}
+{{- range $key := list "COMPUTERD_TOKEN" "SETUP_TOKEN" -}}
 {{- if $existing -}}
 {{- $_ := set $data $key (required (printf "existing Secret missing %s" $key) (index $existing.data $key)) -}}
 {{- else -}}

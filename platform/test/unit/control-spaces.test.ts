@@ -19,7 +19,7 @@ describe("team spaces", () => {
 
     // Bob may not create spaces until the admin allows it
     expect((await call(h, "POST", "/api/baskule/spaces", { creds: bs.creds, body: { name: "Bobs" } })).status).toBe(403);
-    await call(h, "POST", "/api/baskule/admin/groups", { creds: a.creds, body: { name: "Space creators", members: [bob.id], permissions: { canCreateSpaces: true }, plugins: [] } });
+    await call(h, "POST", "/api/baskule/admin/groups", { creds: a.creds, body: { name: "Space creators", members: [bob.id], permissions: { canCreateSpaces: true } } });
     expect((await call(h, "POST", "/api/baskule/spaces", { creds: bs.creds, body: { name: "Bobs" } })).status).toBe(201);
 
     const c = await call(h, "POST", "/api/baskule/spaces", { creds: a.creds, body: { name: "Acme", members: [{ email: "alice@baskule.test" }, { userId: bob.id, role: "member" }] } });

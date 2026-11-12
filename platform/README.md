@@ -61,11 +61,12 @@ celld has no secrets mechanism (#190): vars live in the bucket deployment. Gener
 Organization and AI settings are administered through `/api/baskule/admin/settings` (GET/PATCH), stored in ControlCell.
 The public discovery document `/.well-known/baskule` names the installation and describes its enabled login
 methods without credentials. Private
-`/_baskule/settings` supplies SpaceCells with AI settings, the key, and space-scoped plugin definitions and skill files.
-Plugins and manual groups are administered in ControlCell; all installations start disabled. The Everyone group
-includes every current and future user, and group permissions combine additively. Group capabilities determine
-space creation; `/me` exposes the resolved capability. Plugin/group contracts are in
-`app/packages/contracts/src/baskule-plugins.ts`. computerd reads idle policy only at
+`/_baskule/settings` supplies SpaceCells with AI settings, the key, and the plugin apps and skill files the space's
+members may use; `/_baskule/plugin-credential` returns the turn author's address and headers for one tool call after
+rechecking policy. Plugins and manual groups are administered in ControlCell; nothing is installed by default. The
+Everyone group includes every current and future user, and group permissions combine additively. Group capabilities
+determine space creation; `/me` exposes the resolved capability. Contracts: `app/packages/contracts/src/baskule-plugins.ts`
+(plugins) and `baskule.ts` (groups). Plugin code: `src/control/plugins/`; guide: [plugins](../docs/plugins.md). computerd reads idle policy only at
 `/api/baskule/runtime-settings`, authenticated with its service token. Full setup: [installation settings](../docs/installation-settings.md).
 
 ## Routes (one origin)
@@ -124,9 +125,12 @@ one per user and eight globally in flight, and users blocked by usage limits rec
 |---|---|---|
 | `GET /me` | any | `{user{id,name,email,role,canCreateSpaces}, session{id}, organization{id,name}, spaces[{id,name,kind,role,base}], voiceInput}` — `base` = `/s/<id>`, personal first; `voiceInput` requires enabled transcription and a saved key |
 | `POST /transcriptions` | any | supported raw audio body, ≤25 MiB; forwards multipart to the configured `/audio/transcriptions` without redirects, with one 120 s deadline covering the upload and the provider; returns `{text}`; 404 disabled, 400 invalid or stalled audio, 413 too large, 429 usage or concurrency limit or provider rate limit, 502 `transcription_key_rejected` when the provider refuses the key, else `transcription_failed` |
-| `GET /plugins/:id/connect`, `GET /plugins/oauth/callback` | signed-in user | per-person OAuth for a plugin server; [installation setup](../docs/installation-settings.md#plugin-account-connections) |
-| `PATCH /plugins/:id/accounts/:accountId`, `DELETE /plugins/:id/accounts/:accountId` | signed-in user | rename or choose a default account; disconnect requires `?default=OTHER_ID` when removing a default with other accounts remaining |
-| `PUT /admin/vendors/:vendor` | admin | encrypted, write-only OAuth client setup, shared by the vendor's plugins |
+| `GET /plugins`, `PUT /plugins/:id {on}` | signed-in user | plugins the person may use, with each app's connection; their own on/off switch |
+| `GET /plugins/:id/servers/:serverId/connect`, `GET /plugins/oauth/callback`, `GET /plugins/provider/callback`, `DELETE /plugins/:id/servers/:serverId/connection` | signed-in user | sign in to one app (OAuth or Composio/Pipedream) and disconnect; [UI contract](../docs/installation-settings.md#plugin-account-connections) |
+| `GET /admin/catalog[?refresh=1]` | admin | Cursor and xAI registries and configured Composio/Pipedream apps, cached for an hour |
+| `POST /admin/plugins/preview`, `GET/POST /admin/plugins`, `GET/PATCH/DELETE /admin/plugins/:id` | admin | preview with auth probing, install (digest-checked), access, values, pause, removal |
+| `PUT/DELETE /admin/oauth-clients` | admin | one encrypted OAuth client per issuer (`DELETE ?issuer=`) |
+| `PUT/DELETE /admin/plugin-providers/:provider` | admin | Composio or Pipedream credentials, verified before they are stored |
 | `GET /people` | any | `{people[{id,name,email}]}` (active accounts, to add members) |
 | `GET /spaces` | any | the caller's spaces |
 | `POST /spaces {name, members?[{userId|email, role?}]}` | admin, or a member whose groups grant `canCreateSpaces` | team space; the creator is owner |

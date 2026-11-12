@@ -30,6 +30,3 @@ checks.push(...scheduleChecks);
 
 import { appChecks } from "./cap5-app.mjs";
 checks.push(...appChecks);
-
-import { pluginChecks } from "./cap6-plugins.mjs";
-checks.push(...pluginChecks);

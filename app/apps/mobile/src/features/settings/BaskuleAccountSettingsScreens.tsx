@@ -10,10 +10,10 @@ import { BaskuleApiError } from "../../baskule/api";
 import { openBaskuleManagement } from "../../baskule/management";
 import { changeBaskuleSessionPassword, useBaskuleSession } from "../../baskule/session";
 import {
-  disconnectPluginAccount,
+  disconnectPluginServer,
   fetchMemberPlugins,
   fetchMyUsage,
-  updatePluginAccount,
+  setPluginOn,
   type SettingsSession,
 } from "../../baskule/settings-api";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -23,10 +23,11 @@ import * as Dialog from "../../components/ui/Dialog";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
-import { t, useLocale, useTranslation } from "../../i18n";
+import { useLocale, useTranslation } from "../../i18n";
 import { subscribeAppActive } from "../../lib/appState";
 import { ConnectionFormField } from "../connection/ConnectionFormField";
 import { SettingsRow } from "./components/SettingsRow";
+import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 
@@ -359,20 +360,7 @@ export function SettingsAccountUsageRouteScreen() {
   );
 }
 
-function pluginStatusText(status: MemberPlugin["status"], name: string) {
-  switch (status) {
-    case "unavailable":
-      return t("Not available to you");
-    case "needs_setup":
-      return t("Your administrator needs to finish setting it up");
-    case "connect":
-      return t("Connect your {{name}} account", { name });
-    case "reconnect":
-      return t("Reconnect your {{name}} account", { name });
-    case "ready":
-      return t("Ready");
-  }
-}
+type MemberServer = MemberPlugin["servers"][number];
 
 export function SettingsPluginsRouteScreen() {
   const t = useTranslation();
@@ -388,25 +376,24 @@ export function SettingsPluginsRouteScreen() {
   const reloadOnReturn = useEffectEvent(() => {
     if (!busy) reload();
   });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes accounts when the app returns from the browser consent page
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes sign-ins when the app returns from the browser consent page
   useEffect(() => subscribeAppActive(() => reloadOnReturn()), []);
-  if (!session) return <SignedInOnly title={t("Plugins and accounts")} />;
+  if (!session) return <SignedInOnly title={t("Plugins")} />;
 
-  const mutate = (work: () => Promise<void>) => {
+  const mutate = (failure: string, work: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
     work()
       .then(reload)
-      .catch((cause: unknown) =>
-        Dialog.alert(t("Could not update the account"), errorText(cause, t("Try again."))),
-      )
+      .catch((cause: unknown) => Dialog.alert(failure, errorText(cause, t("Try again."))))
       .finally(() => setBusy(false));
   };
-  const connectInBrowser = () =>
+  // The service's consent page needs a browser; Settings → Plugins on the web starts it.
+  const signInInBrowser = () =>
     Dialog.confirm({
-      title: t("Connect in the browser?"),
+      title: t("Sign in in the browser?"),
       message: t(
-        "The service asks for your consent in the browser. Connect the account there, then close the browser to return here.",
+        "Sign in from Settings → Plugins in the browser, then close the browser to return here.",
       ),
       confirmText: t("Open browser"),
       onConfirm: () => {
@@ -424,71 +411,73 @@ export function SettingsPluginsRouteScreen() {
           });
       },
     });
-  const accountActions = (
-    plugin: MemberPlugin,
-    account: MemberPlugin["servers"][number]["accounts"][number],
-    others: number,
-  ) => {
-    const rename = () =>
-      Dialog.prompt({
-        title: t("Rename account"),
-        initialValue: account.label,
-        confirmText: t("Save"),
-        onConfirm: (value) => {
-          const label = value.trim();
-          if (label === "" || label === account.label) return;
-          mutate(() =>
-            updatePluginAccount(session, {
-              pluginId: plugin.id,
-              accountId: account.id,
-              patch: { label },
-            }),
-          );
-        },
-      });
-    const disconnect = () => {
-      if (account.default && others > 0) {
-        Dialog.alert(
-          t("Choose another default first"),
-          t("Make another account your default before you disconnect this one."),
+  const serverName = (plugin: MemberPlugin, server: MemberServer) =>
+    plugin.servers.length === 1 ? plugin.displayName : server.name;
+  const disconnect = (plugin: MemberPlugin, server: MemberServer) =>
+    Dialog.confirm({
+      title: t("Disconnect {{name}}?", { name: serverName(plugin, server) }),
+      message: t("The assistant can no longer act as you there until you sign in again."),
+      confirmText: t("Disconnect"),
+      destructive: true,
+      onConfirm: () =>
+        mutate(t("Could not disconnect"), () =>
+          disconnectPluginServer(session, { pluginId: plugin.id, serverId: server.id }),
+        ),
+    });
+  const serverRow = (plugin: MemberPlugin, server: MemberServer) => {
+    const name = serverName(plugin, server);
+    switch (server.connection.state) {
+      case "unavailable":
+        return (
+          <SettingsRow
+            key={server.id}
+            icon="exclamationmark.circle"
+            label={name}
+            value={t("Not ready yet, ask an administrator")}
+            valuePosition="below"
+          />
         );
-        return;
-      }
-      Dialog.confirm({
-        title: t("Disconnect {{label}}?", { label: account.label }),
-        message: t("The assistant can no longer use this account."),
-        confirmText: t("Disconnect"),
-        destructive: true,
-        onConfirm: () =>
-          mutate(() =>
-            disconnectPluginAccount(session, { pluginId: plugin.id, accountId: account.id }),
-          ),
-      });
-    };
-    Dialog.alert(account.label, undefined, [
-      ...(account.default || others === 0
-        ? []
-        : [
-            {
-              text: t("Make default"),
-              onPress: () =>
-                mutate(() =>
-                  updatePluginAccount(session, {
-                    pluginId: plugin.id,
-                    accountId: account.id,
-                    patch: { default: true },
-                  }),
-                ),
-            },
-          ]),
-      { text: t("Rename"), onPress: rename },
-      { text: t("Disconnect"), style: "destructive" as const, onPress: disconnect },
-      { text: t("Cancel"), style: "cancel" as const },
-    ]);
+      case "not_connected":
+        return (
+          <SettingsRow
+            key={server.id}
+            icon="link"
+            label={t("Sign in to {{name}}", { name })}
+            value={t("In the browser")}
+            disabled={busy}
+            onPress={signInInBrowser}
+          />
+        );
+      case "expired":
+        return (
+          <SettingsRow
+            key={server.id}
+            icon="exclamationmark.triangle"
+            label={t("Reconnect {{name}}", { name })}
+            value={t("Your sign-in expired")}
+            valuePosition="below"
+            disabled={busy}
+            onPress={signInInBrowser}
+          />
+        );
+      case "connected":
+        return (
+          <SettingsRow
+            key={server.id}
+            icon="person.crop.circle"
+            label={server.connection.account ?? name}
+            value={t("Connected")}
+            disabled={busy}
+            onPress={() => disconnect(plugin, server)}
+          />
+        );
+      case "not_required":
+        return null;
+    }
   };
 
   return (
-    <SettingsScreen title={t("Plugins and accounts")}>
+    <SettingsScreen title={t("Plugins")}>
       <PageBody>
         {state.status === "loading" ? (
           <Loading />
@@ -498,69 +487,38 @@ export function SettingsPluginsRouteScreen() {
           <EmptyState
             variant="plain"
             title={t("No plugins yet")}
-            detail={t("Plugins your administrator adds to your spaces appear here.")}
+            detail={t("Plugins an administrator lets you use appear here.")}
           />
         ) : (
           <>
-            {state.value.map((plugin) => {
-              const blocked = plugin.status === "unavailable" || plugin.status === "needs_setup";
-              const oauthServers = plugin.servers.filter(
-                (server) => server.credential === "user-oauth",
-              );
-              const needsConnection = oauthServers.some(
-                (server) => server.status === "connect" || server.status === "reconnect",
-              );
-              return (
-                <SettingsSection
-                  key={plugin.id}
-                  title={plugin.name}
-                  footer={pluginStatusText(plugin.status, plugin.name)}
-                >
-                  {plugin.description ? (
-                    <Text className="px-4 py-3 text-sm text-foreground-muted">
-                      {plugin.description}
-                    </Text>
-                  ) : null}
-                  {oauthServers.flatMap((server) =>
-                    server.accounts.map((account) => (
-                      <SettingsRow
-                        key={`${server.name}:${account.id}`}
-                        icon="person.crop.circle"
-                        label={account.label}
-                        disabled={busy}
-                        value={[
-                          account.default ? t("Default") : null,
-                          account.status === "reconnect" ? t("Needs reconnecting") : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                        onPress={() => accountActions(plugin, account, server.accounts.length - 1)}
-                      />
-                    )),
-                  )}
-                  {oauthServers.length > 0 && !blocked ? (
-                    <SettingsRow
-                      icon="link"
-                      label={
-                        needsConnection
-                          ? t("Connect in browser")
-                          : t("Connect another account in browser")
-                      }
-                      disabled={busy}
-                      onPress={connectInBrowser}
-                    />
-                  ) : null}
-                </SettingsSection>
-              );
-            })}
-            {state.value.some(
-              (plugin) =>
-                plugin.status !== "unavailable" &&
-                plugin.servers.some((server) => server.credential === "user-oauth"),
+            {state.value.map((plugin) => (
+              <SettingsSection
+                key={plugin.id}
+                title={plugin.displayName}
+                footer={
+                  plugin.enabled ? plugin.description || undefined : t("Paused by an administrator")
+                }
+              >
+                <SettingsSwitchRow
+                  icon="bolt.circle"
+                  label={t("Use {{name}}", { name: plugin.displayName })}
+                  value={plugin.on}
+                  disabled={busy || !plugin.enabled}
+                  onValueChange={(on) =>
+                    mutate(t("Could not change the plugin"), () =>
+                      setPluginOn(session, { pluginId: plugin.id, on }),
+                    )
+                  }
+                />
+                {plugin.enabled ? plugin.servers.map((server) => serverRow(plugin, server)) : null}
+              </SettingsSection>
+            ))}
+            {state.value.some((plugin) =>
+              plugin.servers.some((server) => server.connection.state !== "not_required"),
             ) ? (
               <Text textRole="footnote" className="px-4 text-foreground-muted">
                 {t(
-                  "Plugins that use your account act as you. In a team space, only your default account is used, and only if the space owner allows it. Everyone in that space can see the results.",
+                  "Plugins you sign in to act as you, also in team spaces: each person's chats use their own sign-in.",
                 )}
               </Text>
             ) : null}

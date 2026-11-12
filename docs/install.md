@@ -146,12 +146,6 @@ proxy or trusted clients with a firewall. Only publish your HTTPS proxy.
 To create the admin through your proxy, open `https://baskule.example.com/setup#token=` followed by the token from
 the setup log. Optional `PUBLIC_URL=https://baskule.example.com` changes the printed link.
 
-## Plugins folder
-
-Optionally uncomment `- ./plugins:/plugins:ro` under `baskule-deploy.volumes` in the downloaded
-Compose file, create `plugins/`, and run `docker compose up -d`. See [folder plugins](plugins.md)
-for package layouts and sync behavior.
-
 ## Optional settings
 
 The example above lists common settings. All settings are optional:

@@ -5,6 +5,7 @@
 import { waitFor } from "../../src/space/test/rpc-client.mjs";
 import http from "node:http";
 import { readFileSync, writeFileSync } from "node:fs";
+import { checkGroups } from "./groups.mjs";
 import { checkPlugins } from "./plugins.mjs";
 import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "../../../app/packages/contracts/src/baskule.ts";
 
@@ -164,6 +165,7 @@ async function phase1() {
   check("unsigned raw session token refused", (await req("GET", "/api/baskule/me", { bearer: rawToken, origin: null })).status === 401);
   check("bob cannot use admin endpoints (403)", (await req("GET", "/api/baskule/admin/users", { bearer: bob.bearer, origin: null })).status === 403);
   check("better auth admin routes blocked", (await req("POST", "/auth/admin/impersonate-user", { ...A, body: { userId: bob.userId } })).status === 404);
+  await checkGroups(req, check, admin, alice);
   await checkPlugins(req, check, admin, alice);
 
   // 3. team space

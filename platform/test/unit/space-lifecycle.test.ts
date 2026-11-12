@@ -482,7 +482,7 @@ it.each([false, true])("refreshes managed skills on an already running v2 comput
   c.env.COMPUTERD_URL = "http://computerd";
   c.env.COMPUTERD_TOKEN = "test-token";
   c.ctx.storage.get.mockImplementation(async (key: string) => key === "baskule:spaceId" ? "space-a" : key === "baskule:plugin-skills" ? true : undefined);
-  c.env.CONTROL = { getByName: () => ({ fetch: async () => Response.json({ ...defaultSettings, apiKey: "test", plugins: { servers: [], skills: clear ? [] : [{ pluginId: "plugin", name: "notes", description: "Notes", files: [{ path: "SKILL.md", content: btoa("Updated notes"), encoding: "base64" }] }] } }) }) };
+  c.env.CONTROL = { getByName: () => ({ fetch: async () => Response.json({ ...defaultSettings, apiKey: "test", plugins: { servers: [], skills: clear ? [] : [{ path: "plugin/notes/SKILL.md", base64: btoa("Updated notes") }] } }) }) };
   expect((await c.fetch(new Request("http://space/_baskule/reconfigure", { method: "POST" }))).ok).toBe(true);
   expect(installed).toEqual([clear ? [] : [{ path: "plugin/notes/SKILL.md", content: btoa("Updated notes") }]]);
   expect(createServer).not.toHaveBeenCalled();

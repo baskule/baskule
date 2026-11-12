@@ -1,202 +1,342 @@
-export type PluginSource =
-  | { type: "catalog" }
-  | { type: "github"; repo: string; sha: string; path?: string }
-  | { type: "upload"; sha256: string }
-  | { type: "custom" }
-  | { type: "folder"; path: string };
-export type CredentialMode = "none" | "organization" | "user-oauth";
-export interface OAuthRecipe {
-  scopes?: string[];
-  params?: Record<string, string>;
-  resource?: false;
-  resourceUrl?: string;
-  staticClient?: true;
+/** Plugin marketplaces read from GitHub. Fixed list; GitHub import covers any other repository. */
+export const PLUGIN_REGISTRIES = ["anthropic", "anthropic-work", "cursor", "xai"] as const;
+export type RegistryId = (typeof PLUGIN_REGISTRIES)[number];
+
+/** Hosted app platforms an administrator can connect with their own account. Off until configured. */
+export const PLUGIN_PROVIDERS = ["composio", "pipedream"] as const;
+export type ProviderId = (typeof PLUGIN_PROVIDERS)[number];
+
+export type CatalogSource = RegistryId | ProviderId;
+
+export const PLUGIN_CATEGORIES = [
+  "productivity",
+  "communication",
+  "sales",
+  "marketing",
+  "finance",
+  "people",
+  "design",
+  "code",
+  "data",
+  "ops",
+] as const;
+export type PluginCategory = (typeof PLUGIN_CATEGORIES)[number];
+
+/** Where an installed plugin came from. GitHub origins are pinned to the commit that was reviewed. */
+export type PluginOrigin =
+  | { kind: "registry"; registry: RegistryId; repo: string; path?: string; sha: string }
+  | { kind: "github"; repo: string; path?: string; sha: string }
+  | { kind: "custom" }
+  | { kind: "provider"; provider: ProviderId; app: string };
+
+export interface CatalogEntry {
+  /** Stable across refreshes: `${source}:${repo}#${path}` for registries, `${provider}:${app}` for providers. */
+  id: string;
+  source: CatalogSource;
+  name: string;
+  displayName: string;
+  description: string;
+  /** Absolute https URL, pinned to a commit for registry entries. */
+  logo: string | null;
+  homepage: string | null;
+  domains: string[];
+  keywords: string[];
+  category: PluginCategory | null;
+  recommended: boolean;
+  hasServers: boolean;
+  skillCount: number;
+  installedPluginId: string | null;
 }
-export interface PluginServer {
+
+/** `GET /api/baskule/admin/catalog[?refresh=1]` */
+export interface Catalog {
+  entries: CatalogEntry[];
+  /** Sources that failed on the last refresh; their previous entries stay listed. */
+  unavailable: { source: CatalogSource; message: string }[];
+  refreshedAt: string | null;
+  providers: Record<ProviderId, boolean>;
+}
+
+/** A `${NAME}` placeholder in a server address or header. Header values are stored sealed. */
+export interface PluginVariable {
+  name: string;
+  description?: string;
+  secret: boolean;
+  where: "url" | "header";
+}
+
+/** How members authenticate to one server. Detected when the plugin is previewed. */
+export type ServerAuth =
+  | { kind: "none" }
+  /** Organization-wide header values the administrator provides once. */
+  | { kind: "headers"; headers: string[] }
+  /**
+   * Each member signs in. `registration: "client"` means the authorization server refuses
+   * dynamic registration, so an administrator registers one client for `issuer` first.
+   * `issuer` is null when discovery failed at preview; sign-in retries discovery.
+   */
+  | { kind: "oauth"; issuer: string | null; registration: "dynamic" | "client" }
+  /** Each member connects an account on the provider's hosted page. */
+  | { kind: "provider"; provider: ProviderId; app: string };
+
+export interface ServerPreview {
   name: string;
   url: string;
-  credential: CredentialMode;
-  disabledTools: string[];
-  keyHeaders?: string[];
-  oauth?: OAuthRecipe;
-  transport?: "streamable-http" | "sse";
+  transport: "streamable-http" | "sse";
+  auth: ServerAuth;
+  variables: PluginVariable[];
 }
-export interface Plugin {
-  id: string;
-  vendor: string;
+
+export type SkippedKind =
+  | "local_program"
+  | "editor_only"
+  | "invalid_server"
+  | "invalid_skill"
+  | "unsupported_transport"
+  /** The publisher left the address empty for each team to fill in, e.g. a pack's optional Gmail slot. */
+  | "blank_server";
+
+export interface PluginPreview {
   name: string;
+  displayName: string;
   description: string;
-  icon?: string;
-  source: PluginSource;
-  skills: { name: string; description: string }[];
-  servers: PluginServer[];
-  omitted: Omission[];
+  logo: string | null;
+  homepage: string | null;
+  category: PluginCategory | null;
+  origin: PluginOrigin;
+  /** Content digest; install fails with `plugin_changed` if the source no longer matches. */
+  digest: string;
+  servers: ServerPreview[];
+  skills: { name: string; description: string; files: number }[];
+  skipped: { kind: SkippedKind; subject: string }[];
+}
+
+export type PluginRef =
+  | { kind: "catalog"; entryId: string }
+  | { kind: "github"; url: string }
+  | { kind: "custom"; server: CustomServerInput };
+
+export interface CustomServerInput {
+  displayName: string;
+  description?: string;
+  url: string;
+  auth: "none" | "oauth" | "header";
+  /** Required when `auth` is "header", e.g. `Authorization` or `X-API-Key`. */
+  headerName?: string;
+}
+
+export type PluginAccess = { kind: "everyone" } | { kind: "groups"; groups: string[] };
+
+/** Values keyed by server name, then variable name. Header values are sealed at rest. */
+export type PluginValues = Record<string, Record<string, string>>;
+
+/** `POST /api/baskule/admin/plugins/preview` */
+export interface PluginPreviewRequest {
+  ref: PluginRef;
+}
+
+/** `POST /api/baskule/admin/plugins` */
+export interface PluginInstallRequest {
+  ref: PluginRef;
+  digest: string;
+  access: PluginAccess;
+  values: PluginValues;
+  /** Names of the previewed servers to keep; omitted keeps every server. Packs list alternatives, e.g. several CRMs. */
+  servers?: string[];
+}
+
+/** `PATCH /api/baskule/admin/plugins/:id`; omitted fields are unchanged. */
+export interface PluginUpdateRequest {
+  enabled?: boolean;
+  access?: PluginAccess;
+  values?: PluginValues;
+}
+
+export type ServerSetup =
+  | { state: "ready" }
+  | { state: "needs_values"; variables: string[] }
+  | { state: "needs_oauth_client"; issuer: string }
+  | { state: "needs_provider"; provider: ProviderId };
+
+export interface AdminServer {
+  id: string;
+  name: string;
+  url: string;
+  auth: ServerAuth;
+  variables: (PluginVariable & { set: boolean })[];
+  setup: ServerSetup;
+  connectedMembers: number;
+}
+
+export interface AdminPlugin {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  logo: string | null;
+  homepage: string | null;
+  category: PluginCategory | null;
+  origin: PluginOrigin;
+  /** False while an administrator has paused the plugin for everyone. */
   enabled: boolean;
-  createdAt: string;
+  access: PluginAccess;
+  servers: AdminServer[];
+  skills: { name: string; description: string }[];
+  installedAt: string;
+  installedBy: string | null;
+  /** "needs_setup" while any server's setup is not ready. */
+  status: "ready" | "needs_setup" | "paused";
 }
-export interface PluginFolder {
-  syncedAt: number;
-  problems: { path: string; message: string }[];
+
+/** One pre-registered OAuth client per authorization server, shared by every plugin that uses it. */
+export interface OAuthClientSetup {
+  issuer: string;
+  configured: boolean;
+  clientId: string | null;
+  hasSecret: boolean;
+  scopes: string | null;
+  authorizationParams: string | null;
+  /** The redirect URI to register with the vendor. Shown before any field is filled. */
+  callbackUrl: string;
+  /** Server hosts that sign in through this issuer, e.g. `gmailmcp.googleapis.com`. */
+  hosts: string[];
+  usedBy: { pluginId: string; displayName: string }[];
 }
-export interface AdminPlugin extends Plugin {
-  setup: { server: string; done: boolean }[];
-  vendorConfigured: boolean;
+
+/** `PUT /api/baskule/admin/oauth-clients`; an omitted secret keeps the stored one. */
+export interface OAuthClientInput {
+  issuer: string;
+  clientId: string;
+  clientSecret?: string;
+  scopes?: string;
+  authorizationParams?: string;
 }
-/** `GET /admin/plugins`; `folder` is null when no plugins folder is mounted. */
+
+/** Authorization parameters an issuer needs for refresh tokens, applied when the admin leaves them empty. */
+export const ISSUER_DEFAULT_PARAMS: Record<string, string> = {
+  "https://accounts.google.com": "access_type=offline&prompt=consent",
+};
+
+export type ProviderSettings = {
+  composio: { configured: boolean };
+  pipedream: {
+    configured: boolean;
+    projectId: string | null;
+    environment: "production" | "development" | null;
+  };
+};
+
+/** `PUT /api/baskule/admin/plugin-providers/:provider`; credentials are verified before they are stored. */
+export type ProviderInput =
+  | { provider: "composio"; apiKey: string }
+  | {
+      provider: "pipedream";
+      clientId: string;
+      clientSecret: string;
+      projectId: string;
+      environment: "production" | "development";
+    };
+
+/** `GET /api/baskule/admin/plugins` */
 export interface AdminPluginList {
   plugins: AdminPlugin[];
-  folder: PluginFolder | null;
+  oauthClients: OAuthClientSetup[];
+  providers: ProviderSettings;
 }
-export interface Group {
-  id: string;
-  name: string;
-  builtin?: "everyone";
-  members: string[];
-  permissions: { canCreateSpaces: boolean };
-  plugins: string[];
-}
-export type GroupInput = Omit<Group, "id" | "builtin">;
-export interface SpacePluginSettings {
-  personalPluginsAllowed: boolean;
-  disabled: string[];
-}
-export type OmissionCode = "claude_commands" | "claude_agents" | "hooks" | "local_program" | "invalid_server" | "skill_without_instructions" | "invalid_skill" | "skill_license" | "other_files";
-export interface Omission { code: OmissionCode; subject: string }
-export type Fix =
-  | { server: string; need: "sign_in" }
-  | { server: string; need: "address"; placeholders: string[] }
-  | { server: string; need: "key"; headers: string[] };
-export interface SkillInput {
-  name: string;
-  description: string;
-  instructions: string;
-  frontmatter?: string;
-  files: PluginFile[];
-}
-export interface SkillHistory {
-  skills: SkillInput[];
-  editable: boolean;
-  /** When each snapshot stopped being current, and who replaced it. */
-  versions: { version: number; savedAt: string; savedBy?: string }[];
-}
-export type ServerInput = Omit<PluginServer, "disabledTools"> & { disabledTools?: string[] };
-export interface ServerTestInput { server: ServerInput; headers?: Record<string, string> }
-export interface PluginTool { name: string; description: string }
-export type ServerTestResult = { tools: PluginTool[] } | { signIn: "account"; staticClient: boolean };
-export interface PluginInput {
-  name: string;
-  description: string;
-  icon?: string;
-  source: Exclude<PluginSource, { type: "catalog" }>;
-  servers: ServerInput[];
-  skills: SkillInput[];
-  omitted: Omission[];
-}
-export type PluginCreate = { catalog: string; groups: string[] } | { plugin: PluginInput; groups: string[] };
-export type PluginUpdate = { enabled: boolean } | { plugin: PluginInput } | { disabledTools: Record<string, string[]> };
-export type PluginInspect = { archive: string } | { github: string };
-export interface PluginDraft { plugin: PluginInput; fixes: Fix[]; omitted: Omission[] }
-export type PluginStatus = "unavailable" | "needs_setup" | "connect" | "reconnect" | "ready";
-export interface Account { id: string; label: string; default: boolean; status: "ready" | "reconnect" }
+
+export type MemberConnection =
+  | { state: "not_required" }
+  | { state: "not_connected" }
+  | { state: "connected"; account: string | null; connectedAt: string }
+  | { state: "expired" }
+  /** The administrator has not finished this server's setup. */
+  | { state: "unavailable" };
+
 export interface MemberPlugin {
   id: string;
-  name: string;
+  displayName: string;
   description: string;
-  icon?: string;
-  skills: { name: string; description: string }[];
-  status: PluginStatus;
-  servers: { name: string; credential: CredentialMode; status: PluginStatus; accounts: Account[] }[];
+  logo: string | null;
+  category: PluginCategory | null;
+  /** The member's own switch. Defaults to on. */
+  on: boolean;
+  /** False while paused by an administrator. */
+  enabled: boolean;
+  servers: { id: string; name: string; connection: MemberConnection }[];
+  skillCount: number;
 }
-export interface PluginSecretInput {
-  server: string;
-  /** null deletes the secret. Values are never returned by a public API. */
-  headers: Record<string, string> | null;
-}
-export interface PluginFile {
-  /** Relative to this skill's directory; never absolute or containing '..'. */
-  path: string;
-  content: string;
-  encoding: "base64";
-}
-export interface SpacePlugins {
-  /** Catalog discovery uses an allowed member; tool calls always use the turn author. */
-  servers: (PluginServer & { pluginId: string; pluginName: string; catalogUserId: string; privateNetwork: boolean; defaultAccountOnly: boolean })[];
-  skills: { id: string; pluginId: string; name: string; description: string; files: PluginFile[] }[];
-}
-export type PluginCredential =
-  | { headers: Record<string, string>; expiresAt: number; account?: { id: string; label: string } }
-  | { error: PluginCallError; accounts?: string[] };
 
-export interface PluginCredentialRequest { spaceId: string; pluginId: string; server: string; userId: string; account?: string; tool?: string }
-export type PluginCallError = Exclude<PluginStatus, "ready"> | "unknown_account" | "default_account_required" | "tool_off";
+/** `GET /api/baskule/plugins` */
+export interface MemberPluginList {
+  plugins: MemberPlugin[];
+}
+
+/** `PUT /api/baskule/plugins/:id` */
+export interface MemberPluginUpdate {
+  on: boolean;
+}
+
+/** Runtime payload in `/_baskule/settings`: what the agent of one space can use. */
+export interface SpacePlugins {
+  servers: {
+    pluginId: string;
+    serverId: string;
+    name: string;
+    displayName: string;
+    listAs: string | null;
+  }[];
+  skills: PluginFile[];
+}
+
+export interface PluginFile {
+  path: string;
+  base64: string;
+}
+
+/** `POST /_baskule/plugin-credential` */
+export interface PluginCredentialRequest {
+  spaceId: string;
+  userId: string;
+  pluginId: string;
+  serverId: string;
+}
+
+export type PluginCredential =
+  | {
+      ok: true;
+      url: string;
+      headers: Record<string, string>;
+      network: "public" | "private";
+      transport: ServerPreview["transport"];
+    }
+  | { ok: false; error: PluginCallError; message: string };
+
+export type PluginCallError =
+  | "plugin_off"
+  | "not_allowed"
+  | "setup_incomplete"
+  | "sign_in_required"
+  | "sign_in_expired"
+  | "unavailable";
 
 export const PLUGIN_ERROR_CODES = [
-  "address_not_allowed",
-  "address_placeholder",
-  "github_link_invalid",
-  "invalid_skill",
-  "account_label_taken",
-  "account_not_found",
-  "default_account_required",
-  "catalog_unknown",
-  "catalog_not_available",
-  "already_installed",
-  "not_editable",
-  "version_not_found",
-  "builtin_group",
-  "connection_failed",
-  "connection_not_allowed",
-  "consent_denied",
-  "duplicate_plugin_path",
-  "duplicate_skill_name",
-  "empty_plugin",
-  "empty_plugin_archive",
-  "forbidden",
-  "group_exists",
-  "invalid_archive",
-  "invalid_authorization_metadata",
-  "invalid_group",
-  "invalid_json",
-  "invalid_oauth_client",
-  "invalid_oauth_code",
-  "invalid_oauth_resource",
-  "invalid_oauth_state",
-  "invalid_oauth_token",
-  "invalid_plugin_input",
-  "invalid_plugin_manifest",
-  "invalid_resource_metadata",
-  "invalid_return_url",
-  "invalid_secret_headers",
-  "no_remote_servers",
-  "server_unreachable",
-  "key_required",
-  "not_found",
-  "not_oauth_server",
-  "not_organization_server",
-  "oauth_client_configuration_required",
-  "oauth_grant_expired",
-  "oauth_issuer_mismatch",
-  "oauth_issuer_changed",
-  "vendor_unknown",
-  "oauth_registration_failed",
-  "oauth_resource_mismatch",
-  "oauth_scope_missing",
-  "oauth_unavailable",
-  "plugin_from_folder",
-  "plugin_links_unsupported",
+  "invalid_request",
   "plugin_not_found",
-  "plugin_server_required",
-  "plugin_skill_file_too_large",
-  "plugin_source_changed",
-  "plugin_source_unavailable",
-  "plugin_storage_limit",
+  "server_not_found",
+  "plugin_changed",
+  "plugin_exists",
+  "plugin_empty",
   "plugin_too_large",
-  "plugin_tree_too_large",
-  "proprietary_plugin",
-  "too_many_plugin_files",
-  "unsafe_plugin_path",
-  "unsupported_archive",
-  "unsupported_plugin_version",
-  "user_not_found",
+  "source_unreadable",
+  "source_not_github",
+  "invalid_server",
+  "missing_values",
+  "invalid_oauth_client",
+  "oauth_client_required",
+  "oauth_failed",
+  "provider_not_configured",
+  "provider_rejected",
+  "provider_unavailable",
+  "group_not_found",
 ] as const;
 export type PluginErrorCode = (typeof PLUGIN_ERROR_CODES)[number];

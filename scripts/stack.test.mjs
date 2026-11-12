@@ -25,7 +25,7 @@ test("cyclic profile variables fail clearly", () => {
 test("worker configs preserve backend identity and keep secrets out of the public worker", () => {
   const backend = JSON.parse(readFileSync("platform/wrangler.json"));
   const web = JSON.parse(readFileSync("platform/wrangler.web.json"));
-  const s = { ...stack, setupToken: "setup-secret", authSecret: "auth-secret", pluginSyncToken: "plugin-secret", computerdToken: "computer-secret" };
+  const s = { ...stack, setupToken: "setup-secret", authSecret: "auth-secret", computerdToken: "computer-secret" };
   const configs = stackWorkerConfigs(s, environment(s), backend, web);
   assert.equal(configs.backend.name, "baskule-dev-test-instance");
   assert.equal(configs.backend.main, "runtime/index.js");
@@ -36,7 +36,7 @@ test("worker configs preserve backend identity and keep secrets out of the publi
   assert.equal(configs.web.assets.directory, "web");
   assert.deepEqual(configs.web.services, [{ binding: "BACKEND", service: configs.backend.name }]);
   assert.equal(configs.web.durable_objects, undefined);
-  for (const secret of [s.setupToken, s.authSecret, s.pluginSyncToken, s.computerdToken]) assert(!JSON.stringify(configs.web).includes(secret));
+  for (const secret of [s.setupToken, s.authSecret, s.computerdToken]) assert(!JSON.stringify(configs.web).includes(secret));
   const changed = stackWorkerConfigs({ ...s, authSecret: "new-auth-secret" }, environment(s), backend, web);
   assert.notEqual(configs.web.vars.BASKULE_BACKEND_CONFIG_SHA256, changed.web.vars.BASKULE_BACKEND_CONFIG_SHA256);
   assert.equal(configs.backend.vars.AUTH_SECRET, s.authSecret);

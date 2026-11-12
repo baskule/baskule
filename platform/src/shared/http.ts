@@ -1,4 +1,5 @@
 import type { PluginErrorCode } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { GroupErrorCode } from "../../../app/packages/contracts/src/baskule";
 export function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   const h = new Headers(headers);
   h.set("content-type", "application/json; charset=utf-8");
@@ -39,3 +40,4 @@ export async function readJson<T = Record<string, unknown>>(req: Request): Promi
 export const SPACE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 export const pluginError = (status: number, code: PluginErrorCode, detail?: string) => new HttpError(status, code, detail);
+export const groupError = (status: number, code: GroupErrorCode, detail?: string) => new HttpError(status, code, detail);

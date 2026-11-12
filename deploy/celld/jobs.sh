@@ -58,7 +58,6 @@ generate_secrets() {
   ensure_secret .pending RUSTFS_SECRET_KEY storage
   ensure_secret .pending COMPUTERD_TOKEN platform computerd
   ensure_secret .pending SETUP_TOKEN platform
-  ensure_secret .pending PLUGIN_SYNC_TOKEN platform
   for role in storage platform computerd; do
     mv "$secrets_root/$role/.pending" "$secrets_root/$role/secrets"
   done
@@ -146,10 +145,10 @@ case "${1:-}" in
       .env as $name | env[$name] | if type == "string" and length > 0 then . else error("Missing authentication environment reference") end
       else . end)')
     jq --arg PUBLIC_ORIGINS "${PUBLIC_ORIGINS:-}" --arg AUTH_CONFIG "$AUTH_CONFIG" \
-       --arg SETUP_TOKEN "${SETUP_TOKEN:-}" --arg PLUGIN_SYNC_TOKEN "${PLUGIN_SYNC_TOKEN:-}" \
+       --arg SETUP_TOKEN "${SETUP_TOKEN:-}" \
        --arg COMPUTERD_URL "${COMPUTERD_URL:-}" --arg COMPUTERD_TOKEN "${COMPUTERD_TOKEN:-}" \
        --arg OTLP_TRACES_URL "${OTLP_TRACES_URL:-}" \
-       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, PLUGIN_SYNC_TOKEN:$PLUGIN_SYNC_TOKEN, COMPUTERD_URL:$COMPUTERD_URL,
+       '.vars = ((.vars // {}) + {PUBLIC_ORIGINS:$PUBLIC_ORIGINS, AUTH_CONFIG:$AUTH_CONFIG, SETUP_TOKEN:$SETUP_TOKEN, COMPUTERD_URL:$COMPUTERD_URL,
           COMPUTERD_TOKEN:$COMPUTERD_TOKEN, OTLP_TRACES_URL:$OTLP_TRACES_URL})' \
        "/src/platform/wrangler.json" > "$work/wrangler.json"
     unset AUTH_CONFIG
@@ -166,14 +165,6 @@ case "${1:-}" in
     for n in ${CELLD_NODES_INTERNAL:-}; do
       curl -fsS -m 10 -o /dev/null -X POST "http://$n/reload" && log "reload $n" || log "reload $n failed (it polls every 30 s)"
     done
-    if [ -n "${PLUGIN_SYNC_TOKEN:-}" ] || [ -e /plugins ]; then
-      # A cold Worker may not serve requests immediately after peer reload.
-      if [ -n "${PLATFORM_READY_URL:-}" ]; then
-        curl -fsS --retry 60 --retry-all-errors --retry-delay 2 --retry-max-time 180 --max-time 5 \
-          -o /dev/null "$PLATFORM_READY_URL"
-      fi
-      /usr/local/bin/baskule-sync-plugins /plugins "${PLUGIN_SYNC_URL:-http://baskule-celld-a:47091}"
-    fi
     log "deployed platform"
     ;;
   *) echo "usage: baskule-celld-job setup|run COMMAND|bootstrap|deploy|backup|restore" >&2; exit 2 ;;

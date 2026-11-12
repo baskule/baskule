@@ -35,7 +35,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl jq && rm -
  && esbuild --version
 COPY --chmod=0755 deploy/celld/backup.sh /usr/local/bin/baskule-backup
 COPY --chmod=0755 deploy/celld/jobs.sh /usr/local/bin/baskule-celld-job
-COPY --chmod=0755 deploy/celld/sync-plugins.sh /usr/local/bin/baskule-sync-plugins
 ENV CELLD_ESBUILD=/usr/local/bin/esbuild CELLD_OTEL=0 DO_NOT_TRACK=1 CELLD_WATCH=/var/lib/celld
 
 # Release deploy jobs need no checkout or host bind mount.

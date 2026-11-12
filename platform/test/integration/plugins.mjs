@@ -1,30 +1,49 @@
-import { readFileSync } from "node:fs";
-import { zipSync } from "fflate";
-import { checkConnections } from "./connections.mjs";
+import { fakeOAuth } from "../fixtures/oauth.mjs";
 
-/** Worker→ControlCell wiring and celld's actual JS-only archive/YAML execution. No external registry calls. */
+/** Worker→ControlCell plugin wiring on celld: preview probing, install, member sign-in with PKCE and per-call credentials. */
 export async function checkPlugins(req, check, admin, alice) {
+  const f = await fakeOAuth();
+  f.state.shortLived = true;
   const API = "/api/baskule";
-  const A = { cookie: admin.cookie };
-  const U = { cookie: alice.cookie };
-  const files = { "hello/SKILL.md": new Uint8Array(readFileSync(new URL("../fixtures/plugins/portable/skills/hello/SKILL.md", import.meta.url))) };
-  const archive = zipSync(files);
-  const draft = await req("POST", `${API}/admin/plugins/inspect`, { ...A, body: { archive: Buffer.from(archive).toString("base64") } });
-  check("inspection does not install a plugin", draft.status === 200 && (await req("GET", `${API}/admin/plugins`, A)).json.plugins.length === 0, draft.text);
-  const installed = await req("POST", `${API}/admin/plugins`, { ...A, body: { groups: [], plugin: draft.json.plugin } });
-  check("plugin archive imported unpaused on celld", installed.status === 201 && installed.json.enabled === true && installed.json.skills[0]?.name === "hello", installed.text);
-  const id = installed.json.id;
-  const grant = await req("PATCH", `${API}/admin/groups/everyone`, { ...A, body: { plugins: [id], permissions: { canCreateSpaces: true } } });
-  check("Everyone group grants a plugin and space creation", grant.status === 200 && grant.json.members.includes(alice.userId), grant.text);
-  const me = await req("GET", `${API}/me`, U);
-  check("me resolves space creation from groups", me.json.user.canCreateSpaces === true);
-  check("users cannot install plugins", (await req("POST", `${API}/admin/plugins`, { ...U, body: { groups: [], plugin: { name: "Test plugin", description: "", source: { type: "custom" }, skills: [], omitted: [], servers: [{ name: "remote", url: "https://example.test/mcp", credential: "none" }] } } })).status === 403);
-  const mine = await req("GET", `${API}/plugins`, U);
-  check("assigned plugin is ready without activation or skill contents", mine.json.plugins[0]?.status === "ready" && !mine.text.includes("Say hello"));
-  check("Everyone cannot be deleted", (await req("DELETE", `${API}/admin/groups/everyone`, A)).status === 409);
-  await req("DELETE", `${API}/admin/plugins/${id}`, A);
-  const after = await req("GET", `${API}/plugins`, U);
-  check("plugin deletion cascades group grants", after.json.plugins.length === 0 && (await req("GET", `${API}/admin/groups/everyone`, A)).json.plugins.length === 0);
-  await req("PATCH", `${API}/admin/groups/everyone`, { ...A, body: { permissions: { canCreateSpaces: false } } });
-  await checkConnections(req, check, admin, alice);
+  const A = { cookie: admin.cookie }, U = { cookie: alice.cookie };
+  let pluginId;
+  try {
+    const ref = { kind: "custom", server: { displayName: "Fixture docs", url: f.resource, auth: "oauth" } };
+    const preview = await req("POST", `${API}/admin/plugins/preview`, { ...A, body: { ref } });
+    check("preview probes the server's sign-in on celld", preview.status === 200 && preview.json.servers[0].auth.kind === "oauth" && preview.json.servers[0].auth.registration === "dynamic", preview.text);
+    check("members cannot preview plugins", (await req("POST", `${API}/admin/plugins/preview`, { ...U, body: { ref } })).status === 403);
+    const installed = await req("POST", `${API}/admin/plugins`, { ...A, body: { ref, digest: preview.json.digest, access: { kind: "everyone" }, values: {} } });
+    check("custom OAuth server installed for everyone and ready", installed.status === 201 && installed.json.status === "ready", installed.text);
+    pluginId = installed.json.id;
+    const serverId = installed.json.servers[0].id;
+    const space = (await req("GET", `${API}/me`, U)).json.spaces.find(s => s.kind === "personal").id;
+    const invoke = (spaceId = space) => req("POST", `/s/${spaceId}/_echo/plugin-call`, { ...U, body: { pluginId, serverId } });
+    check("the private credential seam asks the member to sign in", (await invoke()).json.error === "sign_in_required");
+    const start = await req("GET", `${API}/plugins/${pluginId}/servers/${serverId}/connect`, U);
+    check("connect redirects to the discovered authorization server", start.status === 302 && new URL(start.headers.get("location")).origin === f.issuer, start.text);
+    const authorization = await fetch(start.headers.get("location"), { redirect: "manual" });
+    const callback = new URL(authorization.headers.get("location"));
+    const stolen = await req("GET", callback.pathname + callback.search, A);
+    check("sign-in state is bound to the member who started it", stolen.status === 302 && stolen.headers.get("location").includes("code=invalid_request"));
+    const done = await req("GET", callback.pathname + callback.search, U);
+    check("real ControlCell exchanges the PKCE code on celld", done.status === 302 && done.headers.get("location").includes("connection=connected") && f.state.exchanges === 1, done.text);
+    check("callback state is single-use", (await req("GET", callback.pathname + callback.search, U)).headers.get("location").includes("code=invalid_request"));
+    f.state.shortLived = false;
+    const called = await invoke();
+    check("token refresh reaches the protected fake MCP", called.json.status === 200 && called.json.result.result.content[0].text === "private fixture document" && f.state.refreshes === 1, called.text);
+    check("code and refresh requests bind the MCP audience", f.requests.length === 2 && f.requests.every(r => r.resource === f.resource));
+    const mine = await req("GET", `${API}/plugins`, U);
+    check("member list reports the connection without tokens", mine.json.plugins.find(p => p.id === pluginId)?.servers[0].connection.state === "connected" && !mine.text.includes("accessToken") && !mine.text.includes("refresh"), mine.text);
+    const team = (await req("POST", `${API}/spaces`, { ...A, body: { name: "OAuth policy team", members: [{ userId: alice.userId }] } })).json.space.id;
+    try { check("team spaces use the turn author's own connection", (await invoke(team)).json.status === 200); }
+    finally { await req("DELETE", `${API}/spaces/${team}`, A); }
+    await req("PUT", `${API}/plugins/${pluginId}`, { ...U, body: { on: false } });
+    check("the member's switch turns the plugin off for their calls", (await invoke()).json.error === "plugin_off");
+    await req("PUT", `${API}/plugins/${pluginId}`, { ...U, body: { on: true } });
+    await req("DELETE", `${API}/plugins/${pluginId}/servers/${serverId}/connection`, U);
+    check("disconnect immediately prevents credential use", (await invoke()).json.error === "sign_in_required");
+  } finally {
+    if (pluginId) await req("DELETE", `${API}/admin/plugins/${pluginId}`, A);
+    await f.close();
+  }
 }

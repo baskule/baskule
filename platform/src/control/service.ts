@@ -1,4 +1,3 @@
-import { ConnectionCipher } from "./connection-crypto";
 // ControlService: all ControlCell logic (identity, spaces, invitations, admin, authorization, revocation).
 // Independent of the DO runtime so it runs under vitest with a fake `ctx.storage` (test/unit/fake-storage.ts).
 import { z } from "zod";
@@ -17,10 +16,10 @@ import { AIModels, type AIConnection } from "./ai-models";
 import { BASKULE_AI_PROVIDERS } from "../../../app/packages/contracts/src/baskule";
 import { Push } from "./push";
 import { Groups } from "./groups";
-import { Connections } from "./connections";
+import { ConnectionCipher } from "./connection-crypto";
 import { Plugins } from "./plugins";
-import { pluginCredential } from "./plugin-credential";
-import { readBounded } from "./plugin-source";
+import type { Fetcher } from "./plugins/fetch";
+import { readBounded } from "../shared/read-bounded";
 import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "../../../app/packages/contracts/src/baskule";
 import {
   INTERNAL_HEADER,
@@ -107,7 +106,6 @@ export class ControlService {
   readonly push: Push;
   readonly groups;
   plugins!: Plugins;
-  connections!: Connections;
   /** In-flight revocation calls; every request waits for them before answering (immediate revocation). */
   private pending = new Set<Promise<unknown>>();
   private nativeStarts = new Map<string, { until: number; count: number }>();
@@ -121,6 +119,7 @@ export class ControlService {
     private storage: StorageLike,
     private env: Env,
     private callSpace: SpaceCaller,
+    private pluginFetch?: Fetcher,
   ) {
     this.usage = new UsageService(storage, callSpace);
     this.installation = parseAuthConfig(env.AUTH_CONFIG);
@@ -167,11 +166,8 @@ export class ControlService {
       onSessionCreated: async (s) => this.onSessionCreated(s),
       onSessionDeleted: async (s) => this.onSessionDeleted(s),
     });
-    const cipher = new ConnectionCipher(secret);
-    this.plugins = new Plugins(this.storage, this.groups, cipher);
-    this.connections = new Connections(this.storage, this.plugins, this.installation, cipher);
-    this.plugins.connections = this.connections;
-    this.connections.onChange = userId => this.reloadSpaces(userId ? this.memberSpaceIds(userId) : "all");
+    this.plugins = new Plugins(this.storage, new ConnectionCipher(secret), { fetcher: this.pluginFetch, anonymous: this.installation.mode === "anonymous",
+      reload: ids => this.reloadSpaces(ids), memberSpaceIds: userId => this.memberSpaceIds(userId) });
     const org = this.one("select id from organization order by created_at limit 1");
     if (org) this.orgId = org.id as string;
     else {
@@ -291,11 +287,11 @@ export class ControlService {
         const response = await withTimeout(this.callSpace(id, "/_baskule/reconfigure", { method: "POST" }), REVOKE_TIMEOUT_MS);
         await response.body?.cancel();
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      } catch { console.warn(`Plugin settings saved; space ${id} will reload on its next boot`); }
+      } catch { console.warn(`Settings saved; space ${id} will reload on its next boot`); }
     }));
   }
 
-  private async pluginChange(req: Request, action: Promise<Response>, spaceId?: string): Promise<Response> {
+  private async reloadAfter(req: Request, action: Promise<Response>, spaceId?: string): Promise<Response> {
     const response = await action;
     if (req.method !== "GET" && response.ok) await this.reloadSpaces(spaceId ? [spaceId] : "all");
     return response;
@@ -484,12 +480,12 @@ export class ControlService {
     }
     if (internal && path === "/_baskule/push/deliver" && req.method === "POST") return this.push.deliver(req);
     if (internal && path === "/_baskule/check" && req.method === "POST") return json(this.check(await readJson<CheckRequest>(req)));
-    if (internal && path === "/_baskule/plugin-credential" && req.method === "POST") return pluginCredential(req, this.plugins, this.connections);
+    if (internal && path === "/_baskule/plugin-credential" && req.method === "POST") return this.plugins.credentialRoute(req);
     if (internal && path === "/_baskule/settings" && req.method === "POST") {
       const { spaceId } = await readJson<{ spaceId: string }>(req);
       if (!this.spaceRow(spaceId)) return notFound();
       const settings = this.productSettings();
-      return json({ ...settings, usageLimits: this.usage.settings(), plugins: await this.plugins.settings(spaceId), apiKey: this.chatKey(settings.ai) });
+      return json({ ...settings, usageLimits: this.usage.settings(), plugins: await this.plugins.connections.spacePlugins(spaceId), apiKey: this.chatKey(settings.ai) });
     }
     if (path === "/auth" || path.startsWith("/auth/")) return this.authRoute(req, path);
     if (path === WELL_KNOWN_PATH && req.method === "GET") return this.instanceInfo();
@@ -598,10 +594,6 @@ export class ControlService {
     }
     if (p === "/admin/push" && ["GET", "PUT", "PATCH"].includes(m)) { await this.requireAdmin(req); return this.push.settings(req); }
     if (p.startsWith("/native-login")) return this.nativeLogin(req, p, url);
-    if (p === "/plugins/folder-sync" && m === "POST") {
-      if (!this.env.PLUGIN_SYNC_TOKEN || req.headers.get("authorization") !== `Bearer ${this.env.PLUGIN_SYNC_TOKEN}`) throw new HttpError(401, "unauthenticated");
-      return this.pluginChange(req, this.plugins.syncFolder(req));
-    }
     if (p === "/runtime-settings" && m === "GET") {
       if (!this.env.COMPUTERD_TOKEN || req.headers.get("authorization") !== `Bearer ${this.env.COMPUTERD_TOKEN}`) throw new HttpError(401, "unauthenticated");
       return json({ idleMinutes: this.productSettings().idleMinutes });
@@ -618,9 +610,10 @@ export class ControlService {
       return this.transcribe(req, session.user.id);
     }
     if (p === "/me" && m === "GET") return json(this.me(await this.requireSession(req)));
-    if (/^\/plugins\/(?:oauth\/callback|[^/]+\/(?:connect|accounts\/[^/]+))$/.test(p)) { const s = await this.requireSession(req); return this.connections.user(req, p, s.user, s.session.id); }
-    if (p === "/plugins" || p.startsWith("/plugins/")) return this.plugins.user(req, p, (await this.requireSession(req)).user.id);
-    if ((r = p.match(/^\/spaces\/([^/]+)\/plugins$/))) return this.pluginChange(req, this.plugins.space(req, r[1], (await this.requireSession(req)).user), r[1]);
+    if (p === "/plugins" || p.startsWith("/plugins/")) {
+      const s = await this.requireSession(req);
+      return await this.plugins.memberRoute(req, p, url, s.user, s.session.id) ?? notFound();
+    }
     if (p === "/people" && m === "GET") {
       await this.requireSession(req);
       return json({ people: this.all("select id, name, email from user where coalesce(banned, 0) = 0 order by name") });
@@ -1063,9 +1056,9 @@ export class ControlService {
       return json({ ok: true });
     }
     if (p === "/settings" && m === "GET") return json(this.settingsView());
-    if ((r = p.match(/^\/vendors\/([^/]+)$/))) return this.connections.vendor(req, r[1]);
-    if (p === "/plugins" || p.startsWith("/plugins/")) return ["/plugins/inspect", "/plugins/test"].includes(p) ? this.plugins.admin(req, `/admin${p}`, s.user.id) : this.pluginChange(req, this.plugins.admin(req, `/admin${p}`, s.user.id));
-    if (p === "/groups" || p.startsWith("/groups/")) return this.pluginChange(req, this.groups.handle(req, `/admin${p}`));
+    const plugin = await this.plugins.adminRoute(req, p, url, s.user.id);
+    if (plugin) return plugin;
+    if (p === "/groups" || p.startsWith("/groups/")) return this.reloadAfter(req, this.groups.handle(req, `/admin${p}`));
     if (p === "/settings" && m === "PATCH") return this.saveSettings(req);
     if (this.installation.mode === "anonymous" && p.startsWith("/users")) return notFound();
     if (p === "/users" && m === "GET") return json({ users: this.listUsers() });

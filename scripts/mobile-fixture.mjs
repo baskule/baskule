@@ -47,8 +47,8 @@ writeFileSync(path, JSON.stringify({
   transcript: "Voice input verified.",
 }, null, 2) + "\n", { mode: 0o600 });
 chmodSync(path, 0o600);
-console.log(`Created fresh personal-only and team accounts, with two plugin accounts for personal settings. Read credentials privately from ${path}`);
-console.log("Plugin rename/default/disconnect passed with a separate native bearer account. Fake OAuth is stopped; external tools and new connections require a running fixture.");
+console.log(`Created fresh personal-only and team accounts, with a signed-in plugin and an organization-key plugin for personal settings. Read credentials privately from ${path}`);
+console.log("Plugin switch and disconnect passed with a separate native bearer account. Fake OAuth is stopped; tools and new sign-ins require a running fixture.");
 
 async function seedPluginAccounts() {
   const verifier = await api.person("MobilePluginCheck", run);
@@ -58,45 +58,40 @@ async function seedPluginAccounts() {
       name: `Mobile plugin QA ${run}`,
       members: [personal.me.user.id, verifier.me.user.id],
       permissions: { canCreateSpaces: false },
-      plugins: [],
     });
-    const input = {
-      name: `Mobile QA mail ${run}`,
-      description: "Local fixture for account management. External tools and new connections require a running fake OAuth provider.",
-      source: { type: "custom" }, skills: [], omitted: [],
-      servers: [{ name: "remote", url: oauth.resource, credential: "none" }],
+    const access = { kind: "groups", groups: [group.id] };
+    const install = async (server, values = {}) => {
+      const ref = { kind: "custom", server };
+      const preview = await admin.json("POST", "/api/baskule/admin/plugins/preview", { ref });
+      return admin.json("POST", "/api/baskule/admin/plugins", { ref, digest: preview.digest, access, values });
     };
-    const plugin = await admin.json("POST", "/api/baskule/admin/plugins", { groups: [group.id], plugin: input });
-    await admin.json("PATCH", `/api/baskule/admin/plugins/${plugin.id}`, {
-      plugin: { ...input, servers: [{ ...input.servers[0], credential: "user-oauth" }] },
-    });
+    const mail = await install({ displayName: `Mobile QA mail ${run}`, url: oauth.resource, auth: "oauth",
+      description: "Local fixture for sign-in management. Tools and new sign-ins require a running fake OAuth provider." });
+    const notes = await install({ displayName: `Mobile QA notes ${run}`, url: "https://mobile-fixture.invalid/mcp", auth: "header", headerName: "X-API-Key",
+      description: "Organization key fixture: members have nothing to sign in to." }, { [`Mobile QA notes ${run}`]: { "X-API-Key": "fixture-key" } });
+    const server = mail.servers[0].id;
     for (const person of [personal, verifier]) {
-      for (const label of ["Work", "Personal"]) {
-        oauth.state.identity = label;
-        const query = new URLSearchParams({ server: "remote", label, returnTo: "/settings/plugins" });
-        const start = await person.http("GET", `/api/baskule/plugins/${plugin.id}/connect?${query}`);
-        const authorization = redirectLocation(start);
-        assert.equal(authorization.origin, oauth.issuer, "OAuth must stay on the local fixture");
-        const consent = await fetch(authorization, { redirect: "manual", credentials: "omit", signal: AbortSignal.timeout(15_000) });
-        const callback = redirectLocation(consent);
-        assert.equal(callback.origin, front.origin, "OAuth must return to this worktree");
-        assert.equal(callback.pathname, "/api/baskule/plugins/oauth/callback");
-        // OAuth state belongs to the initiating cookie session and origin, including on callback.
-        const completed = redirectLocation(await person.http("GET", `${callback.pathname}${callback.search}`));
-        assert.equal(completed.searchParams.get("pluginConnection"), "connected", "Local OAuth account connection failed");
-      }
+      oauth.state.identity = person.email;
+      const start = await person.http("GET", `/api/baskule/plugins/${mail.id}/servers/${server}/connect?returnTo=%2Fsettings%2Fplugins`);
+      const authorization = redirectLocation(start);
+      assert.equal(authorization.origin, oauth.issuer, "OAuth must stay on the local fixture");
+      const consent = await fetch(authorization, { redirect: "manual", credentials: "omit", signal: AbortSignal.timeout(15_000) });
+      const callback = redirectLocation(consent);
+      assert.equal(callback.origin, front.origin, "OAuth must return to this worktree");
+      assert.equal(callback.pathname, "/api/baskule/plugins/oauth/callback");
+      // OAuth state belongs to the initiating cookie session and origin, including on callback.
+      const completed = redirectLocation(await person.http("GET", `${callback.pathname}${callback.search}`));
+      assert.equal(completed.searchParams.get("connection"), "connected", "Local OAuth sign-in failed");
     }
-    await verifyNativeAccountMutations(verifier, plugin.id);
-    const member = (await personal.json("GET", "/api/baskule/plugins")).plugins.find(p => p.id === plugin.id);
-    const accounts = member.servers.find(server => server.name === "remote").accounts;
-    assert.deepEqual(accounts.map(account => account.label).sort(), ["Personal", "Work"]);
-    assert.equal(accounts.find(account => account.default)?.label, "Work");
+    await verifyNativeMutations(verifier, mail.id, server);
+    const mine = (await personal.json("GET", "/api/baskule/plugins")).plugins;
+    assert.equal(mine.find(p => p.id === mail.id).servers[0].connection.state, "connected");
+    assert.equal(mine.find(p => p.id === notes.id).servers[0].connection.state, "not_required");
     return {
-      pluginId: plugin.id,
-      server: "remote",
-      accounts: accounts.map(({ id, label, default: isDefault }) => ({ id, label, default: isDefault })),
+      pluginIds: [mail.id, notes.id],
+      signIn: { pluginId: mail.id, serverId: server },
       managementOnly: true,
-      note: "The fake OAuth provider stops after seeding. Rename, default and disconnect use stored accounts; external tools and new OAuth connections need a running fixture.",
+      note: "The fake OAuth provider stops after seeding. The switch and disconnect use stored data; tools and new sign-ins need a running fixture.",
     };
   } finally {
     await oauth.close();
@@ -111,7 +106,7 @@ function redirectLocation(response) {
   return new URL(location, front);
 }
 
-async function verifyNativeAccountMutations(person, pluginId) {
+async function verifyNativeMutations(person, pluginId, serverId) {
   const login = await nativeRequest("POST", "/auth/sign-in/email", { email: person.email, password: person.password });
   assert.equal(login.status, 200, "Native fixture sign-in failed");
   const token = login.headers.get("set-auth-token");
@@ -121,24 +116,13 @@ async function verifyNativeAccountMutations(person, pluginId) {
     assert.equal(response.status, 200, `Native ${method} failed`);
     return response.json();
   };
-  const accounts = async () => (await request("GET", "/api/baskule/plugins")).plugins
-    .find(plugin => plugin.id === pluginId).servers.find(server => server.name === "remote").accounts;
-  const connected = await accounts();
-  const work = connected.find(account => account.label === "Work");
-  const second = connected.find(account => account.label === "Personal");
-  assert.ok(work && second, "Expected two verification accounts");
-  const path = `/api/baskule/plugins/${pluginId}/accounts/`;
-  await request("PATCH", `${path}${second.id}`, { label: "Renamed for native QA" });
-  assert.equal((await accounts()).find(account => account.id === second.id)?.label, "Renamed for native QA");
-  await request("PATCH", `${path}${second.id}`, { default: true });
-  assert.equal((await accounts()).find(account => account.default)?.id, second.id);
-  await request("DELETE", `${path}${second.id}?default=${encodeURIComponent(work.id)}`);
-  const remaining = await accounts();
-  assert.equal(remaining.length, 1);
-  assert.equal(remaining[0].id, work.id);
-  assert.equal(remaining[0].default, true);
-  await request("DELETE", `${path}${work.id}`);
-  assert.deepEqual(await accounts(), []);
+  const plugin = async () => (await request("GET", "/api/baskule/plugins")).plugins.find(p => p.id === pluginId);
+  assert.equal((await plugin()).servers[0].connection.state, "connected");
+  await request("PUT", `/api/baskule/plugins/${pluginId}`, { on: false });
+  assert.equal((await plugin()).on, false);
+  await request("PUT", `/api/baskule/plugins/${pluginId}`, { on: true });
+  await request("DELETE", `/api/baskule/plugins/${pluginId}/servers/${serverId}/connection`);
+  assert.equal((await plugin()).servers[0].connection.state, "not_connected");
   await request("POST", "/auth/sign-out", {});
 }
 

@@ -1,24 +1,18 @@
-import type { SpacePlugins } from "../../../app/packages/contracts/src/baskule-plugins";
+import type { PluginFile } from "../../../app/packages/contracts/src/baskule-plugins";
 import type { Computerd } from "./computerd";
 
 export const PLUGIN_SKILLS_PATH = "/sandbox/space/plugins";
 
-/** Namespaced paths, deterministic payload, and whole-set replacement also remove retired skills. */
-export function planSkills(skills: SpacePlugins["skills"]) {
-  const files: { path: string; content: string }[] = [];
-  const paths = new Set<string>();
-  for (const skill of skills) {
-    const directory = `${encodeURIComponent(skill.pluginId)}/${encodeURIComponent(skill.name)}`;
-    if ([skill.pluginId, skill.name].some(s => !s || s === "." || s === "..")) throw new Error("Invalid skill identity");
-    for (const file of skill.files) {
-      if (!file.path || file.path.startsWith("/") || file.path.split(/[\\/]/).some(s => !s || s === "." || s === "..")) throw new Error("Invalid skill path");
-      const path = `${directory}/${file.path}`;
-      if (paths.has(path)) throw new Error("Duplicate skill path");
-      paths.add(path);
-      files.push({ path, content: file.content });
-    }
+/** Paths are `<plugin>/<skill>/<file>`; whole-set replacement also removes retired skills and the old system's files. */
+export function planSkills(files: PluginFile[]) {
+  const seen = new Set<string>();
+  for (const file of files) {
+    const parts = file.path.split("/");
+    if (parts.length < 3 || file.path.startsWith("/") || parts.some(s => !s || s === "." || s === ".." || /[\\\0]/.test(s))) throw new Error("Invalid skill path");
+    if (seen.has(file.path)) throw new Error("Duplicate skill path");
+    seen.add(file.path);
   }
-  return files.sort((a, b) => a.path.localeCompare(b.path));
+  return files.map(f => ({ path: f.path, content: f.base64 })).sort((a, b) => a.path.localeCompare(b.path));
 }
 
 // The computer runs as uid 1000. Modes make the managed tree read-only for ordinary file tools; this is not a
@@ -47,23 +41,38 @@ finally:
   shutil.rmtree(stage)
 `;
 
-export async function syncSkills(computer: Computerd, skills: SpacePlugins["skills"]) {
-  const files = planSkills(skills);
-  const res = await computer.exec({ argv: ["python3", "-c", INSTALL, PLUGIN_SKILLS_PATH], cwd: "/sandbox/space", stdin: Buffer.from(JSON.stringify(files)).toString("base64"), timeoutMs: 30_000 });
+export async function syncSkills(computer: Computerd, files: PluginFile[]) {
+  const planned = planSkills(files);
+  const res = await computer.exec({ argv: ["python3", "-c", INSTALL, PLUGIN_SKILLS_PATH], cwd: "/sandbox/space", stdin: Buffer.from(JSON.stringify(planned)).toString("base64"), timeoutMs: 30_000 });
   if (!res.ok) throw new Error(`Skill installation failed (${res.status})`);
   const frames = (await res.text()).trim().split("\n").filter(Boolean).map(l => JSON.parse(l) as { t: string; code?: number });
   if (!frames.some(f => f.t === "x" && f.code === 0)) throw new Error("Skill installation failed on the computer");
 }
 
+/** ControlCell writes `name` and `description` first, as JSON strings, so no YAML parser is needed here. */
+function front(markdown: string) {
+  const match = /^---\n([\s\S]*?)\n---\n?/.exec(markdown);
+  const field = (key: string) => {
+    const line = match?.[1]!.split("\n").find(l => l.startsWith(`${key}: `));
+    try { return line ? JSON.parse(line.slice(key.length + 2)) as unknown : undefined; } catch { return undefined; }
+  };
+  return { name: field("name"), description: field("description"), body: match ? markdown.slice(match[0].length) : markdown };
+}
+
 /** Workerd disables disk config plugins; supply the same skill catalog directly to its location service. */
-export function skillCatalog(skills: SpacePlugins["skills"]) {
-  planSkills(skills);
-  return skills.map(skill => {
-    const file = skill.files.find(f => f.path === "SKILL.md");
-    if (!file) throw new Error("Skill has no SKILL.md");
-    const directory = `${PLUGIN_SKILLS_PATH}/${encodeURIComponent(skill.pluginId)}/${encodeURIComponent(skill.name)}`;
-    return { files: skill.files.map(f => `${directory}/${f.path}`), id: skill.id, name: skill.name, description: skill.description,
-      path: `${directory}/SKILL.md`,
-      content: Buffer.from(file.content, "base64").toString("utf8").replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "") };
+export function skillCatalog(files: PluginFile[]) {
+  planSkills(files);
+  const folders = new Map<string, PluginFile[]>();
+  for (const file of files) {
+    const folder = file.path.split("/").slice(0, 2).join("/");
+    folders.set(folder, [...(folders.get(folder) ?? []), file]);
+  }
+  return [...folders].flatMap(([folder, entries]) => {
+    const skill = entries.find(f => f.path === `${folder}/SKILL.md`);
+    if (!skill) return [];
+    const { name, description, body } = front(Buffer.from(skill.base64, "base64").toString("utf8"));
+    if (typeof name !== "string" || typeof description !== "string") return [];
+    const directory = `${PLUGIN_SKILLS_PATH}/${folder}`;
+    return [{ files: entries.map(f => `${PLUGIN_SKILLS_PATH}/${f.path}`), id: folder, name, description, path: `${directory}/SKILL.md`, content: body }];
   });
 }

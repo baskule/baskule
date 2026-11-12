@@ -1,6 +1,6 @@
 // Baskule-owned tables in ControlCell. Better Auth's own tables are in ./auth.ts.
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, index, uniqueIndex, primaryKey, check } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, primaryKey, check } from "drizzle-orm/sqlite-core";
 import { user, session } from "./auth";
 
 /** One organisation per installation; the model allows several. */
@@ -102,28 +102,6 @@ export const usageTurn = sqliteTable("usage_turn", {
   chatId: text("chat_id").notNull(), date: text("date").notNull(),
 }, t => [primaryKey({ columns: [t.spaceId, t.turnId] }), index("usage_turn_date_idx").on(t.date)]);
 
-export const plugin = sqliteTable("plugin", {
-  id: text("id").primaryKey(),
-  definition: text("definition").notNull(), // JSON Plugin, never credentials
-  skillFiles: text("skill_files").notNull(), // JSON SpacePlugins.skills (base64 files)
-  storedBytes: integer("stored_bytes").notNull(),
-});
-
-export const pluginSkill = sqliteTable("plugin_skill", {
-  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  id: text("id").notNull().unique(),
-}, t => [primaryKey({ columns: [t.pluginId, t.name] })]);
-
-export const pluginVersion = sqliteTable("plugin_version", {
-  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-  version: integer("version").notNull(),
-  skillFiles: text("skill_files").notNull(),
-  storedBytes: integer("stored_bytes").notNull(),
-  savedAt: integer("saved_at", { mode: "timestamp_ms" }).notNull(),
-  savedBy: text("saved_by").references(() => user.id, { onDelete: "set null" }),
-}, t => [primaryKey({ columns: [t.pluginId, t.version] })]);
-
 export const group = sqliteTable("permission_group", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
@@ -136,51 +114,66 @@ export const groupMember = sqliteTable("group_member", {
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
 }, t => [primaryKey({ columns: [t.groupId, t.userId] }), index("group_member_user_idx").on(t.userId)]);
 
+/** An installed plugin: its reviewed definition (never credentials) and its skill files. */
+export const plugin = sqliteTable("plugin", {
+  id: text("id").primaryKey(),
+  definition: text("definition").notNull(), // JSON StoredPlugin
+  skillFiles: text("skill_files").notNull(), // JSON PluginFile[], paths relative to the plugin
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  accessEveryone: integer("access_everyone", { mode: "boolean" }).notNull().default(true),
+  installedAt: integer("installed_at", { mode: "timestamp_ms" }).notNull(),
+  installedBy: text("installed_by").references(() => user.id, { onDelete: "set null" }),
+});
+
+/** The groups that may use a plugin whose access is not everyone. */
 export const groupPlugin = sqliteTable("group_plugin", {
   groupId: text("group_id").notNull().references(() => group.id, { onDelete: "cascade" }),
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-}, t => [primaryKey({ columns: [t.groupId, t.pluginId] })]);
+}, t => [primaryKey({ columns: [t.groupId, t.pluginId] }), index("group_plugin_plugin_idx").on(t.pluginId)]);
 
-export const pluginSecret = sqliteTable("plugin_secret", {
+/** Sealed variable values an administrator provided for one server. */
+export const pluginValue = sqliteTable("plugin_value", {
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-  server: text("server").notNull(),
+  serverId: text("server_id").notNull(),
   data: text("data").notNull(),
-}, t => [primaryKey({ columns: [t.pluginId, t.server] })]);
+}, t => [primaryKey({ columns: [t.pluginId, t.serverId] })]);
 
-export const spacePluginSettings = sqliteTable("space_plugin_settings", {
-  spaceId: text("space_id").primaryKey().references(() => space.id, { onDelete: "cascade" }),
-  personalPluginsAllowed: integer("personal_plugins_allowed", { mode: "boolean" }).notNull().default(false),
+/** One sealed pre-registered OAuth client per authorization server, shared by every plugin. */
+export const oauthClient = sqliteTable("oauth_client", {
+  issuer: text("issuer").primaryKey(),
+  data: text("data").notNull(),
 });
 
-export const spaceDisabledPlugin = sqliteTable("space_disabled_plugin", {
-  spaceId: text("space_id").notNull().references(() => space.id, { onDelete: "cascade" }),
-  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-}, t => [primaryKey({ columns: [t.spaceId, t.pluginId] })]);
+/** Sealed Composio or Pipedream credentials. */
+export const pluginProvider = sqliteTable("plugin_provider", {
+  provider: text("provider").primaryKey(),
+  data: text("data").notNull(),
+});
 
-export const pluginConnection = sqliteTable("plugin_connection", {
-  id: text("id").primaryKey(),
+/** A member's own switch for a plugin; no row means on. */
+export const memberPlugin = sqliteTable("member_plugin", {
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-  server: text("server").notNull(),
-  label: text("label").notNull(),
-  isDefault: integer("is_default", { mode: "boolean" }).notNull(),
-  data: text("data").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-}, t => [
-  uniqueIndex("plugin_connection_label_uq").on(t.userId, t.pluginId, t.server, t.label),
-  uniqueIndex("plugin_connection_default_uq").on(t.userId, t.pluginId, t.server).where(sql`${t.isDefault} = 1`),
-]);
+  on: integer("on", { mode: "boolean" }).notNull(),
+}, t => [primaryKey({ columns: [t.userId, t.pluginId] })]);
 
-export const vendorSetup = sqliteTable("vendor_setup", {
-  vendor: text("vendor").primaryKey(),
+/** A member's one account on a plugin server: sealed tokens or a provider account reference. */
+export const pluginConnection = sqliteTable("plugin_connection", {
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
+  serverId: text("server_id").notNull(),
   data: text("data").notNull(),
-});
+  account: text("account"),
+  connectedAt: integer("connected_at", { mode: "timestamp_ms" }).notNull(),
+  state: text("state", { enum: ["connected", "expired"] }).notNull().default("connected"),
+}, t => [primaryKey({ columns: [t.userId, t.pluginId, t.serverId] }), index("plugin_connection_plugin_idx").on(t.pluginId)]);
 
+/** Pending sign-in: sealed PKCE verifier or provider request, single use, expiring. */
 export const pluginOAuthState = sqliteTable("plugin_oauth_state", {
   stateHash: text("state_hash").primaryKey(),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   pluginId: text("plugin_id").notNull().references(() => plugin.id, { onDelete: "cascade" }),
-  server: text("server").notNull(),
+  serverId: text("server_id").notNull(),
   data: text("data").notNull(),
   consumed: integer("consumed").notNull().default(0),
   expiresAt: integer("expires_at").notNull(),

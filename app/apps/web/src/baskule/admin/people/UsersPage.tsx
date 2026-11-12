@@ -11,8 +11,6 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../../
 import { Spinner } from "../../../components/ui/spinner";
 import { writeTextToClipboard } from "../../../hooks/useCopyToClipboard";
 import { type Person, baskuleApi } from "../../api";
-import { pluginsApi } from "../../plugins/api";
-import { groupName } from "../../plugins/presentation";
 import { useBaskuleMe } from "../../session";
 import {
   Avatar,
@@ -25,6 +23,7 @@ import {
 import { absoluteInvitationUrl, AddPersonDialog } from "../../views/AddPersonDialog";
 import { PageRow, PageSection } from "../../views/BaskulePage";
 import { ResourceState } from "../ResourceState";
+import { groupName, groupsApi } from "./groups";
 
 const STATUS_BADGES: Record<
   Person["status"],
@@ -46,7 +45,7 @@ const STATUS_BADGES: Record<
 };
 
 const loadPeople = () => baskuleApi.people();
-const loadGroups = () => pluginsApi.groups();
+const loadGroups = () => groupsApi.list();
 
 export function UsersPage() {
   const t = useTranslation();

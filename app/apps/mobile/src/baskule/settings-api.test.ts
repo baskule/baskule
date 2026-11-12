@@ -7,10 +7,10 @@ vi.mock("expo/fetch", () => transport);
 
 import {
   changeBaskulePassword,
-  disconnectPluginAccount,
+  disconnectPluginServer,
   fetchMemberPlugins,
   fetchMyUsage,
-  updatePluginAccount,
+  setPluginOn,
 } from "./settings-api";
 
 const session = { serverUrl: "https://front.test", token: "signed.bearer" };
@@ -34,21 +34,26 @@ const usage: MyUsage = {
 };
 const plugin: MemberPlugin = {
   id: "mail",
-  name: "Mail",
+  displayName: "Mail",
   description: "Email",
-  skills: [],
-  status: "ready",
+  logo: "https://raw.githubusercontent.com/cursor/plugins/abc/mail/logo.svg",
+  category: "communication",
+  on: true,
+  enabled: true,
   servers: [
     {
-      name: "mail",
-      credential: "user-oauth",
-      status: "ready",
-      accounts: [
-        { id: "personal", label: "Personal", default: true, status: "ready" },
-        { id: "work", label: "Work", default: false, status: "reconnect" },
-      ],
+      id: "inbox",
+      name: "inbox",
+      connection: {
+        state: "connected",
+        account: "ada@example.test",
+        connectedAt: "2026-11-10T08:00:00Z",
+      },
     },
+    { id: "calendar", name: "calendar", connection: { state: "expired" } },
+    { id: "files", name: "files", connection: { state: "unavailable" } },
   ],
+  skillCount: 2,
 };
 
 describe("native settings API", () => {
@@ -83,7 +88,7 @@ describe("native settings API", () => {
     ).rejects.toMatchObject({ kind: "signed-out" });
   });
 
-  it("decodes usage and account status and rejects malformed successful responses", async () => {
+  it("decodes usage and plugin connections and rejects malformed successful responses", async () => {
     transport.fetch
       .mockReset()
       .mockResolvedValueOnce(Response.json(usage))
@@ -99,21 +104,19 @@ describe("native settings API", () => {
     );
     await expect(fetchMyUsage(session)).rejects.toMatchObject({ kind: "server" });
     transport.fetch.mockResolvedValueOnce(
-      Response.json({ plugins: [{ ...plugin, servers: [{}] }] }),
+      Response.json({
+        plugins: [{ ...plugin, servers: [{ id: "x", name: "x", connection: { state: "ready" } }] }],
+      }),
     );
     await expect(fetchMemberPlugins(session)).rejects.toMatchObject({ kind: "server" });
     transport.fetch.mockResolvedValueOnce(new Response("not json"));
     await expect(fetchMyUsage(session)).rejects.toMatchObject({ kind: "server" });
   });
 
-  it("keeps rename and default changes distinct and includes the replacement when disconnecting", async () => {
+  it("switches a plugin and disconnects one server by encoded id", async () => {
     transport.fetch.mockReset().mockImplementation(async () => Response.json({ ok: true }));
-    const account = { pluginId: "plugin/name", accountId: "a?b" };
-    await updatePluginAccount(session, { ...account, patch: { label: "Work" } });
-    await updatePluginAccount(session, { ...account, patch: { default: true } });
-    await disconnectPluginAccount(session, { ...account, newDefault: "c&d" });
-    await disconnectPluginAccount(session, account);
-    const base = "https://front.test/api/baskule/plugins/plugin%2Fname/accounts/a%3Fb";
+    await setPluginOn(session, { pluginId: "plugin/name", on: false });
+    await disconnectPluginServer(session, { pluginId: "plugin/name", serverId: "a?b" });
     expect(
       transport.fetch.mock.calls.map(([url, init]) => ({
         url,
@@ -121,27 +124,28 @@ describe("native settings API", () => {
         body: init?.body,
       })),
     ).toEqual([
-      { url: base, method: "PATCH", body: JSON.stringify({ label: "Work" }) },
-      { url: base, method: "PATCH", body: JSON.stringify({ default: true }) },
-      { url: `${base}?default=c%26d`, method: "DELETE", body: undefined },
-      { url: base, method: "DELETE", body: undefined },
+      {
+        url: "https://front.test/api/baskule/plugins/plugin%2Fname",
+        method: "PUT",
+        body: JSON.stringify({ on: false }),
+      },
+      {
+        url: "https://front.test/api/baskule/plugins/plugin%2Fname/servers/a%3Fb/connection",
+        method: "DELETE",
+        body: undefined,
+      },
     ]);
     for (const [, init] of transport.fetch.mock.calls) {
       expect(init).toMatchObject({ credentials: "omit", redirect: "error" });
       expect(new Headers(init?.headers).get("authorization")).toBe("Bearer signed.bearer");
     }
-    transport.fetch.mockResolvedValueOnce(Response.json({ ok: false }));
-    await expect(disconnectPluginAccount(session, account)).rejects.toMatchObject({
-      kind: "server",
-    });
   });
 
   it.each([
     [401, {}, "signed-out", undefined],
     [429, {}, "rate-limited", undefined],
     [400, { code: "INVALID_PASSWORD" }, "invalid-credentials", "INVALID_PASSWORD"],
-    [409, { error: "default_account_required" }, "server", "default_account_required"],
-    [409, { code: "account_label_taken" }, "server", "account_label_taken"],
+    [404, { error: "plugin_not_found" }, "server", "plugin_not_found"],
     [500, { error: "unknown_failure" }, "server", "unknown_failure"],
   ])("reports HTTP %i errors without leaking server messages", async (status, body, kind, code) => {
     transport.fetch
