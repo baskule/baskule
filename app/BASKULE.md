@@ -137,9 +137,8 @@ Baskule UI switches in the retained client code; it does not restore excluded fe
 Baskule UI modules live under `apps/web/src/baskule/`; integration comments identify edits
 in upstream files. Keep flags and actual RPC capabilities aligned.
 
-Voice settings do not expose downloaded models, peer destinations or cloud-provider keys. The
-retired voice settings route redirects to personal settings; dictation uses the hosted transcription
-boundary.
+There is no personal voice settings page, so downloaded models, peer destinations and
+cloud-provider keys are not exposed. Dictation uses the hosted transcription boundary.
 
 The embedded build adapts OpenCode 2.2.5’s Code Mode queue so completed host tools are not starved
 by polling jobs. Native goal controls refresh their state before settling because a command can

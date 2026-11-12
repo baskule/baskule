@@ -4,7 +4,6 @@ import type {
   DesktopPreviewAnnotationVoiceEvent,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { resolveSpeechPresentation } from "~/components/chat/ComposerSpeechButton";
@@ -32,7 +31,6 @@ export function PreviewAnnotationSpeech({
   config: DesktopPreviewAnnotationVoiceConfig;
   keybindings: Parameters<typeof useDictationShortcut>[0]["keybindings"];
 }) {
-  const navigate = useNavigate();
   const thread = useThreadShell(threadRef);
   const draftThread = useComposerDraftStore((store) => store.getDraftThreadByRef(threadRef));
   const projectId = thread?.projectId ?? draftThread?.projectId ?? null;
@@ -61,7 +59,6 @@ export function PreviewAnnotationSpeech({
     projectName: project?.title,
     ownerKey: JSON.stringify(["preview-annotation", threadRef, tabId, config.sessionId]),
     draftText: text,
-    offerSetup: false,
     readDraft: () => ({
       text: draft.current.text,
       selection: { start: draft.current.cursor, end: draft.current.selectionEnd },
@@ -155,10 +152,6 @@ export function PreviewAnnotationSpeech({
             case "cancel":
               value.cancel();
               break;
-            case "settings":
-              value.cancel();
-              void navigate({ to: "/settings/voice" });
-              break;
             case "skip":
               value.skipPostProcessing();
               break;
@@ -175,7 +168,7 @@ export function PreviewAnnotationSpeech({
           }
         },
       ),
-    [tabId, config.sessionId, publish, navigate],
+    [tabId, config.sessionId, publish],
   );
   return (
     <VoiceInputSetup

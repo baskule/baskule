@@ -289,17 +289,15 @@ it.each([
   ["nothing is configured", {}],
   // A transcription host picked by an earlier PoC build is not consent.
   ["a legacy transcription host is configured", { voiceTranscriptionEnvironmentId: "env-a" }],
-])("opens destination setup without sending audio when %s", async (_, legacy) => {
+])("keeps voice input unavailable without sending audio when %s", async (_, legacy) => {
   setup();
   mocks.settings = { ...legacy, speechSilenceFiltering: true };
   await using screen = await render(<Probe />);
+  const location = screen.router?.state.location.href;
   // The composer mic and the dictation shortcut both gate on this.
-  expect(mocks.voice.available).toBe(true);
+  expect(mocks.voice.available).toBe(false);
   await act(() => mocks.voice.start());
-  expect(screen.router?.state.location).toMatchObject({
-    pathname: "/settings/voice",
-    hash: "voice-transcription-destination",
-  });
+  expect(screen.router?.state.location.href).toBe(location);
   expectNoAudioSent();
   expect(mocks.committed).not.toHaveBeenCalled();
   expect(mocks.voice.state.phase).toBe("idle");

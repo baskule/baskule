@@ -26,7 +26,6 @@ import type {
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { chooseSetupSpeechModel, resolveSpeechVocabulary } from "@t3tools/shared/speech";
-import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { useEffect, useRef, useState } from "react";
 
@@ -95,11 +94,6 @@ type HookInput = {
   readonly ownerKey: string;
   readonly draftText: string;
   readonly disabled?: boolean | undefined;
-  /**
-   * Until a destination is chosen, voice input is offered and its first gesture opens Voice
-   * settings. False hides it instead, for editors whose draft would not survive the navigation.
-   */
-  readonly offerSetup?: boolean | undefined;
   /** False keeps the transcript off the cleanup provider even when cleanup is on; the model test uses it. */
   readonly cleanup?: boolean | undefined;
   readonly readDraft: () => DraftInput;
@@ -110,9 +104,9 @@ type HookInput = {
 };
 
 /**
- * Microphone audio leaves this device only for the environment the person chose in
- * Voice settings. Nothing is inferred from the primary or the draft's environment, and
- * the recording is abandoned the moment that choice changes or its connection drops.
+ * Hosted builds transcribe through the draft's space. Elsewhere microphone audio leaves this
+ * device only for a granted destination. Nothing is inferred from the primary or the draft's
+ * environment, and the recording is abandoned the moment that grant changes or its connection drops.
  */
 export function useVoiceTranscriptionDestination(draftEnvironmentId?: EnvironmentId) {
   const me = useBaskuleMe();
@@ -141,12 +135,10 @@ export function useVoiceTranscriptionDestination(draftEnvironmentId?: Environmen
       grantId: me?.voiceInput ? me.user.id : null,
       label: environment?.label ?? null,
       prepared: me?.voiceInput && canDictate ? connection : null,
-      offerFirstRunSetup: false,
       cloudProvider: undefined,
       cloudModel: undefined,
     };
   return {
-    ...(hydrated && choice === null ? { offerFirstRunSetup: true } : {}),
     environmentId,
     ...(provider ? { cloudProvider: provider } : {}),
     ...(model ? { cloudModel: model } : {}),
@@ -160,7 +152,6 @@ export function useVoiceTranscriptionDestination(draftEnvironmentId?: Environmen
 }
 
 export function useEnvironmentSpeechInput(input: HookInput) {
-  const navigate = useNavigate();
   const destination = useVoiceTranscriptionDestination(input.environmentId);
   const prepared = destination.prepared;
   const grantId = destination.grantId;
@@ -494,7 +485,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
         error: choice
           ? null
           : catalog
-            ? "No model matches your language. Choose a model or change the language in Voice settings."
+            ? "No transcription model matches your language."
             : "Could not load transcription models. Check the connection and try again.",
       }));
     },
@@ -502,11 +493,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
 
   const start = useStableCallback(async () => {
     if (latestRef.current.input.disabled || (setup.open && setup.downloading)) return;
-    if (!grantId) {
-      if (destination.offerFirstRunSetup && latestRef.current.input.offerSetup !== false)
-        await navigate({ to: "/settings/voice", hash: "voice-transcription-destination" });
-      return;
-    }
+    if (!grantId) return;
     const request = ++startRequestRef.current;
     const controller = controllerRef.current;
     const owner = latestRef.current.input.ownerKey;
@@ -616,12 +603,11 @@ export function useEnvironmentSpeechInput(input: HookInput) {
   });
 
   const destinationReady =
-    grantId === null
-      ? Boolean(destination.offerFirstRunSetup) && input.offerSetup !== false
-      : prepared !== null &&
-        (BASKULE_HOSTED ||
-          cloudProvider !== undefined ||
-          (status?.prepared === prepared && status.value?.supported !== false));
+    grantId !== null &&
+    prepared !== null &&
+    (BASKULE_HOSTED ||
+      cloudProvider !== undefined ||
+      (status?.prepared === prepared && status.value?.supported !== false));
   return {
     available:
       destinationReady &&

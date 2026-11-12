@@ -29,7 +29,6 @@ import { Route as ChatAdminRouteImport } from './routes/_chat.admin'
 import { Route as ChatAdminIndexRouteImport } from './routes/_chat.admin.index'
 import { Route as ThreadsEnvironmentIdThreadIdRouteImport } from './routes/threads.$environmentId.$threadId'
 import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
-import { Route as ChatSettingsVoiceRouteImport } from './routes/_chat.settings.voice'
 import { Route as ChatSettingsUsageRouteImport } from './routes/_chat.settings.usage'
 import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
 import { Route as ChatSettingsStorageRouteImport } from './routes/_chat.settings.storage'
@@ -163,11 +162,6 @@ const ThreadsEnvironmentIdThreadIdRoute =
 const ChatSettingsWorktreesRoute = ChatSettingsWorktreesRouteImport.update({
   id: '/worktrees',
   path: '/worktrees',
-  getParentRoute: () => ChatSettingsRoute,
-} as any)
-const ChatSettingsVoiceRoute = ChatSettingsVoiceRouteImport.update({
-  id: '/voice',
-  path: '/voice',
   getParentRoute: () => ChatSettingsRoute,
 } as any)
 const ChatSettingsUsageRoute = ChatSettingsUsageRouteImport.update({
@@ -395,7 +389,6 @@ export interface FileRoutesByFullPath {
   '/settings/storage': typeof ChatSettingsStorageRoute
   '/settings/threads': typeof ChatSettingsThreadsRoute
   '/settings/usage': typeof ChatSettingsUsageRoute
-  '/settings/voice': typeof ChatSettingsVoiceRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/threads/$environmentId/$threadId': typeof ThreadsEnvironmentIdThreadIdRoute
   '/admin/': typeof ChatAdminIndexRoute
@@ -450,7 +443,6 @@ export interface FileRoutesByTo {
   '/settings/storage': typeof ChatSettingsStorageRoute
   '/settings/threads': typeof ChatSettingsThreadsRoute
   '/settings/usage': typeof ChatSettingsUsageRoute
-  '/settings/voice': typeof ChatSettingsVoiceRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/threads/$environmentId/$threadId': typeof ThreadsEnvironmentIdThreadIdRoute
   '/admin': typeof ChatAdminIndexRoute
@@ -508,7 +500,6 @@ export interface FileRoutesById {
   '/_chat/settings/storage': typeof ChatSettingsStorageRoute
   '/_chat/settings/threads': typeof ChatSettingsThreadsRoute
   '/_chat/settings/usage': typeof ChatSettingsUsageRoute
-  '/_chat/settings/voice': typeof ChatSettingsVoiceRoute
   '/_chat/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/threads/$environmentId/$threadId': typeof ThreadsEnvironmentIdThreadIdRoute
   '/_chat/admin/': typeof ChatAdminIndexRoute
@@ -566,7 +557,6 @@ export interface FileRouteTypes {
     | '/settings/storage'
     | '/settings/threads'
     | '/settings/usage'
-    | '/settings/voice'
     | '/settings/worktrees'
     | '/threads/$environmentId/$threadId'
     | '/admin/'
@@ -621,7 +611,6 @@ export interface FileRouteTypes {
     | '/settings/storage'
     | '/settings/threads'
     | '/settings/usage'
-    | '/settings/voice'
     | '/settings/worktrees'
     | '/threads/$environmentId/$threadId'
     | '/admin'
@@ -678,7 +667,6 @@ export interface FileRouteTypes {
     | '/_chat/settings/storage'
     | '/_chat/settings/threads'
     | '/_chat/settings/usage'
-    | '/_chat/settings/voice'
     | '/_chat/settings/worktrees'
     | '/threads/$environmentId/$threadId'
     | '/_chat/admin/'
@@ -843,13 +831,6 @@ declare module '@tanstack/react-router' {
       path: '/worktrees'
       fullPath: '/settings/worktrees'
       preLoaderRoute: typeof ChatSettingsWorktreesRouteImport
-      parentRoute: typeof ChatSettingsRoute
-    }
-    '/_chat/settings/voice': {
-      id: '/_chat/settings/voice'
-      path: '/voice'
-      fullPath: '/settings/voice'
-      preLoaderRoute: typeof ChatSettingsVoiceRouteImport
       parentRoute: typeof ChatSettingsRoute
     }
     '/_chat/settings/usage': {
@@ -1141,7 +1122,6 @@ interface ChatSettingsRouteChildren {
   ChatSettingsStorageRoute: typeof ChatSettingsStorageRoute
   ChatSettingsThreadsRoute: typeof ChatSettingsThreadsRoute
   ChatSettingsUsageRoute: typeof ChatSettingsUsageRoute
-  ChatSettingsVoiceRoute: typeof ChatSettingsVoiceRoute
   ChatSettingsWorktreesRoute: typeof ChatSettingsWorktreesRoute
 }
 
@@ -1175,7 +1155,6 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
   ChatSettingsStorageRoute: ChatSettingsStorageRoute,
   ChatSettingsThreadsRoute: ChatSettingsThreadsRoute,
   ChatSettingsUsageRoute: ChatSettingsUsageRoute,
-  ChatSettingsVoiceRoute: ChatSettingsVoiceRoute,
   ChatSettingsWorktreesRoute: ChatSettingsWorktreesRoute,
 }
 

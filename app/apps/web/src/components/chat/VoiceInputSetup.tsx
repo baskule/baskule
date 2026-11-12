@@ -5,7 +5,6 @@ import type {
   EnvironmentSpeechModel,
   EnvironmentSpeechStatus,
 } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
 import { RefreshCwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -13,11 +12,13 @@ import { useClientSettings, updateClientSettings } from "../../hooks/useSettings
 import { useEnvironment } from "../../state/environments";
 import { AuthSettingsWriteScope } from "@t3tools/contracts";
 import { useEnvironmentScope } from "../../state/session";
-import { languageLabel } from "../settings/SpeechLanguageSelect";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { WizardFooter, WizardHeader, WizardPanel, WizardPopup, WizardSteps } from "../ui/wizard";
+
+const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
+const languageLabel = (code: string) => languageNames.of(code) ?? code;
 
 export function VoiceInputSetup(props: {
   environmentId: EnvironmentId | null;
@@ -35,7 +36,6 @@ export function VoiceInputSetup(props: {
   onCancelDownload(): void;
   onStartRecording(): void;
 }) {
-  const navigate = useNavigate();
   const environment = useEnvironment(props.environmentId);
   const canManage = useEnvironmentScope(props.environmentId, AuthSettingsWriteScope);
   const selectedMicrophone = useClientSettings((settings) => settings.voiceMicrophone);
@@ -72,10 +72,6 @@ export function VoiceInputSetup(props: {
   const model = props.model;
   const progress =
     model?.downloaded === undefined ? null : Math.round((model.downloaded / model.size) * 100);
-  const openSettings = (hash: string) => {
-    props.onOpenChange(false);
-    void navigate({ to: "/settings/voice", hash });
-  };
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -102,7 +98,7 @@ export function VoiceInputSetup(props: {
                   <p className="mt-2 text-muted-foreground">
                     Download the {Math.round(model.size / 1024 / 1024)} MB model to{" "}
                     {environment?.label ?? "your transcription environment"}. Microphone audio is
-                    sent there for transcription, as chosen in Voice settings.
+                    sent there for transcription.
                   </p>
                   <p className="mt-2 text-muted-foreground">
                     Silero (1.2 MB), used for silence filtering and pause detection, downloads
@@ -207,19 +203,12 @@ export function VoiceInputSetup(props: {
                   </p>
                 ) : null}
               </div>
-              <p className="text-muted-foreground">
-                Speak and transcribe in multiple languages or translate into English, and get names
-                and technical terms right with the dictionary in Voice settings.
-              </p>
             </section>
           )}
         </WizardPanel>
         <WizardFooter>
           {props.step === 0 ? (
             <>
-              <Button variant="outline" onClick={() => openSettings("speech-models")}>
-                {model ? "Choose another model or language" : "Choose a model or language"}
-              </Button>
               {props.onRetryCatalog ? (
                 <Button onClick={props.onRetryCatalog}>Retry loading models</Button>
               ) : null}
@@ -244,12 +233,7 @@ export function VoiceInputSetup(props: {
               ) : null}
             </>
           ) : (
-            <>
-              <Button variant="outline" onClick={() => openSettings("")}>
-                Customize in Voice settings
-              </Button>
-              <Button onClick={props.onStartRecording}>Start dictating</Button>
-            </>
+            <Button onClick={props.onStartRecording}>Start dictating</Button>
           )}
         </WizardFooter>
       </WizardPopup>
