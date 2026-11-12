@@ -581,14 +581,17 @@ class LocalFileSpan implements Tracer.Span {
   attributes: Map<string, unknown>;
   events: Array<[name: string, startTime: bigint, attributes: Record<string, unknown>]>;
   private readonly delegate: Tracer.Span;
+  private readonly exportsExit: boolean;
   private readonly push: (record: EffectTraceRecord) => void;
 
   constructor(
     options: Parameters<Tracer.Tracer["span"]>[0],
     delegate: Tracer.Span,
     push: (record: EffectTraceRecord) => void,
+    exportsExit: boolean,
   ) {
     this.delegate = delegate;
+    this.exportsExit = exportsExit && delegate.sampled;
     this.push = push;
     this.name = delegate.name;
     this.spanId = delegate.spanId;
@@ -615,8 +618,7 @@ class LocalFileSpan implements Tracer.Span {
       endTime,
       exit: traceExit,
     };
-    // Unsampled spans are not serialized by either the local sink or the OTLP delegate.
-    this.delegate.end(endTime, this.sampled ? redactExitCredentials(traceExit) : traceExit);
+    this.delegate.end(endTime, this.exportsExit ? redactExitCredentials(traceExit) : traceExit);
 
     if (this.sampled) {
       this.push(spanToTraceRecord(this));
@@ -669,7 +671,12 @@ export const makeLocalFileTracer = Effect.fn("makeLocalFileTracer")(function* (
 
   return Tracer.make({
     span(spanOptions) {
-      return new LocalFileSpan(spanOptions, delegate.span(spanOptions), sink.push);
+      return new LocalFileSpan(
+        spanOptions,
+        delegate.span(spanOptions),
+        sink.push,
+        options.delegate !== undefined,
+      );
     },
     ...(delegate.context ? { context: delegate.context } : {}),
   });
