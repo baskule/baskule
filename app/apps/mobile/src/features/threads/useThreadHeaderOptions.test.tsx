@@ -20,8 +20,10 @@ vi.mock("../../components/ui/AppBar", () => ({
 vi.mock("@react-navigation/native", () => ({ useNavigation: () => ({ navigate: vi.fn() }) }));
 vi.mock("../../state/session", () => ({ useEnvironmentScope: () => true }));
 vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
-  useAdaptiveWorkspaceLayout: () => ({
+  useWorkspacePaneState: () => ({
     panes: { auxiliaryPaneVisible: harness.auxiliaryPaneVisible },
+  }),
+  useAdaptiveWorkspaceLayout: () => ({
     toggleAuxiliaryPane: harness.toggleAuxiliaryPane,
     composerKeyboardActive: false,
     startNewTask: vi.fn(),
