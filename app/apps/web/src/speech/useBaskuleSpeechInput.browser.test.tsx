@@ -18,6 +18,7 @@ const harness = vi.hoisted(() => ({
   submitted: vi.fn(),
   stopped: vi.fn(),
   hosted: false,
+  getMicrophoneId: (): string => "unset",
   transcript: undefined as Promise<string> | undefined,
 }));
 vi.mock("../baskule/flags", async (original) => ({
@@ -42,7 +43,8 @@ vi.mock("../state/environments", () => ({
 }));
 vi.mock("../hooks/useSettings", () => ({
   useClientSettingsHydrated: () => true,
-  useClientSettings: () => DEFAULT_CLIENT_SETTINGS,
+  // A device id saved by an earlier build must not reach getUserMedia.
+  useClientSettings: () => ({ ...DEFAULT_CLIENT_SETTINGS, voiceMicrophone: "stale-device" }),
   useEnvironmentSettings: (
     _id: string,
     select: (settings: typeof DEFAULT_SERVER_SETTINGS) => unknown,
@@ -60,8 +62,9 @@ vi.mock("./runEnvironmentSpeech", () => ({
   }),
 }));
 vi.mock("./browserVoiceInput", () => ({
-  createBrowserVoiceInputPlatform: ({ hosted }: { hosted: boolean }) => {
-    harness.hosted = hosted;
+  createBrowserVoiceInputPlatform: (input: { hosted: boolean; getMicrophoneId: () => string }) => {
+    harness.hosted = input.hosted;
+    harness.getMicrophoneId = input.getMicrophoneId;
     return {
       recorder: {
         uri: "blob:recording",
@@ -118,9 +121,10 @@ function setup() {
 
 it("finishes hosted dictation before sending and sends once after the transcript commits", async () => {
   const pending = setup();
-  await using screen = await render(<Composer chat="one" />);
+  await using _screen = await render(<Composer chat="one" />);
   await act(() => harness.voice.start());
   expect(harness.hosted).toBe(true);
+  expect(harness.getMicrophoneId()).toBe("");
   expect(harness.voice.state.phase).toBe("recording");
   await act(() => {
     harness.voice.submitAfterDictation(harness.submitted);

@@ -312,7 +312,9 @@ export function useEnvironmentSpeechInput(input: HookInput) {
           speechSilenceFiltering: settings.speechSilenceFiltering,
         };
       },
-      getMicrophoneId: () => latestRef.current.clientSettings.voiceMicrophone,
+      // Hosted builds have no microphone picker, so a stale saved device id would fail every recording.
+      getMicrophoneId: () =>
+        BASKULE_HOSTED ? "" : latestRef.current.clientSettings.voiceMicrophone,
       onLevel: setLevel,
       onDurationLimit: () => void controller.stop(),
       onText: (text) => {
