@@ -26,6 +26,8 @@ celld:
     requests: {cpu: 250m, memory: 512Mi}
     limits: {cpu: "2", memory: 2Gi}
   heapLimitMb: 1024
+  # Seconds before idle eviction; set 0 explicitly to preserve disabled eviction on upgrade.
+  idleEvictSeconds: 900
   terminationGracePeriodSeconds: 50
 computerd:
   resources:

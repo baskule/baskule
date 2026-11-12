@@ -7,6 +7,8 @@
 # Env: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_ENDPOINT, CELLD_BUCKET_NAME, CELLD_BUCKET (s3://name[/prefix])
 #      deploy: CELLD_NODES_INTERNAL ("host:port host:port"), APP vars (see compose).
 set -euo pipefail
+# celld validates this variable for every command, including deployment jobs.
+if [ "${CELLD_IDLE_EVICT_S:-}" = "0" ]; then unset CELLD_IDLE_EVICT_S; fi
 log() { echo "[baskule-celld-job] $*" >&2; }
 secrets_root=${BASKULE_SECRETS_DIR:-/run/baskule}
 load_secrets() {

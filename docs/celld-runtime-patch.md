@@ -65,10 +65,9 @@ write into a new Space incarnation. Keep this application cleanup and patch 0003
 in the same release; retaining module state without releasing Space references is unsafe.
 The shared SQL client, multiplexed alarm, and same-cell self-request are unchanged.
 
-Idle eviction remains disabled unless `CELLD_IDLE_EVICT_S` is configured. Shipped
-Helm, Compose, and worktree defaults do not enable it. Retention helps after eligible
-idle or operator eviction, or placement onto a warm node. Pressure eviction frees
-the heap. Enabling idle eviction requires the installation operator's choice.
+Idle eviction configuration and its upgrade choice are documented in
+[installation guidance](install.md#idle-space-eviction). Pressure eviction frees
+the heap; deployment swaps drain the old generation.
 
 ## Native service deployment
 

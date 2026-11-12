@@ -11,6 +11,9 @@ test("profile and --set values resolve runtime ports and references", () => {
   const env = environment(stack);
   for (const key of ["FIRST", "SECOND", "THIRD"]) assert.equal(env[key], "12345");
   assert.equal(env.COMPUTERD_INSTANCE, stack.id);
+  assert.equal(env.CELLD_IDLE_EVICT_S, process.env.CELLD_IDLE_EVICT_S ?? "900");
+  assert.equal(environment({ ...stack, definition: { env: { CELLD_IDLE_EVICT_S: "1200" } }, overrides: {} }).CELLD_IDLE_EVICT_S, "1200");
+  assert.equal(environment({ ...stack, definition: { env: { CELLD_IDLE_EVICT_S: "1200" } }, overrides: { CELLD_IDLE_EVICT_S: "0" } }).CELLD_IDLE_EVICT_S, "0");
 });
 test("unknown profile variable names the missing value", () => {
   assert.throws(() => environment({ ...stack, overrides: { FIRST: "${DOES_NOT_EXIST_U2B}" } }), /unknown variable DOES_NOT_EXIST_U2B/);
@@ -157,3 +160,18 @@ for (const uid of [0, 1000]) for (const available of [false, true]) {
     else assert.throws(() => stackProxy({ ...options, override: "1" }), /requires root and a working global portless/);
   });
 }
+
+test("every local celld launch normalizes disabled eviction before a binary override", () => {
+  const dir = mkdtempSync(join(tmpdir(), "celld-idle-env-"));
+  try {
+    const binary = join(dir, "celld");
+    writeFileSync(binary, '#!/usr/bin/env bash\nprintf "%s:%s\\n" "${CELLD_IDLE_EVICT_S-unset}" "$*"\n', { mode: 0o755 });
+    for (const [value, expected] of [["0", "unset"], ["900", "900"]]) {
+      const result = spawnSync("scripts/celld.sh", ["dev", "fixture"], {
+        encoding: "utf8", env: { ...process.env, CELLD_IDLE_EVICT_S: value, CELLD_BIN: binary },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.trim(), `${expected}:dev fixture`);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

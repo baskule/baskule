@@ -71,6 +71,11 @@ test("consumer secrets preserve each existing key, fill missing keys, and honor 
       COMPUTERD_TOKEN: "computer override", S3_ACCESS_KEY: "external key", S3_SECRET_KEY: "external secret" });
     assert.equal(override.status, 0, override.stderr);
     assert.equal(override.stdout, "computer override\nexternal key\nexternal secret\n");
+    for (const seconds of ["0", "900", "1200"]) {
+      const runtime = run(["run", "bash", "-c", 'printf "%s" "${CELLD_IDLE_EVICT_S-unset}"'], { CELLD_IDLE_EVICT_S: seconds });
+      assert.equal(runtime.status, 0, runtime.stderr);
+      assert.equal(runtime.stdout, seconds === "0" ? "unset" : seconds);
+    }
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 
@@ -125,6 +130,7 @@ for (const kubernetes of [false, true]) test(`platform deploy preserves scoped s
     writeFileSync(resolve(work, "jobs.sh"), readFileSync("deploy/celld/jobs.sh", "utf8").replaceAll("/src/", `${source}/`).replaceAll("/usr/local/bin/baskule-sync-plugins", resolve(work, "sync")));
     writeFileSync(resolve(work, "celld"), `#!/bin/bash
 set -eu
+test -z "\${CELLD_IDLE_EVICT_S+x}"
 if [[ "$*" == *--named-only* ]]; then
   cp "$2" "$MOCK_WRANGLER"
   echo '{"version":"backend-test-version"}'
@@ -139,7 +145,7 @@ fi
     writeFileSync(resolve(work, "curl"), '#!/bin/bash\nif [[ "$*" == *setup* ]]; then if [[ "$MOCK_SETUP" != true ]]; then echo unexpected-setup-request >&2; exit 99; fi; touch "$MOCK_READY_FILE"; echo \'{"required":true}\'; else echo 200; fi\n', { mode: 0o755 });
     const result = spawnSync("bash", [resolve(work, "jobs.sh"), "deploy"], { encoding: "utf8", timeout: 3_000,
       env: { ...process.env, PATH: `${work}:${process.env.PATH}`, BASKULE_SECRETS_DIR: work, MOCK_WRANGLER: resolve(work, "deployed.json"),
-        S3_ENDPOINT: "http://storage.test", CELLD_BUCKET: "s3://test", SETUP_TOKEN: "test-token", SETUP_STATUS_URL: "", PLATFORM_READY_URL: kubernetes ? "http://platform.test/api/baskule/setup" : "", MOCK_SETUP: String(kubernetes), MOCK_READY_FILE: resolve(work, "ready"), CELLD_NODES_INTERNAL: "" } });
+        CELLD_IDLE_EVICT_S: "0", S3_ENDPOINT: "http://storage.test", CELLD_BUCKET: "s3://test", SETUP_TOKEN: "test-token", SETUP_STATUS_URL: "", PLATFORM_READY_URL: kubernetes ? "http://platform.test/api/baskule/setup" : "", MOCK_SETUP: String(kubernetes), MOCK_READY_FILE: resolve(work, "ready"), CELLD_NODES_INTERNAL: "" } });
     assert.equal(result.status, 0, result.stderr);
     assert.ok(result.stderr.includes(`deployed platform`));
     assert.equal(JSON.parse(readFileSync(resolve(work, "deployed.json"), "utf8")).vars.PLUGIN_SYNC_TOKEN, "generated-folder-secret");

@@ -16,7 +16,7 @@ if [ "$#" -gt 0 ]; then
 fi
 D=$(cd "$(dirname "$0")/.." && pwd)
 cd "$D"
-CELLD_BIN=${CELLD_BIN:-$D/../scripts/celld.sh}
+CELLD_LAUNCHER=$D/../scripts/celld.sh
 PORT=${PORT:-47620}
 APP=$D/test/.run/app
 export CELLD_ESBUILD=${CELLD_ESBUILD:-$D/node_modules/.bin/esbuild} CELLD_OTEL=0 DO_NOT_TRACK=1
@@ -42,7 +42,7 @@ start() {
     const web=JSON.parse(fs.readFileSync(app+"/wrangler.web.json","utf8"));
     web.vars={...web.vars,BASKULE_BACKEND_CONFIG_SHA256:crypto.createHash("sha256").update(fs.readFileSync(app+"/backend/wrangler.json")).update(fs.readFileSync(app+"/backend/.dev.vars")).digest("hex")};
     fs.writeFileSync(app+"/wrangler.web.json",JSON.stringify(web,null,2));' "$APP"
-  "$CELLD_BIN" dev "$APP/wrangler.web.json" --service "$APP/backend/wrangler.json" --port "$PORT" --no-watch --logs "$@" >> "$D/test/.run/celld.log" 2>&1 &
+  "$CELLD_LAUNCHER" dev "$APP/wrangler.web.json" --service "$APP/backend/wrangler.json" --port "$PORT" --no-watch --logs "$@" >> "$D/test/.run/celld.log" 2>&1 &
   PID=$!
   for i in $(seq 1 120); do
     curl -s -o /dev/null "http://127.0.0.1:$PORT/" && return 0
@@ -67,7 +67,7 @@ stop
 start
 SETUP_TOKEN=$(sed -n 's/^SETUP_TOKEN=//p' "$APP/backend/.dev.vars") node test/integration/run.mjs "http://127.0.0.1:$PORT" phase2
 stop
-node test/integration/oidc.mjs "$APP" "http://127.0.0.1:$PORT" "$CELLD_BIN"
+node test/integration/oidc.mjs "$APP" "http://127.0.0.1:$PORT" "$CELLD_LAUNCHER"
 sed -i '/^AUTH_CONFIG=/d' "$APP/backend/.dev.vars"
 printf '\nAUTH_CONFIG={"mode":"anonymous"}\n' >> "$APP/backend/.dev.vars"
 start --clean

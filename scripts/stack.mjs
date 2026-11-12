@@ -138,6 +138,7 @@ export function environment(s) {
     COMPUTER_GUARD_IMAGE: process.env.COMPUTER_GUARD_IMAGE || "baskule-computerd:local",
     FAKE_LLM_KEY: "fake-llm-key", CELLD_ESBUILD: join(ROOT, "platform/node_modules/.bin/esbuild"),
     ...(s.definition.mode === "dev" ? { CELLD_TTL_MS: process.env.CELLD_TTL_MS || "60000" } : {}),
+    CELLD_IDLE_EVICT_S: process.env.CELLD_IDLE_EVICT_S ?? "900",
     CELLD_OTEL: "0", DO_NOT_TRACK: "1", CELLD_FETCH_TIMEOUT_S: "3600", CELLD_V8_HEAP_LIMIT_MB: "1024",
     AWS_ACCESS_KEY_ID: "baskule-dev", AWS_SECRET_ACCESS_KEY: "baskule-dev-only-secret", AWS_REGION: "us-east-1",
   };
@@ -318,7 +319,7 @@ async function build(s) {
   } finally { release(); }
 }
 export function celldRecipe(s, execute = run) {
-  const cmd = process.env.CELLD_BIN || join(ROOT, "scripts/celld.sh");
+  const cmd = join(ROOT, "scripts/celld.sh");
   if (s.definition.mode === "dev") return { command: cmd, args: ["dev", "wrangler.web.json", "--service", "backend/wrangler.json", "--port", String(s.ports.celld), "--no-watch", "--logs"], cwd: join(RUN, "app") };
   const env = environment(s);
   const bucket = `s3://baskule-dev/${s.bucketPrefix}`;

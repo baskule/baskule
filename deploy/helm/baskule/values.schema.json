@@ -141,6 +141,10 @@
         "heapLimitMb": {
           "type": "integer"
         },
+        "idleEvictSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
         "terminationGracePeriodSeconds": {
           "type": "integer",
           "minimum": 40

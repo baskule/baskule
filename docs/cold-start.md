@@ -80,8 +80,8 @@ is introduced. The multiplexed alarm and same-cell OpenCode request remain uncha
 The runtime retains one bounded, healthy empty backend cell heap so the evaluated module graph
 can serve another incarnation. Space-owned module registrations and captures are released with
 its cell. The [runtime patch guide](celld-runtime-patch.md#bounded-cell-isolate-retention) owns the
-memory budget, retention bounds, cleanup contract, and pressure behavior. Idle eviction remains
-an operator choice under [#87](https://github.com/baskule/baskule/issues/87).
+memory budget, retention bounds, cleanup contract, and pressure behavior. The idle-eviction default and operator upgrade choice are documented in
+[installation guidance](install.md#idle-space-eviction).
 
 An ordinary-wake measurement first stops the application Space, then waits for ordinary idle
 eviction of both Control and Space. Native census must show zero resident cells, requests, turns,
