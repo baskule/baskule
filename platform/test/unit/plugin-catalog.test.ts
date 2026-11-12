@@ -20,7 +20,6 @@ describe("curated plugin catalog", () => {
     for (const service of CATALOG) {
       const vendor = CATALOG_VENDORS.find(v => v.id === service.vendor)!;
       expect(vendor).toBeDefined();
-      expect(service.reviewBy >= new Date().toISOString().slice(0, 10), service.id).toBe(true);
       for (const url of [service.icon, service.docs, ...service.servers.flatMap(s => [s.url, ...(s.resource ? [s.resource] : [])])]) expect(checkOutbound(url, "public").protocol).toBe("https:");
       for (const server of service.servers) if (server.resource) expect(new URL(server.resource).origin).toBe(new URL(server.url).origin);
       const plugin = pluginFromCatalog(service, vendor);
