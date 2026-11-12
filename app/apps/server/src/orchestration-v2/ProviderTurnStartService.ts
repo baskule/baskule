@@ -352,7 +352,13 @@ export const layer: Layer.Layer<
                 source.id === handoff.targetRunId &&
                 (source.status === "failed" ||
                   source.status === "interrupted" ||
-                  source.status === "cancelled"),
+                  source.status === "cancelled" ||
+                  (source.status === "completed" &&
+                    handoff.delivery === undefined &&
+                    projection.messages.some(
+                      (message) =>
+                        message.id === source.userMessageId && parseGoalCommand(message) !== null,
+                    ))),
             )));
       const isSideChatHandoff = (handoff: OrchestrationV2ContextHandoff) =>
         projection.thread.lineage.sideChat === true &&
