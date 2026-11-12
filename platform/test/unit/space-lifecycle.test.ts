@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "../../src/control/settings";
-import { SpaceCell } from "../../src/space/index";
+import { RUN_HEARTBEAT_MS, SpaceCell } from "../../src/space/index";
 import { fakeStorage } from "../support/fake-storage";
 
 const createServer = vi.hoisted(() => vi.fn());
@@ -139,6 +139,42 @@ it("runs synchronous release cleanup on a forced native cell release", async () 
   expect(releaseAgent).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
   expect((await c.fetch(new Request("http://space/ws"))).status).toBe(503);
+});
+
+describe("SpaceCell idle alarm", () => {
+  it("never schedules an idle check in the past while a socket stays open", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const c = cell();
+    let scheduled: number | null = null;
+    c.alarms = { get: async () => scheduled, set: async (_: string, at: number) => { scheduled = at; }, clear: async () => { scheduled = null; } };
+    c.server = { ...server(), sockets: () => [{}] };
+    c.lastActivity = Date.now() - 10 * 60_000;
+    await c.scheduleAlarm();
+    expect(scheduled).not.toBeNull();
+    expect(scheduled!).toBeGreaterThan(Date.now());
+  });
+
+  it("schedules the idle check no earlier than a second from now once sockets are gone", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const c = cell();
+    let scheduled: number | null = null;
+    c.alarms = { get: async () => scheduled, set: async (_: string, at: number) => { scheduled = at; }, clear: async () => { scheduled = null; } };
+    c.server = server();
+    c.lastActivity = Date.now() - 10 * 60_000;
+    await c.scheduleAlarm();
+    expect(scheduled).toBe(Date.now() + 1_000);
+  });
+
+  it("leaves an idle cell with an active run on the run heartbeat", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const c = cell();
+    let scheduled: number | null = null;
+    c.alarms = { get: async () => scheduled, set: async (_: string, at: number) => { scheduled = at; }, clear: async () => { scheduled = null; } };
+    c.server = { ...server(), activeRuns: () => 1 };
+    c.lastActivity = Date.now() - 10 * 60_000;
+    await c.scheduleAlarm();
+    expect(scheduled).toBe(Date.now() + RUN_HEARTBEAT_MS);
+  });
 });
 
 describe("SpaceCell boot/dispose overlap", () => {
