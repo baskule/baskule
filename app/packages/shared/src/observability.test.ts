@@ -9,13 +9,16 @@ import * as FileSystem from "effect/FileSystem";
 import { cast } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as Tracer from "effect/Tracer";
-import type { OtlpTracer } from "effect/observability";
+import * as OtlpTracer from "effect/observability/OtlpTracer";
+import * as OtlpSerialization from "effect/observability/OtlpSerialization";
+import * as OtlpExporter from "effect/observability/OtlpExporter";
+import * as HttpClient from "effect/http/HttpClient";
+import * as Option from "effect/Option";
 
 import {
   causeErrorTag,
@@ -202,6 +205,40 @@ describe("observability", () => {
           }
         }
       }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("leaves unsampled failures unformatted without an exporter", () =>
+    Effect.gen(function* () {
+      let stackReads = 0;
+      const error = new Error("expected unsupported operation");
+      Object.defineProperty(error, "stack", {
+        get() {
+          stackReads++;
+          return "Error: expected unsupported operation\n    at diagnostic-frame";
+        },
+      });
+      const records: Array<TraceRecord> = [];
+      const tracer = yield* makeLocalFileTracer({
+        filePath: "unused",
+        maxBytes: 1024,
+        maxFiles: 1,
+        batchWindowMs: 10_000,
+        sink: {
+          filePath: "unused",
+          push: (record) => records.push(record),
+          flush: Effect.void,
+          close: () => Effect.void,
+        },
+      });
+      const result = yield* Effect.fail(error).pipe(
+        Effect.withSpan("expected-failure", { sampled: false }),
+        Effect.provideService(Tracer.Tracer, tracer),
+        Effect.exit,
+      );
+      assert.isTrue(Exit.isFailure(result));
+      assert.deepStrictEqual(records, []);
+      assert.equal(stackReads, 0);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
@@ -435,78 +472,82 @@ describe("observability", () => {
       ),
     );
 
-    it.effect("keeps WebSocket credentials out of trace files and exported spans", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
-          const sink = yield* makeTraceSink({
-            filePath: tracePath,
-            maxBytes: 1024 * 1024,
-            maxFiles: 2,
-            batchWindowMs: 10_000,
-          });
-          const delegates: Array<Tracer.NativeSpan> = [];
-          const tracer = yield* makeLocalFileTracer({
-            filePath: tracePath,
-            maxBytes: 1024 * 1024,
-            maxFiles: 2,
-            batchWindowMs: 10_000,
-            sink,
-            delegate: Tracer.make({
-              span: (options) => {
-                const span = new Tracer.NativeSpan(options);
-                delegates.push(span);
-                return span;
-              },
-            }),
-          });
-          const url = "/ws?wsTicket=ticket-secret&dpop=proof-secret&clientSurface=web";
-          const failure = new Error(`RequestParseError (GET ${url})`);
-          Object.defineProperty(failure, "stack", {
-            get: () =>
-              `Error: ${failure.message}\n    at diagnostic-frame (/ws?wsTicket=stack-ticket-secret&dpop=stack-proof-secret:1:1)`,
-          });
+    it.effect.each([false, true])(
+      "keeps WebSocket credentials out of traces (sampled=%s)",
+      (sampled) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fileSystem = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
+            const tracePath = path.join(tempDir, "shared.trace.ndjson");
+            const sink = yield* makeTraceSink({
+              filePath: tracePath,
+              maxBytes: 1024 * 1024,
+              maxFiles: 2,
+              batchWindowMs: 10_000,
+            });
+            const delegates: Array<Tracer.NativeSpan> = [];
+            const tracer = yield* makeLocalFileTracer({
+              filePath: tracePath,
+              maxBytes: 1024 * 1024,
+              maxFiles: 2,
+              batchWindowMs: 10_000,
+              sink,
+              delegate: Tracer.make({
+                span: (options) => {
+                  const span = new Tracer.NativeSpan(options);
+                  delegates.push(span);
+                  return span;
+                },
+              }),
+            });
+            const url = "/ws?wsTicket=ticket-secret&dpop=proof-secret&clientSurface=web";
+            const failure = new Error(`RequestParseError (GET ${url})`);
+            Object.defineProperty(failure, "stack", {
+              get: () =>
+                `Error: ${failure.message}\n    at diagnostic-frame (/ws?wsTicket=stack-ticket-secret&dpop=stack-proof-secret:1:1)`,
+            });
 
-          yield* Effect.annotateCurrentSpan({
-            "url.full": `http://127.0.0.1:3773${url}`,
-            "url.query": url.slice(4),
-          }).pipe(
-            Effect.withSpan("GET", { kind: "server" }),
-            Effect.provideService(Tracer.Tracer, tracer),
-          );
-          yield* Effect.die(failure).pipe(
-            Effect.tapCause((cause) => Effect.logError(cause)),
-            Effect.withSpan("DeviceHubProxy.proxyWebSocket"),
-            Effect.provideService(Tracer.Tracer, tracer),
-            Effect.provide(Logger.layer([Logger.tracerLogger], { mergeWithExisting: false })),
-            Effect.exit,
-          );
-          yield* sink.close();
+            yield* Effect.annotateCurrentSpan({
+              "url.full": `http://127.0.0.1:3773${url}`,
+              "url.query": url.slice(4),
+            }).pipe(
+              Effect.withSpan("GET", { kind: "server" }),
+              Effect.provideService(Tracer.Tracer, tracer),
+            );
+            yield* Effect.die(failure).pipe(
+              Effect.tapCause((cause) => Effect.logError(cause)),
+              Effect.withSpan("DeviceHubProxy.proxyWebSocket", { sampled }),
+              Effect.provideService(Tracer.Tracer, tracer),
+              Effect.provide(Logger.layer([Logger.tracerLogger], { mergeWithExisting: false })),
+              Effect.exit,
+            );
+            yield* sink.close();
 
-          const written = yield* fileSystem.readFileString(tracePath);
-          const exported = delegates.map((span) =>
-            JSON.stringify({
-              attributes: Object.fromEntries(span.attributes),
-              events: span.events.map(([, , attributes]) => attributes),
-              exit:
-                span.status._tag === "Ended" && Exit.isFailure(span.status.exit)
-                  ? Cause.pretty(span.status.exit.cause)
-                  : "",
-            }),
-          );
-          for (const text of [written, ...exported]) {
-            assert.notInclude(text, "ticket-secret");
-            assert.notInclude(text, "proof-secret");
-          }
-          assert.include(written, "wsTicket=<redacted>&dpop=<redacted>&clientSurface=web");
-          assert.include(written, "diagnostic-frame");
-          assert.include(exported.join("\n"), "effect.cause");
-          assert.include(exported.join("\n"), "diagnostic-frame");
-        }),
-      ),
+            const written = yield* fileSystem.readFileString(tracePath);
+            const exported = delegates
+              .filter((span) => span.sampled)
+              .map((span) =>
+                JSON.stringify({
+                  attributes: Object.fromEntries(span.attributes),
+                  events: span.events.map(([, , attributes]) => attributes),
+                  exit:
+                    span.status._tag === "Ended" && Exit.isFailure(span.status.exit)
+                      ? Cause.pretty(span.status.exit.cause)
+                      : "",
+                }),
+              );
+            for (const text of [written, ...exported]) {
+              assert.notInclude(text, "ticket-secret");
+              assert.notInclude(text, "proof-secret");
+            }
+            assert.include(written, "wsTicket=<redacted>&dpop=<redacted>&clientSurface=web");
+            if (sampled) assert.include(written, "diagnostic-frame");
+            if (sampled) assert.include(exported.join("\n"), "effect.cause");
+            if (sampled) assert.include(exported.join("\n"), "diagnostic-frame");
+          }),
+        ),
     );
 
     it.effect("drops only the invalid trace record when serialization fails", () =>
@@ -717,3 +758,50 @@ describe("OtlpHeadersFromString", () => {
     expect(() => decode(input)).toThrow();
   });
 });
+
+it.effect("does not format unsampled failures with the real OTLP delegate", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let stackReads = 0;
+      const error = new Error("expected unsupported operation");
+      Object.defineProperty(error, "stack", {
+        get() {
+          stackReads++;
+          return "Error: x\n    at frame";
+        },
+      });
+      const otlp = yield* OtlpTracer.make({
+        url: "http://127.0.0.1:9/v1/traces",
+        resource: { serviceName: "probe" },
+        exportInterval: "1 hour",
+      });
+      const tracer = yield* makeLocalFileTracer({
+        filePath: "unused",
+        maxBytes: 1024,
+        maxFiles: 1,
+        batchWindowMs: 10_000,
+        sink: { filePath: "unused", push: () => {}, flush: Effect.void, close: () => Effect.void },
+        delegate: otlp,
+      });
+      const result = yield* Effect.fail(error).pipe(
+        Effect.withSpan("expected-failure", { sampled: false }),
+        Effect.provideService(Tracer.Tracer, tracer),
+        Effect.exit,
+      );
+      assert.isTrue(Exit.isFailure(result));
+      assert.equal(stackReads, 0);
+    }),
+  ).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        OtlpSerialization.layerJson,
+        OtlpExporter.layerFlusher,
+        NodeServices.layer,
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make(() => Effect.die("no network")),
+        ),
+      ),
+    ),
+  ),
+);
