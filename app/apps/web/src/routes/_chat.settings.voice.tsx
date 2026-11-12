@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
-import { VoiceSettingsPanel } from "../components/settings/VoiceSettingsPanel";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_chat/settings/voice")({
-  component: VoiceSettingsPanel,
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/general" });
+  },
 });
