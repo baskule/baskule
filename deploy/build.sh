@@ -10,7 +10,7 @@
 #   T3_APP_DIR   fork checkout to build (default: <root>/app)
 #   --force      rebuild the web and space bundles even if the fork did not change
 #   --no-deploy  build only
-#   MINIFY=0     unminified space and platform bundles (debugging; default 1: minified, names kept)
+#   MINIFY=0     unminified space and platform bundles (debugging; default 1: minified)
 # AI and organization settings are configured in the app; authentication comes from auth.json.
 # Version: GET /version.json on the stack (umbrella and fork SHAs, dirty flags, build time, image ids).
 set -euo pipefail
