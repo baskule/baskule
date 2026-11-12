@@ -88,8 +88,7 @@ mobile file downloads are not available.
 
 Tool calls default to hidden through the shared client visibility setting; explicit saved
 choices are preserved, including settings saved by 0.5.3. Upstream screen-reader announcement levels
-remain available and localized. Hosted dictation uses the released upstream composer and controller
-with Baskule's existing transcription endpoint. Application localization remains Baskule's
+remain available and localized. Application localization remains Baskule's
 shared en/de/es/fr/it/nl catalogs; this upstream tag has no replacement application catalog.
 
 ## Authentication and telemetry
@@ -137,8 +136,13 @@ Baskule UI switches in the retained client code; it does not restore excluded fe
 Baskule UI modules live under `apps/web/src/baskule/`; integration comments identify edits
 in upstream files. Keep flags and actual RPC capabilities aligned.
 
-There is no personal voice settings page, so downloaded models, peer destinations and
-cloud-provider keys are not exposed. Dictation uses the hosted transcription boundary.
+Voice input keeps upstream's dictation controls, `VoiceInputController` lifecycle, browser
+PCM capture and mobile recorder. Every client sends the finished recording to the platform's
+`/api/baskule/transcriptions` route while the account has voice input. The clients
+have no local models, cloud-provider keys, speech streams, destination choices or web voice
+settings, and the web records with the browser's default microphone. Mobile **Settings → Voice**
+remains for microphone access and the preferred-microphone order its recorder applies.
+Saved speech settings still decode; no client calls the server's upstream speech endpoints.
 
 The embedded build adapts OpenCode 2.2.5’s Code Mode queue so completed host tools are not starved
 by polling jobs. Native goal controls refresh their state before settling because a command can
