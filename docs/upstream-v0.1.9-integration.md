@@ -25,7 +25,7 @@ release independently of that package metadata.
 | --- | --- |
 | Contracts and orchestration | Adopt released projections, bounded MCP/long-thread reads, attachment and background-work behavior. Retain Baskule actor authorization and authorship. Task-owner checks load the required messages separately from upstream's smaller caller projection. |
 | Hosted runtime | Keep one shared SQL client per SpaceCell, multiplexed alarms and same-cell native I/O. Adapt native Effect continuations to 4.0.6 for the matching OpenCode runtime. Do not introduce another cell, service or alarm. |
-| OpenCode | Pin app client/protocol/schema and platform core/schema/sdk/util together to exactly 2.2.5. The released adapter gates native goals on that runtime; importing upstream's npm 2.0.28 pin would downgrade Baskule and disable them. Keep upstream's separate `@opencode-ai/sdk` dependency. |
+| OpenCode | Pin app client/protocol/schema and platform core/schema/sdk/util together to exactly 2.2.5. The released adapter gates native goals on that runtime; importing upstream's npm 2.0.28 pin would downgrade Baskule and disable them. Remove the unused OpenCode 1 `@opencode-ai/sdk` dependency. |
 | Runtime adaptation | Process completed Code Mode host calls before queued polling jobs, preventing polling starvation in workerd. Guard the transform against dependency-layout changes. Native cancellation, scheduler and stream-cleanup checks exercise the production transforms. Refresh native goal state after pause/clear so a delayed notification cannot leave stale UI state. |
 | Authentication, teams and spaces | Preserve platform login, team/space membership, authorship, server-held credentials, plugin connections, per-space computers and authenticated asset routing. OpenCode 2 remains the only executable agent driver. |
 | Goals | Use upstream native goal commands and version-gated capabilities. Keep commands separate from steering, prioritize queued goal controls and defer context delivery until a prompt turn. Remove clauses specific to excluded drivers. |
@@ -34,7 +34,7 @@ release independently of that package metadata.
 | Localization | Upstream supplies no application translation catalog. Preserve shared localization and en/de/es/fr/it/nl catalogs; extract and validate newly retained strings. No translation API key or paid translation call is used locally. |
 | Mobile and desktop | Adapt existing Baskule connection/navigation and protected-preview behavior to upstream APIs. Adopt file-link context, scrolling, downloads and desktop release metadata. Preserve required-update handling and hosted attachment authentication. |
 | Exclusions | Remove newly introduced extra-provider tests, forge PR helpers/workflows, linked-environment behavior, T3 agent approval/account surfaces, unsupported cloud voice controls and the standalone upstream scenario runner. Baskule's disposable fake-model journeys remain the verification path. Keep required historical data decoders. |
-| Third-party notices | Regenerate locks from reviewed manifests and synchronize notices, including OpenCode's separate legacy SDK and Nodable's newly resolved entities version. |
+| Third-party notices | Regenerate locks from reviewed manifests and synchronize notices, including Nodable's newly resolved entities version; remove the unused OpenCode 1 SDK. |
 
 The UI placement decision for review is to show upstream's announcement row beside tool
 visibility in Personal settings → Chats. Its control and wording reuse upstream's design.
@@ -115,3 +115,19 @@ missing desktop release metadata were product failures fixed and verified in the
 selections. Merge/type/lint errors were corrected before the final checks. Verbatim upstream
 generated highlighting C and dependency patch context retain their existing whitespace;
 hand-edited application changes pass the diff whitespace check with those files excluded.
+
+## Review corrections
+
+Contract changes are additive optional/defaulted fields, wider accepted inputs, and internal
+search changes. Minimum client/server versions stay at 0.5.2; the `compatibility-noop` label
+records that reviewed decision. MCP approval accepts browser sessions only; bearer/DPoP
+approval for the excluded T3 Connect service is removed.
+
+Restore native goal dispatch, queue promotion, restart, deferred side-chat context and
+native-child Stop tests with OpenCode fixtures. Sibling completion-wake cases use local
+child tasks and Baskule authorship. Only `promoting %s into a compaction stops it and sends
+it next` (three cases) remains excluded: the OpenCode adapter has no `compactThread` and
+Baskule removed native compaction. Goal commands defer context until a prompt turn, and
+pending context now survives a completed goal turn. Native child Stop uses the existing
+OpenCode interrupt/confirmed-outcome path. The frozen 080 fixture uses the released
+`AFTER UPDATE OF payload_json, streaming, role` trigger, independently of migration 081.
