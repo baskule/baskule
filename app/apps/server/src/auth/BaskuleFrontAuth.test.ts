@@ -8,6 +8,7 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -51,7 +52,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, ManagedPolicy.laye
         expect(session.sessionId).toBe(yield* frontSessionIdFor("ba-session-1"));
         expect(session.scopes).not.toContain(AuthSettingsWriteScope);
         expect(session.scopes).not.toContain(AuthAccessReadScope);
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`PRAGMA query_only = ON`;
         expect((yield* auth.getSessionState(as(alice))).authenticated).toBe(true);
+        yield* sql`PRAGMA query_only = OFF`;
 
         const missing = yield* Effect.flip(auth.authenticateHttpRequest(request()));
         expect(missing._tag).toBe("ServerAuthMissingCredentialError");

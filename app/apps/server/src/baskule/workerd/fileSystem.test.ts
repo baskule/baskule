@@ -35,7 +35,7 @@ const setup = () => {
 describe("space file system", () => {
   it.live("keeps userdata in DO SQLite across instances", () =>
     Effect.gen(function* () {
-      const { make, computerd } = setup();
+      const { make, computerd, storage } = setup();
       const fs = make().fileSystem;
       yield* fs.makeDirectory("/baskule/userdata/secrets", { recursive: true });
       yield* fs.writeFileString("/baskule/userdata/settings.json", "{}");
@@ -52,6 +52,7 @@ describe("space file system", () => {
       yield* fs.writeFile("/baskule/userdata/attachments/a.bin", big);
 
       // A fresh instance over the same storage, as after a cell restart.
+      storage.db.exec("PRAGMA query_only = ON");
       const again = make().fileSystem;
       expect(yield* again.readFileString("/baskule/userdata/settings.json")).toBe("{}");
       expect([...(yield* again.readFile("/baskule/userdata/secrets/key.bin"))]).toEqual([1, 2, 3]);
