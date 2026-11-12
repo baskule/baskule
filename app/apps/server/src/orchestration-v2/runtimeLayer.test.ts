@@ -151,18 +151,20 @@ const alternateProviderInstance = {
     instanceId: alternateInstanceId,
   },
 } satisfies ProviderInstance;
-const claudeInstanceId = ProviderInstanceId.make("claude_test");
-const claudeDriver = ProviderDriverKind.make("claudeAgent");
-const claudeProviderInstance = {
+const legacyOpenCodeInstanceId = ProviderInstanceId.make("opencode_pre_2_2_5");
+const legacyOpenCodeProviderInstance = {
   ...providerInstance,
-  instanceId: claudeInstanceId,
-  driverKind: claudeDriver,
-  continuationIdentity: { driverKind: claudeDriver, continuationKey: "claude:test" },
-  displayName: "Claude test",
+  instanceId: legacyOpenCodeInstanceId,
+  continuationIdentity: { driverKind: driver, continuationKey: "opencode:pre-2.2.5" },
+  displayName: "OpenCode before 2.2.5",
   orchestrationAdapter: {
     ...orchestrationAdapter,
-    instanceId: claudeInstanceId,
-    driver: claudeDriver,
+    instanceId: legacyOpenCodeInstanceId,
+    getCapabilities: () =>
+      Effect.succeed({
+        ...FULL_TEST_PROVIDER_CAPABILITIES,
+        turns: { ...FULL_TEST_PROVIDER_CAPABILITIES.turns, supportsNativeGoals: false },
+      }),
   },
 } satisfies ProviderInstance;
 
@@ -171,14 +173,14 @@ const layerTestProviderInstanceRegistry = Layer.succeed(
   {
     getInstance: (instanceId) =>
       Effect.succeed(
-        [providerInstance, alternateProviderInstance, claudeProviderInstance].find(
+        [providerInstance, alternateProviderInstance, legacyOpenCodeProviderInstance].find(
           (instance) => instanceId === instance.instanceId,
         ),
       ),
     listInstances: Effect.succeed([
       providerInstance,
       alternateProviderInstance,
-      claudeProviderInstance,
+      legacyOpenCodeProviderInstance,
     ]),
     listUnavailable: Effect.succeed([]),
     streamChanges: Stream.empty,
@@ -5441,7 +5443,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const threadId = ThreadId.make("runtime-layer-goal-pause-behind-queued-pick");
-      const claudeSelection = { ...modelSelection, instanceId: claudeInstanceId };
+      const legacySelection = { ...modelSelection, instanceId: legacyOpenCodeInstanceId };
       yield* orchestrator.dispatch({
         type: "thread.create",
         commandId: CommandId.make(`${threadId}:create`),
@@ -5450,14 +5452,14 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         createdBy: "user",
         creationSource: "web",
         title: "Goal pause behind a pick",
-        modelSelection: claudeSelection,
+        modelSelection: legacySelection,
         runtimeMode: "full-access",
         interactionMode: "default",
         branch: null,
         worktreePath: process.cwd(),
       });
       for (const [key, selection] of [
-        ["active", claudeSelection],
+        ["active", legacySelection],
         ["picked", modelSelection],
       ] as const) {
         yield* orchestrator.dispatch({
@@ -5473,7 +5475,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           creationSource: "web",
         });
       }
-      const sendGoal = (key: string, text: string, deliveryIntent?: "auto") =>
+      const sendGoal = (key: string, text: string, deliveryIntent?: "steer") =>
         orchestrator.dispatch({
           type: "message.dispatch",
           commandId: CommandId.make(`${threadId}:${key}`),
@@ -5483,21 +5485,39 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           attachments: [],
           dispatchMode: { type: "queue_after_active" },
           ...(deliveryIntent === undefined ? {} : { deliveryIntent }),
-          createdBy: "agent",
-          creationSource: "mcp",
+          createdBy: "user",
+          creationSource: "web",
         });
-      // It runs after the pick, on a provider that can pause goals.
       yield* sendGoal("pause", "/goal pause");
-      yield* sendGoal("resume", "/goal resume", "auto");
-      const resumed = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
-        run => run.userMessageId === MessageId.make(`${threadId}:resume`),
-      );
-      assert.deepEqual(resumed?.modelSelection, claudeSelection);
-
-      const pause = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+      const before = yield* orchestrator.getThreadProjection(threadId);
+      const pause = before.runs.find(
         (run) => run.userMessageId === MessageId.make(`${threadId}:pause`),
+      )!;
+      // The queued pick supports native goals, so Steer keeps the pause as a separate turn.
+      yield* orchestrator.dispatch({
+        type: "queued-message.promote-to-steer",
+        commandId: CommandId.make(`${threadId}:promote-pause`),
+        threadId,
+        queuedRunId: pause.id,
+        targetRunId: before.runs.find((run) => run.status === "starting")!.id,
+      });
+      const queued = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+        (run) => run.id === pause.id,
       );
-      assert.deepEqual(pause?.modelSelection, modelSelection);
+      assert.deepEqual(
+        { modelSelection: queued?.modelSelection, status: queued?.status },
+        { modelSelection, status: "queued" },
+      );
+
+      // The active pre-2.2.5 instance cannot accept a goal command as steering input.
+      const sequence = yield* orchestrator.getThreadEventSequence(threadId);
+      const refused = yield* Effect.flip(sendGoal("resume", "/goal resume", "steer"));
+      assert.instanceOf(refused, Orchestrator.OrchestratorDispatchError);
+      assert.equal(
+        refused.cause,
+        "Goal commands must run as a separate turn. Queue it or wait for the active turn to finish.",
+      );
+      assert.equal(yield* orchestrator.getThreadEventSequence(threadId), sequence);
     }),
   );
 
