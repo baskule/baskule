@@ -24,7 +24,6 @@ export interface CatalogService {
   servers: { name: string; url: string; transport?: "sse"; scopes?: string[]; resource?: string }[];
   prerequisites: string[];  // msg(): plan, preview enrolment, tenant settings
   notYet?: string;          // msg(): why it can't be added yet; replaces Add until the service is qualified
-  reviewBy: string;         // YYYY-MM-DD. platform/test/unit/plugin-catalog.test.ts fails after it.
 }
 export const CATALOG_VENDORS: readonly CatalogVendor[] = [
   {
@@ -305,7 +304,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Your Google Cloud project must be enrolled in the Workspace MCP Developer Preview and enable the product API and MCP API."), msg("An administrator must register a web OAuth client, add this installation's callback, and mark it as an AI-powered agent before November 11, 2026."), msg("Use an internal app for your own Workspace organization, or meet Google's external-app verification requirements.")],
-    reviewBy: "2026-11-11",
   },
   // The setup guide lists read scopes despite write tools. The per-tool reference confirms calendar.events for writes; no generic full-calendar scope is needed.
   {
@@ -324,7 +322,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Your Google Cloud project must be enrolled in the Workspace MCP Developer Preview and enable the product API and MCP API."), msg("An administrator must register a web OAuth client, add this installation's callback, and mark it as an AI-powered agent before November 11, 2026."), msg("Use an internal app for your own Workspace organization, or meet Google's external-app verification requirements.")],
-    reviewBy: "2026-11-11",
   },
   // INFERRED minimum scope unions: product readwrite scopes replace corresponding readonly scopes; Drive discovery needs drive.readonly. Exact tool-by-tool coverage remains untested. Docs/Sheets metadata omits drive.file even though their setup guides list it, so this recipe uses product scopes for edits.
   {
@@ -358,7 +355,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Your Google Cloud project must be enrolled in the Workspace MCP Developer Preview and enable the product API and MCP API."), msg("An administrator must register a web OAuth client, add this installation's callback, and mark it as an AI-powered agent before November 11, 2026."), msg("Use an internal app for your own Workspace organization, or meet Google's external-app verification requirements."), msg("Editing is limited to the tools and files allowed by your consent and existing permissions.")],
-    reviewBy: "2026-11-11",
   },
   // INFERRED minimum for search/read/send only. Membership, read-state and space-setting tools require additional consent; do not silently enable them under this scope set.
   {
@@ -377,7 +373,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Your Google Cloud project must be enrolled in the Workspace MCP Developer Preview and enable the product API and MCP API."), msg("An administrator must register a web OAuth client, add this installation's callback, and mark it as an AI-powered agent before November 11, 2026."), msg("Use an internal app for your own Workspace organization, or meet Google's external-app verification requirements."), msg("Sending messages requires a configured Google Chat app; read-only access does not.")],
-    reviewBy: "2026-11-11",
   },
   // UNVERIFIED final grant: WorkIQ.Act is documented but differs from the metadata-advertised Ask scope. Tenant-specific paths and write policy need an owned-client check. Full Word/Excel/PowerPoint document editing is not established.
   {
@@ -397,7 +392,6 @@ export const CATALOG: readonly CatalogService[] = [
     ],
     prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
     notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
-    reviewBy: "2027-01-31",
   },
   // UNVERIFIED final grant: WorkIQ.Act is documented but differs from the metadata-advertised Ask scope. Tenant-specific paths and write policy need an owned-client check. Full Word/Excel/PowerPoint document editing is not established.
   {
@@ -417,7 +411,6 @@ export const CATALOG: readonly CatalogService[] = [
     ],
     prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
     notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
-    reviewBy: "2027-01-31",
   },
   // UNVERIFIED final grant: WorkIQ.Act is documented but differs from the metadata-advertised Ask scope. Tenant-specific paths and write policy need an owned-client check. Full Word/Excel/PowerPoint document editing is not established.
   {
@@ -437,7 +430,6 @@ export const CATALOG: readonly CatalogService[] = [
     ],
     prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
     notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
-    reviewBy: "2027-01-31",
   },
   // UNVERIFIED final grant: WorkIQ.Act is documented but differs from the metadata-advertised Ask scope. Tenant-specific paths and write policy need an owned-client check. Full Word/Excel/PowerPoint document editing is not established.
   {
@@ -457,7 +449,6 @@ export const CATALOG: readonly CatalogService[] = [
     ],
     prerequisites: [msg("Your organization must enable Work IQ and an administrator must register an Entra app and grant tenant consent."), msg("An Azure billing connection and Copilot Credits are required; usage is billed."), msg("Your tenant must allow changes before the assistant can send messages, create events or change files."), msg("Work IQ supports work or school Microsoft 365 accounts; consumer Outlook accounts are outside this recipe.")],
     notYet: msg("Sign-in and permissions for each Microsoft organization still need testing."),
-    reviewBy: "2027-01-31",
   },
   {
     id: "slack",
@@ -476,7 +467,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator must create an internal Slack app for your workspace or use an approved Marketplace app; unlisted public apps cannot connect."), msg("Register this installation's callback and grant the listed user permissions; workspace app approval and IP restrictions apply.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED meeting-only scope selection on the unified Zoom endpoint. Other Zoom product tools require additional scopes; no complete unified-server scope set is claimed.
   {
@@ -495,7 +485,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator or developer must create a Zoom General app, register this installation's callback and enable the required scopes."), msg("Users need licenses for the Zoom products and meeting or recording content they use.")],
-    reviewBy: "2027-01-31",
   },
   {
     id: "notion",
@@ -513,7 +502,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Connect your Notion account; Enterprise administrators may need to allow the client."), msg("Some tools require a paid Notion feature; the server reports tool access for your plan.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED product-specific minimum scopes from live metadata. tools=all is the vendor-documented flat tool-list option. Both cards use the same resource; token scopes must prevent accidental cross-product access. Rovo credit impact is unverified for the tenant.
   {
@@ -533,7 +521,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An Atlassian Cloud account and access to the relevant sites are required."), msg("Your administrator must allow this client's callback domain and the requested read, search and write permissions; usage limits or Rovo credits may apply.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED product-specific minimum scopes from live metadata. tools=all is the vendor-documented flat tool-list option. Both cards use the same resource; token scopes must prevent accidental cross-product access. Rovo credit impact is unverified for the tenant.
   {
@@ -553,7 +540,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An Atlassian Cloud account and access to the relevant sites are required."), msg("Your administrator must allow this client's callback domain and the requested read, search and write permissions; usage limits or Rovo credits may apply.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED minimum for ordinary file operations: omit ai.readwrite and docgen.readwrite because AI-query and document-generation tools are not offered. Box resource metadata names api.box.com/ while AS issuer omits the slash.
   {
@@ -572,7 +558,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("A Box administrator must configure a Box MCP Server app, register this installation's callback and choose its access scopes."), msg("Document generation requires Enterprise Advanced and extra scopes; it is outside this entry's offered tools.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED reduced file-only scopes rather than the full vendor sample. File sharing, file requests, permanent deletion and Paper tools are outside the described surface.
   {
@@ -591,7 +576,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator must create a scoped Full Dropbox app and register this installation's callback; team policies may block app connections."), msg("The service is in beta; automatic registration is reserved for Dropbox's named trusted clients.")],
-    reviewBy: "2027-01-31",
   },
   {
     id: "asana",
@@ -609,7 +593,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator must create an Asana MCP app, register this installation's callback and allow the relevant workspaces."), msg("Asana grants every available MCP tool subject to your own permissions; it does not offer per-tool OAuth scopes.")],
-    reviewBy: "2027-01-31",
   },
   {
     id: "linear",
@@ -627,7 +610,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Connect your Linear account and authorize access to the workspace; organization policies still apply.")],
-    reviewBy: "2027-01-31",
   },
   // UNVERIFIED minimum scopes: neither fetched resource nor AS metadata enumerates them. Omit scopes to use server-managed consent; do not interpret this as unrestricted unauthenticated access. scopes is intentionally absent, not an assertion that no permission is needed.
   {
@@ -645,7 +627,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Connect your monday.com account; an account administrator may need to approve the app."), msg("Available on all plans, subject to account permissions and API limits.")],
-    reviewBy: "2027-01-31",
   },
   // Current vendor FAQ explicitly accepts custom MCP clients with PKCE. The prior allowlisted-clients-only claim is not retained. Delete tools and connected-app search are not supported.
   {
@@ -664,7 +645,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Connect with OAuth and select the workspaces you want to share; API keys are not supported."), msg("Available on all plans; usage limits depend on the workspace plan and Everything AI add-on.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED board/card scope set from live metadata. Planner and Inbox tools are excluded. Two vendor help pages disagree on single versus multiple workspace connections; the catalog makes no numeric promise.
   {
@@ -683,7 +663,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Available on every Trello plan; authorize the workspaces and permissions on the consent screen."), msg("Your organization may need to allow this client's callback domain and read or write permissions."), msg("Permanent deletion is not supported; Planner focus time requires Premium or Enterprise.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED record-only minimum from live metadata. Do not request schema write or all-workspace discovery for a record-only description.
   {
@@ -703,7 +682,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Authorize the bases you want to share; Enterprise administrators may need to allow the integration."), msg("Schema changes, comments, interfaces and automation tools need additional permissions and are outside this entry's offered tools.")],
-    reviewBy: "2027-01-31",
   },
   {
     id: "hubspot",
@@ -721,7 +699,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator must create an MCP Auth App in the HubSpot account and register this installation's callback."), msg("Your HubSpot permissions and enabled objects apply; sensitive-data settings can block activity access.")],
-    reviewBy: "2027-01-31",
   },
   {
     id: "salesforce",
@@ -739,7 +716,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator must enable the hosted server and create an External Client App with PKCE, JWT access tokens and this installation's callback."), msg("Your organization needs Flex Credits and may be billed for server usage."), msg("This entry uses the production login endpoint; sandbox or enforced My Domain access needs separate setup.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED mcp-only core scope; operator is excluded because Fin Operator tools are not described. EU alternative is mcp.eu.intercom.com/mcp with its own issuer; choose one deployment, do not install both as two mandatory servers.
   {
@@ -758,7 +734,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Intercom must approve this installation's non-localhost OAuth callback before sign-in can finish."), msg("Connect an account with the required workspace permissions; this entry uses the US server.")],
-    reviewBy: "2027-01-31",
   },
   // Current docs explicitly support other MCP clients and recommend OAuth. The older vetted-redirect allowlist requirement is no longer stated in the current page; actual Baskule callback admission remains untested. Agent-tagged API keys are an alternative, not the selected recipe.
   {
@@ -777,7 +752,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Connect your Stripe account and choose live or sandbox access and permissions; administrators can disable MCP."), msg("Review authentication before November 30, 2026, when Stripe retires ordinary secret keys and restricted keys without the Agent tag.")],
-    reviewBy: "2026-11-30",
   },
   {
     id: "calendly",
@@ -795,7 +769,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Connect your Calendly account through a client that supports automatic registration and PKCE."), msg("Manual OAuth console credentials and personal access tokens are not supported; your plan's scheduling features apply.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED basic-design scope set from generic integration metadata. Brand Kits, folders, assets and comments need additional scopes and are not offered here. Verify scopes against actual design generation/edit/export tools before admission.
   {
@@ -814,7 +787,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator must create a Developer Portal app, turn on Canva MCP and register this installation's callback."), msg("Each person must connect their own Canva account; premium features and assets require the appropriate Canva plan or license.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED board-only scope subset; metadata also advertises openid/email, which are not data permissions and may be required by the server's own account flow. Team consent must not be treated as organization-wide access.
   {
@@ -833,7 +805,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Choose the Miro team during sign-in; Enterprise users need an administrator to install or allow the integration."), msg("Available by default on Free, Starter, Business and Education plans, subject to board permissions.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED classic OAuth minimum for private-repository read/write. repo is broad. GitHub Apps instead use installation permissions and generally omit OAuth scopes; those grant models must not be combined. Additional default tools may need other scopes.
   {
@@ -852,7 +823,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An administrator must register a GitHub OAuth App or GitHub App with this installation's callback."), msg("Organization app restrictions and repository permissions apply; this entry targets GitHub.com.")],
-    reviewBy: "2027-01-31",
   },
   // UNVERIFIED minimum scopes: public metadata lists granular scopes but the public tool-to-scope map is insufficient to derive a complete least-privilege set for transactions plus writes. Omit scopes to use server-managed consent; no broad arbitrary scope list is invented. Separate /multi-organization/mcp endpoint is read-only and not added as a mandatory server. scopes is intentionally absent, not an assertion that no permission is needed.
   {
@@ -871,7 +841,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("An owner, administrator or accountant can connect; an owner or administrator must enable access for managers and employees."), msg("Choose the Qonto organization during sign-in; your existing role and approved permissions apply.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED minimum for the narrow described read tools. Firm-wide discovery needs mcp:companies:read; no mcp:private_api or unneeded ledger/tax scopes are requested. Whether server consent honors a reduced list needs an owned-client check.
   {
@@ -890,7 +859,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Accounting firms can use the service without an extra charge; companies need the Essentiel plan or higher."), msg("Connect your Pennylane account; access follows your company or firm permissions and remains read-only.")],
-    reviewBy: "2027-01-31",
   },
   // INFERRED reduced CRM scope union from live metadata. No admin, mail sending, custom-field write or product/project permissions are requested. Registration endpoint is published but its admission policy has not been exercised.
   {
@@ -909,7 +877,6 @@ export const CATALOG: readonly CatalogService[] = [
       }
     ],
     prerequisites: [msg("Available on every Pipedrive plan; usage consumes the plan's MCP token allowance, with extra tokens available to purchase."), msg("Connect your account; company administrators may disable MCP and your existing CRM permissions apply.")],
-    reviewBy: "2027-01-31",
   },
   // UNVERIFIED generic merchant-client onboarding and tool scope minimum. Live setup.shopify.com metadata is real, but the public developer toolkit is not proof of arbitrary merchant client admission. No scope set is fabricated. scopes is intentionally absent, not an assertion that no permission is needed.
   {
@@ -928,7 +895,6 @@ export const CATALOG: readonly CatalogService[] = [
     ],
     prerequisites: [msg("A Shopify store and vendor-approved MCP client are required.")],
     notYet: msg("Shopify must first approve Baskule and confirm how merchants sign in."),
-    reviewBy: "2027-01-31",
   },
   {
     id: "figma",
@@ -947,7 +913,6 @@ export const CATALOG: readonly CatalogService[] = [
     ],
     prerequisites: [msg("Figma must list the client in its MCP catalog; new clients must join the waitlist."), msg("Tool limits and available features depend on your Figma plan and seat.")],
     notYet: msg("Figma must first add Baskule to its list of approved apps."),
-    reviewBy: "2027-01-31",
   },
   // UNVERIFIED minimum tool scopes and production onboarding. Resource metadata names mcp.docusign.com; its AS document declares account.docusign.com. Do not disable issuer validation or substitute a demo account.
   {
@@ -967,7 +932,6 @@ export const CATALOG: readonly CatalogService[] = [
     ],
     prerequisites: [msg("An administrator needs a Docusign integration key, callback and permissions; production and developer accounts are separate.")],
     notYet: msg("Docusign's sign-in details don't pass Baskule's checks yet."),
-    reviewBy: "2027-01-31",
   },
 ];
 
