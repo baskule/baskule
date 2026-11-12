@@ -585,7 +585,6 @@ it.live("an app approval code approves only an app sign-in, at its own level", (
   ),
 );
 
-
 it.live("one-click approves only access the browser session holds the scopes for", () =>
   withRoutes((handler, auth) =>
     Effect.gen(function* () {
@@ -656,61 +655,41 @@ it.live("one-click approves only access the browser session holds the scopes for
       );
       expect(new URL(readOnly.redirectTo!).searchParams.get("code")).toEqual(expect.any(String));
 
-      // The hosted app approves with the owner's T3 Connect session, which sends no cookie.
-      const connect = `Bearer ${(yield* auth.issueSession({ scopes: [...AuthStandardClientScopes] })).token}`;
-      const connectDetails = yield* details(connect);
-      expect(connectDetails.oneClickAccess).toContain("full-access");
-      const viaConnect = yield* decide(
-        handler,
-        params,
-        { _tag: "browser-session", access: "auto", csrfToken: connectDetails.csrfToken! },
-        connect,
-      );
-      expect(new URL(viaConnect.redirectTo!).searchParams.get("code")).toEqual(expect.any(String));
-
-      // The hosted app may load and decide with two credentials minted for the same browser key.
+      const bearer = `Bearer ${(yield* auth.issueSession({ scopes: [...AuthStandardClientScopes] })).token}`;
       const key = makeDpopKey();
-      const dpopSession = (thumbprint: string) =>
-        auth.issuePairingCredential({ scopes: [...AuthStandardClientScopes] }).pipe(
-          Effect.flatMap((pairing) =>
-            auth.exchangeBootstrapCredentialForAccessToken(
-              pairing.credential,
-              undefined,
-              { deviceType: "desktop" },
-              { proofKeyThumbprint: thumbprint },
-            ),
-          ),
-          Effect.map((exchanged) => exchanged.access_token),
-        );
+      const pairing = yield* auth.issuePairingCredential({ scopes: [...AuthStandardClientScopes] });
+      const exchanged = yield* auth.exchangeBootstrapCredentialForAccessToken(
+        pairing.credential,
+        undefined,
+        { deviceType: "desktop" },
+        { proofKeyThumbprint: key.thumbprint },
+      );
       const iat = Math.floor((yield* Clock.currentTimeMillis) / 1_000);
-      const dpopHeaders = (signer: typeof key, token: string, path: string) => ({
-        authorization: `DPoP ${token}`,
-        dpop: signer.sign({ method: "POST", url: `${ORIGIN}${path}`, token, iat }),
-      });
-      const loadedWith = yield* dpopSession(key.thumbprint);
-      const loaded = yield* handler(
-        postJson(
-          "/oauth/mcp/approval",
+      for (const credential of [
+        bearer,
+        {
+          authorization: `DPoP ${exchanged.access_token}`,
+          dpop: key.sign({
+            method: "POST",
+            url: `${ORIGIN}/oauth/mcp/approval`,
+            token: exchanged.access_token,
+            iat,
+          }),
+        },
+      ]) {
+        const rejected = yield* handler(postJson("/oauth/mcp/approval", params, credential)).pipe(
+          Effect.flatMap(json<{ csrfToken?: string; oneClickAccess?: ReadonlyArray<string> }>),
+        );
+        expect(rejected.csrfToken).toBeUndefined();
+        expect(rejected.oneClickAccess).toBeUndefined();
+        const decision = yield* decide(
+          handler,
           params,
-          dpopHeaders(key, loadedWith, "/oauth/mcp/approval"),
-        ),
-      ).pipe(Effect.flatMap(json<{ csrfToken?: string }>));
-      const renewed = yield* dpopSession(key.thumbprint);
-      const sameKey = yield* decide(
-        handler,
-        params,
-        { _tag: "browser-session", access: "auto", csrfToken: loaded.csrfToken! },
-        dpopHeaders(key, renewed, "/oauth/mcp/decision"),
-      );
-      expect(new URL(sameKey.redirectTo!).searchParams.get("code")).toEqual(expect.any(String));
-      const otherKey = makeDpopKey();
-      const elsewhere = yield* decide(
-        handler,
-        params,
-        { _tag: "browser-session", access: "auto", csrfToken: loaded.csrfToken! },
-        dpopHeaders(otherKey, yield* dpopSession(otherKey.thumbprint), "/oauth/mcp/decision"),
-      );
-      expect(elsewhere.status).toBe(400);
+          { _tag: "browser-session", access: "auto", csrfToken: adminDetails.csrfToken! },
+          credential,
+        );
+        expect(decision.status).toBe(400);
+      }
     }),
   ),
 );
