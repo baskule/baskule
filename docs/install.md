@@ -280,3 +280,36 @@ For optional traces, set `COMPOSE_PROFILES=traces`, `BASKULE_CELLD_OTEL=http://b
 `BASKULE_OTLP_TRACES_URL=http://baskule-traces:4318/v1/traces` in `.env`. The trace UI defaults to `127.0.0.1:47098`;
 `BASKULE_TRACES_BIND` and `BASKULE_TRACES_PORT` change it independently of the edge. Restarting it clears traces.
 Starting with `--profile '*'` is unsupported: it also starts the edge inheritance templates. Use named profiles such as `traces`.
+
+## Idle Space eviction
+
+The default is 900 seconds, as decided under
+[#87](https://github.com/baskule/baskule/issues/87). Helm exposes
+`celld.idleEvictSeconds`. Compose reads `CELLD_IDLE_EVICT_S` from `deploy/.env` or
+the environment, and the worktree stack accepts the same variable through the
+shell, a profile, or `scripts/stack up --set CELLD_IDLE_EVICT_S=900`.
+
+Positive values configure celld's idle-eviction age in seconds. Set the Helm value
+or Compose/stack setting to `0` to disable idle eviction. Helm omits the native
+variable, and the Compose and local celld launchers remove it before starting celld,
+because the native parser accepts only positive seconds or an absent variable.
+
+**Upgrade choice:** previous shipped configurations left idle eviction disabled.
+A plain Helm upgrade adopts the new default and enables eviction after 15 minutes.
+With `helm upgrade --reuse-values`, Helm reuses the previous release's values;
+if `celld.idleEvictSeconds` was absent, it stays absent and eviction stays disabled.
+Set `--set celld.idleEvictSeconds=900` to opt in explicitly, or `0` to disable it.
+With `--reset-values`, Helm adopts the new defaults, including 900 seconds.
+Compose adopts its default unless the operator overrides `CELLD_IDLE_EVICT_S`.
+Before upgrading, the installation operator must choose whether to enable this
+behavior, select another positive age, or preserve disabled eviction with an explicit
+`0`. Existing installations opt in during their authorized rollout; choose explicitly
+instead of relying on how the upgrade command merges values.
+Apply the chosen setting consistently to every node during an authorized rollout.
+
+Eviction frees idle Spaces' per-cell memory and open database connections. A retained
+isolate reuses the evaluated application graph; a fresh heap must compile and
+evaluate it again. Pressure eviction retains no heap. The
+[runtime patch guide](celld-runtime-patch.md#bounded-cell-isolate-retention)
+defines retention eligibility and its memory bounds. Timing results belong in the
+pull requests' verification evidence.

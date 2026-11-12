@@ -14,6 +14,7 @@ x-celld-env: &celld-env
   <<: *s3
   CELLD_TRUST_FORWARDED_HEADERS: "1"
   CELLD_V8_HEAP_LIMIT_MB: ${CELLD_V8_HEAP_LIMIT_MB:-1024}
+  CELLD_IDLE_EVICT_S: ${CELLD_IDLE_EVICT_S:-900}
   # Outbound fetches include LLM streams and computerd exec streams: allow long ones.
   CELLD_FETCH_TIMEOUT_S: ${CELLD_FETCH_TIMEOUT_S:-3600}
   CELLD_MAX_ASSET_FILE_BYTES: ${CELLD_MAX_ASSET_FILE_BYTES:-536870912}

@@ -2,6 +2,8 @@
 # Native launcher for Baskule's patched runtime. Callers may override CELLD_BIN.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+if [[ ${CELLD_IDLE_EVICT_S:-} == 0 ]]; then unset CELLD_IDLE_EVICT_S; fi
+if [[ -n ${CELLD_BIN:-} ]]; then exec "$CELLD_BIN" "$@"; fi
 export TMPDIR="$ROOT/.run/celld-tmp"
 mkdir -p "$TMPDIR" "$ROOT/.run/celld-runtime"
 runtime_key=$(cd "$ROOT" && sha256sum deploy/celld/Dockerfile deploy/celld/patches/*.patch deploy/celld/tests/*.rs | sha256sum | cut -d' ' -f1)

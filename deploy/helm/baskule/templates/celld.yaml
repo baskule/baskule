@@ -63,6 +63,9 @@ spec:
             - name: CELLD_NODE
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
             - {name: CELLD_V8_HEAP_LIMIT_MB, value: {{ .Values.celld.heapLimitMb | quote }}}
+            {{- if .Values.celld.idleEvictSeconds }}
+            - {name: CELLD_IDLE_EVICT_S, value: {{ .Values.celld.idleEvictSeconds | int | quote }}}
+            {{- end }}
             - {name: CELLD_FETCH_TIMEOUT_S, value: "3600"}
             - {name: CELLD_MAX_ASSET_FILE_BYTES, value: "536870912"}
             - {name: CELLD_TRUST_FORWARDED_HEADERS, value: "1"}

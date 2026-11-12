@@ -19,7 +19,7 @@ const PORT = 47550;
 const LLM_PORT = 47551;
 const COMPUTERD_PORT = 47552;
 const BASE = `http://127.0.0.1:${PORT}`;
-const CELLD = process.env.CELLD_BIN ?? join(ROOT, "scripts/celld.sh");
+const CELLD = join(ROOT, "scripts/celld.sh");
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? new Set(args[args.indexOf("--only") + 1].split(",")) : null;
 

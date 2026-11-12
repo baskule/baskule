@@ -22,7 +22,8 @@ ROOT=$(cd "$P/.." && pwd)
 RUN=$T/.run
 mkdir -p "$RUN"
 source "$ROOT/scripts/env.sh"
-CELLD_BIN=${CELLD_BIN:-$ROOT/scripts/celld.sh}
+CELLD_LAUNCHER=$ROOT/scripts/celld.sh
+CELLD_PATTERN=${CELLD_BIN:-$CELLD_LAUNCHER}
 CD_TOKEN=dev-computerd-token-0123456789
 
 # Validate paid-provider configuration before starting processes or rebuilding the harness.
@@ -40,9 +41,9 @@ pidkill() {
   [ -f "$RUN/$1.pid" ] && kill "$(cat "$RUN/$1.pid")" 2>/dev/null || true; rm -f "$RUN/$1.pid"
   case $1 in   # by command line too (setsid may fork, so $! is not always the server's pid)
     celld)
-      pkill -f "^$CELLD_BIN dev . --port 47650" || true
-      for _ in $(seq 60); do pgrep -f "^$CELLD_BIN .*127.0.0.1:47650" >/dev/null || break; sleep 0.5; done
-      pkill -9 -f "^$CELLD_BIN .*47650" || true
+      pkill -f "^$CELLD_PATTERN dev . --port 47650" || true
+      for _ in $(seq 60); do pgrep -f "^$CELLD_PATTERN .*127.0.0.1:47650" >/dev/null || break; sleep 0.5; done
+      pkill -9 -f "^$CELLD_PATTERN .*47650" || true
       # scripts/celld.sh execs the real binary (resolved path, its own arguments): stop it by its listener too.
       pkill -f -- "celld .*--listen 127.0.0.1:47650" || true ;;
     fake-llm) pkill -f "^node $P/dev/fake-llm/server.mjs --port 47651" || true ;;
@@ -71,7 +72,7 @@ build_harness() {
 
 start_celld() {
   export CELLD_ESBUILD=$P/node_modules/.bin/esbuild CELLD_OTEL=0 DO_NOT_TRACK=1 CELLD_FETCH_TIMEOUT_S=3600 CELLD_V8_HEAP_LIMIT_MB=1024
-  cd "$RUN/app"; setsid "$CELLD_BIN" dev . --port 47650 --no-watch ${1:-} >> "$RUN/celld.log" 2>&1 < /dev/null & echo $! > "$RUN/celld.pid"; cd "$T"
+  cd "$RUN/app"; setsid "$CELLD_LAUNCHER" dev . --port 47650 --no-watch ${1:-} >> "$RUN/celld.log" 2>&1 < /dev/null & echo $! > "$RUN/celld.pid"; cd "$T"
   wait_http http://127.0.0.1:47650/ 180
 }
 
