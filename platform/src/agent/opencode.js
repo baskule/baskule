@@ -1,4 +1,4 @@
-// The ONLY module that touches OpenCode SDK internals (pinned @opencode/sdk 2.1.3, effect 4.0.1).
+// The ONLY module that touches OpenCode SDK internals (pinned @opencode/sdk 2.2.5, effect 4.0.6).
 // `dist/internal/*` is not in the package "exports": the public `OpenCodeWorkerd.create` hides the raw HTTP handler
 // behind a client and takes no workspace providers, and we need both (the celld-opencode spike, REPORT.md). On every
 // OpenCode upgrade, re-run the agent feedback loops (platform/src/agent/README.md) before bumping the pins.
@@ -24,7 +24,7 @@ import { acquireLocation, LocationToolsTimeout } from "./location-acquisition";
 import { canonical as canonicalLocation } from "@opencode/core/location-service-map";
 import { shimFiles } from "./fs-shim.js";
 
-export const OPENCODE_VERSION = "2.1.3";
+export const OPENCODE_VERSION = "2.2.5";
 
 // glob/grep spawn ripgrep through the workspace spawner, but resolve its path in the host first (`which rg`, else a
 // download + local `tar`), which cannot work in a cell. The computer image ships `rg` on PATH: use that.
@@ -43,7 +43,7 @@ export async function bootOpenCode({ storage, config, provider, computer, databa
   const spawner = makeRemoteSpawner(computer);
   const files = Environment.execDefaults(spawner);
   const outputPath = file => `/sandbox/space/tool-output/${file.slice(file.lastIndexOf("/") + 1)}`;
-  // OpenCode 2.1.3 retains tool output for seven days. Its cell-side sweep cannot reach these files.
+  // OpenCode retains tool output for seven days. Its cell-side sweep cannot reach these files.
   const pruneOutput = spawner.exitCode(ChildProcess.make("find", [
     "/sandbox/space/tool-output", "-maxdepth", "1", "-type", "f",
     "(", "-name", "tool_*", "-o", "-name", "sh_*", ")",

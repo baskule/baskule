@@ -1,6 +1,6 @@
 # Embedded AgentRuntime (`platform/src/agent/`)
 
-Baskule runs **OpenCode 2.1.3 embedded** inside the same SpaceCell as T3 (`../space/`). There is one Durable Object
+Baskule runs **OpenCode 2.2.5 embedded** inside the same SpaceCell as T3 (`../space/`). There is one Durable Object
 per space, one SQLite database and one shared SQL client for both engines. SpaceCell owns the lifecycle: it creates
 the runtime, multiplexes its alarm deadline with T3's (`../space/alarms.ts`), disposes both when idle and wipes both
 on space deletion.
@@ -19,7 +19,7 @@ and response-body pulls enter through a Promise-woken dispatcher captured in tha
 concurrently. This gives long-lived SDK services a native owner that outlives individual HTTP handlers. The workerd
 build preserves native callback origins and binds OpenCode's default Effect scheduler dispatch to the retained
 boot event. Dispatch uses macrotasks (`setImmediate` where available) so Code Mode busy loops still yield to
-interruption and host I/O. Other request-owned timers (such as Effect.sleep) are not moved. T3 and direct SQL
+interruption and host I/O. Other request-owned timers (such as Effect.sleep) are not moved. OpenCode 2.2.5 uses Effect 4.0.6; its matching Node platform packages are pinned together. The embedded build processes completed Code Mode host work before queued polling jobs, which otherwise starve those results in this SDK version. T3 and direct SQL
 callers use explicit microtask schedulers; they do not need Code Mode preemption. SQL transaction bodies keep
 their critical-section driver separate from the caller.
 Location tool readiness and MCP add/remove each have a boot-owned 10-second deadline bounding the caller's wait,

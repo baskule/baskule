@@ -32,6 +32,22 @@ export const embeddedAgent = {
         throw new Error("Embedded OpenCode catalog or provider registry was not found; check the pinned SDK layout.");
       }
     });
+    build.onLoad({ filter: /[/\\]@opencode[/\\]codemode[/\\]dist[/\\]interpreter[/\\]runner\.js$/ }, async ({ path }) => {
+      const source = await readFile(path, "utf8");
+      const before = `                if (start === undefined) {
+                    const job = self.dequeue();`;
+      const inbox = `                    const settle = self.inbox.shift();
+                    if (settle !== undefined) {
+                        settle();
+                        continue;
+                    }
+`;
+      if (source.split(before).length !== 2 || source.split(inbox).length !== 2)
+        throw new Error(`OpenCode Code Mode runner layout changed: ${path}`);
+      // 2.2.5's queued await-null jobs otherwise starve completed host tools forever.
+      return { contents: source.replace(inbox, "").replace(before,
+        `                if (start === undefined) {\n${inbox}                    const job = self.dequeue();`), loader: "js" };
+    });
     build.onLoad({ filter: /[/\\]@opencode[/\\]core[/\\]dist[/\\]chunks[/\\][^/\\]+\.js$/ }, async ({ path }) => {
       let source = await readFile(path, "utf8");
       const hasRegistry = source.includes("var builtins = new Map([");
