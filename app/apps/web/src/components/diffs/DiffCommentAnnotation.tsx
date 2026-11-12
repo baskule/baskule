@@ -1,4 +1,4 @@
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useTranslation } from "../../i18n";
 
 import { MessageCircle, Trash2 } from "lucide-react";
@@ -23,9 +23,8 @@ interface DiffCommentSecondaryAction {
 }
 
 interface DiffCommentAnnotationProps {
-  /** With an environment, the draft can be dictated; its project supplies vocabulary. */
+  /** With an environment, the draft can be dictated. */
   environmentId?: EnvironmentId | undefined;
-  projectId?: ProjectId | null | undefined;
   ownerKey?: string;
   kind: "draft" | "comment";
   rangeLabel: string;
@@ -43,7 +42,6 @@ interface DiffCommentAnnotationProps {
 
 export function DiffCommentAnnotation({
   environmentId,
-  projectId,
   ownerKey,
   kind,
   rangeLabel,
@@ -187,7 +185,6 @@ export function DiffCommentAnnotation({
   return environmentId ? (
     <SpeechTextField
       environmentId={environmentId}
-      projectId={projectId}
       ownerKey={ownerKey ?? rangeLabel}
       text={displayedText}
       textareaRef={textareaRef}
