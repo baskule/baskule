@@ -1190,7 +1190,9 @@ const make = Effect.gen(function* () {
         ),
       );
 
-  const loadProjection = Effect.fn("OrchestratorMcpService.loadOwnerProjection")(function* (threadId: ThreadId) {
+  const loadProjection = Effect.fn("OrchestratorMcpService.loadOwnerProjection")(function* (
+    threadId: ThreadId,
+  ) {
     const projection = yield* loadThreadRecords(threadId, ["runs", "subagents"]);
     const { messages } = yield* loadThreadRecords(threadId, ["messages"], {
       messageIds: projection.runs.map((run) => run.userMessageId),
@@ -1938,7 +1940,10 @@ const make = Effect.gen(function* () {
   return OrchestratorMcpService.of({
     scheduleTask: Effect.fn("OrchestratorMcpService.scheduleTask")(function* (scope, input) {
       const { parent, limits } = yield* loadCaller(scope, ["runs"]);
-      const actor = yield* resolveTaskOwner(parent === undefined ? undefined : yield* loadProjection(parent.thread.id), loadProjection);
+      const actor = yield* resolveTaskOwner(
+        parent === undefined ? undefined : yield* loadProjection(parent.thread.id),
+        loadProjection,
+      );
       const projectId = yield* resolveProjectTarget(parent, input.projectId);
       yield* assertLiveCallerForOtherProject(scope, parent, projectId);
       const project = yield* requireProject(projectId);
@@ -2000,7 +2005,10 @@ const make = Effect.gen(function* () {
     listScheduledTasks: Effect.fn("OrchestratorMcpService.listScheduledTasks")(
       function* (scope, input) {
         const { parent, limits } = yield* loadCaller(scope, ["runs"]);
-        const actor = yield* resolveTaskOwner(parent === undefined ? undefined : yield* loadProjection(parent.thread.id), loadProjection);
+        const actor = yield* resolveTaskOwner(
+          parent === undefined ? undefined : yield* loadProjection(parent.thread.id),
+          loadProjection,
+        );
         const projectId = input.projectId ?? parent?.thread.projectId;
         const { tasks } = yield* scheduledTasks
           .list(actor)
@@ -2020,7 +2028,10 @@ const make = Effect.gen(function* () {
     updateScheduledTask: Effect.fn("OrchestratorMcpService.updateScheduledTask")(
       function* (scope, input) {
         const { parent, limits } = yield* loadCaller(scope, ["runs"]);
-        const actor = yield* resolveTaskOwner(parent === undefined ? undefined : yield* loadProjection(parent.thread.id), loadProjection);
+        const actor = yield* resolveTaskOwner(
+          parent === undefined ? undefined : yield* loadProjection(parent.thread.id),
+          loadProjection,
+        );
         const existing = yield* loadScheduledTask(input.scheduledTaskId, limits, actor);
         yield* assertLiveCallerForOtherProject(scope, parent, existing.projectId);
         if (
@@ -2097,7 +2108,10 @@ const make = Effect.gen(function* () {
     deleteScheduledTask: Effect.fn("OrchestratorMcpService.deleteScheduledTask")(
       function* (scope, input) {
         const { parent, limits } = yield* loadCaller(scope, ["runs"]);
-        const actor = yield* resolveTaskOwner(parent === undefined ? undefined : yield* loadProjection(parent.thread.id), loadProjection);
+        const actor = yield* resolveTaskOwner(
+          parent === undefined ? undefined : yield* loadProjection(parent.thread.id),
+          loadProjection,
+        );
         const existing = yield* loadScheduledTask(input.scheduledTaskId, limits, actor);
         yield* assertLiveCallerForOtherProject(scope, parent, existing.projectId);
         yield* scheduledTasks
@@ -2735,7 +2749,10 @@ const make = Effect.gen(function* () {
           );
         }
         const parentNodeId = parentRun.rootNodeId;
-        const author = yield* resolveTaskOwner(parent === undefined ? undefined : yield* loadProjection(parent.thread.id), loadProjection);
+        const author = yield* resolveTaskOwner(
+          parent === undefined ? undefined : yield* loadProjection(parent.thread.id),
+          loadProjection,
+        );
         const providers = yield* loadProviders;
         const key = yield* requestKey(input.clientRequestId);
         const created = yield* Effect.forEach(
@@ -3057,7 +3074,10 @@ const make = Effect.gen(function* () {
       yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
       yield* resolveInteractionMode(limits.interactionMode, target.thread.interactionMode);
 
-      const author = yield* resolveTaskOwner(parent === undefined ? undefined : yield* loadProjection(parent.thread.id), loadProjection);
+      const author = yield* resolveTaskOwner(
+        parent === undefined ? undefined : yield* loadProjection(parent.thread.id),
+        loadProjection,
+      );
       const mode = input.mode ?? "auto";
       const key = yield* requestKey(input.clientRequestId);
       const messageId = stableOperationMessageId({

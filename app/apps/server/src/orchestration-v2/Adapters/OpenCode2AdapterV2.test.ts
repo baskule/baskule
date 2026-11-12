@@ -2339,7 +2339,11 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
-  it.effect.each(["usage_limit_reached", "location_tools_unavailable", "location_tools_failed"] as const)("reports %s as a typed terminal and keeps the chat reusable", kind =>
+  it.effect.each([
+    "usage_limit_reached",
+    "location_tools_unavailable",
+    "location_tools_failed",
+  ] as const)("reports %s as a typed terminal and keeps the chat reusable", (kind) =>
     Effect.gen(function* () {
       const status = {
         window: "daily" as const,
@@ -2369,7 +2373,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       // Returning a failed start would make orchestration cancel ingestion and replace this typed terminal.
       yield* runtime.startTurn(turnInput(thread));
       const snapshot = yield* runtime.readThreadSnapshot({ providerThread: thread });
-      const activeRuns = snapshot.providerTurns.filter(turn => turn.status === "running").length;
+      const activeRuns = snapshot.providerTurns.filter((turn) => turn.status === "running").length;
       assert.equal(activeRuns, 0);
       yield* runtime.startTurn(secondTurn(thread));
       const [refused, next] = yield* Fiber.join(ended);
@@ -7004,10 +7008,12 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
             out("session.prompt", "<any>"),
             promptAccepted,
             reply(operation, control === "show" ? { output: nativeGoal("paused") } : null),
-            ...(control === "show" ? [] : [
-              out("rpc.call", "<any>"),
-              reply("rpc.call", { output: control === "clear" ? null : nativeGoal("paused") }),
-            ]),
+            ...(control === "show"
+              ? []
+              : [
+                  out("rpc.call", "<any>"),
+                  reply("rpc.call", { output: control === "clear" ? null : nativeGoal("paused") }),
+                ]),
             event("session.text.ended", {
               sessionID: SESSION,
               assistantMessageID: "msg_replacement",
