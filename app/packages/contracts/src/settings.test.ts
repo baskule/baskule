@@ -844,6 +844,7 @@ describe("server model preferences", () => {
 describe("Baskule tool-call visibility", () => {
   it("hides tool calls for new and legacy settings without an explicit choice", () => {
     expect(decodeClientSettings({}).toolCallVisibility).toBe("hideAll");
+    expect(decodeClientSettings({}).screenReaderAnnouncements).toBe("status");
     expect(decodeClientSettings({ contextWindowMeterEnabled: true }).toolCallVisibility).toBe(
       "hideAll",
     );
@@ -858,6 +859,13 @@ describe("Baskule tool-call visibility", () => {
       expect(decodeClientSettingsPatch({ toolCallVisibility }).toolCallVisibility).toBe(
         toolCallVisibility,
       );
+      for (const screenReaderAnnouncements of ["status", "messages", "everything"] as const) {
+        const saved = encodeClientSettings({ ...settings, screenReaderAnnouncements });
+        expect(decodeClientSettings(saved)).toMatchObject({
+          toolCallVisibility,
+          screenReaderAnnouncements,
+        });
+      }
     },
   );
 });

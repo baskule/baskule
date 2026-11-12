@@ -14,6 +14,7 @@ import {
 import { threadSearchSubject } from "@t3tools/client-runtime/state/thread-search";
 
 import {
+  type ScopedThreadRef,
   type EnvironmentId,
   type ProjectId,
   type EnvironmentMachineKind,
@@ -154,6 +155,7 @@ export interface CommandPaletteItem {
   readonly timestamp?: string;
   /** Thread rows rank by this, with use history, instead of by `searchTerms`. */
   readonly threadSearch?: ThreadSearchSubject;
+  readonly threadRef?: ScopedThreadRef;
   /** Shown in place of the description when the match is not in the title. */
   readonly matchHint?: SearchMatchHint;
   readonly icon: ReactNode;
@@ -425,6 +427,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
       {
         kind: "action" as const,
         value: `thread:${thread.environmentId}:${thread.id}`,
+        threadRef: { environmentId: thread.environmentId, threadId: thread.id },
         searchTerms: [thread.title],
         threadSearch: threadSearchSubject(
           {

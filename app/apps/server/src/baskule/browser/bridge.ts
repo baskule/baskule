@@ -33,6 +33,8 @@ import * as Executable from "../../preview/PreviewBrowser.ts";
 import * as Desktop from "../../preview/DesktopBrowserChannel.ts";
 
 process.env.BASKULE_BROWSER_BRIDGE = "1";
+const encodeBrowserJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
 const root = process.env.BASKULE_BROWSER_HOME ?? `${process.env.HOME}/.baskule-browser`;
 const environmentId = EnvironmentId.make("baskule-computer-browser");
 const config = Config.layerTest(root, root).pipe(Layer.provide(NodeServices.layer));
@@ -73,6 +75,7 @@ const json = (res: NodeHttp.ServerResponse, status: number, body: unknown) => {
 const methods = new Set([
   "open",
   "markHeadless",
+  "announce",
   "resize",
   "adjust",
   "close",
@@ -97,7 +100,7 @@ const server = NodeHttp.createServer(async (req, res) => {
       res.flushHeaders();
       const fiber = runtime.runFork(
         Stream.runForEach(services.manager.events, (event) =>
-          Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(event).pipe(
+          encodeBrowserJson(event).pipe(
             Effect.flatMap((json) =>
               Effect.sync(() => {
                 if (!res.write(json + "\n") && res.writableLength > 1024 * 1024) res.destroy();
@@ -284,7 +287,7 @@ server.on("upgrade", (req, socket, head) => {
                 else {
                   const { _tag: type, ...data } = output;
                   ws.send(
-                    yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+                    yield* encodeBrowserJson({
                       type,
                       ...data,
                     }),

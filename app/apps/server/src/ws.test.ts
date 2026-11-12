@@ -4,16 +4,13 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   AuthSessionId,
-  AuthSourceControlWriteScope,
   EnvironmentId,
   EventId,
   MessageId,
   ProjectId,
   ThreadId,
   TurnItemId,
-  SourceControlRepositoryError,
   WS_METHODS,
-  WsRpcGroup,
   WsSubscribeServerConfigRpc,
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadShell,
@@ -57,7 +54,6 @@ import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as OtlpEndpointCheck from "./observability/OtlpEndpointCheck.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
-import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
@@ -102,7 +98,6 @@ import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as ServerConfigModule from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
-import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ManagedPolicy from "./policy/ManagedPolicy.ts";
 

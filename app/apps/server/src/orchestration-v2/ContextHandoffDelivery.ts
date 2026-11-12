@@ -22,6 +22,7 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
     readonly handoffs: ReadonlyArray<OrchestrationV2ContextHandoff>;
     readonly providerThread: OrchestrationV2ProviderThread;
     readonly budget: number | Effect.Effect<number, BudgetError>;
+    readonly deferInline?: boolean;
     readonly alreadyDeliveredItemIds: ReadonlySet<string>;
     readonly inject?: (
       history: ProviderAdapter.ProviderAdapterV2HistoricalContext,
@@ -35,7 +36,8 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
         handoff.delivery?.nativeThreadId !== nativeThreadId ||
         handoff.delivery.status === "pending",
     );
-    if (pending.length === 0) return { context: "", delivered: Effect.void, unsent: Effect.void };
+    if (pending.length === 0 || (input.deferInline && input.inject === undefined))
+      return { context: "", delivered: Effect.void, unsent: Effect.void };
     const budget = typeof input.budget === "number" ? input.budget : yield* input.budget;
     let coverage = pending
       .map(
@@ -73,6 +75,7 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
       budget,
     });
     if (historyCost(selected.messages, selected.context) > budget) {
+      if (input.deferInline) return { context: "", delivered: Effect.void, unsent: Effect.void };
       return yield* new ContextHandoffBudgetError();
     }
     const omittedItemIds = new Set(selected.omittedItemIds);
@@ -127,6 +130,11 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
       }
     } else {
       yield* persist("pending");
+    }
+    if (input.deferInline) {
+      // Native control commands cannot carry inline transcripts; retain for the next turn if native injection is unsupported.
+      yield* Effect.forEach(pending, input.persist, { discard: true });
+      return { context: "", delivered: Effect.void, unsent: Effect.void };
     }
     return {
       context: renderHistory(selected.messages, selected.context),

@@ -1,4 +1,4 @@
-import { t, useTranslation } from "../../i18n";
+import { t } from "../../i18n";
 import { type RefObject, use } from "react";
 
 import { useRef, useState } from "react";
@@ -50,7 +50,6 @@ export function AppBar(barProps: AppBarProps) {
 // Only a bar with search registers for hardware back: its focus check needs a navigation
 // context, and sheet headers such as Arrange threads render outside one.
 function SearchableAppBar(props: AppBarProps & { readonly search: AppBarSearch }) {
-  const t = useTranslation();
   const { search } = props;
   const [searchOpen, setSearchOpen] = useState(false);
   const inputRef = useRef<TextInputInstance>(null);
@@ -208,7 +207,6 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
       }
       embedded={props.sheet}
       hideBottomBorder={props.hideBottomBorder}
-      compact={props.compact}
       actions={
         search && !inline
           ? [

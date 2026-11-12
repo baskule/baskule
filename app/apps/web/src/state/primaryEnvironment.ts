@@ -17,7 +17,7 @@ export const primaryEnvironmentIdAtom = Atom.make((get) => {
   return null;
 }).pipe(Atom.withLabel("web-primary-environment-id"));
 
-const hostEnvironmentIdAtom = Atom.make<string | null>(null).pipe(
+export const hostEnvironmentIdAtom = Atom.make<string | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("web-host-environment-id"),
 );

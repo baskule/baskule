@@ -4,6 +4,8 @@ import {
   type OrchestrationV2Author,
   CommandId,
   type OrchestrationV2Command,
+  type OrchestrationV2GoalCommand,
+  type OrchestrationV2ProviderGoalStatus,
   OrchestrationV2ProviderCapabilities,
   type OrchestrationV2Run,
   OrchestrationV2ThreadProjection,
@@ -64,6 +66,22 @@ export function isNativeMaintenanceCommand(message: {
   readonly context?: import("@t3tools/contracts").OrchestrationMessageContext | undefined;
 }): boolean {
   return message.attachments.length === 0 && message.text.trim().toLowerCase() === "/logout";
+}
+
+export function goalCommandStopsActiveRun(
+  command: OrchestrationV2GoalCommand,
+  goalStatus: OrchestrationV2ProviderGoalStatus | null,
+): boolean {
+  switch (command.type) {
+    case "set":
+    case "resume":
+      return true;
+    case "clear":
+    case "pause":
+      return goalStatus === "active";
+    case "show":
+      return false;
+  }
 }
 
 export function resolveMessageDispatchIntent(

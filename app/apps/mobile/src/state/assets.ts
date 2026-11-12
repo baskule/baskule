@@ -8,7 +8,7 @@ import {
   EMPTY_ASSET_URL_ATOM,
   makeRevisionedAssetUrlFamily,
 } from "@t3tools/client-runtime/state/assets";
-import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
+import { executeAtomQuery, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -255,7 +255,10 @@ export function useRefreshAssetUrl(
   };
 }
 
-/** {@link useRefreshAssetUrl} for async tasks that resolve several resources at once. */
+/**
+ * {@link useRefreshAssetUrl} for async tasks that resolve several resources at once. Resolves
+ * null without a connection and rejects with the server's error when it refuses the URL.
+ */
 export async function refreshAssetUrl(
   environmentId: EnvironmentId,
   resource: AssetResource,
@@ -278,6 +281,7 @@ export async function refreshAssetUrl(
     reportFailure: false,
     signal,
   });
+  if (result._tag === "Failure") throw squashAtomCommandFailure(result);
   // A route can change while the query runs; resolve against the connection now current.
   const connection = appAtomRegistry.get(connectionAtom);
   if (connection._tag === "None") return null;
@@ -336,7 +340,7 @@ const freshAssetUrlFamily = Atom.family((key: FreshAssetUrlKey) =>
                   key.environmentId,
                   key.resource,
                   AbortSignal.any([signal, controller.signal]),
-                ),
+                ).catch(() => null),
           catch: (cause) =>
             new AssetUrlUnavailableError({
               message: cause instanceof Error ? cause.message : "The attachment is unavailable.",

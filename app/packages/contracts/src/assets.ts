@@ -11,6 +11,14 @@ import { ToolActivityNativeAppReference } from "./providerRuntime.ts";
 
 const ASSET_PATH_MAX_LENGTH = 1024;
 
+export const NativeAppIconReference = Schema.Union([
+  ToolActivityNativeAppReference,
+  Schema.TaggedStruct("app-path", {
+    path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
+  }),
+]);
+export type NativeAppIconReference = typeof NativeAppIconReference.Type;
+
 export const AssetResource = Schema.Union([
   Schema.TaggedStruct("workspace-file", {
     threadId: ThreadId,
@@ -47,7 +55,7 @@ export const AssetResource = Schema.Union([
     path: Schema.optional(ProjectFaviconPath),
   }),
   Schema.TaggedStruct("native-app-icon", {
-    app: ToolActivityNativeAppReference,
+    app: NativeAppIconReference,
   }),
 ]);
 export type AssetResource = typeof AssetResource.Type;

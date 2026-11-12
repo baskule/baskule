@@ -68,6 +68,9 @@
       "channel": "production",
       "environment": "production",
       "autoIncrement": true,
+      "android": {
+        "gradleCommand": ":app:bundleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease"
+      },
       "ios": {
         "image": "macos-tahoe-26.6-xcode-27.1"
       }

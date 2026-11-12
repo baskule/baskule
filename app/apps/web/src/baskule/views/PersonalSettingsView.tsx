@@ -3,7 +3,10 @@ import { useState } from "react";
 
 import { useTheme } from "../../hooks/useTheme";
 import { LanguageSetting } from "../../components/LanguageSetting";
-import { ToolCallVisibilityRow } from "../../components/settings/SettingsPanels";
+import {
+  ScreenReaderAnnouncementsRow,
+  ToolCallVisibilityRow,
+} from "../../components/settings/SettingsPanels";
 import {
   SettingsPageContainer,
   SettingsRow,
@@ -41,6 +44,7 @@ export function PersonalSettingsView() {
       </SettingsSection>
       <SettingsSection title={t("Chats")}>
         <ToolCallVisibilityRow />
+        <ScreenReaderAnnouncementsRow />
       </SettingsSection>
       {error ? (
         <p role="alert" className="text-sm text-destructive-foreground">

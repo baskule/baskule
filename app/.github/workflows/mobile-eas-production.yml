@@ -7,6 +7,12 @@ name: Mobile EAS Production
 # runner, with corepack pinning pnpm 10.24 in eas.json, local == build.
 #
 # Every merge reconciles native fingerprints and publishes matching OTAs.
+# Android store builds run here with `eas build --local` on Blacksmith (the
+# android job). iOS builds run on EAS unless the MOBILE_IOS_LOCAL_BUILDS
+# repository variable is `true`, which moves them to the ios job the same way.
+# Local builds never appear in `eas build:list`, so each finished local build
+# pushes a mobile-android-build/<version>/<fingerprint> or
+# mobile-ios-build/<profile>/<version>/<fingerprint> tag that the reconcile reads.
 # iOS prereleases use the testflight profile (3.0.0); App Store binaries use
 # production and the committed app version, built manually. Both receive OTAs
 # for their own major version. Android continues using production automatically.
@@ -65,20 +71,29 @@ on:
       - pnpm-workspace.yaml
       - .github/workflows/mobile-eas-production.yml
 
-# Serialize runs so OTAs publish in merge order. GitHub keeps at most one
-# queued run per group, so a burst of merges collapses into one run of the
-# newest commit — intermediate commits don't need their own OTA.
-concurrency:
-  group: mobile-eas-production
-  cancel-in-progress: false
-
 jobs:
   production:
     name: EAS ${{ inputs.profile || 'production' }} ${{ github.event_name == 'push' && 'auto' || inputs.mode }}
     if: github.repository == 'pingdotgg/t3code'
     runs-on: blacksmith-8vcpu-ubuntu-2404
+    # Serialize runs so OTAs publish in merge order. GitHub keeps at most one
+    # queued job per group, so a burst of merges collapses into one run of the
+    # newest commit — intermediate commits don't need their own OTA.
+    concurrency:
+      group: mobile-eas-production
+      cancel-in-progress: false
     permissions:
       contents: read
+    outputs:
+      android_build: ${{ steps.reconcile.outputs.android_build || steps.android_manual.outputs.android_build }}
+      android_fingerprint: ${{ steps.reconcile.outputs.android_fingerprint || steps.android_manual.outputs.android_fingerprint }}
+      android_version: ${{ steps.reconcile.outputs.android_version || steps.android_manual.outputs.android_version }}
+      android_sha: ${{ steps.reconcile.outputs.android_sha || steps.android_manual.outputs.android_sha }}
+      ios_build: ${{ steps.reconcile.outputs.ios_build || steps.ios_manual.outputs.ios_build }}
+      ios_profile: ${{ steps.reconcile.outputs.ios_profile || steps.ios_manual.outputs.ios_profile }}
+      ios_fingerprint: ${{ steps.reconcile.outputs.ios_fingerprint || steps.ios_manual.outputs.ios_fingerprint }}
+      ios_version: ${{ steps.reconcile.outputs.ios_version || steps.ios_manual.outputs.ios_version }}
+      ios_sha: ${{ steps.reconcile.outputs.ios_sha || steps.ios_manual.outputs.ios_sha }}
     env:
       APP_VARIANT: production
       NODE_OPTIONS: --max-old-space-size=8192
@@ -215,9 +230,7 @@ jobs:
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
           git add apps/mobile/app.config.ts
-          git commit --no-verify \
-            -m "chore(mobile): bump app version to $RELEASE_VERSION" \
-            -m "Co-authored-by: codex <codex@users.noreply.github.com>"
+          git commit --no-verify -m "chore(mobile): bump app version to $RELEASE_VERSION"
           git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
 
       - name: Summarize manual build version
@@ -240,13 +253,51 @@ jobs:
             echo "> Apple closes an iOS release train after App Store approval. Before building iOS, confirm \`$version\` is newer than the approved App Store version."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Build and submit (manual)
-        if: steps.expo-token.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'build'
+      - name: Build and submit iOS (manual)
+        if: steps.expo-token.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'build' && inputs.platform != 'android' && vars.MOBILE_IOS_LOCAL_BUILDS != 'true'
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_PRODUCTION_TOKEN }}
           MOBILE_BUILD_PROFILE: ${{ inputs.profile || 'production' }}
-        run: eas build --platform ${{ inputs.platform }} --profile "$MOBILE_BUILD_PROFILE" --auto-submit --non-interactive --no-wait
+        run: eas build --platform ios --profile "$MOBILE_BUILD_PROFILE" --auto-submit --non-interactive --no-wait
+
+      - id: ios_manual
+        name: Queue iOS build (manual)
+        if: steps.expo-token.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'build' && inputs.platform != 'android' && vars.MOBILE_IOS_LOCAL_BUILDS == 'true'
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_PRODUCTION_TOKEN }}
+          MOBILE_BUILD_PROFILE: ${{ inputs.profile || 'production' }}
+        run: |
+          if [ "$MOBILE_BUILD_PROFILE" = "testflight" ]; then
+            T3CODE_MOBILE_VERSION="$(node -p 'require("./eas.json").build.testflight.env.T3CODE_MOBILE_VERSION')"
+            export T3CODE_MOBILE_VERSION
+          fi
+          version="$(npx expo config --json --type public | jq -r '.version')"
+          hash="$(eas fingerprint:generate --platform ios --environment production --json --non-interactive | sed -n '/^{/,$p' | jq -er '.hash | select(type == "string" and length > 0)')"
+          {
+            echo "ios_build=true"
+            echo "ios_profile=$MOBILE_BUILD_PROFILE"
+            echo "ios_fingerprint=$hash"
+            echo "ios_version=$version"
+            echo "ios_sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - id: android_manual
+        name: Queue Android build (manual)
+        if: steps.expo-token.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'build' && inputs.platform != 'ios'
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_PRODUCTION_TOKEN }}
+        run: |
+          version="$(npx expo config --json --type public | jq -r '.version')"
+          hash="$(eas fingerprint:generate --platform android --environment production --json --non-interactive | sed -n '/^{/,$p' | jq -er '.hash | select(type == "string" and length > 0)')"
+          {
+            echo "android_build=true"
+            echo "android_fingerprint=$hash"
+            echo "android_version=$version"
+            echo "android_sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
 
       # @expo/fingerprint swallows autolinking errors and returns no Expo module
       # sources, so native changes stop moving the hash and OTAs reach binaries
@@ -299,6 +350,7 @@ jobs:
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_PRODUCTION_TOKEN }}
+          IOS_LOCAL_BUILDS: ${{ vars.MOBILE_IOS_LOCAL_BUILDS == 'true' }}
         run: |
           failed=0
           message="$(git log -1 --pretty=%s | head -c 120) ($(git rev-parse --short=9 HEAD))"
@@ -319,6 +371,22 @@ jobs:
             active="$(jq '[.[] | select(.status == "NEW" or .status == "IN_QUEUE" or .status == "IN_PROGRESS")] | length' <<<"$matches")"
             errored="$(jq '[.[] | select(.status == "ERRORED")] | length' <<<"$matches")"
             latest_version="$(eas build:list --platform "$platform" --build-profile "$profile" --limit 1 --json --non-interactive | jq -r '.[0].appVersion // "none"')"
+            # Local builds (the android and ios jobs) record each build as a tag;
+            # EAS records still count for builds made before that.
+            tag_prefix=""
+            if [ "$platform" = "android" ]; then
+              tag_prefix="mobile-android-build"
+            elif [ "$IOS_LOCAL_BUILDS" = "true" ]; then
+              tag_prefix="mobile-ios-build/$profile"
+            fi
+            if [ -n "$tag_prefix" ]; then
+              if [ -n "$(git tag -l "$tag_prefix/*/$hash")" ]; then
+                finished=$((finished + 1))
+              fi
+              if [ -n "$(git tag -l "$tag_prefix/$version/*")" ]; then
+                latest_version="$version"
+              fi
+            fi
 
             if [ "$finished" -gt 0 ]; then
               if eas update \
@@ -359,6 +427,27 @@ jobs:
             fi
 
             echo "$platform: $reason — building"
+            if [ "$platform" = "android" ]; then
+              {
+                echo "android_build=true"
+                echo "android_fingerprint=$hash"
+                echo "android_version=$version"
+                echo "android_sha=$(git rev-parse HEAD)"
+              } >> "$GITHUB_OUTPUT"
+              echo ":building_construction: android: building and submitting $version in the Android store build job ($reason)" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if [ "$platform" = "ios" ] && [ "$IOS_LOCAL_BUILDS" = "true" ]; then
+              {
+                echo "ios_build=true"
+                echo "ios_profile=$profile"
+                echo "ios_fingerprint=$hash"
+                echo "ios_version=$version"
+                echo "ios_sha=$(git rev-parse HEAD)"
+              } >> "$GITHUB_OUTPUT"
+              echo ":building_construction: ios/$profile: building and submitting $version in the iOS store build job ($reason)" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
             if eas build --platform "$platform" --profile "$profile" --auto-submit --non-interactive --no-wait; then
               echo ":building_construction: $platform: scheduled production build and submission for $version ($reason)" >> "$GITHUB_STEP_SUMMARY"
             else

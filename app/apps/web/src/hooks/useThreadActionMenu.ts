@@ -35,7 +35,6 @@ import {
 } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { readLocalApi } from "../localApi";
-import { configuredHostedAppUrl } from "../hostedPairing";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
@@ -122,7 +121,10 @@ export function useThreadActionMenu(input: {
       const api = readLocalApi();
       if (!api) return;
       const thread = readThreadShell(threadRef);
-      if (!thread) return;
+      if (!thread) {
+        failureToast("Thread actions unavailable", new Error("This thread has not loaded yet."));
+        return;
+      }
       const now = new Date();
       const configLoaded = readEnvironmentServerConfigLoaded(threadRef.environmentId);
       const supports = {

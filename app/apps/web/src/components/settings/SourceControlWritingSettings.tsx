@@ -18,7 +18,6 @@ import {
 } from "./useScopedSettings";
 import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { providerInstanceEntriesFor } from "../../providerInstances";
 import { textGenerationTargets } from "../../textGenerationTargets";
 import {
   getCustomModelOptionsByInstance,
@@ -112,11 +111,7 @@ export function SourceControlWritingSettingsSection() {
   const textGenerationProviders = serverProviders.filter(
     (provider) => provider.supportsTextGeneration !== false,
   );
-  const instanceEntries = providerInstanceEntriesFor(
-    textGenerationProviders,
-    settings,
-    target?.projectId ?? null,
-  );
+
   // Text generators may write source control text, but never review guides.
   const writerTargets = textGenerationTargets({
     environmentId,
@@ -166,7 +161,7 @@ export function SourceControlWritingSettingsSection() {
   );
 
   return (
-    <SettingsSection id="source-control-text-generation" title={t("Writing & review")}>
+    <SettingsSection id="source-control-text-generation" title={t("Commits")}>
       <SettingsRow
         serverScoped
         settingKeys={["sourceControlWritingStyle"]}
@@ -176,7 +171,7 @@ export function SourceControlWritingSettingsSection() {
         resetAction={
           isSourceControlWritingStyleDirty ? (
             <SettingResetButton
-              label={t("source control writing style")}
+              label={t("commit message writing")}
               onClick={() =>
                 updateSettings({
                   sourceControlWritingStyle: {
@@ -204,7 +199,7 @@ export function SourceControlWritingSettingsSection() {
             <SelectTrigger
               size="sm"
               className="w-full sm:w-56"
-              aria-label={t("Source control writing style")}
+              aria-label={t("Commit message writing")}
             >
               <SelectValue>
                 {(value: SourceControlWritingStyleMode | null) =>
@@ -230,7 +225,7 @@ export function SourceControlWritingSettingsSection() {
                   value={allInstructions ?? ""}
                   onChange={(event) => setAllInstructions(event.target.value)}
                   rows={4}
-                  aria-label={t("Custom source control instructions for all selected environments")}
+                  aria-label={t("Custom commit instructions for all selected environments")}
                   placeholder={t("Write the instructions each selected environment should use.")}
                 />
                 <Button
@@ -277,8 +272,8 @@ export function SourceControlWritingSettingsSection() {
                 }
               }}
               rows={4}
-              placeholder={t("Keep titles concise. Use short bullet points in descriptions.")}
-              aria-label={t("Custom source control writing instructions")}
+              placeholder={t("Keep commit subjects under 60 characters. Keep descriptions short and plain.")}
+              aria-label={t("Custom commit instructions")}
             />
           </div>
         ) : null}
@@ -290,7 +285,7 @@ export function SourceControlWritingSettingsSection() {
           settingKeys={["sourceControlWriterModelSelection"]}
           {...searchableSetting("source-control-writer-model")}
           description={t(
-            "Model for source control text and branch or bookmark names. When disabled, use the text generation model configured for this environment.",
+            "Model for commit messages and branch or bookmark names. When disabled, use the text generation model configured for this environment.",
           )}
           control={
             !hasServerTargets ? (

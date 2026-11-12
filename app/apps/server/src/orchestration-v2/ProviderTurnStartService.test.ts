@@ -262,6 +262,7 @@ it.each([
 
 function makeLocalCommandHarness(input: {
   readonly text: string;
+  readonly nativeGoals?: boolean;
   readonly worktreePath?: string;
   readonly worktreesDir?: string;
   readonly workspaceRoot?: string;
@@ -329,7 +330,7 @@ function makeLocalCommandHarness(input: {
   };
   const providerThread: OrchestrationV2ThreadProjection["providerThreads"][number] = {
     id: providerThreadId,
-    driver: ProviderDriverKind.make("codex"),
+    driver: ProviderDriverKind.make(input.nativeGoals === undefined ? "codex" : "opencode"),
     providerInstanceId: newInstanceId,
     providerSessionId,
     appThreadId: threadId,
@@ -745,6 +746,7 @@ function makeLocalCommandHarness(input: {
   const fallbackEnsureThread = vi.fn(() => Effect.succeed(providerThread));
   const resumeFallbackSession = {
     driver: providerThread.driver,
+    get providerSession() { return providerSession; },
     resumeThread: () =>
       Effect.fail(
         input.resumeFailure ??
@@ -763,7 +765,13 @@ function makeLocalCommandHarness(input: {
     status: "ready",
     cwd: "/tmp/native-account-command",
     model: null,
-    capabilities: FULL_TEST_PROVIDER_CAPABILITIES,
+    capabilities: {
+      ...FULL_TEST_PROVIDER_CAPABILITIES,
+      turns: {
+        ...FULL_TEST_PROVIDER_CAPABILITIES.turns,
+        ...(input.nativeGoals === undefined ? {} : { supportsNativeGoals: input.nativeGoals }),
+      },
+    },
     createdAt: now,
     updatedAt: now,
     lastError: null,
@@ -888,6 +896,18 @@ function makeLocalCommandHarness(input: {
     Effect.succeed(id === parentThreadId ? parentRecords : projection),
   );
   const getTurnStartContext = vi.fn(() => Effect.succeed(projection));
+  const getRuntimeRecoveryProjection = vi.fn<
+    ProjectionStore.ProjectionStoreV2Shape["getRuntimeRecoveryProjection"]
+  >(() =>
+    Effect.as(failReadIfRunning, {
+      ...projection,
+      hasConversation: projection.messages.some(
+        (m) =>
+          m.role === "user" &&
+          (m.text.trim().toLowerCase() !== "/compact" || m.attachments.length > 0),
+      ),
+    }),
+  );
   const layer = ProviderTurnStart.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -937,7 +957,12 @@ function makeLocalCommandHarness(input: {
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getThreadRecords,
           getTurnStartContext,
-          getRuntimeRecoveryProjection: () => Effect.as(failReadIfRunning, projection),
+          getRuntimeRecoveryProjection,
+          getRun: (_threadId, id) =>
+            Effect.as(
+              failReadIfRunning,
+              projection.runs.find((candidate) => candidate.id === id),
+            ),
           getTurnStartHistory: () =>
             input.sideChat !== undefined
               ? Effect.succeed([])
@@ -978,6 +1003,7 @@ function makeLocalCommandHarness(input: {
     settledRuns,
     getThreadRecords,
     getTurnStartContext,
+    getRuntimeRecoveryProjection,
     setProjection: (next: OrchestrationV2ThreadProjection) => {
       projection = next;
     },
@@ -1303,6 +1329,23 @@ effectIt.effect.each([
         !forks,
       );
       expect(harness.projection().providerThreads[0]?.handoffIds).toEqual(handoffIds);
+    }),
+);
+
+effectIt.effect.each([false, true])(
+  "OpenCode goal prompts defer switched-provider history only with native support: %s",
+  (nativeGoals) =>
+    Effect.gen(function* () {
+      const harness = makeLocalCommandHarness({
+        text: "/goal all tests pass",
+        nativeGoals,
+        sideChat: { contextRun: "failed", switchedProvider: true },
+      });
+      harness.tryHandlePromptCommand.mockReturnValue(Effect.succeed(false));
+      yield* harness.start;
+      expect(harness.startTurn.mock.calls[0]?.[0].message.text.includes("SIDE_CHAT_CONTEXT")).toBe(
+        !nativeGoals,
+      );
     }),
 );
 
@@ -1708,13 +1751,36 @@ effectIt.effect("does not overwrite a run interrupted while its provider session
   }),
 );
 
+effectIt.effect("checks the run's status without loading the thread's history", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({
+      text: "Continue",
+      previousTurn: { runStatus: "completed", turnStatus: "completed" },
+    });
+
+    yield* harness.start;
+
+    const controls = harness.startRootRun.mock.calls[0]?.[0];
+    expect(controls).toBeDefined();
+    if (controls === undefined) return;
+    expect(yield* controls.shouldStartProviderTurn!()).toBe(true);
+    expect(yield* controls.shouldFinalizeRun!()).toBe(true);
+    // Each check needs one run row; the recovery projection reads every run and open turn item.
+    // The one read left is the start's inherited background items snapshot, not a status check.
+    expect(
+      harness.getRuntimeRecoveryProjection.mock.calls.length,
+      "recovery projection reads beyond the inherited background items snapshot",
+    ).toBe(1);
+  }),
+);
+
 effectIt.effect("fails the run instead of replacing a native thread another client holds", () =>
   Effect.gen(function* () {
-    const detail = "This conversation is open in another Codex client.";
+    const detail = "This conversation is open in another OpenCode client.";
     const harness = makeLocalCommandHarness({
       text: "Continue",
       resumeFailure: new ProviderAdapter.ProviderAdapterThreadInUseError({
-        driver: ProviderDriverKind.make("codex"),
+        driver: ProviderDriverKind.make("opencode"),
         providerThreadId: ProviderThreadId.make("new-provider-thread"),
         detail,
         cause: new Error("thread native-resume-thread already has an active writer"),
@@ -1724,7 +1790,7 @@ effectIt.effect("fails the run instead of replacing a native thread another clie
     const exit = yield* Effect.exit(harness.start);
 
     expect(harness.fallbackEnsureThread).not.toHaveBeenCalled();
-    expect(exit._tag).toBe("Success");
+    expect(exit).toMatchObject({ _tag: "Success" });
     expect(harness.startRootRun).not.toHaveBeenCalled();
     const projection = harness.projection();
     expect(projection.providerThreads.at(-1)?.nativeThreadRef?.nativeId).toBe(

@@ -23,6 +23,7 @@ export const FULL_TEST_PROVIDER_CAPABILITIES = {
     exposesNativeThreadId: true,
   },
   turns: {
+    supportsNativeGoals: true,
     exposesNativeTurnId: true,
     emitsTurnStarted: true,
     emitsTurnCompleted: true,

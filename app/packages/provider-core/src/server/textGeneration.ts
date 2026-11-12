@@ -1,4 +1,5 @@
 import type {
+  ProjectId,
   BranchNamingOptions,
   ChatAttachment,
   ModelSelection,
@@ -17,6 +18,7 @@ export interface CommitMessageGenerationInput {
   includeBranch?: boolean;
   policy?: TextGenerationPolicy | undefined;
   modelSelection: ModelSelection;
+  projectId?: ProjectId | null | undefined;
 }
 
 export interface CommitMessageGenerationResult {
@@ -31,6 +33,7 @@ export interface BranchNameGenerationInput {
   message: string;
   attachments?: ReadonlyArray<ChatAttachment> | undefined;
   modelSelection: ModelSelection;
+  projectId?: ProjectId | null | undefined;
 }
 
 export interface BranchNameGenerationResult {
@@ -46,6 +49,7 @@ export interface ThreadTitleGenerationInput {
   attachments?: ReadonlyArray<ChatAttachment> | undefined;
   instructions?: string | undefined;
   modelSelection: ModelSelection;
+  projectId?: ProjectId | null | undefined;
 }
 
 export interface ThreadTitleGenerationResult {

@@ -2,6 +2,7 @@ import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
   CommandId,
+  parseGoalCommand,
   latestProviderTurnForAttempt,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ContextHandoff,
@@ -217,13 +218,16 @@ export const layer: Layer.Layer<
         typeof RunExecutionService.selectInheritedBackgroundTurnItems
       >;
     }) => {
+      const isCurrentAttemptIn = (statuses: ReadonlyArray<OrchestrationV2Run["status"]>) =>
+        projectionStore
+          .getRun(input.threadId, input.runId)
+          .pipe(
+            Effect.map(
+              (run) => run?.activeAttemptId === input.attemptId && statuses.includes(run.status),
+            ),
+          );
       const isCurrentAttemptInStatus = (expectedStatus: OrchestrationV2Run["status"]) =>
-        projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
-          Effect.map((current) => {
-            const run = current.runs.find((candidate) => candidate.id === input.runId);
-            return run?.activeAttemptId === input.attemptId && run.status === expectedStatus;
-          }),
-        );
+        isCurrentAttemptIn([expectedStatus]);
       return {
         isCurrentAttemptInStatus,
         loadInheritedBackgroundTurnItems: () =>
@@ -240,16 +244,7 @@ export const layer: Layer.Layer<
             Effect.catchCause(() => Effect.succeed(input.inheritedBackgroundTurnItems)),
           ),
         shouldStartProviderTurn: () => isCurrentAttemptInStatus("running"),
-        shouldFinalizeRun: () =>
-          projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
-            Effect.map((current) => {
-              const run = current.runs.find((candidate) => candidate.id === input.runId);
-              return (
-                run?.activeAttemptId === input.attemptId &&
-                (run.status === "starting" || run.status === "running")
-              );
-            }),
-          ),
+        shouldFinalizeRun: () => isCurrentAttemptIn(["starting", "running"]),
         hasUnpairedRunInterruptRequest: () =>
           projectionStore
             .hasUnpairedRunInterruptRequest(
@@ -808,6 +803,9 @@ export const layer: Layer.Layer<
         text: message.text,
         records: message.context?.records ?? [],
       });
+      const goalCommand =
+        session.providerSession.capabilities.turns.supportsNativeGoals === true &&
+        parseGoalCommand(message) !== null;
       // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
       const noteContinuation = isRestartNoteContinuation(
         run,
@@ -1238,6 +1236,7 @@ export const layer: Layer.Layer<
             handoffs: [...handoffs, ...resumedRetryHandoff],
             providerThread: { ...resumed.success, id: providerThread.id },
             budget: context.budget,
+            deferInline: goalCommand,
             alreadyDeliveredItemIds: context.deliveredItemIds,
             persist: () => Effect.void,
           }).pipe(
@@ -1538,6 +1537,7 @@ export const layer: Layer.Layer<
             handoffs: [...effectiveHandoffs, ...retryHandoff],
             providerThread: runningProviderThread,
             budget,
+            deferInline: goalCommand,
             alreadyDeliveredItemIds: deliveredItemIds,
             ...(session.injectHistory === undefined
               ? {}
@@ -1552,7 +1552,8 @@ export const layer: Layer.Layer<
           });
           if (!(yield* isCurrentAttemptInStatus("running"))) return;
           // Like history, the side chat context waits for a turn that sends a prompt.
-          const sideChatContext = sideChatHandoff === undefined ? "" : sideChatHandoff.summaryText;
+          const sideChatContext =
+            sideChatHandoff === undefined || goalCommand ? "" : sideChatHandoff.summaryText;
           const context = [delivery.context, sideChatContext, restartNote]
             .filter((part) => part !== "")
             .join("\n\n");
@@ -1561,7 +1562,7 @@ export const layer: Layer.Layer<
             ...(noteContinuation ? promptedInput : turnInput),
             message: {
               ...turnInput.message,
-              text: withInlineContext(context, userText),
+              text: goalCommand ? userText : withInlineContext(context, userText),
             },
           });
           // After provider acceptance, failed delivery bookkeeping must not stop live ingestion.

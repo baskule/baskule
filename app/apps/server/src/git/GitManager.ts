@@ -1,7 +1,6 @@
 import * as Stream from "effect/Stream";
 import * as Cache from "effect/Cache";
 
-import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as ByteSize from "effect/ByteSize";
@@ -75,6 +74,7 @@ export interface GitRemoteStatusOptions extends GitVcsDriver.GitRemoteStatusOpti
 
 interface SourceControlTextGenerationSettings {
   readonly modelSelection: ModelSelection;
+  readonly projectId: ProjectId | null;
   readonly style: SourceControlWritingStyleSettings;
 }
 
@@ -239,9 +239,7 @@ function parseCustomCommitMessage(raw: string): { subject: string; body: string 
 }
 
 // A branch remote of "." tracks another local branch, which no change request can have as its head.
-function publishedRemoteName(branchRemote: string | null): string | null {
-  return branchRemote === "." ? null : branchRemote;
-}
+
 
 export const make = Effect.gen(function* () {
   const gitCore = yield* GitVcsDriver.GitVcsDriver;
@@ -420,10 +418,7 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  const pullRequestHostOptions = (url: string) => {
-    const host = URL.parse(url)?.host;
-    return host ? { host } : {};
-  };
+
   const canonicalizeExistingPath = (value: string) =>
     fileSystem.realPath(value).pipe(Effect.orElseSucceed(() => value));
   const normalizeStatusCacheKey = canonicalizeExistingPath;
@@ -532,6 +527,7 @@ export const make = Effect.gen(function* () {
           ...(input.includeBranch ? { includeBranch: true } : {}),
           ...(policy ? { policy } : {}),
           modelSelection: input.settings.modelSelection,
+          projectId: input.settings.projectId,
         })
         .pipe(Effect.map((result) => sanitizeCommitMessage(result)));
 
@@ -787,6 +783,7 @@ export const make = Effect.gen(function* () {
             settings.sourceControlWriterModelSelection === null
               ? Effect.succeed({
                   modelSelection: settings.textGenerationModelSelection,
+                  projectId,
                   style: settings.sourceControlWritingStyle,
                 })
               : providerRegistry.getProviders.pipe(
@@ -796,6 +793,7 @@ export const make = Effect.gen(function* () {
                       providers,
                       projectId,
                     ),
+                    projectId,
                     style: settings.sourceControlWritingStyle,
                   })),
                 ),

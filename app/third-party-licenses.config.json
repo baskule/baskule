@@ -230,6 +230,15 @@
   ],
   "packageOverrides": [
     {
+      "name": "@opencode-ai/sdk",
+      "version": "1.15.13",
+      "sourceUrl": "https://github.com/anomalyco/opencode",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 opencode"]
+      }
+    },
+    {
       "name": "@react-native-async-storage/async-storage",
       "version": "3.1.1",
       "license": "MIT",
@@ -244,7 +253,7 @@
     },
     {
       "name": "@nodable/entities",
-      "version": "2.2.0",
+      "version": "2.1.1",
       "sourceUrl": "https://github.com/nodable/val-parsers",
       "generatedNotice": {
         "licenseId": "MIT",

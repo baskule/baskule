@@ -1,6 +1,7 @@
 import { t, useTranslation } from "../i18n";
 
 import { shouldOpenMarkdownFileLinkInBrowserByDefault } from "../markdown-links";
+import { clientHostEnvironmentAtom } from "../state/clientHostEnvironment";
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "@t3tools/shared/fileLinks";
 import {
   isWindowsDrivePathHref,
@@ -150,10 +151,9 @@ import { filesystemEnvironment } from "../state/filesystem";
 import {
   claimWorkspaceBasenameLookup,
   needsWorkspaceBasenameLookup,
-  pickStrippedWorkspaceMatch,
-  pickWorkspaceBasenameMatch,
-  stripRepeatedWorkspacePrefix,
+  pickWorkspaceLinkMatch,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
+  workspaceLinkLookupQuery,
 } from "@t3tools/client-runtime/workspace-basename-lookup";
 
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
@@ -240,13 +240,18 @@ const EMPTY_REMARK_PLUGINS: NonNullable<ReactMarkdownOptions["remarkPlugins"]> =
 const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
 
 function orderedListGutterStyle(
-  itemCount: number,
+  itemValues: ReadonlyArray<unknown>,
   start: unknown,
 ): { "--list-gutter": string } | undefined {
   const parsedStart = Number.parseInt(String(start ?? 1), 10);
-  const firstNumber = Number.isNaN(parsedStart) ? 1 : parsedStart;
-  const lastNumber = firstNumber + Math.max(itemCount - 1, 0);
-  const markerWidth = Math.max(String(firstNumber).length, String(lastNumber).length);
+  let number = Number.isNaN(parsedStart) ? 1 : parsedStart;
+  let markerWidth = String(number).length;
+  for (const value of itemValues) {
+    const written = Number.parseInt(String(value ?? ""), 10);
+    if (!Number.isNaN(written)) number = written;
+    markerWidth = Math.max(markerWidth, String(number).length);
+    number += 1;
+  }
   if (markerWidth <= 1) return undefined;
   return { "--list-gutter": `${markerWidth + 2}ch` };
 }
@@ -335,6 +340,7 @@ type MarkdownServerConfigFields = ReturnType<typeof markdownServerConfigFields>;
 function markdownServerConfigFields(config: ServerConfig | null) {
   return {
     availableEditors: config?.availableEditors ?? NO_MARKDOWN_EDITORS,
+    isMacOS: config?.environment.platform.os === "darwin",
     revealInFileManagerLabel:
       config?.shellRevealInFileManager === true && config.availableEditors.includes("file-manager")
         ? config.shellRevealInFileManagerKind === undefined
@@ -350,6 +356,7 @@ function markdownServerConfigFieldsEqual(
 ): boolean {
   return (
     previous.revealInFileManagerLabel === next.revealInFileManagerLabel &&
+    previous.isMacOS === next.isMacOS &&
     previous.availableEditors.length === next.availableEditors.length &&
     previous.availableEditors.every((editor, index) => editor === next.availableEditors[index])
   );
@@ -418,7 +425,6 @@ function useChatMarkdownState({
   onImageExpand,
   renderContextReference,
   headingLevelOffset = 0,
-  sourceControlMediaRepository,
 }: ChatMarkdownProps) {
   const t = useTranslation();
   const resolvedTheme = useRenderedAppearance();
@@ -472,6 +478,7 @@ function useChatMarkdownState({
   const environmentId = threadRef?.environmentId ?? explicitEnvironmentId ?? null;
   const canOperateHost = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperatePreview = useEnvironmentScope(environmentId, AuthPreviewOperateScope);
+  const isClientHost = useAtomValue(clientHostEnvironmentAtom(environmentId));
   const remoteOpen = useRemoteOpenResolution(environmentId);
   const canUseShellActions =
     canOperateHost &&
@@ -544,7 +551,7 @@ function useChatMarkdownState({
       },
     );
   };
-  const { availableEditors, revealInFileManagerLabel } = useAtomValue(
+  const { availableEditors, revealInFileManagerLabel, isMacOS } = useAtomValue(
     markdownServerConfigFieldsAtom(environmentId),
   );
   const projects = useProjects();
@@ -660,33 +667,24 @@ function useChatMarkdownState({
     ) {
       return null;
     }
-    const isBasename = needsWorkspaceBasenameLookup(workspaceRelativePath);
-    const strippedPath = isBasename
-      ? null
-      : stripRepeatedWorkspacePrefix(workspaceRelativePath, cwd);
-    if (!isBasename && strippedPath === null) return null;
+    const query = workspaceLinkLookupQuery(workspaceRelativePath, cwd);
+    if (query === null) return null;
+    // Search can be truncated or still scanning, so it cannot rule out the literal
+    // path. A path with a folder opens as written whenever it exists.
+    if (!needsWorkspaceBasenameLookup(workspaceRelativePath)) {
+      const metadata = await getFilesystemMetadata({
+        environmentId,
+        input: { paths: [resolveWorkspaceFilePath(workspaceRelativePath, cwd)] },
+      });
+      if (metadata._tag !== "Success" || metadata.value.entries[0] !== null) return null;
+    }
     const result = await searchProjectEntries({
       environmentId,
-      input: {
-        cwd,
-        query: strippedPath ?? workspaceRelativePath,
-        limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
-        kind: "file",
-      },
+      input: { cwd, query, limit: WORKSPACE_BASENAME_LOOKUP_LIMIT, kind: "file" },
     });
-    if (result._tag !== "Success") return null;
-    if (strippedPath === null) {
-      return pickWorkspaceBasenameMatch(workspaceRelativePath, result.value.entries);
-    }
-    const match = pickStrippedWorkspaceMatch(strippedPath, cwd, result.value.entries);
-    if (match === null) return null;
-    // Search can be truncated or still scanning, so it cannot rule out the
-    // literal path. Check the host before redirecting to the stripped match.
-    const metadata = await getFilesystemMetadata({
-      environmentId,
-      input: { paths: [resolveWorkspaceFilePath(workspaceRelativePath, cwd)] },
-    });
-    return metadata._tag === "Success" && metadata.value.entries[0] === null ? match : null;
+    return result._tag === "Success"
+      ? pickWorkspaceLinkMatch(workspaceRelativePath, cwd, result.value.entries)
+      : null;
   };
   const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
     if (!threadRef) return;
@@ -697,8 +695,7 @@ function useChatMarkdownState({
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
-      (!needsWorkspaceBasenameLookup(panelPath) &&
-        stripRepeatedWorkspacePrefix(panelPath, cwd) === null)
+      workspaceLinkLookupQuery(panelPath, cwd) === null
     ) {
       openAt(panelPath);
       return;
@@ -720,6 +717,13 @@ function useChatMarkdownState({
         cwd,
         findWorkspaceMatch: () => findWorkspaceFileMatch(fileLinkMeta),
       });
+    const isAppBundle = isMacOS && fileLinkMeta.filePath.endsWith(".app");
+    const canOpenApp =
+      environmentId !== null &&
+      isAppBundle &&
+      isClientHost &&
+      canOperateHost &&
+      availableEditors.includes("file-manager");
     const mediaPath = mediaSource ?? fileLinkMeta.filePath;
     const canPreviewMedia =
       mediaMimeTypeFromExtension(
@@ -734,15 +738,21 @@ function useChatMarkdownState({
         environmentId={environmentId}
         href={fileLinkMeta.targetPath}
         targetPath={fileLinkMeta.targetPath}
-        iconPath={fileLinkMeta.filePath}
+        iconPath={
+          isAppBundle && cwd
+            ? resolveWorkspaceFilePath(fileLinkMeta.filePath, cwd)
+            : fileLinkMeta.filePath
+        }
+        isAppBundle={isAppBundle}
         workspaceRelativePath={fileLinkMeta.workspaceRelativePath}
-        panelPath={panelPath}
+        panelPath={isAppBundle ? null : panelPath}
         line={fileLinkMeta.line}
         label={fileLinkLabel(
           {
             path: fileLinkMeta.filePath,
             ...(fileLinkMeta.line !== undefined ? { line: fileLinkMeta.line } : {}),
             ...(fileLinkMeta.column !== undefined ? { column: fileLinkMeta.column } : {}),
+            ...(fileLinkMeta.endLine !== undefined ? { endLine: fileLinkMeta.endLine } : {}),
           },
           fileLinkParentSuffixByPath,
         )}
@@ -750,12 +760,18 @@ function useChatMarkdownState({
         theme={resolvedTheme}
         threadRef={threadRef}
         onOpen={
-          canUseShellActions
+          canOpenApp
             ? async () =>
-                openInPreferredEditor(
-                  markdownFileEditorTarget(fileLinkMeta, await resolveHostPath()),
-                )
-            : undefined
+                openInEditor({
+                  environmentId,
+                  input: { cwd: (await resolveHostPath()).absolutePath, editor: "file-manager" },
+                })
+            : canUseShellActions
+              ? async () =>
+                  openInPreferredEditor(
+                    markdownFileEditorTarget(fileLinkMeta, await resolveHostPath()),
+                  )
+              : undefined
         }
         resolveCopyPaths={async () =>
           markdownFileCopyPaths(fileLinkMeta, await resolveHostPath(), cwd)
@@ -766,7 +782,7 @@ function useChatMarkdownState({
             ? () => openMarkdownMedia(mediaPath, fileLinkMeta.filePath)
             : undefined
         }
-        openInEditorMenuLabel={preferredEditorMenuLabel}
+        openInEditorMenuLabel={canOpenApp ? "Open app" : preferredEditorMenuLabel}
         onReveal={
           canUseShellActions && revealInFileManagerLabel !== undefined
             ? async () => revealFileInFileManager((await resolveHostPath()).absolutePath)
@@ -796,7 +812,6 @@ function useChatMarkdownState({
     environmentId,
     expandMedia,
     fileLinkChip,
-    sourceControlMediaRepository,
     renderContextReference,
     headingLevelOffset,
     imageBaseDir,
@@ -896,10 +911,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   ol: function MarkdownOrderedList({ node, start, style, ...props }) {
-    const itemCount =
-      node?.children?.filter((child) => child.type === "element" && child.tagName === "li")
-        .length ?? 0;
-    const gutterStyle = orderedListGutterStyle(itemCount, start);
+    const itemValues =
+      node?.children?.flatMap((child) =>
+        child.type === "element" && child.tagName === "li" ? [child.properties.value] : [],
+      ) ?? [];
+    const gutterStyle = orderedListGutterStyle(itemValues, start);
     return (
       <ol {...props} start={start} style={gutterStyle ? { ...style, ...gutterStyle } : style} />
     );
@@ -1174,7 +1190,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const {
       expandMedia,
       cwd,
-      sourceControlMediaRepository,
       imageBaseDir,
       threadRef,
       workspaceMutationId,

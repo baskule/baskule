@@ -12,6 +12,7 @@ import * as HttpEffect from "effect/http/HttpEffect";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
+
 import * as McpOAuth from "./McpOAuth.ts";
 import { renderErrorPage } from "./mcpOAuthHtml.ts";
 
@@ -115,7 +116,7 @@ export const layer = HttpApiBuilder.group(
           const resolved = yield* forwardedAuthorization(oauth, payload);
           if ("redirectTo" in resolved) return resolved;
           const urls = yield* requestUrls;
-          const session = yield* oauth.approvingBrowserSession(request, resolved);
+          const session = yield* oauth.approvingSession(request, resolved);
           yield* noStore;
           return {
             clientName: resolved.client.name,

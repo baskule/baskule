@@ -77,6 +77,15 @@ export function ProviderIcon(props: ProviderIconProps) {
   );
 }
 
+export function providerInstanceNameLabel(props: {
+  readonly provider: string | null | undefined;
+  readonly iconUrl?: string | null | undefined;
+  readonly displayName: string;
+  readonly showBadge: boolean;
+}): string | null {
+  return props.showBadge ? props.displayName : null;
+}
+
 export function ProviderInstanceIcon(props: {
   readonly iconUrl?: string | null;
   readonly provider: string | null | undefined;

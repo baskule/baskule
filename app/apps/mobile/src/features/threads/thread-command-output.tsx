@@ -1,4 +1,3 @@
-import { useTranslation } from "../../i18n";
 
 import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { TERMINAL_PALETTES, terminalOutputSpans } from "@t3tools/shared/terminalOutput";
@@ -26,7 +25,6 @@ export function ThreadCommandOutput(props: {
   readonly itemId: TurnItemId;
   readonly themeAppearance: "light" | "dark";
 }) {
-  const t = useTranslation();
   const { data, error } = useEnvironmentQuery(
     orchestrationEnvironment.v2.commandOutput({
       environmentId: props.environmentId,
@@ -56,11 +54,6 @@ export function ThreadCommandOutput(props: {
   }
   return (
     <View className="pt-1.5">
-      {data?.output.truncated ? (
-        <Text className="pb-0.5 text-3xs text-foreground-subtle">
-          {t("Earlier output not shown")}
-        </Text>
-      ) : null}
       <ScrollView
         ref={scrollRef}
         nestedScrollEnabled
@@ -78,6 +71,9 @@ export function ThreadCommandOutput(props: {
           if (followRef.current) scrollRef.current?.scrollToEnd({ animated: false });
         }}
       >
+        {data?.output.truncated ? (
+          <Text className="pb-0.5 text-3xs text-foreground-subtle">Earlier output not shown</Text>
+        ) : null}
         <Text selectable className="font-mono text-2xs leading-normal text-foreground-muted">
           {spans.map((span, index) =>
             span.style === null ? (
