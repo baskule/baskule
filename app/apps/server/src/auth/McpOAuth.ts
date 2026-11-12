@@ -197,7 +197,7 @@ export class McpOAuth extends Context.Service<
       readonly urls: McpOAuthUrls;
       readonly request: AuthMcpAuthorizationRequest;
     }) => Effect.Effect<AuthorizationRequest, McpOAuthPageError | McpOAuthRedirectError>;
-    /** A browser cookie session, or a T3 Connect session from the hosted app, that may approve. */
+    /** A browser cookie session that may approve. */
     readonly approvingSession: (
       request: HttpServerRequest.HttpServerRequest,
       authorization: AuthorizationRequest,
@@ -374,22 +374,20 @@ const make = Effect.gen(function* () {
   });
 
   const approvingSession: McpOAuth["Service"]["approvingSession"] = (request, authorization) =>
-    environmentAuth.authenticateHttpRequest(request).pipe(
-      Effect.flatMap((session) =>
-        // Approving manages access, and a session may only hand out scopes it holds.
-        session.scopes.includes(AuthAccessWriteScope) &&
-        session.scopes.includes(AuthOrchestrationReadScope)
-          ? // The hosted app may get a fresh credential per call, all bound to one browser key.
-            csrfToken(
-              session.proofKeyThumbprint === undefined
-                ? session.sessionId
-                : `dpop:${session.proofKeyThumbprint}`,
-              authorization,
-            ).pipe(Effect.map((token) => ({ csrfToken: token, scopes: session.scopes })))
-          : Effect.undefined,
-      ),
-      Effect.orElseSucceed(() => undefined),
-    );
+    request.headers.authorization !== undefined
+      ? Effect.undefined
+      : environmentAuth.authenticateHttpRequest(request).pipe(
+          Effect.flatMap((session) =>
+            // Approving manages access, and a session may only hand out scopes it holds.
+            session.scopes.includes(AuthAccessWriteScope) &&
+            session.scopes.includes(AuthOrchestrationReadScope)
+              ? csrfToken(session.sessionId, authorization).pipe(
+                  Effect.map((token) => ({ csrfToken: token, scopes: session.scopes })),
+                )
+              : Effect.undefined,
+          ),
+          Effect.orElseSucceed(() => undefined),
+        );
 
   const mintCode = Effect.fn("McpOAuth.mintCode")(function* (
     authorization: AuthorizationRequest,
