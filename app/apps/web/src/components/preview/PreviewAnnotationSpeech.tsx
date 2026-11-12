@@ -1,3 +1,4 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type {
   DesktopPreviewAnnotationVoiceConfig,
   DesktopPreviewAnnotationVoiceEvent,
@@ -6,10 +7,13 @@ import type {
 import { useEffect, useRef, useState } from "react";
 
 import { resolveSpeechPresentation } from "~/components/chat/ComposerSpeechButton";
+import { VoiceInputSetup } from "~/components/chat/VoiceInputSetup";
 import { toastManager } from "~/components/ui/toast";
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useDictationShortcut, type DictationKeyHandlers } from "~/speech/useDictationShortcut";
 import { useEnvironmentSpeechInput } from "~/speech/useEnvironmentSpeechInput";
+import { useProject, useThreadShell } from "~/state/entities";
 import { previewBridge } from "./previewBridge";
 
 /**
@@ -27,6 +31,12 @@ export function PreviewAnnotationSpeech({
   config: DesktopPreviewAnnotationVoiceConfig;
   keybindings: Parameters<typeof useDictationShortcut>[0]["keybindings"];
 }) {
+  const thread = useThreadShell(threadRef);
+  const draftThread = useComposerDraftStore((store) => store.getDraftThreadByRef(threadRef));
+  const projectId = thread?.projectId ?? draftThread?.projectId ?? null;
+  const project = useProject(
+    projectId ? scopeProjectRef(threadRef.environmentId, projectId) : null,
+  );
   const draft = useRef({ text: "", cursor: 0, selectionEnd: 0 });
   const [text, setText] = useState("");
   const keys = useRef<DictationKeyHandlers | null>(null);
@@ -45,6 +55,8 @@ export function PreviewAnnotationSpeech({
   }, []);
   const speech = useEnvironmentSpeechInput({
     environmentId: threadRef.environmentId,
+    projectId,
+    projectName: project?.title,
     ownerKey: JSON.stringify(["preview-annotation", threadRef, tabId, config.sessionId]),
     draftText: text,
     readDraft: () => ({
@@ -73,7 +85,7 @@ export function PreviewAnnotationSpeech({
     ownsFocus: () => guestFocused.current,
     subscribeKeys,
   });
-  const { available, state, freezesEditor, blocksSubmission, level } = speech;
+  const { available, state, preview, freezesEditor, blocksSubmission, level } = speech;
   const voiceState = {
     tabId,
     sessionId: config.sessionId,
@@ -81,7 +93,7 @@ export function PreviewAnnotationSpeech({
     phase: state.phase,
     errorAction: state.errorAction,
     status: resolveSpeechPresentation(state, null).status,
-    preview: null,
+    preview: preview ? preview.committed + preview.tentative : null,
     level,
     shortcutLabel,
     freezesEditor,
@@ -158,5 +170,21 @@ export function PreviewAnnotationSpeech({
       ),
     [tabId, config.sessionId, publish],
   );
-  return null;
+  return (
+    <VoiceInputSetup
+      environmentId={speech.transcriptionEnvironmentId}
+      open={speech.setup.open}
+      step={speech.setup.step}
+      status={speech.status}
+      model={speech.setup.model}
+      language={speech.setup.language}
+      downloading={speech.setup.downloading}
+      error={speech.setup.error}
+      onOpenChange={speech.setup.setOpen}
+      onRetryCatalog={speech.setup.retryCatalog}
+      onDownload={() => void speech.setup.download()}
+      onCancelDownload={() => void speech.setup.cancelDownload()}
+      onStartRecording={() => void speech.setup.startRecording()}
+    />
+  );
 }

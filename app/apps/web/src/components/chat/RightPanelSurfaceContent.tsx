@@ -1,3 +1,4 @@
+import type { ProjectId } from "@t3tools/contracts";
 import type {
   EditorId,
   EnvironmentId,
@@ -32,6 +33,7 @@ type RightPanelTerminalProps = Omit<
 >;
 
 interface RightPanelFileProps {
+  readonly projectId?: ProjectId | undefined;
   readonly projectName: string | null;
   readonly workspaceRoot: string | undefined;
   readonly availableEditors: ReadonlyArray<EditorId>;
@@ -138,6 +140,7 @@ export function RightPanelSurfaceContent(props: {
             environmentId={props.environmentId}
             cwd={files.workspaceRoot ?? ""}
             projectName={files.projectName ?? ""}
+            projectId={files.projectId}
             threadRef={threadRef}
             composerDraftTarget={props.composerDraftTarget}
             keybindings={props.keybindings}

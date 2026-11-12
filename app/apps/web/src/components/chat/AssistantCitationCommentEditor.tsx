@@ -1,7 +1,7 @@
 import { useTranslation } from "../../i18n";
 
 import { ASSISTANT_CITATION_MAX_COMMENT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
-import { use, useRef, useState, type RefObject } from "react";
+import { use, useEffect, useRef, useState, type RefObject } from "react";
 
 import { TextFieldSpeechControls, useTextFieldSpeech } from "~/speech/useTextFieldSpeech";
 import { textDirection } from "~/textDirection";
@@ -16,6 +16,7 @@ export function AssistantCitationCommentEditor({
   onSubmitAndSend,
   onCancel,
   onDraftChange,
+  onVoiceSetupOpenChange,
 }: {
   citation: AssistantCitation;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
@@ -23,17 +24,19 @@ export function AssistantCitationCommentEditor({
   onSubmitAndSend?: (comment: string) => boolean;
   onCancel: () => void;
   onDraftChange?: (comment: string) => void;
+  onVoiceSetupOpenChange?: (open: boolean) => void;
 }) {
   const [comment, setComment] = useState(citation.comment ?? "");
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaRef = inputRef ?? localInputRef;
-  const { environmentId } = use(ComposerContextActionsContext);
+  const { environmentId, projectId } = use(ComposerContextActionsContext);
   const updateComment = (text: string) => {
     setComment(text);
     onDraftChange?.(text);
   };
   const speech = useTextFieldSpeech({
     environmentId: environmentId ?? citation.environmentId,
+    projectId,
     ownerKey: JSON.stringify([
       "citation",
       environmentId,
@@ -46,6 +49,12 @@ export function AssistantCitationCommentEditor({
     textareaRef,
     onTextChange: updateComment,
   });
+  const setupOpen = speech.setup.open;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the citation popover open while the voice setup dialog owns focus
+  useEffect(() => {
+    onVoiceSetupOpenChange?.(setupOpen);
+    return () => onVoiceSetupOpenChange?.(false);
+  }, [onVoiceSetupOpenChange, setupOpen]);
   const t = useTranslation();
   const commentTooLong = comment.length > ASSISTANT_CITATION_MAX_COMMENT_LENGTH;
   const submit = () => {

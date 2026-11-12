@@ -2957,6 +2957,7 @@ export default function ChatView(props: ChatViewProps) {
         closeShortcutLabel: closeTerminalShortcutLabel ?? undefined,
       }}
       files={{
+        projectId: activeProject?.id,
         projectName: baskule.hosted ? "Chat files" : (activeProject?.title ?? null),
         workspaceRoot: activeWorkspaceRoot,
         availableEditors,
@@ -3383,6 +3384,7 @@ export default function ChatView(props: ChatViewProps) {
                                 }
                                 activeThreadModelSelection={activeThread?.modelSelection}
                                 activeProjectId={activeProject?.id ?? null}
+                                projectName={activeProject?.title}
                                 resolvedTheme={resolvedTheme}
                                 settings={settings}
                                 keybindings={keybindings}

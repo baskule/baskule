@@ -1,11 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 
 import {
   ComposerSpeechButton,
   ComposerSpeechRecordingPill,
 } from "~/components/chat/ComposerSpeechButton";
+import { VoiceInputSetup } from "~/components/chat/VoiceInputSetup";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useDictationShortcut } from "./useDictationShortcut";
 import { useEnvironmentSpeechInput } from "./useEnvironmentSpeechInput";
@@ -13,6 +14,7 @@ import { useEnvironmentSpeechInput } from "./useEnvironmentSpeechInput";
 /** Binds dictation to a plain textarea draft; the shortcut targets it only while it has focus. */
 export function useTextFieldSpeech(input: {
   readonly environmentId: EnvironmentId;
+  readonly projectId?: ProjectId | null | undefined;
   readonly ownerKey: string;
   readonly text: string;
   readonly textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -27,6 +29,7 @@ export function useTextFieldSpeech(input: {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const speech = useEnvironmentSpeechInput({
     environmentId: input.environmentId,
+    projectId: input.projectId,
     ownerKey: input.ownerKey,
     draftText: input.text,
     disabled: input.disabled,
@@ -69,30 +72,53 @@ export function TextFieldSpeechControls({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-1">
-      <ComposerSpeechRecordingPill
-        state={speech.state}
-        progress={null}
-        level={speech.level}
-        finishShortcutLabel={speech.shortcutLabel}
-        cancelShortcutLabel="Esc"
-        disabled={disabled}
-        onStart={() => void speech.start()}
-        onStop={() => void speech.stop()}
-        onCancel={speech.cancel}
-        onSkipPostProcessing={speech.skipPostProcessing}
-      />
-      {speech.available ? (
-        <ComposerSpeechButton
+    <>
+      {speech.preview ? (
+        <p role="status" className="w-full text-sm text-muted-foreground">
+          {speech.preview.committed}
+          <span className="opacity-70">{speech.preview.tentative}</span>
+        </p>
+      ) : null}
+      <div className="flex min-w-0 items-center gap-1">
+        <ComposerSpeechRecordingPill
           state={speech.state}
           progress={null}
-          shortcutLabel={speech.shortcutLabel}
+          level={speech.level}
+          finishShortcutLabel={speech.shortcutLabel}
+          cancelShortcutLabel="Esc"
           disabled={disabled}
           onStart={() => void speech.start()}
+          onStop={() => void speech.stop()}
           onCancel={speech.cancel}
+          onSkipPostProcessing={speech.skipPostProcessing}
         />
-      ) : null}
-    </div>
+        {speech.available ? (
+          <ComposerSpeechButton
+            state={speech.state}
+            progress={null}
+            shortcutLabel={speech.shortcutLabel}
+            disabled={disabled}
+            onStart={() => void speech.start()}
+            onCancel={speech.cancel}
+          />
+        ) : null}
+      </div>
+      <VoiceInputSetup
+        environmentId={speech.transcriptionEnvironmentId}
+        open={speech.setup.open}
+        step={speech.setup.step}
+        status={speech.status}
+        model={speech.setup.model}
+        language={speech.setup.language}
+        downloading={speech.setup.downloading}
+        error={speech.setup.error}
+        onOpenChange={speech.setup.setOpen}
+        onRetryCatalog={speech.setup.retryCatalog}
+        onDownload={() => void speech.setup.download()}
+        onCancelDownload={() => void speech.setup.cancelDownload()}
+        onStartRecording={() => void speech.setup.startRecording()}
+      />
+    </>
   );
 }
 
