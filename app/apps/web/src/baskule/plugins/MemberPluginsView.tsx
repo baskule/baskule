@@ -112,9 +112,8 @@ function MemberPluginRow({
           : t("Could not switch {{name}} off", { name: plugin.displayName }),
         cause,
       );
-    } finally {
-      setPendingOn(null);
     }
+    setPendingOn(null);
   };
 
   const disconnect = async (server: MemberPlugin["servers"][number]) => {
@@ -135,9 +134,8 @@ function MemberPluginRow({
       await onChanged();
     } catch (cause) {
       notifyPluginError(t("Could not disconnect {{name}}", { name }), cause);
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
 
   const nameId = useId();

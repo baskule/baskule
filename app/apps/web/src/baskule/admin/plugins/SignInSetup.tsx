@@ -69,9 +69,8 @@ export function SignInSetup({
       await onSaved();
     } catch (cause) {
       setError(pluginErrorText(cause, t("The OAuth client could not be saved.")));
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   return (

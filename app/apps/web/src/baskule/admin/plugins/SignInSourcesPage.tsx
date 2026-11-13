@@ -69,9 +69,8 @@ export function SignInSourcesPage() {
       setCatalog(await pluginsApi.catalog(true));
     } catch (cause) {
       notifyPluginError(t("Could not refresh the catalog"), cause);
-    } finally {
-      setRefreshing(false);
     }
+    setRefreshing(false);
   };
 
   return (
@@ -165,9 +164,8 @@ function OAuthClients({
       await onSaved();
     } catch (cause) {
       notifyPluginError(t("Could not remove the OAuth client for {{vendor}}", { vendor }), cause);
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
 
   return (
@@ -289,9 +287,8 @@ function Platforms({
         t("Could not disconnect {{provider}}", { provider: providerName(provider) }),
         cause,
       );
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   };
 
   return (

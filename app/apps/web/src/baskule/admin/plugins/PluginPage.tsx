@@ -54,12 +54,12 @@ export function PluginPage({ id }: { readonly id: string }) {
     try {
       await work();
       await data.reload();
+      setBusy(null);
       return true;
     } catch (cause) {
+      setBusy(null);
       notifyPluginError(failure, cause);
       return false;
-    } finally {
-      setBusy(null);
     }
   };
 
