@@ -1,8 +1,18 @@
-import { EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { BASKULE_RELEASE, EnvironmentId, ORCHESTRATION_PROTOCOL_VERSION } from "@t3tools/contracts";
+import { it as effectIt } from "@effect/vitest";
+import { PlatformConnectionSource } from "@t3tools/client-runtime/platform";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { baskuleApi, type BaskuleMe } from "./api";
+import * as session from "./session";
 import {
   activeSpaceWasRemoved,
   groupThreadsBySpace,
+  layerSpaceConnectionSource,
   orderEnvironmentsBySpace,
   primarySpaceEnvironmentId,
   spaceRegistration,
@@ -20,6 +30,61 @@ const previous = [
   { space: team, environmentId: EnvironmentId.make("team-env") },
   { space: personal, environmentId: EnvironmentId.make("personal-env") },
 ];
+
+effectIt.effect(
+  "recovers spaces after the initial session request fails without a page refresh",
+  () =>
+    Effect.gen(function* () {
+      using cleanup = new DisposableStack();
+      cleanup.defer(() => {
+        session.__setBaskuleMeForTests(null);
+        vi.unstubAllGlobals();
+      });
+      session.__setBaskuleMeForTests(null);
+      vi.stubGlobal("window", { location: { origin: "https://baskule.test", pathname: "/" } });
+      using watcher = vi.spyOn(session, "watchBaskuleSession").mockImplementation(() => undefined);
+      const me: BaskuleMe = {
+        authentication: { mode: "authenticated", password: true, providers: [] },
+        user: { id: "ada", name: "Ada", email: "ada@baskule.test", role: "member" },
+        organizationName: null,
+        spaces: [personal],
+        canCreateSpaces: false,
+        voiceInput: false,
+      };
+      using request = vi.spyOn(baskuleApi, "me").mockRejectedValue(new Error("offline"));
+      using fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        Response.json({
+          environmentId: "personal-env",
+          label: "Personal",
+          platform: { os: "linux", arch: "x64" },
+          serverVersion: BASKULE_RELEASE.version,
+          minClient: BASKULE_RELEASE.minClient,
+          orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION,
+          capabilities: { repositoryIdentity: true },
+        }),
+      );
+      const initial = yield* Deferred.make<void>();
+      const recovered = yield* Effect.gen(function* () {
+        const source = yield* PlatformConnectionSource.PlatformConnectionSource;
+        return yield* source.registrations.pipe(
+          Stream.tap(() => Deferred.succeed(initial, undefined)),
+          Stream.take(2),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+      }).pipe(Effect.provide(layerSpaceConnectionSource));
+      yield* Deferred.await(initial);
+      request.mockClear().mockResolvedValue(me);
+      yield* TestClock.adjust("5 seconds");
+      expect(request).toHaveBeenCalled();
+      const registrations = yield* Fiber.join(recovered);
+      expect(
+        registrations.map((entries) => entries.map((entry) => entry.target.environmentId)),
+      ).toEqual([[], [EnvironmentId.make("personal-env")]]);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(watcher).toHaveBeenCalledTimes(1);
+    }),
+);
 
 describe("Run on space order", () => {
   const acme = { ...team, id: "acme", name: "Acme", base: "/s/acme" };

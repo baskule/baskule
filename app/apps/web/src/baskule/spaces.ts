@@ -157,7 +157,7 @@ export function activeSpaceWasRemoved(
 }
 
 const buildRegistrations = Effect.gen(function* () {
-  const me = readBaskuleMe();
+  const me = readBaskuleMe() ?? (yield* Effect.promise(() => refreshBaskuleMe().catch(() => null)));
   if (me === null) {
     publish([]);
     return [] as ReadonlyArray<PlatformConnectionRegistration>;
@@ -199,13 +199,10 @@ const sessionChanges = Stream.callback<void>((queue) =>
   ).pipe(Effect.asVoid),
 );
 
-export const layerSpaceConnectionSource = Layer.effect(
+export const layerSpaceConnectionSource = Layer.sync(
   PlatformConnectionSource.PlatformConnectionSource,
-  Effect.gen(function* () {
+  () => {
     watchBaskuleSession();
-    if (readBaskuleMe() === null) {
-      yield* Effect.promise(() => refreshBaskuleMe().catch(() => null));
-    }
     return PlatformConnectionSource.PlatformConnectionSource.of({
       registrations: Stream.merge(sessionChanges, Stream.tick(RETRY_INTERVAL)).pipe(
         Stream.mapEffect(() => buildRegistrations),
@@ -220,5 +217,5 @@ export const layerSpaceConnectionSource = Layer.effect(
         ),
       ),
     });
-  }),
+  },
 );
