@@ -1,8 +1,7 @@
-import { SecretRequestError, ThreadId, TurnItemId } from "@t3tools/contracts";
+import { SecretRequestError } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  secretRequestAnswerInput,
   secretRequestDisplay,
   secretRequestFailureMessage,
   secretRequestLink,

@@ -1,4 +1,5 @@
 import { t, useTranslation } from "../../i18n";
+import { msg } from "../../i18n";
 
 import {
   WorkspaceBreadcrumb,
@@ -6,6 +7,8 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { SETTINGS_SECTION_LABELS } from "./settingsSearch";
+
+const SETTINGS_LABEL = msg("Settings");
 
 const SETTINGS_BREADCRUMB_LABELS: Readonly<Record<string, string>> = {
   ...SETTINGS_SECTION_LABELS,
@@ -35,7 +38,7 @@ export function SettingsBreadcrumb({ pathname }: { pathname: string }) {
         </>
       ) : null}
       <WorkspaceBreadcrumbItem current className="truncate">
-        {sectionLabel ?? t("Settings")}
+        {t(sectionLabel ?? SETTINGS_LABEL)}
       </WorkspaceBreadcrumbItem>
     </WorkspaceBreadcrumb>
   );

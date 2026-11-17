@@ -4,7 +4,7 @@ import type {
   DesktopPreviewAnnotationVoiceEvent,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { resolveSpeechPresentation } from "~/components/chat/ComposerSpeechButton";
 import { VoiceInputSetup } from "~/components/chat/VoiceInputSetup";
@@ -38,7 +38,6 @@ export function PreviewAnnotationSpeech({
     projectId ? scopeProjectRef(threadRef.environmentId, projectId) : null,
   );
   const draft = useRef({ text: "", cursor: 0, selectionEnd: 0 });
-  const [text, setText] = useState("");
   const keys = useRef<DictationKeyHandlers | null>(null);
   const guestFocused = useRef(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- notices focus returning from the preview guest to this window
@@ -58,14 +57,12 @@ export function PreviewAnnotationSpeech({
     projectId,
     projectName: project?.title,
     ownerKey: JSON.stringify(["preview-annotation", threadRef, tabId, config.sessionId]),
-    draftText: text,
     readDraft: () => ({
       text: draft.current.text,
       selection: { start: draft.current.cursor, end: draft.current.selectionEnd },
     }),
     commitDraft: (next, selection) => {
       draft.current = { text: next, cursor: selection.start, selectionEnd: selection.end };
-      setText(next);
       void publish(current.current.voiceState, { text: next, cursor: selection.start });
     },
   });
@@ -133,7 +130,6 @@ export function PreviewAnnotationSpeech({
             cursor: Math.min(event.cursor, event.text.length),
             selectionEnd: Math.min(event.selectionEnd ?? event.cursor, event.text.length),
           };
-          setText(event.text);
           if (event.action === "focus" || event.action === "key" || event.action === "start")
             guestFocused.current = true;
           if (event.action === "blur") guestFocused.current = false;

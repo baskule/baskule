@@ -8,12 +8,12 @@ import {
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { deadlineStore } from "@t3tools/client-runtime/clock";
 import { limitRecoveryOwnsSnooze } from "@t3tools/client-runtime/state/thread-execution";
-import {} from "@t3tools/shared/usageLimits";
+
 import { GaugeIcon } from "lucide-react";
 import { useState } from "react";
 import { useDeadlinePassed } from "../../hooks/useDeadline";
-import { OpenAI } from "../Icons";
-import { Button, InlineButton } from "../ui/button";
+
+import { InlineButton } from "../ui/button";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { toastManager } from "../ui/toast";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
@@ -36,7 +36,6 @@ type RecoveryProps = {
 export function usageLimitRecoveryBannerItem(props: RecoveryProps): ComposerBannerStackItem {
   const {
     runId,
-    errorCode,
     resetAt,
     stoppedAt,
     settled,

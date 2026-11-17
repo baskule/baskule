@@ -1,4 +1,4 @@
-import { t, useTranslation } from "../i18n";
+import { useTranslation } from "../i18n";
 
 import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
 import Constants from "expo-constants";

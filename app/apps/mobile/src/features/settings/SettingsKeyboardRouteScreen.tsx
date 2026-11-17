@@ -1,4 +1,4 @@
-import { t, useTranslation } from "../../i18n";
+import { t } from "../../i18n";
 
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";

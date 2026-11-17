@@ -1,18 +1,15 @@
-import { act, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
-import {
-  AssetWorkspaceAssetNotFoundError,
-  EnvironmentId,
-  ThreadId,
-} from "@t3tools/contracts";
+import { AssetWorkspaceAssetNotFoundError, EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 const harness = vi.hoisted(() => ({
   refreshAssetUrl:
-    vi.fn<(environmentId: string, resource: { path: string }) => Promise<string | null>>(),
+    vi.fn<(environmentId: string, resource: { readonly path: string }) => Promise<string | null>>(),
   alert: vi.fn(),
   previews: [] as unknown[],
   mounts: 0,
+  presentationFinished: false,
 }));
 
 vi.mock("../../state/assets", () => ({
@@ -34,6 +31,9 @@ import { FilePreviewSession } from "./FilePreviewSession";
 function Viewer(props: FilePreviewViewerProps) {
   useState(() => harness.mounts++);
   harness.previews.push(props.source);
+  const { onPresent } = props;
+  // Stands in for the native presentation starting.
+  useEffect(() => onPresent?.(() => harness.presentationFinished), [onPresent]);
   return null;
 }
 
@@ -172,4 +172,71 @@ it("names the checked path when the server cannot find the file", async () => {
     expect.stringContaining(checkedPath),
   );
   expect(harness.alert.mock.calls[0]?.[1]).not.toMatch(/reconnect/i);
+});
+
+it.each([
+  // Handed to native but not yet started there, or still on screen.
+  ["image", false, 1],
+  ["image", true, 2],
+  // A PDF is still resolving here, so its viewer never presented and a re-render must not restart it.
+  ["pdf", true, 1],
+] as const)(
+  "a re-tap of the open %s restarts the preview only once its native viewer closed (closed: %s)",
+  async (kind, finished, starts) => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    harness.presentationFinished = finished;
+    harness.mounts = 0;
+    harness.refreshAssetUrl.mockReset();
+    if (kind === "image") harness.refreshAssetUrl.mockResolvedValue("https://signed.test/a.png");
+    else harness.refreshAssetUrl.mockReturnValue(new Promise(() => {}));
+    const selected: FilePreviewItem = { ...image("https://github.com/a.png"), kind };
+    const root = createRoot(document.createElement("div"));
+    await using _root = { [Symbol.asyncDispose]: () => act(async () => root.unmount()) };
+    const render = () =>
+      act(async () =>
+        root.render(
+          <FilePreviewSession
+            source={{ ...selected, gallery: [selected] }}
+            onRequestClose={() => {}}
+            progressiveGallery
+            Viewer={Viewer}
+          />,
+        ),
+      );
+    await render();
+    await render();
+    expect(harness.refreshAssetUrl).toHaveBeenCalledTimes(starts);
+  },
+);
+
+it("does not carry a presented viewer over to a different item that is still resolving", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  harness.presentationFinished = true;
+  harness.refreshAssetUrl.mockReset();
+  harness.refreshAssetUrl.mockImplementation((_environmentId, resource) =>
+    resource.path.endsWith("a.png")
+      ? Promise.resolve("https://signed.test/a.png")
+      : new Promise(() => {}),
+  );
+  const shown = image("https://github.com/a.png");
+  const resolving: FilePreviewItem = { ...image("https://github.com/b.pdf"), kind: "pdf" };
+  const root = createRoot(document.createElement("div"));
+  await using _root = { [Symbol.asyncDispose]: () => act(async () => root.unmount()) };
+  const render = (item: FilePreviewItem) =>
+    act(async () =>
+      root.render(
+        <FilePreviewSession
+          source={{ ...item, gallery: [item] }}
+          onRequestClose={() => {}}
+          progressiveGallery
+          Viewer={Viewer}
+        />,
+      ),
+    );
+  await render(shown);
+  await render(resolving);
+  await render(resolving);
+  expect(
+    harness.refreshAssetUrl.mock.calls.filter(([, r]) => r.path.endsWith("b.pdf")),
+  ).toHaveLength(1);
 });

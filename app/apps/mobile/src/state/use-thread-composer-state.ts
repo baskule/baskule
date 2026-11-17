@@ -8,11 +8,18 @@ import { readEnvironmentScope } from "./session";
 import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
+import { threadSteersDuringCompaction } from "@t3tools/client-runtime/state/thread-workflows";
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
 import {
+  announcedRun,
+  isDetailBehindShell,
+} from "@t3tools/client-runtime/state/thread-activity-announcement";
+import {
+  canResumeThread,
   deriveProviderSubagentStatus,
   deriveProviderExtensionStatuses,
   deriveResumableRunId,
+  deriveLatestThreadRun,
   deriveRunlessWorkStartedAt,
   deriveThreadActivityRun,
   deriveThreadRuntime,
@@ -25,7 +32,6 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   MessageId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
-  orchestrationV2WorktreePending,
   type EnvironmentId,
   type ModelSelection,
   type RuntimeMode,
@@ -52,7 +58,7 @@ import {
   pruneCaughtUpAcknowledgedThreadMessages,
 } from "./acknowledged-thread-messages";
 import {
-  appendPendingThreadMessages,
+  appendAcceptedThreadMessages,
   selectPendingAcknowledgedMessages,
 } from "../features/threads/pending-thread-feed";
 import { threadAllowsProviderSwitch } from "./thread-provider-switching";
@@ -79,7 +85,9 @@ import {
   useComposerDraftSettings,
 } from "./use-composer-drafts";
 import { isClearComposerCommand, parseSideChatCommand } from "@t3tools/shared/composerTrigger";
+import { orchestrationV2WorktreePending } from "@t3tools/shared/orchestrationV2ThreadError";
 import {
+  compactionBlocksSteering,
   resolveComposerDispatchMode,
   type ActiveTurnComposerAction,
 } from "@t3tools/client-runtime/state/composer-dispatch";
@@ -266,9 +274,10 @@ export function useThreadComposerState(input: {
       sequence: selectedThreadSequence,
       projectedMessages: selectedThreadMessages,
     });
-    if (pendingAcknowledgments.length === 0) return feed;
-    return appendPendingThreadMessages(feed, feed, pendingAcknowledgments).map((entry) =>
-      entry.pendingMessage ? { ...entry, acknowledged: true } : entry,
+    return appendAcceptedThreadMessages(
+      feed,
+      pendingAcknowledgments,
+      pendingCreation.length > 0 ? pendingCreationMessage : null,
     );
   })();
 
@@ -313,24 +322,42 @@ export function useThreadComposerState(input: {
   const selectedThreadActivityRun = selectedThreadProjection
     ? deriveThreadActivityRun(selectedThreadProjection.projection)
     : (selectedThreadShell?.latestRun ?? null);
+  const selectedThreadAnnouncedRun = announcedRun(
+    selectedThreadActivityRun,
+    selectedThreadProjection?.projection.runs ?? [],
+  );
+  const selectedThreadDetailBehindShell = isDetailBehindShell(
+    selectedThreadProjection ? deriveLatestThreadRun(selectedThreadProjection.projection) : null,
+    selectedThreadShell?.latestRun ?? null,
+  );
 
-  // The provider compacts on its own inside a turn.
-  const isCompacting = (() => {
-    const activeRunId = selectedThreadRuntime?.activeRunId;
-    if (!activeRunId || !threadRuntimeIsActive(selectedThreadRuntime)) return false;
-    return selectedThreadVisibleTurnItems.some(
+  const activeRunId =
+    selectedThreadRuntime?.activeRunId && threadRuntimeIsActive(selectedThreadRuntime)
+      ? selectedThreadRuntime.activeRunId
+      : null;
+  const isCompacting =
+    activeRunId !== null &&
+    selectedThreadVisibleTurnItems.some(
       ({ item }) =>
         item.runId === activeRunId && item.type === "compaction" && item.status === "running",
     );
-  })();
-  // A compacting turn cannot take steering input, so follow-ups queue meanwhile.
-  const canSteerActiveTurn = queueWorkflow?.canPromoteToSteer === true && !isCompacting;
+  const compactionBlocksSteer = compactionBlocksSteering({
+    compactCommandIsActive: false,
+    compactionRunning: isCompacting,
+    steersDuringCompaction: threadSteersDuringCompaction(selectedThreadProjection?.projection),
+    run: selectedThreadProjection?.projection.runs.find((run) => run.id === activeRunId),
+    messages: selectedThreadMessages,
+  });
+  const canSteerActiveTurn = queueWorkflow?.canPromoteToSteer === true && !compactionBlocksSteer;
   // A stop or a restart holds the queue, completion wakes included, until it
   // is resumed; the queue sheet lists only the user's own messages.
   const queueHeld = queueWorkflow?.isHeld === true;
   const resumableRunId = selectedThreadProjection
     ? deriveResumableRunId(selectedThreadProjection.projection, selectedThreadRuntime)
     : null;
+  const canResume = selectedThreadProjection
+    ? canResumeThread(selectedThreadProjection.projection, resumableRunId, queueHeld)
+    : queueHeld;
 
   const runlessWorkStartedAt = selectedThreadProjection
     ? deriveRunlessWorkStartedAt(selectedThreadProjection.projection)
@@ -392,6 +419,14 @@ export function useThreadComposerState(input: {
         t("Remove attachments until there are at most {{PROVIDER_SEND_TURN_MAX_ATTACHMENTS}}.", {
           PROVIDER_SEND_TURN_MAX_ATTACHMENTS: PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
         }),
+      );
+      return;
+    }
+    // A queued message stays in its thread, so saving `/side` would send it to main.
+    if (parseSideChatCommand(text)) {
+      Dialog.alert(
+        t("Queued message not updated"),
+        t("A queued message can't move to a side chat. Remove /side or /btw to save it."),
       );
       return;
     }
@@ -598,10 +633,6 @@ export function useThreadComposerState(input: {
       alertModelUnavailable();
       return null;
     }
-    const provider = serverConfig?.providers.find(
-      (entry) => entry.instanceId === modelSelection.instanceId,
-    );
-
     if (beforeDispatch !== undefined) {
       const response = await beforeDispatch(
         text,
@@ -672,7 +703,9 @@ export function useThreadComposerState(input: {
     clearComposerDraftContent(threadKey, { deferAttachmentCleanup: true });
     if (freshContext) setFreshSessionPending(threadKey, false);
     enqueuePromise.then(
-      () => scheduleUnusedComposerAttachmentCleanup(attachments),
+      () => {
+        scheduleUnusedComposerAttachmentCleanup(attachments);
+      },
       (error: unknown) => {
         // Restore with uncapped append; capped merge could drop attachments added during the failed write.
         void mergeComposerDraftContent(threadKey, {
@@ -680,7 +713,7 @@ export function useThreadComposerState(input: {
           context: draft.context,
           attachments: [],
         });
-        appendComposerDraftAttachments(threadKey, attachments, { allowOverflow: true });
+        appendComposerDraftAttachments(threadKey, attachments, { restore: true });
         if (freshContext) setFreshSessionPending(threadKey, true);
         setThreadComposerError(
           threadKey,
@@ -744,6 +777,8 @@ export function useThreadComposerState(input: {
   return {
     selectedThreadFeed,
     selectedThreadActivityRun,
+    selectedThreadAnnouncedRun,
+    selectedThreadDetailBehindShell,
     selectedThreadQueueCount,
     selectedThreadQueuedMessages,
     dispatchingQueuedMessageId,
@@ -759,6 +794,7 @@ export function useThreadComposerState(input: {
     canSteerActiveTurn,
     queueHeld,
     resumableRunId,
+    canResume,
     queuedRunEdit,
     isSavingQueuedEdit,
     cancelQueuedRunEdit,

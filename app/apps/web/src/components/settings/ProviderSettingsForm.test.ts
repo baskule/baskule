@@ -39,6 +39,27 @@ describe("ProviderSettingsForm helpers", () => {
     expect(next).toEqual({ forkOwned: 1 });
   });
 
+  it("does not store a text value its field's schema rejects", () => {
+    const settingsSchema = makeProviderSettingsSchema({
+      endpoint: TrimmedString.check(Schema.isPattern(/^https?:\/\//)).pipe(
+        Schema.annotateKey({ providerSettingsForm: { control: "text" } }),
+      ),
+    });
+    const endpoint = deriveProviderSettingsFields({ settingsSchema }).find(
+      (field) => field.key === "endpoint",
+    );
+    expect(endpoint).toBeDefined();
+
+    for (const invalid of ["file:///tmp/server", "not-a-url"]) {
+      expect(nextProviderConfigWithFieldValue({ launchArgs: "--x" }, endpoint!, invalid)).toEqual({
+        launchArgs: "--x",
+      });
+    }
+    expect(
+      nextProviderConfigWithFieldValue({ launchArgs: "--x" }, endpoint!, "https://server.example"),
+    ).toEqual({ launchArgs: "--x", endpoint: "https://server.example" });
+  });
+
   it("stores false boolean fields when true is the default", () => {
     const next = nextProviderConfigWithFieldValue(
       undefined,

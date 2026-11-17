@@ -1,3 +1,5 @@
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ProviderInstallationGate from "./ProviderInstallationGate.ts";
 import * as Deferred from "effect/Deferred";
 import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
 import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
@@ -8,7 +10,6 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentId, ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
-import { OpenCodeSettings } from "@t3tools/provider-opencode/settings";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -80,7 +81,7 @@ describe("ProviderInstanceRegistry — OpenCode instances", () => {
       }),
     ),
   );
-  const layerBaseDeps = Layer.empty.pipe(
+  const layerBaseDeps = SqlitePersistence.layerMemory.pipe(
     Layer.provideMerge(ServerSecretStore.layer),
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), {
@@ -100,6 +101,7 @@ describe("ProviderInstanceRegistry — OpenCode instances", () => {
     ),
     Layer.provideMerge(ProviderLatestVersions.layer),
     Layer.provideMerge(McpProviderSessions.layer),
+    Layer.provideMerge(ProviderInstallationGate.layer),
     Layer.provideMerge(ModelManifest.layerTest),
     Layer.provideMerge(ResetCreditCoordinator.layerTest),
   );

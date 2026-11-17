@@ -31,12 +31,10 @@ import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActi
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
-import { AddClaudeAccount, ClaudeAccount } from "./ClaudeAccounts";
-import { CLAUDE_DRIVER } from "./claude-accounts";
+
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
 export function SettingsProviderAccountsRouteScreen() {
   const environmentMenu = useSettingsEnvironmentMenu();
-  const t = useTranslation();
   const { selectedTargets } = useSettingsEnvironmentFilter();
   const permittedEnvironments = useEnvironmentsWithScope(selectedTargets, AuthProvidersManageScope);
   const providersByEnvironment = useAtomValue(environmentPresentations.providersByEnvironmentAtom);
@@ -83,14 +81,6 @@ function EnvironmentProviders({
   readonly providers: ReadonlyArray<ServerProvider>;
 }) {
   const accounts = providers.filter(canManageProvider);
-  // Claude has no in-app sign-in; each account is its own instance on a signed-in config folder.
-  const claudeAccounts = providers.filter(
-    (provider) => provider.driver === CLAUDE_DRIVER && !canManageProvider(provider),
-  );
-  const canAddClaude = isManagedDriverAllowed(
-    environment.serverConfig.managedPolicy,
-    CLAUDE_DRIVER,
-  );
   return (
     <>
       {accounts.map((provider, index) => (

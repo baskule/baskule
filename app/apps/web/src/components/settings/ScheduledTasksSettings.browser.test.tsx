@@ -45,7 +45,13 @@ const task: ScheduledTask = {
 // Stands in for the thread family read the editor makes when the shell lacks the bound thread.
 const threadFamilyRead = {
   snapshotSequence: 1,
-  threads: [{ id: task.threadId, title: "Fix login bug" }],
+  threads: [
+    {
+      id: task.threadId,
+      title: "Fix login bug",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.5" },
+    },
+  ],
 };
 
 const state = vi.hoisted(() => ({
@@ -53,6 +59,7 @@ const state = vi.hoisted(() => ({
   tasksLoaded: true,
   secondary: false,
   userId: "alice",
+  remove: vi.fn(),
 }));
 vi.mock(import("../../baskule/session"), async (original) => ({
   ...(await original()),
@@ -83,6 +90,7 @@ function setup() {
   state.userId = "alice";
   state.connected = true;
   state.tasksLoaded = true;
+  state.remove.mockReset().mockResolvedValue({ _tag: "Success", value: { id: task.id } });
   state.secondary = false;
   permissions.clear();
   permissions.set(environmentId, Atom.make(true));
@@ -93,6 +101,11 @@ function setup() {
 function secondaryEnvironment() {
   return { ...environment(), environmentId: secondaryId, label: "Secondary" };
 }
+
+vi.mock(import("../../state/session"), async (original) => ({
+  ...(await original()),
+  readEnvironmentScope: () => true,
+}));
 
 function environment() {
   return {
@@ -133,6 +146,10 @@ vi.mock(import("../../state/server"), async (original) => {
     ...actual,
     serverEnvironment: {
       ...actual.serverEnvironment,
+      deleteScheduledTask: {
+        ...actual.serverEnvironment.deleteScheduledTask,
+        run: state.remove,
+      },
       upsertScheduledTask: {
         ...actual.serverEnvironment.upsertScheduledTask,
         permissionAtom: (id: string | null) => permissions.get(id ?? "")!,
@@ -240,6 +257,19 @@ describe("ScheduledTasksSettings", () => {
     state.connected = true;
     await screen.rerender(<ScheduledTasksSettings taskId={task.id} />);
     await expect.element(name).toHaveValue("Review stale issues");
+  });
+
+  it("offers no model choice for a task bound to a thread, whose runs use the thread's model", async () => {
+    setup();
+    await using _screen = await render(<ScheduledTasksSettings taskId={task.id} />);
+    await expect.element(page.getByRole("dialog").getByText("Fix login bug")).toBeVisible();
+    const enabledPicker = document.querySelector(
+      '[role="dialog"] [data-chat-provider-model-picker]:not(:disabled)',
+    );
+    expect(enabledPicker).toBeNull();
+    await expect
+      .element(page.getByRole("dialog").getByRole("button", { name: "gpt-5.5", exact: true }))
+      .toBeDisabled();
   });
 
   it("keeps an editor the user opened when the linked task loads later", async () => {

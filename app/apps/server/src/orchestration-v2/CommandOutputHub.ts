@@ -13,6 +13,7 @@ import {
   TERMINAL_OUTPUT_TAIL_CHARS,
   terminalOutputResumeText,
 } from "@t3tools/shared/terminalOutput";
+import { commandItemOutput } from "@t3tools/shared/commandOutput";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -68,7 +69,6 @@ function commandKey(target: CommandOutputTarget): string {
   return `${target.threadId}\u0000${target.itemId}`;
 }
 
-/** The output a row shows from a persisted item, bounded before normalization. */
 function persistedCommandOutput(output: string | undefined): {
   readonly text: string;
   readonly truncated: boolean;
@@ -254,8 +254,11 @@ export const make = Effect.gen(function* () {
                 running: false,
               };
             }
-            const output = settled.output;
-            return { kind: "replace", ...persistedCommandOutput(output), running: false };
+            return {
+              kind: "replace",
+              ...persistedCommandOutput(commandItemOutput(settled)),
+              running: false,
+            };
           }
           if (subscriber.needsReplace || tail === undefined) {
             if (subscriber.overflowed) throttle = COMMAND_OUTPUT_REPLACE_INTERVAL_MS;

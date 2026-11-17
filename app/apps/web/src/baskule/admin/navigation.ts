@@ -12,7 +12,7 @@ import {
   MailIcon,
   MicIcon,
   PackageCheckIcon,
-  SparklesIcon,
+  BotIcon,
   UserIcon,
   UsersIcon,
   UsersRoundIcon,
@@ -134,7 +134,7 @@ export const ADMIN_SECTIONS: ReadonlyArray<AdminSection> = [
         id: "models",
         label: msg("Models"),
         description: msg("The AI provider and model everyone in your organization uses."),
-        icon: SparklesIcon,
+        icon: BotIcon,
         component: page(() => import("./ai/ModelsPage"), "ModelsPage"),
       },
       {

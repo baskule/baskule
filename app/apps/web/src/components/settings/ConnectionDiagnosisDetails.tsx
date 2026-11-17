@@ -68,7 +68,8 @@ const HOP_NOTE = { ok: "", failed: "Failed", unchecked: "Not checked" } as const
 
 /** Ticks once per second, and only while a retry is scheduled, so the list around it does not re-render. */
 function RetryCountdown({ retryAt }: { readonly retryAt: number }) {
-  return useDeadlinePassed(retryAt) ? "retrying" : <RetryCountdownTicker retryAt={retryAt} />;
+  const t = useTranslation();
+  return useDeadlinePassed(retryAt) ? t("retrying") : <RetryCountdownTicker retryAt={retryAt} />;
 }
 
 function RetryCountdownTicker({ retryAt }: { readonly retryAt: number }) {

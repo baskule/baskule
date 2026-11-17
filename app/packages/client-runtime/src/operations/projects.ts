@@ -8,12 +8,13 @@ import type {
 } from "@t3tools/contracts";
 
 import { cloneUrlRepositoryPath } from "@t3tools/shared/cloneUrl";
-import { newProjectFolderName } from "@t3tools/shared/path";
+import { isExplicitRelativePath, isHostPath, newProjectFolderName } from "@t3tools/shared/path";
 
 import {
   appendBrowsePathSegment,
   ensureBrowseDirectoryPath,
   findProjectByPath,
+  getBrowseParentPath,
   inferProjectTitleFromPath,
   isExplicitRelativeProjectPath,
   isUnsupportedWindowsProjectPath,
@@ -50,7 +51,10 @@ export type AddProjectCloneFlow =
 
 export function getAddProjectInitialQuery(baseDirectory: string | null | undefined): string {
   const trimmed = baseDirectory?.trim() ?? "";
-  return trimmed.length === 0 ? "~/" : ensureBrowseDirectoryPath(trimmed);
+  if (trimmed.length === 0) return "~/";
+  // A bare relative setting such as `Desktop/dev` means a folder under home.
+  const isAnchored = trimmed === "~" || isHostPath(trimmed) || isExplicitRelativePath(trimmed);
+  return ensureBrowseDirectoryPath(isAnchored ? trimmed : `~/${trimmed}`);
 }
 
 export function getCloneDirectoryName(repositoryOrRemoteUrl: string | null | undefined): string {
@@ -122,6 +126,26 @@ export function getCloneDestinationBrowsePath(input: {
   return selectedDirectoryMatches
     ? selectedDirectoryPath
     : getCloneDestinationPath(selectedDirectoryPath, input.cloneDirectoryName);
+}
+
+// The native picker returns a full path, not a name under the browsed directory.
+// Split it and reuse the in-app rules so a folder already named after the
+// repository stays that folder instead of becoming repo/repo.
+export function getCloneDestinationForPickedFolder(input: {
+  readonly pickedPath: string;
+  readonly cloneDirectoryName: string;
+  readonly caseSensitive: boolean;
+}): string {
+  const parentPath = getBrowseParentPath(input.pickedPath);
+  if (parentPath === null) {
+    return getCloneDestinationPath(input.pickedPath, input.cloneDirectoryName);
+  }
+  return getCloneDestinationBrowsePath({
+    browseDirectoryPath: parentPath,
+    selectedDirectoryName: inferProjectTitleFromPath(input.pickedPath),
+    cloneDirectoryName: input.cloneDirectoryName,
+    caseSensitive: input.caseSensitive,
+  });
 }
 
 export function resolveAddProjectPath(input: {

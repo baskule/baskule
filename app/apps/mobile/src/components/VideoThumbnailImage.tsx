@@ -3,6 +3,7 @@ import { Atom } from "effect/reactivity";
 import { Image } from "expo-image";
 import { useIsFocused } from "@react-navigation/native";
 import type { VideoThumbnail } from "expo-video";
+import { useState } from "react";
 import { StyleSheet } from "react-native";
 
 import { managedAttachmentOwner } from "../lib/attachmentDownload";
@@ -63,7 +64,7 @@ export function VideoThumbnailImage(props: {
   readonly contentFit?: "cover" | "contain";
 }) {
   const { cacheKey, source } = props;
-  // Extraction runs only while the screen is focused; leaving it interrupts the load.
+  // Extraction starts only while the screen is focused; leaving it skips queued loads.
   const isFocused = useIsFocused();
   const managed = typeof source === "string" && source.startsWith("file:");
   const thumbnail =
@@ -71,14 +72,18 @@ export function VideoThumbnailImage(props: {
       source && isFocused ? videoThumbnailAtom({ cacheKey, source }) : noVideoThumbnail,
     ) ?? (!managed && source ? cachedVideoThumbnail(cacheKey) : null);
 
-  return thumbnail ? (
+  // iOS draws a frame object the moment its prop is set, with the contentFit the view has then,
+  // and a later contentFit never refits it. Send the frame after mount so contentFit is set first.
+  const [laidOut, setLaidOut] = useState(false);
+  return (
     <Image
-      source={thumbnail}
+      onLayout={() => setLaidOut(true)}
+      source={laidOut ? thumbnail : null}
       cachePolicy={managed ? "none" : undefined}
       style={StyleSheet.absoluteFill}
       contentFit={props.contentFit ?? "cover"}
       recyclingKey={cacheKey}
       accessible={false}
     />
-  ) : null;
+  );
 }

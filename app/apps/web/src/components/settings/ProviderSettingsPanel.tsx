@@ -752,6 +752,7 @@ export function EnvironmentProviderSettings({
         description: error instanceof Error ? error.message : t("The settings update failed."),
       });
     }
+    return result._tag !== "Failure";
   };
 
   const updateInstance = useStableCallback(
@@ -765,7 +766,7 @@ export function EnvironmentProviderSettings({
         isDisabling &&
         resolveAppModelSelectionState(settings, serverProviders).instanceId === instanceId &&
         readEnvironmentScope(environmentId, AuthSettingsWriteScope);
-      void persistInstance(
+      return persistInstance(
         instanceId,
         next,
         shouldClearTextGen ? DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection : undefined,
@@ -1060,7 +1061,7 @@ export function EnvironmentProviderSettings({
               )}
             >
               <IntervalSecondsField
-                label="provider health check interval"
+                label={t("provider health check interval")}
                 value={providerHealthRefreshIntervalSeconds}
                 min={0}
                 step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
@@ -1103,12 +1104,15 @@ interface ProviderInstanceRowActions {
     instanceId: ProviderInstanceId,
     previous: ProviderInstanceConfig,
     next: ProviderInstanceConfig,
-  ) => void;
+  ) => Promise<boolean>;
   readonly enableInstance: (
     instanceId: ProviderInstanceId,
     next: ProviderInstanceConfig,
+  ) => Promise<boolean>;
+  readonly deleteInstance: (
+    instanceId: ProviderInstanceId,
+    instance: ProviderInstanceConfig,
   ) => Promise<void>;
-  readonly deleteInstance: (instanceId: ProviderInstanceId) => Promise<void>;
   readonly resetDefaultInstance: (driverKind: ProviderDriverKind) => Promise<void>;
   readonly writeProjectOverride: (
     instanceId: ProviderInstanceId,
@@ -1229,7 +1233,9 @@ function ProviderInstanceRow({
 
       onUpdate={(next) => actions.updateInstance(instanceId, instance, next)}
       onDelete={
-        mode === "editor" && !isDefault ? () => actions.deleteInstance(instanceId) : undefined
+        mode === "editor" && !isDefault
+          ? () => actions.deleteInstance(instanceId, instance)
+          : undefined
       }
       headerAction={
         mode === "editor" && isDefault && isDirty ? (

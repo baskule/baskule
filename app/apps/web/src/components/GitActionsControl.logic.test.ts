@@ -1,3 +1,4 @@
+import { buildMenuItems } from "./GitActionsControl.logic";
 import { type VcsStatusResult } from "@t3tools/contracts";
 
 import { resolveAutoFeatureBranchName } from "@t3tools/shared/git";
@@ -7,6 +8,7 @@ import {
   resolveChangesTotals,
   resolveLiveThreadBranchUpdate,
   resolveQuickAction,
+  getMenuActionDisabledReason,
 } from "./GitActionsControl.logic";
 
 function status(overrides: Partial<VcsStatusResult> = {}): VcsStatusResult {
@@ -27,6 +29,12 @@ function status(overrides: Partial<VcsStatusResult> = {}): VcsStatusResult {
     pr: null,
     ...overrides,
   };
+}
+
+function pushDisabledReason(gitStatus: VcsStatusResult): string | null {
+  const item = buildMenuItems(gitStatus, false).find((menuItem) => menuItem.id === "push");
+  assert.isDefined(item);
+  return getMenuActionDisabledReason({ item, gitStatus, isBusy: false, hasPrimaryRemote: true });
 }
 
 describe("when: ref is clean, ahead, and has an open PR", () => {
@@ -75,6 +83,10 @@ describe("when: local changes are behind upstream", () => {
       action: "commit",
     } as const;
     assert.deepEqual(resolveQuickAction(behind, false), commit);
+    assert.equal(
+      pushDisabledReason({ ...behind, aheadCount: 1 }),
+      "Branch is behind upstream. Pull/rebase before pushing.",
+    );
     assert.deepEqual(
       resolveQuickAction(
         {
@@ -204,6 +216,37 @@ describe("resolveChangesTotals", () => {
       ),
       { insertions: 20, deletions: 3, baseRef: "origin/master" },
     );
+  });
+
+  it("uses the panel's branch comparison when it has file stats", () => {
+    const dirty = status({
+      branchChanges: { baseRef: "main", insertions: 20, deletions: 3 },
+    });
+    const source = {
+      id: "branch-range",
+      kind: "branch-range",
+      title: "Changes vs release",
+      baseRef: "release",
+      headRef: "feature/test",
+      diff: "",
+      diffHash: "hash",
+      truncated: false,
+    } as const;
+    assert.deepEqual(
+      resolveChangesTotals(dirty, {
+        ...source,
+        files: [
+          { path: "a.ts", previousPath: null, additions: 4, deletions: 1 },
+          { path: "b.ts", previousPath: null, additions: 2, deletions: 0 },
+        ],
+      }),
+      { insertions: 6, deletions: 1, baseRef: "release" },
+    );
+    assert.deepEqual(resolveChangesTotals(dirty, source), {
+      insertions: 20,
+      deletions: 3,
+      baseRef: "main",
+    });
   });
 
   it("falls back to the working tree when branchChanges is omitted", () => {

@@ -5,7 +5,7 @@ Keep `LICENSE` and third-party notices. [Source provenance](../source-provenance
 records the upstream source and licenses. The root [build guide](../docs/building.md)
 and [development workflow](../docs/development-workflow.md) cover the complete repository.
 
-Upstream base: T3 Code `v0.1.9` (`24e77473ecf41bc1f7142529c7911c1c1aae1d76`).
+Upstream base: T3 Code `v0.1.10` (`7d32075e3757ded707914e2450c3e392a9665765`).
 Update this line with each upstream update.
 
 ## Build and run
@@ -122,6 +122,11 @@ The workerd integration lives in `apps/server/src/baskule/workerd/`:
 - `fileSystem.ts` stores server state in cell SQLite; `computerFs.ts` routes workspace files to computerd.
 - `transport.ts` and `routes.ts` handle HTTP and WebSockets with an explicit route policy.
 - `shims/` and `trim/` replace Node-only services at bundle time through `build.mjs`.
+  The terminal adapter preserves upstream's service and layer signatures while refusing
+  local terminal operations. The btrfs attribute helper is inert because SpaceCell SQL owns
+  its storage; app directories do not contain a host SQLite database to mark No_COW.
+  Hosted composition omits Node provider-process ownership and systemd scopes because the
+  embedded agent runs in the cell and executable tools run on its computer.
   Trimmed modules must keep the exports and service keys their callers use.
 
 `apps/server/src/baskule/rpcPolicy.ts` defines hosted commands. It disables settlement,
@@ -136,6 +141,10 @@ Baskule UI switches in the retained client code; it does not restore excluded fe
 Baskule UI modules live under `apps/web/src/baskule/`; integration comments identify edits
 in upstream files. Keep flags and actual RPC capabilities aligned.
 
+The browser wait adapter retains the released Baskule `loadState` condition by checking
+`document.readyState` inside upstream’s bounded wait. Snapshot capture uses upstream’s bounded
+retry; the older custom settle-and-retry loop is removed.
+
 Voice input keeps upstream's dictation controls, `VoiceInputController` lifecycle and browser
 PCM capture. Upstream's local-model, cloud-provider and destination code stays in the web tree so
 later upgrades merge cleanly; `BASKULE_HOSTED` gates it off, and no Baskule build can grant it a
@@ -146,6 +155,15 @@ show no voice settings route, search result, setup dialog or settings action. Mo
 upstream's `t3-voice-transcription` native module and uses the same route; **Settings → Voice**
 remains for microphone access and the preferred-microphone order its recorder applies.
 Saved speech settings still decode; no client calls the server's upstream speech endpoints.
+
+The web and mobile clients share one i18next runtime and six locale catalogs. Released upstream
+Settings messages reuse those catalogs through small call-site adaptations. Device language
+preferences remain authoritative, including automatic language selection. The limited upstream
+GT Settings runtime does not replace full-app translations or add a second language preference.
+
+Missing tool-visibility preferences default to `hideAll` through the upstream preference model.
+Every explicit saved choice is preserved. Dictation uses upstream's current snapshot and insertion
+model; obsolete per-draft revision tracking is removed.
 
 The embedded build adapts OpenCode 2.2.5’s Code Mode queue so completed host tools are not starved
 by polling jobs. Native goal controls refresh their state before settling because a command can
@@ -158,7 +176,7 @@ There is no manual `/compact` action or idle compaction worker.
 ## Take a new upstream release
 
 Follow [Upgrade the T3 Code base](../docs/upstream-upgrades.md).
-The current [integration review](../docs/upstream-v0.1.9-integration.md) records the release
+The current [integration review](../docs/upstream-v0.1.10-integration.md) records the release
 decisions and verification boundary.
 Start from the complete new stable upstream release and selectively reapply the
 Baskule behavior still needed from the latest `origin/main`. Adapt retained changes
@@ -169,13 +187,13 @@ Keep the release summary short and grouped by product area. Confirm the stable
 release and explain the gap first. Report only changes included in the released tag.
 The guide covers migration checks, integration boundaries, verification, and PR review.
 
-### v0.1.9 bundle-time customizations
+### Bundle-time customizations
 
 Revalidate these customizations when T3, Effect or embedded OpenCode changes:
 
 - `hostedComposition.mjs` rewrites upstream `server.ts` at complete Layer expressions for
   ProviderRegistry, keybindings/theme, command readiness, speech storage, native telemetry,
-  host power, managed endpoints, and analytics. The v0.1.9 speech store also exposes `link` and
+  host power, managed endpoints, and analytics. The speech store also exposes `link` and
   `linkedFrom`; hosted mutations refuse local files and queries report absence. `hostedTrims.ts`
   retains the hosted service keys;
   `hostedLayers.ts` keeps per-Space acquisition and readiness policy.
@@ -185,7 +203,7 @@ Revalidate these customizations when T3, Effect or embedded OpenCode changes:
 - It rewrites `auth/McpOAuth.ts` at signer construction and both sign/verify calls.
   `deferredService.ts` captures Space dependencies, caches successes only, and owns first-use resources.
   ProviderRegistry, EnvironmentTheme, and OAuth signing use it; lifetime services remain eager.
-- `sharedHttpCodecs.mjs` rewrites Effect 4.1.2's `dist/http-api/HttpApiBuilder.js` at
+- `sharedHttpCodecs.mjs` rewrites Effect 4.1.3's `dist/http-api/HttpApiBuilder.js` at
   `handlerToHttpEffect` and its middleware/error boundaries. Only schema factories are shared.
   The reviewed factory body, declarations, and file match are guarded; inspect the complete lifted
   body before updating its fingerprint. Request contexts and handlers remain per Space.
@@ -202,10 +220,11 @@ journey after changes. The startup/retention design is tracked in
 
 ### Migration boundary
 
-The application migration head is **081**. Retired Codex index 065 and peer-only migration IDs
-070–072 remain absent from the Baskule manifest. Migrations 077–081 run forward from the
-released Baskule 076 and 080 histories without resetting data. Migration 081 adds readable citation
-search text and backfills the existing message index.
+The application migration head is **096**. Retired Codex index 065 and peer-only migration IDs
+070–072 remain absent from the Baskule manifest. Preserve those omissions and all recorded
+identifiers. Migrations 082–096 run forward over the existing tables, including shared auth DDL,
+message and event indexes, provider-attempt/ordinal repairs, custom titles and inline tool output.
+The upstream preflight uses the Baskule manifest so it does not demand retired migrations.
 Inspect new upstream migrations for peer tables, fences, indexes and migration-head assumptions.
 Do not add empty migrations for excluded layouts. Preserve supported migration code and follow
 `packages/contracts/release-compatibility.json` when removing compatibility paths.

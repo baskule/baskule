@@ -1,5 +1,6 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   DraftId,
@@ -7,6 +8,8 @@ import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
 } from "../../composerDraftStore";
+import { readAttachmentUpload, useAttachmentUploadStore } from "../../lib/attachmentUploadQueue";
+
 import { prepareQueuedEditAttachments, recoverQueuedMessageEdit } from "./queuedMessageEdit";
 
 const environmentId = EnvironmentId.make("remote-environment");
@@ -77,12 +80,22 @@ describe("queued message file edits", () => {
   it("keeps file-only edits when another client starts the queued run", () => {
     const store = useComposerDraftStore.getState();
     store.setPrompt(editTarget, "Original message");
-    store.addFiles(editTarget, [file]);
+    const elsewhere: ComposerFileAttachment = {
+      ...uploadedFile,
+      id: "file:elsewhere",
+      name: "elsewhere.pdf",
+      file: null,
+      uploadedAttachmentId: "upload:elsewhere",
+      uploadEnvironmentId: EnvironmentId.make("other-environment"),
+    };
+    store.addFiles(editTarget, [file, elsewhere]);
     expect(
       recoverQueuedMessageEdit({ editTarget, threadTarget, originalText: "Original message" }),
     ).toBe("kept");
     expect(store.getComposerDraft(threadTarget)?.prompt).toBe("Original message");
-    expect(store.getComposerDraft(threadTarget)?.files).toEqual([file]);
+    // An upload this environment cannot reach comes back as a file to reattach, not a dropped chip.
+    const { uploadedAttachmentId: _id, uploadEnvironmentId: _env, ...reattach } = elsewhere;
+    expect(store.getComposerDraft(threadTarget)?.files).toEqual([file, reattach]);
     expect(store.getComposerDraft(editTarget)).toBeNull();
   });
 
@@ -115,10 +128,16 @@ describe("queued message file edits", () => {
     const store = useComposerDraftStore.getState();
     store.setPrompt(threadTarget, "Separate draft");
     store.addFiles(editTarget, [file]);
+    useAttachmentUploadStore.setState({
+      uploadsByImageId: {
+        [file.id]: { status: "ready", environmentId, attachmentId: uploadedFile.id },
+      },
+    });
     expect(recoverQueuedMessageEdit({ editTarget, threadTarget, originalText: "" })).toBe(
       "discarded",
     );
     expect(store.getComposerDraft(threadTarget)?.prompt).toBe("Separate draft");
     expect(store.getComposerDraft(editTarget)).toBeNull();
+    expect(readAttachmentUpload(file.id)).toBeUndefined();
   });
 });

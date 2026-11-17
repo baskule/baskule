@@ -21,7 +21,9 @@ import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
+import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
@@ -87,6 +89,7 @@ export const DockedPickerContext = createContext<{ modelLabel: string }>({ model
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   environmentId: EnvironmentId | null;
+  workspaceCwd?: string | null;
   activeInstanceId: ProviderInstanceId;
   model: string;
   selectedModels?: ReadonlyArray<{ instanceId: ProviderInstanceId; model: string }>;
@@ -148,6 +151,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
+  // Touch opens on the popup itself so the on-screen keyboard stays down until the search is tapped.
+  const isCoarsePointer = useMediaQuery({ pointer: "coarse" });
   const size = props.size ?? "sm";
   const docked = props.effortColumn !== undefined;
 
@@ -161,12 +166,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       driverKind: activeEntry?.driverKind,
       model: props.model,
       options: selectedInstanceOptions,
-    }) ?? (activeEntry?.driverKind === "opencode" ? undefined : selectedInstanceOptions[0]);
+    }) ??
+    retainedModelWhileProviderLocked(activeEntry, props.model) ??
+    (activeEntry?.driverKind === "opencode" || activeEntry?.driverKind === "antigravity"
+      ? undefined
+      : selectedInstanceOptions[0]);
   const triggerTitle = selectedModel
     ? getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)
     : props.model || t("Choose model");
   const triggerLabel = selectedModel
-    ? `${getDisplayModelName(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
+    ? `${getDisplayModelName(selectedModel)}${selectedModel.isUnavailable ? t(" (Unavailable)") : ""}`
     : triggerTitle;
   const showInstanceBadge =
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
@@ -274,6 +283,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     <ModelPickerContent
       searchInputRef={searchInputRef}
       environmentId={props.environmentId}
+      workspaceCwd={props.workspaceCwd ?? null}
       activeInstanceId={activeInstanceId}
       model={props.model}
       {...(props.selectedModels !== undefined ? { selectedModels: props.selectedModels } : {})}
@@ -429,7 +439,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             unlock?.();
           };
         }}
-        initialFocus={searchInputRef}
+        initialFocus={isCoarsePointer ? popupRef : searchInputRef}
         align={props.popupAlign ?? "start"}
         // Docked, the popup opens above the composer and slides over it when that space is short,
         // so a short window gets its full height (Floating UI sizes to the viewport) instead of a sliver.

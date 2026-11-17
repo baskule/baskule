@@ -1,7 +1,9 @@
 import { useTranslation } from "../../i18n";
 
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { parseUrl } from "@t3tools/shared/url";
 import { Globe, History } from "lucide-react";
+
 import type { BrowserHistoryEntry } from "~/browserHistoryStore";
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { DiscoveryList } from "../ui/discovery-list";
@@ -18,7 +20,8 @@ interface Props {
 
 export function PreviewEmptyState({ threadRef, recentEntries, onRemoveRecent, onOpenUrl }: Props) {
   const t = useTranslation();
-  const recents = recentEntries.filter((entry) => URL.canParse(entry.url)).slice(0, 8);
+
+  const recents = recentEntries.filter((entry) => parseUrl(entry.url) !== null).slice(0, 8);
 
   if (recents.length === 0) {
     return (

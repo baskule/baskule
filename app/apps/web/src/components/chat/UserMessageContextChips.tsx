@@ -1,3 +1,4 @@
+import { ResponseReplyCard } from "./AssistantCitationChip";
 import { LinkIcon } from "lucide-react";
 import { t } from "../../i18n";
 import { useTranslation } from "../../i18n";
@@ -27,6 +28,7 @@ import {
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown from "../ChatMarkdown";
 import { ThreadContextChip } from "../ThreadContextChip";
+
 import { MessageCircleIcon, MousePointerClickIcon, PaintbrushIcon } from "lucide-react";
 import type { ComposerContextId, KnownComposerContextRecord } from "@t3tools/contracts";
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
@@ -315,6 +317,21 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       render: (record, context) =>
         record.kind === "skill" ? (
           <UserMessageSkillChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "response",
+      canRender: (record) => record.kind === "response",
+      render: (record, context) =>
+        record.kind === "response" ? (
+          <ResponseReplyCard
+            record={record}
+            copyMarkdown={context.copyMarkdown}
+            leading={false}
+            trailing={false}
+          />
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),

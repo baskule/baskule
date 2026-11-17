@@ -36,6 +36,7 @@ const refusedKeybinding = Effect.fail(
 export const layerKeybindings = Layer.succeed(Keybindings.Keybindings, {
   start: Effect.void,
   ready: Effect.void,
+  revalidate: Effect.void,
   syncDefaultKeybindingsOnStartup: Effect.void,
   loadConfigState: readKeybindings,
   getSnapshot: readKeybindings,

@@ -13,6 +13,9 @@ const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
 });
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("opencode");
+export function hasRuntimeModelCatalog(provider: ProviderDriverKind): boolean {
+  return provider === "opencode";
+}
 
 export function formatProviderDriverKindLabel(provider: ProviderDriverKind): string {
   return provider

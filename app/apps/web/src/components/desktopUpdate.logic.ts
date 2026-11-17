@@ -104,6 +104,15 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
       notAppliedVersion: state.notAppliedVersion,
     });
   }
+  if (
+    (state.status === "available" || state.status === "error") &&
+    state.errorContext === "download" &&
+    state.availableVersion
+  ) {
+    return t("Download failed for {{availableVersion}}. Click to retry.", {
+      availableVersion: state.availableVersion,
+    });
+  }
   if (state.status === "available") {
     return t("Update {{value1}} ready to download", {
       value1: state.availableVersion ?? "available",

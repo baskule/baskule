@@ -225,8 +225,8 @@ export function SettingsEnvironmentMaintenanceRouteScreen() {
 }
 
 function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
-  const environmentMenu = useSettingsEnvironmentMenu();
   const t = useTranslation();
+  const environmentMenu = useSettingsEnvironmentMenu();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();
@@ -571,7 +571,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                     subtitle={managedSubtitle(
                       "enableProviderUpdateChecks",
                       projectSelected
-                        ? "Environment-wide setting. Select All projects to change it."
+                        ? t("Environment-wide setting. Select All projects to change it.")
                         : "Check installed provider CLIs for newer versions and fetch model catalog updates. When off, new models may not appear.",
                     )}
                     value={uniform("enableProviderUpdateChecks")}
@@ -589,6 +589,23 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                       value={uniform("continueThreadsAfterServerUpdate")}
                       disabled={disabledFor("continueThreadsAfterServerUpdate")}
                       onValueChange={(value) => write({ continueThreadsAfterServerUpdate: value })}
+                    />
+                  </View>
+                  <View className="border-t border-border-subtle">
+                    <SettingsSwitchRow
+                      icon="bolt.circle"
+                      label={t("Keep awake while agents work")}
+                      subtitle={managedSubtitle(
+                        "keepAwakeWhileAgentsWork",
+                        projectSelected
+                          ? t("Environment-wide setting. Select All projects to change it.")
+                          : t(
+                              "Stop the computer from sleeping while agents work. Closing a laptop lid still sleeps it.",
+                            ),
+                      )}
+                      value={uniform("keepAwakeWhileAgentsWork")}
+                      disabled={disabledFor("keepAwakeWhileAgentsWork")}
+                      onValueChange={(value) => write({ keepAwakeWhileAgentsWork: value })}
                     />
                   </View>
                 </SettingsSection>

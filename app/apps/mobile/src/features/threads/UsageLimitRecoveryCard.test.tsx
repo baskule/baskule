@@ -1,6 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId } from "@t3tools/contracts";
-import * as Clipboard from "expo-clipboard";
+
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";

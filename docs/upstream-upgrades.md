@@ -149,6 +149,6 @@ Keep the PR description readable at a glance. Follow the
 [review loop](review-loop.md) until required checks and material findings are resolved.
 
 Bundle-time substitutions do not appear in a comparison with upstream source. Review the target
-and anchor inventory in [app/BASKULE.md](../app/BASKULE.md#v019-bundle-time-customizations), including the
+and anchor inventory in [app/BASKULE.md](../app/BASKULE.md#bundle-time-customizations), including the
 Effect HTTP builder in installed dependencies. Keep each strict file-match and source-body guard,
 run the rewrite bundle fixtures, and verify the minified hosted artifact after updating them.

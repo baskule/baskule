@@ -51,7 +51,6 @@ import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import * as ThreadMessageIntake from "../../orchestration-v2/ThreadMessageIntake.ts";
-import * as AgentScopeLive from "../../process/agentScope.ts";
 import * as ProcessRunner from "../../processRunner.ts";
 import {
   layerApplicationObservability,
@@ -289,7 +288,6 @@ export const createSpaceSqlClient = async (
 const runtimeDependencies = layerRuntimeDependencies.pipe(
   Layer.provideMerge(DocumentText.layer),
   Layer.provideMerge(VcsProcess.layer),
-  Layer.provideMerge(AgentScopeLive.layer),
   Layer.provideMerge(ProcessRunner.layer),
   Layer.provideMerge(
     McpSessionRegistry.layer.pipe(

@@ -1,4 +1,3 @@
-// baskule:
 import { createFileRoute } from "@tanstack/react-router";
 
 import { AdminSectionHome } from "../baskule/admin/AdminShell";

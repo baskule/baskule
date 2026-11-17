@@ -11,6 +11,7 @@ import {
 
 import { readBaskuleSession, subscribeBaskuleSession } from "./session";
 
+const isVoiceTranscriptionError = Schema.is(VoiceTranscriptionError);
 const parseTranscript = Schema.decodeUnknownSync(Schema.Struct({ text: Schema.String }));
 
 export function getBaskuleVoiceTranscriber(): VoiceTranscriber | null {
@@ -94,7 +95,7 @@ export function getBaskuleVoiceTranscriber(): VoiceTranscriber | null {
             return result.text.trim();
           } catch (error) {
             check();
-            if (Schema.is(VoiceTranscriptionError)(error)) throw error;
+            if (isVoiceTranscriptionError(error)) throw error;
             throw new VoiceTranscriptionError({
               code: "transcription-failed",
               message: t(

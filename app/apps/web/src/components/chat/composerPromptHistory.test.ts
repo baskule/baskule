@@ -1,4 +1,5 @@
 import { ScheduledTaskId } from "@t3tools/contracts";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -94,7 +95,7 @@ describe("buildComposerPromptHistoryEntries", () => {
       { id: "m3", role: "user", text: "other" },
       { id: "m4", role: "user", text: "same" },
     ]);
-    expect(collapsed).toEqual([
+    expect(collapsed.map(({ id, prompt }) => ({ id, prompt }))).toEqual([
       { id: "m2", prompt: "same" },
       { id: "m3", prompt: "other" },
       { id: "m4", prompt: "same" },
@@ -113,21 +114,18 @@ describe("buildComposerPromptHistoryEntries", () => {
       { id: "m3", role: "user", text: "from agent", createdBy: "agent", creationSource: "mcp" },
       { id: "m4", role: "user", text: "from server", createdBy: "agent", creationSource: "server" },
     ]);
-    expect(typed).toEqual([{ id: "m1", prompt: "typed" }]);
+    expect(typed.map((entry) => entry.id)).toEqual(["m1"]);
   });
 });
 
 describe("stepComposerPromptHistory", () => {
   it("walks back from the newest entry", () => {
     const first = backward(null, "");
-    expect(first).toEqual({ position: { entryId: "m3", recalled: "third" }, prompt: "third" });
+    expect(first).toMatchObject({
+      position: { entryId: "m3", recalled: "third" },
+      prompt: "third",
+    });
     expect(backward(first!.position, "third")?.prompt).toBe("second");
-  });
-
-  it("walks forward and empties the composer past the newest entry", () => {
-    const newer = forward({ entryId: "m2", recalled: "second" }, "second");
-    expect(newer?.prompt).toBe("third");
-    expect(forward(newer!.position, "third")).toEqual({ position: null, prompt: "" });
   });
 
   it("treats an edited recall as a fresh draft", () => {

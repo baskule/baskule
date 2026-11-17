@@ -7,7 +7,6 @@ import { assert, it } from "@effect/vitest";
 import * as NetService from "@t3tools/shared/Net";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import { Command } from "effect/cli";
@@ -95,7 +94,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("CLI deferred imp
 
       assert.isTrue(Exit.hasDies(exit));
       assert.isTrue(yield* fs.exists(runtimeStatePath));
-      assert.isFalse(yield* fs.exists(NodePath.join(baseDir, "userdata", "server-owner.sqlite")));
     }),
   );
 

@@ -63,124 +63,117 @@ const setup = Effect.gen(function* () {
 
 describe("command permissions", () => {
   it.effect("requires the destination read grant to refresh providers", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const registry = yield* setup;
-        const refresh = createCommandPermissions(runtime, WS_METHODS.serverRefreshProviders);
-        registry.set(sessions(env), AsyncResult.success(grant(true)));
-        expect(registry.get(refresh.permissionAtom(env))).toBe(false);
-        expect((yield* refresh.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-        registry.set(
-          sessions(env),
-          AsyncResult.success({
-            ...grant(false),
-            scopes: [AuthOrchestrationReadScope],
-            permissions: [AuthOrchestrationReadScope],
-          }),
-        );
-        expect(registry.get(refresh.permissionAtom(env))).toBe(true);
-        yield* refresh.authorize(registry, env);
-        registry.set(sessions(other), AsyncResult.success(grant(false)));
-        expect(registry.get(refresh.permissionAtom(other))).toBe(false);
-        expect((yield* refresh.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-        registry.set(sessions(env), AsyncResult.success(grant(false)));
-        expect(registry.get(refresh.permissionAtom(env))).toBe(false);
-        expect((yield* refresh.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-      }),
-    ),
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const refresh = createCommandPermissions(runtime, WS_METHODS.serverRefreshProviders);
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      expect(registry.get(refresh.permissionAtom(env))).toBe(false);
+      expect((yield* refresh.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+        "EnvironmentAuthorizationError",
+      );
+      registry.set(
+        sessions(env),
+        AsyncResult.success({
+          ...grant(false),
+          scopes: [AuthOrchestrationReadScope],
+          permissions: [AuthOrchestrationReadScope],
+        }),
+      );
+      expect(registry.get(refresh.permissionAtom(env))).toBe(true);
+      yield* refresh.authorize(registry, env);
+      registry.set(sessions(other), AsyncResult.success(grant(false)));
+      expect(registry.get(refresh.permissionAtom(other))).toBe(false);
+      expect((yield* refresh.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
+        "EnvironmentAuthorizationError",
+      );
+      registry.set(sessions(env), AsyncResult.success(grant(false)));
+      expect(registry.get(refresh.permissionAtom(env))).toBe(false);
+      expect((yield* refresh.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+        "EnvironmentAuthorizationError",
+      );
+    }),
   );
 
   it.effect("requires the destination preview grant to close a browser tab", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const registry = yield* setup;
-        const close = createCommandPermissions(runtime, WS_METHODS.previewClose);
-        registry.set(sessions(env), AsyncResult.success(grant(true)));
-        expect(registry.get(close.permissionAtom(env))).toBe(false);
-        expect((yield* close.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-        registry.set(
-          sessions(env),
-          AsyncResult.success({
-            ...grant(false),
-            scopes: [AuthPreviewOperateScope],
-            permissions: [AuthPreviewOperateScope],
-          }),
-        );
-        expect(registry.get(close.permissionAtom(env))).toBe(true);
-        yield* close.authorize(registry, env);
-        registry.set(sessions(other), AsyncResult.success(grant(false)));
-        expect(registry.get(close.permissionAtom(other))).toBe(false);
-        expect((yield* close.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-      }),
-    ),
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const close = createCommandPermissions(runtime, WS_METHODS.previewClose);
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      expect(registry.get(close.permissionAtom(env))).toBe(false);
+      expect((yield* close.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+        "EnvironmentAuthorizationError",
+      );
+      registry.set(
+        sessions(env),
+        AsyncResult.success({
+          ...grant(false),
+          scopes: [AuthPreviewOperateScope],
+          permissions: [AuthPreviewOperateScope],
+        }),
+      );
+      expect(registry.get(close.permissionAtom(env))).toBe(true);
+      yield* close.authorize(registry, env);
+      registry.set(sessions(other), AsyncResult.success(grant(false)));
+      expect(registry.get(close.permissionAtom(other))).toBe(false);
+      expect((yield* close.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
+        "EnvironmentAuthorizationError",
+      );
+    }),
   );
 
   it.effect("requires the destination provider grant to remove an incomplete connection", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const registry = yield* setup;
-        const remove = createCommandPermissions(runtime, WS_METHODS.providerAuthRemoveMethod);
-        registry.set(sessions(env), AsyncResult.success(grant(true)));
-        expect(registry.get(remove.permissionAtom(env))).toBe(false);
-        expect((yield* remove.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-        registry.set(
-          sessions(env),
-          AsyncResult.success({
-            ...grant(false),
-            scopes: [AuthProvidersManageScope],
-            permissions: [AuthProvidersManageScope],
-          }),
-        );
-        expect(registry.get(remove.permissionAtom(env))).toBe(true);
-        yield* remove.authorize(registry, env);
-        registry.set(sessions(other), AsyncResult.success(grant(false)));
-        expect(registry.get(remove.permissionAtom(other))).toBe(false);
-      }),
-    ),
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const remove = createCommandPermissions(runtime, WS_METHODS.providerAuthRemoveMethod);
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      expect(registry.get(remove.permissionAtom(env))).toBe(false);
+      expect((yield* remove.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+        "EnvironmentAuthorizationError",
+      );
+      registry.set(
+        sessions(env),
+        AsyncResult.success({
+          ...grant(false),
+          scopes: [AuthProvidersManageScope],
+          permissions: [AuthProvidersManageScope],
+        }),
+      );
+      expect(registry.get(remove.permissionAtom(env))).toBe(true);
+      yield* remove.authorize(registry, env);
+      registry.set(sessions(other), AsyncResult.success(grant(false)));
+      expect(registry.get(remove.permissionAtom(other))).toBe(false);
+    }),
   );
 
   it.effect.each([
     { method: WS_METHODS.serverRunStorageCleanup, scope: AuthSettingsWriteScope },
     { method: WS_METHODS.serverReclaimDatabaseSpace, scope: AuthEnvironmentMaintainScope },
   ])("requires the destination $scope grant for $method", ({ method, scope }) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const registry = yield* setup;
-        const command = createCommandPermissions(runtime, method);
-        registry.set(sessions(env), AsyncResult.success(grant(true)));
-        expect(registry.get(command.permissionAtom(env))).toBe(false);
-        expect((yield* command.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-          "EnvironmentAuthorizationError",
-        );
-        registry.set(
-          sessions(env),
-          AsyncResult.success({ ...grant(true), scopes: [scope], permissions: [scope] }),
-        );
-        expect(registry.get(command.permissionAtom(env))).toBe(true);
-        yield* command.authorize(registry, env);
-        registry.set(sessions(other), AsyncResult.success(grant(false)));
-        expect(registry.get(command.permissionAtom(other))).toBe(false);
-      }),
-    ),
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const command = createCommandPermissions(runtime, method);
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      expect(registry.get(command.permissionAtom(env))).toBe(false);
+      expect((yield* command.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+        "EnvironmentAuthorizationError",
+      );
+      registry.set(
+        sessions(env),
+        AsyncResult.success({ ...grant(true), scopes: [scope], permissions: [scope] }),
+      );
+      expect(registry.get(command.permissionAtom(env))).toBe(true);
+      yield* command.authorize(registry, env);
+      registry.set(sessions(other), AsyncResult.success(grant(false)));
+      expect(registry.get(command.permissionAtom(other))).toBe(false);
+    }),
   );
 
-  it.effect("requires the destination settings grant to check OTLP endpoints", () =>
-    Effect.scoped(
+  it.effect.each([WS_METHODS.serverCheckOtlpEndpoint])(
+    "requires the destination settings grant for %s",
+    (method) =>
       Effect.gen(function* () {
         const registry = yield* setup;
-        const check = createCommandPermissions(runtime, WS_METHODS.serverCheckOtlpEndpoint);
+        const check = createCommandPermissions(runtime, method);
         registry.set(sessions(env), AsyncResult.success(grant(true)));
         expect(registry.get(check.permissionAtom(env))).toBe(false);
         registry.set(
@@ -194,59 +187,49 @@ describe("command permissions", () => {
         expect(registry.get(check.permissionAtom(env))).toBe(true);
         yield* check.authorize(registry, env);
       }),
-    ),
   );
 
   it.effect.each([WS_METHODS.scheduledTasksDelete, ORCHESTRATION_V2_WS_METHODS.stopWorkflow])(
     "uses the target grant for both availability and execution of %s",
     (method) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const registry = yield* setup;
-          const permissions = createCommandPermissions(runtime, method);
-          registry.set(sessions(env), AsyncResult.success(grant(true)));
-          expect(registry.get(permissions.permissionAtom(env))).toBe(true);
-          expect(permissions.permissionAtom(env)).toBe(permissions.permissionAtom(env));
-          yield* permissions.authorize(registry, env);
-          registry.set(sessions(other), AsyncResult.success(grant(false)));
-          expect(registry.get(permissions.permissionAtom(other))).toBe(false);
-          const denied = yield* permissions.authorize(registry, other).pipe(Effect.flip);
-          expect(denied._tag).toBe("EnvironmentAuthorizationError");
-        }),
-      ),
-  );
-  it.effect("waits for an initial grant", () =>
-    Effect.scoped(
       Effect.gen(function* () {
         const registry = yield* setup;
-        const fiber = yield* permissions.authorize(registry, env).pipe(Effect.forkChild);
-        yield* Effect.yieldNow;
+        const permissions = createCommandPermissions(runtime, method);
         registry.set(sessions(env), AsyncResult.success(grant(true)));
-        yield* Fiber.join(fiber);
+        expect(registry.get(permissions.permissionAtom(env))).toBe(true);
+        expect(permissions.permissionAtom(env)).toBe(permissions.permissionAtom(env));
+        yield* permissions.authorize(registry, env);
+        registry.set(sessions(other), AsyncResult.success(grant(false)));
+        expect(registry.get(permissions.permissionAtom(other))).toBe(false);
+        const denied = yield* permissions.authorize(registry, other).pipe(Effect.flip);
+        expect(denied._tag).toBe("EnvironmentAuthorizationError");
       }),
-    ),
+  );
+  it.effect("waits for an initial grant", () =>
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const fiber = yield* permissions.authorize(registry, env).pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      yield* Fiber.join(fiber);
+    }),
   );
   it.effect(
     "denies failed and unauthenticated sessions, but accepts a cached refreshing grant",
     () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const registry = yield* setup;
-          registry.set(sessions(env), AsyncResult.failure(Cause.fail("offline")));
-          expect((yield* permissions.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-            "EnvironmentAuthorizationError",
-          );
-          registry.set(
-            sessions(env),
-            AsyncResult.success({ ...grant(true), authenticated: false }),
-          );
-          expect((yield* permissions.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
-            "EnvironmentAuthorizationError",
-          );
-          registry.set(sessions(env), AsyncResult.waiting(AsyncResult.success(grant(true))));
-          yield* permissions.authorize(registry, env);
-        }),
-      ),
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        registry.set(sessions(env), AsyncResult.failure(Cause.fail("offline")));
+        expect((yield* permissions.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+          "EnvironmentAuthorizationError",
+        );
+        registry.set(sessions(env), AsyncResult.success({ ...grant(true), authenticated: false }));
+        expect((yield* permissions.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+          "EnvironmentAuthorizationError",
+        );
+        registry.set(sessions(env), AsyncResult.waiting(AsyncResult.success(grant(true))));
+        yield* permissions.authorize(registry, env);
+      }),
   );
   it("rechecks permission after waiting in a serial command lane", async () => {
     const registry = AtomRegistry.make();
@@ -291,23 +274,21 @@ describe("command permissions", () => {
 });
 
 it.effect("honors exact empty permissions and preserves legacy parent grants", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const registry = yield* setup;
-      const git = createCommandPermissions(runtime, WS_METHODS.vcsInit);
-      registry.set(sessions(env), AsyncResult.success({ ...grant(true), permissions: [] }));
-      expect(registry.get(git.permissionAtom(env))).toBe(false);
-      const denied = yield* git.authorize(registry, env).pipe(Effect.flip);
-      expect(denied).toMatchObject({
-        requiredPermission: AuthSourceControlWriteScope,
-        requiredScope: AuthOrchestrationOperateScope,
-      });
-      const { permissions: _exact, ...legacy } = grant(true);
-      registry.set(sessions(env), AsyncResult.success(legacy));
-      expect(registry.get(git.permissionAtom(env))).toBe(true);
-      yield* git.authorize(registry, env);
-    }),
-  ),
+  Effect.gen(function* () {
+    const registry = yield* setup;
+    const git = createCommandPermissions(runtime, WS_METHODS.vcsInit);
+    registry.set(sessions(env), AsyncResult.success({ ...grant(true), permissions: [] }));
+    expect(registry.get(git.permissionAtom(env))).toBe(false);
+    const denied = yield* git.authorize(registry, env).pipe(Effect.flip);
+    expect(denied).toMatchObject({
+      requiredPermission: AuthSourceControlWriteScope,
+      requiredScope: AuthOrchestrationOperateScope,
+    });
+    const { permissions: _exact, ...legacy } = grant(true);
+    registry.set(sessions(env), AsyncResult.success(legacy));
+    expect(registry.get(git.permissionAtom(env))).toBe(true);
+    yield* git.authorize(registry, env);
+  }),
 );
 
 it.effect("rejects protected unary and streamed RPCs outside a guarded command", () =>

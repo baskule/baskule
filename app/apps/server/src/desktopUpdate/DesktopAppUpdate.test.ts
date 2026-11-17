@@ -43,6 +43,7 @@ function report(
   terminal?: {
     readonly outcome: DesktopUpdateStatusReport["outcome"];
     readonly reason?: string;
+    readonly preparedRequestId?: string;
   },
 ): DesktopUpdateStatusReport {
   return {
@@ -51,6 +52,9 @@ function report(
     requestId,
     ...(terminal?.outcome === undefined ? {} : { outcome: terminal.outcome }),
     ...(terminal?.reason === undefined ? {} : { reason: terminal.reason }),
+    ...(terminal?.preparedRequestId === undefined
+      ? {}
+      : { preparedRequestId: terminal.preparedRequestId }),
     state,
   };
 }

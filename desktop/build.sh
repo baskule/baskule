@@ -9,10 +9,13 @@ export VITE_BASKULE_UI=1 VITE_BASKULE_HOSTED=1
 export VITE_CLERK_PUBLISHABLE_KEY= T3CODE_CLERK_PUBLISHABLE_KEY=
 VERSION=${BASKULE_VERSION:-$(<"$ROOT/VERSION")}
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || { echo 'BASKULE_VERSION must be a semantic version' >&2; exit 1; }
+rm -rf "$ROOT/.run/desktop-package"
 pnpm exec vp run dist:desktop:artifact --platform linux --target AppImage --arch x64 --build-version "$VERSION" --output-dir "$ROOT/.run/desktop-package" "$@"
 # Publish only the new desktop output. Android has its own release cadence.
 mkdir -p "$ROOT/desktop/release"
 find "$ROOT/desktop/release" -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.yml' -o -name '*.blockmap' \) -delete
 shopt -s nullglob
-cp "$ROOT"/.run/desktop-package/Baskule-"$VERSION"-*.AppImage "$ROOT"/.run/desktop-package/{latest,nightly}*.yml "$ROOT"/.run/desktop-package/*.blockmap "$ROOT/desktop/release/"
+artifacts=("$ROOT"/.run/desktop-package/Baskule-*.AppImage)
+(( ${#artifacts[@]} > 0 )) || { echo "No Baskule AppImage was produced" >&2; exit 1; }
+cp "${artifacts[@]}" "$ROOT"/.run/desktop-package/{latest,nightly}*.yml "$ROOT"/.run/desktop-package/*.blockmap "$ROOT/desktop/release/"
 (cd "$ROOT/desktop/release" && sha256sum *.AppImage *.yml > SHA256SUMS)

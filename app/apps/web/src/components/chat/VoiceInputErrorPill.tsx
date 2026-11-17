@@ -1,73 +1,72 @@
-import { RotateCcwIcon, XIcon } from "lucide-react";
+import { MICROPHONE_PERMISSION_ERROR } from "@t3tools/client-runtime/voice-input";
+import { CircleAlertIcon, XIcon } from "lucide-react";
 
-import { msg, useTranslation } from "../../i18n";
+import { useTranslation } from "../../i18n";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { VoiceInputPill } from "./VoiceInputPill";
 
 const VOICE_ERROR_LABELS: Record<string, string> = {
-  [msg(
-    "Microphone access is required for voice input. Allow access in your browser or system settings and try again.",
-  )]: msg("Microphone blocked"),
-  [msg("Microphone access is required for voice input.")]: msg("Microphone blocked"),
-  [msg("This draft is no longer available.")]: msg("Draft unavailable"),
-  [msg("Another voice recording is already active.")]: msg("Another recording active"),
-  [msg("Voice transcription is not available.")]: msg("Voice input unavailable"),
-  [msg("Voice transcription is still finishing. Try again shortly.")]: msg(
-    "Transcription still busy",
-  ),
-  [msg("Voice transcription is not available for this language.")]: msg("Language unsupported"),
-  [msg("Could not prepare voice transcription.")]: msg("Couldn’t prepare dictation"),
-  [msg("Could not start voice recording.")]: msg("Couldn’t start recording"),
-  [msg("Voice recording was interrupted.")]: msg("Recording interrupted"),
-  [msg("Could not finish voice recording.")]: msg("Couldn’t finish recording"),
-  [msg("Could not transcribe this recording.")]: msg("Transcription failed"),
-  [msg("Voice transcription on this environment failed.")]: msg("Transcription failed"),
-  [msg("The draft changed while voice input was running. The transcript was not added.")]:
-    msg("Draft changed"),
-  [msg("No speech was detected.")]: msg("No speech detected"),
-  [msg("Microphone processing failed.")]: msg("Microphone error"),
-  [msg("The microphone disconnected.")]: msg("Microphone disconnected"),
+  [MICROPHONE_PERMISSION_ERROR]: "Mic blocked",
+  "Microphone access is required for voice input.": "Mic blocked",
+  "This draft is no longer available.": "Draft unavailable",
+  "Another voice recording is already active.": "Already recording",
+  "Voice transcription is not available.": "Voice input unavailable",
+  "Voice transcription is still finishing. Try again shortly.": "Still transcribing",
+  "Voice transcription is not available for this language.": "Language unsupported",
+  "Could not prepare voice transcription.": "Couldn’t start",
+  "Could not start voice recording.": "Couldn’t start",
+  "Voice recording was interrupted.": "Recording interrupted",
+  "Could not finish voice recording.": "Couldn’t finish",
+  "Could not transcribe this recording.": "Transcription failed",
+  "Voice transcription on this environment failed.": "Transcription failed",
+  "The draft changed while voice input was running. The transcript was not added.": "Draft changed",
+  "No speech was detected.": "No speech heard",
+  "Microphone processing failed.": "Mic failed",
+  "The microphone disconnected.": "Mic disconnected",
 };
 
-function voiceErrorLabel(error: string | null): string {
-  return (error && VOICE_ERROR_LABELS[error]) || msg("Voice input failed");
-}
+const RETRYABLE_TRANSCRIPTIONS = new Set([
+  "Could not transcribe this recording.",
+  "Voice transcription on this environment failed.",
+]);
 
 export function VoiceInputErrorPill(props: {
   error: string | null;
   errorAction: "retry" | "settings" | null;
   disabled?: boolean;
   cancelShortcutLabel?: string | null;
+  size?: "default" | "compact" | undefined;
   onRetry(): void;
   onDismiss(): void;
 }) {
   const t = useTranslation();
-  const error = props.error === null ? t("Voice input failed") : t(props.error);
-  const actionLabel =
-    props.error === "Could not transcribe this recording." ||
-    props.error === "Voice transcription on this environment failed."
-      ? t("Retry transcription")
-      : t("Record again");
+  const message = props.error ?? "Voice input failed";
+  const compact = props.size === "compact";
+  const action =
+    props.error && RETRYABLE_TRANSCRIPTIONS.has(props.error)
+      ? { label: t("Retry transcription"), text: "Retry" }
+      : { label: t("Record again"), text: t("Record again") };
   return (
-    <VoiceInputPill>
+    <VoiceInputPill tone="error" size={props.size}>
       <Tooltip>
         <TooltipTrigger
           render={
             <Button
               type="button"
-              size="icon-sm-pill"
+              size={compact ? "icon-xs" : "icon-sm-pill"}
               variant="ghost"
               aria-label={t("Dismiss voice input error")}
               onPointerDown={(event) => event.preventDefault()}
               onClick={props.onDismiss}
+              className="shrink-0"
             >
               <XIcon />
             </Button>
           }
         />
         <TooltipPopup side="top">
-          {t("Dismiss voice input error")}
+          Dismiss
           {props.cancelShortcutLabel ? ` (${props.cancelShortcutLabel})` : ""}
         </TooltipPopup>
       </Tooltip>
@@ -77,36 +76,34 @@ export function VoiceInputErrorPill(props: {
             <span
               tabIndex={0}
               role="status"
-              aria-label={error}
-              className="min-w-0 flex-1 truncate text-sm text-destructive"
+              aria-label={message}
+              className="flex min-w-0 items-center gap-1.5 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             />
           }
         >
-          {t(voiceErrorLabel(props.error))}
+          <CircleAlertIcon aria-hidden className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {(props.error && VOICE_ERROR_LABELS[props.error]) || "Voice input failed"}
+          </span>
         </TooltipTrigger>
-        <TooltipPopup side="top">{error}</TooltipPopup>
+        <TooltipPopup side="top">{message}</TooltipPopup>
       </Tooltip>
-      {/* Web microphone prompts can always be retried, so a "settings" action never arrives. */}
-      {props.errorAction === "retry" ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                type="button"
-                size="icon-sm-pill"
-                variant="ghost"
-                aria-label={actionLabel}
-                disabled={props.disabled}
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={props.onRetry}
-              >
-                <RotateCcwIcon />
-              </Button>
-            }
-          />
-          <TooltipPopup side="top">{actionLabel}</TooltipPopup>
-        </Tooltip>
-      ) : null}
+      {props.errorAction ? (
+        <Button
+          type="button"
+          size={compact ? "xs" : "sm-pill"}
+          variant="outline"
+          aria-label={action.label}
+          disabled={props.disabled}
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={props.onRetry}
+          className="ms-auto shrink-0"
+        >
+          {action.text}
+        </Button>
+      ) : (
+        <span aria-hidden className="w-1.5 shrink-0" />
+      )}
     </VoiceInputPill>
   );
 }

@@ -166,6 +166,7 @@ describe("observability", () => {
             filePath: "unused",
             push: (record) => records.push(record),
             flush: Effect.void,
+            flushSync: () => {},
             close: () => Effect.void,
           },
           delegate: Tracer.make({
@@ -228,6 +229,7 @@ describe("observability", () => {
           filePath: "unused",
           push: (record) => records.push(record),
           flush: Effect.void,
+          flushSync: () => {},
           close: () => Effect.void,
         },
       });
@@ -260,6 +262,7 @@ describe("observability", () => {
                 if (record.type === "effect-span") records.push(record);
               },
               flush: Effect.void,
+              flushSync: () => {},
               close: () => Effect.void,
             },
             delegate: Tracer.make({
@@ -356,120 +359,53 @@ describe("observability", () => {
     it.effect(
       "keeps trace producers responsive during a slow write, bounds the backlog, and drains on close",
       () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const fs = yield* FileSystem.FileSystem;
-            const path = yield* Path.Path;
-            const directory = yield* fs.makeTempDirectoryScoped({
-              prefix: "t3-trace-backpressure-",
-            });
-            const tracePath = path.join(directory, "trace.ndjson");
-            const started = yield* Deferred.make<void>();
-            const release = yield* Deferred.make<void>();
-            const closed = yield* Ref.make(false);
-            const sink = yield* makeTraceSink({
-              filePath: tracePath,
-              maxBytes: 5_000_000,
-              maxFiles: 2,
-              batchWindowMs: 10_000,
-            }).pipe(
-              Effect.provideService(FileSystem.FileSystem, {
-                ...fs,
-                writeFile: (file, data, options) =>
-                  Effect.gen(function* () {
-                    yield* Deferred.succeed(started, undefined);
-                    yield* Deferred.await(release);
-                    yield* fs.writeFile(file, data, options);
-                  }),
-              }),
-            );
-            sink.push(makeRecord("first"));
-            const flushing = yield* Effect.forkChild(sink.flush);
-            yield* Deferred.await(started);
-            for (let index = 0; index < 2_000; index++)
-              sink.push(makeRecord("small", String(index)));
-            for (let index = 0; index < 3; index++)
-              sink.push({ ...makeRecord("large"), attributes: { payload: "x".repeat(2_000_000) } });
-            const closing = yield* Effect.forkChild(
-              sink.close().pipe(Effect.tap(() => Ref.set(closed, true))),
-            );
-            yield* Effect.yieldNow;
-            assert.isFalse(yield* Ref.get(closed));
-            yield* Deferred.succeed(release, undefined);
-            yield* Fiber.join(flushing);
-            yield* Fiber.join(closing);
-            const records = yield* readTraceRecords(tracePath);
-            assert.deepStrictEqual(
-              records.map((record) => record.name),
-              ["first", ...Array.from({ length: 2_000 }, () => "small"), "large", "large"],
-            );
-            assert.isTrue(yield* Ref.get(closed));
-          }),
-        ),
-    );
-
-    it.effect("keeps every trace file within the configured limit for threshold flushes", () =>
-      Effect.scoped(
         Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
+          const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
-          const maxBytes = 1_024;
-
+          const directory = yield* fs.makeTempDirectoryScoped({
+            prefix: "t3-trace-backpressure-",
+          });
+          const tracePath = path.join(directory, "trace.ndjson");
+          const started = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          const closed = yield* Ref.make(false);
           const sink = yield* makeTraceSink({
             filePath: tracePath,
-            maxBytes,
+            maxBytes: 5_000_000,
             maxFiles: 2,
             batchWindowMs: 10_000,
-          });
-
-          for (let index = 0; index < 256; index += 1) {
-            sink.push(makeRecord("threshold", `${index}-${"x".repeat(48)}`));
-          }
-          yield* sink.close();
-
-          const matchingFiles = (yield* fileSystem.readDirectory(tempDir)).filter(
-            (entry) => entry === "shared.trace.ndjson" || entry.startsWith("shared.trace.ndjson."),
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, {
+              ...fs,
+              writeFile: (file, data, options) =>
+                Effect.gen(function* () {
+                  yield* Deferred.succeed(started, undefined);
+                  yield* Deferred.await(release);
+                  yield* fs.writeFile(file, data, options);
+                }),
+            }),
           );
-          assert.include(matchingFiles, "shared.trace.ndjson.1");
-          for (const entry of matchingFiles) {
-            const stat = yield* fileSystem.stat(path.join(tempDir, entry));
-            assert.isAtMost(Number(stat.size), maxBytes, entry);
-          }
-        }),
-      ),
-    );
-
-    it.effect("drops a single trace record that cannot fit within the configured limit", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
-          const maxBytes = 1_024;
-
-          const sink = yield* makeTraceSink({
-            filePath: tracePath,
-            maxBytes,
-            maxFiles: 2,
-            batchWindowMs: 10_000,
-          });
-
-          sink.push(makeRecord("oversized", "x".repeat(maxBytes * 2)));
-          sink.push(makeRecord("retained"));
-          yield* sink.close();
-
+          sink.push(makeRecord("first"));
+          const flushing = yield* Effect.forkChild(sink.flush);
+          yield* Deferred.await(started);
+          for (let index = 0; index < 2_000; index++) sink.push(makeRecord("small", String(index)));
+          for (let index = 0; index < 3; index++)
+            sink.push({ ...makeRecord("large"), attributes: { payload: "x".repeat(2_000_000) } });
+          const closing = yield* Effect.forkChild(
+            sink.close().pipe(Effect.tap(() => Ref.set(closed, true))),
+          );
+          yield* Effect.yieldNow;
+          assert.isFalse(yield* Ref.get(closed));
+          yield* Deferred.succeed(release, undefined);
+          yield* Fiber.join(flushing);
+          yield* Fiber.join(closing);
           const records = yield* readTraceRecords(tracePath);
-          const stat = yield* fileSystem.stat(tracePath);
-          assert.deepEqual(
+          assert.deepStrictEqual(
             records.map((record) => record.name),
-            ["retained"],
+            ["first", ...Array.from({ length: 2_000 }, () => "small"), "large", "large"],
           );
-          assert.isAtMost(Number(stat.size), maxBytes);
+          assert.isTrue(yield* Ref.get(closed));
         }),
-      ),
     );
 
     it.effect.each([false, true])(
@@ -550,125 +486,204 @@ describe("observability", () => {
         ),
     );
 
+    it.effect("writes buffered records synchronously for process exit", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
+        const tracePath = path.join(tempDir, "exit.trace.ndjson");
+        const sink = yield* makeTraceSink({
+          filePath: tracePath,
+          maxBytes: 1_000_000,
+          maxFiles: 2,
+          batchWindowMs: 10_000,
+        });
+
+        sink.push(makeRecord("before-exit"));
+        sink.flushSync();
+        sink.flushSync();
+
+        const records = yield* readTraceRecords(tracePath);
+        assert.deepStrictEqual(
+          records.map((record) => record.name),
+          ["before-exit"],
+        );
+      }),
+    );
+
+    it.effect("keeps every trace file within the configured limit for threshold flushes", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
+        const tracePath = path.join(tempDir, "shared.trace.ndjson");
+        const maxBytes = 1_024;
+
+        const sink = yield* makeTraceSink({
+          filePath: tracePath,
+          maxBytes,
+          maxFiles: 2,
+          batchWindowMs: 10_000,
+        });
+
+        for (let index = 0; index < 256; index += 1) {
+          sink.push(makeRecord("threshold", `${index}-${"x".repeat(48)}`));
+        }
+        yield* sink.close();
+
+        const matchingFiles = (yield* fileSystem.readDirectory(tempDir)).filter(
+          (entry) => entry === "shared.trace.ndjson" || entry.startsWith("shared.trace.ndjson."),
+        );
+        assert.include(matchingFiles, "shared.trace.ndjson.1");
+        for (const entry of matchingFiles) {
+          const stat = yield* fileSystem.stat(path.join(tempDir, entry));
+          assert.isAtMost(Number(stat.size), maxBytes, entry);
+        }
+      }),
+    );
+
+    it.effect("drops a single trace record that cannot fit within the configured limit", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
+        const tracePath = path.join(tempDir, "shared.trace.ndjson");
+        const maxBytes = 1_024;
+
+        const sink = yield* makeTraceSink({
+          filePath: tracePath,
+          maxBytes,
+          maxFiles: 2,
+          batchWindowMs: 10_000,
+        });
+
+        sink.push(makeRecord("oversized", "x".repeat(maxBytes * 2)));
+        sink.push(makeRecord("retained"));
+        yield* sink.close();
+
+        const records = yield* readTraceRecords(tracePath);
+        const stat = yield* fileSystem.stat(tracePath);
+        assert.deepEqual(
+          records.map((record) => record.name),
+          ["retained"],
+        );
+        assert.isAtMost(Number(stat.size), maxBytes);
+      }),
+    );
+
     it.effect("drops only the invalid trace record when serialization fails", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
+        const tracePath = path.join(tempDir, "shared.trace.ndjson");
 
-          const sink = yield* makeTraceSink({
-            filePath: tracePath,
-            maxBytes: 1024,
-            maxFiles: 2,
-            batchWindowMs: 10_000,
-          });
+        const sink = yield* makeTraceSink({
+          filePath: tracePath,
+          maxBytes: 1024,
+          maxFiles: 2,
+          batchWindowMs: 10_000,
+        });
 
-          const circular: Array<unknown> = [];
-          circular.push(circular);
+        const circular: Array<unknown> = [];
+        circular.push(circular);
 
-          sink.push(makeRecord("alpha"));
-          sink.push({
-            ...makeRecord("invalid"),
-            attributes: {
-              circular,
-            },
-          } as TraceRecord);
-          sink.push(makeRecord("beta"));
-          yield* sink.close();
+        sink.push(makeRecord("alpha"));
+        sink.push({
+          ...makeRecord("invalid"),
+          attributes: {
+            circular,
+          },
+        } as TraceRecord);
+        sink.push(makeRecord("beta"));
+        yield* sink.close();
 
-          const lines = yield* readTraceRecords(tracePath);
+        const lines = yield* readTraceRecords(tracePath);
 
-          assert.deepStrictEqual(
-            lines.map((line) => line.name),
-            ["alpha", "beta"],
-          );
-        }),
-      ),
+        assert.deepStrictEqual(
+          lines.map((line) => line.name),
+          ["alpha", "beta"],
+        );
+      }),
     );
 
     it.effect("writes nested spans to disk and captures log messages as span events", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-local-tracer-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-local-tracer-" });
+        const tracePath = path.join(tempDir, "shared.trace.ndjson");
 
-          yield* Effect.scoped(
-            Effect.gen(function* () {
-              const program = Effect.gen(function* () {
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const program = Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({
+                "demo.parent": true,
+              });
+              yield* Effect.logInfo("parent event");
+              yield* Effect.gen(function* () {
                 yield* Effect.annotateCurrentSpan({
-                  "demo.parent": true,
+                  "demo.child": true,
                 });
-                yield* Effect.logInfo("parent event");
-                yield* Effect.gen(function* () {
-                  yield* Effect.annotateCurrentSpan({
-                    "demo.child": true,
-                  });
-                  yield* Effect.logInfo("child event");
-                }).pipe(Effect.withSpan("child-span"));
-              }).pipe(Effect.withSpan("parent-span"));
+                yield* Effect.logInfo("child event");
+              }).pipe(Effect.withSpan("child-span"));
+            }).pipe(Effect.withSpan("parent-span"));
 
-              yield* program.pipe(Effect.provide(layerTest(tracePath)));
-            }),
-          );
+            yield* program.pipe(Effect.provide(layerTest(tracePath)));
+          }),
+        );
 
-          const records = yield* readTraceRecords(tracePath);
-          assert.equal(records.length, 2);
+        const records = yield* readTraceRecords(tracePath);
+        assert.equal(records.length, 2);
 
-          const parent = records.find((record) => record.name === "parent-span");
-          const child = records.find((record) => record.name === "child-span");
+        const parent = records.find((record) => record.name === "parent-span");
+        const child = records.find((record) => record.name === "child-span");
 
-          assert.notEqual(parent, undefined);
-          assert.notEqual(child, undefined);
-          if (!parent || !child) {
-            return;
-          }
+        assert.notEqual(parent, undefined);
+        assert.notEqual(child, undefined);
+        if (!parent || !child) {
+          return;
+        }
 
-          assert.equal(child.parentSpanId, parent.spanId);
-          assert.equal(parent.attributes["demo.parent"], true);
-          assert.equal(child.attributes["demo.child"], true);
-          assert.equal(
-            parent.events.some((event) => event.name === "parent event"),
-            true,
-          );
-          assert.equal(
-            child.events.some((event) => event.name === "child event"),
-            true,
-          );
-          assert.equal(
-            child.events.some((event) => event.attributes["effect.logLevel"] === "INFO"),
-            true,
-          );
-        }),
-      ),
+        assert.equal(child.parentSpanId, parent.spanId);
+        assert.equal(parent.attributes["demo.parent"], true);
+        assert.equal(child.attributes["demo.child"], true);
+        assert.equal(
+          parent.events.some((event) => event.name === "parent event"),
+          true,
+        );
+        assert.equal(
+          child.events.some((event) => event.name === "child event"),
+          true,
+        );
+        assert.equal(
+          child.events.some((event) => event.attributes["effect.logLevel"] === "INFO"),
+          true,
+        );
+      }),
     );
 
     it.effect("serializes interrupted spans with an interrupted exit status", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-local-tracer-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-local-tracer-" });
+        const tracePath = path.join(tempDir, "shared.trace.ndjson");
 
-          yield* Effect.scoped(
-            Effect.exit(
-              Effect.interrupt.pipe(
-                Effect.withSpan("interrupt-span"),
-                Effect.provide(layerTest(tracePath)),
-              ),
+        yield* Effect.scoped(
+          Effect.exit(
+            Effect.interrupt.pipe(
+              Effect.withSpan("interrupt-span"),
+              Effect.provide(layerTest(tracePath)),
             ),
-          );
+          ),
+        );
 
-          const records = yield* readTraceRecords(tracePath);
-          assert.equal(records.length, 1);
-          assert.equal(records[0]?.name, "interrupt-span");
-          assert.equal(records[0]?.exit?._tag, "Interrupted");
-        }),
-      ),
+        const records = yield* readTraceRecords(tracePath);
+        assert.equal(records.length, 1);
+        assert.equal(records[0]?.name, "interrupt-span");
+        assert.equal(records[0]?.exit?._tag, "Interrupted");
+      }),
     );
   });
 });
@@ -780,7 +795,13 @@ it.effect("does not format unsampled failures with the real OTLP delegate", () =
         maxBytes: 1024,
         maxFiles: 1,
         batchWindowMs: 10_000,
-        sink: { filePath: "unused", push: () => {}, flush: Effect.void, close: () => Effect.void },
+        sink: {
+          filePath: "unused",
+          push: () => {},
+          flush: Effect.void,
+          flushSync: () => {},
+          close: () => Effect.void,
+        },
         delegate: otlp,
       });
       const result = yield* Effect.fail(error).pipe(

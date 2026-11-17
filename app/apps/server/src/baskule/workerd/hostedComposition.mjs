@@ -17,6 +17,7 @@ export const hostedComposition = {
       "ServerEnvironment.ts",
       "ServerEnvironmentLabel.ts",
       "McpOAuth.ts",
+      "observability.ts",
     ];
     build.onStart(() => {
       rewritten.clear();
@@ -26,6 +27,28 @@ export const hostedComposition = {
       const missing = expected.filter((target) => !rewritten.has(target));
       if (missing.length)
         throw new Error(`Hosted composition did not rewrite: ${missing.join(", ")}`);
+    });
+    build.onLoad({ filter: /\/packages\/shared\/src\/observability\.ts$/ }, ({ path }) => {
+      let contents = NodeFS.readFileSync(path, "utf8");
+      // A Space has no process exit. Normal asynchronous flush/close still use its injected filesystem.
+      contents = replaceOnce(contents, 'import * as NodeFS from "node:fs";\n', "");
+      contents = replaceOnce(
+        contents,
+        `    flushSync() {
+      if (buffer.length === 0) return;
+      const text = buffer.map((record) => record.text).join("");
+      buffer = [];
+      bufferBytes = 0;
+      try {
+        NodeFS.appendFileSync(options.filePath, text);
+      } catch {
+        return;
+      }
+    },`,
+        "    flushSync() {},",
+      );
+      rewritten.add("observability.ts");
+      return { contents, loader: "ts", resolveDir: NodePath.dirname(path) };
     });
     build.onLoad({ filter: /\/apps\/server\/src\/server\.ts$/ }, ({ path }) => {
       let contents = NodeFS.readFileSync(path, "utf8");
@@ -37,10 +60,11 @@ export const hostedComposition = {
         "Layer.provideMerge(ProviderRegistry.layer)",
         "Layer.provideMerge(HostedLayers.layerProviderRegistry)",
       );
+      contents = replaceOnce(contents, "Keybindings.layer", "HostedTrims.layerKeybindings");
       contents = replaceOnce(
         contents,
-        "Layer.mergeAll(Keybindings.layer, EnvironmentTheme.layer)",
-        "Layer.mergeAll(HostedTrims.layerKeybindings, HostedLayers.layerEnvironmentTheme)",
+        "Layer.provideMerge(EnvironmentTheme.layer)",
+        "Layer.provideMerge(HostedLayers.layerEnvironmentTheme)",
       );
       contents = replaceOnce(
         contents,
@@ -64,7 +88,7 @@ export const hostedComposition = {
       );
       contents = replaceOnce(
         contents,
-        "CloudManagedEndpointRuntime.layer.pipe(\n    Layer.provide(ServerSecretStore.layer),\n    Layer.provide(layerRelayClient),\n  )",
+        "CloudManagedEndpointRuntime.layer.pipe(\n    Layer.provide(ServerSecretStore.layer),\n    Layer.provide(layerRelayClient),\n    Layer.provide(\n      Layer.unwrap(\n        Effect.gen(function* () {\n          const config = yield* ServerConfig.ServerConfig;\n          return RelayClientLedger.layer({ stateDir: config.stateDir });\n        }),\n      ),\n    ),\n  )",
         "HostedTrims.layerManagedEndpoint",
       );
       contents = replaceOnce(

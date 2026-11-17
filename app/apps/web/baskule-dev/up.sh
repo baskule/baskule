@@ -33,8 +33,8 @@ if [[ $MOCK_BACKENDS == t3 ]]; then
 JSON
   # OpenCode 2 at the protocol version of packages/provider-opencode; a fresh checkout (the CI runner) has none.
   OC=$ROOT/.tools/opencode2
-  if [[ $(node -p "require('$OC/node_modules/@opencode/cli/package.json').version" 2>/dev/null) != 2.1.2 ]]; then
-    npm install --prefix "$OC" --no-audit --no-fund --prefer-offline @opencode/cli@2.1.2 >/dev/null
+  if [[ $(node -p "require('$OC/node_modules/@opencode/cli/package.json').version" 2>/dev/null) != 2.2.5 ]]; then
+    npm install --prefix "$OC" --no-audit --no-fund --prefer-offline @opencode/cli@2.2.5 >/dev/null
   fi
   start mock-llm node "$HERE/mock-llm.mjs"
   (

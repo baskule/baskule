@@ -4,7 +4,8 @@ import { Children, memo, useState, type ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 
-const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
+// Inline-level and selectable: triple-click selection stops at block-level and select-none boxes.
+const MARKDOWN_LINK_FAVICON_CLASS_NAME = "inline-block size-[14px] [vertical-align:-0.125em]";
 
 const failedFaviconHosts = new Set<string>();
 
@@ -12,10 +13,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: 
   const [failedHost, setFailedHost] = useState<string | null>(null);
   const faviconUrl = faviconUrlForOrigin(`https://${host}`);
   return (
-    <span
-      className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
-      aria-hidden
-    >
+    <span className="ms-[0.25em] me-[0.2em]" aria-hidden>
       {faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
         <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       ) : (
@@ -38,7 +36,8 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: 
 function leadingExternalLinkTextLength(text: string): number {
   const protocol = /^(?:https?:\/\/)/i.exec(text)?.[0];
   if (protocol) return protocol.length;
-  return Math.min(text.length, 1);
+  // A whole code point, so a surrogate pair is not split across elements.
+  return Array.from(text.slice(0, 2))[0]?.length ?? 0;
 }
 
 // Keep short labels such as PR numbers intact in narrow table columns.

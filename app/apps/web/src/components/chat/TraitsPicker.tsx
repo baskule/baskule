@@ -1,3 +1,4 @@
+import { hasRuntimeModelCatalog } from "../../providerModels";
 import { t } from "../../i18n";
 import {
   buildTraitsTriggerDisplay,
@@ -109,7 +110,7 @@ function getSelectedTraits(
 ) {
   const caps = getProviderModelCapabilities(models, model, provider, includePlanAgent);
   const modelIsUnavailable =
-    provider === "opencode" &&
+    hasRuntimeModelCatalog(provider) &&
     !models.some((candidate) => candidate.slug === normalizeModelSlug(model, provider));
   const descriptors = modelIsUnavailable
     ? buildUnavailableModelOptionDescriptors(

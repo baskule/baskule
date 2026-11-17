@@ -1,18 +1,14 @@
 import { t } from "../../i18n";
-import { useRef } from "react";
 
 import { APP_VERSION } from "../../branding";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import { showAnchoredCopySuccessToast } from "../ui/anchoredCopyToast";
 import { InlineButton } from "../ui/button";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function AboutVersionTitle() {
-  const copyButtonRef = useRef<HTMLButtonElement>(null);
   const { copyToClipboard } = useCopyToClipboard<void>({
     target: "version",
-    onCopy: () => showAnchoredCopySuccessToast(copyButtonRef),
     onError: (error) => {
       toastManager.add(
         stackedThreadToast({
@@ -32,7 +28,6 @@ export function AboutVersionTitle() {
           <TooltipTrigger
             render={
               <InlineButton
-                ref={copyButtonRef}
                 tone="muted"
                 aria-label={t("Copy version {{value1}}", { value1: APP_VERSION })}
                 onClick={() => copyToClipboard(APP_VERSION, undefined)}

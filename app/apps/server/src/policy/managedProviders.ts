@@ -48,11 +48,11 @@ const PIN_BYPASS_FIELDS: ReadonlyMap<
 ]);
 
 /** Drivers this build knows, by the names users see; a policy naming any other is refused. */
-const KNOWN_DRIVERS: ReadonlyMap<ProviderDriverKind, KnownDriver> = new Map([
-  ...PACKAGED_CLIENTS.map((client) =>
+const KNOWN_DRIVERS: ReadonlyMap<ProviderDriverKind, KnownDriver> = new Map(
+  PACKAGED_CLIENTS.map((client) =>
     known(client.driverKind, client.label, client.settingsSchema, client.hasDefaultInstance),
   ),
-]);
+);
 
 /** Each driver a policy may name, with the label users see. */
 export const knownDriverLabels = () =>
@@ -144,6 +144,23 @@ export const providerHostEnvironment = (
     if (LAUNCH_OVERRIDE_VARIABLES.some((override) => override === name.toUpperCase())) {
       delete next[name];
     }
+  }
+  // Drivers keep this object, so PATH reads through to the host for a refresh after launch to reach them.
+  const pathKeys = Object.keys(next).filter((name) => name.toUpperCase() === "PATH");
+  if (pathKeys.length > 0) {
+    for (const name of pathKeys) delete next[name];
+    Object.defineProperty(next, "PATH", {
+      enumerable: true,
+      configurable: true,
+      get: () => environment.PATH ?? environment.Path ?? environment.path,
+      set: (value) =>
+        Object.defineProperty(next, "PATH", {
+          value,
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        }),
+    });
   }
   return next;
 };

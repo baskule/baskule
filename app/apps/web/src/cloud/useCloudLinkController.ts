@@ -35,18 +35,9 @@ export interface CloudLinkDesiredState {
   readonly holdWebhooksWhileOffline?: boolean;
 }
 
-const isManagedRelayRequestFailedError = Schema.is(ManagedRelay.ManagedRelayRequestFailedError);
 const isManagedRelayClientError = Schema.is(ManagedRelay.ManagedRelayClientError);
 
 /** The account's tunnel cap when the relay refused a new tunnel for being at it. */
-function tunnelLimitFromLinkFailure(cause: unknown): number | null {
-  if (!isCloudEnvironmentLinkError(cause)) return null;
-  const relayCause = cause.cause;
-  if (!isManagedRelayRequestFailedError(relayCause)) return null;
-  return relayCause.relayError?._tag === "RelayEnvironmentLinkLimitExceededError"
-    ? relayCause.relayError.maxTunnels
-    : null;
-}
 
 export function useCloudLinkController(environmentId: EnvironmentId | null) {
   const t = useTranslation();

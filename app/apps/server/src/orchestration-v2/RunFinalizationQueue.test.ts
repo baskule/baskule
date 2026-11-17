@@ -1,3 +1,5 @@
+import * as ProjectService from "../project/ProjectService.ts";
+import * as ProjectEnrichment from "../project/ProjectEnrichmentService.ts";
 import { assert, it } from "@effect/vitest";
 import { CheckpointScopeId, CommandId, GitCommandError, RunId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -43,11 +45,14 @@ it.effect.each([
         checkpointScopes: [{ id: scopeId, runId, kind: "root_run" as const, cwd: "/repo" }],
         checkpoints: [],
       }),
+    getThreadShell: () => Effect.succeed(null),
   });
   const observer = RunFinalization.layerObserver.pipe(
     Layer.provide(
       Layer.mergeAll(
         projections,
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(ProjectEnrichment.ProjectEnrichmentService)({}),
         Layer.mock(WorkspaceEntries.WorkspaceEntries)({ refresh: () => Effect.void }),
         Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({
           refreshLocalStatus: () =>
@@ -88,7 +93,10 @@ it.effect.each([
         Layer.mock(CheckpointRollback.CheckpointRollbackServiceV2)({}),
         Layer.mock(RuntimeRequests.RuntimeRequestServiceV2)({}),
         Layer.mock(ThreadTitles.ThreadTitleRegenerationService)({}),
-        Layer.mock(ThreadManagement.ThreadManagementService)({}),
+        Layer.mock(ThreadManagement.ThreadManagementService)({
+          recoverDelegatedTask: () => Effect.void,
+        }),
+        Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
         ServerSettings.layerTest(),
         Layer.mock(ProviderTurnStart.ProviderTurnStartServiceV2)({
           start: () => Effect.sync(() => calls.push("start")).pipe(Effect.asVoid),

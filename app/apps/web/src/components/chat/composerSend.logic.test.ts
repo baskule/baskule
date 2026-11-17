@@ -1,6 +1,7 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { describe, expect, it } from "vite-plus/test";
+
 import { formatInlineContextReference } from "../../lib/composerContextReferences";
 import { threadContextRecord, threadContextReference } from "../../lib/composerContextRecords";
 import {

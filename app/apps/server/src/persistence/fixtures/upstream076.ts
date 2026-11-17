@@ -30,7 +30,7 @@ import Migration0022 from "../Migrations/022_AuthSessionLastConnectedAt.ts";
 import Migration0023 from "../Migrations/023_ProjectionThreadShellSummary.ts";
 import Migration0024 from "../Migrations/024_BackfillProjectionThreadShellSummary.ts";
 import Migration0025 from "../Migrations/025_CleanupInvalidProjectionPendingApprovals.ts";
-import Migration0026 from "../Migrations/026_CanonicalizeModelSelectionOptions.ts";
+import Migration0026 from "./baskule081ModelSelectionOptions.ts";
 import Migration0027 from "../Migrations/027_ProviderSessionRuntimeInstanceId.ts";
 import Migration0028 from "../Migrations/028_ProjectionThreadSessionInstanceId.ts";
 import Migration0029 from "../Migrations/029_ProjectionThreadDetailOrderingIndexes.ts";

@@ -1,5 +1,4 @@
 import { t } from "../../i18n";
-import { useTranslation } from "../../i18n";
 
 import { DeviceHostUpdates } from "./DeviceHostUpdates";
 import type {
@@ -57,7 +56,6 @@ export function DevicePanel(props: {
   readonly visible: boolean;
   readonly onDismissSetup: () => void;
 }) {
-  const t = useTranslation();
   const { environmentId, threadId } = props.threadRef;
   const { state, loaded, error: stateError, refresh: refreshState } = useDeviceState(environmentId);
   const list = useAtomCommand(deviceEnvironment.list, { reportFailure: false });
@@ -404,7 +402,6 @@ export function DevicePanel(props: {
 }
 
 function DeviceNotice(props: { readonly onDismiss: () => void; readonly children: ReactNode }) {
-  const t = useTranslation();
   return (
     <div
       role="alert"
@@ -435,7 +432,6 @@ function DeviceDiscoveryWarning(props: {
   readonly incompletePlatforms: readonly DevicePlatform[];
   readonly onRetry: () => Promise<unknown>;
 }) {
-  const t = useTranslation();
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [dismissedCause, setDismissedCause] = useState<string | null>(null);

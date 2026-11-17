@@ -1,3 +1,4 @@
+import { mergeUsageCopies } from "./usageAggregation.ts";
 import type { UsageProviderKind } from "@t3tools/contracts";
 import type {
   TranscriptUsageFormat,
@@ -8,7 +9,7 @@ import * as Schema from "effect/Schema";
 
 import { GUARD_LENGTH, type TranscriptParsePosition } from "./usageTranscriptReader.ts";
 
-const USAGE_SCAN_CACHE_VERSION = 11 as const;
+const USAGE_SCAN_CACHE_VERSION = 17 as const;
 const SPEED_COMPATIBLE_SINCE_VERSION = 4;
 
 /**
@@ -16,8 +17,14 @@ const SPEED_COMPATIBLE_SINCE_VERSION = 4;
  * replace it, dropping saved usage for deleted transcripts. Separate files keep
  * the newer one; older files are removed once it is saved.
  */
-export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v11.json";
+export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v17.json";
 export const LEGACY_SCAN_CACHE_FILE_NAMES = [
+  "usage-scan-cache-v16.json",
+  "usage-scan-cache-v15.json",
+  "usage-scan-cache-v14.json",
+  "usage-scan-cache-v13.json",
+  "usage-scan-cache-v12.json",
+  "usage-scan-cache-v11.json",
   "usage-scan-cache-v10.json",
   "usage-scan-cache-v9.json",
   "usage-scan-cache-v8.json",
@@ -56,7 +63,8 @@ type SerializedRecord = readonly [
   reportedCostUsd: number | null,
   speed: number,
   rateModelIndex?: number | null,
-  unresolvedServiceTierTurnId?: string,
+  unresolvedServiceTierTurnId?: string | null,
+  cacheCreation1hTokens?: number,
 ];
 
 interface SerializedFile {
@@ -115,9 +123,11 @@ function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile 
     record.rateModel === undefined
       ? null
       : intern(tables.models, tables.modelIndex, record.rateModel),
-    ...(record.unresolvedServiceTierTurnId === undefined
-      ? ([] as const)
-      : ([record.unresolvedServiceTierTurnId] as const)),
+    ...(record.cacheCreation1hTokens !== undefined
+      ? ([record.unresolvedServiceTierTurnId ?? null, record.cacheCreation1hTokens] as const)
+      : record.unresolvedServiceTierTurnId !== undefined
+        ? ([record.unresolvedServiceTierTurnId] as const)
+        : ([] as const)),
   ];
   return {
     s: entry.size,
@@ -208,6 +218,7 @@ export function decodeScanCache(
         speedIndex,
         rateModelIndex,
         unresolvedServiceTierTurnId,
+        cacheCreation1h = 0,
       ] = row as SerializedRecord;
       const speed = typeof speedIndex === "number" ? SPEEDS[speedIndex] : undefined;
 
@@ -217,8 +228,8 @@ export function decodeScanCache(
         typeof timestampMs !== "number" ||
         !Number.isFinite(timestampMs) ||
         model === undefined ||
-        (unresolvedServiceTierTurnId !== undefined &&
-          typeof unresolvedServiceTierTurnId !== "string") ||
+        (unresolvedServiceTierTurnId != null && typeof unresolvedServiceTierTurnId !== "string") ||
+        !Number.isFinite(cacheCreation1h) ||
         (rateModelIndex != null && rateModel === undefined) ||
         !Number.isFinite(uncached) ||
         !Number.isFinite(cached) ||
@@ -243,9 +254,10 @@ export function decodeScanCache(
           outputTokens: output,
           reasoningTokens: reasoning,
         },
+        ...(cacheCreation1h > 0 ? { cacheCreation1hTokens: cacheCreation1h } : {}),
         reportedCostUsd: typeof reportedCostUsd === "number" ? reportedCostUsd : null,
         speed,
-        ...(version >= 7 && unresolvedServiceTierTurnId !== undefined
+        ...(version >= 7 && unresolvedServiceTierTurnId != null
           ? { unresolvedServiceTierTurnId }
           : {}),
         dedupeKey: typeof dedupeKey === "string" ? dedupeKey : null,
@@ -342,16 +354,18 @@ export function pruneScanCache(cache: ScanCache, retentionCutoffMs: number): num
   return removed;
 }
 
-/** Mutates seen; share it across incremental line/tail batches to deduplicate the whole file. */
-export function dedupeWithinFile(
-  records: readonly UsageRecord[],
-  seen: Set<string> = new Set(),
-): readonly UsageRecord[] {
+/** Pass only newline-terminated records: an unterminated tail can still change, so the aggregator merges it per scan. */
+export function dedupeWithinFile(records: readonly UsageRecord[]): readonly UsageRecord[] {
   const kept: UsageRecord[] = [];
+  const firstIndex = new Map<string, number>();
   for (const record of records) {
     if (record.dedupeKey !== null) {
-      if (seen.has(record.dedupeKey)) continue;
-      seen.add(record.dedupeKey);
+      const index = firstIndex.get(record.dedupeKey);
+      if (index !== undefined) {
+        kept[index] = mergeUsageCopies(kept[index]!, record);
+        continue;
+      }
+      firstIndex.set(record.dedupeKey, kept.length);
     }
     kept.push(record);
   }

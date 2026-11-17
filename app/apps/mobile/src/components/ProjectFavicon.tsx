@@ -3,7 +3,7 @@ import { useTranslation } from "../i18n";
 import { SymbolView } from "./ui/AppSymbol";
 import { AppText } from "./ui/AppText";
 import { Image } from "expo-image";
-import { memo, useLayoutEffect, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import type { EnvironmentId, ProjectIconOverride } from "@t3tools/contracts";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/projectFavicon";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
+import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { projectFaviconUrlAtom, useManagedAssetUri } from "../state/assets";
 import {
   countGlyphs,
@@ -21,6 +22,7 @@ import {
   resolveProjectIconSymbol,
   type ProjectIconGlyph,
 } from "../lib/projectIcon";
+import { resolveProjectFaviconColorScheme } from "../lib/projectFaviconColorScheme";
 
 import {
   beginProjectFaviconRequest,
@@ -163,6 +165,16 @@ function ProjectFaviconImage(props: {
     hasLoadedProjectFavicon(props.cacheKey) ? "loaded" : "loading",
   );
 
+  const { themeAppearance } = useAppearancePreferences();
+  const requestFaviconUrl = faviconRequest?.faviconUrl;
+  const inlineFaviconUrl = useMemo(
+    () =>
+      requestFaviconUrl?.startsWith("data:")
+        ? resolveProjectFaviconColorScheme(requestFaviconUrl, themeAppearance)
+        : null,
+    [requestFaviconUrl, themeAppearance],
+  );
+
   const showImage = faviconRequest !== null && status === "loaded";
   const fallbackGlyph = showImage ? null : projectAutoMonogram(props.projectTitle);
 
@@ -189,7 +201,7 @@ function ProjectFaviconImage(props: {
       {faviconRequest !== null ? (
         <Image
           key={faviconRequest.faviconUrl}
-          source={{ uri: faviconRequest.faviconUrl }}
+          source={{ uri: inlineFaviconUrl ?? faviconRequest.faviconUrl }}
           cachePolicy="none"
           recyclingKey={faviconRequest.cacheKey}
           accessibilityLabel={t("{{projectTitle}} favicon", { projectTitle: props.projectTitle })}

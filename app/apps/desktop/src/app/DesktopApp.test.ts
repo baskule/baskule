@@ -75,6 +75,7 @@ import * as DesktopConnectionCatalogStore from "./DesktopConnectionCatalogStore.
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
 import * as DesktopManagedPolicy from "./DesktopManagedPolicy.ts";
+import * as DesktopPrimaryPaste from "./DesktopPrimaryPaste.ts";
 import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
 import * as DesktopSshPasswordPrompts from "../ssh/DesktopSshPasswordPrompts.ts";
 import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
@@ -107,6 +108,7 @@ it.effect.each([
       const historyStarted = yield* Deferred.make<void>();
       const releaseHistory = yield* Deferred.make<void>();
       const quitting = yield* Ref.make(false);
+      const tokenRequested = yield* Deferred.make<void>();
       const events: string[] = [];
       const record = (event: string) =>
         Effect.sync(() => {
@@ -133,6 +135,7 @@ it.effect.each([
             platform: "linux",
             isDevelopment: false,
             isPackaged: true,
+            stateDir: "/isolated/userdata",
             configuredBackendPort: Option.some(3773),
             defaultDesktopSettings: { serverExposureMode: "local-only" },
           } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]),
@@ -167,7 +170,7 @@ it.effect.each([
             configure: Effect.void,
           } as PreviewPasskeys.PreviewPasskeys["Service"]),
           Effect.provideService(DesktopApplicationMenu.DesktopApplicationMenu, {
-            configure: Effect.void,
+            configure: record("menu"),
           }),
           Effect.provideService(DesktopUpdates.DesktopUpdates, {
             configure: Effect.void,
@@ -243,8 +246,14 @@ it.effect.each([
             Layer.mock(DesktopClientSettings.DesktopClientSettings, {}),
             Layer.mock(DesktopConnectionCatalogStore.DesktopConnectionCatalogStore, {}),
             Layer.mock(DesktopIpc.DesktopIpc, {}),
-            Layer.mock(DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth, {}),
+            Layer.mock(DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth, {
+              getBearerToken: record("token").pipe(
+                Effect.andThen(Deferred.succeed(tokenRequested, undefined)),
+                Effect.as("token"),
+              ),
+            }),
             Layer.mock(DesktopManagedPolicy.DesktopManagedPolicy, {}),
+            Layer.succeed(DesktopPrimaryPaste.DesktopPrimaryPaste, { enabled: true }),
             Layer.mock(DesktopSshEnvironment.DesktopSshEnvironment, {}),
             Layer.mock(DesktopSshPasswordPrompts.DesktopSshPasswordPrompts, {}),
             Layer.mock(DesktopTelemetryPublisher.DesktopTelemetryPublisher, {}),
@@ -273,14 +282,22 @@ it.effect.each([
       );
       yield* Deferred.await(registrationStarted);
       yield* Deferred.await(windowStarted);
-      assert.deepEqual(events, [
-        "identity",
-        "ready",
-        "identity",
-        ...(localEnvironmentEnabled ? ["backend"] : []),
-        "window",
-      ]);
-      if (localEnvironmentEnabled) yield* Deferred.await(cliInstalled);
+      if (localEnvironmentEnabled) yield* Deferred.await(tokenRequested);
+      assert.deepEqual(
+        events.filter((event) => event !== "token"),
+        [
+          "identity",
+          "ready",
+          "identity",
+          ...(localEnvironmentEnabled ? ["backend"] : []),
+          "menu",
+          "window",
+        ],
+      );
+      if (localEnvironmentEnabled) {
+        assert.isAbove(events.indexOf("token"), events.indexOf("backend"));
+        yield* Deferred.await(cliInstalled);
+      }
       yield* Effect.yieldNow;
       assert.isFalse(yield* Deferred.isDone(registrationStopped));
       const shutdown = yield* DesktopShutdown.DesktopShutdown;

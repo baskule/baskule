@@ -118,12 +118,14 @@ export function collectServerUpdateTargets(
       skip("needs a newer desktop app");
       continue;
     }
-    const serverVersion = config.environment.serverVersion;
+    const serverChannel = cliReleaseChannelOf(config.environment.serverVersion);
+    // A desktop app installs its own track's newest release. Nightly builds run ahead of Stable, so a
+    // Nightly host behind a Stable target has something newer; a Stable host may not.
     if (
-      selfUpdate !== "desktop-managed" &&
-      cliReleaseChannelOf(serverVersion) !== cliReleaseChannelOf(targetVersion)
+      serverChannel !== cliReleaseChannelOf(targetVersion) &&
+      (selfUpdate !== "desktop-managed" || serverChannel === "stable")
     ) {
-      skip(`on the ${cliReleaseChannelOf(serverVersion)} channel`);
+      skip(`on the ${serverChannel} channel`);
       continue;
     }
     const target: ServerUpdateTarget = {
@@ -142,11 +144,15 @@ export function collectServerUpdateTargets(
 export interface UpdateEverythingSteps<Providers, Servers> {
   readonly downloadLocal?: () => Promise<boolean>;
   readonly updateProviders: () => Promise<Providers>;
-  readonly updateServers: () => Promise<Servers>;
+  readonly stageServers?: () => ReadonlyMap<EnvironmentId, Promise<unknown>>;
+  readonly updateServers: (
+    staged: ReadonlyMap<EnvironmentId, Promise<unknown>>,
+  ) => Promise<Servers>;
 }
 
-/** Finish provider installs before server restarts. Install this app last when localReady; failed
- * downloads skip only that install. */
+/** Finish provider installs before server restarts; servers stage meanwhile and each server's
+ * update waits only on its own stage. Install this app last when localReady; failed downloads skip
+ * only that install. */
 export async function runUpdateEverything<Providers, Servers>(
   steps: UpdateEverythingSteps<Providers, Servers>,
 ): Promise<{
@@ -154,11 +160,14 @@ export async function runUpdateEverything<Providers, Servers>(
   readonly providers: Providers;
   readonly servers: Servers;
 }> {
+  const staged = new Map(
+    Array.from(steps.stageServers?.() ?? [], ([id, stage]) => [id, stage.catch(() => undefined)]),
+  );
   const [localReady, remote] = await Promise.all([
     steps.downloadLocal?.() ?? Promise.resolve(true),
     steps
       .updateProviders()
-      .then(async (providers) => ({ providers, servers: await steps.updateServers() })),
+      .then(async (providers) => ({ providers, servers: await steps.updateServers(staged) })),
   ]);
   return { localReady, ...remote };
 }
@@ -453,7 +462,7 @@ export function describeUpdateEverything(plan: UpdateEverythingPlan): {
   const summary = t("Update {{value1}}", {
     value1: joinList(
       [
-        plan.localVersion ? "this app" : null,
+        plan.localVersion ? t("this app") : null,
         countLabel(plan.servers.length, "server"),
         countLabel(providerCount, "provider"),
       ].filter((part) => part !== null),

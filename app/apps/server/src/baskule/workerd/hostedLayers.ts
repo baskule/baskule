@@ -49,6 +49,8 @@ export const layerEnvironmentTheme = Layer.effect(
     );
     return EnvironmentTheme.EnvironmentThemeService.of({
       current: Effect.flatMap(service, (s) => s.current),
+      read: (id) => Effect.flatMap(service, (s) => s.read(id)),
+      apply: (input) => Effect.flatMap(service, (s) => s.apply(input)),
       streamChanges: Stream.unwrap(Effect.map(service, (s) => s.streamChanges)),
     });
   }),

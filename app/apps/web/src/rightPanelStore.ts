@@ -1013,12 +1013,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           Object.entries(state.byThreadKey).flatMap(([threadKey, threadState]) =>
             isPullRequestsPanelKey(threadKey)
               ? []
-              : [
-                  [
-                    threadKey,
-                    { ...threadState, surfaces: threadState.surfaces },
-                  ],
-                ],
+              : [[threadKey, { ...threadState, surfaces: threadState.surfaces }]],
           ),
         ),
         threadPanelVisibilityByThreadKey: Object.fromEntries(

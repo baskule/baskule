@@ -12,6 +12,7 @@ import {
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
   resolveSelectableModel,
+  withImplicitFastModeDefault,
 } from "@t3tools/shared/model";
 
 import type { DraftId } from "../../composerDraftStore";
@@ -44,24 +45,6 @@ type ComposerTraitsTarget = {
   reportedModelSelection?: ModelSelection | null | undefined;
   includePlanAgent?: boolean | undefined;
 };
-
-/** Fast mode is enabled only by an explicit user selection. */
-export function withImplicitFastModeDefault(
-  caps: ModelCapabilities,
-  modelOptions: ReadonlyArray<ProviderOptionSelection> | null | undefined,
-): ReadonlyArray<ProviderOptionSelection> | undefined {
-  const hasExplicitFastMode = modelOptions?.some((selection) => selection.id === "fastMode");
-  if (hasExplicitFastMode) {
-    return modelOptions ?? undefined;
-  }
-  const hasFastModeDescriptor = caps.optionDescriptors?.some(
-    (descriptor) => descriptor.type === "boolean" && descriptor.id === "fastMode",
-  );
-  if (!hasFastModeDescriptor) {
-    return modelOptions ?? undefined;
-  }
-  return [...(modelOptions ?? []), { id: "fastMode", value: false }];
-}
 
 function resolveComposerOptionSelections(
   models: ReadonlyArray<ServerProviderModel>,

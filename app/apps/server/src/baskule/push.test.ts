@@ -158,7 +158,7 @@ it.effect(
         error: "provider unavailable",
         delayMs: 5000,
       });
-      const wake = yield* outbox.nextClaimableAt;
+      const wake = yield* outbox.nextClaimableAt();
       assert.equal(
         DateTime.toEpochMillis(Option.getOrThrow(wake)),
         (yield* DateTime.now).epochMilliseconds + 5000,

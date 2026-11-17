@@ -4,6 +4,7 @@ import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { createEnvironmentSubscriptionAtomFamily } from "@t3tools/client-runtime/state/runtime";
 import {
   AuthFilesystemReadScope,
+  DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
   ProjectId,
   type VcsListRefsResult,
@@ -32,6 +33,8 @@ const mocks = vi.hoisted(() => ({
   retargetDraft: vi.fn(),
   writeSettings: vi.fn(),
   writeText: vi.fn(),
+  serverConfig: vi.fn(),
+  openScratch: vi.fn(),
 }));
 vi.mock("../../state/atom-registry", () => ({
   appAtomRegistry: {
@@ -46,7 +49,7 @@ vi.mock("../../baskule/spaces", () => ({
 vi.mock("../../state/entities", () => ({
   useProjects: mocks.projects,
   useThreadShells: () => [],
-  useEnvironmentServerConfig: () => null,
+  useEnvironmentServerConfig: () => mocks.serverConfig() ?? null,
   useServerConfigs: () => new Map(),
 }));
 vi.mock("../../state/vcs", () => ({
@@ -69,7 +72,7 @@ vi.mock("../../state/project-grouping", () => ({
   useMobileProjectGroupingSettings: () => ({ sidebarProjectGroupingMode: "none" }),
 }));
 vi.mock("../../components/ui/Dialog", () => ({ alert: vi.fn() }));
-vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
+vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => mocks.openScratch }));
 vi.mock("../../state/use-remote-environment-registry", () => ({
   useSavedRemoteConnections: () => ({ savedConnectionsById: {} }),
   useRemoteConnectionStatus: () => ({ connectedEnvironments: [] }),
@@ -365,3 +368,72 @@ it("uses cached repository capability and branch defaults while offline", async 
   expect(screen.current.draftKey).toBe(draftKey);
   expect(screen.current.selectedBranchName).toBe("main");
 });
+
+const scratchPrompt = "Keep this scratch prompt.";
+
+async function renderScratchDraft(screen: ReturnType<typeof setup>) {
+  mocks.serverConfig.mockReturnValue({
+    scratchWorkspaceRoot: "/a",
+    providers: [],
+    settings: DEFAULT_SERVER_SETTINGS,
+  });
+  mocks.openScratch.mockResolvedValue({ _tag: "Success", value: screen.projects[2] });
+  await screen.render(true);
+  act(() => screen.current.setPrompt(scratchPrompt));
+}
+
+it("keeps a scratch draft while changing its machine", async () => {
+  using screen = setup();
+  await renderScratchDraft(screen);
+
+  await act(async () => {
+    await screen.current.switchEnvironment(EnvironmentId.make("two"));
+  });
+
+  expect(screen.current.prompt).toBe(scratchPrompt);
+  expect(screen.current.selectedProject).toEqual(screen.projects[2]);
+});
+
+it.each([
+  [
+    "a project is picked",
+    1,
+    (flow: ReturnType<typeof useNewTaskFlow>, picked: EnvironmentProject) =>
+      flow.setProject(picked),
+  ],
+  [
+    "a send starts and ends",
+    0,
+    (flow: ReturnType<typeof useNewTaskFlow>) => {
+      flow.setSubmitting(true);
+      flow.setSubmitting(false);
+    },
+  ],
+] as const)(
+  "leaves a scratch draft alone when %s while its new machine prepares",
+  async (_name, expectedProject, interrupt) => {
+    using screen = setup();
+    await renderScratchDraft(screen);
+    let finishPreparing!: (result: unknown) => void;
+    mocks.openScratch.mockReturnValue(
+      new Promise((resolve) => {
+        finishPreparing = resolve;
+      }),
+    );
+
+    let switching!: Promise<boolean>;
+    act(() => {
+      switching = screen.current.switchEnvironment(EnvironmentId.make("two"));
+    });
+    await act(async () => interrupt(screen.current, screen.projects[1]!));
+    let switched = true;
+    await act(async () => {
+      finishPreparing({ _tag: "Success", value: screen.projects[2] });
+      switched = await switching;
+    });
+
+    expect(switched).toBe(false);
+    expect(screen.current.prompt).toBe(scratchPrompt);
+    expect(screen.current.selectedProject).toEqual(screen.projects[expectedProject]);
+  },
+);

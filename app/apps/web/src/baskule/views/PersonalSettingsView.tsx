@@ -5,6 +5,7 @@ import { useTheme } from "../../hooks/useTheme";
 import { LanguageSetting } from "../../components/LanguageSetting";
 import {
   ScreenReaderAnnouncementsRow,
+  ScreenReaderWindowTitleRow,
   ToolCallVisibilityRow,
 } from "../../components/settings/SettingsPanels";
 import {
@@ -45,6 +46,7 @@ export function PersonalSettingsView() {
       <SettingsSection title={t("Chats")}>
         <ToolCallVisibilityRow />
         <ScreenReaderAnnouncementsRow />
+        <ScreenReaderWindowTitleRow />
       </SettingsSection>
       {error ? (
         <p role="alert" className="text-sm text-destructive-foreground">

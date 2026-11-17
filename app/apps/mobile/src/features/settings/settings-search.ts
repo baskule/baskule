@@ -15,6 +15,10 @@ const SETTINGS_SEARCH_TERMS = {
   ],
   SettingsNotifications: ["push", "alerts", "live activity", "agent activity"],
   SettingsAppearance: [
+    "language",
+    "locale",
+    "translation",
+    "english",
     "theme",
     "dark mode",
     "light mode",

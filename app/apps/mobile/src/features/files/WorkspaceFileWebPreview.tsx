@@ -5,7 +5,6 @@ import { t, useTranslation } from "../../i18n";
 import { useState } from "react";
 import { View } from "react-native";
 import { WebView } from "react-native-webview";
-import {} from "react-native-safe-area-context";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -14,6 +13,7 @@ import { LoadingStrip } from "../../components/ui/LoadingStrip";
 import { PdfPreview } from "../../components/PdfPreview";
 import { useLocalHtmlDocument } from "../../lib/useLocalHtmlDocument";
 import { isPdfPreviewUri } from "../../lib/pdfPreview";
+import { webViewDecelerationRate } from "../../lib/webViewDecelerationRate";
 import { useContentTopInset } from "../../components/ui/useBarInset";
 
 export function WorkspaceFileWebPreview(props: { readonly uri: string | null }) {
@@ -73,9 +73,11 @@ function DocumentWebPreview(props: { readonly uri: string }) {
           sharedCookiesEnabled={false}
           thirdPartyCookiesEnabled={false}
           contentInsetAdjustmentBehavior="automatic"
+          decelerationRate={webViewDecelerationRate}
           originWhitelist={["*"]}
           allowsBackForwardNavigationGestures
           allowsFullscreenVideo
+          allowsInlineMediaPlayback
           setSupportMultipleWindows={false}
           onShouldStartLoadWithRequest={(request) => request.url.split("#", 1)[0] === html.document}
           startInLoadingState

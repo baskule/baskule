@@ -108,23 +108,23 @@ export function QuestionAttachments(props: {
       props.question.id,
     );
     changeQuestionAttachmentPreparation(key, 1);
-    void convertPastedImagesToAttachments({
-      uris,
-      existingCount: appAtomRegistry.get(composerDraftsAtom)[key]?.attachments.length ?? 0,
-    })
-      .then(async (images) => {
+    void convertPastedImagesToAttachments({ uris })
+      .then(async (result) => {
         if (
           scope.active &&
           (appAtomRegistry.get(questionAttachmentPreparationAtom)[key] ?? 0) > 0
         ) {
-          if (append(key, images) > 0)
-            Dialog.alert("Could not paste image", "Too many attachments.");
-        } else await releaseUnusedComposerAttachmentFiles(images);
+          const problems = [
+            ...(result.error ? [result.error] : []),
+            ...(append(key, result.attachments) > 0 ? [t("Too many attachments.")] : []),
+          ];
+          if (problems.length) Dialog.alert(t("Could not paste image"), problems.join("\n\n"));
+        } else await releaseUnusedComposerAttachmentFiles(result.attachments);
       })
       .catch((error) =>
         Dialog.alert(
           "Could not paste image",
-          error instanceof Error ? error.message : "Try again.",
+          error instanceof Error ? error.message : t("Try again."),
         ),
       )
       .finally(() => changeQuestionAttachmentPreparation(key, -1));
@@ -166,12 +166,15 @@ export function QuestionAttachments(props: {
       }
       const rejected = append(key, picked);
       if (result.error || rejected > 0)
-        Dialog.alert("Could not attach file", result.error ?? "Too many attachments.");
+        Dialog.alert(t("Could not attach file"), result.error ?? t("Too many attachments."));
     });
     changeQuestionAttachmentPreparation(key, -1);
     if (AsyncResult.isFailure(picked)) {
       const error = squashAtomCommandFailure(picked);
-      Dialog.alert("Could not attach file", error instanceof Error ? error.message : "Try again.");
+      Dialog.alert(
+        t("Could not attach file"),
+        error instanceof Error ? error.message : t("Try again."),
+      );
     }
   };
   return (

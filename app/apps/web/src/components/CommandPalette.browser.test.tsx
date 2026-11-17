@@ -5,6 +5,8 @@ import { page } from "vite-plus/test/browser";
 import { act, render } from "../../test/render";
 import { openCommandPalette } from "../commandPaletteBus";
 import { useCommandPaletteStore } from "../commandPaletteStore";
+import { LAST_USED_PROJECT_STORAGE_KEY } from "../hooks/useHandleNewThread";
+import { removeLocalStorageItem } from "../hooks/useLocalStorage";
 import { makeThreadFixture } from "../test-fixtures";
 import type { Project, Thread } from "../types";
 import { CommandPalette } from "./CommandPalette";
@@ -19,7 +21,10 @@ vi.mock("../state/entities", async (original) => ({
   useVisibleThreadShells: () => entities.threads,
 }));
 
-function setup(state: { projects?: ReadonlyArray<Project>; threads?: ReadonlyArray<Thread> } = {}) {
+function setup(state: Partial<typeof entities> = {}) {
+  // Earlier browser test files share this origin's localStorage; a remembered project
+  // that is not listed here hides the default "New thread in <project>" row.
+  removeLocalStorageItem(LAST_USED_PROJECT_STORAGE_KEY);
   useCommandPaletteStore.setState(useCommandPaletteStore.getInitialState(), true);
   entities.projects = state.projects ?? [];
   entities.threads = state.threads ?? [];
@@ -73,7 +78,9 @@ describe("CommandPalette open intents", () => {
       document.dispatchEvent(pointer("pointerup", 50, window.innerHeight - 30));
     });
     expect(onDrop).toHaveBeenCalledOnce();
-    expect((onDrop.mock.calls[0]![0] as CustomEvent).detail).toEqual([{ environmentId, threadId }]);
+    expect((onDrop.mock.calls[0]![0] as CustomEvent).detail).toEqual([
+      { environmentId, threadId, title: "Drag this thread" },
+    ]);
     expect(screen.router?.state.location.pathname).toBe(pathname);
   });
 
@@ -98,7 +105,7 @@ describe("CommandPalette open intents", () => {
     await expect.element(input).toHaveValue("acme");
   });
 
-  it("opens a searched project's latest listed thread, not a newer subagent", async () => {
+  it("opens a searched project's latest listed thread, not a newer subagent or parked thread", async () => {
     const environmentId = EnvironmentId.make("local");
     const projectId = ProjectId.make("acme");
     const parentId = ThreadId.make("parent");
@@ -133,6 +140,20 @@ describe("CommandPalette open intents", () => {
             parentThreadId: parentId,
             relationshipToParent: "subagent",
           },
+        }),
+        makeThreadFixture({
+          id: ThreadId.make("settled"),
+          environmentId,
+          projectId,
+          latestUserMessageAt: "2026-03-05T00:00:00.000Z",
+          settledOverride: "settled",
+        }),
+        makeThreadFixture({
+          id: ThreadId.make("snoozed"),
+          environmentId,
+          projectId,
+          latestUserMessageAt: "2026-03-06T00:00:00.000Z",
+          snoozedUntil: "2999-01-01T00:00:00.000Z",
         }),
       ],
     });

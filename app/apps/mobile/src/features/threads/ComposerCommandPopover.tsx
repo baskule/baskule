@@ -18,6 +18,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { ProviderIcon } from "../../components/ProviderIcon";
+import { cn } from "../../lib/cn";
 import type { ModelOption } from "../../lib/modelOptions";
 export type ComposerCommandItem =
   | {
@@ -136,7 +137,7 @@ function emptyText(triggerKind: ComposerTriggerKind | null, isLoading: boolean):
   }
   switch (triggerKind) {
     case "path":
-      return t("No matching files or folders.");
+      return t("No matching mentions.");
     case "skill":
       return t("No skills found.");
     case "slash-command":
@@ -178,7 +179,13 @@ const CommandRow = memo(function CommandRow(props: {
           type="monochrome"
         />
       ) : null}
-      <Text className="shrink-0 text-base font-t3-medium text-foreground" numberOfLines={1}>
+      <Text
+        className={cn(
+          "shrink-0 text-base font-t3-medium text-foreground",
+          props.item.type === "thread" && "max-w-[45%]",
+        )}
+        numberOfLines={1}
+      >
         {props.isSlashSkill && props.item.type === "skill" ? (
           <>
             <Text className="text-foreground-muted">{t("skill:")}</Text>

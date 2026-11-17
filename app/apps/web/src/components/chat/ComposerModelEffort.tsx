@@ -93,7 +93,7 @@ export function describeComposerEffort(
     traits.instanceId && traits.model
       ? { instanceId: traits.instanceId, model: traits.model, options: traits.modelOptions ?? [] }
       : null;
-  const primary = visibility.primarySelectDescriptor;
+
   const display = buildTraitsTriggerDisplay({
     descriptors: visibility.descriptors,
     modelSelection,

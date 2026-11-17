@@ -2,17 +2,15 @@ import {
   EnvironmentId,
   type OrchestrationV2ArchivedShellSnapshot,
   type ScopedThreadRef,
-  ThreadId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
-import { describe, expect, it } from "vite-plus/test";
+import { expect, it } from "vite-plus/test";
 
 import {
   createArchivedThreadSnapshotsAtomFamily,
   makeArchivedThreadsEnvironmentKey,
 } from "./archivedThreads.ts";
-import { v2Project, v2ThreadShell } from "./orchestrationV2TestFixtures.ts";
 
 it("does not expose an archived snapshot failure message", () => {
   const environmentId = EnvironmentId.make("env-sensitive");
