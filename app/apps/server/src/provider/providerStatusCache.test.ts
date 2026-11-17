@@ -11,7 +11,7 @@ import { assert, it } from "@effect/vitest";
 import { hydrateCachedProvider, isCachedProviderCorrelated } from "./providerStatusCache.ts";
 
 const emptyCapabilities = createModelCapabilities({ optionDescriptors: [] });
-const CODEX_DRIVER = ProviderDriverKind.make("codex");
+const OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
 
 const makeProvider = (
   provider: ProviderDriverKind,
@@ -33,7 +33,7 @@ const makeProvider = (
 
 it.layer(NodeServices.layer)("providerStatusCache", (it) => {
   it("hydrates cached provider status while preserving current settings-derived models", () => {
-    const cachedCodex = makeProvider(CODEX_DRIVER, {
+    const cachedOpenCode = makeProvider(OPENCODE_DRIVER, {
       checkedAt: "2026-04-10T12:00:00.000Z",
       models: [
         {
@@ -53,7 +53,7 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
         },
       ],
     });
-    const fallbackCodex = makeProvider(CODEX_DRIVER, {
+    const fallbackOpenCode = makeProvider(OPENCODE_DRIVER, {
       models: [
         {
           slug: "gpt-5.4",
@@ -67,13 +67,13 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
 
     assert.deepStrictEqual(
       hydrateCachedProvider({
-        cachedProvider: cachedCodex,
-        fallbackProvider: fallbackCodex,
+        cachedProvider: cachedOpenCode,
+        fallbackProvider: fallbackOpenCode,
       }),
       {
-        ...fallbackCodex,
+        ...fallbackOpenCode,
         models: [
-          ...fallbackCodex.models,
+          ...fallbackOpenCode.models,
           {
             slug: "gpt-5-mini",
             name: "GPT-5 Mini",
@@ -81,14 +81,14 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
             capabilities: emptyCapabilities,
           },
         ],
-        installed: cachedCodex.installed,
-        version: cachedCodex.version,
-        status: cachedCodex.status,
-        auth: cachedCodex.auth,
-        checkedAt: cachedCodex.checkedAt,
-        slashCommands: cachedCodex.slashCommands,
-        skills: cachedCodex.skills,
-        message: cachedCodex.message,
+        installed: cachedOpenCode.installed,
+        version: cachedOpenCode.version,
+        status: cachedOpenCode.status,
+        auth: cachedOpenCode.auth,
+        checkedAt: cachedOpenCode.checkedAt,
+        slashCommands: cachedOpenCode.slashCommands,
+        skills: cachedOpenCode.skills,
+        message: cachedOpenCode.message,
       },
     );
   });
@@ -100,7 +100,7 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
       isCustom: false,
       capabilities: emptyCapabilities,
     } as const;
-    const cachedCodex = makeProvider(CODEX_DRIVER, {
+    const cachedOpenCode = makeProvider(OPENCODE_DRIVER, {
       models: [
         builtIn,
         {
@@ -111,34 +111,34 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
         },
       ],
     });
-    const fallbackCodex = makeProvider(CODEX_DRIVER, { models: [builtIn] });
+    const fallbackOpenCode = makeProvider(OPENCODE_DRIVER, { models: [builtIn] });
 
     assert.deepStrictEqual(
       hydrateCachedProvider({
-        cachedProvider: cachedCodex,
-        fallbackProvider: fallbackCodex,
+        cachedProvider: cachedOpenCode,
+        fallbackProvider: fallbackOpenCode,
       }).models,
       [builtIn],
     );
   });
 
   it("ignores stale cached enabled state when the provider is now disabled", () => {
-    const cachedCodex = makeProvider(CODEX_DRIVER, {
+    const cachedOpenCode = makeProvider(OPENCODE_DRIVER, {
       checkedAt: "2026-04-10T12:00:00.000Z",
       message: "Cached ready status",
     });
-    const disabledFallback = makeProvider(CODEX_DRIVER, {
+    const disabledFallback = makeProvider(OPENCODE_DRIVER, {
       enabled: false,
       installed: false,
       version: null,
       status: "disabled",
       auth: { status: "unknown" },
-      message: "Codex is disabled in T3 Code settings.",
+      message: "OpenCode is disabled in T3 Code settings.",
     });
 
     assert.deepStrictEqual(
       hydrateCachedProvider({
-        cachedProvider: cachedCodex,
+        cachedProvider: cachedOpenCode,
         fallbackProvider: disabledFallback,
       }),
       disabledFallback,
@@ -146,7 +146,7 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
   });
 
   it("rejects cached snapshots that are not correlated to the fallback instance", () => {
-    const fallbackCodex = makeProvider(CODEX_DRIVER, {
+    const fallbackOpenCode = makeProvider(OPENCODE_DRIVER, {
       models: [
         {
           slug: "gpt-5.4",
@@ -156,8 +156,8 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
         },
       ],
     });
-    const legacyCachedCodex = {
-      provider: ProviderDriverKind.make("codex"),
+    const legacyCachedOpenCode = {
+      provider: ProviderDriverKind.make("opencode"),
       enabled: true,
       installed: true,
       version: "1.0.0",
@@ -175,37 +175,37 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
       slashCommands: [],
       skills: [],
     } as unknown as ServerProvider;
-    const mismatchedCachedCodex = makeProvider(CODEX_DRIVER, {
-      instanceId: ProviderInstanceId.make("codex_personal"),
+    const mismatchedCachedOpenCode = makeProvider(OPENCODE_DRIVER, {
+      instanceId: ProviderInstanceId.make("opencode_personal"),
     });
 
     assert.strictEqual(
       isCachedProviderCorrelated({
-        cachedProvider: legacyCachedCodex,
-        fallbackProvider: fallbackCodex,
+        cachedProvider: legacyCachedOpenCode,
+        fallbackProvider: fallbackOpenCode,
       }),
       false,
     );
     assert.deepStrictEqual(
       hydrateCachedProvider({
-        cachedProvider: legacyCachedCodex,
-        fallbackProvider: fallbackCodex,
+        cachedProvider: legacyCachedOpenCode,
+        fallbackProvider: fallbackOpenCode,
       }),
-      fallbackCodex,
+      fallbackOpenCode,
     );
     assert.strictEqual(
       isCachedProviderCorrelated({
-        cachedProvider: mismatchedCachedCodex,
-        fallbackProvider: fallbackCodex,
+        cachedProvider: mismatchedCachedOpenCode,
+        fallbackProvider: fallbackOpenCode,
       }),
       false,
     );
     assert.deepStrictEqual(
       hydrateCachedProvider({
-        cachedProvider: mismatchedCachedCodex,
-        fallbackProvider: fallbackCodex,
+        cachedProvider: mismatchedCachedOpenCode,
+        fallbackProvider: fallbackOpenCode,
       }),
-      fallbackCodex,
+      fallbackOpenCode,
     );
   });
 });

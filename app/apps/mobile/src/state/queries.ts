@@ -315,7 +315,7 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   const searchTarget =
     debouncedTarget.environmentId !== null &&
     debouncedTarget.cwd !== null &&
-    debouncedTarget.query.length > 0
+    debouncedTarget.query !== null
       ? {
           environmentId: debouncedTarget.environmentId,
           input: {
@@ -329,9 +329,13 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
     canReadFiles && searchTarget !== null ? projectEnvironment.searchEntries(searchTarget) : null,
   );
   const hasTarget = searchTarget !== null;
+  const isSameCheckout =
+    normalizedTarget.environmentId === debouncedTarget.environmentId &&
+    normalizedTarget.cwd === debouncedTarget.cwd;
 
   return {
-    entries: result.data?.entries ?? [],
+    // Entries from another checkout must not be offered while the new one is debounced.
+    entries: isSameCheckout ? (result.data?.entries ?? []) : [],
     error:
       !hasTarget || fileAccess.isPending
         ? null
@@ -339,6 +343,7 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
           ? result.error
           : (fileAccess.error ?? t("This connection cannot search host files.")),
     isPending:
+      !isSameCheckout ||
       normalizedTarget.query !== debouncedTarget.query ||
       (hasTarget && (fileAccess.isPending || result.isPending)),
     refresh: result.refresh,

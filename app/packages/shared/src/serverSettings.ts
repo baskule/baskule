@@ -6,7 +6,6 @@ import {
   defaultInstanceIdForDriver,
   isProviderAvailable,
   isUnconfiguredDefaultInstanceEnabled,
-  resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
   resolveTextGenerationSelectionEnabled,
   isProviderTextGenerationCapable,
@@ -45,7 +44,9 @@ export function isModelSelectionProviderEnabled(
   settings: ServerSettings,
   selection: ModelSelection,
 ): boolean {
-  const instanceConfig = settings.providerInstances[selection.instanceId];
+  const instanceConfig = Object.hasOwn(settings.providerInstances, selection.instanceId)
+    ? settings.providerInstances[selection.instanceId]
+    : undefined;
   if (instanceConfig !== undefined) {
     return resolveProviderInstanceEnabled(instanceConfig);
   }
@@ -55,15 +56,27 @@ export function isModelSelectionProviderEnabled(
 
 const TEXT_GENERATION_FALLBACK_DRIVERS = [ProviderDriverKind.make("opencode")];
 
-/** Only project-scoped callers may include configured instances when falling back; machine-level callers leave it unset. */
+/** Only project-scoped callers may include configured instances when falling back. */
 export function fallbackTextGenerationModelSelection(
   providerInstances: ServerSettings["providerInstances"],
-  isEnabled: (instanceId: ProviderInstanceId, driver: ProviderDriverKind) => boolean,
+  isEnabled: (instanceId: ProviderInstanceId, driver: ProviderDriverKind, model: string) => boolean,
   options?: {
     readonly includeConfiguredInstances?: boolean;
     readonly defaultModelSelection?: ModelSelection | null;
   },
 ): ModelSelection | null {
+  const threadDefault = options?.defaultModelSelection;
+  // The thread default's custom model wins on its instance; the driver default still serves when that model is unusable.
+  const selectionsFor = (instanceId: ProviderInstanceId, driver: ProviderDriverKind) => {
+    const config = providerInstances[instanceId]?.config as { customModels?: unknown } | undefined;
+    const driverDefault = { instanceId, model: defaultTextGenerationModel(driver) };
+    return threadDefault?.instanceId === instanceId &&
+      readCustomModelEntries(config?.customModels).some(
+        (entry) => entry.slug === threadDefault.model,
+      )
+      ? [threadDefault, driverDefault]
+      : [driverDefault];
+  };
   const candidates = [
     ...TEXT_GENERATION_FALLBACK_DRIVERS.map(
       (driver) => [defaultInstanceIdForDriver(driver), driver] as const,
@@ -76,18 +89,12 @@ export function fallbackTextGenerationModelSelection(
         )
       : []),
   ];
-  const match = candidates.find(([instanceId, driver]) => isEnabled(instanceId, driver));
-  if (match === undefined) return null;
-  const [instanceId, driver] = match;
-  const threadDefault = options?.defaultModelSelection;
-  const config = providerInstances[instanceId]?.config as { customModels?: unknown } | undefined;
-  if (
-    threadDefault?.instanceId === instanceId &&
-    readCustomModelEntries(config?.customModels).some((entry) => entry.slug === threadDefault.model)
-  ) {
-    return threadDefault;
+  for (const [instanceId, driver] of candidates) {
+    for (const selection of selectionsFor(instanceId, driver)) {
+      if (isEnabled(instanceId, driver, selection.model)) return selection;
+    }
   }
-  return { instanceId, model: defaultTextGenerationModel(driver) };
+  return null;
 }
 
 export function defaultTextGenerationModel(driver: ProviderDriverKind): string {

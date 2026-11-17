@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import {
   createAtomCommandScheduler,
   createRuntimeCommand,

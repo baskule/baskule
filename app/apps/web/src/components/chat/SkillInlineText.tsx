@@ -1,4 +1,4 @@
-import { t, useTranslation } from "../../i18n";
+import { useTranslation } from "../../i18n";
 import { collectComposerModelMentions } from "@t3tools/client-runtime/composer-model-mentions";
 import type { EnvironmentId, ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
@@ -146,7 +146,7 @@ export function SkillChipPopover(props: {
   );
 }
 
-function SkillChipIcon() {
+export function SkillChipIcon() {
   return (
     <span
       aria-hidden="true"

@@ -1,7 +1,8 @@
+import { baskule } from "../../baskule/flags";
 import { useTranslation } from "../../i18n";
 
-import { baskule } from "../../baskule/flags";
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
+
 import { useState } from "react";
 import type {
   EnvironmentId,
@@ -202,7 +203,7 @@ export function useComposerMenuItems({
     return [];
   })();
   const isLoading =
-    (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
+    (composerTriggerKind === "path" && workspaceEntries.isPending) ||
     ((composerTriggerKind === "skill" || composerTriggerKind === "slash-command") &&
       workspaceSkillsScanning);
   const emptyState = (() => {

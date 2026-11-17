@@ -33,7 +33,15 @@ describe("Baskule views", () => {
     expect(visitorPlatform("Mozilla/5.0 (X11; Linux x86_64)")).toBe("linux");
     expect(visitorPlatform("Mozilla/5.0 (Linux; Android 15)")).toBe("android");
     const files: ReadonlyArray<Download> = [
-      { id: "android", platform: "android", fileName: "Baskule.apk", label: "Android", format: "apk", url: "/a", version: "0.5.0" },
+      {
+        id: "android",
+        platform: "android",
+        fileName: "Baskule.apk",
+        label: "Android",
+        format: "apk",
+        url: "/a",
+        version: "0.5.0",
+      },
       ...releaseDownloads("0.5.0"),
     ];
     expect(orderDownloads(files, "android")[0]?.platform).toBe("android");

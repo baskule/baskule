@@ -117,7 +117,9 @@ it("creates an SSO-only administrator without a password, then sends them to sig
   await using screen = await render(<SetupView />);
   await expect.element(screen.getByLabelText("Your name")).toBeVisible();
   await expect.element(screen.getByLabelText("Your name")).toHaveAttribute("maxlength", "100");
-  await expect.element(screen.getByLabelText("Email", { exact: true })).toHaveAttribute("maxlength", "254");
+  await expect
+    .element(screen.getByLabelText("Email", { exact: true }))
+    .toHaveAttribute("maxlength", "254");
   expect(screen.getByLabelText("Password", { exact: true }).query()).toBeNull();
   await fill(screen, { "Your name": " Ada ", Email: "ada@example.com" });
   await screen.getByRole("button", { name: "Create account" }).click();
@@ -177,7 +179,8 @@ describe("a refused password-mode setup", () => {
     {
       refusal: new BaskuleApiError(403, "bad origin", "bad_origin"),
       heading: "Set up Baskule",
-      alert: "Setup was blocked by the origin check. Configure BASKULE_TRUSTED_PROXIES or PUBLIC_ORIGINS. Reverse proxy configuration",
+      alert:
+        "Setup was blocked by the origin check. Configure BASKULE_TRUSTED_PROXIES or PUBLIC_ORIGINS. Reverse proxy configuration",
     },
     {
       refusal: new BaskuleApiError(403, "bad token", "bad_token"),
@@ -207,10 +210,12 @@ describe("a refused password-mode setup", () => {
     await expect.element(screen.getByRole("heading", { name: heading })).toBeVisible();
     if (alert) await expect.element(screen.getByRole("alert")).toHaveTextContent(alert);
     if (refusal.code === "bad_origin") {
-      await expect.element(screen.getByRole("link", { name: "Reverse proxy configuration" })).toHaveAttribute(
-        "href",
-        "https://github.com/baskule/baskule/blob/main/docs/install.md#your-own-reverse-proxy",
-      );
+      await expect
+        .element(screen.getByRole("link", { name: "Reverse proxy configuration" }))
+        .toHaveAttribute(
+          "href",
+          "https://github.com/baskule/baskule/blob/main/docs/install.md#your-own-reverse-proxy",
+        );
     }
   });
 });

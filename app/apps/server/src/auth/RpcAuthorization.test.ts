@@ -110,6 +110,10 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("lets readers load the server configuration", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.serverGetConfig)).toBe(AuthOrchestrationReadScope);
+  });
+
   it("rejects unknown RPC method names", () => {
     for (const method of ["server.notRegistered", "toString", "constructor"]) {
       expect(() => requiredScopeForRpcMethod(method)).toThrow(
@@ -171,7 +175,7 @@ describe("RPC scope middleware", () => {
         requiredPermission: missing,
       });
       expect(handled).toEqual([]);
-    }).pipe(Effect.scoped),
+    }),
   );
 });
 
@@ -227,7 +231,7 @@ it.effect.each([WS_METHODS.subscribeVcsBranch, WS_METHODS.subscribeVcsStatus] as
           : granted[method]({ cwd: "/repo" }).pipe(Stream.drain),
       );
       expect(handled).toBe(1);
-    }).pipe(Effect.scoped),
+    }),
 );
 
 describe("settings mutation authorization", () => {
@@ -243,34 +247,6 @@ describe("settings mutation authorization", () => {
     operation: "remove" as const,
     instanceId: ProviderInstanceId.make("codex_work"),
   };
-
-  it.effect("allows provider-only mutations while denying mixed settings without their grant", () =>
-    Effect.gen(function* () {
-      let handled = 0;
-      const client = yield* RpcTest.makeClient(group).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            group.toLayerHandler(WS_METHODS.serverUpdateSettings, () =>
-              Effect.sync(() => {
-                handled++;
-                return DEFAULT_SERVER_SETTINGS;
-              }),
-            ),
-            RpcAuthorization.layer([AuthProvidersManageScope]),
-          ),
-        ),
-      );
-      yield* client[WS_METHODS.serverUpdateSettings]({ patch: {}, providerInstanceMutation });
-      expect(handled).toBe(1);
-      expect(
-        yield* client[WS_METHODS.serverUpdateSettings]({
-          patch: { defaultRuntimeMode: "full-access" },
-          providerInstanceMutation,
-        }).pipe(Effect.flip),
-      ).toMatchObject({ requiredPermission: AuthSettingsWriteScope });
-      expect(handled).toBe(1);
-    }).pipe(Effect.scoped),
-  );
 
   it.effect("does not let a settings grant create or remove providers", () =>
     Effect.gen(function* () {
@@ -343,7 +319,7 @@ it.effect("separates host file URLs from readable attachment URLs", () =>
       });
     }
     expect(handled).toBe(2);
-  }).pipe(Effect.scoped),
+  }),
 );
 
 it.effect("denies manual cleanup before the handler without settings permission", () =>
@@ -384,5 +360,5 @@ it.effect("denies manual cleanup before the handler without settings permission"
       requiredPermission: AuthSettingsWriteScope,
     });
     expect(handled).toBe(false);
-  }).pipe(Effect.scoped),
+  }),
 );

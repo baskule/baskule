@@ -156,7 +156,6 @@ const THREAD_SETTINGS_ROUTE = sheetRoute({
 
 // Search sheets push on Android like the branch picker; a formSheet there leaves the list's
 // header peeking above it once the keyboard opens.
-const SEARCH_SHEET_ROUTE = sheetRoute({ detent: 0.75, android: "card", itemStyle: "editor" });
 
 const SETTINGS_SCREENS = {
   Settings: createNativeStackScreen({
@@ -566,13 +565,13 @@ const RootStackConfig = createWorkspaceStackNavigator({
     Home: createNativeStackScreen({
       screen: WorkspaceRootScreen,
       linking: "",
-      listeners: {
+      listeners: ({ navigation }: { navigation: { isFocused(): boolean } }) => ({
         transitionStart: ({ data }: { data: { closing: boolean } }) =>
           recordHomeTransitionStart(data.closing),
         transitionEnd: ({ data }: { data: { closing: boolean } }) =>
-          recordHomeTransitionEnd(data.closing),
+          recordHomeTransitionEnd(data.closing, navigation.isFocused()),
         focus: recordHomeFocus,
-      },
+      }),
       options: {
         ...pageRoute({ duoMinimize: "never", root: true }),
         contentStyle: { backgroundColor: "transparent" },

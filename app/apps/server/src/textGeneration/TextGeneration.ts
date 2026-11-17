@@ -9,10 +9,7 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { exhaustedUsageWindow } from "@t3tools/shared/usageLimits";
-import {
-  defaultTextGenerationModel,
-  fallbackTextGenerationModelSelection,
-} from "@t3tools/shared/serverSettings";
+import { fallbackTextGenerationModelSelection } from "@t3tools/shared/serverSettings";
 import * as ServerSettings from "../serverSettings.ts";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import { TextGenerationError } from "@t3tools/contracts";
@@ -98,7 +95,7 @@ export const make = Effect.gen(function* () {
       selection =
         fallbackTextGenerationModelSelection(
           settings.providerInstances,
-          (instanceId, driver) => {
+          (instanceId, driver, model) => {
             const provider = snapshots.find((candidate) => candidate.instanceId === instanceId);
             return (
               instanceId !== selection.instanceId &&
@@ -109,10 +106,10 @@ export const make = Effect.gen(function* () {
               provider.status !== "error" &&
               isProviderAvailable(provider) &&
               isProviderTextGenerationCapable(provider) &&
-              !exhaustedUsageWindow(provider, now, defaultTextGenerationModel(driver))
+              !exhaustedUsageWindow(provider, now, model)
             );
           },
-          { includeConfiguredInstances: true },
+          { defaultModelSelection: settings.defaultModelSelection },
         ) ?? selection;
     }
     return yield* resolveInstance(registry, operation, selection.instanceId).pipe(
@@ -148,9 +145,11 @@ export const make = Effect.gen(function* () {
       );
     }),
     generateThreadTitle: Effect.fn("TextGeneration.generateThreadTitle")(function (input) {
-      return generate("generateThreadTitle", input.modelSelection,
-        input.projectId, (service, modelSelection) =>
-        service.generateThreadTitle({ ...input, modelSelection }),
+      return generate(
+        "generateThreadTitle",
+        input.modelSelection,
+        input.projectId,
+        (service, modelSelection) => service.generateThreadTitle({ ...input, modelSelection }),
       );
     }),
   });

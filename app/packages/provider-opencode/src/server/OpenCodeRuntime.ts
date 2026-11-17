@@ -1,3 +1,4 @@
+import { resolveProviderProbeTimeoutMs } from "@t3tools/provider-core/server/snapshotProbe";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -67,6 +68,7 @@ const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 30_000;
 const DEFAULT_HOSTNAME = "127.0.0.1";
 const OPENCODE_SERVER_STARTUP_MAX_OUTPUT_CHARS = 64 * 1024;
 const OPENCODE_SERVER_EXIT_DRAIN_TIMEOUT = "500 millis";
+const OPENCODE_SERVER_TERMINATE_GRACE = "1 second";
 export interface OpenCodeServerProcess {
   readonly url: string;
   readonly serverPassword?: string;
@@ -159,8 +161,9 @@ export class OpenCodeRuntime extends Context.Service<
   }
 >()("@t3tools/provider-opencode/server/OpenCodeRuntime") {}
 
-function parseServerUrlFromOutput(output: string): string | null {
-  for (const line of output.split("\n")) {
+export function parseServerUrlFromOutput(output: string): string | null {
+  // The last element is an unfinished line; a chunk can end mid-URL.
+  for (const line of output.split("\n").slice(0, -1)) {
     const match = line.match(/server listening on\s+(https?:\/\/[^\s]+)/i);
     if (match?.[1]) return match[1];
   }
@@ -276,7 +279,13 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
             }),
         ),
       ));
-    const timeoutMs = input.timeoutMs ?? DEFAULT_OPENCODE_SERVER_TIMEOUT_MS;
+    const timeoutMs =
+      input.timeoutMs ??
+      resolveProviderProbeTimeoutMs(
+        "opencode",
+        DEFAULT_OPENCODE_SERVER_TIMEOUT_MS,
+        input.environment,
+      );
     const args = ["serve", `--hostname=${hostname}`, `--port=${port}`];
     const launch = yield* agentScope.wrap({
       command: input.binaryPath,
@@ -322,19 +331,11 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         ),
       );
 
-    const killOpenCodeProcessGroup = (signal: NodeJS.Signals) =>
-      hostPlatform === "win32"
-        ? child.kill({ killSignal: signal, forceKillAfter: "1 second" }).pipe(Effect.asVoid)
-        : Effect.sync(() => {
-            try {
-              signalProcessGroup(Number(child.pid), signal);
-            } catch {}
-          });
-    const terminateChild = killOpenCodeProcessGroup("SIGTERM").pipe(
-      Effect.andThen(Effect.sleep("1 second")),
-      Effect.andThen(killOpenCodeProcessGroup("SIGKILL")),
-      Effect.ignore,
-    );
+    // Signals the server's own group and force-kills only what outlives the grace,
+    // so a group that exits promptly does not hold up the scope that closes it.
+    const terminateChild = child
+      .kill({ killSignal: "SIGTERM", forceKillAfter: OPENCODE_SERVER_TERMINATE_GRACE })
+      .pipe(Effect.ignore);
     // Registered before recording, so an interrupt while the ledger writes
     // still stops the group.
     yield* Scope.addFinalizer(runtimeScope, terminateChild);

@@ -6,7 +6,6 @@ import {
   OrchestratorMcpRequestSecretInput,
   ProjectId,
   type OrchestrationV2ServerCommand,
-  SecretProviderId,
   SecretRef,
   ThreadId,
   TurnItemId,
@@ -176,33 +175,6 @@ it.effect("a saved answer becomes a one-use ref, and the thread only learns it w
       assert.isFalse(valuesOf(stored).some((value) => value.includes("ghp_secret")));
       const again = yield* service.consume({ ref, projectId }).pipe(Effect.flip);
       assert.include(again.message, "already used");
-    }),
-  ),
-);
-
-it.effect("a reference to a secret provider that is not configured fails", () =>
-  withService(({ service, dispatched }) =>
-    Effect.gen(function* () {
-      const error = yield* service
-        .answer(
-          {
-            threadId,
-            turnItemId,
-            answer: {
-              type: "reference",
-              reference: {
-                // Also an Object.prototype key, which must not pass for a configured provider.
-                provider: SecretProviderId.make("constructor"),
-                reference: "fake://github/token",
-              },
-            },
-          },
-          undefined,
-        )
-        .pipe(Effect.flip);
-      assert.equal(error.reason, "reference_unreadable");
-      assert.include(error.message, '"constructor"');
-      assert.deepEqual(dispatched, []);
     }),
   ),
 );

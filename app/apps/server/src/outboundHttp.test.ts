@@ -172,8 +172,8 @@ if (calls === 0) throw new Error("fetch did not call setTypeOfService");
       // Load the real entrypoint, but replace dispatch modules to avoid starting
       // the app. Probe at import time, when those modules could first open sockets.
       const preload = `
-import * as NodeModule from "node:module";
 import * as NodeNet from "node:net";
+import * as NodeModule from "node:module";
 
 Object.defineProperty(process, "platform", { value: "darwin" });
 NodeNet.Socket.prototype.setTypeOfService = () => {

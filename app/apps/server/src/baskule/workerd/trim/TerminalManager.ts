@@ -42,6 +42,10 @@ export {
 
 type Service = Real.TerminalManager["Service"];
 
+export class TerminalCwdRecovery extends Context.Reference<
+  (error: TerminalCwdNotFoundError) => Effect.Effect<void, TerminalCwdNotFoundError>
+>("t3/terminal/TerminalCwdRecovery", { defaultValue: () => (error) => Effect.fail(error) }) {}
+
 const notRunning = (input: {
   readonly threadId: string;
   readonly terminalId?: string | undefined;
@@ -72,4 +76,4 @@ export class TerminalManager extends Context.Service<TerminalManager, Service>()
   "t3/terminal/Manager/TerminalManager",
 ) {}
 
-export const layer = Layer.succeed(TerminalManager, inert);
+export const layer: typeof Real.layer = () => Layer.succeed(TerminalManager, inert);

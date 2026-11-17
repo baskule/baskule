@@ -1,7 +1,7 @@
 import { useTranslation } from "../../i18n";
 
 import { AUTH_SCOPE_OPTIONS as PAIRING_SCOPE_OPTIONS } from "@t3tools/shared/authScopeOptions";
-import { PlugIcon, PlusIcon, QrCodeIcon } from "lucide-react";
+import { PlusIcon, QrCodeIcon } from "lucide-react";
 import { type ReactNode, memo, useId, useState } from "react";
 import {
   AuthAccessWriteScope,
@@ -668,7 +668,7 @@ export const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHead
         <ManagedControl reason={pairingDenial}>
           <Button size="xs" variant="default" disabled>
             <PlusIcon className="size-3" />
-            Create link
+            {t("Create link")}
           </Button>
         </ManagedControl>
       ) : null}

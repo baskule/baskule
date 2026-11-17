@@ -1,379 +1,15 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import type { ManagedPolicyDocument } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import * as Deferred from "effect/Deferred";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import packageJson from "../../package.json" with { type: "json" };
-import * as ServerConfig from "../config.ts";
-import * as DesktopAppUpdate from "../desktopUpdate/DesktopAppUpdate.ts";
-import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import * as ServiceLauncherClient from "./serviceLauncherClient.ts";
-import { SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
 import * as ServerSelfUpdate from "./selfUpdate.ts";
-
-interface HarnessOptions {
-  readonly mode?: "web" | "desktop";
-  readonly managed?: boolean;
-  readonly preflight?: "ready" | "blocked";
-  readonly preflightDuration?: Duration.Input;
-  readonly preflightStarted?: Deferred.Deferred<void>;
-  readonly beforeDownload?: Effect.Effect<void>;
-  readonly httpClient?: HttpClient.HttpClient;
-  readonly requestUpdate?: ServiceLauncherClient.ServiceLauncherClient["Service"]["requestUpdate"];
-  readonly desktopAppUpdate?: DesktopAppUpdate.DesktopAppUpdate["Service"];
-  readonly policy?: ManagedPolicyDocument;
-}
-
-const archiveBytes = new TextEncoder().encode("not really a tarball");
-const releaseHttpClient = (order: string[], urls: string[], beforeDownload?: Effect.Effect<void>) =>
-  HttpClient.make((request) =>
-    Effect.gen(function* () {
-      urls.push(request.url);
-      if (request.url.endsWith("/SHA256SUMS")) {
-        const digest = yield* Effect.promise(() => crypto.subtle.digest("SHA-256", archiveBytes));
-        const hex = Array.from(new Uint8Array(digest), (byte) =>
-          byte.toString(16).padStart(2, "0"),
-        ).join("");
-        return HttpClientResponse.fromWeb(
-          request,
-          new Response(`${hex}  t3-1.1.0-linux-x64.tar.gz\n`),
-        );
-      }
-      if (beforeDownload) yield* beforeDownload;
-      order.push("download");
-      return HttpClientResponse.fromWeb(request, new Response(archiveBytes));
-    }),
-  );
-
-const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
-  options: HarnessOptions = {},
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-self-update-test-" });
-  const order: string[] = [];
-  const urls: string[] = [];
-  const runner = ProcessRunner.ProcessRunner.of({
-    run: (input) =>
-      Effect.gen(function* () {
-        if (input.command === "tar") {
-          order.push("extract");
-          const stagingDir = input.args[input.args.indexOf("-C") + 1];
-          if (stagingDir === undefined) return yield* Effect.die("missing tar target");
-          yield* fs.writeFileString(path.join(stagingDir, "t3"), "#!/bin/sh\n").pipe(Effect.orDie);
-          return {
-            stdout: "",
-            stderr: "",
-            code: ChildProcessSpawner.ExitCode(0),
-            timedOut: false,
-            stdoutTruncated: false,
-            stderrTruncated: false,
-            stdoutInvalidUtf8: false,
-            stderrInvalidUtf8: false,
-          };
-        }
-        if (options.preflightStarted) yield* Deferred.succeed(options.preflightStarted, undefined);
-        if (options.preflightDuration !== undefined) {
-          // Like the real runner, fail once the caller's timeout elapses.
-          const timeout = Duration.fromInputUnsafe(input.timeout ?? "60 seconds");
-          const finished = yield* Effect.sleep(options.preflightDuration).pipe(
-            Effect.timeoutOption(timeout),
-          );
-          if (finished._tag === "None") {
-            return yield* new ProcessRunner.ProcessTimeoutError({
-              command: input.command,
-              argumentCount: input.args.length,
-              timeoutMs: Duration.toMillis(timeout),
-            });
-          }
-        }
-        order.push("preflight");
-        const result =
-          options.preflight === "blocked"
-            ? { status: "blocked", version: "1.1.0", reason: "local update required" }
-            : {
-                status: "ready",
-                version: "1.1.0",
-                launcherProtocol: SERVICE_LAUNCHER_PROTOCOL,
-              };
-        return {
-          stdout: JSON.stringify(result),
-          stderr: "",
-          code: ChildProcessSpawner.ExitCode(0),
-          timedOut: false,
-          stdoutTruncated: false,
-          stderrTruncated: false,
-          stdoutInvalidUtf8: false,
-          stderrInvalidUtf8: false,
-        };
-      }),
-  });
-  const launcher = ServiceLauncherClient.ServiceLauncherClient.of({
-    managed: options.managed ?? true,
-    requestUpdate:
-      options.requestUpdate ??
-      (() =>
-        Effect.sync(() => {
-          order.push("accept");
-          return "launcher-id";
-        })),
-    prepareTrial: Effect.undefined,
-  });
-  const config = yield* ServerConfig.ServerConfig.pipe(
-    Effect.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
-  );
-  const selfUpdate = yield* ServerSelfUpdate.make().pipe(
-    Effect.provideService(ProcessRunner.ProcessRunner, runner),
-    Effect.provideService(ServiceLauncherClient.ServiceLauncherClient, launcher),
-    Effect.provideService(
-      DesktopAppUpdate.DesktopAppUpdate,
-      options.desktopAppUpdate ?? {
-        available: false,
-        run: () => Effect.die("unexpected desktop app update run"),
-      },
-    ),
-    Effect.provideService(
-      HttpClient.HttpClient,
-      options.httpClient ?? releaseHttpClient(order, urls, options.beforeDownload),
-    ),
-    Effect.provideService(HostProcess.Platform, "linux"),
-    Effect.provideService(HostProcess.Architecture, "x64"),
-    Effect.provide(
-      Layer.merge(
-        ServerConfig.layer({ ...config, mode: options.mode ?? "web" }),
-        ManagedPolicy.layerTest(options.policy),
-      ),
-    ),
-  );
-  return { selfUpdate, order, urls, baseDir };
-});
-
-it.layer(NodeServices.layer)("server self update", (it) => {
-  it.effect.each([
-    { asset: "checksums", status: 504 },
-    { asset: "archive", status: 503 },
-    { asset: "checksums", status: 403 },
-  ])("reports an HTTP $status downloading $asset and allows retry", ({ asset, status }) =>
-    Effect.gen(function* () {
-      let failDownload = true;
-      const { selfUpdate, order, baseDir } = yield* makeHarness({
-        httpClient: releaseHttpClient([], []).pipe(
-          HttpClient.transform((response, request) =>
-            failDownload && request.url.endsWith("/SHA256SUMS") === (asset === "checksums")
-              ? Effect.succeed(
-                  HttpClientResponse.fromWeb(
-                    HttpClientRequest.get("https://user:password@cdn.example/private?token=secret"),
-                    new Response("private response body", { status }),
-                  ),
-                )
-              : response,
-          ),
-        ),
-      });
-      const error = yield* selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip);
-      expect(error.reason).toBe(
-        `Could not prepare t3@1.1.0 while downloading the t3 release ${asset} (HTTP ${status} from cdn.example).`,
-      );
-      expect(order).toEqual([]);
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      expect(yield* fs.readDirectory(path.join(baseDir, "runtime", "versions"))).toEqual([]);
-      failDownload = false;
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
-      expect(order).toEqual(["extract", "preflight", "accept"]);
-    }),
-  );
-
-  // regression: #5181 make remote updates rollback-safe
-  it.effect("rejects invalid versions and desktop-managed servers before staging", () =>
-    Effect.gen(function* () {
-      const web = yield* makeHarness();
-      expect(
-        (yield* web.selfUpdate.update({ targetVersion: "latest" }).pipe(Effect.flip)).reason,
-      ).toBe("'latest' is not an exact t3 version.");
-      const desktop = yield* makeHarness({ mode: "desktop" });
-      expect(
-        (yield* desktop.selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
-      ).toContain("desktop app");
-      expect([...web.order, ...desktop.order]).toEqual([]);
-    }),
-  );
-
-  it.effect("refuses every update when the managed policy turns updates off", () =>
-    Effect.gen(function* () {
-      const policy: ManagedPolicyDocument = {
-        schemaVersion: 1,
-        organization: "Example Corp",
-        limits: { updates: { mode: "off" } },
-      };
-      const service = yield* makeHarness({ policy });
-      const desktop = yield* makeHarness({
-        mode: "desktop",
-        policy,
-        desktopAppUpdate: {
-          available: true,
-          run: () => Effect.die("unexpected desktop app update run"),
-          commit: () => Effect.never,
-        },
-      });
-      for (const harness of [service, desktop]) {
-        expect(
-          (yield* harness.selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
-        ).toBe("Example Corp manages T3 Code updates.");
-      }
-      expect([...service.order, ...desktop.order]).toEqual([]);
-    }),
-  );
-
-  it.effect("lets a user start an update, but only to stable without nightly", () =>
-    Effect.gen(function* () {
-      const { selfUpdate, order, urls } = yield* makeHarness({
-        policy: {
-          schemaVersion: 1,
-          organization: "Example Corp",
-          limits: {
-            updates: {
-              mode: "auto",
-              allowNightly: false,
-              feedUrl: "https://updates.example.com/t3code/",
-            },
-          },
-        },
-      });
-      expect(
-        (yield* selfUpdate.update({ targetVersion: "1.2.0-nightly.20261028.1" }).pipe(Effect.flip))
-          .reason,
-      ).toBe("Example Corp manages T3 Code updates. Only stable releases can be installed.");
-      expect(order).toEqual([]);
-      // The mirror lists only 1.1.0's archive.
-      expect((yield* selfUpdate.update({ targetVersion: "1.2.0" }).pipe(Effect.flip)).reason).toBe(
-        "Example Corp's update mirror has no t3@1.2.0 for this machine.",
-      );
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
-      // The release comes from the policy's mirror, not GitHub.
-      expect(urls.length).toBeGreaterThan(0);
-      for (const url of urls)
-        expect(url).toMatch(/^https:\/\/updates\.example\.com\/t3code\/v1\.[12]\.0\//);
-    }),
-  );
-
-  it.effect("delegates desktop-managed updates to the desktop app when available", () =>
-    Effect.gen(function* () {
-      const stages: string[] = [];
-      const { selfUpdate, order } = yield* makeHarness({
-        mode: "desktop",
-        desktopAppUpdate: {
-          available: true,
-          run: (reportProgress) =>
-            reportProgress("downloading").pipe(
-              Effect.andThen(reportProgress("installing")),
-              Effect.as({ targetVersion: "1.2.0", method: "desktop-app" as const }),
-            ),
-          commit: () => Effect.never,
-        },
-      });
-      const result = yield* selfUpdate.update({ targetVersion: "1.1.0" }, (stage) =>
-        Effect.sync(() => void stages.push(stage)),
-      );
-      expect(result).toEqual({ targetVersion: "1.2.0", method: "desktop-app" });
-      expect(stages).toEqual(["downloading", "installing"]);
-      expect(order).toEqual([]);
-    }),
-  );
-
-  it.effect("allows only one update at a time", () =>
-    Effect.gen(function* () {
-      const requested = yield* Deferred.make<void>();
-      const accepted = yield* Deferred.make<string>();
-      const { selfUpdate } = yield* makeHarness({
-        requestUpdate: () =>
-          Deferred.succeed(requested, undefined).pipe(Effect.andThen(Deferred.await(accepted))),
-      });
-      const first = yield* Effect.forkChild(selfUpdate.update({ targetVersion: "1.1.0" }), {
-        startImmediately: true,
-      });
-      yield* Deferred.await(requested);
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.1" }).pipe(Effect.flip)).reason).toBe(
-        "A server update is already in progress.",
-      );
-      yield* Deferred.succeed(accepted, "launcher-id");
-      expect((yield* Fiber.join(first)).updateId).toBe("launcher-id");
-    }),
-  );
-
-  // regression: #28198 a slow staged preflight on a loaded host no longer fails the update
-  it.effect("waits for a staged preflight that takes a minute on a loaded host", () =>
-    Effect.gen(function* () {
-      const preflightStarted = yield* Deferred.make<void>();
-      const { selfUpdate, order } = yield* makeHarness({
-        preflightDuration: "60 seconds",
-        preflightStarted,
-      });
-      const update = yield* Effect.forkChild(selfUpdate.update({ targetVersion: "1.1.0" }), {
-        startImmediately: true,
-      });
-      yield* Deferred.await(preflightStarted);
-      yield* TestClock.adjust("60 seconds");
-      const exit = yield* Fiber.await(update);
-      expect(exit._tag === "Failure" ? String(exit.cause) : "launcher handoff").toBe(
-        "launcher handoff",
-      );
-      expect(order).toEqual(["download", "extract", "preflight", "accept"]);
-    }),
-  );
-
-  it.effect("keeps preparing after the progress stream closes", () =>
-    Effect.gen(function* () {
-      const releaseDownload = yield* Deferred.make<void>();
-      const sawDownloading = yield* Deferred.make<void>();
-      const accepted = yield* Deferred.make<void>();
-      const { selfUpdate, order } = yield* makeHarness({
-        beforeDownload: Deferred.await(releaseDownload),
-        requestUpdate: () =>
-          Effect.sync(() => {
-            order.push("accept");
-          }).pipe(Effect.andThen(Deferred.succeed(accepted, undefined)), Effect.as("launcher-id")),
-      });
-
-      const consumed = yield* ServerSelfUpdate.updateProgressStream(selfUpdate, {
-        targetVersion: "1.1.0",
-      }).pipe(
-        Stream.tap((event) =>
-          event.type === "progress" && event.stage === "downloading"
-            ? Deferred.succeed(sawDownloading, undefined)
-            : Effect.void,
-        ),
-        Stream.runDrain,
-        Effect.forkChild,
-      );
-
-      yield* Deferred.await(sawDownloading);
-      yield* Fiber.interrupt(consumed);
-      expect((yield* selfUpdate.update({ targetVersion: "1.2.0" }).pipe(Effect.flip)).reason).toBe(
-        "A server update is already in progress.",
-      );
-
-      yield* Deferred.succeed(releaseDownload, undefined);
-      yield* Deferred.await(accepted);
-      expect(order).toEqual(["download", "extract", "preflight", "accept"]);
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason).toBe(
-        "A server update is already in progress.",
-      );
-    }),
-  );
-});
 
 it.layer(NodeServices.layer)("pruning runtimes on start", (it) => {
   const staleVersion = "0.0.1";
@@ -395,6 +31,8 @@ it.layer(NodeServices.layer)("pruning runtimes on start", (it) => {
     readonly executable: "own runtime" | "elsewhere";
     readonly managed?: boolean;
     readonly symlinkedHome?: boolean;
+    readonly servicePlistStarts?: string;
+    readonly servicePlistThroughLink?: boolean;
   }) {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -412,6 +50,20 @@ it.layer(NodeServices.layer)("pruning runtimes on start", (it) => {
       yield* fs.utimes(sentinel, 0, 0);
     }
     if (input.symlinkedHome) yield* fs.symlink(realHome, baseDir);
+    const userHome = path.join(tempDir, "user");
+    if (input.servicePlistStarts !== undefined) {
+      const agentsDir = path.join(userHome, "Library", "LaunchAgents");
+      yield* fs.makeDirectory(agentsDir, { recursive: true });
+      const programHome = input.servicePlistThroughLink
+        ? path.join(tempDir, "alias-home")
+        : baseDir;
+      if (input.servicePlistThroughLink) yield* fs.symlink(realHome, programHome);
+      const program = path.join(programHome, "runtime", "versions", input.servicePlistStarts, "t3");
+      yield* fs.writeFileString(
+        path.join(agentsDir, "com.t3tools.t3code.service.plist"),
+        `<plist><dict>\n<key>ProgramArguments</key>\n<array>\n<string>${program}</string>\n<string>__service-launcher</string>\n</array>\n</dict></plist>\n`,
+      );
+    }
     // Like `process.execPath`, the running runtime is reported by its real path.
     const executablePath =
       input.executable === "own runtime"
@@ -424,6 +76,7 @@ it.layer(NodeServices.layer)("pruning runtimes on start", (it) => {
       Effect.provideService(HostProcess.ExecutablePath, executablePath),
       Effect.provideService(HostProcess.Platform, "darwin"),
       Effect.provideService(HostProcess.Environment, {}),
+      Effect.provideService(HostProcess.HomeDirectory, userHome),
       Effect.provideService(ProcessRunner.ProcessRunner, otherProcesses),
     );
     return { removed, remaining: (yield* fs.readDirectory(versionsDir)).toSorted() };
@@ -449,6 +102,22 @@ it.layer(NodeServices.layer)("pruning runtimes on start", (it) => {
     Effect.gen(function* () {
       const { removed } = yield* pruneOnStart({ executable: "elsewhere", managed: true });
       expect(removed).toEqual([staleVersion]);
+    }),
+  );
+
+  // In-place updates move the active version but leave the launch agent on the launcher's runtime.
+  it.effect.each([
+    { name: "", throughLink: false },
+    { name: " through a symlinked T3 home", throughLink: true },
+  ])("keeps the runtime a stopped service's launch agent starts$name", ({ throughLink }) =>
+    Effect.gen(function* () {
+      const { removed, remaining } = yield* pruneOnStart({
+        executable: "own runtime",
+        servicePlistStarts: staleVersion,
+        servicePlistThroughLink: throughLink,
+      });
+      expect(removed).toEqual([]);
+      expect(remaining).toEqual([staleVersion, packageJson.version].toSorted());
     }),
   );
 

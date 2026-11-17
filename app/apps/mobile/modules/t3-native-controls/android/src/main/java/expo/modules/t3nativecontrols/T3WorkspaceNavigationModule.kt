@@ -129,12 +129,19 @@ class T3WorkspaceNavigationView(
   private val onTabSelected by EventDispatcher()
   private val onNewThread by EventDispatcher()
   private val onOverlayChange by EventDispatcher()
-  var labels by mutableStateOf(mapOf(
-    "threads" to "Chats", "settings" to "Settings", "pullRequests" to "Pull requests",
-    "usage" to "Usage",
-    "newChat" to "New chat", "closeRail" to "Close navigation rail",
-    "collapseRail" to "Collapse navigation rail", "expandRail" to "Expand navigation rail"
-  ))
+  var labels by mutableStateOf(
+    mapOf(
+      "threads" to "Chats",
+      "settings" to "Settings",
+      "pullRequests" to "Pull requests",
+      "usage" to "Usage",
+      "newChat" to "New chat",
+      "closeRail" to "Close navigation rail",
+      "collapseRail" to "Collapse navigation rail",
+      "expandRail" to "Expand navigation rail"
+    )
+  )
+
   // baskule: no Pull Requests or Usage tab in Baskule (upstream: "threads", "pullRequests", "usage", "settings").
   var tabs by mutableStateOf(listOf("threads", "settings"))
   var selectedTab by mutableStateOf("threads")

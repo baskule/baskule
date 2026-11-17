@@ -11,6 +11,7 @@ import {
   workspaceSearchBottomClearance,
   workspaceDockBottomClearance,
   workspaceUsesColumns,
+  type WorkspaceTabsState,
 } from "./workspace-tabs-state";
 
 describe("compact list clearance", () => {
@@ -147,12 +148,25 @@ describe("workspace root navigation", () => {
   });
 });
 
-const mocks = vi.hoisted(() => ({ split: false, floating: false }));
+const mocks = vi.hoisted(() => ({
+  split: false,
+  floating: false,
+  state: undefined as WorkspaceTabsState | undefined,
+  openWorkspaceTab: (_tab: string) => {},
+  backListeners: new Set<() => boolean>(),
+}));
 
 vi.mock("../../settings/appearance/AppearancePreferencesProvider", () => ({
   useAndroidFloatingTabs: () => mocks.floating,
 }));
 vi.mock("react-native", () => ({
+  BackHandler: {
+    addEventListener: (_event: string, listener: () => boolean) => {
+      mocks.backListeners.add(listener);
+      return { remove: () => mocks.backListeners.delete(listener) };
+    },
+  },
+  Keyboard: { dismiss: () => undefined },
   useWindowDimensions: () => ({ width: 400, height: 800 }),
   View: ({ children }: { children: ReactNode }) => createElement("div", null, children),
 }));
@@ -166,12 +180,19 @@ vi.mock("../AdaptiveWorkspaceLayout", () => ({
     startNewTask: () => undefined,
   }),
 }));
+vi.mock("@react-navigation/native", () => ({
+  NavigationContext: createContext(null),
+  useIsFocused: () => true,
+}));
+vi.mock("../adaptive-workspace-context", () => ({
+  useAdaptiveWorkspaceLayout: () => ({ openWorkspaceTab: mocks.openWorkspaceTab }),
+}));
 vi.mock("./navigation-tabs", () => ({
-  useEnabledNavigationTabs: () => ["threads", "usage"],
+  useEnabledNavigationTabs: () => ["threads"],
 }));
 vi.mock("./WorkspaceTabsContext", () => ({
   WorkspaceTabsContext: createContext(null),
-  useWorkspaceTabs: () => ({ state: { selectedTab: "usage" } }),
+  useWorkspaceTabs: () => ({ state: mocks.state, dispatch: () => undefined }),
 }));
 vi.mock("./WorkspaceExtraTab", () => ({
   WorkspaceExtraTab: function UsageProbe() {
@@ -188,7 +209,16 @@ vi.mock("../../../components/ui/ScreenContent", () => ({
 vi.mock("../../../components/ui/useAndroidControlSizing", () => ({
   useAndroidControlSizing: () => ({ fabClearance: 64, scale: 1, fabSize: 56 }),
 }));
-vi.mock("../../home/HomeRouteScreen", () => ({ HomeRouteScreen: () => null }));
+vi.mock("../../home/HomeRouteScreen", () => ({
+  HomeRouteScreen: function HomeProbe() {
+    const [query, setQuery] = useState("");
+    return createElement("input", {
+      "aria-label": "Search chats",
+      value: query,
+      onChange: (event: { target: { value: string } }) => setQuery(event.target.value),
+    });
+  },
+}));
 vi.mock("./AndroidWorkspaceNavigation", () => ({
   AndroidWorkspaceNavigation: () => null,
   FloatingWorkspaceTabs: () => null,
@@ -200,12 +230,28 @@ vi.mock("../../../components/ui/WorkspaceAppBar.android", () => ({
   WorkspaceAppBarScope: ({ children }: { children: ReactNode }) => children,
 }));
 
-function setup(split: boolean, floating: boolean) {
+function setup(split: boolean, floating: boolean, state = initialWorkspaceTabsState()) {
   mocks.split = split;
   mocks.floating = floating;
+  mocks.state = state;
+  mocks.openWorkspaceTab = () => undefined;
+  mocks.backListeners.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   return { [Symbol.dispose]: () => vi.unstubAllGlobals() };
 }
+
+/** Android calls the newest listener first and stops at the first that handles Back. */
+function pressBack() {
+  return [...mocks.backListeners].reverse().some((listener) => listener());
+}
+
+it("leaves Back to the navigator when the chat list is selected", async () => {
+  using _actEnvironment = setup(false, false);
+  const root = createRoot(document.createElement("div"));
+  using _root = { [Symbol.dispose]: () => act(() => root.unmount()) };
+  await act(async () => root.render(createElement(WorkspaceRootScreen)));
+  expect(pressBack()).toBe(false);
+});
 
 it.each([
   [false, false],
@@ -213,23 +259,20 @@ it.each([
   [false, true],
   [true, true],
 ])(
-  "keeps the Usage page mounted through layout transitions (split: %s, floating: %s)",
+  "keeps chats mounted through layout transitions (split: %s, floating: %s)",
   async (split, floating) => {
     using _actEnvironment = setup(split, floating);
     const container = document.createElement("div");
     const root = createRoot(container);
     using _root = { [Symbol.dispose]: () => act(() => root.unmount()) };
     await act(async () => root.render(createElement(WorkspaceRootScreen)));
-
-    const button = container.querySelector("button")!;
-    await act(async () => button.click());
-    expect(button.textContent).toBe("Usage");
-
-    for (const nextSplit of [!split, split, !split, split]) {
+    const input = container.querySelector("input");
+    expect(input).not.toBeNull();
+    for (const nextSplit of [!split, split]) {
       mocks.split = nextSplit;
       await act(async () => root.render(createElement(WorkspaceRootScreen)));
-      expect(container.querySelector("button")?.textContent).toBe("Usage");
-      expect(container.querySelector("button")).toBe(button);
+      expect(container.querySelector("input")).toBe(input);
+      expect(container.querySelector("button")).toBeNull();
     }
   },
 );

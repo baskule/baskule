@@ -1,4 +1,4 @@
-import { t } from "../../i18n";
+import { msg, t } from "../../i18n";
 
 import { HOSTED_APP_CHANNEL } from "~/branding";
 import { isElectron } from "~/env";
@@ -86,78 +86,38 @@ export interface SettingsSearchAvailability {
 }
 
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
-  get "/settings/diagnostics"() {
-    return t("Diagnostics");
-  },
-  get "/settings/projects"() {
-    return t("Projects");
-  },
-  get "/settings/general"() {
-    return t("General");
-  },
-  get "/settings/appearance"() {
-    return t("Appearance");
-  },
-  get "/settings/chat"() {
-    return t("Chat");
-  },
-  get "/settings/diffs"() {
-    return t("Diffs");
-  },
-  get "/settings/keybindings"() {
-    return t("Keybindings");
-  },
-  get "/settings/snap-shot"() {
-    return t("SnapShots");
-  },
-  get "/settings/providers"() {
-    return t("Providers");
-  },
-  get "/settings/threads"() {
-    return t("Threads");
-  },
-  get "/settings/browser"() {
-    return t("Browser");
-  },
-  get "/settings/devices"() {
-    return t("Devices");
-  },
-  get "/settings/scheduled-tasks"() {
-    return t("Scheduled tasks");
-  },
-  get "/settings/source-control"() {
-    return t("Source control");
-  },
-  get "/settings/worktrees"() {
-    return t("Worktrees");
-  },
-  get "/settings/connections"() {
-    return t("Environments");
-  },
-  get "/settings/access"() {
-    return t("Sharing & access");
-  },
-  get "/settings/maintenance"() {
-    return t("Maintenance");
-  },
-  get "/settings/labs"() {
-    return t("Labs");
-  },
-  get "/settings/about"() {
-    return t("About");
-  },
-  get "/settings/archived"() {
-    return t("Archive");
-  },
+  "/settings/diagnostics": msg("Diagnostics"),
+  "/settings/projects": msg("Projects"),
+  "/settings/general": msg("General"),
+  "/settings/appearance": msg("Appearance"),
+  "/settings/chat": msg("Chat"),
+  "/settings/diffs": msg("Diffs & pull requests"),
+  "/settings/keybindings": msg("Keybindings"),
+  "/settings/snap-shot": msg("SnapShots"),
+  "/settings/providers": msg("Providers"),
+  "/settings/threads": msg("Threads"),
+  "/settings/browser": msg("Browser"),
+  "/settings/devices": msg("Devices"),
+  "/settings/scheduled-tasks": msg("Scheduled tasks"),
+  "/settings/source-control": msg("Source control"),
+  "/settings/worktrees": msg("Worktrees"),
+  "/settings/connections": msg("Environments"),
+  "/settings/access": msg("Sharing & access"),
+  "/settings/maintenance": msg("Maintenance"),
+  "/settings/labs": msg("Labs"),
+  "/settings/about": msg("About"),
+  "/settings/archived": msg("Archive"),
 };
 
-/** Sidebar order. A group without a heading is set apart by space alone. */
+/** Sidebar order. A group with a hidden heading is set apart on screen by space alone. */
 export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
-  readonly heading: string | null;
+  readonly heading: string;
+  readonly headingHidden?: true;
   readonly paths: ReadonlyArray<SettingsPath>;
 }> = [
   {
-    heading: null,
+    heading: msg("Preferences"),
+    headingHidden: true,
     paths: [
       "/settings/general",
       "/settings/appearance",
@@ -168,9 +128,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     ],
   },
   {
-    get heading() {
-      return t("Agents");
-    },
+    heading: msg("Agents"),
     paths: [
       "/settings/providers",
       "/settings/threads",
@@ -180,9 +138,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     ],
   },
   {
-    get heading() {
-      return t("Code");
-    },
+    heading: msg("Code"),
     paths: ["/settings/projects", "/settings/source-control", "/settings/worktrees"],
   },
   {
@@ -192,7 +148,8 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     paths: ["/settings/connections", "/settings/access"],
   },
   {
-    heading: null,
+    heading: msg("More"),
+    headingHidden: true,
     paths: ["/settings/maintenance", "/settings/labs", "/settings/about", "/settings/archived"],
   },
 ];
@@ -473,17 +430,13 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "project-grouping",
-    get title() {
-      return t("Project grouping");
-    },
+    title: msg("Project grouping"),
     to: "/settings/general",
     searchTerms: ["combine matching repositories environments sidebar"],
   },
   {
     id: "project-order",
-    get title() {
-      return t("Project order");
-    },
+    title: msg("Project order"),
     to: "/settings/general",
     searchTerms: ["sort projects sidebar manual created recent"],
   },
@@ -513,9 +466,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "working-shelf",
-    get title() {
-      return t("Working section");
-    },
+    title: msg("Working section"),
     to: "/settings/general",
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
@@ -543,10 +494,20 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "screen-reader-announcements",
-    get title() { return t("Screen reader announcements"); },
+    get title() {
+      return t("Screen reader announcements");
+    },
     to: "/settings/chat",
     searchTerms: [
       "accessibility a11y screen reader nvda jaws voiceover orca narrator speech announce read aloud messages activity steps",
+    ],
+  },
+  {
+    id: "screen-reader-window-title",
+    title: msg("Screen reader window title"),
+    to: "/settings/chat",
+    searchTerms: [
+      "accessibility a11y screen reader nvda jaws voiceover orca narrator window title tab title alt tab taskbar thread status order working approval",
     ],
   },
   {
@@ -597,17 +558,21 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "in-app-notifications",
-    get title() {
-      return t("In-app notifications");
-    },
+    title: msg("In-app notifications"),
     to: "/settings/general",
     searchTerms: ["notification toast popup completion input approval failure"],
   },
   {
+    id: "language",
+    title: msg("Language"),
+    to: "/settings/general",
+    searchTerms: [
+      "locale translation english deutsch german español spanish français french português portuguese brasil brazilian chinese 中文 japanese 日本語 korean 한국어 russian русский sprache idioma langue 语言 言語 언어 язык",
+    ],
+  },
+  {
     id: "time-format",
-    get title() {
-      return t("Time format");
-    },
+    title: msg("Time format"),
     to: "/settings/general",
     searchTerms: ["timestamp clock locale system browser os 12 hour 24 hour"],
   },
@@ -760,33 +725,25 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "unpin-confirmation",
-    get title() {
-      return t("Unpin confirmation");
-    },
+    title: msg("Unpin confirmation"),
     to: "/settings/general",
     searchTerms: ["ask before thread pinned section"],
   },
   {
     id: "archive-confirmation",
-    get title() {
-      return t("Archive confirmation");
-    },
+    title: msg("Archive confirmation"),
     to: "/settings/general",
     searchTerms: ["ask before thread second click inline action"],
   },
   {
     id: "delete-confirmation",
-    get title() {
-      return t("Delete confirmation");
-    },
+    title: msg("Delete confirmation"),
     to: "/settings/general",
     searchTerms: ["ask before thread chat history"],
   },
   {
     id: "quit-confirmation",
-    get title() {
-      return t("Quit shortcut");
-    },
+    title: msg("Quit shortcut"),
     to: "/settings/general",
     searchTerms: ["confirmation desktop app exit direct hold double click press twice"],
     desktopOnly: true,
@@ -961,6 +918,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/providers",
     searchTerms: ["refresh availability versions auth state models background probes seconds off"],
     providerSettingsOnly: true,
+  },
+  {
+    id: "scheduled-tasks",
+    title: t("Scheduled tasks"),
+    to: "/settings/scheduled-tasks",
   },
   {
     id: "agent-browser-access",
@@ -1463,6 +1425,7 @@ export function settingsForThisPlatform(
 export function searchSettings(
   query: string,
   items: ReadonlyArray<SettingsSearchItem> = SETTINGS_SEARCH_ITEMS,
+  translate: (message: string) => string = (message) => message,
 ): ReadonlyArray<SettingsSearchItem> {
   const normalizedQuery = normalizeSearchText(query);
   if (normalizedQuery.length === 0) return [];
@@ -1474,6 +1437,9 @@ export function searchSettings(
       const fields = [
         title,
         normalizeSearchText(SETTINGS_SECTION_LABELS[item.to]),
+        // The labels as displayed, so search also works in the active language.
+        normalizeSearchText(translate(item.title)),
+        normalizeSearchText(translate(SETTINGS_SECTION_LABELS[item.to])),
         ...(item.searchTerms ?? []).map(normalizeSearchText),
       ];
       if (!queryTokens.every((token) => fields.some((field) => field.includes(token)))) return [];

@@ -90,15 +90,20 @@ describe("Baskule API mapping", () => {
   });
 
   it("links apps to the running release, including prerelease versions", () => {
-    expect(releaseDownloads("0.5.0")).toMatchObject([{
-      platform: "linux", format: "AppImage", version: "0.5.0",
-      fileName: "Baskule-0.5.0-x64.AppImage",
-      url: "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
-    }]);
+    expect(releaseDownloads("0.5.0")).toMatchObject([
+      {
+        platform: "linux",
+        format: "AppImage",
+        version: "0.5.0",
+        fileName: "Baskule-0.5.0-x64.AppImage",
+        url: "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
+      },
+    ]);
     expect(releaseDownloads("1.2.3-rc.4+test")[0]?.url).toBe(
       "https://github.com/baskule/baskule/releases/download/v1.2.3-rc.4%2Btest/Baskule-1.2.3-rc.4%2Btest-x64.AppImage",
     );
-    for (const version of [undefined, null, "", "latest", "../../other"]) expect(releaseDownloads(version)).toEqual([]);
+    for (const version of [undefined, null, "", "latest", "../../other"])
+      expect(releaseDownloads(version)).toEqual([]);
   });
 
   it("turns error codes into sentences", () => {

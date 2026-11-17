@@ -267,7 +267,7 @@ effectIt.effect(
         handler(new Request("http://localhost/api/voice/models"), context),
       );
       expect(yield* Effect.promise(() => listed.text())).not.toContain("/home/someone");
-    }).pipe(Effect.scoped),
+    }),
 );
 
 effectIt.effect.each([
@@ -359,5 +359,5 @@ effectIt.effect.each([
         code: "invalid_request",
         reason,
       });
-    }).pipe(Effect.scoped),
+    }),
 );

@@ -94,6 +94,7 @@ const declaredFailure = (result: McpSchema.CallToolResult) => {
 
 const parentThreadId = ThreadId.make("thread:mcp-orchestrator-parent");
 const projectId = ProjectId.make("project:mcp-orchestrator");
+const foreignProjectId = ProjectId.make("project:mcp-foreign");
 const primaryInstanceId = ProviderInstanceId.make("opencode_primary");
 const secondaryInstanceId = ProviderInstanceId.make("opencode_secondary");
 const primaryModel = "gpt-5.4";
@@ -721,7 +722,7 @@ describe("orchestrator MCP toolkit", () => {
               Layer.mock(ProjectService.ProjectService)({
                 getById: (id) =>
                   Effect.succeed(
-                    id === projectId
+                    id === projectId || id === foreignProjectId
                       ? Option.some({ id, defaultModelSelection: null } as never)
                       : Option.none(),
                   ),
@@ -1102,6 +1103,7 @@ describe("orchestrator MCP toolkit", () => {
 
             const childPromptReadCall = yield* invoke("t3_thread_read", {
               threadId: directChildThreadId,
+              afterPosition: -1,
               limit: 1,
             });
             const childPromptRead = yield* decodeThreadReadResult(
@@ -1154,7 +1156,7 @@ describe("orchestrator MCP toolkit", () => {
               (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
                 (task) => task.id === directRead.task.id,
               )?.completionDelivery?.state,
-            ).toBe("claimed");
+            ).toBe("acknowledged");
 
             const terminalResultReadCall = yield* invoke("t3_thread_read", {
               threadId: directChildThreadId,
@@ -1948,8 +1950,13 @@ describe("orchestrator MCP toolkit", () => {
 
             expect(childFollowup.taskId).toBeDefined();
             expect(activeChildFollowup.taskId).toBeDefined();
-            yield* waitForContinuationOffers(2);
-            yield* expectOffersToStay(2);
+            const followupOffers = yield* waitForContinuationOffers(3);
+            yield* expectOffersToStay(3);
+            expect(followupOffers).toEqual(followupOffers.map(() => followupOffers[0]));
+            expect(followupOffers[0]).toMatchObject({
+              threadId: parentThreadId,
+              delegatedCompletion: { parentRunId: parentRun.id },
+            });
             yield* invoke("task_status", { taskId: childFollowup.taskId });
             yield* invoke("task_status", { taskId: activeChildFollowup.taskId });
             yield* Ref.set(continuationOffers, []);
@@ -2151,10 +2158,15 @@ describe("orchestrator MCP toolkit", () => {
             const cancellable = yield* decodeDelegateTaskResult(
               cancellableCall.structuredContent,
             ).pipe(Effect.orDie);
-            expect(cancellable.status).toBe("running");
+            expect(["starting", "running"]).toContain(cancellable.status);
             expect(cancellable.hasPendingChildRuns).toBe(false);
-            yield* waitForProjection(orchestrator, cancellable.childThreadId, (projection) =>
-              projection.providerTurns.some((turn) => turn.status === "running"),
+            yield* waitForProjection(
+              orchestrator,
+              cancellable.childThreadId,
+              (projection) =>
+                projection.runs.some(
+                  (run) => run.id === cancellable.childRunId && run.status === "running",
+                ) && projection.providerTurns.some((turn) => turn.status === "running"),
             );
             const statusWhileOriginalRunningCall = yield* invoke("task_status", {
               taskId: cancellable.taskId,
@@ -2553,6 +2565,7 @@ describe("orchestrator MCP toolkit", () => {
 
             const promptedReadCall = yield* invoke("t3_thread_read", {
               threadId: promptedThread.threadId,
+              afterPosition: -1,
               limit: 1,
             });
             const promptedRead = yield* decodeThreadReadResult(
@@ -2776,7 +2789,7 @@ describe("orchestrator MCP toolkit", () => {
               creationSource: "web",
               commandId: CommandId.make("command:mcp-foreign-project:create"),
               threadId: foreignThreadId,
-              projectId: ProjectId.make("project:mcp-foreign"),
+              projectId: foreignProjectId,
               title: "Foreign project thread",
               modelSelection: primarySelection,
               runtimeMode: "full-access",
@@ -2857,10 +2870,19 @@ describe("orchestrator MCP toolkit", () => {
             const upgradedDelegated = yield* decodeDelegateTaskResult(
               upgradedCall.structuredContent,
             ).pipe(Effect.orDie);
-            expect(upgradedDelegated.status).toBe("running");
-            yield* waitForProjection(orchestrator, upgradedDelegated.childThreadId, (projection) =>
-              projection.providerTurns.some((turn) => turn.status === "running"),
+            expect(["starting", "running"]).toContain(upgradedDelegated.status);
+            yield* waitForProjection(
+              orchestrator,
+              upgradedDelegated.childThreadId,
+              (projection) =>
+                projection.runs.some(
+                  (run) => run.id === upgradedDelegated.childRunId && run.status === "running",
+                ) && projection.providerTurns.some((turn) => turn.status === "running"),
             );
+            const upgradedRunningCall = yield* invoke("task_status", {
+              taskId: upgradedDelegated.taskId,
+            });
+            expect(upgradedRunningCall.structuredContent).toMatchObject({ status: "running" });
             expect(
               (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
                 (task) => task.id === upgradedDelegated.taskId,
@@ -3409,8 +3431,17 @@ describe("orchestrator MCP toolkit", () => {
               generation: firstLateDelivery.generation + 1,
               taskIds: [lateTask.id],
             });
-            const lateOffers = yield* waitForContinuationOffers(2);
-            expect(lateOffers).toHaveLength(2);
+            const lateOffers = yield* waitForContinuationOffers(4);
+            expect(lateOffers).toHaveLength(4);
+            expect(lateOffers.map((offer) => offer.delegatedCompletion)).toEqual(
+              [firstLateDelivery, firstLateDelivery, successorDelivery, successorDelivery].map(
+                (delivery) => ({
+                  parentRunId: lateParentRun.id,
+                  generation: delivery?.generation,
+                  messageId: delivery?.messageId,
+                }),
+              ),
+            );
             expect(
               successorReserved.runs.filter((run) => {
                 const message = successorReserved.messages.find(
@@ -3518,7 +3549,8 @@ describe("orchestrator MCP toolkit", () => {
               generation: successorDelivery.generation,
               taskIds: successorDelivery.taskIds,
             });
-            yield* expectOffersToStay(2);
+            yield* expectOffersToStay(4);
+            expect(yield* Ref.get(continuationOffers)).toEqual(lateOffers);
             yield* Deferred.succeed(successorGate, undefined);
             const batchedReserved = yield* waitForProjection(
               orchestrator,
@@ -3550,8 +3582,25 @@ describe("orchestrator MCP toolkit", () => {
                     ?.state,
               ),
             ).toEqual(["delivered", "claimed", "claimed"]);
-            yield* waitForContinuationOffers(3);
-            yield* expectOffersToStay(3);
+            const batchedOffers = yield* waitForContinuationOffers(6);
+            yield* expectOffersToStay(6);
+            expect(batchedOffers.slice(0, 4)).toEqual(lateOffers);
+            expect(batchedOffers.slice(4)).toEqual([
+              expect.objectContaining({
+                delegatedCompletion: {
+                  parentRunId: lateParentRun.id,
+                  generation: batchedDelivery.generation,
+                  messageId: batchedDelivery.messageId,
+                },
+              }),
+              expect.objectContaining({
+                delegatedCompletion: {
+                  parentRunId: lateParentRun.id,
+                  generation: batchedDelivery.generation,
+                  messageId: batchedDelivery.messageId,
+                },
+              }),
+            ]);
             expect(
               batchedReserved.runs.filter((run) => {
                 const message = batchedReserved.messages.find(
@@ -3598,7 +3647,7 @@ describe("orchestrator MCP toolkit", () => {
                     ?.state,
               ),
             ).toEqual(["delivered", "delivered", "delivered", "delivered"]);
-            yield* expectOffersToStay(3);
+            yield* expectOffersToStay(6);
 
             const removeParentGate = yield* Deferred.make<void>();
             parentTerminalGates.set(lateParentThreadId, removeParentGate);
@@ -4284,6 +4333,7 @@ describe("orchestrator MCP toolkit", () => {
             const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
             yield* Deferred.await(approvalOffered);
             yield* worker.drain();
+            yield* waitForContinuationOffers(2);
             const approvalCompletedTask = (yield* orchestrator.getThreadProjection(
               approvalParentId,
             )).subagents[0]!;
@@ -4295,7 +4345,8 @@ describe("orchestrator MCP toolkit", () => {
             const offers = (yield* Ref.get(continuationOffers)).filter(
               (offer) => offer.threadId === approvalParentId,
             );
-            expect(offers).toHaveLength(1);
+            expect(offers).toHaveLength(2);
+            expect(offers[1]).toEqual(offers[0]);
             const approvalParent = yield* orchestrator.getThreadProjection(approvalParentId);
             const approvalDelivery = approvalParent.runs[0]!.delegatedCompletion?.delivery;
             expect(approvalDelivery?.taskIds).toEqual([approvalTask.id]);
@@ -4314,7 +4365,7 @@ describe("orchestrator MCP toolkit", () => {
               (yield* Ref.get(continuationOffers)).filter(
                 (offer) => offer.threadId === approvalParentId,
               ),
-            ).toHaveLength(1);
+            ).toEqual(offers);
             yield* Deferred.succeed(approvalParentGate, undefined);
           }).pipe(Effect.provide(layerTest));
         }),

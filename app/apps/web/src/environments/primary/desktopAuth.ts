@@ -1,5 +1,4 @@
-import { baskule } from "../../baskule/flags"; // baskule: hosted spaces never use a local server credential.
-
+import { baskule } from "../../baskule/flags";
 let desktopBearerTokenPromise: Promise<string> | null = null;
 
 export function readDesktopPrimaryBearerToken(): Promise<string | null> {

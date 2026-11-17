@@ -92,7 +92,9 @@ function SetupScreen({ token }: { readonly token: string | null }) {
         if (cause instanceof BaskuleApiError && cause.code === "bad_origin") {
           setOutcome("bad_origin");
           setError(
-            t("Setup was blocked by the origin check. Configure BASKULE_TRUSTED_PROXIES or PUBLIC_ORIGINS."),
+            t(
+              "Setup was blocked by the origin check. Configure BASKULE_TRUSTED_PROXIES or PUBLIC_ORIGINS.",
+            ),
           );
         } else if (refusal === 403) setOutcome("bad_token");
         else if (refusal === 409) setOutcome("already_set_up");

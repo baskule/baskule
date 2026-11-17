@@ -346,5 +346,5 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
         }),
       ),
     );
-  }).pipe(Effect.scoped),
+  }),
 );

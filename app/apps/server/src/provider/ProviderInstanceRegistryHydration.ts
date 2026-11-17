@@ -1,3 +1,4 @@
+import type * as SqlClient from "effect/sql/SqlClient";
 import type * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import {
   defaultInstanceIdForDriver,
@@ -36,7 +37,8 @@ type ProviderInstanceRegistryHydrationEnv =
   | Settings.ServerSettingsService
   | ServerSecretStore.ServerSecretStore
   | BackgroundPolicy.BackgroundPolicy
-  | ServerConfig.ServerConfig;
+  | ServerConfig.ServerConfig
+  | SqlClient.SqlClient;
 
 export const deriveProviderInstanceConfigMap = (
   settings: ServerSettings,
@@ -74,8 +76,7 @@ export const deriveProviderInstanceConfigMap = (
 
 export const layerSettingsWatcher = (
   settingsChanges: Stream.Stream<ServerSettings>,
-  // The settings the registry was built from: a change queued during startup differs from these.
-  initialSettings: ServerSettings | undefined,
+  _initialSettings: ServerSettings | undefined,
 ) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -100,7 +101,8 @@ export const layerSettingsWatcher = (
   );
 
 export const layer: Layer.Layer<
-  ProviderInstanceRegistry.ProviderInstanceRegistry,
+  | ProviderInstanceRegistry.ProviderInstanceRegistry
+  | ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator,
   never,
   ProviderInstanceRegistryHydrationEnv
 > = Layer.unwrap(

@@ -6,7 +6,11 @@ Development requires Linux x86-64; `scripts/worktree` enforces this requirement.
 
 Install Git, Bash, Python 3, curl, tar, xz, checksum tools, and `flock`. Docker with Compose is required for image builds and development stacks; the native celld launcher also uses Docker to build its patched binary on first use. The current user must be able to use Docker. The optional local HTTPS proxy requires root, a globally installed `portless`, and `libnss3-tools` for browser certificate trust. Without root or Portless, `scripts/stack up` automatically uses direct loopback HTTP. Set `BASKULE_STACK_PROXY=0` or `1` to disable or require the proxy explicitly.
 
-`scripts/worktree` installs checksum-verified Node 26.12.1, the pnpm version pinned in `package.json`, and celld 0.6.3. By default, setup uses `baskule` under `XDG_CACHE_HOME` or your home directory's `.cache`. An existing `.tools` link preserves its shared cache location. Set `BASKULE_SHARED` to select another writable directory. Run setup:
+For the full upstream Git tests, use Git 2.46.1 or newer. Older Git versions spend excessive
+time preparing disabled trace output while converting large UTF-16 files; the released
+large-file merge check can time out. See the [Git 2.46.1 release notes](https://github.com/git/git/blob/v2.46.1/Documentation/RelNotes/2.46.1.txt).
+
+`scripts/worktree` installs checksum-verified Node 26.13.1, the pnpm version pinned in `package.json`, and celld 0.6.3. By default, setup uses `baskule` under `XDG_CACHE_HOME` or your home directory's `.cache`. An existing `.tools` link preserves its shared cache location. Set `BASKULE_SHARED` to select another writable directory. Run setup:
 
 ```sh
 scripts/worktree setup

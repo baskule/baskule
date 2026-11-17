@@ -1,4 +1,3 @@
-import { act } from "../../../test/render";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";

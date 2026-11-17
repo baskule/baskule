@@ -24,14 +24,12 @@ import {
   ProviderDriverKind,
   type EnvironmentId,
   type ProviderInstanceConfig,
-  isManagedDriverAllowed,
 } from "@t3tools/contracts";
 import {
   useEnvironmentSettings,
   usePersistEnvironmentProviderInstanceMutation,
 } from "../../hooks/useSettings";
 import { normalizeProviderAccentColor } from "../../providerInstances";
-import { managedInstanceLocks, useManagedPolicy } from "../../state/managedPolicy";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { Dialog } from "../ui/dialog";
 import { toastManager } from "../ui/toast";
@@ -130,7 +128,6 @@ export function AddProviderInstanceDialog({
   environmentLabel,
   onOpenChange,
   onCreated,
-  showMoreProviders: initialShowMoreProviders = false,
 }: AddProviderInstanceDialogProps) {
   const t = useTranslation();
   const settings = useEnvironmentSettings(environmentId);
@@ -140,7 +137,7 @@ export function AddProviderInstanceDialog({
   const [wizardStep, setWizardStep] = useState(0);
 
   // Drivers the administrator's policy leaves out are not offered at all.
-  const managedPolicy = useManagedPolicy(environmentId);
+
   const [driver, setDriver] = useState<ProviderDriverKind>(DEFAULT_DRIVER_KIND);
   const [identityByDriver, setIdentityByDriver] = useState<Record<string, ProviderIdentityDraft>>(
     {},
@@ -216,7 +213,6 @@ export function AddProviderInstanceDialog({
   };
 
   // A policy that owns this driver's launch settings also rules out ChatGPT's own runtime.
-  const driverLocks = managedInstanceLocks(managedPolicy, driver);
 
   const handleSave = async () => {
     if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;

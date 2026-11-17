@@ -9,7 +9,7 @@ import { setupInjected } from "./BaskulePersistence.ts";
 
 describe("hosted migration fast path", () => {
   it.effect(
-    "upgrades frozen 080 through 081, skips current history, and rejects a missing V2 entry",
+    "upgrades frozen 080 through 096, skips current history, and rejects a missing V2 entry",
     () =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;

@@ -38,6 +38,7 @@ import {
 } from "../hooks/useSettings";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
 import { useEnvironmentScope, usePreparedConnection } from "../state/session";
+import { chooseRecordingMicrophone } from "./browserMicrophones";
 import { createBrowserVoiceInputPlatform } from "./browserVoiceInput";
 import { preferredSpeechLanguages } from "./preferredSpeechLanguages";
 import { runEnvironmentSpeech } from "./runEnvironmentSpeech";
@@ -92,7 +93,6 @@ type HookInput = {
   readonly projectId?: ProjectId | null | undefined;
   readonly projectName?: string | null | undefined;
   readonly ownerKey: string;
-  readonly draftText: string;
   readonly disabled?: boolean | undefined;
   /** False keeps the transcript off the cleanup provider even when cleanup is on; the model test uses it. */
   readonly cleanup?: boolean | undefined;
@@ -220,19 +220,6 @@ export function useEnvironmentSpeechInput(input: HookInput) {
   useEffect(() => {
     latestRef.current = { input, clientSettings, cleanupPrepared, projectWords };
   });
-  const draftRevisionRef = useRef({ ownerKey: input.ownerKey, text: input.draftText, revision: 0 });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tracks committed draft revisions so a late transcript cannot overwrite an edited draft
-  useEffect(() => {
-    const revision = draftRevisionRef.current;
-    if (revision.ownerKey !== input.ownerKey || revision.text !== input.draftText) {
-      draftRevisionRef.current = {
-        ownerKey: input.ownerKey,
-        text: input.draftText,
-        revision: revision.revision + 1,
-      };
-    }
-  }, [input.ownerKey, input.draftText]);
-
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- owns the recording controller bound to the consented destination; it is disposed with the consent
   useEffect(() => {
     if (!prepared || !grantId || typeof navigator === "undefined") return;
@@ -255,20 +242,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
     const readDraft = (): VoiceDraftSnapshot => {
       const current = latestRef.current.input;
       const draft = current.readDraft();
-      const revision = draftRevisionRef.current;
-      if (revision.ownerKey !== current.ownerKey || revision.text !== draft.text) {
-        draftRevisionRef.current = {
-          ownerKey: current.ownerKey,
-          text: draft.text,
-          revision: revision.revision + 1,
-        };
-      }
-      return {
-        ownerKey: current.ownerKey,
-        text: draft.text,
-        selection: draft.selection,
-        revision: draftRevisionRef.current.revision,
-      };
+      return { ownerKey: current.ownerKey, text: draft.text, selection: draft.selection };
     };
     const platform = createBrowserVoiceInputPlatform({
       prepared,
@@ -276,6 +250,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
       cloudProvider,
       cloudModel,
       hasAudioConsent,
+      getStreamingEnabled: () => latestRef.current.clientSettings.speechStreaming,
       getTranscriptionOptions: (): SpeechTranscriptionOptions => {
         const {
           clientSettings: settings,
@@ -312,9 +287,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
           speechSilenceFiltering: settings.speechSilenceFiltering,
         };
       },
-      // Hosted builds have no microphone picker, so a stale saved device id would fail every recording.
-      getMicrophoneId: () =>
-        BASKULE_HOSTED ? "" : latestRef.current.clientSettings.voiceMicrophone,
+      getMicrophoneId: BASKULE_HOSTED ? () => "" : chooseRecordingMicrophone,
       onLevel: setLevel,
       onDurationLimit: () => void controller.stop(),
       onText: (text) => {

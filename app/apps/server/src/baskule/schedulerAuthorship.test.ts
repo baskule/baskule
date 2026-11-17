@@ -61,7 +61,9 @@ const raceTaskLayer = (
       Layer.mergeAll(
         NodeCrypto.layer,
         ManagedPolicy.layerTest(),
-        Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+          isNonGitProject: () => Effect.succeed(false),
+        }),
         Layer.mock(ThreadManagementService.ThreadManagementService)({}),
         Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
@@ -216,6 +218,7 @@ it.effect.each(["on time", "after restart"])(
         NodeCrypto.layer,
         Layer.mock(Orchestrator.OrchestratorV2)({}),
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+          isNonGitProject: () => Effect.succeed(false),
           launch: (input) => {
             expect(input.initialMessage?.author).toEqual(taskActor);
             return Queue.offer(receipts, "task").pipe(

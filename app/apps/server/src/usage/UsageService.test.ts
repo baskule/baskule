@@ -1,4 +1,3 @@
-import * as Context from "effect/Context";
 // @effect-diagnostics nodeBuiltinImport:off -- integration fixtures use native Node I/O.
 import * as NodeFSP from "node:fs/promises";
 import * as NodeSqlite from "node:sqlite";
@@ -22,7 +21,6 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Scheduler from "effect/Scheduler";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
@@ -105,6 +103,7 @@ const layerService = (input: {
     Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provideMerge(Layer.succeed(HostProcess.Platform, input.platform ?? "linux")),
     Layer.provideMerge(Layer.succeed(HostProcess.Hostname, input.hostname ?? "usage-test-host")),
+    Layer.provideMerge(Layer.succeed(HostProcess.HomeDirectory, input.home)),
     Layer.provideMerge(ServerSettings.layerTest(input.settings)),
     Layer.provideMerge(
       Layer.succeed(
@@ -229,7 +228,7 @@ describe("UsageService", () => {
           .sort((a, b) => a - b),
         [5, 7, 11],
       );
-    }).pipe(Effect.scoped),
+    }),
   );
 
   it.live("tries the GitHub API after the primary pricing request times out", () =>
@@ -352,7 +351,7 @@ describe("UsageService", () => {
       }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
-  it.live("does not orphan an in-flight scan when its first caller is interrupted", () =>
+  it.effect("does not orphan an in-flight scan when its first caller is interrupted", () =>
     Effect.gen(function* () {
       const { settings, home } = yield* setup;
       const service = yield* UsageService.make.pipe(
@@ -427,6 +426,6 @@ describe("UsageService", () => {
         orphanedAt,
         `interruption left the next matching request pending at scheduler check ${orphanedAt}`,
       );
-    }).pipe(Effect.scoped),
+    }),
   );
 });

@@ -20,7 +20,7 @@ export const ENABLED_WORKSPACE_TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_OR
 export type WorkspaceSearchTab = WorkspaceTab | "settings";
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
-/** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
+/** Settings and Chats pair a list with a detail column; Usage is one page. */
 export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
   return settingsOpen || tab === "threads";
 }
@@ -42,9 +42,16 @@ function emptyTab(): WorkspaceTabState {
   return { query: "", searchMode: "resting", scrollOffset: 0, searchEntryOffset: 0 };
 }
 
-export function initialWorkspaceTabsState(): WorkspaceTabsState {
+/** The list a workspace page belongs to. */
+export function workspaceTabOf(_routeName: string | undefined): WorkspaceTab {
+  return "threads";
+}
+
+export function initialWorkspaceTabsState(
+  selectedTab: WorkspaceTab = "threads",
+): WorkspaceTabsState {
   return {
-    selectedTab: "threads",
+    selectedTab,
     selectionRevision: 0,
     tabs: {
       threads: emptyTab(),

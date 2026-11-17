@@ -1,4 +1,5 @@
-import { usePrimaryEnvironmentId } from "../../state/environments";
+import { t } from "../../i18n";
+
 import { useTranslation } from "../../i18n";
 
 import { SessionPermissions } from "./SessionPermissions";
@@ -59,6 +60,7 @@ import { type EnvironmentPresentation, useRelayEnvironmentDiscovery } from "~/st
 import { APP_VERSION } from "~/branding";
 import { useManagedPolicy } from "~/state/managedPolicy";
 import { useAtomCommand } from "../../state/use-atom-command";
+
 import { serverEnvironment } from "~/state/server";
 import {
   OutdatedServerUpdateAction,
@@ -89,12 +91,15 @@ function savedBackendStatus(environment: EnvironmentPresentation): {
     case "connecting":
       return { text: "Connecting", tone: "muted" };
     case "reconnecting":
+      if (connection.awaitingApproval) {
+        return { text: connection.error ?? "Waiting for approval", tone: "muted" };
+      }
       return {
         text: connection.error ? `Reconnecting: ${connection.error}` : "Reconnecting",
         tone: "error",
       };
     case "unsupported":
-      return { text: "Client not supported", tone: "muted" };
+      return { text: t("Client not supported"), tone: "muted" };
     case "error":
       return {
         text: connection.error ? `Connection failed: ${connection.error}` : "Connection failed",
@@ -477,7 +482,7 @@ function ConfiguredCloudLinkRow({
   readonly canManageRelay: boolean;
 }) {
   const t = useTranslation();
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
+
   const {
     isSignedIn,
     linkState: cloudLinkState,

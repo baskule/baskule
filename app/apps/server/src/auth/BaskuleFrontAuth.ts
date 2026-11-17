@@ -157,6 +157,9 @@ export const withBaskuleFrontAuth = Effect.fn("BaskuleFrontAuth.make")(function*
       errors.invalid(`${what} is unsupported in Baskule: sign in through the Baskule front.`),
     );
 
+  const refuseConnect = (what: string) =>
+    Effect.fail(errors.internal(`${what} is managed by the Baskule front.`));
+
   const authenticateWebSocketUpgrade: EnvironmentAuth.EnvironmentAuth["Service"]["authenticateWebSocketUpgrade"] =
     Effect.fn("BaskuleFrontAuth.authenticateWebSocketUpgrade")(function* (request, use) {
       const session = yield* authenticate(request);
@@ -202,6 +205,12 @@ export const withBaskuleFrontAuth = Effect.fn("BaskuleFrontAuth.make")(function*
       ),
     authenticateHttpRequest: authenticate,
     authenticateWebSocketUpgrade,
+    issueConnectCredential: () => refuseConnect("Connect credentials"),
+    approveConnectDevice: () => refuseConnect("Connect approval"),
+    approveConnectDeviceByCode: () => refuseConnect("Connect approval"),
+    listConnectDevices: () => refuseConnect("Connect device listing"),
+    revokeConnectDevice: () => refuseConnect("Connect revocation"),
+    revokeConnectDeviceByCode: () => refuseConnect("Connect revocation"),
     createBrowserSession: () => refused("Browser-session pairing"),
     exchangeBootstrapCredentialForAccessToken: () => refused("Token exchange"),
   } satisfies EnvironmentAuth.EnvironmentAuth["Service"];

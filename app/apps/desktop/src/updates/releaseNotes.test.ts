@@ -28,6 +28,7 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
       releaseNotes: [
         {
           version: "0.0.36-nightly.20260828.1213",
+          releasedAt: "2026-08-28",
           items: [
             "fix(opencode): handle child approvals, stops, and model catalogs by @human in #8480",
             "fix(web): keep long task drawers usable on small screens by @human in #8313",
@@ -180,14 +181,20 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
     });
   });
 
-  it("does not throw on out-of-range numeric entities and keeps the literal", () => {
+  it("keeps unsupported entities literal, including out-of-range and Object.prototype names", () => {
     const result = normalizeDesktopUpdateReleaseNotes(
-      "- Broken entity &#9999999999;",
+      "- Broken entity &#9999999999;\n- Mentions &constructor; and &toString;",
       "1.0.0",
       "latest",
     );
     expect(result).toEqual({
-      releaseNotes: [{ version: "1.0.0", items: ["Broken entity &#9999999999;"], totalItems: 1 }],
+      releaseNotes: [
+        {
+          version: "1.0.0",
+          items: ["Mentions &constructor; and &toString;", "Broken entity &#9999999999;"],
+          totalItems: 2,
+        },
+      ],
       omittedReleaseCount: 0,
     });
   });
@@ -220,6 +227,7 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
       releaseNotes: [
         {
           version: "0.1.3-nightly.20261023.3592",
+          releasedAt: "2026-10-23",
           items: [
             "Full Changelog: links open in the browser in #3",
             "fix(web): B by @b in #2",

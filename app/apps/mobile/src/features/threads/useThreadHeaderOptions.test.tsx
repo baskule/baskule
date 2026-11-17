@@ -45,7 +45,7 @@ describe("Baskule thread header", () => {
       harness.openFiles.mockClear();
       harness.toggleAuxiliaryPane.mockClear();
       const root = createRoot(document.createElement("div"));
-      using cleanup = { [Symbol.dispose]: () => act(() => root.unmount()) };
+      using _cleanup = { [Symbol.dispose]: () => act(() => root.unmount()) };
       const render = (gitStatus: VcsStatusResult | null) =>
         act(() =>
           root.render(

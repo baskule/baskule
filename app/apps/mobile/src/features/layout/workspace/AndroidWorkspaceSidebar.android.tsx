@@ -1,36 +1,25 @@
-import { useAndroidFloatingTabs } from "../../settings/appearance/AppearancePreferencesProvider";
 import { WorkspaceNoTabs } from "./WorkspaceNoTabs";
 import { useEnabledNavigationTabs } from "./navigation-tabs";
 import { NAVIGATION_TAB_ORDER } from "./navigation-tab-order";
-import { useNavigationState } from "@react-navigation/native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAndroidControlSizing } from "../../../components/ui/useAndroidControlSizing";
-import { FLOATING_TABS } from "./floating-workspace-tabs";
+
 import { View } from "react-native";
-import { ScreenContent } from "../../../components/ui/ScreenContent";
+
 import { AndroidHomeFabLayout } from "../../home/AndroidHomeFab";
 import { useAdaptiveWorkspaceLayout } from "../adaptive-workspace-context";
 import { useAndroidWorkspaceRoot } from "./AndroidWorkspaceTabsProvider";
-import { WorkspaceTabsContext, useWorkspaceTabs } from "./WorkspaceTabsContext";
+import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { WorkspaceTabPanes } from "./WorkspaceTabPanes";
 import { WorkspaceThreadSidebar } from "./WorkspaceThreadSidebar";
 import { WorkspaceAppBarScope } from "../../../components/ui/WorkspaceAppBar.android";
 
 /** The Home route in the sidebar column: the selected tab's list. */
 export function AndroidWorkspaceSidebar() {
-  const floatingTabsEnabled = useAndroidFloatingTabs();
   const workspace = useWorkspaceTabs()!;
   const enabled = useEnabledNavigationTabs();
-  const insets = useSafeAreaInsets();
-  const { fabSize } = useAndroidControlSizing();
-  const { revealPrimarySidebar, startNewTask } = useAdaptiveWorkspaceLayout();
+  const { startNewTask } = useAdaptiveWorkspaceLayout();
   // Settings and Usage cover the sidebar.
   const coveredByPage =
     (useAndroidWorkspaceRoot()?.settingsOpen ?? false) || workspace.state.selectedTab === "usage";
-  const bottomClearance = floatingTabsEnabled
-    ? insets.bottom + FLOATING_TABS.bottom + FLOATING_TABS.edge + fabSize
-    : 16;
-  const context = { ...workspace, bottomClearance };
   if (enabled.length === 0) return <WorkspaceNoTabs />;
   return (
     <WorkspaceAppBarScope>

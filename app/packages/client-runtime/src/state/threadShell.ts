@@ -80,6 +80,30 @@ function sideChatRequest(thread: OrchestrationV2ThreadShell): PendingSubagentReq
   return kind === "user_input" ? "user_input" : "approval";
 }
 
+export function resolveListedAncestorThreadRef(
+  ref: ScopedThreadRef,
+  threads: readonly Pick<
+    EnvironmentThreadShell,
+    "id" | "environmentId" | "lineage" | "archivedAt"
+  >[],
+): ScopedThreadRef {
+  const findThread = (target: ScopedThreadRef) =>
+    threads.find(
+      (thread) => thread.id === target.threadId && thread.environmentId === target.environmentId,
+    );
+  const visited = new Set<string>();
+  let current = ref;
+  let thread = findThread(current);
+  while (thread !== undefined) {
+    if (isListedThreadLineage(thread.lineage)) return current;
+    if (thread.lineage.parentThreadId === null || visited.has(threadKey(current))) return ref;
+    visited.add(threadKey(current));
+    current = { environmentId: thread.environmentId, threadId: thread.lineage.parentThreadId };
+    thread = findThread(current);
+  }
+  return ref;
+}
+
 export function pendingSubagentRequestsByThread(
   threads: ReadonlyArray<OrchestrationV2ThreadShell>,
 ): ReadonlyMap<ThreadId, PendingSubagentRequest> {
@@ -87,7 +111,13 @@ export function pendingSubagentRequestsByThread(
   let byId: ReadonlyMap<ThreadId, OrchestrationV2ThreadShell> | undefined;
   for (const child of threads) {
     const request = sideChatRequest(child) ?? subagentRequest(child);
-    if (request === null || (request === "user_input" && child.lineage.sideChat !== true)) continue;
+    if (
+      request === null ||
+      (request === "user_input" &&
+        child.lineage.sideChat !== true &&
+        child.pendingRuntimeRequest?.userOnly !== true)
+    )
+      continue;
     byId ??= new Map(threads.map((thread) => [thread.id, thread] as const));
     const seen = new Set<ThreadId>([child.id]);
     let current: OrchestrationV2ThreadShell | undefined = child;
@@ -224,7 +254,7 @@ export function createEnvironmentThreadShellAtoms(input: {
   );
 
   const pendingSubagentRequestsAtom = Atom.family((environmentId: EnvironmentId) => {
-    let previous = EMPTY_SUBAGENT_REQUESTS;
+    let previous: ReadonlyMap<ThreadId, PendingSubagentRequest> = EMPTY_SUBAGENT_REQUESTS;
     return Atom.make((get) => {
       const next = pendingSubagentRequestsByThread(get(environmentThreadsAtom(environmentId)));
       if (

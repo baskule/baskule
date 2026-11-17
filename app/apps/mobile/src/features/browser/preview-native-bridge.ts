@@ -77,6 +77,7 @@ const Input = Schema.Union([
     type: Schema.Literal("reload"),
     ignoreCache: Schema.optionalKey(Schema.Boolean),
   }),
+  Schema.Struct({ type: Schema.Literal("stopLoading") }),
   Schema.Struct({ type: Schema.Literal("probe"), ...point }),
 ]);
 const ViewerMessage = Schema.Union([

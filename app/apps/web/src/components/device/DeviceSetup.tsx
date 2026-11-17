@@ -148,10 +148,7 @@ export function platformSetupStatus(state: DeviceServiceState, platform: DeviceP
     ready: true,
     message:
       remoteHost?.kind === "eas"
-        ? t("{{label}} starts {{value2}} in the cloud with EAS Simulator.", {
-            label: remoteHost.label,
-            value2: platform === "ios" ? "iOS Simulators" : "Android emulators",
-          })
+        ? `${remoteHost.label} starts ${platform === "ios" ? "iOS Simulators" : "Android emulators"} in the cloud with Expo Simulators.`
         : platform === "ios"
           ? t("Xcode and iOS Simulator are available{{location}}.", { location: location })
           : t("The Android SDK and Emulator are available{{location}}.", { location: location }),
@@ -367,14 +364,14 @@ export function AgentDeviceSetupStatus(props: {
     const label =
       props.state.hostStatus === "installing"
         ? props.compact
-          ? "Installing…"
+          ? t("Installing…")
           : t("Installing agent tools…")
         : props.state.hostStatus === "starting"
           ? props.compact
-            ? "Starting…"
+            ? t("Starting…")
             : t("Starting agent tools…")
           : props.compact
-            ? "Updating…"
+            ? t("Updating…")
             : t("Updating agent access…");
     return (
       <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">

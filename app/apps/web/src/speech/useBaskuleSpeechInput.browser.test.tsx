@@ -42,7 +42,10 @@ vi.mock("../state/environments", () => ({
   }),
 }));
 vi.mock("../hooks/useSettings", () => ({
+  updateClientSettings: vi.fn(),
+  isClientSettingsHydrated: () => true,
   useClientSettingsHydrated: () => true,
+  getClientSettings: () => DEFAULT_CLIENT_SETTINGS,
   // A device id saved by an earlier build must not reach getUserMedia.
   useClientSettings: () => ({ ...DEFAULT_CLIENT_SETTINGS, voiceMicrophone: "stale-device" }),
   useEnvironmentSettings: (
@@ -90,7 +93,7 @@ function Composer({ chat }: { chat: string }) {
   const voice = useEnvironmentSpeechInput({
     environmentId: EnvironmentId.make("space"),
     ownerKey: chat,
-    draftText: harness.draft,
+
     readDraft: () => ({
       text: harness.draft,
       selection: { start: harness.draft.length, end: harness.draft.length },

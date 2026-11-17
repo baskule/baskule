@@ -1,13 +1,10 @@
 import {
-  providerInstanceConfigEnabledFlag,
   resolveProviderInstanceEnabled,
   ProviderInstanceId,
   type ProviderInstanceConfig,
   type ProviderInstanceConfigMap,
   type ProviderDriverKind,
   type ServerProvider,
-  type SettingsSecretSlot,
-  withSettingsSecrets,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -55,15 +52,6 @@ interface RegistryState {
 
 const entryEqual = (a: ProviderInstanceConfig, b: ProviderInstanceConfig): boolean =>
   Equal.equals(a, b);
-
-/** Conflicting saved flags must preserve any explicit disable. */
-const resolveEntryEnabled = (entry: ProviderInstanceConfig, typedConfig: unknown): boolean => {
-  const rawConfigEnabled = providerInstanceConfigEnabledFlag(entry.config);
-  if (entry.enabled === false || rawConfigEnabled === false) {
-    return false;
-  }
-  return entry.enabled ?? providerInstanceConfigEnabledFlag(typedConfig) ?? true;
-};
 
 type BlockedReason = (driver: ProviderDriverKind) => string | undefined;
 
@@ -181,9 +169,12 @@ const makeReconcile = <R>(input: {
   readonly driversById: ReadonlyMap<ProviderDriverKind, AnyProviderDriver<R>>;
   readonly blockedReason: BlockedReason;
   readonly parentScope: Scope.Scope;
-}): ((configMap: ProviderInstanceConfigMap) => Effect.Effect<void, never, R>) => {
+}): ((
+  configMap: ProviderInstanceConfigMap,
+  rebuild?: ReadonlySet<ProviderInstanceId>,
+) => Effect.Effect<void, never, R>) => {
   const { state, driversById, blockedReason, parentScope } = input;
-  return (configMap: ProviderInstanceConfigMap) =>
+  return (configMap: ProviderInstanceConfigMap, rebuild = new Set<ProviderInstanceId>()) =>
     Effect.gen(function* () {
       const previousEntries = yield* Ref.get(state.entries);
       const previousUnavailable = yield* Ref.get(state.unavailable);
@@ -202,7 +193,10 @@ const makeReconcile = <R>(input: {
           continue;
         }
         const nextEntry = configMap[instanceId];
-        if (nextEntry !== undefined && !entryEqual(live.entry, nextEntry)) {
+        if (
+          nextEntry !== undefined &&
+          (rebuild.has(instanceId) || !entryEqual(live.entry, nextEntry))
+        ) {
           replacedIds.add(instanceId);
         }
       }
@@ -367,6 +361,16 @@ export const makeProviderInstanceRegistry = Effect.fn(
 
   const mutator: ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutatorShape = {
     reconcile,
+    rebuild: (instanceIds) =>
+      Ref.get(entries).pipe(
+        Effect.flatMap((current) =>
+          reconcileWithR(
+            Object.fromEntries([...current].map(([id, live]) => [id, live.entry])),
+            new Set(instanceIds),
+          ),
+        ),
+        Effect.provideContext(driverContext),
+      ),
   };
 
   return { registry, mutator };

@@ -22,7 +22,6 @@ import java.net.URI
 class T3NativeControlsModule : Module() {
   private var filePreviewPromise: Promise? = null
 
-  @Suppress("TooGenericExceptionCaught") // Clear the pending promise before rethrowing.
   override fun definition() = ModuleDefinition {
     Name("T3NativeControls")
 
@@ -53,26 +52,7 @@ class T3NativeControlsModule : Module() {
     }
 
     AsyncFunction("openFile") { uri: String, mimeType: String, promise: Promise ->
-      check(filePreviewPromise == null) { "A document viewer is already open." }
-      val activity = appContext.currentActivity ?: error("The app is not active.")
-      val file = File(URI(uri)).canonicalFile
-      require(file.isFile) { "The file is no longer available." }
-      val contentUri = FileProvider.getUriForFile(
-        activity,
-        "${activity.packageName}.FileSystemFileProvider",
-        file
-      )
-      val intent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(contentUri, mimeType)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-      }
-      filePreviewPromise = promise
-      try {
-        activity.startActivityForResult(intent, 7343)
-      } catch (error: Exception) {
-        filePreviewPromise = null
-        throw error
-      }
+      openFile(uri, mimeType, promise)
     }
 
     AsyncFunction("saveImageToLibrary") { uri: String, mimeType: String, name: String ->
@@ -121,6 +101,30 @@ class T3NativeControlsModule : Module() {
         ?.filesDir
         ?.resolve("t3-showcase-ready")
         ?.writeText(scene)
+    }
+  }
+
+  @Suppress("TooGenericExceptionCaught") // Clear the pending promise before rethrowing.
+  private fun openFile(uri: String, mimeType: String, promise: Promise) {
+    check(filePreviewPromise == null) { "A document viewer is already open." }
+    val activity = appContext.currentActivity ?: error("The app is not active.")
+    val file = File(URI(uri)).canonicalFile
+    require(file.isFile) { "The file is no longer available." }
+    val contentUri = FileProvider.getUriForFile(
+      activity,
+      "${activity.packageName}.FileSystemFileProvider",
+      file
+    )
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+      setDataAndType(contentUri, mimeType)
+      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    filePreviewPromise = promise
+    try {
+      activity.startActivityForResult(intent, 7343)
+    } catch (error: Exception) {
+      filePreviewPromise = null
+      throw error
     }
   }
 }

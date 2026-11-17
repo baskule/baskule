@@ -48,6 +48,12 @@ export interface NativeReviewDiffRow {
   readonly commentText?: string;
   readonly commentRangeLabel?: string;
   readonly commentSectionTitle?: string;
+  /** A notice drawn in the warning colors. */
+  readonly tone?: "warning";
+  /** A notice that reports taps through `onPressNotice`. */
+  readonly actionable?: boolean;
+  /** Where a cut line's note starts in `content`. */
+  readonly noteStart?: number;
 }
 
 export interface NativeReviewDiffWordDiffRange {
@@ -75,6 +81,8 @@ export interface NativeReviewDiffTheme {
   readonly deleteBar: string;
   readonly addText: string;
   readonly deleteText: string;
+  readonly warningText: string;
+  readonly warningBackground: string;
 }
 
 export interface NativeReviewDiffStyle {
@@ -152,6 +160,9 @@ export interface NativeReviewDiffViewProps extends ViewProps {
     }>,
   ) => void;
   readonly onToggleComment?: (event: NativeSyntheticEvent<{ readonly commentId?: string }>) => void;
+  readonly onPressNotice?: (
+    event: NativeSyntheticEvent<{ readonly rowId?: string; readonly fileId?: string }>,
+  ) => void;
 }
 
 export interface NativeReviewDiffViewHandle {

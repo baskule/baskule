@@ -180,7 +180,7 @@ async function main() {
 
   await check("native-release", async () => {
     const response = await http("/s/native-release/api/orchestration/shell", { headers: { ...as(alice), "x-t3-orchestration-protocol": "2" } });
-    assert(response.ok, `real Space failed to boot: ${response.status}`);
+    if (!response.ok) throw new Error(`real Space failed to boot: ${response.status} ${await response.text()}`);
     await response.arrayBuffer();
     await waitFor("real agent boot", () => readFileSync(join(RUN, "celld.log"), "utf8").includes("[agent native-release] OpenCode booted in"), 60_000);
     const stopped = await http("/control/native-release/_baskule/stop", { method: "POST" });

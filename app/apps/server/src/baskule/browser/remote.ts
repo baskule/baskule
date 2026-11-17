@@ -174,7 +174,13 @@ export const makeManager = Effect.gen(function* () {
           }),
       ),
     );
+  const beforeClose = new Set<Parameters<PreviewManager["Service"]["registerBeforeClose"]>[0]>();
   return {
+    registerBeforeClose: (handler) =>
+      Effect.acquireRelease(
+        Effect.sync(() => beforeClose.add(handler)),
+        () => Effect.sync(() => beforeClose.delete(handler)),
+      ).pipe(Effect.asVoid),
     open: (input) => snapshot("open", { ...input, beforePublish: undefined, runtime: "server" }),
     markHeadless: (input) => run("markHeadless", input).pipe(Effect.asVoid),
     announce: (input) => run("announce", input).pipe(Effect.asVoid),
@@ -183,13 +189,15 @@ export const makeManager = Effect.gen(function* () {
     // Closing the tabs of a browser that is not running has nothing to do: deleting a chat (ResourceCleanupService)
     // must never create or start the space's computer. A running browser holding this chat's tabs is found by
     // `inspect`, which never wakes it.
-    close: (input) =>
-      Effect.promise(
-        async () =>
-          state.active() || (await state.inspect({ threadId: input.threadId })).sessions.length > 0,
-      ).pipe(
-        Effect.flatMap((live) => (live ? run("close", input).pipe(Effect.asVoid) : Effect.void)),
-      ),
+    close: Effect.fn("BaskuleBrowser.close")(function* (input) {
+      const inspected = yield* Effect.promise(() => state.inspect({ threadId: input.threadId }));
+      const closing = inspected.sessions.filter(
+        (session) => input.tabId === undefined || session.tabId === input.tabId,
+      );
+      if (!state.active() && closing.length === 0) return;
+      yield* Effect.forEach(beforeClose, (handler) => handler(closing), { discard: true });
+      yield* run("close", input);
+    }),
     reportStatus: (input) => run("reportStatus", input).pipe(Effect.asVoid),
     requestReveal: (input) => run("requestReveal", input).pipe(Effect.asVoid),
     list: (input) => Effect.promise(() => state.inspect(input)),

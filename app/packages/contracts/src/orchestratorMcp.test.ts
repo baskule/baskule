@@ -4,12 +4,35 @@ import * as Schema from "effect/Schema";
 import {
   OrchestratorMcpDelegateTaskInput,
   OrchestratorMcpDelegateTaskResult,
+  OrchestratorMcpThreadWaitInput,
+  OrchestratorMcpThreadWaitResult,
 } from "./orchestratorMcp.ts";
 
 const decodeDelegateTaskInput = Schema.decodeUnknownSync(OrchestratorMcpDelegateTaskInput);
 const decodeDelegateTaskResult = Schema.decodeUnknownSync(OrchestratorMcpDelegateTaskResult);
+const decodeThreadWaitInput = Schema.decodeSync(OrchestratorMcpThreadWaitInput);
+const decodeThreadWaitResult = Schema.decodeUnknownSync(OrchestratorMcpThreadWaitResult);
 
 describe("orchestrator MCP contracts", () => {
+  it("preserves the final result run when waiting for delegated work to settle", () => {
+    const request = decodeThreadWaitInput({
+      threadId: "thread-parent",
+      runId: "run-original",
+      untilDelegatedWorkSettled: true,
+    });
+    const result = decodeThreadWaitResult({
+      threadId: request.threadId,
+      runId: request.runId,
+      status: "completed",
+      timedOut: false,
+      resultRun: { runId: "run-final-answer", status: "completed" },
+    });
+
+    expect(request.untilDelegatedWorkSettled).toBe(true);
+    expect(result.runId).toBe("run-original");
+    expect(result.resultRun?.runId).toBe("run-final-answer");
+  });
+
   it("decodes cross-provider delegated task requests and durable results", () => {
     const request = decodeDelegateTaskInput({
       task: "Inspect the workspace and report the result.",
@@ -65,5 +88,18 @@ describe("orchestrator MCP contracts", () => {
         pendingApproval: { ...pendingApproval, kind: "user_input" },
       }),
     ).toThrow();
+  });
+
+  it("decodes a running-task next written by another version", () => {
+    const next = "Completion wakes this thread, so end your turn. Do not wait on it or poll it.";
+    expect(
+      decodeThreadWaitResult({
+        threadId: "thread-child-1",
+        runId: "run-child-1",
+        status: "running",
+        timedOut: true,
+        next,
+      }).next,
+    ).toBe(next);
   });
 });

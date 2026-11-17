@@ -1,17 +1,10 @@
-import * as TestClock from "effect/testing/TestClock";
-import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
-  AuthSessionId,
-  EnvironmentId,
   EventId,
   MessageId,
   ProjectId,
   ThreadId,
   TurnItemId,
-  WS_METHODS,
-  WsSubscribeServerConfigRpc,
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadShell,
   type OrchestrationProjectShell,
@@ -26,94 +19,22 @@ import * as Cause from "effect/Cause";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
-import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
-import { Headers } from "effect/http";
-import { RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
+import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Statement from "effect/sql/Statement";
 import { vi } from "vite-plus/test";
-import * as AssetSigner from "./assets/AssetSigner.ts";
-import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
-import * as ServerBrowser from "./preview/ServerBrowser.ts";
-import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
-import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
-import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
-import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
-import * as DeviceService from "./device/DeviceService.ts";
-import * as DocumentText from "./provider/DocumentText.ts";
-import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
-import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import * as EnvironmentTheme from "./environmentTheme.ts";
-import * as GitWorkflowService from "./git/GitWorkflowService.ts";
-import * as HostResources from "./resourceTelemetry/HostResources.ts";
-import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
-import * as ScratchThreadPromotion from "./project/ScratchThreadPromotion.ts";
-import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
-import * as ModelManifest from "./provider/ModelManifest.ts";
-import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
-import * as OtlpEndpointCheck from "./observability/OtlpEndpointCheck.ts";
-import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
-import * as PreviewManager from "./preview/Manager.ts";
-import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
-import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
-import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
-import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
-import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
-import * as ProviderInstanceRegistry from "./provider/ProviderInstanceRegistry.ts";
-import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
-import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
-import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
-import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
-
-import * as RelayClient from "@t3tools/shared/relayClient";
-import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
-import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
-import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
-import * as ReviewService from "./review/ReviewService.ts";
-import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
-import * as SecretRequests from "./secrets/SecretRequests.ts";
-import * as GuestShareService from "./guest/GuestShareService.ts";
-import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
-import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
-import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
-import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
-import * as SessionStore from "./auth/SessionStore.ts";
-
-import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
-import * as StorageCleanup from "./storageCleanup.ts";
-import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
-import * as TerminalManager from "./terminal/Manager.ts";
-import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
-import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
-import * as UsageService from "./usage/UsageService.ts";
-import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
-import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
-import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
-import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
-import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
-import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
-import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
-import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
-import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
-import * as ServerConfigModule from "./config.ts";
-import * as Keybindings from "./keybindings.ts";
-import * as ServerSettings from "./serverSettings.ts";
-import * as ManagedPolicy from "./policy/ManagedPolicy.ts";
-
 import * as ThreadManagement from "./orchestration-v2/ThreadManagementService.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
+import { projectIdentitiesDigest } from "./orchestration-v2/ShellStream.ts";
 import * as OrchestrationEventStore from "./persistence/OrchestrationEventStore.ts";
 import * as SqlitePersistence from "./persistence/Sqlite.ts";
-import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ProjectEnrichment from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import {
-  layerWsRpc,
   resolveOpenDiscoveryForConfig,
   subscribeOrchestrationV2Shell,
   subscribeOrchestrationV2Thread,
-  WS_RPC_SERVER_OPTIONS,
   withLateConfigDiscovery,
 } from "./ws.ts";
 
@@ -187,7 +108,7 @@ it.effect("resends a reveal kind and remote targets that outlast the snapshot ti
       assert.deepEqual(remote.config.remoteOpenTargets, targets);
       assert.equal(remote.config.shellRevealInFileManagerKind, "file-explorer");
     }
-  }).pipe(Effect.scoped),
+  }),
 );
 
 it.effect("runs editor, remote open target and direct endpoint discovery side by side", () =>
@@ -226,25 +147,23 @@ const ReplayTestLayer = OrchestrationEventStore.layer.pipe(
   Layer.provideMerge(SqlitePersistence.layerMemory),
 );
 
-it.live.each(["thread", "shell"] as const)(
-  "%s resume skips unknown types, synchronizes, and receives the live tail",
-  (scope) =>
-    Effect.gen(function* () {
-      const store = yield* OrchestrationEventStore.OrchestrationEventStore;
-      const sql = yield* SqlClient.SqlClient;
-      const now = "2026-01-05T00:00:00.000Z";
-      const threadId = ThreadId.make("thread:replay");
-      const projectId = ProjectId.make("project:replay");
-      const project = {
-        id: projectId,
-        title: "Replay",
-        workspaceRoot: "/tmp/replay",
-        defaultModelSelection: null,
-        scripts: [],
-        createdAt: now,
-        updatedAt: now,
-      } satisfies OrchestrationProjectShell;
-      const insert = (version: number, unknown = false) => sql<{ sequence: number }>`
+const resumeSkipsUnknownTypes = (scope: "thread" | "shell") =>
+  Effect.gen(function* () {
+    const store = yield* OrchestrationEventStore.OrchestrationEventStore;
+    const sql = yield* SqlClient.SqlClient;
+    const now = "2026-01-05T00:00:00.000Z";
+    const threadId = ThreadId.make("thread:replay");
+    const projectId = ProjectId.make("project:replay");
+    const project = {
+      id: projectId,
+      title: "Replay",
+      workspaceRoot: "/tmp/replay",
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: now,
+      updatedAt: now,
+    } satisfies OrchestrationProjectShell;
+    const insert = (version: number, unknown = false) => sql<{ sequence: number }>`
         INSERT INTO orchestration_events (
           event_id, aggregate_kind, stream_id, stream_version, event_type,
           occurred_at, actor_kind, payload_json, metadata_json, application_event_version
@@ -259,85 +178,91 @@ it.live.each(["thread", "shell"] as const)(
           )}, '{}', 2
         ) RETURNING sequence
       `;
-      const [before] = yield* insert(0);
-      yield* insert(1, true);
-      const [after] = yield* insert(2);
-      const [highWater] = yield* insert(3, true);
-      const updates = yield* PubSub.unbounded();
-      let liveSequence = 0;
-      const consume = <A extends { readonly kind: string; readonly sequence?: number }, E, R>(
-        stream: Stream.Stream<A, E, R>,
-      ) =>
-        stream.pipe(
-          Stream.tap((item) =>
-            Effect.gen(function* () {
-              if (item.kind !== "synchronized") return;
-              const [live] = yield* insert(4);
-              liveSequence = live!.sequence;
-              const events = yield* store
-                .readApplicationEvents({
-                  afterSequence: highWater!.sequence,
-                  throughSequence: liveSequence,
-                })
-                .pipe(Stream.runCollect);
-              yield* store.publishCommitted(events);
-            }),
-          ),
-          Stream.takeUntil((item) => item.sequence === liveSequence),
-          Stream.map((item) => ({ kind: item.kind as string, sequence: item.sequence })),
-          Stream.runCollect,
-        );
-      const subscription = Effect.gen(function* () {
-        return scope === "thread"
-          ? yield* subscribeOrchestrationV2Thread({
-              threadId,
-              afterSequence: before!.sequence,
-              requestCompletionMarker: true,
-            }).pipe(Effect.flatMap(consume))
-          : yield* subscribeOrchestrationV2Shell({
-              afterSequence: before!.sequence,
-              requestCompletionMarker: true,
-            }).pipe(Effect.flatMap(consume));
-      });
-      const items = yield* subscription.pipe(
-        Effect.provideService(ThreadManagement.ThreadManagementService, {
-          ensureLegacyTranscript: () => Effect.void,
-          getShellSnapshot: () => Effect.die("shell resume must not load a full snapshot"),
-          listActiveSubagentThreadIds: () => Effect.succeed([]),
-          streamStoredEventsFrom: (
-            input: Parameters<
-              ThreadManagement.ThreadManagementService["Service"]["streamStoredEventsFrom"]
-            >[0],
-          ) => {
-            assert.equal(input?.afterSequence, highWater!.sequence);
-            return store
-              .streamApplicationEvents({ afterSequence: input?.afterSequence ?? 0 })
-              .pipe(
-                Stream.filter((event): event is OrchestrationV2StoredEvent => "event" in event),
-              );
-          },
-        } as unknown as ThreadManagement.ThreadManagementService["Service"]),
-        Effect.provideService(ProjectStore.ProjectStoreV2, {
-          listShells: () => Effect.succeed([]),
-        } as unknown as ProjectStore.ProjectStoreV2["Service"]),
-        Effect.provideService(ProjectService.ProjectService, {
-          getShell: () => Effect.succeedSome(project),
-        } as unknown as ProjectService.ProjectService["Service"]),
-        Effect.provideService(ProjectEnrichment.ProjectEnrichmentService, {
-          subscribeChanges: PubSub.subscribe(updates),
-        } as ProjectEnrichment.ProjectEnrichmentService["Service"]),
+    const [before] = yield* insert(0);
+    yield* insert(1, true);
+    const [after] = yield* insert(2);
+    const [highWater] = yield* insert(3, true);
+    const updates = yield* PubSub.unbounded();
+    let liveSequence = 0;
+    const consume = <A extends { readonly kind: string; readonly sequence?: number }, E, R>(
+      stream: Stream.Stream<A, E, R>,
+    ) =>
+      stream.pipe(
+        Stream.tap((item) =>
+          Effect.gen(function* () {
+            if (item.kind !== "synchronized") return;
+            const [live] = yield* insert(4);
+            liveSequence = live!.sequence;
+            const events = yield* store
+              .readApplicationEvents({
+                afterSequence: highWater!.sequence,
+                throughSequence: liveSequence,
+              })
+              .pipe(Stream.runCollect);
+            yield* store.publishCommitted(events);
+          }),
+        ),
+        Stream.takeUntil((item) => item.sequence === liveSequence),
+        Stream.map((item) => ({ kind: item.kind as string, sequence: item.sequence })),
+        Stream.runCollect,
       );
-      assert.deepEqual(
-        items.map((item) => item.kind),
-        scope === "thread"
-          ? ["event", "synchronized", "event"]
-          : ["project.updated", "synchronized", "project.updated"],
-      );
-      assert.deepEqual(
-        items.flatMap((item) => (item.sequence === undefined ? [] : [item.sequence])),
-        [after!.sequence, liveSequence],
-      );
-    }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer)),
+    const subscription = Effect.gen(function* () {
+      return scope === "thread"
+        ? yield* subscribeOrchestrationV2Thread({
+            threadId,
+            afterSequence: before!.sequence,
+            requestCompletionMarker: true,
+          }).pipe(Effect.flatMap(consume))
+        : yield* subscribeOrchestrationV2Shell({
+            afterSequence: before!.sequence,
+            requestCompletionMarker: true,
+          }).pipe(Effect.flatMap(consume));
+    });
+    const items = yield* subscription.pipe(
+      Effect.provideService(ThreadManagement.ThreadManagementService, {
+        ensureLegacyTranscript: () => Effect.void,
+        getShellSnapshot: () => Effect.die("shell resume must not load a full snapshot"),
+        listActiveSubagentThreadIds: () => Effect.succeed([]),
+        streamStoredEventsFrom: (
+          input: Parameters<
+            ThreadManagement.ThreadManagementService["Service"]["streamStoredEventsFrom"]
+          >[0],
+        ) => {
+          assert.equal(input?.afterSequence, highWater!.sequence);
+          return store
+            .streamApplicationEvents({ afterSequence: input?.afterSequence ?? 0 })
+            .pipe(Stream.filter((event): event is OrchestrationV2StoredEvent => "event" in event));
+        },
+      } as unknown as ThreadManagement.ThreadManagementService["Service"]),
+      Effect.provideService(ProjectStore.ProjectStoreV2, {
+        listShells: () => Effect.succeed([]),
+      } as unknown as ProjectStore.ProjectStoreV2["Service"]),
+      Effect.provideService(ProjectService.ProjectService, {
+        getShell: () => Effect.succeedSome(project),
+      } as unknown as ProjectService.ProjectService["Service"]),
+      Effect.provideService(ProjectEnrichment.ProjectEnrichmentService, {
+        subscribeChanges: PubSub.subscribe(updates),
+      } as ProjectEnrichment.ProjectEnrichmentService["Service"]),
+    );
+    assert.deepEqual(
+      items.map((item) => item.kind),
+      scope === "thread"
+        ? ["event", "synchronized", "event"]
+        : ["project.updated", "synchronized", "project.updated"],
+    );
+    assert.deepEqual(
+      items.flatMap((item) => (item.sequence === undefined ? [] : [item.sequence])),
+      [after!.sequence, liveSequence],
+    );
+  }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer));
+
+it.effect("thread resume skips unknown types, synchronizes, and receives the live tail", () =>
+  resumeSkipsUnknownTypes("thread"),
+);
+
+// Shell updates batch through `Stream.groupedWithin`, whose window needs real time to close.
+it.live("shell resume skips unknown types, synchronizes, and receives the live tail", () =>
+  resumeSkipsUnknownTypes("shell"),
 );
 
 it.effect("coalesces streaming replay before synchronization and the live tail", () =>
@@ -734,337 +659,6 @@ it.effect("shell snapshots omit idle children and older settled threads only on 
   }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer)),
 );
 
-// Build the production RPC layer; unrelated capabilities fail if this test calls them.
-const layerUnusedConfigRpcServices = Layer.mergeAll(
-  Layer.mock(DocumentText.DocumentText)({}),
-  Layer.mock(ServerSecretStore.ServerSecretStore)({}),
-  Layer.mock(WorkspacePaths.WorkspacePaths)({}),
-  Layer.mock(TraceDiagnostics.TraceDiagnostics)({}),
-  Layer.mock(ProjectFaviconResolver.ProjectFaviconResolver)({}),
-  Layer.mock(ProjectEnrichment.ProjectEnrichmentService)({}),
-  Layer.mock(AnalyticsService.AnalyticsService)({}),
-  Layer.mock(BackgroundPolicy.BackgroundPolicy)({}),
-  Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({}),
-  Layer.mock(CommandOutputHub.CommandOutputHub)({}),
-  Layer.mock(DeviceService.DeviceService)({}),
-  Layer.mock(EnvironmentTheme.EnvironmentThemeService)({}),
-  Layer.mock(GitWorkflowService.GitWorkflowService)({}),
-  Layer.mock(HostResources.HostResources)({}),
-  Layer.mock(McpAppRequests.McpAppRequests)({}),
-  Layer.mock(ModelManifest.ModelManifest)({}),
-  Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({}),
-  Layer.mock(Orchestrator.OrchestratorV2)({}),
-  Layer.mock(OtlpEndpointCheck.OtlpEndpointCheck)({}),
-  Layer.mock(PairingGrantStore.PairingGrantStore)({}),
-  Layer.mock(PreviewManager.PreviewManager)({}),
-  Layer.mock(ProcessDiagnostics.ProcessDiagnostics)({}),
-  Layer.mock(ProcessResourceMonitor.ProcessResourceMonitor)({}),
-  Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({}),
-  Layer.mock(ProjectService.ProjectService)({}),
-  Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
-  Layer.mock(ProjectStore.ProjectStoreV2)({}),
-  Layer.mock(ProviderAuthService.ProviderAuthService)({}),
-  Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({}),
-  Layer.mock(ProviderLatestVersions.ProviderLatestVersions)({}),
-  Layer.mock(ProviderMaintenanceRunner.ProviderMaintenanceRunner)({}),
-  Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({}),
-  Layer.mock(RelayClient.RelayClient)({}),
-  Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({}),
-  Layer.mock(ResourceTelemetry.ResourceTelemetry)({}),
-  Layer.mock(ReviewService.ReviewService)({}),
-  Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
-  Layer.mock(SecretRequests.SecretRequests)({}),
-  Layer.mock(GuestShareService.GuestShareService)({}),
-  Layer.mock(ServerLifecycleEvents.ServerLifecycleEvents)({}),
-  Layer.mock(ServerRuntimeStartup.ServerRuntimeStartup)({}),
-  Layer.mock(ServerSelfUpdate.ServerSelfUpdate)({}),
-  Layer.mock(SessionStore.SessionStore)({ cookieName: "config-test", legacyCookieName: undefined }),
-  Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
-  Layer.mock(StorageCleanup.StorageCleanup)({}),
-  Layer.mock(DatabaseStorage.DatabaseStorage)({}),
-  Layer.mock(TerminalManager.TerminalManager)({}),
-  Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
-  Layer.mock(ThreadManagement.ThreadManagementService)({}),
-  Layer.mock(ThreadSearch.ThreadSearch)({}),
-  Layer.mock(UsageService.UsageService)({}),
-  Layer.mock(VcsProvisioningService.VcsProvisioningService)({}),
-  Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
-  Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),
-  Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
-  Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),
-);
-
-const layerConfigSources = Layer.mergeAll(
-  Keybindings.layer,
-  AssetSigner.layer.pipe(Layer.provide(ServerSecretStore.layer)),
-  ServerSettings.layer.pipe(
-    Layer.provide(Layer.merge(ServerSecretStore.layer, ManagedPolicy.layerTest())),
-  ),
-).pipe(
-  Layer.provideMerge(Layer.fresh(SqlitePersistence.layerMemory)),
-  Layer.provideMerge(
-    Layer.fresh(
-      ServerConfigModule.layerTest(process.cwd(), { prefix: "t3-config-subscription-test-" }),
-    ),
-  ),
-  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
-);
-
-it.effect.each([
-  "pending",
-  "cached",
-  "direct-pending",
-  "direct-cached",
-  "direct-failed",
-  "direct-interrupted",
-] as const)(
-  "%s endpoint discovery preserves initial config and updates through discovery and ACK",
-  (discovery) =>
-    Effect.gen(function* () {
-      const keybindings = yield* Keybindings.Keybindings;
-      const settings = yield* ServerSettings.ServerSettingsService;
-      const keybindingsSubscribed = yield* Deferred.make<void>();
-      const settingsSubscribed = yield* Deferred.make<void>();
-      const keybindingsChanges = keybindings.subscribeChanges.pipe(
-        Effect.tap(() => Deferred.succeed(keybindingsSubscribed, undefined)),
-      );
-      const settingsChanges = settings.subscribeChanges.pipe(
-        Effect.tap(() => Deferred.succeed(settingsSubscribed, undefined)),
-      );
-      const initialKeybindings = (yield* keybindings.getSnapshot).keybindings;
-      const discoveryStarted = yield* Deferred.make<void>();
-      const finishDiscovery = yield* Deferred.make<void>();
-      const remoteDiscoveryStarted = yield* Deferred.make<void>();
-      const finishRemoteDiscovery = yield* Deferred.make<void>();
-      const targets = [{ kind: "mdns" as const, host: "test.local" }];
-      const direct = discovery.startsWith("direct-");
-      const bound = [{ kind: "lan" as const, httpBaseUrl: "http://192.168.1.10:3773/" }];
-      const endpoints = [
-        ...bound,
-        { kind: "tailnet" as const, httpBaseUrl: "https://test.ts.net/" },
-      ];
-      const directStarted = yield* Deferred.make<void>();
-      const finishDirect = yield* Deferred.make<void>();
-      const directStopped = yield* Deferred.make<void>();
-      const responses = yield* Queue.unbounded<ServerConfigStreamEvent>();
-      const configRpcServices = Layer.mergeAll(
-        layerUnusedConfigRpcServices,
-        Layer.mock(ExternalLauncher.ExternalLauncher)({
-          resolveAvailableEditors: () =>
-            Deferred.succeed(discoveryStarted, undefined).pipe(
-              Effect.andThen(Deferred.await(finishDiscovery)),
-              Effect.as([]),
-            ),
-          resolveFileManagerRevealKind: () => Effect.undefined,
-        }),
-        Layer.mock(ProviderRegistry.ProviderRegistry)({
-          getProviders: Effect.succeed([]),
-          streamChanges: Stream.never,
-        }),
-        Layer.mock(RemoteOpenTargets.RemoteOpenTargets)({
-          resolveTargets: () =>
-            Deferred.succeed(remoteDiscoveryStarted, undefined).pipe(
-              Effect.andThen(
-                discovery === "cached" || direct
-                  ? Effect.void
-                  : Deferred.await(finishRemoteDiscovery),
-              ),
-              Effect.as(targets),
-            ),
-        }),
-        Layer.mock(DirectEndpoints.DirectEndpoints)({
-          resolveAvailable: () => Effect.succeed(discovery === "direct-cached" ? endpoints : bound),
-          resolve: () =>
-            direct
-              ? Deferred.succeed(directStarted, undefined).pipe(
-                  Effect.andThen(
-                    discovery === "direct-cached" ? Effect.void : Deferred.await(finishDirect),
-                  ),
-                  Effect.andThen(
-                    discovery === "direct-failed"
-                      ? Effect.die("probe failed")
-                      : Effect.succeed(endpoints),
-                  ),
-                  Effect.onExit(() => Deferred.succeed(directStopped, undefined)),
-                )
-              : Effect.succeed(bound),
-        }),
-        Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
-          scratchRoot: Effect.succeedNone,
-          namedProjectsRoot: process.cwd(),
-        }),
-        Layer.mock(ScratchThreadPromotion.ScratchThreadPromotion)({}),
-        Layer.mock(ServerEnvironment.ServerEnvironment)({
-          getDescriptor: Effect.succeed({
-            environmentId: EnvironmentId.make("config-test"),
-            label: "Config test",
-            platform: { os: "linux", arch: "x64" },
-            serverVersion: "0.0.0",
-            minClient: "0.0.0",
-            capabilities: { repositoryIdentity: false },
-          }),
-        }),
-        Layer.mock(EnvironmentAuth.EnvironmentAuth)({
-          getDescriptor: () =>
-            Effect.succeed({
-              policy: "loopback-browser",
-              bootstrapMethods: [],
-              sessionMethods: ["browser-session-cookie"],
-              sessionCookieName: "config-test-session",
-            }),
-        }),
-        // Signal subscription on either accessor so the test also fails, rather
-        // than hangs, against a handler that subscribes after the snapshot.
-        Layer.succeed(Keybindings.Keybindings, {
-          ...keybindings,
-          streamChanges: Stream.unwrap(keybindingsChanges),
-          subscribeChanges: keybindingsChanges,
-        }),
-        Layer.succeed(ServerSettings.ServerSettingsService, {
-          ...settings,
-          streamChanges: Stream.unwrap(settingsChanges),
-          subscribeChanges: settingsChanges,
-        }),
-      );
-      const server = yield* RpcServer.makeNoSerialization(
-        RpcGroup.make(WsSubscribeServerConfigRpc),
-        {
-          ...WS_RPC_SERVER_OPTIONS,
-          onFromServer: (response) =>
-            response._tag === "Chunk"
-              ? Effect.forEach(response.values, (event) => Queue.offer(responses, event), {
-                  discard: true,
-                })
-              : Effect.void,
-        },
-      ).pipe(
-        Effect.provide(
-          layerWsRpc(
-            {
-              sessionId: AuthSessionId.make("config-test"),
-              subject: "config-test",
-              method: "browser-session-cookie",
-              scopes: [],
-            },
-            {},
-            yield* ServerBrowser.ServerBrowser,
-            () => Effect.void,
-            undefined,
-          ).pipe(Layer.provide(configRpcServices)),
-        ),
-      );
-      const requestId = RpcMessage.RequestId("config");
-      const acknowledge = server.write(0, { _tag: "Ack", requestId });
-      yield* server.write(0, {
-        _tag: "Request",
-        id: requestId,
-        tag: WS_METHODS.subscribeServerConfig,
-        payload: {},
-        headers: Headers.empty,
-      });
-      yield* Deferred.await(discoveryStarted);
-      assert.isTrue(yield* Deferred.isDone(remoteDiscoveryStarted));
-
-      const duringDiscovery = yield* settings.updateSettings({ defaultAutoPull: true });
-      yield* Deferred.succeed(finishDiscovery, undefined);
-      const snapshot = yield* Queue.take(responses);
-      assert.equal(snapshot.type, "snapshot");
-      if (snapshot.type !== "snapshot") return yield* Effect.die("Missing initial snapshot");
-      assert.deepEqual(
-        snapshot.config.remoteOpenTargets,
-        discovery === "cached" || direct ? targets : [],
-      );
-      assert.deepEqual(
-        snapshot.config.directEndpoints,
-        discovery === "direct-cached" ? endpoints : bound,
-      );
-      assert.isFalse(snapshot.config.settings.defaultAutoPull);
-      assert.deepEqual(snapshot.config.keybindings, initialKeybindings);
-      const duringAck = yield* keybindings.upsertKeybindingRule({
-        key: "mod+alt+y",
-        command: "terminal.toggle",
-      });
-      yield* acknowledge;
-      yield* Deferred.await(keybindingsSubscribed);
-      yield* Deferred.await(settingsSubscribed);
-
-      // Later updates expose a dropped buffered event as a value mismatch, not a timeout.
-      const latestSettings = yield* settings.updateSettings({ enableProviderUpdateChecks: false });
-      const latestKeybindings = yield* keybindings.upsertKeybindingRule({
-        key: "mod+alt+z",
-        command: "terminal.split",
-      });
-      const expectedSettings = [duringDiscovery, latestSettings].map((value) =>
-        ServerSettings.redactServerSettingsForClient(value),
-      );
-      const expectedKeybindings = [duringAck.keybindings, latestKeybindings.keybindings];
-      // The two sources can interleave, but each must retain its own publication order.
-      for (let i = 0; i < 4; i++) {
-        const event = yield* Queue.take(responses);
-        if (event.type === "settingsUpdated") {
-          assert.deepEqual(event.payload.settings, expectedSettings.shift());
-        } else {
-          assert.equal(event.type, "keybindingsUpdated");
-          if (event.type !== "keybindingsUpdated")
-            return yield* Effect.die("Unexpected config event");
-          assert.deepEqual(event.payload.keybindings, expectedKeybindings.shift());
-          assert.deepEqual(event.payload.issues, []);
-        }
-        yield* acknowledge;
-      }
-      assert.isEmpty(expectedSettings);
-      assert.isEmpty(expectedKeybindings);
-      if (discovery === "pending") {
-        yield* Deferred.await(remoteDiscoveryStarted);
-        yield* Deferred.succeed(finishRemoteDiscovery, undefined);
-        const resolved = yield* Queue.take(responses);
-        assert.equal(resolved.type, "snapshot");
-        if (resolved.type !== "snapshot") return yield* Effect.die("Missing remote targets");
-        assert.deepEqual(resolved.config.remoteOpenTargets, targets);
-        assert.deepEqual(
-          resolved.config.settings,
-          ServerSettings.redactServerSettingsForClient(latestSettings),
-        );
-        assert.deepEqual(resolved.config.keybindings, latestKeybindings.keybindings);
-        yield* acknowledge;
-      }
-      if (direct) {
-        yield* Deferred.await(directStarted);
-        if (discovery === "direct-pending") {
-          yield* Deferred.succeed(finishDirect, undefined);
-          const resolved = yield* Queue.take(responses);
-          assert.equal(resolved.type, "snapshot");
-          if (resolved.type !== "snapshot") return yield* Effect.die("Missing direct endpoints");
-          assert.deepEqual(resolved.config.directEndpoints, endpoints);
-          assert.deepEqual(
-            resolved.config.settings,
-            ServerSettings.redactServerSettingsForClient(latestSettings),
-          );
-          assert.deepEqual(resolved.config.keybindings, latestKeybindings.keybindings);
-          yield* acknowledge;
-        } else if (discovery === "direct-failed") {
-          yield* Deferred.succeed(finishDirect, undefined);
-          yield* Deferred.await(directStopped);
-          yield* settings.updateSettings({ defaultAutoPull: false });
-          const event = yield* Queue.take(responses);
-          assert.equal(event.type, "settingsUpdated");
-          yield* acknowledge;
-        }
-      }
-      yield* server.write(0, { _tag: "Interrupt", requestId, interruptors: [] });
-      if (direct) yield* Deferred.await(directStopped);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          Layer.fresh(layerConfigSources),
-          Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
-          Layer.mock(ServerBrowser.ServerBrowser)({}),
-        ),
-      ),
-      Effect.scoped,
-    ),
-);
-
 // Pruned history cannot be replayed: a cursor below the boundary must resync from a snapshot,
 // or, for a shell client that loads it over HTTP, be told to without the server building one.
 it.effect.each([
@@ -1217,39 +811,121 @@ it.effect.each(["thread", "shell"] as const)(
     }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer)),
 );
 
-// A thread idle since before the boundary missed nothing; resuming must not resend its body.
-it.effect("thread resume at its own high-water below the pruned boundary skips the snapshot", () =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const now = "2026-10-13T00:00:00.000Z";
-    const threadId = ThreadId.make("thread:idle");
-    const [last] = yield* sql<{ sequence: number }>`
-      INSERT INTO orchestration_events (
-        event_id, aggregate_kind, stream_id, stream_version, event_type,
-        occurred_at, actor_kind, payload_json, metadata_json, application_event_version
-      ) VALUES (
-        'idle:0', 'thread', ${threadId}, 0, 'provider-session.detached',
-        ${now}, 'server', ${JSON.stringify({ providerSessionId: "session:idle", detachedAt: now })},
-        '{}', 2
-      ) RETURNING sequence
-    `;
-    yield* sql`
-      INSERT INTO orchestration_v2_projection_metadata (
-        projection_name, schema_version, last_sequence, updated_at
-      ) VALUES (${OrchestrationEventStore.EVENT_LOG_PRUNED_THROUGH}, 2, ${last!.sequence + 10}, ${now})
-    `;
-    const exit = yield* subscribeOrchestrationV2Thread({
-      threadId,
-      afterSequence: last!.sequence,
-    }).pipe(
-      Effect.provideService(ThreadManagement.ThreadManagementService, {
-        ensureLegacyTranscript: () => Effect.void,
-        getThreadSnapshot: () => Effect.die("snapshot"),
-        streamStoredEventsFrom: () => Stream.empty,
-      } as unknown as ThreadManagement.ThreadManagementService["Service"]),
-      Effect.exit,
-    );
-    // A snapshot load dies with "snapshot", so success means the resume replayed nothing.
-    assert.isTrue(Exit.isSuccess(exit));
-  }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer)),
+// A cursor at the high-water missed nothing, even below the boundary; resuming must not resend
+// a snapshot. The shell cases are a client that just loaded the HTTP snapshot of a pruned
+// database: it gets the marker, and the project identities only when it does not name them.
+it.effect.each([
+  { scope: "thread", knowsIdentities: false, isRepository: true, kinds: [] },
+  {
+    scope: "shell",
+    knowsIdentities: false,
+    isRepository: true,
+    kinds: ["snapshot", "synchronized"],
+  },
+  { scope: "shell", knowsIdentities: true, isRepository: true, kinds: ["synchronized"] },
+  // The client keeps a cached identity over an absent one, so "resolved to none" still goes out.
+  {
+    scope: "shell",
+    knowsIdentities: true,
+    isRepository: false,
+    kinds: ["snapshot", "synchronized"],
+  },
+] as const)(
+  "$scope resume at its own high-water below the pruned boundary skips the snapshot (knows identities: $knowsIdentities, repository: $isRepository)",
+  ({ scope, knowsIdentities, isRepository, kinds }) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const now = "2026-10-13T00:00:00.000Z";
+      const threadId = ThreadId.make("thread:idle");
+      const [last] = yield* sql<{ sequence: number }>`
+        INSERT INTO orchestration_events (
+          event_id, aggregate_kind, stream_id, stream_version, event_type,
+          occurred_at, actor_kind, payload_json, metadata_json, application_event_version
+        ) VALUES (
+          'idle:0', 'thread', ${threadId}, 0, 'provider-session.detached',
+          ${now}, 'server', ${JSON.stringify({ providerSessionId: "session:idle", detachedAt: now })},
+          '{}', 2
+        ) RETURNING sequence
+      `;
+      yield* sql`
+        INSERT INTO orchestration_v2_projection_metadata (
+          projection_name, schema_version, last_sequence, updated_at
+        ) VALUES (${OrchestrationEventStore.EVENT_LOG_PRUNED_THROUGH}, 2, ${last!.sequence + 10}, ${now})
+      `;
+      const identity = isRepository
+        ? ({
+            canonicalKey: "github.com/t3/idle",
+            locator: {
+              source: "git-remote",
+              remoteName: "origin",
+              remoteUrl: "git@github.com:t3/idle",
+            },
+          } as const)
+        : null;
+      const project = {
+        id: ProjectId.make("project:idle"),
+        title: "Idle",
+        workspaceRoot: "/tmp/idle",
+        defaultModelSelection: null,
+        scripts: [],
+        createdAt: now,
+        updatedAt: now,
+      } satisfies OrchestrationProjectShell;
+      const subscription = Effect.gen(function* () {
+        if (scope === "thread") {
+          return yield* subscribeOrchestrationV2Thread({
+            threadId,
+            afterSequence: last!.sequence,
+          }).pipe(Effect.as([]));
+        }
+        const stream = yield* subscribeOrchestrationV2Shell({
+          afterSequence: last!.sequence,
+          requestCompletionMarker: true,
+          ...(knowsIdentities
+            ? {
+                knownProjectIdentities: projectIdentitiesDigest([
+                  { ...project, repositoryIdentity: identity },
+                ]),
+              }
+            : {}),
+        });
+        return yield* stream.pipe(
+          Stream.takeUntil((item) => item.kind === "synchronized"),
+          Stream.map((item) => item.kind),
+          Stream.runCollect,
+        );
+      });
+      const exit = yield* subscription.pipe(
+        Effect.provideService(ThreadManagement.ThreadManagementService, {
+          ensureLegacyTranscript: () => Effect.void,
+          getThreadSnapshot: () => Effect.die("snapshot"),
+          listActiveShellIndex: () => Effect.die("snapshot"),
+          readShellSnapshot: () => Effect.die("snapshot"),
+          listActiveSubagentThreadIds: () => Effect.succeed([]),
+          streamStoredEventsFrom: () => Stream.empty,
+        } as unknown as ThreadManagement.ThreadManagementService["Service"]),
+        Effect.provideService(ProjectStore.ProjectStoreV2, {
+          listShells: () => Effect.succeed([project]),
+        } as unknown as ProjectStore.ProjectStoreV2["Service"]),
+        Effect.provideService(
+          ProjectService.ProjectService,
+          {} as ProjectService.ProjectService["Service"],
+        ),
+        Effect.provideService(ProjectEnrichment.ProjectEnrichmentService, {
+          subscribeChanges: PubSub.subscribe(yield* PubSub.unbounded()),
+          getAvailable: () =>
+            Effect.succeed({
+              repositoryIdentity: identity,
+              faviconPath: null,
+              repositoryIdentityResolved: true,
+            }),
+        } as unknown as ProjectEnrichment.ProjectEnrichmentService["Service"]),
+        Effect.exit,
+      );
+      // A snapshot load dies with "snapshot", so success means the resume replayed nothing.
+      assert.deepEqual(
+        Exit.isFailure(exit) ? Cause.squash(exit.cause) : Array.from(exit.value),
+        kinds,
+      );
+    }).pipe(Effect.scoped, Effect.provide(ReplayTestLayer)),
 );

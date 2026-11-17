@@ -44,6 +44,7 @@ function summary(
     hostId: string;
     homePath: string;
     volumeId?: string;
+    physicalSourceId?: string;
     distinctSessions?: number;
   }[],
   contractVersion: number = USAGE_CONTRACT_VERSION,
@@ -61,6 +62,9 @@ function summary(
         provider: source.provider,
         resolvedHomePath: source.homePath,
         volumeId: source.volumeId ?? `vol-${source.hostId}`,
+        ...(source.physicalSourceId === undefined
+          ? {}
+          : { physicalSourceId: source.physicalSourceId }),
       },
       status: "ok" as const,
       scannedFiles: 1,
@@ -84,11 +88,17 @@ describe("mergeUsage", () => {
       [
         environment(
           "env-a",
-          summary([bucket()], [{ provider: "opencode", hostId: "mac", homePath: "/a/.claude" }]),
+          summary(
+            [bucket()],
+            [{ provider: "opencode", hostId: "mac", homePath: "/a/.local/share/opencode" }],
+          ),
         ),
         environment(
           "env-b",
-          summary([bucket()], [{ provider: "opencode", hostId: "linux", homePath: "/b/.claude" }]),
+          summary(
+            [bucket()],
+            [{ provider: "opencode", hostId: "linux", homePath: "/b/.local/share/opencode" }],
+          ),
         ),
       ],
       USAGE_CONTRACT_VERSION,
@@ -100,7 +110,11 @@ describe("mergeUsage", () => {
   });
 
   it("counts a shared transcript directory once", () => {
-    const shared = { provider: "opencode" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const shared = {
+      provider: "opencode" as const,
+      hostId: "mac",
+      homePath: "/home/theo/.local/share/opencode",
+    };
     const merged = mergeUsage(
       [
         environment("env-a", summary([bucket()], [shared])),
@@ -142,7 +156,11 @@ describe("mergeUsage", () => {
   });
 
   it("uses the newest scan when environments share the same transcript directory", () => {
-    const source = { provider: "opencode" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const source = {
+      provider: "opencode" as const,
+      hostId: "mac",
+      homePath: "/home/theo/.local/share/opencode",
+    };
     const environments = [
       environment("env-a", summary([bucket({ costUsd: 4, records: 2 })], [source])),
       environment("env-b", {
@@ -157,12 +175,16 @@ describe("mergeUsage", () => {
       expect(merged.records).toBe(5);
       expect(merged.sessions).toBe(1);
       expect(merged.contributingEnvironments).toEqual(["env-b"]);
-      expect(merged.duplicateSources).toEqual(["env-a: /home/theo/.claude"]);
+      expect(merged.duplicateSources).toEqual(["env-a: /home/theo/.local/share/opencode"]);
     }
   });
 
   it("prefers a complete scan over a newer partial scan of the same directory", () => {
-    const source = { provider: "opencode" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const source = {
+      provider: "opencode" as const,
+      hostId: "mac",
+      homePath: "/home/theo/.local/share/opencode",
+    };
     const incomplete = summary([bucket({ costUsd: 4, records: 2 })], [source]);
     const partial = environment("new", {
       ...incomplete,
@@ -178,13 +200,17 @@ describe("mergeUsage", () => {
       const merged = mergeUsage(ordered, USAGE_CONTRACT_VERSION);
       expect(merged.costUsd).toBe(10);
       expect(merged.contributingEnvironments).toEqual(["old"]);
-      expect(merged.duplicateSources).toEqual(["new: /home/theo/.claude"]);
+      expect(merged.duplicateSources).toEqual(["new: /home/theo/.local/share/opencode"]);
     }
     expect(mergeUsage([partial], USAGE_CONTRACT_VERSION).costUsd).toBe(4);
   });
 
   it("keeps new cells from a later partial scan without recounting older cells", () => {
-    const source = { provider: "opencode" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const source = {
+      provider: "opencode" as const,
+      hostId: "mac",
+      homePath: "/home/theo/.local/share/opencode",
+    };
     const complete = environment(
       "old",
       summary([bucket()], [source], USAGE_MERGE_COMPATIBLE_SINCE),
@@ -222,7 +248,7 @@ describe("mergeUsage", () => {
       expect(merged.contributingEnvironments).toEqual(
         ordered.map(({ environmentId }) => environmentId),
       );
-      expect(merged.duplicateSources).toEqual(["new: /home/theo/.claude"]);
+      expect(merged.duplicateSources).toEqual(["new: /home/theo/.local/share/opencode"]);
     }
 
     const filtered = environment("new", {
@@ -235,7 +261,11 @@ describe("mergeUsage", () => {
   });
 
   it("retains a complete cell when a larger partial cell may have skipped old records", () => {
-    const source = { provider: "opencode" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const source = {
+      provider: "opencode" as const,
+      hostId: "mac",
+      homePath: "/home/theo/.local/share/opencode",
+    };
     const complete = environment("old", summary([bucket()], [source]));
     const partialSummary = summary(
       [
@@ -442,7 +472,7 @@ describe("mergeUsage", () => {
               }),
             ],
             [
-              { provider: "opencode", hostId: "mac", homePath: "/a/.claude" },
+              { provider: "opencode", hostId: "mac", homePath: "/a/.local/share/opencode" },
               { provider: "opencode", hostId: "mac", homePath: "/a/.codex" },
             ],
           ),
@@ -479,7 +509,7 @@ describe("mergeUsage", () => {
               }),
             ],
             [
-              { provider: "opencode", hostId: "mac", homePath: "/a/.claude" },
+              { provider: "opencode", hostId: "mac", homePath: "/a/.local/share/opencode" },
               { provider: "opencode", hostId: "mac", homePath: "/a/.codex" },
             ],
           ),
@@ -512,7 +542,7 @@ describe("mergeUsage", () => {
               }),
             ],
             [
-              { provider: "opencode", hostId: "mac", homePath: "/a/.claude" },
+              { provider: "opencode", hostId: "mac", homePath: "/a/.local/share/opencode" },
               { provider: "opencode", hostId: "mac", homePath: "/a/.codex" },
             ],
           ),
@@ -555,7 +585,7 @@ describe("mergeUsage", () => {
               }),
             ],
             [
-              { provider: "opencode", hostId: "mac", homePath: "/a/.claude" },
+              { provider: "opencode", hostId: "mac", homePath: "/a/.local/share/opencode" },
               { provider: "opencode", hostId: "mac", homePath: "/a/.codex" },
             ],
           ),
@@ -564,7 +594,7 @@ describe("mergeUsage", () => {
           "env-b",
           summary(
             [bucket({ costUsd: 5 })],
-            [{ provider: "opencode", hostId: "linux", homePath: "/b/.claude" }],
+            [{ provider: "opencode", hostId: "linux", homePath: "/b/.local/share/opencode" }],
             USAGE_MERGE_COMPATIBLE_SINCE,
           ),
         ),
@@ -598,7 +628,7 @@ describe("mergeUsage", () => {
               bucket({ provider: "opencode", model: "higher-cost", costUsd: 9 }),
             ],
             [
-              { provider: "opencode", hostId: "mac", homePath: "/a/.claude" },
+              { provider: "opencode", hostId: "mac", homePath: "/a/.local/share/opencode" },
               { provider: "opencode", hostId: "mac", homePath: "/a/.codex" },
             ],
           ),
@@ -611,7 +641,11 @@ describe("mergeUsage", () => {
   });
 
   it("keeps two machines apart when hostname and home path collide", () => {
-    const shape = { provider: "opencode" as const, hostId: "mac", homePath: "/Users/theo/.claude" };
+    const shape = {
+      provider: "opencode" as const,
+      hostId: "mac",
+      homePath: "/Users/theo/.local/share/opencode",
+    };
     const merged = mergeUsage(
       [
         environment("env-a", summary([bucket()], [{ ...shape, volumeId: "16777220:1234" }])),
@@ -624,11 +658,148 @@ describe("mergeUsage", () => {
     expect(merged.duplicateSources).toHaveLength(0);
   });
 
+  describe("one directory seen from both sides of a Windows and WSL boundary", () => {
+    // Fingerprints the reporter captured for one NTFS directory, read natively by
+    // Windows and through the drvfs mount by WSL. Path and dev:ino both differ.
+    const physicalSourceId = "physical-claude-projects";
+    const windows = {
+      provider: "opencode" as const,
+      hostId: "MainPC",
+      homePath: "C:\\Users\\user\\.claude\\projects",
+      volumeId: "1280555009:3659174697951285",
+      physicalSourceId,
+      distinctSessions: 142,
+    };
+    const wsl = {
+      provider: "opencode" as const,
+      hostId: "MainPC",
+      homePath: "/mnt/c/Users/user/.local/share/opencode/projects",
+      volumeId: "112:3659174697951287",
+      physicalSourceId,
+      distinctSessions: 142,
+    };
+
+    it("counts it once, whichever scan is newer", () => {
+      const environments = [
+        environment(
+          "windows",
+          summary([bucket({ sourcePath: windows.homePath, records: 22433 })], [windows]),
+        ),
+        environment("wsl", {
+          ...summary([bucket({ sourcePath: wsl.homePath, records: 22432 })], [wsl]),
+          readAt: "2026-08-07T00:05:00.000Z",
+        }),
+      ];
+
+      for (const ordered of [environments, environments.toReversed()]) {
+        const merged = mergeUsage(ordered, USAGE_CONTRACT_VERSION);
+        expect(merged.sessions).toBe(142);
+        expect(merged.records).toBe(22432);
+        expect(merged.costUsd).toBe(10);
+        expect(merged.contributingEnvironments).toEqual(["wsl"]);
+        expect(merged.duplicateSources).toEqual([`windows: ${windows.homePath}`]);
+      }
+    });
+
+    it("keeps only new cells from a later partial scan through the other side", () => {
+      const complete = environment(
+        "windows",
+        summary([bucket({ sourcePath: windows.homePath })], [windows]),
+      );
+      const partialSummary = summary(
+        [
+          bucket({ sourcePath: wsl.homePath, costUsd: 4, records: 2 }),
+          bucket({ day: "2026-08-08" as UsageDay, sourcePath: wsl.homePath, costUsd: 3 }),
+        ],
+        [{ ...wsl, distinctSessions: 143 }],
+      );
+      const partial = environment("wsl", {
+        ...partialSummary,
+        readAt: "2026-08-08T01:00:00.000Z",
+        sources: partialSummary.sources.map((entry) => ({ ...entry, status: "partial" as const })),
+      });
+
+      const merged = mergeUsage([complete, partial], USAGE_CONTRACT_VERSION);
+      expect(merged.costUsd).toBe(13);
+      expect(merged.sessions).toBe(143);
+      expect(merged.daily.map(({ day, costUsd }) => [day, costUsd])).toEqual([
+        ["2026-08-07", 10],
+        ["2026-08-08", 3],
+      ]);
+    });
+
+    it("counts it once when one server reaches it through two mounts", () => {
+      const secondMount = {
+        ...wsl,
+        homePath: "/mnt/win/Users/user/.local/share/opencode/projects",
+      };
+      const merged = mergeUsage(
+        [
+          environment(
+            "wsl",
+            summary(
+              [
+                bucket({ sourcePath: wsl.homePath }),
+                bucket({
+                  day: "2026-08-08" as UsageDay,
+                  sourcePath: secondMount.homePath,
+                  costUsd: 3,
+                }),
+              ],
+              [wsl, secondMount],
+            ),
+          ),
+        ],
+        USAGE_CONTRACT_VERSION,
+      );
+
+      expect(merged.costUsd).toBe(10);
+      expect(merged.sessions).toBe(142);
+      expect(merged.daily.map(({ day }) => day)).toEqual(["2026-08-07"]);
+      expect(merged.duplicateSources).toEqual([`wsl: ${secondMount.homePath}`]);
+    });
+
+    it("still counts a shared directory once when only one server reports physical identity", () => {
+      const { physicalSourceId: _omitted, ...legacy } = windows;
+      const merged = mergeUsage(
+        [
+          environment("desktop", summary([bucket({ sourcePath: windows.homePath })], [windows])),
+          environment("standalone", summary([bucket({ sourcePath: legacy.homePath })], [legacy])),
+        ],
+        USAGE_CONTRACT_VERSION,
+      );
+
+      expect(merged.costUsd).toBe(10);
+      expect(merged.sessions).toBe(142);
+      expect(merged.duplicateSources).toHaveLength(1);
+    });
+
+    it("counts it once when two desktop installs with different scopes read it", () => {
+      const merged = mergeUsage(
+        [
+          environment("packaged", summary([bucket({ sourcePath: windows.homePath })], [windows])),
+          environment(
+            "dev-build",
+            summary(
+              [bucket({ sourcePath: windows.homePath })],
+              [{ ...windows, physicalSourceId: "physical-other-scope" }],
+            ),
+          ),
+        ],
+        USAGE_CONTRACT_VERSION,
+      );
+
+      expect(merged.costUsd).toBe(10);
+      expect(merged.sessions).toBe(142);
+      expect(merged.duplicateSources).toHaveLength(1);
+    });
+  });
+
   it("still collapses two servers reading the same directory", () => {
     const same = {
       provider: "opencode" as const,
       hostId: "mac",
-      homePath: "/Users/theo/.claude",
+      homePath: "/Users/theo/.local/share/opencode",
       volumeId: "16777220:1234",
     };
     const merged = mergeUsage(
@@ -654,7 +825,7 @@ describe("mergeUsage", () => {
               {
                 provider: "opencode",
                 hostId: "mac",
-                homePath: "/a/.claude",
+                homePath: "/a/.local/share/opencode",
                 distinctSessions: 1,
               },
             ],
@@ -686,7 +857,7 @@ describe("mergeUsage", () => {
               {
                 provider: "opencode",
                 hostId: "mac",
-                homePath: "/a/.claude",
+                homePath: "/a/.local/share/opencode",
                 distinctSessions: 0,
               },
             ],
@@ -709,7 +880,7 @@ describe("mergeUsage", () => {
               bucket({ hourStart: "2026-08-07T09:37:00.000Z", costUsd: 3 }),
               bucket({ hourStart: "2026-08-07T10:37:00.000Z", costUsd: 7 }),
             ],
-            [{ provider: "opencode", hostId: "mac", homePath: "/a/.claude" }],
+            [{ provider: "opencode", hostId: "mac", homePath: "/a/.local/share/opencode" }],
           ),
         ),
       ],

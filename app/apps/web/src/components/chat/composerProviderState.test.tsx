@@ -6,13 +6,12 @@ import {
   type ProviderOptionSelection,
   type ServerProviderModel,
 } from "@t3tools/contracts";
-import { getProviderOptionDescriptors } from "@t3tools/shared/model";
+import { getProviderOptionDescriptors, withImplicitFastModeDefault } from "@t3tools/shared/model";
 import { getProviderModelCapabilities } from "../../providerModels";
 import {
   getComposerProviderState,
   getComposerReasoningStep,
   resolveComposerTraitsInput,
-  withImplicitFastModeDefault,
 } from "./composerProviderState";
 const PROVIDER: ProviderDriverKind = ProviderDriverKind.make("opencode");
 const MODEL = "test-model";

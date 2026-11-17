@@ -1,22 +1,24 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import * as NodeAsyncHooks from "node:async_hooks";
 
 // The T3 and OpenCode bundles share an isolate but have separate module graphs.
 const key = Symbol.for("baskule.bootScheduler");
-const owners = globalThis[key] ??= new AsyncLocalStorage();
+const owners = (globalThis[key] ??= new NodeAsyncHooks.AsyncLocalStorage());
 
-/** Capture a Promise dispatcher while the caller's boot event is retained with waitUntil (#258). */
+/** Capture a Promise dispatcher while the caller's boot event is retained with waitUntil. */
 export function withBootScheduler(run, signal) {
   let pending = [];
   let wake;
   const arm = () => {
-    new Promise(resolve => { wake = resolve; }).then(() => {
+    new Promise((resolve) => {
+      wake = resolve;
+    }).then(() => {
       const batch = pending;
       pending = [];
       if (!signal?.aborted) arm();
       for (const start of batch) start();
     });
   };
-  const schedule = task => {
+  const schedule = (task) => {
     if (signal?.aborted) throw new Error("OpenCode boot scheduler is closed");
     let cancelled = false;
     let cancel;
@@ -31,9 +33,15 @@ export function withBootScheduler(run, signal) {
       }
     });
     wake();
-    return () => { cancelled = true; cancel?.(); };
+    return () => {
+      cancelled = true;
+      cancel?.();
+    };
   };
-  return owners.run(schedule, () => { arm(); return run(); });
+  return owners.run(schedule, () => {
+    arm();
+    return run();
+  });
 }
 
 /** Bind once per fiber dispatcher; a foreign request must not take ownership of its next yield. */

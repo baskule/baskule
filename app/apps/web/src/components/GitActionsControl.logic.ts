@@ -3,6 +3,7 @@ import { t } from "../i18n";
 import type {
   GitRunStackedActionResult,
   GitStackedAction,
+  ReviewDiffPreviewSource,
   VcsStatusResult,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
@@ -119,6 +120,55 @@ export function buildMenuItems(
   }));
 }
 
+export function getMenuActionDisabledReason({
+  item,
+  gitStatus,
+  isBusy,
+  hasPrimaryRemote,
+}: {
+  item: GitActionMenuItem;
+  gitStatus: VcsStatusResult | null;
+  isBusy: boolean;
+  hasPrimaryRemote: boolean;
+}): string | null {
+  if (!item.disabled) return null;
+  if (isBusy) return t("Git action in progress.");
+  if (!gitStatus) return t("Git status is unavailable.");
+
+  const hasBranch = gitStatus.refName !== null;
+  const hasChanges = gitStatus.hasWorkingTreeChanges;
+  const isAhead = gitStatus.aheadCount > 0;
+  const isBehind = gitStatus.behindCount > 0;
+
+  if (item.id === "commit") {
+    if (!hasChanges) {
+      return t("Worktree is clean. Make changes before committing.");
+    }
+    return t("Commit is currently unavailable.");
+  }
+
+  if (item.id === "push") {
+    if (!hasBranch) {
+      return t("Detached HEAD: check out a branch before pushing.");
+    }
+    if (isBehind) {
+      return t("Branch is behind upstream. Pull/rebase before pushing.");
+    }
+    if (hasChanges) {
+      return t("Commit or stash local changes before pushing.");
+    }
+    if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
+      return t('Add an "origin" remote before pushing.');
+    }
+    if (!isAhead) {
+      return t("No local commits to push.");
+    }
+    return t("Push is currently unavailable.");
+  }
+
+  return null;
+}
+
 export function hasUsableGitMenuContent(input: {
   readonly menuItems: readonly GitActionMenuItem[];
   readonly canWriteSourceControl: boolean;
@@ -166,16 +216,22 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   };
 }
 
-/** Clean trees cannot create feature branches because the server derives names from uncommitted changes. */
+/** The server names a feature branch from the commit it makes, so the action must commit changes. */
 export function resolveFeatureBranchUnavailableReason(input: {
+  action: DefaultBranchConfirmableAction;
   branchName: string;
   hasWorkingTreeChanges: boolean;
 }): string | null {
-  if (input.hasWorkingTreeChanges) return null;
-  return t(
-    "There are no changes to commit, so a feature branch can't be named. Create a branch yourself or continue on {{branchName}}.",
-    { branchName: input.branchName },
-  );
+  if (!input.hasWorkingTreeChanges) {
+    return t(
+      "There are no changes to commit, so a feature branch can't be named. Create a branch yourself or continue on {{branchName}}.",
+      { branchName: input.branchName },
+    );
+  }
+  if (input.action === "push") {
+    return `This action doesn't commit your changes, so a feature branch can't be named. Create a branch yourself or continue on ${input.branchName}.`;
+  }
+  return null;
 }
 
 export function resolveThreadBranchUpdate(
@@ -239,9 +295,21 @@ export type ChangesLineTotals = {
 
 // `branchChanges ?? workingTree` treats `{0,0}` as present, so a zero branch total hid a dirty
 // working tree and the Changes row read +0 while Diff still showed the work.
+// The Diff panel's branch comparison wins when it has file stats, so a remembered base or
+// hidden whitespace reads the same in the row as in the panel.
 export function resolveChangesTotals(
   status: VcsStatusResult | null | undefined,
+  branchPreview?: ReviewDiffPreviewSource | null,
 ): ChangesLineTotals | null {
+  if (branchPreview?.files) {
+    let insertions = 0;
+    let deletions = 0;
+    for (const file of branchPreview.files) {
+      insertions += file.additions;
+      deletions += file.deletions;
+    }
+    return { insertions, deletions, baseRef: branchPreview.baseRef };
+  }
   if (!status) return null;
   const branch = status.branchChanges;
   const tree = { ...status.workingTree, baseRef: null };

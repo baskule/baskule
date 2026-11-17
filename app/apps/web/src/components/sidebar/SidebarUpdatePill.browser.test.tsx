@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
   return {
     update: null as DesktopUpdateState | null,
     hasUpdates: false,
+    rows: new Array<import("./updateEverything.logic").UpdateEverythingRow>(),
     confirm: vi.fn<() => Promise<boolean>>(),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
@@ -44,12 +45,22 @@ vi.mock("./useUpdateEverything", () => ({
     summary: "Update everything",
     version: null,
     providerCount: 0,
-    rows: [],
+    rows: mocks.rows,
     restarts: [],
   }),
 }));
 
-function setup(update: DesktopUpdateState | null, { hasUpdates = false } = {}) {
+function setup(
+  update: DesktopUpdateState | null,
+  {
+    hasUpdates = false,
+    rows = [],
+  }: {
+    hasUpdates?: boolean;
+    rows?: ReadonlyArray<import("./updateEverything.logic").UpdateEverythingRow>;
+  } = {},
+) {
+  mocks.rows = [...rows];
   mocks.update = update;
   mocks.hasUpdates = hasUpdates;
   mocks.confirm.mockReset();
@@ -140,5 +151,23 @@ describe("SidebarUpdatePill update everything", () => {
 
     await userEvent.keyboard("{Escape}");
     await vi.waitFor(() => expect(document.activeElement).toBe(button.element()));
+  });
+
+  it("exposes the machines as a table with each value in its column", async () => {
+    const label = "DESKTOP-WORKSTATION-UPSTAIRS";
+    setup(null, {
+      hasUpdates: true,
+      rows: [{ environmentId: null, label, app: "this-app", skipped: null, providers: ["Claude"] }],
+    });
+    await using screen = await render(<SidebarUpdatePill />);
+    await userEvent.click(screen.getByRole("button", { name: "Update everything" }));
+
+    const table = page.getByRole("table");
+    await expect.element(table.getByRole("columnheader", { name: "Machine" })).toBeVisible();
+    await expect.element(table.getByRole("columnheader", { name: "T3 Code" })).toBeVisible();
+    await expect.element(table.getByRole("columnheader", { name: "Providers" })).toBeVisible();
+    const row = table.getByRole("row", { name: new RegExp(label) });
+    await expect.element(row.getByRole("cell", { name: label, exact: true })).toBeVisible();
+    await expect.element(row.getByRole("cell", { name: "Claude", exact: true })).toBeVisible();
   });
 });

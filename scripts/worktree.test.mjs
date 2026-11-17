@@ -22,14 +22,14 @@ function fixture(t) {
   run("git", ["add", "."]);
   run("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "fixture"]);
   mkdirSync(join(tools, "bin"), { recursive: true });
-  mkdirSync(join(tools, "node-v26.12.1-linux-x64/bin"), { recursive: true });
+  mkdirSync(join(tools, "node-v26.13.1-linux-x64/bin"), { recursive: true });
   mkdirSync(join(tools, "pnpm-12.14.0/node_modules/.bin"), { recursive: true });
   mkdirSync(join(tools, "pnpm-12.14.0/node_modules/pnpm"));
   writeFileSync(join(tools, "pnpm-12.14.0/node_modules/pnpm/package.json"), '{"version":"12.14.0"}');
   writeFileSync(join(tools, "bin/celld"), '#!/bin/sh\necho 0.6.3\n', { mode: 0o755 });
   writeFileSync(join(tools, "bin/curl"), '#!/bin/sh\necho "unexpected tool download" >&2\nexit 1\n', { mode: 0o755 });
   writeFileSync(join(tools, "bin/celld.source"), 'ghcr.io/denoland/celld:0.6.3@sha256:22bca1b40a9e4c434cc149d8913d7eaafa9792961a8c05f9fecf921d416216dc\n');
-  symlinkSync(process.execPath, join(tools, "node-v26.12.1-linux-x64/bin/node"));
+  symlinkSync(process.execPath, join(tools, "node-v26.13.1-linux-x64/bin/node"));
   writeFileSync(join(tools, "pnpm-12.14.0/node_modules/.bin/pnpm"), `#!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";

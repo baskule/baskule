@@ -28,6 +28,11 @@ describe("DesktopUpdateStateSchema", () => {
       notAppliedVersion: "1.0.1",
       blockedByPolicy: "updates",
     } satisfies Required<DesktopUpdateState>;
-    expect(encodeUpdateState(state)).toEqual(state);
+    for (const blockedByPolicy of ["updates", "channel"] as const) {
+      expect(encodeUpdateState({ ...state, blockedByPolicy })).toEqual({
+        ...state,
+        blockedByPolicy,
+      });
+    }
   });
 });

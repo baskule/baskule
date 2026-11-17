@@ -10,7 +10,7 @@ if [[ -z ${BASKULE_SHARED:-} ]]; then
   fi
 fi
 export BASKULE_SHARED
-BASKULE_NODE=node-v26.12.1-linux-x64
+BASKULE_NODE=node-v26.13.1-linux-x64
 BASKULE_PNPM=pnpm-12.14.0
 export PATH="$BASKULE_ROOT/.tools/$BASKULE_PNPM/node_modules/.bin:$BASKULE_ROOT/.tools/bin:$BASKULE_ROOT/.tools/$BASKULE_NODE/bin:$PATH"
 export pnpm_config_store_dir="${BASKULE_PNPM_STORE:-$BASKULE_SHARED/cache/pnpm-store}"

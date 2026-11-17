@@ -34,6 +34,23 @@ describe("fallbackTextGenerationModelSelection", () => {
     expect(
       fallbackTextGenerationModelSelection({}, (instanceId) => instanceId === "opencode"),
     ).toEqual({ instanceId: "opencode", model: "openai/gpt-5" });
+    const threadDefault = {
+      instanceId: ProviderInstanceId.make("opencode"),
+      model: "opencode-go/glm-5.3",
+    };
+    expect(
+      fallbackTextGenerationModelSelection(
+        {
+          [threadDefault.instanceId]: {
+            driver: ProviderDriverKind.make("opencode"),
+            config: { customModels: [threadDefault.model] },
+          },
+        },
+        (instanceId, _driver, model) =>
+          instanceId === "opencode" && !model.startsWith("opencode-go/"),
+        { defaultModelSelection: threadDefault },
+      ),
+    ).toEqual({ instanceId: "opencode", model: "openai/gpt-5" });
   });
 
   it("replaces and clears the fallback without carrying model options", () => {
@@ -55,9 +72,9 @@ describe("fallbackTextGenerationModelSelection", () => {
     ).toBeNull();
   });
   it("ignores a configured non-default instance at machine scope, matching no fallback", () => {
-    const configured = ProviderInstanceId.make("codex_work");
+    const configured = ProviderInstanceId.make("opencode_work");
     const providerInstances = {
-      [configured]: { driver: ProviderDriverKind.make("codex"), config: {} },
+      [configured]: { driver: ProviderDriverKind.make("opencode"), config: {} },
     };
     const fallback = fallbackTextGenerationModelSelection(
       providerInstances,
@@ -355,6 +372,23 @@ describe("serverSettings helpers", () => {
       settings.textGenerationModelSelection,
     );
     expect(settings.sourceControlWriterModelSelection).toBe(sourceControlWriterModelSelection);
+  });
+
+  it("falls back from a removed instance whose id matches an inherited object key", () => {
+    for (const id of ["constructor", "toString", "valueOf"]) {
+      const speechPostProcessingModelSelection = createModelSelection(
+        ProviderInstanceId.make(id),
+        "gpt-5.4-mini",
+      );
+      const settings = { ...DEFAULT_SERVER_SETTINGS, speechPostProcessingModelSelection };
+
+      expect(isModelSelectionProviderEnabled(settings, speechPostProcessingModelSelection)).toBe(
+        false,
+      );
+      expect(resolveSpeechPostProcessingModelSelection(settings)).toBe(
+        settings.textGenerationModelSelection,
+      );
+    }
   });
 
   it("falls back from a writer provider that cannot generate application text", () => {

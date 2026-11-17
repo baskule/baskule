@@ -79,6 +79,7 @@ export function SettingsListScreen(props: {
   readonly sidebar: boolean;
   readonly selected: string | null;
 }) {
+  const t = useTranslation();
   const workspace = useWorkspaceTabs();
   const environmentMenu = useSettingsEnvironmentMenu();
   return (
@@ -120,10 +121,10 @@ function ConfiguredSettingsRouteScreen() {
   const { user } = useUser();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const accountLabel = !isLoaded
-    ? "Checking"
+    ? t("Checking")
     : !isSignedIn
-      ? "Sign in"
-      : (user?.primaryEmailAddress?.emailAddress ?? "Signed in");
+      ? t("Sign in")
+      : (user?.primaryEmailAddress?.emailAddress ?? t("Signed in"));
 
   return (
     <SettingsList
@@ -338,12 +339,13 @@ function useSettingsIndexSections(): SettingsListSection[] {
         selectedTargets.some((target) => target.environmentId === project.environmentId),
       ) ?? [];
   const projectLabel =
-    scopedProjectMembers.length > 0
+    selectedProject && scopedProjectMembers.length > 0
       ? deriveProjectGroupLabel({
+          groupKey: selectedProject.key,
           representative: scopedProjectMembers[0]!,
           members: scopedProjectMembers,
         })
-      : (selectedProject?.label ?? "Unavailable project");
+      : (selectedProject?.label ?? t("Unavailable project"));
   const page = (
     target: SettingsPageTarget,
     icon: SettingsListRow["icon"],

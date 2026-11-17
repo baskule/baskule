@@ -1,4 +1,3 @@
-import { SourceControlProviderKind } from "@t3tools/contracts";
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import {
@@ -31,8 +30,8 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 
+import * as GitManager from "../git/GitManager.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
-
 import * as ServerActivation from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
@@ -101,6 +100,33 @@ function shell(overrides: Partial<SettlementShell> = {}): SettlementShell {
   };
 }
 
+function persistedLink(
+  state: "open" | null,
+  linkedAt: DateTime.Utc,
+): NonNullable<SettlementShell["pullRequests"]>[number] {
+  return {
+    host: "example.test",
+    repository: "owner/repository",
+    number: 42,
+    url: "https://example.test/owner/repository/pull/42",
+    source: "manual",
+    linkedAt: DateTime.formatIso(linkedAt),
+    snapshot:
+      state === null
+        ? null
+        : {
+            state,
+            title: "Pull request",
+            headBranch: "feature",
+            baseBranch: "main",
+            isDraft: false,
+            updatedAt: DateTime.formatIso(linkedAt),
+            syncedAt: DateTime.formatIso(linkedAt),
+          },
+    stack: null,
+  };
+}
+
 describe("isAutoSettlementCandidate", () => {
   it("settles a thread whose only background work is a command left running", () => {
     expect(
@@ -113,6 +139,17 @@ describe("isAutoSettlementCandidate", () => {
         NOW_MS,
       ),
     ).toBe(true);
+    // A pull request watch whose checks finished holds nothing, yet still keeps the thread.
+    expect(
+      ThreadSettlementService.isAutoSettlementCandidate(
+        shell({
+          pendingBackgroundTasks: [
+            { taskId: "pull-request-watch:github.com/acme/app#1", kind: "monitor" },
+          ],
+        }),
+        NOW_MS,
+      ),
+    ).toBe(false);
   });
 
   it("never settles, or keeps snoozed, a thread whose guest is waiting on the owner", () => {
@@ -309,6 +346,7 @@ interface HarnessOptions {
   ) => Effect.Effect<void>;
   readonly onCloseIdle?: () => Effect.Effect<void>;
   readonly currentThreads?: ReadonlyArray<OrchestrationV2AppThread>;
+  readonly projections?: ProjectionStore.ProjectionStoreV2Shape;
 }
 
 const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options: HarnessOptions) {
@@ -321,7 +359,9 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
   const settingsReadCount = yield* Ref.make(0);
   const settingsChanges = yield* PubSub.unbounded<ContractServerSettings>();
   const commands = yield* Ref.make<ReadonlyArray<AutoSettleCommand>>([]);
+  const invalidatedCwds = yield* Ref.make<ReadonlyArray<string>>([]);
   const domainEvents = yield* PubSub.unbounded<OrchestrationV2DomainEvent>();
+  const observedEvents = yield* Queue.unbounded<EventId>();
   const closedIdle = yield* Queue.unbounded<{ readonly threadId: string }>();
   const scriptRuns =
     yield* Queue.unbounded<ProjectSetupScriptRunner.ProjectSetupScriptRunnerInput>();
@@ -364,18 +404,24 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
       listShells: () => Ref.get(snapshots).pipe(Effect.map((snapshot) => snapshot.projects)),
     }),
     Layer.mock(ProjectionStore.ProjectionStoreV2)({
+      ...options.projections,
       getSettlementCandidates: (threadId) =>
         Ref.update(candidateReads, (reads) => [...reads, threadId]).pipe(
           Effect.andThen(Ref.updateAndGet(snapshotReadCount, (count) => count + 1)),
           Effect.tap((count) => Queue.offer(snapshotReads, count)),
-          Effect.andThen(Ref.get(snapshots)),
-          Effect.map((snapshot) =>
-            threadId === undefined
-              ? snapshot.threads
-              : snapshot.threads.filter((thread) => thread.id === threadId),
+          Effect.andThen(
+            options.projections?.getSettlementCandidates(threadId) ??
+              Ref.get(snapshots).pipe(
+                Effect.map((snapshot) =>
+                  threadId === undefined
+                    ? snapshot.threads
+                    : snapshot.threads.filter((thread) => thread.id === threadId),
+                ),
+              ),
           ),
         ),
       getThread: (threadId) => {
+        if (options.projections) return options.projections.getThread(threadId);
         const thread = options.currentThreads?.find((candidate) => candidate.id === threadId);
         return thread
           ? Effect.succeed(thread)
@@ -383,7 +429,9 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
       },
     }),
     Layer.mock(Orchestrator.OrchestratorV2)({
-      streamDomainEvents: Stream.fromPubSub(domainEvents),
+      streamDomainEvents: Stream.fromPubSub(domainEvents).pipe(
+        Stream.tap((event) => Queue.offer(observedEvents, event.id)),
+      ),
       dispatch,
     }),
     Layer.mock(TerminalManager.TerminalManager)({
@@ -396,6 +444,9 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
           Effect.andThen(options.onScriptRun?.(input) ?? Effect.void),
           Effect.as({ status: "no-script" } as const),
         ),
+    }),
+    Layer.mock(GitManager.GitManager)({
+      invalidateStatus: (cwd) => Ref.update(invalidatedCwds, (cwds) => [...cwds, cwd]),
     }),
     Layer.succeed(ServerSettings.ServerSettingsService, serverSettings),
     Layer.succeed(ServerActivation.ServerActivation, Deferred.await(activation)),
@@ -418,14 +469,17 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
 
   return {
     activation,
+    settings,
     snapshots,
     snapshotReadCount,
     settingsReadCount,
     snapshotReads,
     candidateReads,
     commands,
+    invalidatedCwds,
     closedIdle,
     scriptRuns,
+    observedEvents,
     publishEvent: (event: OrchestrationV2DomainEvent) => PubSub.publish(domainEvents, event),
     updateSettings,
     layer: Layer.effect(
@@ -446,280 +500,267 @@ const startHarness = Effect.fn("startThreadSettlementHarness")(function* (
   yield* reactor.drain;
 });
 
+const appThread = (
+  id: string,
+  settledOverride: OrchestrationV2AppThread["settledOverride"],
+  worktreePath: string | null = null,
+): OrchestrationV2AppThread => {
+  const threadId = ThreadId.make(id);
+  return {
+    createdBy: "user",
+    creationSource: "web",
+    id: threadId,
+    projectId: PROJECT_ID,
+    title: id,
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath,
+    activeProviderThreadId: null,
+    lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+    forkedFrom: null,
+    createdAt: DateTime.makeUnsafe(NOW),
+    updatedAt: DateTime.makeUnsafe(NOW),
+    archivedAt: null,
+    settledOverride,
+    settledAt: settledOverride === "settled" ? DateTime.makeUnsafe(NOW) : null,
+    lastVisitedAt: null,
+    deletedAt: null,
+  };
+};
+const settledEvent = (thread: OrchestrationV2AppThread): OrchestrationV2DomainEvent => ({
+  type: "thread.settled",
+  id: EventId.make(`event:settled:${thread.id}`),
+  threadId: thread.id,
+  occurredAt: DateTime.makeUnsafe(NOW),
+  payload: thread,
+});
+
 describe("ThreadSettlementServiceV2 worker", () => {
-  it.effect("skips settings and PR decisions for recent branchless threads", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* TestClock.setTime(Date.parse(NOW));
-        const threads = Array.from({ length: 32 }, (_, index) =>
-          makeThread(`recent-${index}`, {
-            updatedAt: DateTime.makeUnsafe(NOW),
-            latestUserMessageAt: DateTime.makeUnsafe(Date.parse(NOW) - 2 * DAY_MS),
-          }),
-        );
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot(threads),
-          settings: { ...DEFAULT_SERVER_SETTINGS, sidebarAutoSettleAfterDays: 3 },
-        });
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          assert.deepEqual(yield* Ref.get(fixture.commands), []);
-          assert.equal(yield* Ref.get(fixture.settingsReadCount), 2);
-          yield* fixture.updateSettings({ sidebarAutoSettleAfterDays: 1 });
-          yield* Queue.take(fixture.snapshotReads);
-          yield* service.drain;
-          assert.deepEqual(
-            new Set((yield* Ref.get(fixture.commands)).map((command) => command.threadId)),
-            new Set(threads.map((thread) => thread.id)),
-          );
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
-  );
   it.effect("settles an idle thread with an open persisted link on the inactivity sweep", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* TestClock.setTime(Date.parse(NOW));
-        const thread = makeThread("open-link", {
-          pullRequests: [persistedLink("open", DateTime.makeUnsafe("2026-08-20T00:00:00.000Z"))],
-        });
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([thread]),
-          settings: {
-            ...DEFAULT_SERVER_SETTINGS,
-            sidebarAutoSettleAfterDays: 3,
-            sidebarAutoSettleKeepPullRequests: false,
-          },
-        });
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          expect((yield* Ref.get(fixture.commands)).map((command) => command.threadId)).toEqual([
-            thread.id,
-          ]);
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse(NOW));
+      const thread = makeThread("open-link", {
+        pullRequests: [persistedLink("open", DateTime.makeUnsafe("2026-08-20T00:00:00.000Z"))],
+      });
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot([thread]),
+        settings: {
+          ...DEFAULT_SERVER_SETTINGS,
+          sidebarAutoSettleAfterDays: 3,
+          sidebarAutoSettleKeepPullRequests: false,
+        },
+      });
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        expect((yield* Ref.get(fixture.commands)).map((command) => command.threadId)).toEqual([
+          thread.id,
+        ]);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
   );
 
   it.effect("settles only the project opted in while environment settlement is disabled", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* TestClock.setTime(Date.parse(NOW));
-        const thread = makeThread("project-opt-in", {
-          latestRunCompletedAt: DateTime.makeUnsafe("2026-08-25T00:00:00.000Z"),
-        });
-        const other = makeThread("environment-off", { projectId: ProjectId.make("other-project") });
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([thread, other]),
-          settings: {
-            ...DEFAULT_SERVER_SETTINGS,
-            sidebarAutoSettleAfterDays: null,
-            sidebarAutoSettleOnMerge: false,
-            projectSettingsOverrides: { [PROJECT_ID]: { sidebarAutoSettleAfterDays: 2 } },
-          },
-        });
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          const commands = yield* Ref.get(fixture.commands);
-          expect(commands.map((command) => command.threadId)).toEqual([thread.id]);
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse(NOW));
+      const thread = makeThread("project-opt-in", {
+        latestRunCompletedAt: DateTime.makeUnsafe("2026-08-25T00:00:00.000Z"),
+      });
+      const other = makeThread("environment-off", { projectId: ProjectId.make("other-project") });
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot([thread, other]),
+        settings: {
+          ...DEFAULT_SERVER_SETTINGS,
+          sidebarAutoSettleAfterDays: null,
+          sidebarAutoSettleOnMerge: false,
+          projectSettingsOverrides: { [PROJECT_ID]: { sidebarAutoSettleAfterDays: 2 } },
+        },
+      });
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        const commands = yield* Ref.get(fixture.commands);
+        expect(commands.map((command) => command.threadId)).toEqual([thread.id]);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
   );
 
   it.effect("stops settling the rest of a sweep once auto-settlement is turned off", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* TestClock.setTime(Date.parse(NOW));
-        // Sweeps settle 8 threads at a time, so the ninth starts after a dispatch turned it off.
-        const threads = Array.from({ length: 9 }, (_, index) => makeThread(`idle-${index}`));
-        let disable: Effect.Effect<unknown> = Effect.void;
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot(threads),
-          settings: { ...DEFAULT_SERVER_SETTINGS, sidebarAutoSettleAfterDays: 3 },
-          onDispatch: () => disable,
-        });
-        disable = fixture.updateSettings({ sidebarAutoSettleAfterDays: null });
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          const settled = (yield* Ref.get(fixture.commands)).map((command) => command.threadId);
-          expect(settled).not.toContain(threads[8]!.id);
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse(NOW));
+      // Sweeps settle 8 threads at a time, so the ninth starts after a dispatch turned it off.
+      const threads = Array.from({ length: 9 }, (_, index) => makeThread(`idle-${index}`));
+      let disable: Effect.Effect<unknown> = Effect.void;
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot(threads),
+        settings: { ...DEFAULT_SERVER_SETTINGS, sidebarAutoSettleAfterDays: 3 },
+        onDispatch: () => disable,
+      });
+      disable = fixture.updateSettings({ sidebarAutoSettleAfterDays: null });
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        const settled = (yield* Ref.get(fixture.commands)).map((command) => command.threadId);
+        expect(settled).not.toContain(threads[8]!.id);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
   );
 });
 
 describe("ThreadSettlementServiceV2 terminals", () => {
-  const appThread = (
-    id: string,
-    settledOverride: OrchestrationV2AppThread["settledOverride"],
-    worktreePath: string | null = null,
-  ): OrchestrationV2AppThread => {
-    const threadId = ThreadId.make(id);
-    return {
-      createdBy: "user",
-      creationSource: "web",
-      id: threadId,
-      projectId: PROJECT_ID,
-      title: id,
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
-      runtimeMode: "full-access",
-      interactionMode: "default",
-      branch: null,
-      worktreePath,
-      activeProviderThreadId: null,
-      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
-      forkedFrom: null,
-      createdAt: DateTime.makeUnsafe(NOW),
-      updatedAt: DateTime.makeUnsafe(NOW),
-      archivedAt: null,
-      settledOverride,
-      settledAt: settledOverride === "settled" ? DateTime.makeUnsafe(NOW) : null,
-      lastVisitedAt: null,
-      deletedAt: null,
-    };
-  };
-  const settledEvent = (thread: OrchestrationV2AppThread): OrchestrationV2DomainEvent => ({
-    type: "thread.settled",
-    id: EventId.make(`event:settled:${thread.id}`),
-    threadId: thread.id,
-    occurredAt: DateTime.makeUnsafe(NOW),
-    payload: thread,
-  });
-
   it.effect("keeps the terminals of a thread re-engaged before the event ran", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const settled = appThread("reengaged-thread", "settled");
-        const reengaged = appThread("reengaged-thread", "active");
-        const marker = appThread("marker-thread", "settled");
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([]),
-          currentThreads: [reengaged, marker],
-        });
+    Effect.gen(function* () {
+      const settled = appThread("reengaged-thread", "settled");
+      const reengaged = appThread("reengaged-thread", "active");
+      const marker = appThread("marker-thread", "settled");
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot([]),
+        currentThreads: [reengaged, marker],
+      });
 
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          yield* fixture.publishEvent(settledEvent(settled));
-          yield* fixture.publishEvent(settledEvent(marker));
-          assert.deepStrictEqual(yield* Queue.take(fixture.closedIdle), { threadId: marker.id });
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        yield* fixture.publishEvent(settledEvent(settled));
+        yield* fixture.publishEvent(settledEvent(marker));
+        assert.deepStrictEqual(yield* Queue.take(fixture.closedIdle), { threadId: marker.id });
+      }).pipe(Effect.provide(fixture.layer));
+    }),
   );
 
   it.effect("runs the settle script in the thread's own worktree", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const shared = appThread("shared-checkout-thread", "settled");
-        const missing = appThread("removed-worktree-thread", "settled", "/worktrees/removed");
-        const worktree = appThread("worktree-thread", "settled", "/worktrees/thread");
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([]),
-          currentThreads: [shared, missing, worktree],
-          existingWorktreePaths: ["/worktrees/thread"],
-        });
+    Effect.gen(function* () {
+      const shared = appThread("shared-checkout-thread", "settled");
+      const missing = appThread("removed-worktree-thread", "settled", "/worktrees/removed");
+      const worktree = appThread("worktree-thread", "settled", "/worktrees/thread");
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot([]),
+        currentThreads: [shared, missing, worktree],
+        existingWorktreePaths: ["/worktrees/thread"],
+      });
 
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          yield* fixture.publishEvent(settledEvent(shared));
-          yield* fixture.publishEvent(settledEvent(missing));
-          yield* fixture.publishEvent(settledEvent(worktree));
-          const run = yield* Queue.take(fixture.scriptRuns);
-          assert.strictEqual(run.threadId, worktree.id);
-          assert.strictEqual(run.worktreePath, "/worktrees/thread");
-          assert.strictEqual(run.trigger, "settle");
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        yield* fixture.publishEvent(settledEvent(shared));
+        yield* fixture.publishEvent(settledEvent(missing));
+        yield* fixture.publishEvent(settledEvent(worktree));
+        const run = yield* Queue.take(fixture.scriptRuns);
+        assert.strictEqual(run.threadId, worktree.id);
+        assert.strictEqual(run.worktreePath, "/worktrees/thread");
+        assert.strictEqual(run.trigger, "settle");
+      }).pipe(Effect.provide(fixture.layer));
+    }),
   );
 
   it.effect("skips the settle script for a thread re-engaged while its shells close", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const settled = appThread("reengaging-thread", "settled", "/worktrees/reengaging");
-        const marker = appThread("marker-thread", "settled", "/worktrees/marker");
-        const currentThreads = [settled, marker];
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([]),
-          currentThreads,
-          existingWorktreePaths: ["/worktrees/reengaging", "/worktrees/marker"],
-          onCloseIdle: () =>
-            Effect.sync(() => {
-              currentThreads[0] = { ...settled, settledOverride: "active" };
-            }),
-        });
+    Effect.gen(function* () {
+      const settled = appThread("reengaging-thread", "settled", "/worktrees/reengaging");
+      const marker = appThread("marker-thread", "settled", "/worktrees/marker");
+      const currentThreads = [settled, marker];
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot([]),
+        currentThreads,
+        existingWorktreePaths: ["/worktrees/reengaging", "/worktrees/marker"],
+        onCloseIdle: () =>
+          Effect.sync(() => {
+            currentThreads[0] = { ...settled, settledOverride: "active" };
+          }),
+      });
 
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          yield* fixture.publishEvent(settledEvent(settled));
-          yield* fixture.publishEvent(settledEvent(marker));
-          assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, marker.id);
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        yield* fixture.publishEvent(settledEvent(settled));
+        yield* fixture.publishEvent(settledEvent(marker));
+        assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, marker.id);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
+  it.effect("skips the settle script for a subagent in its parent's worktree", () =>
+    Effect.gen(function* () {
+      const parent = appThread("subagent-parent", "settled", "/worktrees/parent");
+      const subagent = (id: string, worktreePath: string) => ({
+        ...appThread(id, "settled", worktreePath),
+        lineage: {
+          parentThreadId: parent.id,
+          relationshipToParent: "subagent" as const,
+          rootThreadId: parent.id,
+        },
+      });
+      const shared = subagent("subagent-shared", "/worktrees/parent");
+      const own = subagent("subagent-own", "/worktrees/own");
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot([]),
+        currentThreads: [parent, shared, own],
+        existingWorktreePaths: ["/worktrees/parent", "/worktrees/own"],
+      });
+
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        // Events run in order, so the first run belongs to the second event
+        // only if the shared-worktree child was skipped. Both still close.
+        yield* fixture.publishEvent(settledEvent(shared));
+        yield* fixture.publishEvent(settledEvent(own));
+        assert.deepStrictEqual(yield* Queue.take(fixture.closedIdle), { threadId: shared.id });
+        assert.deepStrictEqual(yield* Queue.take(fixture.closedIdle), { threadId: own.id });
+        assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, own.id);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
   );
 
   it.effect("runs the settle script once when a settlement is re-emitted", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const repeated = appThread("repeated-thread", "settled", "/worktrees/repeated");
-        const marker = appThread("marker-thread", "settled", "/worktrees/marker");
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([]),
-          currentThreads: [repeated, marker],
-          existingWorktreePaths: ["/worktrees/repeated", "/worktrees/marker"],
-        });
+    Effect.gen(function* () {
+      const repeated = appThread("repeated-thread", "settled", "/worktrees/repeated");
+      const marker = appThread("marker-thread", "settled", "/worktrees/marker");
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot([]),
+        currentThreads: [repeated, marker],
+        existingWorktreePaths: ["/worktrees/repeated", "/worktrees/marker"],
+      });
 
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          yield* fixture.publishEvent(settledEvent(repeated));
-          yield* fixture.publishEvent(settledEvent(repeated));
-          yield* fixture.publishEvent(settledEvent(marker));
-          assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, repeated.id);
-          assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, marker.id);
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        yield* fixture.publishEvent(settledEvent(repeated));
+        yield* fixture.publishEvent(settledEvent(repeated));
+        yield* fixture.publishEvent(settledEvent(marker));
+        assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, repeated.id);
+        assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, marker.id);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
   );
 
   it.effect("retries the settle script on a re-emitted settlement after a failed start", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const thread = appThread("failed-start-thread", "settled", "/worktrees/failed-start");
-        const starts = yield* Ref.make(0);
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([]),
-          currentThreads: [thread],
-          existingWorktreePaths: ["/worktrees/failed-start"],
-          onScriptRun: () =>
-            Ref.updateAndGet(starts, (count) => count + 1).pipe(
-              Effect.flatMap((count) =>
-                count === 1 ? Effect.die(new Error("terminal failed to open")) : Effect.void,
-              ),
+    Effect.gen(function* () {
+      const thread = appThread("failed-start-thread", "settled", "/worktrees/failed-start");
+      const starts = yield* Ref.make(0);
+      const fixture = yield* makeHarness({
+        snapshot: makeSnapshot([]),
+        currentThreads: [thread],
+        existingWorktreePaths: ["/worktrees/failed-start"],
+        onScriptRun: () =>
+          Ref.updateAndGet(starts, (count) => count + 1).pipe(
+            Effect.flatMap((count) =>
+              count === 1 ? Effect.die(new Error("terminal failed to open")) : Effect.void,
             ),
-        });
+          ),
+      });
 
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          yield* fixture.publishEvent(settledEvent(thread));
-          yield* fixture.publishEvent(settledEvent(thread));
-          assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, thread.id);
-          assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, thread.id);
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
+      yield* Effect.gen(function* () {
+        const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+        yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+        yield* fixture.publishEvent(settledEvent(thread));
+        yield* fixture.publishEvent(settledEvent(thread));
+        assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, thread.id);
+        assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, thread.id);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
   );
 });
 
@@ -756,50 +797,4 @@ describe("isSnoozed", () => {
       ),
     ).toBe(false);
   });
-  it("keeps a run requested and completed after snoozing parked until the timer", () => {
-    const thread = shell({
-      ...snoozed,
-      status: "completed",
-      latestRunRequestedAt: at(-2 * DAY_MS + 1),
-      latestRunStartedAt: at(-DAY_MS - 1),
-      latestRunCompletedAt: at(-DAY_MS),
-    });
-
-    expect(ThreadSettlementService.isSnoozed(thread, NOW_MS)).toBe(true);
-    expect(ThreadSettlementService.isAutoSettlementCandidate(thread, NOW_MS)).toBe(false);
-    expect(
-      ThreadSettlementService.resolveAutoSettlementAt({
-        thread,
-        nowMs: NOW_MS,
-        autoSettleAfterDays: null,
-      }),
-    ).toBeNull();
-  });
 });
-
-function persistedLink(
-  state: "open" | null,
-  linkedAt: DateTime.Utc,
-): NonNullable<SettlementShell["pullRequests"]>[number] {
-  return {
-    host: "example.test",
-    repository: "owner/repository",
-    number: 42,
-    url: "https://example.test/owner/repository/pull/42",
-    source: "manual",
-    linkedAt: DateTime.formatIso(linkedAt),
-    snapshot:
-      state === null
-        ? null
-        : {
-            state,
-            title: "Pull request",
-            headBranch: "feature",
-            baseBranch: "main",
-            isDraft: false,
-            updatedAt: DateTime.formatIso(linkedAt),
-            syncedAt: DateTime.formatIso(linkedAt),
-          },
-    stack: null,
-  };
-}

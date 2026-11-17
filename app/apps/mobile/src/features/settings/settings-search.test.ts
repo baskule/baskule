@@ -47,6 +47,7 @@ describe("filterSettingsSections", () => {
     { query: "   ", expected: visible("") },
     { query: "appear", expected: [["Interface", ["Appearance"]]] },
     { query: "KEYBOARD", expected: [["Interface", ["Keyboard"]]] },
+    { query: "language", expected: [["Interface", ["Appearance"]]] },
     { query: "dark mode", expected: [["Interface", ["Appearance"]]] },
     { query: "microphone", expected: [["Interface", ["Voice"]]] },
     { query: "agent credits", expected: [["Server settings", ["Source control"]]] },
@@ -62,6 +63,14 @@ describe("filterSettingsSections", () => {
     { query: "zzzz", expected: [] },
   ])("$query", ({ query, expected }) => {
     expect(visible(query)).toEqual(expected);
+  });
+
+  it("searches translated labels without changing route identities", () => {
+    const sections = [
+      { title: "Interface", rows: [{ id: "SettingsAppearance", label: "Apparence" }] },
+    ];
+    expect(filterSettingsSections(sections, "Apparence")).toEqual(sections);
+    expect(filterSettingsSections(sections, "dark mode")).toEqual(sections);
   });
 
   it("drops sections that start empty", () => {
