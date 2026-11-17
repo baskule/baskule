@@ -69,6 +69,8 @@ const ProviderOptionSelectionsFromLegacyObject = LegacyProviderOptionSelectionsO
 export const ProviderOptionSelections = Schema.Union([
   Schema.Array(ProviderOptionSelection),
   ProviderOptionSelectionsFromLegacyObject,
+  // Historical migration 026 can store JSON strings; retain while those histories are supported.
+  Schema.fromJsonString(Schema.Array(ProviderOptionSelection)),
 ]);
 export type ProviderOptionSelections = typeof ProviderOptionSelections.Type;
 

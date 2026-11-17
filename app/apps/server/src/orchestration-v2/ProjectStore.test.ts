@@ -4,7 +4,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Stream from "effect/Stream";
 
+import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 
@@ -95,6 +97,102 @@ it.layer(ProjectStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemor
         assert.strictEqual(project?.pinnedAt, at);
         assert.strictEqual(project?.archivedAt, at);
       }),
+    );
+
+    it.effect(
+      "reads historical string-array project defaults and retains their options during replay",
+      () =>
+        Effect.gen(function* () {
+          const projects = yield* ProjectStore.ProjectStoreV2;
+          const events = yield* OrchestrationEventStore.OrchestrationEventStore;
+          const sql = yield* SqlClient.SqlClient;
+          const projectId = ProjectId.make("project-historical-options");
+          const eventId = EventId.make("event-historical-options");
+          const modelSelection = {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5.4",
+            options: [
+              { id: "variant", value: "high" },
+              { id: "thinking", value: true },
+              { id: "fast", value: false },
+            ],
+          };
+          const legacyJson = JSON.stringify({
+            ...modelSelection,
+            options: JSON.stringify(modelSelection.options),
+          });
+          const created = yield* events.appendProjectEvent({
+            eventId,
+            aggregateKind: "project",
+            aggregateId: projectId,
+            occurredAt: "2026-03-24T00:00:00.000Z",
+            commandId: null,
+            causationEventId: null,
+            correlationId: null,
+            metadata: {},
+            type: "project.created",
+            payload: {
+              projectId,
+              title: "Historical options",
+              workspaceRoot: "/tmp/project-historical-options",
+              defaultModelSelection: modelSelection,
+              scripts: [],
+              createdAt: "2026-03-24T00:00:00.000Z",
+              updatedAt: "2026-03-24T00:00:00.000Z",
+            },
+          });
+          yield* projects.apply(created);
+          yield* sql`
+          UPDATE projection_projects SET default_model_selection_json = ${legacyJson}
+          WHERE project_id = ${projectId}
+        `;
+          yield* sql`
+          UPDATE orchestration_events
+          SET payload_json = json_set(payload_json, '$.defaultModelSelection', json(${legacyJson}))
+          WHERE event_id = ${eventId}
+        `;
+          const historicalEvent = yield* sql`
+          SELECT payload_json FROM orchestration_events WHERE event_id = ${eventId}
+        `;
+          assert.deepStrictEqual(
+            (yield* projects.listShells({ projectIds: [projectId] })).map(
+              (shell) => shell.defaultModelSelection,
+            ),
+            [modelSelection],
+          );
+          assert.deepStrictEqual(
+            yield* sql`
+            SELECT default_model_selection_json FROM projection_projects WHERE project_id = ${projectId}
+          `,
+            [{ default_model_selection_json: legacyJson }],
+          );
+          const replayed = yield* events
+            .readApplicationEvents({
+              afterSequence: created.sequence - 1,
+              throughSequence: created.sequence,
+            })
+            .pipe(Stream.runCollect);
+          assert.lengthOf(replayed, 1);
+          for (const event of replayed) {
+            assert.equal(event.aggregateKind, "project");
+            if (event.aggregateKind !== "project") return;
+            yield* projects.apply(event);
+          }
+          assert.deepStrictEqual(
+            Option.getOrNull(yield* projects.get(projectId))?.defaultModelSelection,
+            modelSelection,
+          );
+          assert.deepStrictEqual(
+            yield* sql`
+            SELECT default_model_selection_json FROM projection_projects WHERE project_id = ${projectId}
+          `,
+            [{ default_model_selection_json: JSON.stringify(modelSelection) }],
+          );
+          assert.deepStrictEqual(
+            yield* sql`SELECT payload_json FROM orchestration_events WHERE event_id = ${eventId}`,
+            historicalEvent,
+          );
+        }).pipe(Effect.provide(OrchestrationEventStore.layer)),
     );
 
     it.effect("marks a project's title as custom only once it is renamed", () =>

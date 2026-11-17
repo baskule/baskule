@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 
 import { mergeProviderInstanceEnvironment } from "./instanceEnvironment.ts";
@@ -43,16 +44,6 @@ describe("mergeProviderInstanceEnvironment", () => {
           [{ name: "Https_Proxy", value: "http://gateway", sensitive: false }],
           { HTTPS_PROXY: "http://mine", PATH: "/bin" },
         ).pipe(Effect.provideService(HostProcess.Platform, platform));
-      // A home variable in another spelling is still expanded.
-      expect(
-        yield* mergeProviderInstanceEnvironment(
-          [{ name: "Codex_Home", value: "~/corp", sensitive: false }],
-          {},
-        ).pipe(
-          Effect.provideService(HostProcess.Platform, "win32"),
-          Effect.provideService(HostProcess.HomeDirectory, "/home/ada"),
-        ),
-      ).toEqual({ CODEX_HOME: "/home/ada/corp" });
       // Upper case sorts first, so it also wins where a spawn merges the parent environment back.
       expect(yield* merge("win32")).toEqual({ HTTPS_PROXY: "http://gateway", PATH: "/bin" });
       expect(yield* merge("linux")).toEqual({

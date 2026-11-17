@@ -140,6 +140,129 @@ it.effect("routes shell selectors to readers while imports stay writable", () =>
 );
 
 it.effect(
+  "imports historical string-array options without rewriting legacy rows or duplicating retries",
+  () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const importer = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const replay = yield* ProjectionReplay.ProjectionReplay;
+      const threadId = ThreadId.make("thread:historical-options");
+      const modelSelection = {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5.4",
+        options: [
+          { id: "variant", value: "high" },
+          { id: "thinking", value: true },
+          { id: "fast", value: false },
+        ],
+      };
+      const legacyJson = JSON.stringify({
+        ...modelSelection,
+        options: JSON.stringify(modelSelection.options),
+      });
+      yield* sql`
+      INSERT INTO projection_projects (
+        project_id, title, workspace_root, scripts_json, created_at, updated_at
+      ) VALUES (
+        'project:historical-options', 'Historical project', '/tmp/historical-options', '[]',
+        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+      )
+    `;
+      yield* sql`
+      INSERT INTO projection_threads (
+        thread_id, project_id, title, model_selection_json, runtime_mode,
+        interaction_mode, created_at, updated_at
+      ) VALUES (
+        ${threadId}, 'project:historical-options', 'Historical thread', ${legacyJson},
+        'full-access', 'default', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+      )
+    `;
+      yield* sql`
+      INSERT INTO projection_thread_messages (
+        message_id, thread_id, role, text, is_streaming, created_at, updated_at
+      ) VALUES (
+        'message:historical-options', ${threadId}, 'user', 'Keep this question', 0,
+        '2026-01-01T01:00:00.000Z', '2026-01-01T01:00:00.000Z'
+      )
+    `;
+      const sourceBefore =
+        yield* sql`SELECT * FROM projection_threads WHERE thread_id = ${threadId}`;
+      const messagesBefore = yield* sql`
+      SELECT * FROM projection_thread_messages WHERE thread_id = ${threadId}
+    `;
+      const failed = yield* importer.reconcileShells.pipe(
+        Effect.provideService(Statement.CurrentTransformer, (statement) => {
+          const [query] = statement.compile();
+          return query.includes("INSERT INTO orchestration_v2_legacy_imports")
+            ? Effect.die("import marker write failed")
+            : Effect.succeed(statement);
+        }),
+        Effect.exit,
+      );
+      assert.isTrue(Exit.isFailure(failed));
+      assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, []);
+      assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_events`, []);
+      assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_projection_threads`, []);
+
+      assert.deepStrictEqual(yield* importer.reconcileShells, {
+        importedThreadCount: 1,
+        importedMessageCount: 1,
+      });
+      const projection = yield* projections.getThreadProjection(threadId);
+      assert.deepStrictEqual(projection.thread.modelSelection, modelSelection);
+      assert.deepStrictEqual(
+        projection.messages.map((message) => message.text),
+        ["Keep this question"],
+      );
+      assert.deepStrictEqual(
+        yield* sql`
+        SELECT json_type(payload_json, '$.modelSelection.options') AS options_type,
+          json_extract(payload_json, '$.modelSelection') AS model_selection
+        FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}
+      `,
+        [{ options_type: "array", model_selection: JSON.stringify(modelSelection) }],
+      );
+      assert.deepStrictEqual(
+        yield* sql`
+        SELECT json_type(payload_json, '$.modelSelection.options') AS options_type,
+          json_extract(payload_json, '$.modelSelection') AS model_selection
+        FROM orchestration_events WHERE stream_id = ${threadId} AND event_type = 'thread.created'
+      `,
+        [{ options_type: "array", model_selection: JSON.stringify(modelSelection) }],
+      );
+      const eventsBefore = yield* sql`SELECT * FROM orchestration_events ORDER BY sequence`;
+      const importsBefore = yield* sql`SELECT * FROM orchestration_v2_legacy_imports`;
+      assert.lengthOf(importsBefore, 1);
+      assert.deepStrictEqual(yield* importer.reconcileShells, {
+        importedThreadCount: 0,
+        importedMessageCount: 0,
+      });
+      assert.deepStrictEqual(
+        yield* sql`SELECT * FROM orchestration_events ORDER BY sequence`,
+        eventsBefore,
+      );
+      assert.deepStrictEqual(
+        yield* sql`SELECT * FROM orchestration_v2_legacy_imports`,
+        importsBefore,
+      );
+      assert.deepStrictEqual(
+        yield* sql`SELECT * FROM projection_threads WHERE thread_id = ${threadId}`,
+        sourceBefore,
+      );
+      assert.deepStrictEqual(
+        yield* sql`SELECT * FROM projection_thread_messages WHERE thread_id = ${threadId}`,
+        messagesBefore,
+      );
+      assert.isTrue((yield* replay.rebuild).valid);
+      assert.deepStrictEqual(
+        (yield* projections.getThreadProjection(threadId)).thread.modelSelection,
+        modelSelection,
+      );
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
   "keeps hydrating later transcripts after a defect and leaves the failed thread pending",
   () =>
     Effect.gen(function* () {

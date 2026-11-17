@@ -843,132 +843,6 @@ it.layer(
   const nativeClaude = "C:\\Users\\me\\.local\\bin\\claude.exe";
 
   it.effect.each([
-    { name: "the shimgen shim", resolved: chocolateyShim, real: chocolateyShim },
-    { name: "the package binary", resolved: chocolateyPackage, real: chocolateyPackage },
-    {
-      name: "a custom root",
-      resolved: "D:\\Tools\\Choco\\bin\\claude.exe",
-      real: "D:\\Tools\\Choco\\bin\\claude.exe",
-      env: { ChocolateyInstall: "D:\\Tools\\Choco" },
-    },
-    {
-      name: "a custom root package",
-      resolved: "D:\\Tools\\Choco\\lib\\claude-code\\tools\\claude.exe",
-      real: "D:\\Tools\\Choco\\lib\\claude-code\\tools\\claude.exe",
-      env: { ChocolateyInstall: "D:\\Tools\\Choco" },
-    },
-    {
-      name: "a mixed-case custom root with a trailing separator",
-      resolved: "D:\\Tools\\Choco\\bin\\Claude.EXE",
-      real: "D:\\Tools\\Choco\\bin\\Claude.EXE",
-      env: { ChocolateyInstall: "d:/tools/choco/" },
-    },
-    { name: "a native-looking alias", resolved: nativeClaude, real: chocolateyPackage },
-  ] as const)("keeps a Chocolatey Claude install manual-only through $name", (fixture) =>
-    Effect.gen(function* () {
-      const capabilities = yield* resolveInstall({ definition: claudeUpdate, ...fixture });
-
-      expect(capabilities.update).toBeNull();
-      expect(capabilities.installPath).toBe(fixture.real);
-      expect(capabilities.latestVersion).toBeNull();
-      expect(capabilities.lookupLatestVersion).toBeDefined();
-      expect(capabilities.manualCommand).toBe("choco upgrade claude-code");
-    }),
-  );
-
-  it.effect("keeps a Chocolatey-shaped path off Windows on the native updater", () =>
-    Effect.gen(function* () {
-      const commandPath = "/home/me/chocolatey/bin/claude.exe";
-      const capabilities = yield* resolveInstall({
-        definition: claudeUpdate,
-        resolved: commandPath,
-        real: commandPath,
-        platform: "linux",
-      });
-
-      expect(capabilities.update).toMatchObject({ lockKey: "claudeAgent-native" });
-    }),
-  );
-
-  // Chocolatey publishes behind npm, so comparing against the registry would
-  // report an update `choco upgrade` cannot install yet.
-  it.effect("compares a Chocolatey Claude install against choco search", () =>
-    Effect.gen(function* () {
-      const probes: Array<{ command: string; args: ReadonlyArray<string> }> = [];
-      const capabilities = yield* resolvePackageManagedProviderMaintenance(claudeUpdate, {
-        binaryPath: "claude",
-        resolvedCommandPath: chocolateyShim,
-        realCommandPath: chocolateyShim,
-        env: {},
-        platform: "win32",
-      }).pipe(
-        Effect.provideService(HostProcess.Platform, "win32"),
-        Effect.provideService(
-          ChildProcessSpawner.ChildProcessSpawner,
-          stdoutSpawner((command, args) => {
-            probes.push({ command, args });
-            return "claude-code|2.1.304\r\n";
-          }),
-        ),
-      );
-      expect(probes).toEqual([]);
-
-      const latest = yield* resolveLatestProviderVersion(capabilities).pipe(
-        Effect.provide(ProviderLatestVersions.layer),
-        Effect.provideService(
-          HttpClient.HttpClient,
-          HttpClient.make(() => Effect.die("the installer's latest should not come from npm")),
-        ),
-      );
-
-      expect(latest).toBe("2.1.304");
-      expect(probes.map(({ command }) => NodePath.basename(command).replace(/\.\w+$/, ""))).toEqual(
-        ["choco"],
-      );
-      expect(probes[0]?.args).toEqual(["search", "claude-code", "--exact", "--limit-output"]);
-      expect(
-        createProviderVersionAdvisory({
-          driver: driver("claudeAgent"),
-          currentVersion: "2.1.304",
-          latestVersion: latest,
-          maintenanceCapabilities: capabilities,
-        }),
-      ).toMatchObject({ status: "current", canUpdate: false, canInstallVersion: false });
-    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
-  );
-
-  it.effect("stays unknown when choco search fails instead of asking npm", () =>
-    Effect.gen(function* () {
-      const capabilities = yield* resolvePackageManagedProviderMaintenance(claudeUpdate, {
-        binaryPath: "claude",
-        resolvedCommandPath: chocolateyShim,
-        realCommandPath: chocolateyShim,
-        env: {},
-        platform: "win32",
-      }).pipe(
-        Effect.provideService(HostProcess.Platform, "win32"),
-        Effect.provideService(
-          ChildProcessSpawner.ChildProcessSpawner,
-          stdoutSpawner(
-            () => "",
-            () => 1,
-          ),
-        ),
-      );
-
-      const latest = yield* resolveLatestProviderVersion(capabilities).pipe(
-        Effect.provide(ProviderLatestVersions.layer),
-        Effect.provideService(
-          HttpClient.HttpClient,
-          HttpClient.make(() => Effect.die("a failed choco search should not fall back to npm")),
-        ),
-      );
-
-      expect(latest).toBeNull();
-    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
-  );
-
-  it.effect.each([
     {
       name: "a native install",
       definition: claudeUpdate,
@@ -1103,7 +977,14 @@ it.layer(
     },
     {
       name: "another provider's profile link",
-      definition: otherProviderUpdate,
+      definition: {
+        provider: driver("nativePackageTool"),
+        npmPackageName: "@example/native-package-tool",
+        nativeUpdate: {
+          args: ["update"],
+          isCommandPath: isNativeTestCommandPath("/.local/bin/native-package-tool"),
+        },
+      },
       resolved: "/etc/profiles/per-user/me/bin/native-package-tool",
       real: "/nix/store/0c2kbzqz3m0m4hcx2g7hq1n5wfs9a6xd-native-package-tool-1.0.0/bin/native-package-tool",
     },

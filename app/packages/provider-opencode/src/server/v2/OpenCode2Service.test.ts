@@ -59,7 +59,12 @@ it.layer(NodeServices.layer)("replaceOutdatedService", (it) => {
           );
 
         service.discover.mockImplementation(outdated);
-        yield* run("opencode v1.18.32");
+        const unsupported = yield* run("opencode v1.18.32").pipe(Effect.flip);
+        expect(unsupported).toMatchObject({
+          _tag: "OpenCodeRuntimeError",
+          operation: "probeOpenCodeBinary",
+          detail: expect.stringContaining("requires OpenCode 2.x"),
+        });
         expect(service.discover).not.toHaveBeenCalled();
 
         for (const elsewhere of [

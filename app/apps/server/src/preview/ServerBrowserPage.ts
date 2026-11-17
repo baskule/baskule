@@ -250,7 +250,6 @@ const withoutTreeDataPayloads = (tree: string) =>
     })
     .join("\n");
 
-// The broker waits 15s for the host; a snapshot, retry included, answers well before.
 const SNAPSHOT_TIMEOUT_MS = 10_000;
 // How long a frame in another process gets to answer; one that crashed never does.
 const FRAME_ANSWER_MS = 1_000;

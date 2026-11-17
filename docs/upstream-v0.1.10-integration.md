@@ -35,6 +35,11 @@ with an empty migration. Upstream's missing-history preflight reads the Baskule 
 Each migration completes transactionally and later startup resumes unfinished work.
 Released data must upgrade forward without a reset.
 
+Historical migration 026 can leave model options as a JSON string containing an array,
+depending on SQLite's JSON handling. The options decoder accepts that saved representation
+and continues to encode arrays. Existing rows stay untouched; this reader compatibility
+needs no new migration identifier and remains necessary while those histories are supported.
+
 The client/server boundary stays at `0.5.4`. The server retains the full `thread.visited`
 event accepted by released clients; other contract additions are optional or capability-gated.
 The compatibility guard therefore uses `compatibility-noop`. Operators should follow the existing

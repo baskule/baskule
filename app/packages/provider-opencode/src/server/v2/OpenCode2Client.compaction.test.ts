@@ -108,7 +108,7 @@ describe("OpenCode 2.1 compaction wire format", () => {
         const ended = events[2];
         assert(ended?.type === "session.compaction.ended");
         assert.strictEqual(ended.data.text, "Summary so far, complete.");
-      }),
+      }).pipe(Effect.scoped),
     ),
   );
 
