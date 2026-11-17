@@ -299,6 +299,7 @@ const T3_DESCRIPTOR_BODY = JSON.stringify({
   label: "Serve test",
   platform: { os: "darwin", arch: "arm64" },
   serverVersion: "0.0.0-test",
+  minClient: "0.5.4",
   capabilities: { repositoryIdentity: true },
 });
 

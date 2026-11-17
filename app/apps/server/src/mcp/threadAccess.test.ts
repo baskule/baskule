@@ -23,9 +23,6 @@ const client: McpInvocationContext.McpInvocationScope = {
   issuedAt: 1,
 };
 
-const linksHint =
-  "Thread ids belong to one environment: for a thread on a linked one, find it with `t3_environment_links` and pass its `environmentId` to a tool that takes one.";
-
 const readBare = (
   existing: ReadonlyArray<OrchestrationV2ThreadShell | ThreadId>,
   scope: McpInvocationContext.McpInvocationScope = client,
@@ -51,9 +48,7 @@ it.effect("points a bare uuid at the mcp: thread it belongs to", () =>
     const error = yield* readBare([ThreadId.make(`mcp:${bareId}`)]);
 
     expect(error.code).toBe("thread_not_found");
-    expect(error.message).toBe(
-      `The thread was not found. Did you mean \`mcp:${bareId}\`? ${linksHint}`,
-    );
+    expect(error.message).toBe(`The thread was not found. Did you mean \`mcp:${bareId}\`?`);
   }),
 );
 

@@ -6,16 +6,20 @@ import { createBaskule080, baskule080History } from "./fixtures/baskule080.ts";
 import * as DoSql from "../baskule/workerd/doSqlClient.ts";
 import { makeFakeDoStorage } from "../baskule/workerd/testing/fakeDoStorage.ts";
 import * as Layer from "effect/Layer";
-import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, ModelSelection, ThreadId } from "@t3tools/contracts";
 import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import { createUpstream076, upstream076History } from "./fixtures/upstream076.ts";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { baskule076History, createBaskule076 } from "./fixtures/baskule076.ts";
 import { migrationManifest, runMigrations } from "./Migrations.ts";
+
+const decodeModelSelectionJson = Schema.decodeEffect(Schema.fromJsonString(ModelSelection));
+const encodeModelSelection = Schema.encodeEffect(ModelSelection);
 
 const history = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -70,7 +74,7 @@ describe.each([
             })),
           ["thread", "project", "event"].map((source) => ({
             source,
-            type: "array",
+            type: "text",
             options: [
               { id: "variant", value: "high" },
               { id: "thinking", value: true },
@@ -141,6 +145,21 @@ describe.each([
             json_extract(payload_json, '$.modelSelection.options') FROM orchestration_events`,
           historicalOptions,
         );
+        const selections = yield* sql<{ selection: string }>`
+          SELECT model_selection_json AS selection FROM projection_threads WHERE thread_id = 'options-thread'
+          UNION ALL
+          SELECT default_model_selection_json FROM projection_projects WHERE project_id = 'options-project'
+          UNION ALL
+          SELECT json_extract(payload_json, '$.modelSelection') FROM orchestration_events WHERE event_id = 'options-event'`;
+        assert.lengthOf(selections, 3);
+        for (const { selection } of selections) {
+          const decoded = yield* decodeModelSelectionJson(selection);
+          assert.deepStrictEqual(decoded.options, [
+            { id: "variant", value: "high" },
+            { id: "thinking", value: true },
+          ]);
+          assert.deepStrictEqual(yield* encodeModelSelection(decoded), decoded);
+        }
         assert.deepStrictEqual(
           yield* sql`SELECT name FROM sqlite_master WHERE name LIKE 'peer_environment_%'`,
           [],

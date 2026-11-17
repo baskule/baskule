@@ -394,7 +394,7 @@ export function releaseDownloads(version: unknown): ReadonlyArray<Download> {
       platform: "linux",
       label: t("Baskule for Linux"),
       format: "AppImage",
-      fileName: `Baskule-${version}-x64.AppImage`,
+      fileName: "Baskule-x86_64.AppImage",
     },
   ];
   return apps.map((app) => ({

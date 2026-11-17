@@ -1,12 +1,57 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as Exit from "effect/Exit";
 
 import { ModelSelection } from "./modelSelection.ts";
+import { ProviderOptionSelections } from "./model.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 const decodeModelSelection = Schema.decodeUnknownEffect(ModelSelection);
 const encodeModelSelection = Schema.encodeUnknownEffect(ModelSelection);
+const decodeProviderOptions = Schema.decodeEffect(ProviderOptionSelections);
+
+it.effect("reads historical JSON-string options and writes canonical arrays", () =>
+  Effect.gen(function* () {
+    for (const options of [
+      [],
+      [
+        { id: "variant", value: "high" },
+        { id: "thinking", value: true },
+        { id: "fast", value: false },
+      ],
+    ]) {
+      const decoded = yield* decodeModelSelection({
+        provider: "opencode",
+        model: "opencode/big-pickle",
+        options: JSON.stringify(options),
+      });
+      assert.deepStrictEqual(decoded, {
+        instanceId: ProviderInstanceId.make("opencode"),
+        model: "opencode/big-pickle",
+        options,
+      });
+      assert.deepStrictEqual(yield* encodeModelSelection(decoded), decoded);
+    }
+  }),
+);
+
+it.effect("rejects invalid historical option strings without losing their values", () =>
+  Effect.gen(function* () {
+    for (const input of [
+      "not JSON",
+      "null",
+      "true",
+      "1",
+      '"scalar"',
+      '{"variant":"high"}',
+      JSON.stringify("[]"),
+      '[{"id":"variant","value":1}]',
+    ]) {
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(decodeProviderOptions(input))));
+    }
+  }),
+);
 
 it.effect("ModelSelection migrates legacy `provider` field to `instanceId`", () =>
   Effect.gen(function* () {

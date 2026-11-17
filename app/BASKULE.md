@@ -142,8 +142,7 @@ Baskule UI modules live under `apps/web/src/baskule/`; integration comments iden
 in upstream files. Keep flags and actual RPC capabilities aligned.
 
 The browser wait adapter retains the released Baskule `loadState` condition by checking
-`document.readyState` inside upstream’s bounded wait. Snapshot capture uses upstream’s bounded
-retry; the older custom settle-and-retry loop is removed.
+`document.readyState` inside upstream’s bounded wait.
 
 Voice input keeps upstream's dictation controls, `VoiceInputController` lifecycle and browser
 PCM capture. Upstream's local-model, cloud-provider and destination code stays in the web tree so

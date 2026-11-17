@@ -67,7 +67,6 @@ function parseRemoteFetchUrls(stdout: string): Map<string, string> {
 
 function pickPrimaryRemote(
   remotes: ReadonlyMap<string, string>,
-  _resolved: string,
 ): { readonly remoteName: string; readonly remoteUrl: string } | null {
   for (const preferredRemoteName of ["upstream", "origin"] as const) {
     const remoteUrl = remotes.get(preferredRemoteName);
@@ -238,21 +237,13 @@ const resolveRepositoryIdentityFromCacheKey = Effect.fn(
         timeoutBehavior: "timedOutResult",
       })
       .pipe(Effect.option);
-  const [remoteResult, resolvedResult] = yield* Effect.all(
-    [runGit(["remote", "-v"]), runGit(["config", "--get-regexp", "^remote\\..*\\.gh-resolved$"])],
-    { concurrency: "unbounded" },
-  );
+  const remoteResult = yield* runGit(["remote", "-v"]);
   if (remoteResult._tag === "None" || remoteResult.value.code !== 0) {
     return null;
   }
 
   const remotes = parseRemoteFetchUrls(remoteResult.value.stdout);
-  // Exits 1 when no remote has a mark.
-  const resolved =
-    resolvedResult._tag === "Some" && resolvedResult.value.code === 0
-      ? resolvedResult.value.stdout
-      : "";
-  const remote = pickPrimaryRemote(remotes, resolved);
+  const remote = pickPrimaryRemote(remotes);
   return remote
     ? buildRepositoryIdentity({
         ...remote,

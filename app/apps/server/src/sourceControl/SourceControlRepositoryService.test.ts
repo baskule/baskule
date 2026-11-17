@@ -42,6 +42,7 @@ function layer(input: {
   const layerService = SourceControlRepositoryService.layer.pipe(
     Layer.provide(
       Layer.mock(GitVcsDriver.GitVcsDriver)({
+        invalidateRefs: () => Effect.void,
         execute: () => Effect.succeed(processOutput()),
         pushCurrentBranch: () =>
           Effect.succeed({
