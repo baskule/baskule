@@ -35,6 +35,12 @@ while read -r image expected; do
   [[ $actual == "$expected" ]]
   docker tag "$image" "$name:local"
 done < .run/release/backend/images.txt
+# Stacks run the verified packaged runtime instead of compiling the patched celld on each runner.
+mkdir -p .run/release/celld
+container=$(docker create baskule-celld:local)
+docker cp "$container:/usr/local/bin/celld" .run/release/celld/celld
+docker rm "$container" >/dev/null
+export CELLD_BIN="$ROOT/.run/release/celld/celld"
 mkdir -p platform/src/space/t3
 tar -xzf .run/release/backend/space-cell.tar.gz -C platform/src/space/t3
 export BASKULE_STACK_PROXY=0
