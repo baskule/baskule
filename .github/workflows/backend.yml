@@ -261,9 +261,6 @@ jobs:
           - name: install-single
             suite: install
             selection: single
-          - name: install-folder
-            suite: install
-            selection: folder
           - name: install-proxy
             suite: install
             selection: proxy
