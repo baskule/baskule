@@ -706,7 +706,7 @@ const scenarios = {
     const download = page.getByRole("link", { name: "Download", exact: true });
     check(
       (await download.getAttribute("href")) ===
-        "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-0.5.0-x64.AppImage",
+        "https://github.com/baskule/baskule/releases/download/v0.5.0/Baskule-x86_64.AppImage",
       `${device}: app download points to the running version's GitHub release asset`,
     );
     check(
