@@ -81,6 +81,28 @@ describe("sidebar shift guard", () => {
     expect(list.pressed).toEqual(["B"]);
   });
 
+  it("compares against positions read once a list mounted hidden is shown", async () => {
+    await using screen = await render(null);
+    // Like the closed mobile drawer, which keeps the thread list mounted.
+    const drawer = document.createElement("div");
+    drawer.hidden = true;
+    screen.container.append(drawer);
+    using list = mountList(drawer, ["A", "B", "C", "D"]);
+    using _clock = fakeTimers();
+
+    drawer.hidden = false;
+    list.remove("D");
+    list.guard.update();
+    await userEvent.click(list.button("B"));
+    expect(list.pressed).toEqual(["B"]);
+
+    vi.advanceTimersByTime(500);
+    list.remove("A");
+    list.guard.update();
+    await userEvent.click(list.button("C"));
+    expect(list.pressed).toEqual(["B"]);
+  });
+
   it("lets the user act on the row their own press moved", async () => {
     await using screen = await render(null);
     using list = mountList(screen.container, ["A", "B", "C"]);
