@@ -22,6 +22,8 @@ function editsText(event: KeyboardEvent) {
 
 function readTops(list: HTMLElement) {
   const tops = new Map<HTMLElement, number>();
+  // A list without layout, such as the closed mobile drawer kept mounted, has no positions yet.
+  if (list.getClientRects().length === 0) return tops;
   for (const child of list.children) {
     if (child instanceof HTMLElement) tops.set(child, child.offsetTop);
   }
@@ -110,7 +112,7 @@ export function createSidebarShiftGuard(list: HTMLElement) {
     update() {
       const next = readTops(list);
       const now = performance.now();
-      // A list filling from empty slid nothing under the pointer.
+      // A list filling from empty or just shown slid nothing under the pointer.
       const ownMove = tops.size === 0 || now - lastInputAt < OWN_INPUT_WINDOW_MS;
       for (const [row, top] of next) {
         const previous = tops.get(row);
