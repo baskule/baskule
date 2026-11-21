@@ -1,0 +1,170 @@
+--- a/crates/celld/local_store.rs
++++ b/crates/celld/local_store.rs
+@@ -13,7 +13,7 @@
+ use futures_util::future::BoxFuture;
+ use futures_util::stream::{self, BoxStream};
+ use futures_util::FutureExt as _;
+-use futures_util::StreamExt as _;
++use futures_util::{StreamExt as _, TryStreamExt as _};
+ use object_store::list::{PaginatedListOptions, PaginatedListResult, PaginatedListStore};
+ use object_store::path::Path;
+ use object_store::{
+@@ -108,16 +108,30 @@
+             .ok_or_else(|| not_found(key))
+     }
+ 
+-    fn metadata(&self) -> object_store::Result<Vec<StoredObject>> {
++    async fn metadata(&self, prefix: String) -> object_store::Result<Vec<StoredObject>> {
++        let store = self.clone();
++        crate::asyncrt::blocking(move || store.metadata_sync(&prefix))
++            .await
++            .map_err(db_error)?
++    }
++
++    fn metadata_sync(&self, prefix: &str) -> object_store::Result<Vec<StoredObject>> {
+         let connection = self.connect()?;
++        // SQLite's binary text ordering compares bytes. Every stored key is UTF-8,
++        // so the last byte of a nonempty prefix is below 0xff.
++        let mut end = prefix.as_bytes().to_vec();
++        match end.last_mut() {
++            Some(last) => *last += 1,
++            None => end.push(u8::MAX),
++        }
+         let mut statement = connection
+             .prepare(
+                 "SELECT key, CAST(X'' AS BLOB), etag, modified_ms, attributes, length(body)
+-                 FROM objects ORDER BY key",
++                 FROM objects WHERE key >= ?1 AND key < CAST(?2 AS TEXT) ORDER BY key",
+             )
+             .map_err(db_error)?;
+         let rows = statement
+-            .query_map([], |row| {
++            .query_map(params![prefix, end], |row| {
+                 Ok(StoredObject {
+                     key: row.get(0)?,
+                     body: row.get(1)?,
+@@ -295,33 +309,27 @@
+     }
+ 
+     fn list(&self, prefix: Option<&Path>) -> BoxStream<'static, object_store::Result<ObjectMeta>> {
+-        let prefix = prefix.cloned();
+-        let result = self.metadata().and_then(|objects| {
+-            objects
+-                .into_iter()
+-                .map(|object| object_meta(&object))
+-                .filter(|meta| {
+-                    meta.as_ref().map_or(true, |meta| {
+-                        prefix.as_ref().is_none_or(|prefix| {
+-                            meta.location
+-                                .prefix_match(prefix)
+-                                .is_some_and(|mut remainder| remainder.next().is_some())
+-                        })
+-                    })
+-                })
+-                .collect::<object_store::Result<Vec<_>>>()
+-        });
+-        match result {
+-            Ok(objects) => stream::iter(objects.into_iter().map(Ok)).boxed(),
+-            Err(error) => stream::once(async move { Err(error) }).boxed(),
+-        }
++        let store = self.clone();
++        let filter_root = prefix.is_some();
++        let prefix = directory_prefix(prefix);
++        stream::once(async move {
++            let objects = store.metadata(prefix).await?;
++            Ok::<_, Error>(stream::iter(
++                objects
++                    .into_iter()
++                    .filter(move |object| !filter_root || !object.key.is_empty())
++                    .map(|object| object_meta(&object)),
++            ))
++        })
++        .try_flatten()
++        .boxed()
+     }
+ 
+     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> object_store::Result<ListResult> {
+         let prefix = prefix.cloned().unwrap_or_default();
+         let mut common_prefixes = BTreeSet::new();
+         let mut objects = Vec::new();
+-        for object in self.metadata()? {
++        for object in self.metadata(directory_prefix(Some(&prefix))).await? {
+             let location = stored_location(&object.key)?;
+             let Some(mut remainder) = location.prefix_match(&prefix) else {
+                 continue;
+@@ -372,7 +380,7 @@
+         let delimiter = options.delimiter.as_deref();
+         let limit = options.max_keys.unwrap_or(usize::MAX);
+         let mut entries: Vec<(String, Option<Path>, Option<ObjectMeta>)> = Vec::new();
+-        for object in self.metadata()? {
++        for object in self.metadata(prefix.to_owned()).await? {
+             let Some(remainder) = object.key.strip_prefix(prefix) else {
+                 continue;
+             };
+@@ -418,6 +426,13 @@
+     }
+ }
+ 
++fn directory_prefix(prefix: Option<&Path>) -> String {
++    match prefix {
++        Some(path) if !path.as_ref().is_empty() => format!("{path}/"),
++        _ => String::new(),
++    }
++}
++
+ #[derive(Debug)]
+ struct LocalUpload {
+     store: LocalStore,
+@@ -567,3 +582,52 @@
+         source: Box::new(std::io::Error::other("the ETag does not match")),
+     }
+ }
++
++#[cfg(test)]
++mod baskule_local_store_tests {
++    use super::*;
++
++    #[test]
++    fn local_store_metadata_ranges_match_binary_prefixes() {
++        let directory = tempfile::tempdir().unwrap();
++        let store = LocalStore::open(directory.path().join("objects.sqlite3")).unwrap();
++        let connection = store.connect().unwrap();
++        let keys = [
++            "cells/a",
++            "cells/a/item",
++            "cells/ab/item",
++            "literal%/item",
++            "é",
++            "é/item",
++            "ê",
++        ];
++        for key in keys {
++            connection
++                .execute(
++                    "INSERT INTO objects VALUES (?1, X'0001', 1, 0, '[]')",
++                    [key],
++                )
++                .unwrap();
++        }
++        for (prefix, expected) in [
++            ("", keys.as_slice()),
++            ("cells/a", &["cells/a", "cells/a/item", "cells/ab/item"]),
++            ("cells/a/", &["cells/a/item"]),
++            ("literal%/", &["literal%/item"]),
++            ("é", &["é", "é/item"]),
++            ("missing/", &[]),
++        ] {
++            let objects = store.metadata_sync(prefix).unwrap();
++            assert_eq!(
++                objects
++                    .iter()
++                    .map(|object| object.key.as_str())
++                    .collect::<Vec<_>>(),
++                expected
++            );
++            assert!(objects
++                .iter()
++                .all(|object| object.size == 2 && object.body.is_empty()));
++        }
++    }
++}
