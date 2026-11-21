@@ -1,4 +1,3 @@
-import { useGT } from "gt-react";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import {
   formatFilePathForClipboard,
@@ -21,6 +20,7 @@ import {
 import { AsyncResult } from "effect/reactivity";
 import { msg } from "gt-react";
 import { useRef, useState, type ReactElement } from "react";
+
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { readLocalApi } from "../../localApi";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
@@ -124,7 +124,6 @@ export function MediaActions({
   children: ReactElement;
   showTooltip?: boolean;
 }) {
-  const gt = useGT();
   const { save, copyImage, canReadMedia, assertCanReadMedia } = useMediaActions(source);
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const menuOpen = useRef(false);
@@ -229,10 +228,7 @@ export function MediaActions({
               : m(msg("Copying image…")),
         });
         await (action === "save" ? save() : copyImage());
-        toastManager.update(progressToast, {
-          type: "success",
-          title: action === "save" ? gt("Download started") : gt("Image copied"),
-        });
+        toastManager.close(progressToast);
       }
     });
     if (AsyncResult.isFailure(result)) {
