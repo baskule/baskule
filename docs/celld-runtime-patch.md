@@ -4,10 +4,22 @@ Baskule's container builds celld 0.6.3 from upstream commit
 `8702f6d186c77698dbfb30cf29e3b1922a88f008`, with
 [`0001-preserve-warm-stateless-worker.patch`](../deploy/celld/patches/0001-preserve-warm-stateless-worker.patch) and
 [`0002-service-deployments.patch`](../deploy/celld/patches/0002-service-deployments.patch), plus
-[`0003-preserve-warm-cell-isolate.patch`](../deploy/celld/patches/0003-preserve-warm-cell-isolate.patch).
+[`0003-preserve-warm-cell-isolate.patch`](../deploy/celld/patches/0003-preserve-warm-cell-isolate.patch) and
+[`0004-bound-dev-store-listings.patch`](../deploy/celld/patches/0004-bound-dev-store-listings.patch).
 The source archive and Rust builder image are checksum-pinned in
 [`deploy/celld/Dockerfile`](../deploy/celld/Dockerfile). The official celld runtime
 image still supplies system dependencies and license notices.
+
+## Development object store listings
+
+`celld dev` stores deployments, static assets, and cell snapshots in one SQLite
+object store. Restoring a cell lists its snapshot keys by prefix. The upstream
+implementation scans the whole store for each listing and filters the rows
+afterward. Concurrent restores can delay stack startup after a profile change.
+
+The patch uses the existing key index to read each prefix range and runs the SQL
+on celld's blocking executor. Existing development stores reopen with the same
+schema. The patch applies to the local store used by `celld dev`.
 
 ## Warm-worker retention
 
