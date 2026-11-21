@@ -50,6 +50,7 @@ it("keeps the note for the provider thread that lost the work across a provider 
   const backOnClaude = run(3, claudeThread);
   const pending = (target: OrchestrationV2Run, runs: ReadonlyArray<OrchestrationV2Run>) =>
     pendingRestartCancelledBackgroundWork({
+      compactionMessageIds: () => new Set(),
       runs,
       providerTurns: runs.filter((source) => source.id !== target.id).map(turnFor),
       run: target,
@@ -74,6 +75,7 @@ it("delivers a resumed queued run's note even after a higher-ordinal run", () =>
   const runs = [resumed, ranFirst, next];
   assert.deepEqual(
     pendingRestartCancelledBackgroundWork({
+      compactionMessageIds: () => new Set(),
       runs,
       providerTurns: [resumed, ranFirst].map(turnFor),
       run: next,
@@ -139,7 +141,30 @@ it("names a lost subagent by the id the agent resumes it with", () => {
       title: "Review",
       nativeItemRef: { driver: "claudeAgent", nativeId: "agent-1", strength: "strong" },
     } as never)?.label,
-    "Review (id agent-1)",
+    "Review (id agent-1; resume it with SendMessage to 'agent-1')",
+  );
+  assert.equal(
+    cancelledTurnItemWork(
+      {
+        id: "item-2",
+        type: "subagent",
+        origin: "provider_native",
+        title: "Audit",
+        nativeItemRef: { driver: "codex", nativeId: "call_1:agent", strength: "strong" },
+      } as never,
+      "agent-thread",
+    )?.label,
+    "Audit (id agent-thread)",
+  );
+  assert.equal(
+    cancelledTurnItemWork({
+      id: "item-3",
+      type: "subagent",
+      origin: "provider_native",
+      title: "Lost",
+      nativeItemRef: { driver: "claudeAgent", nativeId: null, strength: "strong" },
+    } as never)?.label,
+    "Lost",
   );
 });
 
@@ -160,6 +185,7 @@ it("does not repeat the note when a steer restarts the run on a new attempt", ()
   const firstAttempt = RunAttemptId.make("attempt:2a");
   const pending = (runAttemptIds: ReadonlyArray<RunAttemptId>, delivered: boolean) =>
     pendingRestartCancelledBackgroundWork({
+      compactionMessageIds: () => new Set(),
       runs: [root, steered],
       providerTurns: [
         turnFor(root),
@@ -197,6 +223,7 @@ it("counts a prompted mid-turn or chained continuation as delivering the note", 
   const later = run(3, claudeThread);
   const pending = (delivered: boolean) =>
     pendingRestartCancelledBackgroundWork({
+      compactionMessageIds: () => new Set(),
       runs: [cut, continuation, later],
       providerTurns: [cutTurn, ...(delivered ? [turnFor(continuation)] : [])],
       run: later,
@@ -220,6 +247,7 @@ it("counts a prompted mid-turn or chained continuation as delivering the note", 
     });
     assert.deepEqual(
       pendingRestartCancelledBackgroundWork({
+        compactionMessageIds: () => new Set(),
         runs: [cut, unstarted, later],
         providerTurns: turns,
         run: later,
@@ -240,6 +268,7 @@ it("counts a prompted mid-turn or chained continuation as delivering the note", 
   assert.isFalse(isRestartNoteContinuation(chained, [cut, steered, chained], turns, attempts));
   assert.deepEqual(
     pendingRestartCancelledBackgroundWork({
+      compactionMessageIds: () => new Set(),
       runs: [cut, steered, later],
       providerTurns: turns,
       run: later,

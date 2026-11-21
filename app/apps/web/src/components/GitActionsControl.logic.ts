@@ -1,13 +1,14 @@
-import { t } from "../i18n";
-
 import type {
   GitRunStackedActionResult,
   GitStackedAction,
+  PullRequestChangeBreakdown,
   ReviewDiffPreviewSource,
   VcsStatusResult,
 } from "@t3tools/contracts";
+import { summarizeChangedFiles } from "@t3tools/shared/changedFileKind";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
-
+import { msg } from "gt-react";
+import { m, type MessageResolver } from "../i18n/messages";
 import {
   buildMenuItems as gitMenuItems,
   resolveQuickAction as gitQuickAction,
@@ -15,13 +16,14 @@ import {
   type DefaultBranchConfirmableAction,
   type GitActionIconName,
   type GitDialogAction,
-} from "@t3tools/client-runtime/state/vcs";
+} from "@t3tools/client-runtime/state/git-actions";
+import { vcsActionLabelText } from "@t3tools/client-runtime/state/vcs-action";
 
 export {
   requiresDefaultBranchConfirmation,
   type DefaultBranchConfirmableAction,
   type GitActionIconName,
-} from "@t3tools/client-runtime/state/vcs";
+} from "@t3tools/client-runtime/state/git-actions";
 
 export interface GitActionMenuItem {
   id: "commit" | "push";
@@ -62,14 +64,18 @@ export function resolveGitActionResultToastTiming(
   };
 }
 
-export function resolveGitActionProgressPresentation(input: {
-  readonly isRunning: boolean;
-  readonly operation: string | null;
-  readonly currentLabel: string | null;
-  readonly lastOutputLine: string | null;
-  readonly phaseStartedAtMs: number | null;
-  readonly hookStartedAtMs: number | null;
-}): GitActionProgressPresentation | null {
+export function resolveGitActionProgressPresentation(
+  input: {
+    readonly isRunning: boolean;
+    readonly operation: string | null;
+    readonly currentLabel: string | null;
+    readonly hookName?: string | null;
+    readonly lastOutputLine: string | null;
+    readonly phaseStartedAtMs: number | null;
+    readonly hookStartedAtMs: number | null;
+  },
+  resolve: MessageResolver = m,
+): GitActionProgressPresentation | null {
   if (
     !input.isRunning ||
     (input.operation !== "run_change_request" && input.operation !== "pull")
@@ -82,11 +88,12 @@ export function resolveGitActionProgressPresentation(input: {
   const isPull = input.operation === "pull";
   return {
     status:
-      currentLabel && currentLabel !== t("Running source control action")
-        ? currentLabel
+      currentLabel && currentLabel !== "Running source control action"
+        ? (vcsActionLabelText({ currentLabel, hookName: input.hookName ?? null }, resolve) ??
+          currentLabel)
         : isPull
-          ? t("Pulling latest changes...")
-          : t("Starting source control action..."),
+          ? resolve(msg("Pulling latest changes..."))
+          : resolve(msg("Starting source control action...")),
     output: !isPull && output ? output : null,
     startedAtMs: isPull
       ? input.phaseStartedAtMs
@@ -94,46 +101,51 @@ export function resolveGitActionProgressPresentation(input: {
   };
 }
 
-export function formatGitActionElapsed(startedAtMs: number | null, nowMs: number): string | null {
+export function formatGitActionElapsed(
+  startedAtMs: number | null,
+  nowMs: number,
+  resolve: MessageResolver = m,
+): string | null {
   if (startedAtMs === null) {
     return null;
   }
 
   const elapsedSeconds = Math.max(0, Math.floor((nowMs - startedAtMs) / 1_000));
   if (elapsedSeconds < 60) {
-    return `${elapsedSeconds}s`;
+    return resolve(msg("{seconds}s", { seconds: elapsedSeconds }));
   }
 
   const minutes = Math.floor(elapsedSeconds / 60);
   const seconds = elapsedSeconds % 60;
-  return t("{{minutes}}m {{seconds}}s", { minutes: minutes, seconds: seconds });
+  return resolve(msg("{minutes}m {seconds}s", { minutes, seconds }));
 }
 
 export function buildMenuItems(
   gitStatus: VcsStatusResult | null,
   isBusy: boolean,
   hasPrimaryRemote = true,
+  resolve: MessageResolver = m,
 ): GitActionMenuItem[] {
-  return gitMenuItems(gitStatus, isBusy, hasPrimaryRemote).map((item) => ({
-    ...item,
-    label: t(item.label),
-  }));
+  return gitMenuItems(gitStatus, isBusy, hasPrimaryRemote, resolve);
 }
 
-export function getMenuActionDisabledReason({
-  item,
-  gitStatus,
-  isBusy,
-  hasPrimaryRemote,
-}: {
-  item: GitActionMenuItem;
-  gitStatus: VcsStatusResult | null;
-  isBusy: boolean;
-  hasPrimaryRemote: boolean;
-}): string | null {
+export function getMenuActionDisabledReason(
+  {
+    item,
+    gitStatus,
+    isBusy,
+    hasPrimaryRemote,
+  }: {
+    item: GitActionMenuItem;
+    gitStatus: VcsStatusResult | null;
+    isBusy: boolean;
+    hasPrimaryRemote: boolean;
+  },
+  resolve: MessageResolver = m,
+): string | null {
   if (!item.disabled) return null;
-  if (isBusy) return t("Git action in progress.");
-  if (!gitStatus) return t("Git status is unavailable.");
+  if (isBusy) return resolve(msg("Git action in progress."));
+  if (!gitStatus) return resolve(msg("Git status is unavailable."));
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
@@ -142,28 +154,28 @@ export function getMenuActionDisabledReason({
 
   if (item.id === "commit") {
     if (!hasChanges) {
-      return t("Worktree is clean. Make changes before committing.");
+      return resolve(msg("Worktree is clean. Make changes before committing."));
     }
-    return t("Commit is currently unavailable.");
+    return resolve(msg("Commit is currently unavailable."));
   }
 
   if (item.id === "push") {
     if (!hasBranch) {
-      return t("Detached HEAD: check out a branch before pushing.");
+      return resolve(msg("Detached HEAD: check out a branch before pushing."));
     }
     if (isBehind) {
-      return t("Branch is behind upstream. Pull/rebase before pushing.");
+      return resolve(msg("Branch is behind upstream. Pull/rebase before pushing."));
     }
     if (hasChanges) {
-      return t("Commit or stash local changes before pushing.");
+      return resolve(msg("Commit or stash local changes before pushing."));
     }
     if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
-      return t('Add an "origin" remote before pushing.');
+      return resolve(msg('Add an "origin" remote before pushing.'));
     }
     if (!isAhead) {
-      return t("No local commits to push.");
+      return resolve(msg("No local commits to push."));
     }
-    return t("Push is currently unavailable.");
+    return resolve(msg("Push is currently unavailable."));
   }
 
   return null;
@@ -187,49 +199,69 @@ export function resolveQuickAction(
   isBusy: boolean,
   isDefaultRef = false,
   hasPrimaryRemote = true,
+  resolve: MessageResolver = m,
 ): GitQuickAction {
-  const action = gitQuickAction(gitStatus, isBusy, isDefaultRef, hasPrimaryRemote);
-  return { ...action, label: t(action.label), ...(action.hint ? { hint: t(action.hint) } : {}) };
+  return gitQuickAction(gitStatus, isBusy, isDefaultRef, hasPrimaryRemote, resolve);
 }
 
-export function resolveDefaultBranchActionDialogCopy(input: {
-  action: DefaultBranchConfirmableAction;
-  branchName: string;
-  includesCommit: boolean;
-}): DefaultBranchActionDialogCopy {
-  const branchLabel = input.branchName;
-  const suffix = t(
-    ' on "{{branchLabel}}". You can continue on this ref or create a feature ref and run the same action there.',
-    { branchLabel: branchLabel },
-  );
+export function resolveDefaultBranchActionDialogCopy(
+  input: {
+    action: DefaultBranchConfirmableAction;
+    branchName: string;
+    includesCommit: boolean;
+  },
+  resolve: MessageResolver = m,
+): DefaultBranchActionDialogCopy {
+  const branch = input.branchName;
+
   if (input.includesCommit) {
     return {
-      title: t("Commit & push to default ref?"),
-      description: t("This action will commit and push changes{{suffix}}", { suffix: suffix }),
-      continueLabel: t("Commit & push to {{branchLabel}}", { branchLabel: branchLabel }),
+      title: resolve(msg("Commit & push to default ref?")),
+      description: resolve(
+        msg(
+          'This action will commit and push changes on "{branch}". You can continue on this ref or create a feature ref and run the same action there.',
+          { branch },
+        ),
+      ),
+      continueLabel: resolve(msg("Commit & push to {branch}", { branch })),
     };
   }
   return {
-    title: t("Push to default ref?"),
-    description: t("This action will push local commits{{suffix}}", { suffix: suffix }),
-    continueLabel: t("Push to {{branchLabel}}", { branchLabel: branchLabel }),
+    title: resolve(msg("Push to default ref?")),
+    description: resolve(
+      msg(
+        'This action will push local commits on "{branch}". You can continue on this ref or create a feature ref and run the same action there.',
+        { branch },
+      ),
+    ),
+    continueLabel: resolve(msg("Push to {branch}", { branch })),
   };
 }
 
 /** The server names a feature branch from the commit it makes, so the action must commit changes. */
-export function resolveFeatureBranchUnavailableReason(input: {
-  action: DefaultBranchConfirmableAction;
-  branchName: string;
-  hasWorkingTreeChanges: boolean;
-}): string | null {
+export function resolveFeatureBranchUnavailableReason(
+  input: {
+    action: DefaultBranchConfirmableAction;
+    branchName: string;
+    hasWorkingTreeChanges: boolean;
+  },
+  resolve: MessageResolver = m,
+): string | null {
   if (!input.hasWorkingTreeChanges) {
-    return t(
-      "There are no changes to commit, so a feature branch can't be named. Create a branch yourself or continue on {{branchName}}.",
-      { branchName: input.branchName },
+    return resolve(
+      msg(
+        "There are no changes to commit, so a feature branch can't be named. Create a branch yourself or continue on {branch}.",
+        { branch: input.branchName },
+      ),
     );
   }
   if (input.action === "push") {
-    return `This action doesn't commit your changes, so a feature branch can't be named. Create a branch yourself or continue on ${input.branchName}.`;
+    return resolve(
+      msg(
+        "This action doesn't commit your changes, so a feature branch can't be named. Create a branch yourself or continue on {branch}.",
+        { branch: input.branchName },
+      ),
+    );
   }
   return null;
 }
@@ -291,6 +323,8 @@ export type ChangesLineTotals = {
   readonly deletions: number;
   /** Ref the counts compare against; `null` means they are uncommitted changes against HEAD. */
   readonly baseRef: string | null;
+  /** `null` when the selected totals carry no per-file stats. */
+  readonly breakdown: PullRequestChangeBreakdown;
 };
 
 // `branchChanges ?? workingTree` treats `{0,0}` as present, so a zero branch total hid a dirty
@@ -308,7 +342,12 @@ export function resolveChangesTotals(
       insertions += file.additions;
       deletions += file.deletions;
     }
-    return { insertions, deletions, baseRef: branchPreview.baseRef };
+    return {
+      insertions,
+      deletions,
+      baseRef: branchPreview.baseRef,
+      breakdown: summarizeChangedFiles(branchPreview.files),
+    };
   }
   if (!status) return null;
   const branch = status.branchChanges;
@@ -323,5 +362,15 @@ export function resolveChangesTotals(
     insertions: selected.insertions,
     deletions: selected.deletions,
     baseRef: selected.baseRef,
+    breakdown:
+      selected === tree
+        ? summarizeChangedFiles(
+            tree.files.map((file) => ({
+              path: file.path,
+              additions: file.insertions,
+              deletions: file.deletions,
+            })),
+          )
+        : null,
   };
 }

@@ -1,4 +1,5 @@
-import { useLocale, useTranslation } from "../../../i18n";
+import { useMessages, msg, useLocale } from "gt-react";
+
 // baskule: AI → Usage & limits, the organization's usage: totals, a daily chart and who, which
 // model and which space it went to. Each table sorts and exports what it shows.
 import { formatCount, formatUsd } from "@t3tools/shared/usageFormat";
@@ -31,18 +32,18 @@ import {
 } from "../../usage/UsageTable";
 import { PageMessage, PageSection } from "../../views/BaskulePage";
 
-type Translate = ReturnType<typeof useTranslation>;
+type Translate = ReturnType<typeof useMessages>;
 type Breakdown = "people" | "models" | "spaces";
 type PersonRow = AdminUsage["byUser"][number];
 type ModelRow = AdminUsage["byModel"][number];
 type SpaceRow = AdminUsage["bySpace"][number] & { readonly label: string };
 
 const PERIODS: ReadonlyArray<{ value: UsagePeriod; label: (t: Translate) => string }> = [
-  { value: "7d", label: (t) => t("Last 7 days") },
-  { value: "30d", label: (t) => t("Last 30 days") },
-  { value: "90d", label: (t) => t("Last 90 days") },
-  { value: "month", label: (t) => t("This month") },
-  { value: "last-month", label: (t) => t("Last month") },
+  { value: "7d", label: (t) => t(msg("Last 7 days")) },
+  { value: "30d", label: (t) => t(msg("Last 30 days")) },
+  { value: "90d", label: (t) => t(msg("Last 90 days")) },
+  { value: "month", label: (t) => t(msg("This month")) },
+  { value: "last-month", label: (t) => t(msg("Last month")) },
 ];
 
 const countColumns = <Row extends { chats?: number; turns: number }>(
@@ -53,7 +54,7 @@ const countColumns = <Row extends { chats?: number; turns: number }>(
     ? [
         {
           id: "chats",
-          label: t("Chats"),
+          label: t(msg("Chats")),
           numeric: true,
           secondary: true,
           value: (row: Row) => row.chats ?? 0,
@@ -63,7 +64,7 @@ const countColumns = <Row extends { chats?: number; turns: number }>(
     : []),
   {
     id: "turns",
-    label: t("Messages"),
+    label: t(msg("Messages")),
     numeric: true,
     secondary: true,
     value: (row) => row.turns,
@@ -75,18 +76,18 @@ function peopleColumns(t: Translate): UsageColumn<PersonRow>[] {
   return [
     {
       id: "name",
-      label: t("Person"),
-      value: (row) => row.name ?? row.email ?? t("Deleted account"),
+      label: t(msg("Person")),
+      value: (row) => row.name ?? row.email ?? t(msg("Deleted account")),
       render: (row) => (
         <span className="flex min-w-0 flex-col">
-          <span className="truncate">{row.name ?? row.email ?? t("Deleted account")}</span>
+          <span className="truncate">{row.name ?? row.email ?? t(msg("Deleted account"))}</span>
           {row.name && row.email ? (
             <span className="truncate text-xs text-muted-foreground">{row.email}</span>
           ) : null}
         </span>
       ),
     },
-    { id: "email", label: t("Email"), csvOnly: true, value: (row) => row.email ?? "" },
+    { id: "email", label: t(msg("Email")), csvOnly: true, value: (row) => row.email ?? "" },
     ...amountColumns<PersonRow>(t),
     ...countColumns<PersonRow>(t, true),
   ];
@@ -102,7 +103,7 @@ function modelRows(t: Translate): UsageColumn<ModelRow>[] {
 
 function spaceColumns(t: Translate): UsageColumn<SpaceRow>[] {
   return [
-    { id: "space", label: t("Space"), value: (row) => row.label },
+    { id: "space", label: t(msg("Space")), value: (row) => row.label },
     ...amountColumns<SpaceRow>(t),
     ...countColumns<SpaceRow>(t, true),
   ];
@@ -116,8 +117,10 @@ function spaceLabel(
 ): string {
   const space = spaces.get(row.spaceId);
   if (space?.kind === "personal")
-    return t("Personal space of {{name}}", { name: space.ownerName ?? t("a deleted account") });
-  return space?.name ?? row.name ?? t("Deleted space");
+    return t(
+      msg("Personal space of {name}", { name: space.ownerName ?? t(msg("a deleted account")) }),
+    );
+  return space?.name ?? row.name ?? t(msg("Deleted space"));
 }
 
 function download(filename: string, text: string) {
@@ -163,25 +166,25 @@ function BreakdownSection<Row extends { costUsd: number }>({
   readonly filename: string;
   readonly picker: ReactNode;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [sort, setSort] = useState<UsageSort>({ column: "cost", descending: true });
   const sorted = sortRows(rows, columns, sort);
   return (
     // The pressed toggle names the breakdown; the table keeps the full name for screen readers.
     <PageSection
-      title={t("Breakdown")}
+      title={t(msg("Breakdown"))}
       action={
         <>
           {picker}
           <Button
             variant="ghost"
             size="sm"
-            aria-label={t("Download this table as CSV")}
+            aria-label={t(msg("Download this table as CSV"))}
             disabled={sorted.length === 0}
             onClick={() => download(filename, usageCsv(sorted, columns))}
           >
             <DownloadIcon />
-            <span className="hidden sm:inline">{t("CSV")}</span>
+            <span className="hidden sm:inline">{t(msg("CSV"))}</span>
           </Button>
         </>
       }
@@ -194,14 +197,14 @@ function BreakdownSection<Row extends { costUsd: number }>({
         sort={sort}
         onSortChange={setSort}
         bar={(row) => row.costUsd}
-        emptyText={t("No messages in this period.")}
+        emptyText={t(msg("No messages in this period."))}
       />
     </PageSection>
   );
 }
 
 export function UsageDashboard() {
-  const t = useTranslation();
+  const t = useMessages();
   const locale = useLocale();
   const [shown, setShown] = useState(() => ({
     period: "30d" as UsagePeriod,
@@ -223,7 +226,7 @@ export function UsageDashboard() {
   const filename = `usage-${breakdown}-${shown.from}-to-${shown.to}.csv`;
   const picker = (
     <ToggleGroup
-      aria-label={t("Breakdown")}
+      aria-label={t(msg("Breakdown"))}
       variant="segmented"
       value={[breakdown]}
       onValueChange={(next) => {
@@ -231,9 +234,9 @@ export function UsageDashboard() {
         if (value === "people" || value === "models" || value === "spaces") setBreakdown(value);
       }}
     >
-      <Toggle value="people">{t("People")}</Toggle>
-      <Toggle value="models">{t("Models")}</Toggle>
-      <Toggle value="spaces">{t("Spaces")}</Toggle>
+      <Toggle value="people">{t(msg("People"))}</Toggle>
+      <Toggle value="models">{t(msg("Models"))}</Toggle>
+      <Toggle value="spaces">{t(msg("Spaces"))}</Toggle>
     </ToggleGroup>
   );
   const spaceById = new Map((spaces.data ?? []).map((space) => [space.id, space]));
@@ -253,7 +256,7 @@ export function UsageDashboard() {
               if (period) setShown({ period, ...periodRange(period, Date.now()) });
             }}
           >
-            <SelectTrigger aria-label={t("Period")} size="sm">
+            <SelectTrigger aria-label={t(msg("Period"))} size="sm">
               <SelectValue>
                 {(value: UsagePeriod) => PERIODS.find((entry) => entry.value === value)?.label(t)}
               </SelectValue>
@@ -273,17 +276,17 @@ export function UsageDashboard() {
       ) : (
         <>
           <div className="grid grid-cols-6 gap-3 sm:grid-cols-5">
-            <Stat wide label={t("Cost")} value={formatUsd(data.totals.costUsd)} />
-            <Stat wide label={t("Tokens")} value={formatTokens(data.totals.tokens)} />
-            <Stat label={t("Active people")} value={formatCount(data.totals.activeUsers)} />
-            <Stat label={t("Chats")} value={formatCount(data.totals.chats)} />
-            <Stat label={t("Messages")} value={formatCount(data.totals.turns)} />
+            <Stat wide label={t(msg("Cost"))} value={formatUsd(data.totals.costUsd)} />
+            <Stat wide label={t(msg("Tokens"))} value={formatTokens(data.totals.tokens)} />
+            <Stat label={t(msg("Active people"))} value={formatCount(data.totals.activeUsers)} />
+            <Stat label={t(msg("Chats"))} value={formatCount(data.totals.chats)} />
+            <Stat label={t(msg("Messages"))} value={formatCount(data.totals.turns)} />
           </div>
-          <UsageDailyChart title={t("Per day")} daily={data.daily} />
+          <UsageDailyChart title={t(msg("Per day"))} daily={data.daily} />
           {breakdown === "people" ? (
             <BreakdownSection
               key="people"
-              title={t("Usage per person")}
+              title={t(msg("Usage per person"))}
               rows={data.byUser}
               columns={peopleColumns(t)}
               rowKey={(row) => row.userId}
@@ -293,7 +296,7 @@ export function UsageDashboard() {
           ) : breakdown === "models" ? (
             <BreakdownSection
               key="models"
-              title={t("Usage per model")}
+              title={t(msg("Usage per model"))}
               rows={data.byModel}
               columns={modelRows(t)}
               rowKey={(row) => `${row.provider}:${row.model}`}
@@ -303,7 +306,7 @@ export function UsageDashboard() {
           ) : (
             <BreakdownSection
               key="spaces"
-              title={t("Usage per space")}
+              title={t(msg("Usage per space"))}
               rows={data.bySpace.map((row) => ({ ...row, label: spaceLabel(t, row, spaceById) }))}
               columns={spaceColumns(t)}
               rowKey={(row) => row.spaceId}

@@ -1,3 +1,4 @@
+import { useMessages, msg } from "gt-react";
 // baskule: registering one OAuth client for an authorization server that refuses automatic
 // registration. The callback URL comes first: the vendor asks for it before it gives a client ID.
 import { ISSUER_DEFAULT_PARAMS, type OAuthClientSetup } from "@t3tools/contracts/baskule-plugins";
@@ -8,7 +9,7 @@ import { Button } from "../../../components/ui/button";
 import { Label } from "../../../components/ui/label";
 import { Spinner } from "../../../components/ui/spinner";
 import { writeTextToClipboard } from "../../../hooks/useCopyToClipboard";
-import { useTranslation } from "../../../i18n";
+
 import { defaultCallbackUrl, pluginErrorText, pluginsApi } from "../../plugins/api";
 import { FormField, notifySuccess } from "../../ui";
 import { signInGuide } from "./signInGuides";
@@ -42,7 +43,7 @@ export function SignInSetup({
   readonly client: OAuthClientSetup;
   readonly onSaved: () => Promise<void> | void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const titleId = useId();
   const guide = signInGuide(client.issuer);
   const defaults = ISSUER_DEFAULT_PARAMS[client.issuer] ?? "";
@@ -65,10 +66,10 @@ export function SignInSetup({
         ...(params.trim() ? { authorizationParams: params.trim() } : {}),
       });
       setSecret("");
-      notifySuccess(t("Sign-in to {{vendor}} is set up", { vendor: guide.vendor }));
+      notifySuccess(t(msg("Sign-in to {vendor} is set up"), { vendor: guide.vendor }));
       await onSaved();
     } catch (cause) {
-      setError(pluginErrorText(cause, t("The OAuth client could not be saved.")));
+      setError(pluginErrorText(cause, t(msg("The OAuth client could not be saved."))));
     }
     setSaving(false);
   };
@@ -86,14 +87,11 @@ export function SignInSetup({
       <div className="flex flex-col gap-1">
         <h3 id={titleId} className="text-sm font-medium text-foreground">
           {client.configured
-            ? t("Sign-in to {{vendor}}", { vendor: guide.vendor })
-            : t("Set up sign-in to {{vendor}}", { vendor: guide.vendor })}
+            ? t(msg("Sign-in to {vendor}"), { vendor: guide.vendor })
+            : t(msg("Set up sign-in to {vendor}"), { vendor: guide.vendor })}
         </h3>
         <p className="text-xs text-muted-foreground">
-          {t(
-            "{{vendor}} doesn't let Baskule register itself. Register one OAuth client for your organization; every plugin that signs in with {{vendor}} uses it.",
-            { vendor: guide.vendor },
-          )}
+          {t(msg("{vendor} doesn't let Baskule register itself. Register one OAuth client for your organization; every plugin that signs in with {vendor} uses it."), { vendor: guide.vendor })}
         </p>
       </div>
       <CallbackUrl value={client.callbackUrl} />
@@ -125,29 +123,29 @@ export function SignInSetup({
       </ol>
       <div className="grid gap-3 sm:grid-cols-2">
         <FormField
-          label={t("Client ID")}
+          label={t(msg("Client ID"))}
           autoComplete="off"
           spellCheck={false}
           value={clientId}
           onChange={(event) => setClientId(event.currentTarget.value)}
         />
         <FormField
-          label={t("Client secret")}
+          label={t(msg("Client secret"))}
           type="password"
           autoComplete="new-password"
-          placeholder={client.hasSecret ? t("Saved. Leave empty to keep it.") : ""}
+          placeholder={client.hasSecret ? t(msg("Saved. Leave empty to keep it.")) : ""}
           value={secret}
           onChange={(event) => setSecret(event.currentTarget.value)}
         />
         <FormField
-          label={t("Scopes (optional)")}
+          label={t(msg("Scopes (optional)"))}
           spellCheck={false}
           placeholder={guide.scopesPlaceholder}
           value={scopes}
           onChange={(event) => setScopes(event.currentTarget.value)}
         />
         <FormField
-          label={t("Authorization parameters (optional)")}
+          label={t(msg("Authorization parameters (optional)"))}
           spellCheck={false}
           placeholder={defaults || "access_type=offline"}
           value={params}
@@ -162,7 +160,7 @@ export function SignInSetup({
       <div>
         <Button type="submit" disabled={!clientId.trim() || saving}>
           {saving ? <Spinner size="sm" /> : null}
-          {t("Save OAuth client")}
+          {t(msg("Save OAuth client"))}
         </Button>
       </div>
     </form>
@@ -171,13 +169,13 @@ export function SignInSetup({
 
 /** The redirect URI, wrapped so a phone shows all of it, with a copy button. */
 function CallbackUrl({ value }: { readonly value: string }) {
-  const t = useTranslation();
+  const t = useMessages();
   const id = useId();
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex flex-col gap-1.5">
       <Label id={id} render={<span />}>
-        {t("Callback URL")}
+        {t(msg("Callback URL"))}
       </Label>
       <div className="flex items-start gap-2">
         <output
@@ -189,7 +187,7 @@ function CallbackUrl({ value }: { readonly value: string }) {
         <Button
           variant="outline"
           size="icon"
-          aria-label={t("Copy the callback URL")}
+          aria-label={t(msg("Copy the callback URL"))}
           onClick={() => {
             void writeTextToClipboard(value).then(() => {
               setCopied(true);

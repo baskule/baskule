@@ -10,8 +10,11 @@ class McpToolSessionError extends Schema.TaggedError<McpToolSessionError>()("Mcp
   cause: Schema.optional(Schema.Defect()),
 }) {}
 
+const isMcpToolSessionError = Schema.is(McpToolSessionError);
+const encodeRpcMessage = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
 const bridgeError = (cause: unknown): McpToolSessionError =>
-  Schema.is(McpToolSessionError)(cause)
+  isMcpToolSessionError(cause)
     ? cause
     : new McpToolSessionError({
         message: cause instanceof Error ? cause.message : String(cause),
@@ -77,9 +80,7 @@ export const mcpToolSession = (
   const send = Effect.fn("cli.thread.mcp.send")(function* (
     message: unknown,
   ): Effect.fn.Return<ReadonlyArray<unknown>, McpToolSessionError> {
-    const body = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(message).pipe(
-      Effect.mapError(bridgeError),
-    );
+    const body = yield* encodeRpcMessage(message).pipe(Effect.mapError(bridgeError));
     const response = yield* Effect.tryPromise({
       try: (signal) =>
         fetchImplementation(options.endpoint, {
@@ -115,7 +116,7 @@ export const mcpToolSession = (
       const detail =
         envelope?.error === undefined
           ? "."
-          : `: ${yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(envelope.error).pipe(Effect.mapError(bridgeError))}`;
+          : `: ${yield* encodeRpcMessage(envelope.error).pipe(Effect.mapError(bridgeError))}`;
       return yield* new McpToolSessionError({ message: `T3 Code MCP ${method} failed${detail}` });
     }
     return envelope;

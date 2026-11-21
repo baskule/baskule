@@ -1,4 +1,6 @@
-import { t } from "../i18n";
+import { m as resolveMessage } from "../i18n/messages";
+import { msg } from "gt-react-native";
+
 import { Schema } from "effect";
 import { fetch } from "expo/fetch";
 import { openBrowserAsync } from "expo-web-browser";
@@ -15,7 +17,7 @@ export async function openBaskuleManagement(
 ): Promise<void> {
   const captured = readBaskuleSession();
   if (captured.status !== "signed-in")
-    throw new Error(t("Sign in before opening account settings."));
+    throw new Error(resolveMessage(msg("Sign in before opening account settings.")));
   let url = `${captured.serverUrl}${destination}`;
   if (captured.token) {
     const response = await fetch(`${captured.serverUrl}/auth/connect/code`, {
@@ -25,10 +27,10 @@ export async function openBaskuleManagement(
       credentials: "omit",
       redirect: "error",
     });
-    if (!response.ok) throw new Error(t("Could not sign the browser in. Try again."));
+    if (!response.ok) throw new Error(resolveMessage(msg("Could not sign the browser in. Try again.")));
     const code = parseCode(await response.json());
     if (!code.code || code.expiresAt <= Date.now())
-      throw new Error(t("The connection link expired. Try again."));
+      throw new Error(resolveMessage(msg("The connection link expired. Try again.")));
     url = `${captured.serverUrl}/link#${new URLSearchParams({ code: code.code, destination })}`;
   }
   const current = readBaskuleSession();
@@ -37,7 +39,7 @@ export async function openBaskuleManagement(
     current.serverUrl !== captured.serverUrl ||
     current.token !== captured.token
   ) {
-    throw new Error(t("Your account changed. Open settings again."));
+    throw new Error(resolveMessage(msg("Your account changed. Open settings again.")));
   }
   try {
     await openBrowserAsync(url);

@@ -1061,8 +1061,10 @@ export interface DesktopBridge {
   getBaskuleServer?: () => string | null;
   connectBaskuleServer?: (address: string) => Promise<void>;
   getAppBranding: () => DesktopAppBranding | null;
-  getRelayTelemetryEnabled: () => boolean;
+  /** `null` until the desktop host has read the login shell's environment; ask again later. */
+  getRelayTelemetryEnabled: () => boolean | null;
   getPathForFile: (file: File) => string;
+  startFileDrag?: (input: { environmentId: EnvironmentId; path: string }) => Promise<boolean>;
   getClientPlatform: () => string;
   restartAudioService?: () => Promise<boolean>;
   setNotificationBadge: (badge: { count: number; image: string | null }) => Promise<void>;

@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { T, useGT } from "gt-react-native";
 import * as Dialog from "../../components/ui/Dialog";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import * as Application from "expo-application";
@@ -11,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { isMobileRouteEnabled } from "../../baskule/flags";
+
 import { useDeadlinePassed } from "../../lib/clock";
 import {
   type AppUpdateCheckState,
@@ -24,12 +23,12 @@ import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
 
 export function SettingsAboutRouteScreen() {
-  const t = useTranslation();
+  const gt = useGT();
   const insets = useSafeAreaInsets();
 
   return (
     // baskule: rebrand; the open-source licences page (MIT notice for T3 Code) stays reachable below.
-    <SettingsScreen title={t("About Baskule")}>
+    <SettingsScreen title={gt("About Baskule")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -44,7 +43,7 @@ export function SettingsAboutRouteScreen() {
 }
 
 function AppSettingsSection() {
-  const t = useTranslation();
+  const gt = useGT();
   const [checkState, setCheckState] = useState<{
     readonly state: AppUpdateCheckState;
     // "Up to date" is a confirmation that fades back to idle.
@@ -76,7 +75,7 @@ function AppSettingsSection() {
     await settlePromise(() =>
       runAppUpdateCheck({
         applyMode: "immediate",
-        onFailure: (message) => Dialog.alert("Update failed", message),
+        onFailure: (message) => Dialog.alert(gt("Update failed"), message),
         onStateChange: (state) =>
           setCheckState({
             state,
@@ -98,15 +97,15 @@ function AppSettingsSection() {
 
   const statusLabel =
     updateState === "checking"
-      ? "Checking…"
+      ? gt("Checking…")
       : updateState === "downloading"
-        ? "Downloading…"
+        ? gt("Downloading…")
         : updateState === "ready"
-          ? "Update ready"
+          ? gt("Update ready")
           : updateState === "restarting"
-            ? "Restarting…"
+            ? gt("Restarting…")
             : updateState === "current"
-              ? "Up to date"
+              ? gt("Up to date")
               : null;
 
   const versionRow = (
@@ -118,7 +117,9 @@ function AppSettingsSection() {
         type="monochrome"
         weight="regular"
       />
-      <Text className="flex-1 text-lg text-foreground">{t("Version")}</Text>
+      <Text className="flex-1 text-lg text-foreground">
+        <T>Version</T>
+      </Text>
       <View className="items-end">
         <Text className="text-lg text-foreground-muted">{versionLabel}</Text>
         {statusLabel ? (
@@ -129,26 +130,22 @@ function AppSettingsSection() {
   );
 
   return (
-    <SettingsSection title={t("App")}>
-      {isMobileRouteEnabled("SettingsClientStorage") ? (
-        <SettingsRow
-          icon="internaldrive"
-          label={t("Client Storage")}
-          target="SettingsClientStorage"
-        />
-      ) : null}
-      {isMobileRouteEnabled("SettingsDiagnostics") ? (
-        <SettingsRow icon="stethoscope" label={t("Diagnostics")} target="SettingsDiagnostics" />
-      ) : null}
+    <SettingsSection title={gt("App", { $context: "settings section about this mobile app" })}>
+      <SettingsRow
+        icon="internaldrive"
+        label={gt("Client Storage")}
+        target="SettingsClientStorage"
+      />
+      <SettingsRow icon="stethoscope" label={gt("Diagnostics")} target="SettingsDiagnostics" />
       <SettingsRow
         icon="doc.on.doc"
-        label={t("Open source licenses")}
+        label={gt("Open source licenses")}
         target="SettingsOpenSourceLicenses"
       />
-      <SettingsRow icon="doc.text" label={t("Legal")} fullScreenTarget="SettingsLegal" />
+      <SettingsRow icon="doc.text" label={gt("Legal")} fullScreenTarget="SettingsLegal" />
       {updateCheckAvailable ? (
         <Pressable
-          accessibilityLabel={t("Version {{versionLabel}}", { versionLabel: versionLabel })}
+          accessibilityLabel={gt("Version {version}", { version: versionLabel })}
           accessibilityRole="text"
           disabled={busy}
           onPress={handleVersionPress}

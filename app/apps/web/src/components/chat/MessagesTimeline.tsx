@@ -1,7 +1,8 @@
+import { T, useGT, useMessages, Var } from "gt-react";
+import { threadErrorText } from "@t3tools/client-runtime/state/threads";
 import { useOpenLink } from "~/browser/useOpenLink";
-import { t } from "../../i18n";
+
 import type { RuntimeRequestId } from "@t3tools/contracts";
-import { useTranslation } from "../../i18n";
 
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -228,6 +229,8 @@ interface MessagesTimelineProps {
   ) => boolean;
   onReplyToResponse?: TimelineRowSharedState["onReplyToResponse"];
   isWorking: boolean;
+  /** The thread is catching up from a cached copy, whose working state may be stale. */
+  syncing?: boolean;
   runlessWorkActive?: boolean;
   activeTurnStartedAt?: string | null;
   /** Replaces "Thinking" while the active run's provider has not started a turn. */
@@ -274,6 +277,7 @@ interface MessagesTimelineProps {
     readonly threadId: ThreadId;
     readonly title: string;
     readonly sideChat?: boolean;
+    readonly open?: () => void;
   } | null;
   workflowOpening?: WorkflowOpening | null;
   onForkFromRun?: (input: {
@@ -347,6 +351,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   onCiteAssistantText,
   onReplyToResponse,
   isWorking,
+  syncing = false,
   runlessWorkActive = false,
   activeTurnStartedAt = null,
   providerStartingLabel = null,
@@ -415,7 +420,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   topFadeEnabled = false,
   historyControls,
 }: MessagesTimelineProps) {
-  const t = useTranslation();
+  const gt = useGT();
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
   // Snapshot restore positions on identity changes; ongoing scroll writes must not move them.
   // Find open at the opening is part of the snapshot: opening find later
@@ -1210,11 +1215,20 @@ const ConversationTimeline = memo(function ConversationTimeline({
       <div className="messages-timeline-row-frame">
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
-            label={parentThreadLink.sideChat ? t("Context from") : t("Subagent of")}
+            label={
+              parentThreadLink.sideChat
+                ? gt("Context from", {
+                    $context: "divider label; the parent thread title follows as a link",
+                  })
+                : gt("Subagent of", {
+                    $context: "divider label; the parent thread title follows as a link",
+                  })
+            }
             detail={parentThreadLink.title}
             icon={parentThreadLink.sideChat ? MessagesSquareIcon : BotIcon}
-            actionLabel={t("Open parent thread")}
-            onAction={() => onOpenThread(parentThreadLink.threadId)}
+            {...(parentThreadLink.open === undefined
+              ? {}
+              : { actionLabel: gt("Open parent thread"), onAction: parentThreadLink.open })}
           />
         </div>
       </div>
@@ -1407,7 +1421,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
           style={{ paddingBottom: emptyPlaceholderInset }}
         >
           <p className="text-sm text-muted-foreground">
-            {t("Send a message to start the conversation.")}
+            <T>Send a message to start the conversation.</T>
           </p>
         </div>
       </>
@@ -1455,7 +1469,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
                 !liveFollowEnabled ||
                 fullscreenAppRowId !== null
                   ? false
-                  : isWorking && !prefersReducedMotion && settlingListIdentity === null
+                  : isWorking && !syncing && !prefersReducedMotion && settlingListIdentity === null
                     ? TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH
                     : TIMELINE_MAINTAIN_SCROLL_AT_END
               }
@@ -1505,7 +1519,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
 });
 
 function TimelineHistoryControl(props: MessagesTimelineHistoryControls) {
-  const t = useTranslation();
+  const gt = useGT();
+  const messages = useMessages();
   if (!props.hasMoreHistory && props.error === null) {
     return null;
   }
@@ -1516,20 +1531,20 @@ function TimelineHistoryControl(props: MessagesTimelineHistoryControls) {
           <button
             type="button"
             disabled={props.loading}
-            aria-label={t("Load earlier turns")}
+            aria-label={gt("Load earlier turns")}
             onClick={() => props.onLoadEarlier()}
             className="flex w-full cursor-pointer items-center gap-3 py-1.5 text-muted-foreground text-xs hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default"
           >
             <span aria-hidden="true" className="h-px flex-1 bg-border/70" />
             <span className="shrink-0">
-              {props.loading ? t("Loading earlier turns…") : t("Load earlier turns")}
+              {props.loading ? gt("Loading earlier turns…") : gt("Load earlier turns")}
             </span>
             <span aria-hidden="true" className="h-px flex-1 bg-border/70" />
           </button>
         ) : null}
         {props.error !== null ? (
           <p role="status" className="text-center text-muted-foreground text-xs">
-            {props.error}
+            {threadErrorText(props.error, messages)}
           </p>
         ) : null}
       </div>
@@ -1717,10 +1732,12 @@ function ContextCompactionTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "context-compaction" }>;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const label =
-    row.title && row.label.startsWith(t("Context compacted"))
-      ? row.title + row.label.slice(t("Context compacted").length)
+    row.title && row.compacted
+      ? row.tokenCounts
+        ? gt("{title} {before} → {after} tokens", { title: row.title, ...row.tokenCounts })
+        : row.title
       : row.label;
   const content = (
     <span className="flex min-w-0 items-center gap-1.5">
@@ -1731,26 +1748,33 @@ function ContextCompactionTimelineRow({
       )}
       {row.tokenCounts ? (
         <>
-          {row.title ?? t("Context compacted")} {row.tokenCounts.before}
-          <ArrowRightIcon aria-hidden="true" className="size-3" />
-          {row.tokenCounts.after} {t("tokens")}
+          {row.title ? (
+            <T>
+              <Var>{row.title}</Var> <Var>{row.tokenCounts.before}</Var>
+              <ArrowRightIcon aria-hidden="true" className="size-3" />
+              <Var>{row.tokenCounts.after}</Var> tokens
+            </T>
+          ) : (
+            <T>
+              Context compacted <Var>{row.tokenCounts.before}</Var>
+              <ArrowRightIcon aria-hidden="true" className="size-3" />
+              <Var>{row.tokenCounts.after}</Var> tokens
+            </T>
+          )}
         </>
       ) : (
         label
       )}
       {row.failure ? (
-        <span className="min-w-0 truncate opacity-80">
-          {t("&middot;")} {row.failure}
-        </span>
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- separator before server-authored failure text
+        <span className="min-w-0 truncate opacity-80">&middot; {row.failure}</span>
       ) : null}
     </span>
   );
   return (
     <div
       role="separator"
-      aria-label={
-        row.failure ? t("{{label}}: {{failure}}", { label: label, failure: row.failure }) : label
-      }
+      aria-label={row.failure ? `${label}: ${row.failure}` : label}
       className={cn(
         "mx-auto flex w-full max-w-(--chat-content-max-width) items-center gap-3 py-1 text-xs",
         row.failed ? "text-destructive" : "text-muted-foreground",
@@ -1773,6 +1797,7 @@ function useDeferredWorkLoading(
   row: { expanded: boolean; deferredWorkItemIds?: ReadonlyArray<string> },
   onToggle: () => void,
 ) {
+  const gt = useGT();
   const ctx = use(TimelineRowCtx);
   const loadWork = useAtomCommand(threadEnvironment.loadEarlierHistory, { reportFailure: false });
   const ref = parseScopedThreadKey(ctx.routeThreadKey);
@@ -1797,7 +1822,7 @@ function useDeferredWorkLoading(
   useEffect(() => {
     if (row.expanded && anchorsKey && environmentId && threadId) loadOnExpand();
   }, [row.expanded, anchorsKey, environmentId, threadId]);
-  const error = anchorsKey && failed ? t("Couldn't load work. Click to retry.") : null;
+  const error = anchorsKey && failed ? gt("Couldn't load work. Click to retry.") : null;
   const loading = ref !== null && row.expanded && anchorsKey !== "" && !failed;
   const toggle = () => {
     setFailed(false);
@@ -1809,9 +1834,9 @@ function useDeferredWorkLoading(
 }
 
 function WorkHistorySkeleton() {
-  const t = useTranslation();
+  const gt = useGT();
   return (
-    <div role="status" aria-label={t("Loading work history")} className="space-y-2 px-1 pb-1 pt-3">
+    <div role="status" aria-label={gt("Loading work history")} className="space-y-2 px-1 pb-1 pt-3">
       {[0, 1, 2].map((index) => (
         <div key={index} className="flex items-center gap-2" aria-hidden="true">
           <Skeleton className="size-3 shrink-0" />
@@ -1844,7 +1869,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         >
           <span>
             {row.label}
-            {error ? t(" · {{error}}", { error: error }) : ""}
+            {error ? ` · ${error}` : ""}
           </span>
           {row.expanded ? (
             <ChevronDownIcon className="size-3.5" />
@@ -1864,7 +1889,6 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
 }
 
 function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "attempt-fold" }> }) {
-  const t = useTranslation();
   const ctx = use(TimelineRowCtx);
   const { loading, error, toggle } = useDeferredWorkLoading(row, () =>
     ctx.onToggleAttemptFold(row.attemptId),
@@ -1888,9 +1912,11 @@ function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "at
         )}
         <span className="text-xs font-medium text-foreground/80">
           {row.label}
-          {error ? t(" · {{error}}", { error: error }) : ""}
+          {error ? ` · ${error}` : ""}
         </span>
-        <span className="text-2xs text-muted-foreground">{t("Cut off by a steer")}</span>
+        <span className="text-2xs text-muted-foreground">
+          <T>Cut off by a steer</T>
+        </span>
       </button>
       {loading ? <WorkHistorySkeleton /> : null}
     </div>

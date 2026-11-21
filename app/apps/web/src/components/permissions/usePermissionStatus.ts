@@ -1,11 +1,12 @@
-import { t } from "../../i18n";
-
+import { msg } from "gt-react";
 import { useState, useSyncExternalStore } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { m } from "~/i18n/messages";
 import { getDocumentActivity, subscribeDocumentActivity } from "~/lib/documentActivity";
 
 const POLL_INTERVAL_MS = 1500;
+const CHECK_FAILED_MESSAGE = msg("Could not check permissions. We'll try again automatically.");
 
 interface PermissionSnapshot<Id extends string> {
   readonly status: Record<Id, boolean>;
@@ -38,10 +39,7 @@ export function createPermissionPoller<Id extends string>(
         try {
           publish({ status: await check(), error: null });
         } catch {
-          publish({
-            status: snapshot.status,
-            error: t("Could not check permissions. We'll try again automatically."),
-          });
+          publish({ status: snapshot.status, error: m(CHECK_FAILED_MESSAGE) });
         }
         checking = false;
       };

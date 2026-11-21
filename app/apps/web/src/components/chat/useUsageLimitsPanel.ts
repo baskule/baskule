@@ -1,5 +1,5 @@
-import { useTranslation } from "../../i18n";
-
+import { msg, useMessages } from "gt-react";
+import { m } from "~/i18n/messages";
 import type { EnvironmentId, ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
 import { collectProviderUsageLimits, hasProviderUsageLimits } from "@t3tools/shared/usageLimits";
 import { useState } from "react";
@@ -16,9 +16,9 @@ export function useUsageLimitsPanel(input: {
   readonly providerDriver: ServerProvider["driver"] | null;
   readonly providers: readonly ServerProvider[];
 }) {
-  const t = useTranslation();
   const { environmentId, threadKey, panelKey, providerInstanceId, providerDriver, providers } =
     input;
+  const messages = useMessages();
   const [panel, setPanel] = useState<{
     readonly key: string;
     readonly threadKey: string;
@@ -34,8 +34,12 @@ export function useUsageLimitsPanel(input: {
   const banner =
     report !== null && panel !== null
       ? // A fresh id per opening: the stack keeps the last dismissed id as "exiting".
-        usageLimitsBannerItem(`usage-limits:${panel.key}:${panel.now}`, report, environmentId, () =>
-          setPanel(null),
+        usageLimitsBannerItem(
+          `usage-limits:${panel.key}:${panel.now}`,
+          report,
+          environmentId,
+          () => setPanel(null),
+          messages,
         )
       : null;
   // Intercept /usage-limits only when Limits has selected-provider data.
@@ -52,7 +56,10 @@ export function useUsageLimitsPanel(input: {
       return true;
     }
     setPanel(null);
-    toastManager.add({ type: "info", title: t("Usage limits are unavailable for this provider") });
+    toastManager.add({
+      type: "info",
+      title: m(msg("Usage limits are unavailable for this provider")),
+    });
     return false;
   });
   // Async responses may clear only their originating thread's panel.

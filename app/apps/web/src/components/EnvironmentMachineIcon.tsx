@@ -1,6 +1,5 @@
-import { t } from "../i18n";
-
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
+import { msg } from "gt-react";
 import { CloudIcon, LaptopIcon, MonitorIcon, ServerIcon, type LucideProps } from "lucide-react";
 import type { FunctionComponent, SVGProps } from "react";
 import { LinuxIcon } from "./Icons";
@@ -51,27 +50,13 @@ const ICON_BY_KIND: Record<EnvironmentMachineKind, FunctionComponent<LucideProps
 };
 
 export const ENVIRONMENT_MACHINE_KIND_LABELS: Record<EnvironmentMachineKind, string> = {
-  get server() {
-    return t("Server");
-  },
-  get cloud() {
-    return t("Cloud VM");
-  },
-  get linux() {
-    return t("Linux/WSL");
-  },
-  get desktop() {
-    return t("Desktop");
-  },
-  get laptop() {
-    return t("Laptop");
-  },
-  get "mac-mini"() {
-    return t("Mini PC");
-  },
-  get "mac-studio"() {
-    return t("Workstation");
-  },
+  server: msg("Server"),
+  cloud: msg("Cloud VM"),
+  linux: msg("Linux/WSL"),
+  desktop: msg("Desktop"),
+  laptop: msg("Laptop"),
+  "mac-mini": msg("Mini PC"),
+  "mac-studio": msg("Workstation"),
 };
 
 export function environmentMachineIcon(

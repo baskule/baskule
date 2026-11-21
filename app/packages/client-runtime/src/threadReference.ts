@@ -1,3 +1,5 @@
+import { type MFunctionType } from "gt-i18n/types";
+import { mFallback, msg } from "gt-i18n";
 import type { ComposerContextClipboardFragment, ScopedThreadRef } from "@t3tools/contracts";
 import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
 import { hostedThreadLink } from "@t3tools/shared/threadLinks";
@@ -11,15 +13,16 @@ export interface ThreadReferenceCopyTarget {
   readonly successTitle: string;
   readonly failureTitle: string;
 }
-export function resolveThreadReferenceCopyTarget(input: {
-  readonly threadId: string;
-}): ThreadReferenceCopyTarget {
+export function resolveThreadReferenceCopyTarget(
+  input: { readonly threadId: string },
+  resolve: MFunctionType = mFallback,
+): ThreadReferenceCopyTarget {
   return {
     kind: "thread",
     value: input.threadId,
     clipboardTarget: "thread ID",
-    successTitle: "Thread ID copied",
-    failureTitle: "Failed to copy thread ID",
+    successTitle: resolve(msg("Thread ID copied")),
+    failureTitle: resolve(msg("Failed to copy thread ID")),
   };
 }
 
@@ -27,6 +30,7 @@ export function threadChipCopyTarget(
   threadRef: ScopedThreadRef,
   title: string,
   hostedAppUrl?: string,
+  resolve: MFunctionType = mFallback,
 ): ThreadReferenceCopyTarget {
   const record = threadContextRecord(threadRef, title);
   return {
@@ -35,7 +39,7 @@ export function threadChipCopyTarget(
     description: record.title,
     fragment: { version: 1, source: { environmentId: threadRef.environmentId }, records: [record] },
     clipboardTarget: "thread",
-    successTitle: "Thread copied",
-    failureTitle: "Failed to copy thread",
+    successTitle: resolve(msg("Thread copied")),
+    failureTitle: resolve(msg("Failed to copy thread")),
   };
 }

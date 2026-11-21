@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: the one-time setup link (`/setup#token=…`) creates a new installation's first administrator.
 import { useEffect, useState, type FormEvent } from "react";
@@ -47,7 +48,7 @@ export function SetupView() {
 }
 
 function SetupScreen({ token }: { readonly token: string | null }) {
-  const t = useTranslation();
+  const t = useMessages();
   const status = useApiResource(baskuleApi.setupStatus);
   const [outcome, setOutcome] = useState<
     "bad_token" | "bad_origin" | "already_set_up" | "created" | null
@@ -92,14 +93,12 @@ function SetupScreen({ token }: { readonly token: string | null }) {
         if (cause instanceof BaskuleApiError && cause.code === "bad_origin") {
           setOutcome("bad_origin");
           setError(
-            t(
-              "Setup was blocked by the origin check. Configure BASKULE_TRUSTED_PROXIES or PUBLIC_ORIGINS.",
-            ),
+            t(msg("Setup was blocked by the origin check. Configure BASKULE_TRUSTED_PROXIES or PUBLIC_ORIGINS.")),
           );
         } else if (refusal === 403) setOutcome("bad_token");
         else if (refusal === 409) setOutcome("already_set_up");
-        else if (refusal === 429) setError(t("Too many attempts. Wait a minute and try again."));
-        else setError(errorText(cause, t("Setup failed. Try again.")));
+        else if (refusal === 429) setError(t(msg("Too many attempts. Wait a minute and try again.")));
+        else setError(errorText(cause, t(msg("Setup failed. Try again."))));
         setSubmitting(false);
         return null;
       });
@@ -120,44 +119,35 @@ function SetupScreen({ token }: { readonly token: string | null }) {
           <BaskuleWordmark className="text-base" />
           <h1 className="text-2xl font-semibold tracking-tight">
             {view === "already_set_up"
-              ? t("Already set up")
+              ? t(msg("Already set up"))
               : view === "created"
-                ? t("Sign in to finish")
+                ? t(msg("Sign in to finish"))
                 : view === "bad_link"
-                  ? t("Setup link unavailable")
-                  : t("Set up Baskule")}
+                  ? t(msg("Setup link unavailable"))
+                  : t(msg("Set up Baskule"))}
           </h1>
           {view === "already_set_up" ? (
             <p className="text-sm text-muted-foreground">
-              {t(
-                "This installation already has an administrator. Sign in, or ask an administrator to invite you.",
-              )}
+              {t(msg("This installation already has an administrator. Sign in, or ask an administrator to invite you."))}
             </p>
           ) : view === "created" ? (
             <p className="text-sm text-muted-foreground">
-              {t(
-                "Your administrator account is ready. Sign in with your organization account as {{email}}.",
-                {
+              {t(msg("Your administrator account is ready. Sign in with your organization account as {email}."), {
                   email: email.trim(),
-                },
-              )}
+                })}
             </p>
           ) : view === "form" ? (
             <p className="text-sm text-muted-foreground">
               {passwordMode
-                ? t(
-                    "Create the first administrator account. You can invite everyone else afterwards.",
-                  )
-                : t(
-                    "Create the first administrator account, then sign in with your organization account using the same email.",
-                  )}
+                ? t(msg("Create the first administrator account. You can invite everyone else afterwards."))
+                : t(msg("Create the first administrator account, then sign in with your organization account using the same email."))}
             </p>
           ) : null}
         </div>
         {view === "loading" ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Spinner size="sm" tone="muted" />
-            {t("Checking this installation…")}
+            {t(msg("Checking this installation…"))}
           </p>
         ) : view === "unavailable" ? (
           <div className="flex flex-col gap-4">
@@ -165,68 +155,68 @@ function SetupScreen({ token }: { readonly token: string | null }) {
               <AlertDescription>{status.error}</AlertDescription>
             </Alert>
             <Button variant="outline" onClick={() => void status.reload()}>
-              {t("Try again")}
+              {t(msg("Try again"))}
             </Button>
           </div>
         ) : view === "already_set_up" || view === "created" ? (
           <Button render={<a href={view === "created" ? SIGN_IN_AFTER_SETUP : "/login"} />}>
-            {t("Sign in")}
+            {t(msg("Sign in"))}
           </Button>
         ) : view === "bad_link" ? (
           <div className="flex flex-col gap-4">
             <Alert variant="error" role="alert">
               <AlertDescription>
                 {token === null
-                  ? t("This link has no setup token in it. Copy the whole link.")
-                  : t("This setup link is not valid. Use the latest link from the setup logs.")}
+                  ? t(msg("This link has no setup token in it. Copy the whole link."))
+                  : t(msg("This setup link is not valid. Use the latest link from the setup logs."))}
               </AlertDescription>
             </Alert>
             <p className="text-sm text-muted-foreground">
-              {t("On the server, run this command in the Baskule folder to print the setup link.")}
+              {t(msg("On the server, run this command in the Baskule folder to print the setup link."))}
             </p>
-            <CopyField label={t("Command")} value={SETUP_LINK_COMMAND} />
+            <CopyField label={t(msg("Command"))} value={SETUP_LINK_COMMAND} />
           </div>
         ) : (
           <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)} noValidate>
             <FormField
-              label={t("Your name")}
+              label={t(msg("Your name"))}
               name="name"
               autoComplete="name"
               maxLength={100}
               autoFocus
               required
               value={name}
-              error={showProblems && !name.trim() ? t("Enter your name.") : null}
+              error={showProblems && !name.trim() ? t(msg("Enter your name.")) : null}
               onChange={(event) => setName(event.currentTarget.value)}
             />
             <FormField
-              label={t("Email")}
+              label={t(msg("Email"))}
               type="email"
               name="email"
               autoComplete="username"
               maxLength={254}
               required
               value={email}
-              error={showProblems && !emailValid ? t("Enter a valid email address.") : null}
+              error={showProblems && !emailValid ? t(msg("Enter a valid email address.")) : null}
               onChange={(event) => setEmail(event.currentTarget.value)}
             />
             {passwordMode ? (
               <>
                 <FormField
-                  label={t("Password")}
+                  label={t(msg("Password"))}
                   type="password"
                   name="new-password"
                   autoComplete="new-password"
                   required
                   value={password}
-                  hint={t("At least {{MIN_PASSWORD_LENGTH}} characters.", {
+                  hint={t(msg("At least {MIN_PASSWORD_LENGTH} characters."), {
                     MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH,
                   })}
                   error={showProblems && password.length < MIN_PASSWORD_LENGTH ? problem : null}
                   onChange={(event) => setPassword(event.currentTarget.value)}
                 />
                 <FormField
-                  label={t("Confirm password")}
+                  label={t(msg("Confirm password"))}
                   type="password"
                   name="confirm-password"
                   autoComplete="new-password"
@@ -234,7 +224,7 @@ function SetupScreen({ token }: { readonly token: string | null }) {
                   value={confirmation}
                   error={
                     (showProblems || confirmation.length > 0) && mismatch
-                      ? t("The passwords don't match.")
+                      ? t(msg("The passwords don't match."))
                       : null
                   }
                   onChange={(event) => setConfirmation(event.currentTarget.value)}
@@ -252,7 +242,7 @@ function SetupScreen({ token }: { readonly token: string | null }) {
                         href="https://github.com/baskule/baskule/blob/main/docs/install.md#your-own-reverse-proxy"
                         className="underline underline-offset-4"
                       >
-                        {t("Reverse proxy configuration")}
+                        {t(msg("Reverse proxy configuration"))}
                       </a>
                     </>
                   ) : null}
@@ -261,7 +251,7 @@ function SetupScreen({ token }: { readonly token: string | null }) {
             ) : null}
             <Button type="submit" disabled={submitting}>
               {submitting ? <Spinner size="sm" /> : null}
-              {submitting ? t("Creating your account…") : t("Create account")}
+              {submitting ? t(msg("Creating your account…")) : t(msg("Create account"))}
             </Button>
           </form>
         )}

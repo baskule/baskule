@@ -1,9 +1,13 @@
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m } from "~/i18n/messages";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type {
   DesktopPreviewAnnotationVoiceConfig,
   DesktopPreviewAnnotationVoiceEvent,
   ScopedThreadRef,
 } from "@t3tools/contracts";
+
+import { useGT, useMessages } from "gt-react";
 import { useEffect, useRef } from "react";
 
 import { resolveSpeechPresentation } from "~/components/chat/ComposerSpeechButton";
@@ -31,6 +35,9 @@ export function PreviewAnnotationSpeech({
   config: DesktopPreviewAnnotationVoiceConfig;
   keybindings: Parameters<typeof useDictationShortcut>[0]["keybindings"];
 }) {
+  const gt = useGT();
+  const messages = useMessages();
+
   const thread = useThreadShell(threadRef);
   const draftThread = useComposerDraftStore((store) => store.getDraftThreadByRef(threadRef));
   const projectId = thread?.projectId ?? draftThread?.projectId ?? null;
@@ -89,7 +96,7 @@ export function PreviewAnnotationSpeech({
     available,
     phase: state.phase,
     errorAction: state.errorAction,
-    status: resolveSpeechPresentation(state, null).status,
+    status: resolveSpeechPresentation(state, null, messages).status,
     preview: preview ? preview.committed + preview.tentative : null,
     level,
     shortcutLabel,
@@ -109,8 +116,8 @@ export function PreviewAnnotationSpeech({
         current.current.speech.cancel();
         toastManager.add({
           type: "error",
-          title: "Could not update annotation voice input",
-          description: error instanceof Error ? error.message : String(error),
+          title: gt("Could not update annotation voice input"),
+          description: thrownErrorMessage(error, m) ?? String(error),
         });
       }
     },

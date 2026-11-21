@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: General → Organization: the organization's name and the computer idle timeout.
 import { useState, type FormEvent } from "react";
 
@@ -24,7 +25,7 @@ export function OrganizationPage() {
 }
 
 function OrganizationForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [name, setName] = useState(initial.organizationName);
   const [idleMinutes, setIdleMinutes] = useState(String(initial.idleMinutes));
   const [busy, setBusy] = useState(false);
@@ -43,10 +44,10 @@ function OrganizationForm({ initial }: { readonly initial: BaskuleAdminSettings 
       setName(saved.organizationName);
       setIdleMinutes(String(saved.idleMinutes));
       await refreshBaskuleMe();
-      notifySuccess(t("Organization settings saved"));
+      notifySuccess(t(msg("Organization settings saved")));
     })()
       .catch((cause: unknown) => {
-        setError(errorText(cause, t("Could not save settings.")));
+        setError(errorText(cause, t(msg("Could not save settings."))));
       })
       .finally(() => {
         setBusy(false);
@@ -56,11 +57,11 @@ function OrganizationForm({ initial }: { readonly initial: BaskuleAdminSettings 
   return (
     <form className="flex flex-col gap-8" onSubmit={(event) => void submit(event)}>
       <fieldset disabled={busy} className="contents">
-        <PageSection title={t("Organization")}>
+        <PageSection title={t(msg("Organization"))}>
           <div className="p-4">
             <FormField
               className="max-w-md"
-              label={t("Organization name")}
+              label={t(msg("Organization name"))}
               value={name}
               onChange={(e) => setName(e.currentTarget.value)}
               required
@@ -68,20 +69,18 @@ function OrganizationForm({ initial }: { readonly initial: BaskuleAdminSettings 
             />
           </div>
         </PageSection>
-        <PageSection title={t("Computers")}>
+        <PageSection title={t(msg("Computers"))}>
           <div className="p-4">
             <FormField
               className="max-w-md"
-              label={t("Stop idle computers after (minutes)")}
+              label={t(msg("Stop idle computers after (minutes)"))}
               type="number"
               min={0.1}
               step={0.1}
               max={1440}
               value={idleMinutes}
               onChange={(e) => setIdleMinutes(e.currentTarget.value)}
-              hint={t(
-                "Computers with active work stay running. A stopped computer starts again on the next task.",
-              )}
+              hint={t(msg("Computers with active work stay running. A stopped computer starts again on the next task."))}
               required
             />
           </div>
@@ -94,7 +93,7 @@ function OrganizationForm({ initial }: { readonly initial: BaskuleAdminSettings 
         <div className="px-3 sm:px-4">
           <Button type="submit" disabled={busy}>
             {busy ? <Spinner size="sm" /> : null}
-            {t("Save settings")}
+            {t(msg("Save settings"))}
           </Button>
         </div>
       </fieldset>

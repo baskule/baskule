@@ -376,18 +376,35 @@ async function main() {
       await waitFor("cleanup chat settled", () => thread.settled(), 60_000);
       const base = "/control/spstream/_baskule/agent";
       const state = async () => (await http(`${base}/_baskule/debug/state`)).json();
-      const before = (await state()).openStreams;
-      const response = await http(`${base}/oc/api/event`, { signal: AbortSignal.timeout(15_000) });
+      const initial = await state();
+      const streamDeadline = AbortSignal.timeout(15_000);
+      const response = await http(`${base}/oc/api/event`, { signal: streamDeadline });
       reader = response.body.getReader();
       assert(!(await reader.read()).done, "SDK event stream ended before disposal");
-      assert((await state()).openStreams === before + 1, "SDK did not register the stream");
-      const ended = (async () => { while (!(await reader.read()).done) {} })().catch(() => {});
-      const disposed = await http(`${base}/_baskule/debug/dispose`, { method: "POST", signal: AbortSignal.timeout(10_000) });
+      const before = await state();
+      assert(before.openStreams === initial.openStreams + 1, "SDK did not register the stream");
+      const [disposed] = await Promise.all([
+        http(`${base}/_baskule/debug/dispose`, { method: "POST", signal: AbortSignal.timeout(10_000) }),
+        (async () => { while (!(await reader.read()).done) {} })().catch(error => {
+          // celld can close the HTTP body with a socket termination when OpenCode disposes.
+          if (streamDeadline.aborted || !(error instanceof TypeError) || error.message !== "terminated")
+            throw error;
+        }),
+      ]);
       assert(disposed.ok, `SDK disposal failed: ${disposed.status}`);
-      await ended;
+      await disposed.arrayBuffer();
+      // The T3 provider can reconnect as soon as the old OpenCode event stream closes.
+      await waitFor("pre-disposal SDK streams closed", async () => {
+        const current = await state();
+        return before.openStreamIds.every(id => !current.openStreamIds.includes(id));
+      }, 5_000);
       const after = await state();
-      assert(!after.booted && after.openStreams === 0, `SDK streams survived disposal: ${JSON.stringify(after)}`);
-      return "workerd SDK disposal closed its pending event streams and released the runtime";
+      assert(!streamDeadline.aborted, "SDK stream deadline expired before cleanup was confirmed");
+      assert(after.stats.disposes === before.stats.disposes + 1, "SDK runtime was not disposed");
+      if (after.booted) {
+        assert(after.stats.boots > before.stats.boots, "disposed SDK runtime was reused");
+      }
+      return `workerd closed pre-disposal SDK streams ${before.openStreamIds.join(", ")} (active after disposal: ${after.openStreamIds.join(", ") || "none"})`;
     } finally { await reader?.cancel().catch(() => {}); thread?.stop(); c.close(); }
   });
 

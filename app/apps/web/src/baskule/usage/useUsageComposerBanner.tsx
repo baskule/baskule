@@ -1,4 +1,6 @@
-import { t as translate, useLocale, useTranslation } from "../../i18n";
+import { m as resolveMessage } from "../../i18n/messages";
+import { msg, useMessages, useLocale } from "gt-react";
+
 // baskule: the composer's limit notice. Silent until a limit is close (NEAR_LIMIT_SHARE); once a
 // limit is reached it says which one and when messages can be sent again, before anyone types.
 import { Link } from "@tanstack/react-router";
@@ -64,19 +66,19 @@ export function usageLimitBanner(input: {
     variant: "info",
     icon: <GaugeIcon />,
     title: copy.name,
-    description: `${translate("{{share}} used", { share: formatShare(share) })} · ${resetSentence(nearest, input.now, input.locale)}`,
+    description: `${resolveMessage(msg("{share} used"), { share: formatShare(share) })} · ${resetSentence(nearest, input.now, input.locale)}`,
     actions,
     children,
-    dismissLabel: translate("Dismiss usage limit notice"),
+    dismissLabel: resolveMessage(msg("Dismiss usage limit notice")),
     onDismiss: () => input.onDismiss(key),
   };
 }
 
 function SeeUsageLink() {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <Button size="xs" variant="ghost" render={<Link to="/settings/usage" />}>
-      {t("See usage")}
+      {t(msg("See usage"))}
     </Button>
   );
 }

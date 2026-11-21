@@ -1,4 +1,3 @@
-import { t } from "../i18n";
 import type {
   ChatAttachment,
   MessageId,
@@ -7,6 +6,7 @@ import type {
   UploadChatAttachment,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
+import { msg } from "gt-react-native";
 import { stripAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
 import {
   makeQueuedRunEditStore,
@@ -14,6 +14,7 @@ import {
   type QueuedRunsAtom,
 } from "@t3tools/client-runtime/queued-run-edit";
 
+import { m } from "../i18n/messages";
 import { uploadedComposerContext } from "../lib/composerContext";
 import { appAtomRegistry } from "./atom-registry";
 import { abortComposerDraftOperations } from "./composerDraftOperations";
@@ -102,8 +103,8 @@ function exitQueuedRunEdit(threadKey: string, edit: QueuedRunEdit): void {
   setThreadComposerError(
     threadKey,
     recovery === "kept"
-      ? t("That message already started. Your edit is back in the composer.")
-      : t("That message already started, so the edit was discarded."),
+      ? m(msg("That message already started. Your edit is back in the composer."))
+      : m(msg("That message already started, so the edit was discarded.")),
   );
 }
 

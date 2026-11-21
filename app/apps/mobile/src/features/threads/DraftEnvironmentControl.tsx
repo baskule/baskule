@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react-native";
 import { Pressable } from "react-native";
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
@@ -17,21 +16,17 @@ export function DraftEnvironmentControl(props: {
   readonly disabled: boolean;
   readonly onChooseEnvironment: () => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const disconnected = props.connectionState !== "connected";
+  const status = disconnected ? gt("Offline") : gt("Connected");
+  const { label } = props;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={
         BASKULE_FLAGS.projects
-          ? t("Choose environment, {{label}}, {{status}}", {
-              label: props.label,
-              status: disconnected ? t("Offline") : t("Connected"),
-            })
-          : t("Choose space, {{label}}, {{status}}", {
-              label: props.label,
-              status: disconnected ? t("Offline") : t("Connected"),
-            })
+          ? gt("Choose environment, {label}, {status}", { label, status })
+          : gt("Choose space, {label}, {status}", { label, status })
       }
       disabled={props.disabled}
       onPress={props.onChooseEnvironment}
@@ -45,9 +40,7 @@ export function DraftEnvironmentControl(props: {
         />
       ) : null}
       <Text className="shrink text-sm text-foreground-muted" numberOfLines={1}>
-        {BASKULE_FLAGS.projects
-          ? t("on {{selectedEnvironmentLabel}}", { selectedEnvironmentLabel: props.label })
-          : t("in {{space}}", { space: props.label })}
+        {BASKULE_FLAGS.projects ? gt("on {label}", { label }) : gt("in {label}", { label })}
       </Text>
       <SymbolView name="chevron.right" size={11} tintColorClassName="accent-icon-muted" />
       {disconnected ? <ConnectionStatusDot state="error" pulse={false} size={6} /> : null}

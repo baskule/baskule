@@ -1,3 +1,4 @@
+import { useMessages, msg, useLocale } from "gt-react-native";
 // baskule: the account pages the app shows natively (password, usage, plugins). Connecting a
 // plugin account needs the service's consent page, which only a browser can show.
 import type { MemberPlugin } from "@t3tools/contracts/baskule-plugins";
@@ -23,7 +24,7 @@ import * as Dialog from "../../components/ui/Dialog";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
-import { useLocale, useTranslation } from "../../i18n";
+
 import { subscribeAppActive } from "../../lib/appState";
 import { ConnectionFormField } from "../connection/ConnectionFormField";
 import { SettingsRow } from "./components/SettingsRow";
@@ -108,24 +109,24 @@ function Loading() {
 }
 
 function LoadFailed(props: { readonly message: string; readonly onRetry: () => void }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <View className="gap-3">
       <ErrorBanner message={props.message} />
-      <Button label={t("Try again")} onPress={props.onRetry} />
+      <Button label={t(msg("Try again"))} onPress={props.onRetry} />
     </View>
   );
 }
 
 function SignedInOnly(props: { readonly title: string }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <SettingsScreen title={props.title}>
       <PageBody>
         <EmptyState
           variant="plain"
-          title={t("Not available")}
-          detail={t("Sign in with a personal account to use this page.")}
+          title={t(msg("Not available"))}
+          detail={t(msg("Sign in with a personal account to use this page."))}
         />
       </PageBody>
     </SettingsScreen>
@@ -133,7 +134,7 @@ function SignedInOnly(props: { readonly title: string }) {
 }
 
 export function SettingsPasswordRouteScreen() {
-  const t = useTranslation();
+  const t = useMessages();
   const session = useSettingsSession();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -142,16 +143,16 @@ export function SettingsPasswordRouteScreen() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const savingRef = useRef(false);
-  if (!session) return <SignedInOnly title={t("Change password")} />;
+  if (!session) return <SignedInOnly title={t(msg("Change password"))} />;
 
   const submit = () => {
     if (savingRef.current) return;
     if (current === "" || next === "") {
-      setError(t("Enter your current and new password."));
+      setError(t(msg("Enter your current and new password.")));
       return;
     }
     if (next !== confirmation) {
-      setError(t("The new passwords don't match."));
+      setError(t(msg("The new passwords don't match.")));
       return;
     }
     savingRef.current = true;
@@ -165,7 +166,7 @@ export function SettingsPasswordRouteScreen() {
         setConfirmation("");
         setDone(true);
       })
-      .catch((cause: unknown) => setError(errorText(cause, t("Could not change the password."))))
+      .catch((cause: unknown) => setError(errorText(cause, t(msg("Could not change the password.")))))
       .finally(() => {
         savingRef.current = false;
         setSaving(false);
@@ -173,20 +174,20 @@ export function SettingsPasswordRouteScreen() {
   };
 
   return (
-    <SettingsScreen title={t("Change password")}>
+    <SettingsScreen title={t(msg("Change password"))}>
       <PageBody>
         <Text className="text-sm text-foreground-muted">
-          {t("Changing your password signs you out on your other devices.")}
+          {t(msg("Changing your password signs you out on your other devices."))}
         </Text>
         {error ? <ErrorBanner message={error} /> : null}
         {done ? (
           <Text className="text-sm font-t3-medium text-foreground">
-            {t("Your password was changed.")}
+            {t(msg("Your password was changed."))}
           </Text>
         ) : null}
         <View className="gap-3">
           <ConnectionFormField
-            label={t("Current password")}
+            label={t(msg("Current password"))}
             value={current}
             onChangeText={setCurrent}
             secureTextEntry
@@ -195,7 +196,7 @@ export function SettingsPasswordRouteScreen() {
             editable={!saving}
           />
           <ConnectionFormField
-            label={t("New password")}
+            label={t(msg("New password"))}
             value={next}
             onChangeText={setNext}
             secureTextEntry
@@ -204,7 +205,7 @@ export function SettingsPasswordRouteScreen() {
             editable={!saving}
           />
           <ConnectionFormField
-            label={t("Confirm new password")}
+            label={t(msg("Confirm new password"))}
             value={confirmation}
             onChangeText={setConfirmation}
             secureTextEntry
@@ -215,7 +216,7 @@ export function SettingsPasswordRouteScreen() {
             editable={!saving}
           />
           <Button
-            label={t("Change password")}
+            label={t(msg("Change password"))}
             tone="primary"
             fullWidth
             loading={saving}
@@ -251,20 +252,20 @@ function windowShare(status: UsageWindowStatus): number {
 }
 
 function UsageLimit(props: { readonly status: UsageWindowStatus }) {
-  const t = useTranslation();
+  const t = useMessages();
   const locale = useLocale();
   const { status } = props;
   const share = windowShare(status);
   const amounts = [
     status.limit.tokens === undefined
       ? null
-      : t("{{used}} of {{limit}} tokens", {
+      : t(msg("{used} of {limit} tokens"), {
           used: formatTokens(status.used.tokens),
           limit: formatTokens(status.limit.tokens),
         }),
     status.limit.costUsd === undefined
       ? null
-      : t("{{used}} of {{limit}}", {
+      : t(msg("{used} of {limit}"), {
           used: formatUsd(status.used.costUsd),
           limit: formatUsd(status.limit.costUsd),
         }),
@@ -284,8 +285,8 @@ function UsageLimit(props: { readonly status: UsageWindowStatus }) {
           className={status.blocked ? "font-t3-bold text-danger" : "font-t3-medium text-foreground"}
         >
           {status.blocked
-            ? t("Reached")
-            : t("{{share}}% used", { share: Math.min(100, Math.floor(share * 100)) })}
+            ? t(msg("Reached"))
+            : t(msg("{share}% used"), { share: Math.min(100, Math.floor(share * 100)) })}
         </Text>
       </View>
       <View
@@ -300,23 +301,23 @@ function UsageLimit(props: { readonly status: UsageWindowStatus }) {
         />
       </View>
       <Text className="text-xs text-foreground-muted">
-        {[...amounts, t("Resets {{time}}", { time: resets })].join(" · ")}
+        {[...amounts, t(msg("Resets {time}"), { time: resets })].join(" · ")}
       </Text>
     </View>
   );
 }
 
 export function SettingsAccountUsageRouteScreen() {
-  const t = useTranslation();
+  const t = useMessages();
   const session = useSettingsSession();
   const { state, reload } = useAccountData<MyUsage>(
     session,
     fetchMyUsage,
-    t("Could not load your usage."),
+    t(msg("Could not load your usage.")),
   );
-  if (!session) return <SignedInOnly title={t("Usage and limits")} />;
+  if (!session) return <SignedInOnly title={t(msg("Usage and limits"))} />;
   return (
-    <SettingsScreen title={t("Usage and limits")}>
+    <SettingsScreen title={t(msg("Usage and limits"))}>
       <PageBody>
         {state.status === "loading" ? (
           <Loading />
@@ -325,10 +326,10 @@ export function SettingsAccountUsageRouteScreen() {
         ) : (
           <>
             <SettingsSection
-              title={t("Limits")}
+              title={t(msg("Limits"))}
               footer={
                 state.value.limits.length === 0
-                  ? t("Your administrator has not set usage limits for you.")
+                  ? t(msg("Your administrator has not set usage limits for you."))
                   : undefined
               }
             >
@@ -336,12 +337,12 @@ export function SettingsAccountUsageRouteScreen() {
                 <UsageLimit key={status.window} status={status} />
               ))}
             </SettingsSection>
-            <SettingsSection title={t("Your usage")}>
+            <SettingsSection title={t(msg("Your usage"))}>
               {(
                 [
-                  ["today", t("Today")],
-                  ["week", t("This week")],
-                  ["month", t("This month")],
+                  ["today", t(msg("Today"))],
+                  ["week", t(msg("This week"))],
+                  ["month", t(msg("This month"))],
                 ] as const
               ).map(([key, label]) => (
                 <SettingsRow
@@ -349,7 +350,7 @@ export function SettingsAccountUsageRouteScreen() {
                   icon="chart.bar.xaxis"
                   label={label}
                   valuePosition="trailing"
-                  value={`${t("{{tokens}} tokens", { tokens: formatTokens(state.value.totals[key].tokens) })} · ${formatUsd(state.value.totals[key].costUsd)}`}
+                  value={`${t(msg("{tokens} tokens"), { tokens: formatTokens(state.value.totals[key].tokens) })} · ${formatUsd(state.value.totals[key].costUsd)}`}
                 />
               ))}
             </SettingsSection>
@@ -363,12 +364,12 @@ export function SettingsAccountUsageRouteScreen() {
 type MemberServer = MemberPlugin["servers"][number];
 
 export function SettingsPluginsRouteScreen() {
-  const t = useTranslation();
+  const t = useMessages();
   const session = useSettingsSession();
   const { state, reload } = useAccountData<MemberPlugin[]>(
     session,
     fetchMemberPlugins,
-    t("Could not load your plugins."),
+    t(msg("Could not load your plugins.")),
   );
   const [busy, setBusy] = useState(false);
   // Android's browser call resolves once the tab opens, so returning to the app is what
@@ -378,31 +379,29 @@ export function SettingsPluginsRouteScreen() {
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes sign-ins when the app returns from the browser consent page
   useEffect(() => subscribeAppActive(() => reloadOnReturn()), []);
-  if (!session) return <SignedInOnly title={t("Plugins")} />;
+  if (!session) return <SignedInOnly title={t(msg("Plugins"))} />;
 
   const mutate = (failure: string, work: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
     work()
       .then(reload)
-      .catch((cause: unknown) => Dialog.alert(failure, errorText(cause, t("Try again."))))
+      .catch((cause: unknown) => Dialog.alert(failure, errorText(cause, t(msg("Try again.")))))
       .finally(() => setBusy(false));
   };
   // The service's consent page needs a browser; Settings → Plugins on the web starts it.
   const signInInBrowser = () =>
     Dialog.confirm({
-      title: t("Sign in in the browser?"),
-      message: t(
-        "Sign in from Settings → Plugins in the browser, then close the browser to return here.",
-      ),
-      confirmText: t("Open browser"),
+      title: t(msg("Sign in in the browser?")),
+      message: t(msg("Sign in from Settings → Plugins in the browser, then close the browser to return here.")),
+      confirmText: t(msg("Open browser")),
       onConfirm: () => {
         setBusy(true);
         void openBaskuleManagement("/settings/plugins")
           .catch((cause: unknown) =>
             Dialog.alert(
-              t("Could not open the browser"),
-              cause instanceof Error ? cause.message : t("Try again."),
+              t(msg("Could not open the browser")),
+              cause instanceof Error ? cause.message : t(msg("Try again.")),
             ),
           )
           .finally(() => {
@@ -415,12 +414,12 @@ export function SettingsPluginsRouteScreen() {
     plugin.servers.length === 1 ? plugin.displayName : server.name;
   const disconnect = (plugin: MemberPlugin, server: MemberServer) =>
     Dialog.confirm({
-      title: t("Disconnect {{name}}?", { name: serverName(plugin, server) }),
-      message: t("The assistant can no longer act as you there until you sign in again."),
-      confirmText: t("Disconnect"),
+      title: t(msg("Disconnect {name}?"), { name: serverName(plugin, server) }),
+      message: t(msg("The assistant can no longer act as you there until you sign in again.")),
+      confirmText: t(msg("Disconnect")),
       destructive: true,
       onConfirm: () =>
-        mutate(t("Could not disconnect"), () =>
+        mutate(t(msg("Could not disconnect")), () =>
           disconnectPluginServer(session, { pluginId: plugin.id, serverId: server.id }),
         ),
     });
@@ -433,7 +432,7 @@ export function SettingsPluginsRouteScreen() {
             key={server.id}
             icon="exclamationmark.circle"
             label={name}
-            value={t("Not ready yet, ask an administrator")}
+            value={t(msg("Not ready yet, ask an administrator"))}
             valuePosition="below"
           />
         );
@@ -442,8 +441,8 @@ export function SettingsPluginsRouteScreen() {
           <SettingsRow
             key={server.id}
             icon="link"
-            label={t("Sign in to {{name}}", { name })}
-            value={t("In the browser")}
+            label={t(msg("Sign in to {name}"), { name })}
+            value={t(msg("In the browser"))}
             disabled={busy}
             onPress={signInInBrowser}
           />
@@ -453,8 +452,8 @@ export function SettingsPluginsRouteScreen() {
           <SettingsRow
             key={server.id}
             icon="exclamationmark.triangle"
-            label={t("Reconnect {{name}}", { name })}
-            value={t("Your sign-in expired")}
+            label={t(msg("Reconnect {name}"), { name })}
+            value={t(msg("Your sign-in expired"))}
             valuePosition="below"
             disabled={busy}
             onPress={signInInBrowser}
@@ -466,7 +465,7 @@ export function SettingsPluginsRouteScreen() {
             key={server.id}
             icon="person.crop.circle"
             label={server.connection.account ?? name}
-            value={t("Connected")}
+            value={t(msg("Connected"))}
             disabled={busy}
             onPress={() => disconnect(plugin, server)}
           />
@@ -477,7 +476,7 @@ export function SettingsPluginsRouteScreen() {
   };
 
   return (
-    <SettingsScreen title={t("Plugins")}>
+    <SettingsScreen title={t(msg("Plugins"))}>
       <PageBody>
         {state.status === "loading" ? (
           <Loading />
@@ -486,8 +485,8 @@ export function SettingsPluginsRouteScreen() {
         ) : state.value.length === 0 ? (
           <EmptyState
             variant="plain"
-            title={t("No plugins yet")}
-            detail={t("Plugins an administrator lets you use appear here.")}
+            title={t(msg("No plugins yet"))}
+            detail={t(msg("Plugins an administrator lets you use appear here."))}
           />
         ) : (
           <>
@@ -496,16 +495,16 @@ export function SettingsPluginsRouteScreen() {
                 key={plugin.id}
                 title={plugin.displayName}
                 footer={
-                  plugin.enabled ? plugin.description || undefined : t("Paused by an administrator")
+                  plugin.enabled ? plugin.description || undefined : t(msg("Paused by an administrator"))
                 }
               >
                 <SettingsSwitchRow
                   icon="bolt.circle"
-                  label={t("Use {{name}}", { name: plugin.displayName })}
+                  label={t(msg("Use {name}"), { name: plugin.displayName })}
                   value={plugin.on}
                   disabled={busy || !plugin.enabled}
                   onValueChange={(on) =>
-                    mutate(t("Could not change the plugin"), () =>
+                    mutate(t(msg("Could not change the plugin")), () =>
                       setPluginOn(session, { pluginId: plugin.id, on }),
                     )
                   }
@@ -517,9 +516,7 @@ export function SettingsPluginsRouteScreen() {
               plugin.servers.some((server) => server.connection.state !== "not_required"),
             ) ? (
               <Text textRole="footnote" className="px-4 text-foreground-muted">
-                {t(
-                  "Plugins you sign in to act as you, also in team spaces: each person's chats use their own sign-in.",
-                )}
+                {t(msg("Plugins you sign in to act as you, also in team spaces: each person's chats use their own sign-in."))}
               </Text>
             ) : null}
           </>

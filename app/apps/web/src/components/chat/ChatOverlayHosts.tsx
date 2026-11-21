@@ -1,4 +1,3 @@
-import { useTranslation } from "../../i18n";
 import type {
   DeviceServiceState,
   MessageId,
@@ -6,6 +5,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
+import { T, Var } from "gt-react";
 import { Atom } from "effect/reactivity";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -104,7 +104,6 @@ export function BranchRestoreConfirmHost(props: {
   readonly canWriteSourceControl: boolean;
   readonly onConfirm: () => void;
 }) {
-  const t = useTranslation();
   const open = useThreadOverlay(branchRestoreConfirmAtom, props.threadKey) !== null;
   return (
     <AlertDialog
@@ -116,16 +115,25 @@ export function BranchRestoreConfirmHost(props: {
       <AlertDialogPopup>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {t("Switch to")} <code className="font-medium">{props.threadBranch}</code>?
+            <T>
+              Switch to{" "}
+              <code className="font-medium">
+                <Var>{props.threadBranch}</Var>
+              </code>
+              ?
+            </T>
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {t(
-              "You have uncommitted changes. They'll carry over to the other branch, or block the switch if they conflict.",
-            )}
+            <T>
+              You have uncommitted changes. They'll carry over to the other branch, or block the
+              switch if they conflict.
+            </T>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogClose render={<Button variant="outline" />}>{t("Cancel")}</AlertDialogClose>
+          <AlertDialogClose render={<Button variant="outline" />}>
+            <T>Cancel</T>
+          </AlertDialogClose>
           <Button
             variant="default"
             disabled={!props.canWriteSourceControl}
@@ -134,7 +142,7 @@ export function BranchRestoreConfirmHost(props: {
               props.onConfirm();
             }}
           >
-            {t("Switch branch")}
+            <T>Switch branch</T>
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>
@@ -159,7 +167,6 @@ export function RevertConfirmHost(props: {
   readonly worktreePath: string | null;
   readonly onConfirm: (turnCount: number, messageId: MessageId, restoreFiles: boolean) => void;
 }) {
-  const t = useTranslation();
   const pending = useThreadOverlay(revertConfirmAtom, props.threadKey);
   // The server refuses file restore outside an isolated worktree.
   const canRestoreFiles =
@@ -180,23 +187,30 @@ export function RevertConfirmHost(props: {
     >
       <AlertDialogPopup>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t("Edit from here?")}</AlertDialogTitle>
+          <AlertDialogTitle>
+            <T>Edit from here?</T>
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            {t(
-              "Rewind chat to before this message. Your prompt and attachments return to the composer. “Revert files too” also undoes your own edits.",
-            )}
+            <T>
+              Rewind chat to before this message. Your prompt and attachments return to the
+              composer. “Revert files too” also undoes your own edits.
+            </T>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogClose render={<Button variant="outline" />}>{t("Cancel")}</AlertDialogClose>
+          <AlertDialogClose render={<Button variant="outline" />}>
+            <T>Cancel</T>
+          </AlertDialogClose>
           <Button
             variant="destructive-outline"
             disabled={!canRestoreFiles}
             onClick={() => confirm(true)}
           >
-            {t("Revert files too")}
+            <T>Revert files too</T>
           </Button>
-          <Button onClick={() => confirm(false)}>{t("Revert and keep changes")}</Button>
+          <Button onClick={() => confirm(false)}>
+            <T>Revert and keep changes</T>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>
     </AlertDialog>

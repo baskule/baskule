@@ -1,4 +1,3 @@
-import { t } from "../i18n";
 import * as Schema from "effect/Schema";
 import { type PointerEvent as ReactPointerEvent, useLayoutEffect, useState } from "react";
 
@@ -47,7 +46,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       const stored = getLocalStorageItem(storageKey, WidthSchema);
       return stored === null ? null : stored;
     } catch (error) {
-      console.error(t("Could not read persisted panel width."), error);
+      console.error("Could not read persisted panel width.", error);
       return null;
     }
   };
@@ -67,7 +66,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
     try {
       setLocalStorageItem(nextStorageKey, nextWidth, WidthSchema);
     } catch (error) {
-      console.error(t("Could not persist panel width."), error);
+      console.error("Could not persist panel width.", error);
     }
   };
 

@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: ChatGPT-like sidebar header: a full-width "New chat" row above the search field. A copy
 // of upstream's search field (SidebarThreadHeader) so the upstream file only gains a wrapper.
@@ -21,7 +22,7 @@ export function BaskuleSidebarHeader({
   activeSearchResultIndex,
   onClearSearch,
 }: SidebarThreadHeaderProps) {
-  const t = useTranslation();
+  const t = useMessages();
   const resultsVisible = isSearching && searchResultCount > 0;
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
   return (
@@ -33,7 +34,7 @@ export function BaskuleSidebarHeader({
         onClick={onNewThread}
       >
         <SquarePenIcon className="size-4" />
-        <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{t("New chat")}</span>
+        <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{t(msg("New chat"))}</span>
         {newThreadShortcutLabel ? (
           <span className="hidden shrink-0 text-xs text-muted-foreground md:inline">
             {newThreadShortcutLabel}
@@ -49,8 +50,8 @@ export function BaskuleSidebarHeader({
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
           onKeyDown={onSearchKeyDown}
-          placeholder={t("Search chats")}
-          aria-label={t("Search chats")}
+          placeholder={t(msg("Search chats"))}
+          aria-label={t(msg("Search chats"))}
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={resultsVisible}
@@ -68,7 +69,7 @@ export function BaskuleSidebarHeader({
             size="icon-micro"
             variant="ghost-muted"
             className="shrink-0"
-            aria-label={t("Clear chat search")}
+            aria-label={t(msg("Clear chat search"))}
             onClick={() => {
               onClearSearch();
               searchInputRef.current?.focus();

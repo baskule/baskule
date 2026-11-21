@@ -54,6 +54,34 @@ export const PullRequestActor = Schema.Struct({
 });
 export type PullRequestActor = typeof PullRequestActor.Type;
 
+export const PullRequestLabel = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  color: Schema.NullOr(Schema.String),
+  description: Schema.optional(Schema.NullOr(Schema.String)),
+});
+export type PullRequestLabel = typeof PullRequestLabel.Type;
+
+export const PullRequestReactionContent = Schema.Literals([
+  "thumbs-up",
+  "thumbs-down",
+  "laugh",
+  "hooray",
+  "confused",
+  "heart",
+  "rocket",
+  "eyes",
+]);
+export type PullRequestReactionContent = typeof PullRequestReactionContent.Type;
+
+export const PullRequestReaction = Schema.Struct({
+  content: PullRequestReactionContent,
+  count: PositiveInt,
+  /** Excludes the viewer's login when viewerHasReacted; count still includes them. */
+  actors: Schema.Array(TrimmedNonEmptyString),
+  viewerHasReacted: Schema.Boolean,
+});
+export type PullRequestReaction = typeof PullRequestReaction.Type;
+
 export const PullRequestDiffSide = Schema.Literals(["left", "right"]);
 export type PullRequestDiffSide = typeof PullRequestDiffSide.Type;
 

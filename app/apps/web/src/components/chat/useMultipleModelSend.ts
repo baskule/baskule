@@ -1,5 +1,6 @@
-import { t } from "../../i18n";
-
+import { msg } from "gt-react";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m } from "~/i18n/messages";
 import {
   type EnvironmentId,
   type ModelSelection,
@@ -129,16 +130,18 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
     const sendResult = await settlePromise(async () => {
       const attachments = await attachmentsPromise;
       if (draftChangedDuringPreparation())
-        throw new Error("Draft changed while preparing this message. Review it and send again.");
+        throw new Error(
+          m(msg("Draft changed while preparing this message. Review it and send again.")),
+        );
       const fileBlockReason = readFileBlockReason();
       if (fileBlockReason !== null) throw new Error(fileBlockReason);
       const context = buildOutgoingMessageContext(
         boundAttachmentIds(attachments, attachmentsSnapshot),
       );
-      const title = deriveThreadTitleSeed({
-        text: messageText,
-        attachments: attachmentsSnapshot,
-      });
+      const title = deriveThreadTitleSeed(
+        { text: messageText, attachments: attachmentsSnapshot },
+        m,
+      );
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -223,10 +226,12 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
         toastManager.add(
           stackedThreadToast({
             type: "success",
-            title: t("Started {{value1}} {{value2}} in background", {
-              value1: startedCount,
-              value2: startedCount === 1 ? "thread" : "threads",
-            }),
+            title: m(
+              msg(
+                "{count, plural, one {Started {count} thread in background} other {Started {count} threads in background}}",
+                { count: startedCount },
+              ),
+            ),
           }),
         );
       }
@@ -237,7 +242,7 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
     if (sendResult._tag === "Failure") {
       const error = squashAtomCommandFailure(sendResult);
       failedSelections.push(...selections);
-      setThreadError(threadId, error instanceof Error ? error.message : "Failed to send messages.");
+      setThreadError(threadId, thrownErrorMessage(error, m) ?? m(msg("Failed to send messages.")));
     }
     const restoreFailedDraft = () => {
       appAtomRegistry.set(fanoutSelectionsAtom, failedSelections);
@@ -263,13 +268,15 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
         const recoveryToastId = toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: t("A background prompt could not be sent"),
-            description: t(
-              "Your newer draft is unchanged. Restore the failed prompt when this composer is empty.",
+            title: m(msg("A background prompt could not be sent")),
+            description: m(
+              msg(
+                "Your newer draft is unchanged. Restore the failed prompt when this composer is empty.",
+              ),
             ),
             timeout: 0,
             actionProps: {
-              children: "Restore prompt",
+              children: m(msg("Restore prompt")),
               onClick: () => {
                 if (
                   !draftId ||
@@ -280,8 +287,10 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
                   )
                 ) {
                   toastManager.update(recoveryToastId, {
-                    description: t(
-                      "Return to the original draft and send or clear its current prompt before restoring.",
+                    description: m(
+                      msg(
+                        "Return to the original draft and send or clear its current prompt before restoring.",
+                      ),
                     ),
                   });
                   return;

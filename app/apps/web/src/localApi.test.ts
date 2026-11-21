@@ -62,9 +62,39 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("LocalApi", () => {
+  it.each([
+    ["auto", "system"],
+    ["de", "de"],
+    ["en", "en"],
+    ["es", "es"],
+    ["fr", "fr"],
+    ["it", "it"],
+    ["nl", "nl"],
+  ])("migrates the released language %s", async (legacy, expected) => {
+    vi.stubGlobal("document", { cookie: "" });
+    localStorage.setItem("baskule.language", legacy);
+    const { createLocalApi } = await import("./localApi");
+    const { persistence } = createLocalApi();
+
+    await expect(persistence.getClientSettings()).resolves.toMatchObject({ language: expected });
+    expect(localStorage.getItem("baskule.language")).toBeNull();
+    await expect(persistence.getClientSettings()).resolves.toMatchObject({ language: expected });
+  });
+
+  it("prefers the released web language cookie over its cached value", async () => {
+    vi.stubGlobal("document", { cookie: "other=1; baskule_language=fr" });
+    localStorage.setItem("baskule.language", "de");
+    const { createLocalApi } = await import("./localApi");
+
+    await expect(createLocalApi().persistence.getClientSettings()).resolves.toMatchObject({
+      language: "fr",
+    });
+  });
+
   it("fails closed in a browser when no themed host is available", async () => {
     requestConfirmDialogMock.mockReturnValue(undefined);
     const { createLocalApi } = await import("./localApi");

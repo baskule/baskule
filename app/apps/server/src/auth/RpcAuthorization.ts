@@ -23,6 +23,8 @@ import {
   AuthRelayWriteScope,
   AuthTerminalOperateScope,
   ORCHESTRATION_V2_WS_METHODS,
+  type OrchestrationV2Command,
+  type OrchestrationV2ThreadLaunchInput,
   AuthTerminalReadScope,
   type AuthEnvironmentScope,
   EnvironmentAuthorizationError,
@@ -34,6 +36,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
+import { isProviderSignOutPrompt } from "../orchestration-v2/CommandPolicy.ts";
 
 import { BaskuleRpcPolicy, baskuleRefusal, baskuleUnsupportedError } from "../baskule/rpcPolicy.ts"; // baskule
 
@@ -187,7 +190,7 @@ const SettingsUpdate = Schema.Struct({
   patch: ServerSettingsPatch,
   providerInstanceMutation: Schema.optionalKey(ProviderInstanceMutation),
 });
-const decodeSettingsUpdate = Schema.decodeUnknownSync(SettingsUpdate);
+const decodeSettingsUpdate = Schema.decodeUnknownSync(Schema.toType(SettingsUpdate));
 
 const requiredScopesForSettingsUpdate = (payload: unknown) => {
   const input = decodeSettingsUpdate(payload);
@@ -200,6 +203,32 @@ const requiredScopesForSettingsUpdate = (payload: unknown) => {
 
 const decodeProjectMutation = Schema.decodeUnknownSync(ProjectMutation);
 const decodeAssetCreateUrlInput = Schema.decodeUnknownSync(AssetCreateUrlInput);
+
+/**
+ * A queued edit that omits `attachments` keeps the queued ones, which a payload cannot show;
+ * ThreadMessageIntake.dispatchCommand decides that case.
+ */
+const sendsProviderSignOutPrompt = (method: string, payload: unknown): boolean => {
+  if (method === ORCHESTRATION_V2_WS_METHODS.launchThread) {
+    const message = (payload as OrchestrationV2ThreadLaunchInput).initialMessage;
+    return message !== undefined && isProviderSignOutPrompt(message);
+  }
+  if (method !== ORCHESTRATION_V2_WS_METHODS.dispatchCommand) return false;
+  const command = payload as OrchestrationV2Command;
+  switch (command.type) {
+    case "message.dispatch":
+      return isProviderSignOutPrompt(command);
+    case "queued-run.edit":
+      return (
+        command.attachments !== undefined &&
+        isProviderSignOutPrompt({ text: command.text, attachments: command.attachments })
+      );
+    case "delegated_task.request":
+      return isProviderSignOutPrompt({ text: command.task, attachments: [] });
+    default:
+      return false;
+  }
+};
 
 const requiredScopesForRpcCall = (
   method: string,
@@ -224,8 +253,10 @@ const requiredScopesForRpcCall = (
     return requiredScopesForProjectMutation(decodeProjectMutation(payload));
   }
   const guarded = clientRpcRequiredScopes(method);
-  if (guarded.length > 0) return guarded;
-  return [requiredScopeForRpcMethod(method)];
+  const scopes = guarded.length > 0 ? guarded : [requiredScopeForRpcMethod(method)];
+  return sendsProviderSignOutPrompt(method, payload)
+    ? [...scopes, AuthProvidersManageScope]
+    : scopes;
 };
 
 /**

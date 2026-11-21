@@ -1,8 +1,6 @@
-import { t } from "../../i18n";
-import { useTranslation } from "../../i18n";
-
 import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { T, useGT } from "gt-react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
@@ -51,7 +49,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 }: {
   isElectron: boolean;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const backdropVariant = baskule.hideSettings
@@ -74,7 +72,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         <SidebarTrigger
           variant={backdropVariant ? "media-navigation" : "ghost"}
           className="relative top-auto translate-y-0"
-          aria-label={t("Toggle main sidebar")}
+          aria-label={gt("Toggle main sidebar")}
         />
       </div>
       <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
@@ -135,7 +133,8 @@ function HistoryNavigationButton({
 }) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const enabled = useCanNavigateHistory(direction);
-  const label = direction === "back" ? t("Go back") : t("Go forward");
+  const gt = useGT();
+  const label = direction === "back" ? gt("Go back") : gt("Go forward");
   const shortcutLabel = shortcutLabelForCommand(
     keybindings,
     direction === "back" ? "navigation.back" : "navigation.forward",
@@ -162,17 +161,17 @@ function HistoryNavigationButton({
       </TooltipTrigger>
       <TooltipPopup side="bottom">
         {label}
-        {shortcutLabel ? t(" ({{shortcutLabel}})", { shortcutLabel: shortcutLabel }) : ""}
+        {shortcutLabel ? ` (${shortcutLabel})` : ""}
       </TooltipPopup>
     </Tooltip>
   );
 }
 
 function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
-  const t = useTranslation();
+  const gt = useGT();
   return (
     <Link
-      aria-label={t("Baskule home")}
+      aria-label={gt("Baskule home")}
       className={cn(
         "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         baskule.hideSettings && "flex", // baskule: brand also shown in the phone drawer
@@ -186,21 +185,21 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
 }
 
 function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
-  const t = useTranslation();
   // baskule: plain text wordmark.
   if (baskule.hideSettings) {
     return <BaskuleWordmark className="h-3.5" />;
   }
   return (
     <span className="inline-flex min-w-0 items-baseline gap-1 text-sm font-medium tracking-tight">
-      <T3Wordmark aria-label={t("T3")} className="h-[1cap] w-auto shrink-0" />
+      <T3Wordmark aria-label="T3" className="h-[1cap] w-auto shrink-0" />
       <span
         className={cn(
           "truncate [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
           onBackdrop ? "text-white/70" : "text-muted-foreground",
         )}
       >
-        {t("Code")}
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product wordmark */}
+        {"Code"}
       </span>
     </span>
   );
@@ -232,9 +231,9 @@ function SidebarUtilityItem({
 }
 
 export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
-  const t = useTranslation();
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
+  const gt = useGT();
   const { isMobile, setOpenMobile } = useSidebar();
   const isOnUtilityPage = useLocation({
     select: (location) => isSidebarUtilityPage(location.pathname),
@@ -269,7 +268,9 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           <SidebarMenuItem>
             <SidebarMenuButton onClick={handleBackClick}>
               <ArrowLeftIcon />
-              <span>{t("Back to chats")}</span>
+              <span>
+                <T>Back to chats</T>
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         ) : null}
@@ -279,7 +280,9 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           ) : (
             <SidebarMenuButton onClick={handleSettingsClick}>
               <SettingsIcon />
-              <span>{t("Settings")}</span>
+              <span>
+                <T>Settings</T>
+              </span>
             </SidebarMenuButton>
           )}
         </SidebarMenuItem>
@@ -292,20 +295,22 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         <SidebarMenuItem className="min-w-0 flex-1">
           <SidebarMenuButton onClick={handleBackClick}>
             <ArrowLeftIcon />
-            <span>{t("Back")}</span>
+            <span>
+              <T>Back</T>
+            </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : (
         <>
           <SidebarUtilityItem
             icon={<SettingsIcon />}
-            label={t("Settings")}
+            label={gt("Settings")}
             onClick={handleSettingsClick}
           />
 
           <SidebarUtilityItem
             icon={<ChartNoAxesColumnIcon />}
-            label={t("Usage")}
+            label={gt("Usage")}
             onClick={handleUsageClick}
           />
         </>

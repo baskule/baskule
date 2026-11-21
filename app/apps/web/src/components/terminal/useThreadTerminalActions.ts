@@ -1,4 +1,3 @@
-import { t } from "../../i18n";
 import {
   AuthTerminalOperateScope,
   AuthTerminalReadScope,
@@ -132,7 +131,7 @@ export function useThreadTerminalActions(threadRef: ScopedThreadRef | null) {
         !isAtomCommandInterrupted(closeResult) &&
         readEnvironmentScope(environmentId, AuthTerminalOperateScope)
       ) {
-        await writeTerminal({ environmentId, input: { threadId, terminalId, data: t("exit\n") } });
+        await writeTerminal({ environmentId, input: { threadId, terminalId, data: "exit\n" } });
       }
     });
   };

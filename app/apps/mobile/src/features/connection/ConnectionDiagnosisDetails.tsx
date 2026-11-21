@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { T, useGT, useMessages } from "gt-react-native";
 import { useAtomValue } from "@effect/atom-react";
 import {
   AVAILABLE_CONNECTION_STATE,
@@ -22,13 +21,13 @@ import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 
 const HOP_MARK = { ok: "✓", failed: "✕", unchecked: "–" } as const;
-const HOP_NOTE = { ok: "", failed: " · Failed", unchecked: " · Not checked" } as const;
 
 /** Same model as the web Settings row; null while connected, off, or not failed. */
 export function useConnectionDiagnosis(
   environmentId: EnvironmentId,
   presentation: EnvironmentPresentation | null,
 ) {
+  const messages = useMessages();
   const state = AsyncResult.getOrElse(
     useAtomValue(environmentCatalog.stateAtom(environmentId)),
     () => AVAILABLE_CONNECTION_STATE,
@@ -38,13 +37,16 @@ export function useConnectionDiagnosis(
   if (phase === "connected" || phase === "unsupported") return { diagnosis: null, state };
   const relayOnly =
     connectionRoutes(presentation.entry).length === 1 && hasRelayRoute(presentation.entry);
-  const diagnosis = presentConnectionDiagnosis({
-    hostLabel: presentation.entry.target.label,
-    state,
-    via: relayOnly ? "relay" : "direct",
-    clientVersion: Constants.expoConfig?.version,
-    serverVersion: presentation.serverConfig?.environment.serverVersion,
-  });
+  const diagnosis = presentConnectionDiagnosis(
+    {
+      hostLabel: presentation.entry.target.label,
+      state,
+      via: relayOnly ? "relay" : "direct",
+      clientVersion: Constants.expoConfig?.version,
+      serverVersion: presentation.serverConfig?.environment.serverVersion,
+    },
+    messages,
+  );
   return { diagnosis, state };
 }
 
@@ -52,7 +54,7 @@ export function ConnectionDiagnosisDetails(props: {
   readonly hostLabel: string;
   readonly diagnosis: ConnectionDiagnosis;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const { diagnosis } = props;
   const { moreInfoUrl } = diagnosis;
   return (
@@ -66,12 +68,18 @@ export function ConnectionDiagnosisDetails(props: {
               hop.result === "failed" ? "text-danger-foreground" : "text-foreground-muted",
             )}
           >
-            {`${HOP_MARK[hop.result]}  ${hop.label}${HOP_NOTE[hop.result]}`}
+            {hop.result === "failed"
+              ? gt("{mark}  {hop} · Failed", { mark: HOP_MARK[hop.result], hop: hop.label })
+              : hop.result === "unchecked"
+                ? gt("{mark}  {hop} · Not checked", { mark: HOP_MARK[hop.result], hop: hop.label })
+                : `${HOP_MARK[hop.result]}  ${hop.label}`}
           </Text>
         ))}
       </View>
       <View className="gap-0.5">
-        <Text className="text-sm font-t3-bold text-foreground">{t("What to try")}</Text>
+        <Text className="text-sm font-t3-bold text-foreground">
+          <T>What to try</T>
+        </Text>
         {diagnosis.steps.map((step, index) => (
           <Text key={step} className="text-sm text-foreground-muted">
             {`${index + 1}. ${step}`}
@@ -82,7 +90,7 @@ export function ConnectionDiagnosisDetails(props: {
         {diagnosis.facts.map(([label, value]) => `${label}: ${value}`).join("\n")}
       </Text>
       <Button
-        label={t("Copy diagnostics")}
+        label={gt("Copy diagnostics")}
         icon="doc.on.doc"
         onPress={() => {
           copyTextWithHaptic(connectionDiagnosisText(props.hostLabel, diagnosis), {
@@ -92,7 +100,7 @@ export function ConnectionDiagnosisDetails(props: {
       />
       {moreInfoUrl ? (
         <Button
-          label={t("More info")}
+          label={gt("More info")}
           icon="safari"
           tone="secondary"
           onPress={() => void Linking.openURL(moreInfoUrl).catch(() => undefined)}

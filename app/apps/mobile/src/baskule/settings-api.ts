@@ -1,9 +1,11 @@
+import { m as resolveMessage } from "../i18n/messages";
+import { msg } from "gt-react-native";
 import { PLUGIN_CATEGORIES, type MemberPlugin } from "@t3tools/contracts/baskule-plugins";
 import { UsageWindowStatusSchema, type MyUsage } from "@t3tools/contracts/baskule-usage";
 import * as Schema from "effect/Schema";
 import { fetch } from "expo/fetch";
 
-import { t } from "../i18n";
+
 import { BaskuleApiError } from "./api";
 
 export interface SettingsSession {
@@ -81,22 +83,22 @@ export class BaskuleSettingsError extends BaskuleApiError {
 }
 
 function errorMessage(status: number, code: string | undefined): string {
-  if (status === 401) return t("Your session has ended. Sign in again.");
-  if (status === 429) return t("Too many attempts. Wait a minute and try again.");
+  if (status === 401) return resolveMessage(msg("Your session has ended. Sign in again."));
+  if (status === 429) return resolveMessage(msg("Too many attempts. Wait a minute and try again."));
   switch (code) {
     case "INVALID_PASSWORD":
-      return t("The current password is not right.");
+      return resolveMessage(msg("The current password is not right."));
     case "PASSWORD_TOO_SHORT":
-      return t("Use at least 8 characters for your new password.");
+      return resolveMessage(msg("Use at least 8 characters for your new password."));
     case "PASSWORD_TOO_LONG":
-      return t("Use no more than 256 characters for your new password.");
+      return resolveMessage(msg("Use no more than 256 characters for your new password."));
     case "CREDENTIAL_ACCOUNT_NOT_FOUND":
-      return t("This account does not have a password. Use your sign-in provider.");
+      return resolveMessage(msg("This account does not have a password. Use your sign-in provider."));
     case "plugin_not_found":
     case "server_not_found":
-      return t("The plugin changed or was removed in the meantime. Reload and try again.");
+      return resolveMessage(msg("The plugin changed or was removed in the meantime. Reload and try again."));
     default:
-      return t("The server answered HTTP {{status}}.", { status });
+      return resolveMessage(msg("The server answered HTTP {status}."), { status });
   }
 }
 
@@ -120,7 +122,7 @@ async function request(
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   } catch {
-    throw new BaskuleApiError("network", t("Cannot reach the server. Check this phone's network."));
+    throw new BaskuleApiError("network", resolveMessage(msg("Cannot reach the server. Check this phone's network.")));
   }
   if (!response.ok) {
     let code: string | undefined;
@@ -142,7 +144,7 @@ async function decodeResponse<S extends Schema.Top & { readonly DecodingServices
     const value: unknown = await response.json();
     return Schema.decodeUnknownSync(schema)(value);
   } catch {
-    throw new BaskuleApiError("server", t("The server sent an invalid response. Try again."));
+    throw new BaskuleApiError("server", resolveMessage(msg("The server sent an invalid response. Try again.")));
   }
 }
 
@@ -160,7 +162,7 @@ export async function changeBaskulePassword(
   if (!token)
     throw new BaskuleApiError(
       "signed-out",
-      t("Password changed. Sign in again with your new password."),
+      resolveMessage(msg("Password changed. Sign in again with your new password.")),
     );
   return token;
 }

@@ -1,6 +1,6 @@
 {
   "name": "t3",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -15,7 +15,7 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "node --watch --watch-path=src --watch-path=../../packages --watch-path=package.json src/bin.ts",
+    "dev": "node scripts/dev.ts",
     "dev:built": "vp run dev",
     "build:bundle": "vp pack",
     "build:exe": "node scripts/cli.ts build-exe",
@@ -47,10 +47,10 @@
     "stream-json": "3.7.0",
     "transcribe-cpp": "0.4.1",
     "undici": "catalog:",
-    "ws": "catalog:",
     "yaml": "catalog:",
     "yauzl": "^3.4.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "ws": "catalog:"
   },
   "devDependencies": {
     "@effect/graphql-generator": "catalog:",

@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: Spaces → Personal spaces: one per person, private; the admin can only delete them.
 
 import { Button } from "../../../components/ui/button";
@@ -10,7 +11,7 @@ import { ResourceState } from "../ResourceState";
 const loadAdminSpaces = () => baskuleApi.adminSpaces();
 
 export function PersonalSpacesPage() {
-  const t = useTranslation();
+  const t = useMessages();
   const spaces = useApiResource(loadAdminSpaces);
   const personal = (spaces.data ?? []).filter((space) => space.kind === "personal");
   const reload = () => void spaces.reload();
@@ -19,15 +20,15 @@ export function PersonalSpacesPage() {
     <PageSection
       title={
         spaces.data
-          ? t("Personal spaces ({{length}})", { length: personal.length })
-          : t("Personal spaces")
+          ? t(msg("Personal spaces ({length})"), { length: personal.length })
+          : t(msg("Personal spaces"))
       }
     >
       <ResourceState
         error={spaces.error}
         loading={spaces.loading}
         empty={personal.length === 0}
-        emptyText={t("No personal spaces.")}
+        emptyText={t(msg("No personal spaces."))}
       />
       {personal.map((space) => (
         <PageRow
@@ -45,20 +46,20 @@ export function PersonalSpacesPage() {
                   if (!confirmed) return;
                   try {
                     await baskuleApi.deleteSpace(space.id);
-                    notifySuccess(t("Personal space deleted"));
+                    notifySuccess(t(msg("Personal space deleted")));
                     reload();
                   } catch (cause) {
-                    notifyError(t("Could not delete the space"), cause);
+                    notifyError(t(msg("Could not delete the space")), cause);
                   }
                 })
               }
             >
-              {t("Delete")}
+              {t(msg("Delete"))}
             </Button>
           }
         >
           <span className="truncate text-sm text-foreground">{space.ownerName ?? space.name}</span>
-          <span className="truncate text-xs text-muted-foreground">{t("Personal space")}</span>
+          <span className="truncate text-xs text-muted-foreground">{t(msg("Personal space"))}</span>
         </PageRow>
       ))}
     </PageSection>

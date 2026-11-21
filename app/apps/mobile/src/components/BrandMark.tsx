@@ -1,21 +1,25 @@
-import { useTranslation } from "../i18n";
-
 import Constants from "expo-constants";
 import { Image } from "expo-image";
+import { msg, T, useMessages } from "gt-react-native";
 import { View } from "react-native";
 
 import { AppText as Text } from "./ui/AppText";
 import { BaskuleWordmark } from "./BaskuleBrand";
 import { BASKULE_BRAND_MARK_SOURCE } from "./brandAssets";
-import { resolveMobileStageLabel } from "../lib/mobileBranding";
 
-const DEFAULT_STAGE_LABEL = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
+const appVariant = Constants.expoConfig?.extra?.appVariant;
+const DEFAULT_STAGE_LABEL =
+  appVariant === "development"
+    ? msg("Dev", { $context: "app release stage badge" })
+    : appVariant === "preview"
+      ? msg("Preview", { $context: "app release stage badge" })
+      : msg("Beta", { $context: "app release stage badge" });
 
 export function BrandMark(props: { readonly compact?: boolean; readonly stageLabel?: string }) {
-  const t = useTranslation();
+  const m = useMessages();
   const compact = props.compact ?? false;
   const iconSize = compact ? 32 : 44;
-  const stageLabel = props.stageLabel ?? DEFAULT_STAGE_LABEL;
+  const stageLabel = props.stageLabel ?? m(DEFAULT_STAGE_LABEL);
 
   return (
     <View className="flex-row items-center gap-3">
@@ -40,7 +44,7 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
         </View>
         {!compact ? (
           <Text className="text-xs font-medium text-foreground-muted">
-            {t("Your assistant, wherever you work")}
+            <T>Mobile control surface for your live coding environments</T>
           </Text>
         ) : null}
       </View>

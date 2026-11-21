@@ -1,10 +1,11 @@
+import { useMessages, msg } from "gt-react";
 // baskule: Admin → Plugins → Installed: the plugins this organization added, whether each is
 // ready, who can use it and how many people signed in.
 import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 
 import { Button } from "../../../components/ui/button";
-import { useTranslation } from "../../../i18n";
+
 import { pluginsApi } from "../../plugins/api";
 import { PluginLogo } from "../../plugins/PluginLogo";
 import { pluginSite } from "../../plugins/presentation";
@@ -17,13 +18,13 @@ import { accessSummary, StatusBadge } from "./parts";
 const loadInstalled = () => Promise.all([pluginsApi.installed(), groupsApi.list().catch(() => [])]);
 
 export function InstalledPage() {
-  const t = useTranslation();
+  const t = useMessages();
   const data = useApiResource(loadInstalled);
   const [list, groups] = data.data ?? [null, null];
   const plugins = list?.plugins ?? [];
   return (
     <PageSection
-      title={list ? t("Installed ({{count}})", { count: plugins.length }) : t("Installed")}
+      title={list ? t(msg("Installed ({count})"), { count: plugins.length }) : t(msg("Installed"))}
       action={
         <Button
           size="sm"
@@ -32,12 +33,12 @@ export function InstalledPage() {
             <Link to="/admin/$section/$page" params={{ section: "plugins", page: "browse" }} />
           }
         >
-          {t("Browse plugins")}
+          {t(msg("Browse plugins"))}
         </Button>
       }
     >
       {list && plugins.length === 0 ? (
-        <PageMessage>{t("No plugins yet. Browse the catalog to add one.")}</PageMessage>
+        <PageMessage>{t(msg("No plugins yet. Browse the catalog to add one."))}</PageMessage>
       ) : (
         <ResourceState
           error={data.error}
@@ -66,7 +67,7 @@ export function InstalledPage() {
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={t("Open {{name}}", { name: plugin.displayName })}
+                  aria-label={t(msg("Open {name}"), { name: plugin.displayName })}
                   render={<Link to="/admin/$section/$page/$item" params={params} />}
                 >
                   <ChevronRightIcon />
@@ -84,10 +85,7 @@ export function InstalledPage() {
             <span className="truncate text-xs text-muted-foreground">
               {accessSummary(plugin.access, groups, t)}
               {signedIn > 0
-                ? ` · ${t("{{count}} person signed in", {
-                    count: signedIn,
-                    defaultValue_other: "{{count}} people signed in",
-                  })}`
+                ? ` · ${t(msg("{count, plural, one {{count} person signed in} other {{count} people signed in}}"), { count: signedIn })}`
                 : null}
             </span>
           </PageRow>

@@ -139,3 +139,5 @@ export const PREVIEW_ANNOTATION_VOICE_EVENT_CHANNEL = "desktop:preview-annotatio
 export const PREVIEW_ANNOTATION_VOICE_STATE_CHANNEL = "desktop:preview-annotation-voice-state";
 
 export const RESTART_AUDIO_SERVICE_CHANNEL = "desktop:restart-audio-service";
+
+export const START_FILE_DRAG_CHANNEL = "desktop:start-file-drag";

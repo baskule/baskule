@@ -207,10 +207,8 @@ export const withBaskuleFrontAuth = Effect.fn("BaskuleFrontAuth.make")(function*
     authenticateWebSocketUpgrade,
     issueConnectCredential: () => refuseConnect("Connect credentials"),
     approveConnectDevice: () => refuseConnect("Connect approval"),
-    approveConnectDeviceByCode: () => refuseConnect("Connect approval"),
     listConnectDevices: () => refuseConnect("Connect device listing"),
     revokeConnectDevice: () => refuseConnect("Connect revocation"),
-    revokeConnectDeviceByCode: () => refuseConnect("Connect revocation"),
     createBrowserSession: () => refused("Browser-session pairing"),
     exchangeBootstrapCredentialForAccessToken: () => refused("Token exchange"),
   } satisfies EnvironmentAuth.EnvironmentAuth["Service"];

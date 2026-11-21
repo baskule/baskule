@@ -1,6 +1,8 @@
+import { m as t } from "../../../i18n/messages";
+
 import { describe, expect, it } from "vite-plus/test";
 
-import { t } from "../../../i18n";
+
 import { sortRows, usageCsv, type UsageColumn } from "../../usage/UsageTable";
 import { draftOf, settingsOf } from "./LimitsEditor";
 import { costOf, priceDraftOf } from "./ModelPrices";

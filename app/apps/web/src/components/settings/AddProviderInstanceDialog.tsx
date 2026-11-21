@@ -1,4 +1,5 @@
-import { t, useTranslation } from "../../i18n";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m as resolveMessage } from "~/i18n/messages";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { CheckIcon } from "lucide-react";
@@ -13,6 +14,8 @@ import { SettingsGroup } from "./SettingsGroup";
 import { SettingsRow } from "./settingsLayout";
 
 import { useState } from "react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
+import type { MessageResolver } from "../../i18n/messages";
 import {
   deriveAvailableInstanceId,
   deriveInstanceId,
@@ -49,13 +52,19 @@ const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
 const DEFAULT_DRIVER_OPTION = providerClients.definitions[0]!;
 const EMPTY_CONFIG_DRAFT: Record<string, unknown> = {};
-function validateInstanceId(id: string, existing: ReadonlySet<string>): string | null {
-  if (id.length === 0) return t("Instance ID is required.");
-  if (id.length > 64) return t("Instance ID must be 64 characters or fewer.");
+function validateInstanceId(
+  id: string,
+  existing: ReadonlySet<string>,
+  resolve: MessageResolver,
+): string | null {
+  if (id.length === 0) return resolve(msg("Instance ID is required."));
+  if (id.length > 64) return resolve(msg("Instance ID must be 64 characters or fewer."));
   if (!INSTANCE_ID_PATTERN.test(id)) {
-    return t("Instance ID must start with a letter and use only letters, digits, '-', or '_'.");
+    return resolve(
+      msg("Instance ID must start with a letter and use only letters, digits, '-', or '_'."),
+    );
   }
-  if (existing.has(id)) return t("An instance named '{{id}}' already exists.", { id: id });
+  if (existing.has(id)) return resolve(msg("An instance named ''{id}'' already exists.", { id }));
   return null;
 }
 
@@ -129,7 +138,8 @@ export function AddProviderInstanceDialog({
   onOpenChange,
   onCreated,
 }: AddProviderInstanceDialogProps) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const settings = useEnvironmentSettings(environmentId);
   const persistProviderInstance = usePersistEnvironmentProviderInstanceMutation(environmentId);
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
@@ -168,11 +178,11 @@ export function AddProviderInstanceDialog({
       label,
       existingIds,
     );
-  const driverSettingsFields = deriveProviderSettingsFields(driverOption);
-  const instanceIdError = validateInstanceId(instanceId, existingIds);
+  const driverSettingsFields = deriveProviderSettingsFields(driverOption, undefined, m);
+  const instanceIdError = validateInstanceId(instanceId, existingIds, m);
   const showInstanceIdError = hasAttemptedSubmit && instanceIdError !== null;
   const identityStep = 1;
-  const previewLabel = label.trim() || `${driverOption.label} Workspace`;
+  const previewLabel = label.trim() || gt("{provider} Workspace", { provider: driverOption.label });
 
   const configDraft = configByDriver[driver] ?? EMPTY_CONFIG_DRAFT;
 
@@ -212,8 +222,6 @@ export function AddProviderInstanceDialog({
     );
   };
 
-  // A policy that owns this driver's launch settings also rules out ChatGPT's own runtime.
-
   const handleSave = async () => {
     if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
     if (isSaving) return;
@@ -243,8 +251,11 @@ export function AddProviderInstanceDialog({
       setIsSaving(false);
       toastManager.add({
         type: "error",
-        title: t("Could not add provider instance"),
-        description: error instanceof Error ? error.message : t("The settings update failed."),
+        title: gt("Could not add provider instance"),
+        description:
+          error instanceof Error
+            ? (thrownErrorMessage(error, resolveMessage) ?? error.message)
+            : gt("The settings update failed."),
       });
       return;
     }
@@ -252,10 +263,10 @@ export function AddProviderInstanceDialog({
 
     toastManager.add({
       type: "success",
-      title: t("Provider instance added"),
-      description: t("{{label}} instance '{{instanceId}}' was added.", {
-        label: driverOption.label,
-        instanceId: instanceId,
+      title: gt("Provider instance added"),
+      description: gt("{provider} instance ''{instanceId}'' was added.", {
+        provider: driverOption.label,
+        instanceId,
       }),
     });
     onOpenChange(false);
@@ -265,11 +276,11 @@ export function AddProviderInstanceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <WizardPopup size="wide">
         <WizardHeader
-          title={t("Add provider")}
+          title={gt("Add provider")}
           description={
-            <>
-              {t("Add an account or configure a provider on")} {environmentLabel}.
-            </>
+            <T>
+              Add an account or configure a provider on <Var>{environmentLabel}</Var>.
+            </T>
           }
         >
           <AddProviderInstanceWizardSteps
@@ -283,7 +294,7 @@ export function AddProviderInstanceDialog({
         <WizardPanel>
           <div className={cn("grid gap-2", wizardStep !== 0 && "hidden")}>
             <div id="add-instance-driver-label" className="text-sm font-medium text-foreground">
-              {t("Provider")}
+              <T>Provider</T>
             </div>
             <ProviderOptionGrid
               options={providerClients.definitions}
@@ -295,9 +306,15 @@ export function AddProviderInstanceDialog({
           </div>
           <SettingsGroup variant="plain" className={cn(wizardStep !== identityStep && "hidden")}>
             <SettingsRow
-              title={<label htmlFor="add-provider-label">{t("Label")}</label>}
+              title={
+                <label htmlFor="add-provider-label">
+                  <T>Label</T>
+                </label>
+              }
               description={
-                <span id="add-provider-label-description">{t("Shown in the provider list.")}</span>
+                <span id="add-provider-label-description">
+                  <T>Shown in the provider list.</T>
+                </span>
               }
               control={
                 <Input
@@ -305,26 +322,26 @@ export function AddProviderInstanceDialog({
                   aria-describedby="add-provider-label-description"
                   size="sm"
                   className="w-full @min-[32rem]/settings-row:w-56"
-                  placeholder={t("e.g. Work")}
+                  placeholder={gt("e.g. Work")}
                   value={label}
                   onChange={(event) => setIdentityDraft({ label: event.target.value })}
                 />
               }
             />
             <SettingsRow
-              title={<label htmlFor="add-provider-instance-id">{t("Instance ID")}</label>}
+              title={
+                <label htmlFor="add-provider-instance-id">
+                  <T>Instance ID</T>
+                </label>
+              }
               description={
                 <span id="add-provider-instance-id-description">
-                  {t("Letters, digits, '-', or '_'.")}
+                  <T>Letters, digits, '-', or '_'.</T>
                 </span>
               }
               status={
                 showInstanceIdError ? (
-                  <span
-                    id="add-provider-instance-id-error"
-                    role="alert"
-                    className="text-destructive"
-                  >
+                  <span role="alert" className="text-destructive">
                     {instanceIdError}
                   </span>
                 ) : undefined
@@ -332,25 +349,19 @@ export function AddProviderInstanceDialog({
               control={
                 <Input
                   id="add-provider-instance-id"
-                  aria-describedby={
-                    showInstanceIdError
-                      ? "add-provider-instance-id-description add-provider-instance-id-error"
-                      : "add-provider-instance-id-description"
-                  }
+                  aria-describedby="add-provider-instance-id-description"
                   size="sm"
                   className="w-full @min-[32rem]/settings-row:w-56"
                   placeholder={`${driver}_work`}
                   value={instanceId}
-                  onChange={(event) => {
-                    setIdentityDraft({ instanceIdOverride: event.target.value });
-                  }}
+                  onChange={(event) => setIdentityDraft({ instanceIdOverride: event.target.value })}
                   aria-invalid={showInstanceIdError}
                 />
               }
             />
             <SettingsRow
-              title={t("Accent color")}
-              description={t("Optional marker shown in the picker.")}
+              title={gt("Accent color")}
+              description={gt("Optional marker shown in the picker.")}
               control={
                 <ProviderAccentColorPicker
                   displayName={label || driverOption.label}
@@ -374,7 +385,7 @@ export function AddProviderInstanceDialog({
             </SettingsGroup>
           ) : wizardStep === 2 ? (
             <p className="text-sm text-muted-foreground">
-              {t("This driver has no required configuration. You can add the instance now.")}
+              <T>This driver has no required configuration. You can add the instance now.</T>
             </p>
           ) : null}
         </WizardPanel>
@@ -389,11 +400,11 @@ export function AddProviderInstanceDialog({
                 : setWizardStep((step) => Math.max(0, step - 1))
             }
           >
-            {wizardStep === 0 ? t("Cancel") : t("Back")}
+            {wizardStep === 0 ? gt("Cancel") : gt("Back")}
           </Button>
           {wizardStep < 2 ? (
             <Button size="sm" disabled={isSaving} onClick={() => navigateToStep(wizardStep + 1)}>
-              {t("Next")}
+              <T>Next</T>
             </Button>
           ) : (
             <Button
@@ -401,7 +412,7 @@ export function AddProviderInstanceDialog({
               disabled={isSaving || !canManageProviders}
               onClick={() => void handleSave()}
             >
-              {isSaving ? t("Adding...") : t("Add instance")}
+              {isSaving ? gt("Adding...") : gt("Add instance")}
             </Button>
           )}
         </WizardFooter>

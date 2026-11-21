@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react-native";
 import { useEffect } from "react";
 import { AccessibilityInfo, Platform, Pressable, View } from "react-native";
 
@@ -17,7 +16,7 @@ export function Notice(props: {
   readonly onDismiss?: () => void;
   readonly dismissLabel?: string;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const danger = props.tone === "danger";
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- announces the message to VoiceOver through AccessibilityInfo
   useEffect(() => {
@@ -55,7 +54,7 @@ export function Notice(props: {
       {props.onDismiss ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={props.dismissLabel ?? t("Dismiss message")}
+          accessibilityLabel={props.dismissLabel ?? gt("Dismiss message")}
           onPress={props.onDismiss}
           hitSlop={10}
           className="min-h-6 min-w-6 items-center justify-center active:opacity-60"

@@ -1,4 +1,3 @@
-import { t } from "../../i18n";
 import {
   type GhosttyKeyboardLayoutMap,
   ghosttyConsumedMods,
@@ -1410,14 +1409,11 @@ export class GhosttyTerminalCore {
   }
 
   private assertSuccess(operation: string, result: number): void {
-    if (result !== GHOSTTY_SUCCESS)
-      throw new Error(
-        t("{{operation}} failed with result {{result}}", { operation: operation, result: result }),
-      );
+    if (result !== GHOSTTY_SUCCESS) throw new Error(`${operation} failed with result ${result}`);
   }
 
   private ensureActive(): void {
-    if (this.disposed) throw new Error(t("libghostty-vt terminal has been disposed"));
+    if (this.disposed) throw new Error("libghostty-vt terminal has been disposed");
   }
 }
 

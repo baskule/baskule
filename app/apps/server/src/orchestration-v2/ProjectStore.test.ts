@@ -174,8 +174,8 @@ it.layer(ProjectStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemor
             .pipe(Stream.runCollect);
           assert.lengthOf(replayed, 1);
           for (const event of replayed) {
-            assert.equal(event.aggregateKind, "project");
-            if (event.aggregateKind !== "project") return;
+            assert.isTrue("aggregateKind" in event && event.aggregateKind === "project");
+            if (!("aggregateKind" in event)) continue;
             yield* projects.apply(event);
           }
           assert.deepStrictEqual(

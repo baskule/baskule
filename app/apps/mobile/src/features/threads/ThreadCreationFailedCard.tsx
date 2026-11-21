@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { T, useGT } from "gt-react-native";
 import { Button } from "../../components/ui/Button";
 import { View } from "react-native";
 
@@ -9,20 +8,20 @@ export function ThreadCreationFailedCard(props: {
   readonly reason: string;
   readonly onEditTask: () => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   return (
     <View className="gap-2.5 rounded-[20px] border border-border-subtle bg-card-alt p-4">
       <Text className="font-t3-bold text-2xs uppercase tracking-[1.1px] text-danger-foreground">
-        {t("Could not start task")}
+        <T>Could not start task</T>
       </Text>
       <Text className="font-sans text-sm leading-normal text-foreground-secondary">
         {props.reason}
       </Text>
       <Text className="font-sans text-xs leading-normal text-foreground-secondary">
-        {t("Your prompt was kept in the project draft.")}
+        <T>Your prompt was kept in the project draft.</T>
       </Text>
       <View className="flex-row">
-        <Button label={t("Edit task")} tone="primary" onPress={props.onEditTask} />
+        <Button label={gt("Edit task")} tone="primary" onPress={props.onEditTask} />
       </View>
     </View>
   );

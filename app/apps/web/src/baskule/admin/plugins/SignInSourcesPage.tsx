@@ -1,3 +1,4 @@
+import { useMessages, msg } from "gt-react";
 // baskule: Admin → Plugins → Sign-in and sources: the OAuth clients registered per service, the
 // app platforms (Composio, Pipedream) connected with the organization's own account, and the
 // plugin registries the catalog reads.
@@ -25,7 +26,7 @@ import {
   SelectValue,
 } from "../../../components/ui/select";
 import { Spinner } from "../../../components/ui/spinner";
-import { useTranslation } from "../../../i18n";
+
 import { notifyPluginError, pluginErrorText, pluginsApi } from "../../plugins/api";
 import { PluginLogo } from "../../plugins/PluginLogo";
 import { providerName, sourceName } from "../../plugins/presentation";
@@ -51,7 +52,7 @@ const REGISTRY_REPOS: Record<RegistryId, string> = {
 const loadSources = () => Promise.all([pluginsApi.installed(), pluginsApi.catalog()]);
 
 export function SignInSourcesPage() {
-  const t = useTranslation();
+  const t = useMessages();
   const data = useApiResource(loadSources);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -68,7 +69,7 @@ export function SignInSourcesPage() {
     try {
       setCatalog(await pluginsApi.catalog(true));
     } catch (cause) {
-      notifyPluginError(t("Could not refresh the catalog"), cause);
+      notifyPluginError(t(msg("Could not refresh the catalog")), cause);
     }
     setRefreshing(false);
   };
@@ -85,21 +86,21 @@ export function SignInSourcesPage() {
         }}
       />
       <PageSection
-        title={t("Plugin registries")}
+        title={t(msg("Plugin registries"))}
         description={
           current.refreshedAt
-            ? t("Checked {{time}}. Baskule checks them again every hour.", {
+            ? t(msg("Checked {time}. Baskule checks them again every hour."), {
                 time: new Date(current.refreshedAt).toLocaleString(undefined, {
                   dateStyle: "medium",
                   timeStyle: "short",
                 }),
               })
-            : t("Baskule checks them every hour.")
+            : t(msg("Baskule checks them every hour."))
         }
         action={
           <Button size="sm" variant="outline" disabled={refreshing} onClick={() => void refresh()}>
             {refreshing ? <Spinner size="sm" /> : <RefreshCwIcon />}
-            {t("Refresh")}
+            {t(msg("Refresh"))}
           </Button>
         }
       >
@@ -117,9 +118,9 @@ export function SignInSourcesPage() {
               }
               trailing={
                 message ? (
-                  <Badge variant="error">{t("Not loaded")}</Badge>
+                  <Badge variant="error">{t(msg("Not loaded"))}</Badge>
                 ) : (
-                  <Badge variant="success">{t("Up to date")}</Badge>
+                  <Badge variant="success">{t(msg("Up to date"))}</Badge>
                 )
               }
             >
@@ -144,14 +145,16 @@ function OAuthClients({
   readonly clients: ReadonlyArray<OAuthClientSetup>;
   readonly onSaved: () => Promise<void>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const remove = async (issuer: string, vendor: string) => {
     const confirmed = await confirmAction(
       t(
-        "Remove the OAuth client for {{vendor}}?\nPeople signed in through it must sign in again once you add a new one.",
+        msg(
+          "Remove the OAuth client for {vendor}?\nPeople signed in through it must sign in again once you add a new one.",
+        ),
         { vendor },
       ),
       "destructive",
@@ -163,20 +166,25 @@ function OAuthClients({
       setOpen(null);
       await onSaved();
     } catch (cause) {
-      notifyPluginError(t("Could not remove the OAuth client for {{vendor}}", { vendor }), cause);
+      notifyPluginError(
+        t(msg("Could not remove the OAuth client for {vendor}"), { vendor }),
+        cause,
+      );
     }
     setBusy(null);
   };
 
   return (
     <PageSection
-      title={t("Sign-in to services")}
+      title={t(msg("Sign-in to services"))}
       description={t(
-        "Some services don't let Baskule register itself. Register one OAuth client per service; every plugin that signs in there uses it.",
+        msg(
+          "Some services don't let Baskule register itself. Register one OAuth client per service; every plugin that signs in there uses it.",
+        ),
       )}
     >
       {clients.length === 0 ? (
-        <PageMessage>{t("No plugin needs its own OAuth client yet.")}</PageMessage>
+        <PageMessage>{t(msg("No plugin needs its own OAuth client yet."))}</PageMessage>
       ) : null}
       {clients.map((client) => {
         const guide = signInGuide(client.issuer);
@@ -189,7 +197,7 @@ function OAuthClients({
                 <>
                   {client.configured ? null : (
                     <span className="hidden sm:inline-flex">
-                      <Badge variant="warning">{t("Needs a client")}</Badge>
+                      <Badge variant="warning">{t(msg("Needs a client"))}</Badge>
                     </span>
                   )}
                   <Button
@@ -198,22 +206,26 @@ function OAuthClients({
                     aria-expanded={expanded}
                     aria-label={
                       client.configured
-                        ? t("Edit sign-in to {{vendor}}", { vendor: guide.vendor })
-                        : t("Set up sign-in to {{vendor}}", { vendor: guide.vendor })
+                        ? t(msg("Edit sign-in to {vendor}"), { vendor: guide.vendor })
+                        : t(msg("Set up sign-in to {vendor}"), { vendor: guide.vendor })
                     }
                     onClick={() => setOpen(expanded ? null : client.issuer)}
                   >
-                    {expanded ? t("Close") : client.configured ? t("Edit") : t("Set up")}
+                    {expanded
+                      ? t(msg("Close"))
+                      : client.configured
+                        ? t(msg("Edit"))
+                        : t(msg("Set up"))}
                   </Button>
                   {client.configured ? (
                     <Button
                       size="sm"
                       variant="ghost"
                       disabled={busy === client.issuer}
-                      aria-label={t("Remove sign-in to {{vendor}}", { vendor: guide.vendor })}
+                      aria-label={t(msg("Remove sign-in to {vendor}"), { vendor: guide.vendor })}
                       onClick={() => void remove(client.issuer, guide.vendor)}
                     >
-                      {t("Remove")}
+                      {t(msg("Remove"))}
                     </Button>
                   ) : null}
                 </>
@@ -222,14 +234,14 @@ function OAuthClients({
               <span className="truncate text-sm font-medium text-foreground">{guide.vendor}</span>
               <span className="truncate text-xs text-muted-foreground">
                 {client.usedBy.length > 0
-                  ? t("Used by {{plugins}}", {
+                  ? t(msg("Used by {plugins}"), {
                       plugins: client.usedBy.map((entry) => entry.displayName).join(", "),
                     })
                   : client.issuer}
               </span>
               {client.configured ? null : (
                 <span className="mt-1 sm:hidden">
-                  <Badge variant="warning">{t("Needs a client")}</Badge>
+                  <Badge variant="warning">{t(msg("Needs a client"))}</Badge>
                 </span>
               )}
             </PageRow>
@@ -265,14 +277,16 @@ function Platforms({
   readonly failure: (source: CatalogSource) => string | null;
   readonly onChanged: () => Promise<void>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [open, setOpen] = useState<ProviderId | null>(null);
   const [busy, setBusy] = useState<ProviderId | null>(null);
 
   const remove = async (provider: ProviderId) => {
     const confirmed = await confirmAction(
       t(
-        "Disconnect {{provider}}?\nIts apps leave the catalog, and plugins added from it stop working until you connect it again.",
+        msg(
+          "Disconnect {provider}?\nIts apps leave the catalog, and plugins added from it stop working until you connect it again.",
+        ),
         { provider: providerName(provider) },
       ),
       "destructive",
@@ -284,7 +298,7 @@ function Platforms({
       await onChanged();
     } catch (cause) {
       notifyPluginError(
-        t("Could not disconnect {{provider}}", { provider: providerName(provider) }),
+        t(msg("Could not disconnect {provider}"), { provider: providerName(provider) }),
         cause,
       );
     }
@@ -293,9 +307,11 @@ function Platforms({
 
   return (
     <PageSection
-      title={t("App platforms")}
+      title={t(msg("App platforms"))}
       description={t(
-        "Optional. Connect your organization's Composio or Pipedream account to list their apps; each person then connects their own account on the platform's page.",
+        msg(
+          "Optional. Connect your organization's Composio or Pipedream account to list their apps; each person then connects their own account on the platform's page.",
+        ),
       )}
     >
       {(["composio", "pipedream"] as const).map((provider) => {
@@ -323,7 +339,7 @@ function Platforms({
                       onClick={() => void remove(provider)}
                     >
                       {busy === provider ? <Spinner size="sm" /> : null}
-                      {t("Disconnect")}
+                      {t(msg("Disconnect"))}
                     </Button>
                   ) : (
                     <Button
@@ -332,7 +348,7 @@ function Platforms({
                       aria-expanded={expanded}
                       onClick={() => setOpen(expanded ? null : provider)}
                     >
-                      {expanded ? t("Close") : t("Connect")}
+                      {expanded ? t(msg("Close")) : t(msg("Connect"))}
                     </Button>
                   )}
                 </>
@@ -343,25 +359,25 @@ function Platforms({
               </span>
               {message ? (
                 <span className="text-xs text-destructive-foreground">
-                  {t("Its apps could not be loaded: {{message}}", { message })}
+                  {t(msg("Its apps could not be loaded: {message}"), { message })}
                 </span>
               ) : configured ? (
                 <span className="truncate text-xs text-success-foreground">
                   {provider === "pipedream"
-                    ? t("Connected · project {{project}}, {{environment}}", {
+                    ? t(msg("Connected · project {project}, {environment}"), {
                         project: pipedream.projectId ?? "",
                         environment:
                           pipedream.environment === "development"
-                            ? t("development")
-                            : t("production"),
+                            ? t(msg("development"))
+                            : t(msg("production")),
                       })
-                    : t("Connected")}
+                    : t(msg("Connected"))}
                 </span>
               ) : (
                 <span className="truncate text-xs text-muted-foreground">
                   {provider === "composio"
-                    ? t("Hosted apps with Composio's sign-in")
-                    : t("Hosted apps with Pipedream Connect")}
+                    ? t(msg("Hosted apps with Composio's sign-in"))
+                    : t(msg("Hosted apps with Pipedream Connect"))}
                 </span>
               )}
             </PageRow>
@@ -390,7 +406,7 @@ function PlatformForm({
   readonly provider: ProviderId;
   readonly onSaved: () => Promise<void>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [fields, setFields] = useState({
     apiKey: "",
     clientId: "",
@@ -430,65 +446,65 @@ function PlatformForm({
         setError(null);
         pluginsApi.saveProvider(input).then(
           async () => {
-            notifySuccess(t("{{provider}} is connected", { provider: providerName(provider) }));
+            notifySuccess(t(msg("{provider} is connected"), { provider: providerName(provider) }));
             await onSaved();
           },
           (cause: unknown) => {
             setSaving(false);
-            setError(pluginErrorText(cause, t("Baskule couldn't connect to the platform.")));
+            setError(pluginErrorText(cause, t(msg("Baskule couldn't connect to the platform."))));
           },
         );
       }}
     >
       {provider === "composio" ? (
         <FormField
-          label={t("API key")}
+          label={t(msg("API key"))}
           type="password"
           autoComplete="new-password"
-          hint={t("In Composio, open your project's settings and create an API key.")}
+          hint={t(msg("In Composio, open your project's settings and create an API key."))}
           value={fields.apiKey}
           onChange={field("apiKey")}
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField
-            label={t("Client ID")}
+            label={t(msg("Client ID"))}
             autoComplete="off"
             value={fields.clientId}
             onChange={field("clientId")}
           />
           <FormField
-            label={t("Client secret")}
+            label={t(msg("Client secret"))}
             type="password"
             autoComplete="new-password"
             value={fields.clientSecret}
             onChange={field("clientSecret")}
           />
           <FormField
-            label={t("Project ID")}
+            label={t(msg("Project ID"))}
             autoComplete="off"
             placeholder="proj_…"
             value={fields.projectId}
             onChange={field("projectId")}
           />
           <div className="flex flex-col gap-1.5">
-            <Label render={<span />}>{t("Environment")}</Label>
+            <Label render={<span />}>{t(msg("Environment"))}</Label>
             <Select
               value={fields.environment}
               onValueChange={(environment) =>
                 setFields({ ...fields, environment: environment as "production" | "development" })
               }
             >
-              <SelectTrigger aria-label={t("Environment")}>
+              <SelectTrigger aria-label={t(msg("Environment"))}>
                 <SelectValue>
                   {(value: string) =>
-                    value === "development" ? t("Development") : t("Production")
+                    value === "development" ? t(msg("Development")) : t(msg("Production"))
                   }
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup alignItemWithTrigger={false}>
-                <SelectItem value="production">{t("Production")}</SelectItem>
-                <SelectItem value="development">{t("Development")}</SelectItem>
+                <SelectItem value="production">{t(msg("Production"))}</SelectItem>
+                <SelectItem value="development">{t(msg("Development"))}</SelectItem>
               </SelectPopup>
             </Select>
           </div>
@@ -502,7 +518,7 @@ function PlatformForm({
       <div>
         <Button type="submit" disabled={!input || saving}>
           {saving ? <Spinner size="sm" /> : null}
-          {t("Connect {{provider}}", { provider: providerName(provider) })}
+          {t(msg("Connect {provider}"), { provider: providerName(provider) })}
         </Button>
       </div>
     </form>

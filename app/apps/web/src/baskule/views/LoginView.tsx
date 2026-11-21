@@ -1,4 +1,6 @@
-import { t, useTranslation } from "../../i18n";
+import { m as resolveMessage } from "../../i18n/messages";
+import { msg, useMessages } from "gt-react";
+
 
 // baskule: sign-in methods come from the installation's Better Auth configuration.
 import { useState, type FormEvent } from "react";
@@ -17,26 +19,26 @@ import { ReceiveConnectionDialog } from "./ReceiveConnectionDialog";
 export function signInErrorMessage(error: unknown): string {
   if (error instanceof BaskuleApiError) {
     if (error.status === 401 || error.code === "INVALID_EMAIL_OR_PASSWORD") {
-      return t("That email and password don't match an account.");
+      return resolveMessage(msg("That email and password don't match an account."));
     }
     if (error.status === 403 || error.code === "BANNED_USER") {
-      return t("This account is deactivated. Ask your administrator.");
+      return resolveMessage(msg("This account is deactivated. Ask your administrator."));
     }
-    if (error.status === 429) return t("Too many attempts. Wait a minute and try again.");
+    if (error.status === 429) return resolveMessage(msg("Too many attempts. Wait a minute and try again."));
     return error.message;
   }
-  return t("Sign-in failed. Try again.");
+  return resolveMessage(msg("Sign-in failed. Try again."));
 }
 
 export function LoginView({ next }: { readonly next: string | null }) {
-  useTranslation();
+  useMessages();
   const server = window.desktopBridge?.getBaskuleServer?.();
   if (window.desktopBridge?.connectBaskuleServer && !server) return <DesktopServerForm />;
   return <AccountLoginView next={next} server={server ?? null} />;
 }
 
 function AccountLoginView({ next, server }: { next: string | null; server: string | null }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -64,16 +66,16 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <BaskuleWordmark className="text-base" />
-          <h1 className="text-2xl font-semibold tracking-tight">{t("Sign in")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t(msg("Sign in"))}</h1>
           <p className="text-sm text-muted-foreground">
-            {t("Sign in with your organization account.")}
+            {t(msg("Sign in with your organization account."))}
           </p>
         </div>
         <ReceiveConnectionDialog />
         {setup.data?.required ? (
           <Alert variant="info">
             <AlertDescription>
-              {t("Finish setting up Baskule with the link printed by {{command}} on the server.", {
+              {t(msg("Finish setting up Baskule with the link printed by {command} on the server."), {
                 command: SETUP_LINK_COMMAND,
               })}
             </AlertDescription>
@@ -88,9 +90,7 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
         {new URLSearchParams(window.location.search).has("error") ? (
           <Alert variant="error">
             <AlertDescription>
-              {t(
-                "Sign-in could not be completed. Use your organization’s Google Workspace account or accept an invitation first.",
-              )}
+              {t(msg("Sign-in could not be completed. Use your organization’s Google Workspace account or accept an invitation first."))}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -114,7 +114,7 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
                 );
               }}
             >
-              {t("Continue with {{provider}}", { provider: provider.name })}
+              {t(msg("Continue with {provider}"), { provider: provider.name })}
             </Button>
           ))
         )}
@@ -126,7 +126,7 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
         {config.data?.password ? (
           <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)} noValidate>
             <FormField
-              label={t("Email")}
+              label={t(msg("Email"))}
               type="email"
               name="email"
               autoComplete="username"
@@ -136,7 +136,7 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
               onChange={(event) => setEmail(event.currentTarget.value)}
             />
             <FormField
-              label={t("Password")}
+              label={t(msg("Password"))}
               type="password"
               name="password"
               autoComplete="current-password"
@@ -146,7 +146,7 @@ function AccountLoginView({ next, server }: { next: string | null; server: strin
             />
             <Button type="submit" disabled={submitting || !email.trim() || !password}>
               {submitting ? <Spinner size="sm" /> : null}
-              {submitting ? t("Signing in…") : t("Sign in")}
+              {submitting ? t(msg("Signing in…")) : t(msg("Sign in"))}
             </Button>
           </form>
         ) : null}

@@ -1,3 +1,4 @@
+import { useMessages, msg } from "gt-react";
 // baskule: Admin → Plugins → Browse: every plugin the registries and connected app platforms
 // offer, by category, with search. Adding one opens its page, where the admin reviews it.
 import {
@@ -15,7 +16,7 @@ import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../../components/ui/menu";
 import { Spinner } from "../../../components/ui/spinner";
-import { useTranslation } from "../../../i18n";
+
 import { pluginsApi } from "../../plugins/api";
 import { PluginLogo } from "../../plugins/PluginLogo";
 import {
@@ -41,7 +42,7 @@ const isProvider = (entry: CatalogEntry) =>
   (PLUGIN_PROVIDERS as ReadonlyArray<string>).includes(entry.source);
 
 export function BrowsePage() {
-  const t = useTranslation();
+  const t = useMessages();
   const data = useApiResource(loadCatalog);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter | null>(null);
@@ -73,7 +74,7 @@ export function BrowsePage() {
     ...categories,
     ...(uncategorized.length > 0 ? (["other"] as const) : []),
   ];
-  const label = (value: Filter) => (value === "other" ? t("Other") : categoryLabel(value));
+  const label = (value: Filter) => (value === "other" ? t(msg("Other")) : categoryLabel(value));
   const inFilter = (entry: CatalogEntry) =>
     filter === null ||
     (filter === "other" ? !entry.category && !isProvider(entry) : entry.category === filter);
@@ -94,8 +95,8 @@ export function BrowsePage() {
           <Input
             type="search"
             size="lg"
-            aria-label={t("Search plugins")}
-            placeholder={t("Search plugins")}
+            aria-label={t(msg("Search plugins"))}
+            placeholder={t(msg("Search plugins"))}
             value={query}
             onChange={(event) => {
               setQuery(event.currentTarget.value);
@@ -107,7 +108,7 @@ export function BrowsePage() {
         {filters.length >= 2 ? (
           <div
             role="group"
-            aria-label={t("Categories")}
+            aria-label={t(msg("Categories"))}
             className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
           >
             {[null, ...filters.slice(0, CHIP_COUNT)].map((value) => (
@@ -118,7 +119,7 @@ export function BrowsePage() {
                 aria-pressed={filter === value}
                 onClick={() => choose(value)}
               >
-                {value ? label(value) : t("All")}
+                {value ? label(value) : t(msg("All"))}
               </Button>
             ))}
             {filters.length > CHIP_COUNT ? (
@@ -137,7 +138,7 @@ export function BrowsePage() {
                 >
                   {filter && !filters.slice(0, CHIP_COUNT).includes(filter)
                     ? label(filter)
-                    : t("More")}
+                    : t(msg("More"))}
                   <ChevronDownIcon />
                 </MenuTrigger>
                 <MenuPopup align="start">
@@ -157,7 +158,7 @@ export function BrowsePage() {
         <div className="px-3 sm:px-4">
           <Alert variant="warning">
             <AlertDescription>
-              {t("Some catalogs could not be loaded: {{sources}}.", {
+              {t(msg("Some catalogs could not be loaded: {sources}."), {
                 sources: data.data.unavailable.map((entry) => sourceName(entry.source)).join(", "),
               })}
             </AlertDescription>
@@ -169,7 +170,7 @@ export function BrowsePage() {
                 onClick={() => void retry()}
               >
                 {refreshing ? <Spinner size="sm" /> : null}
-                {t("Retry")}
+                {t(msg("Retry"))}
               </Button>
             </AlertAction>
           </Alert>
@@ -180,13 +181,13 @@ export function BrowsePage() {
         error={data.error}
         loading={data.loading}
         empty={entries.length === 0}
-        emptyText={t("No plugins are listed. Add one from GitHub or by its server address.")}
+        emptyText={t(msg("No plugins are listed. Add one from GitHub or by its server address."))}
       />
 
       {entries.length === 0 ? null : trimmed || filter ? (
         listed.length === 0 ? (
           <PageMessage>
-            {t("No plugins match your search. Add it from GitHub or by its server address.")}
+            {t(msg("No plugins match your search. Add it from GitHub or by its server address."))}
           </PageMessage>
         ) : (
           <section className="flex flex-col gap-2">
@@ -199,7 +200,7 @@ export function BrowsePage() {
       ) : (
         <>
           <Section
-            title={t("Recommended")}
+            title={t(msg("Recommended"))}
             entries={entries.filter((entry) => entry.recommended).slice(0, SECTION_SIZE)}
           />
           {categories.map((category) => {
@@ -214,7 +215,7 @@ export function BrowsePage() {
             );
           })}
           <Section
-            title={t("More")}
+            title={t(msg("More"))}
             entries={uncategorized.slice(0, SECTION_SIZE)}
             onViewAll={uncategorized.length > SECTION_SIZE ? () => choose("other") : undefined}
           />
@@ -230,7 +231,7 @@ export function BrowsePage() {
 }
 
 function AddMenu() {
-  const t = useTranslation();
+  const t = useMessages();
   const to = "/admin/$section/$page/$item";
   return (
     <Menu>
@@ -239,7 +240,7 @@ function AddMenu() {
           <Button
             size="icon-lg"
             variant="outline"
-            aria-label={t("Add a plugin that isn't listed")}
+            aria-label={t(msg("Add a plugin that isn't listed"))}
           />
         }
       >
@@ -249,12 +250,12 @@ function AddMenu() {
         <MenuItem
           render={<Link to={to} params={{ section: "plugins", page: "browse", item: "github" }} />}
         >
-          {t("From GitHub")}
+          {t(msg("From GitHub"))}
         </MenuItem>
         <MenuItem
           render={<Link to={to} params={{ section: "plugins", page: "browse", item: "mcp" }} />}
         >
-          {t("MCP server")}
+          {t(msg("MCP server"))}
         </MenuItem>
       </MenuPopup>
     </Menu>
@@ -270,7 +271,7 @@ function Section({
   readonly entries: ReadonlyArray<CatalogEntry>;
   readonly onViewAll?: (() => void) | undefined;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   if (entries.length === 0) return null;
   return (
     <section className="flex flex-col gap-2">
@@ -278,7 +279,7 @@ function Section({
         <h2 className="text-sm font-medium text-foreground">{title}</h2>
         {onViewAll ? (
           <Button size="sm" variant="ghost-muted" onClick={onViewAll}>
-            {t("View all")}
+            {t(msg("View all"))}
           </Button>
         ) : null}
       </div>
@@ -296,7 +297,7 @@ function ProviderSection({
   readonly shown: number;
   readonly onShowMore: () => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   if (entries.length === 0) return null;
   const providers = PLUGIN_PROVIDERS.filter((provider) =>
     entries.some((entry) => entry.source === provider),
@@ -305,7 +306,7 @@ function ProviderSection({
     <section className="flex flex-col gap-2">
       <div className="flex min-h-7 items-center px-3 sm:px-4">
         <h2 className="text-sm font-medium text-foreground">
-          {t("More apps from {{providers}}", { providers: providers.join(" & ") })}
+          {t(msg("More apps from {providers}"), { providers: providers.join(" & ") })}
         </h2>
       </div>
       <PluginGrid entries={entries.slice(0, shown)} />
@@ -315,11 +316,11 @@ function ProviderSection({
 }
 
 function ShowMore({ onClick }: { readonly onClick: () => void }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <div className="flex justify-center pt-2">
       <Button size="sm" variant="secondary" onClick={onClick}>
-        {t("Show more")}
+        {t(msg("Show more"))}
       </Button>
     </div>
   );
@@ -336,7 +337,7 @@ function PluginGrid({ entries }: { readonly entries: ReadonlyArray<CatalogEntry>
 }
 
 function PluginRow({ entry }: { readonly entry: CatalogEntry }) {
-  const t = useTranslation();
+  const t = useMessages();
   const params = entry.installedPluginId
     ? { section: "plugins", page: "installed", item: entry.installedPluginId }
     : { section: "plugins", page: "browse", item: entry.id };
@@ -360,12 +361,12 @@ function PluginRow({ entry }: { readonly entry: CatalogEntry }) {
         variant="secondary"
         aria-label={
           entry.installedPluginId
-            ? t("Open {{name}}", { name: entry.displayName })
-            : t("Add {{name}}", { name: entry.displayName })
+            ? t(msg("Open {name}"), { name: entry.displayName })
+            : t(msg("Add {name}"), { name: entry.displayName })
         }
         render={<Link to="/admin/$section/$page/$item" params={params} tabIndex={-1} />}
       >
-        {entry.installedPluginId ? t("Added") : t("Add")}
+        {entry.installedPluginId ? t(msg("Added")) : t(msg("Add"))}
       </Button>
     </li>
   );

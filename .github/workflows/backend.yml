@@ -11,9 +11,6 @@ on:
       version:
         type: string
         default: ''
-      translations:
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -115,11 +112,6 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: inputs.translations
-        with:
-          name: translations
-          path: app
       - uses: ./.github/actions/setup
       - name: Build and verify hosted web
         shell: bash
@@ -164,12 +156,6 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - name: Download release translations
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: inputs.translations
-        with:
-          name: translations
-          path: app
       - name: Download the verified hosted web bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -285,11 +271,6 @@ jobs:
             sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
           fi
           df -h .
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: inputs.translations
-        with:
-          name: translations
-          path: app
       - uses: ./.github/actions/setup
       - name: Download the archives that will be published
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

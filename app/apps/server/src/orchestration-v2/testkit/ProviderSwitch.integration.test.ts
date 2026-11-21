@@ -35,6 +35,7 @@ import * as EffectWorker from "../EffectWorker.ts";
 import * as ProjectionReplay from "./ProjectionReplay.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
+
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ProviderReplayHarness from "./ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
@@ -91,6 +92,7 @@ function makeTestAdapter(input: {
   >;
   readonly failure?: ReturnType<typeof makeProviderFailure>;
   readonly failedRunOrdinals?: ReadonlySet<number>;
+  readonly brokenRunOrdinals?: ReadonlySet<number>;
   readonly interruptedRunOrdinals?: ReadonlySet<number>;
   readonly cancelledRunOrdinals?: ReadonlySet<number>;
   readonly holdRunOrdinal?: number;
@@ -98,6 +100,7 @@ function makeTestAdapter(input: {
   readonly subagentOnlyBackgroundWork?: boolean;
   readonly holdFirstTurn?: Deferred.Deferred<void>;
   readonly releaseFirstTurn?: Deferred.Deferred<void>;
+  readonly holdOpenSession?: Deferred.Deferred<void>;
   /** A tool call the held turn reports running before it holds. */
   readonly heldRunningToolCall?: {
     readonly id: TurnItemId;
@@ -106,6 +109,11 @@ function makeTestAdapter(input: {
   readonly backgroundTasksEndWithProcess?: true;
   readonly backgroundWork?: Ref.Ref<boolean>;
   readonly closedSessions?: Ref.Ref<ReadonlyArray<string>>;
+  /** Like ACP: opening resumes the initial native id, and forcing a new thread restarts the runtime. */
+  readonly runtimeStarts?: Ref.Ref<ReadonlyArray<string>>;
+  // ACP cannot truncate, so its rollback answers with a fresh, empty native session.
+  readonly rollback?: "truncates" | "replaces_native_thread";
+  readonly beforeForcedNativeThread?: Effect.Effect<void>;
 }): ProviderAdapter.ProviderAdapterV2["Service"] {
   return {
     instanceId: input.instanceId,
@@ -114,7 +122,14 @@ function makeTestAdapter(input: {
     planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
     openSession: (sessionInput) =>
       Effect.gen(function* () {
+        if (input.holdOpenSession !== undefined) yield* Deferred.await(input.holdOpenSession);
         const events = yield* PubSub.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+        if (input.runtimeStarts !== undefined) {
+          yield* Ref.update(input.runtimeStarts, (starts) => [
+            ...starts,
+            sessionInput.initialNativeThreadId ?? "new",
+          ]);
+        }
         if (input.closedSessions !== undefined) {
           const closedSessions = input.closedSessions;
           yield* Effect.addFinalizer(() =>
@@ -168,6 +183,11 @@ function makeTestAdapter(input: {
               }),
           ensureThread: (threadInput) =>
             Effect.gen(function* () {
+              if (threadInput.forceNewNativeThread && input.runtimeStarts !== undefined) {
+                yield* Ref.update(input.runtimeStarts, (starts) => [...starts, "replacement"]);
+              }
+              if (threadInput.forceNewNativeThread && input.beforeForcedNativeThread !== undefined)
+                yield* input.beforeForcedNativeThread;
               const createdAt = yield* DateTime.now;
               const generation =
                 input.nativeThreadGeneration === undefined
@@ -200,6 +220,7 @@ function makeTestAdapter(input: {
           resumeThread: ({ providerThread }) =>
             Effect.gen(function* () {
               if (
+                (input.brokenRunOrdinals !== undefined && providerThread.status === "error") ||
                 input.failResume ||
                 (input.failResumeOnce !== undefined &&
                   (yield* Ref.getAndSet(input.failResumeOnce, false)))
@@ -386,7 +407,9 @@ function makeTestAdapter(input: {
                           }),
                       }
                     : { status: terminalStatus, failure: null }),
-                  threadDisposition: "reusable",
+                  threadDisposition: input.brokenRunOrdinals?.has(turnInput.runOrdinal)
+                    ? "broken"
+                    : "reusable",
                 },
               ];
               const reportedUsage = input.tokenUsageByRunOrdinal?.[turnInput.runOrdinal];
@@ -402,6 +425,17 @@ function makeTestAdapter(input: {
                   },
                 });
               }
+              if (input.brokenRunOrdinals?.has(turnInput.runOrdinal)) {
+                yield* PubSub.publish(events, {
+                  type: "provider_thread.updated",
+                  driver: input.driver,
+                  providerThread: {
+                    ...turnInput.providerThread,
+                    status: "error",
+                    updatedAt: eventTime,
+                  },
+                });
+              }
               for (const event of providerEvents) {
                 yield* PubSub.publish(events, event);
               }
@@ -411,8 +445,25 @@ function makeTestAdapter(input: {
           respondToRuntimeRequest: () => Effect.void,
           readThreadSnapshot: () =>
             unimplemented(input.driver, "readThreadSnapshot unused in provider switch test"),
-          rollbackThread: () =>
-            unimplemented(input.driver, "rollbackThread unused in provider switch test"),
+          rollbackThread: ({ providerThread }) =>
+            input.rollback === undefined
+              ? unimplemented(input.driver, "rollbackThread unused in provider switch test")
+              : Effect.succeed({
+                  providerThread:
+                    input.rollback === "truncates" || providerThread.nativeThreadRef === null
+                      ? providerThread
+                      : {
+                          ...providerThread,
+                          nativeThreadRef: {
+                            ...providerThread.nativeThreadRef,
+                            nativeId: `${providerThread.nativeThreadRef.nativeId}:after-rollback`,
+                          },
+                          nativeConversationHeadRef: null,
+                        },
+                  providerTurns: [],
+                  messages: [],
+                  runtimeRequests: [],
+                }),
           forkThread: () =>
             unimplemented(input.driver, "forkThread unused in provider switch test"),
         };

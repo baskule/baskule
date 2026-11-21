@@ -1,11 +1,12 @@
-import { useTranslation } from "../../i18n";
-
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m } from "~/i18n/messages";
 import {
   isModifierPairShortcut,
   type SnapShotModifier,
   type SnapShotShortcut,
 } from "@t3tools/contracts";
 import { parseKeybindingShortcut } from "@t3tools/shared/keybindings";
+import { useGT } from "gt-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { getDesktopSnapShotBridge } from "../../lib/desktopSnapShot";
 import {
@@ -49,7 +50,7 @@ export function useSnapShotShortcutRecorder({
   onStart?: () => void;
   onError: (message: string) => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const bridge = getDesktopSnapShotBridge();
   const displayShortcut = shortcutLabel ? parseDesktopSnapShotShortcut(shortcutLabel) : shortcut;
   const [recording, setRecording] = useState(false);
@@ -73,7 +74,11 @@ export function useSnapShotShortcutRecorder({
     } catch (error) {
       if (!requests.owns(request)) return;
       requests.clear();
-      onError(error instanceof Error ? error.message : "Could not start shortcut recording.");
+      onError(
+        error instanceof Error
+          ? (thrownErrorMessage(error, m) ?? error.message)
+          : gt("Could not start shortcut recording."),
+      );
     }
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the desktop bridge's SnapShot shortcut suppression on unmount
@@ -99,7 +104,7 @@ export function useSnapShotShortcutRecorder({
       const [left, right] = MODIFIER_CODES[modifier];
       if (held.has(left) && held.has(right)) {
         if (!allowModifierPairs) {
-          onError("Add a letter, number, or function key to your shortcut.");
+          onError(gt("Add a letter, number, or function key to your shortcut."));
           return;
         }
         stopRecording();
@@ -130,10 +135,10 @@ export function useSnapShotShortcutRecorder({
         disabled={disabled}
         aria-label={
           displayShortcut
-            ? t("Record snapshot shortcut, currently {{value1}}", {
-                value1: formatSnapShotShortcutLabel(displayShortcut),
+            ? gt("Record snapshot shortcut, currently {shortcut}", {
+                shortcut: formatSnapShotShortcutLabel(displayShortcut),
               })
-            : t("Change snapshot shortcut")
+            : gt("Change snapshot shortcut")
         }
         aria-pressed={recording}
         data-keybinding-capture=""
@@ -143,11 +148,11 @@ export function useSnapShotShortcutRecorder({
         onBlur={stopRecording}
       >
         {recording ? (
-          t("Press shortcut…")
+          gt("Press shortcut…")
         ) : !displayShortcut ? (
-          t("Change shortcut")
+          gt("Change shortcut")
         ) : !allowModifierPairs && isModifierPairShortcut(displayShortcut) ? (
-          t("Choose shortcut")
+          gt("Choose shortcut")
         ) : (
           <SnapShotShortcutKeys shortcut={displayShortcut} />
         )}

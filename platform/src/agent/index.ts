@@ -56,7 +56,8 @@ export class AgentRuntime {
   private bootKeepalive: ReturnType<typeof setInterval> | null = null;
   private finishBootEvent: (() => void) | null = null;
   private turnKeepalives = new Set<ReturnType<typeof setInterval>>();
-  private openStreams = 0;
+  private nextStreamId = 0;
+  private readonly openStreams = new Set<number>();
   private inflight = 0;
   private lastActivity = Date.now();
   private pendingDirs = new Set<string>();
@@ -466,20 +467,17 @@ export class AgentRuntime {
     if (active.length > 0) return this.scheduleAlarm(HEARTBEAT_MS);
     const idleFor = Date.now() - this.lastActivity;
     const idleMs = Number(this.env.BASKULE_AGENT_IDLE_S) * 1000 || IDLE_DISPOSE_MS;
-    if (this.inflight === 0 && this.openStreams === 0 && idleFor >= idleMs) return this.dispose("idle");
+    if (this.inflight === 0 && this.openStreams.size === 0 && idleFor >= idleMs) return this.dispose("idle");
     await this.scheduleAlarm(Math.max(HEARTBEAT_MS, idleMs - idleFor));
   }
 
   /** Counts an open streaming response (e.g. T3's event subscription) until it ends or is cancelled. */
   private track(res: Response): Response {
     if (!res.body || !(res.headers.get("content-type") ?? "").includes("text/event-stream")) return res;
-    this.openStreams++;
-    let done = false;
+    const id = this.nextStreamId++;
+    this.openStreams.add(id);
     const end = () => {
-      if (done) return;
-      done = true;
-      this.openStreams--;
-      this.lastActivity = Date.now();
+      if (this.openStreams.delete(id)) this.lastActivity = Date.now();
     };
     const reader = res.body.getReader();
     const body = new ReadableStream({
@@ -676,7 +674,7 @@ export class AgentRuntime {
   /** Test-only routes (BASKULE_AGENT_DEBUG=1). */
   private async debug(path: string, request: Request): Promise<Response> {
     if (path === "/_baskule/debug/state") {
-      return json({ spaceId: this.spaceId, booted: this.booted !== null, stats: this.stats, openStreams: this.openStreams, inflight: this.inflight,
+      return json({ spaceId: this.spaceId, booted: this.booted !== null, stats: this.stats, openStreams: this.openStreams.size, openStreamIds: [...this.openStreams], inflight: this.inflight,
         turnKeepalives: this.turnKeepalives.size,
         workspaceID: (await this.storage.get("baskule:workspaceID")) ?? null, alarm: await this.storage.getAlarm(), logs: this.logs.slice(-80) });
     }

@@ -1,13 +1,14 @@
 import wordmark from "../../../../assets/baskule/wordmark.svg";
 import inverse from "../../../../assets/baskule/wordmark-inverse.svg";
+import { BASKULE_APP_NAME } from "@t3tools/contracts/baskule";
 import { cn } from "../lib/utils";
 import type { SVGProps } from "react";
 
 export function BaskuleWordmark({ className }: { readonly className?: string | undefined }) {
   return (
     <span className={cn("inline-flex h-6 shrink-0", className)}>
-      <img src={wordmark} alt="Baskule" className="h-full w-auto dark:hidden" />
-      <img src={inverse} alt="Baskule" className="hidden h-full w-auto dark:block" />
+      <img src={wordmark} alt={BASKULE_APP_NAME} className="h-full w-auto dark:hidden" />
+      <img src={inverse} alt={BASKULE_APP_NAME} className="hidden h-full w-auto dark:block" />
     </span>
   );
 }

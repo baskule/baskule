@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import { useAtomValue } from "@effect/atom-react";
 import type {
   DesktopPreviewBridge,
@@ -12,6 +10,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 
 import { previewBridge } from "~/components/preview/previewBridge";
 
+
 const PREVIEW_CONFIG_STALE_TIME_MS = 5 * 60_000;
 const PREVIEW_CONFIG_IDLE_TTL_MS = 10 * 60_000;
 
@@ -20,9 +19,7 @@ export class PreviewWebviewBridgeUnavailableError extends Schema.TaggedError<Pre
   { environmentId: Schema.String },
 ) {
   override get message(): string {
-    return t('Desktop preview configuration is unavailable for environment "{{environmentId}}".', {
-      environmentId: this.environmentId,
-    });
+    return `Desktop preview configuration is unavailable for environment "${this.environmentId}".`;
   }
 }
 
@@ -34,9 +31,7 @@ export class PreviewWebviewConfigLoadError extends Schema.TaggedError<PreviewWeb
   },
 ) {
   override get message(): string {
-    return t('Failed to load desktop preview configuration for environment "{{environmentId}}".', {
-      environmentId: this.environmentId,
-    });
+    return `Failed to load desktop preview configuration for environment "${this.environmentId}".`;
   }
 }
 
@@ -50,7 +45,7 @@ type PreviewConfigBridge = Pick<DesktopPreviewBridge, "getPreviewConfig">;
 
 const loadPreviewWebviewConfig = (
   environmentId: EnvironmentId,
-  profileId?: string,
+  profileId: string | undefined,
   bridge: PreviewConfigBridge | null = previewBridge,
 ): Effect.Effect<DesktopPreviewWebviewConfig, PreviewWebviewConfigError> => {
   if (bridge === null) {

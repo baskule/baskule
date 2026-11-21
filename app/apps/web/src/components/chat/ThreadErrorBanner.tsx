@@ -1,13 +1,11 @@
-import { useTranslation } from "../../i18n";
+import { CircleAlertIcon, XIcon } from "lucide-react";
 import { ExpandableText } from "../settings/ExpandableText";
 
 import type { OrchestrationV2ProviderFailureClass } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { memo } from "react";
-
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
-
-import { CircleAlertIcon, XIcon } from "lucide-react";
 
 export function getThreadErrorBannerMessage(error: string): string {
   let payload: unknown;
@@ -28,8 +26,12 @@ export function getThreadErrorBannerMessage(error: string): string {
     : error;
 }
 
-export function getThreadErrorBannerKey(threadKey: string, error: string | null): string | null {
-  return error === null ? null : `${threadKey}\u0000${error}`;
+export function getThreadErrorBannerKey(
+  threadKey: string,
+  error: string | null,
+  source: string | null = null,
+): string | null {
+  return error === null ? null : `${threadKey}\u0000${source ?? ""}\u0000${error}`;
 }
 
 export function shouldShowThreadErrorBanner(
@@ -61,7 +63,7 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   errorClass?: OrchestrationV2ProviderFailureClass | null;
   onDismiss?: () => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   if (!error) return null;
   const variant = errorClass === "usage_limit" ? "warning" : "error";
   return (
@@ -77,7 +79,7 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                aria-label={t("Dismiss error")}
+                aria-label={gt("Dismiss error")}
                 onClick={onDismiss}
               >
                 <XIcon />

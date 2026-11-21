@@ -1,4 +1,4 @@
-import { t } from "../../i18n";
+import { msg, useMessages } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
 
@@ -38,6 +38,7 @@ const UPDATE_RESTART_DELAY_MS = 5_000;
 export function useUpdateEverything(localUpdateVersion: string | null) {
   const targetVersion = localUpdateVersion ?? APP_VERSION;
   const { environments } = useEnvironments();
+  const resolve = useMessages();
   const environmentIds = environmentIdsKey(environments.map(({ environmentId }) => environmentId));
   const sessionStates = useAtomValue(environmentSessionStatesAtom(environmentIds));
   const updateStates = useAtomValue(environmentUpdateStatesAtom(environmentIds));
@@ -53,7 +54,7 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
     canMaintain: canUpdateServer(sessionStates[index]!),
     updateState: updateStates[index]!,
   }));
-  const { targets: servers, skipped } = collectServerUpdateTargets(machines, targetVersion);
+  const { targets: servers, skipped } = collectServerUpdateTargets(machines, targetVersion, resolve);
   const restarts = collectRestartingMachines(machines, servers, localUpdateVersion !== null);
   const providers = useProviderUpdates();
   const updateServer = useServerUpdate();
@@ -140,7 +141,7 @@ export function useUpdateEverything(localUpdateVersion: string | null) {
                   run.environmentId,
                   runOutcome.status === "failed"
                     ? runOutcome.line
-                    : t("Provider update interrupted"),
+                    : resolve(msg("Provider update interrupted")),
                 );
               }
               return runOutcome;

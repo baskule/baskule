@@ -1,5 +1,5 @@
+import { useGT } from "gt-react";
 import { baskule } from "../../baskule/flags";
-import { useTranslation } from "../../i18n";
 
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
 
@@ -67,7 +67,8 @@ export function useComposerMenuItems({
     readonly modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   };
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+
   // Thread mentions rank by recency as of when the composer mounted.
   const [now] = useState(() => Date.now());
   const composerTriggerKind = composerTrigger?.kind ?? null;
@@ -120,7 +121,7 @@ export function useComposerMenuItems({
                 type: "slash-command",
                 command: "model",
                 label: "/model",
-                description: t("Switch response model for this thread"),
+                description: gt("Switch response model for this thread"),
               },
             ] as const)),
         ...(sideChatAvailable
@@ -130,14 +131,14 @@ export function useComposerMenuItems({
                 type: "slash-command",
                 command: "side",
                 label: "/side",
-                description: sideChatDisabledReason ?? t("Ask a side question in a new side chat"),
+                description: sideChatDisabledReason ?? gt("Ask a side question in a new side chat"),
               },
               {
                 id: "slash:btw",
                 type: "slash-command",
                 command: "btw",
                 label: "/btw",
-                description: sideChatDisabledReason ?? t("Same as /side"),
+                description: sideChatDisabledReason ?? gt("Same as /side"),
               },
             ] as const)
           : []),
@@ -148,7 +149,7 @@ export function useComposerMenuItems({
                 type: "slash-command",
                 command: "clear",
                 label: "/clear",
-                description: "Start a fresh session; earlier messages stay visible",
+                description: gt("Start a fresh session; earlier messages stay visible"),
               },
             ] as const)
           : []),
@@ -166,7 +167,7 @@ export function useComposerMenuItems({
         provider: selectedProvider,
         command,
         label: `/${command.name}`,
-        description: command.description ?? command.input?.hint ?? t("Run provider command"),
+        description: command.description ?? command.input?.hint ?? gt("Run provider command"),
       }));
       const query = composerTrigger.query.trim().toLowerCase();
       const skillItems = slashMenuSkills.map((skill) => ({
@@ -178,7 +179,7 @@ export function useComposerMenuItems({
         description:
           skill.shortDescription ??
           skill.description ??
-          (skill.scope ? t("{{scope}} skill", { scope: skill.scope }) : ""),
+          (skill.scope ? gt("{scope} skill", { scope: skill.scope }) : ""),
       }));
       // T3's `/clear` replaces the provider's, which would clear a session T3 still treats as live.
       const slashCommandItems = slashCommandItemsForPromptPosition(
@@ -197,7 +198,7 @@ export function useComposerMenuItems({
         description:
           skill.shortDescription ??
           skill.description ??
-          (skill.scope ? t("{{scope}} skill", { scope: skill.scope }) : t("Run provider skill")),
+          (skill.scope ? gt("{scope} skill", { scope: skill.scope }) : gt("Run provider skill")),
       }));
     }
     return [];
@@ -208,11 +209,11 @@ export function useComposerMenuItems({
       workspaceSkillsScanning);
   const emptyState = (() => {
     if (composerTriggerKind === "skill") {
-      return t("No skills found. Try / to browse provider commands.");
+      return gt("No skills found. Try / to browse provider commands.");
     }
     return composerTriggerKind === "path"
-      ? t("No matching files or folders.")
-      : t("No matching command.");
+      ? gt("No matching files or folders.")
+      : gt("No matching command.");
   })();
 
   return { items, isLoading, emptyState };

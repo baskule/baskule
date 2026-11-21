@@ -3,8 +3,6 @@
 export const BASKULE_UI =
   (import.meta.env as unknown as Record<string, string | undefined>).VITE_BASKULE_UI !== "0";
 
-export const BASKULE_APP_NAME = "Baskule";
-
 const env = import.meta.env as unknown as Record<string, string | undefined>;
 
 /**

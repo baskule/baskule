@@ -1,3 +1,4 @@
+import { type ProviderCompatibilityLookup } from "./compatibility.ts";
 import type {
   BackgroundScope,
   ChatAttachment,
@@ -61,9 +62,16 @@ export class ProviderHost extends Context.Service<
       ProviderMcpAppSnapshotError
     >;
     readonly resolveExtractedTextPath?: (path: string) => Effect.Effect<string | undefined>;
+    /**
+     * Counts a running agent for local server discovery, so listeners carrying its
+     * T3CODE_THREAD_ID show under its thread. Call the returned function when it stops.
+     */
+    readonly trackAgent?: () => () => void;
     readonly credentials: (
       namespace: string,
       bindingId: string,
     ) => Effect.Effect<ProviderCredentials>;
+    /** A driver declares its minimum version in the policy and asks here, not in a constant. */
+    readonly compatibility: ProviderCompatibilityLookup;
   }
 >()("@t3tools/provider-core/server/ProviderHost") {}

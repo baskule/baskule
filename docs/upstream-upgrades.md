@@ -130,8 +130,7 @@ and `scripts/check upstream`. Run a disposable fake-model journey through the
 hosted app. Verify affected native clients separately. Follow the
 [verification skill](../.agents/skills/verify-baskule/SKILL.md) and the
 [native verification guide](mobile-verification.md). Keep evidence under `.run/`.
-Real-model checks, performance samples, and translation generation with paid
-providers need their existing explicit authorization.
+Real-model checks and performance samples require explicit authorization.
 
 Review the final difference from the target upstream tree. Every remaining Baskule
 change needs a current product or compatibility reason. Check for duplicate

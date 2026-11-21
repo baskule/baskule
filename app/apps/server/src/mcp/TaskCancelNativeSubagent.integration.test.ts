@@ -17,6 +17,7 @@ import {
   ThreadId,
   TurnItemId,
   type OrchestrationV2DomainEvent,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -56,6 +57,15 @@ const layerOrchestratorService = OrchestratorMcpService.layer.pipe(
 const driver = ProviderDriverKind.make("claudeAgent");
 const instanceId = ProviderInstanceId.make("claudeAgent");
 const modelSelection = { instanceId, model: "claude-test" };
+const provider = {
+  instanceId,
+  driver,
+  enabled: true,
+  installed: true,
+  status: "ready",
+  auth: { status: "authenticated" },
+  models: [{ slug: modelSelection.model, name: modelSelection.model, isCustom: false }],
+} as unknown as ServerProvider;
 
 // Cancellation races with turn completion and checkpoint capture; "recorded" restarts before the Stop outbox runs.
 const cancelBackgroundOnlyTask = (
@@ -211,7 +221,9 @@ const cancelBackgroundOnlyTask = (
         Layer.provide(
           Layer.mergeAll(
             layerAdapters,
-            Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+            Layer.mock(ProviderRegistry.ProviderRegistry)({
+              getProviders: Effect.succeed([provider]),
+            }),
             Layer.mock(ProjectService.ProjectService)({}),
             Layer.mock(SecretRequests.SecretRequests)({}),
             ServerSettings.layerTest(),

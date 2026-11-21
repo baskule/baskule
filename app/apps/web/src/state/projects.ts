@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import { createEnvironmentProjectAtoms } from "@t3tools/client-runtime/state/projects";
 import { createProjectEnvironmentAtoms } from "@t3tools/client-runtime/state/projects";
 import { createEnvironmentRpcQueryAtomFamily } from "@t3tools/client-runtime/state/runtime";
@@ -23,7 +21,7 @@ export const projectEnvironment = createProjectEnvironmentAtoms(connectionAtomRu
 });
 export const projectContentSearch = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
   get label() {
-    return t("environment-data:projects:search-contents");
+    return "environment-data:projects:search-contents";
   },
   tag: WS_METHODS.projectsSearchContents,
   staleTimeMs: 5_000,

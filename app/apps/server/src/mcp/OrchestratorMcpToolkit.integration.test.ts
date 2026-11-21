@@ -107,6 +107,10 @@ const createdThreadPrompt = "Complete the newly created ordinary thread.";
 
 const approvalCompletionPrompt = "Finish the delegated work once its approval is decided.";
 
+function fixturePrompt(text: string): string {
+  return text.replace(/^\[Baskule: [^\n]+\]\n\n/, "");
+}
+
 const decodeCreateThreadsResult = Schema.decodeUnknownEffect(OrchestratorMcpCreateThreadsResult);
 const decodeDelegateTaskResult = Schema.decodeUnknownEffect(OrchestratorMcpDelegateTaskResult);
 const decodeTaskCancelResult = Schema.decodeUnknownEffect(OrchestratorMcpTaskCancelResult);
@@ -285,13 +289,17 @@ function makeDeterministicAdapter(input: {
                   },
                 },
               ]);
-              const terminalGate = input.terminalGate?.(turnInput);
+              const fixtureInput = {
+                ...turnInput,
+                message: { ...turnInput.message, text: fixturePrompt(turnInput.message.text) },
+              };
+              const terminalGate = input.terminalGate?.(fixtureInput);
               if (terminalGate !== undefined) {
                 yield* Deferred.await(terminalGate);
-              } else if (!input.shouldComplete(turnInput)) {
+              } else if (!input.shouldComplete(fixtureInput)) {
                 return;
               }
-              const response = input.response(turnInput);
+              const response = input.response(fixtureInput);
               yield* publish([
                 {
                   type: "provider_turn.updated",
@@ -545,7 +553,7 @@ describe("orchestrator MCP toolkit", () => {
                 turn.message.text === delegatedPrompt
                   ? delegatedResult
                   : `Secondary completed: ${turn.message.text}`,
-              steerReceived: (steer) => steerReceivedGates.get(steer.message.text),
+              steerReceived: (steer) => steerReceivedGates.get(fixturePrompt(steer.message.text)),
             }),
           ]);
           const approvalParentId = ThreadId.make("thread:mcp-approval-parent");
@@ -720,6 +728,7 @@ describe("orchestrator MCP toolkit", () => {
             Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
             Layer.provide(
               Layer.mock(ProjectService.ProjectService)({
+                workspaceScanDirectory: Effect.succeed,
                 getById: (id) =>
                   Effect.succeed(
                     id === projectId || id === foreignProjectId
@@ -1149,9 +1158,9 @@ describe("orchestrator MCP toolkit", () => {
               Effect.orDie,
             );
             expect(remainder.items[0]?.nextTextOffset).toBeNull();
-            expect(firstChunk.text + (remainder.items[0]?.text ?? "")).toBe(
-              "Secondary completed: Complete before a parent reads this child result directly.",
-            );
+            const expectedChildResult =
+              "Secondary completed: Complete before a parent reads this child result directly.";
+            expect(firstChunk.text + (remainder.items[0]?.text ?? "")).toBe(expectedChildResult);
             expect(
               (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
                 (task) => task.id === directRead.task.id,
@@ -1169,7 +1178,7 @@ describe("orchestrator MCP toolkit", () => {
             expect(terminalResultRead.items).toMatchObject([
               {
                 type: "assistant_message",
-                text: "Secondary completed: Complete before a parent reads this child result directly.",
+                text: expectedChildResult,
                 textTruncated: false,
               },
             ]);
@@ -1775,7 +1784,7 @@ describe("orchestrator MCP toolkit", () => {
               {
                 instanceId: secondaryInstanceId,
                 threadId: delegated.childThreadId,
-                text: delegatedPrompt,
+                text: `[Baskule: the agent in Baskule thread "${parentThreadId}" sent this message, not the user.]\n\n${delegatedPrompt}`,
                 modelSelection: { ...secondarySelection, options: delegatedOptions },
               },
             ]);

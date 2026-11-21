@@ -7,10 +7,8 @@ name: Mobile EAS Production
 # runner, with corepack pinning pnpm 10.24 in eas.json, local == build.
 #
 # Every merge reconciles native fingerprints and publishes matching OTAs.
-# Android store builds run here with `eas build --local` on Blacksmith (the
-# android job). iOS builds run on EAS unless the MOBILE_IOS_LOCAL_BUILDS
-# repository variable is `true`, which moves them to the ios job the same way.
-# Local builds never appear in `eas build:list`, so each finished local build
+# Store builds run here with `eas build --local` on Blacksmith (the android and
+# ios jobs). Local builds never appear in `eas build:list`, so each finished build
 # pushes a mobile-android-build/<version>/<fingerprint> or
 # mobile-ios-build/<profile>/<version>/<fingerprint> tag that the reconcile reads.
 # iOS prereleases use the testflight profile (3.0.0); App Store binaries use
@@ -253,17 +251,9 @@ jobs:
             echo "> Apple closes an iOS release train after App Store approval. Before building iOS, confirm \`$version\` is newer than the approved App Store version."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Build and submit iOS (manual)
-        if: steps.expo-token.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'build' && inputs.platform != 'android' && vars.MOBILE_IOS_LOCAL_BUILDS != 'true'
-        working-directory: apps/mobile
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_PRODUCTION_TOKEN }}
-          MOBILE_BUILD_PROFILE: ${{ inputs.profile || 'production' }}
-        run: eas build --platform ios --profile "$MOBILE_BUILD_PROFILE" --auto-submit --non-interactive --no-wait
-
       - id: ios_manual
         name: Queue iOS build (manual)
-        if: steps.expo-token.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'build' && inputs.platform != 'android' && vars.MOBILE_IOS_LOCAL_BUILDS == 'true'
+        if: steps.expo-token.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'build' && inputs.platform != 'android'
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_PRODUCTION_TOKEN }}
@@ -350,7 +340,6 @@ jobs:
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_PRODUCTION_TOKEN }}
-          IOS_LOCAL_BUILDS: ${{ vars.MOBILE_IOS_LOCAL_BUILDS == 'true' }}
         run: |
           failed=0
           message="$(git log -1 --pretty=%s | head -c 120) ($(git rev-parse --short=9 HEAD))"
@@ -373,19 +362,16 @@ jobs:
             latest_version="$(eas build:list --platform "$platform" --build-profile "$profile" --limit 1 --json --non-interactive | jq -r '.[0].appVersion // "none"')"
             # Local builds (the android and ios jobs) record each build as a tag;
             # EAS records still count for builds made before that.
-            tag_prefix=""
             if [ "$platform" = "android" ]; then
               tag_prefix="mobile-android-build"
-            elif [ "$IOS_LOCAL_BUILDS" = "true" ]; then
+            else
               tag_prefix="mobile-ios-build/$profile"
             fi
-            if [ -n "$tag_prefix" ]; then
-              if [ -n "$(git tag -l "$tag_prefix/*/$hash")" ]; then
-                finished=$((finished + 1))
-              fi
-              if [ -n "$(git tag -l "$tag_prefix/$version/*")" ]; then
-                latest_version="$version"
-              fi
+            if [ -n "$(git tag -l "$tag_prefix/*/$hash")" ]; then
+              finished=$((finished + 1))
+            fi
+            if [ -n "$(git tag -l "$tag_prefix/$version/*")" ]; then
+              latest_version="$version"
             fi
 
             if [ "$finished" -gt 0 ]; then
@@ -437,22 +423,13 @@ jobs:
               echo ":building_construction: android: building and submitting $version in the Android store build job ($reason)" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
-            if [ "$platform" = "ios" ] && [ "$IOS_LOCAL_BUILDS" = "true" ]; then
-              {
-                echo "ios_build=true"
-                echo "ios_profile=$profile"
-                echo "ios_fingerprint=$hash"
-                echo "ios_version=$version"
-                echo "ios_sha=$(git rev-parse HEAD)"
-              } >> "$GITHUB_OUTPUT"
-              echo ":building_construction: ios/$profile: building and submitting $version in the iOS store build job ($reason)" >> "$GITHUB_STEP_SUMMARY"
-              continue
-            fi
-            if eas build --platform "$platform" --profile "$profile" --auto-submit --non-interactive --no-wait; then
-              echo ":building_construction: $platform: scheduled production build and submission for $version ($reason)" >> "$GITHUB_STEP_SUMMARY"
-            else
-              failed=1
-              echo ":x: $platform: production build or submission failed for $version" >> "$GITHUB_STEP_SUMMARY"
-            fi
+            {
+              echo "ios_build=true"
+              echo "ios_profile=$profile"
+              echo "ios_fingerprint=$hash"
+              echo "ios_version=$version"
+              echo "ios_sha=$(git rev-parse HEAD)"
+            } >> "$GITHUB_OUTPUT"
+            echo ":building_construction: ios/$profile: building and submitting $version in the iOS store build job ($reason)" >> "$GITHUB_STEP_SUMMARY"
           done
           exit "$failed"

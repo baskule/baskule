@@ -1,4 +1,6 @@
-import { t } from "../../i18n";
+import { m as resolveMessage, getActiveLocale as getLocale } from "../../i18n/messages";
+import { msg } from "gt-react";
+
 // baskule: plain-language figures for usage and limits, shared by the user page, the composer
 // and the admin dashboard.
 import { BASKULE_AI_PROVIDERS, type BaskuleAIProviderId } from "@t3tools/contracts/baskule";
@@ -6,7 +8,7 @@ import type { UsageProviderKind } from "@t3tools/contracts";
 import { formatTokens as formatTokensFixed, formatUsd } from "@t3tools/shared/usageFormat";
 import type { DailyTotals } from "@t3tools/shared/usageMerge";
 
-import { getLocale } from "@t3tools/shared/localization";
+
 
 import { PROVIDER_PRESENTATION } from "../../components/usage/usageProviders";
 import type { UsageDaily, UsageWindow, UsageWindowStatus } from "./api";
@@ -27,19 +29,19 @@ export const WINDOWS: ReadonlyArray<UsageWindow> = ["daily", "weekly", "monthly"
 export const windowCopy = (window: UsageWindow) =>
   ({
     daily: {
-      name: t("Daily limit"),
-      reached: t("Daily limit reached"),
-      period: t("Every day"),
+      name: resolveMessage(msg("Daily limit")),
+      reached: resolveMessage(msg("Daily limit reached")),
+      period: resolveMessage(msg("Every day")),
     },
     weekly: {
-      name: t("Weekly limit"),
-      reached: t("Weekly limit reached"),
-      period: t("Every week, from Monday"),
+      name: resolveMessage(msg("Weekly limit")),
+      reached: resolveMessage(msg("Weekly limit reached")),
+      period: resolveMessage(msg("Every week, from Monday")),
     },
     monthly: {
-      name: t("Monthly limit"),
-      reached: t("Monthly limit reached"),
-      period: t("Every month, from the 1st"),
+      name: resolveMessage(msg("Monthly limit")),
+      reached: resolveMessage(msg("Monthly limit reached")),
+      period: resolveMessage(msg("Every month, from the 1st")),
     },
   })[window];
 
@@ -81,14 +83,14 @@ export function limitAmounts(status: UsageWindowStatus): string {
   const parts: string[] = [];
   if (status.limit.tokens !== undefined)
     parts.push(
-      t("{{used}} of {{limit}} tokens", {
+      resolveMessage(msg("{used} of {limit} tokens"), {
         used: formatTokens(status.used.tokens),
         limit: formatTokens(status.limit.tokens),
       }),
     );
   if (status.limit.costUsd !== undefined)
     parts.push(
-      t("{{used}} of {{limit}}", {
+      resolveMessage(msg("{used} of {limit}"), {
         used: formatUsd(status.used.costUsd),
         limit: formatUsd(status.limit.costUsd),
       }),
@@ -109,13 +111,13 @@ export function formatResetTime(iso: string, now: number, locale?: string): stri
     time,
   );
   const days = localDay(time) - localDay(now);
-  if (days <= 0) return t("today at {{time}}", { time: clock });
-  if (days === 1) return t("tomorrow at {{time}}", { time: clock });
+  if (days <= 0) return resolveMessage(msg("today at {time}"), { time: clock });
+  if (days === 1) return resolveMessage(msg("tomorrow at {time}"), { time: clock });
   const day =
     days < 7
       ? new Intl.DateTimeFormat(locale, { weekday: "long" }).format(time)
       : new Intl.DateTimeFormat(locale, { day: "numeric", month: "long" }).format(time);
-  return t("{{day}} at {{time}}", { day, time: clock });
+  return resolveMessage(msg("{day} at {time}"), { day, time: clock });
 }
 
 /** "Resets today at 01:00." or, once blocked, when messages can be sent again. */
@@ -126,8 +128,8 @@ export function resetSentence(
 ): string {
   const when = formatResetTime(status.resetsAt, now, locale);
   return status.blocked
-    ? t("You can send messages again {{when}}.", { when })
-    : t("Resets {{when}}.", { when });
+    ? resolveMessage(msg("You can send messages again {when}."), { when })
+    : resolveMessage(msg("Resets {when}."), { when });
 }
 
 const CHART_PROVIDER: UsageProviderKind = "opencode";

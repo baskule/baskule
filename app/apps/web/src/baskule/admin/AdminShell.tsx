@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: frame of the admin area, a modal over the chat that opened it like Settings: the admin-only
 // guard, the section nav, the breadcrumb and close button, and the placeholder of pages in progress.
 import { Link, Navigate, Outlet, useParams } from "@tanstack/react-router";
@@ -20,12 +21,12 @@ import { AdminSidebarNav } from "./AdminSidebarNav";
 import { adminSections, findAdminPage, type AdminPage } from "./navigation";
 
 export function AdminLayout() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   // Until the session is known, show the frame rather than a refusal.
   const allowed = me === null || me.user.role === "admin";
   return (
-    <AppRouteModal label={t("Admin")}>
+    <AppRouteModal label={t(msg("Admin"))}>
       <div className="relative flex min-h-0 flex-1">
         {allowed ? <AdminSidebarNav /> : null}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -42,7 +43,7 @@ export function AdminLayout() {
               ) : (
                 <Alert variant="error">
                   <AlertDescription>
-                    {t("Only administrators can open the admin panel.")}
+                    {t(msg("Only administrators can open the admin panel."))}
                   </AlertDescription>
                 </Alert>
               )}
@@ -55,16 +56,16 @@ export function AdminLayout() {
 }
 
 function AdminBreadcrumb() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   const { section, page, item } = useParams({ strict: false });
   const found =
     section === undefined || page === undefined ? null : findAdminPage(me, section, page);
   return (
-    <WorkspaceBreadcrumb ariaLabel={t("Admin breadcrumb")}>
+    <WorkspaceBreadcrumb ariaLabel={t(msg("Admin breadcrumb"))}>
       {found ? (
         <>
-          <WorkspaceBreadcrumbItem>{t("Admin")}</WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbItem>{t(msg("Admin"))}</WorkspaceBreadcrumbItem>
           <WorkspaceBreadcrumbSeparator />
           {item !== undefined && found.page.detail ? (
             <WorkspaceBreadcrumbItem className="truncate">
@@ -83,7 +84,7 @@ function AdminBreadcrumb() {
           )}
         </>
       ) : (
-        <WorkspaceBreadcrumbItem current>{t("Admin")}</WorkspaceBreadcrumbItem>
+        <WorkspaceBreadcrumbItem current>{t(msg("Admin"))}</WorkspaceBreadcrumbItem>
       )}
     </WorkspaceBreadcrumb>
   );
@@ -122,7 +123,7 @@ export function AdminPageView({
   readonly pageId: string;
   readonly itemId?: string;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   // Until the session is known, anonymous-only filtering cannot run: wait rather than bounce.
   if (me === null) return <Loading />;
@@ -172,15 +173,15 @@ function Loading() {
 }
 
 function AdminPlaceholder({ page }: { readonly page: AdminPage }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border px-6 py-12 text-center">
       <RowIcon>
         <page.icon />
       </RowIcon>
       <div className="flex max-w-sm flex-col gap-1">
-        <p className="text-sm font-medium text-foreground">{t("Coming in this release")}</p>
-        <p className="text-xs text-muted-foreground">{t("Nothing to set up here yet.")}</p>
+        <p className="text-sm font-medium text-foreground">{t(msg("Coming in this release"))}</p>
+        <p className="text-xs text-muted-foreground">{t(msg("Nothing to set up here yet."))}</p>
       </div>
     </div>
   );

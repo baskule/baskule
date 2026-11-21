@@ -1,4 +1,5 @@
-import { BASKULE_APP_NAME, BASKULE_UI } from "./baskule/flags";
+import { BASKULE_APP_NAME } from "@t3tools/contracts/baskule";
+import { BASKULE_UI } from "./baskule/flags";
 import type { DesktopAppBranding } from "@t3tools/contracts";
 import {
   formatAppDisplayName,

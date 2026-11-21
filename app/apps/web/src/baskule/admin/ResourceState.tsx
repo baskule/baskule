@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: the loading, error and empty states of an admin list.
 
 import { Spinner } from "../../components/ui/spinner";
@@ -15,14 +16,14 @@ export function ResourceState({
   readonly empty: boolean;
   readonly emptyText: string;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   if (error && empty) return <PageMessage>{error}</PageMessage>;
   if (loading && empty) {
     return (
       <PageMessage>
         <span className="inline-flex items-center gap-2">
           <Spinner size="sm" tone="muted" />
-          {t("Loading…")}
+          {t(msg("Loading…"))}
         </span>
       </PageMessage>
     );

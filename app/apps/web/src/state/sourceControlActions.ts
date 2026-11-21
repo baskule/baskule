@@ -1,5 +1,4 @@
-import { useTranslation } from "../i18n";
-
+import { msg } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import type {
   AtomCommandFailure,
@@ -20,7 +19,7 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 
 import { appAtomRegistry } from "../rpc/atomRegistry";
-
+import { m } from "../i18n/messages";
 import { useEnvironmentQuery } from "./query";
 import { readEnvironmentScope, useEnvironmentScope } from "./session";
 
@@ -69,7 +68,6 @@ function useAction<
   readonly onSuccess?: () => void;
   readonly managedExternally?: boolean;
 }): SourceControlActionState<TArgs, R> {
-  const t = useTranslation();
   const isAllowed = useEnvironmentScope(input.scope.environmentId, AuthSourceControlWriteScope);
   const operation = ACTION_OPERATION[input.kind];
   const state = useAtomValue(vcsActionManager.stateAtom(input.scope));
@@ -88,7 +86,7 @@ function useAction<
         Cause.fail(
           new EnvironmentAuthorizationError({
             requiredScope: AuthSourceControlWriteScope,
-            message: t("This connection cannot change source control."),
+            message: m(msg("This connection cannot change source control.")),
           }),
         ),
       );
@@ -109,7 +107,7 @@ function useAction<
           input.scope,
           {
             operation,
-            label: input.label,
+            label: m(input.label),
           },
           execute,
         );
@@ -147,7 +145,6 @@ export function useSourceControlActionRunning(
 }
 
 export function useVcsInitAction(scope: SourceControlActionScope) {
-  const t = useTranslation();
   const init = useAtomCommand(vcsEnvironment.init, { reportFailure: false });
   const action = async () => {
     const target = resolveScope(scope);
@@ -167,11 +164,10 @@ export function useVcsInitAction(scope: SourceControlActionScope) {
       input: { cwd: target.cwd },
     });
   };
-  return useAction({ kind: "init", label: t("Initializing repository"), scope, action });
+  return useAction({ kind: "init", label: msg("Initializing repository"), scope, action });
 }
 
 export function useVcsPullAction(scope: SourceControlActionScope) {
-  const t = useTranslation();
   const pull = useAtomCommand(vcsEnvironment.pull, { reportFailure: false });
   const status = useEnvironmentQuery(
     scope.environmentId !== null && scope.cwd !== null
@@ -201,7 +197,7 @@ export function useVcsPullAction(scope: SourceControlActionScope) {
   };
   return useAction({
     kind: "pull",
-    label: t("Pulling latest changes..."),
+    label: msg("Pulling latest changes..."),
     scope,
     action,
     onSuccess: status.refresh,
@@ -209,7 +205,6 @@ export function useVcsPullAction(scope: SourceControlActionScope) {
 }
 
 export function useGitStackedAction(scope: SourceControlActionScope) {
-  const t = useTranslation();
   const runStackedAction = useAtomCommand(vcsActionManager.runStackedAction(scope), {
     reportFailure: false,
   });
@@ -239,7 +234,7 @@ export function useGitStackedAction(scope: SourceControlActionScope) {
 
   return useAction({
     kind: "runStackedAction",
-    label: t("Running source control action"),
+    label: msg("Running source control action"),
     scope,
     action,
     onSuccess: status.refresh,

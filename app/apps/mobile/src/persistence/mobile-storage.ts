@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -22,7 +20,7 @@ export class MobileStorageDecodeError extends Schema.TaggedError<MobileStorageDe
   },
 ) {
   override get message(): string {
-    return t("Failed to decode mobile storage value for key {{key}}.", { key: this.key });
+    return `Failed to decode mobile storage value for key ${this.key}.`;
   }
 }
 
@@ -34,7 +32,7 @@ export class MobileStorageEncodeError extends Schema.TaggedError<MobileStorageEn
   },
 ) {
   override get message(): string {
-    return t("Failed to encode mobile storage value for key {{key}}.", { key: this.key });
+    return `Failed to encode mobile storage value for key ${this.key}.`;
   }
 }
 
@@ -43,7 +41,7 @@ export class MobileDeviceIdGenerationError extends Schema.TaggedError<MobileDevi
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return t("Failed to generate the mobile agent-awareness device id.");
+    return "Failed to generate the mobile agent-awareness device id.";
   }
 }
 

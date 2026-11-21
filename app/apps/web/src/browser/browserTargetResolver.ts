@@ -58,12 +58,19 @@ const resolveEnvironmentPortTarget = (
   };
 };
 
-// Desktop renders primary and WSL tabs locally; loopback servers require localhost even for LAN backends.
+// Loopback servers on the desktop's own primary and WSL backends answer on this machine's localhost.
 const reachesEnvironmentLoopback = (target: ConnectionTarget): boolean =>
   isElectron &&
   (target._tag === "PrimaryConnectionTarget" || isDesktopLocalConnectionTarget(target));
 
-export function resolveDiscoveredServerUrl(environmentId: EnvironmentId, rawUrl: string): string {
+/** Whether the desktop lacks a direct loopback connection to this environment. */
+export const tunnelsEnvironmentLoopback = (target: ConnectionTarget | undefined): boolean =>
+  isElectron && !(target !== undefined && reachesEnvironmentLoopback(target));
+
+const resolveLoopbackUrl = (
+  environmentId: EnvironmentId,
+  rawUrl: string,
+): string => {
   try {
     const normalizedUrl = normalizePreviewUrl(rawUrl);
     const parsed = new URL(normalizedUrl);
@@ -85,4 +92,12 @@ export function resolveDiscoveredServerUrl(environmentId: EnvironmentId, rawUrl:
   } catch {
     return rawUrl;
   }
-}
+};
+
+/** The reachable URL for an in-app tab. */
+export const resolveDiscoveredServerUrl = (environmentId: EnvironmentId, rawUrl: string): string =>
+  resolveLoopbackUrl(environmentId, rawUrl);
+
+/** The URL for the system browser, which has no tunnel and needs an address it can reach itself. */
+export const resolveExternalServerUrl = (environmentId: EnvironmentId, rawUrl: string): string =>
+  resolveLoopbackUrl(environmentId, rawUrl);

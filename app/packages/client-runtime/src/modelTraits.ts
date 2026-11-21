@@ -1,4 +1,3 @@
-import { t } from "@t3tools/shared/localization";
 import type { ModelSelection, ProviderOptionDescriptor } from "@t3tools/contracts";
 import {
   buildProviderOptionSelectionsFromDescriptors,
@@ -6,6 +5,8 @@ import {
   getProviderOptionCurrentValue,
 } from "@t3tools/shared/model";
 import { REASONING_EFFORT_OPTION_IDS } from "./state/threadExecution.ts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 const REASONING_DESCRIPTOR_IDS: ReadonlySet<string> = new Set([
   ...REASONING_EFFORT_OPTION_IDS,
@@ -82,11 +83,14 @@ export function getTraitSelectChange(
   };
 }
 
-export function buildTraitsTriggerDisplay(input: {
-  descriptors: ReadonlyArray<ProviderOptionDescriptor>;
-  modelSelection?: ModelSelection | null;
-  reportedModelSelection?: ModelSelection | null | undefined;
-}): {
+export function buildTraitsTriggerDisplay(
+  input: {
+    descriptors: ReadonlyArray<ProviderOptionDescriptor>;
+    modelSelection?: ModelSelection | null;
+    reportedModelSelection?: ModelSelection | null | undefined;
+  },
+  resolve: MFunctionType = mFallback,
+): {
   label: string;
   /** "Fast" or "Ultrafast" when a speed option is on. */
   speedLabel: string | null;
@@ -95,17 +99,20 @@ export function buildTraitsTriggerDisplay(input: {
   let fastModeFallbackLabel: string | null = null;
   let speedLabel: string | null = null;
   let reasoningLabelIndex = -1;
-  let ultracodeLabelIndex = -1;
   const labels: Array<string> = [];
   for (const descriptor of input.descriptors) {
     if (descriptor.id === "fastMode" && descriptor.type === "boolean") {
-      speedLabel = descriptor.currentValue === true ? t("Fast") : null;
-      fastModeFallbackLabel = speedLabel ?? t("Normal");
+      speedLabel =
+        descriptor.currentValue === true
+          ? resolve(msg("Fast", { $context: "model speed tier" }))
+          : null;
+      fastModeFallbackLabel =
+        speedLabel ?? resolve(msg("Normal", { $context: "model speed tier" }));
       continue;
     }
     const label =
       descriptor.type === "boolean"
-        ? `${descriptor.label} ${descriptor.currentValue === true ? t("On") : t("Off")}`
+        ? `${descriptor.label} ${descriptor.currentValue === true ? "On" : "Off"}`
         : (getProviderOptionCurrentLabel(
             descriptor,
             input.modelSelection,
@@ -119,7 +126,7 @@ export function buildTraitsTriggerDisplay(input: {
     }
   }
 
-  const ultracode = ultracodeLabelIndex >= 0;
+  const ultracode = false;
   if (labels.length === 0 && fastModeFallbackLabel !== null) {
     return { label: fastModeFallbackLabel, speedLabel, ultracode };
   }

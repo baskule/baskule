@@ -1,3 +1,4 @@
+import { useMessages, msg } from "gt-react";
 // baskule: the pieces of a plugin's page, before and after it is added: its header, who can use
 // it, its apps with their inline setup, and its skills.
 import type { Group } from "@t3tools/contracts/baskule";
@@ -17,7 +18,7 @@ import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { Radio, RadioGroup } from "../../../components/ui/radio-group";
 import { Switch } from "../../../components/ui/switch";
-import { useTranslation } from "../../../i18n";
+
 import { PluginLogo } from "../../plugins/PluginLogo";
 import { authText, setupText, skippedText } from "../../plugins/presentation";
 import { FormField } from "../../ui";
@@ -43,7 +44,7 @@ export function PluginHeader({
   readonly actions?: ReactNode;
   readonly leading?: ReactNode;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <div className="flex flex-col gap-4 px-3 sm:px-4">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
@@ -62,7 +63,7 @@ export function PluginHeader({
                 rel="noreferrer noopener"
                 className="inline-flex w-fit items-center gap-1 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
               >
-                {t("View source")}
+                {t(msg("View source"))}
                 <ArrowUpRightIcon aria-hidden className="size-3.5" />
               </a>
             ) : null}
@@ -80,28 +81,28 @@ export function PluginHeader({
 }
 
 export function StatusBadge({ status }: { readonly status: "ready" | "needs_setup" | "paused" }) {
-  const t = useTranslation();
+  const t = useMessages();
   switch (status) {
     case "ready":
-      return <Badge variant="success">{t("Ready")}</Badge>;
+      return <Badge variant="success">{t(msg("Ready"))}</Badge>;
     case "needs_setup":
-      return <Badge variant="warning">{t("Needs setup")}</Badge>;
+      return <Badge variant="warning">{t(msg("Needs setup"))}</Badge>;
     case "paused":
-      return <Badge variant="secondary">{t("Paused")}</Badge>;
+      return <Badge variant="secondary">{t(msg("Paused"))}</Badge>;
   }
 }
 
 export function accessSummary(
   access: PluginAccess,
   groups: ReadonlyArray<Group> | null,
-  t: ReturnType<typeof useTranslation>,
+  t: ReturnType<typeof useMessages>,
 ): string {
-  if (access.kind === "everyone") return t("Everyone");
-  if (access.groups.length === 0) return t("No one yet");
+  if (access.kind === "everyone") return t(msg("Everyone"));
+  if (access.groups.length === 0) return t(msg("No one yet"));
   return access.groups
     .map((id) => {
       const group = groups?.find((entry) => entry.id === id);
-      return group ? groupName(group) : t("Removed group");
+      return group ? groupName(group) : t(msg("Removed group"));
     })
     .join(", ");
 }
@@ -120,17 +121,17 @@ export function AccessSection({
   readonly busy?: boolean;
   readonly onChange: (access: PluginAccess) => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const own = groups?.filter((group) => !group.builtin) ?? [];
   const chosen = value.kind === "groups" ? value.groups : [];
   return (
     <PageSection
-      title={t("Who can use it")}
-      description={t("People switch it on or off for themselves in Settings → Plugins.")}
+      title={t(msg("Who can use it"))}
+      description={t(msg("People switch it on or off for themselves in Settings → Plugins."))}
     >
       <div className="px-3 py-3.5 sm:px-4">
         <RadioGroup
-          aria-label={t("Who can use it")}
+          aria-label={t(msg("Who can use it"))}
           aria-busy={busy || undefined}
           value={value.kind}
           disabled={disabled}
@@ -142,11 +143,13 @@ export function AccessSection({
         >
           <label className="flex cursor-pointer items-center gap-3">
             <Radio value="everyone" />
-            <span className="text-sm text-foreground">{t("Everyone in your organization")}</span>
+            <span className="text-sm text-foreground">
+              {t(msg("Everyone in your organization"))}
+            </span>
           </label>
           <label className="flex cursor-pointer items-center gap-3">
             <Radio value="groups" />
-            <span className="text-sm text-foreground">{t("Only people in some groups")}</span>
+            <span className="text-sm text-foreground">{t(msg("Only people in some groups"))}</span>
           </label>
         </RadioGroup>
         {value.kind === "groups" ? (
@@ -168,9 +171,8 @@ export function AccessSection({
                   />
                   <span className="min-w-0 flex-1 truncate text-sm">{groupName(group)}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {t("{{count}} person", {
+                    {t(msg("{count, plural, one {{count} person} other {{count} people}}"), {
                       count: group.members.length,
-                      defaultValue_other: "{{count}} people",
                     })}
                   </span>
                 </label>
@@ -178,13 +180,13 @@ export function AccessSection({
             </div>
           ) : (
             <p className="mt-3 ps-7.5 text-xs text-muted-foreground sm:ps-7">
-              {t("You have no groups yet.")}{" "}
+              {t(msg("You have no groups yet."))}{" "}
               <Link
                 to="/admin/$section/$page"
                 params={{ section: "people", page: "groups" }}
                 className="text-foreground underline underline-offset-4"
               >
-                {t("Create one in People → Groups")}
+                {t(msg("Create one in People → Groups"))}
               </Link>
             </p>
           )
@@ -211,18 +213,20 @@ export interface ServerView {
 }
 
 export function AppsSection({ servers }: { readonly servers: ReadonlyArray<ServerView> }) {
-  const t = useTranslation();
+  const t = useMessages();
   if (servers.length === 0) return null;
   const choosing = servers.some((server) => server.include);
   return (
     <PageSection
-      title={t("Apps ({{count}})", { count: servers.length })}
+      title={t(msg("Apps ({count})"), { count: servers.length })}
       description={
         choosing
           ? t(
-              "The services the assistant connects to, with what each needs. Turn off the ones your team doesn't use.",
+              msg(
+                "The services the assistant connects to, with what each needs. Turn off the ones your team doesn't use.",
+              ),
             )
-          : t("The services the assistant connects to, with what each needs.")
+          : t(msg("The services the assistant connects to, with what each needs."))
       }
     >
       {servers.map((server) => (
@@ -250,7 +254,7 @@ export function AppsSection({ servers }: { readonly servers: ReadonlyArray<Serve
                   )}
                   {server.include ? (
                     <Switch
-                      aria-label={t("Keep {{name}}", { name: server.name })}
+                      aria-label={t(msg("Keep {name}"), { name: server.name })}
                       checked={server.include.checked}
                       onCheckedChange={server.include.onChange}
                     />
@@ -263,10 +267,12 @@ export function AppsSection({ servers }: { readonly servers: ReadonlyArray<Serve
                 {server.connectedMembers ? (
                   <>
                     {" · "}
-                    {t("{{count}} person signed in", {
-                      count: server.connectedMembers,
-                      defaultValue_other: "{{count}} people signed in",
-                    })}
+                    {t(
+                      msg(
+                        "{count, plural, one {{count} person signed in} other {{count} people signed in}}",
+                      ),
+                      { count: server.connectedMembers },
+                    )}
                   </>
                 ) : null}
               </span>
@@ -292,14 +298,14 @@ export function SkillsSection({
     readonly files?: number;
   }>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [all, setAll] = useState(false);
   if (skills.length === 0) return null;
   const shown = all ? skills : skills.slice(0, SKILLS_SHOWN);
   return (
     <PageSection
-      title={t("Skills ({{count}})", { count: skills.length })}
-      description={t("Instructions the assistant reads when a task calls for them.")}
+      title={t(msg("Skills ({count})"), { count: skills.length })}
+      description={t(msg("Instructions the assistant reads when a task calls for them."))}
     >
       {shown.map((skill) => (
         <div key={skill.name} className="flex items-start gap-3 px-3 py-3 sm:px-4">
@@ -314,9 +320,8 @@ export function SkillsSection({
           </div>
           {skill.files && skill.files > 1 ? (
             <span className="shrink-0 text-xs text-muted-foreground">
-              {t("{{count}} file", {
+              {t(msg("{count, plural, one {{count} file} other {{count} files}}"), {
                 count: skill.files,
-                defaultValue_other: "{{count}} files",
               })}
             </span>
           ) : null}
@@ -325,7 +330,7 @@ export function SkillsSection({
       {skills.length > shown.length ? (
         <div className="flex justify-end px-2 py-1.5">
           <Button size="sm" variant="ghost" onClick={() => setAll(true)}>
-            {t("{{count}} more", { count: skills.length - shown.length })}
+            {t(msg("{count} more"), { count: skills.length - shown.length })}
           </Button>
         </div>
       ) : null}
@@ -341,17 +346,19 @@ export function NotAdded({
     readonly subject: string;
   }>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   if (skipped.length === 0) return null;
   return (
     <p className="px-3 text-xs text-muted-foreground sm:px-4">
-      {t("Not added: {{parts}}", {
+      {t(msg("Not added: {parts}"), {
         parts: skipped
           .map((part) =>
-            t("{{subject}}, {{reason}}", {
-              subject: part.subject,
-              reason: skippedText(part.kind),
-            }),
+            t(
+              msg("{subject}, {reason}", {
+                subject: part.subject,
+                reason: skippedText(part.kind),
+              }),
+            ),
           )
           .join("; "),
       })}
@@ -369,7 +376,7 @@ export function VariableFields({
   readonly values: Readonly<Record<string, string>>;
   readonly onChange: (name: string, value: string) => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {variables.map((variable) => (
@@ -380,7 +387,7 @@ export function VariableFields({
           autoComplete={variable.secret ? "new-password" : "off"}
           spellCheck={false}
           font="mono"
-          placeholder={variable.set ? t("Saved. Leave empty to keep it.") : ""}
+          placeholder={variable.set ? t(msg("Saved. Leave empty to keep it.")) : ""}
           hint={variable.description}
           value={values[variable.name] ?? ""}
           onChange={(event) => onChange(variable.name, event.currentTarget.value)}

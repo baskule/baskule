@@ -1,4 +1,5 @@
-import { t, useTranslation } from "../../i18n";
+import { m as resolveMessage } from "../../i18n/messages";
+import { msg } from "gt-react";
 
 import { type DesktopBridge, managedUpdatesDenial } from "@t3tools/contracts";
 import { CircleAlertIcon } from "lucide-react";
@@ -32,7 +33,7 @@ import { Spinner } from "../ui/spinner";
 
 function installationName(bridge: DesktopBridge | undefined): string {
   const origin = bridge?.getBaskuleServer?.();
-  if (!origin) return t("This installation");
+  if (!origin) return resolveMessage(msg("This installation"));
   try {
     return new URL(origin).host;
   } catch {
@@ -43,20 +44,30 @@ function installationName(bridge: DesktopBridge | undefined): string {
 function viewDetail(view: RequiredUpdateView, requiredVersion: string): string | null {
   switch (view.kind) {
     case "managed":
-      return t("{{policy}} Ask your administrator to update Baskule to {{version}}.", {
-        policy: view.detail,
-        version: requiredVersion,
-      });
+      return resolveMessage(
+        msg("{policy} Ask your administrator to update Baskule to {version}."),
+        {
+          policy: view.detail,
+          version: requiredVersion,
+        },
+      );
     case "manual":
-      return t("{{reason}} Download Baskule {{version}} or newer from the releases page.", {
-        reason: view.detail ?? t("Automatic updates are not available in this build."),
-        version: requiredVersion,
-      });
+      return resolveMessage(
+        msg("{reason} Download Baskule {version} or newer from the releases page."),
+        {
+          reason:
+            view.detail ??
+            resolveMessage(msg("Automatic updates are not available in this build.")),
+          version: requiredVersion,
+        },
+      );
     case "checking":
-      return t("Looking for a compatible update…");
+      return resolveMessage(msg("Looking for a compatible update…"));
     case "retry":
       return view.error === null
-        ? t("No compatible update has been found yet. Check again or use the releases page.")
+        ? resolveMessage(
+            msg("No compatible update has been found yet. Check again or use the releases page."),
+          )
         : null;
     case "downloading":
     case "update":
@@ -72,7 +83,6 @@ interface UpdateAttempt {
 
 /** Blocks the app while it is older than its installation allows, and updates it in one step. */
 export function RequiredUpdateDialog() {
-  const t = useTranslation();
   const state = useDesktopUpdateState();
   // The desktop updates this machine, whose policy the primary environment reports.
   const view = resolveRequiredUpdateView(state, managedUpdatesDenial(usePrimaryManagedPolicy()));
@@ -134,34 +144,42 @@ export function RequiredUpdateDialog() {
 
   const primary =
     pending === "restarting"
-      ? { label: t("Restarting…"), busy: true, run: null }
+      ? { label: resolveMessage(msg("Restarting…")), busy: true, run: null }
       : view.kind === "update"
-        ? { label: t("Update and restart"), busy: pending !== null, run }
+        ? { label: resolveMessage(msg("Update and restart")), busy: pending !== null, run }
         : view.kind === "downloading"
           ? {
               label:
                 view.percent === null
-                  ? t("Downloading update…")
-                  : t("Downloading update ({{percent}}%)", { percent: Math.floor(view.percent) }),
+                  ? resolveMessage(msg("Downloading update…"))
+                  : resolveMessage(msg("Downloading update ({percent}%)"), {
+                      percent: Math.floor(view.percent),
+                    }),
               busy: true,
               run: null,
             }
           : view.kind === "checking"
-            ? { label: t("Checking for updates…"), busy: true, run: null }
+            ? { label: resolveMessage(msg("Checking for updates…")), busy: true, run: null }
             : view.kind === "retry"
-              ? { label: t("Check again"), busy: pending !== null, run }
+              ? { label: resolveMessage(msg("Check again")), busy: pending !== null, run }
               : view.kind === "manual"
-                ? { label: t("Open releases page"), busy: false, run: openReleases }
+                ? {
+                    label: resolveMessage(msg("Open releases page")),
+                    busy: false,
+                    run: openReleases,
+                  }
                 : null;
 
   return (
     <AlertDialog open>
       <AlertDialogPopup className="sm:max-w-xl" initialFocus={primaryRef}>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t("Update required")}</AlertDialogTitle>
+          <AlertDialogTitle>{resolveMessage(msg("Update required"))}</AlertDialogTitle>
           <AlertDialogDescription>
-            {t(
-              "{{installation}} requires Baskule {{requiredVersion}} or newer. This app is version {{currentVersion}}.",
+            {resolveMessage(
+              msg(
+                "{installation} requires Baskule {requiredVersion} or newer. This app is version {currentVersion}.",
+              ),
               {
                 installation: installationName(bridge),
                 requiredVersion,
@@ -184,12 +202,12 @@ export function RequiredUpdateDialog() {
               variant="ghost"
               onClick={() => window.location.assign("/login?server=1")}
             >
-              {t("Connect to another server")}
+              {resolveMessage(msg("Connect to another server"))}
             </Button>
           ) : null}
           {view.kind === "retry" ? (
             <Button variant="outline" onClick={openReleases}>
-              {t("Open releases page")}
+              {resolveMessage(msg("Open releases page"))}
             </Button>
           ) : null}
           {primary === null ? null : (

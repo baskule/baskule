@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import {
   ORCHESTRATION_CACHE_SCHEMA_VERSION,
   COMPACT_THREAD_CACHE_SCHEMA_VERSION,
@@ -45,10 +43,7 @@ type CacheOperation = Persistence.ConnectionPersistenceError["operation"];
 function persistenceError(operation: CacheOperation, cause: unknown) {
   return new Persistence.ConnectionPersistenceError({
     operation,
-    message: t("Could not {{value1}}: {{value2}}", {
-      value1: operation.replaceAll("-", " "),
-      value2: String(cause),
-    }),
+    message: `Could not ${operation.replaceAll("-", " ")}: ${String(cause)}`,
   });
 }
 

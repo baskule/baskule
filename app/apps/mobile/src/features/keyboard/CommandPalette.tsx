@@ -1,7 +1,5 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 
-import { useTranslation } from "../../i18n";
-
 import { uuidv4 } from "../../lib/uuid";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -20,6 +18,8 @@ import {
   pickedQuery,
   threadRecentUse,
 } from "@t3tools/shared/paletteSearch";
+import { searchMatchHintLabel } from "@t3tools/shared/paletteSearchCopy";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -45,6 +45,7 @@ import { T3KeyboardCommands } from "../../native/T3KeyboardCommands";
 import { useProjects, useThreadShell, useVisibleThreadShells } from "../../state/entities";
 import { useThreadSearch } from "../../state/queries";
 import { requestThreadMessageJump } from "../threads/threadMessageJump";
+import { useCanShareWithGuest } from "../threads/useCanShareWithGuest";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useWorkspaceEnvironments } from "../../state/workspace";
@@ -110,6 +111,7 @@ function PaletteRow(props: {
   const mutedForegroundClassName = props.selected
     ? "text-thread-selected-foreground-muted"
     : "text-foreground-muted";
+  const m = useMessages();
   return (
     <RowPressable
       accessibilityRole="button"
@@ -161,8 +163,8 @@ function PaletteRow(props: {
               lives, unless the hint already names it. */}
           {(props.searchMatch ||
             (props.item.matchHint &&
-              props.item.matchHint.label !== "Project" &&
-              props.item.matchHint.label !== "Environment")) &&
+              props.item.matchHint.field !== "project" &&
+              props.item.matchHint.field !== "environment")) &&
           props.item.detail ? (
             <Text
               numberOfLines={1}
@@ -181,7 +183,7 @@ function PaletteRow(props: {
           />
         ) : props.item.matchHint ? (
           <Text numberOfLines={1} className={cn("text-sm", mutedForegroundClassName)}>
-            {props.item.matchHint.label}:{" "}
+            {searchMatchHintLabel(props.item.matchHint.field, m)}:{" "}
             {splitSearchText(props.item.matchHint.text, props.item.matchHint.ranges).map((part) => (
               <Text key={part.start} className={cn("text-sm", part.highlighted && "font-t3-bold")}>
                 {part.text}
@@ -211,8 +213,8 @@ export function CommandPalette(props: {
   readonly onClose: () => void;
   readonly onCommand: (command: HardwareKeyboardCommand) => void;
 }) {
-  const t = useTranslation();
   const navigation = useNavigation();
+  const gt = useGT();
   const selectTab = useSelectWorkspaceTab();
   const { themeVariables } = useAppearancePreferences();
   const selectDetail = useSelectWorkspaceDetail();
@@ -259,74 +261,72 @@ export function CommandPalette(props: {
     query.startsWith(">") ? "" : query,
     environmentLabels === undefined ? {} : { environmentLabels },
   );
-  const contentMatchByKey = useMemo(
-    () =>
-      new Map(
-        search.matches
-          .filter((match) => match.source === "user" || match.source === "assistant")
-          .map((match) => [scopedThreadKey(match.environmentId, match.threadId), match]),
-      ),
-    [search.matches],
+  const canShareWithGuest = useCanShareWithGuest(activeThreadRef?.environmentId ?? null);
+  const contentMatchByKey = new Map(
+    search.matches
+      .filter((match) => match.source === "user" || match.source === "assistant")
+      .map((match) => [scopedThreadKey(match.environmentId, match.threadId), match]),
   );
   const items = useMemo(() => {
     const actions: CommandPaletteItem[] = [
       {
         key: "newTask",
         kind: "action",
-        title: t("New thread in…"),
+        title: gt("New thread in…"),
         searchTerms: ["new task", "chat", "create", "project"],
         run: () => runCommand("newTask"),
       },
       {
         key: "addProject",
         kind: "action",
-        title: t("Add project"),
+        title: gt("Add project"),
         searchTerms: ["folder", "clone", "repository", "git"],
         run: () => navigation.navigate("AddProject"),
       },
       {
         key: "settings",
         kind: "action",
-        title: t("Open settings"),
+        title: gt("Open settings"),
         searchTerms: ["preferences", "configuration"],
         run: () => selectTab("settings"),
       },
       {
         key: "appearance",
         kind: "action",
-        title: t("Appearance"),
+        title: gt("Appearance"),
         searchTerms: ["theme", "colors", "dark", "light"],
         run: () => openSettings(navigation, "SettingsAppearance"),
       },
       {
         key: "environments",
         kind: "action",
-        title: t("Manage environments"),
+        title: gt("Manage environments"),
         searchTerms: ["connections", "server", "remote"],
         run: () => openConnectionSettings(navigation),
       },
       {
         key: "scheduledTasks",
         kind: "action",
-        title: t("Scheduled tasks"),
+        title: gt("Scheduled tasks"),
         searchTerms: ["schedule", "automations", "recurring"],
         run: () => openSettings(navigation, "SettingsScheduledTasks"),
       },
       {
         key: "usage",
         kind: "action",
-        title: t("Usage"),
+        title: gt("Usage", { $context: "command, opens usage settings" }),
         searchTerms: ["limits", "accounts", "quota"],
         run: () => openSettings(navigation, "SettingsUsage"),
       },
       {
         key: "archive",
         kind: "action",
-        title: t("Archived threads"),
+        title: gt("Archived threads"),
         searchTerms: ["restore", "history"],
         run: () => openSettings(navigation, "SettingsArchive"),
       },
     ];
+
     const projectByKey = new Map(
       projects.map((project) => [scopedProjectKey(project.environmentId, project.id), project]),
     );
@@ -343,22 +343,22 @@ export function CommandPalette(props: {
           .filter((action) => !hidden.has(action.key))
           .map((action) =>
             action.key === "newTask"
-              ? { ...action, title: t("New chat") }
+              ? { ...action, title: gt("New chat") }
               : action.key === "archive"
-                ? { ...action, title: t("Archived chats") }
+                ? { ...action, title: gt("Archived chats") }
                 : action,
           ),
         {
           key: "accountUsage",
           kind: "action",
-          title: t("Usage and limits"),
+          title: gt("Usage and limits"),
           searchTerms: ["usage", "limits", "quota"],
           run: () => openSettings(navigation, "SettingsAccountUsage"),
         },
         {
           key: "plugins",
           kind: "action",
-          title: t("Plugins"),
+          title: gt("Plugins"),
           searchTerms: ["plugins", "accounts", "connections"],
           run: () => openSettings(navigation, "SettingsPlugins"),
         },
@@ -368,7 +368,7 @@ export function CommandPalette(props: {
       actions.unshift({
         key: "newThread",
         kind: "action",
-        title: t("New thread in {{title}}", { title: activeProject.title }),
+        title: gt("New thread in {project}", { project: activeProject.title }),
         searchTerms: ["new task", "chat", "create"],
         run: () =>
           selectDetail({
@@ -386,14 +386,14 @@ export function CommandPalette(props: {
     }
     if (activeThreadRef) {
       const threadActions = [
-        ["files", t("Go to file"), ["open", "files", "browse", "search"]],
+        ["files", "Go to file", ["open", "files", "browse", "search"]],
         ...(BASKULE_FLAGS.terminal
-          ? ([["terminal", t("Open terminal"), ["shell", "console"]]] as const)
+          ? ([["terminal", "Open terminal", ["shell", "console"]]] as const)
           : []),
         ...(BASKULE_FLAGS.sourceControl
           ? ([
-              ["review", t("Review changes"), ["diff", "git", t("pull request")]],
-              ["copyThreadReference", t("Copy thread ID"), ["reference", "clipboard"]],
+              ["review", "Review changes", ["diff", "git", "pull request"]],
+              ["copyThreadReference", "Copy thread ID", ["reference", "clipboard"]],
             ] as const)
           : []),
       ] as const;
@@ -406,6 +406,15 @@ export function CommandPalette(props: {
           run: () => runCommand(command),
         })),
       );
+      if (canShareWithGuest) {
+        actions.push({
+          key: "shareWithGuest",
+          kind: "action",
+          title: gt("Share with guest"),
+          searchTerms: ["share", "guest", "invite", "link", "teammate"],
+          run: () => navigation.navigate("ThreadGuestShare", activeThreadRef),
+        });
+      }
     }
     const openProjects = BASKULE_FLAGS.projects
       ? projects.filter((project) => project.archivedAt == null)
@@ -418,8 +427,8 @@ export function CommandPalette(props: {
       kind: "project",
       project,
       title: project.title,
-      detail: t("New thread · {{value1}}", {
-        value1:
+      detail: gt("New thread · {environment}", {
+        environment:
           savedConnectionsById[project.environmentId]?.environmentLabel ?? project.environmentId,
       }),
       searchTerms: [project.workspaceRoot, "new thread", "project"],
@@ -448,7 +457,7 @@ export function CommandPalette(props: {
         return {
           key: scopedThreadKey(thread.environmentId, thread.id),
           kind: "thread",
-          title: thread.title || t("Untitled thread"),
+          title: thread.title || gt("Untitled thread"),
           detail: [project?.title, environment].filter(Boolean).join(" · "),
           searchTerms: [],
           threadSearch: threadSearchSubject(
@@ -475,17 +484,18 @@ export function CommandPalette(props: {
     );
     return [...actions, ...projectItems, ...threadItems];
   }, [
-    t,
     selectTab,
     activeThread,
     activeThreadRef,
     environments.length,
+    canShareWithGuest,
     navigation,
     projects,
     runCommand,
     savedConnectionsById,
     selectDetail,
     threads,
+    gt,
   ]);
   const rankedMessageKeys = useMemo(() => {
     const subjectByKey = new Map(
@@ -627,7 +637,7 @@ export function CommandPalette(props: {
           >
             <Pressable
               className="absolute inset-0 bg-backdrop"
-              accessibilityLabel={t("Close command palette")}
+              accessibilityLabel={gt("Close command palette")}
               onPress={() => close()}
             />
             <GlassSurface
@@ -651,8 +661,8 @@ export function CommandPalette(props: {
                   />
                   <TextInput
                     ref={inputRef}
-                    accessibilityLabel={t("Search commands, projects, and threads")}
-                    placeholder={t("Search commands, projects, and threads…")}
+                    accessibilityLabel={gt("Search commands, projects, and threads")}
+                    placeholder={gt("Search commands, projects, and threads…")}
                     placeholderTextColorClassName="accent-placeholder"
                     autoCorrect={false}
                     autoCapitalize="none"
@@ -694,14 +704,18 @@ export function CommandPalette(props: {
                 contentContainerStyle={{ paddingBottom: 8 }}
                 ListEmptyComponent={
                   <Text className="p-5 text-center text-foreground-muted">
-                    {search.isPending ? t("Searching…") : t("No results")}
+                    {search.isPending
+                      ? gt("Searching…")
+                      : search.failed
+                        ? gt("Couldn't search messages")
+                        : gt("No results")}
                   </Text>
                 }
                 // Message results from slower environments may still arrive below.
                 ListFooterComponent={
                   results.length > 0 && search.isPending && !query.startsWith(">") ? (
                     <Text className="px-5 pt-2 text-xs text-foreground-muted">
-                      {t("Searching messages…")}
+                      <T>Searching messages…</T>
                     </Text>
                   ) : undefined
                 }
@@ -712,7 +726,7 @@ export function CommandPalette(props: {
                         className="px-5 pt-2 text-xs text-foreground-muted"
                         style={{ height: SECTION_LABEL_HEIGHT }}
                       >
-                        {t("In messages")}
+                        <T>In messages</T>
                       </Text>
                     ) : null}
                     <PaletteRow

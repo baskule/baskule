@@ -1,4 +1,3 @@
-import { useTranslation } from "../../i18n";
 import { assetImageCachePolicy } from "../../lib/assetImageSource";
 
 import { Button } from "../../components/ui/Button";
@@ -18,6 +17,7 @@ import {
   hasQuestionAnswer,
 } from "@t3tools/client-runtime/work-log/user-input";
 import * as Haptics from "expo-haptics";
+import { T, useGT, useMessages } from "gt-react-native";
 import { Image } from "expo-image";
 import { type AppSymbolName, SymbolView } from "../../components/ui/AppSymbol";
 import { MaskedView } from "@expo/ui/community/masked-view";
@@ -779,7 +779,6 @@ function WorkspacePreparationRetryButton(props: {
   readonly threadId: ThreadId;
   readonly runId: RunId;
 }) {
-  const t = useTranslation();
   const retryable = useAtomValue(
     environmentThreadDetails.threadAtom(scopeThreadRef(props.environmentId, props.threadId)),
     (thread) => {
@@ -787,15 +786,16 @@ function WorkspacePreparationRetryButton(props: {
       return run?.status === "failed" && run.workspacePreparation !== undefined;
     },
   );
+  const gt = useGT();
   const retry = useAtomCommand(threadEnvironment.retryWorkspacePreparation, "retry setup");
   const [busy, setBusy] = useState(false);
   if (!retryable) return null;
   return (
     <View className="ml-7 mt-2">
       <Button
-        label={t("Retry")}
+        label={gt("Retry")}
         tone="secondary"
-        accessibilityLabel={t("Retry workspace preparation")}
+        accessibilityLabel={gt("Retry workspace preparation")}
         disabled={busy}
         onPress={() => {
           setBusy(true);
@@ -887,8 +887,9 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
     readonly expanded: boolean;
   },
 ) {
-  const t = useTranslation();
   const { row, expanded } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const openLinkedThread = useOpenLinkedThread();
   const streamsOutput =
     useCommandOutputStreaming(props.environmentId) &&
@@ -913,21 +914,21 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         })} (${new Intl.DateTimeFormat().resolvedOptions().timeZone})`
       : null;
     const label = warning
-      ? t("Usage limit reached.{{value1}}", {
-          value1: resetTime ? ` Retry after ${resetTime}.` : "",
-        })
+      ? resetTime
+        ? gt("Usage limit reached. Retry after {resetTime}.", { resetTime })
+        : gt("Usage limit reached.")
       : row.summary;
     return (
       <WorkLogPressable
         accessibilityLabel={
           warning
             ? label
-            : t("{{summary}}: {{message}}", {
+            : gt("{summary}: {message}", {
                 summary: row.summary,
                 message: failureItem.failure.message,
               })
         }
-        accessibilityHint={t("Long press to copy.")}
+        accessibilityHint={gt("Long press to copy.")}
         onLongPress={() => props.onCopyRow(row.id, row.getCopyText())}
       >
         <View className="flex-1 py-1">
@@ -950,7 +951,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
             </Text>
             {props.copied ? (
               <Text className="pr-1 font-t3-medium text-3xs text-adaptive-emerald-600-400">
-                {t("Copied")}
+                <T>Copied</T>
               </Text>
             ) : null}
             <Text
@@ -1020,27 +1021,28 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         ? turnItemOutputText(shownItem)
         : fetchedItem
           ? (turnItemOutputText(fetchedItem) ??
-            (outputImages.length > 0 || viewedImagePath ? null : t("No output.")))
+            (outputImages.length > 0 || viewedImagePath ? null : gt("No output.")))
           : fetchedDetail.error
-            ? t("Couldn't load output: {{error}}", { error: fetchedDetail.error })
+            ? gt("Couldn't load output: {error}", { error: fetchedDetail.error })
             : row.fetchesDetail
               ? fetchedDetail.data
-                ? t("Output is no longer available.")
-                : t("Loading output…")
+                ? gt("Output is no longer available.")
+                : gt("Loading output…")
               : null;
   const exitLine =
     failedExitCode === null ? null : (
       <Text className="mt-1.5 font-mono text-2xs leading-normal text-danger-foreground">
-        {t("exit")} {failedExitCode}
+        exit {failedExitCode}
       </Text>
     );
-  const toolPresentation = resolveWorkEntryToolPresentation(row.workEntry);
-  const previewText = row.groupStandIn?.label ?? workEntryRowLabel(row.workEntry);
+  const toolPresentation = resolveWorkEntryToolPresentation(row.workEntry, undefined, messages);
+  const previewText = row.groupStandIn?.label ?? workEntryRowLabel(row.workEntry, false, messages);
   const answerPreview = row.workEntry.questionAnswer
     ? getQuestionAnswerPreview(row.workEntry.questionAnswer)
     : null;
   const accessiblePreview = [previewText, answerPreview].filter(Boolean).join(": ");
-  const displayText = row.groupStandIn?.label ?? workEntryRowLabel(row.workEntry, expanded);
+  const displayText =
+    row.groupStandIn?.label ?? workEntryRowLabel(row.workEntry, expanded, messages);
   const isSystemNotice = row.projectedItem.item.type === "system_notice";
   const isUsageLimit =
     row.projectedItem.item.type === "error" &&
@@ -1064,17 +1066,17 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         }
         accessibilityLabel={
           failed
-            ? t("{{accessiblePreview}}, tool call failed", { accessiblePreview: accessiblePreview })
+            ? gt("{preview}, tool call failed", { preview: accessiblePreview })
             : accessiblePreview
         }
         accessibilityHint={
           notifiedSubagentThreadId !== undefined
-            ? t("Opens this agent's thread. Long press to copy.")
+            ? gt("Opens this agent's thread. Long press to copy.")
             : canExpand
-              ? t("Double tap to {{value1}} full details. Long press to copy.", {
-                  value1: expanded ? t("hide") : t("show"),
-                })
-              : t("Long press to copy.")
+              ? expanded
+                ? gt("Double tap to hide full details. Long press to copy.")
+                : gt("Double tap to show full details. Long press to copy.")
+              : gt("Long press to copy.")
         }
         accessibilityState={canExpand ? { expanded } : undefined}
         onPress={() => {
@@ -1143,7 +1145,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
                       : "text-foreground-subtle"
                   }
                 >
-                  {t("  {{answerPreview}}", { answerPreview: answerPreview })}
+                  {`  ${answerPreview}`}
                 </Text>
               ) : null}
             </WorkLogLabel>
@@ -1153,7 +1155,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         <View className="shrink-0 flex-row items-center gap-px">
           {props.copied ? (
             <Text className="pr-1 font-t3-medium text-3xs text-adaptive-emerald-600-400">
-              {t("Copied")}
+              <T>Copied</T>
             </Text>
           ) : null}
           {failed && toolIcon !== undefined ? (
@@ -1267,7 +1269,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
                       />
                     </View>
                   ) : (
-                    t("{{key}} {{value}}", { key: key, value: value })
+                    `${key} ${value}`
                   );
                 }),
                 call.argsText,
@@ -1357,13 +1359,11 @@ export function ThreadWorkGroupToggle(props: {
   readonly trailing?: ReactNode;
   readonly onToggle: () => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const statusLabel = props.hasFailure
-    ? t("{{summary}}, tool call failed", { summary: props.summary })
+    ? gt("{preview}, tool call failed", { preview: props.summary })
     : props.summary;
-  const accessibilityLabel = props.thought
-    ? t("{{thought}} {{statusLabel}}", { thought: props.thought, statusLabel: statusLabel })
-    : statusLabel;
+  const accessibilityLabel = props.thought ? `${props.thought} ${statusLabel}` : statusLabel;
   const icon =
     props.summaryToolIcon ??
     (props.toolSurface
@@ -1397,12 +1397,17 @@ export function ThreadWorkGroupToggle(props: {
             accessibilityRole="button"
             accessibilityState={{ expanded: props.expanded }}
             accessibilityLabel={accessibilityLabel}
-            accessibilityHint={t("Double tap to {{value1}} {{hiddenCount}} tool call.", {
-              value1: props.expanded ? t("hide") : t("show"),
-              hiddenCount: props.hiddenCount,
-              count: props.hiddenCount,
-              defaultValue_other: "Double tap to {{value1}} {{hiddenCount}} tool calls.",
-            })}
+            accessibilityHint={
+              props.expanded
+                ? gt(
+                    "{count, plural, one {Double tap to hide {count} tool call.} other {Double tap to hide {count} tool calls.}}",
+                    { count: props.hiddenCount },
+                  )
+                : gt(
+                    "{count, plural, one {Double tap to show {count} tool call.} other {Double tap to show {count} tool calls.}}",
+                    { count: props.hiddenCount },
+                  )
+            }
             onPress={() => {
               void Haptics.selectionAsync();
               props.onToggle();
@@ -1454,8 +1459,8 @@ export function ThreadThinkingRow(props: {
   /** Replaces "Thinking" while the provider has not started a turn. */
   readonly providerStartingLabel?: string | undefined;
 }) {
-  const t = useTranslation();
-  const label = props.providerStartingLabel ?? props.label ?? t("Thinking");
+  const gt = useGT();
+  const label = props.providerStartingLabel ?? props.label ?? gt("Thinking");
   return (
     <View
       accessible

@@ -1,4 +1,5 @@
-import { useLocale, useTranslation } from "../../i18n";
+import { useMessages, msg, useLocale } from "gt-react";
+
 // baskule: one bar per limit window, used vs limit. The bar shows whichever limit (tokens or cost)
 // runs out first; the text gives both, and the reset in local time.
 import { Fragment } from "react";
@@ -50,7 +51,7 @@ export function UsageLimitBars({
   readonly limits: ReadonlyArray<UsageWindowStatus>;
   readonly now: number;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const locale = useLocale();
   return limits.map((status) => {
     const copy = windowCopy(status.window);
@@ -59,10 +60,10 @@ export function UsageLimitBars({
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-sm text-foreground">{copy.name}</span>
           {status.blocked ? (
-            <Badge variant="error">{t("Reached")}</Badge>
+            <Badge variant="error">{t(msg("Reached"))}</Badge>
           ) : (
             <span className="text-sm font-medium text-foreground tabular-nums">
-              {t("{{share}} used", { share: formatShare(windowShare(status)) })}
+              {t(msg("{share} used"), { share: formatShare(windowShare(status)) })}
             </span>
           )}
         </div>
@@ -82,7 +83,7 @@ export function CompactUsageLimitBars({
 }: {
   readonly limits: ReadonlyArray<UsageWindowStatus>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <div className="grid grid-cols-[minmax(0,8rem)_minmax(3rem,1fr)_auto] items-center gap-x-3 gap-y-1.5">
       {limits.map((status) => (
@@ -92,7 +93,7 @@ export function CompactUsageLimitBars({
           </span>
           <LimitBar status={status} />
           <span className="text-xs font-medium whitespace-nowrap text-foreground tabular-nums">
-            {status.blocked ? t("Reached") : formatShare(windowShare(status))}
+            {status.blocked ? t(msg("Reached")) : formatShare(windowShare(status))}
           </span>
         </Fragment>
       ))}

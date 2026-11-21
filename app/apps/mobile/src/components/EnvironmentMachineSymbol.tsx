@@ -1,6 +1,6 @@
-import { t } from "../i18n";
-
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
+import { msg, useMessages } from "gt-react-native";
+
 import { SymbolView, type AppSymbolName } from "./ui/AppSymbol";
 
 export const ENVIRONMENT_MACHINE_SYMBOLS = {
@@ -14,27 +14,13 @@ export const ENVIRONMENT_MACHINE_SYMBOLS = {
 } as const satisfies Record<EnvironmentMachineKind, AppSymbolName>;
 
 const ENVIRONMENT_MACHINE_KIND_LABELS: Record<EnvironmentMachineKind, string> = {
-  get server() {
-    return t("Server");
-  },
-  get cloud() {
-    return t("Cloud VM");
-  },
-  get linux() {
-    return t("Linux/WSL");
-  },
-  get desktop() {
-    return t("Desktop");
-  },
-  get laptop() {
-    return t("Laptop");
-  },
-  get "mac-mini"() {
-    return t("Mini PC");
-  },
-  get "mac-studio"() {
-    return t("Workstation");
-  },
+  server: msg("Server", { $context: "machine type" }),
+  cloud: msg("Cloud VM"),
+  linux: msg("Linux/WSL"),
+  desktop: msg("Desktop", { $context: "machine type" }),
+  laptop: msg("Laptop"),
+  "mac-mini": msg("Mini PC"),
+  "mac-studio": msg("Workstation"),
 };
 
 export function EnvironmentMachineSymbol(props: {
@@ -42,9 +28,10 @@ export function EnvironmentMachineSymbol(props: {
   readonly size: number;
   readonly tintColorClassName: string;
 }) {
+  const m = useMessages();
   return (
     <SymbolView
-      accessibilityLabel={ENVIRONMENT_MACHINE_KIND_LABELS[props.kind]}
+      accessibilityLabel={m(ENVIRONMENT_MACHINE_KIND_LABELS[props.kind])}
       name={ENVIRONMENT_MACHINE_SYMBOLS[props.kind]}
       size={props.size}
       tintColorClassName={props.tintColorClassName}

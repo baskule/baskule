@@ -1,9 +1,9 @@
-import { t, useTranslation } from "../i18n";
-
+import { useGT } from "gt-react";
 import { WorkerPoolContext, useWorkerPool } from "@pierre/diffs/react";
 import { WorkerPoolManager } from "@pierre/diffs/worker";
 import DiffsWorker from "@pierre/diffs/worker/worker.js?worker";
 import * as Schema from "effect/Schema";
+
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { getRenderedAppearance, subscribeRenderedAppearance } from "../hooks/useTheme";
 import { resolveDiffThemeName } from "../lib/diffRendering";
@@ -16,10 +16,7 @@ export class DiffWorkerError extends Schema.TaggedError<DiffWorkerError>()("Diff
   cause: Schema.Defect(),
 }) {
   override get message(): string {
-    return t("Diff worker operation {{operation}} failed for theme {{themeName}}.", {
-      operation: this.operation,
-      themeName: this.themeName,
-    });
+    return `Diff worker operation ${this.operation} failed for theme ${this.themeName}.`;
   }
 }
 
@@ -94,7 +91,7 @@ function acquireDiffWorkerPool(poolSize: number) {
 
 // Plain-text views do not queue a highlight task that could retry a blank first render.
 function DiffWorkerReady({ children }: { children?: ReactNode }) {
-  const t = useTranslation();
+  const gt = useGT();
   const workerPool = useWorkerPool();
   const [readyPool, setReadyPool] = useState<WorkerPoolManager>();
   const ready = workerPool
@@ -122,7 +119,7 @@ function DiffWorkerReady({ children }: { children?: ReactNode }) {
       role="status"
       className="flex min-h-0 flex-1 items-center justify-center p-4 text-xs text-muted-foreground"
     >
-      {baskule.hosted ? t("Loading file...") : t("Loading code...")}
+      {baskule.hosted ? gt("Loading file...") : gt("Loading code...")}
     </div>
   );
 }

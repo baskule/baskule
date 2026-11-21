@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import * as Schema from "effect/Schema";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -12,7 +10,7 @@ export class CopyTextClipboardWriteError extends Schema.TaggedError<CopyTextClip
   },
 ) {
   override get message(): string {
-    return t("Failed to copy {{target}} to the clipboard.", { target: this.target });
+    return `Failed to copy ${this.target} to the clipboard.`;
   }
 }
 
@@ -25,10 +23,7 @@ export class CopyTextHapticFeedbackError extends Schema.TaggedError<CopyTextHapt
   },
 ) {
   override get message(): string {
-    return t("Failed to trigger {{feedback}} haptic feedback after copying {{target}}.", {
-      feedback: this.feedback,
-      target: this.target,
-    });
+    return `Failed to trigger ${this.feedback} haptic feedback after copying ${this.target}.`;
   }
 }
 

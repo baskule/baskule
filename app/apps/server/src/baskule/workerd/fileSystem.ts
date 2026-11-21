@@ -656,6 +656,7 @@ export const makeSpaceFileSystem = (config: SpaceFileSystemConfig): SpaceFileSys
               method,
               pathOrDescriptor: error.path,
               description: error.message,
+              cause: error,
             })
           : PlatformError.systemError({
               _tag: "Unknown",

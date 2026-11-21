@@ -33,14 +33,14 @@ Each workflow can be launched on its own; no earlier Actions run is required.
 | `native.yml` | Build and check the selected Android, iOS simulator or desktop platforms |
 | `release.yml` | Run CI, backend and all native builds; check upstream and Linux desktop; assemble all release assets |
 
-Backend verification uses committed translations and `VERSION`. It needs no desktop build, translation artifact or previous CI run. It also runs on pull requests that change its workflow or `scripts/ci/backend.sh` so changes to its orchestration are exercised independently.
+Backend verification uses committed translations and `VERSION`. It needs no desktop build or previous CI run. It also runs on pull requests that change its workflow or `scripts/ci/backend.sh` so changes to its orchestration are exercised independently.
 
 ```sh
 gh workflow run backend.yml --repo baskule/baskule --ref main
 gh workflow run native.yml --repo baskule/baskule --ref main -f platform=android
 ```
 
-Release reuses the same CI, backend and native workflows through `workflow_call`. Its internal translation, upstream, Linux, assembly and publication jobs stay together in `release.yml`. Release supplies the shared translation artifact to backend and native builds; standalone runs use their source catalogs. The backend workflow owns its runtime and web prerequisites and exchanges their artifacts within the same run. Linux packaging builds its own desktop renderer and runs alongside backend verification.
+Release reuses the same CI, backend and native workflows through `workflow_call`. Its upstream, Linux, assembly and publication jobs stay together in `release.yml`. Every build uses the committed translation catalogs. The backend workflow owns its runtime and web prerequisites and exchanges their artifacts within the same run. Linux packaging builds its own desktop renderer and runs alongside backend verification.
 
 Manual release runs always verify and assemble the complete candidate. Only a version-tag push publishes. There are no partial-release or publication mode switches.
 
@@ -84,7 +84,9 @@ Each artifact includes checksums and verification/signing status. Android's defa
 
 ## Tags and releases
 
-`VERSION` is the source version (currently `0.5.4`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.3` starts the full release factory; its version must match `VERSION`. The factory runs routine CI on the tagged source alongside its other checks. Its first build stage generates missing translations with the `release` environment's `TRANSLATION_API_KEY` (restricted to `v*` tags) and shares them with every build; see [localization](localization.md). The draft GitHub release waits for backend, Linux apps and native builds to succeed. It attaches the standalone Compose file and env example, the Helm chart, checksums, the backend metadata archive, and the app installers and update manifests; image archives and the iOS Simulator build stay CI artifacts. Images use version tags; Compose retains digest pins for third-party images. Once `public-packages` confirms anonymous image pulls, the `release` job publishes the draft as the latest release. This path does not deploy an installation or submit apps to stores. A manual verification run creates no release and publishes no images. Manual runs read `VERSION` and cannot publish.
+`VERSION` is the source version (currently `0.5.4`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.4` starts the full release factory and must match `VERSION`. Routine CI validates the checked-in General Translation catalogs with `vp run i18n:check`. Every release build uses those catalogs. See [localization](localization.md).
+
+The draft GitHub release waits for backend, Linux apps, and native builds to succeed. It attaches the standalone Compose file and env example, the Helm chart, checksums, the backend metadata archive, the app installers, and the update manifests. Image archives and the iOS Simulator build stay CI artifacts. Images use version tags. Compose retains digest pins for third-party images. Once `public-packages` confirms anonymous image pulls, the `release` job publishes the draft as the latest release. A manual verification run reads `VERSION` and creates verification artifacts only.
 
 Versions and source revisions are recorded with the outputs. Use a versioned tag for an intended release. Local desktop and mobile builds also default to `VERSION`; `BASKULE_VERSION` and `T3CODE_MOBILE_VERSION` respectively override it. Standalone native workflow dispatches default to `VERSION`.
 

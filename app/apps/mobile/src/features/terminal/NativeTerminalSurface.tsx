@@ -1,9 +1,9 @@
-import { useTranslation } from "../../i18n";
 import {
   terminalOutputText,
   type TerminalGrid,
   type TerminalOutputState,
 } from "@t3tools/client-runtime/state/terminal";
+import { useGT } from "gt-react-native";
 import { memo, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import {
   Pressable,
@@ -88,16 +88,16 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface({
   ref,
   ...props
 }: ReadyTerminalSurfaceProps) {
-  const t = useTranslation();
   const fontSize = props.fontSize ?? MOBILE_TYPOGRAPHY.label.fontSize;
+  const gt = useGT();
   const inputRef = useRef<TextInputInstance>(null);
   const { themeAppearance, themeId } = useAppearancePreferences();
   const theme = props.theme ?? getMobileTerminalTheme(themeId, themeAppearance);
   const statusLabel = props.readOnly
-    ? "Viewing terminal output."
+    ? gt("Viewing terminal output.")
     : props.isRunning
-      ? "Native terminal unavailable. Using text fallback."
-      : "Open terminal to start a shell.";
+      ? gt("Native terminal unavailable. Using text fallback.")
+      : gt("Open terminal to start a shell.");
 
   const handleLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -166,7 +166,7 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface({
           autoCorrect={false}
           blurOnSubmit={false}
           editable={props.isRunning && !props.readOnly}
-          placeholder={t("type and press return")}
+          placeholder={gt("type and press return")}
           placeholderTextColor={theme.mutedForeground}
           returnKeyType="send"
           className="text-sm"
@@ -196,7 +196,7 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface({
           onPress={() => props.onInput("\u0003")}
         >
           <Text className="text-2xs font-t3-bold" style={{ color: theme.foreground }}>
-            {t("Ctrl-C")}
+            Ctrl-C
           </Text>
         </Pressable>
       </View>

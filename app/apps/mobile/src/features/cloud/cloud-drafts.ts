@@ -1,12 +1,12 @@
-import { t } from "../../i18n";
-
 import { EnvironmentRegistry, removedWithRelay } from "@t3tools/client-runtime/connection";
 import { createRuntimeCommand } from "@t3tools/client-runtime/state/runtime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import { msg } from "gt-react-native";
 
 import { connectionAtomRuntime } from "../../connection/runtime";
+import { m } from "../../i18n/messages";
 import { archiveCloudComposerDrafts } from "../../state/use-composer-drafts";
 
 export class CloudDraftArchiveError extends Schema.TaggedError<CloudDraftArchiveError>()(
@@ -18,16 +18,18 @@ export class CloudDraftArchiveError extends Schema.TaggedError<CloudDraftArchive
   },
 ) {
   override get message(): string {
-    return t(
-      "Could not preserve local drafts for {{environmentCount}} cloud environments before sign-out.",
-      { environmentCount: this.environmentCount },
+    return m(
+      msg(
+        "{count, plural, other {Could not preserve local drafts for {count} cloud environments before sign-out.}}",
+        { count: this.environmentCount },
+      ),
     );
   }
 }
 
 export const removeCloudEnvironments = createRuntimeCommand(connectionAtomRuntime, {
   get label() {
-    return t("cloud:preserve-drafts-and-remove-environments");
+    return "cloud:preserve-drafts-and-remove-environments";
   },
   execute: Effect.fn("removeCloudEnvironments")(function* (accountId: string | null) {
     const registry = yield* EnvironmentRegistry.EnvironmentRegistry;

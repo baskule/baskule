@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import * as Schema from "effect/Schema";
 import type { File } from "expo-file-system";
 
@@ -16,10 +14,7 @@ export class IncomingShareStorageError extends Schema.TaggedError<IncomingShareS
   },
 ) {
   override get message(): string {
-    return t("Incoming share storage operation {{operation}} failed for {{value2}}.", {
-      operation: this.operation,
-      value2: this.shareId ?? "unknown",
-    });
+    return `Incoming share storage operation ${this.operation} failed for ${this.shareId ?? "unknown"}.`;
   }
 }
 

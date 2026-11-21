@@ -1,11 +1,10 @@
-import { useTranslation } from "../../../i18n";
-
 import { resolveDefaultBranchActionDialogCopy } from "@t3tools/client-runtime/state/vcs";
 
 import { resolveAutoFeatureBranchName } from "@t3tools/shared/git";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { useGT, useMessages } from "gt-react-native";
 import { useCallback, useMemo } from "react";
 import { View } from "react-native";
 
@@ -28,7 +27,8 @@ type GitConfirmSheetProps = StaticScreenProps<{
 }>;
 
 export function GitConfirmSheet(props: GitConfirmSheetProps) {
-  const t = useTranslation();
+  const gt = useGT();
+  const messages = useMessages();
   const navigation = useNavigation();
   const gitState = useSelectedThreadGitState();
   const gitActions = useSelectedThreadGitActions();
@@ -45,13 +45,12 @@ export function GitConfirmSheet(props: GitConfirmSheetProps) {
   const copy = useMemo(
     () =>
       confirmAction
-        ? resolveDefaultBranchActionDialogCopy({
-            action: confirmAction,
-            branchName,
-            includesCommit,
-          })
+        ? resolveDefaultBranchActionDialogCopy(
+            { action: confirmAction, branchName, includesCommit },
+            messages,
+          )
         : null,
-    [branchName, confirmAction, includesCommit],
+    [branchName, confirmAction, includesCommit, messages],
   );
 
   const continuePendingAction = async () => {
@@ -105,25 +104,25 @@ export function GitConfirmSheet(props: GitConfirmSheetProps) {
 
   return (
     <FitSheet
-      header={<SheetHeader title={t("Confirm action")} onClose={() => navigation.goBack()} />}
+      header={<SheetHeader title={gt("Confirm action")} onClose={() => navigation.goBack()} />}
       showsVerticalScrollIndicator={false}
     >
       <SheetIntro
-        eyebrow={t("Confirm")}
-        title={copy?.title ?? t("Run action on default branch?")}
-        description={copy?.description ?? t("Choose how to continue.")}
+        eyebrow={gt("Confirm", { $context: "eyebrow label above a confirmation title" })}
+        title={copy?.title ?? gt("Run action on default branch?")}
+        description={copy?.description ?? gt("Choose how to continue.")}
       />
 
       <View className="gap-3">
         <SheetActionButton
           icon="arrow.right.circle"
-          label={copy?.continueLabel ?? t("Continue")}
+          label={copy?.continueLabel ?? gt("Continue")}
           disabled={!canWriteSourceControl}
           onPress={() => void continuePendingAction()}
         />
         <SheetActionButton
           icon="arrow.branch"
-          label={t("Feature branch & continue")}
+          label={gt("Feature branch & continue")}
           disabled={!canChangeThreadBranch}
           tone="primary"
           onPress={() => void movePendingActionToFeatureBranch()}

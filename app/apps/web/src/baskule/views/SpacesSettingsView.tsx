@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 import { Button } from "../../components/ui/button";
 import { SettingsPageContainer } from "../../components/settings/settingsLayout";
 
@@ -7,16 +8,16 @@ import { useBaskuleMe } from "../session";
 import { PageRow, PageSection } from "./BaskulePage";
 
 export function SpacesSettingsView() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   return (
     <SettingsPageContainer>
       <PageSection
-        title={t("Your spaces")}
+        title={t(msg("Your spaces"))}
         action={
           me?.canCreateSpaces ? (
             <Button size="sm" onClick={() => openCreateSpace()}>
-              {t("New team space")}
+              {t(msg("New team space"))}
             </Button>
           ) : null
         }
@@ -27,7 +28,7 @@ export function SpacesSettingsView() {
             trailing={
               space.role === "owner" || me.user.role === "admin" ? (
                 <Button variant="outline" size="sm" onClick={() => openSpaceManagement(space.id)}>
-                  {t("Manage")}
+                  {t(msg("Manage"))}
                 </Button>
               ) : null
             }
@@ -35,10 +36,10 @@ export function SpacesSettingsView() {
             <span className="truncate text-sm">{space.name}</span>
             <span className="text-xs text-muted-foreground">
               {space.kind === "personal"
-                ? t("Personal space")
+                ? t(msg("Personal space"))
                 : space.role === "owner"
-                  ? t("Owner")
-                  : t("Member")}
+                  ? t(msg("Owner"))
+                  : t(msg("Member"))}
             </span>
           </PageRow>
         ))}

@@ -684,7 +684,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
             commandId: CommandId.make(`baskule-stop:${threadId}:${Date.now()}`),
             threadId: ThreadId.make(threadId),
             reason,
-          }).pipe(Effect.ignore),
+          }, { managesProviders: false }).pipe(Effect.ignore),
         );
       }
       return threads.length;
@@ -706,7 +706,7 @@ export const createSpaceServer = async (config: SpaceServerConfig): Promise<Spac
               ...command,
               commandId: CommandId.make(`baskule-snooze-wake:${command.type}:${threadId}:${at}`),
               threadId: ThreadId.make(threadId),
-            }).pipe(Effect.ignore),
+            }, { managesProviders: false }).pipe(Effect.ignore),
           );
         }
       }

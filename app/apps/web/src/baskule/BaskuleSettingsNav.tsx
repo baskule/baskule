@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: the Settings modal's section nav and page heading. Like the admin nav, a rail of labelled
 // rows; below md, a row of labelled tabs under the header instead of an icon-only rail.
 import { Link, useLocation, useMatch } from "@tanstack/react-router";
@@ -22,11 +23,11 @@ function useSections() {
 }
 
 export function BaskuleSettingsNav() {
-  const t = useTranslation();
+  const t = useMessages();
   const { sections, pathname } = useSections();
   return (
     <nav
-      aria-label={t("Settings sections")}
+      aria-label={t(msg("Settings sections"))}
       className="flex w-60 shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground max-md:hidden"
     >
       <SidebarContent className="overflow-x-hidden">
@@ -51,11 +52,11 @@ export function BaskuleSettingsNav() {
 }
 
 export function BaskuleSettingsTabs() {
-  const t = useTranslation();
+  const t = useMessages();
   const { sections, pathname } = useSections();
   return (
     <nav
-      aria-label={t("Settings sections")}
+      aria-label={t(msg("Settings sections"))}
       className="shrink-0 overflow-x-auto border-b [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden"
     >
       <ul className="flex w-max gap-1 px-3 py-2">
@@ -92,7 +93,7 @@ export function BaskuleSettingsTabs() {
 
 /** The current section's title and purpose, at the top of its page. */
 export function BaskuleSettingsHeading() {
-  const t = useTranslation();
+  const t = useMessages();
   // The page on screen, not the location: a lazily loaded next page leaves this one up until it loads.
   const pathname = useMatch({
     strict: false,

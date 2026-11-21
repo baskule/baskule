@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 import { useEffect, useState } from "react";
 
 import { Button } from "../../components/ui/button";
@@ -18,7 +19,7 @@ import { PageSection } from "./BaskulePage";
 import { ReceiveConnectionDialog } from "./ReceiveConnectionDialog";
 
 export function ConnectDeviceSection() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   const origin = installationOrigin();
   const [link, setLink] = useState<
@@ -44,7 +45,7 @@ export function ConnectDeviceSection() {
       setLink({ kind: "active", url: connectLink(origin, code), expiresAt });
     })()
       .catch((cause: unknown) => {
-        notifyError(t("Could not create a connection link"), cause);
+        notifyError(t(msg("Could not create a connection link")), cause);
       })
       .finally(() => {
         setBusy(false);
@@ -58,7 +59,7 @@ export function ConnectDeviceSection() {
       window.location.href = desktopConnectLink(origin, code);
     })()
       .catch((cause: unknown) => {
-        notifyError(t("Could not open the desktop app"), cause);
+        notifyError(t(msg("Could not open the desktop app")), cause);
       })
       .finally(() => {
         setBusy(false);
@@ -73,10 +74,8 @@ export function ConnectDeviceSection() {
   if (me?.authentication.mode === "anonymous") {
     return (
       <PageSection
-        title={t("Connect a device")}
-        description={t(
-          "Scan this server address with Baskule on another device, or receive a connection on this device.",
-        )}
+        title={t(msg("Connect a device"))}
+        description={t(msg("Scan this server address with Baskule on another device, or receive a connection on this device."))}
       >
         <div className="flex flex-col gap-4 px-3 py-3 sm:px-4">
           <ReceiveConnectionDialog />
@@ -84,37 +83,35 @@ export function ConnectDeviceSection() {
             value={origin}
             size={192}
             marginSize={4}
-            title={t("Server address for another device")}
+            title={t(msg("Server address for another device"))}
             className="self-start"
           />
-          <CopyField label={t("Server address")} value={origin} />
+          <CopyField label={t(msg("Server address"))} value={origin} />
         </div>
       </PageSection>
     );
   }
   return (
     <PageSection
-      title={t("Connect a device")}
-      description={t(
-        "Sign in on your phone or computer without typing a password. A connection link works once and expires after 10 minutes.",
-      )}
+      title={t(msg("Connect a device"))}
+      description={t(msg("Sign in on your phone or computer without typing a password. A connection link works once and expires after 10 minutes."))}
     >
       <div className="flex flex-col gap-4 px-3 py-3 sm:px-4">
         <ReceiveConnectionDialog />
         <div className="flex flex-wrap gap-2">
           <Button size="sm" disabled={busy} onClick={() => void showLink()}>
             {busy ? <Spinner size="sm" /> : null}
-            {link ? t("New connection link") : t("Show QR for another device")}
+            {link ? t(msg("New connection link")) : t(msg("Show QR for another device"))}
           </Button>
           {canHandOffToDesktopApp(navigator.userAgent) ? (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void openDesktop()}>
-              {t("Open in the desktop app")}
+              {t(msg("Open in the desktop app"))}
             </Button>
           ) : null}
         </div>
         {link?.kind === "expired" ? (
           <p role="status" className="text-xs text-muted-foreground">
-            {t("This connection link expired. Create a new one to sign in another device.")}
+            {t(msg("This connection link expired. Create a new one to sign in another device."))}
           </p>
         ) : null}
         {link?.kind === "active" ? (
@@ -123,19 +120,16 @@ export function ConnectDeviceSection() {
               value={link.url}
               size={192}
               marginSize={4}
-              title={t("Sign-in link for another device")}
+              title={t(msg("Sign-in link for another device"))}
               className="self-start"
             />
             <p className="text-xs text-muted-foreground">
-              {t(
-                "Scan with Baskule on the device you want to sign in, or paste the link there. Valid until {{time}}.",
-                { time: expires },
-              )}
+              {t(msg("Scan with Baskule on the device you want to sign in, or paste the link there. Valid until {time}."), { time: expires })}
             </p>
-            <CopyField label={t("Connection link")} value={link.url} />
+            <CopyField label={t(msg("Connection link"))} value={link.url} />
           </div>
         ) : null}
-        <CopyField label={t("Server address")} value={origin} />
+        <CopyField label={t(msg("Server address"))} value={origin} />
       </div>
     </PageSection>
   );

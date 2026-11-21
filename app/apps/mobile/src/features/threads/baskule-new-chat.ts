@@ -1,3 +1,5 @@
+import { m as resolveMessage } from "../../i18n/messages";
+import { msg } from "gt-react-native";
 import {
   isAtomCommandInterrupted,
   runAtomCommand,
@@ -7,7 +9,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import { readSpaceEnvironments } from "../../baskule/spaces";
 import * as Dialog from "../../components/ui/Dialog";
-import { t } from "../../i18n";
+
 import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { projectEnvironment } from "../../state/projects";
@@ -42,10 +44,10 @@ export async function startBaskuleNewChat(
   });
   if (target.kind === "unavailable") {
     Dialog.alert(
-      t("Can't start a chat yet"),
+      resolveMessage(msg("Can't start a chat yet")),
       target.environmentId === null
-        ? t("Your spaces are still loading. Try again in a moment.")
-        : t("This space is not connected. Try again when it is back online."),
+        ? resolveMessage(msg("Your spaces are still loading. Try again in a moment."))
+        : resolveMessage(msg("This space is not connected. Try again when it is back online.")),
     );
     return;
   }
@@ -61,8 +63,8 @@ export async function startBaskuleNewChat(
       if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         Dialog.alert(
-          t("Could not start a new chat"),
-          error instanceof Error ? error.message : t("Try again."),
+          resolveMessage(msg("Could not start a new chat")),
+          error instanceof Error ? error.message : resolveMessage(msg("Try again.")),
         );
       }
       return;

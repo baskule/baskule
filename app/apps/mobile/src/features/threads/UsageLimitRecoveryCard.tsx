@@ -1,10 +1,11 @@
-import { useTranslation } from "../../i18n";
-
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { AsyncResult } from "effect/reactivity";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { limitRecoveryOwnsSnooze } from "@t3tools/client-runtime/state/thread-execution";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { useGT } from "gt-react-native";
+import { m } from "../../i18n/messages";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -19,7 +20,7 @@ export function UsageLimitRecoveryCard({
   thread: EnvironmentThreadShell;
   environmentId: EnvironmentId;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const updateMetadata = useAtomCommand(threadEnvironment.updateMetadata);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,11 +48,13 @@ export function UsageLimitRecoveryCard({
     !runId
   )
     return null;
-  const resetText = displayAt
-    ? `${canSchedule && scheduled ? "Resumes" : "Resets"} ${new Date(displayAt).toLocaleString(
-        undefined,
-        { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" },
-      )}.`
+  const resetDate = displayAt
+    ? new Date(displayAt).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
     : null;
   const snoozed =
     limitRecoveryOwnsSnooze({
@@ -63,7 +66,7 @@ export function UsageLimitRecoveryCard({
   async function toggle(action: "resume" | "snooze") {
     if (!resetAt || !runId || !canSchedule) return;
     if (action === "snooze" && !snoozed && Date.parse(resetAt) <= Date.now()) {
-      setError(t("The reset time has passed. Retry the thread manually."));
+      setError(gt("The reset time has passed. Retry the thread manually."));
       return;
     }
     setPending(true);
@@ -82,35 +85,34 @@ export function UsageLimitRecoveryCard({
     setPending(false);
     if (AsyncResult.isFailure(result)) {
       const cause = squashAtomCommandFailure(result);
-      setError(cause instanceof Error ? cause.message : t("Could not change limit recovery."));
+      setError(errorDisplayMessage(cause, m) ?? gt("Could not change limit recovery."));
     }
   }
+  const resumes = canSchedule && scheduled;
   return (
     <View className="mx-3 mb-2 gap-2 rounded-xl border border-warning-foreground/25 bg-screen p-3">
       <View className="min-w-0 flex-1 gap-1">
         <Text className="text-sm text-warning-foreground">
-          {resetText
-            ? `${t("Usage limit reached")} ${resetText}`
-            : t(
-                "The provider did not report a reset time. Retry manually when your limit is available.",
-              )}
+          {resetDate === null
+            ? gt(
+                "Usage limit reached. The provider did not report a reset time. Retry manually when your limit is available.",
+              )
+            : resumes
+              ? gt("Usage limit reached. Resumes {date}.", { date: resetDate })
+              : gt("Usage limit reached. Resets {date}.", { date: resetDate })}
         </Text>
         {canSchedule ? (
           <View className="-mb-3 -mt-2 flex-row flex-wrap gap-x-4">
-            {canSchedule ? (
-              <>
-                <RecoveryAction
-                  label={scheduled ? "Cancel auto-resume" : "Resume at reset"}
-                  disabled={pending}
-                  onPress={() => void toggle("resume")}
-                />
-                <RecoveryAction
-                  label={snoozed ? "Wake now" : "Snooze until reset"}
-                  disabled={pending || (!snoozed && resetPassed)}
-                  onPress={() => void toggle("snooze")}
-                />
-              </>
-            ) : null}
+            <RecoveryAction
+              label={scheduled ? gt("Cancel auto-resume") : gt("Resume at reset")}
+              disabled={pending}
+              onPress={() => void toggle("resume")}
+            />
+            <RecoveryAction
+              label={snoozed ? gt("Wake now") : gt("Snooze until reset")}
+              disabled={pending || (!snoozed && resetPassed)}
+              onPress={() => void toggle("snooze")}
+            />
           </View>
         ) : null}
         {error ? (

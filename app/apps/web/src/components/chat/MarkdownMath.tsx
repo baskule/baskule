@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react";
 import { lazy, memo, Suspense, useLayoutEffect, useRef, useState } from "react";
 
 import { observeResize } from "../../lib/observeResize";
@@ -18,7 +17,7 @@ export const MarkdownMath = memo(function MarkdownMath(props: {
   display: boolean;
   focusable?: boolean;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const viewportRef = useRef<HTMLSpanElement>(null);
   const contentRef = useRef<HTMLSpanElement>(null);
   const [overflows, setOverflows] = useState(false);
@@ -34,7 +33,11 @@ export const MarkdownMath = memo(function MarkdownMath(props: {
   }, [props.focusable]);
   const scrollable = props.focusable !== false && overflows;
   const tex = props.tex.trim();
-  const source = props.display ? t("\\[\n{{tex}}\n\\]", { tex: tex }) : `\\(${tex}\\)`;
+  const source = props.display
+    ? `\\[
+${tex}
+\\]`
+    : `\\(${tex}\\)`;
   const fallback = <span className="whitespace-pre-wrap">{source}</span>;
   return (
     <span
@@ -50,8 +53,8 @@ export const MarkdownMath = memo(function MarkdownMath(props: {
         props.focusable === false
           ? undefined
           : props.display
-            ? t("Display equation")
-            : t("Inline equation")
+            ? gt("Display equation")
+            : gt("Inline equation")
       }
     >
       <span
@@ -62,8 +65,8 @@ export const MarkdownMath = memo(function MarkdownMath(props: {
           !scrollable
             ? undefined
             : props.display
-              ? t("Scroll display equation")
-              : t("Scroll inline equation")
+              ? gt("Scroll display equation")
+              : gt("Scroll inline equation")
         }
       >
         <span

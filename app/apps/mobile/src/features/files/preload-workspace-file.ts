@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import { AuthFilesystemReadScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "../../state/session";
 import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
@@ -54,7 +52,7 @@ export function preloadWorkspaceFileContents(input: {
       input: { cwd: input.cwd, relativePath: input.relativePath },
     }),
     {
-      label: t("workspace file preload"),
+      label: "workspace file preload",
       reportDefect: false,
       reportFailure: false,
     },
@@ -71,7 +69,7 @@ export function preloadWorkspaceFileContents(input: {
               theme: input.theme,
             }),
             {
-              label: t("workspace source highlight preload"),
+              label: "workspace source highlight preload",
               reportDefect: false,
               reportFailure: false,
             },

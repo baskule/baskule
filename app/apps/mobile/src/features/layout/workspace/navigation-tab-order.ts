@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+
 export const NAVIGATION_TAB_ORDER = ["threads", "usage"] as const;
 export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number];
 
@@ -8,8 +10,8 @@ export function navigationCustomizationAvailable(
 }
 
 export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
-  threads: "Threads",
-  usage: "Usage",
+  threads: msg("Threads", { $context: "navigation tab, list of chat threads" }),
+  usage: msg("Usage", { $context: "navigation tab, provider usage limits" }),
 };
 
 function isNavigationTab(value: unknown): value is NavigationTab {

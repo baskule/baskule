@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
@@ -39,16 +37,7 @@ export class ThreadOutboxStorageError extends Schema.TaggedError<ThreadOutboxSto
   },
 ) {
   override get message(): string {
-    return t(
-      "Thread outbox storage operation {{operation}} failed for environment {{value2}}, thread {{value3}}, message {{value4}}, file {{value5}}.",
-      {
-        operation: this.operation,
-        value2: this.environmentId ?? "unknown",
-        value3: this.threadId ?? "unknown",
-        value4: this.messageId ?? "unknown",
-        value5: this.fileName ?? "unknown",
-      },
-    );
+    return `Thread outbox storage operation ${this.operation} failed for environment ${this.environmentId ?? "unknown"}, thread ${this.threadId ?? "unknown"}, message ${this.messageId ?? "unknown"}, file ${this.fileName ?? "unknown"}.`;
   }
 }
 

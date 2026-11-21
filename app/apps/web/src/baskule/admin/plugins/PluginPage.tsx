@@ -1,3 +1,4 @@
+import { useMessages, msg } from "gt-react";
 // baskule: an added plugin's page: who can use it, what each of its apps still needs, its skills,
 // and Pause, Resume and Remove.
 import type { AdminServer, PluginAccess } from "@t3tools/contracts/baskule-plugins";
@@ -6,7 +7,7 @@ import { useState, type ReactNode } from "react";
 
 import { Button } from "../../../components/ui/button";
 import { Spinner } from "../../../components/ui/spinner";
-import { useTranslation } from "../../../i18n";
+
 import { notifyPluginError, pluginsApi } from "../../plugins/api";
 import { originHref, pluginSite, providerName } from "../../plugins/presentation";
 import { confirmAction, notifySuccess, useApiResource } from "../../ui";
@@ -24,7 +25,7 @@ import { oauthClientFor, SignInSetup } from "./SignInSetup";
 import { signInGuide } from "./signInGuides";
 
 export function PluginPage({ id }: { readonly id: string }) {
-  const t = useTranslation();
+  const t = useMessages();
   const navigate = useNavigate();
   // The parent remounts this per item (`key`), so one loader per mount keeps its identity.
   const [load] = useState(
@@ -65,24 +66,21 @@ export function PluginPage({ id }: { readonly id: string }) {
 
   const remove = async () => {
     const confirmed = await confirmAction(
-      t(
-        "Remove {{name}}?\nPeople can no longer use it, and their sign-ins to it are deleted. You can add it again later.",
-        { name: plugin.displayName },
-      ),
+      t(msg("Remove {name}?\nPeople can no longer use it, and their sign-ins to it are deleted. You can add it again later."), { name: plugin.displayName }),
       "destructive",
     );
     if (!confirmed) return;
     setBusy("remove");
     try {
       await pluginsApi.remove(plugin.id);
-      notifySuccess(t("{{name}} was removed", { name: plugin.displayName }));
+      notifySuccess(t(msg("{name} was removed"), { name: plugin.displayName }));
       void navigate({
         to: "/admin/$section/$page",
         params: { section: "plugins", page: "installed" },
       });
     } catch (cause) {
       setBusy(null);
-      notifyPluginError(t("Could not remove {{name}}", { name: plugin.displayName }), cause);
+      notifyPluginError(t(msg("Could not remove {name}"), { name: plugin.displayName }), cause);
     }
   };
 
@@ -104,14 +102,14 @@ export function PluginPage({ id }: { readonly id: string }) {
                 void run(
                   "enabled",
                   plugin.enabled
-                    ? t("Could not pause the plugin")
-                    : t("Could not resume the plugin"),
+                    ? t(msg("Could not pause the plugin"))
+                    : t(msg("Could not resume the plugin")),
                   () => pluginsApi.update(plugin.id, { enabled: !plugin.enabled }),
                 )
               }
             >
               {busy === "enabled" ? <Spinner size="sm" /> : null}
-              {plugin.enabled ? t("Pause") : t("Resume")}
+              {plugin.enabled ? t(msg("Pause")) : t(msg("Resume"))}
             </Button>
             <Button
               variant="destructive-outline"
@@ -119,14 +117,14 @@ export function PluginPage({ id }: { readonly id: string }) {
               onClick={() => void remove()}
             >
               {busy === "remove" ? <Spinner size="sm" /> : null}
-              {t("Remove")}
+              {t(msg("Remove"))}
             </Button>
           </>
         }
       />
       {plugin.enabled ? null : (
         <p className="px-3 text-sm text-muted-foreground sm:px-4">
-          {t("Paused: no one can use it until you resume it. Its setup and sign-ins are kept.")}
+          {t(msg("Paused: no one can use it until you resume it. Its setup and sign-ins are kept."))}
         </p>
       )}
       <AccessSection
@@ -136,7 +134,7 @@ export function PluginPage({ id }: { readonly id: string }) {
         busy={busy === "access"}
         onChange={(next) => {
           setAccess(next);
-          void run("access", t("Could not change who can use it"), () =>
+          void run("access", t(msg("Could not change who can use it")), () =>
             pluginsApi.update(plugin.id, { access: next }),
           ).then(() => setAccess(null));
         }}
@@ -155,7 +153,7 @@ export function PluginPage({ id }: { readonly id: string }) {
               clients={list.oauthClients}
               busy={busy !== null}
               onSaveValues={(values) =>
-                run(`values:${server.id}`, t("Could not save the values"), () =>
+                run(`values:${server.id}`, t(msg("Could not save the values")), () =>
                   pluginsApi.update(plugin.id, { values: { [server.name]: values } }),
                 )
               }
@@ -187,7 +185,7 @@ function ServerSetupPanel({
   readonly onSaveValues: (values: Record<string, string>) => Promise<boolean>;
   readonly onClientSaved: () => Promise<void>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [values, setValues] = useState<Readonly<Record<string, string>>>({});
   const filled = Object.fromEntries(
     Object.entries(values).filter(([, value]) => value.trim() !== ""),
@@ -212,7 +210,7 @@ function ServerSetupPanel({
         />
         <div>
           <Button type="submit" size="sm" disabled={busy || Object.keys(filled).length === 0}>
-            {t("Save values")}
+            {t(msg("Save values"))}
           </Button>
         </div>
       </form>,
@@ -229,7 +227,7 @@ function ServerSetupPanel({
   } else if (auth.kind === "oauth" && auth.registration === "client" && auth.issuer) {
     parts.push(
       <p key="client" className="text-xs text-muted-foreground">
-        {t("People sign in through your {{vendor}} OAuth client.", {
+        {t(msg("People sign in through your {vendor} OAuth client."), {
           vendor: signInGuide(auth.issuer).vendor,
         })}{" "}
         <Link
@@ -237,7 +235,7 @@ function ServerSetupPanel({
           params={{ section: "plugins", page: "sign-in" }}
           className="text-foreground underline underline-offset-4"
         >
-          {t("Change it")}
+          {t(msg("Change it"))}
         </Link>
       </p>,
     );
@@ -245,7 +243,7 @@ function ServerSetupPanel({
   if (setup.state === "needs_provider") {
     parts.push(
       <p key="provider" className="text-xs text-muted-foreground">
-        {t("Connect {{provider}} so people can connect their accounts.", {
+        {t(msg("Connect {provider} so people can connect their accounts."), {
           provider: providerName(setup.provider),
         })}{" "}
         <Link
@@ -253,7 +251,7 @@ function ServerSetupPanel({
           params={{ section: "plugins", page: "sign-in" }}
           className="text-foreground underline underline-offset-4"
         >
-          {t("Open Sign-in and sources")}
+          {t(msg("Open Sign-in and sources"))}
         </Link>
       </p>,
     );

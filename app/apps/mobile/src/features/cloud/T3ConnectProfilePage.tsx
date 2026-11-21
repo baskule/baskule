@@ -1,5 +1,5 @@
-import { t, useTranslation } from "../../i18n";
-
+import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { findErrorTraceId } from "@t3tools/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
@@ -16,6 +16,7 @@ import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import * as Dialog from "../../components/ui/Dialog";
 import { Menu } from "../../components/ui/Menu";
+import { m, type MessageResolver } from "../../i18n/messages";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { relayEnvironmentDiscovery } from "../../state/relay";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -26,30 +27,42 @@ import {
 
 const linkedAtFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
-function linkedAtLabel(value: string): string {
+function linkedAtLabel(value: string, resolve: MessageResolver): string {
   const linkedAt = new Date(value);
   return Number.isNaN(linkedAt.getTime())
-    ? t("Link date unavailable")
-    : t("Linked {{value1}}", { value1: linkedAtFormatter.format(linkedAt) });
+    ? resolve(msg("Link date unavailable"))
+    : resolve(msg("Linked {date}", { date: linkedAtFormatter.format(linkedAt) }));
 }
 
-function endpointLabel(environment: RelayClientEnvironmentRecord): string {
+function endpointLabel(
+  environment: RelayClientEnvironmentRecord,
+  resolve: MessageResolver,
+): string {
   return environment.endpoint.providerKind === "cloudflare_tunnel"
-    ? t("Managed tunnel")
-    : t("Activity publishing only");
+    ? resolve(msg("Managed tunnel"))
+    : resolve(msg("Activity publishing only"));
 }
 
 function confirmDeregister(environment: RelayClientEnvironmentRecord, onConfirm: () => void) {
-  const title = t("Deregister server?");
-  const message = t(
-    "“{{label}}” will be removed from this account. T3 Connect access will be revoked, any managed tunnel will be removed, and a host space will become available. Local connections on your devices are not changed.",
-    { label: environment.label },
+  const title = m(msg("Deregister server?"));
+  const message = m(
+    msg(
+      "“{environment}” will be removed from this account. {product} access will be revoked, any managed tunnel will be removed, and a host space will become available. Local connections on your devices are not changed.",
+      { environment: environment.label, product: "T3 Connect" },
+    ),
   );
-  Dialog.confirm({ title, message, confirmText: "Deregister", destructive: true, onConfirm });
+  Dialog.confirm({
+    title,
+    message,
+    confirmText: m(msg("Deregister")),
+    destructive: true,
+    onConfirm,
+  });
 }
 
 export function T3ConnectProfilePage() {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const environmentsState = useManagedRelayEnvironments();
   const deregisterEnvironment = useAtomCommand(deregisterManagedRelayEnvironmentCommand, {
     reportFailure: false,
@@ -92,26 +105,27 @@ export function T3ConnectProfilePage() {
     if (isAtomCommandInterrupted(result)) return;
 
     const cause = squashAtomCommandFailure(result);
-    const message = cause instanceof Error ? cause.message : t("Could not deregister the server.");
+    const message =
+      cause instanceof Error
+        ? (errorDisplayMessage(cause, m) ?? cause.message)
+        : gt("Could not deregister the server.");
     const traceId = findErrorTraceId(cause);
-    console.error(t("[t3-connect] Could not deregister environment"), {
+    console.error("[t3-connect] Could not deregister environment", {
       environmentId: environment.environmentId,
       message,
       traceId,
       cause,
     });
     Dialog.alert(
-      t("Could not deregister server"),
-      traceId
-        ? t("{{message}}\n\nTrace ID: {{traceId}}", { message: message, traceId: traceId })
-        : message,
+      gt("Could not deregister server"),
+      traceId ? gt("{message}\n\nTrace ID: {traceId}", { message, traceId }) : message,
       traceId
         ? [
             {
-              text: t("Copy trace ID"),
+              text: gt("Copy trace ID"),
               onPress: () => copyTextWithHaptic(traceId, { target: "connection-trace-id" }),
             },
-            { text: "OK", style: "cancel" },
+            { text: gt("OK"), style: "cancel" },
           ]
         : undefined,
     );
@@ -128,6 +142,14 @@ export function T3ConnectProfilePage() {
   const isInitialLoad =
     !environmentsState.accountId || (environmentsState.data === null && !environmentsState.error);
   const errorTraceId = environmentsState.errorTraceId;
+  const environmentMenuActions = [
+    {
+      id: "deregister",
+      title: gt("Deregister"),
+      image: "trash",
+      attributes: { destructive: true },
+    },
+  ] satisfies MenuAction[];
 
   return (
     <ScrollView
@@ -141,17 +163,17 @@ export function T3ConnectProfilePage() {
         />
       }
     >
-      <ClerkSectionHeader>{t("Registered servers")}</ClerkSectionHeader>
+      <ClerkSectionHeader>{gt("Registered servers")}</ClerkSectionHeader>
 
       {environmentsState.error ? (
         <>
           <ClerkRow
-            title={t("Could not load T3 Connect environments")}
+            title={gt("Could not load {product} environments", { product: "T3 Connect" })}
             subtitle={environmentsState.error}
           />
           {errorTraceId ? (
             <ClerkButtonRow
-              label={t("Copy trace ID")}
+              label={gt("Copy trace ID")}
               onPress={() => {
                 copyTextWithHaptic(errorTraceId, { target: "connection-trace-id" });
               }}
@@ -161,17 +183,16 @@ export function T3ConnectProfilePage() {
       ) : isInitialLoad ? (
         <View className="flex-row items-center gap-3 px-6 py-4">
           <AppActivityIndicator colorClassName={"accent-clerk-foreground-muted"} size="small" />
-          <Text className="text-base text-clerk-foreground-muted">{t("Loading environments")}</Text>
+          <Text className="text-base text-clerk-foreground-muted">
+            <T>Loading environments</T>
+          </Text>
         </View>
       ) : environments.length > 0 ? (
         environments.map((environment) => (
           <ClerkRow
             key={environment.environmentId}
             title={environment.label}
-            subtitle={t("{{value1}} · {{value2}}", {
-              value1: linkedAtLabel(environment.linkedAt),
-              value2: endpointLabel(environment),
-            })}
+            subtitle={`${linkedAtLabel(environment.linkedAt, m)} · ${endpointLabel(environment, m)}`}
             accessory={
               deregisteringEnvironmentId === environment.environmentId ? (
                 <AppActivityIndicator
@@ -180,14 +201,16 @@ export function T3ConnectProfilePage() {
                 />
               ) : (
                 <Menu
-                  actions={ENVIRONMENT_MENU_ACTIONS}
+                  actions={environmentMenuActions}
                   isAnchoredToRight
                   onPressAction={() =>
                     confirmDeregister(environment, () => void handleDeregister(environment))
                   }
                 >
                   <Pressable
-                    accessibilityLabel={t("Actions for {{label}}", { label: environment.label })}
+                    accessibilityLabel={gt("Actions for {environment}", {
+                      environment: environment.label,
+                    })}
                     accessibilityRole="button"
                     disabled={deregisteringEnvironmentId !== null}
                     className="size-[30px] items-center justify-center active:opacity-60 disabled:opacity-50"
@@ -208,28 +231,19 @@ export function T3ConnectProfilePage() {
         ))
       ) : (
         <ClerkRow
-          title={t("No servers registered")}
-          subtitle={t("Link a server from its local Settings to reach it through T3 Connect.")}
+          title={gt("No servers registered")}
+          subtitle={gt("Link a server from its local Settings to reach it through {product}.", {
+            product: "T3 Connect",
+          })}
         />
       )}
 
       <Text className="px-6 pt-6 text-xs leading-normal text-clerk-foreground-muted">
-        {t("Connections on this device are managed in Settings.")}
+        <T>Connections on this device are managed in Settings.</T>
       </Text>
     </ScrollView>
   );
 }
-
-const ENVIRONMENT_MENU_ACTIONS = [
-  {
-    id: "deregister",
-    get title() {
-      return t("Deregister");
-    },
-    image: "trash",
-    attributes: { destructive: true },
-  },
-] satisfies MenuAction[];
 
 function ClerkSectionHeader(props: { readonly children: string }) {
   return (

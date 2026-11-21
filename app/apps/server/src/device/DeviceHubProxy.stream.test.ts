@@ -1,6 +1,7 @@
 import { expect, it } from "@effect/vitest";
 import * as NodeWS from "@effect/platform-node/NodeWS";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpRouter, HttpServer } from "effect/http";
@@ -11,6 +12,7 @@ import {
   LOCAL_DEVICE_HOST_ID,
 } from "@t3tools/contracts";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+import * as SessionStore from "../auth/SessionStore.ts";
 import * as DeviceService from "./DeviceService.ts";
 import * as DeviceHubProxy from "./DeviceHubProxy.ts";
 
@@ -31,13 +33,23 @@ it.effect("preserves binary input and admission frames through the real socket p
       yield* Effect.promise(() => new Promise<void>((resolve) => hub.once("listening", resolve)));
     const address = hub.address();
     if (typeof address !== "object" || !address) throw new Error("Missing hub port");
+    const upstreamClosed = Promise.withResolvers<void>();
     hub.on("connection", (socket) => {
+      socket.once("close", upstreamClosed.resolve);
       socket.send(Uint8Array.of(0x83));
       socket.on("message", (data, binary) => socket.send(data, { binary }));
     });
+    const invalidated = yield* Deferred.make<void>();
     const services = yield* Layer.build(
       HttpRouter.serve(DeviceHubProxy.layer, { disableListenLog: true }).pipe(
         Layer.provideMerge(NodeHttpServer.layerTest),
+        Layer.provide(
+          Layer.mock(SessionStore.SessionStore, {
+            cookieName: "test",
+            legacyCookieName: undefined,
+            awaitInvalidation: () => Deferred.await(invalidated),
+          }),
+        ),
         Layer.provide(
           Layer.succeed(EnvironmentAuth.EnvironmentAuth, {
             authenticateWebSocketUpgrade: () =>
@@ -85,5 +97,11 @@ it.effect("preserves binary input and admission frames through the real socket p
     });
     yield* Effect.promise(() => received.promise);
     expect(frames).toEqual([[0x83], [0x03, 1], [0x03, 2]]);
+
+    const closed = new Promise<void>((resolve) =>
+      client.addEventListener("close", () => resolve(), { once: true }),
+    );
+    yield* Deferred.succeed(invalidated, undefined);
+    yield* Effect.promise(() => Promise.all([closed, upstreamClosed.promise]));
   }),
 );

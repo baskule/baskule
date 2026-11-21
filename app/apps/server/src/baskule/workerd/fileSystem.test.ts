@@ -3,8 +3,11 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 
 import { makeComputerFs } from "./computerFs.ts";
@@ -38,7 +41,10 @@ describe("space file system", () => {
       const { make, computerd, storage } = setup();
       const fs = make().fileSystem;
       yield* fs.makeDirectory("/baskule/userdata/secrets", { recursive: true });
-      yield* fs.writeFileString("/baskule/userdata/settings.json", "{}");
+      yield* writeFileStringAtomically({
+        filePath: "/baskule/userdata/settings.json",
+        contents: "{}",
+      }).pipe(Effect.provideService(FileSystem.FileSystem, fs), Effect.provide(Path.layer));
       yield* Effect.scoped(
         Effect.gen(function* () {
           const file = yield* fs.open("/baskule/userdata/secrets/key.bin", { flag: "w" });

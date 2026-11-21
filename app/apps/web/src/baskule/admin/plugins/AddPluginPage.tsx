@@ -1,3 +1,4 @@
+import { useMessages, msg } from "gt-react";
 // baskule: a plugin's page before it is added: a catalog entry, a GitHub repository or an MCP
 // server by address. Baskule reads it first; the admin chooses who can use it, fills what it
 // needs and adds it. Sign-in setup can be finished here or later.
@@ -20,7 +21,7 @@ import { Button } from "../../../components/ui/button";
 import { Label } from "../../../components/ui/label";
 import { Radio, RadioGroup } from "../../../components/ui/radio-group";
 import { Spinner } from "../../../components/ui/spinner";
-import { useTranslation } from "../../../i18n";
+
 import { BaskuleApiError } from "../../api";
 import { pluginErrorText, pluginsApi } from "../../plugins/api";
 import { originHref, pluginSite } from "../../plugins/presentation";
@@ -49,13 +50,14 @@ export function AddPluginPage({ id }: { readonly id: string }) {
 const loadCatalog = () => pluginsApi.catalog();
 
 function CatalogPlugin({ entryId }: { readonly entryId: string }) {
-  const t = useTranslation();
+  const t = useMessages();
   const catalog = useApiResource(loadCatalog);
   if (!catalog.data) {
     return <ResourceState error={catalog.error} loading={catalog.loading} empty emptyText="" />;
   }
   const entry = catalog.data.entries.find((candidate) => candidate.id === entryId);
-  if (!entry) return <PageMessage>{t("The catalog no longer lists this plugin.")}</PageMessage>;
+  if (!entry)
+    return <PageMessage>{t(msg("The catalog no longer lists this plugin."))}</PageMessage>;
   if (entry.installedPluginId) {
     return (
       <Navigate
@@ -73,16 +75,18 @@ function CatalogPlugin({ entryId }: { readonly entryId: string }) {
 }
 
 function GithubImport() {
-  const t = useTranslation();
+  const t = useMessages();
   const [url, setUrl] = useState("");
   const [ref, setRef] = useState<PluginRef | null>(null);
   if (ref) return <PluginReview pluginRef={ref} onBack={() => setRef(null)} />;
   return (
     <>
       <PageHeading
-        title={t("Add a plugin from GitHub")}
+        title={t(msg("Add a plugin from GitHub"))}
         description={t(
-          "Any public repository with a plugin in the Cursor, Grok or Agent Plugins format. A link to a folder or branch works too.",
+          msg(
+            "Any public repository with a plugin in the Cursor, Grok or Agent Plugins format. A link to a folder or branch works too.",
+          ),
         )}
       />
       <form
@@ -94,7 +98,7 @@ function GithubImport() {
         }}
       >
         <FormField
-          label={t("Repository link")}
+          label={t(msg("Repository link"))}
           type="url"
           inputMode="url"
           autoFocus
@@ -106,7 +110,7 @@ function GithubImport() {
         />
         <div>
           <Button type="submit" disabled={!url.trim()}>
-            {t("Review plugin")}
+            {t(msg("Review plugin"))}
           </Button>
         </div>
       </form>
@@ -117,7 +121,7 @@ function GithubImport() {
 type CustomAuth = CustomServerInput["auth"];
 
 function CustomServer() {
-  const t = useTranslation();
+  const t = useMessages();
   const [form, setForm] = useState({
     displayName: "",
     description: "",
@@ -138,9 +142,11 @@ function CustomServer() {
   return (
     <>
       <PageHeading
-        title={t("Add an MCP server")}
+        title={t(msg("Add an MCP server"))}
         description={t(
-          "A remote MCP server by its web address. Baskule checks how people sign in before you add it.",
+          msg(
+            "A remote MCP server by its web address. Baskule checks how people sign in before you add it.",
+          ),
         )}
       />
       <form
@@ -163,14 +169,14 @@ function CustomServer() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField
-            label={t("Name")}
+            label={t(msg("Name"))}
             autoFocus
-            placeholder={t("Company wiki")}
+            placeholder={t(msg("Company wiki"))}
             value={form.displayName}
             onChange={field("displayName")}
           />
           <FormField
-            label={t("Server address")}
+            label={t(msg("Server address"))}
             type="url"
             inputMode="url"
             spellCheck={false}
@@ -180,23 +186,23 @@ function CustomServer() {
           />
         </div>
         <FormField
-          label={t("Description (optional)")}
-          placeholder={t("What people can do with it")}
+          label={t(msg("Description (optional)"))}
+          placeholder={t(msg("What people can do with it"))}
           value={form.description}
           onChange={field("description")}
         />
         <div className="flex flex-col gap-2">
-          <Label render={<span />}>{t("Sign-in")}</Label>
+          <Label render={<span />}>{t(msg("Sign-in"))}</Label>
           <RadioGroup
-            aria-label={t("Sign-in")}
+            aria-label={t(msg("Sign-in"))}
             value={form.auth}
             onValueChange={(auth) => setForm({ ...form, auth: auth as CustomAuth })}
           >
             {(
               [
-                ["oauth", t("Each person signs in with their own account")],
-                ["header", t("One key for your organization, sent in a header")],
-                ["none", t("No sign-in")],
+                ["oauth", t(msg("Each person signs in with their own account"))],
+                ["header", t(msg("One key for your organization, sent in a header"))],
+                ["none", t(msg("No sign-in"))],
               ] as const
             ).map(([value, text]) => (
               <label key={value} className="flex cursor-pointer items-center gap-3">
@@ -209,9 +215,10 @@ function CustomServer() {
         {form.auth === "header" ? (
           <FormField
             className="sm:max-w-xs"
-            label={t("Header name")}
+            label={t(msg("Header name"))}
             spellCheck={false}
             font="mono"
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- example HTTP header name
             placeholder="X-API-Key"
             value={form.headerName}
             onChange={field("headerName")}
@@ -219,7 +226,7 @@ function CustomServer() {
         ) : null}
         <div>
           <Button type="submit" disabled={!ready}>
-            {t("Review server")}
+            {t(msg("Review server"))}
           </Button>
         </div>
       </form>
@@ -241,7 +248,7 @@ function PluginReview({
   readonly entry?: CatalogEntry;
   readonly onBack?: () => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const navigate = useNavigate();
   // One loader per mount: the parent remounts this per plugin.
   const [loadPreview] = useState(
@@ -250,7 +257,7 @@ function PluginReview({
         throw new Error(
           pluginErrorText(
             cause,
-            t("Baskule couldn't read this plugin. Check the address and try again."),
+            t(msg("Baskule couldn't read this plugin. Check the address and try again.")),
           ),
         );
       }),
@@ -268,7 +275,7 @@ function PluginReview({
   const [installed, groups] = admin.data ?? [null, null];
   const name = plugin?.displayName ?? entry?.displayName ?? "";
   const back = onBack ? (
-    <Button size="icon-sm" variant="ghost" aria-label={t("Back")} onClick={onBack}>
+    <Button size="icon-sm" variant="ghost" aria-label={t(msg("Back"))} onClick={onBack}>
       <ChevronLeftIcon />
     </Button>
   ) : null;
@@ -288,14 +295,14 @@ function PluginReview({
             }
           : {}),
       });
-      notifySuccess(t("{{name}} was added", { name: added.displayName }));
+      notifySuccess(t(msg("{name} was added"), { name: added.displayName }));
       void navigate({
         to: "/admin/$section/$page/$item",
         params: { section: "plugins", page: "installed", item: added.id },
       });
     } catch (cause) {
       setAdding(false);
-      setError(pluginErrorText(cause, t("The plugin could not be added.")));
+      setError(pluginErrorText(cause, t(msg("The plugin could not be added."))));
       if (cause instanceof BaskuleApiError && cause.code === "plugin_changed") {
         void preview.reload();
       }
@@ -306,7 +313,7 @@ function PluginReview({
     <>
       <PluginHeader
         leading={back}
-        name={name || t("Reading the plugin…")}
+        name={name || t(msg("Reading the plugin…"))}
         logo={plugin?.logo ?? entry?.logo ?? null}
         site={pluginSite({
           homepage: plugin?.homepage ?? entry?.homepage ?? null,
@@ -326,7 +333,7 @@ function PluginReview({
               onClick={() => void add(plugin)}
             >
               {adding ? <Spinner size="sm" /> : null}
-              {t("Add plugin")}
+              {t(msg("Add plugin"))}
             </Button>
           ) : null
         }
@@ -379,7 +386,7 @@ function PluginReview({
             <AlertDescription>{preview.error}</AlertDescription>
             <AlertAction>
               <Button size="sm" variant="outline" onClick={() => void preview.reload()}>
-                {t("Retry")}
+                {t(msg("Retry"))}
               </Button>
             </AlertAction>
           </Alert>
@@ -388,7 +395,7 @@ function PluginReview({
         <PageMessage>
           <span className="inline-flex items-center gap-2">
             <Spinner size="sm" tone="muted" />
-            {t("Reading the plugin…")}
+            {t(msg("Reading the plugin…"))}
           </span>
         </PageMessage>
       )}
@@ -443,7 +450,7 @@ function previewSetup(
 }
 
 function previewServer(
-  t: ReturnType<typeof useTranslation>,
+  t: ReturnType<typeof useMessages>,
   server: ServerPreview,
   clients: ReadonlyArray<OAuthClientSetup>,
   all: ReadonlyArray<ServerPreview>,
@@ -489,7 +496,11 @@ function previewServer(
         ) : null}
         {unknownIssuer ? (
           <p className="text-xs text-muted-foreground">
-            {t("Baskule couldn't find where people sign in. It tries again when someone connects.")}
+            {t(
+              msg(
+                "Baskule couldn't find where people sign in. It tries again when someone connects.",
+              ),
+            )}
           </p>
         ) : null}
       </div>

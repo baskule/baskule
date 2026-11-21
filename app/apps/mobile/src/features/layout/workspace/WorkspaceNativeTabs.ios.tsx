@@ -1,5 +1,4 @@
-import { useTranslation } from "../../../i18n";
-
+import { useGT, useMessages } from "gt-react-native";
 import {
   WORKSPACE_TAB_LABELS,
   NAVIGATION_TAB_ICONS,
@@ -39,6 +38,7 @@ import { useControlTheme } from "../../../components/ui/useControlTheme";
 import { useDeviceType } from "../../../native/native-layout-metrics";
 import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
 import { useAdaptiveWorkspaceLayout, useWorkspacePaneState } from "../AdaptiveWorkspaceLayout";
+import { useWorkspaceCompose } from "./useWorkspaceCompose";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
 import { BASKULE_FLAGS } from "../../../baskule/flags";
 
@@ -146,7 +146,8 @@ export function WorkspaceNativeTabs(props: {
   /** The sidebar column draws the tabs itself, so they leave with it. */
   readonly tabsInSidebarColumn?: boolean;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const workspace = useWorkspaceTabs()!;
   const order = useEnabledNavigationTabs();
   const primaryTabs = order.slice(0, 4);
@@ -234,7 +235,7 @@ export function WorkspaceNativeTabs(props: {
                 screenKey={slot}
                 title=""
                 tabBarItemAccessibilityLabel={
-                  settings ? t("Settings") : t(WORKSPACE_TAB_LABELS[tab])
+                  settings ? gt("Settings") : m(WORKSPACE_TAB_LABELS[tab])
                 }
                 ios={{
                   prewarmRequest: prewarmRequests.get(slot) ?? 0,
@@ -295,18 +296,13 @@ export function WorkspaceNativeTabs(props: {
 
 /** The workspace tabs at the foot of the sidebar. */
 export function WorkspaceSidebarTabsFooter() {
-  const workspace = useWorkspaceTabs()!;
-  const { startNewTask } = useAdaptiveWorkspaceLayout();
+  const compose = useWorkspaceCompose();
   const compact = useFloatingWorkspaceTabs();
   return (
     <WorkspaceSidebarTabs
       compact={compact}
       reserveComposeSpace={compact}
-      onNewTask={
-        compact && !workspace.settingsOpen && workspace.state.selectedTab === "threads"
-          ? startNewTask
-          : undefined
-      }
+      onNewTask={compact ? compose?.onPress : undefined}
     />
   );
 }

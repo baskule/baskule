@@ -1,6 +1,4 @@
-import { t } from "../i18n";
-import { useTranslation } from "../i18n";
-
+import { useGT } from "gt-react-native";
 import { FilePreviewGallery, useFilePreviewGallery } from "./ui/FilePreviewGallery";
 import { composerImageGallery } from "../lib/composerImageGallery";
 import { SymbolView } from "./ui/AppSymbol";
@@ -63,20 +61,27 @@ type ComposerAttachmentThumbnailProps = {
 };
 
 export function ComposerAttachmentThumbnail(props: ComposerAttachmentThumbnailProps) {
-  const t = useTranslation();
+  const gt = useGT();
   const upload = useComposerAttachmentUploadState(props.environmentId, props.attachment.id);
   return (
     <View style={{ width: props.size, height: props.size }}>
       <ComposerAttachmentContent {...props} />
+      {upload?.status === "failed" ? (
+        <View
+          pointerEvents="none"
+          className="absolute inset-0 border-2 border-danger-foreground"
+          style={{ borderRadius: props.borderRadius }}
+        />
+      ) : null}
       {upload && upload.status !== "ready" ? (
         <Pressable
           accessibilityRole={upload.status === "failed" ? "button" : "text"}
           accessibilityLabel={
             upload.status === "failed"
-              ? t("Retry uploading {{name}}", { name: props.attachment.name })
-              : t("Uploading {{name}}, {{value2}}%", {
+              ? gt("Retry uploading {name}", { name: props.attachment.name })
+              : gt("Uploading {name}, {percent}%", {
                   name: props.attachment.name,
-                  value2: Math.floor(upload.progress * 100),
+                  percent: Math.floor(upload.progress * 100),
                 })
           }
           accessibilityHint={upload.status === "failed" ? upload.reason : undefined}
@@ -95,7 +100,7 @@ export function ComposerAttachmentThumbnail(props: ComposerAttachmentThumbnailPr
           />
           {!props.compact ? (
             <Text className="text-2xs text-white">
-              {upload.status === "failed" ? t("Retry") : `${Math.floor(upload.progress * 100)}%`}
+              {upload.status === "failed" ? gt("Retry") : `${Math.floor(upload.progress * 100)}%`}
             </Text>
           ) : null}
         </Pressable>
@@ -138,7 +143,7 @@ function useComposerImagePreviewUri(attachment: DraftComposerImageAttachment): s
 function ComposerImageAttachment(
   props: ComposerAttachmentThumbnailProps & { readonly attachment: DraftComposerImageAttachment },
 ) {
-  const t = useTranslation();
+  const gt = useGT();
   const { attachment } = props;
   const withGallery = useFilePreviewGallery();
   const style = { width: props.size, height: props.size, borderRadius: props.borderRadius };
@@ -148,7 +153,7 @@ function ComposerImageAttachment(
     <PresentationSource identifier={sourceIdentifier}>
       <Pressable
         accessibilityRole="imagebutton"
-        accessibilityLabel={t("Open {{name}}", { name: attachment.name })}
+        accessibilityLabel={gt("Open {name}", { name: attachment.name })}
         disabled={!props.onPressPreview}
         onPress={() =>
           props.onPressPreview?.(
@@ -211,18 +216,20 @@ function ComposerAttachmentContent(props: ComposerAttachmentThumbnailProps) {
 function ComposerFileAttachment(
   props: ComposerAttachmentThumbnailProps & { readonly attachment: DraftComposerFileAttachment },
 ) {
-  const t = useTranslation();
+  const gt = useGT();
   const { attachment } = props;
   const style = { width: props.size, height: props.size, borderRadius: props.borderRadius };
   const canPreview = isPdfFile(attachment) && props.onPressPreview !== undefined;
   const sourceIdentifier = `draft-file:${attachment.id}`;
   const onPressDocument = props.onPressDocument;
+  const upload = useComposerAttachmentUploadState(props.environmentId, attachment.id);
+  const showsUploadBadge = upload !== undefined && upload.status !== "ready";
   return (
     <>
       <PresentationSource identifier={sourceIdentifier}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("Open {{name}}", { name: attachment.name })}
+          accessibilityLabel={gt("Open {name}", { name: attachment.name })}
           disabled={!canPreview && onPressDocument === undefined}
           onPress={() =>
             canPreview
@@ -237,7 +244,7 @@ function ComposerFileAttachment(
           className={
             props.compact
               ? "items-center justify-center bg-subtle"
-              : "items-center justify-center gap-1 bg-subtle px-2"
+              : `items-center justify-center gap-1 bg-subtle px-2${showsUploadBadge ? " pb-4" : ""}`
           }
           style={style}
         >
@@ -287,6 +294,7 @@ function ComposerVideoAttachment(props: {
 }
 
 export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
+  const gt = useGT();
   const gallery = composerImageGallery(props.attachments);
   const size = props.imageSize ?? 72;
   const radius = props.imageBorderRadius ?? 16;
@@ -326,7 +334,7 @@ export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
               />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t("Remove {{value1}}", { value1: attachment.name })}
+                accessibilityLabel={gt("Remove {name}", { name: attachment.name })}
                 className="absolute h-[22px] w-[22px] items-center justify-center rounded-[11px] bg-black/55"
                 style={{
                   top: removeButtonPlacement === "gutter" ? 0 : 4,

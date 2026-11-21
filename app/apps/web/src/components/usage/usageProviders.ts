@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import type { UsageProviderKind } from "@t3tools/contracts";
 import { ProviderDriverKind } from "@t3tools/contracts";
 import type { UsageMetric } from "./usageShortcuts";
@@ -13,7 +11,7 @@ type UsageProviderPresentation = {
 export const PROVIDER_PRESENTATION = {
   opencode: {
     get label() {
-      return t("OpenCode");
+      return "OpenCode";
     },
     color: "#5b9bbd",
     driverKind: ProviderDriverKind.make("opencode"),

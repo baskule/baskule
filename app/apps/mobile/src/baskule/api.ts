@@ -1,4 +1,6 @@
-import { t } from "../i18n";
+import { m as resolveMessage } from "../i18n/messages";
+import { msg } from "gt-react-native";
+
 /**
  * The Baskule front's account API, as a native client uses it (platform/README.md, "Sessions"):
  * Better Auth sign-in returns a signed bearer in `set-auth-token`; every later request sends
@@ -36,7 +38,7 @@ export async function requestBrowserLogin(
     method: "POST",
     credentials: "omit",
   });
-  if (!r.ok) throw new BaskuleApiError("server", t("Could not start browser sign-in."));
+  if (!r.ok) throw new BaskuleApiError("server", resolveMessage(msg("Could not start browser sign-in.")));
   return (await r.json()) as { id: string; secret: string; url: string };
 }
 
@@ -51,7 +53,7 @@ export async function pollBrowserLogin(
     credentials: "omit",
     body: JSON.stringify(pending),
   });
-  if (!r.ok) throw new BaskuleApiError("signed-out", t("Browser sign-in expired. Start again."));
+  if (!r.ok) throw new BaskuleApiError("signed-out", resolveMessage(msg("Browser sign-in expired. Start again.")));
   return ((await r.json()) as { token: string | null }).token;
 }
 
@@ -84,7 +86,7 @@ async function request(fetchFn: Fetch, url: string, init: RequestInit): Promise<
   } catch {
     throw new BaskuleApiError(
       "network",
-      t("Cannot reach the server. Check the address and this phone's network."),
+      resolveMessage(msg("Cannot reach the server. Check the address and this phone's network.")),
     );
   } finally {
     clearTimeout(timer);
@@ -104,22 +106,22 @@ export async function signIn(
     credentials: "omit",
   });
   if (response.status === 401 || response.status === 400) {
-    throw new BaskuleApiError("invalid-credentials", t("Wrong email or password."));
+    throw new BaskuleApiError("invalid-credentials", resolveMessage(msg("Wrong email or password.")));
   }
   if (response.status === 403) {
     throw new BaskuleApiError(
       "deactivated",
-      t("This account is deactivated. Ask your administrator."),
+      resolveMessage(msg("This account is deactivated. Ask your administrator.")),
     );
   }
   if (response.status === 429) {
-    throw new BaskuleApiError("rate-limited", t("Too many attempts. Wait a minute and try again."));
+    throw new BaskuleApiError("rate-limited", resolveMessage(msg("Too many attempts. Wait a minute and try again.")));
   }
   const token = response.headers.get("set-auth-token");
   if (!response.ok || !token) {
     throw new BaskuleApiError(
       "server",
-      t("The server refused the sign-in (HTTP {{status}}).", { status: response.status }),
+      resolveMessage(msg("The server refused the sign-in (HTTP {status})."), { status: response.status }),
     );
   }
   return token;
@@ -146,7 +148,7 @@ export async function fetchInstance(
   if (body?.product !== "baskule" || !body.authentication) {
     throw new BaskuleApiError(
       "server",
-      t("{{server}} is not a Baskule server.", { server: serverUrl }),
+      resolveMessage(msg("{server} is not a Baskule server."), { server: serverUrl }),
     );
   }
   return {
@@ -170,17 +172,17 @@ export async function redeemConnectCode(
   if (response.status === 404 || response.status === 400) {
     throw new BaskuleApiError(
       "invalid-credentials",
-      t("This connection link is not valid, has expired or was already used. Create a new one."),
+      resolveMessage(msg("This connection link is not valid, has expired or was already used. Create a new one.")),
     );
   }
   if (response.status === 429) {
-    throw new BaskuleApiError("rate-limited", t("Too many attempts. Wait a minute and try again."));
+    throw new BaskuleApiError("rate-limited", resolveMessage(msg("Too many attempts. Wait a minute and try again.")));
   }
   const token = response.headers.get("set-auth-token");
   if (!response.ok || !token) {
     throw new BaskuleApiError(
       "server",
-      t("The server refused the connection (HTTP {{status}}).", { status: response.status }),
+      resolveMessage(msg("The server refused the connection (HTTP {status})."), { status: response.status }),
     );
   }
   return token;
@@ -192,12 +194,12 @@ export async function fetchMe(serverUrl: string, token: string, fetchFn: Fetch =
     credentials: "omit",
   });
   if (response.status === 401) {
-    throw new BaskuleApiError("signed-out", t("Your session has ended. Sign in again."));
+    throw new BaskuleApiError("signed-out", resolveMessage(msg("Your session has ended. Sign in again.")));
   }
   if (!response.ok) {
     throw new BaskuleApiError(
       "server",
-      t("The server answered HTTP {{status}}.", { status: response.status }),
+      resolveMessage(msg("The server answered HTTP {status}."), { status: response.status }),
     );
   }
   return (await response.json()) as BaskuleMe;

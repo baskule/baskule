@@ -36,6 +36,8 @@ const BASKULE_SETTINGS_ROUTES: ReadonlySet<string> = new Set([
   "SettingsScheduledTaskEdit",
   "SettingsNotifications",
   "SettingsAppearance",
+  "SettingsLanguage",
+  "SettingsVoice",
   "SettingsAbout",
   "SettingsOpenSourceLicenses",
   "SettingsOpenSourceLicense",

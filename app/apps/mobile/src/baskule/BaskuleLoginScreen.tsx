@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react-native";
+
 import type { BaskuleAuthConfig } from "@t3tools/contracts/baskule";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Linking from "expo-linking";
@@ -6,13 +7,14 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { LanguageSetting } from "../features/settings/LanguageSetting";
-
 import { BaskuleWordmark } from "../components/BaskuleBrand";
 import { AppText } from "../components/ui/AppText";
 import { Button } from "../components/ui/Button";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { ScreenScrollView } from "../components/ui/ScreenScrollView";
+import { Sheet } from "../components/ui/Sheet";
 import { ConnectionFormField } from "../features/connection/ConnectionFormField";
+import { LanguageChoices } from "../features/settings/SettingsLanguageRouteScreen";
 import { fetchInstance, BaskuleApiError, pollBrowserLogin, requestBrowserLogin } from "./api";
 import { parseConnectTarget, type ConnectTarget } from "./config";
 import {
@@ -43,7 +45,7 @@ export function BaskuleLoginScreen(props: {
   readonly onCancel?: () => void;
   readonly onConnected?: () => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const insets = useSafeAreaInsets();
   const [server, setServer] = useState(props.serverUrl ?? "");
   const [email, setEmail] = useState("");
@@ -58,6 +60,7 @@ export function BaskuleLoginScreen(props: {
   const [methods, setMethods] = useState<Methods | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanHandled = useRef(false);
   const requestRevision = useRef(0);
@@ -95,7 +98,7 @@ export function BaskuleLoginScreen(props: {
   const handleLink = (value: string) => {
     const target = parseConnectTarget(value);
     if (target === null) {
-      setError(t("This is not a Baskule connection link or server address."));
+      setError(t(msg("This is not a Baskule connection link or server address.")));
       return;
     }
     requestRevision.current++;
@@ -108,7 +111,9 @@ export function BaskuleLoginScreen(props: {
     if (target.kind === "invitation") {
       setInfo(
         t(
-          "Invitations are completed in the browser. Create your account there, then connect this phone from Apps → Connect a device.",
+          msg(
+            "Invitations are completed in the browser. Create your account there, then connect this phone from Apps → Connect a device.",
+          ),
         ),
       );
       void Linking.openURL(target.url);
@@ -122,7 +127,7 @@ export function BaskuleLoginScreen(props: {
         if (requestRevision.current !== expected) return;
         setConfirm({ target, name: instance.name, config: instance.authentication });
       },
-      t("Cannot reach this server."),
+      t(msg("Cannot reach this server.")),
     );
   };
 
@@ -152,7 +157,7 @@ export function BaskuleLoginScreen(props: {
         })
         .catch((cause: unknown) => {
           if (cancelled) return;
-          setError(errorMessage(cause, t("Sign-in failed.")));
+          setError(errorMessage(cause, t(msg("Sign-in failed."))));
           setPending(null);
         })
         .finally(() => {
@@ -171,7 +176,9 @@ export function BaskuleLoginScreen(props: {
       ? cameraPermission
       : await requestCameraPermission();
     if (!permission.granted) {
-      setError(t("Allow camera access to scan a connection QR code, or paste the link instead."));
+      setError(
+        t(msg("Allow camera access to scan a connection QR code, or paste the link instead.")),
+      );
       return;
     }
     scanHandled.current = false;
@@ -188,7 +195,7 @@ export function BaskuleLoginScreen(props: {
   const signIn = () => {
     if (busy || !methods) return;
     if (email.trim() === "" || password === "") {
-      setError(t("Enter your email and password."));
+      setError(t(msg("Enter your email and password.")));
       return;
     }
     const expected = requestRevision.current;
@@ -198,7 +205,7 @@ export function BaskuleLoginScreen(props: {
         await signInToBaskule({ serverUrl: methods.serverUrl, email, password });
         if (requestRevision.current === expected) props.onConnected?.();
       },
-      t("Sign-in failed."),
+      t(msg("Sign-in failed.")),
     );
   };
 
@@ -212,7 +219,7 @@ export function BaskuleLoginScreen(props: {
         setPending({ id: login.id, secret: login.secret, serverUrl });
         await Linking.openURL(login.url);
       },
-      t("Could not open the browser."),
+      t(msg("Could not open the browser.")),
     );
   };
 
@@ -242,7 +249,7 @@ export function BaskuleLoginScreen(props: {
           setMethods({ serverUrl: target.serverUrl, config });
         }
       },
-      t("Connection failed."),
+      t(msg("Connection failed.")),
     );
   };
 
@@ -259,10 +266,10 @@ export function BaskuleLoginScreen(props: {
     if (!runningRef.current) handleLink(server);
   };
   const title = confirm
-    ? t("Connect to {{name}}?", { name: confirm.name })
+    ? t(msg("Connect to {name}?"), { name: confirm.name })
     : methods
-      ? t("Sign in")
-      : t("Connect to your server");
+      ? t(msg("Sign in"))
+      : t(msg("Connect to your server"));
   const subtitle = confirm
     ? t(
         props.switching
@@ -273,7 +280,9 @@ export function BaskuleLoginScreen(props: {
     : methods
       ? methods.serverUrl
       : t(
-          "Enter the address of your Baskule server, or scan the QR code from Baskule on your computer (Apps → Connect a device).",
+          msg(
+            "Enter the address of your Baskule server, or scan the QR code from Baskule on your computer (Apps → Connect a device).",
+          ),
         );
 
   return (
@@ -299,14 +308,14 @@ export function BaskuleLoginScreen(props: {
           {confirm ? (
             <View className="gap-2">
               <Button
-                label={t("Connect")}
+                label={t(msg("Connect"))}
                 tone="primary"
                 fullWidth
                 loading={action === "connect"}
                 disabled={busy}
                 onPress={() => connect(confirm)}
               />
-              <Button label={t("Cancel")} tone="text" fullWidth onPress={cancel} />
+              <Button label={t(msg("Cancel"))} tone="text" fullWidth onPress={cancel} />
             </View>
           ) : scanning ? (
             <View className="gap-2">
@@ -319,7 +328,7 @@ export function BaskuleLoginScreen(props: {
                 />
               </View>
               <Button
-                label={t("Cancel")}
+                label={t(msg("Cancel"))}
                 tone="text"
                 fullWidth
                 onPress={() => setScanning(false)}
@@ -329,17 +338,24 @@ export function BaskuleLoginScreen(props: {
             <View className="gap-2">
               <AppText className="text-base">
                 {t(
-                  "Finish signing in and approve the connection in your browser, then return here.",
+                  msg(
+                    "Finish signing in and approve the connection in your browser, then return here.",
+                  ),
                 )}
               </AppText>
-              <Button label={t("Cancel browser sign-in")} tone="text" fullWidth onPress={cancel} />
+              <Button
+                label={t(msg("Cancel browser sign-in"))}
+                tone="text"
+                fullWidth
+                onPress={cancel}
+              />
             </View>
           ) : methods ? (
             <View className="gap-3">
               {methods.config.password ? (
                 <>
                   <ConnectionFormField
-                    label={t("Email")}
+                    label={t(msg("Email"))}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -350,7 +366,7 @@ export function BaskuleLoginScreen(props: {
                     editable={!busy}
                   />
                   <ConnectionFormField
-                    label={t("Password")}
+                    label={t(msg("Password"))}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -361,7 +377,7 @@ export function BaskuleLoginScreen(props: {
                     editable={!busy}
                   />
                   <Button
-                    label={t("Sign in")}
+                    label={t(msg("Sign in"))}
                     tone="primary"
                     fullWidth
                     loading={action === "password"}
@@ -372,7 +388,7 @@ export function BaskuleLoginScreen(props: {
               ) : null}
               {methods.config.providers.length > 0 ? (
                 <Button
-                  label={t("Sign in in browser")}
+                  label={t(msg("Sign in in browser"))}
                   tone={methods.config.password ? "secondary" : "primary"}
                   fullWidth
                   loading={action === "browser"}
@@ -380,15 +396,15 @@ export function BaskuleLoginScreen(props: {
                   onPress={() => signInInBrowser(methods.serverUrl)}
                 />
               ) : null}
-              <Button label={t("Use another server")} tone="text" fullWidth onPress={back} />
+              <Button label={t(msg("Use another server"))} tone="text" fullWidth onPress={back} />
               <AppText className="text-center text-sm text-foreground-muted">
-                {t("No account yet? Ask your administrator for an invitation link.")}
+                {t(msg("No account yet? Ask your administrator for an invitation link."))}
               </AppText>
             </View>
           ) : (
             <View className="gap-3">
               <ConnectionFormField
-                label={t("Server address")}
+                label={t(msg("Server address"))}
                 value={server}
                 onChangeText={setServer}
                 autoCapitalize="none"
@@ -400,7 +416,7 @@ export function BaskuleLoginScreen(props: {
                 editable={!busy}
               />
               <Button
-                label={t("Continue")}
+                label={t(msg("Continue"))}
                 tone="primary"
                 fullWidth
                 loading={action === "continue"}
@@ -408,7 +424,7 @@ export function BaskuleLoginScreen(props: {
                 onPress={submitServer}
               />
               <Button
-                label={t("Scan a QR code")}
+                label={t(msg("Scan a QR code"))}
                 icon="qrcode.viewfinder"
                 tone="secondary"
                 fullWidth
@@ -416,11 +432,28 @@ export function BaskuleLoginScreen(props: {
                 onPress={() => void startScan()}
               />
               {props.switching ? (
-                <Button label={t("Cancel")} tone="text" fullWidth onPress={cancel} />
+                <Button label={t(msg("Cancel"))} tone="text" fullWidth onPress={cancel} />
               ) : null}
             </View>
           )}
-          {!confirm && !scanning && !pending && !methods ? <LanguageSetting compact /> : null}
+          {!confirm && !scanning && !pending && !methods ? (
+            <Button
+              label={t(msg("Language"))}
+              icon="globe"
+              tone="text"
+              onPress={() => setLanguageOpen(true)}
+            />
+          ) : null}
+          {languageOpen ? (
+            <Sheet title={t(msg("Language"))} onClose={() => setLanguageOpen(false)}>
+              <ScreenScrollView
+                contentInsetAdjustmentBehavior="automatic"
+                contentContainerClassName="px-5 py-4"
+              >
+                <LanguageChoices />
+              </ScreenScrollView>
+            </Sheet>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -1,10 +1,10 @@
-import { t } from "../i18n";
-
 import { AuthOrchestrationReadScope, type ChatFileAttachment } from "@t3tools/contracts";
 import type { Directory } from "expo-file-system";
 import type { SharingOptions } from "expo-sharing";
+import { msg } from "gt-react-native";
 import { requireNativeModule } from "expo";
 
+import { m } from "../i18n/messages";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
 import {
@@ -94,7 +94,7 @@ async function availableSharing(signal: AbortSignal) {
   const canShare = await Sharing.isAvailableAsync();
   if (signal.aborted) return null;
   if (!canShare) {
-    throw new Error("Saving and sharing files is unavailable on this device.");
+    throw new Error(m(msg("Saving and sharing files is unavailable on this device.")));
   }
   return Sharing;
 }
@@ -202,7 +202,7 @@ async function createCachedAttachmentFile(
           shared = true;
         } catch (cause) {
           if (!signal.aborted) {
-            throw new Error("Could not open the share sheet. Try again.", { cause });
+            throw new Error(m(msg("Could not open the share sheet. Try again.")), { cause });
           }
         } finally {
           endHandoff();
@@ -227,8 +227,8 @@ async function createCachedAttachmentFile(
 export function nativeViewerErrorMessage(cause: unknown): string {
   const text = cause instanceof Error ? cause.message : String(cause);
   return /ActivityNotFound|cannot be previewed/i.test(text)
-    ? t("No app on this device can show this format. Save or share it to open it elsewhere.")
-    : t("The file could not be opened. Check the connection and try again.");
+    ? m(msg("No app on this device can show this format. Save or share it to open it elsewhere."))
+    : m(msg("The file could not be opened. Check the connection and try again."));
 }
 
 export async function openAttachmentInViewer(input: {
@@ -311,11 +311,14 @@ export async function downloadAttachmentForPreview(input: {
     return { ...cached.preview, dispose };
   } catch (cause) {
     // Android may leave a partial file after a failed or interrupted request.
-    dispose();
-    if (signal.aborted) return null;
-    throw new Error("Could not download the attachment. Check the connection and try again.", {
-      cause,
-    });
+    cached.preview.dispose();
+    if (input.signal.aborted) return null;
+    throw new Error(
+      m(msg("Could not download the attachment. Check the connection and try again.")),
+      {
+        cause,
+      },
+    );
   }
 }
 
@@ -352,8 +355,8 @@ export async function shareLocalAttachment(input: {
     try {
       await new File(input.uri).copy(cached.file);
     } catch (cause) {
-      if (signal.aborted) return;
-      throw new Error("Could not prepare the attachment for sharing.", { cause });
+      if (input.signal.aborted) return;
+      throw new Error(m(msg("Could not prepare the attachment for sharing.")), { cause });
     }
     if (!signal.aborted) {
       await cached.preview.share(signal, input.sourceIdentifier);
@@ -371,8 +374,7 @@ export async function writeGeneratedAttachmentFile(input: {
   const cached = await createCachedAttachmentFile(input.attachment, input.transfer ?? null);
   try {
     const owner = input.transfer ? managedAttachmentOwner(cached.preview.uri) : null;
-    if (input.transfer && !owner)
-      throw new Error(t("Reconnect to this environment and try again."));
+    if (input.transfer && !owner) throw new Error("Reconnect to this environment and try again.");
     owner?.signal.throwIfAborted();
     await cached.file.write(input.bytes);
     owner?.signal.throwIfAborted();

@@ -1,4 +1,4 @@
-import { languageReady } from "./languagePreferences";
+import { whenLocaleReady } from "./i18n/runtime";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
@@ -35,7 +35,7 @@ const managedAuthShellModule =
 
 export const startup = Promise.all([
   managedAuthShellModule?.then((module) => module.default) ?? null,
-  languageReady.then(() => router.load()),
+  router.load().then(whenLocaleReady),
 ])
   .then(([ManagedAuthShell]) => {
     // Route chunk failures resolve router.load() and surface later through the error boundary.

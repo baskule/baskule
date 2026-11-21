@@ -1,13 +1,7 @@
 import { EnvironmentId, type ServerSelfUpdateCapability } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  collectRestartingMachines,
-  collectServerUpdateTargets,
-  describeUpdateEverything,
-  runUpdateEverything,
-  type UpdateEverythingMachine,
-} from "./updateEverything.logic";
+import { collectServerUpdateTargets, type UpdateEverythingMachine } from "./updateEverything.logic";
 
 function machine(
   id: string,
@@ -136,102 +130,5 @@ describe("collectServerUpdateTargets", () => {
         "0.0.50-nightly.20261028.1",
       ).skipped.map((entry) => entry.label),
     ).toEqual(["off", "no-nightly"]);
-  });
-});
-
-describe("collectRestartingMachines", () => {
-  it("lists updated servers, and this app's servers only when it installs", () => {
-    const withContinuation = (
-      id: string,
-      overrides: Partial<UpdateEverythingMachine> = {},
-      enabled = false,
-    ) => {
-      const base = machine(id, "0.0.40", "boot-service", overrides);
-      return {
-        ...base,
-        serverConfig: {
-          environment: base.serverConfig!.environment,
-          settings: { continueThreadsAfterServerUpdate: enabled },
-        },
-      };
-    };
-    const machines = [
-      withContinuation("this-app", { hostedByThisApp: true }, true),
-      withContinuation("alvin", {}, true),
-      withContinuation("opted-out", {}, false),
-      machine("old", "0.0.40", "boot-service"),
-      withContinuation("providers-only"),
-    ];
-    const servers = ["alvin", "opted-out", "old"].map((id) => ({
-      environmentId: EnvironmentId.make(id),
-    }));
-
-    expect(collectRestartingMachines(machines, servers, true)).toEqual([
-      { environmentId: "this-app", continuesThreads: true },
-      { environmentId: "alvin", continuesThreads: true },
-      { environmentId: "opted-out", continuesThreads: false },
-      { environmentId: "old", continuesThreads: false },
-    ]);
-    expect(
-      collectRestartingMachines(machines, servers, false).map((entry) => entry.environmentId),
-    ).toEqual(["alvin", "opted-out", "old"]);
-  });
-});
-
-describe("runUpdateEverything", () => {
-  it("still updates remote machines when the local download fails", async () => {
-    const calls: string[] = [];
-    const result = await runUpdateEverything({
-      downloadLocal: async () => false,
-      updateProviders: async () => {
-        calls.push("providers");
-      },
-      updateServers: async () => {
-        calls.push("servers");
-      },
-    });
-
-    expect(calls).toEqual(["providers", "servers"]);
-    expect(result.localReady).toBe(false);
-  });
-});
-
-describe("describeUpdateEverything", () => {
-  it("gives each machine one row with its T3 Code and provider updates", () => {
-    const id = EnvironmentId.make;
-    const { rows } = describeUpdateEverything({
-      localVersion: "1.1.0",
-      localMachines: [
-        { environmentId: id("local"), label: "Mainbook" },
-        { environmentId: id("wsl"), label: "Mainbook WSL" },
-      ],
-      servers: [
-        {
-          environmentId: id("npm"),
-          serverLabel: "bb-1",
-          selfUpdate: "respawn",
-          targetVersion: "1.1.0",
-        },
-      ],
-      providerMachines: [
-        { environmentId: id("npm"), label: "bb-1", providers: ["Codex", "Claude"] },
-        { environmentId: id("local"), label: "Mainbook", providers: ["Codex"] },
-        { environmentId: id("manual"), label: "alvin", providers: ["Claude"] },
-      ],
-      skipped: [
-        { environmentId: id("manual"), label: "alvin", reason: "needs a manual update" },
-        { environmentId: id("offline"), label: "TheoRoom", reason: "not connected" },
-      ],
-    });
-
-    expect(
-      rows.map(({ label, app, skipped, providers }) => [label, app, skipped, providers]),
-    ).toEqual([
-      ["Mainbook", "this-app", null, ["Codex"]],
-      ["Mainbook WSL", "this-app", null, []],
-      ["bb-1", "server", null, ["Codex", "Claude"]],
-      ["alvin", null, "needs a manual update", ["Claude"]],
-      ["TheoRoom", null, "not connected", []],
-    ]);
   });
 });

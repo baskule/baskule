@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import * as Schema from "effect/Schema";
@@ -24,10 +22,7 @@ export class TerminalLinkPreviewOpenError extends Schema.TaggedError<TerminalLin
   terminalLinkErrorContext,
 ) {
   override get message(): string {
-    return t("Failed to open terminal link {{targetOrigin}} in preview for thread {{threadId}}.", {
-      targetOrigin: this.targetOrigin,
-      threadId: this.threadId,
-    });
+    return `Failed to open terminal link ${this.targetOrigin} in preview for thread ${this.threadId}.`;
   }
 }
 

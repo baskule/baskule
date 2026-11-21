@@ -125,7 +125,7 @@ describe("provider compatibility", () => {
     const policy = ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility;
     const opencode = ProviderDriverKind.make("opencode");
     assert.strictEqual(
-      resolveProviderCompatibility(policy, opencode, "2.1.3")?.status,
+      resolveProviderCompatibility(policy, opencode, "2.2.5")?.status,
       "supported",
     );
     assert.strictEqual(resolveProviderCompatibility(policy, opencode, "1.18.33")?.status, "broken");
@@ -140,7 +140,6 @@ describe("provider compatibility", () => {
       ["v2.0.0", "supported"],
       ["3.0.0", "unknown"],
       ["2.0.0-beta.1", "unknown"],
-      ["agy_acp_server_20260818_01_RC01", "unknown"],
       [null, "unknown"],
     ] as const) {
       assert.strictEqual(resolveProviderCompatibility([policy], driver, version)?.status, expected);

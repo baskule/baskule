@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: a password reset link from an admin (`/reset-password#token=…`). Using it signs the
 // person out on every device, then they sign in with the new password.
@@ -13,7 +14,7 @@ import { errorText, FormField, BaskuleWordmark } from "../ui";
 import { MIN_PASSWORD_LENGTH, passwordProblem } from "./InvitationView";
 
 export function ResetPasswordView({ token }: { readonly token: string | null }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -48,38 +49,38 @@ export function ResetPasswordView({ token }: { readonly token: string | null }) 
         <div className="flex flex-col gap-2">
           <BaskuleWordmark className="text-base" />
           <h1 className="text-2xl font-semibold tracking-tight">
-            {done ? t("Password changed") : t("Choose a new password")}
+            {done ? t(msg("Password changed")) : t(msg("Choose a new password"))}
           </h1>
           <p className="text-sm text-muted-foreground">
             {done
-              ? t("You were signed out on every device. Sign in with your new password.")
-              : t("Your administrator sent you this link. It works once, for one hour.")}
+              ? t(msg("You were signed out on every device. Sign in with your new password."))
+              : t(msg("Your administrator sent you this link. It works once, for one hour."))}
           </p>
         </div>
         {done ? (
-          <Button render={<a href="/login" />}>{t("Sign in")}</Button>
+          <Button render={<a href="/login" />}>{t(msg("Sign in"))}</Button>
         ) : (
           <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)} noValidate>
             <FormField
-              label={t("New password")}
+              label={t(msg("New password"))}
               type="password"
               autoComplete="new-password"
               autoFocus
               value={password}
-              hint={t("At least {{MIN_PASSWORD_LENGTH}} characters.", {
+              hint={t(msg("At least {MIN_PASSWORD_LENGTH} characters."), {
                 MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH,
               })}
               error={showProblems && password.length < MIN_PASSWORD_LENGTH ? problem : null}
               onChange={(event) => setPassword(event.currentTarget.value)}
             />
             <FormField
-              label={t("Confirm password")}
+              label={t(msg("Confirm password"))}
               type="password"
               autoComplete="new-password"
               value={confirmation}
               error={
                 confirmation.length > 0 && password !== confirmation
-                  ? "The passwords don't match."
+                  ? t(msg("The passwords don't match."))
                   : null
               }
               onChange={(event) => setConfirmation(event.currentTarget.value)}
@@ -91,7 +92,7 @@ export function ResetPasswordView({ token }: { readonly token: string | null }) 
             ) : null}
             <Button type="submit" disabled={submitting || !token}>
               {submitting ? <Spinner size="sm" /> : null}
-              {t("Change password")}
+              {t(msg("Change password"))}
             </Button>
           </form>
         )}

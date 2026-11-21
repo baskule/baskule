@@ -2,7 +2,7 @@ import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import type { HomeProjectScope } from "../home/homeThreadList";
+import { buildHomeProjectScopes, type HomeProjectScope } from "../home/homeThreadList";
 import {
   getProjectScopeSelectionTarget,
   isSameRepository,
@@ -60,6 +60,29 @@ function makeScope(projects: ReadonlyArray<EnvironmentProject>): HomeProjectScop
 }
 
 describe("getProjectScopeSelectionTarget", () => {
+  it("chooses an open copy of a repository over an archived copy on the preferred machine", () => {
+    const repo = { repositoryKey: "github.com/t3tools/t3code" };
+    const archived = {
+      ...makeProject("archived-copy", "mac", repo),
+      archivedAt: "2026-07-02T00:00:00.000Z",
+    };
+    const open = makeProject("open-copy", "server", repo);
+    const [scope] = buildHomeProjectScopes({
+      projects: [archived, open],
+      environmentId: null,
+      projectGroupingMode: "repository",
+    });
+    if (!scope || scope.archived) throw new Error("Expected a pickable repository group");
+
+    expect(
+      getProjectScopeSelectionTarget(
+        scope,
+        archived.environmentId,
+        new Set([archived.environmentId, open.environmentId]),
+      ).id,
+    ).toBe(open.id);
+  });
+
   it("prefers a connected copy of a project that spans environments", () => {
     const mac = makeProject("t3code", "mac");
     const server = makeProject("t3code", "server");
@@ -199,6 +222,19 @@ describe("resolveDraftProjectSelection", () => {
     ).toEqual({
       kind: "preserve",
     });
+  });
+
+  it("opens the space picker for a share even when a previous project is saved", () => {
+    const projects = [makeProject("t3code"), makeProject("t3code-2")];
+    const scopes = projects.map((project) => makeScope([project]));
+    expect(
+      resolveDraftProjectSelection(null, projects, scopes, {
+        incomingShareId: "share",
+        pickerClosed: false,
+        useLastProject: true,
+        lastProject: { environmentId: "environment", projectId: "t3code-2" },
+      }),
+    ).toEqual({ kind: "pick" });
   });
 });
 

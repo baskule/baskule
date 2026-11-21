@@ -1,3 +1,6 @@
+import { isAbsolutePath } from "@t3tools/shared/path";
+import { type MFunctionType } from "gt-i18n/types";
+import { mFallback, msg } from "gt-i18n";
 import type { EnvironmentConnectionPhase } from "../connection/presentation.ts";
 import type {
   CommandId,
@@ -8,7 +11,7 @@ import type {
 } from "@t3tools/contracts";
 
 import { cloneUrlRepositoryPath } from "@t3tools/shared/cloneUrl";
-import { isExplicitRelativePath, isHostPath, newProjectFolderName } from "@t3tools/shared/path";
+import { isExplicitRelativePath, newProjectFolderName } from "@t3tools/shared/path";
 
 import {
   appendBrowsePathSegment,
@@ -52,8 +55,13 @@ export type AddProjectCloneFlow =
 export function getAddProjectInitialQuery(baseDirectory: string | null | undefined): string {
   const trimmed = baseDirectory?.trim() ?? "";
   if (trimmed.length === 0) return "~/";
-  // A bare relative setting such as `Desktop/dev` means a folder under home.
-  const isAnchored = trimmed === "~" || isHostPath(trimmed) || isExplicitRelativePath(trimmed);
+  // A bare relative setting such as `Desktop/dev` means a folder under home. The browser
+  // navigates `~/` but not `~\` home paths.
+  const isAnchored =
+    trimmed === "~" ||
+    isAbsolutePath(trimmed) ||
+    trimmed.startsWith("~/") ||
+    isExplicitRelativePath(trimmed);
   return ensureBrowseDirectoryPath(isAnchored ? trimmed : `~/${trimmed}`);
 }
 
@@ -148,23 +156,34 @@ export function getCloneDestinationForPickedFolder(input: {
   });
 }
 
-export function resolveAddProjectPath(input: {
-  readonly rawPath: string;
-  readonly currentProjectCwd?: string | null;
-  readonly platform: string;
-}): { readonly ok: true; readonly path: string } | { readonly ok: false; readonly error: string } {
+export function resolveAddProjectPath(
+  input: {
+    readonly rawPath: string;
+    readonly currentProjectCwd?: string | null;
+    readonly platform: string;
+  },
+  resolve: MFunctionType = mFallback,
+): { readonly ok: true; readonly path: string } | { readonly ok: false; readonly error: string } {
   const rawPath = input.rawPath.trim();
   if (rawPath.length === 0) {
-    return { ok: false, error: "Enter a project path." };
+    return { ok: false, error: resolve(msg("Enter a project path.")) };
   }
   if (isUnsupportedWindowsProjectPath(rawPath, input.platform)) {
-    return { ok: false, error: "Windows-style paths are only supported on Windows environments." };
+    return {
+      ok: false,
+      error: resolve(msg("Windows-style paths are only supported on Windows environments.")),
+    };
   }
   if (isExplicitRelativeProjectPath(rawPath) && !input.currentProjectCwd) {
-    return { ok: false, error: "Relative paths require an active project in this environment." };
+    return {
+      ok: false,
+      error: resolve(msg("Relative paths require an active project in this environment.")),
+    };
   }
   const path = resolveProjectPathForDispatch(rawPath, input.currentProjectCwd);
-  return path.length === 0 ? { ok: false, error: "Enter a project path." } : { ok: true, path };
+  return path.length === 0
+    ? { ok: false, error: resolve(msg("Enter a project path.")) }
+    : { ok: true, path };
 }
 
 export function findExistingAddProject(input: {

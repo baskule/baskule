@@ -1,4 +1,6 @@
-import { t } from "../i18n";
+import { m as resolveMessage } from "../i18n/messages";
+import { msg } from "gt-react";
+
 
 // baskule: typed client for the Baskule front (Worker + ControlCell).
 // Same origin, cookie session (Better Auth at `/auth/*`); our API at `/api/baskule/*`.
@@ -155,85 +157,83 @@ export class BaskuleApiError extends Error {
 /** Readable text for the codes the platform returns (`{error: code, message?}`). */
 const CODE_MESSAGES: Record<string, string> = {
   get last_admin() {
-    return t("Keep at least one admin.");
+    return resolveMessage(msg("Keep at least one admin."));
   },
   last_owner: "A team space keeps at least one owner.",
   get self() {
-    return t("You can't do that to your own account.");
+    return resolveMessage(msg("You can't do that to your own account."));
   },
   get user_exists() {
-    return t("Someone already has an account with this email.");
+    return resolveMessage(msg("Someone already has an account with this email."));
   },
   get already_member() {
-    return t("Already a member of this space.");
+    return resolveMessage(msg("Already a member of this space."));
   },
   get already_signed_in() {
-    return t("This person has signed in already: create a reset link instead.");
+    return resolveMessage(msg("This person has signed in already: create a reset link instead."));
   },
   get invalid_email() {
-    return t("Enter a valid email address.");
+    return resolveMessage(msg("Enter a valid email address."));
   },
   get invalid_password() {
-    return t("Use a password of at least 8 characters.");
+    return resolveMessage(msg("Use a password of at least 8 characters."));
   },
   get invalid_invitation() {
-    return t("This invitation link is not valid, has expired or was already used.");
+    return resolveMessage(msg("This invitation link is not valid, has expired or was already used."));
   },
   get space_wipe_failed() {
-    return t("The space could not be wiped. Try again.");
+    return resolveMessage(msg("The space could not be wiped. Try again."));
   },
   get stop_failed() {
-    return t("The space did not stop. Try again.");
+    return resolveMessage(msg("The space did not stop. Try again."));
   },
   get personal_space() {
-    return t("Personal spaces have exactly one member.");
+    return resolveMessage(msg("Personal spaces have exactly one member."));
   },
   get forbidden() {
-    return t("You don't have permission to do that.");
+    return resolveMessage(msg("You don't have permission to do that."));
   },
   get not_found() {
-    return t("Not found.");
+    return resolveMessage(msg("Not found."));
   },
   get unauthenticated() {
-    return t("You are signed out.");
+    return resolveMessage(msg("You are signed out."));
   },
   get voice_input_disabled() {
-    return t("Voice input is turned off for your organization.");
+    return resolveMessage(msg("Voice input is turned off for your organization."));
   },
   get audio_too_large() {
-    return t("The recording is too long to transcribe.");
+    return resolveMessage(msg("The recording is too long to transcribe."));
   },
   get invalid_audio() {
-    return t("The recording could not be read. Try again.");
+    return resolveMessage(msg("The recording could not be read. Try again."));
   },
   get transcription_failed() {
-    return t("The recording could not be transcribed. Try again.");
+    return resolveMessage(msg("The recording could not be transcribed. Try again."));
   },
   get transcription_key_rejected() {
-    return t(
-      "The transcription provider rejected the API key. Ask an admin to check AI → Voice input.",
-    );
+    return resolveMessage(msg("The transcription provider rejected the API key. Ask an admin to check AI → Voice input."));
   },
   get shared_api_key() {
-    return t("This key is shared with chat. Change it on AI → Models.");
+    return resolveMessage(msg("This key is shared with chat. Change it on AI → Models."));
   },
   get ai_key_missing() {
-    return t("Enter this provider's API key.");
+    return resolveMessage(msg("Enter this provider's API key."));
   },
   get ai_key_rejected() {
-    return t("The provider rejected this API key.");
+    return resolveMessage(msg("The provider rejected this API key."));
   },
   get ai_model_not_found() {
-    return t("This key has no access to this model. Choose another model.");
+    return resolveMessage(msg("This key has no access to this model. Choose another model."));
   },
   get ai_provider_unreachable() {
-    return t("Could not reach the provider. Check the API endpoint.");
+    return resolveMessage(msg("Could not reach the provider. Check the API endpoint."));
   },
   get usage_limit_reached() {
-    return t("Usage limit reached");
+    return resolveMessage(msg("Usage limit reached"));
   },
   get too_many_requests() {
-    return t("Too many attempts. Wait a minute and try again.");
+    return resolveMessage(msg("Too many attempts. Wait a minute and try again."));
   },
 };
 
@@ -257,10 +257,10 @@ export function messageFromBody(
     }
     if (code) return { message: code.replaceAll("_", " "), code };
   }
-  if (status === 401) return { message: t("You are signed out."), code: null };
-  if (status === 403) return { message: t("You don't have permission to do that."), code: null };
-  if (status === 404) return { message: t("Not found."), code: null };
-  return { message: t("The server answered {{status}}.", { status: status }), code: null };
+  if (status === 401) return { message: resolveMessage(msg("You are signed out.")), code: null };
+  if (status === 403) return { message: resolveMessage(msg("You don't have permission to do that.")), code: null };
+  if (status === 404) return { message: resolveMessage(msg("Not found.")), code: null };
+  return { message: resolveMessage(msg("The server answered {status}."), { status: status }), code: null };
 }
 
 /** A JSON body, or a Blob sent as is with its own type as content-type. */
@@ -290,7 +290,7 @@ export async function request<T>(
     signal?.throwIfAborted();
     throw new BaskuleApiError(
       0,
-      t("Can't reach the server. Check your connection and try again."),
+      resolveMessage(msg("Can't reach the server. Check your connection and try again.")),
       "network",
     );
   }
@@ -392,7 +392,7 @@ export function releaseDownloads(version: unknown): ReadonlyArray<Download> {
   const apps: ReadonlyArray<Omit<Download, "id" | "url" | "version">> = [
     {
       platform: "linux",
-      label: t("Baskule for Linux"),
+      label: resolveMessage(msg("Baskule for Linux")),
       format: "AppImage",
       fileName: "Baskule-x86_64.AppImage",
     },

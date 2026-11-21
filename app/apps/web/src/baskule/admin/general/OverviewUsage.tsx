@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: General → Overview: this month's usage at a glance, with a link to the dashboard.
 import { Link } from "@tanstack/react-router";
 import { formatCount, formatUsd } from "@t3tools/shared/usageFormat";
@@ -14,19 +15,19 @@ import { PageMessage, PageSection } from "../../views/BaskulePage";
 const loadThisMonth = () => usageApi.admin(periodRange("month", Date.now()));
 
 export function OverviewUsage() {
-  const t = useTranslation();
+  const t = useMessages();
   const usage = useApiResource(loadThisMonth);
   const totals = usage.data?.totals;
   return (
     <PageSection
-      title={t("Usage this month")}
+      title={t(msg("Usage this month"))}
       action={
         <Button
           variant="ghost"
           size="sm"
           render={<Link to="/admin/$section/$page" params={{ section: "ai", page: "usage" }} />}
         >
-          {t("Usage & limits")}
+          {t(msg("Usage & limits"))}
           <ChevronRightIcon />
         </Button>
       }
@@ -34,9 +35,9 @@ export function OverviewUsage() {
       {totals ? (
         <div className="grid grid-cols-3 divide-x divide-border/50">
           {[
-            { label: t("Cost"), value: formatUsd(totals.costUsd) },
-            { label: t("Tokens"), value: formatTokens(totals.tokens) },
-            { label: t("Active people"), value: formatCount(totals.activeUsers) },
+            { label: t(msg("Cost")), value: formatUsd(totals.costUsd) },
+            { label: t(msg("Tokens")), value: formatTokens(totals.tokens) },
+            { label: t(msg("Active people")), value: formatCount(totals.activeUsers) },
           ].map((stat) => (
             <div key={stat.label} className="flex min-w-0 flex-col gap-1 px-3 py-2.5 sm:px-4">
               <span className="text-xs text-muted-foreground">{stat.label}</span>

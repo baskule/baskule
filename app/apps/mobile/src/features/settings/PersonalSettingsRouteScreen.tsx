@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react-native";
+
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 
@@ -7,11 +8,11 @@ import { useAppearancePreferences } from "./appearance/AppearancePreferencesProv
 import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
-import { LanguageSetting } from "./LanguageSetting";
+import { LanguageSettingsSection } from "./SettingsLanguageRouteScreen";
 import { ToolCallsAppearanceSection } from "./appearance/sections/ToolCallsAppearanceSection";
 
 export function PersonalSettingsRouteScreen() {
-  const t = useTranslation();
+  const t = useMessages();
   const insets = useSafeAreaInsets();
   const { isReady, themeMode, setThemeIdForBothAppearances, setThemeMode } =
     useAppearancePreferences();
@@ -20,13 +21,13 @@ export function PersonalSettingsRouteScreen() {
     setThemeMode(mode);
   };
   const modes = [
-    ["system", t("System")],
-    ["light", t("Light")],
-    ["dark", t("Dark")],
+    ["system", t(msg("System"))],
+    ["light", t(msg("Light"))],
+    ["dark", t(msg("Dark"))],
   ] as const;
 
   return (
-    <SettingsScreen title={t("Appearance")}>
+    <SettingsScreen title={t(msg("Appearance"))}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -35,9 +36,11 @@ export function PersonalSettingsRouteScreen() {
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
         <SettingsSection
-          title={t("Theme")}
+          title={t(msg("Theme"))}
           footer={
-            themeMode === "system" ? t("Follows this device's light or dark setting.") : undefined
+            themeMode === "system"
+              ? t(msg("Follows this device's light or dark setting."))
+              : undefined
           }
         >
           {modes.map(([mode, label], index) => (
@@ -51,7 +54,7 @@ export function PersonalSettingsRouteScreen() {
             />
           ))}
         </SettingsSection>
-        <LanguageSetting />
+        <LanguageSettingsSection />
         <ToolCallsAppearanceSection />
       </ScrollView>
     </SettingsScreen>

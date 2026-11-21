@@ -1,6 +1,4 @@
-import { t } from "../../../../i18n";
-import { useTranslation } from "../../../../i18n";
-
+import { T } from "gt-react-native";
 import { Platform, ScrollView, type StyleProp, type TextStyle, View } from "react-native";
 
 import { AppText as Text } from "../../../../components/ui/AppText";
@@ -22,7 +20,6 @@ export function AppearancePreviewSeparator() {
 }
 
 export function TextAppearancePreview(props: { readonly fontSize: number }) {
-  const t = useTranslation();
   const sizes = resolveMarkdownFontSizes(props.fontSize);
 
   return (
@@ -31,20 +28,19 @@ export function TextAppearancePreview(props: { readonly fontSize: number }) {
         className="text-foreground"
         style={{ fontSize: sizes.m, lineHeight: sizes.bodyLineHeight }}
       >
-        {t("The quick brown fox jumps over the lazy dog.")}
+        <T>The quick brown fox jumps over the lazy dog.</T>
       </Text>
       <Text
         className="text-foreground-muted"
         style={{ fontSize: sizes.s, lineHeight: Math.round(sizes.s * 1.4) }}
       >
-        {t("Messages, labels, and headings scale with this size.")}
+        <T>Messages, labels, and headings scale with this size.</T>
       </Text>
     </View>
   );
 }
 
 export function TerminalAppearancePreview(props: { readonly fontSize: number }) {
-  const t = useTranslation();
   const { themeAppearance: scheme, themeId } = useAppearancePreferences();
   const theme = getMobileTerminalTheme(themeId, scheme);
   const lineHeight = Math.round(props.fontSize * 1.6);
@@ -62,35 +58,43 @@ export function TerminalAppearancePreview(props: { readonly fontSize: number }) 
     <View className="p-4">
       <Text style={span(theme.foreground)}>
         <Text style={span(theme.palette[2])}>→ </Text>
-        <Text style={span(theme.palette[6])}>{t("t3code")} </Text>
-        <Text style={span(theme.palette[4])}>{t("git:(")}</Text>
-        <Text style={span(theme.palette[1])}>{t("main")}</Text>
+        <Text style={span(theme.palette[6])}>t3code </Text>
+        <Text style={span(theme.palette[4])}>git:(</Text>
+        <Text style={span(theme.palette[1])}>main</Text>
         <Text style={span(theme.palette[4])}>)</Text>
         <Text style={span(theme.palette[3])}> ✗</Text>
-        <Text style={span(theme.foreground)}> {t("vpr dev")}</Text>
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- sample terminal output */}
+        <Text style={span(theme.foreground)}> vpr dev</Text>
       </Text>
       <Text style={span(theme.foreground)}>
-        <Text style={span(theme.palette[2])}>{t("VITE v7.1.1")}</Text>
-        <Text style={span(theme.mutedForeground)}> {t("ready in")}</Text>
-        <Text style={span(theme.foreground)}> {t("1.24s")}</Text>
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- sample terminal output */}
+        <Text style={span(theme.palette[2])}>VITE v7.1.1</Text>
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- sample terminal output */}
+        <Text style={span(theme.mutedForeground)}> ready in</Text>
+        <Text style={span(theme.foreground)}> 1.24s</Text>
       </Text>
       <Text style={span(theme.foreground)}>
         <Text style={span(theme.palette[2])}>→ </Text>
-        <Text style={span(theme.mutedForeground)}>{t("Local:")} </Text>
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- sample terminal output */}
+        <Text style={span(theme.mutedForeground)}>Local: </Text>
         <Text style={span(theme.palette[6], { textDecorationLine: "underline" })}>
           http://127.0.0.1:5173/
         </Text>
       </Text>
       <Text style={span(theme.foreground)}>
-        <Text style={span(theme.palette[2])}>{t("✓ 85 passed")}</Text>
-        <Text style={span(theme.palette[3])}> {t("△ 2 warnings")}</Text>
-        <Text style={span(theme.palette[1])}> {t("✗ 0 failed")}</Text>
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- sample terminal output */}
+        <Text style={span(theme.palette[2])}>✓ 85 passed</Text>
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- sample terminal output */}
+        <Text style={span(theme.palette[3])}> △ 2 warnings</Text>
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- sample terminal output */}
+        <Text style={span(theme.palette[1])}> ✗ 0 failed</Text>
       </Text>
       <Text style={span(theme.foreground)}>
         <Text style={span(theme.background, { backgroundColor: theme.palette[2] })}>
-          {t(" READY ")}
+          {" READY "}
         </Text>
-        <Text style={span(theme.mutedForeground)}> {t("watching for changes")}</Text>{" "}
+        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- sample terminal output */}
+        <Text style={span(theme.mutedForeground)}> watching for changes</Text>{" "}
         <Text style={span(theme.cursorForeground)}>▏</Text>
       </Text>
     </View>
@@ -110,13 +114,15 @@ interface CodePreviewLine {
 const CODE_PREVIEW_LINES: ReadonlyArray<CodePreviewLine> = [
   {
     id: "signature",
-    tokens: [{ text: "function", keyword: true }, { text: t(" formatUser(user) {") }],
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- sample code
+    tokens: [{ text: "function", keyword: true }, { text: " formatUser(user) {" }],
   },
   {
     id: "body",
     tokens: [
       { text: "  " },
       { text: "return", keyword: true },
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- sample code
       { text: " `${user.name} <${user.email}>` // demonstrates how long lines behave" },
     ],
   },

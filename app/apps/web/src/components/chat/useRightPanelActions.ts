@@ -1,5 +1,6 @@
-import { useTranslation } from "../../i18n";
-
+import { m } from "~/i18n/messages";
+import { msg } from "gt-react";
+import { errorDisplayMessage, thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { baskule } from "../../baskule/flags";
 import type { ToolCallDiffTarget } from "../../diffPanelStore";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -67,8 +68,6 @@ interface RightPanelActionsInput {
  * requests, device, and terminal tabs.
  */
 export function useRightPanelActions(input: RightPanelActionsInput) {
-  const t = useTranslation();
-
   const {
     threadDetailsAvailable,
     closeRightPanelSurface,
@@ -119,8 +118,8 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: t("Unable to open browser"),
-            description: error.message,
+            title: m(msg("Unable to open browser")),
+            description: errorDisplayMessage(error, m) ?? error.message,
           }),
         );
       }
@@ -257,8 +256,8 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: t("Failed to copy path"),
-          description: t("Clipboard API unavailable."),
+          title: m(msg("Failed to copy path")),
+          description: m(msg("Clipboard API unavailable.")),
         }),
       );
       return;
@@ -272,8 +271,8 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: t("Failed to copy path"),
-          description: error instanceof Error ? error.message : t("An error occurred."),
+          title: m(msg("Failed to copy path")),
+          description: thrownErrorMessage(error, m) ?? m(msg("An error occurred.")),
         }),
       );
     });

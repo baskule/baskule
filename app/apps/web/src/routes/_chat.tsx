@@ -1,6 +1,8 @@
+import { useComposerDraftStore } from "../composerDraftStore";
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 
 import { ThreadRouteView } from "../components/ThreadRouteView";
+import { GlobalVoiceInputIndicator } from "../components/chat/GlobalVoiceInputIndicator";
 import { isAppModalPage } from "../components/sidebar/mainAppLocation";
 import { SidebarInset } from "../components/ui/sidebar";
 import { resolveThreadRouteTarget } from "../threadRoutes";
@@ -11,6 +13,11 @@ import { useShownThreadRouteTarget } from "../hooks/useShownThreadRouteTarget";
 function ChatRouteLayout() {
   // Render both routes here so draft promotion keeps the same ChatView mounted.
   const { shownTarget, modalOpen } = useShownThreadRouteTarget();
+  const draftEnvironmentId = useComposerDraftStore((store) =>
+    shownTarget?.kind === "draft" ? store.getDraftSession(shownTarget.draftId)?.environmentId : undefined,
+  );
+  const environmentId =
+    shownTarget?.kind === "server" ? shownTarget.threadRef.environmentId : draftEnvironmentId;
   return (
     <>
       {shownTarget?.kind === "server" && !modalOpen ? (
@@ -24,6 +31,7 @@ function ChatRouteLayout() {
         <Outlet />
       )}
       {modalOpen ? <Outlet /> : null}
+      <GlobalVoiceInputIndicator environmentId={environmentId} hidden={modalOpen} />
     </>
   );
 }

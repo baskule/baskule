@@ -1,6 +1,4 @@
-import { useTranslation } from "../../i18n";
-
-import { pipe } from "effect/Function";
+import { useMessages, useGT } from "gt-react-native";
 import {
   SECRET_REQUEST_DEFAULT_PLACEHOLDER,
   secretRequestAnswerInput,
@@ -36,9 +34,10 @@ export function SecretRequestCard(props: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
   readonly iconColor: ColorValue;
 }) {
+  const m = useMessages();
   const { item, visibility } = props.projectedItem;
   if (item.type !== "secret_request") return null;
-  const display = secretRequestDisplay(item, visibility);
+  const display = secretRequestDisplay(item, visibility, m);
   if (display.kind === "pending") {
     return (
       <PendingSecretRequestForm
@@ -69,10 +68,11 @@ function PendingSecretRequestForm(props: {
   readonly item: SecretRequestItem;
   readonly iconColor: ColorValue;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const { item } = props;
   const answer = useAtomCommand(serverEnvironment.answerSecretRequest, {
-    label: t("answer secret request"),
+    label: "answer secret request",
     // The failure cause holds the request; keep it out of the console.
     reportFailure: false,
     reportDefect: false,
@@ -98,13 +98,12 @@ function PendingSecretRequestForm(props: {
       return;
     }
     if (!isAtomCommandInterrupted(result)) {
-      pipe(squashAtomCommandFailure(result), secretRequestFailureMessage, setError);
+      setError(secretRequestFailureMessage(squashAtomCommandFailure(result), m));
     }
   };
   const save = () => {
     void send({ type: "save", secret });
   };
-  const draft = secret;
   const link = secretRequestLink(item);
 
   return (
@@ -120,7 +119,7 @@ function PendingSecretRequestForm(props: {
       {link !== null ? (
         <View className="gap-1.5">
           <Button
-            label={`Open ${link.host}`}
+            label={gt("Open {host}", { host: link.host })}
             tone="secondary"
             fullWidth
             onPress={() => void tryOpenExternalUrl(link.href, "secret-request")}
@@ -135,7 +134,7 @@ function PendingSecretRequestForm(props: {
       ) : null}
       <SecretTextInput
         accessibilityLabel={item.label}
-        placeholder={item.placeholder ?? SECRET_REQUEST_DEFAULT_PLACEHOLDER}
+        placeholder={item.placeholder ?? m(SECRET_REQUEST_DEFAULT_PLACEHOLDER)}
         value={secret}
         onChangeText={setSecret}
         editable={!submitting}
@@ -151,10 +150,10 @@ function PendingSecretRequestForm(props: {
         </Text>
       ) : null}
       <Button
-        label={t("Save securely")}
+        label={gt("Save securely")}
         tone="primary"
         fullWidth
-        disabled={submitting || draft.trim().length === 0}
+        disabled={submitting || secret.trim().length === 0}
         onPress={save}
       />
       <View className="flex-row items-center justify-between gap-2">
@@ -166,11 +165,11 @@ function PendingSecretRequestForm(props: {
             type="monochrome"
           />
           <Text className="flex-1 font-sans text-xs text-foreground-muted">
-            {secretRequestPrivacyNote(item)}
+            {secretRequestPrivacyNote(item, m)}
           </Text>
         </View>
         <Button
-          label={t("Decline")}
+          label={gt("Decline", { $context: "verb, refuses the secret request" })}
           tone="text"
           disabled={submitting}
           onPress={() => void send({ type: "decline" })}

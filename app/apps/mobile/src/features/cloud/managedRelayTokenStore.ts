@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -41,10 +39,7 @@ export class ManagedRelayTokenStoreError extends Schema.TaggedError<ManagedRelay
   },
 ) {
   override get message(): string {
-    return t(
-      'Managed relay token store operation "{{operation}}" failed for key "{{storageKey}}".',
-      { operation: this.operation, storageKey: this.storageKey },
-    );
+    return `Managed relay token store operation "${this.operation}" failed for key "${this.storageKey}".`;
   }
 }
 

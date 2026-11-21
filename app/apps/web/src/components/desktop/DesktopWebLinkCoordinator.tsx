@@ -1,5 +1,5 @@
-import { useTranslation } from "../../i18n";
-
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m } from "~/i18n/messages";
 import { baskule } from "../../baskule/flags";
 import { BaskuleDesktopLinks } from "../../baskule/views/BaskuleDesktopLinks";
 
@@ -14,7 +14,9 @@ import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
 import { readPairingAppLink, resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import { useRouter } from "@tanstack/react-router";
 
+import { useGT } from "gt-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+
 import { openFileInPreview, openUrlInPreview } from "../../browser/openFileInPreview";
 import { isPreviewAvailableFor } from "../../browser/previewRuntime";
 import { requestConfirmDialog } from "../../confirmDialog";
@@ -66,8 +68,8 @@ export function DesktopWebLinkCoordinator() {
 }
 
 function UpstreamDesktopWebLinkCoordinator() {
-  const t = useTranslation();
   const router = useRouter();
+  const gt = useGT();
   const primaryEnvironment = usePrimaryEnvironment();
   const { scratchEnvironmentId, openScratchProject } = useScratchProject();
   const openThread = useNewThreadHandler();
@@ -93,15 +95,15 @@ function UpstreamDesktopWebLinkCoordinator() {
 
   const reportFailure = (url: string, description = url) =>
     toastManager.add(
-      stackedThreadToast({ type: "error", title: t("Could not open the link"), description }),
+      stackedThreadToast({ type: "error", title: gt("Could not open the link"), description }),
     );
 
   const reportPairingFailure = (error: unknown) =>
     toastManager.add(
       stackedThreadToast({
         type: "error",
-        title: t("Could not add backend"),
-        description: error instanceof Error ? error.message : t("Failed to add backend."),
+        title: gt("Could not add backend"),
+        description: thrownErrorMessage(error, m) ?? gt("Failed to add backend."),
       }),
     );
 
@@ -118,8 +120,7 @@ function UpstreamDesktopWebLinkCoordinator() {
       return;
     }
     const confirmed =
-      (await requestConfirmDialog(t("Add the backend at {{origin}}?", { origin: origin }))) ??
-      false;
+      (await requestConfirmDialog(gt("Add the backend at {origin}?", { origin }))) ?? false;
     if (!confirmed) return;
     const result = await connectPairingEnvironment({ pairingUrl });
     if (result._tag === "Failure") {
@@ -129,8 +130,8 @@ function UpstreamDesktopWebLinkCoordinator() {
     pairedUrlsRef.current.add(pairingUrl);
     toastManager.add({
       type: "success",
-      title: t("Backend added"),
-      description: t("The environment is saved and will reconnect on app startup."),
+      title: gt("Backend added"),
+      description: gt("The environment is saved and will reconnect on app startup."),
     });
   };
 
@@ -140,7 +141,7 @@ function UpstreamDesktopWebLinkCoordinator() {
       reportFailure(url);
       return null;
     }
-    const project = await openScratchProject(environmentId, t("Could not open the link"));
+    const project = await openScratchProject(environmentId, gt("Could not open the link"));
     if (!project) return null;
     const opened = await openThread(scopeProjectRef(project.environmentId, project.id));
     if (!opened) {
@@ -184,7 +185,7 @@ function UpstreamDesktopWebLinkCoordinator() {
     }
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
-      reportFailure(url, error instanceof Error ? error.message : url);
+      reportFailure(url, thrownErrorMessage(error, m) ?? url);
     }
   });
 

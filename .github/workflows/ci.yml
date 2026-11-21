@@ -48,6 +48,12 @@ jobs:
         run: |
           git fetch origin "$BASE_SHA" --depth=1
           node app/scripts/generate-compatibility.ts guard "$BASE_SHA"
+      - name: Check translation catalogs
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          source scripts/env.sh
+          cd app
+          pnpm exec vp run i18n:check 2>&1 | tee ../.run/evidence/ci-i18n.log
       - name: harness
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: scripts/ci/check.sh harness 2>&1 | tee .run/evidence/ci-harness.log

@@ -1,5 +1,5 @@
-import { useTranslation } from "../../i18n";
-
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m } from "~/i18n/messages";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   getAddProjectInitialQuery,
@@ -20,7 +20,9 @@ import { type NewThreadLink, type PromptLinkRepository } from "@t3tools/shared/p
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation } from "@tanstack/react-router";
 
+import { T, useGT } from "gt-react";
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
+
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { isElectron } from "~/env";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
@@ -57,8 +59,9 @@ type LinkLaunch =
 const openedLinkKeys = new Set<string>();
 
 export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
-  const t = useTranslation();
   const locationKey = useLocation({ select: (location) => location.state.__TSR_key ?? "" });
+  const gt = useGT();
+
   const ready = useAtomValue(allReachableShellsLiveAtom);
   const projects = useProjects();
   const threads = useThreadShells();
@@ -96,7 +99,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
       replace: true,
     }).catch(() => null);
     if (opened === null) {
-      setState({ status: "failed", message: t("T3 Code could not open a new thread.") });
+      setState({ status: "failed", message: gt("T3 Code could not open a new thread.") });
       return;
     }
     setState({ status: "opened" });
@@ -119,8 +122,14 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
       if (resolved === null || !resolved.exact) {
         notes.push(
           resolved === null
-            ? `The link asked for ${link.provider}, which is not set up here, so your default model is used.`
-            : `The link asked for ${link.model}, which ${link.provider} does not offer here, so its default model is used.`,
+            ? gt(
+                "The link asked for {provider}, which is not set up here, so your default model is used.",
+                { provider: link.provider },
+              )
+            : gt(
+                "The link asked for {model}, which {provider} does not offer here, so its default model is used.",
+                { model: link.model, provider: link.provider },
+              ),
         );
       }
     }
@@ -139,7 +148,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
     if (project === null) {
       setState({
         status: "failed",
-        message: t("None of your machines can start a thread without a project right now."),
+        message: gt("None of your machines can start a thread without a project right now."),
       });
       return;
     }
@@ -159,7 +168,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
     if (environmentId === null || serverConfig === null || newProjectsRoot === null) {
       setState({
         status: "failed",
-        message: t(
+        message: gt(
           "This machine cannot clone from a link. Update T3 Code on it, or clone the repository from the command palette.",
         ),
       });
@@ -189,8 +198,8 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: t("Clone failed"),
-            description: error instanceof Error ? error.message : t("An error occurred."),
+            title: gt("Clone failed"),
+            description: thrownErrorMessage(error, m) ?? gt("An error occurred."),
           }),
         );
       }
@@ -204,7 +213,7 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
     if (project === null) {
       setState({
         status: "failed",
-        message: t("The clone started, but its project did not appear."),
+        message: gt("The clone started, but its project did not appear."),
       });
       return;
     }
@@ -245,10 +254,10 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
 
   switch (state.status) {
     case "opening":
-      return <LinkPage title={t("Opening the link...")} />;
+      return <LinkPage title={gt("Opening the link...")} />;
     case "opened":
       return (
-        <LinkPage title={t("This link is open")}>
+        <LinkPage title={gt("This link is open")}>
           <Button
             size="sm"
             variant="outline"
@@ -258,26 +267,29 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
               setState({ status: "opening" });
             }}
           >
-            {t("Open it again")}
+            <T>Open it again</T>
           </Button>
         </LinkPage>
       );
     case "failed":
       return (
-        <LinkPage title={state.title ?? t("Could not open the link")} description={state.message} />
+        <LinkPage
+          title={state.title ?? gt("Could not open the link")}
+          description={state.message}
+        />
       );
     case "missing-repository": {
       const name = `${state.repository.owner}/${state.repository.name}`;
       return (
         <LinkPage
-          title={t("You don't have {{name}}", { name: name })}
-          description={t("Clone it to work on it here, or start without a project.")}
+          title={gt("You don't have {repository}", { repository: name })}
+          description={gt("Clone it to work on it here, or start without a project.")}
         >
           <Button size="sm" onClick={() => void cloneRepository(state.repository)}>
-            {t("Clone")} {name}
+            {gt("Clone {repository}", { repository: name })}
           </Button>
           <Button size="sm" variant="outline" onClick={openWithoutProject}>
-            {t("Use without project")}
+            <T>Use without project</T>
           </Button>
         </LinkPage>
       );

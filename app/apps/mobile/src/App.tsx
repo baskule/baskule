@@ -1,14 +1,14 @@
 import { clearSentImageHandoffs } from "./lib/sentImageHandoff";
-import { languageReady, refreshLanguage } from "./languagePreferences";
-import { useLocale } from "./i18n";
+
 import { installPermissionUpdateNotice } from "./features/connection/permissionUpdateNotice";
 import { installComposerAttachmentUploads } from "./state/composer-attachment-uploads";
 import { installThreadOutboxDelivery } from "./state/threadOutboxDelivery";
 import * as Linking from "expo-linking";
 import * as SplashScreen from "expo-splash-screen";
 import { requireNativeModule } from "expo";
+import { useLocale } from "gt-react-native";
 import { useEffect, useRef, useState } from "react";
-import { AppState, Modal, Platform, StatusBar } from "react-native";
+import { Modal, Platform, StatusBar } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -41,6 +41,7 @@ import {
 } from "./features/agent-awareness/notificationNavigation";
 import {
   installAppShortcuts,
+  republishAppShortcuts,
   recordAppShortcutNavigationState,
 } from "./features/shortcuts/appShortcutsRuntime";
 import {
@@ -49,6 +50,8 @@ import {
   useAppearancePreferences,
 } from "./features/settings/appearance/AppearancePreferencesProvider";
 import { RootStack, rootPathnameFromState, workspaceLocationFromState } from "./Stack";
+import { I18nProvider } from "./i18n/I18nProvider";
+import { DEFAULT_LOCALE } from "./i18n/locales";
 import { appAtomRegistry } from "./state/atom-registry";
 import { subscribeComposerDraftModelReconciliation } from "./state/use-composer-drafts";
 import { environmentThreadShells, threadEnvironment } from "./state/threads";
@@ -208,13 +211,6 @@ function handleNavigationReady(): void {
 
 declare const module: { readonly hot?: FoundationHotModule } | undefined;
 
-function installLanguageRefresh(): () => void {
-  const subscription = AppState.addEventListener("change", (state) => {
-    if (state === "active") void refreshLanguage();
-  });
-  return () => subscription.remove();
-}
-
 const appServiceDisposers = [
   installUiRuntimeMemoryWarningGc(),
   subscribeComposerDraftModelReconciliation({
@@ -225,7 +221,6 @@ const appServiceDisposers = [
     pendingThreadIdsAtom: threadEnvironment.pendingThreadIdsAtom,
   }),
   installAppearanceRuntime(),
-  installLanguageRefresh(),
   installPermissionUpdateNotice(),
   installThreadOutboxDelivery(),
   installComposerAttachmentUploads(),
@@ -269,20 +264,33 @@ function SplashScreenCoordinator() {
     if (!canHide || hidden.current) return;
     hidden.current = true;
     settleLaunchSplashHomeRows();
-    void languageReady.then(() => SplashScreen.hide());
+    void SplashScreen.hide();
   }, [isReady, shellCachesRead, homeRowsPending, waitEnded]);
 
   return null;
 }
 
-export default function App() {
-  useLocale();
+function QuickActionsLanguage() {
+  const locale = useLocale();
+  // Shortcuts published before the catalog loaded are English.
+  const publishedLocale = useRef(DEFAULT_LOCALE);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the launcher keeps quick action titles from the last publish, so a language switch republishes them
+  useEffect(() => {
+    if (Platform.OS !== "android" || publishedLocale.current === locale) return;
+    publishedLocale.current = locale;
+    republishAppShortcuts();
+  }, [locale]);
+  return null;
+}
 
+export default function App() {
   return (
     <RegistryContext.Provider value={appAtomRegistry}>
       <CloudAuthProvider>
         <AppearancePreferencesProvider>
-          <AppContent />
+          <I18nProvider>
+            <AppContent />
+          </I18nProvider>
         </AppearancePreferencesProvider>
       </CloudAuthProvider>
     </RegistryContext.Provider>
@@ -369,6 +377,7 @@ function AppContent() {
 
   return (
     <>
+      <QuickActionsLanguage />
       <SplashScreenCoordinator />
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>

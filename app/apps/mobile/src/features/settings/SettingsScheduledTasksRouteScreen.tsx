@@ -1,14 +1,13 @@
+import { msg, T, useGT, useLocale, useMessages, Var } from "gt-react-native";
+import { managedCapabilityDenial } from "@t3tools/client-runtime/contract-labels";
 import { useBaskuleSession } from "../../baskule/session";
 import { BASKULE_FLAGS } from "../../baskule/flags";
-import { useSpaceEnvironments } from "../../baskule/spaces";
-import { t, useTranslation } from "../../i18n";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import {
   AuthOrchestrationOperateScope,
   clampManagedRuntimeMode,
-  managedCapabilityDenial,
   resolveProjectProviderInstanceEnabled,
 } from "@t3tools/contracts";
 import { readEnvironmentScope } from "../../state/session";
@@ -43,7 +42,9 @@ import {
   WEBHOOK_FILTER_OPS,
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
+import { scheduledTaskWorktreeBaseRef } from "@t3tools/client-runtime/scheduled-task-worktree";
 import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
+import type { MessageResolver } from "../../i18n/messages";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -69,6 +70,7 @@ import { buildModelOptions } from "../../lib/modelOptions";
 import { withImplicitFastModeSelection } from "../../lib/providerOptions";
 import { useProjects, useEnvironmentServerConfig } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
+import { usePaginatedBranches } from "../../state/queries";
 import { projectEnvironment } from "../../state/projects";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -113,72 +115,44 @@ type ScheduledTaskRoutes = {
   SettingsScheduledTaskThread: undefined;
 };
 
-const DAYS = [
-  {
-    index: 1,
-    get label() {
-      return t("Mon");
-    },
-  },
-  {
-    index: 2,
-    get label() {
-      return t("Tue");
-    },
-  },
-  {
-    index: 3,
-    get label() {
-      return t("Wed");
-    },
-  },
-  {
-    index: 4,
-    get label() {
-      return t("Thu");
-    },
-  },
-  {
-    index: 5,
-    get label() {
-      return t("Fri");
-    },
-  },
-  {
-    index: 6,
-    get label() {
-      return t("Sat");
-    },
-  },
-  {
-    index: 0,
-    get label() {
-      return t("Sun");
-    },
-  },
-] as const;
+const DAYS = [1, 2, 3, 4, 5, 6, 0].map((index) => ({ index }));
+
+// 2024-01-07 was a Sunday, so day index 0 to 6 maps onto Sunday to Saturday.
+function weekdayLabel(index: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }).format(
+    Date.UTC(2024, 0, 7 + index),
+  );
+}
 
 const THREAD_MODE_LABELS: Record<ScheduledTaskThreadMode, string> = {
-  new_thread: "New thread each run",
-  continue: "One thread, same conversation",
-  fresh_session: "One thread, fresh session",
+  new_thread: msg("New thread each run"),
+  continue: msg("One thread, same conversation"),
+  fresh_session: msg("One thread, fresh session"),
 };
 
-function describeSchedule(task: ScheduledTask, timeZone?: string): string {
-  if (task.schedule.type === "webhook") return t("On webhook");
+function describeSchedule(
+  task: ScheduledTask,
+  timeZone: string | undefined,
+  resolve: MessageResolver,
+  locale: string,
+): string {
+  if (task.schedule.type === "webhook") return resolve(msg("On webhook"));
   if (task.schedule.type === "once") {
     const runAt = new Date(task.schedule.runAt);
-    return `Once, ${formatRunAtDate(runAt)} at ${formatRunAtTime(runAt)}`;
+    return resolve(
+      msg("Once, {date} at {time}", { date: formatRunAtDate(runAt), time: formatRunAtTime(runAt) }),
+    );
   }
-  if (task.schedule.type === "interval") return formatScheduledTaskInterval(task.schedule.everyMs);
+  if (task.schedule.type === "interval")
+    return formatScheduledTaskInterval(task.schedule.everyMs, resolve);
   const days = task.schedule.weekdays?.length
-    ? repeatLabel(task.schedule.weekdays)
-    : t("Every day");
+    ? repeatLabel(task.schedule.weekdays, resolve, locale)
+    : resolve(msg("Every day"));
   const zone = scheduleTimeZoneLabel(timeZone, task.nextRunAt);
-  return t("{{days}} at {{value2}}", {
-    days,
-    value2: `${formatTime(task.schedule.timeOfDay)}${zone === undefined ? "" : ` ${zone}`}`,
-  });
+  const time = formatTime(task.schedule.timeOfDay);
+  return zone === undefined
+    ? resolve(msg("{days} at {time}", { days, time }))
+    : resolve(msg("{days} at {time} {zone}", { days, time, zone }));
 }
 
 // Baskule spaces run fixed-time schedules on the server clock, which is UTC (the web says so too).
@@ -210,14 +184,23 @@ function timePickerValue(value: string): Date {
   return time;
 }
 
-function repeatLabel(weekdays: ReadonlyArray<number>): string {
+function isWeekdays(weekdays: ReadonlyArray<number>): boolean {
   const days = new Set(weekdays);
-  if (days.size === 7) return t("Every day");
-  if (days.size === 5 && [1, 2, 3, 4, 5].every((day) => days.has(day))) return t("Weekdays");
+  return days.size === 5 && [1, 2, 3, 4, 5].every((day) => days.has(day));
+}
+
+function repeatLabel(
+  weekdays: ReadonlyArray<number>,
+  resolve: MessageResolver,
+  locale: string,
+): string {
+  const days = new Set(weekdays);
+  if (days.size === 7) return resolve(msg("Every day"));
+  if (isWeekdays(weekdays)) return resolve(msg("Weekdays"));
   return (
     DAYS.filter((day) => days.has(day.index))
-      .map((day) => day.label)
-      .join(", ") || t("Choose days")
+      .map((day) => weekdayLabel(day.index, locale))
+      .join(", ") || resolve(msg("Choose days"))
   );
 }
 
@@ -260,6 +243,7 @@ function SelectRow(props: {
   readonly onSelect: (id: string) => void;
   readonly borderTop?: boolean;
 }) {
+  const gt = useGT();
   const value = (
     <View className="min-w-0 flex-1 flex-row items-center justify-end gap-2">
       {props.valueIcon}
@@ -295,7 +279,7 @@ function SelectRow(props: {
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t("{{label}}, {{value}}", { label: props.label, value: props.value })}
+        accessibilityLabel={gt("{label}, {value}", { label: props.label, value: props.value })}
         className={
           props.borderTop
             ? "min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
@@ -324,7 +308,8 @@ function WebhookFilterRows(props: {
     update: (filters: ReadonlyArray<WebhookFilterDraft>) => ReadonlyArray<WebhookFilterDraft>,
   ) => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const update = (id: WebhookFilterDraft["id"], patch: Partial<WebhookFilterDraft>) =>
     props.onChange((filters) =>
       filters.map((filter) => (filter.id === id ? { ...filter, ...patch } : filter)),
@@ -335,11 +320,13 @@ function WebhookFilterRows(props: {
         <View key={filter.id}>
           <View className="flex-row items-center gap-3 border-t border-border-subtle px-4 pt-3">
             <Text className="min-w-0 flex-1 text-sm text-foreground-muted">
-              {t("Filter")} {index + 1}
+              <T>
+                Filter <Var>{index + 1}</Var>
+              </T>
             </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t("Remove filter {{value1}}", { value1: index + 1 })}
+              accessibilityLabel={gt("Remove filter {number}", { number: index + 1 })}
               disabled={props.disabled}
               hitSlop={8}
               onPress={() =>
@@ -351,18 +338,18 @@ function WebhookFilterRows(props: {
             </Pressable>
           </View>
           <FormField
-            label={t("Path")}
+            label={gt("Path", { $context: "webhook payload field path" })}
             value={filter.path}
             placeholder="body.action"
             disabled={props.disabled}
             onChange={(path) => update(filter.id, { path })}
           />
           <SelectRow
-            label={t("Test")}
-            value={WEBHOOK_FILTER_OPS.find((option) => option.op === filter.op)?.label ?? ""}
+            label={gt("Test", { $context: "noun, the comparison a webhook filter applies" })}
+            value={m(WEBHOOK_FILTER_OPS.find((option) => option.op === filter.op)?.label ?? "")}
             actions={WEBHOOK_FILTER_OPS.map((option) => ({
               id: option.op,
-              title: option.label,
+              title: m(option.label),
               state: option.op === filter.op ? ("on" as const) : undefined,
             }))}
             onSelect={(id) => {
@@ -372,9 +359,10 @@ function WebhookFilterRows(props: {
           />
           {filter.op === "exists" ? null : (
             <FormField
-              label={filter.op === "in" ? t("Values, comma-separated") : t("Value")}
+              label={filter.op === "in" ? gt("Values, comma-separated") : gt("Value")}
               value={filter.value}
-              placeholder={filter.op === "in" ? t("opened, reopened") : t("opened")}
+              // oxlint-disable-next-line t3code/no-untranslated-copy -- webhook action values
+              placeholder={filter.op === "in" ? "opened, reopened" : "opened"}
               disabled={props.disabled}
               onChange={(value) => update(filter.id, { value })}
             />
@@ -395,16 +383,17 @@ function WebhookFilterRows(props: {
           className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
         >
           <Text textRole="body" className="min-w-0 flex-1 text-foreground">
-            {t("Add filter")}
+            <T>Add filter</T>
           </Text>
           <SymbolView name="plus" size={16} tintColorClassName="accent-icon" />
         </Pressable>
       ) : null}
       {props.filters.length > 0 ? (
         <Text className="px-4 pb-3 text-sm text-foreground-muted">
-          {t(
-            "Runs only when every filter matches. Other requests are logged as filtered. Separate “is one of” values with commas; a value can't contain a comma.",
-          )}
+          <T>
+            Runs only when every filter matches. Other requests are logged as filtered. Separate “is
+            one of” values with commas; a value can't contain a comma.
+          </T>
         </Text>
       ) : null}
     </>
@@ -418,10 +407,11 @@ function PickerRow(props: {
   readonly disabled?: boolean;
   readonly borderTop?: boolean;
 }) {
+  const gt = useGT();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={t("{{label}}, {{value}}", { label: props.label, value: props.value })}
+      accessibilityLabel={gt("{label}, {value}", { label: props.label, value: props.value })}
       accessibilityState={{ disabled: props.disabled }}
       disabled={props.disabled}
       onPress={props.onPress}
@@ -452,7 +442,7 @@ function PickerRow(props: {
 }
 
 export function SettingsScheduledTasksRouteScreen() {
-  const t = useTranslation();
+  const gt = useGT();
   const [now, setNow] = useState(Date.now);
   useFocusEffect(() => {
     const updateNow = () => setNow(Date.now());
@@ -485,10 +475,10 @@ export function SettingsScheduledTasksRouteScreen() {
 
   return (
     <SettingsScreen
-      title={t("Scheduled tasks")}
+      title={gt("Scheduled tasks")}
       actions={[
         {
-          accessibilityLabel: t("New task"),
+          accessibilityLabel: gt("New task"),
           icon: "plus",
           disabled: visibleEnvironments.length === 0,
           onPress: newTask,
@@ -533,8 +523,8 @@ export function SettingsScheduledTasksRouteScreen() {
         ) : (
           <Text className="px-2 text-base text-foreground-muted">
             {availableTargets.length === 0
-              ? t("Connect an environment to view and create scheduled tasks.")
-              : t("No environments match these filters. Change the filter above.")}
+              ? gt("Connect an environment to view and create scheduled tasks.")
+              : gt("No environments match these filters. Change the filter above.")}
           </Text>
         )}
       </ScrollView>
@@ -545,23 +535,30 @@ export function SettingsScheduledTasksRouteScreen() {
 // The "New task" action and takeScheduledTaskNewLink clear the editor before
 // this screen opens, so it starts from the default target.
 export function SettingsScheduledTaskNewRouteScreen() {
-  const t = useTranslation();
-  return <SettingsScheduledTaskEditorScreen title={t("New scheduled task")} />;
+  const gt = useGT();
+  return <SettingsScheduledTaskEditorScreen title={gt("New scheduled task")} />;
 }
 
 export function SettingsScheduledTaskEditRouteScreen() {
-  const t = useTranslation();
-  return <SettingsScheduledTaskEditorScreen title={t("Edit scheduled task")} />;
+  const gt = useGT();
+  return <SettingsScheduledTaskEditorScreen title={gt("Edit scheduled task")} />;
 }
 
 function SettingsScheduledTaskEditorScreen({ title }: { readonly title: string }) {
-  const t = useTranslation();
-  const { editor, voiceOwnerKey, readEditor, setEditor, hasChanges, draftForEnvironment } =
-    useScheduledTaskEditor();
+  const gt = useGT();
+  const {
+    editor,
+    voiceOwnerKey,
+    readEditor,
+    setEditor,
+    hasChanges,
+    saving,
+    setSaving,
+    draftForEnvironment,
+  } = useScheduledTaskEditor();
   const { availableTargets } = useSettingsEnvironmentFilter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const [saving, setSaving] = useState(false);
   // Set once the save lands, so the removal guard lets the editor close.
   const saved = useRef(false);
   const ownerKey = editor ? `${voiceOwnerKey}:${editor.environmentId}` : null;
@@ -607,13 +604,13 @@ function SettingsScheduledTaskEditorScreen({ title }: { readonly title: string }
       return;
     }
     if (saving) {
-      Dialog.alert(t("Saving task"), t("Wait for the task to finish saving before leaving."));
+      Dialog.alert(gt("Saving task"), gt("Wait for the task to finish saving before leaving."));
       return;
     }
-    Dialog.alert(t("Discard changes?"), t("Your unsaved changes will be lost."), [
-      { text: t("Keep editing"), style: "cancel" },
+    Dialog.alert(gt("Discard changes?"), gt("Your unsaved changes will be lost."), [
+      { text: gt("Keep editing"), style: "cancel" },
       {
-        text: t("Discard changes"),
+        text: gt("Discard changes"),
         style: "destructive",
         onPress: () => {
           if (voiceInput.isBusy) voiceInput.cancel();
@@ -701,8 +698,8 @@ function SettingsScheduledTaskEditorScreen({ title }: { readonly title: string }
         ) : (
           <Text className="px-2 text-base text-foreground-muted">
             {availableTargets.length === 0
-              ? t("Connect an environment to create a scheduled task.")
-              : t(
+              ? gt("Connect an environment to create a scheduled task.")
+              : gt(
                   "No environments match the current filters. Change the filters to create a task.",
                 )}
           </Text>
@@ -739,7 +736,9 @@ function TaskForm({
   readonly onSaved: () => void;
   readonly onChangeEnvironment: (target: SettingsTarget) => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
+  const locale = useLocale();
   const { readEditor } = useScheduledTaskEditor();
   const navigation = useNavigation<NativeStackNavigationProp<ScheduledTaskRoutes>>();
   const tasks = useEnvironmentQuery(
@@ -755,6 +754,21 @@ function TaskForm({
           project.id === draft.task?.projectId),
     )
     .sort((left, right) => Number(right.pinnedAt != null) - Number(left.pinnedAt != null));
+  const automaticBaseRef = draft.workspace === "worktree" && !draft.baseRef.trim();
+  const automaticBaseRefCwd = automaticBaseRef
+    ? (projects.find((project) => project.id === draft.projectId)?.workspaceRoot ?? null)
+    : null;
+  const automaticBaseRefs = usePaginatedBranches({
+    environmentId,
+    cwd: automaticBaseRefCwd,
+    query: "",
+  });
+  const worktreeBaseRef = scheduledTaskWorktreeBaseRef(draft.baseRef, automaticBaseRefs.refs);
+  // Until the project's refs load, the automatic base would save as `main`. A failed lookup falls back to it.
+  const automaticBaseRefLoading =
+    automaticBaseRefCwd !== null &&
+    automaticBaseRefs.data === null &&
+    automaticBaseRefs.error === null;
   const config = useEnvironmentServerConfig(environmentId);
   const destinationLabel = useScheduledTaskDestinationLabel(environmentId, draft.threadId);
   const boundThread = useScheduledTaskThread(environmentId, draft.threadId);
@@ -763,12 +777,12 @@ function TaskForm({
     draft.threadId === null ? draft.modelSelection : (boundThread?.modelSelection ?? null);
   const modelOptions = buildModelOptions(config, null, undefined, draft.projectId);
   // Existing webhook tasks keep the option so they can still switch to a timer.
-  const webhookDenial = managedCapabilityDenial(config?.managedPolicy, "webhookTasks");
+  const webhookDenial = managedCapabilityDenial(config?.managedPolicy, "webhookTasks", m);
   const canOperate = useAtomValue(
     serverEnvironment.upsertScheduledTask.permissionAtom(environmentId),
   );
   const upsert = useAtomCommand(serverEnvironment.upsertScheduledTask, {
-    label: t("scheduled task upsert"),
+    label: "scheduled task upsert",
     reportFailure: false,
   });
   const openScratch = useAtomCommand(projectEnvironment.openScratch, { reportFailure: false });
@@ -812,7 +826,8 @@ function TaskForm({
       saving ||
       dictationPending ||
       taskMissing ||
-      environmentUnavailable
+      environmentUnavailable ||
+      automaticBaseRefLoading
     )
       return;
     // Preserve signatures edited on other clients by sending the task's current value.
@@ -827,30 +842,32 @@ function TaskForm({
       parseMaxDeliveryAge(draft.schedule.maxDeliveryAgeMinutes) === undefined
     ) {
       Dialog.alert(
-        t("Invalid age limit"),
-        t(
-          "Enter whole minutes from 1 to {{MAX_WEBHOOK_DELIVERY_AGE_MINUTES}}, or leave it blank.",
-          { MAX_WEBHOOK_DELIVERY_AGE_MINUTES: MAX_WEBHOOK_DELIVERY_AGE_MINUTES },
-        ),
+        gt("Invalid age limit"),
+        gt("Enter whole minutes from 1 to {max}, or leave it blank.", {
+          max: MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
+        }),
       );
       return;
     }
     if (draft.schedule.mode === "once" && !offersOnce) {
       Dialog.alert(
-        "Once is not available here",
-        "This environment runs an older T3 Code. Update it to schedule a one-time task, or pick another schedule.",
+        gt("Once is not available here"),
+        gt(
+          "This environment runs an older {product}. Update it to schedule a one-time task, or pick another schedule.",
+          { product: "T3 Code" },
+        ),
       );
       return;
     }
-    const parsedFilters = parseWebhookFilterDrafts(draft.schedule.filters);
+    const parsedFilters = parseWebhookFilterDrafts(draft.schedule.filters, m);
     if (draft.schedule.mode === "webhook" && "error" in parsedFilters) {
-      Dialog.alert(t("Invalid filter"), parsedFilters.error);
+      Dialog.alert(gt("Invalid filter"), parsedFilters.error);
       return;
     }
     if (draft.schedule.mode === "webhook" && schedule === null) {
       Dialog.alert(
-        t("Invalid webhook settings"),
-        t(
+        gt("Invalid webhook settings"),
+        gt(
           "Each dedupe key must contain a valid request placeholder. The coalesce window must be whole seconds from 10 to 3600, or blank.",
         ),
       );
@@ -867,10 +884,10 @@ function TaskForm({
       (workspaceStrategy.type === "existing_worktree" && !workspaceStrategy.worktreePath)
     ) {
       Dialog.alert(
-        t("Incomplete task"),
+        gt("Incomplete task"),
         BASKULE_FLAGS.projects
-          ? t("Add a name, prompt, project, model, valid schedule, and checkout path if needed.")
-          : t("Add a name, prompt, and valid schedule."),
+          ? gt("Add a name, prompt, project, model, valid schedule, and checkout path if needed.")
+          : gt("Add a name, prompt, and valid schedule."),
       );
       return;
     }
@@ -896,13 +913,13 @@ function TaskForm({
     if (!mounted.current) return finish();
     if (target._tag !== "ready") {
       finish();
-      if (scratch.failure) failure(t("Could not save task"), scratch.failure);
+      if (scratch.failure) failure(gt("Could not save task"), scratch.failure);
       else if (target._tag === "project-unavailable")
-        Dialog.alert(t("Project unavailable"), t("Choose a project in this environment."));
+        Dialog.alert(gt("Project unavailable"), gt("Choose a project in this environment."));
       else
         Dialog.alert(
-          t("Space not ready"),
-          t("This space is still starting. Try again in a moment."),
+          gt("Space not ready"),
+          gt("This space is still starting. Try again in a moment."),
         );
       return;
     }
@@ -916,7 +933,16 @@ function TaskForm({
       enabled: draft.enabled,
       threadId: draft.threadId,
       ...(offersThreadModes ? { threadMode: draft.threadMode } : {}),
-      workspaceStrategy,
+      workspaceStrategy:
+        draft.workspace === "root"
+          ? { type: "root" }
+          : draft.workspace === "existing_worktree"
+            ? { type: "existing_worktree", worktreePath: draft.checkoutPath.trim() }
+            : {
+                type: "worktree",
+                baseRef: worktreeBaseRef,
+                startFromOrigin: draft.startFromOrigin,
+              },
       // Tasks have no mode picker; a mode above the administrator's ceiling is refused.
       runtimeMode:
         clampManagedRuntimeMode(config?.managedPolicy, draft.runtimeMode) ?? draft.runtimeMode,
@@ -926,10 +952,10 @@ function TaskForm({
     const result = await upsert({ environmentId, input });
     if (result._tag === "Failure") {
       finish();
-      failure(t("Could not save task"), result);
+      failure(gt("Could not save task"), result);
       return;
     }
-    setSaving(false);
+    finish();
     onSaved();
   };
 
@@ -943,21 +969,21 @@ function TaskForm({
       >
         {taskMissing ? (
           <Text className="px-1 text-base text-danger-foreground">
-            {t("This task no longer exists.")}
+            <T>This task no longer exists.</T>
           </Text>
         ) : null}
 
         {environmentUnavailable ? (
           <Text className="px-1 text-base text-danger-foreground">
             {BASKULE_FLAGS.projects
-              ? t("This environment is disconnected. Reconnect before saving.")
-              : t("This space is not connected. Try again when it is back online.")}
+              ? gt("This environment is disconnected. Reconnect before saving.")
+              : gt("This space is not connected. Try again when it is back online.")}
           </Text>
         ) : null}
         {BASKULE_FLAGS.projects || availableTargets.length > 1 ? (
           <SettingsSection>
             <SelectRow
-              label={BASKULE_FLAGS.projects ? t("Runs on") : t("Space")}
+              label={BASKULE_FLAGS.projects ? gt("Runs on") : "Space"}
               value={environmentLabel}
               valueIcon={
                 BASKULE_FLAGS.projects ? (
@@ -988,25 +1014,25 @@ function TaskForm({
             />
           </SettingsSection>
         ) : null}
-        <SettingsSection title={t("Task")}>
+        <SettingsSection title={gt("Task")}>
           <FormField
-            label={t("Name")}
+            label={gt("Name")}
             disabled={saving}
             value={draft.title}
-            placeholder={t("Check for issues")}
+            placeholder={gt("Check for issues")}
             onChange={(title) => setDraft((current) => ({ ...current, title }))}
           />
           {promptField}
         </SettingsSection>
 
         {BASKULE_FLAGS.projects || BASKULE_FLAGS.modelSelection ? (
-          <SettingsSection title={t("Context")}>
+          <SettingsSection title={gt("Context")}>
             {BASKULE_FLAGS.projects ? (
               <SelectRow
-                label={t("Project")}
+                label={gt("Project")}
                 value={
                   projects.find((project) => project.id === draft.projectId)?.title ??
-                  (projects.length ? t("Choose project") : t("No projects available"))
+                  (projects.length ? "Choose project" : "No projects available")
                 }
                 actions={projects.map((project) => ({
                   id: project.id,
@@ -1039,7 +1065,7 @@ function TaskForm({
             ) : null}
             {BASKULE_FLAGS.modelSelection ? (
               <PickerRow
-                label={t("Model")}
+                label={gt("Model")}
                 borderTop
                 value={
                   modelOptions.find(
@@ -1048,7 +1074,7 @@ function TaskForm({
                       option.selection.model === shownSelection?.model,
                   )?.label ??
                   shownSelection?.model ??
-                  (modelOptions.length ? t("Choose model") : t("No models available"))
+                  (modelOptions.length ? "Choose model" : "No models available")
                 }
                 onPress={() => navigation.navigate("SettingsScheduledTaskModel")}
                 disabled={
@@ -1060,27 +1086,33 @@ function TaskForm({
         ) : null}
 
         <SettingsSection
-          title="Destination"
+          title={gt("Destination")}
           footer={
             draft.threadMode === "new_thread"
-              ? "Each run starts a new thread."
-              : `${
-                  draft.threadMode === "continue"
-                    ? "Runs continue one conversation."
-                    : "Runs share one thread, each in a fresh session without earlier runs' context."
-                }${
-                  draft.threadId === null ? " The first run starts the thread." : ""
-                } Deleting it also deletes this task.`
+              ? gt("Each run starts a new thread.")
+              : draft.threadMode === "continue"
+                ? draft.threadId === null
+                  ? gt(
+                      "Runs continue one conversation. The first run starts the thread. Deleting it also deletes this task.",
+                    )
+                  : gt("Runs continue one conversation. Deleting it also deletes this task.")
+                : draft.threadId === null
+                  ? gt(
+                      "Runs share one thread, each in a fresh session without earlier runs' context. The first run starts the thread. Deleting it also deletes this task.",
+                    )
+                  : gt(
+                      "Runs share one thread, each in a fresh session without earlier runs' context. Deleting it also deletes this task.",
+                    )
           }
         >
           {offersThreadModes ? (
             <SelectRow
-              label="Runs go to"
-              value={THREAD_MODE_LABELS[draft.threadMode]}
+              label={gt("Runs go to")}
+              value={m(THREAD_MODE_LABELS[draft.threadMode])}
               actions={(Object.keys(THREAD_MODE_LABELS) as ScheduledTaskThreadMode[]).map(
                 (mode) => ({
                   id: mode,
-                  title: THREAD_MODE_LABELS[mode],
+                  title: m(THREAD_MODE_LABELS[mode]),
                   state: draft.threadMode === mode ? "on" : undefined,
                 }),
               )}
@@ -1094,11 +1126,11 @@ function TaskForm({
           ) : null}
           {!offersThreadModes || draft.threadMode !== "new_thread" ? (
             <PickerRow
-              label="Thread"
+              label={gt("Thread")}
               borderTop={offersThreadModes}
               value={
                 draft.threadId === null && draft.threadMode !== "new_thread"
-                  ? "Started by the first run"
+                  ? gt("Started by the first run")
                   : destinationLabel
               }
               onPress={() => navigation.navigate("SettingsScheduledTaskThread")}
@@ -1108,30 +1140,30 @@ function TaskForm({
         </SettingsSection>
 
         {BASKULE_FLAGS.sourceControl ? (
-          <SettingsSection title={t("Workspace")}>
+          <SettingsSection title={gt("Workspace")}>
             <SelectRow
-              label={t("Run in")}
+              label={gt("Run in")}
               value={
                 draft.workspace === "worktree"
-                  ? t("New worktree")
+                  ? "New worktree"
                   : draft.workspace === "root"
-                    ? t("Project checkout")
-                    : t("Specific checkout")
+                    ? "Project checkout"
+                    : "Specific checkout"
               }
               actions={[
                 {
                   id: "worktree",
-                  title: t("New worktree"),
+                  title: gt("New worktree"),
                   state: draft.workspace === "worktree" ? "on" : undefined,
                 },
                 {
                   id: "root",
-                  title: t("Project checkout"),
+                  title: gt("Project checkout"),
                   state: draft.workspace === "root" ? "on" : undefined,
                 },
                 {
                   id: "existing_worktree",
-                  title: t("Specific checkout"),
+                  title: gt("Specific checkout"),
                   state: draft.workspace === "existing_worktree" ? "on" : undefined,
                 },
               ]}
@@ -1142,7 +1174,7 @@ function TaskForm({
             />
             {draft.workspace === "worktree" ? (
               <PickerRow
-                label={t("Base branch")}
+                label={gt("Base branch")}
                 value={resolveNewTaskBranchLabel({
                   branchName: draft.baseRef,
                   startFromOrigin: draft.startFromOrigin,
@@ -1155,7 +1187,7 @@ function TaskForm({
             ) : null}
             {draft.workspace === "existing_worktree" ? (
               <FormField
-                label={t("Checkout path")}
+                label={gt("Checkout path")}
                 disabled={saving}
                 value={draft.checkoutPath}
                 borderTop
@@ -1170,19 +1202,24 @@ function TaskForm({
           </SettingsSection>
         ) : null}
 
-        <SettingsSection title={t("Schedule")}>
+        <SettingsSection title={gt("Schedule", { $context: "noun, section heading" })}>
           <View className="px-4 py-3">
             <SegmentedControl
               variant="card"
               options={[
-                { value: "fixed_time", label: t("At a time") },
+                { value: "fixed_time", label: gt("At a time") },
                 // Older servers reject one-time schedules on save.
                 ...(offersOnce || draft.schedule.mode === "once"
-                  ? [{ value: "once" as const, label: "Once" }]
+                  ? [
+                      {
+                        value: "once" as const,
+                        label: gt("Once", { $context: "one-time schedule option" }),
+                      },
+                    ]
                   : []),
-                { value: "interval", label: t("Interval") },
+                { value: "interval", label: gt("Interval") },
                 ...(webhookDenial === undefined || draft.schedule.mode === "webhook"
-                  ? [{ value: "webhook" as const, label: t("On webhook") }]
+                  ? [{ value: "webhook" as const, label: gt("On webhook") }]
                   : []),
               ]}
               selected={draft.schedule.mode}
@@ -1211,14 +1248,19 @@ function TaskForm({
             <>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t("Time, {{value1}}", {
-                  value1: `${formatTime(draft.schedule.timeOfDay)}${runAtZone ? ` ${runAtZone}` : ""}`,
-                })}
+                accessibilityLabel={
+                  runAtZone
+                    ? gt("Time, {time} {zone}", {
+                        time: formatTime(draft.schedule.timeOfDay),
+                        zone: runAtZone,
+                      })
+                    : gt("Time, {time}", { time: formatTime(draft.schedule.timeOfDay) })
+                }
                 onPress={() => setTimePickerOpen((open) => !open)}
                 className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
               >
                 <Text textRole="body" className="text-foreground">
-                  {t("Time (UTC)")}
+                  {gt("Time", { $context: "time of day" })}
                 </Text>
                 <Text
                   textRole="footnote"
@@ -1250,23 +1292,23 @@ function TaskForm({
                 />
               ) : null}
               <SelectRow
-                label={t("Repeat")}
-                value={repeatLabel(draft.schedule.weekdays)}
+                label={gt("Repeat", { $context: "noun, which days a task repeats on" })}
+                value={repeatLabel(draft.schedule.weekdays, m, locale)}
                 borderTop
                 actions={[
                   {
                     id: "every_day",
-                    title: t("Every day"),
+                    title: gt("Every day"),
                     state: draft.schedule.weekdays.length === 7 ? "on" : undefined,
                   },
                   {
                     id: "weekdays",
-                    title: t("Weekdays"),
-                    state: repeatLabel(draft.schedule.weekdays) === "Weekdays" ? "on" : undefined,
+                    title: gt("Weekdays"),
+                    state: isWeekdays(draft.schedule.weekdays) ? "on" : undefined,
                   },
                   ...DAYS.map((day) => ({
                     id: String(day.index),
-                    title: day.label,
+                    title: weekdayLabel(day.index, locale),
                     attributes: { keepsMenuPresented: true },
                     state: draft.schedule.weekdays.includes(day.index)
                       ? ("on" as const)
@@ -1294,7 +1336,9 @@ function TaskForm({
             </>
           ) : draft.schedule.mode === "webhook" && webhookDenial !== undefined && draft.enabled ? (
             <Text className="border-t border-border-subtle px-4 py-3 text-sm text-foreground-muted">
-              {`${webhookDenial} Switch the task to a timer, or turn it off, to save it.`}
+              {gt("{reason} Switch the task to a timer, or turn it off, to save it.", {
+                reason: webhookDenial,
+              })}
             </Text>
           ) : draft.schedule.mode === "once" ? (
             (["date", "time"] as const).map((field) => {
@@ -1304,12 +1348,16 @@ function TaskForm({
                 <View key={field}>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`${field === "date" ? "Date" : "Time"}, ${label}`}
+                    accessibilityLabel={
+                      field === "date"
+                        ? gt("Date, {date}", { date: label })
+                        : gt("Time, {time}", { time: label })
+                    }
                     onPress={() => setRunAtPicker((open) => (open === field ? null : field))}
                     className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
                   >
                     <Text textRole="body" className="text-foreground">
-                      {field === "date" ? "Date" : "Time"}
+                      {field === "date" ? gt("Date") : gt("Time", { $context: "time of day" })}
                     </Text>
                     <Text
                       textRole="footnote"
@@ -1357,9 +1405,9 @@ function TaskForm({
                 disabled={!canOperate || saving || environmentUnavailable}
               />
               <FormField
-                label={t("Skip requests older than (minutes)")}
+                label={gt("Skip requests older than (minutes)")}
                 value={draft.schedule.maxDeliveryAgeMinutes}
-                placeholder={t("Run every request")}
+                placeholder={gt("Run every request")}
                 keyboardType="number-pad"
                 disabled={saving}
                 borderTop
@@ -1381,7 +1429,7 @@ function TaskForm({
                 }
               />
               <FormField
-                label={t("Duplicate request key")}
+                label={gt("Duplicate request key")}
                 value={draft.schedule.replayKey}
                 placeholder="{{headers.delivery-id}}"
                 disabled={saving}
@@ -1394,10 +1442,10 @@ function TaskForm({
                 }
               />
               <Text className="px-4 pb-3 text-sm text-foreground-muted">
-                Requests with the same key run only once within 7 days.
+                <T>Requests with the same key run only once within 7 days.</T>
               </Text>
               <FormField
-                label={t("Coalesce key template")}
+                label={gt("Coalesce key template")}
                 value={draft.schedule.coalesceKey}
                 placeholder="{{body.id}}"
                 disabled={saving}
@@ -1410,7 +1458,7 @@ function TaskForm({
                 }
               />
               <FormField
-                label={t("Coalesce window (seconds, 10–3600)")}
+                label={gt("Coalesce window (seconds, 10–3600)")}
                 value={draft.schedule.coalesceWindowSeconds}
                 placeholder="120"
                 keyboardType="number-pad"
@@ -1424,14 +1472,16 @@ function TaskForm({
                 }
               />
               <Text className="px-4 pb-3 text-sm text-foreground-muted">
-                Coalescing runs the latest payload when the window from the first delivery closes.
-                Empty keys run normally.
+                <T>
+                  Coalescing runs the latest payload when the window from the first delivery closes.
+                  Empty keys run normally.
+                </T>
               </Text>
             </>
           ) : (
             <>
               <FormField
-                label={t("Minutes between runs")}
+                label={gt("Minutes between runs")}
                 value={draft.schedule.intervalMinutes}
                 keyboardType="decimal-pad"
                 disabled={saving}
@@ -1445,29 +1495,35 @@ function TaskForm({
               />
               {!(parseIntervalMinutes(draft.schedule.intervalMinutes) >= 1) ? (
                 <Text className="px-4 pb-3 text-sm text-danger-foreground">
-                  {t("Intervals must be at least 1 minute. Update this interval before saving.")}
+                  <T>Intervals must be at least 1 minute. Update this interval before saving.</T>
                 </Text>
               ) : draft.task?.schedule.type === "interval" &&
                 draft.task.schedule.everyMs < 60_000 ? (
                 <Text className="px-4 pb-3 text-sm text-foreground-muted">
-                  {t(
-                    "This task previously ran more than once per minute. Saving requires an interval of at least 1 minute.",
-                  )}
+                  <T>
+                    This task previously ran more than once per minute. Saving requires an interval
+                    of at least 1 minute.
+                  </T>
                 </Text>
               ) : null}
             </>
           )}
           <View className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3">
             <Text textRole="body" className="min-w-0 flex-1 text-foreground">
-              {t("Enabled")}
+              {gt("Enabled", { $context: "switch label, whether the task runs" })}
             </Text>
             <ThemedSwitch
-              accessibilityLabel={t("Task enabled")}
+              accessibilityLabel={gt("Task enabled")}
               value={draft.enabled}
               onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
             />
           </View>
         </SettingsSection>
+        {draft.schedule.mode === "fixed_time" ? (
+          <Text className="px-2 text-sm text-foreground-muted">
+            <T>Time uses the environment's time zone, which may differ from your phone's.</T>
+          </Text>
+        ) : null}
       </View>
       <Button
         tone="primary"
@@ -1478,11 +1534,12 @@ function TaskForm({
           dictationPending ||
           taskMissing ||
           environmentUnavailable ||
+          automaticBaseRefLoading ||
           // The server refuses an enabled webhook task under this policy.
           (draft.enabled && draft.schedule.mode === "webhook" && webhookDenial !== undefined)
         }
         onPress={() => void save()}
-        label={saving ? t("Saving…") : draft.task ? t("Save changes") : t("Create task")}
+        label={saving ? gt("Saving…") : draft.task ? gt("Save changes") : gt("Create task")}
       />
     </View>
   );
@@ -1499,47 +1556,48 @@ function WebhookScheduleDetails({
   readonly signatureConfigured: boolean;
   readonly disabled: boolean;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const [rotating, setRotating] = useState(false);
   const rotate = useAtomCommand(serverEnvironment.rotateScheduledTaskWebhookToken, {
-    label: t("scheduled task rotate webhook token"),
+    label: "scheduled task rotate webhook token",
     reportFailure: false,
   });
   const preparedConnection = usePreparedConnection(environmentId);
   const httpBaseUrl =
     preparedConnection._tag === "Some" ? preparedConnection.value.httpBaseUrl : null;
   const webhook = task?.schedule.type === "webhook" ? task.webhook : undefined;
-  const resolved = webhook ? webhookAddress(webhook, httpBaseUrl) : null;
+  const resolved = webhook ? webhookAddress(webhook, httpBaseUrl, m) : null;
   return (
     <View className="gap-2 border-t border-border-subtle px-4 py-3">
       <Text className="text-sm text-foreground-muted">
-        {t(
-          "The prompt can use {{bodyField}}, {{headerField}}, {{queryField}}, {{body}} and {{request}}. The filled-in prompt is all the agent sees.",
+        {gt(
+          "The prompt can use {body}, {headers}, {query}, {wholeBody} and {request}. The filled-in prompt is all the agent sees.",
           {
-            bodyField: "{{body.a.b}}",
-            headerField: "{{headers.name}}",
-            queryField: "{{query.name}}",
-            body: "{{body}}",
+            body: "{{body.a.b}}",
+            headers: "{{headers.name}}",
+            query: "{{query.name}}",
+            wholeBody: "{{body}}",
             request: "{{request}}",
           },
         )}
       </Text>
       {task === null || resolved === null ? (
         <Text className="text-sm text-foreground-muted">
-          {t("Save the task to get its webhook URL.")}
+          <T>Save the task to get its webhook URL.</T>
         </Text>
       ) : (
         <>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("Copy webhook URL")}
-            accessibilityHint={t("Copies the URL to the clipboard")}
+            accessibilityLabel={gt("Copy webhook URL")}
+            accessibilityHint={gt("Copies the URL to the clipboard")}
             disabled={!resolved.copyable}
             onPress={() => void tryCopyTextWithHaptic(resolved.address)}
             className="gap-1 active:opacity-70"
           >
             <Text textRole="body" className="text-foreground">
-              {resolved.copyable ? t("Webhook URL") : t("Webhook path")}
+              {resolved.copyable ? gt("Webhook URL") : gt("Webhook path")}
             </Text>
             <Text className="text-sm text-foreground-muted" numberOfLines={2} selectable>
               {resolved.address}
@@ -1549,14 +1607,14 @@ function WebhookScheduleDetails({
             <Text className="text-sm text-foreground-muted">{resolved.note}</Text>
           ) : null}
           <Button
-            label={rotating ? t("Rotating…") : t("Rotate URL")}
+            label={rotating ? gt("Rotating…") : gt("Rotate URL")}
             tone="danger"
             disabled={disabled || rotating}
             onPress={() =>
-              Dialog.alert("Rotate URL?", "The current URL stops working immediately.", [
-                { text: "Cancel", style: "cancel" },
+              Dialog.alert(gt("Rotate URL?"), gt("The current URL stops working immediately."), [
+                { text: gt("Cancel"), style: "cancel" },
                 {
-                  text: "Rotate",
+                  text: gt("Rotate", { $context: "verb, replace the webhook URL" }),
                   style: "destructive",
                   onPress: () => {
                     setRotating(true);
@@ -1564,7 +1622,7 @@ function WebhookScheduleDetails({
                       setRotating(false);
                       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
                         Dialog.alert(
-                          "Could not rotate URL",
+                          gt("Could not rotate URL"),
                           String(squashAtomCommandFailure(result)),
                         );
                       }
@@ -1579,7 +1637,7 @@ function WebhookScheduleDetails({
       )}
       {signatureConfigured ? (
         <Text className="text-sm text-foreground-muted">
-          {t("Signature check configured on desktop/web.")}
+          <T>Signature check configured on desktop/web.</T>
         </Text>
       ) : null}
     </View>
@@ -1597,18 +1655,15 @@ function EnvironmentTasks({
   readonly projectIds: readonly ProjectId[] | null;
   readonly onEdit: (task: ScheduledTask) => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
+  const locale = useLocale();
   const session = useBaskuleSession();
-  const spaces = useSpaceEnvironments();
   const me = session.status === "signed-in" ? session.me : null;
-  const spaceId = spaces.find(
-    (entry) => entry.environmentId === environment.environmentId,
-  )?.spaceId;
-  const space = me?.spaces.find((entry) => entry.id === spaceId);
+
   const isAuthor = (task: ScheduledTask) =>
     Boolean(me && task.author?.id && task.author.id === me.user.id);
-  const canStop = (task: ScheduledTask) =>
-    canOperate && (isAuthor(task) || me?.user.role === "admin" || space?.role === "owner");
+
   const environmentId = environment.environmentId;
   const tasks = useEnvironmentQuery(
     serverEnvironment.scheduledTasksLive({ environmentId, input: {} }),
@@ -1620,15 +1675,15 @@ function EnvironmentTasks({
     serverEnvironment.upsertScheduledTask.permissionAtom(environmentId),
   );
   const setEnabled = useAtomCommand(serverEnvironment.setScheduledTaskEnabled, {
-    label: t("scheduled task enabled"),
+    label: "scheduled task enabled",
     reportFailure: false,
   });
   const runNow = useAtomCommand(serverEnvironment.runScheduledTaskNow, {
-    label: t("scheduled task run"),
+    label: "scheduled task run",
     reportFailure: false,
   });
   const remove = useAtomCommand(serverEnvironment.deleteScheduledTask, {
-    label: t("scheduled task delete"),
+    label: "scheduled task delete",
     reportFailure: false,
   });
   const selectDetail = useSelectWorkspaceDetail();
@@ -1647,7 +1702,11 @@ function EnvironmentTasks({
           ? await setEnabled({ environmentId, input: { id: task.id, enabled: !task.enabled } })
           : await remove({ environmentId, input: { id: task.id } });
     failure(
-      t("Could not {{value1}} task", { value1: action === "toggle" ? "update" : action }),
+      action === "run"
+        ? gt("Could not run task")
+        : action === "toggle"
+          ? gt("Could not update task")
+          : gt("Could not delete task"),
       result,
     );
   };
@@ -1668,10 +1727,12 @@ function EnvironmentTasks({
       {tasks.error ? (
         <Text className="p-4 text-base text-danger-foreground">{tasks.error}</Text>
       ) : !tasks.data ? (
-        <Text className="p-4 text-base text-foreground-muted">{t("Loading tasks…")}</Text>
+        <Text className="p-4 text-base text-foreground-muted">
+          <T>Loading tasks…</T>
+        </Text>
       ) : visibleTasks?.length === 0 ? (
         <Text className="p-4 text-base text-foreground-muted">
-          {projectIds === null ? t("No scheduled tasks yet.") : t("No tasks in this project.")}
+          {projectIds === null ? gt("No scheduled tasks yet.") : gt("No tasks in this project.")}
         </Text>
       ) : (
         visibleTasks?.map((task, index) => (
@@ -1685,8 +1746,7 @@ function EnvironmentTasks({
           >
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t("Edit {{title}}", { title: task.title })}
-              disabled={!canOperate || !isAuthor(task)}
+              accessibilityLabel={gt("Edit {title}", { title: task.title })}
               onPress={() => {
                 onEdit(task);
               }}
@@ -1696,14 +1756,16 @@ function EnvironmentTasks({
                 {task.title}
               </Text>
               <Text className="text-sm text-foreground-muted" numberOfLines={2}>
-                {describeSchedule(task, tasks.data?.timeZone)}
                 {!task.enabled
-                  ? t(" · Paused")
+                  ? gt("{schedule} · Paused", {
+                      schedule: describeSchedule(task, tasks.data?.timeZone, m, locale),
+                    })
                   : task.nextRunAt
-                    ? t(" · {{value1}}", {
-                        value1: formatNextScheduledTaskRun(task.nextRunAt, now),
+                    ? gt("{schedule} · {nextRun}", {
+                        schedule: describeSchedule(task, tasks.data?.timeZone, m, locale),
+                        nextRun: formatNextScheduledTaskRun(task.nextRunAt, now, m),
                       })
-                    : ""}
+                    : describeSchedule(task, tasks.data?.timeZone, m, locale)}
               </Text>
               {task.blockedByPolicy ? (
                 <Text className="text-sm text-foreground-muted" numberOfLines={2}>
@@ -1712,28 +1774,30 @@ function EnvironmentTasks({
               ) : null}
               {task.lastRunError ? (
                 <Text className="text-sm text-danger-foreground" numberOfLines={2}>
-                  {t("Last run failed:")} {task.lastRunError}
+                  <T>
+                    Last run failed: <Var>{task.lastRunError}</Var>
+                  </T>
                 </Text>
               ) : null}
             </Pressable>
             <Menu
               actions={[
-                ...(isAuthor(task) ? [{ id: "edit", title: t("Edit") }] : []),
+                { id: "edit", title: gt("Edit") },
                 ...(task.threadId !== null && scheduledTaskThreadMode(task) !== "new_thread"
-                  ? [{ id: "thread", title: "Open thread" }]
+                  ? [{ id: "thread", title: gt("Open thread") }]
                   : []),
                 {
                   id: "toggle",
-                  title: task.enabled ? t("Pause") : t("Resume"),
-                  attributes: { disabled: !canStop(task) || (!task.enabled && !isAuthor(task)) },
+                  title: task.enabled ? gt("Pause") : gt("Resume"),
+                  attributes: { disabled: !canOperate },
                 },
                 ...(task.schedule.type === "webhook" || !isAuthor(task)
                   ? []
-                  : [{ id: "run", title: t("Run now"), attributes: { disabled: !canOperate } }]),
+                  : [{ id: "run", title: gt("Run now"), attributes: { disabled: !canOperate } }]),
                 {
                   id: "delete",
-                  title: t("Delete"),
-                  attributes: { destructive: true, disabled: !canStop(task) },
+                  title: gt("Delete"),
+                  attributes: { destructive: true, disabled: !canOperate },
                 },
               ]}
               onPressAction={({ nativeEvent }) => {
@@ -1749,10 +1813,10 @@ function EnvironmentTasks({
                     },
                   });
                 } else if (action === "delete") {
-                  Dialog.alert("Delete task?", task.title, [
-                    { text: "Cancel", style: "cancel" },
+                  Dialog.alert(gt("Delete task?"), task.title, [
+                    { text: gt("Cancel"), style: "cancel" },
                     {
-                      text: "Delete",
+                      text: gt("Delete"),
                       style: "destructive",
                       onPress: () => void act(task, "delete"),
                     },
@@ -1764,7 +1828,7 @@ function EnvironmentTasks({
             >
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t("Actions for {{title}}", { title: task.title })}
+                accessibilityLabel={gt("Actions for {title}", { title: task.title })}
                 className="h-11 w-11 items-center justify-center"
               >
                 <SymbolView

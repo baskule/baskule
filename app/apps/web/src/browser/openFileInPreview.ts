@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import type {
   AssetCreateUrlResult,
   AssetResource,
@@ -33,6 +31,8 @@ import {
 } from "~/rightPanelStore";
 
 import { resolveBrowserDefaults } from "./browserDefaults";
+import { msg } from "gt-react";
+import { m } from "~/i18n/messages";
 
 export const isBrowserPreviewFile = (path: string): boolean =>
   /\.(?:html?|pdf)$/i.test(path.split(/[?#]/, 1)[0] ?? "");
@@ -47,7 +47,7 @@ export class BrowserSettingsReadError extends Schema.TaggedError<BrowserSettings
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return t("Saved browser settings could not be loaded.");
+    return m(msg("Saved browser settings could not be loaded."));
   }
 }
 
@@ -131,7 +131,7 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
     return AsyncResult.failure(
       Cause.fail(
         new BrowserPreviewUnavailableError({
-          message: t("The integrated browser is unavailable in this runtime."),
+          message: m(msg("The integrated browser is unavailable in this runtime.")),
         }),
       ),
     );
@@ -155,7 +155,7 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
   const assetUrl = resolveAssetUrl(input.httpBaseUrl, assetResult.value.relativeUrl);
   if (assetUrl === null) {
     return AsyncResult.failure(
-      Cause.die(new Error(t("The environment returned an invalid asset URL."))),
+      Cause.die(new Error("The environment returned an invalid asset URL.")),
     );
   }
   return openUrlInPreview({

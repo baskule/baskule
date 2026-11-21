@@ -23,7 +23,7 @@ describe("navigation tab order", () => {
 
   it("fills missing sections and drops removed placeholders, duplicates, and Settings", () => {
     expect(
-      resolveNavigationTabOrder(["usage", "home", "issues", "settings", "usage", null]),
+      resolveNavigationTabOrder(["usage", "home", "inbox", "settings", "usage", null]),
     ).toEqual(["usage", "threads"]);
     expect(resolveNavigationTabOrder()).toEqual(NAVIGATION_TAB_ORDER);
   });
@@ -54,7 +54,7 @@ describe("navigation tab order", () => {
     expect(enabledNavigationTabs(order, hidden)).toEqual(["threads"]);
     expect(toggleNavigationTabVisibility(hidden, "usage")).toEqual([]);
     expect(visibleNavigationTabs(order, [], 5)).toEqual(order);
-    expect(enabledNavigationTabs(undefined, ["home", "issues", "settings"])).toEqual(
+    expect(enabledNavigationTabs(undefined, ["home", "inbox", "settings"])).toEqual(
       NAVIGATION_TAB_ORDER,
     );
   });
