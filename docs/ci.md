@@ -84,7 +84,7 @@ Each artifact includes checksums and verification/signing status. Android's defa
 
 ## Tags and releases
 
-`VERSION` is the source version (currently `0.5.4`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.4` starts the full release factory and must match `VERSION`. Routine CI validates the checked-in General Translation catalogs with `vp run i18n:check`. Every release build uses those catalogs. See [localization](localization.md).
+`VERSION` is the source version (currently `0.5.5`). PRs and ordinary `main` pushes run only routine CI. A version tag such as `v0.5.5` starts the full release factory and must match `VERSION`. Routine CI validates the checked-in General Translation catalogs with `vp run i18n:check`. Every release build uses those catalogs. See [localization](localization.md).
 
 The draft GitHub release waits for backend, Linux apps, and native builds to succeed. It attaches the standalone Compose file and env example, the Helm chart, checksums, the backend metadata archive, the app installers, and the update manifests. Image archives and the iOS Simulator build stay CI artifacts. Images use version tags. Compose retains digest pins for third-party images. Once `public-packages` confirms anonymous image pulls, the `release` job publishes the draft as the latest release. A manual verification run reads `VERSION` and creates verification artifacts only.
 
