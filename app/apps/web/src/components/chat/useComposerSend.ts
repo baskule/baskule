@@ -1,6 +1,9 @@
+import { useGT } from "gt-react";
+import { msg } from "gt-react";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m } from "~/i18n/messages";
 import { isClearComposerCommand, parseSideChatCommand } from "@t3tools/shared/composerTrigger";
 import { armFreshSession, disarmFreshSession, readFreshSessionArm } from "./freshSessionArms";
-import { t } from "../../i18n";
 
 import {
   mergeDirectPreviewAnnotation,
@@ -23,6 +26,8 @@ import {
   type EnvironmentId,
   type ModelSelection,
   type PreviewAnnotationPayload,
+  type ResponseContextRecord,
+  type ThreadContextRecord,
   type ThreadId,
   ProviderInteractionMode,
   RuntimeMode,
@@ -70,10 +75,7 @@ import {
   useComposerDraftStore,
   DraftId,
 } from "../../composerDraftStore";
-import {
-  filterTerminalContextsWithText,
-  type TerminalContextDraft,
-} from "../../lib/terminalContext";
+import type { TerminalContextDraft } from "../../lib/terminalContext";
 import {
   collectInlineContextIds,
   ensureInlineContextReferences,
@@ -98,6 +100,7 @@ import {
   referencedThreadContexts,
 } from "./composerSend.logic";
 import { useMultipleModelSend } from "./useMultipleModelSend";
+import type { SideChatMessage } from "./useSideChat";
 import { type ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import {
   getUploadedAttachments,
@@ -145,6 +148,32 @@ const ENVIRONMENT_UNAVAILABLE_SEND_TOAST_TRAIL_SIZE = 3;
 
 function readEnvironmentPresentation(environmentId: EnvironmentId) {
   return appAtomRegistry.get(environmentPresentations.presentationsAtom).get(environmentId);
+}
+
+function liveAttachmentCapabilities(
+  environmentId: EnvironmentId,
+  files: ReadonlyArray<ComposerFileAttachment>,
+) {
+  const config = appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId) ?? null;
+  const supportsAttachmentUploads = config !== null;
+  return {
+    supportsAttachmentUploads,
+    fileBlockReason: fileAttachmentCapabilityBlockReason({
+      files,
+      attachmentUploadsCapabilityKnown: config !== null,
+      supportsAttachmentUploads,
+      maxFileAttachmentBytes:
+        config?.environment.capabilities.fileAttachments?.maxUploadBytes ?? null,
+    }),
+  };
+}
+
+// The reply leads the message, so its card sits above the text it is about. Text that
+// already points at that response, from a pasted card, keeps its one reference.
+function withReplyReference(prompt: string, replyTo: ResponseContextRecord | null) {
+  return replyTo && !collectInlineContextIds(prompt).includes(replyTo.contextId)
+    ? `${formatInlineContextReference(responseContextReference(replyTo))} ${prompt}`
+    : prompt;
 }
 
 function draftHasNonPromptContent(target: ComposerThreadTarget) {
@@ -228,8 +257,8 @@ interface ComposerSendInput {
   readonly setThreadError: ReturnType<typeof makeThreadErrorSetter>;
   readonly anchorNewTurn: TimelineFollow["anchorNewTurn"];
   readonly acknowledgeActiveThreadWoke: () => void;
-  /** Resolves true once the side chat started and got the prompt. */
-  readonly onSideChat?: ((prompt: string) => Promise<boolean>) | undefined;
+  /** Resolves true once the side chat started and got the message. */
+  readonly onSideChat?: ((message: SideChatMessage | undefined) => Promise<boolean>) | undefined;
   /** Refuses `/side` with this reason and keeps the draft. */
   readonly sideChatDisabledReason: string | null;
   readonly handleNewThreadInActiveProject: () => void;
@@ -246,10 +275,11 @@ interface ComposerSendInput {
 /**
  * Everything the composer's send button can start: a turn on this thread or a new one,
  * a multiple-model start, a queued or steering message, a plan follow-up or implementation
- * thread, a feedback upload, and resuming an interrupted run. Each path restores the draft
+ * thread, and resuming an interrupted run. Each path restores the draft
  * when it fails.
  */
 export function useComposerSend(input: ComposerSendInput) {
+  const gt = useGT();
   const {
     environmentId,
     freshSessionAvailable,
@@ -403,8 +433,10 @@ export function useComposerSend(input: ComposerSendInput) {
       toastManager.add(
         stackedThreadToast({
           type: "info",
-          title: t("Annotation attached to draft"),
-          description: t("Sending is unavailable right now. Finish the current action, then send."),
+          title: m(msg("Annotation attached to draft")),
+          description: m(
+            msg("Sending is unavailable right now. Finish the current action, then send."),
+          ),
         }),
       );
     };
@@ -427,8 +459,8 @@ export function useComposerSend(input: ComposerSendInput) {
         toastManager.add(
           stackedThreadToast({
             type: "info",
-            title: "Still sending your previous message.",
-            description: "Send again once it goes through or fails.",
+            title: m(msg("Still sending your previous message.")),
+            description: m(msg("Send again once it goes through or fails.")),
           }),
         );
       }
@@ -455,8 +487,8 @@ export function useComposerSend(input: ComposerSendInput) {
       toastManager.add({
         ...stackedThreadToast({
           type: "warning",
-          title: t("Not connected: message not sent"),
-          description: t("Reconnecting to the environment. Try again once it is connected."),
+          title: m(msg("Not connected: message not sent")),
+          description: m(msg("Reconnecting to the environment. Try again once it is connected.")),
         }),
         id: `chat-send-environment-unavailable:${toastSlot}`,
       });
@@ -467,39 +499,180 @@ export function useComposerSend(input: ComposerSendInput) {
       toastManager.add(
         stackedThreadToast({
           type: "warning",
-          title: t("Side chat not started"),
+          title: m(msg("Side chat not started")),
           description: sideChatDisabledReason,
         }),
       );
       return;
     }
+    const startDraftAttachmentUploads = (
+      attachments: ReadonlyArray<ComposerImageAttachment | ComposerFileAttachment>,
+    ) => {
+      for (const attachment of attachments) {
+        const upload =
+          readAttachmentUpload(attachment.id)?.status === "failed"
+            ? retryAttachmentUpload
+            : startAttachmentUpload;
+        upload({ environmentId, image: attachment, draftTarget: composerDraftTarget });
+      }
+    };
+    const warnStrandedThreadContext = (
+      text: string,
+      records: ReadonlyArray<ThreadContextRecord>,
+    ) => {
+      const strandedThread = threadContextsOutsideEnvironment({
+        text,
+        records,
+        environmentId,
+      })[0];
+      if (!strandedThread) return false;
+      const owner =
+        readEnvironmentPresentation(strandedThread.environmentId)?.entry.target.label ?? null;
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: m(msg("Attached thread is on another machine")),
+          description:
+            owner === null
+              ? m(
+                  msg(
+                    "This machine's agent can't read \"{title}\". Remove it, or switch back to its machine to send.",
+                    { title: strandedThread.title },
+                  ),
+                )
+              : m(
+                  msg(
+                    "This machine's agent can't read \"{title}\". Remove it, or switch back to {owner} to send.",
+                    { title: strandedThread.title, owner },
+                  ),
+                ),
+        }),
+      );
+      return true;
+    };
     if (onSideChat && sendCtx && sideChatCommand && sideChatDisabledReason === null) {
+      const replyTo =
+        useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.replyTo ?? null;
+      const prompt = withReplyReference(sideChatCommand.prompt, replyTo);
+      const { sendableTerminalContexts, hasSendableContent } = deriveComposerSendState({
+        prompt,
+        imageCount: sendCtx.images.length + sendCtx.files.length,
+        terminalContexts: sendCtx.terminalContexts,
+        elementContextCount:
+          (replyTo === null ? 0 : 1) +
+          sendCtx.previewAnnotations.length +
+          sendCtx.reviewComments.length +
+          sendCtx.threadContexts.length,
+      });
+      // An answer's text and attachments live in the question's draft, apart from this one.
       if (
-        sendCtx.images.length > 0 ||
-        sendCtx.files.length > 0 ||
-        filterTerminalContextsWithText(sendCtx.terminalContexts).length > 0 ||
-        sendCtx.previewAnnotations.length > 0 ||
-        sendCtx.reviewComments.length > 0 ||
-        sendCtx.threadContexts.length > 0
+        sendCtx.answeringPendingUserInput &&
+        (replyTo !== null ||
+          sendCtx.images.length > 0 ||
+          sendCtx.files.length > 0 ||
+          sendableTerminalContexts.length > 0 ||
+          sendCtx.previewAnnotations.length > 0 ||
+          sendCtx.reviewComments.length > 0 ||
+          sendCtx.threadContexts.length > 0)
       ) {
         toastManager.add(
           stackedThreadToast({
             type: "warning",
-            title: t("Side chats take text only"),
-            description: t("Remove the attachments and context, then send it again."),
+            title: m(msg("Side chat not started")),
+            description: m(msg("Remove the attachments and context, then send it again.")),
           }),
         );
         return;
       }
-      const started = await onSideChat(sideChatCommand.prompt);
-      // Clear only what was sent; the user may have edited the draft or left meanwhile.
-      if (
-        started &&
-        currentRouteThreadKeyRef.current === routeThreadKey &&
-        promptRef.current === promptAtSend
-      ) {
+      if (warnStrandedThreadContext(prompt, sendCtx.threadContexts)) return;
+      const snapshot = snapshotComposerSend({
+        ...sendCtx,
+        prompt,
+        sendableTerminalContexts,
+        replyTo,
+      });
+      const capabilities = liveAttachmentCapabilities(environmentId, snapshot.files);
+      if (capabilities.fileBlockReason !== null) {
+        setThreadError(activeThread.id, capabilities.fileBlockReason);
+        return;
+      }
+      const sendsDraft = hasSendableContent && !sendCtx.answeringPendingUserInput;
+      sendInFlightRef.current = true;
+      if (capabilities.supportsAttachmentUploads) startDraftAttachmentUploads(snapshot.attachments);
+      // Cleared at send, like a regular message, so nothing in it can change or vanish mid-start.
+      if (sendsDraft) {
+        clearComposerDraftContent(composerDraftTarget);
         promptRef.current = "";
-        setComposerDraftPrompt(composerDraftTarget, "");
+        composerRef.current?.resetCursorState();
+      }
+      const started = await settlePromise(async () => {
+        if (!hasSendableContent) return onSideChat(undefined);
+        const attachments = await prepareTurnAttachments({
+          environmentId,
+          attachments: snapshot.attachments,
+          usesAttachmentUploads: capabilities.supportsAttachmentUploads,
+          draftTarget: composerDraftTarget,
+        });
+        // `onSideChat` forks the thread on screen, which may have changed during the upload.
+        if (currentRouteThreadKeyRef.current !== routeThreadKey) return false;
+        const attachmentIds = boundAttachmentIds(attachments, snapshot.attachments);
+        return onSideChat({
+          attachments,
+          ...withMessageContext({
+            text: snapshot.messageText || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+            context: buildMessageContext({
+              ...snapshot,
+              attachments: snapshot.attachments.map((attachment, index) => ({
+                attachment,
+                attachmentId: attachmentIds[index]!,
+              })),
+            }),
+          }),
+          titleSeed: deriveThreadTitleSeed(
+            {
+              text: snapshot.messageText,
+              attachments: snapshot.attachments,
+              fallbackLabels: sendTitleFallbackLabels(snapshot),
+            },
+            m,
+          ),
+        });
+      }).finally(() => {
+        sendInFlightRef.current = false;
+      });
+      const startedOk = started._tag === "Success" && started.value;
+      if (started._tag === "Failure") {
+        const error = squashAtomCommandFailure(started);
+        setThreadError(
+          activeThread.id,
+          error instanceof Error ? error.message : m(msg("Could not start a side chat.")),
+        );
+      }
+      if (sendsDraft) {
+        if (startedOk && capabilities.supportsAttachmentUploads) {
+          releaseDraftAttachments(snapshot.attachments);
+        }
+        // A restore clones the images first, so the sent previews can go either way.
+        if (!startedOk)
+          restoreComposerDraft(composerDraftTarget, { ...snapshot, draftText: promptAtSend });
+        for (const image of snapshot.images) {
+          if (image.previewUrl.startsWith("blob:")) URL.revokeObjectURL(image.previewUrl);
+        }
+        if (!startedOk && currentRouteThreadKeyRef.current === routeThreadKey) {
+          const prompt =
+            useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.prompt ??
+            promptAtSend;
+          promptRef.current = prompt;
+          composerRef.current?.resetCursorState({ prompt });
+        }
+        return;
+      }
+      // Answering a question, the composer shows the answer, which lives apart from this draft.
+      if (startedOk && currentRouteThreadKeyRef.current === routeThreadKey) {
+        if (!sendCtx.answeringPendingUserInput && promptRef.current === promptAtSend) {
+          setComposerDraftPrompt(composerDraftTarget, "");
+          promptRef.current = "";
+        }
         composerRef.current?.resetCursorState();
       }
       return;
@@ -534,16 +707,19 @@ export function useComposerSend(input: ComposerSendInput) {
             branch: activeThreadBranch,
           });
     if (multipleModelBlock === "server-outdated") {
-      setThreadError(activeThread.id, t("Update this server before starting multiple models."));
+      setThreadError(
+        activeThread.id,
+        m(msg("Update this server before starting multiple models.")),
+      );
       return;
     }
     if (multipleModelBlock === "needs-new-git-thread") {
       toastManager.add(
         stackedThreadToast({
           type: "warning",
-          title: t("Choose models and a base branch"),
-          description: t(
-            "Multiple models need a new thread in a Git project. Each gets its own worktree.",
+          title: m(msg("Choose models and a base branch")),
+          description: m(
+            msg("Multiple models need a new thread in a Git project. Each gets its own worktree."),
           ),
         }),
       );
@@ -589,14 +765,14 @@ export function useComposerSend(input: ComposerSendInput) {
     if (strandedThread) {
       const owner =
         readEnvironmentPresentation(strandedThread.environmentId)?.entry.target.label ??
-        t("its machine");
+        "its machine";
       toastManager.add(
         stackedThreadToast({
           type: "warning",
-          title: t("Attached thread is on another machine"),
-          description: t(
-            "This machine's agent can't read \"{{title}}\". Remove it, or switch back to {{owner}} to send.",
-            { title: strandedThread.title, owner: owner },
+          title: gt("Attached thread is on another machine"),
+          description: gt(
+            "This machine's agent can't read \"{title}\". Remove it, or switch back to {owner} to send.",
+            { title: strandedThread.title, owner },
           ),
         }),
       );
@@ -608,9 +784,10 @@ export function useComposerSend(input: ComposerSendInput) {
         toastManager.add(
           stackedThreadToast({
             type: "warning",
-            title: "Queued message not updated",
-            description:
-              "A queued message can't move to a side chat. Remove /side or /btw to save it.",
+            title: m(msg("Queued message not updated")),
+            description: m(
+              msg("A queued message can't move to a side chat. Remove /side or /btw to save it."),
+            ),
           }),
         );
         return;
@@ -683,8 +860,8 @@ export function useComposerSend(input: ComposerSendInput) {
       toastManager.add(
         stackedThreadToast({
           type: "warning",
-          title: t("Choose a project first"),
-          description: t("This draft no longer points to an available project."),
+          title: m(msg("Choose a project first")),
+          description: m(msg("This draft no longer points to an available project.")),
         }),
       );
       return;
@@ -731,7 +908,7 @@ export function useComposerSend(input: ComposerSendInput) {
     if (missingWorktreeBaseBranch) {
       setThreadError(
         threadIdForSend,
-        t("Select a base branch before sending in New worktree mode."),
+        m(msg("Select a base branch before sending in New worktree mode.")),
       );
       return;
     }
@@ -760,20 +937,8 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
 
-    const readLiveAttachmentCapabilities = () => {
-      const config = appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId) ?? null;
-      const liveSupportsAttachmentUploads = config !== null;
-      return {
-        supportsAttachmentUploads: liveSupportsAttachmentUploads,
-        fileBlockReason: fileAttachmentCapabilityBlockReason({
-          files: composerFilesSnapshot,
-          attachmentUploadsCapabilityKnown: config !== null,
-          supportsAttachmentUploads: liveSupportsAttachmentUploads,
-          maxFileAttachmentBytes:
-            config?.environment.capabilities.fileAttachments?.maxUploadBytes ?? null,
-        }),
-      };
-    };
+    const readLiveAttachmentCapabilities = () =>
+      liveAttachmentCapabilities(environmentId, composerFilesSnapshot);
 
     const multipleTargets: MultipleModelTarget[] = [];
     for (const resolved of resolveMultipleModelTargets({
@@ -810,19 +975,7 @@ export function useComposerSend(input: ComposerSendInput) {
         ? attachmentCapabilitiesBeforeUpload.supportsAttachmentUploads
         : (readEnvironmentPresentation(environmentId)?.serverConfig ?? null) !== null;
     // Uploads finish after the message shows as sending; the turn starts once they land.
-    if (turnUsesAttachmentUploads) {
-      for (const attachment of composerAttachmentsSnapshot) {
-        const upload =
-          readAttachmentUpload(attachment.id)?.status === "failed"
-            ? retryAttachmentUpload
-            : startAttachmentUpload;
-        upload({
-          environmentId,
-          image: attachment,
-          draftTarget: composerDraftTarget,
-        });
-      }
-    }
+    if (turnUsesAttachmentUploads) startDraftAttachmentUploads(composerAttachmentsSnapshot);
 
     if (
       multipleModelSelections === null &&
@@ -848,7 +1001,7 @@ export function useComposerSend(input: ComposerSendInput) {
       sendInFlightRef.current = false;
       setThreadError(
         threadIdForSend,
-        "Draft changed while preparing this message. Review it and send again.",
+        m(msg("Draft changed while preparing this message. Review it and send again.")),
       );
       setDockedDraftHeroThreadKey((currentThreadKey) =>
         currentThreadKey === activeThreadKey ? null : currentThreadKey,
@@ -863,7 +1016,7 @@ export function useComposerSend(input: ComposerSendInput) {
       setThreadError(
         threadIdForSend,
         attachmentCapabilitiesBeforeDispatch.fileBlockReason ??
-          t("This connection cannot change threads."),
+          m(msg("This connection cannot change threads.")),
       );
       setDockedDraftHeroThreadKey((currentThreadKey) =>
         currentThreadKey === activeThreadKey ? null : currentThreadKey,
@@ -885,7 +1038,7 @@ export function useComposerSend(input: ComposerSendInput) {
         sendInFlightRef.current = false;
         setThreadError(
           threadIdForSend,
-          "Draft changed while preparing this message. Review it and send again.",
+          m(msg("Draft changed while preparing this message. Review it and send again.")),
         );
         setDockedDraftHeroThreadKey((currentThreadKey) =>
           currentThreadKey === activeThreadKey ? null : currentThreadKey,
@@ -895,7 +1048,7 @@ export function useComposerSend(input: ComposerSendInput) {
       const uploadBlockReason =
         readLiveAttachmentCapabilities().fileBlockReason ??
         (getUploadedAttachments({ environmentId, images: composerAttachmentsSnapshot }) === null
-          ? "Retry or remove failed uploads before sending."
+          ? m(msg("Retry or remove failed uploads before sending."))
           : null);
       if (uploadBlockReason !== null) {
         sendInFlightRef.current = false;
@@ -959,7 +1112,7 @@ export function useComposerSend(input: ComposerSendInput) {
         if (composerAttachmentsSnapshot.length > 0 || outgoingMessageContext !== undefined) {
           setThreadError(
             threadIdForSend,
-            t("Send approval feedback without attachments or added context."),
+            m(msg("Send approval feedback without attachments or added context.")),
           );
           sendInFlightRef.current = false;
           return;
@@ -1027,7 +1180,7 @@ export function useComposerSend(input: ComposerSendInput) {
           toastManager.add({
             type: "info",
             title: notice,
-            description: t("Send again when it's ready."),
+            description: m(msg("Send again when it's ready.")),
           });
         }
         return;
@@ -1131,11 +1284,14 @@ export function useComposerSend(input: ComposerSendInput) {
       composerRef.current?.resetCursorState();
     }
 
-    const title = deriveThreadTitleSeed({
-      text: messageTextForSend,
-      attachments: composerAttachmentsSnapshot,
-      fallbackLabels: sendTitleFallbackLabels(sendSnapshot),
-    });
+    const title = deriveThreadTitleSeed(
+      {
+        text: messageTextForSend,
+        attachments: composerAttachmentsSnapshot,
+        fallbackLabels: sendTitleFallbackLabels(sendSnapshot),
+      },
+      m,
+    );
     const threadCreateModelSelection = createModelSelection(
       ctxSelectedModelSelection.instanceId,
       ctxSelectedModel || activeProjectDefaultModelSelection?.model || DEFAULT_MODEL,
@@ -1253,8 +1409,8 @@ export function useComposerSend(input: ComposerSendInput) {
           toastManager.add(
             stackedThreadToast({
               type: "warning",
-              title: t("Could not open a fresh composer"),
-              description: error instanceof Error ? error.message : undefined,
+              title: m(msg("Could not open a fresh composer")),
+              description: thrownErrorMessage(error, m) ?? undefined,
             }),
           );
         }
@@ -1282,10 +1438,10 @@ export function useComposerSend(input: ComposerSendInput) {
           if (backgroundDraftOpened) {
             toastManager.add({
               type: "success",
-              title: t("Started in background"),
+              title: m(msg("Started in background")),
               timeout: 5_000,
               actionProps: {
-                children: "Open",
+                children: m(msg("Open", { $context: "verb, opens the background thread" })),
                 onClick: () => {
                   void navigate({
                     to: "/$environmentId/$threadId",
@@ -1335,22 +1491,26 @@ export function useComposerSend(input: ComposerSendInput) {
           stackedThreadToast({
             type: "error",
             title: isAtomCommandInterrupted(failure)
-              ? "Message may not have been sent"
-              : "Message not sent",
+              ? m(msg("Message may not have been sent"))
+              : m(msg("Message not sent")),
             description: hasText
-              ? "Your new draft was kept. Copy the failed message to send it again."
-              : "Your new draft was kept.",
+              ? m(msg("Your new draft was kept. Copy the failed message to send it again."))
+              : m(msg("Your new draft was kept.")),
             // The toast holds the only trace of the failed message, so it stays until dismissed.
             timeout: 0,
             data: { hideCopyButton: true },
             ...(hasText
               ? {
                   actionProps: {
-                    children: "Copy message",
+                    children: m(msg("Copy message")),
                     onClick: () => {
-                      void writeTextToClipboard(failedText, "failed message").catch(
-                        () => undefined,
-                      );
+                      void writeTextToClipboard(failedText, {
+                        target: "failed message",
+                        unavailableMessage: msg(
+                          "Clipboard API is unavailable while copying failed message.",
+                        ),
+                        failureMessage: msg("Failed to copy failed message to the clipboard."),
+                      }).catch(() => undefined);
                     },
                   },
                 }
@@ -1378,7 +1538,7 @@ export function useComposerSend(input: ComposerSendInput) {
         const error = squashAtomCommandFailure(failure);
         setThreadError(
           threadIdForSend,
-          error instanceof Error ? error.message : t("Failed to send message."),
+          thrownErrorMessage(error, m) ?? m(msg("Failed to send message.")),
         );
         if (
           draftId &&
@@ -1389,11 +1549,11 @@ export function useComposerSend(input: ComposerSendInput) {
               type: "error",
               title:
                 submissionIntent === "background"
-                  ? t("Background task failed")
-                  : t("Could not start thread"),
-              description: error instanceof Error ? error.message : t("Failed to send message."),
+                  ? m(msg("Background task failed"))
+                  : m(msg("Could not start thread")),
+              description: thrownErrorMessage(error, m) ?? m(msg("Failed to send message.")),
               actionProps: {
-                children: t("Open draft"),
+                children: m(msg("Open draft")),
                 onClick: () => {
                   void navigate({ to: "/draft/$draftId", params: { draftId } });
                 },

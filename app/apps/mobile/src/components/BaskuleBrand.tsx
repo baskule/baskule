@@ -1,4 +1,5 @@
 import type { ColorValue } from "react-native";
+import { BASKULE_APP_NAME } from "@t3tools/contracts/baskule";
 import { Image } from "expo-image";
 import Svg, { Path } from "react-native-svg";
 import { withUniwind } from "uniwind";
@@ -15,7 +16,7 @@ export function BaskuleWordmark({ height = 24 }: { readonly height?: number }) {
           ? require("../../../../assets/baskule/wordmark-inverse.png")
           : require("../../../../assets/baskule/wordmark.png")
       }
-      accessibilityLabel="Baskule"
+      accessibilityLabel={BASKULE_APP_NAME}
       accessibilityIgnoresInvertColors
       contentFit="contain"
       style={{ height, width: (height * 7048.5) / 1511 }}
@@ -30,7 +31,7 @@ export function BaskuleMark(props: {
 }) {
   return (
     <Svg
-      accessibilityLabel="Baskule"
+      accessibilityLabel={BASKULE_APP_NAME}
       height={props.height}
       width={props.height}
       viewBox="0 0 100 100"

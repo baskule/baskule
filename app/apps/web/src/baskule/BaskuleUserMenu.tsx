@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: the signed-in person in the sidebar footer: their Settings, the admin area for admins,
 // and sign out.
@@ -11,7 +12,7 @@ import { signOutBaskule, useBaskuleMe } from "./session";
 import { Avatar } from "./ui";
 
 export function BaskuleUserMenu() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -27,7 +28,7 @@ export function BaskuleUserMenu() {
         render={
           <SidebarMenuButton
             size="lg"
-            aria-label={t("Account: {{name}}", { name: me.user.name })}
+            aria-label={t(msg("Account: {name}"), { name: me.user.name })}
             data-testid="baskule-user-menu"
           />
         }
@@ -36,7 +37,7 @@ export function BaskuleUserMenu() {
         <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
           <span className="truncate text-sm">{me.user.name}</span>
           <span className="truncate text-2xs text-muted-foreground">
-            {me.authentication.mode === "anonymous" ? t("Shared test workspace") : me.user.email}
+            {me.authentication.mode === "anonymous" ? t(msg("Shared test workspace")) : me.user.email}
           </span>
         </span>
         <ChevronsUpDownIcon className="size-3.5 text-muted-foreground" />
@@ -44,12 +45,12 @@ export function BaskuleUserMenu() {
       <MenuPopup side="top" align="start" className="min-w-60">
         <MenuItem onClick={() => open("/settings")}>
           <SettingsIcon />
-          {t("Settings")}
+          {t(msg("Settings"))}
         </MenuItem>
         {me.user.role === "admin" ? (
           <MenuItem onClick={() => open("/admin")}>
             <ShieldIcon />
-            {t("Admin")}
+            {t(msg("Admin"))}
           </MenuItem>
         ) : null}
         {me.authentication.mode !== "anonymous" ? (
@@ -57,7 +58,7 @@ export function BaskuleUserMenu() {
             <MenuSeparator />
             <MenuItem onClick={() => void signOutBaskule()}>
               <LogOutIcon />
-              {t("Sign out")}
+              {t(msg("Sign out"))}
             </MenuItem>
           </>
         ) : null}

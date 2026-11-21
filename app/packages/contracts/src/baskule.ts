@@ -1,3 +1,5 @@
+export const BASKULE_APP_NAME = "Baskule";
+
 /** Installation capabilities and organization settings shared by Baskule clients. */
 export interface BaskuleAuthConfig {
   mode: "authenticated" | "anonymous";

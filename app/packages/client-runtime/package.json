@@ -15,9 +15,21 @@
       "types": "./src/zip/zipDirectory.ts",
       "default": "./src/zip/zipDirectory.ts"
     },
+    "./zip/error": {
+      "types": "./src/zip/zipError.ts",
+      "default": "./src/zip/zipError.ts"
+    },
+    "./zip/error-messages": {
+      "types": "./src/zip/zipErrorMessages.ts",
+      "default": "./src/zip/zipErrorMessages.ts"
+    },
     "./workspace-basename-lookup": {
       "types": "./src/workspaceBasenameLookup.ts",
       "default": "./src/workspaceBasenameLookup.ts"
+    },
+    "./saved-views": {
+      "types": "./src/savedViews.ts",
+      "default": "./src/savedViews.ts"
     },
     "./composerThreadItems": {
       "types": "./src/composerThreadItems.ts",
@@ -27,6 +39,10 @@
       "types": "./src/composerModelMentions.ts",
       "default": "./src/composerModelMentions.ts"
     },
+    "./contract-labels": {
+      "types": "./src/contractLabels.ts",
+      "default": "./src/contractLabels.ts"
+    },
     "./model-search": {
       "types": "./src/modelSearch.ts",
       "default": "./src/modelSearch.ts"
@@ -34,6 +50,10 @@
     "./image-attachment-size": {
       "types": "./src/imageAttachmentSize.ts",
       "default": "./src/imageAttachmentSize.ts"
+    },
+    "./diff-file-order": {
+      "types": "./src/diffFileOrder.ts",
+      "default": "./src/diffFileOrder.ts"
     },
     "./handoff": {
       "types": "./src/handoff.ts",
@@ -82,6 +102,10 @@
     "./scheduled-task-time-zone": {
       "types": "./src/scheduledTaskTimeZone.ts",
       "default": "./src/scheduledTaskTimeZone.ts"
+    },
+    "./scheduled-task-worktree": {
+      "types": "./src/scheduledTaskWorktree.ts",
+      "default": "./src/scheduledTaskWorktree.ts"
     },
     "./connection": {
       "types": "./src/connection/index.ts",
@@ -139,6 +163,10 @@
       "types": "./src/providerUpdateRequiredModels.ts",
       "default": "./src/providerUpdateRequiredModels.ts"
     },
+    "./providerSubProviders": {
+      "types": "./src/providerSubProviders.ts",
+      "default": "./src/providerSubProviders.ts"
+    },
     "./voice-input": {
       "types": "./src/voice-input/index.ts",
       "default": "./src/voice-input/index.ts"
@@ -162,6 +190,10 @@
     "./state/attachments": {
       "types": "./src/state/attachments.ts",
       "default": "./src/state/attachments.ts"
+    },
+    "./state/attachment-uploads": {
+      "types": "./src/state/attachmentUploads.ts",
+      "default": "./src/state/attachmentUploads.ts"
     },
     "./text-paste": {
       "types": "./src/textPaste.ts",
@@ -471,10 +503,6 @@
       "types": "./src/state/queryPersistence.ts",
       "default": "./src/state/queryPersistence.ts"
     },
-    "./pull-request-reply": {
-      "types": "./src/pullRequestReply.ts",
-      "default": "./src/pullRequestReply.ts"
-    },
     "./model-traits": {
       "types": "./src/modelTraits.ts",
       "default": "./src/modelTraits.ts"
@@ -487,7 +515,16 @@
       "types": "./src/providerInstanceIds.ts",
       "default": "./src/providerInstanceIds.ts"
     },
-    "./connection/releaseCompatibility": "./src/connection/releaseCompatibility.ts"
+    "./connection/releaseCompatibility": "./src/connection/releaseCompatibility.ts",
+    "./locales": "./src/locales.ts",
+    "./state/git-actions": {
+      "types": "./src/state/gitActions.ts",
+      "default": "./src/state/gitActions.ts"
+    },
+    "./state/vcs-action": {
+      "types": "./src/state/vcsAction.ts",
+      "default": "./src/state/vcsAction.ts"
+    }
   },
   "scripts": {
     "typecheck": "effect-tsgo tsrs --noEmit",
@@ -500,6 +537,7 @@
     "@t3tools/provider-opencode": "workspace:*",
     "@t3tools/shared": "workspace:*",
     "effect": "catalog:",
+    "gt-i18n": "1.0.40",
     "jszip": "3.10.1",
     "remark-gfm": "catalog:",
     "remark-parse": "catalog:",

@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 import { useEffect, useRef, useState } from "react";
 import { CameraIcon, QrCodeIcon } from "lucide-react";
 
@@ -22,7 +23,7 @@ export async function openConnectionTarget(target: ConnectionTarget): Promise<vo
 }
 
 export function ReceiveConnectionDialog() {
-  const t = useTranslation();
+  const t = useMessages();
   const [open, setOpen] = useState(false);
   const connecting = useRef(false);
   return (
@@ -34,11 +35,11 @@ export function ReceiveConnectionDialog() {
     >
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         <QrCodeIcon />
-        {t("Scan or import a connection")}
+        {t(msg("Scan or import a connection"))}
       </Button>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("Connect this device")}</DialogTitle>
+          <DialogTitle>{t(msg("Connect this device"))}</DialogTitle>
         </DialogHeader>
         {open ? (
           <ReceiveConnectionPanel
@@ -67,7 +68,7 @@ export function ReceiveConnectionPanel({
 }: {
   onConnect: (target: ConnectionTarget) => Promise<void>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [state, setState] = useState<ReceiveState>({ kind: "entry" });
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +90,7 @@ export function ReceiveConnectionPanel({
       setError(null);
     } catch (cause) {
       setState({ kind: "entry" });
-      setError(cause instanceof Error ? cause.message : t("Invalid connection link."));
+      setError(cause instanceof Error ? cause.message : t(msg("Invalid connection link.")));
     }
   };
   const importImage = async (file: File) => {
@@ -100,13 +101,13 @@ export function ReceiveConnectionPanel({
       const value = await decodeQrImage(file);
       if (request !== operation.current) return;
       if (!value)
-        throw new Error(t("No QR code found in this image. Try another image or paste a link."));
+        throw new Error(t(msg("No QR code found in this image. Try another image or paste a link.")));
       review(value);
     })().catch(() => {
       if (request === operation.current) {
         setState({ kind: "entry" });
         setError(
-          t("Could not read a connection QR from this image. Try another image or paste a link."),
+          t(msg("Could not read a connection QR from this image. Try another image or paste a link.")),
         );
       }
     });
@@ -125,7 +126,7 @@ export function ReceiveConnectionPanel({
           setError(
             cause instanceof Error
               ? cause.message
-              : t("Could not connect. Try again or paste a new link."),
+              : t(msg("Could not connect. Try again or paste a new link.")),
           );
           setState({ kind: "review", target });
         }
@@ -140,21 +141,19 @@ export function ReceiveConnectionPanel({
       {reviewState ? (
         <>
           <p className="text-sm text-muted-foreground">
-            {t("Connect this device to this Baskule server?")}
+            {t(msg("Connect this device to this Baskule server?"))}
           </p>
           <p className="break-all text-sm font-medium">{reviewState.target.origin}</p>
           <p className="text-xs text-muted-foreground">
             {reviewState.target.code
-              ? t(
-                  "Continuing uses the one-time link to sign this device in. Only continue if you trust this server.",
-                )
-              : t("You may need to sign in after connecting.")}
+              ? t(msg("Continuing uses the one-time link to sign this device in. Only continue if you trust this server."))
+              : t(msg("You may need to sign in after connecting."))}
           </p>
           <Button
             disabled={state.kind === "connecting"}
             onClick={() => void confirm(reviewState.target)}
           >
-            {state.kind === "connecting" ? t("Connecting…") : t("Confirm connection")}
+            {state.kind === "connecting" ? t(msg("Connecting…")) : t(msg("Confirm connection"))}
           </Button>
           <Button
             variant="outline"
@@ -165,15 +164,13 @@ export function ReceiveConnectionPanel({
               setError(null);
             }}
           >
-            {t("Use another connection")}
+            {t(msg("Use another connection"))}
           </Button>
         </>
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
-            {t(
-              "Scan a Baskule connection QR, import its image, or paste a link. You will confirm the server before connecting.",
-            )}
+            {t(msg("Scan a Baskule connection QR, import its image, or paste a link. You will confirm the server before connecting."))}
           </p>
           {state.kind === "camera" ? (
             <>
@@ -182,14 +179,12 @@ export function ReceiveConnectionPanel({
                 onError={() => {
                   setState({ kind: "entry" });
                   setError(
-                    t(
-                      "Could not use the camera. Check camera permission, import an image, or paste a link.",
-                    ),
+                    t(msg("Could not use the camera. Check camera permission, import an image, or paste a link.")),
                   );
                 }}
               />
               <Button variant="outline" onClick={() => setState({ kind: "entry" })}>
-                {t("Stop camera")}
+                {t(msg("Stop camera"))}
               </Button>
             </>
           ) : (
@@ -202,11 +197,11 @@ export function ReceiveConnectionPanel({
               }}
             >
               <CameraIcon />
-              {t("Use camera")}
+              {t(msg("Use camera"))}
             </Button>
           )}
           <label className="flex flex-col gap-2 text-sm">
-            {t("Import QR image")}
+            {t(msg("Import QR image"))}
             <input
               type="file"
               accept="image/*"
@@ -220,7 +215,7 @@ export function ReceiveConnectionPanel({
           </label>
           {state.kind === "reading" ? (
             <p role="status" className="text-xs text-muted-foreground">
-              {t("Reading QR image…")}
+              {t(msg("Reading QR image…"))}
             </p>
           ) : null}
           <form
@@ -232,7 +227,7 @@ export function ReceiveConnectionPanel({
             }}
           >
             <FormField
-              label={t("Server address or connection link")}
+              label={t(msg("Server address or connection link"))}
               value={address}
               onChange={(event) => {
                 operation.current += 1;
@@ -242,7 +237,7 @@ export function ReceiveConnectionPanel({
               required
             />
             <Button type="submit" disabled={!address.trim()}>
-              {t("Review connection")}
+              {t(msg("Review connection"))}
             </Button>
           </form>
         </>
@@ -263,7 +258,7 @@ function ConnectionCamera({
   onResult: (value: string) => void;
   onError: (cause: unknown) => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const video = useRef<HTMLVideoElement>(null);
   const callbacks = useRef({ onResult, onError });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Synchronize the camera callbacks with the current pairing dialog.
@@ -287,7 +282,7 @@ function ConnectionCamera({
       ref={video}
       muted
       playsInline
-      aria-label={t("Connection QR camera")}
+      aria-label={t(msg("Connection QR camera"))}
       className="aspect-video w-full rounded-lg bg-black object-cover"
     />
   );

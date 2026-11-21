@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: People → Invitations: links not used yet, and revoking them.
 import { MailIcon, UserPlusIcon } from "lucide-react";
 import { useState } from "react";
@@ -14,7 +15,7 @@ import { ResourceState } from "../ResourceState";
 const loadInvitations = () => baskuleApi.invitations();
 
 export function InvitationsPage() {
-  const t = useTranslation();
+  const t = useMessages();
   const data = useApiResource(loadInvitations);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -24,11 +25,11 @@ export function InvitationsPage() {
     setBusyId(id);
     return (async () => {
       await baskuleApi.revokeInvitation(id);
-      notifySuccess(t("Invitation revoked"));
+      notifySuccess(t(msg("Invitation revoked")));
       await data.reload();
     })()
       .catch((cause: unknown) => {
-        notifyError(t("Could not revoke the invitation"), cause);
+        notifyError(t(msg("Could not revoke the invitation")), cause);
       })
       .finally(() => {
         setBusyId(null);
@@ -40,14 +41,14 @@ export function InvitationsPage() {
       <PageSection
         title={
           data.data
-            ? t("Pending invitations ({{length}})", { length: invitations.length })
-            : t("Pending invitations")
+            ? t(msg("Pending invitations ({length})"), { length: invitations.length })
+            : t(msg("Pending invitations"))
         }
-        description={t("A lost link can't be shown again: revoke it and invite again.")}
+        description={t(msg("A lost link can't be shown again: revoke it and invite again."))}
         action={
           <Button size="sm" onClick={() => setAdding(true)}>
             <UserPlusIcon />
-            {t("Add person")}
+            {t(msg("Add person"))}
           </Button>
         }
       >
@@ -55,7 +56,7 @@ export function InvitationsPage() {
           error={data.error}
           loading={data.loading}
           empty={invitations.length === 0}
-          emptyText={t("No pending invitations.")}
+          emptyText={t(msg("No pending invitations."))}
         />
         {invitations.map((invitation) => (
           <PageRow
@@ -67,21 +68,21 @@ export function InvitationsPage() {
             }
             trailing={
               <>
-                {invitation.role === "admin" ? <Badge variant="info">{t("Admin")}</Badge> : null}
+                {invitation.role === "admin" ? <Badge variant="info">{t(msg("Admin"))}</Badge> : null}
                 <Button
                   variant="ghost-destructive"
                   size="sm"
                   disabled={busyId === invitation.id}
                   onClick={() => void revoke(invitation.id)}
                 >
-                  {t("Revoke")}
+                  {t(msg("Revoke"))}
                 </Button>
               </>
             }
           >
             <span className="truncate text-sm text-foreground">{invitation.email}</span>
             <span className="truncate text-xs text-muted-foreground">
-              {t("Expires")} {new Date(invitation.expiresAt).toLocaleString()}
+              {t(msg("Expires"))} {new Date(invitation.expiresAt).toLocaleString()}
             </span>
           </PageRow>
         ))}

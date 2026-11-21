@@ -1,3 +1,5 @@
+import { type MFunctionType } from "gt-i18n/types";
+import { mFallback, msg } from "gt-i18n";
 import type {
   GitRunStackedActionInput,
   GitStackedAction,
@@ -42,6 +44,7 @@ export function buildMenuItems(
   gitStatus: VcsStatusResult | null,
   isBusy: boolean,
   hasOriginRemote = true,
+  resolve: MFunctionType = mFallback,
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
   const canPush =
@@ -54,7 +57,7 @@ export function buildMenuItems(
   return [
     {
       id: "commit",
-      label: "Commit",
+      label: resolve(msg("Commit")),
       disabled: isBusy || !gitStatus.hasWorkingTreeChanges,
       icon: "commit",
       kind: "open_dialog",
@@ -62,7 +65,7 @@ export function buildMenuItems(
     },
     {
       id: "push",
-      label: "Push",
+      label: resolve(msg("Push", { $context: "verb, git action" })),
       disabled: !canPush,
       icon: "push",
       kind: "open_dialog",
@@ -76,69 +79,83 @@ export function resolveQuickAction(
   isBusy: boolean,
   isDefaultBranch = false,
   hasOriginRemote = true,
+  resolve: MFunctionType = mFallback,
 ): GitQuickAction {
   if (isBusy)
-    return { label: "Commit", disabled: true, kind: "show_hint", hint: "Git action in progress." };
-  if (!gitStatus)
     return {
-      label: "Commit",
+      label: resolve(msg("Commit")),
       disabled: true,
       kind: "show_hint",
-      hint: "Git status is unavailable.",
+      hint: resolve(msg("Git action in progress.")),
+    };
+  if (!gitStatus)
+    return {
+      label: resolve(msg("Commit", { $context: "verb, git action" })),
+      disabled: true,
+      kind: "show_hint",
+      hint: resolve(msg("Git status is unavailable.")),
     };
   if (gitStatus.refName === null)
     return {
-      label: "Commit",
+      label: resolve(msg("Commit", { $context: "verb, git action" })),
       disabled: true,
       kind: "show_hint",
-      hint: "Create and checkout a branch before pushing.",
+      hint: resolve(msg("Create and checkout a branch before pushing.")),
     };
   const behind = gitStatus.behindCount > 0;
   const ahead = gitStatus.aheadCount > 0;
   if (gitStatus.hasWorkingTreeChanges)
     return behind || (!gitStatus.hasUpstream && !hasOriginRemote)
-      ? { label: "Commit", disabled: false, kind: "run_action", action: "commit" }
-      : { label: "Commit & push", disabled: false, kind: "run_action", action: "commit_push" };
+      ? { label: resolve(msg("Commit")), disabled: false, kind: "run_action", action: "commit" }
+      : {
+          label: resolve(msg("Commit & push")),
+          disabled: false,
+          kind: "run_action",
+          action: "commit_push",
+        };
   if (!gitStatus.hasUpstream && !hasOriginRemote)
     return {
-      label: "Push",
+      label: resolve(msg("Push")),
       disabled: true,
       kind: "show_hint",
-      hint: 'Add an "origin" remote before pushing.',
+      hint: resolve(msg('Add an "origin" remote before pushing.')),
     };
   if (ahead && behind)
     return {
-      label: "Sync branch",
+      label: resolve(msg("Sync branch")),
       disabled: true,
       kind: "show_hint",
-      hint: "Branch has diverged from upstream. Rebase/merge first.",
+      hint: resolve(msg("Branch has diverged from upstream. Rebase/merge first.")),
     };
-  if (behind) return { label: "Pull", disabled: false, kind: "run_pull" };
+  if (behind) return { label: resolve(msg("Pull")), disabled: false, kind: "run_pull" };
   if (ahead || !gitStatus.hasUpstream)
     return {
-      label: "Push",
+      label: resolve(msg("Push")),
       disabled: false,
       kind: "run_action",
       action: isDefaultBranch ? "commit_push" : "push",
     };
   return {
-    label: "Commit",
+    label: resolve(msg("Commit", { $context: "verb, git action" })),
     disabled: true,
     kind: "show_hint",
-    hint: "Branch is up to date. No action needed.",
+    hint: resolve(msg("Branch is up to date. No action needed.")),
   };
 }
 
-export function getGitActionDisabledReason(input: {
-  item: GitActionMenuItem;
-  gitStatus: VcsStatusResult | null;
-  isBusy: boolean;
-  hasOriginRemote: boolean;
-}): string | null {
+export function getGitActionDisabledReason(
+  input: {
+    item: GitActionMenuItem;
+    gitStatus: VcsStatusResult | null;
+    isBusy: boolean;
+    hasOriginRemote: boolean;
+  },
+  resolve: MFunctionType = mFallback,
+): string | null {
   const { item, gitStatus, isBusy, hasOriginRemote } = input;
   if (!item.disabled) return null;
-  if (isBusy) return "Git action in progress.";
-  if (!gitStatus) return "Git status is unavailable.";
+  if (isBusy) return resolve(msg("Git action in progress."));
+  if (!gitStatus) return resolve(msg("Git status is unavailable."));
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
@@ -147,28 +164,28 @@ export function getGitActionDisabledReason(input: {
 
   if (item.id === "commit") {
     if (!hasChanges) {
-      return "Worktree is clean. Make changes before committing.";
+      return resolve(msg("Worktree is clean. Make changes before committing."));
     }
-    return "Commit is currently unavailable.";
+    return resolve(msg("Commit is currently unavailable."));
   }
 
   if (item.id === "push") {
     if (!hasBranch) {
-      return "Detached HEAD: checkout a branch before pushing.";
+      return resolve(msg("Detached HEAD: checkout a branch before pushing."));
     }
     if (hasChanges) {
-      return "Commit or stash local changes before pushing.";
+      return resolve(msg("Commit or stash local changes before pushing."));
     }
     if (isBehind) {
-      return "Branch is behind upstream. Pull/rebase before pushing.";
+      return resolve(msg("Branch is behind upstream. Pull/rebase before pushing."));
     }
     if (!gitStatus.hasUpstream && !hasOriginRemote) {
-      return 'Add an "origin" remote before pushing.';
+      return resolve(msg('Add an "origin" remote before pushing.'));
     }
     if (!isAhead) {
-      return "No local commits to push.";
+      return resolve(msg("No local commits to push."));
     }
-    return "Push is currently unavailable.";
+    return resolve(msg("Push is currently unavailable."));
   }
 
   return null;
@@ -182,23 +199,35 @@ export function requiresDefaultBranchConfirmation(
   return action === "push" || action === "commit_push";
 }
 
-export function resolveDefaultBranchActionDialogCopy(input: {
-  action: DefaultBranchConfirmableAction;
-  branchName: string;
-  includesCommit: boolean;
-}): DefaultBranchActionDialogCopy {
-  const branchLabel = input.branchName;
-  const suffix = ` on "${branchLabel}". You can continue on this branch or create a feature branch and run the same action there.`;
+export function resolveDefaultBranchActionDialogCopy(
+  input: {
+    action: DefaultBranchConfirmableAction;
+    branchName: string;
+    includesCommit: boolean;
+  },
+  resolve: MFunctionType = mFallback,
+): DefaultBranchActionDialogCopy {
+  const branch = input.branchName;
   if (input.includesCommit) {
     return {
-      title: "Commit & push to default branch?",
-      description: `This action will commit and push changes${suffix}`,
-      continueLabel: `Commit & push to ${branchLabel}`,
+      title: resolve(msg("Commit & push to default branch?")),
+      description: resolve(
+        msg(
+          'This action will commit and push changes on "{branch}". You can continue on this branch or create a feature branch and run the same action there.',
+          { branch },
+        ),
+      ),
+      continueLabel: resolve(msg("Commit & push to {branch}", { branch })),
     };
   }
   return {
-    title: "Push to default branch?",
-    description: `This action will push local commits${suffix}`,
-    continueLabel: `Push to ${branchLabel}`,
+    title: resolve(msg("Push to default branch?")),
+    description: resolve(
+      msg(
+        'This action will push local commits on "{branch}". You can continue on this branch or create a feature branch and run the same action there.',
+        { branch },
+      ),
+    ),
+    continueLabel: resolve(msg("Push to {branch}", { branch })),
   };
 }

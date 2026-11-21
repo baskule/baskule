@@ -69,7 +69,9 @@ it.effect(
               batches.push(
                 registrations.map((entry) => ({
                   token:
-                    entry._tag === "BearerConnectionRegistration" ? entry.credential.token : "",
+                    entry._tag === "BearerConnectionRegistration" && "token" in entry.credential
+                      ? entry.credential.token
+                      : "",
                   environmentId: entry.target.environmentId,
                 })),
               );
@@ -115,7 +117,9 @@ it.live("connects a replacement account before an old descriptor request settles
             Effect.sync(() => {
               batches.push(
                 registrations.map((entry) =>
-                  entry._tag === "BearerConnectionRegistration" ? entry.credential.token : "",
+                  entry._tag === "BearerConnectionRegistration" && "token" in entry.credential
+                    ? entry.credential.token
+                    : "",
                 ),
               );
               if (batches.length === 1 && harness.session.status === "signed-in") {

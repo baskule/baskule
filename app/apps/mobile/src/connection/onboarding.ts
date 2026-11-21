@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import { ConnectionOnboarding } from "@t3tools/client-runtime/connection";
 import {
   createAtomCommandScheduler,
@@ -14,7 +12,7 @@ const onboardingScheduler = createAtomCommandScheduler();
 
 export const connectPairingUrl = createRuntimeCommand(connectionAtomRuntime, {
   get label() {
-    return t("mobile:connection:connect-pairing-url");
+    return "mobile:connection:connect-pairing-url";
   },
   scheduler: onboardingScheduler,
   concurrency: {
@@ -34,7 +32,7 @@ export const connectPairingUrl = createRuntimeCommand(connectionAtomRuntime, {
 
 export const updateBearerConnection = createRuntimeCommand(connectionAtomRuntime, {
   get label() {
-    return t("mobile:connection:update-bearer");
+    return "mobile:connection:update-bearer";
   },
   scheduler: onboardingScheduler,
   concurrency: {

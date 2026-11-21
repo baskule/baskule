@@ -1,6 +1,5 @@
-import { useTranslation } from "../../i18n";
-
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { msg, useMessages } from "gt-react-native";
 import { Platform } from "react-native";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import {
@@ -16,7 +15,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+import { copyThreadReference } from "../../lib/copyThreadReference";
+import { m } from "../../i18n/messages";
 import {
   firstWorkspaceDetailOpen,
   workspaceHasColumns,
@@ -54,8 +54,9 @@ export function HardwareKeyboardCommandProvider({
   children,
   pathname,
 }: PropsWithChildren<{ readonly pathname: string }>) {
-  const t = useTranslation();
   const navigation = useNavigation();
+  const messages = useMessages();
+
   const [paletteOpen, setPaletteOpen] = useState(false);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
   const activeThreadRef = useMemo(() => parseActiveThreadPath(pathname), [pathname]);
@@ -64,10 +65,11 @@ export function HardwareKeyboardCommandProvider({
     () =>
       activeThreadRef === null
         ? null
-        : resolveThreadReferenceCopyTarget({
-            threadId: activeThread?.id ?? activeThreadRef.threadId,
-          }),
-    [activeThread, activeThreadRef],
+        : resolveThreadReferenceCopyTarget(
+            { threadId: activeThread?.id ?? activeThreadRef.threadId },
+            messages,
+          ),
+    [activeThread, activeThreadRef, messages],
   );
   const [copyFeedback, setCopyFeedback] = useState<GitActionProgress>(EMPTY_COPY_FEEDBACK);
   const copyRequestIdRef = useRef(0);
@@ -134,9 +136,7 @@ export function HardwareKeyboardCommandProvider({
       if (command === "copyThreadReference") {
         if (copyTarget === null) return;
         const requestId = ++copyRequestIdRef.current;
-        void tryCopyTextWithHaptic(copyTarget.value, {
-          target: copyTarget.clipboardTarget,
-        }).then((didCopy) => {
+        void copyThreadReference(copyTarget).then((didCopy) => {
           if (requestId !== copyRequestIdRef.current) return;
           showCopyFeedback(
             didCopy
@@ -148,7 +148,7 @@ export function HardwareKeyboardCommandProvider({
               : {
                   phase: "error",
                   label: copyTarget.failureTitle,
-                  description: t("Try again."),
+                  description: m(msg("Try again.")),
                 },
           );
         });
@@ -183,7 +183,7 @@ export function HardwareKeyboardCommandProvider({
         navigation.navigate("ThreadReview", thread);
       }
     },
-    [t, copyTarget, navigation, pathname, showCopyFeedback],
+    [copyTarget, navigation, pathname, showCopyFeedback],
   );
 
   const palette = useMemo(

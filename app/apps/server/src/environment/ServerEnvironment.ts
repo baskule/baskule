@@ -22,7 +22,7 @@ import { resolveServerSelfUpdateCapability } from "../cloud/selfUpdate.ts";
 import { resolveServiceLauncherMode } from "../cloud/serviceLauncherClient.ts";
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import { isSpeechPlatformSupported } from "../speech/platform.ts";
+
 import { BaskuleRpcPolicy } from "../baskule/rpcPolicy.ts"; // baskule:
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { detectServerEnvironmentMachineKind } from "./ServerEnvironmentMachine.ts";
@@ -191,7 +191,7 @@ export const make = Effect.gen(function* () {
   const identity = yield* ServerEnvironmentIdentity;
   const hostPlatform = yield* HostProcess.Platform;
   const hostArchitecture = yield* HostProcess.Architecture;
-  const hostLibc = hostPlatform === "linux" ? yield* HostProcess.LinuxLibc : undefined;
+
   const environmentId = yield* identity.getEnvironmentId;
   const cwdBaseName = path.basename(serverConfig.cwd).trim();
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
@@ -227,6 +227,7 @@ export const make = Effect.gen(function* () {
       repositoryIdentity: true,
       connectionProbe: true,
       attachmentUploads: true,
+      accessTokenRenewal: true,
       questionAttachments: true,
       fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
       pullRequests: false,
@@ -274,8 +275,8 @@ export const make = Effect.gen(function* () {
       projectCloneTracking: true,
       projectOrganization: policy?.methods.has(W.projectsMutate) ?? true, // baskule: follow hosted policy.
       ignoredFileListing: true,
-      voiceTranscription: isSpeechPlatformSupported(hostPlatform, hostArchitecture, hostLibc),
-      cloudVoiceTranscription: true,
+      voiceTranscription: false,
+      cloudVoiceTranscription: false,
       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
       ...(serverInstallation === null ? {} : { serverInstallation }),
       ...(serverSelfUpdate === "boot-service" || desktopAppUpdate

@@ -109,6 +109,7 @@ describe("global voice input", () => {
     expect(session.controller.currentState).toEqual({
       phase: "error",
       error: "Microphone access is required for voice input.",
+      errorCode: "microphone-blocked",
       errorAction: canAskAgain ? "retry" : "settings",
     });
     expect(recorder.record).not.toHaveBeenCalled();

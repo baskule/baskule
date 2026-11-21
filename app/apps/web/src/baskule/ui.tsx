@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+import { m } from "../i18n/messages";
 // baskule: small building blocks shared by the Baskule views, composed from T3's UI kit.
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
@@ -132,7 +134,7 @@ export function useApiResource<T>(load: () => Promise<T>, options?: { readonly p
         if (cancelled) return;
         setState((previous) => ({
           data: previous.data,
-          error: cause instanceof Error ? cause.message : "Something went wrong.",
+          error: cause instanceof Error ? cause.message : m(msg("Something went wrong.")),
           loading: false,
         }));
         settle();

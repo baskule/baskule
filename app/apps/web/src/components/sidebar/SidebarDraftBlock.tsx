@@ -1,10 +1,9 @@
-import { useTranslation } from "../../i18n";
-
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import type { ContextMenuSource } from "@t3tools/contracts";
 import { contextMenuSourceOf } from "../../contextMenuSource";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { T, useGT } from "gt-react";
 import { SquarePenIcon, XIcon } from "lucide-react";
 import {
   memo,
@@ -41,8 +40,8 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     source: ContextMenuSource,
   ) => void;
 }) {
-  const t = useTranslation();
   const { composer, draftId, onContextMenu, onDiscard, onNavigate } = props;
+  const gt = useGT();
   const promptPreview =
     assistantCitationsToPlainText(
       replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label),
@@ -60,10 +59,12 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   const preview =
     promptPreview.length > 0
       ? promptPreview
-      : `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`;
+      : gt("{count, plural, one {{count} attachment} other {{count} attachments}}", {
+          count: attachmentCount,
+        });
   const accessibility = resolveSidebarRowAccessibility({
     title: preview,
-    statusLabel: "Unsent draft",
+    statusLabel: gt("Unsent draft"),
     projectDisplayName: props.projectDisplayName,
     isActive: props.isActive,
   });
@@ -123,7 +124,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                   render={
                     <button
                       type="button"
-                      aria-label={t("Discard draft")}
+                      aria-label={gt("Discard draft")}
                       onClick={handleDiscard}
                       className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
                     >
@@ -131,7 +132,9 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                     </button>
                   }
                 />
-                <TooltipPopup side="top">{t("Discard draft")}</TooltipPopup>
+                <TooltipPopup side="top">
+                  <T>Discard draft</T>
+                </TooltipPopup>
               </Tooltip>
             </span>
           </div>

@@ -1,5 +1,3 @@
-import { useTranslation } from "../../i18n";
-
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -23,6 +21,7 @@ import type {
   ServerProvider,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { useGT } from "gt-react-native";
 import { useMemo } from "react";
 import { Pressable, View, type ColorValue } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -84,7 +83,7 @@ export function ThreadHandoffRow(props: {
   iconColor: ColorValue;
   surfaceColor: string;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const { item } = props.projectedItem;
   const endpointsAtom = useMemo(
     () => handoffEndpointsAtom(props.environmentId, props.projectedItem),
@@ -99,7 +98,7 @@ export function ThreadHandoffRow(props: {
       endpoints={endpoints}
       iconColor={color}
       surfaceColor={props.surfaceColor}
-      label={t("Context handoff")}
+      label={gt("Context handoff")}
       failed={item.status === "failed"}
     />
   );
@@ -161,7 +160,7 @@ function HandoffEndpoint(props: {
   providers: ReadonlyArray<HandoffProvider>;
   surfaceColor: string;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const provider = props.providers.find((candidate) => candidate.instanceId === props.instanceId);
   const model = provider?.models.find((candidate) => candidate.slug === props.model);
   const label =
@@ -174,7 +173,7 @@ function HandoffEndpoint(props: {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityHint={t("Show provider account")}
+      accessibilityHint={gt("Show provider account")}
       className="min-h-6 max-w-full flex-row items-center justify-center gap-1.5"
       hitSlop={{ top: 8, bottom: 8 }}
       onPress={() =>

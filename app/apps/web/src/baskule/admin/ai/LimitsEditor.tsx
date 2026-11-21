@@ -1,4 +1,5 @@
-import { useLocale, useTranslation } from "../../../i18n";
+import { useMessages, msg, useLocale } from "gt-react";
+
 // baskule: the per-person limits. Off by default; each window is optional and takes a token limit,
 // a cost limit or both. Rules are kept while the master switch is off.
 import { useState, type FormEvent } from "react";
@@ -52,7 +53,7 @@ export function draftOf(settings: UsageLimitSettings): Draft {
 /** The settings to save, or the first problem in plain words. */
 export function settingsOf(
   draft: Draft,
-  t: ReturnType<typeof useTranslation>,
+  t: ReturnType<typeof useMessages>,
 ): { settings: UsageLimitSettings } | { error: string } {
   const rules: UsageLimitRule[] = [];
   for (const window of WINDOWS) {
@@ -62,13 +63,13 @@ export function settingsOf(
     const tokens = entry.tokens.trim() === "" ? undefined : parseTokens(entry.tokens);
     if (tokens === null || (tokens !== undefined && tokens < 1))
       return {
-        error: t("{{name}}: enter tokens as a whole number, such as 500k or 2M.", { name }),
+        error: t(msg("{name}: enter tokens as a whole number, such as 500k or 2M.", { name })),
       };
     const cost = entry.cost.trim() === "" ? undefined : Number(entry.cost.replace(",", "."));
     if (cost !== undefined && (!Number.isFinite(cost) || cost <= 0))
-      return { error: t("{{name}}: enter a cost above zero, such as 5 or 12.50.", { name }) };
+      return { error: t(msg("{name}: enter a cost above zero, such as 5 or 12.50.", { name })) };
     if (tokens === undefined && cost === undefined)
-      return { error: t("{{name}}: set a token limit, a cost limit, or both.", { name }) };
+      return { error: t(msg("{name}: set a token limit, a cost limit, or both.", { name })) };
     rules.push({
       window,
       ...(tokens === undefined ? {} : { tokens }),
@@ -76,7 +77,7 @@ export function settingsOf(
     });
   }
   if (draft.enabled && rules.length === 0)
-    return { error: t("Turn on at least one limit below, or turn off Limit usage.") };
+    return { error: t(msg("Turn on at least one limit below, or turn off Limit usage.")) };
   return { settings: { enabled: draft.enabled, rules } };
 }
 
@@ -87,7 +88,7 @@ export function LimitsEditor() {
 }
 
 function LimitsForm({ initial }: { readonly initial: UsageLimitSettings }) {
-  const t = useTranslation();
+  const t = useMessages();
   const locale = useLocale();
   const [saved, setSaved] = useState(() => draftOf(initial));
   const [draft, setDraft] = useState(saved);
@@ -115,11 +116,13 @@ function LimitsForm({ initial }: { readonly initial: UsageLimitSettings }) {
       setSaved(next);
       setDraft(next);
       notifySuccess(
-        result.settings.enabled ? t("Limits saved and applied") : t("Limits saved, not applied"),
+        result.settings.enabled
+          ? t(msg("Limits saved and applied"))
+          : t(msg("Limits saved, not applied")),
       );
     })()
       .catch((cause: unknown) => {
-        setError(errorText(cause, t("Could not save the limits.")));
+        setError(errorText(cause, t(msg("Could not save the limits."))));
       })
       .finally(() => {
         setBusy(false);
@@ -130,27 +133,35 @@ function LimitsForm({ initial }: { readonly initial: UsageLimitSettings }) {
     <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)}>
       <fieldset disabled={busy} className="contents">
         <PageSection
-          title={t("Limits")}
+          title={t(msg("Limits"))}
           description={t(
-            "Each person has their own limits, counted on the messages they send in any space. There are no team or space budgets.",
+            msg(
+              "Each person has their own limits, counted on the messages they send in any space. There are no team or space budgets.",
+            ),
           )}
         >
           <PageRow
             trailing={
               <Switch
-                aria-label={t("Limit usage")}
+                aria-label={t(msg("Limit usage"))}
                 checked={draft.enabled}
                 onCheckedChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
               />
             }
           >
-            <span className="text-sm text-foreground">{t("Limit usage")}</span>
+            <span className="text-sm text-foreground">{t(msg("Limit usage"))}</span>
             <span className="text-xs text-muted-foreground">
               {draft.enabled
                 ? t(
-                    "On: when a person reaches a limit, their next messages wait until it resets. Answers already started finish.",
+                    msg(
+                      "On: when a person reaches a limit, their next messages wait until it resets. Answers already started finish.",
+                    ),
                   )
-                : t("Off: nobody is limited. You can prepare limits below and turn this on later.")}
+                : t(
+                    msg(
+                      "Off: nobody is limited. You can prepare limits below and turn this on later.",
+                    ),
+                  )}
             </span>
           </PageRow>
           {WINDOWS.map((window) => {
@@ -177,27 +188,27 @@ function LimitsForm({ initial }: { readonly initial: UsageLimitSettings }) {
                 {entry.on ? (
                   <div className="grid gap-4 px-3 pb-4 sm:grid-cols-2 sm:px-4">
                     <FormField
-                      label={t("Tokens per person")}
+                      label={t(msg("Tokens per person"))}
                       inputMode="text"
                       autoComplete="off"
-                      placeholder={t("No token limit")}
+                      placeholder={t(msg("No token limit"))}
                       value={entry.tokens}
                       onChange={(event) => setWindow(window, { tokens: event.currentTarget.value })}
                       hint={(() => {
                         const tokens = parseTokens(entry.tokens);
                         return tokens === null
-                          ? t("For example 500k or 2M.")
-                          : t("{{tokens}} tokens", { tokens: tokens.toLocaleString(locale) });
+                          ? t(msg("For example 500k or 2M."))
+                          : t(msg("{tokens} tokens"), { tokens: tokens.toLocaleString(locale) });
                       })()}
                     />
                     <FormField
-                      label={t("Cost per person (USD)")}
+                      label={t(msg("Cost per person (USD)"))}
                       inputMode="decimal"
                       autoComplete="off"
-                      placeholder={t("No cost limit")}
+                      placeholder={t(msg("No cost limit"))}
                       value={entry.cost}
                       onChange={(event) => setWindow(window, { cost: event.currentTarget.value })}
-                      hint={t("Estimated from the model prices on the Models page.")}
+                      hint={t(msg("Estimated from the model prices on the Models page."))}
                     />
                   </div>
                 ) : null}
@@ -213,11 +224,13 @@ function LimitsForm({ initial }: { readonly initial: UsageLimitSettings }) {
         <div className="flex flex-col items-start gap-2 px-3 sm:px-4">
           <Button type="submit" disabled={busy || !dirty}>
             {busy ? <Spinner size="sm" /> : null}
-            {t("Save limits")}
+            {t(msg("Save limits"))}
           </Button>
           <p className="text-xs text-muted-foreground">
             {t(
-              "Days, weeks and months start at midnight UTC. Everyone sees their limits under Settings → Usage.",
+              msg(
+                "Days, weeks and months start at midnight UTC. Everyone sees their limits under Settings → Usage.",
+              ),
             )}
           </p>
         </div>

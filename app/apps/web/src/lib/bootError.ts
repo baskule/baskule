@@ -1,5 +1,3 @@
-import { t } from "@t3tools/shared/localization";
-
 import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
 
 const LAST_FAILURE_KEY = "t3code:boot-failed-at";
@@ -156,9 +154,7 @@ function copyText(target: HTMLElement, onCopied: () => void, onBlocked: (hint: s
     selectContents(target);
     if (copySelection()) return onCopied();
     onBlocked(
-      /Mac|iPhone|iPad/.test(navigator.platform)
-        ? t("Press ⌘C to copy")
-        : t("Press Ctrl+C to copy"),
+      /Mac|iPhone|iPad/.test(navigator.platform) ? "Press ⌘C to copy" : "Press Ctrl+C to copy",
     );
   };
   const clipboard = window.isSecureContext ? navigator.clipboard : undefined;
@@ -178,16 +174,16 @@ function mountUpdateButton(
     button.hidden = action === null;
     // aria-disabled keeps keyboard focus on the button while the download runs.
     button.setAttribute("aria-disabled", String(action?.kind === "downloading"));
-    if (action?.kind === "download") button.textContent = t("Download update");
+    if (action?.kind === "download") button.textContent = "Download update";
     if (action?.kind === "downloading")
-      button.textContent = t("Downloading update ({{percent}}%)", { percent: action.percent });
-    if (action?.kind === "install") button.textContent = t("Restart to update");
+      button.textContent = `Downloading update (${action.percent}%)`;
+    if (action?.kind === "install") button.textContent = "Restart to update";
     const failure = !action
       ? ""
       : state.errorContext === "download"
-        ? t(UPDATE_DOWNLOAD_FAILED)
+        ? UPDATE_DOWNLOAD_FAILED
         : state.errorContext === "install"
-          ? t(UPDATE_INSTALL_FAILED)
+          ? UPDATE_INSTALL_FAILED
           : "";
     if (failure === note.textContent) return;
     note.textContent = failure;
@@ -242,11 +238,11 @@ export function showBootError(error: unknown) {
   };
 
   const message = element("div", {}, [
-    element("h1", { textContent: t("Baskule failed to start") }), // baskule: rebrand
+    element("h1", { textContent: "Baskule failed to start" }), // baskule: rebrand
     element("p", {
       textContent: offline
-        ? t("This browser appears to be offline. Check the connection, then reload.")
-        : t("We are not sure why. Try a reload first."),
+        ? "This browser appears to be offline. Check the connection, then reload."
+        : "We are not sure why. Try a reload first.",
     }),
   ]);
   message.setAttribute("role", "alert");
@@ -254,7 +250,7 @@ export function showBootError(error: unknown) {
   const reload = element("button", {
     id: "boot-error-reload",
     type: "button",
-    textContent: t("Reload"),
+    textContent: "Reload",
   });
   reload.addEventListener("click", () => window.location.reload());
   const update = element("button", { id: "boot-error-update", type: "button", hidden: true });
@@ -268,28 +264,29 @@ export function showBootError(error: unknown) {
     console.warn("Could not describe the startup error.", reportError);
   }
   const details = element("pre", { id: "boot-error-details", tabIndex: 0, textContent: report });
-  const copyDetails = element("button", { type: "button", textContent: t("Copy error details") });
+  const copyDetails = element("button", { type: "button", textContent: "Copy error details" });
   copyDetails.addEventListener("click", () =>
     copyText(
       details,
       () => {
-        copyDetails.textContent = t("Copied");
+        copyDetails.textContent = "Copied";
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- boot failure page renders before the i18n runtime loads
         announce("Copied to clipboard.");
       },
       (hint) => {
         copyDetails.textContent = hint;
-        announce(t(COPY_BLOCKED));
+        announce(COPY_BLOCKED);
       },
     ),
   );
 
   const more = element("details", { open: isRepeatFailure(Date.now()) }, [
-    element("summary", { textContent: t("More options if it keeps failing") }),
+    element("summary", { textContent: "More options if it keeps failing" }),
     // baskule: no T3 download, triage command or T3 issue tracker for Baskule users.
     element("div", {}, [
       details,
       element("p", {
-        textContent: t("Details may include local file paths and names. Check before sharing."),
+        textContent: "Details may include local file paths and names. Check before sharing.",
       }),
       element("div", { id: "boot-error-report" }, [copyDetails]),
     ]),

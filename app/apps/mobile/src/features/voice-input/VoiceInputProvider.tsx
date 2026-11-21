@@ -1,3 +1,4 @@
+import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { useAtomValue } from "@effect/atom-react";
 import { AudioModule, RecordingPresets, type RecordingStatus } from "expo-audio";
 import { File } from "expo-file-system";
@@ -19,7 +20,7 @@ import {
   subscribeBaskuleSession,
   useBaskuleSession,
 } from "../../baskule/session";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import { voiceInputBlocksSubmission } from "@t3tools/client-runtime/voice-input";
 import { createLazyVoiceRecorder } from "./lazyVoiceRecorder";
@@ -60,9 +61,8 @@ export const deviceMicrophoneOrder = (saved?: ReadonlyArray<MicrophoneEntry>) =>
  */
 const voiceInputAtom = Atom.make((get) => {
   const registry = get.registry;
-  // Mounted so the recorder can read and remember microphones synchronously.
+  // Mounted so the recorder can read known microphones synchronously.
   get.mount(mobilePreferencesAtom);
-  get.mount(updateMobilePreferencesAtom);
   const audioLevels = makeMutable<ReadonlyArray<number>>(
     Array<number>(VOICE_WAVEFORM_SAMPLE_COUNT).fill(0),
   );
@@ -89,7 +89,7 @@ const voiceInputAtom = Atom.make((get) => {
       const known = deviceMicrophoneOrder(preferences.value.microphones);
       const order = rememberMicrophones(known, inputs);
       if (order !== known) {
-        registry.set(updateMobilePreferencesAtom, {
+        void runAtomCommand(registry, saveMobilePreferences, {
           transform: (current) => ({
             microphones: rememberMicrophones(deviceMicrophoneOrder(current.microphones), inputs),
           }),

@@ -1,4 +1,5 @@
-import { msg } from "../i18n";
+import { msg } from "gt-react";
+
 // baskule: the sections of the person's Settings modal, in nav order. The settings route, its nav
 // and each page's heading all read this list. T3's own settings pages stay unreachable.
 import {

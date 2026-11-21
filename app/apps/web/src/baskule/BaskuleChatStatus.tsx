@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: compact run-status glyph for the flat chat list (replaces pin/PR/terminal/provider badges).
 import { CircleAlertIcon, LoaderCircleIcon, MessageCircleQuestionIcon } from "lucide-react";
@@ -12,12 +13,12 @@ export function BaskuleChatStatus({
   readonly status: SidebarThreadStatus;
   readonly unread?: boolean;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   if (status === "working" || status === "waiting") {
     return (
       <LoaderCircleIcon
         role="img"
-        aria-label={t("Working")}
+        aria-label={t(msg("Working"))}
         className="size-3.5 shrink-0 animate-spin text-info"
       />
     );
@@ -26,7 +27,7 @@ export function BaskuleChatStatus({
     return (
       <MessageCircleQuestionIcon
         role="img"
-        aria-label={t("Needs your answer")}
+        aria-label={t(msg("Needs your answer"))}
         className="size-3.5 shrink-0 text-warning-foreground"
       />
     );
@@ -35,7 +36,7 @@ export function BaskuleChatStatus({
     return (
       <CircleAlertIcon
         role="img"
-        aria-label={t("Failed")}
+        aria-label={t(msg("Failed"))}
         className="size-3.5 shrink-0 text-destructive-foreground"
       />
     );
@@ -44,7 +45,7 @@ export function BaskuleChatStatus({
     return (
       <span
         role="img"
-        aria-label={t("Unread")}
+        aria-label={t(msg("Unread"))}
         className="size-2 shrink-0 rounded-full bg-info"
         data-testid="baskule-chat-unread"
       />

@@ -1,7 +1,7 @@
+import { msg, type useMessages as useTranslation } from "gt-react";
 // baskule: the columns every usage table shares: the model, then money and tokens side by side.
 import { formatUsd } from "@t3tools/shared/usageFormat";
 
-import type { useTranslation } from "../../i18n";
 import { formatTokens, modelLabel } from "./format";
 import type { UsageColumn } from "./UsageTable";
 
@@ -12,8 +12,8 @@ export const amountColumns = <Row extends { costUsd: number; tokens: number }>(
 ): UsageColumn<Row>[] => [
   {
     id: "cost",
-    label: t("Cost"),
-    csvLabel: t("Cost (USD)"),
+    label: t(msg("Cost")),
+    csvLabel: t(msg("Cost (USD)")),
     numeric: true,
     value: (row) => row.costUsd,
     render: (row) => formatUsd(row.costUsd),
@@ -21,7 +21,7 @@ export const amountColumns = <Row extends { costUsd: number; tokens: number }>(
   },
   {
     id: "tokens",
-    label: t("Tokens"),
+    label: t(msg("Tokens")),
     numeric: true,
     value: (row) => row.tokens,
     render: (row) => formatTokens(row.tokens),
@@ -34,7 +34,7 @@ export const modelColumns = <Row extends { provider: string; model: string }>(
 ): UsageColumn<Row>[] => [
   {
     id: "model",
-    label: t("Model"),
+    label: t(msg("Model")),
     value: (row) => modelLabel(row.provider, row.model).name,
     render: (row) => {
       const label = modelLabel(row.provider, row.model);
@@ -46,5 +46,5 @@ export const modelColumns = <Row extends { provider: string; model: string }>(
       );
     },
   },
-  { id: "provider", label: t("Provider"), csvOnly: true, value: (row) => row.provider },
+  { id: "provider", label: t(msg("Provider")), csvOnly: true, value: (row) => row.provider },
 ];

@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { T, useGT } from "gt-react-native";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { Platform, Pressable, View } from "react-native";
 
@@ -15,7 +14,7 @@ export function WorkspaceEmptyDetail(props: {
   readonly onStartNewTask?: () => void;
   readonly onAddConnection?: () => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const settings = props.tab === "settings";
   if (props.tab === "usage") return <View className="flex-1 bg-screen" />;
   return (
@@ -30,12 +29,12 @@ export function WorkspaceEmptyDetail(props: {
         {props.onAddConnection ? (
           <View className="w-full max-w-[430px]">
             <EmptyState
-              title={t("No environments connected")}
-              detail={t("Add an environment to load projects and start coding sessions.")}
+              title={gt("No environments connected")}
+              detail={gt("Add an environment to load projects and start coding sessions.")}
               variant="plain"
               action={
                 <FloatingActionButton
-                  label={t("Add environment")}
+                  label={gt("Add environment")}
                   icon="plus"
                   variant="extended"
                   tone="primary"
@@ -53,14 +52,12 @@ export function WorkspaceEmptyDetail(props: {
               type="hierarchical"
             />
             <Text className="text-center text-xl font-t3-bold">
-              {settings ? t("Select a setting") : t("Select a thread")}
+              {settings ? gt("Select a setting") : gt("Select a chat")}
             </Text>
             <Text className="text-center text-base text-foreground-muted">
               {settings
-                ? t("Choose a page from the sidebar.")
-                : Platform.OS === "android"
-                  ? t("Choose a thread from the sidebar or start a new thread.")
-                  : t("Choose a thread from the sidebar or start a new task.")}
+                ? gt("Choose a page from the sidebar.")
+                : gt("Choose a chat from the sidebar or start a new chat.")}
             </Text>
             {props.onStartNewTask && !settings ? (
               Platform.OS === "android" ? (
@@ -72,7 +69,7 @@ export function WorkspaceEmptyDetail(props: {
                   onPress={props.onStartNewTask}
                 >
                   <Text className="text-base font-t3-bold text-primary-foreground">
-                    {t("New chat")}
+                    <T>New thread</T>
                   </Text>
                 </Pressable>
               )

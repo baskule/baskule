@@ -1,10 +1,10 @@
-import { t, useTranslation } from "../../i18n";
-
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { limitsNotice } from "@t3tools/shared/usageLimits";
+import { limitsNotice } from "@t3tools/shared/usageLimitsCopy";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { GaugeIcon } from "lucide-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import { ensureLocalApi } from "../../localApi";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Button } from "../ui/button";
@@ -21,11 +21,12 @@ function accountLabel(account: UsageLimitsReport["accounts"][number]): string {
     account.displayName?.trim() ||
     (String(account.instanceId) !== String(account.driver) ? account.instanceId : "");
   return instance && instance.toLowerCase() !== driver.toLowerCase()
-    ? t("{{driver}} · {{instance}}", { driver: driver, instance: instance })
+    ? `${driver} · ${instance}`
     : driver;
 }
 
 function AccountSummary({ account }: { readonly account: UsageLimitsReport["accounts"][number] }) {
+  const gt = useGT();
   const label = accountLabel(account);
   return (
     <>
@@ -33,15 +34,15 @@ function AccountSummary({ account }: { readonly account: UsageLimitsReport["acco
         <RedactedSensitiveText
           key={label}
           value={label}
-          ariaLabel="Toggle account label visibility"
-          revealTooltip="Click to reveal account"
-          hideTooltip="Click to hide account"
+          ariaLabel={gt("Toggle account label visibility")}
+          revealTooltip={gt("Click to reveal account")}
+          hideTooltip={gt("Click to hide account")}
           className="max-w-full truncate align-bottom font-sans text-xs leading-normal"
         />
       ) : (
         label
       )}
-      {account.plan ? t(" · {{plan}}", { plan: account.plan }) : null}
+      {account.plan ? ` · ${account.plan}` : null}
     </>
   );
 }
@@ -51,59 +52,76 @@ export function usageLimitsBannerItem(
   report: UsageLimitsReport,
   environmentId: EnvironmentId,
   onDismiss: () => void,
+  resolve: MessageResolver = m,
 ): ComposerBannerStackItem {
   const [first] = report.accounts;
   const single = report.accounts.length === 1 && first ? first : null;
   const summary = single ? (
     <AccountSummary account={single} />
   ) : (
-    t("{{length}} accounts", { length: report.accounts.length })
+    resolve(
+      msg("{count, plural, one {{count} account} other {{count} accounts}}", {
+        count: report.accounts.length,
+      }),
+    )
   );
   return {
     id,
     variant: "info",
     icon: <GaugeIcon />,
-    title: t("Usage limits"),
+    title: resolve(msg("Usage limits")),
     description: summary,
-    dismissLabel: t("Dismiss usage limits"),
+    dismissLabel: resolve(msg("Dismiss usage limits")),
     onDismiss,
     children: <UsageLimitsBannerBody report={report} environmentId={environmentId} />,
   };
 }
 
-export function modelFallbackBannerItem({
-  fallbackModelName,
-  defaultProviderName,
-  defaultModelName,
-  resetsAt,
-  timestampFormat,
-  onUseDefault,
-  onDismiss,
-}: {
-  readonly fallbackModelName: string;
-  readonly defaultProviderName: string;
-  readonly defaultModelName: string;
-  readonly resetsAt: string | null;
-  readonly timestampFormat: TimestampFormat;
-  readonly onUseDefault: () => void;
-  readonly onDismiss: () => void;
-}): ComposerBannerStackItem {
+export function modelFallbackBannerItem(
+  {
+    fallbackModelName,
+    defaultProviderName,
+    defaultModelName,
+    resetsAt,
+    timestampFormat,
+    onUseDefault,
+    onDismiss,
+  }: {
+    readonly fallbackModelName: string;
+    readonly defaultProviderName: string;
+    readonly defaultModelName: string;
+    readonly resetsAt: string | null;
+    readonly timestampFormat: TimestampFormat;
+    readonly onUseDefault: () => void;
+    readonly onDismiss: () => void;
+  },
+  resolve: MessageResolver = m,
+): ComposerBannerStackItem {
   return {
     id: "fallback-model",
     variant: "info",
     icon: <GaugeIcon />,
-    title: t("Using {{value1}}", { value1: fallbackModelName }),
-    description: t("{{value1}} is out of usage{{value2}}", {
-      value1: defaultProviderName,
-      value2: resetsAt ? ` · resets ${formatUpcomingTimestamp(resetsAt, timestampFormat)}` : "",
-    }),
+    title: resolve(msg("Using {model}", { model: fallbackModelName })),
+    description: resetsAt
+      ? resolve(
+          msg("{provider} is out of usage · resets {time}", {
+            provider: defaultProviderName,
+            time: formatUpcomingTimestamp(
+              resetsAt,
+              timestampFormat,
+              Date.now(),
+              undefined,
+              resolve,
+            ),
+          }),
+        )
+      : resolve(msg("{provider} is out of usage", { provider: defaultProviderName })),
     actions: (
       <Button size="xs" variant="ghost" onClick={onUseDefault}>
-        {t("Use")}
-        {defaultModelName}
+        {resolve(msg("Use {model}", { model: defaultModelName }))}
       </Button>
     ),
-    dismissLabel: t("Dismiss fallback model notice"),
+    dismissLabel: resolve(msg("Dismiss fallback model notice")),
     onDismiss,
   };
 }
@@ -115,7 +133,7 @@ function UsageLimitsBannerBody({
   readonly report: UsageLimitsReport;
   readonly environmentId: EnvironmentId;
 }) {
-  const t = useTranslation();
+  const messages = useMessages();
   const now = Date.parse(report.createdAt);
   return (
     <ComposerBanner.Scroll>
@@ -124,7 +142,7 @@ function UsageLimitsBannerBody({
           const resetCreditInput =
             account.resetCreditInput ??
             (account.instanceId ? { instanceId: account.instanceId } : undefined);
-          const notice = limitsNotice(account.limits);
+          const notice = limitsNotice(account.limits, messages);
           const externalUsage = account.limits.externalUsage;
           return (
             <div key={account.id} className="flex min-w-0 flex-col gap-1">
@@ -151,7 +169,7 @@ function UsageLimitsBannerBody({
                   className="self-start"
                   onClick={() => void ensureLocalApi().shell.openExternal(externalUsage.url)}
                 >
-                  {t("Manage usage")}
+                  <T>Manage usage</T>
                 </Button>
               ) : null}
               {resetCreditInput && account.limits.resetCredits ? (

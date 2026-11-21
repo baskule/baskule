@@ -1,4 +1,5 @@
-import { msg, useLocale, useTranslation } from "../../../i18n";
+import { msg, useMessages, useLocale } from "gt-react";
+
 // baskule: the model's prices, which turn tokens into the costs people see and cost limits count.
 // Built-in providers' prices come from Baskule's catalog and are read-only; custom endpoints enter theirs.
 import type { BaskuleAIModel } from "@t3tools/contracts/baskule";
@@ -53,12 +54,12 @@ const PRICE_FIELDS = [
 
 /** Read-only prices of a built-in model. */
 export function PriceSummary({ cost }: { readonly cost: BaskuleAIModel["cost"] }) {
-  const t = useTranslation();
+  const t = useMessages();
   const locale = useLocale();
-  if (!cost) return <p className="text-sm text-muted-foreground">{t("Unknown")}</p>;
+  if (!cost) return <p className="text-sm text-muted-foreground">{t(msg("Unknown"))}</p>;
   const values = [cost.input, cost.output, cost.cache_read, cost.cache_write];
   if (values.every((value) => !value))
-    return <p className="text-sm text-foreground">{t("Free")}</p>;
+    return <p className="text-sm text-foreground">{t(msg("Free"))}</p>;
   const usd = new Intl.NumberFormat(locale, {
     style: "currency",
     currency: "USD",
@@ -87,7 +88,7 @@ export function CustomPriceFields({
   readonly value: PriceDraft;
   readonly onChange: (value: PriceDraft) => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {PRICE_FIELDS.map(({ key, label }) => (
@@ -100,7 +101,7 @@ export function CustomPriceFields({
             step="any"
             inputMode="decimal"
             value={value[key]}
-            placeholder={key === "cacheRead" || key === "cacheWrite" ? t("Same as input") : "0.00"}
+            placeholder={key === "cacheRead" || key === "cacheWrite" ? t(msg("Same as input")) : "0.00"}
             onChange={(event) => onChange({ ...value, [key]: event.currentTarget.value })}
           />
         </label>

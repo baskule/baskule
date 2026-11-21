@@ -1,3 +1,5 @@
+import { m as resolveMessage } from "../../i18n/messages";
+import { msg } from "gt-react";
 import {
   PLUGIN_ERROR_CODES,
   type AdminPlugin,
@@ -16,7 +18,7 @@ import {
   type ProviderInput,
 } from "@t3tools/contracts/baskule-plugins";
 import { toastManager } from "../../components/ui/toast";
-import { t } from "../../i18n";
+
 import { BaskuleApiError, request } from "../api";
 
 const root = "/api/baskule";
@@ -64,36 +66,36 @@ export function defaultCallbackUrl(): string {
 }
 
 const PLUGIN_ERRORS: Record<PluginErrorCode, () => string> = {
-  invalid_request: () => t("Some details aren't valid. Check them and try again."),
-  plugin_not_found: () => t("This plugin no longer exists. Reload the page."),
-  server_not_found: () => t("This app is no longer part of the plugin. Reload the page."),
+  invalid_request: () => resolveMessage(msg("Some details aren't valid. Check them and try again.")),
+  plugin_not_found: () => resolveMessage(msg("This plugin no longer exists. Reload the page.")),
+  server_not_found: () => resolveMessage(msg("This app is no longer part of the plugin. Reload the page.")),
   plugin_changed: () =>
-    t("The plugin changed at its source since you opened it. Review it again before adding it."),
-  plugin_exists: () => t("This plugin is already added. Open it from Installed."),
-  plugin_empty: () => t("Baskule found no apps or skills it can use in this plugin."),
-  plugin_too_large: () => t("This plugin is too large to add."),
+    resolveMessage(msg("The plugin changed at its source since you opened it. Review it again before adding it.")),
+  plugin_exists: () => resolveMessage(msg("This plugin is already added. Open it from Installed.")),
+  plugin_empty: () => resolveMessage(msg("Baskule found no apps or skills it can use in this plugin.")),
+  plugin_too_large: () => resolveMessage(msg("This plugin is too large to add.")),
   source_unreadable: () =>
-    t("Baskule couldn't read this plugin's files. Check the link and try again."),
-  source_not_github: () => t("Enter the link to a public repository on github.com."),
+    resolveMessage(msg("Baskule couldn't read this plugin's files. Check the link and try again.")),
+  source_not_github: () => resolveMessage(msg("Enter the link to a public repository on github.com.")),
   invalid_server: () =>
-    t("Baskule can't use this server address. Enter its full https:// address."),
-  missing_values: () => t("Fill in the values this plugin needs first."),
-  invalid_oauth_client: () => t("The service refused this client. Check its ID and secret."),
-  oauth_client_required: () => t("An administrator needs to set up sign-in to this service first."),
-  oauth_failed: () => t("The sign-in didn't finish. Try again."),
-  provider_not_configured: () => t("Connect this app platform under Sign-in and sources first."),
-  provider_rejected: () => t("The platform refused these credentials. Check them and try again."),
-  provider_unavailable: () => t("The platform didn't answer. Try again in a moment."),
-  group_not_found: () => t("One of these groups no longer exists. Reload the page and try again."),
+    resolveMessage(msg("Baskule can't use this server address. Enter its full https:// address.")),
+  missing_values: () => resolveMessage(msg("Fill in the values this plugin needs first.")),
+  invalid_oauth_client: () => resolveMessage(msg("The service refused this client. Check its ID and secret.")),
+  oauth_client_required: () => resolveMessage(msg("An administrator needs to set up sign-in to this service first.")),
+  oauth_failed: () => resolveMessage(msg("The sign-in didn't finish. Try again.")),
+  provider_not_configured: () => resolveMessage(msg("Connect this app platform under Sign-in and sources first.")),
+  provider_rejected: () => resolveMessage(msg("The platform refused these credentials. Check them and try again.")),
+  provider_unavailable: () => resolveMessage(msg("The platform didn't answer. Try again in a moment.")),
+  group_not_found: () => resolveMessage(msg("One of these groups no longer exists. Reload the page and try again.")),
 };
 
 /** Codes a sign-in can come back with, besides the plugin error codes. */
 const CONNECTION_ERRORS: Record<string, () => string> = {
-  access_denied: () => t("The sign-in was cancelled or permission was not granted."),
-  plugin_off: () => t("Switch the plugin on first."),
-  not_allowed: () => t("You can no longer use this plugin."),
-  setup_incomplete: () => t("An administrator needs to finish setting this plugin up."),
-  unavailable: () => t("The service didn't answer. Try again in a moment."),
+  access_denied: () => resolveMessage(msg("The sign-in was cancelled or permission was not granted.")),
+  plugin_off: () => resolveMessage(msg("Switch the plugin on first.")),
+  not_allowed: () => resolveMessage(msg("You can no longer use this plugin.")),
+  setup_incomplete: () => resolveMessage(msg("An administrator needs to finish setting this plugin up.")),
+  unavailable: () => resolveMessage(msg("The service didn't answer. Try again in a moment.")),
 };
 
 const isPluginErrorCode = (code: string): code is PluginErrorCode =>
@@ -114,6 +116,6 @@ export function notifyPluginError(title: string, cause: unknown) {
   toastManager.add({
     type: "error",
     title,
-    description: pluginErrorText(cause, t("Something went wrong.")),
+    description: pluginErrorText(cause, resolveMessage(msg("Something went wrong."))),
   });
 }

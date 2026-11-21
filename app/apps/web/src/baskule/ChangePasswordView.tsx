@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: Settings → Change password (Better Auth /auth/change-password). Other devices are
 // signed out, as after a temporary password is replaced.
@@ -15,7 +16,7 @@ import { PageMessage, PageSection } from "./views/BaskulePage";
 import { MIN_PASSWORD_LENGTH, passwordProblem } from "./views/InvitationView";
 
 export function ChangePasswordView() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -31,7 +32,7 @@ export function ChangePasswordView() {
     setError(null);
     return (async () => {
       await baskuleApi.changePassword({ currentPassword: current, newPassword: next });
-      notifySuccess(t("Password changed"), t("Your other devices were signed out."));
+      notifySuccess(t(msg("Password changed")), t(msg("Your other devices were signed out.")));
       setCurrent("");
       setNext("");
       setConfirmation("");
@@ -39,7 +40,7 @@ export function ChangePasswordView() {
       .catch((cause: unknown) => {
         setError(
           cause instanceof BaskuleApiError && (cause.status === 400 || cause.status === 401)
-            ? t("The current password is not right.")
+            ? t(msg("The current password is not right."))
             : errorText(cause),
         );
       })
@@ -51,8 +52,8 @@ export function ChangePasswordView() {
   if (me !== null && !me.authentication.password) {
     return (
       <SettingsPageContainer>
-        <PageSection title={t("Password")}>
-          <PageMessage>{t("Password sign-in is unavailable on this server.")}</PageMessage>
+        <PageSection title={t(msg("Password"))}>
+          <PageMessage>{t(msg("Password sign-in is unavailable on this server."))}</PageMessage>
         </PageSection>
       </SettingsPageContainer>
     );
@@ -61,11 +62,11 @@ export function ChangePasswordView() {
     <SettingsPageContainer>
       <form className="flex flex-col gap-8" onSubmit={(event) => void submit(event)} noValidate>
         <fieldset disabled={submitting} className="contents">
-          <PageSection title={t("Password")}>
+          <PageSection title={t(msg("Password"))}>
             <div className="flex flex-col gap-4 p-4">
               <FormField
                 className="max-w-md"
-                label={t("Current password")}
+                label={t(msg("Current password"))}
                 type="password"
                 autoComplete="current-password"
                 value={current}
@@ -73,10 +74,10 @@ export function ChangePasswordView() {
               />
               <FormField
                 className="max-w-md"
-                label={t("New password")}
+                label={t(msg("New password"))}
                 type="password"
                 autoComplete="new-password"
-                hint={t("At least {{MIN_PASSWORD_LENGTH}} characters.", {
+                hint={t(msg("At least {MIN_PASSWORD_LENGTH} characters."), {
                   MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH,
                 })}
                 value={next}
@@ -84,13 +85,13 @@ export function ChangePasswordView() {
               />
               <FormField
                 className="max-w-md"
-                label={t("Confirm new password")}
+                label={t(msg("Confirm new password"))}
                 type="password"
                 autoComplete="new-password"
                 value={confirmation}
                 error={
                   confirmation.length > 0 && next !== confirmation
-                    ? t("The passwords don't match.")
+                    ? t(msg("The passwords don't match."))
                     : null
                 }
                 onChange={(event) => setConfirmation(event.currentTarget.value)}
@@ -105,7 +106,7 @@ export function ChangePasswordView() {
           <div className="px-3 sm:px-4">
             <Button type="submit" disabled={submitting || !current || problem !== null}>
               {submitting ? <Spinner size="sm" /> : null}
-              {t("Change password")}
+              {t(msg("Change password"))}
             </Button>
           </div>
         </fieldset>

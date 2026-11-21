@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import type {
   AuthClientMetadataDeviceType,
   AuthClientPresentationMetadata,
@@ -79,7 +77,8 @@ export function clientPresentationMetadata(input: {
 }): AuthClientPresentationMetadata {
   if (input.desktopBridge !== undefined) {
     return {
-      label: t("T3 Code Desktop"),
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- client label stored on the server
+      label: "T3 Code Desktop",
       deviceType: "desktop",
       os: clientOsFromElectronPlatform(input.desktopBridge.getClientPlatform()),
       surface: "desktop",
@@ -88,7 +87,8 @@ export function clientPresentationMetadata(input: {
   }
 
   return {
-    label: t("T3 Code Web"),
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- client label stored on the server
+    label: "T3 Code Web",
     deviceType: browserDeviceType(input.identity),
     os: browserClientOs(input.identity),
     surface: "web",

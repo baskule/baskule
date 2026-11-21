@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import type { NotificationResponse } from "expo-notifications";
 import * as Schema from "effect/Schema";
 
@@ -12,9 +10,7 @@ export class NotificationNavigationError extends Schema.TaggedError<Notification
   },
 ) {
   override get message(): string {
-    return t("Failed to {{operation}} the last notification response.", {
-      operation: this.operation,
-    });
+    return `Failed to ${this.operation} the last notification response.`;
   }
 }
 

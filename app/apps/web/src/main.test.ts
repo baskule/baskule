@@ -2,7 +2,7 @@ import { expect, it, vi } from "vite-plus/test";
 
 vi.mock("./appInit", () => ({ startAppServices: () => ({ load: async () => {} }) }));
 vi.mock("./AppRoot", () => ({ AppRoot: () => null }));
-vi.mock("./languagePreferences", () => ({ languageReady: Promise.resolve() }));
+vi.mock("./i18n/runtime", () => ({ whenLocaleReady: () => Promise.resolve() }));
 vi.mock("react-dom/client", () => ({ default: { createRoot: () => ({ render: () => {} }) } }));
 
 // Boots main in a fresh page that shares the tab's sessionStorage, as a reload does.

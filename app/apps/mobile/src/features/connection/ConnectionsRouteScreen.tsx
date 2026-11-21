@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { useGT } from "gt-react-native";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useNavigation } from "@react-navigation/native";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -10,7 +10,7 @@ import { useRemoteConnections } from "../../state/use-remote-environment-registr
 import { LocalEnvironmentList } from "./LocalEnvironmentList";
 
 export function ConnectionsRouteScreen() {
-  const t = useTranslation();
+  const gt = useGT();
   const {
     connectedEnvironments,
     onReconnectEnvironment,
@@ -28,12 +28,12 @@ export function ConnectionsRouteScreen() {
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       <AppBar
-        title={t("Environments")}
+        title={gt("Environments")}
         onClose={() => navigation.goBack()}
-        closeAccessibilityLabel="Close environments"
+        closeAccessibilityLabel={gt("Close environments")}
         actions={[
           {
-            accessibilityLabel: t("Add environment"),
+            accessibilityLabel: gt("Add environment"),
             icon: "plus",
             onPress: () => navigation.navigate("ConnectionsNew"),
           },

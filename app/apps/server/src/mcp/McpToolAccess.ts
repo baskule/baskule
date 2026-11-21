@@ -1,3 +1,5 @@
+import * as Context from "effect/Context";
+import { McpSchema } from "effect/ai";
 import {
   OrchestratorMcpFailure,
   type ProviderInteractionMode,
@@ -16,7 +18,7 @@ import {
   type DispatchModeRefusal,
 } from "../orchestration-v2/DispatchModeLimit.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
-import { resolveInteractionMode, resolveRuntimeMode } from "./OrchestratorMcpService.ts";
+import { resolveInteractionMode, resolveRuntimeMode } from "./delegatedTaskModes.ts";
 import {
   assertFullAccess,
   assertLiveCaller,
@@ -38,6 +40,7 @@ const refuseOutsideConstruction = (token: symbol) => {
 
 let declare: <P, A, E, R>(
   handle: (params: P) => Effect.Effect<A, E, R>,
+  requiresThread?: boolean,
 ) => Declaration<(params: P) => Effect.Effect<A, E, R>>;
 
 type CheckedHandlerOf<D> = D extends Declaration<infer Handler> ? Handler : never;
@@ -47,6 +50,7 @@ interface CheckedHandler extends Struct.Lambda {
   readonly "~lambda.out": CheckedHandlerOf<this["~lambda.in"]>;
 }
 let checkedHandler: CheckedHandler;
+let requiresThreadOf: (declaration: Declaration<unknown>) => boolean;
 
 let handlersLayer: <Tools extends Record<string, Tool.Any>, EX, RX>(
   layer: Layer.Layer<Tool.HandlersFor<Tools>, EX, RX>,
@@ -55,13 +59,17 @@ let handlersLayer: <Tools extends Record<string, Tool.Any>, EX, RX>(
 /** t3code/no-raw-mcp-registration confines Effect's unchecked registration API to McpHttpServer. */
 export class Declaration<out Handler> {
   readonly #handle: Handler;
-  private constructor(token: typeof builtHere, handle: Handler) {
+  readonly #requiresThread: boolean;
+  private constructor(token: typeof builtHere, handle: Handler, requiresThread: boolean) {
     refuseOutsideConstruction(token);
     this.#handle = handle;
+    this.#requiresThread = requiresThread;
   }
   static {
-    declare = (handle) => new Declaration(builtHere, handle);
+    declare = (handle, requiresThread = false) =>
+      new Declaration(builtHere, handle, requiresThread);
     checkedHandler = Struct.lambda<CheckedHandler>((declaration) => declaration.#handle);
+    requiresThreadOf = (declaration) => declaration.#requiresThread;
   }
 }
 
@@ -97,14 +105,16 @@ export const reads = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>)
   declare((params: P) => handle(params));
 
 export const readsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
-  declare((params: P) => requireThreadCaller.pipe(Effect.flatMap(() => handle(params))));
+  declare((params: P) => requireThreadCaller.pipe(Effect.flatMap(() => handle(params))), true);
 
 export const actsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
-  declare((params: P) =>
-    requireThreadCaller.pipe(
-      Effect.andThen(writingCaller),
-      Effect.flatMap(() => handle(params)),
-    ),
+  declare(
+    (params: P) =>
+      requireThreadCaller.pipe(
+        Effect.andThen(writingCaller),
+        Effect.flatMap(() => handle(params)),
+      ),
+    true,
   );
 
 export const writes = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
@@ -244,11 +254,27 @@ const checkedHandlers = <Handlers>(declarations: Declarations<Handlers>): Handle
 export const toLayer = <Tools extends Record<string, Tool.Any>, EX = never, RX = never>(
   toolkit: Toolkit.Toolkit<Tools>,
   build: Handlers<Tools> | Effect.Effect<Handlers<Tools>, EX, RX>,
-): HandlersLayer<Tools, EX, Exclude<RX, Scope.Scope>> =>
-  handlersLayer(
+): HandlersLayer<Tools, EX, Exclude<RX, Scope.Scope>> => {
+  const withDeclarations = (declarations: Handlers<Tools>) => {
+    const checked = checkedHandlers<Toolkit.HandlersFrom<Tools>>(declarations);
+    for (const [name, declaration] of Object.entries<Declaration<unknown>>(declarations)) {
+      const tool = toolkit.tools[name];
+      if (
+        tool !== undefined &&
+        requiresThreadOf(declaration) &&
+        Context.getOrUndefined(tool.annotations, McpSchema.EnabledWhen) !==
+          McpInvocationContext.hiddenFromOutsideClients
+      ) {
+        return Effect.die(
+          `${name} acts as its calling thread, so outside clients must not be offered it.`,
+        );
+      }
+    }
+    return Effect.succeed(checked);
+  };
+  return handlersLayer(
     toolkit.toLayer(
-      Effect.isEffect(build)
-        ? Effect.map(build, checkedHandlers<Toolkit.HandlersFrom<Tools>>)
-        : checkedHandlers(build),
+      Effect.isEffect(build) ? Effect.flatMap(build, withDeclarations) : withDeclarations(build),
     ),
   );
+};

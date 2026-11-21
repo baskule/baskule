@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: shown while none of the person's spaces has answered yet (cells waking up), and
 // when the server can't be reached at all.
@@ -14,7 +15,7 @@ import { isElectron } from "../env";
 const SLOW_AFTER_MS = 15_000;
 
 export function BaskuleSpacesPending() {
-  const t = useTranslation();
+  const t = useMessages();
   const [slow, setSlow] = useState(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the slow-loading notification timer while waiting for the space connection.
   useEffect(() => {
@@ -28,17 +29,17 @@ export function BaskuleSpacesPending() {
         <EmptyHeader className="max-w-md">
           {slow ? null : <Spinner size="lg" tone="muted" className="mx-auto mb-3" />}
           <EmptyTitle>
-            {slow ? t("Your spaces are not answering") : t("Opening your spaces…")}
+            {slow ? t(msg("Your spaces are not answering")) : t(msg("Opening your spaces…"))}
           </EmptyTitle>
           <EmptyDescription>
             {slow
-              ? t("The server may be restarting. This page keeps trying; you can also reload it.")
-              : t("This takes a few seconds when a space was asleep.")}
+              ? t(msg("The server may be restarting. This page keeps trying; you can also reload it."))
+              : t(msg("This takes a few seconds when a space was asleep."))}
           </EmptyDescription>
           {slow ? (
             <div className="mt-5 flex justify-center">
               <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
-                {t("Reload")}
+                {t(msg("Reload"))}
               </Button>
             </div>
           ) : null}

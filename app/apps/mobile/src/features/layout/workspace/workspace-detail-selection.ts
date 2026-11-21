@@ -89,7 +89,7 @@ export function workspaceDetailRouter<Action extends NavigationAction>(
   };
 }
 
-/** A link to a single thread or pull request selects it, like its list row would. */
+/** A link to a single thread, pull request or issue selects it, like its list row would. */
 export function workspaceDetailLinkAction(
   state: PartialState<NavigationState> | NavigationState,
 ): SelectWorkspaceDetailAction | undefined {

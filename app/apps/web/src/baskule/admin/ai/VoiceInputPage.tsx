@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: AI → Voice input: whether people can dictate messages, and the speech-to-text model.
 import { useId, useState, type FormEvent } from "react";
 import {
@@ -23,7 +24,7 @@ export function VoiceInputPage() {
 }
 
 function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
-  const t = useTranslation();
+  const t = useMessages();
   const modelListId = useId();
   const [draft, setDraft] = useState(initial.transcription);
   const [saved, setSaved] = useState(initial);
@@ -71,16 +72,14 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
       setApiKey("");
       setClearKey(false);
       await refreshBaskuleMe();
-      notifySuccess(t("Voice input settings saved"));
+      notifySuccess(t(msg("Voice input settings saved")));
       if (next.reloadPending)
         setError(
-          t(
-            "Settings are saved, but some spaces could not reload. Stop them from Admin → General → Overview to apply the AI changes.",
-          ),
+          t(msg("Settings are saved, but some spaces could not reload. Stop them from Admin → General → Overview to apply the AI changes.")),
         );
     })()
       .catch((cause: unknown) => {
-        setError(errorText(cause, t("Could not save settings.")));
+        setError(errorText(cause, t(msg("Could not save settings."))));
         // Chat moved onto this connection after the page loaded: show its key as shared from now on.
         if (cause instanceof BaskuleApiError && cause.code === "shared_api_key") {
           setClearKey(false);
@@ -95,32 +94,30 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
   return (
     <form className="flex flex-col gap-8" onSubmit={(event) => void submit(event)}>
       <fieldset disabled={busy} className="contents">
-        <PageSection title={t("Dictation")}>
+        <PageSection title={t(msg("Dictation"))}>
           <PageRow
             trailing={
               <Switch
-                aria-label={t("Voice input")}
+                aria-label={t(msg("Voice input"))}
                 checked={draft.enabled}
                 onCheckedChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
               />
             }
           >
-            <span className="text-sm text-foreground">{t("Dictate messages")}</span>
+            <span className="text-sm text-foreground">{t(msg("Dictate messages"))}</span>
             <span className="text-xs text-muted-foreground">
               {!draft.enabled
-                ? t("Off: the message box has no microphone button.")
+                ? t(msg("Off: the message box has no microphone button."))
                 : keyConfigured
-                  ? t(
-                      "On: a microphone button next to Send records a message and types it into the message box.",
-                    )
-                  : t("On, but nobody can use it until an API key is saved for this connection.")}
+                  ? t(msg("On: a microphone button next to Send records a message and types it into the message box."))
+                  : t(msg("On, but nobody can use it until an API key is saved for this connection."))}
             </span>
           </PageRow>
         </PageSection>
-        <PageSection title={t("Speech-to-text provider")}>
+        <PageSection title={t(msg("Speech-to-text provider"))}>
           <div
             role="radiogroup"
-            aria-label={t("Speech-to-text provider")}
+            aria-label={t(msg("Speech-to-text provider"))}
             className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-4"
           >
             {(Object.keys(BASKULE_TRANSCRIPTION_PROVIDERS) as BaskuleTranscriptionProviderId[]).map(
@@ -148,7 +145,7 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
                         {BASKULE_TRANSCRIPTION_PROVIDERS[id].name}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {selected ? t("Selected") : t("Off")}
+                        {selected ? t(msg("Selected")) : t(msg("Off"))}
                       </span>
                     </span>
                   </label>
@@ -162,14 +159,12 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
                 <h3 className="text-sm font-medium">{provider.name}</h3>
                 <p className="text-xs text-muted-foreground">
                   {draft.providerId === "custom"
-                    ? t(
-                        "Connect an OpenAI-compatible audio transcription API (/audio/transcriptions).",
-                      )
-                    : t("Use your OpenAI API key and choose a transcription model below.")}
+                    ? t(msg("Connect an OpenAI-compatible audio transcription API (/audio/transcriptions)."))
+                    : t(msg("Use your OpenAI API key and choose a transcription model below."))}
                 </p>
               </div>
               <FormField
-                label={t("API key")}
+                label={t(msg("API key"))}
                 type="password"
                 autoComplete="new-password"
                 value={apiKey}
@@ -179,19 +174,15 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
                 }}
                 placeholder={
                   keyConfigured
-                    ? t("Saved key. Leave blank to keep.")
-                    : t("Enter a key if your endpoint requires one")
+                    ? t(msg("Saved key. Leave blank to keep."))
+                    : t(msg("Enter a key if your endpoint requires one"))
                 }
                 hint={
                   sharesChatKey
-                    ? t(
-                        "The chat model on AI → Models uses this connection too, so they share one key. A key saved here also replaces the chat key.",
-                      )
+                    ? t(msg("The chat model on AI → Models uses this connection too, so they share one key. A key saved here also replaces the chat key."))
                     : keyConfigured
                       ? undefined
-                      : t(
-                          "Each provider and endpoint has its own key. Leave blank to use a key previously saved for this connection.",
-                        )
+                      : t(msg("Each provider and endpoint has its own key. Leave blank to use a key previously saved for this connection."))
                 }
               />
               {keyConfigured && !sharesChatKey ? (
@@ -205,11 +196,11 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
                       setApiKey("");
                     }}
                   />
-                  {t("Remove the saved key")}
+                  {t(msg("Remove the saved key"))}
                 </label>
               ) : null}
               <FormField
-                label={t("API endpoint")}
+                label={t(msg("API endpoint"))}
                 type="url"
                 value={draft.baseUrl}
                 onChange={(e) => editConnection({ baseUrl: e.currentTarget.value })}
@@ -217,17 +208,15 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
                 placeholder="https://example.com/v1"
               />
               <FormField
-                label={t("Model ID")}
+                label={t(msg("Model ID"))}
                 value={draft.model}
                 list={modelListId}
                 required
                 maxLength={200}
                 placeholder={
-                  draft.providerId === "custom" ? t("Enter a model ID") : provider.models[0]?.id
+                  draft.providerId === "custom" ? t(msg("Enter a model ID")) : provider.models[0]?.id
                 }
-                hint={t(
-                  "Choose a suggested model or type any model ID supported by this endpoint.",
-                )}
+                hint={t(msg("Choose a suggested model or type any model ID supported by this endpoint."))}
                 onChange={(e) => {
                   const model = e.currentTarget.value;
                   setDraft((current) => ({ ...current, model }));
@@ -251,10 +240,10 @@ function VoiceInputForm({ initial }: { readonly initial: BaskuleAdminSettings })
         <div className="flex flex-col items-start gap-2 px-3 sm:px-4">
           <Button type="submit" disabled={busy}>
             {busy ? <Spinner size="sm" /> : null}
-            {t("Save settings")}
+            {t(msg("Save settings"))}
           </Button>
           <p className="text-xs text-muted-foreground">
-            {t("People see the change within a minute, or when they come back to the app.")}
+            {t(msg("People see the change within a minute, or when they come back to the app."))}
           </p>
         </div>
       </fieldset>

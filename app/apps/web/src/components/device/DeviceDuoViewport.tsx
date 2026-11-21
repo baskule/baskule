@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react";
 import { useEffect, useRef } from "react";
 import type { DuoViewer } from "@t3tools/client-runtime/device/duo-viewer";
 import type { DeviceModelSource } from "@t3tools/client-runtime/device/model";
@@ -23,7 +22,7 @@ export function DeviceDuoViewport(props: {
   readonly onControlRejectedListener: (listener: (() => void) | null) => void;
   readonly onUnavailable: () => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const viewerRef = useRef<
     (DuoViewer & { readonly sources: Record<1 | 3, HTMLCanvasElement> }) | null
   >(null);
@@ -157,7 +156,7 @@ export function DeviceDuoViewport(props: {
         />
         <canvas
           ref={mountViewer}
-          aria-label={t(
+          aria-label={gt(
             "Interactive 3D iPhone Duo. Drag the screen to interact. Drag outside it or swipe with two fingers to turn. Pinch over the device to open or close its hinge.",
           )}
           className="size-full touch-none"

@@ -1,5 +1,5 @@
+import { useGT } from "gt-react-native";
 import { cn } from "../../lib/cn";
-import { useTranslation } from "../../i18n";
 
 import { MOBILE_MOTION, MOBILE_SHAPE } from "../../lib/designTokens";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
@@ -45,7 +45,7 @@ export function Toast(props: ToastProps) {
 }
 
 function ToastContent(props: ToastProps & { readonly glassReady?: boolean }) {
-  const t = useTranslation();
+  const gt = useGT();
   const { fontScale } = useWindowDimensions();
   const { colorScheme } = useControlTheme();
   const borderRadius = Platform.OS === "ios" ? 28 : MOBILE_SHAPE.toast;
@@ -110,7 +110,7 @@ function ToastContent(props: ToastProps & { readonly glassReady?: boolean }) {
         {inlineAction && action ? <View className="self-center">{action}</View> : null}
         {props.onDismiss && props.dismissMode !== "swipe" ? (
           <IconButton
-            accessibilityLabel={t("Dismiss message")}
+            accessibilityLabel={gt("Dismiss message")}
             icon="xmark"
             onPress={props.onDismiss}
           />
@@ -148,7 +148,7 @@ const ENTER_TIMING = {
 };
 const TOAST_EXITING = FadeOut.duration(MOBILE_MOTION.exit).reduceMotion(ReduceMotion.System);
 function SwipeableToast(props: ToastProps & { readonly onDismiss: () => void }) {
-  const t = useTranslation();
+  const gt = useGT();
   const [glassReady, setGlassReady] = useState(Platform.OS !== "ios");
   const finishEntering = useCallback(() => setGlassReady(true), []);
   // UIKit can skip glass on a moving host; remount the surface after entry so its blur installs.
@@ -217,7 +217,7 @@ function SwipeableToast(props: ToastProps & { readonly onDismiss: () => void }) 
               accessibilityRole="alert"
               accessibilityLiveRegion="assertive"
               accessibilityLabel={props.message}
-              accessibilityActions={[{ name: "dismiss", label: t("Dismiss message") }]}
+              accessibilityActions={[{ name: "dismiss", label: gt("Dismiss message") }]}
               onAccessibilityAction={({ nativeEvent }) => {
                 if (nativeEvent.actionName === "dismiss") onDismiss();
               }}

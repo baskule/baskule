@@ -1,5 +1,3 @@
-import { t, useTranslation } from "../../i18n";
-
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
@@ -10,6 +8,7 @@ import {
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { createModelSelection, pickModelSelection } from "@t3tools/shared/model";
 import { resolveSourceControlWriterModelSelection } from "@t3tools/shared/serverSettings";
+import { msg, T, useGT, useMessages } from "gt-react";
 
 import {
   useScopedSettings,
@@ -40,38 +39,34 @@ import {
   SettingsSection,
 } from "./settingsLayout";
 import { AdvancedSettings } from "./AdvancedSettings";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const MODE_OPTIONS: Record<SourceControlWritingStyleMode, { label: string; description: string }> =
   {
     repo_conventions: {
-      get label() {
-        return t("Repository conventions");
-      },
-      get description() {
-        return t("In each project, matches recent commit messages.");
-      },
+      label: msg("Repository conventions"),
+      description: msg(
+        "Commit messages and pull request titles and descriptions match each project's history.",
+      ),
     },
     conventional_commits: {
-      get label() {
-        return t("Conventional Commits");
-      },
-      get description() {
-        return t("Use Conventional Commit prefixes and keep commit messages concise.");
-      },
+      label: msg("Conventional Commits"),
+      description: msg(
+        "Conventional Commit prefixes, with short pull request titles and descriptions.",
+      ),
     },
     custom: {
-      get label() {
-        return t("Custom instructions");
-      },
-      get description() {
-        return t("Use your instructions for commit messages in every project.");
-      },
+      label: msg("Custom instructions"),
+      description: msg(
+        "Your instructions shape commit messages and pull request titles and descriptions.",
+      ),
     },
   };
 
 export function SourceControlWritingSettingsSection() {
-  const t = useTranslation();
+  const messages = useMessages();
+  const setting = useSearchableSetting();
+  const gt = useGT();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const navigate = useNavigate();
@@ -161,17 +156,17 @@ export function SourceControlWritingSettingsSection() {
   );
 
   return (
-    <SettingsSection id="source-control-text-generation" title={t("Commits")}>
+    <SettingsSection id="source-control-text-generation" title={gt("Commit messages")}>
       <SettingsRow
         serverScoped
         settingKeys={["sourceControlWritingStyle"]}
         mixed={writingStyleMixed}
-        {...searchableSetting("source-control-writing-style")}
-        description={MODE_OPTIONS[style.mode].description}
+        {...setting("source-control-writing-style")}
+        description={messages(MODE_OPTIONS[style.mode].description)}
         resetAction={
           isSourceControlWritingStyleDirty ? (
             <SettingResetButton
-              label={t("commit message writing")}
+              ariaLabel={gt("Reset commit message writing to default")}
               onClick={() =>
                 updateSettings({
                   sourceControlWritingStyle: {
@@ -199,18 +194,18 @@ export function SourceControlWritingSettingsSection() {
             <SelectTrigger
               size="sm"
               className="w-full sm:w-56"
-              aria-label={t("Commit message writing")}
+              aria-label={gt("Commit message writing")}
             >
               <SelectValue>
                 {(value: SourceControlWritingStyleMode | null) =>
-                  value === null ? t("Mixed") : MODE_OPTIONS[value].label
+                  value === null ? gt("Mixed") : messages(MODE_OPTIONS[value].label)
                 }
               </SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
               {(Object.keys(MODE_OPTIONS) as SourceControlWritingStyleMode[]).map((mode) => (
                 <SelectItem key={mode} hideIndicator value={mode}>
-                  {MODE_OPTIONS[mode].label}
+                  {messages(MODE_OPTIONS[mode].label)}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -225,8 +220,10 @@ export function SourceControlWritingSettingsSection() {
                   value={allInstructions ?? ""}
                   onChange={(event) => setAllInstructions(event.target.value)}
                   rows={4}
-                  aria-label={t("Custom commit instructions for all selected environments")}
-                  placeholder={t("Write the instructions each selected environment should use.")}
+                  aria-label={gt(
+                    "Custom commit message instructions for all selected environments",
+                  )}
+                  placeholder={gt("Write the instructions each selected environment should use.")}
                 />
                 <Button
                   size="sm"
@@ -243,7 +240,7 @@ export function SourceControlWritingSettingsSection() {
                     setEditingAllInstructions(false);
                   }}
                 >
-                  {t("Apply instructions to all")}
+                  <T>Apply instructions to all</T>
                 </Button>
               </>
             ) : (
@@ -255,7 +252,7 @@ export function SourceControlWritingSettingsSection() {
                   setEditingAllInstructions(true);
                 }}
               >
-                {t("Write custom instructions for all")}
+                <T>Write custom instructions for all</T>
               </Button>
             )}
           </div>
@@ -272,33 +269,31 @@ export function SourceControlWritingSettingsSection() {
                 }
               }}
               rows={4}
-              placeholder={t(
-                "Keep commit subjects under 60 characters. Keep descriptions short and plain.",
-              )}
-              aria-label={t("Custom commit instructions")}
+              placeholder={gt("Keep commit subjects under 60 characters.")}
+              aria-label={gt("Custom commit message instructions")}
             />
           </div>
         ) : null}
       </SettingsRow>
 
-      <AdvancedSettings targetIds={[searchableSetting("source-control-writer-model").id]}>
+      <AdvancedSettings targetIds={[setting("source-control-writer-model").id]}>
         <SettingsRow
           serverScoped
           settingKeys={["sourceControlWriterModelSelection"]}
-          {...searchableSetting("source-control-writer-model")}
-          description={t(
+          {...setting("source-control-writer-model")}
+          description={gt(
             "Model for commit messages and branch or bookmark names. When disabled, use the text generation model configured for this environment.",
           )}
           control={
             !hasServerTargets ? (
               <span className="text-sm text-muted-foreground">
-                {t("Connect an environment to choose its source control writer model.")}
+                <T>Connect an environment to choose its source control writer model.</T>
               </span>
             ) : (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {usesDedicatedModel && !canEnableDedicatedModel ? (
                   <span className="text-sm text-muted-foreground">
-                    {t("No text generation providers available.")}
+                    <T>No text generation providers available.</T>
                   </span>
                 ) : null}
                 {usesDedicatedModel && canEnableDedicatedModel ? (
@@ -310,8 +305,8 @@ export function SourceControlWritingSettingsSection() {
                     instanceEntries={writerEntries}
                     modelOptionsByInstance={modelOptionsByInstance}
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                    triggerAriaLabel={t("Source control writer model")}
-                    {...(mixedWriterModel ? { triggerLabel: t("Mixed") } : {})}
+                    triggerAriaLabel={gt("Source control writer model")}
+                    {...(mixedWriterModel ? { triggerLabel: gt("Mixed") } : {})}
                     {...(environmentId
                       ? {
                           onOpenProviderSetup: (instanceId: ProviderInstanceId) => {
@@ -328,7 +323,7 @@ export function SourceControlWritingSettingsSection() {
                       if (reason) {
                         toastManager.add({
                           type: "error",
-                          title: t("Source control writer model not saved"),
+                          title: gt("Source control writer model not saved"),
                           description: reason,
                         });
                         return;
@@ -377,7 +372,7 @@ export function SourceControlWritingSettingsSection() {
                       if (reason) {
                         toastManager.add({
                           type: "error",
-                          title: "Writer model not saved",
+                          title: gt("Writer model not saved"),
                           description: reason,
                         });
                         return;
@@ -393,7 +388,7 @@ export function SourceControlWritingSettingsSection() {
                         : null,
                     });
                   }}
-                  aria-label={t("Use a separate source control writer model")}
+                  aria-label={gt("Use a separate source control writer model")}
                 />
               </div>
             )

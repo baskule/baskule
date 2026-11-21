@@ -1,4 +1,6 @@
-import { t } from "../i18n";
+import { m as resolveMessage } from "../i18n/messages";
+import { msg } from "gt-react";
+
 
 import type { DesktopBridge } from "@t3tools/contracts";
 
@@ -13,7 +15,7 @@ const toastUpdateError: ReportLocalUpdateError = (title, description) => {
 };
 
 function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : t("An unexpected error occurred.");
+  return error instanceof Error ? error.message : resolveMessage(msg("An unexpected error occurred."));
 }
 
 export async function checkLocalUpdate(
@@ -30,17 +32,17 @@ export async function checkLocalUpdate(
     const result = await bridge.checkForUpdate();
     if (!result.checked) {
       reportError(
-        t("Could not check for updates"),
+        resolveMessage(msg("Could not check for updates")),
         unavailableReason ??
           result.state.message ??
-          t("Automatic updates are not available in this build."),
+          resolveMessage(msg("Automatic updates are not available in this build.")),
       );
     }
     return result.checked;
   } catch (error) {
     reportError(
-      t("Could not check for updates"),
-      error instanceof Error ? error.message : t("Update check failed."),
+      resolveMessage(msg("Could not check for updates")),
+      error instanceof Error ? error.message : resolveMessage(msg("Update check failed.")),
     );
     return false;
   }
@@ -64,13 +66,13 @@ export async function downloadLocalUpdate(
       showDesktopUpdateDownloadedToast(bridge, result.state);
     }
     if (!result.accepted && reportRefused) {
-      reportError(t("Could not download update"), t("The download did not start. Try again."));
+      reportError(resolveMessage(msg("Could not download update")), resolveMessage(msg("The download did not start. Try again.")));
     }
     const actionError = getDesktopUpdateActionError(result);
-    if (actionError) reportError(t("Could not download update"), actionError);
+    if (actionError) reportError(resolveMessage(msg("Could not download update")), actionError);
     return result.completed;
   } catch (error) {
-    reportError(t("Could not start update download"), describeError(error));
+    reportError(resolveMessage(msg("Could not start update download")), describeError(error));
     return false;
   }
 }
@@ -88,8 +90,8 @@ export async function installLocalUpdate(
     if (!result.accepted) {
       if (reportRefused) {
         reportError(
-          t("Could not install update"),
-          t("The update is not ready to install yet. Try again."),
+          resolveMessage(msg("Could not install update")),
+          resolveMessage(msg("The update is not ready to install yet. Try again.")),
         );
       } else {
         showDesktopUpdateDownloadedToast(bridge, result.state);
@@ -98,10 +100,10 @@ export async function installLocalUpdate(
     }
     const actionError = getDesktopUpdateActionError(result);
     if (!actionError) return true;
-    reportError(t("Could not install update"), actionError);
+    reportError(resolveMessage(msg("Could not install update")), actionError);
     return false;
   } catch (error) {
-    reportError(t("Could not install update"), describeError(error));
+    reportError(resolveMessage(msg("Could not install update")), describeError(error));
     return false;
   }
 }

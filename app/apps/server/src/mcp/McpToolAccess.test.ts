@@ -7,7 +7,9 @@ import {
   RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
@@ -329,6 +331,22 @@ it("refuses a declaration or handlers layer that only wears another's fields", (
   const copiedLayer = Object.assign(Layer.empty, layerProbeHandlers);
   expect(() => McpToolAccess.HandlersLayer.layer(copiedLayer)).toThrow(TypeError);
 });
+
+it.effect("refuses to build a thread-bound tool that outside clients would be offered", () =>
+  Effect.gen(function* () {
+    const CallerToolkit = Toolkit.make(Tool.make("reads_as_caller", probe));
+    const built = yield* Layer.build(
+      McpToolAccess.HandlersLayer.layer(
+        McpToolAccess.toLayer(CallerToolkit, {
+          reads_as_caller: McpToolAccess.readsAsCaller(() => ran),
+        }),
+      ),
+    ).pipe(Effect.scoped, Effect.exit);
+    expect(Exit.isFailure(built) && Cause.pretty(built.cause)).toContain(
+      "reads_as_caller acts as its calling thread",
+    );
+  }),
+);
 
 it.effect("refuses a change when the calling thread cannot be read", () =>
   call("writes", supervised).pipe(

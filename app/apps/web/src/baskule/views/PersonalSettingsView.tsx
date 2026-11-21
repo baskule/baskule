@@ -1,9 +1,10 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 import { useState } from "react";
 
 import { useTheme } from "../../hooks/useTheme";
-import { LanguageSetting } from "../../components/LanguageSetting";
 import {
+  LanguageSettingsRow,
   ScreenReaderAnnouncementsRow,
   ScreenReaderWindowTitleRow,
   ToolCallVisibilityRow,
@@ -16,18 +17,18 @@ import {
 import { Toggle, ToggleGroup } from "../../components/ui/toggle-group";
 
 export function PersonalSettingsView() {
-  const t = useTranslation();
+  const t = useMessages();
   const { resolvedTheme, setAppearanceMode, setTheme } = useTheme();
   const [error, setError] = useState(false);
 
   return (
     <SettingsPageContainer>
-      <SettingsSection title={t("Language & appearance")} hideTitle>
+      <SettingsSection title={t(msg("Language & appearance"))} hideTitle>
         <SettingsRow
-          title={t("Appearance")}
+          title={t(msg("Appearance"))}
           control={
             <ToggleGroup
-              aria-label={t("Appearance")}
+              aria-label={t(msg("Appearance"))}
               value={[resolvedTheme]}
               onValueChange={(values) => {
                 const appearance = values[0] ?? resolvedTheme;
@@ -36,21 +37,21 @@ export function PersonalSettingsView() {
                 }
               }}
             >
-              <Toggle value="light">{t("Light")}</Toggle>
-              <Toggle value="dark">{t("Dark")}</Toggle>
+              <Toggle value="light">{t(msg("Light"))}</Toggle>
+              <Toggle value="dark">{t(msg("Dark"))}</Toggle>
             </ToggleGroup>
           }
         />
-        <LanguageSetting />
+        <LanguageSettingsRow />
       </SettingsSection>
-      <SettingsSection title={t("Chats")}>
+      <SettingsSection title={t(msg("Chats"))}>
         <ToolCallVisibilityRow />
         <ScreenReaderAnnouncementsRow />
         <ScreenReaderWindowTitleRow />
       </SettingsSection>
       {error ? (
         <p role="alert" className="text-sm text-destructive-foreground">
-          {t("Could not save the theme.")}
+          {t(msg("Could not save the theme."))}
         </p>
       ) : null}
     </SettingsPageContainer>

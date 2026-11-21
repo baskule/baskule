@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: the admin modal's nav, like the settings nav: one group per section, one row per page,
 // an icon rail below md.
 import { Link, useParams } from "@tanstack/react-router";
@@ -15,12 +16,12 @@ import { useBaskuleMe } from "../session";
 import { adminSections } from "./navigation";
 
 export function AdminSidebarNav() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   const current = useParams({ strict: false });
   return (
     <nav
-      aria-label={t("Admin")}
+      aria-label={t(msg("Admin"))}
       className="flex w-60 shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground max-md:w-14"
     >
       <SidebarContent className="overflow-x-hidden">
@@ -55,7 +56,7 @@ export function AdminSidebarNav() {
                         {page.component ? null : (
                           <span className="max-md:hidden">
                             <Badge variant="secondary" size="sm">
-                              {t("Soon")}
+                              {t(msg("Soon"))}
                             </Badge>
                           </span>
                         )}

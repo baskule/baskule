@@ -1,11 +1,9 @@
-import { useTranslation } from "../../i18n";
-
 import {
   formatProviderSubagentStatus,
   type ProviderSubagentStatus,
 } from "@t3tools/client-runtime/state/thread-execution";
 import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
-
+import { T, useGT, useMessages, Var } from "gt-react-native";
 import { View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -20,21 +18,21 @@ export function ProviderSubagentBar(props: {
   readonly status: ProviderSubagentStatus | null;
   readonly onOpenParent: (() => void) | null;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const messages = useMessages();
   const live = props.status !== null && isOrchestrationV2WorkActive(props.status.status);
   const nowMs = useVisibleSecondClock(live);
-  const statusLabel = formatProviderSubagentStatus(props.status, nowMs);
+  const statusLabel = formatProviderSubagentStatus(props.status, nowMs, messages);
   const modelDescription =
     props.effortLabel === null ? props.modelLabel : `${props.modelLabel}, ${props.effortLabel}`;
 
   return (
     <View className="flex-row items-center gap-3 rounded-[20px] border border-border-subtle bg-card-alt py-2 pe-2 ps-4">
-      {}
       <View
         accessible
-        accessibilityLabel={t(
-          "{{modelDescription}} subagent, {{statusLabel}}. It runs on its own and cannot take messages.",
-          { modelDescription: modelDescription, statusLabel: statusLabel },
+        accessibilityLabel={gt(
+          "{modelDescription} subagent, {statusLabel}. It runs on its own and cannot take messages.",
+          { modelDescription, statusLabel },
         )}
         className="min-w-0 flex-1 gap-0.5"
       >
@@ -63,11 +61,13 @@ export function ProviderSubagentBar(props: {
           className="font-sans text-xs text-foreground-secondary"
           style={{ fontVariant: ["tabular-nums"] }}
         >
-          {statusLabel} {t("· Runs on its own")}
+          <T>
+            <Var>{statusLabel}</Var> · Runs on its own
+          </T>
         </Text>
       </View>
       {props.onOpenParent ? (
-        <Button label={t("Open parent")} tone="secondary" onPress={props.onOpenParent} />
+        <Button label={gt("Open parent")} tone="secondary" onPress={props.onOpenParent} />
       ) : null}
     </View>
   );

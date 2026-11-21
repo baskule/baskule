@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -17,10 +15,7 @@ export class MobileSecureStorageError extends Schema.TaggedError<MobileSecureSto
   },
 ) {
   override get message(): string {
-    return t("Mobile secure storage operation {{operation}} failed for key {{key}}.", {
-      operation: this.operation,
-      key: this.key,
-    });
+    return `Mobile secure storage operation ${this.operation} failed for key ${this.key}.`;
   }
 }
 

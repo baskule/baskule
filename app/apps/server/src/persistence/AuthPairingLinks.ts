@@ -16,10 +16,7 @@ import {
   PersistenceSqlError,
 } from "./Errors.ts";
 
-/**
- * Subjects of codes that approve one agent sign-in at a set level, as `mcp-approval:<level>`.
- * Only that sign-in may spend one, so every other use of a pairing code refuses them.
- */
+/** This prefix reserves pairing codes for MCP authorization. */
 export const MCP_APPROVAL_SUBJECT_PREFIX = "mcp-approval:";
 
 const SqliteFlag = Schema.Literals([0, 1]);
@@ -62,8 +59,8 @@ export const ConsumeAuthPairingLinkInput = Schema.Struct({
   proofKeyThumbprint: Schema.NullOr(Schema.String),
   requestedScopes: Schema.optionalKey(AuthEnvironmentScopes),
   requiredScopes: Schema.optionalKey(AuthEnvironmentScopes),
-  /** Also spends a code with exactly this `mcp-approval:` subject. Others are always refused. */
-  mcpApprovalSubject: Schema.optionalKey(Schema.String),
+  /** Allow a purpose-bound code only when its subject matches the request. */
+  allowedSubject: Schema.optionalKey(Schema.String),
   consumedAt: Schema.DateTimeUtcFromString,
   now: Schema.DateTimeUtcFromString,
 });
@@ -97,10 +94,14 @@ export const FindPendingConnectPairingLinkInput = Schema.Struct({
 });
 export type FindPendingConnectPairingLinkInput = typeof FindPendingConnectPairingLinkInput.Type;
 
-/** Unspent links bound to `proofKeyThumbprint`, or with `keepProofKeyThumbprint` every other bound one. */
+/**
+ * Unspent links bound to `proofKeyThumbprint`, or with `keepProofKeyThumbprint` every other bound
+ * one. `includeUnbound` adds the links no key is bound to: pairing and approval codes.
+ */
 export const RevokeUnspentByProofKeyInput = Schema.Struct({
   proofKeyThumbprint: Schema.NullOr(Schema.String),
   keepProofKeyThumbprint: Schema.NullOr(Schema.String),
+  includeUnbound: Schema.Boolean,
   revokedAt: Schema.DateTimeUtcFromString,
 });
 export type RevokeUnspentByProofKeyInput = typeof RevokeUnspentByProofKeyInput.Type;
@@ -227,7 +228,7 @@ export const make = Effect.gen(function* () {
       proofKeyThumbprint,
       requestedScopes,
       requiredScopes,
-      mcpApprovalSubject,
+      allowedSubject,
       consumedAt,
       now,
     }) =>
@@ -240,7 +241,7 @@ export const make = Effect.gen(function* () {
           AND expires_at > ${now}
           AND (
             subject NOT LIKE ${`${MCP_APPROVAL_SUBJECT_PREFIX}%`}
-            OR subject = ${mcpApprovalSubject ?? null}
+            OR subject = ${allowedSubject ?? null}
           )
           AND (
             proof_key_thumbprint IS NULL
@@ -328,6 +329,11 @@ export const make = Effect.gen(function* () {
         WHERE id = ${id}
           AND revoked_at IS NULL
           AND consumed_at IS NULL
+          -- An approved request is answered; denying it now would leave the device trusted.
+          AND NOT (
+            requires_connect_approval = 1
+            AND proof_key_thumbprint IN (SELECT proof_key_thumbprint FROM auth_connect_devices)
+          )
         RETURNING id AS "id"
       `,
   });
@@ -481,16 +487,21 @@ export const make = Effect.gen(function* () {
   const revokeUnspentByProofKeyRows = SqlSchema.findAll({
     Request: RevokeUnspentByProofKeyInput,
     Result: Schema.Struct({ id: Schema.String }),
-    execute: ({ proofKeyThumbprint, keepProofKeyThumbprint, revokedAt }) =>
+    execute: ({ proofKeyThumbprint, keepProofKeyThumbprint, includeUnbound, revokedAt }) =>
       sql`
-        -- Only T3 Connect mints bind a proof key, so these are that key's connect credentials.
+        -- Only T3 Connect mints bind a proof key, so bound links are that key's connect credentials.
         UPDATE auth_pairing_links
         SET revoked_at = ${revokedAt}
-        WHERE proof_key_thumbprint IS NOT NULL
-          AND revoked_at IS NULL
+        WHERE revoked_at IS NULL
           AND consumed_at IS NULL
-          AND (${proofKeyThumbprint} IS NULL OR proof_key_thumbprint = ${proofKeyThumbprint})
-          AND proof_key_thumbprint IS NOT ${keepProofKeyThumbprint}
+          AND (
+            (
+              proof_key_thumbprint IS NOT NULL
+              AND (${proofKeyThumbprint} IS NULL OR proof_key_thumbprint = ${proofKeyThumbprint})
+              AND proof_key_thumbprint IS NOT ${keepProofKeyThumbprint}
+            )
+            OR (proof_key_thumbprint IS NULL AND ${includeUnbound ? 1 : 0} = 1)
+          )
         RETURNING id AS "id"
       `,
   });

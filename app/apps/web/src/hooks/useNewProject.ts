@@ -1,5 +1,3 @@
-import { t, useTranslation } from "../i18n";
-
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 
 import {
@@ -7,8 +5,10 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+import { m } from "~/i18n/messages";
 import { waitForProject } from "~/state/entities";
 import { projectEnvironment } from "~/state/projects";
 
@@ -18,11 +18,10 @@ import { useNewThreadHandler } from "./useHandleNewThread";
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim().length > 0
     ? error.message
-    : t("An error occurred.");
+    : m(msg("An error occurred."));
 }
 
 export function useNewProject() {
-  const t = useTranslation();
   const createNew = useAtomCommand(projectEnvironment.createNew, { reportFailure: false });
   const handleNewThread = useNewThreadHandler();
 
@@ -39,7 +38,7 @@ export function useNewProject() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: t("Could not create the project"),
+            title: m(msg("Could not create the project")),
             description: errorMessage(squashAtomCommandFailure(result)),
           }),
         );
@@ -53,16 +52,18 @@ export function useNewProject() {
         commitError === undefined
           ? {
               type: "success",
-              title: t("Created {{name}}", { name: input.name }),
+              title: m(msg("Created {name}", { name: input.name })),
               description: workspaceRoot,
             }
           : {
               type: "warning",
-              title: t("Created {{name}} without a first commit", { name: input.name }),
-              description: t("{{commitError}} The project is in {{workspaceRoot}}.", {
-                commitError: commitError,
-                workspaceRoot: workspaceRoot,
-              }),
+              title: m(msg("Created {name} without a first commit", { name: input.name })),
+              description: m(
+                msg("{error} The project is in {path}.", {
+                  error: commitError,
+                  path: workspaceRoot,
+                }),
+              ),
             },
       ),
     );
@@ -73,10 +74,12 @@ export function useNewProject() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: t("Failed to open project"),
-          description: t("{{value1}} It will appear in the sidebar once this client catches up.", {
-            value1: errorMessage(error),
-          }),
+          title: m(msg("Failed to open project")),
+          description: m(
+            msg("{error} It will appear in the sidebar once this client catches up.", {
+              error: errorMessage(error),
+            }),
+          ),
         }),
       );
       return null;
@@ -86,7 +89,7 @@ export function useNewProject() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: t("Failed to open project"),
+          title: m(msg("Failed to open project")),
           description: errorMessage(error),
         }),
       );

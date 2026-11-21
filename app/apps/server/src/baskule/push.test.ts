@@ -32,6 +32,7 @@ import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as Receipts from "../orchestration-v2/CommandReceiptStore.ts";
 import * as Positions from "../orchestration-v2/TurnItemPositionStore.ts";
 import * as Outbox from "../orchestration-v2/EffectOutbox.ts";
+import * as ThreadViewers from "../orchestration-v2/ThreadViewers.ts";
 import { currentPushNotification, BaskulePushHost } from "./push.ts";
 
 const threadId = ThreadId.make("push-thread"),
@@ -106,6 +107,7 @@ const stores = Layer.mergeAll(
   Receipts.layer,
   Positions.layer,
   Outbox.layer,
+  ThreadViewers.layer,
 ).pipe(Layer.provideMerge(Sqlite.layerMemory));
 const sinkLayer = EventSink.layerFromStores.pipe(Layer.provideMerge(stores));
 const hostLayer = Layer.succeed(BaskulePushHost, {

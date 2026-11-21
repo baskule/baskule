@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: daily tokens or cost, drawn by T3's usage chart. One measure at a time: tokens and money
 // have different scales, so they never share an axis.
 import { useState } from "react";
@@ -18,7 +19,7 @@ export function UsageDailyChart({
   readonly title: string;
   readonly daily: ReadonlyArray<UsageDaily>;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [metric, setMetric] = useState<UsageChartMetric>("cost");
   const days = daily.map((day) => day.date);
   return (
@@ -26,7 +27,7 @@ export function UsageDailyChart({
       <div className="flex min-h-7 items-center justify-between gap-3 px-3 sm:px-4">
         <h2 className="text-sm font-normal text-foreground/70">{title}</h2>
         <ToggleGroup
-          aria-label={t("Chart measure")}
+          aria-label={t(msg("Chart measure"))}
           variant="segmented"
           value={[metric]}
           onValueChange={(next) => {
@@ -34,8 +35,8 @@ export function UsageDailyChart({
             if (value === "cost" || value === "tokens") setMetric(value);
           }}
         >
-          <Toggle value="cost">{t("Cost")}</Toggle>
-          <Toggle value="tokens">{t("Tokens")}</Toggle>
+          <Toggle value="cost">{t(msg("Cost"))}</Toggle>
+          <Toggle value="tokens">{t(msg("Tokens"))}</Toggle>
         </ToggleGroup>
       </div>
       <div className="rounded-xl border border-border/60 bg-card/40 px-2 pt-4 pb-2 shadow-xs/5 sm:px-3">

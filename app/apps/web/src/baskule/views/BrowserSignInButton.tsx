@@ -1,4 +1,5 @@
-import { useTranslation } from "../../i18n";
+import { useMessages, msg } from "gt-react";
+
 import { useEffect, useState } from "react";
 
 import { Button } from "../../components/ui/button";
@@ -12,7 +13,7 @@ export function BrowserSignInButton({
   next: string;
   onError: (message: string) => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [pending, setPending] = useState<{ id: string; secret: string } | null>(null);
   const [busy, setBusy] = useState(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Poll the pending browser sign-in exchange only until the exchange or mounted view ends.
@@ -33,7 +34,7 @@ export function BrowserSignInButton({
         })
         .catch((cause) => {
           if (!cancelled) {
-            onError(cause instanceof Error ? cause.message : t("Sign-in expired."));
+            onError(cause instanceof Error ? cause.message : t(msg("Sign-in expired.")));
             setPending(null);
           }
         })
@@ -60,20 +61,20 @@ export function BrowserSignInButton({
               window.open(login.url, "_blank", "noopener,noreferrer");
             })
             .catch((cause) =>
-              onError(cause instanceof Error ? cause.message : t("Could not start sign-in.")),
+              onError(cause instanceof Error ? cause.message : t(msg("Could not start sign-in."))),
             )
             .finally(() => setBusy(false));
         }}
       >
-        {pending ? t("Waiting for browser…") : t("Sign in in browser")}
+        {pending ? t(msg("Waiting for browser…")) : t(msg("Sign in in browser"))}
       </Button>
       {pending ? (
         <>
           <p className="text-xs text-muted-foreground">
-            {t("Finish signing in and approve the app connection in your browser.")}
+            {t(msg("Finish signing in and approve the app connection in your browser."))}
           </p>
           <Button variant="ghost" onClick={() => setPending(null)}>
-            {t("Cancel")}
+            {t(msg("Cancel"))}
           </Button>
         </>
       ) : null}

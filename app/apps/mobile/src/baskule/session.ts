@@ -1,4 +1,6 @@
-import { t } from "../i18n";
+import { m as resolveMessage } from "../i18n/messages";
+import { msg } from "gt-react-native";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { useSyncExternalStore } from "react";
@@ -163,7 +165,7 @@ export async function signInToBaskule(input: {
   if (serverUrl === null)
     throw new Api.BaskuleApiError(
       "network",
-      t("Enter the server address, e.g. https://baskule.example.com"),
+      resolveMessage(msg("Enter the server address, e.g. https://baskule.example.com")),
     );
   await Api.fetchInstance(serverUrl);
   const token = await Api.signIn(serverUrl, input.email, input.password);
@@ -182,7 +184,7 @@ export async function connectToBaskule(input: {
 export async function connectAnonymously(serverUrl: string): Promise<void> {
   const expected = ++revision;
   if ((await Api.fetchInstance(serverUrl)).authentication.mode !== "anonymous")
-    throw new Api.BaskuleApiError("server", t("This installation requires sign-in."));
+    throw new Api.BaskuleApiError("server", resolveMessage(msg("This installation requires sign-in.")));
   await finishSignIn(serverUrl, "", expected);
 }
 
@@ -241,9 +243,7 @@ export async function changeBaskuleSessionPassword(input: {
       if (revision === expected && state === current) publish(next);
       throw new Api.BaskuleApiError(
         "server",
-        t(
-          "Password changed, but this phone could not save the new sign-in. Sign in again after restarting the app.",
-        ),
+        resolveMessage(msg("Password changed, but this phone could not save the new sign-in. Sign in again after restarting the app.")),
       );
     }
   } finally {

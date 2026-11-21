@@ -1,9 +1,33 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Expo evaluates this synchronous Node configuration before the app runtime.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import nativeLocales from "./locales/config.json";
+import { hashMessage } from "gt-i18n/internal";
+import gtConfig from "./gt.config.json";
+import { nativePermissionMessages } from "./src/i18n/nativePermissions.ts";
 import type { ExpoConfig } from "expo/config";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
+const nativeLocales = Object.fromEntries(
+  [gtConfig.defaultLocale, ...gtConfig.locales].map((locale) => {
+    const translations: Record<string, unknown> = JSON.parse(
+      NodeFS.readFileSync(
+        NodePath.join(__dirname, "src/i18n/translations", `${locale}.json`),
+        "utf8",
+      ),
+    );
+    return [
+      locale,
+      {
+        ios: Object.fromEntries(
+          Object.entries(nativePermissionMessages).map(([key, source]) => {
+            const translation = translations[hashMessage(source, { $format: "ICU" })];
+            return [key, typeof translation === "string" ? translation : source];
+          }),
+        ),
+      },
+    ];
+  }),
+);
+
 type AppVariant = "development" | "preview" | "production";
 
 const repoEnv = loadRepoEnv();
@@ -237,8 +261,8 @@ const config: ExpoConfig = {
         NSAllowsArbitraryLoads: true,
       },
       NSLocalNetworkUsageDescription:
-        "Allow Baskule to connect to Baskule servers on your local network or tailnet.",
-      NSPhotoLibraryAddUsageDescription: "Allow Baskule to save images to your photo library.",
+        nativePermissionMessages.NSLocalNetworkUsageDescription,
+      NSPhotoLibraryAddUsageDescription: nativePermissionMessages.NSPhotoLibraryAddUsageDescription,
       // System picture in picture needs background audio to start and survive outside the app.
       UIBackgroundModes: ["audio"],
       ITSAppUsesNonExemptEncryption: false,
@@ -279,7 +303,6 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
-    ["expo-localization", { supportedLocales: Object.keys(nativeLocales) }],
     "expo-asset",
     [
       "expo-font",
@@ -338,7 +361,7 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow Baskule to use your microphone for voice input.",
+        microphonePermission: nativePermissionMessages.NSMicrophoneUsageDescription,
         recordAudioAndroid: true,
         enableBackgroundPlayback: false,
         enableBackgroundRecording: false,
@@ -348,8 +371,8 @@ const config: ExpoConfig = {
       "expo-camera",
       {
         cameraPermission:
-          "Allow Baskule to access your camera so you can scan connection QR codes.",
-        microphonePermission: "Allow Baskule to use your microphone for voice input.",
+          nativePermissionMessages.NSCameraUsageDescription,
+        microphonePermission: nativePermissionMessages.NSMicrophoneUsageDescription,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,
       },
@@ -358,7 +381,7 @@ const config: ExpoConfig = {
       "expo-image-picker",
       {
         photosPermission: false,
-        microphonePermission: "Allow Baskule to use your microphone for voice input.",
+        microphonePermission: nativePermissionMessages.NSMicrophoneUsageDescription,
       },
     ],
     [

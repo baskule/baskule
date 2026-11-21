@@ -1,9 +1,15 @@
-import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { RunId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  parseScopedThreadKey,
+  scopedThreadKey,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
+import { EnvironmentId, RunId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import { msg } from "gt-react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { useClosedViewStore } from "./closedViewStore";
+import { m } from "./i18n/messages";
 import { resolveStorage } from "./lib/storage";
 import type { ThreadPanelPresentation } from "./rightPanelLayout";
 import type { ChatFileAttachment } from "./types";
@@ -60,7 +66,23 @@ export type RightPanelSurface =
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 15;
 
-const isPullRequestsPanelKey = (threadKey: string) => threadKey.endsWith(":pull-requests-panel");
+export const PULL_REQUESTS_PANEL_REF = scopeThreadRef(
+  EnvironmentId.make("pull-requests-panel"),
+  ThreadId.make("pull-requests-panel"),
+);
+
+/** The issues page's shared panel, with the same fixed sentinel ref as the pull-request list. */
+export const ISSUES_PANEL_REF = scopeThreadRef(
+  EnvironmentId.make("issues-panel"),
+  ThreadId.make("issues-panel"),
+);
+
+/**
+ * The pull-request and issues lists' shared panels are session
+ * state: reopening the app should show the list, not last session's tabs and detail fetches.
+ */
+const isPullRequestsPanelKey = (threadKey: string) =>
+  threadKey.endsWith(":pull-requests-panel") || threadKey.endsWith(":issues-panel");
 
 export interface ThreadRightPanelState {
   isOpen: boolean;
@@ -94,7 +116,7 @@ interface RightPanelStoreState {
   ) => boolean;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "side-chat">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "issue" | "side-chat">,
   ) => void;
   openSideChat: (ref: ScopedThreadRef, threadId: ThreadId) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
@@ -139,7 +161,7 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "side-chat">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "issue" | "side-chat">,
   ) => void;
   setThreadPanelOpen: (
     ref: ScopedThreadRef,
@@ -162,7 +184,10 @@ const DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
 };
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "side-chat">,
+  kind: Exclude<
+    RightPanelKind,
+    "file" | "preview" | "terminal" | "side-chat"
+  >,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -408,7 +433,8 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                       kind === "plan" ||
                       kind === "agents" ||
                       kind === "pull-request" ||
-                      kind === "pull-requests"
+                      kind === "pull-requests" ||
+                      kind === "issue"
                     )
                       return [];
                     if (
@@ -612,7 +638,13 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             ...current,
             surfaces: current.surfaces.map((surface) =>
               surface.id === surfaceId && surface.kind === "device"
-                ? { ...surface, title: title.trim() || surface.target?.name || "Device" }
+                ? {
+                    ...surface,
+                    title:
+                      title.trim() ||
+                      surface.target?.name ||
+                      m(msg("Device", { $context: "a simulator or emulator" })),
+                  }
                 : surface,
             ),
           })),

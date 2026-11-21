@@ -1,6 +1,5 @@
-import { useTranslation } from "../../i18n";
-
 import { LoaderCircleIcon, PauseIcon, PlayIcon, TriangleAlertIcon } from "lucide-react";
+import { useGT } from "gt-react";
 import { createContext, useContext, useRef, useState } from "react";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
@@ -74,7 +73,7 @@ function audioTime(seconds: number) {
 }
 
 function AudioChip(props: AudioPreviewProps) {
-  const t = useTranslation();
+  const gt = useGT();
   const audio = useRef<HTMLAudioElement | null>(null);
   const onUnmount = useContext(AudioPreviewUnmountContext);
   const [loadedSource, setLoadedSource] = useState<string | null>(null);
@@ -94,15 +93,15 @@ function AudioChip(props: AudioPreviewProps) {
   });
   const loading = !props.failed && !ready;
   const open = props.onOpen ?? (props.failed ? props.onRetry : undefined);
-  const action = props.failed
+  const actionLabel = props.failed
     ? props.onOpen
-      ? "Open"
-      : "Retry"
+      ? gt("Audio unavailable. Open {name}", { name: props.name })
+      : gt("Audio unavailable. Retry {name}", { name: props.name })
     : loading
-      ? "Loading"
+      ? gt("Loading {name}", { name: props.name })
       : playing
-        ? "Pause"
-        : "Play";
+        ? gt("Pause {name}", { name: props.name })
+        : gt("Play {name}", { name: props.name });
   const Icon = props.failed
     ? TriangleAlertIcon
     : loading
@@ -117,7 +116,7 @@ function AudioChip(props: AudioPreviewProps) {
       {...(props.failed ? { state: "invalid" as const } : {})}
       {...(props.variant === "bubble" ? { shape: "bubble" as const } : {})}
       className="relative isolate overflow-hidden"
-      title={props.failed ? t("Audio unavailable. Open the file or retry playback.") : props.name}
+      title={props.failed ? gt("Audio unavailable. Open the file or retry playback.") : props.name}
     >
       <span
         aria-hidden
@@ -126,11 +125,7 @@ function AudioChip(props: AudioPreviewProps) {
       />
       <ContextChipAction
         className="ml-0 [&_svg]:size-[1em]"
-        aria-label={t("{{value1}}{{action}} {{name}}", {
-          value1: props.failed ? t("Audio unavailable. ") : "",
-          action: action,
-          name: props.name,
-        })}
+        aria-label={actionLabel}
         disabled={loading}
         onClick={() => {
           if (props.failed) {
@@ -155,10 +150,11 @@ function AudioChip(props: AudioPreviewProps) {
             type="button"
             className="block max-w-full cursor-pointer truncate rounded-sm text-left focus-visible:outline-2 focus-visible:outline-foreground"
             onClick={open}
-            aria-label={t("{{value1}} {{name}}", {
-              value1: props.failed && !props.onOpen ? t("Retry") : t("Preview"),
-              name: props.name,
-            })}
+            aria-label={
+              props.failed && !props.onOpen
+                ? gt("Retry {name}", { name: props.name })
+                : gt("Preview {name}", { name: props.name })
+            }
           >
             {middleTruncateAttachmentName(props.name)}
           </button>
@@ -168,15 +164,12 @@ function AudioChip(props: AudioPreviewProps) {
       </ContextChipLabel>
       <span dir="ltr" className="shrink-0 self-baseline text-3xs text-current">
         {props.failed
-          ? t("Unavailable")
+          ? gt("Unavailable")
           : loading
             ? "..."
             : duration > 0
               ? elapsed > 0 || playing
-                ? t("{{value1}} / {{value2}}", {
-                    value1: audioTime(elapsed),
-                    value2: audioTime(duration),
-                  })
+                ? `${audioTime(elapsed)} / ${audioTime(duration)}`
                 : audioTime(duration)
               : audioTime(elapsed)}
       </span>

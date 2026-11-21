@@ -1,6 +1,6 @@
-import { useTranslation } from "../../i18n";
-import * as Dialog from "../../components/ui/Dialog";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { useState, useSyncExternalStore } from "react";
+import * as Dialog from "../../components/ui/Dialog";
 import * as Notifications from "expo-notifications";
 import type { PushPreferences } from "@t3tools/contracts/baskulePush";
 import { Linking } from "react-native";
@@ -29,7 +29,8 @@ async function savePushPreferences(
 }
 
 export function SettingsNotificationsRouteScreen() {
-  const t = useTranslation();
+  const gt = useGT();
+  const messages = useMessages();
   const session = useBaskuleSession();
   const anonymous = session.status === "signed-in" && session.kind === "anonymous";
   const state = useSyncExternalStore(
@@ -46,28 +47,26 @@ export function SettingsNotificationsRouteScreen() {
     setBusy(true);
     await savePushPreferences(update, requestPermission)
       .catch(() => {
-        Dialog.alert(t("Notifications unavailable"), t("Could not update notification settings."));
+        Dialog.alert(gt("Notifications unavailable"), gt("Could not update notification settings."));
       })
       .finally(() => setBusy(false));
   };
   const enable = () => save((previous) => ({ ...previous, notificationsEnabled: true }), true);
   return (
-    <SettingsScreen title={t("Notifications")}>
+    <SettingsScreen title={gt("Notifications")}>
       <ScreenScrollView contentContainerClassName="gap-6 px-5 pt-4">
         <Text className="text-base text-foreground-muted">
           {anonymous
-            ? t(
-                "Background notifications require a personal sign-in. Shared anonymous workspaces do not support them.",
-              )
+            ? gt("Background notifications require a personal sign-in. Shared anonymous workspaces do not support them.")
             : state.status === "registered"
-              ? t("This device is registered for agent notifications.")
+              ? gt("This device is registered for agent notifications.")
               : (state.reason ??
-                t("Connect to your server and enable notifications to receive agent updates."))}
+                gt("Connect to your server and enable notifications to receive agent updates."))}
         </Text>
-        <SettingsSection title={t("Agent notifications")}>
+        <SettingsSection title={gt("Agent notifications")}>
           <SettingsSwitchRow
             icon="bell.badge"
-            label={t("Device Notifications")}
+            label={gt("Device Notifications")}
             value={state.status === "registered"}
             disabled={busy || state.status === "signed-out" || state.status === "checking"}
             onValueChange={(enabled) => {
@@ -77,16 +76,16 @@ export function SettingsNotificationsRouteScreen() {
           />
           {(
             [
-              ["notifyOnApproval", "Approval requests"],
-              ["notifyOnInput", "Input requests"],
-              ["notifyOnCompletion", "Completed tasks"],
-              ["notifyOnFailure", "Failed tasks"],
+              ["notifyOnApproval", msg("Approval requests")],
+              ["notifyOnInput", msg("Input requests")],
+              ["notifyOnCompletion", msg("Completed tasks")],
+              ["notifyOnFailure", msg("Failed tasks")],
             ] as const
           ).map(([key, label]) => (
             <SettingsSwitchRow
               key={key}
               icon="bell.badge"
-              label={t(label)}
+              label={messages(label)}
               value={preferences[key]}
               disabled={busy || state.status === "signed-out"}
               onValueChange={(enabled) =>
@@ -97,12 +96,11 @@ export function SettingsNotificationsRouteScreen() {
           <SettingsRow
             icon="bell.badge"
             disabled={busy || state.status === "signed-out" || state.status === "checking"}
-            label={
-              busy
-                ? t("Checking notifications")
-                : state.status === "registered"
-                  ? t("Refresh registration")
-                  : t("Enable notifications")
+            label={busy
+              ? gt("Checking notifications")
+              : state.status === "registered"
+                ? gt("Refresh registration")
+                : gt("Enable notifications")
             }
             onPress={() => {
               if (!busy) {
@@ -113,7 +111,7 @@ export function SettingsNotificationsRouteScreen() {
           />
           <SettingsRow
             icon="gearshape"
-            label={t("System notification settings")}
+            label={gt("System notification settings")}
             onPress={() => void Linking.openSettings()}
           />
         </SettingsSection>

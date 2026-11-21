@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import {
   BearerConnectionCredential,
   BearerConnectionProfile,
@@ -98,9 +96,7 @@ export const migrateLegacyConnectionCatalog = Effect.fn(
     Effect.mapError(
       (cause) =>
         new LegacyConnectionMigrationError({
-          message: t("Could not parse the legacy mobile connection catalog: {{value1}}", {
-            value1: String(cause),
-          }),
+          message: `Could not parse the legacy mobile connection catalog: ${String(cause)}`,
         }),
     ),
   );
@@ -108,9 +104,7 @@ export const migrateLegacyConnectionCatalog = Effect.fn(
     Effect.mapError(
       (cause) =>
         new LegacyConnectionMigrationError({
-          message: t("Could not decode the legacy mobile connection catalog: {{value1}}", {
-            value1: String(cause),
-          }),
+          message: `Could not decode the legacy mobile connection catalog: ${String(cause)}`,
         }),
     ),
   );

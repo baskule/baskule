@@ -1,8 +1,11 @@
+import { m } from "../../i18n/messages";
+import { msg } from "gt-react-native";
+import { useGT, useMessages } from "gt-react-native";
+
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { useContentTopInset } from "../../components/ui/useBarInset";
 import { usePaneRole } from "../../components/ui/Pane";
 import { ScreenContent } from "../../components/ui/ScreenContent";
-import { t, useTranslation } from "../../i18n";
 
 import { useActiveNewTask } from "../../state/active-new-task";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -166,8 +169,8 @@ const THREAD_LIST_V2_DRAW_DISTANCE = 1_000;
 function deriveBaskuleEmptyState(catalogState: WorkspaceState) {
   if (catalogState.hasLoadedShellSnapshot) {
     return {
-      title: t("No chats yet"),
-      detail: t("Start a new chat to talk with the assistant."),
+      title: m(msg("No chats yet")),
+      detail: m(msg("Start a new chat to talk with the assistant.")),
       loading: false,
     };
   }
@@ -177,7 +180,7 @@ function deriveBaskuleEmptyState(catalogState: WorkspaceState) {
     !catalogState.hasConnectingEnvironment
   ) {
     return {
-      title: t("Can't reach your chats"),
+      title: m(msg("Can't reach your chats")),
       detail: catalogState.connectionError,
       loading: false,
     };
@@ -189,16 +192,20 @@ function deriveBaskuleEmptyState(catalogState: WorkspaceState) {
     return {
       title:
         catalogState.connectionState === "unsupported"
-          ? t("Update the app")
-          : t("Can't reach your chats"),
+          ? m(msg("Update the app"))
+          : m(msg("Can't reach your chats")),
       detail:
         catalogState.connectionState === "unsupported"
-          ? t("This version of the app no longer works with your server.")
-          : t("Check this phone's network. Baskule reconnects automatically."),
+          ? m(msg("This version of the app no longer works with your server."))
+          : m(msg("Check this phone's network. Baskule reconnects automatically.")),
       loading: false,
     };
   }
-  return { title: t("Loading chats"), detail: t("Connecting to your server…"), loading: true };
+  return {
+    title: m(msg("Loading chats")),
+    detail: m(msg("Connecting to your server…")),
+    loading: true,
+  };
 }
 
 function HomeTopContentSpacer() {
@@ -234,7 +241,8 @@ function renderHomeScrollView(props: ScrollViewProps) {
 }
 
 export function HomeScreen(props: HomeScreenProps) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
   const workspace = useWorkspaceTabs();
   const [initialScrollOffset] = useState(() => workspace?.getScrollOffset("threads") ?? 0);
@@ -354,12 +362,15 @@ export function HomeScreen(props: HomeScreenProps) {
   const { projects, selectedEnvironmentId, projectGroupingMode } = props;
   const projectScopes = useMemo(
     () =>
-      buildHomeProjectScopes({
-        projects,
-        environmentId: selectedEnvironmentId,
-        projectGroupingMode,
-      }),
-    [projects, selectedEnvironmentId, projectGroupingMode],
+      buildHomeProjectScopes(
+        {
+          projects,
+          environmentId: selectedEnvironmentId,
+          projectGroupingMode,
+        },
+        m,
+      ),
+    [projects, selectedEnvironmentId, projectGroupingMode, m],
   );
   const hasSearchQuery = props.searchQuery.trim().length > 0;
   const projectByKey = (() => {
@@ -654,7 +665,7 @@ export function HomeScreen(props: HomeScreenProps) {
     props.selectedEnvironmentId === null
       ? null
       : (props.savedConnectionsById[props.selectedEnvironmentId]?.environmentLabel ??
-        t("this environment"));
+        "this environment");
   const emptyState = BASKULE_FLAGS.projects
     ? deriveHomeEmptyState(props.catalogState, props.projects.length)
     : { ...deriveBaskuleEmptyState(props.catalogState), showsAddEnvironment: false };
@@ -684,10 +695,10 @@ export function HomeScreen(props: HomeScreenProps) {
                 actionLabel={
                   !BASKULE_FLAGS.projects
                     ? Platform.OS === "ios" && props.catalogState.hasLoadedShellSnapshot
-                      ? t("New chat")
+                      ? gt("New chat")
                       : undefined
                     : emptyState.showsAddEnvironment
-                      ? t("Add environment")
+                      ? gt("Add environment")
                       : undefined
                 }
                 onAction={
@@ -704,7 +715,7 @@ export function HomeScreen(props: HomeScreenProps) {
                   Platform.OS === "android" &&
                   emptyState.showsAddEnvironment ? (
                     <FloatingActionButton
-                      label={t("Add environment")}
+                      label={gt("Add environment")}
                       icon="plus"
                       variant="extended"
                       tone="primary"
@@ -760,52 +771,58 @@ export function HomeScreen(props: HomeScreenProps) {
   const v2ListEmpty =
     hasSearchQuery && threadSearch.isPending ? (
       <EmptyState
-        title={t("Searching thread messages…")}
-        detail={t('Looking for "{{query}}" in messages.', { query: props.searchQuery })}
+        title={gt("Searching thread messages…")}
+        detail={gt('Looking for "{query}" in messages.', { query: props.searchQuery })}
+        variant={Platform.OS === "android" ? "plain" : undefined}
+      />
+    ) : hasSearchQuery && threadSearch.failed ? (
+      <EmptyState
+        title={gt("Search failed")}
+        detail={gt('Couldn\'t search messages for "{query}". Change the search to try again.', {
+          query: props.searchQuery,
+        })}
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     ) : hasSearchQuery ? (
       <EmptyState
-        title={t("No results")}
+        title={gt("No results")}
         detail={
           BASKULE_FLAGS.projects
-            ? t('No threads matching "{{searchQuery}}".', { searchQuery: props.searchQuery })
-            : t('No chats matching "{{searchQuery}}".', { searchQuery: props.searchQuery })
+            ? gt('No threads matching "{searchQuery}".', { searchQuery: props.searchQuery })
+            : gt('No chats matching "{searchQuery}".', { searchQuery: props.searchQuery })
         }
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     ) : v2ScopedProjectGroup !== null ? (
       <EmptyState
-        title={t("No threads in {{title}}", { title: v2ScopedProjectGroup.title })}
-        detail={t("Choose another project or create a new task.")}
+        title={gt("No threads in {name}", { name: v2ScopedProjectGroup.title })}
+        detail={gt("Choose another project or create a new task.")}
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     ) : selectedEnvironmentLabel ? (
       BASKULE_FLAGS.projects ? (
         <EmptyState
-          title={t("No threads in {{selectedEnvironmentLabel}}", {
-            selectedEnvironmentLabel: selectedEnvironmentLabel,
-          })}
-          detail={t("Choose another environment or create a new task.")}
+          title={gt("No threads in {selectedEnvironmentLabel}", { selectedEnvironmentLabel })}
+          detail={gt("Choose another environment or create a new task.")}
           variant={Platform.OS === "android" ? "plain" : undefined}
         />
       ) : (
         <EmptyState
-          title={t("No chats in {{space}}", { space: selectedEnvironmentLabel })}
-          detail={t("Choose another space or start a new chat.")}
+          title={gt("No chats in {selectedEnvironmentLabel}", { selectedEnvironmentLabel })}
+          detail={gt("Choose another space or start a new chat.")}
           variant={Platform.OS === "android" ? "plain" : undefined}
         />
       )
     ) : BASKULE_FLAGS.projects ? (
       <EmptyState
-        title={t("No threads yet")}
-        detail={t("Create a task to start a new coding session.")}
+        title={gt("No threads in {name}", { name: selectedEnvironmentLabel })}
+        detail={gt("Choose another environment or create a new task.")}
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     ) : (
       <EmptyState
-        title={t("No chats yet")}
-        detail={t("Start a new chat to talk with the assistant.")}
+        title={gt("No threads yet")}
+        detail={gt("Create a task to start a new coding session.")}
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     );

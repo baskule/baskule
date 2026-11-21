@@ -1,4 +1,6 @@
-import { t, useTranslation } from "../../i18n";
+import { m as resolveMessage } from "../../i18n/messages";
+import { msg, useMessages } from "gt-react";
+
 
 // baskule: admin adds a person, with a temporary password or an invitation link to share.
 import { CheckIcon, CopyIcon, RefreshCwIcon } from "lucide-react";
@@ -33,10 +35,10 @@ import { useBaskuleMe } from "../session";
 
 const ROLE_LABELS: Record<OrgRole, string> = {
   get member() {
-    return t("Member");
+    return resolveMessage(msg("Member"));
   },
   get admin() {
-    return t("Admin");
+    return resolveMessage(msg("Admin"));
   },
 };
 
@@ -45,7 +47,7 @@ export function absoluteInvitationUrl(url: string): string {
 }
 
 export function CopyField({ label, value }: { readonly label: string; readonly value: string }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex flex-col gap-1.5">
@@ -55,7 +57,7 @@ export function CopyField({ label, value }: { readonly label: string; readonly v
         <Button
           variant="outline"
           size="icon"
-          aria-label={t("Copy {{value1}}", { value1: label.toLowerCase() })}
+          aria-label={t(msg("Copy {value1}"), { value1: label.toLowerCase() })}
           onClick={() => {
             void writeTextToClipboard(value).then(() => {
               setCopied(true);
@@ -80,7 +82,7 @@ export function AddPersonDialog({
   readonly onAdded: () => void;
 }) {
   const me = useBaskuleMe();
-  const t = useTranslation();
+  const t = useMessages();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<OrgRole>("member");
@@ -156,101 +158,94 @@ export function AddPersonDialog({
             <DialogHeader>
               <DialogTitle>
                 {created.mode === "password"
-                  ? t("{{name}} was added", { name: created.name })
-                  : t("Invitation ready")}
+                  ? t(msg("{name} was added"), { name: created.name })
+                  : t(msg("Invitation ready"))}
               </DialogTitle>
               <DialogDescription>
                 {created.mode === "password"
-                  ? t(
-                      "Share these sign-in details privately. They can change the password from their account menu.",
-                    )
-                  : t(
-                      "Send this link to {{email}} privately. It works once and lets them choose their name and password.",
-                      { email: created.email },
-                    )}
+                  ? t(msg("Share these sign-in details privately. They can change the password from their account menu."))
+                  : t(msg("Send this link to {email} privately. It works once and lets them choose their name and password."), { email: created.email })}
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>
               {created.mode === "password" ? (
                 <>
-                  <CopyField label={t("Email")} value={created.email} />
-                  <CopyField label={t("Temporary password")} value={created.password} />
+                  <CopyField label={t(msg("Email"))} value={created.email} />
+                  <CopyField label={t(msg("Temporary password"))} value={created.password} />
                 </>
               ) : (
-                <CopyField label={t("Invitation link")} value={created.url} />
+                <CopyField label={t(msg("Invitation link"))} value={created.url} />
               )}
             </DialogPanel>
             <DialogFooter>
               <Button variant="outline" onClick={reset}>
-                {t("Add another")}
+                {t(msg("Add another"))}
               </Button>
-              <Button onClick={() => onOpenChange(false)}>{t("Done")}</Button>
+              <Button onClick={() => onOpenChange(false)}>{t(msg("Done"))}</Button>
             </DialogFooter>
           </>
         ) : (
           <form onSubmit={(event) => void submit(event)} noValidate className="contents">
             <DialogHeader>
-              <DialogTitle>{t("Add a person")}</DialogTitle>
+              <DialogTitle>{t(msg("Add a person"))}</DialogTitle>
               <DialogDescription>
-                {t("They get a personal space. Add them to team spaces afterwards.")}
+                {t(msg("They get a personal space. Add them to team spaces afterwards."))}
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>
               <div className="flex flex-col gap-1.5">
-                <Label>{t("How they get in")}</Label>
+                <Label>{t(msg("How they get in"))}</Label>
                 <ToggleGroup
-                  aria-label={t("How they get in")}
+                  aria-label={t(msg("How they get in"))}
                   value={[mode]}
                   onValueChange={(value) => {
                     const next = value[0];
                     if (next === "password" || next === "invitation") setMode(next);
                   }}
                 >
-                  <Toggle value="invitation">{t("Invitation link")}</Toggle>
+                  <Toggle value="invitation">{t(msg("Invitation link"))}</Toggle>
                   {me?.authentication.password ? (
-                    <Toggle value="password">{t("Temporary password")}</Toggle>
+                    <Toggle value="password">{t(msg("Temporary password"))}</Toggle>
                   ) : null}
                 </ToggleGroup>
                 <p className="text-xs text-muted-foreground">
                   {mode === "invitation"
-                    ? t(
-                        "They open the link, choose their name and sign-in method, and join the organization.",
-                      )
-                    : t("You create the account now and give them the password.")}
+                    ? t(msg("They open the link, choose their name and sign-in method, and join the organization."))
+                    : t(msg("You create the account now and give them the password."))}
                 </p>
               </div>
               {mode === "password" ? (
                 <FormField
-                  label={t("Name")}
+                  label={t(msg("Name"))}
                   autoComplete="off"
                   value={name}
                   onChange={(event) => setName(event.currentTarget.value)}
                 />
               ) : null}
               <FormField
-                label={t("Email")}
+                label={t(msg("Email"))}
                 type="email"
                 autoComplete="off"
                 autoFocus
                 value={email}
-                error={email.length > 0 && !emailValid ? "Enter a valid email address." : null}
+                error={email.length > 0 && !emailValid ? t(msg("Enter a valid email address.")) : null}
                 onChange={(event) => setEmail(event.currentTarget.value)}
               />
               <div className="flex flex-col gap-1.5">
-                <Label>{t("Role")}</Label>
+                <Label>{t(msg("Role"))}</Label>
                 <Select value={role} onValueChange={(value) => setRole(value as OrgRole)}>
-                  <SelectTrigger aria-label={t("Role")}>
+                  <SelectTrigger aria-label={t(msg("Role"))}>
                     <SelectValue>{(value: OrgRole) => ROLE_LABELS[value]}</SelectValue>
                   </SelectTrigger>
                   <SelectPopup alignItemWithTrigger={false}>
-                    <SelectItem value="member">{t("Member")}</SelectItem>
-                    <SelectItem value="admin">{t("Admin: manages people and spaces")}</SelectItem>
+                    <SelectItem value="member">{t(msg("Member"))}</SelectItem>
+                    <SelectItem value="admin">{t(msg("Admin: manages people and spaces"))}</SelectItem>
                   </SelectPopup>
                 </Select>
               </div>
               {mode === "password" ? (
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="baskule-temporary-password">{t("Temporary password")}</Label>
+                  <Label htmlFor="baskule-temporary-password">{t(msg("Temporary password"))}</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       id="baskule-temporary-password"
@@ -263,7 +258,7 @@ export function AddPersonDialog({
                       type="button"
                       variant="outline"
                       size="icon"
-                      aria-label={t("Generate another password")}
+                      aria-label={t(msg("Generate another password"))}
                       onClick={() => setPassword(generateTemporaryPassword())}
                     >
                       <RefreshCwIcon />
@@ -279,11 +274,11 @@ export function AddPersonDialog({
             </DialogPanel>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                {t("Cancel")}
+                {t(msg("Cancel"))}
               </Button>
               <Button type="submit" disabled={!canSubmit || submitting}>
                 {submitting ? <Spinner size="sm" /> : null}
-                {mode === "invitation" ? t("Create invitation") : t("Add person")}
+                {mode === "invitation" ? t(msg("Create invitation")) : t(msg("Add person"))}
               </Button>
             </DialogFooter>
           </form>

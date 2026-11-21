@@ -1,5 +1,3 @@
-import { msg, useTranslation } from "../i18n";
-
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -9,7 +7,9 @@ import {
   type ScopedThreadRef,
   type VcsStatusResult,
 } from "@t3tools/contracts";
+import { msg, useGT, useMessages } from "gt-react";
 import { FolderGit2Icon, TerminalIcon } from "lucide-react";
+import { m, type MessageResolver } from "../i18n/messages";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 
@@ -33,7 +33,7 @@ import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export interface TerminalStatusIndicator {
-  label: "Terminal process running";
+  label: string;
   colorClass: string;
   pulse: boolean;
 }
@@ -44,12 +44,13 @@ export type ThreadPr = VcsStatusResult["pr"];
 
 export function terminalStatusFromRunningIds(
   runningTerminalIds: ReadonlyArray<string>,
+  resolve: MessageResolver = m,
 ): TerminalStatusIndicator | null {
   if (runningTerminalIds.length === 0) {
     return null;
   }
   return {
-    label: msg("Terminal process running"),
+    label: resolve(msg("Terminal process running")),
     colorClass: "text-teal-600 dark:text-teal-300/90",
     pulse: true,
   };
@@ -74,13 +75,15 @@ export function ThreadTerminalStatusButton({
   terminalIds: readonly string[];
   onThreadActivate: (threadRef: ScopedThreadRef) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const terminalId = terminalIds[0];
   if (terminalId === undefined) return null;
-  const status = terminalStatusFromRunningIds(terminalIds);
-  const label =
-    terminalIds.length === 1
-      ? "1 terminal process running. Open terminal"
-      : `${terminalIds.length} terminal processes running. Open terminal`;
+  const status = terminalStatusFromRunningIds(terminalIds, messages);
+  const label = gt(
+    "{count, plural, one {{count} terminal process running. Open terminal} other {{count} terminal processes running. Open terminal}}",
+    { count: terminalIds.length },
+  );
   return (
     <Tooltip>
       <TooltipTrigger
@@ -119,6 +122,7 @@ export function ThreadWorktreeIndicator({
 }: {
   thread: Pick<SidebarThreadSummary, "id" | "branch" | "worktreePath">;
 }) {
+  const gt = useGT();
   const worktreePath = thread.worktreePath?.trim();
   if (!worktreePath) {
     return null;
@@ -126,8 +130,8 @@ export function ThreadWorktreeIndicator({
 
   const displayPath = formatWorktreePathForDisplay(worktreePath);
   const tooltip = thread.branch
-    ? `Worktree: ${displayPath} (${thread.branch})`
-    : `Worktree: ${displayPath}`;
+    ? gt("Worktree: {path} ({branch})", { path: displayPath, branch: thread.branch })
+    : gt("Worktree: {path}", { path: displayPath });
 
   return (
     <Tooltip>
@@ -155,7 +159,8 @@ function ThreadStatusLabel({
   status: ThreadStatusPill;
   compact?: boolean;
 }) {
-  const t = useTranslation();
+  const m = useMessages();
+  const label = m(status.label);
   if (compact) {
     return (
       <Tooltip>
@@ -163,7 +168,7 @@ function ThreadStatusLabel({
           render={
             <span
               role="img"
-              aria-label={t(status.label)}
+              aria-label={label}
               className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
             />
           }
@@ -172,7 +177,7 @@ function ThreadStatusLabel({
             className={`size-[9px] rounded-full ${status.dotClass} ${status.pulse ? "motion-safe:animate-status-pulse" : ""}`}
           />
         </TooltipTrigger>
-        <TooltipPopup side="top">{t(status.label)}</TooltipPopup>
+        <TooltipPopup side="top">{label}</TooltipPopup>
       </Tooltip>
     );
   }
@@ -183,7 +188,7 @@ function ThreadStatusLabel({
         render={
           <span
             role="img"
-            aria-label={t(status.label)}
+            aria-label={label}
             className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
           />
         }
@@ -191,9 +196,9 @@ function ThreadStatusLabel({
         <span
           className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${status.pulse ? "motion-safe:animate-status-pulse" : ""}`}
         />
-        <span className="hidden md:inline">{t(status.label)}</span>
+        <span className="hidden md:inline">{label}</span>
       </TooltipTrigger>
-      <TooltipPopup side="top">{t(status.label)}</TooltipPopup>
+      <TooltipPopup side="top">{label}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -227,7 +232,8 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
 }
 
 export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSummary }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
     threadId: thread.id,
@@ -236,9 +242,11 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const isRemoteThread = thread.environmentId !== primaryEnvironmentId;
   const remoteEnvLabel = environment?.label ?? null;
-  const threadEnvironmentLabel = isRemoteThread ? (remoteEnvLabel ?? t("Remote")) : null;
+  const threadEnvironmentLabel = isRemoteThread
+    ? (remoteEnvLabel ?? gt("Remote", { $context: "machine location" }))
+    : null;
   const remoteMachine = resolveEnvironmentMachineKind(environment?.serverConfig ?? null);
-  const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
+  const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds, m);
 
   if (!terminalStatus && !isRemoteThread) {
     return null;
@@ -252,7 +260,7 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
             render={
               <span
                 role="img"
-                aria-label={t(terminalStatus.label)}
+                aria-label={m(terminalStatus.label)}
                 className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
               />
             }
@@ -262,7 +270,7 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
               onAnimationStart={synchronizeTerminalPulse}
             />
           </TooltipTrigger>
-          <TooltipPopup side="top">{t(terminalStatus.label)}</TooltipPopup>
+          <TooltipPopup side="top">{m(terminalStatus.label)}</TooltipPopup>
         </Tooltip>
       ) : null}
       {isRemoteThread ? (
@@ -270,7 +278,9 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
           <TooltipTrigger
             render={
               <span
-                aria-label={threadEnvironmentLabel ?? t("Remote")}
+                aria-label={
+                  threadEnvironmentLabel ?? gt("Remote", { $context: "machine location" })
+                }
                 className="inline-flex items-center justify-center"
               />
             }

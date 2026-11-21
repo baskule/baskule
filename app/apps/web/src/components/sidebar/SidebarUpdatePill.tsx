@@ -1,21 +1,20 @@
-import { useTranslation } from "../../i18n";
 import { useCheckProviderUpdates } from "../ProviderUpdatesAction";
-import { managedUpdatesDenial } from "@t3tools/contracts";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { managedUpdatesDenial } from "@t3tools/client-runtime/contract-labels";
+
 import { TriangleAlertIcon } from "lucide-react";
+import { T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { isElectron } from "../../env";
+import { m } from "../../i18n/messages";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import { usePrimaryManagedPolicy } from "../../state/managedPolicy";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import {
-  checkLocalUpdate,
-  downloadLocalUpdate,
-  installLocalUpdate,
-} from "../desktopUpdate.actions";
+import { downloadLocalUpdate, installLocalUpdate } from "../desktopUpdate.actions";
 import {
   canCheckForUpdate,
   getArm64IntelBuildWarningDescription,
@@ -88,17 +87,20 @@ export function SidebarUpdateArchitectureWarning() {
 }
 
 function SidebarUpdateArchitectureWarningContent() {
-  const t = useTranslation();
   const state = useDesktopUpdateState();
+  const messages = useMessages();
   const visible = shouldShowArm64IntelBuildWarning(state);
-  const description = state && visible ? getArm64IntelBuildWarningDescription(state) : null;
+  const description =
+    state && visible ? getArm64IntelBuildWarningDescription(state, messages) : null;
 
   if (!visible || !description) return null;
 
   return (
     <Alert variant="warning">
       <TriangleAlertIcon />
-      <AlertTitle>{t("Intel build on Apple Silicon")}</AlertTitle>
+      <AlertTitle>
+        <T>Intel build on Apple Silicon</T>
+      </AlertTitle>
       <AlertDescription>{description}</AlertDescription>
     </Alert>
   );
@@ -109,10 +111,11 @@ export function SidebarUpdatePill() {
 }
 
 function SidebarUpdateControl() {
-  const t = useTranslation();
   const state = useDesktopUpdateState();
+  const gt = useGT();
+  const messages = useMessages();
   // The desktop updates this machine, whose policy the primary environment reports.
-  const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy());
+  const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy(), messages);
   const [isActionPending, setIsActionPending] = useState(false);
   const [providerCheck, setProviderCheck] = useState<"button" | "dialog" | null>(null);
   const isCheckingProviders = providerCheck === "button";
@@ -160,16 +163,18 @@ function SidebarUpdateControl() {
     showCheckIcon,
   });
   const idleTooltip =
-    !showUpdateDetails && !showCheckIcon ? getDesktopUpdateIdleTooltip(state, updatesDenial) : null;
+    !showUpdateDetails && !showCheckIcon
+      ? getDesktopUpdateIdleTooltip(state, updatesDenial, messages)
+      : null;
   const tooltip = runsEverything
     ? everything.summary
     : showUpdateDetails
       ? state
-        ? getDesktopUpdateButtonTooltip(state)
-        : "Update available"
+        ? getDesktopUpdateButtonTooltip(state, messages)
+        : gt("Update available")
       : showCheckIcon
-        ? "Checking for updates…"
-        : (idleTooltip?.title ?? "Check for updates");
+        ? gt("Checking for updates…")
+        : (idleTooltip?.title ?? gt("Check for updates"));
   const disabled = showCheckIcon
     ? true
     : runsEverything
@@ -212,8 +217,8 @@ function SidebarUpdateControl() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: t("Could not confirm update"),
-            description: error instanceof Error ? error.message : t("Update confirmation failed."),
+            title: gt("Could not confirm update"),
+            description: thrownErrorMessage(error, m) ?? gt("Update confirmation failed."),
           }),
         );
         return;
@@ -230,9 +235,33 @@ function SidebarUpdateControl() {
       setIsCheckAnimationLatched(true);
       setCheckAnimationKey((key) => key + 1);
     }
-    void checkLocalUpdate(bridge, { unavailableReason: updatesDenial }).finally(() =>
-      setIsActionPending(false),
-    );
+    const appCheck = bridge
+      .checkForUpdate()
+      .then((result) => {
+        if (result.checked) return;
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: gt("Could not check for updates"),
+            description:
+              updatesDenial ??
+              result.state.message ??
+              gt("Automatic updates are not available in this build."),
+          }),
+        );
+      })
+      .catch((error) => {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: gt("Could not check for updates"),
+            description: thrownErrorMessage(error, m) ?? gt("Update check failed."),
+          }),
+        );
+      });
+    setProviderCheck("button");
+    const providersChecked = checkProviderUpdates().finally(() => setProviderCheck(null));
+    void Promise.allSettled([appCheck, providersChecked]).then(() => setIsActionPending(false));
   };
 
   const runEverything = async () => {
@@ -257,8 +286,8 @@ function SidebarUpdateControl() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: t("Could not update everything"),
-          description: error instanceof Error ? error.message : t("An unexpected error occurred."),
+          title: gt("Could not update everything"),
+          description: thrownErrorMessage(error, m) ?? gt("An unexpected error occurred."),
         }),
       );
     }
@@ -306,7 +335,7 @@ function SidebarUpdateControl() {
           ? { status: "downloading", percent: state.downloadPercent }
           : { status: "waiting" };
     return (
-      <SidebarMenuItem className="ml-auto flex flex-1">
+      <SidebarMenuItem className="@container/sidebar-update ml-auto flex min-w-8 flex-1">
         <SidebarUpdateCapsule
           run={run}
           local={local}
@@ -336,7 +365,11 @@ function SidebarUpdateControl() {
   const updateButton = (
     <button
       type="button"
-      aria-label={idleTooltip?.detail ? `${tooltip}: ${idleTooltip.detail}` : tooltip}
+      aria-label={
+        idleTooltip?.detail
+          ? gt("{tooltip}: {detail}", { tooltip, detail: idleTooltip.detail })
+          : tooltip
+      }
       aria-disabled={isInteractionDisabled || undefined}
       className={cn(
         "inline-flex size-8 items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2 focus-visible:ring-inset",

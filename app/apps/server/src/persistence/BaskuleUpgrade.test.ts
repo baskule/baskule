@@ -368,7 +368,7 @@ it.effect(
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const filename = path.join(
-        yield* fs.makeTempDirectoryScoped({ prefix: "baskule-081-reopen-" }),
+        yield* fs.makeTempDirectoryScoped({ prefix: "baskule-096-reopen-" }),
         "state.sqlite",
       );
       const storage = makeFakeDoStorage();
@@ -376,12 +376,15 @@ it.effect(
         yield* Effect.scoped(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            yield* createBaskule081;
+            yield* runMigrations({ toMigrationInclusive: 96 });
             yield* sql`INSERT INTO auth_sessions (session_id, subject, scopes, method, issued_at, expires_at)
           VALUES ('reopen-session', 'reopen-member', '["orchestration:read"]', 'baskule', '2026-11-01', '2027-11-01')`;
           }).pipe(Effect.provide(open())),
         );
-        yield* Effect.scoped(runMigrations().pipe(Effect.provide(open())));
+        assert.deepStrictEqual(
+          yield* Effect.scoped(runMigrations().pipe(Effect.provide(open()))),
+          migrationManifest.filter(([id]) => id > 96),
+        );
         yield* Effect.scoped(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;

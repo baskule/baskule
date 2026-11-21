@@ -12,25 +12,9 @@ import {
 import { PreviewViewportSetting } from "@t3tools/contracts";
 import * as Base64 from "effect/encoding/Base64";
 import * as Schema from "effect/Schema";
-
-const Binding = Schema.Struct({
-  environmentId: Schema.String,
-  connectionId: Schema.String,
-  threadId: Schema.String,
-  tabId: Schema.String,
-  transportGeneration: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-});
-export type PreviewBridgeBinding = typeof Binding.Type;
-
-export function samePreviewBinding(a: PreviewBridgeBinding, b: PreviewBridgeBinding): boolean {
-  return (
-    a.environmentId === b.environmentId &&
-    a.connectionId === b.connectionId &&
-    a.threadId === b.threadId &&
-    a.tabId === b.tabId &&
-    a.transportGeneration === b.transportGeneration
-  );
-}
+import { msg } from "gt-react-native";
+import { m } from "../../i18n/messages";
+import { PreviewBridgeBinding, samePreviewBinding } from "./preview-bridge-binding";
 
 const number = Schema.Number.check(Schema.isFinite());
 const dimensions = { width: number, height: number };
@@ -81,23 +65,27 @@ const Input = Schema.Union([
   Schema.Struct({ type: Schema.Literal("probe"), ...point }),
 ]);
 const ViewerMessage = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("connect"), binding: Binding, ...dimensions }),
-  Schema.Struct({ type: Schema.Literal("consumed"), binding: Binding, frameId: number }),
+  Schema.Struct({ type: Schema.Literal("connect"), binding: PreviewBridgeBinding, ...dimensions }),
+  Schema.Struct({
+    type: Schema.Literal("consumed"),
+    binding: PreviewBridgeBinding,
+    frameId: number,
+  }),
   Schema.Struct({
     type: Schema.Literal("input"),
-    binding: Binding,
+    binding: PreviewBridgeBinding,
     controlGeneration: number,
     input: Input,
   }),
   Schema.Struct({
     type: Schema.Literal("status"),
-    binding: Binding,
+    binding: PreviewBridgeBinding,
     status: Schema.Literals(["connecting", "streaming", "error"]),
     detail: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("pictureInPicture"),
-    binding: Binding,
+    binding: PreviewBridgeBinding,
     supported: Schema.Boolean,
     active: Schema.Boolean,
     detail: Schema.optionalKey(Schema.String),
@@ -168,7 +156,9 @@ export function createNativePreviewBridge(input: {
     inFlight = { id, consumed: frame.consumed };
     timer = setTimeout(() => {
       stop();
-      input.events.onFailure?.("Browser viewer stopped consuming frames. Reconnect to try again.");
+      input.events.onFailure?.(
+        m(msg("Browser viewer stopped consuming frames. Reconnect to try again.")),
+      );
     }, CONSUMPTION_TIMEOUT_MS);
     input.post({
       type: "frame",
@@ -215,7 +205,7 @@ export function createNativePreviewBridge(input: {
               if (jpeg.byteLength > MAX_FRAME_BYTES) {
                 consumed();
                 stop();
-                input.events.onFailure?.("Browser frame exceeds the viewer limit.");
+                input.events.onFailure?.(m(msg("Browser frame exceeds the viewer limit.")));
                 return;
               }
               if (inFlight) {

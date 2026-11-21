@@ -1,4 +1,6 @@
-import { t, useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+import { m as resolveMessage } from "../i18n/messages";
+
 
 // baskule: manage one team space (name, members, roles, plugins, deletion). Opened from the admin
 // spaces list and, for space owners, from the user menu. "New team space" uses the same dialog.
@@ -89,7 +91,7 @@ function CreateSpaceContent({
   readonly onCreated: (space: SpaceDetails) => void;
   readonly onCancel: () => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,8 +109,8 @@ function CreateSpaceContent({
           .then(
             (space) => {
               notifySuccess(
-                t("{{name}} created", { name: space.name }),
-                t("Add the people who work in it."),
+                t(msg("{name} created"), { name: space.name }),
+                t(msg("Add the people who work in it.")),
               );
               onCreated(space);
             },
@@ -123,16 +125,16 @@ function CreateSpaceContent({
       }}
     >
       <DialogHeader>
-        <DialogTitle>{t("New team space")}</DialogTitle>
+        <DialogTitle>{t(msg("New team space"))}</DialogTitle>
         <DialogDescription>
-          {t("Members of a team space share its chats, files and computer. You will be its owner.")}
+          {t(msg("Members of a team space share its chats, files and computer. You will be its owner."))}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
         <FormField
-          label={t("Name")}
+          label={t(msg("Name"))}
           autoFocus
-          placeholder={t("Marketing, Acme project…")}
+          placeholder={t(msg("Marketing, Acme project…"))}
           value={name}
           onChange={(event) => setName(event.currentTarget.value)}
         />
@@ -144,11 +146,11 @@ function CreateSpaceContent({
       </DialogPanel>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
-          {t("Cancel")}
+          {t(msg("Cancel"))}
         </Button>
         <Button type="submit" disabled={!name.trim() || submitting}>
           {submitting ? <Spinner size="sm" /> : null}
-          {t("Create space")}
+          {t(msg("Create space"))}
         </Button>
       </DialogFooter>
     </form>
@@ -157,10 +159,10 @@ function CreateSpaceContent({
 
 const ROLE_LABELS: Record<SpaceRole, string> = {
   get owner() {
-    return t("Owner");
+    return resolveMessage(msg("Owner"));
   },
   get member() {
-    return t("Member");
+    return resolveMessage(msg("Member"));
   },
 };
 
@@ -171,7 +173,7 @@ function ManageSpaceContent({
   readonly spaceId: string;
   readonly onClose: () => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   const [space, setSpace] = useState<SpaceDetails | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -200,7 +202,7 @@ function ManageSpaceContent({
         !cancelled &&
         setLoadError(
           cause instanceof BaskuleApiError && cause.status === 404
-            ? "This space no longer exists, or you can't manage it."
+            ? t(msg("This space no longer exists, or you can't manage it."))
             : errorText(cause),
         ),
     );
@@ -211,7 +213,7 @@ function ManageSpaceContent({
     return () => {
       cancelled = true;
     };
-  }, [spaceId]);
+  }, [spaceId, t]);
 
   const run = async (action: () => Promise<SpaceDetails | unknown>, failure: string) => {
     setBusy(true);
@@ -236,7 +238,7 @@ function ManageSpaceContent({
     return (
       <>
         <DialogHeader>
-          <DialogTitle>{t("Space unavailable")}</DialogTitle>
+          <DialogTitle>{t(msg("Space unavailable"))}</DialogTitle>
         </DialogHeader>
         <DialogPanel>
           <Alert variant="error">
@@ -244,7 +246,7 @@ function ManageSpaceContent({
           </Alert>
         </DialogPanel>
         <DialogFooter>
-          <Button onClick={onClose}>{t("Close")}</Button>
+          <Button onClick={onClose}>{t(msg("Close"))}</Button>
         </DialogFooter>
       </>
     );
@@ -254,7 +256,7 @@ function ManageSpaceContent({
       <DialogPanel>
         <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
           <Spinner size="sm" tone="muted" />
-          {t("Loading the space…")}
+          {t(msg("Loading the space…"))}
         </p>
       </DialogPanel>
     );
@@ -271,8 +273,8 @@ function ManageSpaceContent({
         <DialogTitle>{space.name}</DialogTitle>
         <DialogDescription>
           {isPersonal
-            ? t("A personal space is private to its person.")
-            : t("Everyone listed here sees every chat, file and the computer of this space.")}
+            ? t(msg("A personal space is private to its person."))
+            : t(msg("Everyone listed here sees every chat, file and the computer of this space."))}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
@@ -290,7 +292,7 @@ function ManageSpaceContent({
           >
             <FormField
               className="flex-1"
-              label={t("Name")}
+              label={t(msg("Name"))}
               value={name}
               onChange={(event) => setName(event.currentTarget.value)}
             />
@@ -299,14 +301,14 @@ function ManageSpaceContent({
               variant="outline"
               disabled={busy || !name.trim() || name.trim() === space.name}
             >
-              {t("Rename")}
+              {t(msg("Rename"))}
             </Button>
           </form>
         )}
 
         <div className="flex flex-col gap-1.5">
           <Label>
-            {t("Members (")}
+            {t(msg("Members ("))}
             {space.members.length})
           </Label>
           <ul className="flex flex-col rounded-lg border border-border/60 [&>*+*]:border-t [&>*+*]:border-border/50">
@@ -319,7 +321,7 @@ function ManageSpaceContent({
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm">
                       {member.name}
-                      {isMe ? <span className="text-muted-foreground"> {t("(you)")}</span> : null}
+                      {isMe ? <span className="text-muted-foreground"> {t(msg("(you)"))}</span> : null}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">{member.email}</span>
                   </div>
@@ -333,7 +335,7 @@ function ManageSpaceContent({
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={t("Options for {{name}}", { name: member.name })}
+                            aria-label={t(msg("Options for {name}"), { name: member.name })}
                             disabled={busy}
                           />
                         }
@@ -353,7 +355,7 @@ function ManageSpaceContent({
                             )
                           }
                         >
-                          {member.role === "owner" ? t("Make member") : t("Make owner")}
+                          {member.role === "owner" ? t(msg("Make member")) : t(msg("Make owner"))}
                         </MenuItem>
                         <MenuSeparator />
                         <MenuItem
@@ -377,7 +379,7 @@ function ManageSpaceContent({
                             });
                           }}
                         >
-                          {isMe ? t("Leave space") : t("Remove from space")}
+                          {isMe ? t(msg("Leave space")) : t(msg("Remove from space"))}
                         </MenuItem>
                       </MenuPopup>
                     </Menu>
@@ -388,9 +390,7 @@ function ManageSpaceContent({
           </ul>
           {owners.length === 1 && !isPersonal ? (
             <p className="text-xs text-muted-foreground">
-              {t(
-                "A space keeps at least one owner. Make someone else owner before changing yours.",
-              )}
+              {t(msg("A space keeps at least one owner. Make someone else owner before changing yours."))}
             </p>
           ) : null}
         </div>
@@ -408,7 +408,7 @@ function ManageSpaceContent({
               ).then((ok) => ok && setAdding({ userId: null, role: "member" }));
             }}
           >
-            <Label>{t("Add a member")}</Label>
+            <Label>{t(msg("Add a member"))}</Label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Select
                 value={adding.userId}
@@ -416,12 +416,12 @@ function ManageSpaceContent({
                   setAdding((current) => ({ ...current, userId: value as string | null }))
                 }
               >
-                <SelectTrigger className="sm:flex-1" aria-label={t("Person to add")}>
+                <SelectTrigger className="sm:flex-1" aria-label={t(msg("Person to add"))}>
                   <SelectValue>
                     {(value: string | null) =>
                       candidates.find((person) => person.id === value)?.name ?? (
                         <span className="text-muted-foreground">
-                          {directory === null ? t("Loading people…") : t("Choose a person")}
+                          {directory === null ? t(msg("Loading people…")) : t(msg("Choose a person"))}
                         </span>
                       )
                     }
@@ -430,7 +430,7 @@ function ManageSpaceContent({
                 <SelectPopup alignItemWithTrigger={false}>
                   {candidates.length === 0 ? (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                      {t("Everyone is already a member.")}
+                      {t(msg("Everyone is already a member."))}
                     </div>
                   ) : (
                     candidates.map((person) => (
@@ -453,17 +453,17 @@ function ManageSpaceContent({
                     setAdding((current) => ({ ...current, role: value as SpaceRole }))
                   }
                 >
-                  <SelectTrigger className="min-w-28" aria-label={t("Role in the space")}>
+                  <SelectTrigger className="min-w-28" aria-label={t(msg("Role in the space"))}>
                     <SelectValue>{(value: SpaceRole) => ROLE_LABELS[value]}</SelectValue>
                   </SelectTrigger>
                   <SelectPopup alignItemWithTrigger={false}>
-                    <SelectItem value="member">{t("Member")}</SelectItem>
-                    <SelectItem value="owner">{t("Owner")}</SelectItem>
+                    <SelectItem value="member">{t(msg("Member"))}</SelectItem>
+                    <SelectItem value="owner">{t(msg("Owner"))}</SelectItem>
                   </SelectPopup>
                 </Select>
                 <Button type="submit" disabled={busy || !adding.userId}>
                   <UserPlusIcon />
-                  {t("Add")}
+                  {t(msg("Add"))}
                 </Button>
               </div>
             </div>
@@ -484,16 +484,16 @@ function ManageSpaceContent({
               void run(() => baskuleApi.deleteSpace(space.id), "Could not delete the space").then(
                 (ok) => {
                   if (!ok) return;
-                  notifySuccess(t("{{name}} deleted", { name: space.name }));
+                  notifySuccess(t(msg("{name} deleted"), { name: space.name }));
                   onClose();
                 },
               );
             });
           }}
         >
-          {t("Delete space")}
+          {t(msg("Delete space"))}
         </Button>
-        <Button onClick={onClose}>{t("Done")}</Button>
+        <Button onClick={onClose}>{t(msg("Done"))}</Button>
       </DialogFooter>
     </>
   );

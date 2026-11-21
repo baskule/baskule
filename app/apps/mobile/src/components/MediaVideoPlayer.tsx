@@ -1,8 +1,7 @@
-import { useTranslation } from "../i18n";
-
 import { useEvent } from "expo";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useIsFocused } from "@react-navigation/native";
+import { T, useGT } from "gt-react-native";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
@@ -26,7 +25,7 @@ function LoadedMediaVideo(props: {
   readonly visible: boolean;
   readonly onPlaybackStart?: () => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const [attempt, setAttempt] = useState(0);
   // Expo's Android player also reports completed playback as idle.
   const [loadState, setLoadState] = useState<"pending" | "complete" | "error">("pending");
@@ -74,7 +73,7 @@ function LoadedMediaVideo(props: {
     const playIfUninterrupted = createPlayRequest();
     const uri = props.resolvePlaybackUri ? await props.resolvePlaybackUri() : props.uri;
     if (signal.aborted) return;
-    if (uri === null) throw new Error(t("Video unavailable"));
+    if (uri === null) throw new Error("Video unavailable");
     playback.pause();
     previousPlaybackRequested.current = false;
     await player.replaceAsync({ uri, contentType: "progressive" });
@@ -114,19 +113,23 @@ function LoadedMediaVideo(props: {
       />
       {loadState === "error" || (loadState === "complete" && status === "error") ? (
         <View className="absolute inset-0 items-center justify-center gap-2 bg-black px-4">
-          <AppText className="text-center text-sm text-white/80">{t("Video unavailable")}</AppText>
+          <AppText className="text-center text-sm text-white/80">
+            <T>Video unavailable</T>
+          </AppText>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("Retry video")}
+            accessibilityLabel={gt("Retry video")}
             onPress={() => setAttempt((value) => value + 1)}
             className="min-h-11 justify-center px-4"
           >
-            <AppText className="text-sm text-white">{t("Retry")}</AppText>
+            <AppText className="text-sm text-white">
+              <T>Retry</T>
+            </AppText>
           </Pressable>
         </View>
       ) : loadState === "pending" || status === "loading" ? (
         <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
-          <AppActivityIndicator color="#ffffff" accessibilityLabel={t("Loading video")} />
+          <AppActivityIndicator color="#ffffff" accessibilityLabel={gt("Loading video")} />
         </View>
       ) : null}
     </View>
@@ -153,15 +156,15 @@ interface MediaVideoPlayerProps {
 }
 
 function MediaVideoPlayerContent(props: MediaVideoPlayerProps) {
-  const t = useTranslation();
+  const gt = useGT();
   const mediaActions = useMediaActions(props.actionsSource);
   const isFocused = useIsFocused();
   const [playbackUri, setPlaybackUri] = useState<string | null>(props.expanded ? props.uri : null);
   // Keep an opened player mounted while signing or reconnecting temporarily has no usable URL.
   if (playbackUri === null && props.expanded && props.uri !== null) setPlaybackUri(props.uri);
   const unavailableText = props.unavailableDetail
-    ? t("Video unavailable. {{detail}}", { detail: props.unavailableDetail })
-    : t("Video unavailable");
+    ? gt("Video unavailable. {detail}", { detail: props.unavailableDetail })
+    : gt("Video unavailable");
   const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null);
   const [bounds, setBounds] = useState<{ width: number; height: number } | null>(null);
   const sizeSource = props.fitToVideo && isFocused && videoSize === null ? props.uri : null;
@@ -211,11 +214,11 @@ function MediaVideoPlayerContent(props: MediaVideoPlayerProps) {
             accessibilityRole="button"
             accessibilityLabel={
               props.unavailable
-                ? t("{{name}}. {{detail}}", { name: props.name, detail: unavailableText })
-                : t("Play {{name}}", { name: props.name })
+                ? `${props.name}. ${unavailableText}`
+                : gt("Play {name}", { name: props.name })
             }
             accessibilityHint={
-              mediaActions.actions.length > 0 ? t("Touch and hold for media actions") : undefined
+              mediaActions.actions.length > 0 ? gt("Touch and hold for media actions") : undefined
             }
             accessibilityState={{ disabled: props.uri === null || props.unavailable === true }}
             // Stays pressable so the long-press menu still opens on a failed or unsigned tile.
@@ -237,7 +240,7 @@ function MediaVideoPlayerContent(props: MediaVideoPlayerProps) {
             {props.unavailable ? (
               <AppText className="text-center text-sm text-white/80">{unavailableText}</AppText>
             ) : props.uri === null ? (
-              <AppActivityIndicator color="#ffffff" accessibilityLabel={t("Loading video")} />
+              <AppActivityIndicator color="#ffffff" accessibilityLabel={gt("Loading video")} />
             ) : (
               <View className="size-12 items-center justify-center rounded-full bg-black/60">
                 <SymbolView name="play" size={28} tintColor="#ffffff" type="monochrome" />

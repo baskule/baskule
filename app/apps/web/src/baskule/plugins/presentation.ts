@@ -1,3 +1,5 @@
+import { m as resolveMessage } from "../../i18n/messages";
+import { msg } from "gt-react";
 // baskule: how plugins are named to people: categories, sources, sign-in needs and setup states,
 // in plain words, plus the catalog search.
 import type {
@@ -11,34 +13,35 @@ import type {
   SkippedKind,
 } from "@t3tools/contracts/baskule-plugins";
 
-import { t } from "../../i18n";
+
 
 export function categoryLabel(category: PluginCategory): string {
   switch (category) {
     case "productivity":
-      return t("Productivity");
+      return resolveMessage(msg("Productivity"));
     case "communication":
-      return t("Communication");
+      return resolveMessage(msg("Communication"));
     case "sales":
-      return t("Sales & CRM");
+      return resolveMessage(msg("Sales & CRM"));
     case "marketing":
-      return t("Marketing");
+      return resolveMessage(msg("Marketing"));
     case "finance":
-      return t("Finance");
+      return resolveMessage(msg("Finance"));
     case "people":
-      return t("Recruiting & HR");
+      return resolveMessage(msg("Recruiting & HR"));
     case "design":
-      return t("Design");
+      return resolveMessage(msg("Design"));
     case "code":
-      return t("Developer");
+      return resolveMessage(msg("Developer"));
     case "data":
-      return t("Data");
+      return resolveMessage(msg("Data"));
     case "ops":
-      return t("Security & Ops");
+      return resolveMessage(msg("Security & Ops"));
   }
 }
 
 export function providerName(provider: ProviderId): string {
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- marketplace brand names
   return provider === "composio" ? "Composio" : "Pipedream";
 }
 
@@ -47,7 +50,7 @@ export function sourceName(source: CatalogSource): string {
     case "anthropic":
       return "Anthropic";
     case "anthropic-work":
-      return t("Anthropic knowledge work");
+      return resolveMessage(msg("Anthropic knowledge work"));
     case "cursor":
       return "Cursor";
     case "xai":
@@ -68,13 +71,13 @@ export function originHref(origin: PluginOrigin): string | null {
 export function authText(auth: ServerAuth): string {
   switch (auth.kind) {
     case "none":
-      return t("No sign-in needed");
+      return resolveMessage(msg("No sign-in needed"));
     case "headers":
-      return t("Uses one key for your organization");
+      return resolveMessage(msg("Uses one key for your organization"));
     case "oauth":
-      return t("Each person signs in with their own account");
+      return resolveMessage(msg("Each person signs in with their own account"));
     case "provider":
-      return t("Each person connects their account on {{provider}}", {
+      return resolveMessage(msg("Each person connects their account on {provider}"), {
         provider: providerName(auth.provider),
       });
   }
@@ -83,13 +86,13 @@ export function authText(auth: ServerAuth): string {
 export function setupText(setup: ServerSetup): string {
   switch (setup.state) {
     case "ready":
-      return t("Ready");
+      return resolveMessage(msg("Ready"));
     case "needs_values":
-      return t("Needs values");
+      return resolveMessage(msg("Needs values"));
     case "needs_oauth_client":
-      return t("Needs sign-in setup");
+      return resolveMessage(msg("Needs sign-in setup"));
     case "needs_provider":
-      return t("Needs {{provider}}", {
+      return resolveMessage(msg("Needs {provider}"), {
         provider: providerName(setup.provider),
       });
   }
@@ -98,17 +101,17 @@ export function setupText(setup: ServerSetup): string {
 export function skippedText(kind: SkippedKind): string {
   switch (kind) {
     case "local_program":
-      return t("a program that runs on someone's computer");
+      return resolveMessage(msg("a program that runs on someone's computer"));
     case "editor_only":
-      return t("a part that works only in its maker's app");
+      return resolveMessage(msg("a part that works only in its maker's app"));
     case "invalid_server":
-      return t("a server Baskule can't read");
+      return resolveMessage(msg("a server Baskule can't read"));
     case "invalid_skill":
-      return t("a skill that doesn't follow the skill rules");
+      return resolveMessage(msg("a skill that doesn't follow the skill rules"));
     case "unsupported_transport":
-      return t("a server that uses an unsupported connection");
+      return resolveMessage(msg("a server that uses an unsupported connection"));
     case "blank_server":
-      return t("a server its publisher left without an address");
+      return resolveMessage(msg("a server its publisher left without an address"));
   }
 }
 

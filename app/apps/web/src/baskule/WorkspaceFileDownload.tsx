@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: any file the agent wrote downloads through
 // the signed `/api/assets` route with `disposition: "attachment"`: the server streams it (Range
@@ -30,7 +31,7 @@ function fileNameOf(path: string): string {
 }
 
 function useWorkspaceFileDownload(target: WorkspaceFileDownloadTarget) {
-  const t = useTranslation();
+  const t = useMessages();
   const [pending, setPending] = useState(false);
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
     reportFailure: false,
@@ -64,8 +65,8 @@ function useWorkspaceFileDownload(target: WorkspaceFileDownloadTarget) {
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: t("Could not download the file"),
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: t(msg("Could not download the file")),
+          description: error instanceof Error ? error.message : t(msg("An error occurred.")),
         });
       })
       .finally(() => {
@@ -77,11 +78,11 @@ function useWorkspaceFileDownload(target: WorkspaceFileDownloadTarget) {
 
 /** Header action shown for every previewed workspace file. */
 export function WorkspaceFileDownloadAction(props: WorkspaceFileDownloadTarget) {
-  const t = useTranslation();
+  const t = useMessages();
   const { download, pending } = useWorkspaceFileDownload(props);
   return (
     <FileSurfaceAction
-      label={pending ? t("Preparing download…") : t("Download file")}
+      label={pending ? t(msg("Preparing download…")) : t(msg("Download file"))}
       disabled={pending}
       onPress={() => void download()}
     >
@@ -92,15 +93,15 @@ export function WorkspaceFileDownloadAction(props: WorkspaceFileDownloadTarget) 
 
 /** Body for files the preview cannot show (binary: zip, xlsx, docx, …). */
 export function WorkspaceFileNoPreview(props: WorkspaceFileDownloadTarget) {
-  const t = useTranslation();
+  const t = useMessages();
   const { download, pending } = useWorkspaceFileDownload(props);
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
       <p className="text-sm font-medium text-foreground">{fileNameOf(props.absolutePath)}</p>
-      <p className="text-xs text-muted-foreground">{t("This file can't be previewed here.")}</p>
+      <p className="text-xs text-muted-foreground">{t(msg("This file can't be previewed here."))}</p>
       <Button type="button" variant="outline" disabled={pending} onClick={() => void download()}>
         <DownloadIcon />
-        {t("Download")}
+        {t(msg("Download"))}
       </Button>
     </div>
   );

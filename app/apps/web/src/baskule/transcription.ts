@@ -1,8 +1,11 @@
+import { BASKULE_TRANSCRIPTION_MAX_BYTES } from "@t3tools/contracts/baskule";
+import { m as resolveMessage } from "../i18n/messages";
+import { msg } from "gt-react";
 import {
   VoiceTranscriptionError,
   throwIfVoiceTranscriptionAborted,
 } from "@t3tools/client-runtime/voice-input";
-import { t } from "../i18n";
+
 import { BaskuleApiError, baskuleApi } from "./api";
 
 /** Upstream browser capture produces mono float PCM at 16 kHz; hosted transcription accepts a recording. */
@@ -40,15 +43,21 @@ export async function transcribeBaskulePcm(
   if (!authorized())
     throw new VoiceTranscriptionError({
       code: "unavailable",
-      message: t("Sign in to use voice input."),
+      message: resolveMessage(msg("Sign in to use voice input.")),
     });
   const response = await fetch(uri, { signal });
-  const recording = pcmRecording(new Float32Array(await response.arrayBuffer()));
+  const samples = new Float32Array(await response.arrayBuffer());
+  if (44 + samples.length * Int16Array.BYTES_PER_ELEMENT > BASKULE_TRANSCRIPTION_MAX_BYTES)
+    throw new VoiceTranscriptionError({
+      code: "transcription-failed",
+      message: resolveMessage(msg("The recording is too large. Try a shorter recording.")),
+    });
+  const recording = pcmRecording(samples);
   throwIfVoiceTranscriptionAborted(signal);
   if (!authorized())
     throw new VoiceTranscriptionError({
       code: "unavailable",
-      message: t("Your voice input session changed."),
+      message: resolveMessage(msg("Your voice input session changed.")),
     });
   let text: string;
   try {
@@ -67,7 +76,7 @@ export async function transcribeBaskulePcm(
   if (!authorized())
     throw new VoiceTranscriptionError({
       code: "unavailable",
-      message: t("Your voice input session changed."),
+      message: resolveMessage(msg("Your voice input session changed.")),
     });
   return text;
 }

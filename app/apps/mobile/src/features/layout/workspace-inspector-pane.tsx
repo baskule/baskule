@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react-native";
 import { useEffect, useRef, useState } from "react";
 import Animated, {
   cubicBezier,
@@ -30,7 +29,7 @@ export function WorkspaceInspectorPane(props: {
   readonly content: InspectorContent | undefined;
   readonly setAuxiliaryPaneWidth: (width: number) => void;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const { panes, setAuxiliaryPaneWidth } = props;
   const inspectorWidth = panes.auxiliaryPaneWidth;
   const inspectorSupported = props.content !== undefined && inspectorWidth !== null;
@@ -102,7 +101,7 @@ export function WorkspaceInspectorPane(props: {
     <>
       {inspectorVisible ? (
         <WorkspacePaneDivider
-          accessibilityLabel={t("Resize detail pane")}
+          accessibilityLabel={gt("Resize detail pane")}
           currentWidth={inspectorWidth ?? 0}
           resizeDirection={-1}
           onResizeStart={beginResize}

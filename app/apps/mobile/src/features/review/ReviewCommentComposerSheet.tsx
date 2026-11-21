@@ -1,8 +1,7 @@
-import { useTranslation } from "../../i18n";
-
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { TextInputWrapper } from "expo-paste-input";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { T, useGT } from "gt-react-native";
 import { useMemo, useState } from "react";
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import * as Dialog from "../../components/ui/Dialog";
@@ -41,8 +40,8 @@ type ReviewCommentComposerSheetProps = StaticScreenProps<{
 }>;
 
 export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProps) {
-  const t = useTranslation();
   const navigation = useNavigation();
+  const gt = useGT();
   const { width } = useWindowDimensions();
   const { themeAppearance: selectedTheme } = useAppearancePreferences();
   const target = useReviewCommentTarget();
@@ -73,13 +72,12 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
   const selectionLabel =
     selectedLines.length === 1
       ? firstNumber !== null
-        ? t("Line {{number}}", { number: firstNumber })
-        : t("File comment")
+        ? gt("Line {line}", { line: firstNumber })
+        : gt("File comment")
       : firstNumber !== null && lastNumber !== null
-        ? t("Lines {{start}}-{{end}}", { start: firstNumber, end: lastNumber })
-        : t("{{count}} line selected", {
+        ? gt("Lines {first}-{last}", { first: firstNumber, last: lastNumber })
+        : gt("{count, plural, one {{count} lines selected} other {{count} lines selected}}", {
             count: selectedLines.length,
-            defaultValue_other: "{{count}} lines selected",
           });
   const previewHeight = Math.max(
     Math.min(selectedLines.length, REVIEW_COMMENT_PREVIEW_MAX_LINES) * codeSurface.rowHeight,
@@ -100,7 +98,7 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
         if (result.attachments.length > 0) {
           setAttachments((current) => [...current, ...result.attachments]);
         }
-        if (result.error) Dialog.alert(t("Could not paste image"), result.error);
+        if (result.error) Dialog.alert(gt("Could not paste image"), result.error);
       } catch (error) {
         console.error("[review comment] error converting pasted images", error);
       }
@@ -134,21 +132,21 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
 
   return (
     <View className="flex-1 bg-sheet">
-      <SheetHeader title={t("Add Comment")} onClose={dismissComposer} />
+      <SheetHeader title={gt("Add Comment")} onClose={dismissComposer} />
       <KeyboardSheetBody
         toolbar={
           target ? (
             <>
               <ControlPill
-                accessibilityLabel={t("Add image")}
+                accessibilityLabel={gt("Add image")}
                 icon="plus"
                 onPress={() => void handlePickImages()}
               />
               <View className="flex-1" />
               <ControlPill
-                accessibilityLabel={t("Comment")}
+                accessibilityLabel={gt("Comment", { $context: "verb, submit button" })}
                 icon="arrow.up"
-                label={t("Comment")}
+                label={gt("Comment", { $context: "verb, submit button" })}
                 variant="primary"
                 disabled={!canSubmit}
                 onPress={handleSubmit}
@@ -159,9 +157,11 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
       >
         {!target ? (
           <View className="rounded-[22px] border border-border bg-card px-4 py-5">
-            <Text className="text-base font-t3-bold text-foreground">{t("No selection")}</Text>
+            <Text className="text-base font-t3-bold text-foreground">
+              <T>No selection</T>
+            </Text>
             <Text className="mt-1 text-sm leading-normal text-foreground-muted">
-              {t("Select a diff line or range first.")}
+              <T>Select a diff line or range first.</T>
             </Text>
           </View>
         ) : (
@@ -228,7 +228,9 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
             </View>
 
             <View className="min-h-0 flex-1 gap-2">
-              <Text className="text-sm font-t3-bold text-foreground">{t("Comment")}</Text>
+              <Text className="text-sm font-t3-bold text-foreground">
+                <T context="noun, field label">Comment</T>
+              </Text>
               <View className="min-h-[132px] flex-1 overflow-hidden rounded-[20px] border border-border bg-card">
                 <View className="min-h-0 flex-1 px-4 pt-3.5">
                   <TextInputWrapper onPaste={handleNativePaste} style={{ flex: 1, minHeight: 0 }}>
@@ -236,7 +238,7 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
                       autoFocus
                       multiline
                       scrollEnabled
-                      placeholder={t("Leave a comment...")}
+                      placeholder={gt("Leave a comment...")}
                       textAlignVertical="top"
                       value={commentText}
                       onChangeText={setCommentText}

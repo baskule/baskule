@@ -1,5 +1,3 @@
-import { useTranslation } from "../../../i18n";
-
 import { selectedNavigationTab, visibleNavigationTabs } from "./navigation-tab-order";
 import { requireNativeView } from "expo";
 import { CommonActions, useNavigation } from "@react-navigation/native";
@@ -75,7 +73,6 @@ export function AndroidWorkspaceNavigation(props: {
   /** The rail needs the whole workspace while it widens over the list. */
   readonly onOverlayChange?: (overlay: boolean) => void;
 }) {
-  const t = useTranslation();
   const workspace = useWorkspaceTabs()!;
   const order = useNavigationTabOrder();
   const hidden = useHiddenNavigationTabs();
@@ -122,13 +119,13 @@ export function AndroidWorkspaceNavigation(props: {
     >
       <NativeNavigation
         labels={{
-          threads: t("Chats"),
-          settings: t("Settings"),
-          usage: t("Usage"),
-          newChat: t("New chat"),
-          closeRail: t("Close navigation rail"),
-          collapseRail: t("Collapse navigation rail"),
-          expandRail: t("Expand navigation rail"),
+          threads: "Chats",
+          settings: "Settings",
+          usage: "Usage",
+          newChat: "New chat",
+          closeRail: "Close navigation rail",
+          collapseRail: "Collapse navigation rail",
+          expandRail: "Expand navigation rail",
         }}
         rail={rail}
         floating={floating}

@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 import { useState, type FormEvent } from "react";
 import { decodePushAvailability } from "@t3tools/contracts/baskulePush";
 
@@ -12,7 +13,7 @@ import { PageSection } from "../../views/BaskulePage";
 const loadStatus = async () =>
   decodePushAvailability(await request("GET", "/api/baskule/admin/push"));
 export function PushSettings() {
-  const t = useTranslation();
+  const t = useMessages();
   const status = useApiResource(loadStatus);
   const [provider, setProvider] = useState<"apns" | "fcm">("fcm");
   const [appId, setAppId] = useState("");
@@ -46,7 +47,7 @@ export function PushSettings() {
           !("client_email" in account) ||
           !("private_key" in account)
         )
-          throw new Error(t("Enter the Firebase service-account JSON file contents."));
+          throw new Error(t(msg("Enter the Firebase service-account JSON file contents.")));
         value = {
           appId,
           projectId: account.project_id,
@@ -57,10 +58,10 @@ export function PushSettings() {
       await request("PATCH", "/api/baskule/admin/push", { [provider]: value });
       setSecret("");
       status.reload();
-      notifySuccess(t("Push configuration saved"));
+      notifySuccess(t(msg("Push configuration saved")));
     })()
       .catch((cause: unknown) => {
-        setError(errorText(cause, t("Could not save push configuration.")));
+        setError(errorText(cause, t(msg("Could not save push configuration."))));
       })
       .finally(() => {
         setBusy(false);
@@ -68,16 +69,14 @@ export function PushSettings() {
   };
   return (
     <PageSection
-      title={t("Mobile notifications")}
-      description={t(
-        "Configure delivery for your signed mobile app. Saved credentials are write-only.",
-      )}
+      title={t(msg("Mobile notifications"))}
+      description={t(msg("Configure delivery for your signed mobile app. Saved credentials are write-only."))}
     >
       <form className="flex max-w-xl flex-col gap-4 p-4" onSubmit={(event) => void save(event)}>
         <p className="text-sm text-muted-foreground">
           {status.data
-            ? `${t("Android")}: ${status.data.android?.appId ?? t("Not configured")}. ${t("iOS")}: ${status.data.ios?.appId ?? t("Not configured")}.`
-            : (status.error ?? t("Loading"))}
+            ? `${t(msg("Android"))}: ${status.data.android?.appId ?? t(msg("Not configured"))}. ${t(msg("iOS"))}: ${status.data.ios?.appId ?? t(msg("Not configured"))}.`
+            : (status.error ?? t(msg("Loading")))}
         </p>
         <fieldset disabled={busy} className="flex flex-col gap-4">
           <div className="flex gap-4">
@@ -92,7 +91,7 @@ export function PushSettings() {
                   setSecret("");
                 }}
               />{" "}
-              {t("Android (Firebase)")}
+              {t(msg("Android (Firebase)"))}
             </label>
             <label>
               <input
@@ -105,11 +104,11 @@ export function PushSettings() {
                   setSecret("");
                 }}
               />{" "}
-              {t("iOS (APNs)")}
+              {t(msg("iOS (APNs)"))}
             </label>
           </div>
           <FormField
-            label={provider === "fcm" ? t("Android application ID") : t("iOS bundle ID")}
+            label={provider === "fcm" ? t(msg("Android application ID")) : t(msg("iOS bundle ID"))}
             value={appId}
             onChange={(e) => setAppId(e.currentTarget.value)}
             required
@@ -118,13 +117,13 @@ export function PushSettings() {
           {provider === "apns" ? (
             <>
               <FormField
-                label={t("Apple team ID")}
+                label={t(msg("Apple team ID"))}
                 value={teamId}
                 onChange={(e) => setTeamId(e.currentTarget.value)}
                 required
               />
               <FormField
-                label={t("APNs key ID")}
+                label={t(msg("APNs key ID"))}
                 value={keyId}
                 onChange={(e) => setKeyId(e.currentTarget.value)}
                 required
@@ -136,12 +135,12 @@ export function PushSettings() {
                   checked={sandbox}
                   onChange={(e) => setSandbox(e.currentTarget.checked)}
                 />{" "}
-                {t("Use the APNs sandbox for a development build")}
+                {t(msg("Use the APNs sandbox for a development build"))}
               </label>
             </>
           ) : null}
           <label className="flex flex-col gap-2 text-sm">
-            {provider === "apns" ? t("APNs private key (.p8)") : t("Firebase service-account JSON")}
+            {provider === "apns" ? t(msg("APNs private key (.p8)")) : t(msg("Firebase service-account JSON"))}
             <Textarea
               value={secret}
               onChange={(e) => setSecret(e.currentTarget.value)}
@@ -158,7 +157,7 @@ export function PushSettings() {
           ) : null}
           <div className="flex gap-3">
             <Button type="submit" disabled={busy}>
-              {t("Save provider")}
+              {t(msg("Save provider"))}
             </Button>
             <Button
               variant="outline"
@@ -166,7 +165,7 @@ export function PushSettings() {
               disabled={busy}
               onClick={(event) => void save(event, true)}
             >
-              {t("Remove provider")}
+              {t(msg("Remove provider"))}
             </Button>
           </div>
         </fieldset>

@@ -397,7 +397,7 @@ export function createPluginMock({ users }) {
       if (!plugin) return (fail(res, 404, "plugin_not_found"), true);
       if (method === "DELETE") {
         plugins.delete(plugin.id);
-        for (const key of [...connections.keys()])
+        for (const key of connections.keys())
           if (key.includes(`\u0000${plugin.id}\u0000`)) connections.delete(key);
         return (send(res, 200, { ok: true }), true);
       }

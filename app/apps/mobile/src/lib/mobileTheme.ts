@@ -1,4 +1,3 @@
-import { t } from "@t3tools/shared/localization";
 import {
   BUILT_IN_THEMES,
   T3_CHAT_THEME,
@@ -30,13 +29,13 @@ export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
   {
     id: DEFAULT_MOBILE_THEME_ID,
     get label() {
-      return t("T3 Code");
+      return "T3 Code";
     },
   },
   {
     id: "material-you",
     get label() {
-      return t("Material You");
+      return "Material You";
     },
   },
   ...BUILT_IN_THEMES.map((theme) => ({ id: theme.id as MobileThemeId, label: theme.label })),

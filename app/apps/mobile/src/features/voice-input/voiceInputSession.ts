@@ -9,6 +9,7 @@ import {
 } from "@t3tools/client-runtime/voice-input";
 import type { AppStateStatus } from "react-native";
 
+import { m } from "../../i18n/messages";
 import { normalizeVoiceInputDecibels, VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 
 const VOICE_METERING_INTERVAL_MS = 80;
@@ -91,6 +92,7 @@ export class VoiceInputSession {
     this.dependencies = dependencies;
     this.appIsActive = dependencies.initiallyActive;
     this.controller = new VoiceInputController({
+      resolve: m,
       ...dependencies,
       requestPermission: () => this.requestPermission(),
       onStateChange: (state) => this.handleStateChange(state),

@@ -1,5 +1,4 @@
-import { t } from "../i18n";
-
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import {
   executeAtomQuery,
   runAtomCommand,
@@ -12,8 +11,10 @@ import type {
   ProjectId,
   ScopedProjectRef,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
 import { create } from "zustand";
 
+import { m } from "../i18n/messages";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentProjectClonesAtom, silenceProjectCloneToasts } from "../state/projectClones";
 import { projectEnvironment } from "../state/projects";
@@ -47,7 +48,7 @@ export interface AddProjectToMachineInput {
 
 function failureMessage(result: Parameters<typeof squashAtomCommandFailure>[0]): string {
   const error = squashAtomCommandFailure(result);
-  return error instanceof Error ? error.message : t("An error occurred.");
+  return thrownErrorMessage(error, m) ?? m(msg("An error occurred."));
 }
 
 /**
@@ -77,7 +78,12 @@ function waitForClone(environmentId: EnvironmentId, projectId: ProjectId) {
 
 export type ProjectFileCopy =
   | { readonly phase: "copying" }
-  | { readonly phase: "failed"; readonly title: string; readonly failures: ReadonlyArray<string> };
+  | {
+      readonly phase: "failed";
+      /** A `msg()`, resolved where it is shown so it follows the UI language. */
+      readonly title: string;
+      readonly failures: ReadonlyArray<string>;
+    };
 
 /** Ignored-file copies still owed to a cloned project, keyed by its scoped project key. */
 const useFileCopies = create<{ copies: Readonly<Record<string, ProjectFileCopy>> }>(() => ({
@@ -115,10 +121,10 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
           environmentId: input.source.environmentId,
           input: { cwd: input.source.cwd, relativePath },
         }),
-        { label: t("Read file to copy"), reportFailure: false, refresh: true },
+        { label: "Read file to copy", reportFailure: false, refresh: true },
       );
       if (result._tag === "Failure") return { relativePath, error: failureMessage(result) };
-      if (result.value.truncated) return { relativePath, error: "Too large to copy." };
+      if (result.value.truncated) return { relativePath, error: m(msg("Too large to copy.")) };
       return { relativePath, contents: result.value.contents };
     }),
   );
@@ -141,7 +147,7 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
         destinationPath: input.destinationPath,
       },
     },
-    { label: t("Add project to machine"), reportFailure: false },
+    { label: "Add project to machine", reportFailure: false },
   );
   if (started._tag === "Failure") {
     setFileCopy(requestedKey, null);
@@ -185,7 +191,7 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
             contents: read.contents,
           },
         },
-        { label: t("Copy file to machine"), reportFailure: false },
+        { label: "Copy file to machine", reportFailure: false },
       );
       if (written._tag === "Failure")
         failed.push(`${read.relativePath}: ${failureMessage(written)}`);
@@ -196,12 +202,10 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
         ? null
         : {
             phase: "failed",
-            title: t("Could not copy {{length}} file to {{label}}", {
-              length: failed.length,
-              label: input.target.label,
-              count: failed.length,
-              defaultValue_other: "Could not copy {{length}} files to {{label}}",
-            }),
+            title: msg(
+              "Could not copy {count, plural, one {{count} file} other {{count} files}} to {target}",
+              { count: failed.length, target: input.target.label },
+            ),
             failures: failed,
           },
     );

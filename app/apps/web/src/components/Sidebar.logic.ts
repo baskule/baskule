@@ -1,5 +1,4 @@
 import { isListedThreadLineage } from "@t3tools/contracts";
-import { t, msg } from "../i18n";
 
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -7,6 +6,8 @@ import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/mod
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 
 import * as React from "react";
+import { msg } from "gt-react";
+import { m, type MessageResolver } from "../i18n/messages";
 import {
   isAtomCommandInterrupted,
   type AtomCommandResult,
@@ -105,9 +106,7 @@ export function useSidebarRowSubscriptionLease(isActive: boolean): {
       // margin is still clipped by it.
       return observeIntersection(row, (entry) => setIsNearViewport(entry.isIntersecting), {
         root: row.closest('[data-slot="scroll-area-viewport"]'),
-        rootMargin: t("{{SIDEBAR_ROW_SUBSCRIPTION_OVERSCAN_PX}}px 0px", {
-          SIDEBAR_ROW_SUBSCRIPTION_OVERSCAN_PX: SIDEBAR_ROW_SUBSCRIPTION_OVERSCAN_PX,
-        }),
+        rootMargin: `${SIDEBAR_ROW_SUBSCRIPTION_OVERSCAN_PX}px 0px`,
       });
     },
   };
@@ -633,13 +632,13 @@ export function buildBulkTitleRegenerationContextMenuItem(input: {
   if (input.actionableCount === 0) {
     return {
       id: "regenerate-title",
-      label: t("Regenerating… ({{supportedCount}})", { supportedCount: input.supportedCount }),
+      label: m(msg("Regenerating… ({count})", { count: input.supportedCount })),
       disabled: true,
     };
   }
   return {
     id: "regenerate-title",
-    label: t("Regenerate titles ({{actionableCount}})", { actionableCount: input.actionableCount }),
+    label: m(msg("Regenerate titles ({count})", { count: input.actionableCount })),
   };
 }
 
@@ -647,20 +646,12 @@ export function buildBulkUnpinContextMenuItem(input: {
   pinnedCount: number;
 }): ContextMenuItem<"unpin"> | null {
   if (input.pinnedCount === 0) return null;
-  return { id: "unpin", label: t("Unpin ({{pinnedCount}})", { pinnedCount: input.pinnedCount }) };
+  return { id: "unpin", label: m(msg("Unpin ({count})", { count: input.pinnedCount })) };
 }
 
 export interface ThreadStatusPill {
-  label:
-    | "Working"
-    | "Connecting"
-    | "Completed"
-    | "Failed"
-    | "Pending Approval"
-    | "Awaiting Input"
-    | "Guest Request"
-    | "Waiting"
-    | "Plan Ready";
+  /** A `msg()` string; render it through `useMessages()`. */
+  label: string;
   colorClass: string;
   dotClass: string;
   pulse: boolean;
@@ -747,12 +738,15 @@ const threadJumpModifierHold = createModifierHoldStore(THREAD_JUMP_HINT_SHOW_DEL
 
 function subscribeToThreadJumpHintInputs(listener: () => void): () => void {
   const unsubscribeHold = threadJumpModifierHold.subscribe(listener);
+  // The snapshot reads the modifiers; the hold stays silent when it is true across a change.
+  const unsubscribeModifiers = shortcutModifierStore.subscribe(listener);
   const unsubscribeFocus = subscribeToTerminalFocusChanges(listener);
   const unsubscribeTerminals = useTerminalUiStateStore.subscribe(listener);
   const unsubscribeRightPanels = useRightPanelStore.subscribe(listener);
   const unsubscribeModelPicker = subscribeToModelPickerVisibility(listener);
   return () => {
     unsubscribeHold();
+    unsubscribeModifiers();
     unsubscribeFocus();
     unsubscribeTerminals();
     unsubscribeRightPanels();
@@ -989,19 +983,22 @@ export function resolveSidebarRowStatus(
 }
 
 /** What the window title says the open thread is doing, in the words its announcer uses. */
-export function resolveWindowTitleThreadStatus(thread: SidebarThreadStatusInput): string | null {
+export function resolveWindowTitleThreadStatus(
+  thread: SidebarThreadStatusInput,
+  resolve: MessageResolver = m,
+): string | null {
   // A guest waiting doesn't hide that the agent is still working.
   switch (resolveSidebarThreadStatus({ ...thread, pendingGuestMessageCount: 0 })) {
     case "approval":
-      return THREAD_STATUS_TEXT.approval;
+      return resolve(THREAD_STATUS_TEXT.approval);
     case "input":
-      return THREAD_STATUS_TEXT.input;
+      return resolve(THREAD_STATUS_TEXT.input);
     case "preparing":
     case "working":
-      return THREAD_STATUS_TEXT.working;
+      return resolve(THREAD_STATUS_TEXT.working);
     case "waiting":
       // Waiting on a child thread is still this turn, so it must not read as finished.
-      return thread.runtime?.status === "running" ? THREAD_STATUS_TEXT.working : null;
+      return thread.runtime?.status === "running" ? resolve(THREAD_STATUS_TEXT.working) : null;
     default:
       return null;
   }
@@ -1252,18 +1249,15 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (
-    (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) ||
-    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
-  ) {
-    return {
-      label: msg("Waiting"),
-      colorClass: "text-sidebar-muted-foreground",
-      dotClass: "bg-sidebar-muted-foreground",
-      pulse: false,
-    };
-  }
+  const waiting = {
+    label: msg("Waiting"),
+    colorClass: "text-sidebar-muted-foreground",
+    dotClass: "bg-sidebar-muted-foreground",
+    pulse: false,
+  };
+  if (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) return waiting;
 
+  // A failed run goes to the inbox even while background work holds the thread.
   if (hasUnseenRunFailure(thread)) {
     return {
       label: msg("Failed"),
@@ -1272,6 +1266,8 @@ export function resolveThreadStatusPill(input: {
       pulse: false,
     };
   }
+
+  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) return waiting;
 
   const hasPlanReadyPrompt =
     !thread.hasPendingUserInput &&

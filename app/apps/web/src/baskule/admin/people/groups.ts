@@ -1,3 +1,5 @@
+import { m as resolveMessage } from "../../../i18n/messages";
+import { msg } from "gt-react";
 import {
   GROUP_ERROR_CODES,
   type Group,
@@ -5,7 +7,7 @@ import {
   type GroupInput,
 } from "@t3tools/contracts/baskule";
 import { toastManager } from "../../../components/ui/toast";
-import { t } from "../../../i18n";
+
 import { BaskuleApiError, request } from "../../api";
 
 const root = "/api/baskule/admin/groups";
@@ -21,14 +23,14 @@ export const groupsApi = {
 
 /** "Everyone" is created by the system: show its name in the reader's language. */
 export function groupName(group: { readonly name: string; readonly builtin?: "everyone" }): string {
-  return group.builtin === "everyone" ? t("Everyone") : group.name;
+  return group.builtin === "everyone" ? resolveMessage(msg("Everyone")) : group.name;
 }
 
 const GROUP_ERRORS: Record<GroupErrorCode, () => string> = {
-  builtin_group: () => t("Everyone always includes every person, and keeps its name."),
-  group_exists: () => t("A group with this name already exists."),
-  invalid_group: () => t("Some details aren't valid. Check them and try again."),
-  user_not_found: () => t("One of these people no longer exists. Reload the page and try again."),
+  builtin_group: () => resolveMessage(msg("Everyone always includes every person, and keeps its name.")),
+  group_exists: () => resolveMessage(msg("A group with this name already exists.")),
+  invalid_group: () => resolveMessage(msg("Some details aren't valid. Check them and try again.")),
+  user_not_found: () => resolveMessage(msg("One of these people no longer exists. Reload the page and try again.")),
 };
 
 const isGroupErrorCode = (code: string | null): code is GroupErrorCode =>
@@ -43,6 +45,6 @@ export function notifyGroupError(title: string, cause: unknown) {
   toastManager.add({
     type: "error",
     title,
-    description: groupErrorText(cause, t("Something went wrong.")),
+    description: groupErrorText(cause, resolveMessage(msg("Something went wrong."))),
   });
 }

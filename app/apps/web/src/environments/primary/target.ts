@@ -1,9 +1,9 @@
-import { t } from "../../i18n";
-
 import { PRIMARY_LOCAL_ENVIRONMENT_ID, type DesktopEnvironmentBootstrap } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
+import { msg } from "gt-react";
+import { m } from "../../i18n/messages";
 
 const PrimaryEnvironmentTargetSource = Schema.Literals([
   "configured",
@@ -29,10 +29,7 @@ export class PrimaryEnvironmentUrlInvalidError extends Schema.TaggedError<Primar
   },
 ) {
   override get message(): string {
-    return t("Could not parse {{urlKind}} for the {{source}} primary environment target.", {
-      urlKind: this.urlKind,
-      source: this.source,
-    });
+    return `Could not parse ${this.urlKind} for the ${this.source} primary environment target.`;
   }
 }
 
@@ -44,10 +41,7 @@ export class PrimaryEnvironmentProtocolUnsupportedError extends Schema.TaggedErr
   },
 ) {
   override get message(): string {
-    return t("The {{source}} primary environment target uses unsupported protocol {{protocol}}.", {
-      source: this.source,
-      protocol: this.protocol,
-    });
+    return `The ${this.source} primary environment target uses unsupported protocol ${this.protocol}.`;
   }
 }
 
@@ -63,9 +57,7 @@ export class DesktopEnvironmentBootstrapIncompleteError extends Schema.TaggedErr
       ...(this.hasHttpBaseUrl ? [] : ["httpBaseUrl"]),
       ...(this.hasWsBaseUrl ? [] : ["wsBaseUrl"]),
     ];
-    return t("Desktop bootstrap is missing {{value1}} for the local environment.", {
-      value1: missing.join(" and "),
-    });
+    return `Desktop bootstrap is missing ${missing.join(" and ")} for the local environment.`;
   }
 }
 
@@ -74,7 +66,7 @@ export class PrimaryEnvironmentDisabledError extends Schema.TaggedError<PrimaryE
   {},
 ) {
   override get message(): string {
-    return t("The local environment is disabled.");
+    return m(msg("The local environment is disabled."));
   }
 }
 

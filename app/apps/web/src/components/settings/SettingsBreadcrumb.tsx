@@ -1,5 +1,7 @@
-import { t, useTranslation } from "../../i18n";
-import { msg } from "../../i18n";
+import { T } from "gt-react";
+import { m as resolveMessage } from "../../i18n/messages";
+
+import { msg, useGT } from "gt-react";
 
 import {
   WorkspaceBreadcrumb,
@@ -8,15 +10,15 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { SETTINGS_SECTION_LABELS } from "./settingsSearch";
 
-const SETTINGS_LABEL = msg("Settings");
+const SETTINGS_LABEL = "Settings";
 
 const SETTINGS_BREADCRUMB_LABELS: Readonly<Record<string, string>> = {
   ...SETTINGS_SECTION_LABELS,
   get "/settings/diagnostics"() {
-    return t("Diagnostics");
+    return resolveMessage(msg("Diagnostics"));
   },
   get "/settings/open-source-licenses"() {
-    return t("Open source licenses");
+    return resolveMessage(msg("Open source licenses"));
   },
 };
 
@@ -26,19 +28,22 @@ function settingsBreadcrumbLabel(pathname: string): string | null {
 }
 
 export function SettingsBreadcrumb({ pathname }: { pathname: string }) {
-  const t = useTranslation();
+  const gt = useGT();
+
   const sectionLabel = settingsBreadcrumbLabel(pathname);
 
   return (
-    <WorkspaceBreadcrumb ariaLabel="Settings breadcrumb">
+    <WorkspaceBreadcrumb ariaLabel={gt("Settings breadcrumb")}>
       {sectionLabel ? (
         <>
-          <WorkspaceBreadcrumbItem>{t("Settings")}</WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbItem>
+            <T>Settings</T>
+          </WorkspaceBreadcrumbItem>
           <WorkspaceBreadcrumbSeparator />
         </>
       ) : null}
       <WorkspaceBreadcrumbItem current className="truncate">
-        {t(sectionLabel ?? SETTINGS_LABEL)}
+        {resolveMessage(sectionLabel ?? SETTINGS_LABEL)}
       </WorkspaceBreadcrumbItem>
     </WorkspaceBreadcrumb>
   );

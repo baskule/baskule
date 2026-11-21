@@ -1,5 +1,3 @@
-import { useTranslation } from "../../i18n";
-
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import * as Application from "expo-application";
@@ -9,6 +7,7 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
+import { T, useGT } from "gt-react-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { SettingsSection } from "../settings/components/SettingsSection";
@@ -78,9 +78,9 @@ function appIdentity() {
 }
 
 export function SettingsDiagnosticsRouteScreen() {
-  const t = useTranslation();
   const insets = useSafeAreaInsets();
   const state = useCrashLogState();
+  const gt = useGT();
   const [copied, setCopied] = useState(false);
 
   const records = state.status === "ready" ? state.records : [];
@@ -92,7 +92,7 @@ export function SettingsDiagnosticsRouteScreen() {
   };
 
   return (
-    <SettingsScreen title={t("Diagnostics")}>
+    <SettingsScreen title={gt("Diagnostics")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -100,25 +100,25 @@ export function SettingsDiagnosticsRouteScreen() {
         contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
-        <SettingsSection title={t("Startup crashes")}>
+        <SettingsSection title={gt("Startup crashes")}>
           {state.status === "loading" ? (
             <View className="items-center gap-3 px-6 py-8">
               <AppActivityIndicator />
               <Text className="text-center text-sm text-foreground-muted">
-                {t("Reading crash log…")}
+                <T>Reading crash log…</T>
               </Text>
             </View>
           ) : state.status === "unavailable" ? (
             <EmptyState
               icon="exclamationmark.triangle"
-              title={t("Crash log unavailable")}
-              detail={t("Startup crash records are only kept in store and TestFlight builds.")}
+              title={gt("Crash log unavailable")}
+              detail={gt("Startup crash records are only kept in store and TestFlight builds.")}
             />
           ) : records.length === 0 ? (
             <EmptyState
               icon="checkmark.circle"
-              title={t("No startup crashes")}
-              detail={t("Nothing has taken the app down during launch in the last 7 days.")}
+              title={gt("No startup crashes")}
+              detail={gt("Nothing has taken the app down during launch in the last 7 days.")}
             />
           ) : (
             records.map((record, index) => (
@@ -128,18 +128,20 @@ export function SettingsDiagnosticsRouteScreen() {
         </SettingsSection>
 
         <View className="gap-3">
-          <SettingsSection title={t("Actions")}>
+          <SettingsSection title={gt("Actions")}>
             <SettingsActionRow
               icon={copied ? "checkmark" : "doc.on.doc"}
-              label={copied ? t("Copied") : t("Copy crash report")}
+              label={copied ? gt("Copied") : gt("Copy crash report")}
               disabled={state.status !== "ready"}
               onPress={() => void copyReport()}
             />
           </SettingsSection>
           <Text className="px-2 text-sm leading-normal text-foreground-muted">
-            {t(
-              "Paste the report into a GitHub issue. It contains the app version, the JavaScript error message, and the component stack. Error messages can quote values from the app, so read it over before sharing.",
-            )}
+            <T>
+              Paste the report into a GitHub issue. It contains the app version, the JavaScript
+              error message, and the component stack. Error messages can quote values from the app,
+              so read it over before sharing.
+            </T>
           </Text>
         </View>
       </ScrollView>

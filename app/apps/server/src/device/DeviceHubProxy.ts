@@ -3,7 +3,9 @@ import { requestUrl } from "../requestUrl.ts";
 // Proxy with environment read scope for streams and operate scope for input and tuning.
 import { AuthOrchestrationReadScope, AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import {
   HttpClient,
   HttpClientRequest,
@@ -13,9 +15,11 @@ import {
   HttpServerResponse,
 } from "effect/http";
 import * as Socket from "effect/socket/Socket";
+import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 
-import { authenticateMediaRequest } from "../auth/http.ts";
+import { authenticateMediaRequest, failEnvironmentInternal } from "../auth/http.ts";
+import * as SessionStore from "../auth/SessionStore.ts";
 import * as DeviceService from "./DeviceService.ts";
 import { repeatStillFrame } from "./mjpegStillFrame.ts";
 
@@ -80,16 +84,33 @@ const forwardHeaders = (request: HttpServerRequest.HttpServerRequest, origin: st
   return headers;
 };
 
+// Effect drops its listeners before closing a socket that is still connecting, and `ws` then
+// emits an `error` nobody handles, which exits the server.
+export const upstreamWebSocketConstructor = Layer.effect(
+  Socket.WebSocketConstructor,
+  Effect.gen(function* () {
+    const make = yield* Socket.WebSocketConstructor;
+    return (url, options) => {
+      const socket = make(url, options);
+      socket.addEventListener("error", () => undefined);
+      return socket;
+    };
+  }),
+).pipe(Layer.provide(NodeSocket.layerWebSocketConstructor));
+
 const proxyWebSocket = Effect.fn("DeviceHubProxy.proxyWebSocket")(function* (
   request: HttpServerRequest.HttpServerRequest,
   upstreamUrl: string,
   protocols: ReadonlyArray<string> = [],
+  headers: Readonly<Record<string, string>> = {},
 ) {
+  const transport = NodeHttpServerRequest.toIncomingMessage(request).socket;
   const client = yield* request.upgrade;
   const upstream = yield* Socket.makeWebSocket(upstreamUrl, {
     openTimeout: "10 seconds",
     ...(protocols.length > 0 ? { protocols: [...protocols] } : {}),
-  }).pipe(Effect.provide(NodeSocket.layerWebSocketConstructor));
+    ...(Object.keys(headers).length > 0 ? { headers: { ...headers } } : {}),
+  }).pipe(Effect.provide(upstreamWebSocketConstructor));
   yield* Effect.scoped(
     Effect.gen(function* () {
       const writeToClient = yield* client.writer;
@@ -99,7 +120,10 @@ const proxyWebSocket = Effect.fn("DeviceHubProxy.proxyWebSocket")(function* (
         pumpFrames(client, writeToUpstream),
       );
     }),
-  ).pipe(Effect.ignoreCause);
+  ).pipe(
+    Effect.onInterrupt(() => Effect.sync(() => transport.destroy())),
+    Effect.ignoreCause,
+  );
   return HttpServerResponse.empty();
 });
 
@@ -115,6 +139,7 @@ const pumpFrames =
 const proxyHttp = Effect.fn("DeviceHubProxy.proxyHttp")(function* (
   request: HttpServerRequest.HttpServerRequest,
   upstreamUrl: string,
+  invalidated: Effect.Effect<void>,
   extraHeaders: Readonly<Record<string, string>> = {},
 ) {
   const httpClient = HttpClient.withScope(yield* HttpClient.HttpClient);
@@ -154,7 +179,7 @@ const proxyHttp = Effect.fn("DeviceHubProxy.proxyHttp")(function* (
   const body = headers["content-type"]?.startsWith("multipart/x-mixed-replace")
     ? repeatStillFrame(response.stream)
     : response.stream;
-  return HttpServerResponse.stream(body, {
+  return HttpServerResponse.stream(body.pipe(Stream.interruptWhen(invalidated)), {
     status: response.status,
     headers,
     ...(headers["content-type"] ? { contentType: headers["content-type"] } : {}),
@@ -183,8 +208,15 @@ const handler = Effect.gen(function* () {
   const controlsDevice =
     (upgrade && hubPath !== "/api/devices/ws") ||
     (!readOnly && /\/api\/(stream-(mode|settings)|fold)$/.test(hubPath));
-  yield* authenticateMediaRequest(
+  const session = yield* authenticateMediaRequest(
     controlsDevice ? AuthOrchestrationOperateScope : AuthOrchestrationReadScope,
+  );
+  const sessions = yield* SessionStore.SessionStore;
+  const invalidated = sessions.awaitInvalidation(session.sessionId).pipe(
+    Effect.catchTags({
+      SessionCredentialVerificationError: (error) =>
+        failEnvironmentInternal("internal_error", error).pipe(Effect.ignore),
+    }),
   );
   const devices = yield* DeviceService.DeviceService;
   const ready = yield* devices.currentReadiness(url.value.searchParams.get("hostId") ?? undefined);
@@ -214,9 +246,17 @@ const handler = Effect.gen(function* () {
   }
   const upstreamUrl = routed?.url ?? `${ready.hub.origin}${hubPath}${search}`;
   if (upgrade) {
-    return yield* proxyWebSocket(request, upstreamUrl.replace(/^http/, "ws"), routed?.protocols);
+    return yield* Effect.raceFirst(
+      proxyWebSocket(
+        request,
+        upstreamUrl.replace(/^http/, "ws"),
+        routed?.protocols,
+        routed?.headers,
+      ),
+      invalidated.pipe(Effect.as(HttpServerResponse.empty())),
+    );
   }
-  return yield* proxyHttp(request, upstreamUrl, routed?.headers);
+  return yield* proxyHttp(request, upstreamUrl, invalidated, routed?.headers);
 });
 
 export const layer = HttpRouter.add("*", `${DeviceService.DEVICE_HUB_ROUTE_PREFIX}/*`, handler);

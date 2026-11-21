@@ -1,8 +1,7 @@
-import { useTranslation } from "../../i18n";
-
 import { useIsFocused } from "@react-navigation/native";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { useAudioPlayerStatus } from "expo-audio";
+import { useGT, useMessages } from "gt-react-native";
 import { useContext, useEffect, useRef, useState } from "react";
 import { AppState, Pressable, View } from "react-native";
 import type { FilePreviewSource } from "../../components/ui/FilePreviewModal";
@@ -31,11 +30,12 @@ type PreviewProps = {
 };
 
 function FileCardHeader(props: PreviewProps) {
-  const t = useTranslation();
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={t("Open {{value1}}", { value1: props.source.name })}
+      accessibilityLabel={gt("Open {name}", { name: props.source.name })}
       onPress={props.onOpen}
       onLongPress={props.onLongPress}
       className="h-[72px] flex-row items-center gap-3 p-3 active:bg-subtle"
@@ -48,8 +48,9 @@ function FileCardHeader(props: PreviewProps) {
           {props.source.name}
         </Text>
         <Text className="text-xs text-foreground-muted" numberOfLines={1}>
-          {t("Audio")}
-          {props.sizeBytes !== undefined ? ` · ${formatAttachmentSize(props.sizeBytes)}` : ""}
+          {props.sizeBytes !== undefined
+            ? gt("Audio · {size}", { size: formatAttachmentSize(props.sizeBytes, messages) })
+            : gt("Audio")}
         </Text>
       </View>
       <SymbolView name="chevron.right" size={12} tintColorClassName="accent-foreground-muted" />
@@ -68,8 +69,9 @@ function InlineAudio(
     readonly onPlaybackActivityChange?: (active: boolean) => void;
   },
 ) {
+  const gt = useGT();
   const { onPlaybackActivityChange } = props;
-  const t = useTranslation();
+
   // An empty source keeps native buffering off until the user explicitly plays.
   const player = usePlaybackAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
@@ -209,7 +211,11 @@ function InlineAudio(
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            playing ? t("Pause audio") : error || status.error ? t("Retry audio") : t("Play audio")
+            playing
+              ? gt("Pause audio")
+              : error || status.error
+                ? gt("Retry audio")
+                : gt("Play audio")
           }
           accessibilityState={{ busy }}
           onPress={toggle}
@@ -231,9 +237,9 @@ function InlineAudio(
           </View>
           <Text className="text-xs text-foreground-muted" numberOfLines={1}>
             {error || status.error
-              ? t("Unavailable · tap play to retry")
+              ? gt("Unavailable · tap play to retry")
               : busy
-                ? t("Loading…")
+                ? gt("Loading…")
                 : `${timestamp(status.currentTime)} / ${status.isLoaded ? timestamp(status.duration) : "--:--"}`}
           </Text>
         </View>

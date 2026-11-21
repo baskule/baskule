@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import type { getClerkInstance } from "@clerk/expo";
 import {
   createCloudAccountService,
@@ -56,7 +54,7 @@ const cleanUpCloudAccount = async (accountId: string | null) => {
       ManagedRelay.ManagedRelayClient.pipe(Effect.flatMap((client) => client.resetTokenCache)),
     ),
   );
-  reportAtomCommandResult(result, { label: t("cloud account cleanup") });
+  reportAtomCommandResult(result, { label: "cloud account cleanup" });
 };
 
 export const cloudAccountService = createCloudAccountService<ClerkInstance>({

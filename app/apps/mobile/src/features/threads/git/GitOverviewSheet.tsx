@@ -1,5 +1,3 @@
-import { useTranslation } from "../../../i18n";
-
 import {
   type GitActionRequestInput,
   buildMenuItems,
@@ -7,13 +5,13 @@ import {
   requiresDefaultBranchConfirmation,
 } from "@t3tools/client-runtime/state/vcs";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-
 import {
   CommonActions,
   StackActions,
   useNavigation,
   type StaticScreenProps,
 } from "@react-navigation/native";
+import { useGT, useMessages } from "gt-react-native";
 import { use, useEffect, useState } from "react";
 import { RefreshControl } from "../../../components/ui/RefreshControl";
 import { NativeScrollView } from "../../../native/NativeScrollViewMarker";
@@ -55,7 +53,8 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
 }
 
 function GitOverviewSheetContent(props: GitOverviewSheetProps) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const presentation = props.presentation ?? "sheet";
@@ -80,8 +79,9 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       : null,
   );
 
-  const currentBranchLabel = gitStatus.data?.refName ?? selectedThread?.branch ?? "Detached HEAD";
-  const currentStatusSummary = statusSummary(gitStatus.data);
+  const currentBranchLabel =
+    gitStatus.data?.refName ?? selectedThread?.branch ?? gt("Detached HEAD");
+  const currentStatusSummary = statusSummary(gitStatus.data, m);
   const currentWorktreePath = selectedThreadWorktreePath;
   const gitOperationLabel = gitState.gitOperationLabel;
   const busy = gitOperationLabel !== null;
@@ -89,7 +89,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   const hasPrimaryRemote = gitStatus.data?.hasPrimaryRemote ?? false;
   const isDefaultRef = gitStatus.data?.isDefaultRef ?? false;
 
-  const menuItems = isRepo ? buildMenuItems(gitStatus.data, busy, hasPrimaryRemote) : [];
+  const menuItems = isRepo ? buildMenuItems(gitStatus.data, busy, hasPrimaryRemote, m) : [];
 
   const sheetMenuItems = menuItems.map((item) => ({
     item: {
@@ -97,13 +97,16 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       disabled: item.disabled || !canWriteSourceControl,
     },
     disabledReason: !canWriteSourceControl
-      ? "This connection cannot change source control."
-      : getGitActionDisabledReason({
-          item,
-          gitStatus: gitStatus.data,
-          isBusy: busy,
-          hasOriginRemote: hasPrimaryRemote,
-        }),
+      ? gt("This connection cannot change source control.")
+      : getGitActionDisabledReason(
+          {
+            item,
+            gitStatus: gitStatus.data,
+            isBusy: busy,
+            hasOriginRemote: hasPrimaryRemote,
+          },
+          m,
+        ),
   }));
 
   const runActionWithPrompt = async (input: GitActionRequestInput) => {
@@ -162,11 +165,15 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
     }
     if (item.dialogAction === "commit" && status.hasWorkingTreeChanges) {
       const fileCount = status.workingTree?.files.length ?? 0;
-      return `${fileCount} file${fileCount === 1 ? "" : "s"} changed`;
+      return gt("{count, plural, one {{count} file changed} other {{count} files changed}}", {
+        count: fileCount,
+      });
     }
     if (item.dialogAction === "push" && (status.aheadCount ?? 0) > 0) {
       const ahead = status.aheadCount ?? 0;
-      return `${ahead} commit${ahead === 1 ? "" : "s"} ahead`;
+      return gt("{count, plural, one {{count} commit ahead} other {{count} commits ahead}}", {
+        count: ahead,
+      });
     }
     return undefined;
   };
@@ -188,8 +195,11 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       className="flex-1 bg-screen"
       contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
-      contentInset={{ bottom: Math.max(insets.bottom, 18) + 18 }}
-      contentContainerStyle={{ ...groupedListInsets(isInspector), paddingTop: 8 }}
+      contentContainerStyle={{
+        ...groupedListInsets(isInspector),
+        paddingTop: 8,
+        paddingBottom: Math.max(insets.bottom, 18) + 18,
+      }}
       refreshControl={
         <RefreshControl refreshing={isRefreshing} onRefresh={() => void handleRefresh()} />
       }
@@ -208,15 +218,14 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
         {behindCount > 0 ? (
           <ListRow
             icon="arrow.down.circle"
-            label={t("Pull latest")}
+            label={gt("Pull latest")}
             description={
               canWriteSourceControl
-                ? t("{{behindCount}} commit behind upstream", {
-                    behindCount: behindCount,
-                    count: behindCount,
-                    defaultValue_other: "{{behindCount}} commits behind upstream",
-                  })
-                : t("This connection cannot change source control.")
+                ? gt(
+                    "{count, plural, one {{count} commit behind upstream} other {{count} commits behind upstream}}",
+                    { count: behindCount },
+                  )
+                : gt("This connection cannot change source control.")
             }
             disabled={!canWriteSourceControl || busy || !isRepo}
             onPress={() => void gitActions.onPullSelectedThreadBranch()}
@@ -224,8 +233,8 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
         ) : null}
         <ListRow
           icon="text.bubble"
-          label={t("Review changes")}
-          description={t("Inspect changes, uncommitted edits, and turn diffs")}
+          label={gt("Review changes")}
+          description={gt("Inspect changes, uncommitted edits, and turn diffs")}
           disabled={busy || !isRepo}
           onPress={() => {
             const params = { environmentId, threadId };
@@ -240,11 +249,11 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
         />
         <ListRow
           icon="point.topleft.down.curvedto.point.bottomright.up"
-          label={t("Branches & worktrees")}
+          label={gt("Branches & worktrees")}
           description={
             canChangeThreadBranch
-              ? t("Switch branch, create branch, or move to a worktree")
-              : t("View branches and worktrees")
+              ? gt("Switch branch, create branch, or move to a worktree")
+              : gt("View branches and worktrees")
           }
           disabled={busy || !isRepo}
           onPress={() =>
@@ -259,7 +268,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       </ListSection>
 
       {currentWorktreePath ? (
-        <ListSection title={t("Worktree")}>
+        <ListSection title={gt("Worktree")}>
           <Text selectable textRole="footnote" className="p-4 text-foreground-muted">
             {currentWorktreePath}
           </Text>
@@ -269,7 +278,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   );
 
   const refresh = {
-    accessibilityLabel: t("Refresh repository status"),
+    accessibilityLabel: gt("Refresh repository status"),
     disabled: busy || isRefreshing,
     onPress: () => void handleRefresh(),
   };

@@ -1,3 +1,5 @@
+import { translatableDetail } from "../errors/translatable.ts";
+import { msg } from "gt-i18n";
 import { connectionEndpointKey } from "./catalog.ts";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -535,7 +537,12 @@ export const make = Effect.gen(function* () {
     ) {
       return yield* new ConnectionBlockedError({
         reason: "configuration",
-        detail: `That address claims to be ${saved.target.label}, which is already saved. Add it as a route from that environment's settings instead.`,
+        ...translatableDetail(
+          msg(
+            "That address claims to be {host}, which is already saved. Add it as a route from that environment's settings instead.",
+            { host: saved.target.label },
+          ),
+        ),
       });
     }
   });
@@ -680,7 +687,11 @@ export const make = Effect.gen(function* () {
 
           yield* installEntryLocked(entry, { retainEquivalentRuntime: true });
 
-          if (bearerReplaced && registration._tag === "BearerConnectionRegistration") {
+          if (
+            bearerReplaced &&
+            registration._tag === "BearerConnectionRegistration" &&
+            registration.credential._tag === "BearerConnectionCredential"
+          ) {
             const scope = (yield* SubscriptionRef.get(serviceScopes)).get(target.environmentId);
             if (scope !== undefined) {
               const state = yield* SubscriptionRef.get(scope.supervisor.state);
@@ -960,7 +971,7 @@ export const make = Effect.gen(function* () {
         if (reordered.length !== routes.length || new Set(routeIds).size !== routes.length) {
           return yield* new ConnectionBlockedError({
             reason: "configuration",
-            detail: "The route order must list every saved route once.",
+            ...translatableDetail(msg("The route order must list every saved route once.")),
           });
         }
         if (reordered.every((route, index) => route === routes[index])) return;

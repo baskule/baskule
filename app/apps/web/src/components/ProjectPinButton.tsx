@@ -1,5 +1,5 @@
-import { t } from "../i18n";
 import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { PinIcon, PinOffIcon } from "lucide-react";
 import type { KeyboardEvent } from "react";
 
@@ -32,10 +32,10 @@ export function ProjectPinButton(props: {
   readonly onToggle: () => void;
   readonly shortcutLabel?: string | null;
 }) {
-  const action = t("{{value1}} {{name}}", {
-    value1: props.pinned ? "Unpin" : "Pin",
-    name: props.name,
-  });
+  const gt = useGT();
+  const action = props.pinned
+    ? gt("Unpin {name}", { name: props.name })
+    : gt("Pin {name}", { name: props.name });
   return (
     <span
       className={cn(
@@ -50,10 +50,7 @@ export function ProjectPinButton(props: {
         aria-hidden="true"
         title={
           props.shortcutLabel
-            ? t("{{action}} ({{shortcutLabel}})", {
-                action: action,
-                shortcutLabel: props.shortcutLabel,
-              })
+            ? gt("{action} ({shortcut})", { action, shortcut: props.shortcutLabel })
             : action
         }
         onPointerDown={(event) => event.stopPropagation()}

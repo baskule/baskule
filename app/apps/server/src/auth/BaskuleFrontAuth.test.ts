@@ -90,10 +90,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, ManagedPolicy.laye
             .issueConnectCredential({ proofKeyThumbprint: "device", requireApproval: false })
             .pipe(Effect.asVoid),
           auth.approveConnectDevice("device").pipe(Effect.asVoid),
-          auth.approveConnectDeviceByCode("ABCD").pipe(Effect.asVoid),
           auth.listConnectDevices().pipe(Effect.asVoid),
           auth.revokeConnectDevice("device").pipe(Effect.asVoid),
-          auth.revokeConnectDeviceByCode("ABCD").pipe(Effect.asVoid),
         ]) {
           expect((yield* Effect.flip(operation))._tag).toBe(
             "ServerAuthSessionCredentialValidationError",

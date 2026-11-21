@@ -3,8 +3,8 @@ import {
   createNativePreviewBridge,
   parseViewerBridgeMessage,
   type NativeViewerMessage,
-  type PreviewBridgeBinding,
 } from "./preview-native-bridge";
+import type { PreviewBridgeBinding } from "./preview-bridge-binding";
 import { previewStreamDocument } from "./preview-stream-document";
 
 class Socket extends EventTarget {
@@ -93,6 +93,7 @@ it("uses the exact space-local stream URL with no authentication query or HTML c
   const html = previewStreamDocument(
     JSON.stringify({ binding, interactive: true, background: "black" }),
     "viewer();",
+    "Browser viewer stopped.",
   );
   expect(html).not.toMatch(/Bearer|wsTicket|authorization|front-token/);
   bridge.stop();

@@ -1,5 +1,4 @@
-import { useTranslation, t } from "../../i18n";
-
+import { useGT, useMessages } from "gt-react-native";
 import {
   navigationCustomizationAvailable,
   overflowNavigationTabs,
@@ -16,14 +15,12 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { useAuth, useUser } from "@clerk/expo";
-import { useNavigation, useNavigationState } from "@react-navigation/native";
+import { useNavigationState } from "@react-navigation/native";
 import { use, type ComponentProps } from "react";
 import { Platform, View } from "react-native";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsRow } from "./components/SettingsRow";
@@ -72,21 +69,21 @@ function useSettingsListPlacement() {
 }
 
 function SettingsListContent() {
-  return hasCloudPublicConfig() ? <ConfiguredSettingsRouteScreen /> : <LocalSettingsRouteScreen />;
+  return <LocalSettingsRouteScreen />;
 }
 
 export function SettingsListScreen(props: {
   readonly sidebar: boolean;
   readonly selected: string | null;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const workspace = useWorkspaceTabs();
   const environmentMenu = useSettingsEnvironmentMenu();
   return (
     <SettingsSidebarContext value={props.sidebar ? { selected: props.selected } : null}>
       <View className="flex-1 bg-screen">
         <SettingsScreen
-          title={t("Settings")}
+          title={gt("Settings")}
           workspaceRoot={props.sidebar}
           menus={environmentMenu ? [environmentMenu] : []}
           search={
@@ -95,7 +92,7 @@ export function SettingsListScreen(props: {
                   value: workspace.state.tabs.settings.query,
                   onChangeText: (query) =>
                     workspace.dispatch({ type: "query", tab: "settings", query }),
-                  placeholder: t("Search settings"),
+                  placeholder: gt("Search settings"),
                 }
               : undefined
           }
@@ -114,53 +111,15 @@ interface SettingsListSection {
   readonly rows: readonly SettingsListRow[];
 }
 
-function ConfiguredSettingsRouteScreen() {
-  const t = useTranslation();
-  const navigation = useNavigation();
-  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
-  const { user } = useUser();
-  const { savedConnectionsById } = useSavedRemoteConnections();
-  const accountLabel = !isLoaded
-    ? t("Checking")
-    : !isSignedIn
-      ? t("Sign in")
-      : (user?.primaryEmailAddress?.emailAddress ?? t("Signed in"));
-
-  return (
-    <SettingsList
-      connections={{
-        title: t("Connections"),
-        rows: [
-          {
-            id: "account",
-            icon: "person.crop.circle",
-            label: t("T3 Account"),
-            value: accountLabel,
-            disabled: !isLoaded,
-            onPress: () => navigation.navigate("SettingsAuth"),
-          },
-          environmentsRow(t("Environments"), Object.keys(savedConnectionsById).length),
-          {
-            id: "SettingsNotifications",
-            icon: "bell.badge",
-            label: t("Notifications"),
-            target: "SettingsNotifications",
-          },
-        ],
-      }}
-    />
-  );
-}
-
 function LocalSettingsRouteScreen() {
-  const t = useTranslation();
+  const gt = useGT();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const accountRows = useBaskuleAccountRows(Object.keys(savedConnectionsById).length);
   const signOut = useSignOutRow();
   const session = useBaskuleSession();
   return (
     <SettingsList
-      connections={{ title: t("Account"), rows: accountRows }}
+      connections={{ title: gt("Account"), rows: accountRows }}
       trailing={session.status === "signed-in" ? [{ rows: [signOut] }] : []}
     />
   );
@@ -179,9 +138,10 @@ function environmentsRow(label: string, count: number): SettingsListRow {
 
 function SettingsList(props: {
   readonly connections: SettingsListSection;
-  readonly trailing?: readonly SettingsListSection[];
+  readonly trailing?: ReadonlyArray<SettingsListSection>;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   // UIKit's scroll-edge material takes the scroll view's own color; like the chat list, match
   // the sidebar's surface so the bar doesn't darken over content at rest.
   // Grouped cards only lift off the screen surface; the drawer is as dark as they are.
@@ -196,6 +156,7 @@ function SettingsList(props: {
   const sections = filterSettingsSections(
     [{ rows: overflowRows }, props.connections, ...indexSections, ...(props.trailing ?? [])],
     query,
+    m,
   );
 
   return (
@@ -226,8 +187,8 @@ function SettingsList(props: {
         ) : (
           <EmptyState
             variant="plain"
-            title={t("No results")}
-            detail={t("No settings match “{{query}}”.", { query: query.trim() })}
+            title={gt("No results")}
+            detail={gt("No settings match “{query}”.", { query: query.trim() })}
           />
         )}
       </ScrollView>
@@ -238,6 +199,7 @@ function SettingsList(props: {
 // baskule: the person, their server and what they manage natively. The server address is chosen
 // on the sign-in screen: a session belongs to one server, so changing it means signing out first.
 function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
+  const gt = useGT();
   const session = useBaskuleSession();
   if (session.status !== "signed-in") return [];
   const me = session.me;
@@ -246,19 +208,20 @@ function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
     {
       id: "account",
       icon: "person.crop.circle",
-      label: me.user.name || t("Signed in"),
+      label: me.user.name || gt("Signed in"),
       value: anonymous
-        ? t("Shared test workspace")
-        : `${me.user.email}${me.user.role === "admin" ? ` · ${t("admin")}` : ""}`,
+        ? gt("Shared test workspace")
+        : `${me.user.email}${me.user.role === "admin" ? ` · ${gt("admin", { $context: "account role" })}` : ""}`,
     },
     {
       id: "server",
       icon: "server.rack",
-      label: me.organization.name || t("Server"),
+      label: me.organization.name || gt("Server"),
       value: session.serverUrl,
     },
   ];
-  if (BASKULE_FLAGS.extendedSettings) return [...account, environmentsRow(t("Spaces"), spaceCount)];
+  if (BASKULE_FLAGS.extendedSettings)
+    return [...account, environmentsRow(gt("Spaces"), spaceCount)];
   if (anonymous) return account;
   return [
     ...account,
@@ -267,7 +230,7 @@ function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
           {
             id: "SettingsPassword",
             icon: "lock.fill" as const,
-            label: t("Change password"),
+            label: gt("Change password"),
             target: "SettingsPassword" as const,
           },
         ]
@@ -275,32 +238,33 @@ function useBaskuleAccountRows(spaceCount: number): SettingsListRow[] {
     {
       id: "SettingsAccountUsage",
       icon: "chart.bar.xaxis",
-      label: t("Usage and limits"),
+      label: gt("Usage and limits"),
       target: "SettingsAccountUsage",
     },
     {
       id: "SettingsPlugins",
       icon: "link",
-      label: t("Plugins"),
+      label: gt("Plugins"),
       target: "SettingsPlugins",
     },
   ];
 }
 
 function useSignOutRow(): SettingsListRow {
+  const gt = useGT();
   const session = useBaskuleSession();
   const anonymous = session.status === "signed-in" && session.kind === "anonymous";
   return {
     id: "sign-out",
     icon: "arrow.right",
-    label: anonymous ? t("Disconnect") : t("Sign out"),
+    label: anonymous ? gt("Disconnect") : gt("Sign out"),
     onPress: () =>
       Dialog.confirm({
-        title: anonymous ? t("Disconnect?") : t("Sign out?"),
+        title: anonymous ? gt("Disconnect?") : gt("Sign out?"),
         message: anonymous
-          ? t("Return to server selection. The shared workspace stays on the server.")
-          : t("This phone forgets your session. Your chats stay on the server."),
-        confirmText: anonymous ? t("Disconnect") : t("Sign out"),
+          ? gt("Return to server selection. The shared workspace stays on the server.")
+          : gt("This phone forgets your session. Your chats stay on the server."),
+        confirmText: anonymous ? gt("Disconnect") : gt("Sign out"),
         destructive: true,
         onConfirm: () => void signOutOfBaskule(),
       }),
@@ -308,22 +272,23 @@ function useSignOutRow(): SettingsListRow {
 }
 
 function useSettingsIndexSections(): SettingsListSection[] {
+  const gt = useGT();
   const session = useBaskuleSession();
   const [opening, setOpening] = useState(false);
   const openAdministration = () =>
     Dialog.confirm({
-      title: t("Open administration in the browser?"),
-      message: t(
+      title: gt("Open administration in the browser?"),
+      message: gt(
         "Administration is only available in the browser. It signs in independently and stays signed in when you sign out of this phone.",
       ),
-      confirmText: t("Open browser"),
+      confirmText: gt("Open browser"),
       onConfirm: () => {
         setOpening(true);
         void openBaskuleManagement("/admin")
           .catch((error: unknown) =>
             Dialog.alert(
-              t("Could not open the browser"),
-              error instanceof Error ? error.message : t("Try again."),
+              gt("Could not open the browser"),
+              error instanceof Error ? error.message : gt("Try again."),
             ),
           )
           .finally(() => setOpening(false));
@@ -345,7 +310,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
           representative: scopedProjectMembers[0]!,
           members: scopedProjectMembers,
         })
-      : (selectedProject?.label ?? t("Unavailable project"));
+      : (selectedProject?.label ?? gt("Unavailable project"));
   const page = (
     target: SettingsPageTarget,
     icon: SettingsListRow["icon"],
@@ -358,29 +323,30 @@ function useSettingsIndexSections(): SettingsListSection[] {
     const admin = session.status === "signed-in" && session.me.user.role === "admin";
     return [
       {
-        title: t("Chats"),
+        title: gt("Chats"),
         rows: [
-          page("SettingsScheduledTasks", "clock", t("Scheduled tasks")),
-          page("SettingsNotifications", "bell.badge", t("Notifications")),
+          page("SettingsScheduledTasks", "clock", gt("Scheduled tasks")),
+          page("SettingsNotifications", "bell.badge", gt("Notifications")),
         ],
       },
       {
-        title: t("App"),
+        title: gt("App"),
         rows: [
-          page("SettingsAppearance", "paintbrush", t("Appearance")),
-          page("SettingsAbout", "info.circle", t("About")),
+          page("SettingsAppearance", "paintbrush", gt("Appearance")),
+          page("SettingsVoice", "mic", gt("Voice")),
+          page("SettingsAbout", "info.circle", gt("About")),
         ],
       },
       ...(admin
         ? [
             {
-              title: t("Administration"),
+              title: gt("Administration"),
               rows: [
                 {
                   id: "manage-admin",
                   icon: "gearshape" as const,
-                  label: t("Administration"),
-                  value: t("Opens in the browser"),
+                  label: gt("Administration"),
+                  value: gt("Opens in the browser"),
                   disabled: opening,
                   onPress: () => openAdministration(),
                 },
@@ -388,70 +354,73 @@ function useSettingsIndexSections(): SettingsListSection[] {
             },
           ]
         : []),
-      { rows: [page("SettingsArchive", "archivebox", t("Archived chats"))] },
+      { rows: [page("SettingsArchive", "archivebox", gt("Archived chats"))] },
     ];
   }
   // The same pages and groups as Settings on web, minus what mobile has no setting for.
   return [
     {
       rows: [
-        page("SettingsOrganization", "gearshape", t("General")),
-        page("SettingsAppearance", "paintbrush", t("Appearance")),
-        page("SettingsFollowUp", "bubble.left.and.bubble.right", t("Chat")),
+        page("SettingsOrganization", "gearshape", gt("General")),
+        page("SettingsAppearance", "paintbrush", gt("Appearance")),
+        page("SettingsVoice", "mic", gt("Voice")),
+        page("SettingsFollowUp", "bubble.left.and.bubble.right", gt("Chat")),
         ...(navigationCustomizationAvailable()
-          ? [page("SettingsNavigation", "line.3.horizontal", t("Navigation tabs"))]
+          ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
           : []),
-        page("SettingsKeyboard", "keyboard", t("Keyboard")),
-        page("SettingsVoice", "mic", t("Voice")),
+        page("SettingsKeyboard", "keyboard", gt("Keyboard")),
       ],
     },
     {
-      title: t("Agents"),
+      title: gt("Agents"),
       rows: [
-        serverPage("SettingsProviderAccounts", "person.crop.circle", t("Providers")),
-        serverPage("SettingsThreads", "text.bubble", t("Threads")),
-        page("SettingsScheduledTasks", "clock", t("Scheduled tasks")),
+        serverPage("SettingsProviderAccounts", "person.crop.circle", gt("Providers")),
+        serverPage("SettingsThreads", "text.bubble", gt("Threads")),
+        page("SettingsScheduledTasks", "clock", gt("Scheduled tasks")),
       ],
     },
     {
-      title: t("Code"),
+      title: gt("Code"),
       rows: [
         page(
           "SettingsProjectOverview",
           "folder",
-          t("Projects"),
+          gt("Projects"),
           selectedProjectKey !== null ? { value: projectLabel } : undefined,
         ),
         serverPage(
           "SettingsEnvironmentSourceControl",
           "arrow.triangle.branch",
-          t("Source control"),
+          gt("Source control"),
         ),
-        serverPage("SettingsWorktrees", "square.on.square", t("Worktrees")),
+        serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
       ],
     },
     {
       rows: [
-        serverPage("SettingsEnvironmentMaintenance", "arrow.clockwise", t("Maintenance")),
-        page("SettingsLabs", "flask", t("Labs")),
-        page("SettingsAbout", "info.circle", t("About")),
-        page("SettingsArchive", "archivebox", t("Archive")),
+        serverPage("SettingsEnvironmentMaintenance", "arrow.clockwise", gt("Maintenance")),
+        page("SettingsLabs", "flask", gt("Labs")),
+        page("SettingsAbout", "info.circle", gt("About")),
+        page("SettingsArchive", "archivebox", gt("Archive")),
       ],
     },
   ];
 }
 
 function useOverflowRows(): SettingsListRow[] {
+  const m = useMessages();
   const order = useNavigationTabOrder();
   const hidden = useHiddenNavigationTabs();
   const { layout } = useAdaptiveWorkspaceLayout();
   const tabs =
     Platform.OS === "android" && layout.usesSplitView ? [] : overflowNavigationTabs(order, hidden);
   const selectTab = useSelectWorkspaceTab();
-  return tabs.map((tab) => ({
-    id: tab,
-    icon: NAVIGATION_TAB_ICONS[tab],
-    label: WORKSPACE_TAB_LABELS[tab],
-    onPress: () => selectTab(tab),
-  }));
+  return tabs
+    .filter((tab) => tab === "threads" || tab === "usage")
+    .map((tab) => ({
+      id: tab,
+      icon: NAVIGATION_TAB_ICONS[tab],
+      label: m(WORKSPACE_TAB_LABELS[tab]),
+      onPress: () => selectTab(tab),
+    }));
 }

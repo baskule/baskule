@@ -1,5 +1,3 @@
-import { t } from "./i18n";
-
 import {
   type KeybindingCommand,
   type KeybindingShortcut,
@@ -220,13 +218,13 @@ export function resolveChatShortcutCommand(
 }
 
 export function formatShortcutKeyLabel(key: string): string {
-  if (key === " ") return t("Space");
+  if (key === " ") return "Space";
   if (key.length === 1) return key.toUpperCase();
-  if (key === "escape") return t("Esc");
-  if (key === "arrowup") return t("Up");
-  if (key === "arrowdown") return t("Down");
-  if (key === "arrowleft") return t("Left");
-  if (key === "arrowright") return t("Right");
+  if (key === "escape") return "Esc";
+  if (key === "arrowup") return "Up";
+  if (key === "arrowdown") return "Down";
+  if (key === "arrowleft") return "Left";
+  if (key === "arrowright") return "Right";
   if (key === "pageup") return "PageUp";
   if (key === "pagedown") return "PageDown";
   return key.slice(0, 1).toUpperCase() + key.slice(1);
@@ -382,6 +380,16 @@ export function isDiffToggleShortcut(
   options?: ShortcutMatchOptions,
 ): boolean {
   return matchesCommandShortcut(event, keybindings, "diff.toggle", options);
+}
+
+export function isSidebarToggleShortcut(
+  event: ShortcutEventLike,
+  keybindings: ResolvedKeybindingsConfig,
+  options?: ShortcutMatchOptions,
+): boolean {
+  // A focused terminal owns Ctrl chords, such as tmux's Ctrl+B prefix; Cmd never reaches it.
+  if (event.ctrlKey && options?.context?.terminalFocus) return false;
+  return matchesCommandShortcut(event, keybindings, "sidebar.toggle", options);
 }
 
 export function isOpenFavoriteEditorShortcut(

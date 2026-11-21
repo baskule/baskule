@@ -1,5 +1,3 @@
-import { t, useTranslation } from "../i18n";
-
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -12,6 +10,7 @@ import {
   useNavigate,
   useRouter,
 } from "@tanstack/react-router";
+import { msg, T, useGT, Var } from "gt-react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -25,7 +24,6 @@ import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
 import { baskule } from "../baskule/flags";
 import { baskuleBeforeLoad, BaskuleRootChrome, isBaskuleBareRoute } from "../baskule/root";
-import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
@@ -122,17 +120,21 @@ export const Route = createRootRoute({
 });
 
 function RootRouteNotFoundView() {
-  const t = useTranslation();
   return (
     <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-6">
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-        <h1 className="text-lg font-medium text-foreground">{t("Page not found")}</h1>
+        <h1 className="text-lg font-medium text-foreground">
+          <T>Page not found</T>
+        </h1>
         <p className="text-sm text-muted-foreground">
-          {t("This link doesn't point to a page in ")}
-          {APP_DISPLAY_NAME}
-          {t(". Go home to choose a project or start a thread.")}
+          <T>
+            This link doesn't point to a page in <Var>{APP_DISPLAY_NAME}</Var>. Go home to choose a
+            project or start a thread.
+          </T>
         </p>
-        <Button render={<Link to="/" replace />}>{t("Go home")}</Button>
+        <Button render={<Link to="/" replace />}>
+          <T>Go home</T>
+        </Button>
       </div>
     </main>
   );
@@ -193,14 +195,15 @@ function RootRouteBranch() {
   // first-run gate and the event router, whose first navigation would leave the page.
   const appHosts = (
     <>
-      {primaryEnvironmentAuthenticated ? <DesktopAppActivationCoordinator /> : null}
       {primaryEnvironmentAuthenticated || localEnvironmentDisabled ? (
-        <DesktopWebLinkCoordinator />
+        <>
+          <DesktopAppActivationCoordinator />
+          <DesktopWebLinkCoordinator />
+        </>
       ) : null}
       {isElectron ? <RunningThreadKeepAlive /> : null}
       {isElectron ? <RequiredUpdateDialog /> : null}
       <RelayClientInstallDialog />
-      <ConnectOnboardingDialog />
       <SshPasswordPromptDialog />
       <SnapShotCoordinator />
       <ReopenClosedViewShortcut />
@@ -239,16 +242,16 @@ function RootRouteBranch() {
 }
 
 function RootRouteErrorView({ error }: ErrorComponentProps) {
-  const t = useTranslation();
   const router = useRouter();
-  const message = errorMessage(error);
+  const gt = useGT();
+  const message = errorMessage(error) ?? gt("An unexpected router error occurred.");
   // Router pathname rather than window.location: desktop uses hash history, where the window path is always "/".
   const pathname = useLocation({ select: (location) => location.pathname });
   const report = errorReport(error, pathname);
 
   return (
     <StandalonePage>
-      <StandalonePageHeader title={t("Something went wrong.")} description={message} />
+      <StandalonePageHeader title={gt("Something went wrong.")} description={message} />
 
       <div className="mt-5 flex flex-wrap gap-2">
         <Button
@@ -257,16 +260,18 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
             isChunkLoadError(error) ? window.location.reload() : void router.invalidate()
           }
         >
-          {t("Try again")}
+          <T>Try again</T>
         </Button>
         <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
-          {t("Reload app")}
+          <T>Reload app</T>
         </Button>
         <CopyErrorButton report={report} />
       </div>
 
       <div className="mt-5 overflow-hidden rounded-lg border border-border/70 bg-background/55">
-        <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground">{t("Error report")}</p>
+        <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+          <T>Error report</T>
+        </p>
         <pre className="max-h-64 overflow-auto border-t border-border/70 bg-background/80 px-3 py-2 text-xs whitespace-pre-wrap text-foreground/85">
           {report}
         </pre>
@@ -276,18 +281,24 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
 }
 
 function CopyErrorButton({ report }: { report: string }) {
-  const t = useTranslation();
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "error-report" });
+  const { copyToClipboard, isCopied } = useCopyToClipboard({
+    target: {
+      target: "error-report",
+      unavailableMessage: msg("Clipboard API is unavailable while copying error-report."),
+      failureMessage: msg("Failed to copy error-report to the clipboard."),
+    },
+  });
+  const gt = useGT();
 
   return (
     <Button size="sm" variant="outline" onClick={() => copyToClipboard(report)}>
       {isCopied ? <CheckIcon className="text-success" /> : <CopyIcon />}
-      {isCopied ? t("Copied") : t("Copy error")}
+      {isCopied ? gt("Copied") : gt("Copy error")}
     </Button>
   );
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown): string | null {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }
@@ -296,7 +307,7 @@ function errorMessage(error: unknown): string {
     return error;
   }
 
-  return t("An unexpected router error occurred.");
+  return null;
 }
 
 function errorDetails(error: unknown): string {
@@ -311,7 +322,8 @@ function errorDetails(error: unknown): string {
   try {
     return JSON.stringify(error, null, 2);
   } catch {
-    return t("No additional error details are available.");
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- error report pasted into bug reports
+    return "No additional error details are available.";
   }
 }
 

@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { T, useGT } from "gt-react";
 import { PlayIcon, WrapTextIcon, CheckIcon, CopyIcon } from "lucide-react";
 import { toHtml } from "hast-util-to-html";
 import React, { use, useEffect, useState, type ReactNode } from "react";
@@ -101,7 +100,7 @@ function MarkdownCodeBlockTitleContent({
   language: string;
   theme: "light" | "dark";
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   if (fenceTitle) {
     return (
       <>
@@ -121,7 +120,7 @@ function MarkdownCodeBlockTitleContent({
         render={
           <span
             className="inline-flex shrink-0 rounded-sm"
-            aria-label={t("Language: {{language}}", { language: language })}
+            aria-label={gt("Language: {language}", { language })}
           />
         }
       >
@@ -155,7 +154,7 @@ export function MarkdownCodeBlock({
   diagram?: boolean;
   children: ReactNode;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const { copyToClipboard, isCopied: copied } = useCopyToClipboard({
     timeout: 1200,
     onError: (cause) =>
@@ -171,8 +170,8 @@ export function MarkdownCodeBlock({
   const defaultWrapped = useClientSettings((settings) => settings.wordWrap);
   const [wrapOverride, setWrapOverride] = useState<boolean | null>(null);
   const wrapped = wrapOverride ?? defaultWrapped;
-  const wrapLabel = wrapped ? "Disable line wrap" : "Wrap lines";
-  const copyLabel = copied ? t("Copied") : "Copy code";
+  const wrapLabel = wrapped ? gt("Disable line wrap") : gt("Wrap lines");
+  const copyLabel = copied ? gt("Copied") : gt("Copy code");
   const command = code.trim();
   const canRun =
     onRunShellCommand !== undefined &&
@@ -229,7 +228,7 @@ export function MarkdownCodeBlock({
         <span
           className="flex items-center gap-0.5"
           role="toolbar"
-          aria-label={t("Code block actions")}
+          aria-label={gt("Code block actions")}
         >
           {canWrap ? (
             <Tooltip>
@@ -259,13 +258,15 @@ export function MarkdownCodeBlock({
                     variant="ghost-muted"
                     size="icon-xs"
                     onClick={() => onRunShellCommand(command)}
-                    aria-label={t("Run in terminal")}
+                    aria-label={gt("Run in terminal")}
                   />
                 }
               >
                 <PlayIcon className="size-3" />
               </TooltipTrigger>
-              <TooltipPopup side="top">{t("Run in terminal")}</TooltipPopup>
+              <TooltipPopup side="top">
+                <T>Run in terminal</T>
+              </TooltipPopup>
             </Tooltip>
           ) : null}
           {viewToggle}

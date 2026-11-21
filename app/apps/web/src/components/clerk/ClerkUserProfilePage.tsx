@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { T } from "gt-react";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 
 import type { ReactNode } from "react";
@@ -50,7 +49,6 @@ export function ClerkUserProfileRefreshButton({
   readonly isPending: boolean;
   readonly onClick: () => void;
 }) {
-  const t = useTranslation();
   return (
     <Button
       size="sm"
@@ -60,7 +58,7 @@ export function ClerkUserProfileRefreshButton({
       onClick={onClick}
     >
       <RefreshIcon aria-hidden="true" size="sm" refreshing={isPending} />
-      {t("Refresh")}
+      <T>Refresh</T>
     </Button>
   );
 }

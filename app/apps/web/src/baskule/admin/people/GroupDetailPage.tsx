@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: one group: its name, its people and the permissions it gives them. Plugins choose
 // their groups on their own page. "Everyone" has every person automatically and keeps its name.
 import type { GroupInput } from "@t3tools/contracts/baskule";
@@ -26,7 +27,7 @@ import { groupName, groupsApi, notifyGroupError } from "./groups";
 import { groupSummary } from "./GroupsPage";
 
 export function GroupDetailPage({ id }: { readonly id: string }) {
-  const t = useTranslation();
+  const t = useMessages();
   const navigate = useNavigate();
   // The parent remounts this per item (`key`), so one loader per mount keeps its identity.
   const [load] = useState(
@@ -90,29 +91,26 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
               disabled={busy !== null}
               onClick={() =>
                 void confirmAction(
-                  t(
-                    "Delete {{name}}?\nIts people keep their accounts and spaces, but lose the plugins and permissions it gave them.",
-                    { name: shownName },
-                  ),
+                  t(msg("Delete {name}?\nIts people keep their accounts and spaces, but lose the plugins and permissions it gave them."), { name: shownName }),
                   "destructive",
                 ).then(async (confirmed) => {
                   if (!confirmed) return;
                   setBusy("delete");
                   try {
                     await groupsApi.remove(group.id);
-                    notifySuccess(t("{{name}} was deleted", { name: shownName }));
+                    notifySuccess(t(msg("{name} was deleted"), { name: shownName }));
                     void navigate({
                       to: "/admin/$section/$page",
                       params: { section: "people", page: "groups" },
                     });
                   } catch (cause) {
                     setBusy(null);
-                    notifyGroupError(t("Could not delete {{name}}", { name: shownName }), cause);
+                    notifyGroupError(t(msg("Could not delete {name}"), { name: shownName }), cause);
                   }
                 })
               }
             >
-              {t("Delete group…")}
+              {t(msg("Delete group…"))}
             </Button>
           )
         }
@@ -125,14 +123,14 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
             event.preventDefault();
             const next = draftName.trim();
             if (!next || next === group.name) return;
-            void save("name", { name: next }, t("Could not rename the group")).then(
+            void save("name", { name: next }, t(msg("Could not rename the group"))).then(
               (ok) => ok && setName(null),
             );
           }}
         >
           <FormField
             className="flex-1"
-            label={t("Name")}
+            label={t(msg("Name"))}
             value={draftName}
             onChange={(event) => setName(event.currentTarget.value)}
           />
@@ -141,24 +139,22 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
             variant="outline"
             disabled={busy !== null || !draftName.trim() || draftName.trim() === group.name}
           >
-            {t("Rename")}
+            {t(msg("Rename"))}
           </Button>
         </form>
       )}
 
       <PageSection
-        title={builtin ? t("People") : t("People ({{count}})", { count: members.length })}
+        title={builtin ? t(msg("People")) : t(msg("People ({count})"), { count: members.length })}
       >
         {builtin ? (
           <PageMessage>
-            {t(
-              "Everyone always includes every person, also the ones you add later. To give some people more, put them in another group.",
-            )}
+            {t(msg("Everyone always includes every person, also the ones you add later. To give some people more, put them in another group."))}
           </PageMessage>
         ) : (
           <>
             {members.length === 0 ? (
-              <PageMessage>{t("No one is in this group yet.")}</PageMessage>
+              <PageMessage>{t(msg("No one is in this group yet."))}</PageMessage>
             ) : null}
             {members.map((person) => (
               <PageRow
@@ -169,13 +165,13 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
                   <Button
                     size="icon-sm"
                     variant="ghost"
-                    aria-label={t("Remove {{name}} from the group", { name: person.name })}
+                    aria-label={t(msg("Remove {name} from the group"), { name: person.name })}
                     disabled={busy !== null}
                     onClick={() =>
                       void save(
                         `member:${person.id}`,
                         { members: group.members.filter((entry) => entry !== person.id) },
-                        t("Could not remove {{name}}", { name: person.name }),
+                        t(msg("Could not remove {name}"), { name: person.name }),
                       )
                     }
                   >
@@ -195,16 +191,16 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
                 void save(
                   "add",
                   { members: [...group.members, adding] },
-                  t("Could not add the person"),
+                  t(msg("Could not add the person")),
                 ).then((ok) => ok && setAdding(null));
               }}
             >
               <Select value={adding} onValueChange={(value) => setAdding(value as string | null)}>
-                <SelectTrigger className="sm:flex-1" aria-label={t("Person to add")}>
+                <SelectTrigger className="sm:flex-1" aria-label={t(msg("Person to add"))}>
                   <SelectValue>
                     {(value: string | null) =>
                       candidates.find((person) => person.id === value)?.name ?? (
-                        <span className="text-muted-foreground">{t("Choose a person")}</span>
+                        <span className="text-muted-foreground">{t(msg("Choose a person"))}</span>
                       )
                     }
                   </SelectValue>
@@ -212,7 +208,7 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
                 <SelectPopup alignItemWithTrigger={false}>
                   {candidates.length === 0 ? (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                      {t("Everyone is already in this group.")}
+                      {t(msg("Everyone is already in this group."))}
                     </div>
                   ) : (
                     candidates.map((person) => (
@@ -230,36 +226,36 @@ export function GroupDetailPage({ id }: { readonly id: string }) {
               </Select>
               <Button type="submit" disabled={busy !== null || !adding}>
                 {busy === "add" ? <Spinner size="sm" /> : <UserPlusIcon />}
-                {t("Add")}
+                {t(msg("Add"))}
               </Button>
             </form>
           </>
         )}
       </PageSection>
 
-      <PageSection title={t("Permissions")}>
+      <PageSection title={t(msg("Permissions"))}>
         <PageRow
           trailing={
             <>
               {busy === "permissions" ? <Spinner size="sm" tone="muted" /> : null}
               <Switch
-                aria-label={t("Can create team spaces")}
+                aria-label={t(msg("Can create team spaces"))}
                 checked={group.permissions.canCreateSpaces}
                 disabled={busy !== null}
                 onCheckedChange={(canCreateSpaces) =>
                   void save(
                     "permissions",
                     { permissions: { ...group.permissions, canCreateSpaces } },
-                    t("Could not change the permission"),
+                    t(msg("Could not change the permission")),
                   )
                 }
               />
             </>
           }
         >
-          <span className="text-sm text-foreground">{t("Can create team spaces")}</span>
+          <span className="text-sm text-foreground">{t(msg("Can create team spaces"))}</span>
           <span className="text-xs text-muted-foreground">
-            {t("They become the owner of the spaces they create. Admins always can.")}
+            {t(msg("They become the owner of the spaces they create. Admins always can."))}
           </span>
         </PageRow>
       </PageSection>

@@ -1,11 +1,11 @@
 import { startPaletteThreadDrag } from "./CommandPalette.drag";
 import { useLegendListRef } from "~/hooks/useLegendListRef";
-import { useTranslation } from "../i18n";
 
 import { type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { ChevronRightIcon } from "lucide-react";
 import { type ReactNode, type RefObject, useState } from "react";
+import { T } from "gt-react";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { shortcutLabelForCommand } from "../keybindings";
@@ -39,13 +39,14 @@ interface CommandPaletteResultsProps {
 }
 
 function CommandPaletteEmptyState(props: { emptyStateMessage?: string; isActionsOnly: boolean }) {
-  const t = useTranslation();
   return (
     <div className="py-10 text-center text-sm text-muted-foreground">
       {props.emptyStateMessage ??
-        (props.isActionsOnly
-          ? t("No matching actions.")
-          : t("No matching commands, projects, or threads."))}
+        (props.isActionsOnly ? (
+          <T>No matching actions.</T>
+        ) : (
+          <T>No matching commands, projects, or threads.</T>
+        ))}
     </div>
   );
 }

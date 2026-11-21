@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import { useAtomValue } from "@effect/atom-react";
 import {
   parseScopedThreadKey,
@@ -24,7 +22,7 @@ class PreviewSessionThreadKeyParseError extends Schema.TaggedError<PreviewSessio
   { threadKey: Schema.String },
 ) {
   override get message(): string {
-    return t("Invalid scoped preview thread key: {{threadKey}}", { threadKey: this.threadKey });
+    return `Invalid scoped preview thread key: ${this.threadKey}`;
   }
 }
 

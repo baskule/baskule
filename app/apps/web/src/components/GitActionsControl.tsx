@@ -1,5 +1,7 @@
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { msg, T, useGT, useMessages } from "gt-react";
+import { m } from "../i18n/messages";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import { t, useTranslation } from "../i18n";
 
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
 import { useAtomMount, useAtomValue } from "@effect/atom-react";
@@ -18,7 +20,7 @@ import type {
   VcsStatusResult,
 } from "@t3tools/contracts";
 
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { memo, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { useDeadlinePassed } from "../hooks/useDeadline";
 import { useNowSecond } from "../hooks/useNowSecond";
 
@@ -115,6 +117,7 @@ import {
 } from "./chat/threadDetailsPanelStyles";
 
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
+import { ChangeBreakdownGrid } from "./pullRequest/ChangeBreakdownGrid";
 
 interface GitActionsControlProps {
   gitCwd: string | null;
@@ -149,7 +152,6 @@ interface RunGitActionWithToastInput {
 interface InlineGitActionSuccess {
   readonly title: string;
   readonly description: string | null;
-  readonly scopeKey: string;
   readonly expiresAtMs: number;
 }
 
@@ -172,8 +174,8 @@ function requestVcsStatusRefresh(
 }
 const RUNNING_SOURCE_CONTROL_ACTIONS = ["runStackedAction", "pull"] as const;
 
-const COMMIT_DIALOG_TITLE = t("Commit changes");
-const COMMIT_DIALOG_DESCRIPTION = t(
+const COMMIT_DIALOG_TITLE = msg("Commit changes");
+const COMMIT_DIALOG_DESCRIPTION = msg(
   "Review and confirm your commit. Leave the message blank to auto-generate one.",
 );
 
@@ -190,6 +192,7 @@ function GitQuickActionIcon({
   quickAction: GitQuickAction;
   className?: string;
 }) {
+  const messages = useMessages();
   if (quickAction.kind === "run_pull") return <CloudDownloadIcon className={className} />;
   if (quickAction.kind === "run_action") {
     if (quickAction.action === "commit") return <GitCommitIcon className={className} />;
@@ -198,8 +201,13 @@ function GitQuickActionIcon({
     }
     return <InfoIcon className={className} />;
   }
-  if (quickAction.label === "Commit") return <GitCommitIcon className={className} />;
-  if (quickAction.label === "Push") return <CloudUploadIcon className={className} />;
+  // show_hint carries no action, so match the label resolveQuickAction gave it.
+  if (quickAction.label === messages(msg("Commit", { $context: "verb, git action" }))) {
+    return <GitCommitIcon className={className} />;
+  }
+  if (quickAction.label === messages(msg("Push", { $context: "verb, git action" }))) {
+    return <CloudUploadIcon className={className} />;
+  }
   return <InfoIcon className={className} />;
 }
 
@@ -222,8 +230,9 @@ function RunningGitActionElapsedTime({
   startedAtMs: number;
   className: string | undefined;
 }) {
+  const messages = useMessages();
   const nowMs = useNowSecond();
-  const elapsed = formatGitActionElapsed(startedAtMs, nowMs);
+  const elapsed = formatGitActionElapsed(startedAtMs, nowMs, messages);
   if (!elapsed) {
     return null;
   }
@@ -331,7 +340,12 @@ function GitActionSuccessButtonContent({ success }: { success: InlineGitActionSu
   );
 }
 
-export default function GitActionsControl({
+export default memo(function GitActionsControl(props: GitActionsControlProps) {
+  const checkoutKey = JSON.stringify([props.activeThreadRef?.environmentId ?? null, props.gitCwd]);
+  return <CheckoutGitActionsControl key={checkoutKey} {...props} />;
+});
+
+function CheckoutGitActionsControl({
   gitCwd,
   activeThreadRef,
   draftId,
@@ -341,15 +355,15 @@ export default function GitActionsControl({
   onOpenChanges,
   workspaceMutationId = null,
 }: GitActionsControlProps) {
-  const t = useTranslation();
-  const progressLabelId = "git-action-progress";
+  const gt = useGT();
+  const messages = useMessages();
+  const progressLabelId = useId();
   const panelAnchorRef = useRef<HTMLDivElement | null>(null);
   const updateThreadMetadata = useAtomCommand(
     threadEnvironment.updateMetadata,
     "thread branch metadata update",
   );
   const activeEnvironmentId = activeThreadRef?.environmentId ?? null;
-  const successScopeKey = `${activeEnvironmentId ?? ""}\u0000${gitCwd ?? ""}`;
   const canWriteSourceControl = useEnvironmentScope(
     activeEnvironmentId,
     AuthSourceControlWriteScope,
@@ -387,8 +401,7 @@ export default function GitActionsControl({
   const sourceControlScope = { environmentId: activeEnvironmentId, cwd: gitCwd };
   const vcsActionState = useAtomValue(vcsActionManager.stateAtom(sourceControlScope));
   const inlineSuccessExpired = useDeadlinePassed(inlineSuccess?.expiresAtMs ?? null);
-  const visibleInlineSuccess =
-    inlineSuccess?.scopeKey === successScopeKey && !inlineSuccessExpired ? inlineSuccess : null;
+  const visibleInlineSuccess = inlineSuccessExpired ? null : inlineSuccess;
 
   const persistThreadBranchSync = (branch: string | null, manualSelection = false) => {
     if (!activeThreadRef) {
@@ -461,7 +474,7 @@ export default function GitActionsControl({
   const ignoreWhitespaceSetting = useClientSettings((settings) => settings.diffIgnoreWhitespace);
   const ignoreWhitespace =
     useDiffPanelSessionStore((state) => state.ignoreWhitespace) ?? ignoreWhitespaceSetting;
-  const { canReadFiles } = useFilesystemReadAccess(activeEnvironmentId);
+  const { canReadFiles } = useFilesystemReadAccess(activeEnvironmentId, messages);
   // Same input as the Diff panel's branch query, so both read one cached result. Status
   // totals join the revision because edits, pulls and resets outside a turn leave the mutation
   // id as is.
@@ -503,10 +516,11 @@ export default function GitActionsControl({
     changesPreview.data?.sources.find((source) => source.kind === "branch-range"),
   );
   const changesTotals = resolvedChangesTotals ?? { insertions: 0, deletions: 0 };
+  const changesBreakdown = resolvedChangesTotals?.breakdown ?? null;
   const changesBaseLabel = resolvedChangesTotals
     ? resolvedChangesTotals.baseRef === null
-      ? "Uncommitted"
-      : `vs ${resolvedChangesTotals.baseRef}`
+      ? gt("Uncommitted")
+      : gt("vs {ref}", { ref: resolvedChangesTotals.baseRef })
     : null;
 
   const allFiles = gitStatusForActions?.workingTree.files ?? [];
@@ -567,6 +581,7 @@ export default function GitActionsControl({
     gitStatusForActions,
     isGitActionRunning,
     hasPrimaryRemote,
+    messages,
   );
   const isDetachedHead = gitStatusForActions?.refName === null;
   const isCleanAndBehind =
@@ -591,13 +606,14 @@ export default function GitActionsControl({
     isGitActionRunning,
     isDefaultRef,
     hasPrimaryRemote,
+    messages,
   );
   const quickActionDisabledReason = !canWriteSourceControl
-    ? t("This connection cannot change source control.")
+    ? gt("This connection cannot change source control.")
     : quickAction.disabled
-      ? (quickAction.hint ?? t("This action is currently unavailable."))
+      ? (quickAction.hint ?? gt("This action is currently unavailable."))
       : null;
-  const gitActionProgress = resolveGitActionProgressPresentation(vcsActionState);
+  const gitActionProgress = resolveGitActionProgressPresentation(vcsActionState, messages);
   // A fresh draft or a thread with no turns hides commit, push, and diff rows until there is work.
   const quietEmptyDraft =
     (draftId !== undefined || activeServerThreadShell?.latestRun === null) &&
@@ -607,19 +623,25 @@ export default function GitActionsControl({
     !changesTotals.insertions &&
     !changesTotals.deletions;
   const pendingDefaultBranchActionCopy = pendingDefaultBranchAction
-    ? resolveDefaultBranchActionDialogCopy({
-        action: pendingDefaultBranchAction.action,
-        branchName: pendingDefaultBranchAction.branchName,
-        includesCommit: pendingDefaultBranchAction.includesCommit,
-      })
+    ? resolveDefaultBranchActionDialogCopy(
+        {
+          action: pendingDefaultBranchAction.action,
+          branchName: pendingDefaultBranchAction.branchName,
+          includesCommit: pendingDefaultBranchAction.includesCommit,
+        },
+        messages,
+      )
     : null;
   // Keep enabled until live status loads; the server rejects stale requests.
   const featureBranchUnavailableReason = pendingDefaultBranchAction
-    ? resolveFeatureBranchUnavailableReason({
-        action: pendingDefaultBranchAction.action,
-        branchName: pendingDefaultBranchAction.branchName,
-        hasWorkingTreeChanges: gitStatus?.hasWorkingTreeChanges ?? true,
-      })
+    ? resolveFeatureBranchUnavailableReason(
+        {
+          action: pendingDefaultBranchAction.action,
+          branchName: pendingDefaultBranchAction.branchName,
+          hasWorkingTreeChanges: gitStatus?.hasWorkingTreeChanges ?? true,
+        },
+        messages,
+      )
     : null;
 
   useAtomMount(
@@ -698,8 +720,8 @@ export default function GitActionsControl({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: t("Action failed"),
-          description: error instanceof Error ? error.message : t("An error occurred."),
+          title: gt("Action failed"),
+          description: thrownErrorMessage(error, m) ?? gt("An error occurred."),
           timeout: errorToastTiming.timeout,
           ...(scopedToastData !== undefined ? { data: scopedToastData } : {}),
         }),
@@ -712,7 +734,6 @@ export default function GitActionsControl({
     setInlineSuccess({
       title: actionResult.toast.title,
       description: actionResult.toast.description ?? null,
-      scopeKey: successScopeKey,
       expiresAtMs: inlineSuccessExpiresAt(),
     });
     return true;
@@ -773,8 +794,8 @@ export default function GitActionsControl({
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: t("Pull failed"),
-              description: error instanceof Error ? error.message : t("An error occurred."),
+              title: gt("Pull failed"),
+              description: thrownErrorMessage(error, m) ?? gt("An error occurred."),
               timeout: errorToastTiming.timeout,
               ...(threadToastData !== undefined ? { data: threadToastData } : {}),
             }),
@@ -783,18 +804,19 @@ export default function GitActionsControl({
         }
 
         const pullResult = result.value;
-        const title = pullResult.status === "pulled" ? "Pulled" : t("Already up to date");
+        const title = pullResult.status === "pulled" ? gt("Pulled") : gt("Already up to date");
         const description =
           pullResult.status === "pulled"
-            ? t("Updated {{refName}} from {{value2}}", {
-                refName: pullResult.refName,
-                value2: pullResult.upstreamRef ?? "upstream",
-              })
-            : t("{{refName}} is already synchronized.", { refName: pullResult.refName });
+            ? pullResult.upstreamRef
+              ? gt("Updated {ref} from {upstream}", {
+                  ref: pullResult.refName,
+                  upstream: pullResult.upstreamRef,
+                })
+              : gt("Updated {ref} from upstream", { ref: pullResult.refName })
+            : gt("{ref} is already synchronized.", { ref: pullResult.refName });
         setInlineSuccess({
           title,
           description,
-          scopeKey: successScopeKey,
           expiresAtMs: inlineSuccessExpiresAt(),
         });
       })();
@@ -843,7 +865,7 @@ export default function GitActionsControl({
     if (workingTreeRoot === null) {
       toastManager.add({
         type: "error",
-        title: t("Editor opening is unavailable."),
+        title: gt("Editor opening is unavailable."),
         data: threadToastData,
       });
       return;
@@ -858,8 +880,8 @@ export default function GitActionsControl({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: t("Unable to open file"),
-          description: error instanceof Error ? error.message : t("An error occurred."),
+          title: gt("Unable to open file"),
+          description: thrownErrorMessage(error, m) ?? gt("An error occurred."),
           ...(threadToastData !== undefined ? { data: threadToastData } : {}),
         }),
       );
@@ -876,8 +898,8 @@ export default function GitActionsControl({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: t("Git initialization failed"),
-          description: error instanceof Error ? error.message : t("An error occurred."),
+          title: gt("Git initialization failed"),
+          description: thrownErrorMessage(error, m) ?? gt("An error occurred."),
           ...(threadToastData !== undefined ? { data: threadToastData } : {}),
         }),
       );
@@ -886,12 +908,15 @@ export default function GitActionsControl({
   const gitItems = (
     <>
       {gitActionMenuItems.map((item) => {
-        const disabledReason = getMenuActionDisabledReason({
-          item,
-          gitStatus: gitStatusForActions,
-          isBusy: isGitActionRunning,
-          hasPrimaryRemote,
-        });
+        const disabledReason = getMenuActionDisabledReason(
+          {
+            item,
+            gitStatus: gitStatusForActions,
+            isBusy: isGitActionRunning,
+            hasPrimaryRemote,
+          },
+          messages,
+        );
         if (item.disabled && disabledReason) {
           return (
             <Popover key={`${item.id}-${item.label}`}>
@@ -925,15 +950,14 @@ export default function GitActionsControl({
           </MenuItem>
         );
       })}
-
       {isDetachedHead && (
         <p className="px-2 py-1.5 text-xs text-warning">
-          {t("Detached HEAD: create and check out a branch to enable push actions.")}
+          <T>Detached HEAD: create and check out a branch to enable push actions.</T>
         </p>
       )}
       {isCleanAndBehind && (
         <p className="px-2 py-1.5 text-xs text-warning">
-          {t("Behind upstream. Pull/rebase first.")}
+          <T>Behind upstream. Pull/rebase first.</T>
         </p>
       )}
       {gitStatusError && <p className="px-2 py-1.5 text-xs text-destructive">{gitStatusError}</p>}
@@ -955,13 +979,13 @@ export default function GitActionsControl({
         >
           <GitBranchPlusIcon className="size-3.5" aria-hidden />
           <span className={cn("ml-0.5", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
-            {initAction.isPending ? t("Initializing...") : t("Initialize Git")}
+            {initAction.isPending ? <T>Initializing...</T> : <T>Initialize Git</T>}
           </span>
         </ThreadDetailsControl>
       ) : quietEmptyDraft || (compact && !gitActionProgress && !visibleInlineSuccess) ? null : (
         <div
           role="group"
-          aria-label={t("Git actions")}
+          aria-label={gt("Git actions")}
           ref={panelAnchorRef}
           onPointerEnter={hasGitMenuContent ? undefined : refreshStatusForEmptyMenu}
           onFocus={hasGitMenuContent ? undefined : refreshStatusForEmptyMenu}
@@ -975,10 +999,7 @@ export default function GitActionsControl({
             <ThreadDetailsControl
               aria-label={
                 gitActionProgress.output
-                  ? t("{{status}} {{output}}", {
-                      status: gitActionProgress.status,
-                      output: gitActionProgress.output,
-                    })
+                  ? `${gitActionProgress.status} ${gitActionProgress.output}`
                   : gitActionProgress.status
               }
               part="primary"
@@ -1073,7 +1094,7 @@ export default function GitActionsControl({
                       <MenuTrigger
                         render={
                           <ThreadDetailsControl
-                            aria-label={t("Git action options")}
+                            aria-label={gt("Git action options")}
                             data-toolbar-control=""
                             size="sm"
                             variant="ghost"
@@ -1090,7 +1111,9 @@ export default function GitActionsControl({
                       className={THREAD_DETAILS_PANEL_CHEVRON_CLASS}
                     />
                   </TooltipTrigger>
-                  <TooltipPopup side="top">{t("Git action options")}</TooltipPopup>
+                  <TooltipPopup side="top">
+                    <T>Git action options</T>
+                  </TooltipPopup>
                 </Tooltip>
                 <MenuPopup align="end" anchor={panelAnchorRef} className="w-(--anchor-width)">
                   {gitItems}
@@ -1102,53 +1125,70 @@ export default function GitActionsControl({
       )}
 
       {showChanges && isRepo && !quietEmptyDraft ? (
-        <ThreadDetailsControl
-          type="button"
-          variant="ghost"
-          size="sm"
-          part="row"
-          disabled={!onOpenChanges}
-          onClick={onOpenChanges}
-        >
-          <FileDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
-          <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-            <span className="shrink-0">{t("Changes")}</span>
-            {changesBaseLabel ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="pointer-events-auto min-w-0 truncate font-normal text-muted-foreground" />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <ThreadDetailsControl
+                type="button"
+                variant="ghost"
+                size="sm"
+                part="row"
+                disabled={!onOpenChanges}
+                onClick={onOpenChanges}
+              />
+            }
+          >
+            <FileDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
+            <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+              <span className="shrink-0">
+                <T>Changes</T>
+              </span>
+              {changesBaseLabel ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span className="pointer-events-auto min-w-0 truncate font-normal text-muted-foreground" />
+                    }
+                  >
+                    {changesBaseLabel}
+                  </TooltipTrigger>
+                  <TooltipPopup side="top" className="max-w-96 break-words">
+                    {changesBaseLabel}
+                  </TooltipPopup>
+                </Tooltip>
+              ) : null}
+              <span className="ml-auto flex shrink-0 items-baseline gap-2 ps-2 font-mono tabular-nums">
+                <span
+                  className={
+                    changesTotals.insertions
+                      ? "text-diff-addition-foreground"
+                      : "text-muted-foreground"
                   }
                 >
-                  {changesBaseLabel}
-                </TooltipTrigger>
-                <TooltipPopup side="top" className="max-w-96 break-words">
-                  {changesBaseLabel}
-                </TooltipPopup>
-              </Tooltip>
-            ) : null}
-            <span className="ml-auto flex shrink-0 items-baseline gap-2 ps-2 font-mono tabular-nums">
-              <span
-                className={
-                  changesTotals.insertions
-                    ? "text-diff-addition-foreground"
-                    : "text-muted-foreground"
-                }
-              >
-                +{formatDiffCount(changesTotals.insertions)}
-              </span>
-              <span
-                className={
-                  changesTotals.deletions
-                    ? "text-diff-deletion-foreground"
-                    : "text-muted-foreground"
-                }
-              >
-                -{formatDiffCount(changesTotals.deletions)}
+                  +{formatDiffCount(changesTotals.insertions)}
+                </span>
+                <span
+                  className={
+                    changesTotals.deletions
+                      ? "text-diff-deletion-foreground"
+                      : "text-muted-foreground"
+                  }
+                >
+                  -{formatDiffCount(changesTotals.deletions)}
+                </span>
               </span>
             </span>
-          </span>
-        </ThreadDetailsControl>
+          </TooltipTrigger>
+          {changesBreakdown && (changesTotals.insertions > 0 || changesTotals.deletions > 0) ? (
+            // Base UI fixes the popup width on open; remeasure when the breakdown changes.
+            <TooltipPopup key={JSON.stringify(changesBreakdown)} side="bottom">
+              <ChangeBreakdownGrid
+                breakdown={changesBreakdown}
+                total={{ additions: changesTotals.insertions, deletions: changesTotals.deletions }}
+              />
+            </TooltipPopup>
+          ) : null}
+        </Tooltip>
       ) : null}
 
       <Dialog
@@ -1164,19 +1204,23 @@ export default function GitActionsControl({
       >
         <DialogPopup>
           <DialogHeader>
-            <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
-            <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
+            <DialogTitle>{messages(COMMIT_DIALOG_TITLE)}</DialogTitle>
+            <DialogDescription>{messages(COMMIT_DIALOG_DESCRIPTION)}</DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <div className="space-y-3 rounded-xl bg-neutral-25 p-3 text-sm ring-1 ring-black/5 dark:bg-white/[0.035] dark:ring-white/5">
               <div className="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1">
-                <span className="text-muted-foreground">{t("Branch")}</span>
+                <span className="text-muted-foreground">
+                  <T context="git branch">Branch</T>
+                </span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-medium">
-                    {gitStatusForActions?.refName ?? t("(detached HEAD)")}
+                    {gitStatusForActions?.refName ?? gt("(detached HEAD)")}
                   </span>
                   {isDefaultRef && (
-                    <span className="text-right text-warning">{t("Default branch")}</span>
+                    <span className="text-right text-warning">
+                      <T>Default branch</T>
+                    </span>
                   )}
                 </span>
               </div>
@@ -1185,6 +1229,7 @@ export default function GitActionsControl({
                   <div className="flex items-center gap-2">
                     {isEditingFiles && allFiles.length > 0 && (
                       <Checkbox
+                        aria-label={gt("Include all files")}
                         checked={allSelected}
                         indeterminate={!allSelected && !noneSelected}
                         onCheckedChange={() => {
@@ -1194,10 +1239,15 @@ export default function GitActionsControl({
                         }}
                       />
                     )}
-                    <span className="text-muted-foreground">{t("Files")}</span>
+                    <span className="text-muted-foreground">
+                      <T>Files</T>
+                    </span>
                     {!allSelected && !isEditingFiles && (
                       <span className="text-muted-foreground">
-                        ({selectedFiles.length} {t("of")} {allFiles.length})
+                        {gt("({selected} of {total})", {
+                          selected: selectedFiles.length,
+                          total: allFiles.length,
+                        })}
                       </span>
                     )}
                   </div>
@@ -1207,12 +1257,18 @@ export default function GitActionsControl({
                       size="xs"
                       onClick={() => setIsEditingFiles((prev) => !prev)}
                     >
-                      {isEditingFiles ? t("Done") : t("Edit")}
+                      {isEditingFiles ? (
+                        <T context="button, finish editing the file list">Done</T>
+                      ) : (
+                        <T context="verb">Edit</T>
+                      )}
                     </Button>
                   )}
                 </div>
                 {!gitStatusForActions || allFiles.length === 0 ? (
-                  <p className="font-medium">{t("none")}</p>
+                  <p className="font-medium">
+                    <T context="no files">none</T>
+                  </p>
                 ) : (
                   <div className="space-y-2">
                     <div className="h-44 rounded-lg bg-card ring-1 ring-black/5 dark:bg-white/[0.025] dark:ring-white/5">
@@ -1227,6 +1283,7 @@ export default function GitActionsControl({
                               >
                                 {isEditingFiles && (
                                   <Checkbox
+                                    aria-label={gt("Include {path}", { path: file.path })}
                                     checked={!excludedFiles.has(file.path)}
                                     onCheckedChange={() => {
                                       setExcludedFiles((prev) => {
@@ -1245,7 +1302,7 @@ export default function GitActionsControl({
                                   type="button"
                                   className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left enabled:cursor-pointer"
                                   disabled={!canOperateThread || workingTreeRoot === null}
-                                  aria-label={t("Open {{path}} in editor", { path: file.path })}
+                                  aria-label={gt("Open {path} in editor", { path: file.path })}
                                   onClick={() => openChangedFileInEditor(file.path)}
                                 >
                                   <StartTruncatedPath
@@ -1254,7 +1311,9 @@ export default function GitActionsControl({
                                   />
                                   <span className="shrink-0">
                                     {isExcluded ? (
-                                      <span className="text-muted-foreground">{t("Excluded")}</span>
+                                      <span className="text-muted-foreground">
+                                        <T>Excluded</T>
+                                      </span>
                                     ) : (
                                       <>
                                         <span className="text-diff-addition">
@@ -1288,11 +1347,13 @@ export default function GitActionsControl({
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium">{t("Commit message (optional)")}</p>
+              <p className="text-sm font-medium">
+                <T>Commit message (optional)</T>
+              </p>
               <Textarea
                 value={dialogCommitMessage}
                 onChange={(event) => setDialogCommitMessage(event.target.value)}
-                placeholder={t("Leave empty to auto-generate")}
+                placeholder={gt("Leave empty to auto-generate")}
                 size="sm"
               />
             </div>
@@ -1308,7 +1369,7 @@ export default function GitActionsControl({
                 setIsEditingFiles(false);
               }}
             >
-              {t("Cancel")}
+              <T>Cancel</T>
             </Button>
             <Button
               variant="outline"
@@ -1316,14 +1377,14 @@ export default function GitActionsControl({
               disabled={!canChangeThreadBranch || noneSelected}
               onClick={runDialogActionOnNewBranch}
             >
-              {t("Commit on new branch")}
+              <T>Commit on new branch</T>
             </Button>
             <Button
               size="sm"
               disabled={!canWriteSourceControl || noneSelected}
               onClick={runDialogAction}
             >
-              {t("Commit")}
+              <T context="verb">Commit</T>
             </Button>
           </DialogFooter>
         </DialogPopup>
@@ -1338,7 +1399,7 @@ export default function GitActionsControl({
         <DialogPopup className="max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {pendingDefaultBranchActionCopy?.title ?? t("Run action on default branch?")}
+              {pendingDefaultBranchActionCopy?.title ?? gt("Run action on default branch?")}
             </DialogTitle>
             <DialogDescription>{pendingDefaultBranchActionCopy?.description}</DialogDescription>
             {featureBranchUnavailableReason && (
@@ -1352,7 +1413,7 @@ export default function GitActionsControl({
               size="sm"
               onClick={() => setPendingDefaultBranchAction(null)}
             >
-              {t("Abort")}
+              <T>Abort</T>
             </Button>
             <Button
               className="w-full max-w-full sm:w-auto"
@@ -1361,7 +1422,7 @@ export default function GitActionsControl({
               onClick={() => continuePendingDefaultBranchAction(false)}
               disabled={!canWriteSourceControl}
             >
-              {pendingDefaultBranchActionCopy?.continueLabel ?? t("Continue")}
+              {pendingDefaultBranchActionCopy?.continueLabel ?? gt("Continue")}
             </Button>
             <Button
               className="w-full max-w-full sm:w-auto"
@@ -1369,7 +1430,7 @@ export default function GitActionsControl({
               onClick={() => continuePendingDefaultBranchAction(true)}
               disabled={!canChangeThreadBranch || featureBranchUnavailableReason !== null}
             >
-              {t("Check out feature branch & continue")}
+              <T>Check out feature branch & continue</T>
             </Button>
           </DialogFooter>
         </DialogPopup>

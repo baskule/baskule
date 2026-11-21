@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: People → Groups: the built-in "Everyone" and the admin's own groups. A group gives
 // its people permissions and plugin access; a person gets the sum of their groups.
 import type { Group } from "@t3tools/contracts/baskule";
@@ -26,32 +27,33 @@ import { groupErrorText, groupName, groupsApi } from "./groups";
 
 const loadGroups = () => groupsApi.list();
 
-export function groupSummary(group: Group, t: ReturnType<typeof useTranslation>): string {
+export function groupSummary(group: Group, t: ReturnType<typeof useMessages>): string {
   return [
     group.builtin
-      ? t("Every person")
-      : t("{{count}} person", {
-          count: group.members.length,
-          defaultValue_other: "{{count}} people",
-        }),
-    ...(group.permissions.canCreateSpaces ? [t("Can create team spaces")] : []),
+      ? t(msg("Every person"))
+      : t(
+          msg("{count, plural, one {{count} person} other {{count} people}}", {
+            count: group.members.length,
+          }),
+        ),
+    ...(group.permissions.canCreateSpaces ? [t(msg("Can create team spaces"))] : []),
   ].join(" · ");
 }
 
 export function GroupsPage() {
-  const t = useTranslation();
+  const t = useMessages();
   const data = useApiResource(loadGroups);
   const [creating, setCreating] = useState(false);
   const groups = data.data ?? [];
   return (
     <>
       <PageSection
-        title={data.data ? t("Groups ({{count}})", { count: groups.length }) : t("Groups")}
-        description={t("A person gets everything their groups give, added together.")}
+        title={data.data ? t(msg("Groups ({count})"), { count: groups.length }) : t(msg("Groups"))}
+        description={t(msg("A person gets everything their groups give, added together."))}
         action={
           <Button size="sm" onClick={() => setCreating(true)}>
             <PlusIcon />
-            {t("New group")}
+            {t(msg("New group"))}
           </Button>
         }
       >
@@ -59,7 +61,7 @@ export function GroupsPage() {
           error={data.error}
           loading={data.loading}
           empty={groups.length === 0}
-          emptyText={t("No groups yet.")}
+          emptyText={t(msg("No groups yet."))}
         />
         {groups.map((group) => {
           const params = { section: "people", page: "groups", item: group.id };
@@ -73,11 +75,11 @@ export function GroupsPage() {
               }
               trailing={
                 <>
-                  {group.builtin ? <Badge variant="secondary">{t("Built in")}</Badge> : null}
+                  {group.builtin ? <Badge variant="secondary">{t(msg("Built in"))}</Badge> : null}
                   <Button
                     size="icon-sm"
                     variant="ghost"
-                    aria-label={t("Open {{name}}", { name: groupName(group) })}
+                    aria-label={t(msg("Open {name}"), { name: groupName(group) })}
                     render={<Link to="/admin/$section/$page/$item" params={params} />}
                   >
                     <ChevronRightIcon />
@@ -111,7 +113,7 @@ function NewGroupDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -154,22 +156,22 @@ function NewGroupDialog({
                 },
                 (cause: unknown) => {
                   setSubmitting(false);
-                  setError(groupErrorText(cause, t("The group could not be created.")));
+                  setError(groupErrorText(cause, t(msg("The group could not be created."))));
                 },
               );
           }}
         >
           <DialogHeader>
-            <DialogTitle>{t("New group")}</DialogTitle>
+            <DialogTitle>{t(msg("New group"))}</DialogTitle>
             <DialogDescription>
-              {t("Then add its people and choose the permissions it gives them.")}
+              {t(msg("Then add its people and choose the permissions it gives them."))}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <FormField
-              label={t("Name")}
+              label={t(msg("Name"))}
               autoFocus
-              placeholder={t("Sales, Accounting…")}
+              placeholder={t(msg("Sales, Accounting…"))}
               value={name}
               onChange={(event) => setName(event.currentTarget.value)}
             />
@@ -181,11 +183,11 @@ function NewGroupDialog({
           </DialogPanel>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              {t("Cancel")}
+              {t(msg("Cancel"))}
             </Button>
             <Button type="submit" disabled={!name.trim() || submitting}>
               {submitting ? <Spinner size="sm" /> : null}
-              {t("Create group")}
+              {t(msg("Create group"))}
             </Button>
           </DialogFooter>
         </form>

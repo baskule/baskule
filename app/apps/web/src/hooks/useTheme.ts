@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import { pipe } from "effect/Function";
 import type { DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
@@ -106,10 +104,7 @@ export class ThemeStorageError extends Schema.TaggedError<ThemeStorageError>()(
   },
 ) {
   override get message(): string {
-    return t("Failed to {{operation}} theme preference for {{storageKey}}.", {
-      operation: this.operation,
-      storageKey: this.storageKey,
-    });
+    return `Failed to ${this.operation} theme preference for ${this.storageKey}.`;
   }
 }
 
@@ -123,7 +118,7 @@ export class DesktopThemeSyncError extends Schema.TaggedError<DesktopThemeSyncEr
   },
 ) {
   override get message(): string {
-    return t("Failed to sync the {{theme}} theme to the desktop shell.", { theme: this.theme });
+    return `Failed to sync the ${this.theme} theme to the desktop shell.`;
   }
 }
 

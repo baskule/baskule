@@ -1,5 +1,4 @@
-import { useTranslation } from "../../../i18n";
-
+import { useGT, useMessages } from "gt-react-native";
 import { selectedNavigationTab, visibleNavigationTabs } from "./navigation-tab-order";
 import { Toolbar } from "../../../components/ui/Toolbar";
 import { useControlTheme } from "../../../components/ui/useControlTheme";
@@ -15,7 +14,8 @@ import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
 import { useCompactWorkspaceTabs, useSidebarWorkspaceTabs } from "./useSystemWorkspaceTabBar";
 
 export function WorkspaceTabToolbarButtons() {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const order = useNavigationTabOrder();
   const hidden = useHiddenNavigationTabs();
   const workspace = useWorkspaceTabs()!;
@@ -33,7 +33,7 @@ export function WorkspaceTabToolbarButtons() {
         <Toolbar.Button
           key={tab}
           identifier={`workspace-tab-${tab}`}
-          accessibilityLabel={t(WORKSPACE_TAB_LABELS[tab])}
+          accessibilityLabel={m(WORKSPACE_TAB_LABELS[tab])}
           icon={NAVIGATION_TAB_ICONS[tab]}
           tintColor={selected === tab ? selectedTint : undefined}
           onPress={() => selectTab(tab)}
@@ -41,7 +41,7 @@ export function WorkspaceTabToolbarButtons() {
       ))}
       <Toolbar.Button
         identifier="workspace-tab-settings"
-        accessibilityLabel={t("Settings")}
+        accessibilityLabel={gt("Settings")}
         icon="gearshape"
         tintColor={selected === "settings" ? selectedTint : undefined}
         onPress={() => selectTab("settings")}
@@ -57,7 +57,7 @@ export function WorkspaceSectionToolbar({
   readonly onNewTask: () => void;
   readonly showCompose?: boolean;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const sidebarTabs = useSidebarWorkspaceTabs();
   const compactTabs = useCompactWorkspaceTabs();
   const deviceType = useDeviceType();
@@ -66,7 +66,7 @@ export function WorkspaceSectionToolbar({
       {showCompose && sidebarTabs !== "picker" && deviceType !== "duo-unfolded" && !compactTabs ? (
         <Toolbar placement="right">
           <Toolbar.Button
-            accessibilityLabel={t("New chat")}
+            accessibilityLabel={gt("New chat")}
             icon="square.and.pencil"
             onPress={onNewTask}
           />

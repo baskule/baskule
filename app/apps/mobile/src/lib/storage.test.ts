@@ -73,6 +73,13 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: {
+    getItem: vi.fn(async (key: string) => mocks.getStoredValue(key)),
+    removeItem: vi.fn((key: string) => mocks.deleteItemAsync(key)),
+  },
+}));
+
 vi.mock("expo", () => ({
   requireOptionalNativeModule: () => null,
 }));
@@ -154,6 +161,51 @@ describe("mobile connection storage", () => {
     };
     expect(JSON.parse(fallback.payload)).toEqual({ baseFontSize: 19 });
     expect(fallback.updatedAt).toEqual(expect.any(Number));
+  });
+
+  it("discards malformed saved PR and issue views without discarding other preferences", async () => {
+    const validView = {
+      id: "reviewing",
+      name: "Review queue",
+      environmentId: null,
+      query: "bug",
+      controls: { state: "open", involvement: "reviewing", filters: {}, sort: "updated" },
+    } as const;
+    mocks.setPreferencesJson(
+      JSON.stringify({
+        baseFontSize: 17,
+        pullRequestSavedViews: [
+          validView,
+          {
+            ...validView,
+            id: "invalid",
+            name: "Broken",
+            controls: { ...validView.controls, sort: "unknown" },
+          },
+        ],
+      }),
+      10,
+    );
+    expect(await loadPreferences()).toEqual({
+      baseFontSize: 17,
+      pullRequestSavedViews: [validView],
+    });
+  });
+
+  it.each([
+    ["auto", "system"],
+    ["de", "de"],
+    ["en", "en"],
+    ["es", "es"],
+    ["fr", "fr"],
+    ["it", "it"],
+    ["nl", "nl"],
+  ])("migrates a released device language %s to %s", async (released, language) => {
+    mocks.setPreferencesJson(JSON.stringify({ baseFontSize: 17 }), 10);
+    await mocks.setItemAsync("baskule.language", released);
+    await expect(loadPreferences()).resolves.toEqual({ baseFontSize: 17, language });
+    expect(mocks.getStoredValue("baskule.language")).toBeNull();
+    await expect(loadPreferences()).resolves.toEqual({ baseFontSize: 17, language });
   });
 
   it("reconciles fallback preferences after SQLite recovers", async () => {

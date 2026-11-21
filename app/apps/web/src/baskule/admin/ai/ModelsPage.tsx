@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: AI → Models: the provider, its key and the one model everyone uses. Saving needs a passed
 // connection check for the current provider, endpoint, key and model; the ControlCell checks again.
 import {
@@ -73,13 +74,13 @@ export function ModelsPage() {
 
 /** A new installation has no provider: the admin chooses one before the rest of the form applies. */
 function ModelsSettings({ initial }: { readonly initial: BaskuleAdminSettings }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [chosen, setChosen] = useState(initial.ai);
   if (chosen === null)
     return (
       <div className="flex flex-col gap-8">
         <NoProviderNotice />
-        <PageSection title={t("Connection")}>
+        <PageSection title={t(msg("Connection"))}>
           <ProviderRow
             providerId={null}
             onChange={(providerId) => setChosen(providerDraft(providerId))}
@@ -91,13 +92,13 @@ function ModelsSettings({ initial }: { readonly initial: BaskuleAdminSettings })
 }
 
 function NoProviderNotice() {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <Alert variant="info" role="status">
       <InfoIcon aria-hidden />
-      <AlertTitle>{t("No AI provider yet")}</AlertTitle>
+      <AlertTitle>{t(msg("No AI provider yet"))}</AlertTitle>
       <AlertDescription>
-        {t("People can't chat until you choose a provider and save a model.")}
+        {t(msg("People can't chat until you choose a provider and save a model."))}
       </AlertDescription>
     </Alert>
   );
@@ -125,7 +126,7 @@ function ModelsForm({
   readonly initial: BaskuleAdminSettings;
   readonly initialAI: BaskuleAISettings;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [saved, setSaved] = useState(initial);
   // A saved-key listing has no key in its identity: a new key must drop it.
   const [keyRevision, setKeyRevision] = useState(0);
@@ -218,16 +219,14 @@ function ModelsForm({
         setKeyRevision((revision) => revision + 1);
       }
       setKey(null);
-      notifySuccess(t("AI settings saved"));
+      notifySuccess(t(msg("AI settings saved")));
       if (next.reloadPending)
         setError(
-          t(
-            "Settings are saved, but some spaces could not reload. Stop them from Admin → General → Overview to apply the AI changes.",
-          ),
+          t(msg("Settings are saved, but some spaces could not reload. Stop them from Admin → General → Overview to apply the AI changes.")),
         );
     })()
       .catch((cause: unknown) => {
-        setError(errorText(cause, t("Could not save settings.")));
+        setError(errorText(cause, t(msg("Could not save settings."))));
       })
       .finally(() => {
         setBusy(false);
@@ -238,18 +237,16 @@ function ModelsForm({
     <form className="flex flex-col gap-8" onSubmit={(event) => void submit(event)}>
       <fieldset disabled={busy} className="contents">
         {saved.ai === null ? <NoProviderNotice /> : null}
-        <PageSection title={t("Connection")}>
+        <PageSection title={t(msg("Connection"))}>
           <ProviderRow providerId={ai.providerId} onChange={selectProvider} />
           {/* A keyless preset is OpenCode's own endpoint with its public token: nothing to enter. */}
           {provider.keyless ? null : (
             <>
               <FieldRow
-                label={t("API key")}
+                label={t(msg("API key"))}
                 description={
                   key === null && !keySavedHere
-                    ? t(
-                        "Each provider and endpoint has its own key. Leave blank to use a key previously saved for this connection.",
-                      )
+                    ? t(msg("Each provider and endpoint has its own key. Leave blank to use a key previously saved for this connection."))
                     : null
                 }
                 renderControl={(id) => (
@@ -263,7 +260,7 @@ function ModelsForm({
                     aria-invalid={
                       failed === "ai_key_rejected" || failed === "ai_key_missing" ? true : undefined
                     }
-                    placeholder={custom ? t("Optional") : undefined}
+                    placeholder={custom ? t(msg("Optional")) : undefined}
                     onFocus={(event) => {
                       if (keyMasked) event.currentTarget.select();
                     }}
@@ -272,7 +269,7 @@ function ModelsForm({
                 )}
               />
               <FieldRow
-                label={t("API endpoint")}
+                label={t(msg("API endpoint"))}
                 renderControl={(id) => (
                   <Input
                     id={id}
@@ -292,7 +289,7 @@ function ModelsForm({
             </>
           )}
           <FieldRow
-            label={t("Model")}
+            label={t(msg("Model"))}
             renderControl={(id) =>
               custom ? (
                 <Input
@@ -303,7 +300,7 @@ function ModelsForm({
                   spellCheck={false}
                   value={ai.model.id}
                   aria-invalid={failed === "ai_model_not_found" ? true : undefined}
-                  placeholder={t("Enter a model ID")}
+                  placeholder={t(msg("Enter a model ID"))}
                   onChange={(event) => {
                     const modelId = event.currentTarget.value;
                     // The display name follows the ID until the admin names the model.
@@ -342,19 +339,17 @@ function ModelsForm({
             />
           ) : null}
         </PageSection>
-        <PageSection title={t("Model details")}>
+        <PageSection title={t(msg("Model details"))}>
           {custom ? null : (
             <FieldRow
-              label={t("Price")}
-              description={t(
-                "USD per million tokens. They estimate costs and cost limits; without them, usage counts tokens only.",
-              )}
+              label={t(msg("Price"))}
+              description={t(msg("USD per million tokens. They estimate costs and cost limits; without them, usage counts tokens only."))}
               renderControl={() => <PriceSummary cost={ai.model.cost} />}
             />
           )}
           <FieldRow
-            label={t("Display name")}
-            error={problem === "name" ? t("Enter a display name.") : null}
+            label={t(msg("Display name"))}
+            error={problem === "name" ? t(msg("Enter a display name.")) : null}
             renderControl={(id) => (
               <Input
                 id={id}
@@ -367,7 +362,7 @@ function ModelsForm({
             )}
           />
           <FieldRow
-            label={t("Context window (tokens)")}
+            label={t(msg("Context window (tokens)"))}
             renderControl={(id) => (
               <TokenInput
                 id={id}
@@ -377,12 +372,10 @@ function ModelsForm({
             )}
           />
           <FieldRow
-            label={t("Maximum output (tokens)")}
+            label={t(msg("Maximum output (tokens)"))}
             error={
               problem === "limits"
-                ? t(
-                    "Use whole numbers: a context window of at least 1,024 tokens and a smaller maximum output.",
-                  )
+                ? t(msg("Use whole numbers: a context window of at least 1,024 tokens and a smaller maximum output."))
                 : null
             }
             renderControl={(id) => (
@@ -394,8 +387,8 @@ function ModelsForm({
             )}
           />
           <FieldRow
-            label={t("Images")}
-            description={t("Send images people attach to the model.")}
+            label={t(msg("Images"))}
+            description={t(msg("Send images people attach to the model."))}
             renderControl={(id) => (
               <Switch
                 id={id}
@@ -405,8 +398,8 @@ function ModelsForm({
             )}
           />
           <FieldRow
-            label={t("PDFs")}
-            description={t("Send PDFs people attach to the model.")}
+            label={t(msg("PDFs"))}
+            description={t(msg("Send PDFs people attach to the model."))}
             renderControl={(id) => (
               <Switch
                 id={id}
@@ -418,18 +411,14 @@ function ModelsForm({
         </PageSection>
         {custom ? (
           <PageSection
-            title={t("Prices")}
-            description={t(
-              "USD per million tokens. They estimate costs and cost limits; without them, usage counts tokens only.",
-            )}
+            title={t(msg("Prices"))}
+            description={t(msg("USD per million tokens. They estimate costs and cost limits; without them, usage counts tokens only."))}
           >
             <div className="flex flex-col gap-2 px-3 py-3 sm:px-4">
               <CustomPriceFields value={prices} onChange={setPrices} />
               {problem === "prices" ? (
                 <p className="text-xs text-destructive-foreground">
-                  {t(
-                    "Enter both the input and output prices as numbers, or leave all prices empty.",
-                  )}
+                  {t(msg("Enter both the input and output prices as numbers, or leave all prices empty."))}
                 </p>
               ) : null}
             </div>
@@ -444,16 +433,16 @@ function ModelsForm({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Button type="submit" disabled={!canSave || busy}>
               {busy ? <Spinner size="sm" /> : null}
-              {t("Save settings")}
+              {t(msg("Save settings"))}
             </Button>
             {dirty && !canSave && !busy ? (
               <span className="text-xs text-muted-foreground">
-                {t("You can save once the connection works and every field is valid.")}
+                {t(msg("You can save once the connection works and every field is valid."))}
               </span>
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            {t("AI changes reload spaces after answers in progress finish.")}
+            {t(msg("AI changes reload spaces after answers in progress finish."))}
           </p>
         </div>
       </fieldset>
@@ -468,24 +457,22 @@ function ProviderRow({
   readonly providerId: BaskuleAIProviderId | null;
   readonly onChange: (providerId: BaskuleAIProviderId) => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <FieldRow
-      label={t("Provider")}
+      label={t(msg("Provider"))}
       description={
         providerId === null ? (
-          t("The provider and model answer every chat in your organization.")
+          t(msg("The provider and model answer every chat in your organization."))
         ) : providerId === "opencode" ? (
           <span className="flex items-start gap-1.5">
             <TriangleAlertIcon aria-hidden="true" className="mt-0.5 size-3 shrink-0 text-warning" />
-            {t(
-              "Free model hosted by OpenCode. Prompts are sent to OpenCode's servers and may be used to improve their models; subject to OpenCode's terms.",
-            )}
+            {t(msg("Free model hosted by OpenCode. Prompts are sent to OpenCode's servers and may be used to improve their models; subject to OpenCode's terms."))}
           </span>
         ) : providerId === "custom" ? (
-          t("Connect an OpenAI-compatible streaming Chat Completions API.")
+          t(msg("Connect an OpenAI-compatible streaming Chat Completions API."))
         ) : (
-          t("Use your provider API key and choose a model below.")
+          t(msg("Use your provider API key and choose a model below."))
         )
       }
       renderControl={(id) => (
@@ -496,7 +483,7 @@ function ProviderRow({
           }}
         >
           <SelectTrigger id={id}>
-            <SelectValue placeholder={t("Choose a provider")}>
+            <SelectValue placeholder={t(msg("Choose a provider"))}>
               {providerId === null ? null : BASKULE_AI_PROVIDERS[providerId].name}
             </SelectValue>
           </SelectTrigger>
@@ -573,7 +560,7 @@ function ConnectionStatus({
   readonly check: Check | null;
   readonly onRetry: () => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <div
       role="status"
@@ -581,26 +568,26 @@ function ConnectionStatus({
     >
       {check === null ? (
         <span className="text-muted-foreground">
-          {t("Choose a model and an API endpoint to check the connection.")}
+          {t(msg("Choose a model and an API endpoint to check the connection."))}
         </span>
       ) : check.status === "checking" ? (
         <>
           <Spinner size="sm" tone="muted" />
-          <span className="text-muted-foreground">{t("Checking the connection…")}</span>
+          <span className="text-muted-foreground">{t(msg("Checking the connection…"))}</span>
         </>
       ) : check.status === "valid" ? (
         <>
           <CheckCircle2Icon aria-hidden className="size-4 shrink-0 text-success" />
-          <span className="text-foreground">{t("Connection works")}</span>
+          <span className="text-foreground">{t(msg("Connection works"))}</span>
         </>
       ) : (
         <>
           <CircleAlertIcon aria-hidden className="size-4 shrink-0 text-destructive" />
           <span className="text-destructive-foreground">
-            {check.message || t("Could not check the connection.")}
+            {check.message || t(msg("Could not check the connection."))}
           </span>
           <Button type="button" size="xs" variant="ghost" onClick={onRetry}>
-            {t("Check again")}
+            {t(msg("Check again"))}
           </Button>
         </>
       )}
@@ -641,7 +628,7 @@ function ModelPicker({
   readonly model: BaskuleAIModel;
   readonly onPick: (model: BaskuleAvailableModel) => void;
 }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [listing, setListing] = useState<Listing | null>(null);
@@ -673,7 +660,7 @@ function ModelPicker({
         settle({
           id: listId,
           status: "error",
-          message: errorText(cause, t("Could not load the models.")),
+          message: errorText(cause, t(msg("Could not load the models."))),
         }),
     );
   };
@@ -699,15 +686,15 @@ function ModelPicker({
       }}
     >
       <ComboboxTrigger id={id} aria-invalid={invalid || undefined} render={<SelectButton />}>
-        {model.name || model.id || t("Choose a model")}
+        {model.name || model.id || t(msg("Choose a model"))}
         {model.name && model.name !== model.id ? (
           <span className="ms-2 text-muted-foreground">{model.id}</span>
         ) : null}
       </ComboboxTrigger>
       <ComboboxPopup align="end" className="w-80">
         <ComboboxSearchInput
-          aria-label={t("Search models")}
-          placeholder={t("Search models")}
+          aria-label={t(msg("Search models"))}
+          placeholder={t(msg("Search models"))}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -715,13 +702,13 @@ function ModelPicker({
           {shown?.status === "loading" ? (
             <p className="flex items-center gap-2 p-2 text-xs text-muted-foreground">
               <Spinner size="sm" tone="muted" />
-              {t("Loading the provider's models…")}
+              {t(msg("Loading the provider's models…"))}
             </p>
           ) : shown?.status === "error" ? (
             <p className="p-2 text-xs text-destructive-foreground">{shown.message}</p>
           ) : matches.length === 0 ? (
             <p className="p-2 text-xs text-muted-foreground">
-              {search ? t("No model matches your search.") : t("This key has no chat models.")}
+              {search ? t(msg("No model matches your search.")) : t(msg("This key has no chat models."))}
             </p>
           ) : (
             matches.map((entry, index) => (

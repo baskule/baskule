@@ -1,4 +1,5 @@
-import { useTranslation } from "../i18n";
+import { useMessages, msg } from "gt-react";
+
 
 // baskule: "/" opens a fresh chat draft (composer first, like ChatGPT) instead of the
 // most recent project's draft or the "Add project" hero.
@@ -15,7 +16,7 @@ import { useBaskuleNewChat } from "./useBaskuleNewChat";
 const retryDelayMs = (failures: number) => Math.min(5_000 * 2 ** (failures - 1), 60_000);
 
 export function BaskuleIndexLanding() {
-  const t = useTranslation();
+  const t = useMessages();
   const { available, startNewChat } = useBaskuleNewChat();
   const router = useRouter();
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Consume the one-shot session-storage notification after space access is revoked.
@@ -25,8 +26,8 @@ export function BaskuleIndexLanding() {
       window.sessionStorage.removeItem("baskule:space-access-removed");
       toastManager.add({
         type: "info",
-        title: t("Access to this space was removed"),
-        description: t("You can continue in your personal space."),
+        title: t(msg("Access to this space was removed")),
+        description: t(msg("You can continue in your personal space.")),
         timeout: 10_000,
       });
     } catch {
@@ -65,14 +66,14 @@ export function BaskuleIndexLanding() {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
       {!available ? (
-        <p>{t("Connecting to Baskule…")}</p>
+        <p>{t(msg("Connecting to Baskule…"))}</p>
       ) : failures === 0 ? (
         <Spinner className="size-4" />
       ) : (
         <>
-          <p>{t("Couldn't start a new chat. Retrying…")}</p>
+          <p>{t(msg("Couldn't start a new chat. Retrying…"))}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => setFailures(0)}>
-            {t("Try again")}
+            {t(msg("Try again"))}
           </Button>
         </>
       )}

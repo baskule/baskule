@@ -111,6 +111,10 @@ export const layer: Layer.Layer<
     // Subscribe before the seed read so saves during registry construction are queued.
     const settingsChanges = yield* serverSettings.subscribeChanges;
     const initialSettings: ServerSettings | undefined = yield* serverSettings.getSettings.pipe(
+      Effect.tapError((error) => Effect.logWarning("Provider settings unavailable at startup", {
+        operation: error.operation,
+        cause: error.cause,
+      })),
       Effect.orElseSucceed(() => undefined),
     );
     const initialConfigMap =

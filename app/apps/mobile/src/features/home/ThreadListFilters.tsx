@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react-native";
 import { Pressable, ScrollView } from "react-native";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
@@ -20,7 +19,7 @@ export function ThreadListFilters(props: {
   /** List padding the scroller bleeds through so pills start where row content does. */
   readonly gutter: number;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
   const selectedEnvironment = props.environments.find(
     (environment) => environment.environmentId === props.selectedEnvironmentId,
   );
@@ -37,16 +36,16 @@ export function ThreadListFilters(props: {
       <ListFilterMenu
         label={
           selectedEnvironment?.label ??
-          (BASKULE_FLAGS.projects ? t("All environments") : t("All spaces"))
+          (BASKULE_FLAGS.projects ? gt("All environments") : gt("All spaces"))
         }
         accessibilityLabel={
-          BASKULE_FLAGS.projects ? t("Filter threads by environment") : t("Filter chats by space")
+          BASKULE_FLAGS.projects ? gt("Filter threads by environment") : gt("Filter chats by space")
         }
         active={selectedEnvironment !== undefined}
         actions={[
           {
             id: "all",
-            title: BASKULE_FLAGS.projects ? t("All environments") : t("All spaces"),
+            title: BASKULE_FLAGS.projects ? gt("All environments") : gt("All spaces"),
             state: props.selectedEnvironmentId === null ? "on" : "off",
           },
           ...props.environments.map((environment) => ({
@@ -70,13 +69,13 @@ export function ThreadListFilters(props: {
       />
       {BASKULE_FLAGS.projects ? (
         <ListFilterMenu
-          label={selectedProject?.label ?? t("All projects")}
-          accessibilityLabel={t("Filter threads by project")}
+          label={selectedProject?.label ?? gt("All projects")}
+          accessibilityLabel={gt("Filter threads by project")}
           active={selectedProject !== undefined}
           actions={[
             {
               id: "all",
-              title: "All projects",
+              title: gt("All projects"),
               state: props.selectedProjectKey === null ? "on" : "off",
             },
             ...props.projects.map((project) => ({
@@ -99,7 +98,7 @@ export function ThreadListFilters(props: {
       {props.selectedEnvironmentId !== null || props.selectedProjectKey !== null ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("Reset thread filters")}
+          accessibilityLabel={gt("Reset thread filters")}
           className="h-8 w-8 items-center justify-center"
           onPress={() => {
             props.onEnvironmentChange(null);

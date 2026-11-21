@@ -1,4 +1,3 @@
-import { t } from "./i18n";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import type {
   AssistantCitation,
@@ -48,9 +47,7 @@ export function isPathSuggestionCurrent(
 }
 
 export function formatAssistantCitationForComposer(citation: AssistantCitation, comment = "") {
-  return t("{{value1}} ", {
-    value1: serializeAssistantCitation(withAssistantCitationComment(citation, comment)),
-  });
+  return `${serializeAssistantCitation(withAssistantCitationComment(citation, comment))} `;
 }
 
 export function composerRequiresModifier(

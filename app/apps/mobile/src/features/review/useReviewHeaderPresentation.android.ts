@@ -1,19 +1,19 @@
-import { useTranslation } from "../../i18n";
+import { useGT } from "gt-react-native";
 
 import type { useReviewHeaderPresentation as useIosReviewHeaderPresentation } from "./useReviewHeaderPresentation";
 
 export function useReviewHeaderPresentation(
   props: Parameters<typeof useIosReviewHeaderPresentation>[0],
 ): ReturnType<typeof useIosReviewHeaderPresentation> {
-  const t = useTranslation();
+  const gt = useGT();
   return {
-    title: t("Review changes"),
-    subtitle: props.androidSubtitle || "Select a diff",
+    title: gt("Review changes"),
+    subtitle: props.androidSubtitle || gt("Select a diff"),
     gitMenu: null,
     menuIcon: "ellipsis.circle",
     refreshAction: {
       id: "refresh",
-      title: t("Refresh current diff"),
+      title: gt("Refresh current diff"),
       disabled: !props.selectedSection || props.selectedSection.isLoading,
       onPress: () => {
         void props.onRefresh();

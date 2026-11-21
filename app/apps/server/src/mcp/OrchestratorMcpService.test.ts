@@ -1,4 +1,6 @@
-import { resolveRuntimeMode } from "./OrchestratorMcpService.ts";
+import { formatThreadLink, hostedThreadLink } from "@t3tools/shared/threadLinks";
+import { isLiveSubagentShell } from "@t3tools/contracts";
+import { resolveRuntimeMode } from "./delegatedTaskModes.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
@@ -226,7 +228,7 @@ describe("OrchestratorMcpService", () => {
         Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
           list: () => Effect.succeed([]),
         }),
-        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone }),
         Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
@@ -493,7 +495,7 @@ describe("OrchestratorMcpService provider resolution", () => {
                 }),
                 providerRegistryLayer(catalog),
                 adapterRegistryLayer([codexInstanceId, opencodeInstanceId]),
-                Layer.mock(ProjectService.ProjectService)({}),
+                Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone }),
                 Layer.mock(SecretRequests.SecretRequests)({}),
                 Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
               ),
@@ -1235,7 +1237,7 @@ describe("OrchestratorMcpService thread lookup", () => {
           Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
             list: () => Effect.succeed([]),
           }),
-          Layer.mock(ProjectService.ProjectService)({}),
+          Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone }),
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
         ),
@@ -1263,6 +1265,30 @@ describe("OrchestratorMcpService thread lookup", () => {
         assert.include(error.message, `mcp:${bareId}`);
       }
       assert.equal(sends, 0);
+    }),
+  );
+
+  it.effect("points a pasted thread link at the thread it names", () =>
+    Effect.gen(function* () {
+      const delegated = liveThreadShell(ThreadId.make("thread:delegated-task:command%3Amcp%3Aabc"));
+      const ref = { environmentId: client.environmentId, threadId: delegated.id };
+      const sent = yield* Ref.make(0);
+      yield* Effect.gen(function* () {
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService;
+        for (const link of [
+          `t3-thread://v2/${ref.environmentId}/${ref.threadId}`,
+          formatThreadLink(ref, "Delegated task"),
+          hostedThreadLink(ref),
+        ]) {
+          const read = yield* mcp
+            .readThread(client, { threadId: ThreadId.make(link) })
+            .pipe(Effect.flip);
+          assert.equal(read.code, "thread_not_found");
+          assert.include(read.message, `\`${delegated.id}\``, link);
+          assert.include(read.message, "is a thread link");
+          assert.notInclude(read.message, "no longer available");
+        }
+      }).pipe(Effect.provide(service([delegated], sent)));
     }),
   );
 
@@ -1419,6 +1445,18 @@ describe("OrchestratorMcpService thread list", () => {
         { taskId: "sleep-600", kind: "command" as const, awaited: true as const },
       ],
     },
+    {
+      ...shell("thread:c-settled", "project:c", false),
+      settledOverride: "settled" as const,
+      settledAt: DateTime.makeUnsafe("2026-01-02T00:00:00Z"),
+    },
+    {
+      ...shell("thread:c-awaiting-command", "project:c", false),
+      activityRunStatus: null,
+      pendingBackgroundTasks: [
+        { taskId: "sleep-600", kind: "command" as const, awaited: true as const },
+      ],
+    },
   ];
   const shellRequests: Array<ReadonlyArray<ThreadId>> = [];
   const service = layerOrchestratorService.pipe(
@@ -1432,6 +1470,14 @@ describe("OrchestratorMcpService thread list", () => {
               shells.filter(
                 (thread) => input.projectId === undefined || thread.projectId === input.projectId,
               ),
+            ),
+          listActiveShellIndex: () =>
+            Effect.succeed(
+              shells.map((thread) => ({
+                ...thread,
+                mayBeLive: isLiveSubagentShell(thread),
+                hasRemoteTasks: false,
+              })),
             ),
           getShellSnapshot: (options) => {
             const threadIds = options?.threadIds ?? shells.map((thread) => thread.id);
@@ -1545,6 +1591,22 @@ describe("OrchestratorMcpService thread list", () => {
         listed.threads.map((thread) => thread.threadId),
         ["thread:a-awaiting-command"],
       );
+    }).pipe(Effect.provide(service)),
+  );
+
+  it.effect("skips building shells for settled threads when every status filter is live", () =>
+    Effect.gen(function* () {
+      const mcp = yield* OrchestratorMcpService.OrchestratorMcpService;
+      shellRequests.length = 0;
+      const listed = yield* mcp.listThreads(client, {
+        projectId: ProjectId.make("project:c"),
+        statuses: ["preparing", "queued", "starting", "running", "waiting"],
+      });
+      assert.deepStrictEqual(
+        listed.threads.map((thread) => thread.threadId),
+        ["thread:c-awaiting-command"],
+      );
+      assert.notInclude(shellRequests.flat(), ThreadId.make("thread:c-settled"));
     }).pipe(Effect.provide(service)),
   );
 

@@ -1,5 +1,3 @@
-import { t } from "./i18n";
-
 import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre/diffs";
 import { PullRequestContextMetadata, type PullRequestReviewPosition } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -80,10 +78,12 @@ export function buildFileReviewComment(input: {
   return {
     id: input.id,
     sectionId: `file:${input.filePath}`,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- stored in the review comment record sent to the agent
     sectionTitle: "File comment",
     filePath: input.filePath,
     startIndex: startLine - 1,
     endIndex: endLine - 1,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- stored in the review comment record sent to the agent
     rangeLabel: startLine === endLine ? `L${startLine}` : `L${startLine} to L${endLine}`,
     text: input.text.trim(),
     diff: selectedLines.join("\n"),
@@ -443,11 +443,11 @@ function getDiffChangeMarker(change: DiffReviewLine["change"]): string {
 function formatDiffReviewRangeLabel(lines: ReadonlyArray<DiffReviewLine>): string {
   const firstLine = lines[0];
   const lastLine = lines.at(-1);
-  if (!firstLine || !lastLine) return t("line");
+  if (!firstLine || !lastLine) return "line";
   const firstNumber = firstLine.newLineNumber ?? firstLine.oldLineNumber;
   const lastNumber = lastLine.newLineNumber ?? lastLine.oldLineNumber;
   if (firstNumber === null || lastNumber === null) {
-    return lines.length === 1 ? t("line") : `${lines.length} lines`;
+    return lines.length === 1 ? "line" : `${lines.length} lines`;
   }
 
   const firstMarker = getDiffChangeMarker(firstLine.change).trim();
@@ -458,6 +458,10 @@ function formatDiffReviewRangeLabel(lines: ReadonlyArray<DiffReviewLine>): strin
   return firstNumber === lastNumber
     ? `${marker}${firstNumber}`
     : `${marker}${firstNumber} to ${marker}${lastNumber}`;
+}
+
+export function diffReviewSelectionId(fileKey: string, range: SelectedLineRange): string {
+  return `${fileKey}:${range.side ?? "additions"}:${range.start}:${range.endSide ?? range.side ?? "additions"}:${range.end}`;
 }
 
 export function buildDiffReviewComment(input: {

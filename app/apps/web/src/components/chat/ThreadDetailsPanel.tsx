@@ -1,5 +1,3 @@
-import { useTranslation } from "../../i18n";
-
 import type {
   EditorId,
   EnvironmentId,
@@ -17,12 +15,13 @@ import type { ComposerThreadTarget, DraftId } from "../../composerDraftStore";
 import { useT3ProjectFileScripts } from "../../hooks/useT3ProjectFileScripts";
 import { type EnvMode, type EnvironmentOption } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
-import BaseGitActionsControl from "../GitActionsControl";
+import GitActionsControl from "../GitActionsControl";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
-import { memo, useState, type ComponentProps } from "react";
+import { T, useGT } from "gt-react";
+import { useState, type ComponentProps } from "react";
 import { ThreadDetailsCard } from "./ThreadDetailsCard";
 import { OpenInPicker } from "./OpenInPicker";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
@@ -117,8 +116,6 @@ function BaskuleThreadDetailsPanel(props: ThreadDetailsPanelProps) {
   );
 }
 
-const GitActionsControl = memo(BaseGitActionsControl);
-
 interface ThreadDetailsPanelProps extends Pick<
   ComponentProps<typeof ThreadDetailsCard>,
   "anchor" | "handle"
@@ -166,8 +163,8 @@ interface ThreadDetailsPanelProps extends Pick<
 }
 
 function UpstreamThreadDetailsPanel(props: ThreadDetailsPanelProps) {
-  const t = useTranslation();
   const visible = useClientSettings(resolveThreadDetailsVisibility);
+  const gt = useGT();
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const fileScripts = useT3ProjectFileScripts(
     props.environmentId,
@@ -256,7 +253,7 @@ function UpstreamThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               {show.environment || show.openIn || show.scripts ? (
                 <ThreadDetailsSection
                   headingId="thread-details-workspace-heading"
-                  title={t("Workspace")}
+                  title={gt("Workspace")}
                   separated={false}
                   showHeading={false}
                 >
@@ -306,7 +303,7 @@ function UpstreamThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               {show.branch || show.pullRequests || show.git ? (
                 <ThreadDetailsSection
                   headingId="thread-details-version-control-heading"
-                  title={t("Version Control")}
+                  title={gt("Version Control")}
                   showHeading={false}
                   separated={density === "full"}
                 >
@@ -366,7 +363,7 @@ function UpstreamThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 >
                   <SlidersHorizontalIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
                   <span className={cn("ml-0.5", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
-                    {t("Choose what to show")}
+                    <T>Choose what to show</T>
                   </span>
                 </ThreadDetailsControl>
               </div>

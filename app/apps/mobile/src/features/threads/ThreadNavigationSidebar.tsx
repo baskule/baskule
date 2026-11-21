@@ -1,5 +1,5 @@
-import { useTranslation } from "../../i18n";
-
+import { Button } from "../../components/ui/Button";
+import { useGT, useMessages } from "gt-react-native";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
@@ -118,7 +118,8 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
 }
 
 function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
-  const t = useTranslation();
+  const gt = useGT();
+  const messages = useMessages();
   const floatingTabsEnabled = useAndroidFloatingTabs();
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const drawerColor = materialTheme["--color-drawer"];
@@ -174,12 +175,15 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
         : [];
   const projectScopes = useMemo(
     () =>
-      buildHomeProjectScopes({
-        projects,
-        environmentId: options.selectedEnvironmentId,
-        projectGroupingMode: options.projectGroupingMode,
-      }),
-    [projects, options.selectedEnvironmentId, options.projectGroupingMode],
+      buildHomeProjectScopes(
+        {
+          projects,
+          environmentId: options.selectedEnvironmentId,
+          projectGroupingMode: options.projectGroupingMode,
+        },
+        messages,
+      ),
+    [projects, options.selectedEnvironmentId, options.projectGroupingMode, messages],
   );
   const projectFilterOptions = pickableProjectGroups(
     sortHomeProjectScopes({
@@ -521,25 +525,28 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   };
   const header = (
     <WorkspaceListHeader
-      accessibilityLabel="T3 Code, Threads"
+      accessibilityLabel={gt("{appName}, Threads", { appName: "T3 Code" })}
       onOpenEnvironments={props.onOpenEnvironmentSettings}
       onOpenSettings={props.onOpenSettings}
       search={{
         value: props.searchQuery,
         onChangeText: props.onSearchQueryChange,
-        placeholder: "Search",
-        accessibilityLabel: "Search threads",
+        placeholder: gt("Search", { $context: "search field placeholder" }),
+        accessibilityLabel: gt("Search threads"),
       }}
       filter={{
         customized: options.selectedEnvironmentId !== null || selectedProjectKey !== null,
-        items: buildHomeListFilterMenuItems({
-          environments,
-          projects: projectFilterOptions,
-          selectedEnvironmentId: options.selectedEnvironmentId,
-          selectedProjectKey,
-          onEnvironmentChange: setSelectedEnvironmentId,
-          onProjectChange: setSelectedProjectKey,
-        }),
+        items: buildHomeListFilterMenuItems(
+          {
+            environments,
+            projects: projectFilterOptions,
+            selectedEnvironmentId: options.selectedEnvironmentId,
+            selectedProjectKey,
+            onEnvironmentChange: setSelectedEnvironmentId,
+            onProjectChange: setSelectedProjectKey,
+          },
+          messages,
+        ),
       }}
       sidebar={{
         width: props.width,
@@ -553,25 +560,40 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     !catalogState.hasReadyEnvironment &&
     !catalogState.hasConnectingEnvironment;
   const listEmpty = (
-    <Text
-      className={
-        Platform.OS === "android"
-          ? "px-4 py-4 text-center text-sm text-drawer-foreground-muted"
-          : "px-2 py-4 text-sm text-drawer-foreground-muted"
-      }
-    >
-      {catalogState.isLoadingConnections
-        ? t("Loading threads…")
-        : showAddEnvironment
-          ? t("No environments connected")
-          : props.searchQuery.trim().length > 0
-            ? threadSearch.isPending
-              ? t("Searching thread messages…")
-              : t("No matching threads")
-            : selectedProjectScope !== null
-              ? t("No threads in {{title}}", { title: selectedProjectScope.title })
-              : t("No threads yet")}
-    </Text>
+    <View>
+      <Text
+        className={
+          Platform.OS === "android"
+            ? "px-4 py-4 text-center text-sm text-drawer-foreground-muted"
+            : "px-2 py-4 text-sm text-drawer-foreground-muted"
+        }
+      >
+        {catalogState.isLoadingConnections
+          ? gt("Loading threads…")
+          : showAddEnvironment
+            ? gt("No environments connected")
+            : props.searchQuery.trim().length > 0
+              ? threadSearch.isPending
+                ? gt("Searching thread messages…")
+                : threadSearch.failed
+                  ? gt("Couldn't search thread messages")
+                  : gt("No matching threads")
+              : selectedProjectScope !== null
+                ? gt("No threads in {project}", { project: selectedProjectScope.title })
+                : gt("No threads yet")}
+      </Text>
+      {showAddEnvironment ? (
+        <View className={Platform.OS === "android" ? "self-center" : "px-2"}>
+          <Button
+            tone="primary"
+            size="compact"
+            icon="plus"
+            label={gt("Add environment")}
+            onPress={props.onOpenEnvironmentSettings}
+          />
+        </View>
+      ) : null}
+    </View>
   );
 
   if (Platform.OS === "ios") {

@@ -582,6 +582,7 @@ layer("CommandPolicyV2", (it) => {
         capabilities: FULL_TEST_PROVIDER_CAPABILITIES,
         sameProvider: true,
         hasStrongNativeSource: true,
+        hasNativeTurnBoundary: false,
         sourceRunStatus: "completed",
         fromSpecificTurn: true,
         sourceBusy: false,
@@ -600,6 +601,7 @@ layer("CommandPolicyV2", (it) => {
           commandId,
           threadId,
           sourceBusy: false,
+          hasNativeTurnBoundary: false,
           providerInstanceId: ProviderInstanceId.make("opencode"),
           capabilities: capabilities((current) => ({
             ...current,
@@ -708,6 +710,7 @@ layer("CommandPolicyV2", (it) => {
           capabilities: FULL_TEST_PROVIDER_CAPABILITIES,
           sameProvider: true,
           hasStrongNativeSource: true,
+          hasNativeTurnBoundary: false,
           sourceRunStatus: "completed",
           fromSpecificTurn: true,
           sourceBusy,

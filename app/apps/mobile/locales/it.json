@@ -1,8 +1,0 @@
-{
-  "ios": {
-    "NSLocalNetworkUsageDescription": "Consenti a Baskule di connettersi ai server Baskule sulla rete locale o sulla tailnet.",
-    "NSPhotoLibraryAddUsageDescription": "Consenti a Baskule di salvare immagini nella libreria foto.",
-    "NSMicrophoneUsageDescription": "Consenti a Baskule di usare il microfono per l'input vocale.",
-    "NSCameraUsageDescription": "Consenti a Baskule di accedere alla fotocamera per scansionare i codici QR di connessione."
-  }
-}

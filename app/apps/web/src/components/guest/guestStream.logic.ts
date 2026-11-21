@@ -1,4 +1,3 @@
-import { t } from "../../i18n";
 import {
   GUEST_ATTACHMENT_ROUTE,
   GUEST_MEDIA_ROUTE,
@@ -15,8 +14,14 @@ import {
   type OrchestrationV2TurnItem,
   type ThreadGuestMessage,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "~/i18n/messages";
 import { applyOrchestrationV2ProjectionEvent } from "@t3tools/client-runtime/state/orchestration-v2-projection";
-import { mergeOlderHistoryIntoProjection } from "@t3tools/client-runtime/state/thread-history-merge";
+import {
+  mergeOlderHistoryIntoProjection,
+  mergeOlderSubagentsIntoProjection,
+} from "@t3tools/client-runtime/state/thread-history-merge";
 import { boundedSnapshotProjection } from "@t3tools/shared/orchestrationV2BoundedSnapshot";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -105,7 +110,10 @@ export function applyGuestStreamEvent(
       if (state.projection === null || state.historyCursor !== event.cursor) return state;
       return {
         ...state,
-        projection: mergeOlderHistoryIntoProjection(state.projection, event.page.items),
+        projection: mergeOlderSubagentsIntoProjection(
+          mergeOlderHistoryIntoProjection(state.projection, event.page.items),
+          event.page.subagents,
+        ),
         awaitingRowIds: withoutPlaced(
           state.awaitingRowIds,
           event.page.items.map((row) => row.item),
@@ -194,12 +202,16 @@ export function unplacedGuestMessages(
 }
 
 /** "23h left" or "5m left", rounded down, for the guest page header. */
-export function formatGuestExpiry(expiresAt: string, nowMs: number): string {
+export function formatGuestExpiry(
+  expiresAt: string,
+  nowMs: number,
+  resolve: MessageResolver = m,
+): string {
   const minutes = Math.floor((Date.parse(expiresAt) - nowMs) / 60_000);
-  if (minutes <= 0) return "Expired";
+  if (minutes <= 0) return resolve(msg("Expired"));
   return minutes >= 60
-    ? t("{{value1}}h left", { value1: Math.floor(minutes / 60) })
-    : t("{{minutes}}m left", { minutes: minutes });
+    ? resolve(msg("{hours}h left", { hours: Math.floor(minutes / 60) }))
+    : resolve(msg("{minutes}m left", { minutes }));
 }
 
 /**
@@ -225,14 +237,15 @@ export const guestMediaUrl = (shareId: string, path: string) =>
  */
 export function guestFilesProblem(
   files: ReadonlyArray<Pick<File, "type" | "size">>,
+  resolve: MessageResolver = m,
 ): string | null {
   if (files.length > GUEST_MESSAGE_MAX_ATTACHMENTS) {
-    return t("Attach up to {{GUEST_MESSAGE_MAX_ATTACHMENTS}} files to a message.", {
-      GUEST_MESSAGE_MAX_ATTACHMENTS: GUEST_MESSAGE_MAX_ATTACHMENTS,
-    });
+    return resolve(
+      msg("Attach up to {count} files to a message.", { count: GUEST_MESSAGE_MAX_ATTACHMENTS }),
+    );
   }
   if (files.reduce((total, file) => total + file.size, 0) > GUEST_MESSAGE_MAX_ATTACHMENT_BYTES) {
-    return t("Attached files can total up to 10 MB per message.");
+    return resolve(msg("Attached files can total up to 10 MB per message."));
   }
   const unsupported = files.some(
     (file) =>
@@ -241,7 +254,7 @@ export function guestFilesProblem(
         !isProviderSendTurnSupportedImageMimeType(file.type)),
   );
   return unsupported
-    ? t("This file cannot be attached. Images must be PNG, JPEG, GIF, or WebP.")
+    ? resolve(msg("This file cannot be attached. Images must be PNG, JPEG, GIF, or WebP."))
     : null;
 }
 

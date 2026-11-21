@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import { useAtomValue } from "@effect/atom-react";
 import {
   createManagedRelayQueryManager,
@@ -28,7 +26,7 @@ export const deregisterManagedRelayEnvironmentCommand = createRuntimeCommand(
   managedRelayAtomRuntime,
   {
     get label() {
-      return t("mobile:managed-relay:deregister-environment");
+      return "mobile:managed-relay:deregister-environment";
     },
     scheduler: managedRelayMutationScheduler,
     concurrency: {

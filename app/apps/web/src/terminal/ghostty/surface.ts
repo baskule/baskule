@@ -1,4 +1,3 @@
-import { t } from "../../i18n";
 import { resolveEventKeys } from "@t3tools/shared/keybindingMatching";
 import { isMacPlatform } from "../../lib/utils";
 import { SELECTION_MULTI_CLICK_INTERVAL_MS } from "../../lib/selectionActions";
@@ -22,31 +21,33 @@ import {
 import symbolsFontUrl from "./fonts/SymbolsNerdFontMono-Regular.woff2?url";
 import { isMonospaceFamily } from "../../appearanceFonts";
 import { observeResize } from "../../lib/observeResize";
+import { msg } from "gt-react";
+import { m } from "../../i18n/messages";
 
 const DEFAULT_TERMINAL_FONT_SIZE = 12;
 const MIN_TERMINAL_FONT_SIZE = 6;
 const MAX_TERMINAL_FONT_SIZE = 32;
 const TERMINAL_GLYPH_FALLBACKS =
-  t('"Symbols Nerd Font Mono", "Symbols Nerd Font", "JetBrainsMono Nerd Font", ') +
-  t('"JetBrainsMono NF", "FiraCode Nerd Font", "Hack Nerd Font", "MesloLGS NF", ') +
-  t('"CaskaydiaCove Nerd Font", "PowerlineSymbols", monospace');
+  '"Symbols Nerd Font Mono", "Symbols Nerd Font", "JetBrainsMono Nerd Font", ' +
+  '"JetBrainsMono NF", "FiraCode Nerd Font", "Hack Nerd Font", "MesloLGS NF", ' +
+  '"CaskaydiaCove Nerd Font", "PowerlineSymbols", monospace';
 // The platform's own monospace faces; concrete names only, because an
 // unknown keyword (like ui-monospace) makes canvas font shorthand parsing
 // reject the whole string.
 const DEFAULT_TERMINAL_FONT_FAMILY =
-  t('"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", ') + TERMINAL_GLYPH_FALLBACKS;
+  '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", ' + TERMINAL_GLYPH_FALLBACKS;
 const CONTENT_PADDING = 4;
 const MIN_SCROLLBAR_THUMB_HEIGHT = 18;
 const CURSOR_BLINK_INTERVAL_MS = 500;
 const TERMINAL_LINK_HOVER_DELAY_MS = 250;
 /** End an unterminated synchronized update instead of freezing the last frame. */
 const SYNCHRONIZED_OUTPUT_RENDER_TIMEOUT_MS = 500;
-const TERMINAL_FONT_LOAD_TEXT = t("iMW0@# .");
+const TERMINAL_FONT_LOAD_TEXT = "iMW0@# .";
 const TERMINAL_FONT_LOAD_VARIANTS = [
-  t("normal 400"),
-  t("normal 700"),
-  t("italic 400"),
-  t("italic 700"),
+  "normal 400",
+  "normal 700",
+  "italic 400",
+  "italic 700",
 ] as const;
 
 export interface GhosttyTerminalFont {
@@ -60,7 +61,7 @@ function ensureTerminalSymbolsFont(): Promise<void> {
   if (symbolsFontLoad !== null) return symbolsFontLoad;
   symbolsFontLoad = (async () => {
     try {
-      const face = new FontFace(t("Symbols Nerd Font Mono"), `url(${symbolsFontUrl})`);
+      const face = new FontFace("Symbols Nerd Font Mono", `url(${symbolsFontUrl})`);
       document.fonts.add(await face.load());
     } catch {}
   })();
@@ -85,10 +86,7 @@ function uncheckedTerminalFontFamily(family?: string): string {
   const custom = family === undefined ? "" : quoteTerminalFontFamilies(family);
   return custom.length === 0
     ? DEFAULT_TERMINAL_FONT_FAMILY
-    : t("{{custom}}, {{TERMINAL_GLYPH_FALLBACKS}}", {
-        custom: custom,
-        TERMINAL_GLYPH_FALLBACKS: TERMINAL_GLYPH_FALLBACKS,
-      });
+    : `${custom}, ${TERMINAL_GLYPH_FALLBACKS}`;
 }
 
 function terminalFontFamily(family?: string): string {
@@ -700,12 +698,12 @@ export class GhosttyTerminalSurface {
   ): Promise<GhosttyTerminalSurface> {
     const canvas = document.createElement("canvas");
     canvas.className = "block size-full cursor-text";
-    canvas.style.touchAction = t("pan-x pinch-zoom");
+    canvas.style.touchAction = "pan-x pinch-zoom";
     canvas.setAttribute("aria-hidden", "true");
 
     const input = document.createElement("textarea");
     input.className = "t3-ghostty-input";
-    input.setAttribute("aria-label", t("Terminal input"));
+    input.setAttribute("aria-label", m(msg("Terminal input")));
     input.autocapitalize = "off";
     input.autocomplete = "off";
     input.spellcheck = false;
@@ -716,7 +714,7 @@ export class GhosttyTerminalSurface {
     scrollbar.className =
       "group absolute top-1 right-px bottom-1 z-1 w-[var(--app-scrollbar-width)] cursor-default touch-none";
     scrollbar.setAttribute("role", "scrollbar");
-    scrollbar.setAttribute("aria-label", t("Terminal scrollback"));
+    scrollbar.setAttribute("aria-label", m(msg("Terminal scrollback")));
     scrollbar.setAttribute("aria-orientation", "vertical");
     scrollbar.tabIndex = 0;
     scrollbar.hidden = true;
@@ -727,12 +725,8 @@ export class GhosttyTerminalSurface {
     mount.replaceChildren(canvas, input, scrollbar);
 
     const context = canvas.getContext("2d", { alpha: false });
-    if (!context) throw new Error(t("Canvas 2D is unavailable"));
-    context.fillStyle = t("rgb({{r}}, {{g}}, {{b}})", {
-      r: options.theme.background.r,
-      g: options.theme.background.g,
-      b: options.theme.background.b,
-    });
+    if (!context) throw new Error("Canvas 2D is unavailable");
+    context.fillStyle = `rgb(${options.theme.background.r}, ${options.theme.background.g}, ${options.theme.background.b})`;
     context.fillRect(0, 0, canvas.width, canvas.height);
     const fontSize = terminalFontSize(options.font?.size);
     try {

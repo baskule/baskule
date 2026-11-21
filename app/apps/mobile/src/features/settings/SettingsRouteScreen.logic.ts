@@ -1,10 +1,15 @@
-import { t } from "../../i18n";
+import { msg } from "gt-react-native";
 
-export function resolveAgentAwarenessPlatformPresentation(platform: string): {
+import { m, type MessageResolver } from "../../i18n/messages";
+
+export function resolveAgentAwarenessPlatformPresentation(
+  platform: string,
+  resolve: MessageResolver = m,
+): {
   readonly supported: boolean;
   readonly subtitle: string | undefined;
 } {
   return platform === "ios" || platform === "android"
     ? { supported: true, subtitle: undefined }
-    : { supported: false, subtitle: t("Unavailable on this platform") };
+    : { supported: false, subtitle: resolve(msg("Unavailable on this platform")) };
 }

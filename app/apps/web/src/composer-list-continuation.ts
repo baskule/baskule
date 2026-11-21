@@ -1,4 +1,3 @@
-import { t } from "./i18n";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 
 export interface ComposerListEdit {
@@ -80,15 +79,12 @@ export function nextOrderedMarkerText(marker: string): string {
 
 function nextMarkerText(marker: ListMarker): string {
   if (marker.kind === "ordered") {
-    return t("{{indent}}{{value2}} ", {
-      indent: marker.indent,
-      value2: nextOrderedMarkerText(`${marker.numberText}${marker.delimiter}`),
-    });
+    return `${marker.indent}${nextOrderedMarkerText(`${marker.numberText}${marker.delimiter}`)} `;
   }
   if (marker.kind === "task") {
-    return t("{{indent}}- [ ] ", { indent: marker.indent });
+    return `${marker.indent}- [ ] `;
   }
-  return t("{{indent}}{{bullet}} ", { indent: marker.indent, bullet: marker.bullet });
+  return `${marker.indent}${marker.bullet} `;
 }
 
 // Markdown tabs advance to the next four-column stop.
@@ -249,7 +245,8 @@ export function listContinuationForEnter(value: string, cursor: number): Compose
     }
     return { start: line.start, end, replacement, cursorAfter };
   }
-  const insertion = t("\n{{value1}}", { value1: nextMarkerText(parsed.marker) });
+  const insertion = `
+${nextMarkerText(parsed.marker)}`;
   const cursorAfter = cursor + insertion.length;
   const { marker } = parsed;
   if (marker.kind === "ordered") {

@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import * as Schema from "effect/Schema";
 import * as Record from "effect/Record";
 import { useSyncExternalStore } from "react";
@@ -13,10 +11,7 @@ export class LocalStorageOperationError extends Schema.TaggedError<LocalStorageO
   },
 ) {
   override get message(): string {
-    return t("Failed to {{operation}} local storage item {{storageKey}}.", {
-      operation: this.operation,
-      storageKey: this.storageKey,
-    });
+    return `Failed to ${this.operation} local storage item ${this.storageKey}.`;
   }
 }
 
@@ -106,7 +101,7 @@ function readSerializedValue(key: string): string | null {
   try {
     return read(key);
   } catch (error) {
-    console.error(t("[LOCALSTORAGE] Could not read stored value."), error);
+    console.error("[LOCALSTORAGE] Could not read stored value.", error);
     return null;
   }
 }
@@ -123,7 +118,7 @@ function decodeOrInitial<T, E>(
   try {
     return decode(key, schema, serializedValue);
   } catch (error) {
-    console.error(t("[LOCALSTORAGE] Could not decode stored value."), error);
+    console.error("[LOCALSTORAGE] Could not decode stored value.", error);
     return initialValue;
   }
 }
@@ -171,7 +166,7 @@ export function writeLocalStorageValue<T, E>(
       try {
         currentValue = getLocalStorageItem(key, schema) ?? initialValue;
       } catch (error) {
-        console.error(t("[LOCALSTORAGE] Could not read stored value."), error);
+        console.error("[LOCALSTORAGE] Could not read stored value.", error);
       }
       try {
         valueToStore = (value as (val: T) => T)(currentValue);
@@ -192,7 +187,7 @@ export function writeLocalStorageValue<T, E>(
     }
     dispatchLocalStorageChange(key);
   } catch (error) {
-    console.error(t("[LOCALSTORAGE] Could not update stored value."), error);
+    console.error("[LOCALSTORAGE] Could not update stored value.", error);
   }
 }
 

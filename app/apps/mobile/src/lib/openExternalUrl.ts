@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import * as Schema from "effect/Schema";
 import { Linking } from "react-native";
 
@@ -25,10 +23,7 @@ export class ExternalUrlOpenError extends Schema.TaggedError<ExternalUrlOpenErro
   },
 ) {
   override get message(): string {
-    return t("Failed to open {{target}} URL with the {{scheme}} scheme.", {
-      target: this.target,
-      scheme: this.scheme,
-    });
+    return `Failed to open ${this.target} URL with the ${this.scheme} scheme.`;
   }
 }
 

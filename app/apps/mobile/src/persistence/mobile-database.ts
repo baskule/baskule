@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -44,6 +42,7 @@ const ClientCacheSummaryRows = Schema.Array(
 
 const MobileDatabaseOperation = Schema.Literals([
   "open",
+  "close",
   "migrate",
   "load-cache",
   "list-cache",
@@ -65,7 +64,7 @@ export class MobileDatabaseError extends Schema.TaggedError<MobileDatabaseError>
   },
 ) {
   override get message(): string {
-    return t("Mobile database operation failed: {{operation}}.", { operation: this.operation });
+    return `Mobile database operation failed: ${this.operation}.`;
   }
 }
 
@@ -128,7 +127,11 @@ const makeAvailable = Effect.gen(function* () {
       },
       catch: databaseError("open"),
     }),
-    (openDatabase) => Effect.promise(() => openDatabase.closeAsync()).pipe(Effect.ignore),
+    (openDatabase) =>
+      Effect.tryPromise({
+        try: () => openDatabase.closeAsync(),
+        catch: databaseError("close"),
+      }).pipe(Effect.ignore),
   );
 
   yield* Effect.tryPromise({

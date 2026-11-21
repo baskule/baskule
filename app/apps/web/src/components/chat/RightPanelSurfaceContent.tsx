@@ -63,6 +63,7 @@ export function RightPanelSurfaceContent(props: {
   readonly sideChatParentPanel: SideChatParentPanel;
 }) {
   const { surface, threadRef, visible, onCloseSurface } = props;
+
   if (surface === null) return null;
   switch (surface.kind) {
     case "preview":

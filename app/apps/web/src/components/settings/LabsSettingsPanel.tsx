@@ -1,18 +1,17 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react";
 import { Switch } from "../ui/switch";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 /** Features still settling in. */
 export function LabsSettingsPanel() {
-  const t = useTranslation();
+  const gt = useGT();
   return (
     <SettingsPageContainer>
-      <SettingsSection id="beta" title={t("Beta")}>
+      <SettingsSection id="beta" title={gt("Beta")}>
         <BoringSidebarRow />
         <FastWorktreeCheckoutRow />
       </SettingsSection>
@@ -21,20 +20,21 @@ export function LabsSettingsPanel() {
 }
 
 function BoringSidebarRow() {
-  const t = useTranslation();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  const gt = useGT();
   return (
     <SettingsRow
       {...searchableSetting("boring-sidebar")}
-      description={t(
+      description={gt(
         "Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders.",
       )}
       control={
         <Switch
           checked={settings.boringSidebarEnabled}
           onCheckedChange={(checked) => updateSettings({ boringSidebarEnabled: Boolean(checked) })}
-          aria-label={t("Boring sidebar (group by project)")}
+          aria-label={gt("Boring sidebar (group by project)")}
         />
       }
     >
@@ -48,21 +48,24 @@ function BoringSidebarRow() {
 }
 
 function BoringSidebarMultilineRow() {
-  const t = useTranslation();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  const gt = useGT();
   return (
     <SettingsRow
       {...searchableSetting("boring-sidebar-multiline")}
       className="px-0 py-2 sm:px-0"
-      description={t("Show folder threads on two lines: the title, then the branch and agent.")}
+      description={gt(
+        "Show folder threads on two lines: the title, then the branch, pull request, and agent.",
+      )}
       control={
         <Switch
           checked={settings.boringSidebarMultilineRows}
           onCheckedChange={(checked) =>
             updateSettings({ boringSidebarMultilineRows: Boolean(checked) })
           }
-          aria-label={t("Two-line folder rows")}
+          aria-label={gt("Two-line folder rows")}
         />
       }
     />
@@ -71,9 +74,11 @@ function BoringSidebarMultilineRow() {
 
 /** Shows only when every machine in scope is a Mac, since only macOS servers honor it. */
 function FastWorktreeCheckoutRow() {
+  const searchableSetting = useSearchableSetting();
   const { scope, connectedEnvironments } = useSettingsScope();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  const gt = useGT();
   if (
     scope.kind === "project" ||
     scope.kind === "checkout" ||
@@ -89,13 +94,15 @@ function FastWorktreeCheckoutRow() {
       serverScoped
       {...searchableSetting("worktree-fast-checkout")}
       settingKeys={["fastWorktreeCheckout"]}
-      description="On a Mac, clone new worktrees from a checkout cached in the T3 home folder instead of writing every file. Uses Git’s normal checkout when it can’t. Turning it off deletes the cache."
+      description={gt(
+        "On a Mac, clone new worktrees from a checkout cached in the T3 home folder instead of writing every file. Uses Git’s normal checkout when it can’t. Turning it off deletes the cache.",
+      )}
       control={
         <ScopedSwitch
           settingKeys={["fastWorktreeCheckout"]}
           checked={settings.fastWorktreeCheckout}
           onCheckedChange={(checked) => updateSettings({ fastWorktreeCheckout: Boolean(checked) })}
-          aria-label="Fast worktree checkout"
+          aria-label={gt("Fast worktree checkout")}
         />
       }
     />

@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import {
   isModifierPairShortcut,
   snapShotModifierPairLabel,
@@ -65,8 +63,9 @@ function modifierKeyLabel(modifier: SnapShotModifier, platform: string): string 
     if (modifier === "control") return "⌃";
     return "⌥";
   }
-  if (modifier === "meta") return isWindowsPlatform(platform) ? "⊞" : t("Super");
-  return modifier === "control" ? t("Ctrl") : t("Alt");
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- key names stay English
+  if (modifier === "meta") return isWindowsPlatform(platform) ? "⊞" : "Super";
+  return modifier === "control" ? "Ctrl" : "Alt";
 }
 
 export function snapShotShortcutKeyLabels(

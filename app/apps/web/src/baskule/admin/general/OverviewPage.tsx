@@ -1,4 +1,6 @@
-import { t, useTranslation } from "../../../i18n";
+import { m as resolveMessage } from "../../../i18n/messages";
+import { msg, useMessages } from "gt-react";
+
 // baskule: General → Overview: live health of every space and its computer, and the usage summary.
 import { RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
@@ -18,37 +20,37 @@ const COMPUTER_LABELS: Record<
 > = {
   running: {
     get label() {
-      return t("Computer running");
+      return resolveMessage(msg("Computer running"));
     },
     variant: "success",
   },
   starting: {
     get label() {
-      return t("Computer starting");
+      return resolveMessage(msg("Computer starting"));
     },
     variant: "info",
   },
   stopping: {
     get label() {
-      return t("Computer stopping");
+      return resolveMessage(msg("Computer stopping"));
     },
     variant: "info",
   },
   stopped: {
     get label() {
-      return t("Computer asleep");
+      return resolveMessage(msg("Computer asleep"));
     },
     variant: "secondary",
   },
   error: {
     get label() {
-      return t("Computer error");
+      return resolveMessage(msg("Computer error"));
     },
     variant: "error",
   },
   unknown: {
     get label() {
-      return t("Computer unknown");
+      return resolveMessage(msg("Computer unknown"));
     },
     variant: "warning",
   },
@@ -70,7 +72,7 @@ export function healthSummary(rows: ReadonlyArray<{ readonly status: SpaceStatus
 const loadLiveSpaces = () => baskuleApi.adminSpaces({ live: true });
 
 export function OverviewPage() {
-  const t = useTranslation();
+  const t = useMessages();
   const health = useApiResource(loadLiveSpaces, { pollMs: 15_000 });
   const [stopping, setStopping] = useState<string | null>(null);
   const rows = health.data ?? [];
@@ -79,10 +81,10 @@ export function OverviewPage() {
     <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: t("Spaces awake"), value: `${summary.awake} / ${rows.length}` },
-          { label: t("Computers running"), value: String(summary.computers) },
-          { label: t("Answers in progress"), value: String(summary.runs) },
-          { label: t("Problems"), value: String(summary.problems) },
+          { label: t(msg("Spaces awake")), value: `${summary.awake} / ${rows.length}` },
+          { label: t(msg("Computers running")), value: String(summary.computers) },
+          { label: t(msg("Answers in progress")), value: String(summary.runs) },
+          { label: t(msg("Problems")), value: String(summary.problems) },
         ].map((stat) => (
           <div
             key={stat.label}
@@ -97,9 +99,11 @@ export function OverviewPage() {
       </div>
       <OverviewUsage />
       <PageSection
-        title={t("Spaces")}
+        title={t(msg("Spaces"))}
         description={t(
-          "Refreshed every 15 seconds. An asleep space uses no memory and wakes on the next request.",
+          msg(
+            "Refreshed every 15 seconds. An asleep space uses no memory and wakes on the next request.",
+          ),
         )}
         action={
           <Button
@@ -109,7 +113,7 @@ export function OverviewPage() {
             disabled={health.loading}
           >
             <RefreshCwIcon />
-            {t("Refresh")}
+            {t(msg("Refresh"))}
           </Button>
         }
       >
@@ -117,7 +121,7 @@ export function OverviewPage() {
           error={health.error}
           loading={health.loading}
           empty={rows.length === 0}
-          emptyText={t("No spaces.")}
+          emptyText={t(msg("No spaces."))}
         />
         {rows.map((row) => {
           const status = row.status;
@@ -158,7 +162,7 @@ export function OverviewPage() {
                           await health.reload();
                         })()
                           .catch((cause: unknown) => {
-                            notifyError(t("Could not stop the space"), cause);
+                            notifyError(t(msg("Could not stop the space")), cause);
                           })
                           .finally(() => {
                             setStopping(null);
@@ -167,7 +171,7 @@ export function OverviewPage() {
                     }
                   >
                     {stopping === row.id ? <Spinner size="sm" /> : null}
-                    {t("Stop")}
+                    {t(msg("Stop"))}
                   </Button>
                 </>
               }
@@ -175,22 +179,19 @@ export function OverviewPage() {
               <span className="truncate text-sm text-foreground">
                 {row.kind === "personal" ? (row.ownerName ?? row.name) : row.name}
                 <span className="text-muted-foreground">
-                  {row.kind === "personal" ? t(" · personal") : ""}
+                  {row.kind === "personal" ? t(msg(" · personal")) : ""}
                 </span>
               </span>
               <span className="truncate text-xs text-muted-foreground">
                 {status === null
-                  ? t("Not checked yet")
-                  : t(
-                      "{{value1}} · {{sockets}} {{value3}} · {{activeRuns}} {{value5}} in progress",
-                      {
-                        value1: status.awake ? t("Awake") : t("Asleep"),
-                        sockets: status.sockets,
-                        value3: status.sockets === 1 ? t("connection") : t("connections"),
-                        activeRuns: status.activeRuns,
-                        value5: status.activeRuns === 1 ? t("answer") : t("answers"),
-                      },
-                    )}
+                  ? t(msg("Not checked yet"))
+                  : t(msg("{value1} · {sockets} {value3} · {activeRuns} {value5} in progress"), {
+                      value1: status.awake ? t(msg("Awake")) : t(msg("Asleep")),
+                      sockets: status.sockets,
+                      value3: status.sockets === 1 ? t(msg("connection")) : t(msg("connections")),
+                      activeRuns: status.activeRuns,
+                      value5: status.activeRuns === 1 ? t(msg("answer")) : t(msg("answers")),
+                    })}
               </span>
               {status?.error ? (
                 <span className="text-xs text-destructive-foreground">{status.error}</span>

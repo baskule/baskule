@@ -1,5 +1,7 @@
+import { msg } from "gt-react";
+import { m } from "../i18n/messages";
 import { environmentThreadShells } from "../state/threads";
-import { t } from "../i18n";
+
 import {
   type EnvironmentThreadShell,
   type PendingSubagentRequest,
@@ -145,16 +147,16 @@ export function startThreadNotifications(
     const active = activeThread();
     const title =
       kind === "completion"
-        ? t("Thread completed")
+        ? m(msg("Thread completed"))
         : status === "approval"
-          ? t("Approval needed")
+          ? m(msg("Approval needed"))
           : status === "limited"
-            ? t("Usage limit reached")
+            ? m(msg("Usage limit reached"))
             : status === "failed"
-              ? t("Thread failed")
+              ? m(msg("Thread failed"))
               : status === "request"
-                ? t("Guest request")
-                : t("Input needed");
+                ? m(msg("Guest request"))
+                : m(msg("Input needed"));
     if (hasNotificationSound(mode)) {
       void playNotificationSound(kind, () =>
         hasNotificationSound(getClientSettings().notificationMode),
@@ -188,7 +190,7 @@ export function startThreadNotifications(
             ),
         },
         actionProps: {
-          children: t("Open thread"),
+          children: m(msg("Open thread")),
           onClick: () => {
             toastManager.close(toastId);
             void router.navigate({

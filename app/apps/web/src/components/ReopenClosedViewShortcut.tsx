@@ -1,9 +1,10 @@
-import { useTranslation } from "../i18n";
-
+import { m } from "../i18n/messages";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 
 import { useNavigate, useParams } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
@@ -41,6 +42,7 @@ const PREVIEW_FORWARDED_COMMANDS = [
   "sidebar.toggle",
   "rightPanel.toggle",
   "rightPanel.toggleMaximized",
+  "rightPanel.close",
   "preview.focusUrl",
   "preview.zoomIn",
   "preview.zoomOut",
@@ -49,7 +51,7 @@ const PREVIEW_FORWARDED_COMMANDS = [
 ] as const;
 
 export function ReopenClosedViewShortcut() {
-  const t = useTranslation();
+  const gt = useGT();
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const target = resolveThreadRouteTarget(params);
@@ -120,8 +122,8 @@ export function ReopenClosedViewShortcut() {
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: t("Could not reopen view"),
-          description: error instanceof Error ? error.message : String(error),
+          title: gt("Could not reopen view"),
+          description: thrownErrorMessage(error, m) ?? String(error),
         });
       });
   });

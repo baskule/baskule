@@ -36,13 +36,12 @@ const REMEMBERED_SETTINGS_PAGES: ReadonlySet<string> = new Set(
 );
 
 export function rememberedSettingsPage(selections: WorkspaceSelections): SettingsPageTarget {
-  if (selections.settings === "SettingsMicrophone") return "SettingsVoice";
   return selections.settings && REMEMBERED_SETTINGS_PAGES.has(selections.settings)
     ? (selections.settings as SettingsPageTarget)
     : DEFAULT_SETTINGS_PAGE;
 }
 
-/** Whether a remembered chat or pull request can still be opened. */
+/** Whether a remembered chat, pull request or issue can still be opened. */
 export interface WorkspaceSelectionCheck {
   readonly thread: (selection: ThreadSelection) => boolean;
 }
@@ -53,7 +52,7 @@ function stringParam(params: object | undefined, key: string) {
 }
 
 /**
- * The page each tab shows in a root route chain: the newest chat, the newest pull request, and
+ * The page each tab shows in a root route chain: the newest chat, pull request and issue, and
  * the Settings page directly above the Settings route. Returns `previous` when nothing changed.
  */
 export function workspaceSelectionsIn(
@@ -111,7 +110,7 @@ function keyedPage<Route extends RouteLike>(route: Route): Route & { readonly ke
 
 function detailRoute(
   state: { readonly routes: readonly RouteLike[] },
-  tab: "threads",
+  tab: "threads" | "pullRequests" | "issues",
   selections: WorkspaceSelections,
   check: WorkspaceSelectionCheck,
 ): RouteLike | undefined {

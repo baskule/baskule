@@ -1,9 +1,10 @@
-import { useTranslation } from "../i18n";
-
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import * as Dialog from "../components/ui/Dialog";
+import { msg, useMessages } from "gt-react-native";
+import { m } from "../i18n/messages";
 import { filePreviewDelimiter, parseDelimitedPreview } from "@t3tools/shared/delimitedPreview";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { readFilePreviewResponse } from "@t3tools/client-runtime/file-preview";
@@ -45,7 +46,7 @@ const attachmentTextAtom = Atom.family((key: AttachmentTextKey) =>
       try: (signal) => readAttachmentText(key, signal),
       catch: (cause) =>
         new AttachmentTextReadError({
-          message: cause instanceof Error ? cause.message : "Could not read this file.",
+          message: errorDisplayMessage(cause, m) ?? m(msg("Could not read this file.")),
           cause,
         }),
     }),
@@ -65,7 +66,7 @@ export function useAttachmentDocument(input: {
   readonly environmentId: EnvironmentId | null;
   readonly attachment: FileBackedComposerAttachment | null;
 }) {
-  const t = useTranslation();
+  const resolve = useMessages();
   const kind = filePreviewKind(input, { richDocuments: false });
   const delimiter = filePreviewDelimiter(input);
   const shareController = useRef<AbortController | null>(null);
@@ -106,7 +107,8 @@ export function useAttachmentDocument(input: {
   );
   const content = AsyncResult.isSuccess(text) ? text.value : null;
   const contentError = AsyncResult.isFailure(text)
-    ? (Option.getOrNull(AsyncResult.error(text))?.message ?? "Could not read this file.")
+    ? (Option.getOrNull(AsyncResult.error(text))?.message ??
+      resolve(msg("Could not read this file.")))
     : null;
   const table = content && delimiter ? parseDelimitedPreview(content.text, delimiter) : null;
   const presentation = attachmentDocumentPresentation({
@@ -116,10 +118,11 @@ export function useAttachmentDocument(input: {
     rendered,
   });
   const error = attachment
-    ? localPreview.error && (localPreview.error.message || t("The local file is unavailable."))
+    ? localPreview.error &&
+      (localPreview.error.message || resolve(msg("The local file is unavailable.")))
     : AsyncResult.isFailure(remote)
       ? (Option.getOrNull(AsyncResult.error(remote))?.message ??
-        t("The attachment is unavailable."))
+        resolve(msg("The attachment is unavailable.")))
       : null;
   const share = async () => {
     if (!uri || sharing) return;
@@ -132,7 +135,7 @@ export function useAttachmentDocument(input: {
     };
     const result = await settlePromise(async () => {
       const exportUri = attachment ? uri : await refreshExport();
-      if (!exportUri) throw new Error("Reconnect to this environment and try again.");
+      if (!exportUri) throw new Error(resolve(msg("Reconnect to this environment and try again.")));
       await shareLocalAttachment({ ...request, uri: exportUri });
     });
     if (shareController.current === controller) shareController.current = null;
@@ -141,8 +144,8 @@ export function useAttachmentDocument(input: {
     if (AsyncResult.isFailure(result)) {
       const cause = squashAtomCommandFailure(result);
       Dialog.alert(
-        "Could not share file",
-        cause instanceof Error ? cause.message : "Please try again.",
+        m(msg("Could not share file")),
+        errorDisplayMessage(cause, m) ?? m(msg("Please try again.")),
       );
     }
   };
@@ -154,7 +157,7 @@ export function useAttachmentDocument(input: {
     resource,
     content,
     table,
-    error: invalidated ? t("The attachment is unavailable.") : (error ?? contentError),
+    error: invalidated ? resolve(msg("The attachment is unavailable.")) : (error ?? contentError),
     needsText,
     rendered,
     setRendered,

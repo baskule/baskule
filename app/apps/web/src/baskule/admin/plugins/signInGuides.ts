@@ -1,6 +1,8 @@
+import { m as resolveMessage } from "../../../i18n/messages";
+import { msg } from "gt-react";
 // baskule: how to register an OAuth client with the services that refuse automatic registration,
 // keyed by the host of their authorization server.
-import { t } from "../../../i18n";
+
 
 export interface GuideLink {
   readonly href: string;
@@ -23,60 +25,57 @@ const google: SignInGuide = {
   scopesPlaceholder: "https://www.googleapis.com/auth/gmail.readonly",
   steps: (hosts) => [
     {
-      text: t("In Google Auth Platform, create an OAuth client of the type Web application."),
+      text: resolveMessage(msg("In Google Auth Platform, create an OAuth client of the type Web application.")),
       links: [
         {
           href: "https://console.cloud.google.com/auth/clients/create",
-          label: t("Create a client"),
+          label: resolveMessage(msg("Create a client")),
         },
       ],
     },
     {
-      text: t(
-        "Under Audience, choose Internal to let only people in your Google Workspace sign in, or External and add each person as a test user.",
-      ),
+      text: resolveMessage(msg("Under Audience, choose Internal to let only people in your Google Workspace sign in, or External and add each person as a test user.")),
       links: [
-        { href: "https://console.cloud.google.com/auth/audience", label: t("Open Audience") },
+        { href: "https://console.cloud.google.com/auth/audience", label: resolveMessage(msg("Open Audience")) },
       ],
     },
-    { text: t("Under Authorized redirect URIs, add the callback URL above.") },
+    { text: resolveMessage(msg("Under Authorized redirect URIs, add the callback URL above.")) },
     ...(hosts.length > 0
       ? [
           {
-            text: t("Enable the API of each service in your Google Cloud project."),
+            text: resolveMessage(msg("Enable the API of each service in your Google Cloud project.")),
             links: hosts.map((host) => ({
               href: `https://console.cloud.google.com/apis/library/${encodeURIComponent(host)}`,
-              label: t("Enable {{host}}", { host }),
+              label: resolveMessage(msg("Enable {host}"), { host }),
             })),
           },
         ]
       : []),
-    { text: t("Copy the client ID and client secret into the fields below.") },
+    { text: resolveMessage(msg("Copy the client ID and client secret into the fields below.")) },
   ],
 };
 
 const microsoft: SignInGuide = {
   vendor: "Microsoft",
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- OAuth scope identifiers
   scopesPlaceholder: "offline_access User.Read",
   steps: () => [
     {
-      text: t(
-        "In the Microsoft Entra admin center, open App registrations and choose New registration.",
-      ),
+      text: resolveMessage(msg("In the Microsoft Entra admin center, open App registrations and choose New registration.")),
       links: [
         {
           href: "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade",
-          label: t("Open App registrations"),
+          label: resolveMessage(msg("Open App registrations")),
         },
       ],
     },
     {
-      text: t("For who can use it, accounts in your organization only is the usual choice."),
+      text: resolveMessage(msg("For who can use it, accounts in your organization only is the usual choice.")),
     },
-    { text: t("Under Redirect URI, choose Web and add the callback URL above.") },
-    { text: t("Under Certificates & secrets, create a client secret and copy its value.") },
+    { text: resolveMessage(msg("Under Redirect URI, choose Web and add the callback URL above.")) },
+    { text: resolveMessage(msg("Under Certificates & secrets, create a client secret and copy its value.")) },
     {
-      text: t("Copy the Application (client) ID and the secret into the fields below."),
+      text: resolveMessage(msg("Copy the Application (client) ID and the secret into the fields below.")),
     },
   ],
 };
@@ -86,32 +85,29 @@ const slack: SignInGuide = {
   scopesPlaceholder: "channels:read chat:write",
   steps: () => [
     {
-      text: t("Create a Slack app from scratch in your workspace."),
-      links: [{ href: "https://api.slack.com/apps?new_app=1", label: t("Create a Slack app") }],
+      text: resolveMessage(msg("Create a Slack app from scratch in your workspace.")),
+      links: [{ href: "https://api.slack.com/apps?new_app=1", label: resolveMessage(msg("Create a Slack app")) }],
     },
-    { text: t("Under OAuth & Permissions, add the callback URL above as a redirect URL.") },
-    { text: t("Add the user token scopes the plugin needs.") },
+    { text: resolveMessage(msg("Under OAuth & Permissions, add the callback URL above as a redirect URL.")) },
+    { text: resolveMessage(msg("Add the user token scopes the plugin needs.")) },
     {
-      text: t(
-        "Under Basic Information, copy the client ID and client secret into the fields below.",
-      ),
+      text: resolveMessage(msg("Under Basic Information, copy the client ID and client secret into the fields below.")),
     },
   ],
 };
 
 const github: SignInGuide = {
   vendor: "GitHub",
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- OAuth scope identifiers
   scopesPlaceholder: "repo read:org",
   steps: () => [
     {
-      text: t(
-        "Create an OAuth app in your organization's settings, under Developer settings → OAuth Apps.",
-      ),
-      links: [{ href: "https://github.com/settings/applications/new", label: t("New OAuth app") }],
+      text: resolveMessage(msg("Create an OAuth app in your organization's settings, under Developer settings → OAuth Apps.")),
+      links: [{ href: "https://github.com/settings/applications/new", label: resolveMessage(msg("New OAuth app")) }],
     },
-    { text: t("Use the callback URL above as the Authorization callback URL.") },
-    { text: t("Generate a client secret.") },
-    { text: t("Copy the client ID and client secret into the fields below.") },
+    { text: resolveMessage(msg("Use the callback URL above as the Authorization callback URL.")) },
+    { text: resolveMessage(msg("Generate a client secret.")) },
+    { text: resolveMessage(msg("Copy the client ID and client secret into the fields below.")) },
   ],
 };
 
@@ -136,18 +132,17 @@ export function signInGuide(issuer: string): SignInGuide {
   return (
     GUIDES[host] ?? {
       vendor: host,
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- OAuth scope identifiers
       scopesPlaceholder: "openid email",
       steps: () => [
         {
-          text: t("Register an OAuth client of the type web application with {{vendor}}.", {
+          text: resolveMessage(msg("Register an OAuth client of the type web application with {vendor}."), {
             vendor: host,
           }),
         },
-        { text: t("Add the callback URL above as its redirect URI.") },
+        { text: resolveMessage(msg("Add the callback URL above as its redirect URI.")) },
         {
-          text: t(
-            "Copy its client ID and, if it has one, its client secret into the fields below.",
-          ),
+          text: resolveMessage(msg("Copy its client ID and, if it has one, its client secret into the fields below.")),
         },
       ],
     }

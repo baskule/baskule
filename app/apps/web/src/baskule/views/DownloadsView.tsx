@@ -1,4 +1,6 @@
-import { t, useTranslation } from "../../i18n";
+import { m as resolveMessage } from "../../i18n/messages";
+import { msg, useMessages } from "gt-react";
+
 
 // baskule: Settings → Desktop app: apps for the running release, connecting a
 // device, and in the desktop app the server it uses.
@@ -15,14 +17,14 @@ import { PageMessage, PageRow, PageSection } from "./BaskulePage";
 
 const PLATFORM_LABELS: Record<Download["platform"], string> = {
   get linux() {
-    return t("Linux");
+    return resolveMessage(msg("Linux"));
   },
   get windows() {
-    return t("Windows");
+    return resolveMessage(msg("Windows"));
   },
   macos: "macOS",
   get android() {
-    return t("Android");
+    return resolveMessage(msg("Android"));
   },
   ios: "iOS",
 };
@@ -57,7 +59,7 @@ export function orderDownloads(
 }
 
 export function DownloadsView() {
-  const t = useTranslation();
+  const t = useMessages();
   const info = useApiResource(baskuleApi.downloads);
   const platform = visitorPlatform(navigator.userAgent);
   const downloads = orderDownloads(info.data ?? [], platform);
@@ -66,25 +68,25 @@ export function DownloadsView() {
     <SettingsPageContainer>
       <DesktopServerSection />
       {window.desktopBridge ? (
-        <PageSection title={t("Updates")}>
+        <PageSection title={t(msg("Updates"))}>
           <AboutVersionSection />
         </PageSection>
       ) : null}
       <PageSection
-        title={version ? t("Apps · version {{version}}", { version: version }) : t("Apps")}
-        description={t("The desktop app keeps you signed in and opens Baskule in its own window.")}
+        title={version ? t(msg("Apps · version {version}"), { version: version }) : t(msg("Apps"))}
+        description={t(msg("The desktop app keeps you signed in and opens Baskule in its own window."))}
       >
         {info.error && downloads.length === 0 ? <PageMessage>{info.error}</PageMessage> : null}
         {info.loading && !info.data ? (
           <PageMessage>
             <span className="inline-flex items-center gap-2">
               <Spinner size="sm" tone="muted" />
-              {t("Loading…")}
+              {t(msg("Loading…"))}
             </span>
           </PageMessage>
         ) : null}
         {info.data && downloads.length === 0 ? (
-          <PageMessage>{t("No app was published with this installation yet.")}</PageMessage>
+          <PageMessage>{t(msg("No app was published with this installation yet."))}</PageMessage>
         ) : null}
         {downloads.map((download, index) => {
           const primary = index === 0 && download.platform === platform;
@@ -98,14 +100,14 @@ export function DownloadsView() {
                   render={<a href={download.url} target="_blank" rel="noreferrer" />}
                 >
                   <DownloadIcon />
-                  {t("Download")}
+                  {t(msg("Download"))}
                 </Button>
               }
             >
               <span className="truncate text-sm text-foreground">
                 {download.label}
                 {primary ? (
-                  <span className="text-muted-foreground"> {t("· for this computer")}</span>
+                  <span className="text-muted-foreground"> {t(msg("· for this computer"))}</span>
                 ) : null}
               </span>
               <span className="truncate text-xs text-muted-foreground">
@@ -123,11 +125,11 @@ export function DownloadsView() {
 
 /** Only in the desktop app: the installation it signs in to, and how to switch. */
 function DesktopServerSection() {
-  const t = useTranslation();
+  const t = useMessages();
   const desktop = window.desktopBridge;
   if (!desktop?.connectBaskuleServer) return null;
   return (
-    <PageSection title={t("Server")}>
+    <PageSection title={t(msg("Server"))}>
       <PageRow
         trailing={
           <Button
@@ -135,7 +137,7 @@ function DesktopServerSection() {
             variant="outline"
             onClick={() => window.location.assign("/login?server=1")}
           >
-            {t("Connect to a server")}
+            {t(msg("Connect to a server"))}
           </Button>
         }
       >

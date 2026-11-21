@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react-native";
 import {
   createNavigatorFactory,
   NavigationContext,
@@ -48,6 +47,8 @@ import {
   WorkspaceSidebarTabsFooter,
 } from "./workspace/WorkspaceNativeTabs.ios";
 import { workspaceUsesColumns } from "./workspace/workspace-tabs-state";
+import { useWorkspaceCompose } from "./workspace/useWorkspaceCompose";
+import { NAVIGATION_TAB_ORDER } from "./workspace/navigation-tab-order";
 import { isSettingsRoute, settingsOpenIn } from "../settings/settings-navigation";
 import { workspaceRoutesOf } from "./workspace-overlay-routes";
 import { setNativelyPoppingWorkspaceRoute } from "./workspace/workspace-detail-selection";
@@ -210,7 +211,7 @@ function EmptyDetailHeader(props: { readonly onCompose: (() => void) | undefined
 function WorkspaceColumns(
   props: ViewProps & { readonly primary: Route; readonly detail: Route[] },
 ) {
-  const t = useTranslation();
+  const gt = useGT();
   const {
     layout,
     setPrimarySidebarVisible,
@@ -264,7 +265,8 @@ function WorkspaceColumns(
   const openNewTask = startNewTask;
   // The cover detail rail needs room for thread tools above the fixed tabs.
   // The unfolded Duo keeps compose in its detail bar.
-  const detailCompose = deviceType === "duo-unfolded" && !settingsOpen ? openNewTask : undefined;
+  const compose = useWorkspaceCompose();
+  const detailCompose = deviceType === "duo-unfolded" ? compose?.onPress : undefined;
   // Pages a hidden tab opens as it's shown belong to the tab, so they appear in place.
   const headerOnly = use(NativeWorkspaceTabActivityContext)?.headerOnly === true;
   const [shownPages, setShownPages] = useState({ headerOnly, keys: new Set<string>() });
@@ -360,9 +362,7 @@ function WorkspaceColumns(
         if (workspace.some((route) => route.name !== "Home" && route.name !== "Settings")) return;
         const tab = workspace.some((route) => route.name === "Settings")
           ? "settings"
-          : (["threads", "usage"] as const).find((candidate) =>
-              workspaceTabs?.isTabActive(candidate),
-            );
+          : NAVIGATION_TAB_ORDER.find((candidate) => workspaceTabs?.isTabActive(candidate));
         openWorkspaceTab(tab ?? "threads", { columns: true });
       }}
       preferredDisplayMode={
@@ -388,8 +388,9 @@ function WorkspaceColumns(
       showInspector={inspector.visible}
       onInspectorHide={hideInspector}
       columnMetrics={{
-        minimumPrimaryColumnWidth: 280,
-        maximumPrimaryColumnWidth: Math.max(380, primaryColumnWidth),
+        minimumPrimaryColumnWidth: layout.variant === "medium" ? primaryColumnWidth : 280,
+        maximumPrimaryColumnWidth:
+          layout.variant === "medium" ? primaryColumnWidth : Math.max(380, primaryColumnWidth),
         preferredPrimaryColumnWidthOrFraction: primaryColumnWidth,
         minimumSecondaryColumnWidth: NATIVE_INSPECTOR_MIN_MAIN_WIDTH,
         // UIKit can retain its automatic width despite a new preference; constrain both edges.
@@ -477,7 +478,7 @@ function WorkspaceColumns(
                     pointerEvents="box-none"
                   >
                     <WorkspacePaneDivider
-                      accessibilityLabel={t("Resize inspector")}
+                      accessibilityLabel={gt("Resize inspector")}
                       currentWidth={inspectorWidth}
                       resizeDirection={-1}
                       onResizeStart={() => {

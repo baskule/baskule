@@ -1,5 +1,6 @@
 import type { UsageProviderKind } from "@t3tools/contracts";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+
 export const PROVIDER_ORDER: readonly UsageProviderKind[] = ["opencode"];
 
 export function usageProviderKind(driver: string): UsageProviderKind | null {
@@ -10,9 +11,7 @@ export const PROVIDER_LABEL: Record<UsageProviderKind, string> = {
   opencode: "OpenCode",
 };
 
-export const PROVIDER_COLORS: Record<UsageProviderKind, string> = {
-  opencode: "#5b9bbd",
-};
+export const PROVIDER_COLORS: Record<UsageProviderKind, string> = { opencode: "#5b9bbd" };
 
 export function useUsageMixColors() {
   const { themeAppearance: scheme } = useAppearancePreferences();

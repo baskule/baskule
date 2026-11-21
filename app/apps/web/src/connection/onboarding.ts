@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import { ConnectionOnboarding } from "@t3tools/client-runtime/connection";
 import {
   createAtomCommandScheduler,
@@ -14,7 +12,7 @@ const onboardingScheduler = createAtomCommandScheduler();
 
 export const connectPairing = createRuntimeCommand(connectionAtomRuntime, {
   get label() {
-    return t("web:connection:connect-pairing");
+    return "web:connection:connect-pairing";
   },
   scheduler: onboardingScheduler,
   concurrency: {
@@ -29,7 +27,7 @@ export const connectPairing = createRuntimeCommand(connectionAtomRuntime, {
 
 export const connectSshEnvironment = createRuntimeCommand(connectionAtomRuntime, {
   get label() {
-    return t("web:connection:connect-ssh");
+    return "web:connection:connect-ssh";
   },
   scheduler: onboardingScheduler,
   concurrency: {

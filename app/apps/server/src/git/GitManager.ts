@@ -84,6 +84,16 @@ interface SourceControlTextGenerationSettings {
   readonly style: SourceControlWritingStyleSettings;
 }
 
+export interface GitCreatePullRequestResult {
+  readonly status: "created" | "opened_existing";
+  /** Absent when the host accepted the PR but did not list it back yet. */
+  readonly url?: string;
+  readonly number?: number;
+  readonly baseBranch: string;
+  readonly headBranch: string;
+  readonly title: string;
+}
+
 export class GitManager extends Context.Service<
   GitManager,
   {

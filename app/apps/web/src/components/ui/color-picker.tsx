@@ -1,6 +1,4 @@
-import { t } from "../../i18n";
-import { useTranslation } from "../../i18n";
-
+import { T, useGT } from "gt-react";
 import {
   useId,
   useRef,
@@ -33,7 +31,7 @@ function useColorDrag(
   return {
     thumbTransition: isDragging
       ? undefined
-      : t("left 80ms linear, top 80ms linear, background-color 80ms linear"),
+      : "left 80ms linear, top 80ms linear, background-color 80ms linear",
     handlers: {
       onPointerDown(event: PointerEvent<HTMLDivElement>) {
         if (pointerId.current !== null || event.button !== 0) return;
@@ -69,7 +67,7 @@ export function ColorSaturationValuePlane({
   className,
   variant = "inset",
 }: ColorControlProps<HsvColor> & { variant?: "inset" | "edge" }) {
-  const t = useTranslation();
+  const gt = useGT();
   const instructionsId = useId();
   const saturationRef = useRef<HTMLInputElement>(null);
   const { handlers, thumbTransition } = useColorDrag(
@@ -113,7 +111,7 @@ export function ColorSaturationValuePlane({
 
   return (
     <div
-      aria-label={t("{{label}} saturation and brightness", { label: label })}
+      aria-label={gt("{label} saturation and brightness", { label })}
       role="group"
       className={cn(
         "relative cursor-crosshair touch-none overflow-hidden bg-[linear-gradient(to_top,#000,transparent),linear-gradient(to_right,#fff,transparent)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-popover",
@@ -126,16 +124,25 @@ export function ColorSaturationValuePlane({
       {...handlers}
     >
       <span id={instructionsId} className="sr-only">
-        {t(
-          "Use arrow keys to adjust the focused value. Hold Shift for larger steps. Use Home and End for the minimum and maximum. Press Tab to move between saturation and brightness.",
-        )}
+        <T>
+          Use arrow keys to adjust the focused value. Hold Shift for larger steps. Use Home and End
+          for the minimum and maximum. Press Tab to move between saturation and brightness.
+        </T>
       </span>
       {(
         [
-          ["s", "Saturation"],
-          ["v", "Brightness"],
+          [
+            "s",
+            gt("{label} saturation", { label }),
+            gt("Saturation {value}%", { value: Math.round(value.s * 100) }),
+          ],
+          [
+            "v",
+            gt("{label} brightness", { label }),
+            gt("Brightness {value}%", { value: Math.round(value.v * 100) }),
+          ],
         ] as const
-      ).map(([axis, axisLabel]) => (
+      ).map(([axis, axisLabel, axisValueText]) => (
         <label key={axis} className="contents">
           <input
             ref={axis === "s" ? saturationRef : undefined}
@@ -144,10 +151,7 @@ export function ColorSaturationValuePlane({
             max={100}
             step="any"
             value={value[axis] * 100}
-            aria-label={t("{{label}} {{value2}}", {
-              label: label,
-              value2: axisLabel.toLowerCase(),
-            })}
+            aria-label={axisLabel}
             aria-describedby={instructionsId}
             aria-valuetext={`${Math.round(value[axis] * 100)}%`}
             className="peer sr-only"
@@ -160,7 +164,7 @@ export function ColorSaturationValuePlane({
             aria-hidden
             className="pointer-events-none invisible absolute bottom-2 left-2 z-10 rounded bg-popover px-1.5 py-0.5 text-xs text-popover-foreground peer-focus-visible:visible"
           >
-            {axisLabel} {Math.round(value[axis] * 100)}%
+            {axisValueText}
           </span>
         </label>
       ))}

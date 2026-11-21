@@ -35,7 +35,7 @@ describe("spaceRegistration", () => {
       wsBaseUrl: "ws://100.64.0.42:47090/s/acme1/",
       authorization: "front-session",
     });
-    expect(registration.credential.token).toBe("tok");
+    expect(registration.credential).toMatchObject({ token: "tok" });
   });
 });
 

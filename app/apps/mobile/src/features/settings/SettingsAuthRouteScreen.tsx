@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 import { useAuth } from "@clerk/expo";
 import {
   AuthView,
@@ -17,7 +15,7 @@ const USER_PROFILE_CUSTOM_PAGES = [
   {
     path: "t3-connect",
     get label() {
-      return t("T3 Connect");
+      return "T3 Connect";
     },
     icon: "globe",
     content: <T3ConnectProfilePage />,

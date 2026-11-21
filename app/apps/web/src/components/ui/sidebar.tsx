@@ -1,9 +1,7 @@
-import { t } from "../../i18n";
-import { useTranslation } from "../../i18n";
-
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
+import { T, useGT } from "gt-react";
 import { PanelLeftCloseIcon, PanelLeftIcon } from "lucide-react";
 import * as React from "react";
 import { cn } from "~/lib/utils";
@@ -91,7 +89,7 @@ const SidebarInstanceContext = React.createContext<SidebarInstanceContextProps |
 function useSidebar() {
   const context = React.use(SidebarContext);
   if (!context) {
-    throw new Error(t("useSidebar must be used within a SidebarProvider."));
+    throw new Error("useSidebar must be used within a SidebarProvider.");
   }
 
   return context;
@@ -295,8 +293,8 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none";
   resizable?: boolean | SidebarResizableOptions;
 }) {
-  const t = useTranslation();
   const { isMobile, state, openMobile, setOpenMobile, setMobileSheetMounted } = useSidebar();
+  const gt = useGT();
   // Not usePanelAnimationSettings: its navigation suppression would snap the sheet shut mid-exit when an item navigates.
   const panelAnimationDurationMs = useClientSettings(
     (settings) => settings.panelAnimationDurationMs,
@@ -355,8 +353,10 @@ function Sidebar({
             }
           >
             <SheetHeader className="sr-only">
-              <SheetTitle>{props["aria-label"] ?? t("Sidebar")}</SheetTitle>
-              <SheetDescription>{t("Displays the mobile sidebar.")}</SheetDescription>
+              <SheetTitle>{props["aria-label"] ?? gt("Sidebar")}</SheetTitle>
+              <SheetDescription>
+                <T>Displays the mobile sidebar.</T>
+              </SheetDescription>
             </SheetHeader>
             <div
               className={cn(
@@ -427,7 +427,6 @@ function Sidebar({
 }
 
 function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
-  const t = useTranslation();
   const { toggleSidebar } = useSidebar();
   const isOpen = useSidebarVisibility();
 
@@ -449,7 +448,9 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       {...props}
     >
       {isOpen ? <PanelLeftCloseIcon className="size-4" /> : <PanelLeftIcon className="size-4" />}
-      <span className="sr-only">{t("Toggle Sidebar")}</span>
+      <span className="sr-only">
+        <T>Toggle Sidebar</T>
+      </span>
     </Button>
   );
 }
@@ -469,12 +470,13 @@ function SidebarRail({
   ...props
 }: React.ComponentProps<"button">) {
   const { open, toggleSidebar, onCollapse } = useSidebar();
+  const gt = useGT();
   const sidebarInstance = React.use(SidebarInstanceContext);
   const suppressClickRef = React.useRef(false);
   const resolvedResizable = sidebarInstance?.resizable ?? null;
   const canResize = resolvedResizable !== null && open;
-  const railLabel = canResize ? t("Resize Sidebar") : t("Toggle Sidebar");
-  const railTitle = canResize ? t("Drag to resize sidebar") : t("Toggle Sidebar");
+  const railLabel = canResize ? gt("Resize Sidebar") : gt("Toggle Sidebar");
+  const railTitle = canResize ? gt("Drag to resize sidebar") : gt("Toggle Sidebar");
   const resize = useResizeDrag<HTMLButtonElement>((event) => {
     const options = resolvedResizable;
     if (!options || !open) return null;
@@ -531,7 +533,7 @@ function SidebarRail({
           try {
             setLocalStorageItem(options.storageKey, finalWidth, Schema.Finite);
           } catch (error) {
-            console.error(t("Could not persist sidebar width."), error);
+            console.error("Could not persist sidebar width.", error);
           }
         }
         options.onResize?.(finalWidth);

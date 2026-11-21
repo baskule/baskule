@@ -1,4 +1,5 @@
-import { useLocale, useTranslation } from "../../i18n";
+import { useMessages, msg, useLocale } from "gt-react";
+
 // baskule: Settings → Usage: what the signed-in person used, in every space, and their limits.
 import { formatUsd } from "@t3tools/shared/usageFormat";
 
@@ -18,7 +19,7 @@ import { UsageTable } from "./UsageTable";
 const loadMine = async () => ({ usage: await usageApi.me(), at: Date.now() });
 
 export function MyUsagePage() {
-  const t = useTranslation();
+  const t = useMessages();
   const usage = useApiResource(loadMine);
   return (
     <SettingsPageContainer>
@@ -30,7 +31,7 @@ export function MyUsagePage() {
             <span className="flex flex-col items-center gap-3">
               {usage.error}
               <Button variant="outline" size="sm" onClick={() => void usage.reload()}>
-                {t("Try again")}
+                {t(msg("Try again"))}
               </Button>
             </span>
           ) : (
@@ -44,7 +45,7 @@ export function MyUsagePage() {
 
 /** Tokens and money side by side, money first: it is the figure people compare. */
 export function AmountTile({ label, amount }: { label: string; amount: UsageAmount }) {
-  const t = useTranslation();
+  const t = useMessages();
   return (
     <div className="flex min-w-0 flex-col gap-0.5 px-3 py-3 sm:px-4">
       <span className="text-xs text-muted-foreground">{label}</span>
@@ -52,7 +53,7 @@ export function AmountTile({ label, amount }: { label: string; amount: UsageAmou
         {formatUsd(amount.costUsd)}
       </span>
       <span className="text-xs text-muted-foreground tabular-nums">
-        {t("{{tokens}} tokens", { tokens: formatTokens(amount.tokens) })}
+        {t(msg("{tokens} tokens"), { tokens: formatTokens(amount.tokens) })}
       </span>
     </div>
   );
@@ -67,44 +68,40 @@ function dayStart(locale: string, now: number): string | null {
 }
 
 export function MyUsageView({ usage, now }: { usage: MyUsage; now: number }) {
-  const t = useTranslation();
+  const t = useMessages();
   const locale = useLocale();
   const start = dayStart(locale, now);
   return (
     <>
       {usage.limits.length > 0 ? (
         <PageSection
-          title={t("Your limits")}
-          description={t(
-            "Set by your administrator. They count every message you send, in all your spaces.",
-          )}
+          title={t(msg("Your limits"))}
+          description={t(msg("Set by your administrator. They count every message you send, in all your spaces."))}
         >
           <UsageLimitBars limits={usage.limits} now={now} />
         </PageSection>
       ) : null}
-      <PageSection title={t("Your usage")}>
+      <PageSection title={t(msg("Your usage"))}>
         <div className="grid grid-cols-3 divide-x divide-border/50">
-          <AmountTile label={t("Today")} amount={usage.totals.today} />
-          <AmountTile label={t("This week")} amount={usage.totals.week} />
-          <AmountTile label={t("This month")} amount={usage.totals.month} />
+          <AmountTile label={t(msg("Today"))} amount={usage.totals.today} />
+          <AmountTile label={t(msg("This week"))} amount={usage.totals.week} />
+          <AmountTile label={t(msg("This month"))} amount={usage.totals.month} />
         </div>
       </PageSection>
-      <UsageDailyChart title={t("Last 90 days")} daily={usage.daily} />
-      <PageSection title={t("By model, last 90 days")}>
+      <UsageDailyChart title={t(msg("Last 90 days"))} daily={usage.daily} />
+      <PageSection title={t(msg("By model, last 90 days"))}>
         <UsageTable
-          label={t("Usage by model")}
+          label={t(msg("Usage by model"))}
           rows={usage.byModel}
           columns={[...modelColumns<UsageModel>(t), ...amountColumns<UsageModel>(t)]}
           rowKey={(row) => `${row.provider}:${row.model}`}
           bar={(row) => row.tokens}
-          emptyText={t("No messages in the last 90 days.")}
+          emptyText={t(msg("No messages in the last 90 days."))}
         />
       </PageSection>
       <p className="px-3 text-xs text-muted-foreground sm:px-4">
-        {t(
-          "Counts the messages you send in every space. Costs are estimates from the prices your administrator set.",
-        )}{" "}
-        {start ? t("Days start at {{time}} your time (midnight UTC).", { time: start }) : null}
+        {t(msg("Counts the messages you send in every space. Costs are estimates from the prices your administrator set."))}{" "}
+        {start ? t(msg("Days start at {time} your time (midnight UTC)."), { time: start }) : null}
       </p>
     </>
   );

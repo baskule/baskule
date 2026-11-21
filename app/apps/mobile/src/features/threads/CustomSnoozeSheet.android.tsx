@@ -1,5 +1,3 @@
-import { t, useTranslation } from "../../i18n";
-
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import {
   BasicAlertDialog,
@@ -29,16 +27,19 @@ import {
   type CustomSnoozeInput,
 } from "@t3tools/client-runtime/state/thread-settled";
 import { requireNativeModule } from "expo";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { useEffect, useState } from "react";
 import { AppState, useWindowDimensions } from "react-native";
 
 import { OverlayPortal } from "../../components/ui/OverlayPortal";
+import { useFormattingLocale } from "../../i18n/I18nProvider";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import {
   applySnoozePickerDate,
   applySnoozePickerTime,
   snoozeDateToPickerDate,
+  snoozePickerLabels,
 } from "./customSnoozeDate";
 
 type Props = {
@@ -49,38 +50,13 @@ type Props = {
 const roundedCorner = Shape.RoundedCorner;
 
 const modes = [
-  {
-    value: "date",
-    get label() {
-      return t("Date and time");
-    },
-  },
-  {
-    value: "duration",
-    get label() {
-      return t("Duration");
-    },
-  },
+  { value: "date", label: msg("Date and time") },
+  { value: "duration", label: msg("Duration") },
 ] as const;
 const units = [
-  {
-    value: "minutes",
-    get label() {
-      return t("Minutes");
-    },
-  },
-  {
-    value: "hours",
-    get label() {
-      return t("Hours");
-    },
-  },
-  {
-    value: "days",
-    get label() {
-      return t("Days");
-    },
-  },
+  { value: "minutes", label: msg("Minutes") },
+  { value: "hours", label: msg("Hours") },
+  { value: "days", label: msg("Days") },
 ] as const;
 
 function systemUses24HourClock() {
@@ -88,7 +64,9 @@ function systemUses24HourClock() {
 }
 
 export function CustomSnoozeSheet(props: Props) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
+  const locale = useFormattingLocale();
   const { themeAppearance, themeVariables: colors } = useAppearancePreferences();
   const [is24Hour, setIs24Hour] = useState(systemUses24HourClock);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to AppState to re-read the native 24-hour clock setting when the app resumes
@@ -107,6 +85,7 @@ export function CustomSnoozeSheet(props: Props) {
   const [amount, setAmount] = useState(2);
   const [unit, setUnit] = useState<"minutes" | "hours" | "days">("hours");
   const [error, setError] = useState<string | null>(null);
+  const pickerLabels = snoozePickerLabels(date, locale, is24Hour);
   const submit = () => {
     const input: CustomSnoozeInput =
       mode === "date"
@@ -116,8 +95,8 @@ export function CustomSnoozeSheet(props: Props) {
     if (!snoozedUntil) {
       setError(
         mode === "date"
-          ? t("Choose a date and time in the future.")
-          : t("Enter a positive duration."),
+          ? gt("Choose a date and time in the future.")
+          : gt("Enter a positive duration."),
       );
       return;
     }
@@ -174,11 +153,11 @@ export function CustomSnoozeSheet(props: Props) {
                 verticalArrangement={{ spacedBy: 16 }}
                 modifiers={[fillMaxWidth(), padding(24, 24, 24, 16)]}
               >
-                <Text style={titleTypography}>{t("Custom snooze")}</Text>
+                <Text style={titleTypography}>{gt("Custom snooze")}</Text>
                 <RNHostView matchContents={{ vertical: true }} modifiers={[fillMaxWidth()]}>
                   <SegmentedControl
                     variant="card"
-                    options={modes}
+                    options={modes.map((option) => ({ ...option, label: m(option.label) }))}
                     selected={mode}
                     onSelect={(value) => {
                       setMode(value);
@@ -191,18 +170,8 @@ export function CustomSnoozeSheet(props: Props) {
                     <SegmentedControl
                       variant="card"
                       options={[
-                        {
-                          value: "date",
-                          label: date.toLocaleDateString([], { month: "short", day: "numeric" }),
-                        },
-                        {
-                          value: "time",
-                          label: date.toLocaleTimeString([], {
-                            hour: "numeric",
-                            minute: "2-digit",
-                            hourCycle: is24Hour ? "h23" : "h12",
-                          }),
-                        },
+                        { value: "date", label: pickerLabels.date },
+                        { value: "time", label: pickerLabels.time },
                       ]}
                       selected={picker}
                       onSelect={setPicker}
@@ -267,7 +236,7 @@ export function CustomSnoozeSheet(props: Props) {
                   <RNHostView matchContents={{ vertical: true }} modifiers={[fillMaxWidth()]}>
                     <SegmentedControl
                       variant="card"
-                      options={units}
+                      options={units.map((option) => ({ ...option, label: m(option.label) }))}
                       selected={unit}
                       onSelect={setUnit}
                     />
@@ -288,13 +257,15 @@ export function CustomSnoozeSheet(props: Props) {
                     onClick={props.onClose}
                     colors={{ contentColor: colors["--color-foreground"] }}
                   >
-                    <Text style={bodyTypography}>{t("Cancel")}</Text>
+                    <Text style={bodyTypography}>{gt("Cancel")}</Text>
                   </TextButton>
                   <TextButton
                     onClick={submit}
                     colors={{ contentColor: colors["--color-foreground"] }}
                   >
-                    <Text style={bodyTypography}>{t("Snooze")}</Text>
+                    <Text style={bodyTypography}>
+                      {gt("Snooze", { $context: "verb, confirm button" })}
+                    </Text>
                   </TextButton>
                 </Row>
               </Column>

@@ -1,5 +1,5 @@
-import { t } from "../i18n";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { decodeReleasedLanguage } from "@t3tools/client-runtime/locales";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import { SavedViewIdentity } from "@t3tools/client-runtime/saved-views";
 import {
   EnvironmentId,
   PullRequestInvolvement,
@@ -26,6 +27,7 @@ import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
 
+const RELEASED_LANGUAGE_KEY = "baskule.language";
 const PREFERENCES_KEY = "t3code.preferences";
 const PREFERENCES_FALLBACK_KEY = "t3code.preferences.fallback";
 const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
@@ -39,6 +41,15 @@ export const PullRequestListControls = Schema.Struct({
   sort: Schema.Literals(["updated", "created", "oldest"]),
 });
 export type PullRequestListControls = typeof PullRequestListControls.Type;
+
+export const PullRequestSavedView = Schema.Struct({
+  ...SavedViewIdentity.fields,
+  environmentId: Schema.NullOr(Schema.String),
+  controls: PullRequestListControls,
+  query: Schema.String,
+});
+export type PullRequestSavedView = typeof PullRequestSavedView.Type;
+const isPullRequestSavedView = Schema.is(PullRequestSavedView);
 
 const ThreadListFilters = Schema.Struct({
   environmentId: Schema.NullOr(EnvironmentId),
@@ -74,6 +85,17 @@ const WorkspaceSelections = Schema.Struct({
       key: Schema.optional(Schema.String),
     }),
   ),
+  issues: Schema.optional(
+    Schema.Struct({
+      environmentId: Schema.String,
+      projectId: Schema.String,
+      tracker: Schema.String,
+      host: Schema.optional(Schema.String),
+      scope: Schema.String,
+      issueKey: Schema.String,
+      key: Schema.optional(Schema.String),
+    }),
+  ),
   settings: Schema.optional(Schema.String),
   settingsKey: Schema.optional(Schema.String),
   /** A draft the threads tab showed after its last chat; only meaningful in its session. */
@@ -100,6 +122,7 @@ const isThreadProject = Schema.is(ThreadProject);
 export interface Preferences {
   readonly navigationTabOrder?: readonly string[];
   readonly hiddenNavigationTabs?: readonly string[];
+  /** Whether pull requests or issues last held the tab bar slot they share. */
   readonly pullRequestHideTestFiles?: boolean;
   /** Which hidden-by-default PR activity is shown: bot comments and resolved or dismissed ones. */
   readonly pullRequestActivityVisibility?: PullRequestActivityVisibility;
@@ -141,6 +164,7 @@ export interface Preferences {
   readonly threadListFilters?: ThreadListFilters;
   readonly pullRequestListFilters?: PullRequestListPreferences;
   readonly workspaceSelections?: WorkspaceSelections;
+  readonly pullRequestSavedViews?: ReadonlyArray<PullRequestSavedView>;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -148,7 +172,7 @@ export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePrefere
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return t("Failed to load mobile preferences.");
+    return "Failed to load mobile preferences.";
   }
 }
 
@@ -157,7 +181,7 @@ export class MobilePreferencesSaveError extends Schema.TaggedError<MobilePrefere
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return t("Failed to save mobile preferences.");
+    return "Failed to save mobile preferences.";
   }
 }
 
@@ -224,6 +248,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListFilters?: ThreadListFilters;
     pullRequestListFilters?: PullRequestListPreferences;
     workspaceSelections?: WorkspaceSelections;
+    pullRequestSavedViews?: ReadonlyArray<PullRequestSavedView>;
   } = {};
 
   if (Array.isArray(parsed.hiddenNavigationTabs)) {
@@ -376,6 +401,10 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (isWorkspaceSelections(parsed.workspaceSelections)) {
     preferences.workspaceSelections = parsed.workspaceSelections;
   }
+  if (Array.isArray(parsed.pullRequestSavedViews)) {
+    preferences.pullRequestSavedViews = parsed.pullRequestSavedViews.filter(isPullRequestSavedView);
+  }
+
   return preferences;
 }
 
@@ -542,7 +571,22 @@ const make = Effect.fn("MobilePreferencesStore.make")(function* () {
       }
     }
 
-    return parsed === null ? {} : sanitizePreferences(parsed);
+    const preferences = parsed === null ? {} : sanitizePreferences(parsed);
+    if (preferences.language !== undefined) return preferences;
+    const savedLanguage = yield* Effect.promise(() =>
+      AsyncStorage.getItem(RELEASED_LANGUAGE_KEY).catch(() => null),
+    );
+    const language = decodeReleasedLanguage(savedLanguage);
+    if (language === undefined) return preferences;
+    const migrated = { ...preferences, language };
+    yield* encode(PREFERENCES_KEY, migrated).pipe(
+      Effect.flatMap(saveJson),
+      Effect.andThen(
+        Effect.promise(() => AsyncStorage.removeItem(RELEASED_LANGUAGE_KEY).catch(() => undefined)),
+      ),
+      Effect.ignore,
+    );
+    return migrated;
   });
 
   const load = lock

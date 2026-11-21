@@ -1,46 +1,49 @@
 # Localization
 
-Baskule has English, French, Spanish, German, Dutch, and Italian interface catalogs. The browser, Electron, or Expo locale list selects the first supported language. English is the fallback. The language setting offers an explicit override or **Use system language**. The preference belongs to the device.
+Baskule uses General Translation for the web, mobile, and desktop interfaces. The
+language setting belongs to the device. **Use system language** selects the first
+supported language from the device's preferences and falls back to English.
 
-## Source messages and catalogs
+## Mark interface copy
 
-The clients use i18next. The bundled desktop renderer shares the web catalog. Use `t("Sign in")` for interface messages and the client's `useTranslation()` binding in React components. For a label that is also a model key, `msg("Working")` marks the source without changing its identity. Translate it at display time.
+In React, use `<T>` for JSX content and `useGT()` for string props and interpolated
+labels. Use `msg()` to mark shared messages and `useMessages()` to resolve them in a
+component. Outside React, pass marked messages to the app's `m()` resolver. Follow
+the patterns in the app that owns the UI.
 
-Use complete messages with named interpolation:
+Use complete messages and name the variables. Use ICU plurals so translators can
+choose the plural forms their languages require.
 
-```ts
-t("Archive {{title}}?", { title });
-t("{{count}} chat selected", { count, defaultValue_other: "{{count}} chats selected" });
+```tsx
+gt("Archive {title}?", { title });
+gt("{count, plural, one {# chat selected} other {# chats selected}}", { count });
 ```
 
-The generator extracts singular and plural forms. React renders interpolation as text. Do not translate enum values, CSS, URLs, commands, filenames, user content, AI responses, or embedded documents.
+Keep **Baskule**, **OpenCode**, commands, filenames, URLs, model identifiers, and
+user-provided text as written. A **space** is a personal or team workspace on the
+installation. A **chat** is a conversation with an agent. Use the same terms across
+the interface, including short action labels and accessibility announcements.
 
-JSON catalogs are the editable input and the shared runtime input. The web client loads additional catalogs on demand; native clients bundle them.
+## Update catalogs in the same pull request
 
-## Generate translations
+After [toolchain setup](building.md), run `pnpm exec vp run i18n:generate` in each
+affected app directory under `app/apps/`. The command extracts the English source
+into the app's `src/i18n/translations/en.json`. The app's `gt.config.json` lists the
+target locales.
 
-After [toolchain setup](building.md), extract source messages and validate catalogs:
+Translate every new key in every target catalog. Keep ICU variable names and JSX
+placeholder identifiers intact. Match the catalog's JSX structure where the
+message contains markup. Review punctuation, plural forms, and whether the copy
+fits its control. The mobile app sources iOS permission descriptions from the
+same catalogs. A new permission description ships in a new native build.
+
+Run the catalog check from `app/`.
 
 ```sh
 source scripts/env.sh
-node app/scripts/localization.ts extract
-node app/scripts/localization.ts check
+cd app
+pnpm exec vp run i18n:check
 ```
 
-Translation uses a model provider and requires explicit credentials. Set `TRANSLATION_API_KEY` privately and configure `TRANSLATION_BASE_URL` and `TRANSLATION_MODEL`, then run:
-
-```sh
-node app/scripts/localization.ts translate --locale fr
-```
-
-`TRANSLATION_BASE_URL` and `TRANSLATION_MODEL` select the provider and model; the script has no defaults. The endpoint must offer OpenAI-compatible Chat Completions with JSON-schema structured outputs. The request includes source messages, source locations, and the [product context and glossary](../app/scripts/localization-context.md). Runtime interpolation values and chat histories are not translation inputs.
-
-Review generated changes before committing them. Valid entries are preserved. To retranslate changed terminology, remove the target entry and generate it again. Commit the JSON catalogs and generated native metadata files together.
-
-The release workflow generates missing translations only for `v*` tags, using `TRANSLATION_API_KEY` from the `release` environment. The workflow sets the project's translation model and endpoint; the GitHub variables `TRANSLATION_MODEL` and `TRANSLATION_BASE_URL` override them. Release builds share the generated catalogs and native metadata through the `translations` artifact. When catalogs change, the run pushes `translations/v<version>` and adds a compare/PR-create link to its summary. Merge that branch into `main` to keep catalogs committed. Pull request CI does not generate translations; manual factory runs use the committed catalogs without the key.
-
-## Build clients
-
-Client builds consume checked-in catalogs, or the release run's `translations` artifact, and require no translation model key at runtime. Provider diagnostics, remote tool results, and user content retain their original text.
-
-Mobile builds include Expo Localization and generated iOS permission-description catalogs. Changes to native modules, navigation properties, or permission metadata require a new native build. A JavaScript update alone cannot add them. See [the mobile README](../app/apps/mobile/README.md).
+CI runs the same check. Extraction, validation, and builds use checked-in
+catalogs and require no translation service credentials.

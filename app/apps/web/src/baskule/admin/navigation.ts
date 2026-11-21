@@ -1,4 +1,5 @@
-import { msg } from "../../i18n";
+import { msg } from "gt-react";
+
 // baskule: the admin area's sections and pages. One entry per page; the sidebar, the phone section
 // list and the `/admin/$section/$page` route all read this list.
 import {
@@ -160,9 +161,7 @@ export const ADMIN_SECTIONS: ReadonlyArray<AdminSection> = [
       {
         id: "browse",
         label: msg("Browse"),
-        description: msg(
-          "Plugins from the Anthropic, Cursor and xAI catalogs and connected app platforms.",
-        ),
+        description: msg("Plugins from the Anthropic, Cursor and xAI catalogs and connected app platforms."),
         icon: BlocksIcon,
         component: page(() => import("./plugins/BrowsePage"), "BrowsePage"),
         detail: detail(() => import("./plugins/AddPluginPage"), "AddPluginPage"),

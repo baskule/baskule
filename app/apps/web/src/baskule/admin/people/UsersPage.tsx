@@ -1,4 +1,6 @@
-import { t, useTranslation } from "../../../i18n";
+import { m as resolveMessage } from "../../../i18n/messages";
+import { msg, useMessages } from "gt-react";
+
 // baskule: People → Users: everyone who can sign in, their role and their access. What a person
 // may do beyond their role (create team spaces, use plugins) comes from their groups.
 import { Link } from "@tanstack/react-router";
@@ -32,13 +34,13 @@ const STATUS_BADGES: Record<
   active: null,
   invited: {
     get label() {
-      return t("Not signed in yet");
+      return resolveMessage(msg("Not signed in yet"));
     },
     variant: "warning",
   },
   deactivated: {
     get label() {
-      return t("Deactivated");
+      return resolveMessage(msg("Deactivated"));
     },
     variant: "secondary",
   },
@@ -48,7 +50,7 @@ const loadPeople = () => baskuleApi.people();
 const loadGroups = () => groupsApi.list();
 
 export function UsersPage() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   const data = useApiResource(loadPeople);
   const groups = useApiResource(loadGroups);
@@ -87,23 +89,23 @@ export function UsersPage() {
   return (
     <>
       <PageSection
-        title={data.data ? t("People ({{length}})", { length: list.length }) : t("People")}
+        title={data.data ? t(msg("People ({length})"), { length: list.length }) : t(msg("People"))}
         description={
           <>
-            {t("Plugins and permissions such as creating team spaces come from groups.")}{" "}
+            {t(msg("Plugins and permissions such as creating team spaces come from groups."))}{" "}
             <Link
               to="/admin/$section/$page"
               params={{ section: "people", page: "groups" }}
               className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
-              {t("Manage groups")}
+              {t(msg("Manage groups"))}
             </Link>
           </>
         }
         action={
           <Button size="sm" onClick={() => setAdding(true)}>
             <UserPlusIcon />
-            {t("Add person")}
+            {t(msg("Add person"))}
           </Button>
         }
       >
@@ -111,7 +113,7 @@ export function UsersPage() {
           error={data.error}
           loading={data.loading}
           empty={list.length === 0}
-          emptyText={t("No people yet.")}
+          emptyText={t(msg("No people yet."))}
         />
         {list.map((person) => {
           const isMe = person.id === me?.user.id;
@@ -129,7 +131,7 @@ export function UsersPage() {
               trailing={
                 <>
                   {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : null}
-                  {person.role === "admin" ? <Badge variant="info">{t("Admin")}</Badge> : null}
+                  {person.role === "admin" ? <Badge variant="info">{t(msg("Admin"))}</Badge> : null}
                   {busyId === person.id ? <Spinner size="sm" tone="muted" /> : null}
                   <Menu>
                     <MenuTrigger
@@ -137,7 +139,7 @@ export function UsersPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={t("Options for {{name}}", { name: person.name })}
+                          aria-label={t(msg("Options for {name}"), { name: person.name })}
                           disabled={busyId === person.id}
                         />
                       }
@@ -158,7 +160,7 @@ export function UsersPage() {
                           )
                         }
                       >
-                        {person.role === "admin" ? t("Make member") : t("Make admin")}
+                        {person.role === "admin" ? t(msg("Make member")) : t(msg("Make admin"))}
                       </MenuItem>
                       <MenuSeparator />
                       {!me?.authentication.password ? null : person.status === "invited" ? (
@@ -176,7 +178,7 @@ export function UsersPage() {
                             );
                           }}
                         >
-                          {t("Copy a new temporary password")}
+                          {t(msg("Copy a new temporary password"))}
                         </MenuItem>
                       ) : (
                         <MenuItem
@@ -198,7 +200,7 @@ export function UsersPage() {
                             )
                           }
                         >
-                          {t("Copy a password reset link")}
+                          {t(msg("Copy a password reset link"))}
                         </MenuItem>
                       )}
                       <MenuItem
@@ -217,7 +219,7 @@ export function UsersPage() {
                           )
                         }
                       >
-                        {t("Sign out everywhere")}
+                        {t(msg("Sign out everywhere"))}
                       </MenuItem>
                       <MenuItem
                         disabled={isMe || (lastAdmin && !deactivated)}
@@ -241,7 +243,7 @@ export function UsersPage() {
                               )
                         }
                       >
-                        {deactivated ? t("Reactivate") : t("Deactivate")}
+                        {deactivated ? t(msg("Reactivate")) : t(msg("Deactivate"))}
                       </MenuItem>
                       <MenuItem
                         variant="destructive"
@@ -260,7 +262,7 @@ export function UsersPage() {
                           )
                         }
                       >
-                        {t("Delete…")}
+                        {t(msg("Delete…"))}
                       </MenuItem>
                     </MenuPopup>
                   </Menu>
@@ -269,7 +271,7 @@ export function UsersPage() {
             >
               <span className="truncate text-sm text-foreground">
                 {person.name}
-                {isMe ? <span className="text-muted-foreground"> {t("(you)")}</span> : null}
+                {isMe ? <span className="text-muted-foreground"> {t(msg("(you)"))}</span> : null}
               </span>
               <span className="truncate text-xs text-muted-foreground">
                 {person.email}
@@ -278,12 +280,8 @@ export function UsersPage() {
                   <span className="max-sm:hidden">
                     {" · "}
                     {person.activeSessions === 0
-                      ? t("Signed out")
-                      : t("Signed in on {{activeSessions}} device", {
-                          activeSessions: person.activeSessions,
-                          count: person.activeSessions,
-                          defaultValue_other: "Signed in on {{activeSessions}} devices",
-                        })}
+                      ? t(msg("Signed out"))
+                      : t(msg("{count, plural, one {Signed in on {activeSessions} device} other {Signed in on {activeSessions} devices}}"), { activeSessions: person.activeSessions, count: person.activeSessions })}
                   </span>
                 ) : null}
               </span>

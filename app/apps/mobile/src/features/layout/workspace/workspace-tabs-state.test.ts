@@ -108,6 +108,21 @@ describe("workspace root navigation", () => {
     expect(state.tabs.threads.query).toBe("diff");
   });
 
+  it("applying an empty-query view resets the position that search cancellation restores", () => {
+    let state = initialWorkspaceTabsState();
+    state = workspaceTabsReducer(state, { type: "scroll", tab: "threads", offset: 640 });
+    state = workspaceTabsReducer(state, { type: "search", tab: "threads" });
+    state = workspaceTabsReducer(state, { type: "query", tab: "threads", query: "old query" });
+    state = workspaceTabsReducer(state, { type: "scroll", tab: "threads", offset: 80 });
+    state = workspaceTabsReducer(state, { type: "cancel", tab: "threads", scrollToTop: true });
+    expect(state.tabs.threads).toEqual({
+      query: "",
+      searchMode: "resting",
+      scrollOffset: 0,
+      searchEntryOffset: 0,
+    });
+  });
+
   it("a late native blur cannot reopen a cancelled search", () => {
     let state = workspaceTabsReducer(initialWorkspaceTabsState(), { type: "search" });
     state = workspaceTabsReducer(state, { type: "cancel" });

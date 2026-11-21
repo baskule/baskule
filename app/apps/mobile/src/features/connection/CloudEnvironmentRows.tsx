@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { T, useGT, useMessages } from "gt-react-native";
 import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { ConnectionTraceId } from "./ConnectionTraceId";
@@ -24,6 +23,7 @@ import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSym
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+import type { MarkedText } from "@t3tools/client-runtime/errors";
 import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-types";
 import { serverEnvironment } from "../../state/server";
 import { environmentPresentations } from "../../state/presentation";
@@ -70,7 +70,7 @@ function ConnectedOnlyCloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
 function CloudEnvironmentRowsContent(
   props: CloudEnvironmentRowsProps & { readonly discoveryAvailable?: boolean },
 ) {
-  const t = useTranslation();
+  const gt = useGT();
   const controller = useConnectionController();
   const discoveryAvailable = props.discoveryAvailable ?? true;
   const availableCloudEnvironments = discoveryAvailable
@@ -101,9 +101,7 @@ function CloudEnvironmentRowsContent(
     <View collapsable={false} className={cn("gap-3", showHeader && "mt-5")}>
       {showHeader ? (
         <View className="px-1">
-          <Text className="text-sm font-t3-bold uppercase text-foreground-muted">
-            {t("T3 Connect")}
-          </Text>
+          <Text className="text-sm font-t3-bold uppercase text-foreground-muted">T3 Connect</Text>
         </View>
       ) : null}
 
@@ -142,13 +140,13 @@ function CloudEnvironmentRowsContent(
         <View collapsable={false} className="items-center gap-3 rounded-[24px] bg-grouped-card p-6">
           <AppActivityIndicator colorClassName={"accent-icon"} />
           <Text className="text-center text-sm leading-normal text-foreground-muted">
-            {t("Loading linked cloud environments.")}
+            <T>Loading linked cloud environments.</T>
           </Text>
         </View>
       ) : controller.relayDiscovery.error ? null : (
         <View collapsable={false} className="rounded-[24px] bg-grouped-card p-5">
           <Text className="text-sm leading-normal text-foreground-muted">
-            {t("No additional linked cloud environments.")}
+            <T>No additional linked cloud environments.</T>
           </Text>
         </View>
       )}
@@ -158,14 +156,14 @@ function CloudEnvironmentRowsContent(
       !controller.relayDiscovery.isRefreshing ? (
         <View collapsable={false} className="gap-3 rounded-[24px] bg-grouped-card p-5">
           <Text className="text-base font-t3-bold text-foreground">
-            {t("Could not load T3 Connect environments")}
+            {gt("Could not load {product} environments", { product: "T3 Connect" })}
           </Text>
           <Text className="text-sm text-foreground-muted">{controller.relayDiscovery.error}</Text>
           {controller.relayDiscovery.errorTraceId ? (
             <CopyTraceIdButton traceId={controller.relayDiscovery.errorTraceId} />
           ) : null}
           <Button
-            label={t("Try again")}
+            label={gt("Try again")}
             tone="secondary"
             onPress={() => {
               void controller.refreshRelayEnvironments();
@@ -186,6 +184,7 @@ function ConnectedCloudEnvironmentRow(props: {
   readonly onOpen?: (() => void) | undefined;
   readonly onToggleError: () => void;
 }) {
+  const gt = useGT();
   const serverConfig = useAtomValue(
     serverEnvironment.configValueAtom(props.environment.environmentId),
   );
@@ -206,6 +205,9 @@ function ConnectedCloudEnvironmentRow(props: {
       onOpen={props.onOpen}
       onRemove={props.onRemove}
       connectionError={enabled || unsupported ? props.environment.connectionError : null}
+      {...((enabled || unsupported) && props.environment.i18nConnectionError !== undefined
+        ? { i18nConnectionError: props.environment.i18nConnectionError }
+        : {})}
       connectionErrorTraceId={enabled ? props.environment.connectionErrorTraceId : null}
       connectionState={enabled || unsupported ? props.environment.connectionState : "available"}
       awaitingApproval={enabled && presentation?.connection.awaitingApproval === true}
@@ -221,7 +223,7 @@ function ConnectedCloudEnvironmentRow(props: {
         ? diagnosis
           ? { statusText: diagnosis.headline }
           : {}
-        : { statusText: "Off" })}
+        : { statusText: gt("Off", { $context: "environment is switched off" }) })}
       value={enabled}
     />
   );
@@ -234,12 +236,16 @@ function CloudEnvironmentRow(props: {
   readonly onConnect: () => void;
   readonly onToggleError: () => void;
 }) {
-  const presentation = availableCloudEnvironmentPresentation({
-    isStatusPending: props.environment.availability === "checking",
-    status: props.environment.status,
-    statusError: props.environment.error,
-    statusErrorTraceId: props.environment.traceId,
-  });
+  const m = useMessages();
+  const presentation = availableCloudEnvironmentPresentation(
+    {
+      isStatusPending: props.environment.availability === "checking",
+      status: props.environment.status,
+      statusError: props.environment.error,
+      statusErrorTraceId: props.environment.traceId,
+    },
+    m,
+  );
 
   return (
     <CloudEnvironmentRowShell
@@ -273,6 +279,7 @@ function CloudEnvironmentRowShell(props: {
   readonly onOpen?: (() => void) | undefined;
   readonly onRemove?: (() => void) | undefined;
   readonly connectionError: string | null;
+  readonly i18nConnectionError?: MarkedText;
   readonly connectionErrorTraceId: string | null;
   readonly connectionState: EnvironmentConnectionPhase;
   /** Waiting on the host to approve this device: say so plainly, not as a failure. */
@@ -286,18 +293,25 @@ function CloudEnvironmentRowShell(props: {
   readonly statusText?: string;
   readonly value: boolean;
 }) {
-  const t = useTranslation();
+  const gt = useGT();
+  const m = useMessages();
   const isRetrying =
     props.connectionState === "connecting" || props.connectionState === "reconnecting";
   const shouldPulse = isRetrying;
   const statusText =
     props.statusText ??
-    environmentStatusText({
-      phase: props.connectionState,
-      error: props.connectionError,
-      traceId: props.connectionErrorTraceId,
-      ...(props.awaitingApproval ? { awaitingApproval: true as const } : {}),
-    });
+    environmentStatusText(
+      {
+        phase: props.connectionState,
+        error: props.connectionError,
+        ...(props.i18nConnectionError === undefined
+          ? {}
+          : { i18nError: props.i18nConnectionError }),
+        traceId: props.connectionErrorTraceId,
+        ...(props.awaitingApproval ? { awaitingApproval: true as const } : {}),
+      },
+      m,
+    );
   const statusClassName =
     props.connectionError && props.connectionState !== "unsupported" && !props.awaitingApproval
       ? "text-danger-foreground"
@@ -307,7 +321,9 @@ function CloudEnvironmentRowShell(props: {
     readonly lineCount: number;
   } | null>(null);
   const errorTraceId = props.connectionErrorTraceId;
-  const measuredErrorText = errorTraceId ? `${statusText} Trace ID: ${errorTraceId}` : statusText;
+  const measuredErrorText = errorTraceId
+    ? `${statusText} ${gt("Trace ID:")} ${errorTraceId}`
+    : statusText;
   const errorLineCount =
     errorMeasurement?.text === measuredErrorText ? errorMeasurement.lineCount : 0;
   const errorCanExpand = props.connectionError !== null && errorLineCount > 1;
@@ -331,13 +347,13 @@ function CloudEnvironmentRowShell(props: {
     <View collapsable={false} className="flex-row items-center gap-3 bg-grouped-card px-4 py-3.5">
       <ContentContainer
         className="min-w-0 flex-1 gap-0.5"
-        accessibilityHint={props.onRemove ? t("Long press to remove from this device") : undefined}
+        accessibilityHint={props.onRemove ? gt("Long press to remove from this device") : undefined}
         accessibilityRole={props.onOpen ? "button" : undefined}
         accessibilityLabel={
           props.onOpen
-            ? t("Manage {{label}}", { label: props.label })
+            ? gt("Manage {environment}", { environment: props.label })
             : props.onRemove
-              ? t("Remove {{label}} from this device", { label: props.label })
+              ? gt("Remove {environment} from this device", { environment: props.label })
               : undefined
         }
         onPress={props.onOpen}
@@ -404,7 +420,7 @@ function CloudEnvironmentRowShell(props: {
         </StatusContainer>
       </ContentContainer>
       <ThemedSwitch
-        accessibilityLabel={t("Enable {{label}}", { label: props.label })}
+        accessibilityLabel={gt("Enable {environment}", { environment: props.label })}
         style={{ alignSelf: "center" }}
         disabled={props.disabled}
         onValueChange={props.onValueChange}
@@ -415,13 +431,13 @@ function CloudEnvironmentRowShell(props: {
           accessibilityRole={props.onOpen ? "button" : undefined}
           accessibilityLabel={
             props.onOpen
-              ? t("Manage {{label}}", { label: props.label })
+              ? gt("Manage {environment}", { environment: props.label })
               : props.onRemove
-                ? t("Remove {{label}} from this device", { label: props.label })
+                ? gt("Remove {environment} from this device", { environment: props.label })
                 : undefined
           }
           accessibilityHint={
-            props.onRemove ? t("Long press to remove from this device") : undefined
+            props.onRemove ? gt("Long press to remove from this device") : undefined
           }
           onPress={props.onOpen}
           onLongPress={props.onRemove}
@@ -441,10 +457,10 @@ function CloudEnvironmentRowShell(props: {
 }
 
 function CopyTraceIdButton(props: { readonly traceId: string }) {
-  const t = useTranslation();
+  const gt = useGT();
   return (
     <Button
-      label={t("Copy trace ID")}
+      label={gt("Copy trace ID")}
       tone="secondary"
       onPress={() => {
         copyTextWithHaptic(props.traceId, { target: "connection-trace-id" });

@@ -1,5 +1,3 @@
-import { t } from "../i18n";
-
 import * as Schema from "effect/Schema";
 
 export class NativeViewResolutionError extends Schema.TaggedError<NativeViewResolutionError>()(
@@ -10,8 +8,6 @@ export class NativeViewResolutionError extends Schema.TaggedError<NativeViewReso
   },
 ) {
   override get message(): string {
-    return t("Failed to resolve native view {{nativeModuleName}}.", {
-      nativeModuleName: this.nativeModuleName,
-    });
+    return `Failed to resolve native view ${this.nativeModuleName}.`;
   }
 }

@@ -43,9 +43,11 @@ function resolveWorkspaceTabsSelection(
 ): WorkspaceTabsState {
   const saved = AsyncResult.isSuccess(preferences) ? preferences.value : undefined;
   const order = resolveWorkspaceTabOrder(saved?.navigationTabOrder);
-  const hidden = navigationCustomizationAvailable()
-    ? resolveHiddenNavigationTabs(saved?.hiddenNavigationTabs)
-    : [];
+  const hidden = [
+    ...(navigationCustomizationAvailable()
+      ? resolveHiddenNavigationTabs(saved?.hiddenNavigationTabs)
+      : []),
+  ];
   const selected = resolveSelectedNavigationTab(order, hidden, state.selectedTab);
   return selected && selected !== state.selectedTab
     ? workspaceTabsReducer(state, { type: "select", tab: selected })
@@ -81,8 +83,9 @@ export function WorkspaceTabsProvider(props: {
   const registry = use(RegistryContext);
   const [model] = useState(() => createWorkspaceTabsModel(props.initialTab));
   const state = useAtomValue(model.resolved);
-  const dispatch = (action: WorkspaceTabsAction) =>
+  const dispatch = (action: WorkspaceTabsAction) => {
     registry.set(model.stored, workspaceTabsReducer(registry.get(model.resolved), action));
+  };
   const context = {
     state,
     dispatch,

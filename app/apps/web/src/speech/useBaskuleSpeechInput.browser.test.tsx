@@ -20,6 +20,7 @@ const harness = vi.hoisted(() => ({
   hosted: false,
   getMicrophoneId: (): string => "unset",
   transcript: undefined as Promise<string> | undefined,
+  accountListeners: new Set<() => void>(),
 }));
 vi.mock("../baskule/flags", async (original) => ({
   ...(await original<typeof import("../baskule/flags")>()),
@@ -28,6 +29,10 @@ vi.mock("../baskule/flags", async (original) => ({
 vi.mock("../baskule/session", () => ({
   useBaskuleMe: () => harness.me,
   readBaskuleMe: () => harness.me,
+  subscribeBaskuleMe: (listener: () => void) => {
+    harness.accountListeners.add(listener);
+    return () => harness.accountListeners.delete(listener);
+  },
 }));
 vi.mock("../state/session", () => ({
   useEnvironmentScope: () => true,
@@ -143,7 +148,7 @@ it("finishes hosted dictation before sending and sends once after the transcript
   expect(harness.committed).toHaveBeenCalledOnce();
 });
 
-it.each(["cancel", "chat switch"])(
+it.each(["cancel", "chat switch", "account switch"])(
   "discards a late hosted transcript and queued send after %s",
   async (action) => {
     const pending = setup();
@@ -153,7 +158,11 @@ it.each(["cancel", "chat switch"])(
       harness.voice.submitAfterDictation(harness.submitted);
     });
     if (action === "cancel") await act(() => harness.voice.cancel());
-    else await screen.rerender(<Composer chat="two" />);
+    else if (action === "chat switch") await screen.rerender(<Composer chat="two" />);
+    else await act(() => {
+      harness.me = { voiceInput: true, user: { id: "bob" } };
+      for (const listener of harness.accountListeners) listener();
+    });
     await act(() => {
       pending.resolve("late transcript");
     });

@@ -1,5 +1,4 @@
-import { useTranslation } from "../../i18n";
-
+import { useGT } from "gt-react-native";
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -42,7 +41,7 @@ export function ModelRowContent(
       readonly selectedClassName?: string;
     },
 ) {
-  const t = useTranslation();
+  const gt = useGT();
   return (
     <View
       style={props.minimumHeight === undefined ? undefined : { minHeight: props.minimumHeight }}
@@ -75,19 +74,27 @@ export function ModelRowContent(
             </Text>
             {props.option.isDefault ? (
               <View className="rounded-md bg-subtle-strong px-1.5 py-0.5">
-                <Text className="text-3xs font-t3-bold text-foreground-muted">{t("Default")}</Text>
+                <Text className="text-3xs font-t3-bold text-foreground-muted">
+                  {gt("Default", { $context: "badge on the default model" })}
+                </Text>
               </View>
             ) : null}
             {props.option.isLegacy ? (
               <View className="rounded-md bg-subtle px-1.5 py-0.5">
-                <Text className="text-3xs font-t3-bold text-foreground-muted">{t("Legacy")}</Text>
+                <Text className="text-3xs font-t3-bold text-foreground-muted">
+                  {gt("Legacy", { $context: "badge on an older model" })}
+                </Text>
               </View>
             ) : null}
             {props.option.isHidden ? (
-              <Text className="text-xs text-foreground-muted">{t("Hidden")}</Text>
+              <Text className="text-xs text-foreground-muted">
+                {gt("Hidden", { $context: "model is hidden from the picker" })}
+              </Text>
             ) : null}
             {props.option.isUnavailable ? (
-              <Text className="text-xs text-foreground">{t("Unavailable")}</Text>
+              <Text className="text-xs text-foreground">
+                {gt("Unavailable", { $context: "model cannot be used" })}
+              </Text>
             ) : null}
           </View>
           {props.option.subtitle ? (
@@ -103,11 +110,17 @@ export function ModelRowContent(
       </Pressable>
       {props.onToggleHidden ? (
         <Pressable
-          accessibilityLabel={t("{{value1}} model: {{providerLabel}}, {{label}}", {
-            value1: props.option.isHidden ? t("Show") : t("Hide"),
-            providerLabel: props.option.providerLabel,
-            label: props.option.label,
-          })}
+          accessibilityLabel={
+            props.option.isHidden
+              ? gt("Show model: {provider}, {model}", {
+                  provider: props.option.providerLabel,
+                  model: props.option.label,
+                })
+              : gt("Hide model: {provider}, {model}", {
+                  provider: props.option.providerLabel,
+                  model: props.option.label,
+                })
+          }
           accessibilityRole="button"
           accessibilityState={{ disabled: props.hiddenUpdatePending === true }}
           className="min-h-11 min-w-11 items-center justify-center"
@@ -123,11 +136,17 @@ export function ModelRowContent(
         </Pressable>
       ) : null}
       <Pressable
-        accessibilityLabel={t("{{value1}} favorites: {{providerLabel}}, {{label}}", {
-          value1: props.isFavorite ? t("Remove from") : t("Add to"),
-          providerLabel: props.option.providerLabel,
-          label: props.option.label,
-        })}
+        accessibilityLabel={
+          props.isFavorite
+            ? gt("Remove from favorites: {provider}, {model}", {
+                provider: props.option.providerLabel,
+                model: props.option.label,
+              })
+            : gt("Add to favorites: {provider}, {model}", {
+                provider: props.option.providerLabel,
+                model: props.option.label,
+              })
+        }
         accessibilityRole="button"
         accessibilityState={{ disabled: !props.favoritesLoaded, selected: props.isFavorite }}
         className="min-h-11 min-w-11 items-center justify-center"

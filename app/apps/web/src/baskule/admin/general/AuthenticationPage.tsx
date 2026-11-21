@@ -1,4 +1,5 @@
-import { useTranslation } from "../../../i18n";
+import { useMessages, msg } from "gt-react";
+
 // baskule: General → Authentication: installer-managed providers and admin-managed Google signup.
 import { useState, type FormEvent } from "react";
 import { KeyRoundIcon, LogInIcon, UsersIcon } from "lucide-react";
@@ -16,7 +17,7 @@ import { CopyField } from "../../views/AddPersonDialog";
 import { PageMessage, PageRow, PageSection } from "../../views/BaskulePage";
 
 export function AuthenticationPage() {
-  const t = useTranslation();
+  const t = useMessages();
   const me = useBaskuleMe();
   const settings = useApiResource(baskuleApi.adminSettings);
   if (me === null) return null;
@@ -27,15 +28,13 @@ export function AuthenticationPage() {
       {anonymous ? (
         <Alert>
           <AlertDescription>
-            {t(
-              "Anonymous test installation. Everyone shares this workspace and can administer it.",
-            )}
+            {t(msg("Anonymous test installation. Everyone shares this workspace and can administer it."))}
           </AlertDescription>
         </Alert>
       ) : null}
       <PageSection
-        title={t("Access")}
-        description={t("Set by the installer in auth.json. Changes need a redeploy.")}
+        title={t(msg("Access"))}
+        description={t(msg("Set by the installer in auth.json. Changes need a redeploy."))}
       >
         <PageRow
           leading={
@@ -45,14 +44,12 @@ export function AuthenticationPage() {
           }
         >
           <span className="text-sm text-foreground">
-            {anonymous ? t("Anonymous access") : t("Account access")}
+            {anonymous ? t(msg("Anonymous access")) : t(msg("Account access"))}
           </span>
           <span className="text-xs text-muted-foreground">
             {anonymous
-              ? t("Anyone who can open this address uses the shared workspace, without signing in.")
-              : t(
-                  "Invite people under People → Users, or allow Google signup for your domains below.",
-                )}
+              ? t(msg("Anyone who can open this address uses the shared workspace, without signing in."))
+              : t(msg("Invite people under People → Users, or allow Google signup for your domains below."))}
           </span>
         </PageRow>
       </PageSection>
@@ -65,9 +62,9 @@ export function AuthenticationPage() {
         )
       ) : null}
       {anonymous ? null : (
-        <PageSection title={t("Sign-in methods")}>
+        <PageSection title={t(msg("Sign-in methods"))}>
           {!password && providers.length === 0 ? (
-            <PageMessage>{t("No sign-in method is configured.")}</PageMessage>
+            <PageMessage>{t(msg("No sign-in method is configured."))}</PageMessage>
           ) : null}
           {password ? (
             <PageRow
@@ -76,13 +73,11 @@ export function AuthenticationPage() {
                   <KeyRoundIcon />
                 </RowIcon>
               }
-              trailing={<Badge variant="success">{t("On")}</Badge>}
+              trailing={<Badge variant="success">{t(msg("On"))}</Badge>}
             >
-              <span className="text-sm text-foreground">{t("Email and password")}</span>
+              <span className="text-sm text-foreground">{t(msg("Email and password"))}</span>
               <span className="text-xs text-muted-foreground">
-                {t(
-                  "People sign in with the password you set or that they chose from an invitation.",
-                )}
+                {t(msg("People sign in with the password you set or that they chose from an invitation."))}
               </span>
             </PageRow>
           ) : null}
@@ -96,19 +91,19 @@ export function AuthenticationPage() {
                   <span className="truncate text-sm text-foreground">{provider.name}</span>
                   <span className="text-xs text-muted-foreground">
                     {provider.type === "oidc"
-                      ? t("Single sign-on (OpenID Connect)")
-                      : t("Social sign-in")}
+                      ? t(msg("Single sign-on (OpenID Connect)"))
+                      : t(msg("Social sign-in"))}
                   </span>
                 </span>
-                <Badge variant="success">{t("On")}</Badge>
+                <Badge variant="success">{t(msg("On"))}</Badge>
               </div>
               <div className="flex max-w-xl flex-col gap-1.5 sm:ps-10">
                 <CopyField
-                  label={t("Callback URL")}
+                  label={t(msg("Callback URL"))}
                   value={`${window.desktopBridge?.getBaskuleServer?.() ?? window.location.origin}/auth/callback/${provider.id}`}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {t("Register this address at {{provider}} as the redirect URL.", {
+                  {t(msg("Register this address at {provider} as the redirect URL."), {
                     provider: provider.name,
                   })}
                 </p>
@@ -122,7 +117,7 @@ export function AuthenticationPage() {
 }
 
 function GoogleSignupForm({ initial }: { readonly initial: BaskuleAdminSettings }) {
-  const t = useTranslation();
+  const t = useMessages();
   const [domains, setDomains] = useState(initial.googleSignupDomains.join(", "));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,10 +131,10 @@ function GoogleSignupForm({ initial }: { readonly initial: BaskuleAdminSettings 
         googleSignupDomains: domains.split(/[,\s]+/).filter(Boolean),
       });
       setDomains(saved.googleSignupDomains.join(", "));
-      notifySuccess(t("Google signup settings saved"));
+      notifySuccess(t(msg("Google signup settings saved")));
     })()
       .catch((cause: unknown) => {
-        setError(errorText(cause, t("Could not save settings.")));
+        setError(errorText(cause, t(msg("Could not save settings."))));
       })
       .finally(() => {
         setBusy(false);
@@ -148,21 +143,17 @@ function GoogleSignupForm({ initial }: { readonly initial: BaskuleAdminSettings 
   return (
     <form onSubmit={(event) => void submit(event)}>
       <PageSection
-        title={t("Google signup")}
-        description={t(
-          "Changes apply immediately. New users become members with their own personal workspace.",
-        )}
+        title={t(msg("Google signup"))}
+        description={t(msg("Changes apply immediately. New users become members with their own personal workspace."))}
       >
         <fieldset disabled={busy} className="flex flex-col gap-4 p-4">
           <FormField
             className="max-w-md"
-            label={t("Allowed email domains")}
+            label={t(msg("Allowed email domains"))}
             value={domains}
             onChange={(event) => setDomains(event.currentTarget.value)}
             placeholder="company.com"
-            hint={t(
-              "Separate domains with commas. Leave empty to require invitations. Google must verify the email and its Workspace domain.",
-            )}
+            hint={t(msg("Separate domains with commas. Leave empty to require invitations. Google must verify the email and its Workspace domain."))}
           />
           {error ? (
             <Alert variant="error" role="alert">
@@ -172,7 +163,7 @@ function GoogleSignupForm({ initial }: { readonly initial: BaskuleAdminSettings 
           <div>
             <Button type="submit" disabled={busy}>
               {busy ? <Spinner size="sm" /> : null}
-              {t("Save settings")}
+              {t(msg("Save settings"))}
             </Button>
           </div>
         </fieldset>

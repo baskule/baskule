@@ -1,7 +1,9 @@
-import { t } from "../i18n";
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import { parseDiffFromFile } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs/types";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../i18n/messages";
 import { READABLE_LIGHT_THEME_NAME } from "./readableSyntaxTheme";
 
 // Light mode uses a darker pierre-light so syntax stays readable on every code surface.
@@ -83,11 +85,17 @@ function hideWhitespaceChanges(file: FileDiffMetadata): FileDiffMetadata {
   const hunks = file.hunks.map((hunk) => {
     const oldContents = file.deletionLines
       .slice(hunk.deletionLineIndex, hunk.deletionLineIndex + hunk.deletionCount)
-      .map((line) => t("{{value1}}\n", { value1: line.replace(/\s/g, "") }))
+      .map(
+        (line) => `${line.replace(/\s/g, "")}
+`,
+      )
       .join("");
     const newContents = file.additionLines
       .slice(hunk.additionLineIndex, hunk.additionLineIndex + hunk.additionCount)
-      .map((line) => t("{{value1}}\n", { value1: line.replace(/\s/g, "") }))
+      .map(
+        (line) => `${line.replace(/\s/g, "")}
+`,
+      )
       .join("");
     const filtered = parseDiffFromFile(
       { name: file.name, contents: oldContents },
@@ -159,6 +167,7 @@ export function getRenderablePatch(
   patch: string | undefined,
   cacheScope = "diff-panel",
   options: RenderablePatchOptions = {},
+  resolve: MessageResolver = m,
 ): RenderablePatch | null {
   if (!patch?.trim()) return null;
 
@@ -178,13 +187,13 @@ export function getRenderablePatch(
     return {
       kind: "raw",
       text: patch,
-      reason: t("Unsupported diff format. Showing raw patch."),
+      reason: resolve(msg("Unsupported diff format. Showing raw patch.")),
     };
   } catch {
     return {
       kind: "raw",
       text: patch,
-      reason: t("Failed to parse patch. Showing raw patch."),
+      reason: resolve(msg("Failed to parse patch. Showing raw patch.")),
     };
   }
 }

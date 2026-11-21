@@ -1,6 +1,4 @@
-import { useTranslation } from "../../i18n";
-
-import { LanguageSetting } from "./LanguageSetting";
+import { useGT } from "gt-react-native";
 import { Platform } from "react-native";
 import { AndroidNavigationAppearanceSection } from "./appearance/sections/AndroidNavigationAppearanceSection";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
@@ -24,11 +22,11 @@ export function SettingsAppearanceRouteScreen() {
 }
 
 function UpstreamAppearanceSettings() {
-  const t = useTranslation();
+  const gt = useGT();
   const insets = useSafeAreaInsets();
 
   return (
-    <SettingsScreen title={t("Appearance")}>
+    <SettingsScreen title={gt("Appearance")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -38,7 +36,6 @@ function UpstreamAppearanceSettings() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
-        <LanguageSetting />
         <ThemeAppearanceSection />
         {Platform.OS === "android" ? <AndroidNavigationAppearanceSection /> : null}
         <TextAppearanceSection />

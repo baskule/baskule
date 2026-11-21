@@ -1,4 +1,6 @@
-import { t } from "../i18n";
+import { m as resolveMessage } from "../i18n/messages";
+import { msg } from "gt-react-native";
+
 import { Schema } from "effect";
 import { fetch } from "expo/fetch";
 import { File } from "expo-file-system";
@@ -33,7 +35,7 @@ export function getBaskuleVoiceTranscriber(): VoiceTranscriber | null {
       if (!isCurrent())
         throw new VoiceTranscriptionError({
           code: "unavailable",
-          message: t("Voice input is unavailable."),
+          message: resolveMessage(msg("Voice input is unavailable.")),
         });
       return {
         locale: Intl.DateTimeFormat().resolvedOptions().locale,
@@ -54,7 +56,7 @@ export function getBaskuleVoiceTranscriber(): VoiceTranscriber | null {
             if (file.size > BASKULE_TRANSCRIPTION_MAX_BYTES) {
               throw new VoiceTranscriptionError({
                 code: "transcription-failed",
-                message: t("The recording is too large. Try a shorter recording."),
+                message: resolveMessage(msg("The recording is too large. Try a shorter recording.")),
               });
             }
             const audio = await file.arrayBuffer();
@@ -62,7 +64,7 @@ export function getBaskuleVoiceTranscriber(): VoiceTranscriber | null {
             if (audio.byteLength === 0 || audio.byteLength > BASKULE_TRANSCRIPTION_MAX_BYTES) {
               throw new VoiceTranscriptionError({
                 code: "transcription-failed",
-                message: t("The recording is empty or too large. Try recording again."),
+                message: resolveMessage(msg("The recording is empty or too large. Try recording again.")),
               });
             }
             const response = await fetch(`${captured.serverUrl}/api/baskule/transcriptions`, {
@@ -82,12 +84,10 @@ export function getBaskuleVoiceTranscriber(): VoiceTranscriber | null {
                 code: "transcription-failed",
                 message:
                   response.status === 429
-                    ? t(
-                        "Voice input is busy or your usage limit has been reached. Try again later.",
-                      )
+                    ? resolveMessage(msg("Voice input is busy or your usage limit has been reached. Try again later."))
                     : response.status === 404
-                      ? t("Voice input has been disabled on this server.")
-                      : t("Could not transcribe the recording. Try again."),
+                      ? resolveMessage(msg("Voice input has been disabled on this server."))
+                      : resolveMessage(msg("Could not transcribe the recording. Try again.")),
               });
             }
             const result = parseTranscript(await response.json());
@@ -98,9 +98,7 @@ export function getBaskuleVoiceTranscriber(): VoiceTranscriber | null {
             if (isVoiceTranscriptionError(error)) throw error;
             throw new VoiceTranscriptionError({
               code: "transcription-failed",
-              message: t(
-                "Could not transcribe the recording. Check your connection and try again.",
-              ),
+              message: resolveMessage(msg("Could not transcribe the recording. Check your connection and try again.")),
               cause: error,
             });
           } finally {

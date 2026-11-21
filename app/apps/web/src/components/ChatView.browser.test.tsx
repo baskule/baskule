@@ -71,6 +71,9 @@ function acceptAttachmentUploads(): Disposable {
   };
 }
 
+// One input event, where typing a key at a time takes seconds on a loaded CI runner.
+const insertText = (text: string) => cdp().send("Input.insertText", { text });
+
 /** Holds every call to `method` until `release`, then ends it with `end`, until disposed. */
 function holdRpc<Input>(method: string, end: Effect.Effect<never, Error>) {
   let release = () => {};
@@ -540,4 +543,100 @@ it("selecting a side-chat tab focuses that side chat's composer", async () => {
   await userEvent.click(screen.getByRole("button", { name: side.title, exact: true }));
   await expect.element(sideEditor).toHaveFocus();
   await expect.element(mainEditor).toHaveTextContent("main draft");
+});
+
+it("/side sends the draft's attachments and context, and keeps them when it does not start", async () => {
+  await page.viewport(1400, 900);
+  const thread = threadWithHistory("side-attachments", 1);
+  let holdFork = false;
+  using _environment = installFakeEnvironment([thread], {
+    acceptCommands: true,
+    holdCommand: (command) => holdFork && command.type === "thread.fork",
+  });
+  __setClientSettingsForTests({
+    ...DEFAULT_CLIENT_SETTINGS,
+    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const router = getRouter(
+    createMemoryHistory({ initialEntries: [`/${ENVIRONMENT_ID}/${thread.id}`] }),
+  );
+  await router.load();
+  await using _app = await render(<AppRoot router={router} />, {
+    // AppRoot brings its own router.
+    router: false,
+  });
+  using _uploads = acceptAttachmentUploads();
+  await expect.element(page.getByText(`Answer 0 for ${thread.id}.`)).toBeVisible();
+
+  const editor = page.getByRole("textbox", { name: `Message ${thread.title}`, exact: true });
+  const image = page.getByRole("img", { name: "shot.png" });
+  const sendImageToSideChat = async () => {
+    await userEvent.click(editor);
+    const clipboardData = new DataTransfer();
+    clipboardData.items.add(new File([PNG], "shot.png", { type: "image/png" }));
+    editor
+      .element()
+      .dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    await expect.element(image).toBeVisible();
+    await insertText("/side what is this?");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(image).not.toBeInTheDocument();
+  };
+  // The tab opens once the start finished; until then `/side` refuses another side chat.
+  const sideChatTabs = page.getByRole("button", { name: "Side chat", exact: true });
+  const sentMessage = async (fields: Record<string, unknown>, openTabs: number) => {
+    await vi.waitFor(() =>
+      expect(dispatchedCommands()).toContainEqual(
+        expect.objectContaining({ type: "message.dispatch", ...fields }),
+      ),
+    );
+    await expect.element(sideChatTabs).toHaveLength(openTabs);
+  };
+
+  await sendImageToSideChat();
+  await sentMessage(
+    {
+      text: "what is this?",
+      attachments: [expect.objectContaining({ type: "image", id: "upload-1" })],
+      context: {
+        version: 1,
+        records: [expect.objectContaining({ kind: "image", attachmentId: "upload-1" })],
+      },
+    },
+    1,
+  );
+
+  // A reply alone is enough to send.
+  await page.getByRole("button", { name: "Reply to this response" }).first().click();
+  await userEvent.click(editor);
+  await insertText("/side ");
+  await userEvent.keyboard("{Enter}");
+  await sentMessage(
+    {
+      context: expect.objectContaining({
+        records: [expect.objectContaining({ kind: "response" })],
+      }),
+    },
+    2,
+  );
+
+  // A failed start puts the message back after the draft typed meanwhile.
+  holdFork = true;
+  await sendImageToSideChat();
+  await insertText("next draft");
+  await vi.waitFor(() =>
+    expect(dispatchedCommands().filter((command) => command.type === "thread.fork")).toHaveLength(
+      3,
+    ),
+  );
+  await rejectPendingCommand("Side chats are paused.");
+  await expect.element(image).toBeVisible();
+  await vi.waitFor(() =>
+    expect((editor.element() as HTMLElement).innerText.split("\n").filter(Boolean)).toEqual([
+      "next draft",
+      "/side what is this?",
+    ]),
+  );
 });

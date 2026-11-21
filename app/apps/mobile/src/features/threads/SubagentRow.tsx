@@ -10,6 +10,7 @@ import {
 } from "@t3tools/client-runtime/state/subagent-display";
 import { formatSubagentEffort } from "@t3tools/client-runtime/state/thread-execution";
 import type { EnvironmentId, OrchestrationV2Subagent } from "@t3tools/contracts";
+import { msg, useMessages } from "gt-react-native";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
@@ -41,7 +42,8 @@ export function SubagentRow(props: {
   readonly subagent: SubagentRowSubagent;
   readonly elapsed: ReactNode;
 }) {
-  const presentation = resolveSubagentRowPresentation(props.subagent);
+  const messages = useMessages();
+  const presentation = resolveSubagentRowPresentation(props.subagent, undefined, messages);
   const detail = subagentCardDetail(presentation.detail);
   return (
     <View className="flex-row gap-3">
@@ -100,6 +102,7 @@ function SubagentMetadata(props: {
   readonly subagent: SubagentRowSubagent;
 }) {
   const { environmentId, subagent } = props;
+  const messages = useMessages();
   const config = useEnvironmentServerConfig(environmentId);
   const providers = (config?.providers ?? []).map((candidate) => {
     const rawConfig = config?.settings.providerInstances[candidate.instanceId]?.config;
@@ -129,15 +132,19 @@ function SubagentMetadata(props: {
   );
   const childProject = useProject(child ? scopeProjectRef(environmentId, child.projectId) : null);
   const selection = subagent.modelSelection;
-  const { modelLabel, modelSlug, workspace } = resolveSubagentMetadata({
-    model: subagent.model,
-    modelSelection: selection,
-    provider,
-    parentThread: parent,
-    childThread: child,
-    parentProject,
-    childProject,
-  });
+  const { modelLabel, modelSlug, workspace } = resolveSubagentMetadata(
+    {
+      model: subagent.model,
+      modelSelection: selection,
+      provider,
+      parentThread: parent,
+      childThread: child,
+      parentProject,
+      childProject,
+    },
+    messages,
+  );
+  const branchLabel = messages(msg("Branch", { $context: "field label" }));
   const effort = formatSubagentEffort({ modelSlug, modelSelection: selection, provider });
   return (
     <View className="min-w-0 flex-row items-center gap-1.5">
@@ -170,7 +177,7 @@ function SubagentMetadata(props: {
         >
           <Text className="text-xs text-foreground-muted">·</Text>
           <SymbolView
-            name={label === "Branch" ? "arrow.triangle.branch" : "folder"}
+            name={label === branchLabel ? "arrow.triangle.branch" : "folder"}
             size={11}
             tintColorClassName="accent-icon-muted"
           />
