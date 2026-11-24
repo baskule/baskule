@@ -1027,30 +1027,30 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       className={cn(
         "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
         shouldRecede ? "font-normal" : "font-medium",
-        variant !== "slim"
-          ? cn(
-              "truncate",
-              shouldRecede
-                ? "text-foreground/75 group-hover/sidebar-row:text-foreground group-focus-visible/sidebar-row:text-foreground"
-                : status === "failed" && !isUnread && !isWoke
-                  ? "text-foreground/95"
-                  : "text-foreground",
-            )
-          : cn(
-              "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
-              shouldRecede
-                ? "text-secondary-label"
-                : props.isActive || isWoke || status === "input" || status === "request"
-                  ? "text-foreground"
-                  : isUnread
-                    ? "text-muted-foreground"
-                    : "text-secondary-label/70",
-            ),
+        isRegeneratingTitle
+          ? "relative truncate text-muted-foreground"
+          : variant !== "slim"
+            ? cn(
+                "truncate",
+                shouldRecede
+                  ? "text-foreground/75 group-hover/sidebar-row:text-foreground group-focus-visible/sidebar-row:text-foreground"
+                  : status === "failed" && !isUnread && !isWoke
+                    ? "text-foreground/95"
+                    : "text-foreground",
+              )
+            : cn(
+                "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+                shouldRecede
+                  ? "text-secondary-label"
+                  : props.isActive || isWoke || status === "input" || status === "request"
+                    ? "text-foreground"
+                    : isUnread
+                      ? "text-muted-foreground"
+                      : "text-secondary-label/70",
+              ),
         baskule.flatChatSidebar &&
-          (baskule.hosted && isUnread && !props.isActive
-            ? "font-semibold text-sidebar-foreground"
-            : "font-normal text-sidebar-foreground"),
-        isRegeneratingTitle && "opacity-55",
+          (baskule.hosted && isUnread && !props.isActive ? "font-semibold" : "font-normal"),
+        baskule.flatChatSidebar && !isRegeneratingTitle && "text-sidebar-foreground",
       )}
       dir={textDirection(thread.title)}
     >
@@ -1268,15 +1268,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     "relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end",
                     props.sweepAction !== null && "hidden",
                     jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
-                    // baskule: the "..." menu button takes the time's place on the active row and on touch.
-                    baskule.flatChatSidebar &&
-                      (props.isActive ? "opacity-0" : "pointer-coarse:opacity-0"),
                   )}
                 >
                   <span
                     className={cn(
                       "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
                       !isWoke && "group-any-hover/sidebar-row:opacity-0",
+                      // baskule: the "..." menu button takes the time's place on the active row and on touch.
+                      baskule.flatChatSidebar &&
+                        (props.isActive ? "opacity-0" : "pointer-coarse:opacity-0"),
                     )}
                   >
                     {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (

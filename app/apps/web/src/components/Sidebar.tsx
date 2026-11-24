@@ -3373,7 +3373,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             0 &&
           (settledCount === 0 || scopedProjectGroups.length > 0) ? (
             <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-              {projects.length === 0 ? (
+              {baskule.flatChatSidebar ? ( // baskule: no projects in a chat app
+                gt("No chats yet")
+              ) : projects.length === 0 ? (
                 <>
                   <span>
                     <T>No projects yet</T>
@@ -3811,43 +3813,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 </SortableContext>
               </DndContext>
             </TooltipProvider>
-          ) : null}
-          {!isSearchingThreads &&
-          !hasProjectFolders &&
-          visibleDraftSessionCount === 0 &&
-          pinnedThreads.length +
-            activeThreads.length +
-            workingThreads.length +
-            snoozedThreads.length +
-            settledCount ===
-            0 ? (
-            <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-              {baskule.flatChatSidebar ? ( // baskule: no projects in a chat app
-                gt("No chats yet")
-              ) : projects.length === 0 ? (
-                <>
-                  <span>
-                    <T>No projects yet</T>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={openAddProjectCommandPalette}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                  >
-                    <PlusIcon className="-mx-0.5 size-3" />
-                    <T>Add project</T>
-                  </button>
-                </>
-              ) : scopedProjectGroups.length > 1 ? (
-                gt("No threads in these projects yet")
-              ) : scopedProjectGroups[0] ? (
-                gt("No threads in {displayName} yet", {
-                  displayName: scopedProjectGroups[0].displayName,
-                })
-              ) : (
-                baskuleCopy("No threads yet") // baskule:
-              )}
-            </div>
           ) : null}
         </SidebarGroup>
       </SidebarContent>
