@@ -25,11 +25,13 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as Semaphore from "effect/Semaphore";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as ModelManifest from "./ModelManifest.ts";
 import { applyProviderCompatibility } from "./providerCompatibility.ts";
 import * as ServerConfig from "../config.ts";
-import { refreshWindowsPath } from "../os-jank.ts";
+import { refreshPathFromLoginShell, refreshWindowsPath } from "../os-jank.ts";
 import * as ProviderInstanceRegistry from "./ProviderInstanceRegistry.ts";
 import {
   hydrateCachedProvider,
@@ -64,6 +66,8 @@ export class ProviderRegistry extends Context.Service<
     readonly refreshInstance: (
       instanceId: ProviderInstanceId,
     ) => Effect.Effect<ReadonlyArray<ServerProvider>>;
+
+    readonly rebuildMissingAndRefresh: Effect.Effect<ReadonlyArray<ServerProvider>>;
 
     /** Only refreshed instances can verify an update; the published list still includes every row. */
     readonly refreshAfterUpdate: (
@@ -651,7 +655,20 @@ export const layer = Layer.effect(
     // A refresh is how a user asks T3 to see a CLI installed since launch; a burst shares one probe.
     // Drivers copy the environment when built, so instances still missing their CLI are rebuilt
     // on the new PATH. They cannot have live sessions, and installed ones keep theirs.
+    // Compared with the last PATH seen here, since other features re-read the login shell too.
+    const hostEnvironment = yield* HostProcess.Environment;
+    const readHostPath = () => hostEnvironment.PATH ?? hostEnvironment.Path ?? hostEnvironment.path;
+    const lastHostPathRef = yield* Ref.make(readHostPath());
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const refreshHostPath = yield* refreshWindowsPath().pipe(
+      Effect.andThen(refreshPathFromLoginShell()),
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.andThen(
+        Effect.suspend(() => {
+          const path = readHostPath();
+          return Ref.getAndSet(lastHostPathRef, path).pipe(Effect.map((last) => last !== path));
+        }),
+      ),
       Effect.flatMap((changed) =>
         changed
           ? Ref.get(providersRef).pipe(
@@ -734,6 +751,29 @@ export const layer = Layer.effect(
         return yield* Ref.get(providersRef);
       }
       return yield* refreshOneSource(instance);
+    });
+
+    // Only instances whose CLI was not found are rebuilt; installed ones may have live sessions.
+    const rebuildMissingAndRefresh = Effect.fn("rebuildMissingAndRefresh")(function* () {
+      const instances = yield* instanceRegistry.listInstances;
+      yield* refresh().pipe(Effect.catchCause(recoverRefreshFailure));
+      const missing = yield* Effect.filter(instances, (instance) =>
+        Effect.gen(function* () {
+          if (!instance.enabled || !(yield* isCurrentInstance(instance))) return false;
+          const snapshot = yield* instance.snapshot.getSnapshot;
+          return !snapshot.installed;
+        }),
+      );
+      if (missing.length === 0) return yield* Ref.get(providersRef);
+      yield* instanceRegistryMutator.rebuild(missing.map((instance) => instance.instanceId));
+      // A shared pass already in flight may hold the retired instances, so probe each rebuilt one.
+      yield* Effect.forEach(
+        missing,
+        (instance) =>
+          refreshInstance(instance.instanceId).pipe(Effect.catchCause(recoverRefreshFailure)),
+        { concurrency: "unbounded", discard: true },
+      );
+      return yield* Ref.get(providersRef);
     });
 
     const refreshAfterUpdate = Effect.fn("refreshAfterUpdate")(function* (
@@ -918,6 +958,27 @@ export const layer = Layer.effect(
               yield* correlateSnapshotWithSource(source, provider).pipe(
                 Effect.flatMap(syncProvider),
               );
+            }).pipe(Effect.ignoreCause({ log: true })),
+          { concurrency: "unbounded", discard: true },
+        );
+        // A rename keeps the instance live, so its new label only arrives from a fresh read.
+        const published = new Map(
+          (yield* Ref.get(providersRef)).map((provider) => [provider.instanceId, provider]),
+        );
+        yield* Effect.forEach(
+          carriedOver.values(),
+          (instance) =>
+            Effect.gen(function* () {
+              // Its first check publishes the new label anyway; the placeholder must not replace the cache.
+              if (yield* instance.snapshot.isAwaitingFirstCheck ?? Effect.succeed(false)) return;
+              const provider = yield* instance.snapshot.getSnapshot;
+              const previous = published.get(instance.instanceId);
+              if (
+                previous?.displayName !== provider.displayName ||
+                previous?.accentColor !== provider.accentColor
+              ) {
+                yield* syncProvider(provider);
+              }
             }).pipe(Effect.ignoreCause({ log: true })),
           { concurrency: "unbounded", discard: true },
         );
@@ -1116,6 +1177,7 @@ export const layer = Layer.effect(
                   return input.rescan &&
                     !(
                       Equal.equals(rescanned?.skills, held?.skills) &&
+                      Equal.equals(rescanned?.models, held?.models) &&
                       Equal.equals(rescanned?.slashCommands, held?.slashCommands)
                     )
                     ? { ...scanned, workspaceRescannedAt: scannedAt }
@@ -1216,6 +1278,9 @@ export const layer = Layer.effect(
         refreshInstance(instanceId).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshWorkspaceSnapshot: (input) =>
         refreshWorkspaceSnapshot(input).pipe(Effect.catchCause(recoverRefreshFailure)),
+      rebuildMissingAndRefresh: rebuildMissingAndRefresh().pipe(
+        Effect.catchCause(recoverRefreshFailure),
+      ),
       refreshAfterUpdate,
       invalidateModelCaches,
       refreshModelCatalog: refreshModelCatalog().pipe(

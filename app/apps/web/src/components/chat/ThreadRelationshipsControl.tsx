@@ -60,6 +60,7 @@ import type { MessageResolver } from "~/i18n/messages";
 
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { buildThreadRouteParams } from "../../threadRoutes";
+import type { SideThreadOpenIntent } from "@t3tools/client-runtime/side-thread";
 import {
   useProjects,
   useQuietThreadProjection,
@@ -80,7 +81,8 @@ import { useEnvironmentQuery } from "../../state/query";
 import { AgentElapsed } from "./AgentElapsed";
 import { ThreadRelationshipIcon, threadRelationshipStatusLabel } from "./ThreadRelationshipIcon";
 import { ThreadLineageWorkflowRow } from "./ThreadLineageWorkflowRow";
-import { resolveThreadOpenRoute } from "../../lib/sideChatPane";
+import { useSideThreadTrigger } from "../../hooks/useSideThreadTrigger";
+import { openSideThread, resolveThreadOpenRoute } from "../../lib/sideChatPane";
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -112,19 +114,28 @@ function ThreadLineageRowList(props: {
   readonly children: ReactNode;
 }) {
   const gt = useGT();
+  const listRef = useRef<HTMLUListElement>(null);
+  const showMore = () => {
+    const exhausting = props.hiddenCount <= THREAD_LINEAGE_PAGE_COUNT;
+    props.onShowMore();
+    // The button unmounts on the final page; focus the list so focus isn't dropped.
+    if (exhausting) listRef.current?.focus({ preventScroll: true });
+  };
   return (
     <>
       {/* ScrollArea's max-height viewport measures badly inside this scrolling panel. */}
       <ul
+        ref={listRef}
+        tabIndex={-1}
         aria-label={gt("Related threads")}
-        className="m-0 max-h-[13.5rem] list-none overflow-y-auto p-0 has-data-workflow-expanded:max-h-[min(28rem,55dvh)]"
+        className="m-0 max-h-[13.5rem] list-none overflow-y-auto p-0 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 has-data-workflow-expanded:max-h-[min(28rem,55dvh)]"
       >
         {props.children}
       </ul>
       {props.hiddenCount > 0 ? (
         <button
           type="button"
-          onClick={props.onShowMore}
+          onClick={showMore}
           className={`flex h-8 w-full cursor-pointer items-center rounded-lg ${THREAD_DETAILS_PANEL_ROW_CONTENT_CLASS} text-sm font-medium text-muted-foreground/70 hover:bg-black/[0.055] hover:text-foreground/80 dark:hover:bg-white/[0.075]`}
         >
           <PlusIcon aria-hidden className="size-4 shrink-0" />
@@ -205,11 +216,11 @@ function relationshipHint(
   sideChat: boolean,
   resolve: MessageResolver,
 ) {
-  if (sideChat) return resolve(msg("Open side chat in this chat"));
+  if (sideChat) return resolve(msg("Open side chat"));
   if (edge.kind === "transfer") return resolve(msg("Open context transfer in this chat"));
   if (edge.kind === "subagent") {
     return edge.sourceThreadId === currentThreadId
-      ? resolve(msg("Open subagent in this chat"))
+      ? resolve(msg("Open subagent"))
       : resolve(msg("Open parent agent in this chat"));
   }
   return edge.sourceThreadId === currentThreadId
@@ -304,6 +315,7 @@ export function ThreadRelationshipsPanel(props: {
       : null;
   const parentProjection = useQuietThreadProjection(parentRef)?.projection;
   const navigate = useNavigate();
+  const trigger = useSideThreadTrigger();
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack);
   const stopSession = useAtomCommand(threadEnvironment.stopSession);
   const interruptTurn = useAtomCommand(threadEnvironment.interruptTurn);
@@ -473,6 +485,23 @@ export function ThreadRelationshipsPanel(props: {
     });
   };
 
+  // A subagent or side chat of this thread opens beside it or in its place, as the click asks.
+  const openSideThreadRow = (threadId: ThreadId, intent: SideThreadOpenIntent) => {
+    openSideThread({
+      threadRef: resolveThreadOpenRoute(
+        scopeThreadRef(props.environmentId, threadId),
+        graph.nodes.get(threadId)?.thread ?? null,
+      ),
+      panelRef: ref,
+      intent,
+      navigate: (threadRef) =>
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(threadRef),
+        }),
+    });
+  };
+
   const merge = async () => {
     if (!latestMergeBackRun || mergeTargetThreadId === null || busyAction !== null) return;
     if (mergeErrorToastId.current !== null) {
@@ -610,12 +639,12 @@ export function ThreadRelationshipsPanel(props: {
       ? "group-hover:opacity-0 group-focus-within:opacity-0 pointer-coarse:opacity-0 [@media(hover:none)]:opacity-0"
       : "";
     const project = projects.find((project) => project.id === node?.thread?.projectId);
-    const hint = relationshipHint(
-      edge,
-      props.threadId,
-      node?.thread?.lineage.sideChat === true && !isParent,
-      m,
-    );
+    const isSideChat = node?.thread?.lineage.sideChat === true && !isParent;
+    const hint = relationshipHint(edge, props.threadId, isSideChat, m);
+    const openProps =
+      isSideChat || (isSubagent && !isParent)
+        ? trigger((intent) => openSideThreadRow(threadId, intent))
+        : { onClick: () => openThread(threadId) };
     const RelationshipPopup = agent ? ThreadHoverCardPopup : TooltipPopup;
     const relationshipTooltip = agent ? (
       <SubagentTooltipContent
@@ -684,7 +713,7 @@ export function ThreadRelationshipsPanel(props: {
               size="sm"
               variant="ghost"
               part={workflowGroup ? "primary" : "row"}
-              onClick={() => openThread(threadId)}
+              {...openProps}
             />
           }
         >
@@ -703,7 +732,9 @@ export function ThreadRelationshipsPanel(props: {
           providers={providers}
           providerEntries={providerEntries}
           driver={providerDriver}
-          onOpenThread={(memberThreadId) => openThread(memberThreadId as ThreadId)}
+          onOpenThread={(memberThreadId, intent) =>
+            openSideThreadRow(memberThreadId as ThreadId, intent)
+          }
           onStop={canStopWorkflow ? () => void stopWorkflow(agent.id) : undefined}
           stopping={stoppingId === agent.id}
           stopDisabled={stoppingId !== null}

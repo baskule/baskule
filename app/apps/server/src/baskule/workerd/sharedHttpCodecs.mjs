@@ -20,7 +20,7 @@ export const sharedHttpCodecs = {
         "  const annotations =",
         contents.indexOf("function handlerToHttpEffect("),
       );
-      const end = contents.indexOf("  return applyMiddleware(", start);
+      const end = contents.indexOf("  const redactedNames =", start);
       const body = contents.slice(start, end);
       if (start < 0 || end < 0 || !body.includes("const payloadBy =")) {
         throw new Error("Review shared HTTP codec compatibility: handlerToHttpEffect changed");
@@ -73,7 +73,8 @@ ${body}
         contents.slice(0, start) +
         `  const codecs = () => getHostedHttpCodecs(api, group, endpoint, isRaw);\n` +
         contents.slice(end);
-      const before = "return applyMiddleware(group, endpoint, context, Effect.gen(function* () {";
+      const before =
+        "const effect = applyMiddleware(group, endpoint, context, Effect.gen(function* () {";
       if (contents.split(before).length !== 2)
         throw new Error("Review shared HTTP codec middleware boundary");
       contents = contents.replace(

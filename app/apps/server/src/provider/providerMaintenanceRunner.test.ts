@@ -1,3 +1,6 @@
+import * as Context from "effect/Context";
+import * as Exit from "effect/Exit";
+import * as Scope from "effect/Scope";
 import * as ProviderInstallationGate from "./ProviderInstallationGate.ts";
 import { describe, it, assert } from "@effect/vitest";
 import {
@@ -189,6 +192,7 @@ function makeRegistry(
 
     const registry: ProviderRegistry.ProviderRegistry["Service"] = {
       getProviders: Ref.get(providersRef),
+      rebuildMissingAndRefresh: Ref.get(providersRef),
       refresh: () => Ref.get(providersRef),
       refreshInstance: () => Ref.get(providersRef),
       refreshAfterUpdate: () => {
@@ -233,27 +237,25 @@ const makeTestRunner = (
   },
   latestVersions: Layer.Layer<ProviderLatestVersions.ProviderLatestVersions> = ProviderLatestVersions.layer,
 ) =>
-  Effect.service(ProviderMaintenanceRunner.ProviderMaintenanceRunner).pipe(
-    Effect.provide(
-      ProviderMaintenanceRunner.layer.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(ProviderRegistry.ProviderRegistry, registry),
-            Layer.succeed(ModelManifest.ModelManifest, {
-              current: Effect.succeed(manifest),
-              refresh: Effect.succeed(manifest),
-              forceRefresh: Effect.succeed(manifest),
-              refreshOnDemand: Effect.succeed(manifest),
-              refreshInBackground: Effect.void,
-            }),
-            latestVersions,
-            // Layers memoize by reference, so a test that provides the gate shares it.
-            ProviderInstallationGate.layer,
-          ),
+  Layer.build(
+    ProviderMaintenanceRunner.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(ProviderRegistry.ProviderRegistry, registry),
+          Layer.succeed(ModelManifest.ModelManifest, {
+            current: Effect.succeed(manifest),
+            refresh: Effect.succeed(manifest),
+            forceRefresh: Effect.succeed(manifest),
+            refreshOnDemand: Effect.succeed(manifest),
+            refreshInBackground: Effect.void,
+          }),
+          latestVersions,
+          // Layers memoize by reference, so a test that provides the gate shares it.
+          ProviderInstallationGate.layer,
         ),
       ),
     ),
-  );
+  ).pipe(Effect.map(Context.get(ProviderMaintenanceRunner.ProviderMaintenanceRunner)));
 
 describe("providerMaintenanceRunner", () => {
   it.effect("runs the allowlisted provider update command and records success", () => {
@@ -425,7 +427,7 @@ describe("providerMaintenanceRunner", () => {
   // binary behind that later updates mistake for an install.
   it.effect.each([
     { runFor: "6 minutes", status: "succeeded", message: "Provider updated." },
-    { runFor: "31 minutes", status: "failed", message: "Update timed out after 30 minutes." },
+    { runFor: "2 hours", status: "succeeded", message: "Provider updated." },
   ] as const)("lets a slow installer run for $runFor", ({ runFor, status, message }) => {
     const started = Deferred.makeUnsafe<void>();
     return Effect.gen(function* () {
@@ -455,14 +457,15 @@ describe("providerMaintenanceRunner", () => {
     );
   });
 
-  it.effect("an interrupted update ends failed instead of running forever", () => {
+  it.effect("an update stopped by server shutdown ends failed instead of running forever", () => {
     const started = Deferred.makeUnsafe<void>();
     return Effect.gen(function* () {
       const { registry, updateStatesRef } = yield* makeRegistry(baseNativeCliProvider);
-      const updater = yield* makeTestRunner(registry);
-      const update = yield* updater.updateProvider(NATIVE_CLI_DRIVER).pipe(Effect.forkScoped);
+      const serverScope = yield* Scope.make();
+      const updater = yield* makeTestRunner(registry).pipe(Scope.provide(serverScope));
+      yield* updater.updateProvider(NATIVE_CLI_DRIVER).pipe(Effect.forkScoped);
       yield* Deferred.await(started);
-      yield* Fiber.interrupt(update);
+      yield* Scope.close(serverScope, Exit.void);
       const last = (yield* Ref.get(updateStatesRef)).at(-1);
       assert.deepStrictEqual(
         [last?.status, last?.message],
@@ -481,11 +484,12 @@ describe("providerMaintenanceRunner", () => {
     );
   });
 
-  it.effect("a request dropped while the final state is written still records it", () => {
+  it.effect("a shutdown while the final state is written still records it", () => {
     const writing = Deferred.makeUnsafe<void>();
     const release = Deferred.makeUnsafe<void>();
     return Effect.gen(function* () {
       const { registry, updateStatesRef } = yield* makeRegistry(baseNativeCliProvider);
+      const serverScope = yield* Scope.make();
       const updater = yield* makeTestRunner({
         ...registry,
         setProviderMaintenanceActionState: (input) =>
@@ -495,13 +499,13 @@ describe("providerMaintenanceRunner", () => {
                 Effect.andThen(registry.setProviderMaintenanceActionState(input)),
               )
             : registry.setProviderMaintenanceActionState(input),
-      });
+      }).pipe(Scope.provide(serverScope));
 
-      const update = yield* updater.updateProvider(NATIVE_CLI_DRIVER).pipe(Effect.forkScoped);
+      yield* updater.updateProvider(NATIVE_CLI_DRIVER).pipe(Effect.forkScoped);
       yield* Deferred.await(writing);
-      update.interruptUnsafe();
+      const shutdown = yield* Scope.close(serverScope, Exit.void).pipe(Effect.forkScoped);
       yield* Deferred.succeed(release, undefined);
-      yield* Fiber.await(update);
+      yield* Fiber.join(shutdown);
 
       assert.strictEqual((yield* Ref.get(updateStatesRef)).at(-1)?.status, "succeeded");
     }).pipe(

@@ -73,6 +73,25 @@ export const CODE_BLOCK_LANGUAGES = [
     },
   },
   {
+    id: "systemverilog",
+    get label() {
+      return "SystemVerilog";
+    },
+  },
+  {
+    id: "verilog",
+    get label() {
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- code language name
+      return "Verilog";
+    },
+  },
+  {
+    id: "vhdl",
+    get label() {
+      return "VHDL";
+    },
+  },
+  {
     id: "toml",
     get label() {
       return "TOML";
@@ -131,6 +150,8 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   s: "asm",
   sh: "bash",
   shell: "bash",
+  sv: "systemverilog",
+  "system-verilog": "systemverilog",
   text: "",
   ts: "typescript",
   txt: "",

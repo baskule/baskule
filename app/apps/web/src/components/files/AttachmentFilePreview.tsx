@@ -1,4 +1,3 @@
-
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { filePreviewDelimiter } from "@t3tools/shared/delimitedPreview";
 import type { AssetResource, EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
@@ -135,19 +134,19 @@ export function AttachmentFilePreview(props: {
   const { copyToClipboard, isCopied } = useCopyToClipboard({
     target: namedClipboardTarget(props.name),
   });
-  // useAssetUrlRefresh keys its callback on these objects, so they must stay cached.
-  const resource =
-    props.asset && "resource" in props.asset
-      ? props.asset.resource
-      : attachmentId
-        ? {
-            _tag: "attachment" as const,
-            attachmentId,
-            fileName: props.name,
-            mimeType: props.mimeType,
-            disposition: "inline" as const,
-          }
-        : null;
+  // useAssetUrlRefresh keys its callback on these objects, so they must stay cached. Parents
+  // rebuild `asset` on every render, so the attachment resource derives only from its fields.
+  const assetResource = props.asset && "resource" in props.asset ? props.asset.resource : null;
+  const attachmentResource = attachmentId
+    ? {
+        _tag: "attachment" as const,
+        attachmentId,
+        fileName: props.name,
+        mimeType: props.mimeType,
+        disposition: "inline" as const,
+      }
+    : null;
+  const resource = assetResource ?? attachmentResource;
   const downloadResource = resource
     ? resource._tag === "draft-workspace-file"
       ? resource
@@ -198,7 +197,7 @@ export function AttachmentFilePreview(props: {
       cancelled = true;
     };
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Retry must reauthorize the remote file.
-  }, [props.file, refresh, revision, messages]);
+  }, [props.file, refresh, revision]);
   const url = props.file ? localUrl : remoteUrl;
   const streamsText =
     kind === "text" &&

@@ -83,6 +83,7 @@ export interface SettingsSearchAvailability {
   /** An environment without a provider allow-list, which hides text generators. */
   readonly hasTextGeneratorsEnvironment?: boolean;
   readonly hasPrimaryEnvironment?: boolean;
+  readonly hasSecretProvidersEnvironment?: boolean;
 }
 
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
@@ -118,12 +119,14 @@ export const SETTINGS_NAV_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/access": msg("Sharing & access", { $context: "settings navigation item" }),
 };
 
-/** Sidebar order. A group with a hidden heading is set apart on screen by space alone. */
-export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+type SettingsNavGroup = {
   readonly heading: string;
   readonly headingHidden?: true;
   readonly paths: ReadonlyArray<SettingsPath>;
-}> = [
+};
+
+/** Sidebar order. A group with a hidden heading is set apart on screen by space alone. */
+const ALL_SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
   {
     heading: msg("Preferences"),
     headingHidden: true,
@@ -162,6 +165,10 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     paths: ["/settings/maintenance", "/settings/labs", "/settings/about", "/settings/archived"],
   },
 ];
+
+export function settingsNavGroups(_hasSecretProvidersEnvironment: boolean) {
+  return ALL_SETTINGS_NAV_GROUPS;
+}
 
 export function keybindingSearchAnchorId<Command extends KeybindingCommand>(command: Command) {
   return `keybinding-${command}` as const;
@@ -314,6 +321,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("wide full width column layout messages composer monitor")],
   },
   {
+    id: "html-preview-width",
+    title: msg("HTML preview width"),
+    to: "/settings/appearance",
+    searchTerms: [msg("wide full width inline page render chart dashboard artifact centered")],
+  },
+  {
     id: "thread-details-items",
     title: msg("Thread details"),
     to: "/settings/appearance",
@@ -447,6 +460,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "boring-sidebar",
     searchTerms: [msg("beta boring sidebar folder rows multiline branch pull request details")],
   },
+
   {
     id: "tool-call-visibility",
     title: msg("Tool calls in chat"),
@@ -1052,6 +1066,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: msg("Actions"),
     to: "/settings/projects",
     searchTerms: [msg("commands scripts setup run dev server checkout worktree t3.json import")],
+  },
+  {
+    id: "project-repositories",
+    title: msg("Repositories"),
+    to: "/settings/projects",
+    searchTerms: [msg("tracked folders multi repo workspace code-workspace rescan add folder")],
   },
   {
     id: "environment-icon",

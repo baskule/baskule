@@ -47,9 +47,7 @@ const EMPTY_THREAD_REFS_BY_PROJECT: ReadonlyMap<
 // parent is no longer waiting on the answer, so it stops counting as input.
 // The activity run stays set when a follow-up is queued behind a blocked run;
 // older servers omit it, so fall back to the latest run's status.
-const isChildRunLive = (
-  thread: Pick<OrchestrationV2ThreadShell, "activityRunStatus" | "status">,
-) =>
+const isChildRunLive = (thread: Pick<OrchestrationV2ThreadShell, "activityRunStatus" | "status">) =>
   thread.activityRunStatus !== undefined
     ? thread.activityRunStatus !== null
     : thread.status === "preparing" ||
@@ -81,6 +79,9 @@ function sideChatRequest(thread: OrchestrationV2ThreadShell): PendingSubagentReq
   }
   return kind === "user_input" ? "user_input" : "approval";
 }
+
+const asksParent = (thread: OrchestrationV2ThreadShell) =>
+  subagentRequest(thread) !== null || sideChatRequest(thread) !== null;
 
 export function resolveListedAncestorThreadRef(
   ref: ScopedThreadRef,
@@ -369,12 +370,23 @@ export function createEnvironmentThreadShellAtoms(input: {
     }).pipe(Atom.withLabel(`environment-quiet-thread-shell:${key}`));
   });
 
+  const hasChildThreadInputsAtom = Atom.make((get) => {
+    for (const environmentId of enabledEnvironmentIds(get(input.catalogValueAtom))) {
+      if (get(environmentThreadsAtom(environmentId)).some(asksParent)) return true;
+    }
+    return false;
+  }).pipe(Atom.withLabel("environment-has-child-thread-inputs"));
+
   // Child approvals and questions are hidden with their sidebar rows. Read their
   // shell summaries, without subscribing to every child transcript.
   const childThreadInputsAtomFamily = Atom.family((key: string) => {
     const ref = parseThreadKey(key);
     let previous: ReadonlyArray<EnvironmentThreadShell> = [];
     return Atom.make((get) => {
+      if (!get(hasChildThreadInputsAtom)) {
+        if (previous.length !== 0) previous = [];
+        return previous;
+      }
       const children = new Map<ThreadId, OrchestrationV2ThreadShell[]>();
       for (const thread of get(environmentThreadsAtom(ref.environmentId))) {
         const parent = thread.lineage.parentThreadId;

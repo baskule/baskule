@@ -27,7 +27,7 @@ import type { SqlClient } from "effect/sql/SqlClient";
 import { BASKULE_AI_NOT_CONFIGURED } from "../../../app/packages/contracts/src/baskule";
 import type { UsageLimitSettings } from "../../../app/packages/contracts/src/baskule-usage";
 import { UsageReporter } from "./usage";
-import { T3McpProxy } from "./t3-mcp";
+import { persistedT3McpCache, T3McpProxy } from "./t3-mcp";
 import { PluginMcpProxy } from "./plugin-mcp";
 import { authorQuery, resolveTurnAuthor } from "./turn-author";
 import { syncSkills, skillCatalog } from "./plugin-skills";
@@ -73,7 +73,7 @@ export class AgentRuntime {
   private t3Mcp = new Map<string, T3McpProxy>();
   private pluginMcp = new Map<string, PluginMcpProxy>();
   private skillsReady: Promise<void> | null = null;
-  private t3McpCache: Record<string, unknown> | undefined;
+  private readonly t3McpCache: ReturnType<typeof persistedT3McpCache>;
   private dirsReady: true | null = null;
   private mkdirRun: Promise<void> | null = null;
   private logs: string[] = [];
@@ -96,6 +96,7 @@ export class AgentRuntime {
     usage?: { settings: UsageLimitSettings; control: (path: string, body: unknown) => Promise<Response> },
     private control?: { fetch(req: Request): Promise<Response> },
   ) {
+    this.t3McpCache = persistedT3McpCache(storage);
     if (usage) this.usage = new UsageReporter(databaseClient as SqlClient, spaceId, configPrices(opencodeConfig(env, this.keyEnv)), usage.settings, usage.control, () => this.scheduleAlarm());
     this.computerd = new Computerd(env.COMPUTERD_URL ?? "", env.COMPUTERD_TOKEN ?? "", spaceId);
   }
@@ -211,7 +212,7 @@ export class AgentRuntime {
       if (this.released) throw new Error("Space agent is released");
       await this.prepareSkills();
       this.log("boot phase: cache");
-      this.t3McpCache = await this.storage.get<Record<string, unknown>>("baskule:t3-mcp-cache");
+      await this.t3McpCache.load();
       if (this.released) throw new Error("Space agent is released");
       const pluginServers: Record<string, unknown> = {};
       for (const [index, server] of (this.env.PLUGINS?.servers ?? []).entries()) {
@@ -632,13 +633,7 @@ export class AgentRuntime {
           let proxy = this.t3Mcp.get(server);
           if (proxy) proxy.update(upstream);
           else {
-            proxy = new T3McpProxy(upstream, {
-              get: () => this.t3McpCache,
-              set: (v) => {
-                this.t3McpCache = v;
-                void this.storage.put("baskule:t3-mcp-cache", v);
-              },
-            }, (l) => this.log(l));
+            proxy = new T3McpProxy(upstream, this.t3McpCache, (l) => this.log(l));
             this.t3Mcp.set(server, proxy);
           }
           // The same downstream config on every re-add, so OpenCode keeps its connection.

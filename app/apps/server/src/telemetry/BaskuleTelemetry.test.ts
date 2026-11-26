@@ -6,7 +6,7 @@ import * as Effect from "effect/Effect";
 import { telemetryEnabledConfig } from "./BaskuleTelemetry.ts";
 
 const enabledFor = (env: Record<string, string>) =>
-  telemetryEnabledConfig.parse(ConfigProvider.fromEnvRecord(env));
+  telemetryEnabledConfig(true).parse(ConfigProvider.fromEnvRecord(env));
 
 it.effect("defaults telemetry off only for Baskule deployments", () =>
   Effect.gen(function* () {

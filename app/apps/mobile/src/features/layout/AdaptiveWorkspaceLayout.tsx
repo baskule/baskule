@@ -18,7 +18,12 @@ import { threadSelectionDeferral } from "./deferred-navigation";
 import { uuidv4 } from "../../lib/uuid";
 import { EnvironmentId, ThreadId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { NavigationContext, NavigationRouteContext, useNavigation } from "@react-navigation/native";
+import {
+  CommonActions,
+  NavigationContext,
+  NavigationRouteContext,
+  useNavigation,
+} from "@react-navigation/native";
 import {
   use,
   useEffect,
@@ -114,7 +119,7 @@ import {
   workspaceTabColumns,
   workspaceTabNavigationState,
 } from "./workspace/workspace-tab-navigation";
-import type { WorkspaceTab } from "./workspace/workspace-tabs-state";
+import { workspaceUsesColumns, type WorkspaceTab } from "./workspace/workspace-tabs-state";
 import { workspaceRoutesOf } from "./workspace-overlay-routes";
 import { SettingsWorkspaceLayout } from "../settings/SettingsWorkspaceLayout";
 import { WorkspaceThreadSidebar } from "./workspace/WorkspaceThreadSidebar";
@@ -270,7 +275,11 @@ function AdaptiveWorkspaceLayoutContent(
   const androidSettingsOpen = useAndroidWorkspaceRoot()?.settingsOpen ?? false;
   const safeAreaInsets = useSafeAreaInsets();
   const workspacePage =
-    Platform.OS === "android" && (androidSettingsOpen || workspace?.state.selectedTab === "usage");
+    Platform.OS === "android" &&
+    (androidSettingsOpen ||
+      (workspace !== null &&
+        workspace !== undefined &&
+        !workspaceUsesColumns(workspace.state.selectedTab)));
   const navigation = useNavigation();
   const [primarySidebarPreferredVisible, setPrimarySidebarPreferredVisible] = useState(true);
   const [fileInspectorPreferredVisible, setFileInspectorPreferredVisible] = useState(true);
@@ -641,23 +650,27 @@ function AdaptiveWorkspaceLayoutContent(
         .filter((environment) => environment.connectionState === "connected")
         .map((environment) => environment.environmentId),
     );
-    handleSelectThreadRoute(
-      newTaskDestination({
-        projects,
-        requestId: uuidv4(),
-        useLastProject: saved?.useLastProjectForNewThreads,
-        currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,
-        filteredProject: filteredScope
-          ? newTaskFilteredProject(
-              filteredScope,
-              listEnvironmentId,
-              connectedEnvironmentIds,
-              saved?.lastThreadProject,
-            )
-          : undefined,
-        lastProject: saved?.lastThreadProject,
-      }),
-    );
+    const destination = newTaskDestination({
+      projects,
+      requestId: uuidv4(),
+      useLastProject: saved?.useLastProjectForNewThreads,
+      currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,
+      filteredProject: filteredScope
+        ? newTaskFilteredProject(
+            filteredScope,
+            listEnvironmentId,
+            connectedEnvironmentIds,
+            saved?.lastThreadProject,
+          )
+        : undefined,
+      lastProject: saved?.lastThreadProject,
+    });
+    // Without a project the draft would only push the picker over itself a frame later; open it directly.
+    if (destination.draft.projectId === undefined) {
+      navigation.dispatch(CommonActions.navigate("NewTaskProject"));
+      return;
+    }
+    handleSelectThreadRoute(destination);
   };
 
   useHardwareKeyboardCommand("newTask", () => {

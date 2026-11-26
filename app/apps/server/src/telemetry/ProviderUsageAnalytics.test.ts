@@ -26,15 +26,23 @@ import {
 } from "./ProviderUsageAnalytics.ts";
 
 const providers = [
-  // Codex lists whatever its configured model provider serves, including private deployments.
-  { driver: "codex", models: [{ slug: "gpt-6-sol" }, { slug: "acme-azure-deployment" }] },
+  { driver: "codex", models: [{ slug: "gpt-6-sol" }] },
+  { driver: "pi", models: [{ slug: "/Users/jane/models/llama.gguf", aliases: ["pi-local"] }] },
   { driver: "claudeAgent", models: [{ slug: "claude-opus-5-5" }, { slug: "claude-haiku-4-5" }] },
-  { driver: "opencode", models: [{ slug: "ollama/acme-internal" }] },
+  // Antigravity ships models before the bundled manifest lists them.
+  {
+    driver: "antigravity",
+    models: [
+      { slug: "gemini-4-neon", aliases: ["antigravity-default"] },
+      { slug: "gemini-4-hydrogen" },
+    ],
+  },
 ].map(
   ({ driver, models }) =>
     ({
       instanceId: ProviderInstanceId.make(driver),
       driver,
+      auth: { status: "authenticated" },
       models: models.map((model) => ({ ...model, isCustom: false })),
     }) as unknown as ServerProvider,
 );
@@ -105,7 +113,10 @@ describe("provider usage reporting", () => {
           Layer.mergeAll(
             Layer.mock(AnalyticsService.AnalyticsService)({
               record: (event, properties) =>
-                Effect.sync(() => void recorded.push([event, properties])),
+                Effect.sync(() => {
+                  recorded.push([event, properties]);
+                  return true;
+                }),
             }),
             Layer.mock(ProviderRegistry.ProviderRegistry)({
               getProviders: Effect.succeed(providers),

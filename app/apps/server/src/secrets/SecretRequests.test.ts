@@ -1,3 +1,4 @@
+import * as Deferred from "effect/Deferred";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -12,6 +13,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Metric from "effect/Metric";
@@ -41,11 +43,13 @@ const withService = <A, E>(
   options: {
     readonly threadId?: ThreadId;
     readonly delivery?: "file";
+    readonly fields?: ReadonlyArray<{ readonly name: string; readonly label: string }>;
     readonly directory?: string;
     readonly runStatus?: string;
     readonly protectedInput?: boolean;
     readonly removeFails?: boolean;
     readonly closedFirst?: boolean;
+    readonly afterCreate?: Effect.Effect<void>;
     readonly failedRecords?: number;
   } = {},
 ) =>
@@ -78,7 +82,9 @@ const withService = <A, E>(
                     ),
                   } as never),
                 )
-              : Effect.sync(() => void stored.set(name, value)),
+              : Effect.sync(() => void stored.set(name, value)).pipe(
+                  Effect.andThen(options.afterCreate ?? Effect.void),
+                ),
           getOrCreateRandom: (name, bytes) =>
             Effect.sync(() => {
               const existing = stored.get(name);
@@ -99,6 +105,7 @@ const withService = <A, E>(
         }),
       ),
       Layer.mock(ThreadManagementService.ThreadManagementService)({
+        // Reads yield like a real store, so two answers can both see a pending card.
         getThreadRecords: () =>
           Effect.succeed({
             thread: { projectId },
@@ -119,6 +126,7 @@ const withService = <A, E>(
                 reason: "Used as GH_TOKEN.",
                 url: "https://github.com/settings/tokens",
                 ...(options.delivery === undefined ? {} : { delivery: options.delivery }),
+                ...(options.fields === undefined ? {} : { fields: options.fields }),
                 secretStatus,
               },
             ],
@@ -145,6 +153,9 @@ const withService = <A, E>(
       return yield* body({ service, stored, dispatched });
     }).pipe(Effect.provide(SecretRequests.layer.pipe(Layer.provide(layerDependencies))));
   });
+
+const singleFile = (saved: { readonly file: string } | { readonly files: unknown }) =>
+  "file" in saved ? saved.file : assert.fail("expected a single file");
 
 const valuesOf = (stored: Map<string, Uint8Array>) =>
   Array.from(stored.entries())
@@ -409,7 +420,7 @@ it.effect("a file request moves its value to an owner-only file, once", () =>
             undefined,
           );
           assert.include(dispatched[0] as object, { secretStatus: "saved", delivery: "file" });
-          const file = yield* service.saveToFile({ threadId, turnItemId });
+          const file = singleFile(yield* service.saveToFile({ threadId, turnItemId }));
           assert.equal(yield* fs.readFileString(file), "cf_token'$(id)");
           assert.deepEqual(valuesOf(stored), []);
           if ((yield* HostProcess.Platform) !== "win32") {
@@ -417,7 +428,7 @@ it.effect("a file request moves its value to an owner-only file, once", () =>
             assert.equal((yield* fs.stat(path.dirname(file))).mode & 0o777, 0o700);
           }
           // A retried request_secret gets the same file; the value is never a ref again.
-          assert.equal(yield* service.saveToFile({ threadId, turnItemId }), file);
+          assert.deepEqual(yield* service.saveToFile({ threadId, turnItemId }), { file });
           const ref = SecretRef.make(`secret-ref:${path.basename(file)}`);
           const reused = yield* service.consume({ ref, projectId }).pipe(Effect.flip);
           assert.equal(reused.reason, "ref_unavailable");
@@ -434,6 +445,132 @@ it.effect("a file request moves its value to an owner-only file, once", () =>
     yield* withService(() => Effect.void, { directory });
     assert.isFalse(yield* fs.exists(file));
   }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("a fields request keeps each value apart and delivers one file per field", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "secret-files-test-" });
+    yield* withService(
+      ({ service, stored, dispatched }) =>
+        Effect.gen(function* () {
+          const answer = (values: Record<string, string>) =>
+            service.answer({ threadId, turnItemId, answer: { type: "save", values } }, undefined);
+          // An older client answers with one secret; a partial answer is just as wrong.
+          for (const wrong of [
+            service.answer(
+              { threadId, turnItemId, answer: { type: "save", secret: "pw" } },
+              undefined,
+            ),
+            answer({ email: "qa@acme.dev" }),
+            answer({ email: "qa@acme.dev", password: "pw", extra: "x" }),
+          ]) {
+            assert.equal((yield* wrong.pipe(Effect.flip)).reason, "fields_mismatch");
+          }
+          assert.deepEqual(valuesOf(stored), []);
+          // A failed record removes every field's value, not just the first.
+          const failed = yield* answer({ email: "qa@acme.dev", password: "pw" }).pipe(Effect.flip);
+          assert.equal(failed.reason, "record_failed");
+          assert.deepEqual(valuesOf(stored), []);
+
+          yield* answer({ email: "qa@acme.dev", password: "hunter2" });
+          assert.include(dispatched[0] as object, { secretStatus: "saved", delivery: "file" });
+          assert.deepEqual((dispatched[0] as { fields?: unknown }).fields, [
+            { name: "email", label: "Email" },
+            { name: "password", label: "Password" },
+          ]);
+          assert.notInclude(JSON.stringify(dispatched), "hunter2");
+          const saved = yield* service.saveToFile({ threadId, turnItemId });
+          assert.isTrue("files" in saved);
+          const files = "files" in saved ? saved.files : {};
+          assert.deepEqual(Object.keys(files), ["email", "password"]);
+          assert.equal(yield* fs.readFileString(files.email ?? ""), "qa@acme.dev");
+          assert.equal(yield* fs.readFileString(files.password ?? ""), "hunter2");
+          assert.deepEqual(valuesOf(stored), []);
+        }),
+      {
+        delivery: "file",
+        directory,
+        failedRecords: 1,
+        fields: [
+          { name: "email", label: "Email" },
+          { name: "password", label: "Password" },
+        ],
+      },
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("two racing answers to a fields card never mix their values", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "secret-files-test-" });
+    yield* withService(
+      ({ service }) =>
+        Effect.gen(function* () {
+          const answer = (who: string) =>
+            service.answer(
+              {
+                threadId,
+                turnItemId,
+                answer: {
+                  type: "save",
+                  values: { email: `${who}@acme.dev`, password: `${who}-pw` },
+                },
+              },
+              undefined,
+            );
+          const results = yield* Effect.forEach([answer("a"), answer("b")], Effect.result, {
+            concurrency: "unbounded",
+          });
+          assert.deepEqual(results.map((result) => result._tag).toSorted(), ["Failure", "Success"]);
+          const saved = yield* service.saveToFile({ threadId, turnItemId });
+          const files = "files" in saved ? saved.files : {};
+          const email = yield* fs.readFileString(files.email ?? "");
+          const password = yield* fs.readFileString(files.password ?? "");
+          assert.equal(password, `${email.split("@")[0]}-pw`);
+        }),
+      {
+        delivery: "file",
+        directory,
+        fields: [
+          { name: "email", label: "Email" },
+          { name: "password", label: "Password" },
+        ],
+      },
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("a fields answer interrupted between two values keeps neither", () =>
+  Effect.gen(function* () {
+    const firstStored = yield* Deferred.make<void>();
+    yield* withService(
+      ({ service, stored }) =>
+        Effect.gen(function* () {
+          const fiber = yield* service
+            .answer(
+              {
+                threadId,
+                turnItemId,
+                answer: { type: "save", values: { email: "a@acme.dev", password: "a-pw" } },
+              },
+              undefined,
+            )
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(firstStored);
+          yield* Fiber.interrupt(fiber);
+          assert.deepEqual(valuesOf(stored), []);
+        }),
+      {
+        afterCreate: Deferred.succeed(firstStored, undefined).pipe(Effect.andThen(Effect.never)),
+        fields: [
+          { name: "email", label: "Email" },
+          { name: "password", label: "Password" },
+        ],
+      },
+    );
+  }),
 );
 
 it.effect("a failed file write keeps the value, so the request can retry", () =>
@@ -460,7 +597,7 @@ it.effect("a failed file write keeps the value, so the request can retry", () =>
           const failed = yield* service.saveToFile({ threadId, turnItemId }).pipe(Effect.flip);
           assert.equal(failed.reason, "store_failed");
           yield* fs.remove(partial, { recursive: true });
-          const file = yield* service.saveToFile({ threadId, turnItemId });
+          const file = singleFile(yield* service.saveToFile({ threadId, turnItemId }));
           assert.equal(yield* fs.readFileString(file), "cf_token");
         }),
       { delivery: "file", directory },

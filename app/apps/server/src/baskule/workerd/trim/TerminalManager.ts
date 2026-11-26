@@ -66,6 +66,7 @@ const inert: Service = {
   resize: notRunning,
   clear: notRunning,
   close: () => Effect.void,
+  hasActiveSubprocess: () => Effect.succeed(false),
   closeOnSettle: () => Effect.void,
   closeIdle: () => Effect.void,
   subscribe: () => Effect.succeed(noop),

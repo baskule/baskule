@@ -248,6 +248,11 @@ export class HandlersLayer<Tools extends Record<string, Tool.Any>, EX = never, R
   }
 }
 
+const THREAD_ONLY = new Set<unknown>([
+  McpInvocationContext.hiddenFromOutsideClients,
+  McpInvocationContext.hiddenWithoutBackgroundWait,
+]);
+
 const checkedHandlers = <Handlers>(declarations: Declarations<Handlers>): Handlers =>
   Struct.map(declarations, checkedHandler);
 
@@ -262,8 +267,7 @@ export const toLayer = <Tools extends Record<string, Tool.Any>, EX = never, RX =
       if (
         tool !== undefined &&
         requiresThreadOf(declaration) &&
-        Context.getOrUndefined(tool.annotations, McpSchema.EnabledWhen) !==
-          McpInvocationContext.hiddenFromOutsideClients
+        !THREAD_ONLY.has(Context.getOrUndefined(tool.annotations, McpSchema.EnabledWhen))
       ) {
         return Effect.die(
           `${name} acts as its calling thread, so outside clients must not be offered it.`,

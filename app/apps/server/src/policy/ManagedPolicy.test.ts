@@ -1,3 +1,4 @@
+import * as ManagedSettings from "./managedSettings.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -53,6 +54,23 @@ it.layer(NodeServices.layer)("ManagedPolicy.load", (it) => {
       });
     }),
   );
+
+  it("lists only settings a policy can manage", () => {
+    const listed = ManagedSettings.listManageableSettings();
+    const paths = listed.map(([path]) => path);
+    assert.include(paths, "storageCleanup.logsAfterDays");
+    assert.include(paths, "backgroundActivity.baseProfile");
+    assert.include(paths, "backgroundActivity.overrides.pauseWhenOnBattery");
+    assert.notInclude(paths, "backgroundActivity.overrides");
+    assert.notInclude(paths, "projectSettingsOverrides");
+    assert.notInclude(paths, "compactIdleThreads");
+    assert.notOk(paths.some((path) => path.startsWith("observability")));
+    for (const [path, value] of listed) {
+      if (value === undefined) continue;
+      const managed = ManagedSettings.makeManagedSettings({ [path]: { value, locked: false } });
+      assert.equal(managed._tag, "Valid", path);
+    }
+  });
 
   it.effect("tells clients which capabilities the policy switches off", () =>
     Effect.gen(function* () {

@@ -18,6 +18,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, process.env.BASKULE_OUT ?? "dist");
 const entry = resolve(root, process.env.BASKULE_ENTRY ?? "src/worker.ts");
 const webDir = resolve(root, process.env.BASKULE_WEB_DIR ?? "web-placeholder");
+const t3Bundle = join(root, "src/space/t3/space-cell.js");
+const t3Build = existsSync(t3Bundle)
+  ? createHash("sha256").update(readFileSync(t3Bundle)).digest("hex")
+  : undefined;
 // Explicit Effect operation names remain; stack positions refer to the deployed bundle.
 const minify = process.env.BASKULE_MINIFY === "1";
 
@@ -58,6 +62,7 @@ const result = await build({
   mainFields: ["module", "main"],
   external: ["cloudflare:*", "node:*", ...bareBuiltins],
   plugins: [embeddedAgent, celldCompat, nativeEffectContinuations],
+  define: { __BASKULE_T3_BUILD__: JSON.stringify(t3Build) ?? "undefined" },
   loader: { ".sql": "text" },
   // Better Auth / deps import bare node builtins in a few places: map them to node: (celld has nodejs_compat).
   alias: Object.fromEntries(aliased.map((m) => [m, `node:${m}`])),

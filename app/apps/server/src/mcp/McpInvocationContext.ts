@@ -22,6 +22,7 @@ const ALL_MCP_CAPABILITIES = [
   "device",
   "pull-requests",
   "issues",
+  "background-wait",
 ] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
 
@@ -89,10 +90,12 @@ export const withRuntimeModeCeiling = (
   scope: McpInvocationScope,
   ceiling: RuntimeMode | undefined,
 ): McpInvocationScope => {
-  if (ceiling === undefined || scope.client === undefined) return scope;
+  if (ceiling === undefined) return scope;
+  if (scope.client === undefined) return { ...scope, runtimeModeCeiling: ceiling };
   const asked = scope.client.narrowedTo;
   return {
     ...scope,
+    runtimeModeCeiling: ceiling,
     client: {
       ...scope.client,
       narrowedTo: {
@@ -114,6 +117,8 @@ export interface McpInvocationScope {
   readonly requestNamespace: string;
   readonly thread: McpThreadCaller | undefined;
   readonly client: McpClientCaller | undefined;
+  readonly runtimeModeCeiling?: RuntimeMode | undefined;
+  readonly origin?: string | undefined;
 }
 
 /**
@@ -210,4 +215,12 @@ export const hiddenFromOutsideClients = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
   return scope === undefined || scope.thread !== undefined;
+};
+
+export const hiddenWithoutBackgroundWait = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return (
+    scope === undefined || (scope.thread !== undefined && scope.capabilities.has("background-wait"))
+  );
 };

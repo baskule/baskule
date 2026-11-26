@@ -6,12 +6,13 @@ import type {
   CommandId,
   EnvironmentId,
   ProjectMutation,
+  ProjectTrackedFolder,
   ProjectId,
   ServerConfig,
 } from "@t3tools/contracts";
 
-import { cloneUrlRepositoryPath } from "@t3tools/shared/cloneUrl";
-import { isExplicitRelativePath, newProjectFolderName } from "@t3tools/shared/path";
+import { cloneUrlRepositoryPath, isScpLikeCloneUrl } from "@t3tools/shared/cloneUrl";
+import { isHostPath, isExplicitRelativePath, newProjectFolderName } from "@t3tools/shared/path";
 
 import {
   appendBrowsePathSegment,
@@ -66,7 +67,13 @@ export function getAddProjectInitialQuery(baseDirectory: string | null | undefin
 }
 
 export function getCloneDirectoryName(repositoryOrRemoteUrl: string | null | undefined): string {
-  const withoutQuery = (repositoryOrRemoteUrl ?? "").split(/[?#]/)[0]?.trim() ?? "";
+  const trimmed = (repositoryOrRemoteUrl ?? "").trim();
+  // Local paths keep both delimiters. SCP paths keep a literal # in the repository name.
+  const isLocalPath =
+    !trimmed.includes("://") && (isHostPath(trimmed) || isExplicitRelativePath(trimmed));
+  const withoutQuery = isLocalPath
+    ? trimmed
+    : trimmed.split(isScpLikeCloneUrl(trimmed) ? "?" : /[?#]/, 1)[0]!;
   const schemeIndex = withoutQuery.indexOf("://");
   const hasHost = schemeIndex >= 0 || /^[^/\\:]+@[^/\\:]+:/.test(withoutQuery);
   const pathPart = schemeIndex >= 0 ? withoutQuery.slice(schemeIndex + "://".length) : withoutQuery;
@@ -203,6 +210,7 @@ export function buildProjectCreateCommand(input: {
   readonly commandId: CommandId;
   readonly projectId: ProjectId;
   readonly workspaceRoot: string;
+  readonly trackedFolders?: ReadonlyArray<ProjectTrackedFolder>;
 }): Extract<ProjectMutation, { type: "project.create" }> {
   return {
     type: "project.create",
@@ -212,5 +220,8 @@ export function buildProjectCreateCommand(input: {
     workspaceRoot: input.workspaceRoot,
     createWorkspaceRootIfMissing: true,
     defaultModelSelection: null,
+    ...(input.trackedFolders === undefined || input.trackedFolders.length === 0
+      ? {}
+      : { trackedFolders: input.trackedFolders }),
   };
 }

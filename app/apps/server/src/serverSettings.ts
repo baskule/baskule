@@ -50,6 +50,7 @@ import {
 } from "@t3tools/shared/serverSettings";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as ManagedPolicy from "./policy/ManagedPolicy.ts";
+import { watchDirectoryReplacements } from "./watchDirectoryReplacements.ts";
 import { readSecretFieldValues, sourceControlHostSecretName } from "./settingsSecrets.ts";
 import {
   mapSettingsSecrets,
@@ -282,6 +283,49 @@ const LegacySourceControlSettingsJson = fromLenientJson(
 const decodeLegacySourceControlSettingsJsonExit = Schema.decodeUnknownExit(
   LegacySourceControlSettingsJson,
 );
+
+/**
+ * A settings file as the server reads it: its settings, or the defaults when the file or its
+ * legacy fields are rejected, with the cause. Pure, so the CLI reads files as the server does.
+ */
+function decodeSettingsFile(
+  raw: string,
+  managed: ManagedPolicy.ManagedPolicy["Service"]["settings"],
+) {
+  const parsed = decodeSettingsFileJsonExit(raw);
+  const decoded = Exit.isFailure(parsed)
+    ? parsed
+    : decodePersistedServerSettingsExit(managed.withDefaults(parsed.value));
+  const legacy = decodeLegacySourceControlSettingsJsonExit(raw);
+  const failure = Exit.isFailure(decoded)
+    ? decoded.cause
+    : Exit.isFailure(legacy)
+      ? legacy.cause
+      : undefined;
+  const settings: ServerSettings =
+    Exit.isSuccess(decoded) && failure === undefined
+      ? decoded.value
+      : // The file may hold choices we can no longer read, so opt-in behaviour stays off.
+        {
+          ...managed.defaults,
+          continueThreadsAfterServerUpdate: false,
+          usageHistoryRetentionDays: "unlimited",
+          requireConnectDeviceApproval: true,
+          enableAgentBrowserAccess: false,
+          defaultRuntimeMode: "approval-required",
+        };
+  return { settings, legacy: Exit.isSuccess(legacy) ? legacy.value : undefined, failure };
+}
+
+export const readServerSettingsFromDisk = Effect.gen(function* () {
+  const { settingsPath } = yield* ServerConfig.ServerConfig;
+  const fs = yield* FileSystem.FileSystem;
+  const { settings: managed } = yield* ManagedPolicy.ManagedPolicy;
+  const raw = yield* fs.readFileString(settingsPath).pipe(Effect.option);
+  return managed.applyLocks(
+    Option.isNone(raw) ? managed.defaults : decodeSettingsFile(raw.value, managed).settings,
+  );
+}).pipe(Effect.withSpan("ServerSettings.readServerSettingsFromDisk"));
 
 const LEGACY_BITBUCKET_SECRET_NAMES: Readonly<Record<string, string>> = {
   accessToken: "bitbucket-access-token",
@@ -605,36 +649,16 @@ const make = Effect.gen(function* () {
     let parseFailure = Option.none<unknown>();
 
     if (yield* readConfigExists) {
-      const raw = yield* readRawConfig;
-      const parsed = decodeSettingsFileJsonExit(raw);
-      const decoded = Exit.isFailure(parsed)
-        ? parsed
-        : decodePersistedServerSettingsExit(managed.withDefaults(parsed.value));
-      const legacySettings = decodeLegacySourceControlSettingsJsonExit(raw);
-      if (legacySettings._tag === "Success") {
-        legacySourceControl = {
-          bitbucket: legacySettings.value.bitbucket,
-          github: legacySettings.value.github,
-        };
-      }
-      if (decoded._tag === "Failure" || legacySettings._tag === "Failure") {
-        const failure = decoded._tag === "Failure" ? decoded : legacySettings;
-        // The file may hold an opt-out we can no longer read; never resume threads on a guess.
-        settings = {
-          ...managed.defaults,
-          continueThreadsAfterServerUpdate: false,
-          usageHistoryRetentionDays: "unlimited",
-        };
-        if (failure._tag === "Failure") {
-          parseFailure = Option.some(Cause.squash(failure.cause));
-          yield* Effect.logWarning("failed to parse settings.json, using defaults", {
-            path: settingsPath,
-            issues: Cause.pretty(failure.cause),
-            cause: failure.cause,
-          });
-        }
-      } else {
-        settings = decoded.value;
+      const file = decodeSettingsFile(yield* readRawConfig, managed);
+      if (file.legacy !== undefined) legacySourceControl = file.legacy;
+      settings = file.settings;
+      if (file.failure !== undefined) {
+        parseFailure = Option.some(Cause.squash(file.failure));
+        yield* Effect.logWarning("failed to parse settings.json, using defaults", {
+          path: settingsPath,
+          issues: Cause.pretty(file.failure),
+          cause: file.failure,
+        });
       }
     }
 
@@ -1066,40 +1090,23 @@ const make = Effect.gen(function* () {
   // A directory watch follows the directory's inode, so when the target's
   // directory is renamed away and another takes its path, watch the new one.
   const watchLinkTargetChanges = (linkTargetPath: string, ready: Deferred.Deferred<void>) =>
-    Stream.unwrap(
-      Effect.gen(function* () {
-        const parentReady = yield* Deferred.make<void>();
-        const replacements = yield* watchFileChanges(
-          pathService.dirname(linkTargetPath),
-          parentReady,
-        ).pipe(
-          // Native watch registration can throw, including when the OS runs out of watches.
-          Stream.ignoreCause({ log: true }),
-          Stream.toQueue({ capacity: 1, strategy: "sliding" }),
-        );
-        // Start buffering replacements before attaching to the target directory's inode.
-        yield* Deferred.await(parentReady);
-
-        const targetChanges = Stream.unwrap(
-          Effect.gen(function* () {
-            const registered = yield* Deferred.make<void>();
-            return Stream.merge(
-              watchFileChanges(linkTargetPath, registered).pipe(Stream.ignoreCause({ log: true })),
-              // Startup reloads once ready. Later watches trigger their own reload.
-              Stream.fromEffect(
-                Deferred.await(registered).pipe(Effect.andThen(Deferred.succeed(ready, undefined))),
-              ).pipe(
-                Stream.filter((completedStartup) => !completedStartup),
-                Stream.as(undefined),
-              ),
-            );
-          }),
-        );
-        return Stream.make(targetChanges).pipe(
-          Stream.concat(Stream.fromQueue(replacements).pipe(Stream.as(targetChanges))),
-          Stream.switchMap((changes) => changes),
-        );
-      }),
+    watchDirectoryReplacements(
+      (parentReady) => watchFileChanges(pathService.dirname(linkTargetPath), parentReady),
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const registered = yield* Deferred.make<void>();
+          return Stream.merge(
+            watchFileChanges(linkTargetPath, registered).pipe(Stream.ignoreCause({ log: true })),
+            // Startup reloads once ready. Later watches trigger their own reload.
+            Stream.fromEffect(
+              Deferred.await(registered).pipe(Effect.andThen(Deferred.succeed(ready, undefined))),
+            ).pipe(
+              Stream.filter((completedStartup) => !completedStartup),
+              Stream.as(undefined),
+            ),
+          );
+        }),
+      ),
     );
 
   const startWatcher = Effect.gen(function* () {

@@ -1,4 +1,9 @@
-import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
+import { desktopTrackMismatchText } from "@t3tools/client-runtime/state/server";
+import type {
+  DesktopBridge,
+  DesktopUpdateActionResult,
+  DesktopUpdateState,
+} from "@t3tools/contracts";
 import { msg } from "gt-react";
 
 import { m, type MessageResolver } from "../i18n/messages";
@@ -139,6 +144,11 @@ export function getDesktopUpdateButtonTooltip(
       : resolve(msg("Downloading update"));
   }
   if (state.status === "downloaded") {
+    if (state.errorContext === "install" && state.downloadedVersion) {
+      return resolve(
+        msg("Install failed for {version}. Click to retry.", { version: state.downloadedVersion }),
+      );
+    }
     const version = state.downloadedVersion ?? state.availableVersion;
     return version === null
       ? resolve(msg("Update ready downloaded. Click to restart and install."))
@@ -154,6 +164,14 @@ export function getDesktopUpdateButtonTooltip(
       return resolve(
         msg("Update {version} downloaded. Click to restart and install.", {
           version: state.downloadedVersion,
+        }),
+      );
+    }
+    if (state.trackMismatch !== undefined) {
+      return resolve(
+        desktopTrackMismatchText({
+          buildChannel: state.trackMismatch.buildChannel,
+          savedChannel: state.channel,
         }),
       );
     }
@@ -184,10 +202,42 @@ export function getDesktopUpdateInstallConfirmationMessage(
 /** An accepted install never completes before the app quits, so only an error state counts. */
 export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): string | null {
   if (!result.accepted || result.completed) return null;
-  const { state } = result;
-  if (state.status !== "error" && state.errorContext === null) return null;
-  const message = state.message?.trim();
-  return message ? message : null;
+  if (result.state.status !== "error" && result.state.errorContext === null) return null;
+  if (typeof result.state.message !== "string") return null;
+  const message = result.state.message.trim();
+  return message.length > 0 ? message : null;
+}
+
+/**
+ * macOS can refuse the restart after installUpdate resolves; the desktop then reports it as a
+ * later state with errorContext "install". Success quits the app, so this never resolves then.
+ */
+export async function installDesktopUpdate(
+  bridge: Pick<DesktopBridge, "installUpdate" | "onUpdateState">,
+  expectedVersion?: string,
+): Promise<DesktopUpdateActionResult> {
+  let awaitingFailure = false;
+  let reportFailure: (state: DesktopUpdateState) => void = () => {};
+  const failure = new Promise<DesktopUpdateState>((resolve) => {
+    reportFailure = resolve;
+  });
+  const unsubscribe = bridge.onUpdateState((state) => {
+    if (awaitingFailure && state.errorContext === "install") reportFailure(state);
+  });
+  try {
+    const result = await bridge.installUpdate(expectedVersion);
+    if (!result.accepted || result.completed || getDesktopUpdateActionError(result) !== null) {
+      return result;
+    }
+    awaitingFailure = true;
+    return { ...result, state: await failure };
+  } finally {
+    unsubscribe();
+  }
+}
+
+export function shouldToastDesktopUpdateActionResult(result: DesktopUpdateActionResult): boolean {
+  return getDesktopUpdateActionError(result) !== null;
 }
 
 export function canCheckForUpdate(state: DesktopUpdateState | null): boolean {

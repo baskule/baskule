@@ -96,3 +96,12 @@ it.effect("refuses a preferences update when the caller's turn ends while it wai
     );
   }),
 );
+
+it("keeps agent feedback out of the preferences agents read and write", () => {
+  expect(EnvironmentHandlers.preferences(DEFAULT_SERVER_SETTINGS)).not.toHaveProperty(
+    "agentFeedback",
+  );
+  expect(
+    Object.keys(EnvironmentToolkit.tools.t3_environment_preferences_update.parametersSchema.fields),
+  ).not.toContain("agentFeedback");
+});

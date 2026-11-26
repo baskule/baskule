@@ -44,7 +44,7 @@ function RestoreDeviceDefaultsButton({ onRestored }: { onRestored: () => void })
       disabled={changedSettingLabels.length === 0}
       onClick={() => void restoreDefaults()}
     >
-      <RotateCcwIcon className="mx-1 size-3.5" />
+      <RotateCcwIcon className="size-3.5" />
       <span className="max-sm:sr-only">
         <T>Restore device defaults</T>
       </span>
@@ -59,23 +59,23 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
   const m = useMessages();
   const hash = useLocation({ select: (location) => location.hash });
   const searchTarget = getSettingsSearchTargetScope(hash);
-  const autoSettlementAvailability = searchTarget?.requiresThreadAutoSettlement
+  if (baskule.hideSettings && isBaskuleOwnSettingsPage(pathname)) return children;
+  const targetAvailability = searchTarget?.requiresThreadAutoSettlement
     ? getThreadAutoSettlementSearchAvailability(environments, scope)
     : null;
-  if (baskule.hideSettings && isBaskuleOwnSettingsPage(pathname)) return children;
   if (
     scope.kind !== "unavailable" &&
     searchTarget &&
-    autoSettlementAvailability &&
-    !autoSettlementAvailability.isTargetAvailable
+    targetAvailability &&
+    !targetAvailability.isTargetAvailable
   ) {
     return (
       <SettingsScopeNotice
         target="environment"
         targetId={hash}
-        eligibleEnvironmentIds={autoSettlementAvailability.eligibleEnvironmentIds}
+        eligibleEnvironmentIds={targetAvailability.eligibleEnvironmentIds}
       >
-        {autoSettlementAvailability.eligibleEnvironmentIds.length > 0
+        {targetAvailability.eligibleEnvironmentIds.length > 0
           ? gt("{title} requires a supporting environment. Choose one to continue.", {
               title: m(searchTarget.title),
             })

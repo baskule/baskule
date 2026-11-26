@@ -762,7 +762,12 @@ it.effect("a fresh-session task launches one thread, then starts each later run 
               ),
           }),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
-            getThreadShell: () => Effect.succeed({ deletedAt: null } as never),
+            getThreadShell: () =>
+              Effect.succeed({
+                deletedAt: null,
+                archivedAt: null,
+                projectId: ProjectId.make("project:test"),
+              } as never),
             sendToThread: (input) =>
               Ref.update(sends, (all) => [
                 ...all,
@@ -831,6 +836,25 @@ it.effect("a fresh-session task launches one thread, then starts each later run 
       assert.equal(moved.task.threadMode, "fresh_session");
       const unbound = yield* service.upsert({ ...input, threadMode: "new_thread" }, taskActor);
       assert.equal(unbound.task.threadId, null);
+      // Clearing the thread keeps the mode, so the next run starts a thread for later runs.
+      yield* service.upsert({ ...input, threadId: launched, threadMode: "continue" }, taskActor);
+      const cleared = yield* service.upsert(
+        {
+          ...input,
+          threadId: null,
+          unbindThread: true,
+          threadMode: "continue",
+        },
+        taskActor,
+      );
+      assert.equal(cleared.task.threadId, null);
+      assert.equal(cleared.task.threadMode, "continue");
+      yield* service.delete({ id: cleared.task.id }, taskActor);
+      const staleSave = yield* service
+        .upsert({ ...input, id: cleared.task.id, requireExisting: true }, taskActor)
+        .pipe(Effect.flip);
+      assert.equal(staleSave.message, "Schedule task not found.");
+      assert.deepEqual((yield* service.list(taskActor)).tasks, []);
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

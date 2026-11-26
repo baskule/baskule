@@ -17,7 +17,7 @@ export const nativeEffectContinuations = {
           "utf8",
         ),
       );
-      if (!["4.0.6", "4.1.3"].includes(version))
+      if (!["4.0.6", "4.1.5"].includes(version))
         throw new Error(`Review native Effect continuation compatibility for ${version}`);
       let contents = NodeFS.readFileSync(path, "utf8");
       if (path.endsWith("/Scheduler.js")) {

@@ -35,6 +35,7 @@ import {
 } from "../orchestration-v2/DispatchModeLimit.ts";
 import { OrchestratorThreadAboveModeLimitError } from "../orchestration-v2/Orchestrator.ts";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as ServerConfig from "../config.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
@@ -644,6 +645,8 @@ describe("OrchestratorMcpService provider resolution", () => {
       boundThread: OrchestrationV2ThreadShell | null,
       upserted: Ref.Ref<number>,
       saved: ScheduledTask = tasks[0]!,
+      /** Stores each keyed create under the id its key derives, as the real service does. */
+      created?: Ref.Ref<ReadonlyArray<ScheduledTask>>,
     ) =>
       OrchestratorMcpService.layer.pipe(
         Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
@@ -689,9 +692,24 @@ describe("OrchestratorMcpService provider resolution", () => {
             }),
             Layer.mock(SecretRequests.SecretRequests)({}),
             Layer.mock(ScheduledTaskService.ScheduledTaskService)({
-              list: () => Effect.succeed({ tasks }),
-              upsert: () =>
-                Ref.update(upserted, (count) => count + 1).pipe(Effect.as({ task: saved })),
+              list: () =>
+                created === undefined
+                  ? Effect.succeed({ tasks })
+                  : Ref.get(created).pipe(Effect.map((stored) => ({ tasks: stored }))),
+              upsert: (input) =>
+                Ref.update(upserted, (count) => count + 1).pipe(
+                  Effect.andThen(
+                    created === undefined || input.commandId === undefined
+                      ? Effect.void
+                      : Ref.set(created, [
+                          {
+                            ...saved,
+                            id: ScheduledTaskService.scheduledTaskIdForCommand(input.commandId),
+                          },
+                        ]),
+                  ),
+                  Effect.as({ task: saved }),
+                ),
             }),
           ),
         ),

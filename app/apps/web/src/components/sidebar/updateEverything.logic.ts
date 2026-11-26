@@ -25,6 +25,10 @@ export interface UpdateEverythingMachine {
     readonly managedPolicy?: ServerConfig["managedPolicy"];
   } | null;
   readonly connected: boolean;
+  /** Why the connection is down, when it says, in the active language. */
+  readonly connectionError?: string | null;
+  /** The saved connection is switched off in Settings, so it never connects. */
+  readonly turnedOff?: boolean;
   readonly hostedByThisApp: boolean;
   readonly canMaintain: boolean;
   readonly updateState: ServerUpdateState;
@@ -64,6 +68,10 @@ export interface SkippedMachine {
   readonly label: string;
   readonly reason: string;
 }
+
+// Desktop servers without the desktop control fd (older apps, WSL backends: wsl.exe cannot pass
+// fds) cannot be updated from here, and their desktop app is not necessarily the stale part.
+const UPDATE_ON_THAT_MACHINE = msg("update T3 Code on that machine");
 
 /** Skip current and app-hosted servers; the latter update with the app and would relaunch mid-run.
  * Desktop-managed servers use their own feed. Each server's updater checks that it can install the
@@ -110,7 +118,7 @@ export function collectServerUpdateTargets(
       continue;
     }
     if (selfUpdate === "desktop-managed" && !desktopAppUpdate) {
-      skip(resolve(msg("needs a newer desktop app")));
+      skip(resolve(UPDATE_ON_THAT_MACHINE));
       continue;
     }
     const serverChannel = cliReleaseChannelOf(config.environment.serverVersion);
@@ -140,7 +148,20 @@ function unavailableReason(
   machine: UpdateEverythingMachine,
   resolve: MessageResolver,
 ): string | null {
-  if (machine.serverConfig === null || !machine.connected) return resolve(msg("not connected"));
+  if (machine.turnedOff === true) {
+    return resolve(
+      msg("turned off", {
+        $context: "why a server update was skipped: its saved connection is off",
+      }),
+    );
+  }
+  if (!machine.connected) return machine.connectionError ?? resolve(msg("not connected"));
+  if (machine.serverConfig === null)
+    return resolve(
+      msg("still loading", {
+        $context: "why a server update was skipped: its settings have not arrived yet",
+      }),
+    );
   if (!machine.canMaintain) return resolve(msg("no permission"));
   if (machine.updateState.status === "running") return resolve(msg("already updating"));
   return null;
@@ -218,6 +239,30 @@ export function resolveUpdateRunMachineStatus(
   return "waiting";
 }
 
+/** "current": the server already runs the target, so retrying it only settles the row. */
+export type RestoredRetry = ServerUpdateTarget | "current";
+
+/** A row restored after this app relaunched keeps only its target version, so its retry is
+ * rebuilt from the server as it is now, as the dialog would. Null when there is nothing to retry. */
+export function resolveRestoredRetry(
+  machine: UpdateRunMachine,
+  machines: ReadonlyArray<UpdateEverythingMachine>,
+): RestoredRetry | null {
+  const targetVersion = machine.handedOffVersion;
+  if (machine.result !== "failed" || machine.server !== null || targetVersion === null) return null;
+  const current = machines.find(({ environmentId }) => environmentId === machine.environmentId);
+  if (current === undefined) return null;
+  const config = current.serverConfig;
+  if (
+    current.connected &&
+    config !== null &&
+    resolveVersionMismatch(config.environment.serverVersion, targetVersion) === null
+  ) {
+    return "current";
+  }
+  return collectServerUpdateTargets([current], targetVersion).targets[0] ?? null;
+}
+
 export function isServerUpdateHandedOff(state: ServerUpdateState): boolean {
   return state.status === "running" && state.stage === "resuming";
 }
@@ -244,6 +289,7 @@ export function formatUpdateElapsed(ms: number, resolve: MessageResolver = m): s
 export interface UpdateRunMachineView {
   readonly machine: UpdateRunMachine;
   readonly status: UpdateRunMachineStatus;
+  readonly restoredRetry: RestoredRetry | null;
 }
 
 export type UpdateRunLocalState =

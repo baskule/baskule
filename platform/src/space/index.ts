@@ -37,6 +37,12 @@ export const IDLE_DISPOSE_MS = 5 * 60_000;
 export const RUN_HEARTBEAT_MS = 10_000;
 /** How long an alarm that boots T3 for due work keeps the event open (T3's scheduler ticks every 5 s). */
 const DUE_WORK_WAIT_MS = 7_000;
+const OPEN_CODE_PROBE_PATHS = new Set([
+  "/oc/api/info",
+  "/oc/api/model",
+  "/oc/api/provider",
+  "/oc/api/experimental/usage/limits",
+]);
 
 export interface SpaceEnv extends Omit<AgentEnv, "AI"> {
   CONTROL: ControlNamespace;
@@ -230,13 +236,22 @@ export class SpaceCell extends DurableObject<SpaceEnv> {
       storage: this.ctx.storage as never,
       // T3 invokes this from background fibers whose original celld event may have retired (#258).
       // Enter this SAME cell through its stub so OpenCode boot and native I/O have a live driver.
-      agentFetch: (request) => {
+      agentFetch: async (request) => {
         const url = new URL(request.url);
+        const isProbe = request.method === "GET" && OPEN_CODE_PROBE_PATHS.has(url.pathname);
         url.pathname = "/_baskule/agent" + url.pathname;
         // A retiring T3 scope must not abort the receiving celld handler.
-        return this.env.SPACE.getByName(spaceId).fetch(
+        const response = await this.env.SPACE.getByName(spaceId).fetch(
           new Request(new Request(url, request), { signal: new AbortController().signal }),
         );
+        if (!isProbe || !response.body) return response;
+        // Finish finite startup reads even if the provider check is interrupted before reading the body.
+        // Otherwise celld can keep the same-cell request active after the space stops.
+        return new Response(await response.arrayBuffer(), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
       },
       computerdUrl: this.env.COMPUTERD_URL,
       computerdToken: this.env.COMPUTERD_TOKEN,

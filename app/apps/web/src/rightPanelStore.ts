@@ -64,7 +64,7 @@ export type RightPanelSurface =
   | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
-const RIGHT_PANEL_STORAGE_VERSION = 15;
+const RIGHT_PANEL_STORAGE_VERSION = 16;
 
 export const PULL_REQUESTS_PANEL_REF = scopeThreadRef(
   EnvironmentId.make("pull-requests-panel"),
@@ -116,7 +116,7 @@ interface RightPanelStoreState {
   ) => boolean;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "issue" | "side-chat">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "side-chat">,
   ) => void;
   openSideChat: (ref: ScopedThreadRef, threadId: ThreadId) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
@@ -161,7 +161,7 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "issue" | "side-chat">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "side-chat">,
   ) => void;
   setThreadPanelOpen: (
     ref: ScopedThreadRef,
@@ -184,10 +184,7 @@ const DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
 };
 
 const singletonSurface = (
-  kind: Exclude<
-    RightPanelKind,
-    "file" | "preview" | "terminal" | "side-chat"
-  >,
+  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "side-chat">,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -428,7 +425,15 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                 threadState && typeof threadState === "object" ? threadState : null;
               const surfaces = Array.isArray(validThreadState?.surfaces)
                 ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
+                    if (!surface || typeof surface !== "object") return [];
                     const kind = (surface as { kind?: string }).kind;
+                    if (!(RIGHT_PANEL_KINDS as ReadonlyArray<unknown>).includes(kind)) return [];
+                    if (
+                      surface.kind === "side-chat" &&
+                      (typeof surface.threadId !== "string" ||
+                        surface.id !== `side-chat:${surface.threadId}`)
+                    )
+                      return [];
                     if (
                       kind === "plan" ||
                       kind === "agents" ||
@@ -493,7 +498,8 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                     ];
                   })
                 : [];
-              const rawActiveSurfaceId = validThreadState?.activeSurfaceId;
+              const savedActiveSurfaceId = validThreadState?.activeSurfaceId;
+              const rawActiveSurfaceId = savedActiveSurfaceId;
               const persistedActiveSurfaceId = surfaces.some(
                 (surface) => surface.id === rawActiveSurfaceId,
               )
@@ -628,9 +634,15 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       openSideChat: (ref, threadId) =>
         set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) =>
-            upsertSurface(current, { id: `side-chat:${threadId}`, kind: "side-chat", threadId }),
-          ),
+          ref.threadId === threadId
+            ? state
+            : userAction(state, scopedThreadKey(ref), (current) =>
+                upsertSurface(current, {
+                  id: `side-chat:${threadId}`,
+                  kind: "side-chat",
+                  threadId,
+                }),
+              ),
         ),
       renameDevice: (ref, surfaceId, title) =>
         set((state) =>

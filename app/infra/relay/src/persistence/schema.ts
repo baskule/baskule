@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import type {
   RelayAgentActivityAggregateState,
   RelayAgentActivityState,

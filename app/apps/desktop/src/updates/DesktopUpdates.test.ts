@@ -83,6 +83,17 @@ const stableUpdateInfo = (
   };
 };
 
+// Subscribes before emitting, so the state the emit publishes is the one awaited, not a scheduler yield.
+const nextPublishedState = (emit: () => void) =>
+  Effect.gen(function* () {
+    const updates = yield* DesktopUpdates.DesktopUpdates;
+    const { changes } = yield* updates.subscribe;
+    const published = yield* Stream.runHead(changes).pipe(Effect.forkChild);
+    emit();
+    yield* Fiber.join(published);
+    return yield* updates.getState;
+  });
+
 describe("DesktopUpdates", () => {
   it.effect.each(["darwin", "win32", "linux"] satisfies ReadonlyArray<NodeJS.Platform>)(
     "offers a compatible update and waits for download/install actions on %s",
@@ -766,6 +777,39 @@ describe("DesktopUpdates", () => {
         assert.isTrue(result.accepted);
         assert.equal(harness.downloadCount(), 1);
         assert.equal(installedVersion, "1.2.5");
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("downloads again when the downloaded update file was deleted before install", () => {
+    const downloadedFile = "/cache/pending/T3-Code-1.2.4-arm64.zip";
+    let installedFileExists: boolean | undefined;
+    const harness = makeHarness({
+      checkForUpdates: Effect.sync(() => harness.emit("update-available", { version: "1.2.4" })),
+      downloadUpdate: Effect.sync(() => {
+        harness.deletedFiles.delete(downloadedFile);
+        harness.emit("update-downloaded", { version: "1.2.4", downloadedFile });
+      }),
+      quitAndInstall: Effect.sync(() => {
+        installedFileExists = !harness.deletedFiles.has(downloadedFile);
+      }),
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        yield* updates.check("poll");
+        yield* updates.download;
+        yield* flushCallbacks;
+        assert.equal(harness.downloadCount(), 1);
+
+        harness.deletedFiles.add(downloadedFile);
+        const result = yield* updates.installPrepared("1.2.4");
+        assert.isTrue(result.accepted);
+        assert.equal(harness.downloadCount(), 2);
+        assert.equal(harness.quitAndInstalls(), 1);
+        assert.isTrue(installedFileExists);
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });

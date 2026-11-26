@@ -9,6 +9,7 @@
 - [Terminal history](./user/terminal.md)
 - [Source control](./user/source-control.md)
 - [Project settings](./user/project-settings.md)
+- [Projects with several repositories](./user/multi-repo-projects.md)
 - [Appearance and themes](./user/appearance.md)
 - [Keyboard shortcuts](./user/keybindings.md)
 - [Voice input](./user/voice-input.md)
@@ -33,12 +34,13 @@
 
 ## Working on T3 Code
 
-Start with the [development runbook](./operations/development.md) and
-[contribution policy](../CONTRIBUTING.md).
+Start with the [development runbook](./operations/00_development.md),
+[contribution policy](../CONTRIBUTING.md), and [trademark policy](../TRADEMARK.md).
 
-Internal notes preserve architectural decisions, constraints, and implementation traps that the
-source alone does not explain. Most code changes do not need an internal documentation update. Follow the
-[documentation rules](../AGENTS.md#documentation) before adding one.
+Internal docs preserve architectural decisions, trust boundaries, conventions, and cross-cutting
+traps that the source alone does not explain. Most code changes do not need an internal
+documentation update. Follow the [documentation rules](../AGENTS.md#documentation) before adding
+anything.
 
 - [Architecture overview](./internals/overview.md)
 - [Glossary](./internals/glossary.md)
@@ -62,10 +64,9 @@ source alone does not explain. Most code changes do not need an internal documen
 
 ### Runbooks
 
-- [Development and local builds](./operations/development.md)
-- [Scenarios: real-app proof for a fix](./operations/scenarios.md)
-- [T3 Connect setup](./operations/connect-setup.md)
-- [Release](./operations/release.md)
-- [Observability](./operations/observability.md)
-- [Relay observability](./operations/relay-observability.md)
-- [Mobile app store screenshots](./operations/mobile-app-store-screenshots.md)
+- [00 · Development and local builds](./operations/00_development.md)
+- [01 · Dev container](./operations/01_devcontainer.md)
+- [02 · T3 Connect setup](./operations/02_connect-setup.md)
+- [03 · Release](./operations/03_release.md)
+- [04 · Observability](./operations/04_observability.md)
+- [05 · Relay observability](./operations/05_relay-observability.md)

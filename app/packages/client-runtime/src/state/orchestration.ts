@@ -187,12 +187,6 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       tag: ORCHESTRATION_V2_WS_METHODS.getTurnDiff,
       ...onCheckpointDiffAnswer,
     }),
-    workflowScript: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:orchestration:workflow-script",
-      tag: ORCHESTRATION_V2_WS_METHODS.getWorkflowScript,
-      staleTimeMs: 300_000,
-      idleTtlMs: 300_000,
-    }),
     stopWorkflow: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:orchestration:stop-workflow",
       tag: ORCHESTRATION_V2_WS_METHODS.stopWorkflow,

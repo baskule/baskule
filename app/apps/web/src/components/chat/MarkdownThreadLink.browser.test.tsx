@@ -5,15 +5,23 @@ import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 
 import { act, render } from "../../../test/render";
+import { useRightPanelStore } from "../../rightPanelStore";
 import { MarkdownThreadLink } from "./MarkdownThreadLink";
 
 const state = vi.hoisted(() => ({
   reply: null as unknown,
   remote: null as unknown,
+  cached: null as unknown,
+  linked: new Map<string, string>(),
+  connected: [] as Array<string>,
 }));
 vi.mock(import("../../state/entities"), () => ({
   useThreadShell: ((ref: { environmentId: string } | null) =>
-    ref?.environmentId === "remote" ? state.remote : null) as never,
+    ref?.environmentId === "remote"
+      ? state.remote
+      : ref?.environmentId === "saved-vm"
+        ? state.cached
+        : null) as never,
   useThreadRefs: (enabled = true) =>
     enabled
       ? [{ environmentId: EnvironmentId.make("remote"), threadId: ThreadId.make("older-thread") }]
@@ -22,10 +30,15 @@ vi.mock(import("../../state/entities"), () => ({
     ref?.projectId === "essay-project" ? ({ title: "Essays" } as never) : null,
 }));
 vi.mock(import("../../state/environments"), () => ({
+  // The click rule reads the client setting, whose module asks for these.
+  useEnvironments: (() => []) as never,
+  usePrimaryEnvironment: (() => null) as never,
   useEnvironmentIdentities: () => [
     { environmentId: EnvironmentId.make("environment"), label: "Here" },
     { environmentId: EnvironmentId.make("remote"), label: "Remote" },
+    { environmentId: EnvironmentId.make("saved-vm"), label: "Saved VM" },
   ],
+  useConnectedEnvironmentIds: () => state.connected as never,
 }));
 vi.mock(import("../ProjectFavicon"), () => ({
   ProjectFavicon: () => (
@@ -34,6 +47,7 @@ vi.mock(import("../ProjectFavicon"), () => ({
     </span>
   ),
 }));
+vi.mock(import("../ThreadChipHoverCard"), () => ({ ThreadChipHoverCard: () => <span /> }));
 vi.mock(import("../contextChipParts"), () => ({
   UnresolvedChip: ({ label }: { label: string }) => <span>{label}</span>,
 }));
@@ -46,6 +60,10 @@ function setup() {
     AsyncResult.AsyncResult<Record<string, { title: string; projectId: ProjectId | null }>, string>
   >(AsyncResult.initial());
   state.reply = reply;
+  state.linked = new Map();
+  state.cached = null;
+  state.connected = ["environment", "remote"];
+  useRightPanelStore.setState({ byThreadKey: {} });
   state.remote = {
     environmentId: EnvironmentId.make("remote"),
     id: ThreadId.make("older-thread"),

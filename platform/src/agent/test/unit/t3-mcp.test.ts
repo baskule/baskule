@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { T3McpProxy } from "../../t3-mcp";
+import { persistedT3McpCache, T3McpProxy } from "../../t3-mcp";
 
 const UPSTREAM = "http://baskule-space.internal/s1/mcp";
 const TOOLS = { tools: [{ name: "preview_open", inputSchema: { type: "object" } }] };
@@ -32,6 +32,35 @@ describe("T3 MCP proxy (static tool list, lazy upstream)", () => {
     expect((await rpc(proxy, "initialize", { protocolVersion: "2025-03-26" })).result.protocolVersion).toBe("2025-03-26");
     expect(await rpc(proxy, "notifications/initialized", undefined, null)).toBeNull();
     expect((await rpc(proxy, "tools/list")).result).toEqual(TOOLS);
+    expect(seen).toEqual([]);
+  });
+
+  it.each(["previous build", "unstamped"])("refreshes a %s cache and reuses the persisted current catalog", async (kind) => {
+    const seen = fakeT3();
+    const stale = {
+      initialize: { serverInfo: { name: "old-t3" } },
+      "tools/list": { tools: [{ name: "t3_workflow_stop" }] },
+    };
+    const stored = new Map<string, unknown>([
+      ["baskule:t3-mcp-cache", kind === "unstamped" ? stale : { build: "old", results: stale }],
+    ]);
+    const storage = {
+      get: async (key: string) => stored.get(key),
+      put: async (key: string, value: unknown) => void stored.set(key, value),
+    };
+    const cache = persistedT3McpCache(storage, "current");
+    await cache.load();
+    const proxy = new T3McpProxy({ url: UPSTREAM }, cache);
+    expect((await rpc(proxy, "initialize")).result.serverInfo).toEqual({ name: "t3" });
+    expect((await rpc(proxy, "tools/list")).result).toEqual(TOOLS);
+    expect(seen.map((s) => s.method)).toEqual(["initialize", "notifications/initialized", "tools/list"]);
+
+    seen.length = 0;
+    const restartedCache = persistedT3McpCache(storage, "current");
+    await restartedCache.load();
+    const restarted = new T3McpProxy({ url: UPSTREAM }, restartedCache);
+    expect((await rpc(restarted, "initialize")).result.serverInfo).toEqual({ name: "t3" });
+    expect((await rpc(restarted, "tools/list")).result).toEqual(TOOLS);
     expect(seen).toEqual([]);
   });
 

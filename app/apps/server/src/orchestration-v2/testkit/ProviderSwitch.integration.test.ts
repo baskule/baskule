@@ -91,7 +91,9 @@ function makeTestAdapter(input: {
     Record<number, Omit<OrchestrationV2ProviderTurnTokenUsage, "updatedAt">>
   >;
   readonly failure?: ReturnType<typeof makeProviderFailure>;
+  readonly rejectedNativeThreads?: Ref.Ref<ReadonlySet<string>>;
   readonly failedRunOrdinals?: ReadonlySet<number>;
+  readonly promptDroppedRunOrdinals?: ReadonlySet<number>;
   readonly brokenRunOrdinals?: ReadonlySet<number>;
   readonly interruptedRunOrdinals?: ReadonlySet<number>;
   readonly cancelledRunOrdinals?: ReadonlySet<number>;
@@ -329,13 +331,27 @@ function makeTestAdapter(input: {
                 yield* Deferred.await(input.releaseFirstTurn);
               }
               const eventTime = yield* DateTime.now;
-              const terminalStatus = input.failedRunOrdinals?.has(turnInput.runOrdinal)
-                ? "failed"
-                : input.interruptedRunOrdinals?.has(turnInput.runOrdinal)
-                  ? "interrupted"
-                  : input.cancelledRunOrdinals?.has(turnInput.runOrdinal)
-                    ? "cancelled"
-                    : "completed";
+              const nativeThreadId = turnInput.providerThread.nativeThreadRef?.nativeId ?? "";
+              if (
+                input.rejectedNativeThreads &&
+                input.failedRunOrdinals?.has(turnInput.runOrdinal)
+              ) {
+                yield* Ref.update(
+                  input.rejectedNativeThreads,
+                  (ids) => new Set([...ids, nativeThreadId]),
+                );
+              }
+              const rejectedHistory =
+                input.rejectedNativeThreads !== undefined &&
+                (yield* Ref.get(input.rejectedNativeThreads)).has(nativeThreadId);
+              const terminalStatus =
+                input.failedRunOrdinals?.has(turnInput.runOrdinal) || rejectedHistory
+                  ? "failed"
+                  : input.interruptedRunOrdinals?.has(turnInput.runOrdinal)
+                    ? "interrupted"
+                    : input.cancelledRunOrdinals?.has(turnInput.runOrdinal)
+                      ? "cancelled"
+                      : "completed";
               const response =
                 input.responseByThreadId?.[turnInput.threadId]?.[turnInput.runOrdinal] ??
                 input.responseByRunOrdinal[turnInput.runOrdinal] ??
@@ -358,6 +374,9 @@ function makeTestAdapter(input: {
                     status: terminalStatus,
                     startedAt: eventTime,
                     completedAt: eventTime,
+                    ...(input.promptDroppedRunOrdinals?.has(turnInput.runOrdinal)
+                      ? { promptDropped: true as const }
+                      : {}),
                   },
                 },
                 {
@@ -384,7 +403,7 @@ function makeTestAdapter(input: {
                     messageId: MessageId.make(
                       `message:${input.driver}:${turnInput.threadId}:${turnInput.runOrdinal}:assistant`,
                     ),
-                    text: response,
+                    text: rejectedHistory ? "" : response,
                     streaming: false,
                   },
                 },
@@ -410,6 +429,9 @@ function makeTestAdapter(input: {
                   threadDisposition: input.brokenRunOrdinals?.has(turnInput.runOrdinal)
                     ? "broken"
                     : "reusable",
+                  ...(input.promptDroppedRunOrdinals?.has(turnInput.runOrdinal)
+                    ? { promptDropped: true as const }
+                    : {}),
                 },
               ];
               const reportedUsage = input.tokenUsageByRunOrdinal?.[turnInput.runOrdinal];
